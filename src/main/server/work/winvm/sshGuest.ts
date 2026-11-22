@@ -4,7 +4,7 @@ import { existsSync, rmSync } from 'node:fs'
 import { connect } from 'node:net'
 import { ADMIN_USER, STANDARD_USER, daemonEnv, type RigConfig, type RigPaths } from './machine/config'
 import { encodePowerShell, psQuote, psStdin, waitedProgramScript, winQuote } from './machine/guest'
-import { SERVICE_PATH, TASK_FOLDER, TASK_NAME } from './setup'
+import { SERVICE_PATH, startDoorScript } from './setup'
 import type { DoorLink, VmGuest } from './keeper'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -121,20 +121,16 @@ if ($LASTEXITCODE) { throw "icacls exited $LASTEXITCODE" }
   }
 
   async startService(): Promise<void> {
-    // the logon task as the admin starts it on tcuser's desktop; a running one is left as it is
-    await this.admin(`
-$svc = New-Object -ComObject Schedule.Service
-$svc.Connect()
-$task = $svc.GetFolder(${psQuote(TASK_FOLDER)}).GetTask(${psQuote(TASK_NAME)})
-if ($task.State -ne 4) { $task.Run($null) | Out-Null }
-`)
+    // the logon task as the admin starts it on tcuser's desktop, with no window; a running one is left as it is
+    await this.admin(startDoorScript())
   }
 
   /** The forward's control socket: the pictures come back over the same connection (`fetch`). */
   private control: string | null = null
 
-  openDoor(socket: string, guestPort: number): Promise<DoorLink> {
+  openDoor(socket: string, guestPort: number, also: readonly { socket: string; port: number }[] = []): Promise<DoorLink> {
     rmSync(socket, { force: true })
+    for (const f of also) rmSync(f.socket, { force: true })
     const control = `${socket}.ctl`
     rmSync(control, { force: true })
     const child: ChildProcess = spawn(
@@ -145,6 +141,7 @@ if ($task.State -ne 4) { $task.Run($null) | Out-Null }
         // the one connection is also the master the picture copies run over
         '-o', 'ControlMaster=yes', '-o', `ControlPath=${control}`, '-o', 'ControlPersist=no',
         '-L', `${socket}:127.0.0.1:${guestPort}`,
+        ...also.flatMap((f) => ['-L', `${f.socket}:127.0.0.1:${f.port}`]),
         // as the admin: sshd starts the SFTP subsystem through cmd.exe, which tcuser's DisableCMD refuses
         ...this.base(ADMIN_USER)
       ],

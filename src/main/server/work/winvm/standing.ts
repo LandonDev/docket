@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { ADMIN_USER, daemonEnv, rigConfig, rigPaths, type Instance, type RigConfig, type RigPaths } from './machine/config'
 import { keepLiveTpm, qemuPid, saveTpm, startQemu, startTpm, stopTpm } from './machine/daemons'
-import { qmp, quit } from './machine/qmp'
+import { qmp, quit, sendKey } from './machine/qmp'
 import { startWatcher } from './watcher'
 import type { VmMachine } from './keeper'
 import { QcowPoints, type PointStore } from './points'
@@ -110,6 +110,10 @@ export class StandingMachine implements VmMachine {
   }
 
   /** After QEMU has exited (the keeper's sleep, or the guest's own stop): the TPM kept, and the window's display ended. */
+  async key(...qcodes: string[]): Promise<void> {
+    await qmp(this.p.qmp, sendKey(...qcodes))
+  }
+
   async keepTpm(): Promise<void> {
     await this.screen?.down()
     await saveTpm(this.p, this.p.runTpm)

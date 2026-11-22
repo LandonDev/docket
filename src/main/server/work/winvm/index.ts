@@ -16,6 +16,9 @@ import { configureVmClipboard } from './drive'
 import { configureVmPaste } from './picture'
 import { vmScreen } from './window'
 import { ensurePuts } from './files'
+import { HELPER_PORT, HelperDoor } from './helperDoor'
+import { rigConfig, rigPaths } from './machine/config'
+import { TC_OFFICE_CS } from '../office/com/source'
 
 /**
  * The Windows VM pillar's server module (docs/agents/work-winvm.md): the
@@ -92,6 +95,7 @@ export function realKeeperDeps(ctx: WorkCtx): Omit<KeeperDeps, 'push' | 'pushPoi
     token: tokenFile(join(ctx.dataDir, 'winvm')),
     // under the machine's own folder: a unix socket's path must stay under 108 bytes
     doorSocket: join(machine.p.run, 'door.sock'),
+    forwards: [{ socket: helperSocket(machine.p.run), port: HELPER_PORT }],
     sleepAfter: () => sleepAfterSetting(ctx.db),
     setSleepAfter: (v) => setSleepAfter(ctx.db, v),
     points: machine.points(),
@@ -135,6 +139,26 @@ function keeperOf(ctx: WorkCtx): Keeper {
 
 /** The running keeper, for the VM's service on the box (B5); null while Work is off. */
 export const winvmKeeper = (): Keeper | null => keeper
+
+/** Where the forward to the guest's helper listens: beside the door's, under the machine's run folder. */
+export const helperSocket = (run: string): string => join(run, 'office.sock')
+
+let helper: HelperDoor | null = null
+let helperFactory: (() => HelperDoor) | null = null
+/** A test's own door to a stand-in helper; null puts the real one back. */
+export function configureVmHelper(f: (() => HelperDoor) | null): void {
+  helperFactory = f
+  helper = null
+}
+
+/**
+ * The helper's door in the standing machine (helperDoor.ts): the Teams files and the Office tools of
+ * this host reach OneDrive and Office in the guest through it.
+ */
+export function vmHelper(): HelperDoor {
+  helper ??= helperFactory?.() ?? new HelperDoor({ keeper: () => keeper, socket: helperSocket(rigPaths(rigConfig(process.env, undefined, 'standing')).run), source: TC_OFFICE_CS, log: (line) => started?.log(line) })
+  return helper
+}
 
 /** Work's context while it is on: the tools read the workspace's setting through it. */
 let started: WorkCtx | null = null

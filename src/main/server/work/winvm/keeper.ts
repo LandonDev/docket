@@ -28,6 +28,8 @@ export interface VmMachine {
   stopped(timeoutMs: number): Promise<boolean>
   /** after QEMU has exited: keeps the TPM's live state in the machine's lasting copy */
   keepTpm(): Promise<void>
+  /** keys pressed on the machine's own keyboard (QEMU's key names): they reach what takes no input from a program in the guest */
+  key?(...qcodes: string[]): Promise<void>
 }
 
 /** The SSH connection that carries the forward to the door. */
@@ -50,7 +52,8 @@ export interface VmGuest {
   installService(exe: string): Promise<string>
   /** starts the logon task's door on tcuser's desktop unless it runs */
   startService(): Promise<void>
-  openDoor(socket: string, guestPort: number): Promise<DoorLink>
+  /** `also`: more forwards on the same connection (the helper's door, helperDoor.ts) */
+  openDoor(socket: string, guestPort: number, also?: readonly { socket: string; port: number }[]): Promise<DoorLink>
   /** knocks with the token; true when the door kept the connection */
   knock(socket: string, token: string): Promise<boolean>
   /** copies a file under tcuser's profile (`rel`, forward slashes) to `local` over the forward's connection */
@@ -69,6 +72,8 @@ export interface KeeperDeps {
   token: { get(): string | null; set(token: string): void }
   /** the unix socket the SSH forward to the door listens on */
   doorSocket: string
+  /** other doors of the guest carried by the same connection: each a unix socket here and a loopback port there */
+  forwards?: readonly { socket: string; port: number }[]
   sleepAfter(): WinvmSleepAfter
   setSleepAfter(v: WinvmSleepAfter): void
   /** the restore points (points.ts) */
@@ -171,6 +176,12 @@ export class Keeper {
   /** A PowerShell script as the guest's admin: the file tools' checks (files.ts). */
   admin(script: string): Promise<string> {
     return this.d.guest.admin(script)
+  }
+
+  /** Keys from the machine's own keyboard, while it is awake: Windows' security prompts take them where they take no program's click (office/vm/signin.ts). */
+  async key(...qcodes: string[]): Promise<void> {
+    if (this.name !== 'awake' || !this.d.machine.key) throw new Error('The Windows VM is not awake.')
+    await this.d.machine.key(...qcodes)
   }
 
   /** One change at a time, in the order asked. */
@@ -446,7 +457,7 @@ export class Keeper {
     const token = this.d.token.get()
     if (!token) throw new Error(NOT_SET_UP)
     this.closeLink()
-    const link = await this.d.guest.openDoor(this.d.doorSocket, DOOR_PORT)
+    const link = await this.d.guest.openDoor(this.d.doorSocket, DOOR_PORT, this.d.forwards)
     this.link = link
     void link.closed.then(() => {
       if (this.link === link) this.link = null

@@ -4,7 +4,7 @@ import { open, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, relative, resolve, sep } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { teamsKindOf, type TeamsEntry, type TeamsFileKind, type TeamsLibrary, type TeamsRoot } from '@shared/contract-work-office'
+import { teamsKindOf, type TeamsEntry, type TeamsFileKind, type TeamsLibrary, type TeamsPlace, type TeamsRoot } from '@shared/contract-work-office'
 import { zipEntries } from './zip'
 
 /**
@@ -347,9 +347,26 @@ export async function readText(path: string): Promise<{ text: string; truncated:
     if (!slides.length) throw new Error('That deck could not be read.')
     return cut(slides.map(([, xml], i) => `Slide ${i + 1}\n${runsOf(xml, 'a')}`).join('\n\n'))
   }
-  if (kind === 'workbook') throw new Error('A workbook is read through Excel: open it with teams_open, then read a range with office_range_read.')
-  if (kind === 'pdf') throw new Error('A PDF is read in the canvas: open it with teams_open, then use the pdf tools.')
-  throw new Error(`${basename(path)} has no text to read.`)
+  throw noText(basename(path))
+}
+
+/** Why a file of this name has no text to read here, in the words a thread acts on. */
+export function noText(name: string): Error {
+  const kind = teamsKindOf(name)
+  if (kind === 'workbook') return new Error('A workbook is read through Excel: open it with teams_open, then read a range with office_range_read.')
+  if (kind === 'pdf') return new Error('A PDF is read in the canvas: open it with teams_open, then use the pdf tools.')
+  return new Error(`${name} has no text to read.`)
+}
+
+/**
+ * OneDrive's own folders on this host as a place Teams files come from (`TeamsPlace`): none on a host
+ * with no CloudStorage folder (the box: null), nothing synced yet, his own files only, or libraries.
+ */
+export function foldersPlace(host: string): TeamsPlace | null {
+  if (!real(cloudDir(host))) return null
+  const libs = found(host)
+  if (!libs.length) return { kind: 'folders', state: 'no-onedrive', account: null }
+  return { kind: 'folders', state: libs.some((l) => l.kind !== 'mine') ? 'ok' : 'no-libraries', account: null }
 }
 
 export const BYTES_MAX = 48 * 1024 * 1024

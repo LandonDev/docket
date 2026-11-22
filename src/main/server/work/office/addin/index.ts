@@ -1,7 +1,7 @@
 import { WebSocket } from 'ws'
 import type { ClientRequest } from '@shared/contract'
-import { handled, NOT_HANDLED } from '@shared/work'
-import type { Caller, WorkCtx, WorkTool } from '../../modules'
+import { handled, NOT_HANDLED, workText, type WorkToolResult } from '@shared/work'
+import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../../modules'
 import { serviceOf } from '../../service/ctx'
 import type { OfficeCarrier } from '../carrier'
 import { workTools, type ToolDeps } from '../tools'
@@ -125,15 +125,84 @@ export function carriedHere(carrier: OfficeCarrier, tool: string, args: unknown,
   return !!f && !!h.sessionFor(f.app, f.key)
 }
 
-/** The office tools, each call run here or on the desktop host by `carriedHere`. */
-export function addinTools(here: (ctx: WorkCtx) => Here): WorkTool[] {
+/** Where a tool call may run on this host's behalf: this host's own carrier, Office in the Windows VM it keeps, or the workspace's desktop host. */
+export type Place = 'here' | 'vm' | 'away'
+
+const FILE_TOOL = /^office_(files|range_|doc_|slides_)/
+/** A file's key that is a path in the Windows VM: a drive and backslashes. */
+const guestKey = (key: string): boolean => /^[A-Za-z]:\\/.test(key)
+
+/**
+ * The places a tool call is tried in, in order (docs/agents/work-office.md "Where a tool runs"). A host with
+ * the apps themselves (the Mac, a Windows PC) runs everything here, as before, and so does a file open in our
+ * add-in. A host whose carrier has no Excel, Word or PowerPoint (the box: Outlook on the web) keeps mail and
+ * calendar, and sends a file's tool to the machine its key names: a `C:\…` path to Office in the Windows VM
+ * (`vm`: this thread may use it and it has Office), a POSIX path to the desktop host, and a URL or a bare name
+ * to the VM first, then the desktop. `office_files` lists every place.
+ */
+export function placesOf(carrier: OfficeCarrier | null, tool: string, args: unknown, vm: boolean, h: AddinHub | null = hub): Place[] {
+  if (carrier && carrier.kind !== 'addin' && carrier.kind !== 'owa') return ['here']
+  if (!FILE_TOOL.test(tool)) return carrier && carrier.kind !== 'addin' ? ['here'] : ['away']
+  if (tool === 'office_files') return [...(carrier && h?.anyFile() ? (['here'] as const) : []), ...(vm ? (['vm'] as const) : []), 'away']
+  const f = fileOf(args)
+  if (carrier && f && h?.sessionFor(f.app, f.key)) return ['here']
+  if (f && guestKey(f.key)) return vm ? ['vm'] : ['away']
+  if (f && f.key.startsWith('/')) return ['away']
+  return vm ? ['vm', 'away'] : ['away']
+}
+
+/** Office in the Windows VM, for a thread: whether it may use it and it has Office, the wake before a call, and the carrier and Excel helper there. */
+export interface VmOffice {
+  offered(ctx: ToolCtx): boolean
+  awake(): Promise<void>
+  here(ctx: WorkCtx): NonNullable<Here>
+}
+
+const failed = (r: WorkToolResult): boolean => r.isError === true
+const textOf = (r: WorkToolResult): string => r.content.map((c) => ('text' in c ? c.text : '')).join('')
+/** No desktop to ask: the VM's own answer says more than that. */
+const NO_DESKTOP = /may use no desktop/
+
+/** The office tools, each call run where `placesOf` says: here, in the Windows VM, or on the desktop host. */
+export function addinTools(here: (ctx: WorkCtx) => Here, vm?: VmOffice): WorkTool[] {
   const local = workTools({ here })
   const away = workTools({ here: () => null })
+  const inVm = vm ? workTools({ here: (ctx) => vm.here(ctx) }) : null
   return local.map((t, i) => ({
     ...t,
-    run(args, ctx) {
+    async run(args, ctx: ToolCtx) {
       const h = here(ctx)
-      return h && carriedHere(h.carrier, t.name, args) ? t.run(args, ctx) : away[i]!.run(args, ctx)
+      const offered = !!vm && !!inVm && vm.offered(ctx)
+      const run = async (place: Place): Promise<WorkToolResult> => {
+        if (place === 'here') return t.run(args, ctx)
+        if (place === 'away') return away[i]!.run(args, ctx)
+        try {
+          await vm!.awake()
+        } catch (err) {
+          return { ...workText(`The Windows VM could not be reached: ${err instanceof Error ? err.message : String(err)}`), isError: true }
+        }
+        return inVm![i]!.run(args, ctx)
+      }
+      const places = placesOf(h?.carrier ?? null, t.name, args, offered)
+      if (t.name === 'office_files' && places.length > 1) {
+        // Every place's open files, each under the computer it is on; a place that cannot be asked is left out.
+        const NAMES: Record<Place, string> = { here: 'our Office add-in', vm: 'the Windows VM', away: 'the desktop' }
+        const got = await Promise.all(places.map(async (p) => ({ p, r: await run(p) })))
+        const ok = got.filter((g) => !failed(g.r))
+        if (ok.length === 1) return ok[0]!.r
+        if (!ok.length) return got.find((g) => g.p === 'vm')?.r ?? got[0]!.r
+        return workText(JSON.stringify({ computers: ok.map((g) => ({ on: NAMES[g.p], ...(JSON.parse(textOf(g.r)) as object) })) }, null, 1))
+      }
+      let first: WorkToolResult | null = null
+      for (const place of places) {
+        const r = await run(place)
+        if (!failed(r)) return r
+        // The more telling refusal: the first place's, unless it only says the file is not open there.
+        first ??= r
+        if (place === 'vm' && places.includes('away')) continue
+        if (place === 'away' && first !== r && !NO_DESKTOP.test(textOf(r))) return { ...workText(`In the Windows VM: ${textOf(first)} On the desktop: ${textOf(r)}`), isError: true }
+      }
+      return first!
     }
   }))
 }

@@ -224,6 +224,21 @@ export function admitsPath(path: string, roots: readonly string[], denied: reado
   return insideRoots(path, roots) && !insideRoots(path, denied)
 }
 
+/** The Teams files verbs that name one file or folder by a `CanvasSource`. */
+const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy)$/
+
+/**
+ * A file in the Windows VM a host keeps (docs/agents/work-files.md "The Windows VM"), named by the guest's own
+ * path (`C:\Users\…`): no path of this host's disk, so the roots have nothing to say of it. Only the Teams
+ * files verbs may carry one, and they hold it to the libraries OneDrive syncs in the guest (work/office/files/
+ * handle.ts `admitted`). On a host that is not Windows such a string has no separator in it: at worst it names
+ * a file of that literal name in the working directory, never a way out of it. A Windows host's own paths look
+ * the same and stay fenced.
+ */
+export function guestPath(method: string, path: string, platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== 'win32' && GUEST_METHODS.test(method) && /^[A-Za-z]:\\/.test(path) && !path.includes('/') && !path.includes('\0')
+}
+
 /**
  * Throw the typed error when a request names a path outside the roots.
  * `attachmentRoots` widen the roots for attachment paths only. `denied` are
@@ -236,7 +251,7 @@ export function fenceRequest(req: ClientRequest, roots: readonly string[], attac
   const paths = fencedPaths(req)
   if (paths) for (const p of paths) if (!admits(p, roots)) throw new FenceError(req.method)
   // Work: the files named inside a CanvasSource, by the same roots and the same denied directories.
-  for (const p of workSourcePaths(req) ?? []) if (!admits(p, roots)) throw new FenceError(req.method)
+  for (const p of workSourcePaths(req) ?? []) if (!guestPath(req.method, p) && !admits(p, roots)) throw new FenceError(req.method)
   const files = attachmentPaths(req)
   if (!files?.length) return
   const all = [...roots, ...attachmentRoots]

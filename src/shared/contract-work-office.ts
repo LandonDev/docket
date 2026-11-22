@@ -129,17 +129,19 @@ export interface VmOfficeStatus {
   at: number | null
 }
 
-/**
- * The same library on two machines (his Mac and the VM both sync it): the name OneDrive gave it, less
- * what the two layouts write differently (`RecWell-TeamRecWell` on a Mac, `RecWell - TeamRecWell` under
- * Windows). His own files match his own files; a folder he added matches nothing.
- */
-export function teamsLibraryKey(l: Pick<TeamsLibrary, 'kind' | 'team' | 'library'>): string | null {
-  if (l.kind === 'folder') return null
-  if (l.kind === 'mine') return 'mine'
-  const name = `${l.team}${l.library && !/^(shared )?documents$/i.test(l.library) ? l.library : ''}`.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
-  return name ? `lib:${name}` : null
-}
+/** One place two machines may both hold: a team or site and a folder or library of it, as either OneDrive layout names it ("RecWell-TeamRecWell" on a Mac is "RecWell" + "Team RecWell" under Windows). */
+export const teamsPlaceKey = (team: string, label = ''): string => `${team}${/^(shared )?documents$/i.test(label) ? '' : label}`.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+
+/** A library the Windows VM should sync, by the ids its own Sync button would send (OneDrive's `odopen://sync` link). */
+export const VmSyncLibrarySchema = z.object({
+  siteId: z.string().uuid(),
+  webId: z.string().uuid(),
+  listId: z.string().uuid(),
+  webUrl: z.string().max(2048).regex(/^https:\/\/[^\s]+$/i),
+  webTitle: z.string().min(1).max(200),
+  listTitle: z.string().min(1).max(200)
+})
+export type VmSyncLibrary = z.infer<typeof VmSyncLibrarySchema>
 
 /** One file or folder. `local`: its bytes are on this disk (false: OneDrive keeps it in the cloud until it is opened). `by`: who last saved it, when the file says. */
 export interface TeamsEntry {
@@ -165,6 +167,10 @@ for (const [kind, exts] of [
   ['text', 'txt md markdown json xml html htm log tsv yaml yml']
 ] as const)
   for (const ext of exts.split(' ')) EXT_KIND[ext] = kind
+
+/** The extensions of a kind, and every extension that has one: the guest's search filters by them. */
+export const teamsExtsOf = (kind: TeamsFileKind): string[] => Object.keys(EXT_KIND).filter((ext) => EXT_KIND[ext] === kind)
+export const teamsKnownExts = (): string[] => Object.keys(EXT_KIND)
 
 /** A file's kind from its name. */
 export function teamsKindOf(name: string): TeamsFileKind {
@@ -240,7 +246,12 @@ export const OfficeRequestSchemas = [
    */
   request('work.office.vmSignIn', z.object({ account: z.string().max(320).optional() })),
   /** → VmOfficeStatus: Office and OneDrive in the Windows VM as last read; never wakes it */
-  request('work.office.vmStatus', z.object({}))
+  request('work.office.vmStatus', z.object({})),
+  /**
+   * The libraries OneDrive in the VM should sync, kept on this host and asked of OneDrive whenever it is signed
+   * in and lacks one (files on demand: names only until a file is opened). → { wanted, mounted }. A person's alone.
+   */
+  request('work.office.vmSync', z.object({ libraries: z.array(VmSyncLibrarySchema).max(50) }))
 ] as const
 
 /** A pairing code as TempCode shows it. */
@@ -280,6 +291,7 @@ export const OFFICE_CAPS = {
   'work.office.filesCopySet': 'admin',
   'work.office.filesCopy': 'operate',
   'work.office.vmSignIn': 'operate',
-  'work.office.vmStatus': 'read'
+  'work.office.vmStatus': 'read',
+  'work.office.vmSync': 'admin'
 } satisfies CapsOf<typeof OfficeRequestSchemas>
 export const OFFICE_RELAY = {} satisfies RelayOf<typeof OfficeRequestSchemas>

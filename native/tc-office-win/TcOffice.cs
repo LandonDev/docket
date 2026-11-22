@@ -6,7 +6,8 @@
 //   out: {"id":1,"ok":true,"value":...}  or  {"id":1,"ok":false,"error":{"code":"busy","message":"...","hresult":"0x80010001"}}
 //   out: {"event":"ready","version":1}  once, and {"event":"changed","book":...,"sheet":...,"address":"B2:C3"} from Excel
 // It never starts an app unseen (save `open`, the switch), never sends on its own, and exits when
-// its stdin closes. Every COM call goes through ICom, so the tests run it against a recorded
+// its stdin closes. `serve --listen 127.0.0.1:PORT --token-file FILE` speaks the same frames on a
+// loopback door instead (the box's Windows VM), and there it also reads OneDrive's folders (Guest). Every COM call goes through ICom, so the tests run it against a recorded
 // surface (RecordedCom.cs, compiled in with /define:RECORDED) where Office is not installed.
 //
 // Built by the csc.exe every Windows carries (.NET Framework 4), so C# 5: no string
@@ -933,6 +934,7 @@ public class Office {
   public static Dictionary<string, object> Failure(string verb, Exception e) {
     var r = e as Refusal;
     if (r != null) return Obj("code", r.Code, "message", r.Message);
+    if (Guest.Has(verb)) return Obj("code", "failed", "message", e.Message);
     string app;
     var name = Named(APP_OF_VERB.TryGetValue(verb, out app) ? app : "outlook");
     var com = e as COMException;
@@ -952,24 +954,403 @@ public class Office {
   }
 }
 
+// ---- OneDrive's folders and what is signed in, for a host that reaches this PC through the helper's
+// door (the box's Windows VM: docs/agents/work-files.md "The Windows VM"). No COM here: each verb runs
+// on its connection's own thread, so a long download never holds an Office call. Reads run as the user
+// whose desktop this is, the one caller OneDrive's Files On-Demand surely downloads for.
+public static class Guest {
+  const uint REPARSE = 0x400, OFFLINE = 0x1000, RECALL_ON_OPEN = 0x40000, PINNED = 0x80000, UNPINNED = 0x100000, RECALL_ON_DATA_ACCESS = 0x400000;
+  const uint DIRECTORY = 0x10, HIDDEN = 0x2, SYSTEM = 0x4, INVALID = 0xFFFFFFFF;
+  const uint TAG_SYMLINK = 0xA000000C, TAG_MOUNT_POINT = 0xA0000003;
+  public const int ReadMax = 8 * 1024 * 1024;
+
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct FindData {
+    public uint attrs;
+    public uint createdLow, createdHigh, accessedLow, accessedHigh, writtenLow, writtenHigh;
+    public uint sizeHigh, sizeLow, reserved0, reserved1;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string name;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 14)] public string alt;
+  }
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr FindFirstFileW(string pattern, out FindData data);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool FindNextFileW(IntPtr h, out FindData data);
+  [DllImport("kernel32.dll")] static extern bool FindClose(IntPtr h);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern uint GetFileAttributesW(string path);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool SetFileAttributesW(string path, uint attrs);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+  public static bool Has(string verb) { return verb.StartsWith("files.") || verb.StartsWith("onedrive.") || verb.StartsWith("ui.") || verb == "guest.status" || verb == "office.start"; }
+
+  static string Long(string path) { return path.StartsWith(@"\\?\") ? path : @"\\?\" + path; }
+  static readonly DateTime EPOCH = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+  static long Ms(long fileTime) { try { return (long)(DateTime.FromFileTimeUtc(fileTime) - EPOCH).TotalMilliseconds; } catch (Exception) { return 0; } }
+
+  static Dictionary<string, object> Entry(string dir, FindData d) {
+    var isDir = (d.attrs & DIRECTORY) != 0;
+    var link = (d.attrs & REPARSE) != 0 && (d.reserved0 == TAG_SYMLINK || d.reserved0 == TAG_MOUNT_POINT);
+    var cloud = (d.attrs & (OFFLINE | RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS)) != 0;
+    return Office.Obj("name", d.name, "path", dir.TrimEnd('\\') + "\\" + d.name, "dir", isDir, "size", isDir ? 0L : ((long)d.sizeHigh << 32) | d.sizeLow,
+      "modified", Ms(((long)d.writtenHigh << 32) | d.writtenLow), "local", isDir || !cloud, "link", link, "pinned", (d.attrs & PINNED) != 0);
+  }
+
+  // One folder's entries as the disk lists them: nothing is opened, so nothing downloads.
+  static List<Dictionary<string, object>> Dir(string dir) {
+    var list = new List<Dictionary<string, object>>();
+    FindData d;
+    var h = FindFirstFileW(Long(dir.TrimEnd('\\') + @"\*"), out d);
+    if (h == new IntPtr(-1)) {
+      var err = Marshal.GetLastWin32Error();
+      if (err == 2 || err == 18) return list;
+      throw new Refusal(err == 3 ? "not-found" : "failed", err == 3 ? "No folder " + dir + "." : "Windows could not list " + dir + " (error " + err + ").");
+    }
+    try {
+      do {
+        if (d.name == "." || d.name == "..") continue;
+        if ((d.attrs & HIDDEN) != 0 && (d.attrs & SYSTEM) != 0) continue;
+        list.Add(Entry(dir, d));
+      } while (FindNextFileW(h, out d));
+    } finally { FindClose(h); }
+    return list;
+  }
+
+  static Dictionary<string, object> Stat(string path) {
+    FindData d;
+    var h = FindFirstFileW(Long(path.TrimEnd('\\')), out d);
+    if (h == new IntPtr(-1)) throw new Refusal("not-found", "No file " + path + ".");
+    FindClose(h);
+    var at = path.TrimEnd('\\');
+    var cut = at.LastIndexOf('\\');
+    return Entry(at.Substring(0, cut), d);
+  }
+
+  static RegistryKey User(string path) { return Registry.CurrentUser.OpenSubKey(path); }
+  static string Str(RegistryKey k, string name) { var v = k == null ? null : k.GetValue(name) as string; return string.IsNullOrEmpty(v) ? null : v; }
+
+  // What OneDrive syncs here, from its own registry rows: his files and each library, with the web address it stands for.
+  public static List<Dictionary<string, object>> Mounts() {
+    var list = new List<Dictionary<string, object>>();
+    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    using (var providers = User(@"Software\SyncEngines\Providers\OneDrive")) {
+      if (providers != null) foreach (var id in providers.GetSubKeyNames()) {
+        using (var k = providers.OpenSubKey(id)) {
+          var mount = Str(k, "MountPoint");
+          var type = (Str(k, "LibraryType") ?? "").ToLowerInvariant();
+          if (mount == null || type == "personal" || !Directory.Exists(mount) || !seen.Add(mount.TrimEnd('\\'))) continue;
+          list.Add(Office.Obj("path", mount.TrimEnd('\\'), "type", type == "mysite" ? "mine" : "team", "web", Str(k, "UrlNamespace")));
+        }
+      }
+    }
+    // An account's own folder and its tenants' libraries, should a provider row be missing.
+    using (var accounts = User(@"Software\Microsoft\OneDrive\Accounts")) {
+      if (accounts != null) foreach (var name in accounts.GetSubKeyNames()) {
+        if (!name.StartsWith("Business", StringComparison.OrdinalIgnoreCase)) continue;
+        using (var a = accounts.OpenSubKey(name)) {
+          var mine = Str(a, "UserFolder");
+          if (mine != null && Directory.Exists(mine) && seen.Add(mine.TrimEnd('\\'))) list.Add(Office.Obj("path", mine.TrimEnd('\\'), "type", "mine", "web", null));
+          using (var tenants = a.OpenSubKey("Tenants")) {
+            if (tenants != null) foreach (var t in tenants.GetSubKeyNames()) using (var tk = tenants.OpenSubKey(t)) {
+              foreach (var folder in tk.GetValueNames()) {
+                if (folder.Length > 3 && folder[1] == ':' && Directory.Exists(folder) && seen.Add(folder.TrimEnd('\\'))) list.Add(Office.Obj("path", folder.TrimEnd('\\'), "type", "team", "web", null));
+              }
+            }
+          }
+        }
+      }
+    }
+    return list;
+  }
+
+  // The mount a path lies in, by name alone: absolute, no `.` or `..`, no other separator; null when it is in none.
+  static string MountOf(string path) {
+    if (path == null || path.Length < 3 || path[1] != ':' || path[2] != '\\' || path.IndexOf('/') >= 0) return null;
+    foreach (var part in path.Substring(3).Split('\\')) if (part == "." || part == ".." || part.EndsWith(" ") || (part.EndsWith(".") && part.Length > 0)) return null;
+    foreach (var m in Mounts()) {
+      var root = (string)m["path"];
+      if (path.Equals(root, StringComparison.OrdinalIgnoreCase) || path.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase)) return root;
+    }
+    return null;
+  }
+
+  // A path inside OneDrive's folders, with no link on the way down (a cloud placeholder is a reparse point too, and is none).
+  static string Admit(object raw) {
+    var path = (raw as string ?? "").TrimEnd('\\');
+    var root = MountOf(path);
+    if (root == null) throw new Refusal("not-allowed", "That is not in a folder OneDrive syncs on this PC.");
+    var at = root;
+    foreach (var part in path.Substring(root.Length).Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries)) {
+      at = at + "\\" + part;
+      FindData d;
+      var h = FindFirstFileW(Long(at), out d);
+      if (h == new IntPtr(-1)) throw new Refusal("not-found", "No file " + path + ".");
+      FindClose(h);
+      if ((d.attrs & REPARSE) != 0 && (d.reserved0 == TAG_SYMLINK || d.reserved0 == TAG_MOUNT_POINT)) throw new Refusal("not-allowed", "That path leaves OneDrive's folder through a link.");
+    }
+    return path;
+  }
+
+  static FileStream OpenRead(string path) {
+    // read, shared with everything, sequential
+    var h = CreateFileW(Long(path), 0x80000000, 7, IntPtr.Zero, 3, 0x08000000, IntPtr.Zero);
+    if (h.IsInvalid) {
+      var err = Marshal.GetLastWin32Error();
+      throw new Refusal(err == 2 || err == 3 ? "not-found" : "failed", "Windows could not open " + path + " (error " + err + (err == 362 || err == 395 || err == 404 ? ": OneDrive is not running or could not download it" : "") + ").");
+    }
+    return new FileStream(h, FileAccess.Read, 1 << 20);
+  }
+
+  static object Read(string path, long offset, int length) {
+    if (length < 0 || length > ReadMax) length = ReadMax;
+    using (var f = OpenRead(path)) {
+      var size = f.Length;
+      if (offset > size) offset = size;
+      f.Seek(offset, SeekOrigin.Begin);
+      var buf = new byte[(int)Math.Min(length, size - offset)];
+      var got = 0;
+      while (got < buf.Length) {
+        var n = f.Read(buf, got, buf.Length - got);
+        if (n <= 0) break;
+        got += n;
+      }
+      return Office.Obj("data", Convert.ToBase64String(buf, 0, got), "size", size, "eof", offset + got >= size);
+    }
+  }
+
+  // Reads the file to its end, which makes OneDrive download one it keeps in the cloud.
+  static object Fetch(string path) {
+    using (var f = OpenRead(path)) {
+      var buf = new byte[1 << 20];
+      while (f.Read(buf, 0, buf.Length) > 0) { }
+    }
+    return Stat(path);
+  }
+
+  // Free up space: the file goes back to the cloud, as Explorer's own command does it. One he pinned is left.
+  static object Free(string path) {
+    var a = GetFileAttributesW(Long(path));
+    if (a == INVALID || (a & DIRECTORY) != 0 || (a & PINNED) != 0) return false;
+    if ((a & (OFFLINE | RECALL_ON_DATA_ACCESS)) != 0) return true;
+    return SetFileAttributesW(Long(path), a | UNPINNED);
+  }
+
+  static object Search(Dictionary<string, object> a) {
+    var words = new List<string>();
+    foreach (var w in (ArrayList)a["words"]) words.Add(((string)w).ToLowerInvariant());
+    var only = a.ContainsKey("only") ? (string)a["only"] : "any";
+    var exts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    if (a.ContainsKey("exts")) foreach (var e in (ArrayList)a["exts"]) exts.Add((string)e);
+    int maxDirs = Convert.ToInt32(a["maxDirs"]), maxHits = Convert.ToInt32(a["maxHits"]);
+    var until = DateTime.UtcNow.AddMilliseconds(Convert.ToInt32(a["ms"]));
+    var hits = new List<object>();
+    var more = false;
+    var dirs = 0;
+    foreach (var r in (ArrayList)a["roots"]) {
+      var root = Admit(r);
+      var queue = new Queue<string>();
+      queue.Enqueue(root);
+      while (queue.Count > 0) {
+        if (++dirs > maxDirs || hits.Count >= maxHits || DateTime.UtcNow > until) { more = true; break; }
+        List<Dictionary<string, object>> items;
+        try { items = Dir(queue.Dequeue()); } catch (Refusal) { continue; }
+        foreach (var e in items) {
+          var name = (string)e["name"];
+          if ((bool)e["link"] || name.StartsWith(".") || name.StartsWith("~$") || name.EndsWith(".tmp")) continue;
+          var isDir = (bool)e["dir"];
+          if (isDir) queue.Enqueue((string)e["path"]);
+          var lower = name.ToLowerInvariant();
+          var all = true;
+          foreach (var w in words) if (lower.IndexOf(w, StringComparison.Ordinal) < 0) { all = false; break; }
+          if (!all) continue;
+          var dot = name.LastIndexOf('.');
+          var ext = dot > 0 ? name.Substring(dot + 1) : "";
+          if (only == "folder" ? !isDir : only == "exts" ? isDir || !exts.Contains(ext) : only == "other" ? isDir || exts.Contains(ext) : false) continue;
+          e["root"] = root;
+          hits.Add(e);
+        }
+      }
+      if (more) break;
+    }
+    return Office.Obj("hits", hits, "more", more);
+  }
+
+  static string OneDriveExe() {
+    var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\OneDrive\OneDrive.exe");
+    if (File.Exists(local)) return local;
+    foreach (var pf in new[] { Environment.GetEnvironmentVariable("ProgramW6432"), Environment.GetEnvironmentVariable("ProgramFiles"), Environment.GetEnvironmentVariable("ProgramFiles(x86)") }) {
+      if (pf == null) continue;
+      var p = Path.Combine(pf, @"Microsoft OneDrive\OneDrive.exe");
+      if (File.Exists(p)) return p;
+    }
+    return null;
+  }
+
+  static string Account() {
+    using (var accounts = User(@"Software\Microsoft\OneDrive\Accounts")) {
+      if (accounts == null) return null;
+      foreach (var name in accounts.GetSubKeyNames()) {
+        if (!name.StartsWith("Business", StringComparison.OrdinalIgnoreCase)) continue;
+        using (var a = accounts.OpenSubKey(name)) {
+          var mail = Str(a, "UserEmail");
+          var folder = Str(a, "UserFolder");
+          if (mail != null && folder != null && Directory.Exists(folder)) return mail;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Office as installed and signed in here, read from the registry alone: no app is started.
+  static object OfficeStatus() {
+    var apps = new List<object>();
+    foreach (var pair in new[] { new[] { "excel", "Excel.Application" }, new[] { "word", "Word.Application" }, new[] { "powerpoint", "PowerPoint.Application" }, new[] { "outlook", "Outlook.Application" } })
+      if (Type.GetTypeFromProgID(pair[1], false) != null) apps.Add(pair[0]);
+    string version = null;
+    foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 }) {
+      try {
+        using (var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view))
+        using (var k = hklm.OpenSubKey(@"SOFTWARE\Microsoft\Office\ClickToRun\Configuration")) { version = version ?? Str(k, "VersionToReport"); }
+      } catch (Exception) { }
+    }
+    string account = null;
+    using (var ids = User(@"Software\Microsoft\Office\16.0\Common\Identity\Identities")) {
+      if (ids != null) foreach (var id in ids.GetSubKeyNames()) using (var k = ids.OpenSubKey(id)) { account = account ?? Str(k, "EmailAddress") ?? Str(k, "SignInName"); }
+    }
+    object licensed = null;
+    using (var map = User(@"Software\Microsoft\Office\16.0\Common\Licensing\LicensingNext\LicenseIdToEmailMapping")) {
+      if (map != null) licensed = map.GetValueNames().Length > 0;
+      else if (account == null && apps.Count > 0) licensed = false;
+    }
+    return Office.Obj("installed", apps.Count > 0, "version", version, "apps", apps, "account", account, "licensed", licensed);
+  }
+
+  static void Shell(string target) {
+    var p = Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+    if (p != null) p.Dispose();
+  }
+
+  static string Q(Dictionary<string, object> a, string key) { return a.ContainsKey(key) && a[key] != null ? Uri.EscapeDataString(Convert.ToString(a[key])) : ""; }
+
+  public static object Run(string verb, Dictionary<string, object> a) {
+    switch (verb) {
+      case "guest.status":
+        return Office.Obj("onedrive", Office.Obj("installed", OneDriveExe() != null, "running", Process.GetProcessesByName("OneDrive").Length > 0, "account", Account()), "mounts", Mounts(), "office", OfficeStatus());
+      case "files.list": return Dir(Admit(a["dir"]));
+      case "files.stat": return Stat(Admit(a["path"]));
+      case "files.search": return Search(a);
+      case "files.read": return Read(Admit(a["path"]), a.ContainsKey("offset") ? Convert.ToInt64(a["offset"]) : 0, a.ContainsKey("length") ? Convert.ToInt32(a["length"]) : ReadMax);
+      case "files.fetch": return Fetch(Admit(a["path"]));
+      case "files.free": return Free(Admit(a["path"]));
+      case "files.open": Shell(Admit(a["path"])); return null;
+      case "onedrive.signin": {
+        // OneDrive's own first screen, with his address filled in: he goes on from there.
+        var exe = OneDriveExe();
+        if (exe == null) throw new Refusal("not-installed", "OneDrive is not installed on this PC.");
+        if (Process.GetProcessesByName("OneDrive").Length == 0) { Process.Start(new ProcessStartInfo(exe, "/background") { UseShellExecute = false }).Dispose(); Thread.Sleep(3000); }
+        Shell("odopen://sync?useremail=" + Q(a, "email"));
+        return null;
+      }
+      case "office.start": {
+        // Word, started as he would start it: a fresh Office asks for its sign-in there.
+        using (var k = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64).OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\winword.exe")) {
+          var exe = k == null ? null : k.GetValue(null) as string;
+          if (exe == null) throw new Refusal("not-installed", "Office is not installed on this PC.");
+          if (Process.GetProcessesByName("WINWORD").Length == 0) Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false }).Dispose();
+        }
+        return null;
+      }
+#if UIA
+      case "ui.seen": return Ui.Seen((ArrayList)a["names"]);
+      case "ui.press": return Ui.Press((ArrayList)a["names"]);
+#endif
+      case "onedrive.sync":
+        // The link a library's own Sync button opens, for a library named by its ids.
+        Shell("odopen://sync/?siteId=" + Q(a, "siteId") + "&webId=" + Q(a, "webId") + "&listId=" + Q(a, "listId") + "&userEmail=" + Q(a, "email") + "&webUrl=" + Q(a, "webUrl") + "&webTitle=" + Q(a, "webTitle") + "&listTitle=" + Q(a, "listTitle"));
+        return null;
+    }
+    throw new Refusal("failed", "tc-office has no verb " + verb + ".");
+  }
+}
+
+#if UIA
+// ---- OneDrive's and Office's own sign-in windows, walked by name (docs/agents/work-winvm.md "Signing in").
+// Compiled only for the box's Windows VM (/define:UIA): it presses a button or a link of the sign-in the
+// owner asked for, by the words on it, and never types anything.
+public static class Ui {
+  static readonly string[] PROCESSES = { "OneDrive", "Microsoft.AAD.BrokerPlugin", "WINWORD", "EXCEL", "POWERPNT", "OfficeC2RClient", "msedgewebview2" };
+
+  // An element of that name that belongs to a sign-in's own process, wherever its frame sits (the
+  // account broker's page is drawn inside a frame window of the shell's).
+  static System.Windows.Automation.AutomationElement Find(string name) {
+    var pids = new HashSet<int>();
+    foreach (var n in PROCESSES) foreach (var p in Process.GetProcessesByName(n)) { pids.Add(p.Id); p.Dispose(); }
+    var cond = new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.NameProperty, name, System.Windows.Automation.PropertyConditionFlags.IgnoreCase);
+    var root = System.Windows.Automation.AutomationElement.RootElement;
+    foreach (System.Windows.Automation.AutomationElement w in root.FindAll(System.Windows.Automation.TreeScope.Children, System.Windows.Automation.Condition.TrueCondition)) {
+      try {
+        var cls = w.Current.ClassName;
+        if (cls == "Shell_TrayWnd" || cls == "Progman") continue;
+        foreach (System.Windows.Automation.AutomationElement hit in w.FindAll(System.Windows.Automation.TreeScope.Descendants, cond)) {
+          if (pids.Contains(hit.Current.ProcessId)) return hit;
+        }
+      } catch (Exception) { }
+    }
+    return null;
+  }
+
+  // Whether any of the names is on a sign-in window now, and which.
+  public static object Seen(ArrayList names) {
+    foreach (var n in names) if (Find((string)n) != null) return (string)n;
+    return null;
+  }
+
+  // Presses the first of the names found: its own Invoke, else a click at its middle.
+  public static object Press(ArrayList names) {
+    foreach (var n in names) {
+      var e = Find((string)n);
+      if (e == null) continue;
+      object pattern;
+      if (e.TryGetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern, out pattern)) { ((System.Windows.Automation.InvokePattern)pattern).Invoke(); return (string)n; }
+      if (e.TryGetCurrentPattern(System.Windows.Automation.SelectionItemPattern.Pattern, out pattern)) { ((System.Windows.Automation.SelectionItemPattern)pattern).Select(); return (string)n; }
+      var r = e.Current.BoundingRectangle;
+      if (r.IsEmpty) continue;
+      SetCursorPos((int)(r.X + r.Width / 2), (int)(r.Y + r.Height / 2));
+      mouse_event(2, 0, 0, 0, UIntPtr.Zero); mouse_event(4, 0, 0, 0, UIntPtr.Zero);
+      return (string)n;
+    }
+    return null;
+  }
+  [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+}
+#endif
+
 public static class Program {
   static readonly object outLock = new object();
   static StreamWriter stdout;
   static JavaScriptSerializer json;
 
-  static void Emit(Dictionary<string, object> o) {
-    var line = json.Serialize(o);
-    lock (outLock) { stdout.WriteLine(line); }
+  static JavaScriptSerializer NewJson() {
+    var j = new JavaScriptSerializer();
+    j.MaxJsonLength = int.MaxValue;
+    j.RecursionLimit = 64;
+    return j;
   }
+
+  // Standard output, or in `serve` every connection: where an event of Excel's goes.
+  static Action<string> everyone;
+
+  static void Emit(Dictionary<string, object> o) { everyone(json.Serialize(o)); }
 
   [STAThread]
   public static int Main(string[] argv) {
-    json = new JavaScriptSerializer();
-    json.MaxJsonLength = int.MaxValue;
-    json.RecursionLimit = 64;
-    stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
-    stdout.AutoFlush = true;
-    var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
+    json = NewJson();
+    string listen = null, tokenFile = null;
+    for (var i = 0; i < argv.Length; i++) {
+      if (argv[i] == "--listen" && i + 1 < argv.Length) listen = argv[++i];
+      else if (argv[i] == "--token-file" && i + 1 < argv.Length) tokenFile = argv[++i];
+    }
+    var serve = argv.Length > 0 && argv[0] == "serve";
+    if (serve && (listen == null || tokenFile == null)) return 64;
 #if RECORDED
     var com = new RecordedCom();
 #else
@@ -977,17 +1358,28 @@ public static class Program {
 #endif
     var office = new Office(com, Emit);
     MessageFilter.Register();
-    // Calls and Excel's events run on this one STA thread, pumped by the message loop; stdin is read beside it.
+    // Calls and Excel's events run on this one STA thread, pumped by the message loop; requests are read beside it.
     // An exception that escapes a request ends the helper (TempCode starts another) rather than showing a dialog on his desktop.
     Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
     var pump = new Control();
     pump.CreateControl();
     if (pump.Handle == IntPtr.Zero) return 1;
+    if (serve) {
+      var code = Door.Start(office, com, pump, listen, tokenFile);
+      if (code != 0) return code;
+      everyone = Door.Broadcast;
+      Application.Run();
+      return 0;
+    }
+    stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
+    stdout.AutoFlush = true;
+    everyone = line => { lock (outLock) { stdout.WriteLine(line); } };
+    var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
     var reader = new Thread(() => {
       string line;
       while ((line = stdin.ReadLine()) != null) {
         var l = line;
-        if (l.Trim().Length > 0) pump.BeginInvoke(new Action(() => Handle(office, com, l)));
+        if (l.Trim().Length > 0) pump.BeginInvoke(new Action(() => Handle(office, com, l, everyone)));
       }
       pump.BeginInvoke(new Action(Application.ExitThread));
     });
@@ -998,7 +1390,8 @@ public static class Program {
     return 0;
   }
 
-  static void Handle(Office office, object com, string line) {
+  // One request, on the STA thread; its answer goes to `send`, the connection that asked.
+  public static void Handle(Office office, object com, string line, Action<string> send) {
     object id = null;
     string verb = "";
     try {
@@ -1011,13 +1404,103 @@ public static class Program {
       if (verb.StartsWith("_")) value = ((RecordedCom)com).Test(verb, args, office);
       else
 #endif
-      value = office.Run(verb, args);
-      Emit(Office.Obj("id", id, "ok", true, "value", value));
+      value = Guest.Has(verb) ? Guest.Run(verb, args) : office.Run(verb, args);
+      send(json.Serialize(Office.Obj("id", id, "ok", true, "value", value)));
     } catch (Exception e) {
-      try { Emit(Office.Obj("id", id, "ok", false, "error", Office.Failure(verb, e))); }
+      try { send(json.Serialize(Office.Obj("id", id, "ok", false, "error", Office.Failure(verb, e)))); }
       catch (Exception) { Environment.Exit(2); }
     } finally {
       try { office.AfterRequest(); } catch (Exception x) { Console.Error.WriteLine("tc-office: letting go: " + x.Message); }
+    }
+  }
+}
+
+// `serve --listen 127.0.0.1:PORT --token-file FILE`: the helper as a door on this PC's loopback, for a
+// host that reaches it through a tunnel (the box and its Windows VM). A connection's first line is the
+// token; then the same frames as over stdin and stdout. Several connections at once: Office's verbs
+// still run one at a time on the STA thread, the folder verbs on their connection's own thread.
+static class Door {
+  static readonly List<Action<string>> clients = new List<Action<string>>();
+  static Office office;
+  static object com;
+  static Control pump;
+  static string token;
+
+  public static int Start(Office o, object c, Control p, string listen, string tokenFile) {
+    office = o; com = c; pump = p;
+    try { token = File.ReadAllText(tokenFile).Trim(); } catch (Exception) { return 66; }
+    if (token.Length < 32) return 66;
+    var at = listen.LastIndexOf(':');
+    System.Net.IPAddress ip;
+    int port;
+    if (at <= 0 || !System.Net.IPAddress.TryParse(listen.Substring(0, at), out ip) || !int.TryParse(listen.Substring(at + 1), out port) || !System.Net.IPAddress.IsLoopback(ip)) return 64;
+    var listener = new System.Net.Sockets.TcpListener(ip, port);
+    // Another helper already holds the port: that one serves.
+    try { listener.Start(); } catch (System.Net.Sockets.SocketException) { return 3; }
+    var accept = new Thread(() => {
+      for (;;) {
+        System.Net.Sockets.TcpClient client;
+        try { client = listener.AcceptTcpClient(); } catch (Exception) { break; }
+        var t = new Thread(() => { try { Serve(client); } catch (Exception) { } finally { try { client.Close(); } catch (Exception) { } } });
+        t.IsBackground = true;
+        t.Start();
+      }
+    });
+    accept.IsBackground = true;
+    accept.Start();
+    return 0;
+  }
+
+  public static void Broadcast(string line) {
+    Action<string>[] all;
+    lock (clients) all = clients.ToArray();
+    foreach (var send in all) send(line);
+  }
+
+  static bool Same(string a, string b) {
+    if (a == null || a.Length != b.Length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
+    return diff == 0;
+  }
+
+  static void Serve(System.Net.Sockets.TcpClient client) {
+    client.NoDelay = true;
+    var stream = client.GetStream();
+    var reader = new StreamReader(stream, new UTF8Encoding(false));
+    var writer = new StreamWriter(stream, new UTF8Encoding(false));
+    var mine = new JavaScriptSerializer();
+    mine.MaxJsonLength = int.MaxValue;
+    mine.RecursionLimit = 64;
+    stream.ReadTimeout = 10000;
+    if (!Same(reader.ReadLine(), token)) return;
+    stream.ReadTimeout = System.Threading.Timeout.Infinite;
+    Action<string> send = line => { try { lock (writer) { writer.WriteLine(line); writer.Flush(); } } catch (Exception) { } };
+    lock (clients) clients.Add(send);
+    try {
+      send(mine.Serialize(Office.Obj("event", "ready", "version", Office.Version, "pid", Process.GetCurrentProcess().Id)));
+      string line;
+      while ((line = reader.ReadLine()) != null) {
+        if (line.Trim().Length == 0) continue;
+        var l = line;
+        string verb = "";
+        object id = null;
+        Dictionary<string, object> args = null;
+        try {
+          var req = mine.Deserialize<Dictionary<string, object>>(l);
+          id = req.ContainsKey("id") ? req["id"] : null;
+          verb = req.ContainsKey("verb") ? req["verb"] as string ?? "" : "";
+          args = req.ContainsKey("args") && req["args"] != null ? (Dictionary<string, object>)req["args"] : new Dictionary<string, object>();
+        } catch (Exception) { }
+        if (args == null || !Guest.Has(verb)) { pump.BeginInvoke(new Action(() => Program.Handle(office, com, l, send))); continue; }
+        try { send(mine.Serialize(Office.Obj("id", id, "ok", true, "value", Guest.Run(verb, args)))); }
+        catch (Exception e) { send(mine.Serialize(Office.Obj("id", id, "ok", false, "error", Office.Failure(verb, e)))); }
+      }
+    } finally {
+      bool none;
+      lock (clients) { clients.Remove(send); none = clients.Count == 0; }
+      // Nobody listens for Excel's changes any more: let go of the Excel held for them.
+      if (none) pump.BeginInvoke(new Action(() => { try { office.Watch(false); office.AfterRequest(); } catch (Exception) { } }));
     }
   }
 }

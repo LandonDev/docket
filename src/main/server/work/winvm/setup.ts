@@ -55,6 +55,63 @@ export const TERMINAL_DELEGATION = {
   DelegationTerminal: '{E12CFF52-A866-4C77-9A90-F570A7AA2C6B}'
 } as const
 
+/** Windows' own console host, which with `--headless` runs a console program with no window. */
+export const CONHOST_PATH = 'C:\\Windows\\System32\\conhost.exe'
+
+/** The door's command line behind the headless console host. */
+export const doorArguments = (port: number = DOOR_PORT): string => `--headless "${SERVICE_PATH}" serve --listen 127.0.0.1:${port} --token-file "${TOKEN_PATH}"`
+
+/**
+ * Registers the door's logon task (`$account` is set by the caller), safe to run again. The service is a
+ * console program: started by itself it sits in a terminal window on tcuser's desktop, over everything he
+ * and a thread look at, so it runs under `conhost.exe --headless`, which gives it a console and no window.
+ * Leaves `$doorTask` holding the task.
+ */
+export function doorTask(port: number = DOOR_PORT): string {
+  return `$svc = New-Object -ComObject Schedule.Service
+$svc.Connect()
+try { $folder = $svc.GetFolder(${psQuote(TASK_FOLDER)}) } catch { $folder = $svc.GetFolder('\\').CreateFolder(${psQuote(TASK_FOLDER)}) }
+$def = $svc.NewTask(0)
+$def.RegistrationInfo.Description = 'TempCode: the service the box drives (serve --listen)'
+$def.Principal.UserId = $account
+$def.Principal.LogonType = 3
+$def.Principal.RunLevel = 0
+$def.Settings.ExecutionTimeLimit = 'PT0S'
+$def.Settings.MultipleInstances = 2
+$def.Settings.DisallowStartIfOnBatteries = $false
+$def.Settings.StopIfGoingOnBatteries = $false
+$trigger = $def.Triggers.Create(9)
+$trigger.UserId = $account
+$action = $def.Actions.Create(0)
+$action.Path = ${psQuote(CONHOST_PATH)}
+$action.Arguments = ${psQuote(doorArguments(port))}
+# what the service starts runs where tcuser's files are, not in System32: a Save dialog opens in Documents
+$action.WorkingDirectory = ${psQuote(TCUSER_DOCUMENTS)}
+$folder.RegisterTaskDefinition(${psQuote(TASK_NAME)}, $def, 6, $account, $null, 3) | Out-Null
+$doorTask = $folder.GetTask(${psQuote(TASK_NAME)})`
+}
+
+/**
+ * What a wake runs to start the door (sshGuest.ts `startService`): a task from before the headless console
+ * host is registered again and its door, which shows a window, ended; then the door is started unless it runs.
+ */
+export function startDoorScript(port: number = DOOR_PORT, user: string = STANDARD_USER): string {
+  return `
+$ErrorActionPreference = 'Stop'
+$account = "$env:COMPUTERNAME\\${user}"
+$svc = New-Object -ComObject Schedule.Service
+$svc.Connect()
+try { $doorTask = $svc.GetFolder(${psQuote(TASK_FOLDER)}).GetTask(${psQuote(TASK_NAME)}) } catch { $doorTask = $null }
+if (-not $doorTask -or $doorTask.Definition.Actions.Item(1).Path -ne ${psQuote(CONHOST_PATH)} -or $doorTask.Definition.Actions.Item(1).Arguments -ne ${psQuote(doorArguments(port))}) {
+  Get-Process tc-computer -ErrorAction SilentlyContinue | Stop-Process -Force
+  Start-Sleep -Milliseconds 500
+${doorTask(port)}
+  'door task registered'
+}
+if (-not (Get-Process tc-computer -ErrorAction SilentlyContinue)) { $doorTask.Run($null) | Out-Null }
+`
+}
+
 export interface SetupInput {
   token: string
   port?: number
@@ -83,26 +140,7 @@ if ($LASTEXITCODE) { throw "icacls exited $LASTEXITCODE" }
 Step "service folder and token"
 
 # 2. The logon task: at each logon of tcuser, the door on its desktop.
-$svc = New-Object -ComObject Schedule.Service
-$svc.Connect()
-try { $folder = $svc.GetFolder(${psQuote(TASK_FOLDER)}) } catch { $folder = $svc.GetFolder('\\').CreateFolder(${psQuote(TASK_FOLDER)}) }
-$def = $svc.NewTask(0)
-$def.RegistrationInfo.Description = 'TempCode: the service the box drives (serve --listen)'
-$def.Principal.UserId = $account
-$def.Principal.LogonType = 3
-$def.Principal.RunLevel = 0
-$def.Settings.ExecutionTimeLimit = 'PT0S'
-$def.Settings.MultipleInstances = 2
-$def.Settings.DisallowStartIfOnBatteries = $false
-$def.Settings.StopIfGoingOnBatteries = $false
-$trigger = $def.Triggers.Create(9)
-$trigger.UserId = $account
-$action = $def.Actions.Create(0)
-$action.Path = ${psQuote(SERVICE_PATH)}
-$action.Arguments = ${psQuote(`serve --listen 127.0.0.1:${port} --token-file "${TOKEN_PATH}"`)}
-# what the service starts runs where tcuser's files are, not in System32: a Save dialog opens in Documents
-$action.WorkingDirectory = ${psQuote(TCUSER_DOCUMENTS)}
-$folder.RegisterTaskDefinition(${psQuote(TASK_NAME)}, $def, 6, $account, $null, 3) | Out-Null
+${doorTask(port)}
 Step "logon task"
 
 # 3. Hibernate on (the keeper's sleep), never by Windows itself, and no sign-in asked on resume.

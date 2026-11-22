@@ -15,7 +15,10 @@ import { macCarrier } from './mac'
 import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
-import { dropCopies, filesHandle } from './files/handle'
+import { dropCopies, filesHandle, type FilesDeps } from './files/handle'
+import { missingLibraries, refreshVm, storedStatus } from './vm/files'
+import { stopVmOffice, vmAllowed, vmAwake, vmHasOffice, vmHereOf } from './vm/office'
+import { onWinvmState, winvmKeeper } from '../winvm'
 import { ensureFilesTables, librariesOf, libraryOf } from './files/library'
 import { teamsTools } from './files/tools'
 import { officeProbe, officeRows } from './health'
@@ -81,6 +84,44 @@ const excelChanges = (ctx: () => WorkCtx | null): TriggerSource => ({
 
 let started: WorkCtx | null = null
 
+/** What the Teams files need of the pillar: this host's carrier, Office in the Windows VM for a file there, and his address as Outlook here knows it. */
+const filesDeps = (ctx: WorkCtx): FilesDeps => ({
+  carrier: () => hereOf(ctx)?.carrier ?? null,
+  vmOpenOffice: (app, path) => vmHereOf(ctx).carrier.open(app, { kind: 'path', path }),
+  ownAccount: () => made.get(ctx.db)?.route.state.accounts[0] ?? null
+})
+
+/** How often an awake VM that still needs him (signed out, or a wanted library not there yet) is read again: his approval then shows, and its libraries are asked for, with no screen open. */
+const VM_WATCH_MS = 60_000
+
+/**
+ * Keeps what is known of OneDrive and Office in the Windows VM current while the machine is awake: read at
+ * each wake, then every minute while something is still missing, else every ten. Never wakes it.
+ */
+function watchVm(ctx: WorkCtx): () => void {
+  let last = 0
+  const read = (): void => {
+    if (winvmKeeper()?.state().state !== 'awake') return
+    const stored = storedStatus(ctx.db)
+    const wanting = !stored || !stored.status.onedrive.account || missingLibraries(ctx.db, stored).length > 0 || !stored.status.office.installed || stored.status.office.licensed !== true
+    if (Date.now() - last < (wanting ? VM_WATCH_MS : 10 * VM_WATCH_MS) - 1000) return
+    last = Date.now()
+    refreshVm(ctx.db, { wake: false }).catch((err) => ctx.log(`office: the Windows VM could not be read: ${errorText(err)}`))
+  }
+  const off = onWinvmState((state) => {
+    if (state?.state !== 'awake') return
+    last = 0
+    // its helper's door is made ready by the first call: give the desktop a moment after a resume
+    setTimeout(read, 5000).unref?.()
+  })
+  const timer = setInterval(read, VM_WATCH_MS)
+  timer.unref?.()
+  return () => {
+    off()
+    clearInterval(timer)
+  }
+}
+
 export const office: WorkModule = {
   id: 'office',
   ensure(db) {
@@ -93,7 +134,7 @@ export const office: WorkModule = {
   async handle(req, ctx, by, signal) {
     if (!req.method.startsWith('work.office.')) return NOT_HANDLED
     if (req.method.startsWith('work.office.addin.')) return addinHandle(req, ctx, by)
-    if (req.method.startsWith('work.office.files')) return filesHandle(req, ctx, by, () => hereOf(ctx)?.carrier ?? null, signal)
+    if (req.method.startsWith('work.office.files') || req.method.startsWith('work.office.vm')) return filesHandle(req, ctx, by, filesDeps(ctx), signal)
     const here = hereOf(ctx)
     switch (req.method) {
       case 'work.office.status': {
@@ -133,12 +174,19 @@ export const office: WorkModule = {
   sessionsRemoved(ids, ctx) {
     dropCopies(ctx, { sessions: ids })
   },
-  tools: () => [...addinTools(hereOf), ...teamsTools(() => (started ? (hereOf(started)?.carrier ?? null) : null))],
+  tools: () => [
+    ...addinTools(hereOf, { offered: (ctx) => vmAllowed(ctx, ctx.scope) && vmHasOffice(ctx), awake: vmAwake, here: vmHereOf }),
+    // read at each call: the tools are listed before, and after, the module's start
+    ...teamsTools({
+      carrier: () => (started ? (hereOf(started)?.carrier ?? null) : null),
+      vmOpenOffice: (app, path) => (started ? filesDeps(started).vmOpenOffice!(app, path) : Promise.reject(new Error(NO_OFFICE)))
+    })
+  ],
   acts: officeActs({ carrier: () => (started ? (hereOf(started)?.carrier ?? null) : null) }),
   triggers: [excelChanges(() => started)],
   preamble: () =>
-    'Office files open on the Mac or a Windows PC are reached with the `office_*` tools (`office_files` lists them). A workbook range is read with `office_range_read` and written with `office_range_write`, passing the hash you read as `base`. Mail sends, replies, forwards, invitations and answers to invitations are held for the owner\'s press; say so plainly when you make one. ' +
-    'Teams and SharePoint files synced on his Mac are reached with the `teams_*` tools (`teams_libraries` first); `teams_open` shows one to him and answers the key the office tools change it by.',
+    'Office files open on the Mac, a Windows PC or this host\'s Windows VM are reached with the `office_*` tools (`office_files` lists them, each with the computer it is on). A workbook range is read with `office_range_read` and written with `office_range_write`, passing the hash you read as `base`. Mail sends, replies, forwards, invitations and answers to invitations are held for the owner\'s press; say so plainly when you make one. ' +
+    'Teams and SharePoint files synced on his Mac or in the Windows VM are reached with the `teams_*` tools (`teams_libraries` first); `teams_open` shows one to him and answers the key the office tools change it by.',
   start(ctx) {
     started = ctx
     const here = hereOf(ctx)
@@ -149,6 +197,7 @@ export const office: WorkModule = {
     // A change with no sheet is a co-author's merge somewhere in the book: read every watched block again now.
     const heard = (book: string, sheet: string, address: string) => void (sheet ? hereOf(ctx)?.excel.heard(book, sheet, address) : hereOf(ctx)?.excel.pass())
     const stopAddin = startAddin(ctx, heard)
+    const stopVmWatch = watchVm(ctx)
     // Windows' Excel tells of each change itself; elsewhere the safety pass and the add-in find them.
     const stopChanges = here?.carrier.changes?.(heard)
     const check = () => {
@@ -172,6 +221,8 @@ export const office: WorkModule = {
     }
     return () => {
       stopAddin()
+      stopVmWatch()
+      stopVmOffice(ctx)
       stopChanges?.()
       if (timer) clearInterval(timer)
       stopRoute?.()
