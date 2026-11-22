@@ -95,6 +95,25 @@ interface Kept {
   height: number
 }
 
+/**
+ * Gives the display the evdev key codes his keys arrive in. The engine presses a key on the display by its
+ * evdev code (HID usage to evdev, plus 8), and QEMU's window turns X's key codes into the guest's keys by the
+ * table the display NAMES when QEMU starts. The bundled Xorg, with no input device of its own, names the old
+ * "xfree86" set, where the letters sit alike and the navigation keys do not: Page Up arrived in the guest as
+ * "/", Left and End as other keys (found live from a Mac, 2026-11-22). `setxkbmap -rules evdev` makes the
+ * display name "evdev", so it must run before QEMU does. Answers why it could not, or null.
+ */
+export async function evdevKeys(display: BoxDisplay): Promise<string | null> {
+  const env = { PATH: '/usr/local/bin:/usr/bin:/bin', DISPLAY: display.DISPLAY, XAUTHORITY: display.XAUTHORITY }
+  try {
+    await run('setxkbmap', ['-rules', 'evdev', '-model', 'pc105', '-layout', 'us'], { env, timeout: 10_000 })
+    const { stdout } = await run('setxkbmap', ['-print'], { env, timeout: 10_000 })
+    return /xkb_keycodes[^\n]*evdev/.test(stdout) ? null : `the display still names ${/xkb_keycodes\s*\{\s*include\s*"([^"]*)"/.exec(stdout)?.[1] ?? 'no key codes'}`
+  } catch (e) {
+    return (e as Error).message.split('\n')[0] ?? 'setxkbmap failed'
+  }
+}
+
 export interface VmScreenOptions {
   /** <dataDir>/winvm/picture: the display's files, the engines' tokens */
   root: string
@@ -103,6 +122,8 @@ export interface VmScreenOptions {
   size?: () => VmWindow
   /** a test's stand-in for QEMU's module check */
   loads?: (window: WindowTools) => Promise<string | null>
+  /** a test's stand-in for setting the display's key codes */
+  keys?: (display: BoxDisplay) => Promise<string | null>
   log?: (line: string) => void
 }
 
@@ -185,6 +206,9 @@ export class VmScreen {
     const display = new BoxXDisplay({ root: this.o.root, tools: tools.video, size, command: stopBlocked, log: (line) => this.o.log?.(`winvm ${line}`) })
     try {
       const pair = await display.start()
+      // before QEMU starts: it reads which key codes the display names once, at its window's start
+      const wrong = await (this.o.keys ?? evdevKeys)(pair)
+      if (wrong) this.o.log?.(`winvm: the display's key codes could not be set to evdev (${wrong}): arrow and navigation keys will reach the guest as other keys`)
       this.display = display
       writeFileSync(this.keptFile, JSON.stringify({ display: pair, pid: display.pid, ...size }), { mode: 0o600 })
       return { window: { ...size }, env: windowEnv(pair, tools.window) }

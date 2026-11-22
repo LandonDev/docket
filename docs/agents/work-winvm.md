@@ -196,6 +196,12 @@ another QEMU build is refused); a tool missing, a refusal, a display that will n
 window all start the machine with no window, and `pictureOnly` on its row takes Take over away. The rest, the engines
 and the numbers, is live-video.md "The Windows VM".
 
+**Key codes.** The engine presses his keys on the display by their evdev codes, and QEMU's window turns the
+display's key codes into the guest's keys by the set the display names when QEMU starts. The bundled Xorg names
+the old "xfree86" set, where letters sit alike and the navigation keys do not (Page Up reached the guest as "/",
+Left and End as other keys: found from a Mac's Take over, 2026-11-22). So each start runs `setxkbmap -rules evdev`
+on the display before QEMU (`evdevKeys`, window.ts; the box's own setxkbmap), and logs it when that fails.
+
 ## Take over
 
 `computer.drive { computer: 'vm:windows', driver }` reaches the `vm` hook (`vmWheel`, drive.ts), registered at the
