@@ -196,9 +196,32 @@ foreach ($sub in ${list(NO_RUN_FOLDERS)}) {
   if ($LASTEXITCODE) { throw "icacls $d exited $LASTEXITCODE" }
 }
 Step "no programs from tcuser's folders"
+
+# 7. OneDrive: files on demand, and a downloaded file back in the cloud after a day unopened.
+${ONEDRIVE_POLICY}
+Step "OneDrive's policies"
 "setup done"
 `
 }
 
+/**
+ * OneDrive in the guest, by Microsoft's own policies (docs/agents/work-files.md "The Windows VM"): files on
+ * demand always (a library of a terabyte is names only until a file is opened), no folder backup offered, no
+ * tutorial; and Storage Sense sends a downloaded file back to the cloud once it has gone a day unopened, so
+ * the disk does not fill. Machine policies: tcuser cannot change them. Safe to run again.
+ */
+export const ONEDRIVE_POLICY = `
+function Set-Policy($path, $name, $value) { if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }; Set-ItemProperty -LiteralPath $path -Name $name -Value $value -Type DWord }
+$od = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\OneDrive'
+Set-Policy $od 'FilesOnDemandEnabled' 1
+Set-Policy $od 'KFMBlockOptIn' 1
+Set-Policy $od 'DisableTutorial' 1
+Set-Policy $od 'DisableFirstDeleteDialog' 1
+$ss = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\StorageSense'
+Set-Policy $ss 'AllowStorageSenseGlobal' 1
+Set-Policy $ss 'ConfigStorageSenseGlobalCadence' 1
+Set-Policy $ss 'ConfigStorageSenseCloudContentDehydrationThreshold' 1
+`
+
 /** The steps a setup script must carry, by a line each prints; the keeper's test reads them back. */
-export const SETUP_STEPS = ['service folder and token', 'logon task', 'hibernate, no lock on resume', 'Windows Update', "tcuser's policies", "no programs from tcuser's folders"] as const
+export const SETUP_STEPS = ['service folder and token', 'logon task', 'hibernate, no lock on resume', 'Windows Update', "tcuser's policies", "no programs from tcuser's folders", "OneDrive's policies"] as const

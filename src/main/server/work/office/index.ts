@@ -17,8 +17,8 @@ import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
 import { dropCopies, filesHandle, type FilesDeps } from './files/handle'
 import { missingLibraries, refreshVm, storedStatus } from './vm/files'
-import { stopVmOffice, vmAllowed, vmAwake, vmHasOffice, vmHereOf } from './vm/office'
-import { onWinvmState, winvmKeeper } from '../winvm'
+import { stopVmOffice, vmAllowed, vmAwake, vmHasOffice, vmHereOf, vmState } from './vm/office'
+import { onWinvmState } from '../winvm'
 import { ensureFilesTables, librariesOf, libraryOf } from './files/library'
 import { teamsTools } from './files/tools'
 import { officeProbe, officeRows } from './health'
@@ -101,7 +101,7 @@ const VM_WATCH_MS = 60_000
 function watchVm(ctx: WorkCtx): () => void {
   let last = 0
   const read = (): void => {
-    if (winvmKeeper()?.state().state !== 'awake') return
+    if (vmState()?.state !== 'awake') return
     const stored = storedStatus(ctx.db)
     const wanting = !stored || !stored.status.onedrive.account || missingLibraries(ctx.db, stored).length > 0 || !stored.status.office.installed || stored.status.office.licensed !== true
     if (Date.now() - last < (wanting ? VM_WATCH_MS : 10 * VM_WATCH_MS) - 1000) return

@@ -10,10 +10,9 @@ import { macBridgeLandingRoot } from '../../../macBridgeLanding'
 import type { Caller, WorkCtx } from '../../modules'
 import type { OfficeCarrier } from '../carrier'
 import { BYTES_MAX, copyAllowed, entryOf, fetchFile, foldersPlace, librariesOf, libraryOf, listFolder, offFolders, readText, rootsOf, searchLibraries, SEARCH_MAX, setCopyAllowed, setRoots } from './library'
-import { winvmKeeper } from '../../winvm'
 import { NOT_SET_UP } from '../../winvm/keeper'
 import { isGuestPath, missingLibraries, refreshVm, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
-import { vmAllowed } from '../vm/office'
+import { vmAllowed, vmKey, vmState } from '../vm/office'
 import { vmCall } from '../vm/link'
 import { SIGN_IN_LINES, walkSignIn } from '../vm/signin'
 import type { TeamsLibrariesAnswer, TeamsPlace, VmSignInAnswer, VmSyncLibrary } from '@shared/contract-work-office'
@@ -36,6 +35,8 @@ export interface FilesDeps {
   /** opens an Office file in its app in the Windows VM; absent where the pillar has no VM carrier (a test) */
   vmOpenOffice?: (app: 'excel' | 'word' | 'powerpoint', path: string) => Promise<void>
   ownAccount?: () => string | null
+  /** a test's short waits for the sign-in walk */
+  signInWaits?: { first: number; page: number; list: number }
 }
 
 /** How fresh the VM's kept status must be for a list to use it without asking an awake machine again. */
@@ -46,9 +47,8 @@ const VM_FRESH_MS = 15_000
  * call); a sleeping one answers from what was kept, and is woken only if it has never been read.
  */
 async function vmListing(ctx: WorkCtx, signal?: AbortSignal): Promise<{ libraries: TeamsLibrary[]; place: TeamsPlace | null }> {
-  const keeper = winvmKeeper()
-  const state = keeper?.state() ?? null
-  if (!keeper || !state || state.cannot || state.state === 'none' || state.state === 'setting-up') return { libraries: [], place: vmPlace(ctx.db, state) }
+  const state = vmState()
+  if (!state || state.cannot || state.state === 'none' || state.state === 'setting-up') return { libraries: [], place: vmPlace(ctx.db, state) }
   const stored = storedStatus(ctx.db)
   try {
     if (!stored) await refreshVm(ctx.db, { wake: true, signal })
@@ -213,10 +213,10 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       setRoots(ctx.db, p.roots as never)
       return handled(await librariesAnswer(ctx, by, signal))
     case 'work.office.vmStatus':
-      return handled(vmOfficeStatus(ctx.db, winvmKeeper()?.state() ?? null))
+      return handled(vmOfficeStatus(ctx.db, vmState()))
     case 'work.office.vmSignIn': {
       if (by.kind === 'model') throw new Error(ONLY_OWNER)
-      const state = winvmKeeper()?.state()
+      const state = vmState()
       if (!state || state.cannot || state.state === 'none') throw new Error(state?.cannot ?? NOT_SET_UP)
       const stored = await refreshVm(ctx.db, { wake: true, signal })
       const signedIn = stored?.status.onedrive.account ?? null
@@ -231,7 +231,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       }
       const account = (p.account as string | undefined) ?? d.ownAccount?.() ?? stored?.status.office.account ?? null
       // Walked to the one step that is his: the number for his phone. Nothing here types a password or a code.
-      const reached = await walkSignIn(account, { call: vmCall, key: (...keys) => winvmKeeper()!.key(...keys) })
+      const reached = await walkSignIn(account, { call: vmCall, key: vmKey, ...(d.signInWaits ? { waits: d.signInWaits, sleep: async () => {} } : {}) })
       return handled({ computer: 'vm:windows', account, line: SIGN_IN_LINES[reached] } satisfies VmSignInAnswer)
     }
     case 'work.office.vmSync': {

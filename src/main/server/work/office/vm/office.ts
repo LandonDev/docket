@@ -94,11 +94,23 @@ export function stopVmOffice(ctx: WorkCtx): void {
   made.delete(ctx.db)
 }
 
+/** The VM's state as its keeper says it; null where Work is off or this host keeps none. */
+let stateOf: () => { state: string; cannot: string | null } | null = () => winvmKeeper()?.state() ?? null
+/** A test's own VM state; null puts the keeper's back. */
+export const setVmState = (fn: (() => { state: string; cannot: string | null } | null) | null): void => void (stateOf = fn ?? (() => winvmKeeper()?.state() ?? null))
+export const vmState = (): { state: string; cannot: string | null } | null => stateOf()
+
+/** Keys from the machine's own keyboard (the keeper's `key`). */
+export const vmKey = async (...qcodes: string[]): Promise<void> => {
+  const keeper = winvmKeeper()
+  if (!keeper) throw new Error('The Windows VM is not awake.')
+  await keeper.key(...qcodes)
+}
+
 /** Whether a thread of this scope may use what is in the Windows VM: a workspace with "Computer use on the Windows VM" on, on the host whose VM is set up. A Work Chat never. */
 export function vmAllowed(ctx: Pick<WorkCtx, 'settings'>, scope: Pick<WorkScope, 'workspaceId'>): boolean {
-  const keeper = winvmKeeper()
-  if (!scope.workspaceId || !keeper) return false
-  const s = keeper.state()
+  const s = vmState()
+  if (!scope.workspaceId || !s) return false
   if (s.cannot || s.state === 'none') return false
   try {
     return ctx.settings.workspace(scope.workspaceId).windowsVm === true
