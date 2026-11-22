@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { mountProbe } from "../../test/renderProbe";
 import { registry } from "../../lib/connection";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
@@ -121,5 +121,23 @@ describe("a screen's LifeOS session", () => {
     expect(span.getAttribute("data-error")).toBe("LifeOS did not answer");
     probe.unmount();
     answer = () => Promise.resolve({ ok: true, jwt: "jwt-1", expiresAt: 2, url: "https://lifeos.test" });
+  });
+});
+
+describe("a host's status that could not be read", () => {
+  const read = async (err: Error) => {
+    resetLifeos();
+    vi.spyOn(registry, "linkOf").mockReturnValue({ connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: () => Promise.reject(err) } as never);
+    const { watchLifeos, useLifeosStatus } = await import("./lifeos");
+    watchLifeos("env_far");
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    const { result, unmount } = renderHook(() => useLifeosStatus("env_far"));
+    const state = result.current?.lifeos.state ?? null;
+    unmount();
+    return state;
+  };
+  it("is Work off when the host refused, never signed out; unknown while the host is out of reach", async () => {
+    expect(await read(new Error("Work is off on this host"))).toBe("off");
+    expect(await read(Object.assign(new Error("not connected"), { name: "ConnectionLostError" }))).toBeNull();
   });
 });

@@ -92,12 +92,13 @@ describe("the mail canvas with LifeOS unreachable", () => {
     await expect(Promise.resolve(run())).resolves.toBeUndefined();
   });
 
-  it("offers the sign-in for a host whose LifeOS is off, signed out or being paired, never an empty body", () => {
-    for (const state of ["off", "signed-out", "pairing", "refused"]) {
+  it("says why it cannot read, each with its press, never an empty body: Work off, signed out, a sign-in waiting, refused", () => {
+    const said = { off: ["Work is off on this host", "Open Settings"], "signed-out": ["Not signed in to LifeOS", "Sign in"], pairing: ["The LifeOS sign-in waits for your approval", "Sign in"], refused: ["LifeOS refused this host's sign-in", "Sign in"] };
+    for (const [state, [words, press]] of Object.entries(said)) {
       lifeos.state = state;
       const view = body();
-      expect(screen.getByText("Sign in to LifeOS"), state).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Sign in" }), state).toBeTruthy();
+      expect(screen.getByText(words!), state).toBeTruthy();
+      expect(screen.getByRole("button", { name: press }), state).toBeTruthy();
       view.unmount();
     }
   });

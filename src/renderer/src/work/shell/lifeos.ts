@@ -37,8 +37,12 @@ export function watchLifeos(environmentId: string): void {
     link
       .request<LifeosStatus>("work.lifeos.status")
       .then((status) => putStatus(environmentId, status))
-      // Off, or a host from before Work: it draws as signed out until it answers.
-      .catch(() => putStatus(environmentId, { lifeos: { state: "signed-out" }, keys: [] }));
+      // A host that refused (Work off, or a build from before Work) says so: never "signed out", which asks for a sign-in
+      // that cannot help. A host out of reach stays unknown until its link opens again and it is asked afresh.
+      .catch((err: unknown) => {
+        const name = (err as { name?: string } | null)?.name;
+        if (name !== "ConnectionLostError" && name !== "TimeoutError") putStatus(environmentId, { lifeos: { state: "off" }, keys: [] });
+      });
   };
   const offPush = link.onPush((push) => {
     if (push.push === "work.lifeos") putStatus(environmentId, push.status);
@@ -212,7 +216,11 @@ export function sessionWaits(session: Pick<LifeosSession, "client" | "state">): 
 
 /** What a session that cannot read says, in words: a query's error and the frame's line read it. */
 export function sessionFailure(state: LifeosStateName): string {
-  return state === "unreachable" ? "LifeOS did not answer" : state === "refused" ? "LifeOS refused this host's sign-in" : "Not signed in to LifeOS";
+  if (state === "unreachable") return "LifeOS did not answer";
+  if (state === "refused") return "LifeOS refused this host's sign-in";
+  if (state === "off") return "Work is off on this host";
+  if (state === "pairing") return "The LifeOS sign-in waits for your approval";
+  return "Not signed in to LifeOS";
 }
 
 /**

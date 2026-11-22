@@ -12,8 +12,8 @@ import { useSessionMeta } from "../../lib/tcserver/store";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
-import { openWorkSettings } from "../shell/open";
-import { reopenLifeos, sessionWaits, useLifeosSession } from "../shell/lifeos";
+import { openConnections, openWorkSettings } from "../shell/open";
+import { reopenLifeos, sessionFailure, sessionWaits, useLifeosSession } from "../shell/lifeos";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor } from "./client";
 import { placedKit } from "./files";
@@ -48,7 +48,8 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
   // A file of the mail it answers opens as another item of this pane (files.ts).
   const kit = useMemo(() => placedKit(tempcodeMailKit, { env, pane: item.sessionId }), [env, item.sessionId]);
   if (source.at !== "lifeos" || source.table !== "outbox") return <EmptyState title="This mail could not be shown" />;
-  if (lifeos.state === "off" || lifeos.state === "signed-out" || lifeos.state === "pairing" || lifeos.state === "refused") return <EmptyState title="Sign in to LifeOS" action={{ label: "Sign in", onClick: openWorkSettings }} />;
+  if (lifeos.state === "off") return <EmptyState title="Work is off on this host" action={{ label: "Open Settings", onClick: openWorkSettings }} />;
+  if (lifeos.state === "signed-out" || lifeos.state === "pairing" || lifeos.state === "refused") return <EmptyState title={sessionFailure(lifeos.state)} action={{ label: "Sign in", onClick: openConnections }} />;
   // LifeOS did not answer: the state line says so once, and the draft last read stays, read only; with none read, nothing pulses under the line.
   if (!lifeos.client) {
     if (sessionWaits(lifeos)) return <SurfaceSkeleton kind="column" label="Loading the mail" />;

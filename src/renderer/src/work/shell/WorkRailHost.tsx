@@ -16,7 +16,7 @@ import { useWorkspaces, workspaceByPath } from "../../lib/tcserver/workspaces";
 import { workRailPort, useWorkHosts } from "../../lib/workSwitch";
 import { FileDrops } from "../canvas/fileDrop";
 import { LapseNotices } from "../connections/lapseNotice";
-import { openWorkSettings } from "./open";
+import { openConnections, openWorkSettings } from "./open";
 import { PlaysHost } from "../routines/plays/PlaysHost";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
 import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
@@ -48,9 +48,13 @@ export function addMenuRows(state: LifeosStateName | null, free: readonly string
       ? free.map((sector) => ({ kind: "item", id: `work:add:${sector}`, label: sectorName(sector, names), icon: dotIcon(sector) }))
       : state === "signed-out" || state === "refused"
         ? [{ kind: "item", id: "work:signin", label: "Sign in to LifeOS…", icon: LogIn }]
-        : state === "unreachable"
-          ? [{ kind: "item", id: "work:retry", label: "Retry", description: "LifeOS did not answer" }]
-          : [{ kind: "note", id: "work:connecting", content: <span className="text-muted-foreground">Connecting to LifeOS…</span> }];
+        : state === "pairing"
+          ? [{ kind: "item", id: "work:signin", label: "Approve the LifeOS sign-in…", icon: LogIn }]
+          : state === "unreachable"
+            ? [{ kind: "item", id: "work:retry", label: "Retry", description: "LifeOS did not answer" }]
+            : state === "off"
+              ? [{ kind: "note", id: "work:off", content: <span className="text-muted-foreground">Work is off on this host</span> }]
+              : [{ kind: "note", id: "work:connecting", content: <span className="text-muted-foreground">Connecting to LifeOS…</span> }];
   return [...top, ...(top.length ? [{ kind: "sep" } as const] : []), { kind: "item", id: "work:add-unlinked", label: "Without a sector…", icon: dotIcon(null) }];
 }
 
@@ -122,7 +126,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
         return sectorMenuRows(workspace.sector, there ?? "connected", names, order);
       },
       pick(action, path) {
-        if (action === "work:signin") return openWorkSettings();
+        if (action === "work:signin") return openConnections();
         if (action === "work:retry") {
           retryLifeos(home, fail);
           return openWorkSettings();
