@@ -89,6 +89,8 @@ export interface WorkModule {
   start?(ctx: WorkCtx): () => void
   /** Threads were deleted (a thread and its subagents): drop what the module kept for them. Called Work on or off. */
   sessionsRemoved?(sessionIds: string[], ctx: WorkCtx): void
+  /** A Work workspace was just made: store the module's own defaults for it (a stored choice, so turning one off sticks). */
+  workspaceCreated?(workspaceId: string, ctx: WorkCtx): void
   /** A workspace was deleted: drop what the module kept for it. Called Work on or off. */
   workspaceRemoved?(workspaceId: string, ctx: WorkCtx): void
   /** The pillar's own connections on this host, for Connections (docs/agents/work-connections.md). */

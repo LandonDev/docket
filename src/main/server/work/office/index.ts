@@ -16,7 +16,7 @@ import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
 import { dropCopies, filesHandle } from './files/handle'
-import { ensureFilesTables, librariesOf, libraryOf } from './files/library'
+import { ensureFilesTables, librariesOf, libraryOf, setCopyAllowed } from './files/library'
 import { teamsTools } from './files/tools'
 import { officeProbe, officeRows } from './health'
 
@@ -128,6 +128,10 @@ export const office: WorkModule = {
   // Connections: read as it lies; the route's state only if the running module already made it.
   health: {
     check: (ctx, signal) => officeRows(officeProbe(ctx, () => made.get(ctx.db)?.route.state ?? null), signal)
+  },
+  // A new Work workspace may copy Teams files from his desktops from the start; he can turn it off.
+  workspaceCreated(id, ctx) {
+    setCopyAllowed(ctx.db, id, true)
   },
   // A deleted thread's copies of Teams files go with it.
   sessionsRemoved(ids, ctx) {
