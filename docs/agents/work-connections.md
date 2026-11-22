@@ -69,7 +69,11 @@ One optional field on the module, two core reads and one frame tool
   only from short lists (`fixAllowed`): a `run` names one of
   `HEALTH_RUN_METHODS` (today only `work.lifeos.signOut`), a `page` one of
   `HEALTH_PAGES` (`lifeos-sign-in`, the LifeOS sign-in dialog for that
-  host, or a Settings page). The host drops any other fix from a row
+  host; `windows-vm-sign-in`, OneDrive's sign-in brought up on the Windows
+  VM that host keeps, `work.office.vmSignIn`, then the Computers page on
+  `vm:windows`, where he finishes it in a Take over; or a Settings page).
+  A row whose fix is that sign-in carries
+  `{kind: 'page', label: 'Sign in…', page: 'windows-vm-sign-in'}`. The host drops any other fix from a row
   (`cleanRow`) and the page never carries one out (`usableFix`): nothing
   that sends, grants or turns Work off is ever a fix.
 - `work.health` (read) answers `HealthReport {host, at, rows}`: every

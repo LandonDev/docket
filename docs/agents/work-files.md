@@ -83,7 +83,10 @@ to the Mac and back. Nothing is mirrored anywhere.
 
 **Copy Teams files to <host>** (a Work workspace's page in Settings, kept in
 `work_office_files` as `copy:<workspaceId>` on the workspace's own host) is
-**off by default**. Off, a file on another host than the workspace's opens in
+**on for a new Work workspace** (the owner's ruling, 2026-11-22: things work
+by default, he turns them off): the office module's `workspaceCreated` hook
+stores it when the workspace is made, so one he turns off stays off, and a
+workspace made before reads as it was (nothing stored is off). Off, a file on another host than the workspace's opens in
 its app on that host and never in a thread's canvas here. On, opening such a
 file copies it (48 MB at most, checked before it downloads) into the thread's
 own folder of this host's attachments
@@ -190,13 +193,56 @@ workspace's host and each desktop it may use (`filesLibraries`) and shows:
   where the folder has its link;
 - the header's search over every library, each hit with its place.
 
+**One place, once.** A row is a place (a team's channel, a library, his own
+files, a folder he added), and the same place on two machines is one row:
+`teamsPlaceKey(team, label)` in the contract ("RecWell-TeamRecWell", a
+folder of the RecWell site's Documents a Mac syncs by itself, is "RecWell" +
+"Team RecWell" in the VM's whole library; his own files on two machines are
+`mine`; a folder he added is never merged). A merged row is drawn under the
+team of a copy that names team and folder apart (the VM's library), so a
+Mac's one-word folders read as that team's channels; a Mac-only layout looks
+as before. Its copies (`{library, folder}`, the folder that is the place's
+top on that machine) are read in order: the workspace's own host first while
+its place answers (a VM library there needs no Mac), then a desktop's. A
+folder is carried across copies as its parts below the row's top (split on
+either separator, joined with the copy's own: `pathIn`). A read that fails
+because the machine is out of reach (`unreachable`: the link is down, a
+time-out, "could not wake") goes to the next copy at the same place; a
+refusal about the folder itself is shown at once. One listing is always one
+copy's. A search asks each host once and keeps each place's hits from its
+first copy whose host answered, so no file is listed twice. A library in the
+VM (`vm`) is listed only while the workspace's `windowsVm` is on.
+
+**When nothing is listed** (`filesNote`, files.ts), the view says the one
+most useful thing, checked in this order, with its press:
+
+| Cause | It says | Press |
+|---|---|---|
+| the workspace's host refused, nothing else answered | "Files did not load", the refusal's words | Retry |
+| it may use no desktop and no VM, and one could help | "This workspace can't use <MacBook> and the Windows VM yet" / "Allow it to list your Teams files from there." | Allow: his desktops this window knows (`allowComputers`, work/shell/actions.ts) and the VM where the host has one, then lists |
+| a machine it may use did not answer | "<MacBook> did not answer", on the state line | Retry |
+| OneDrive in the VM is signed out | "OneDrive on the Windows VM is signed out" | Sign in to OneDrive: `work.office.vmSignIn`, then the Computers page on `vm:windows` (work/winvm/signIn.ts) |
+| the VM is the only place and is not set up | "The Windows VM is not set up" | Open Settings (Settings → Work) |
+| a place answers with no Teams library | "No Teams files on <MacBook>" / "Sync a channel from Teams with OneDrive there." ("OneDrive is not signed in on <MacBook>" where it has none; for the VM, Open the Windows VM) | — |
+| a place could not be read | "Teams files on <machine> did not load", its detail | Retry |
+| an older host that says nothing of its places | "No Teams files" | — |
+
+With rows listed, a machine that did not answer is the state line over them,
+unless the VM holds copies (then it goes unsaid), and OneDrive signed out in
+the VM is one quiet line under the rows with Sign in to OneDrive. The list
+waits in its bones until every host has answered, so the empty state never
+flashes first.
+
 Opening a file (`openWay`): a cloud-only file shows Downloading… in its row
 first, then Opening…. On the workspace's own host it opens in a new thread of
 the workspace, titled for the file, in that thread's canvas (and an Office
 file in its app, which stands behind the item), the thread made only once
 everything else worked; with the copy he allowed, from the copy, and a thread
 whose copy failed is deleted again; otherwise in its app where it lies, which
-downloads it itself. A failure is one toast.
+downloads it itself. A file in the Windows VM never opens in the canvas on its
+own host: as a copy he allowed, else in its app in the VM (seen on the
+Computers page); a read of one may wake the VM, so its reads wait up to two
+minutes. A failure is one toast.
 
 ## Settings
 

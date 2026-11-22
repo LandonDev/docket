@@ -23,14 +23,14 @@ export interface WorkScope {
 
 /** A workspace's own Work settings: JSON in `workspaces.work_settings`. */
 export interface WorkspaceWorkSettings {
-  /** "May use this Mac" (and, later, a Windows host) */
+  /** "Computer use on <host>": his Macs and Windows hosts; a new Work workspace starts with every one its host and window know (work/scope.ts `ownerDesktops`) */
   mayUseDesktop: HostId[]
   model?: string
   reasoning?: string
   voice: boolean
   /**
-   * "Computer use on the Windows VM": its threads get the `windows_*` tools (work/winvm). A setting of its own, off
-   * by default, never an entry in `mayUseDesktop`, which five places read as a list of hosts to dial.
+   * "Computer use on the Windows VM": its threads get the `windows_*` tools (work/winvm). A setting of its own, on for
+   * a new Work workspace (stored when it is made; absent reads as off), never an entry in `mayUseDesktop`, which five places read as a list of hosts to dial.
    */
   windowsVm?: boolean
 }
