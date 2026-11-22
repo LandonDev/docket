@@ -85,7 +85,9 @@ pub fn raise(id: i64) -> bool {
             let mine = GetCurrentThreadId();
             let joined = theirs != 0 && theirs != mine && AttachThreadInput(mine, theirs, true).as_bool();
             if attempt == 1 {
-                send(&[key_input(vk::MENU, false), key_input(vk::MENU, true)]);
+                // input of our own, so Windows lets this process take the front: a pointer move of nothing, never an
+                // Alt tap, which puts a WinUI window in its access-key mode and eats the next keys (Alt+F4 among them)
+                send(&[mouse_input(MOUSE_EVENT_FLAGS(0), 0, None)]);
             }
             let _ = BringWindowToTop(h);
             let _ = SetForegroundWindow(h);
@@ -353,35 +355,49 @@ fn resolve_key(c: &Combo) -> (Option<u16>, Mods, Option<char>) {
     }
 }
 
-/// Text as real keys: a character the keyboard layout types with Shift alone goes as that key (Caps Lock
-/// minded), as a person types it; anything else (an accent the layout lacks, an emoji) as a Unicode packet.
-/// WinUI's Notepad turned a run of packets into dots once in the rig where its own keys never did.
-fn text_inputs(t: &str) -> Vec<INPUT> {
-    let caps = unsafe { GetKeyState(0x14) } & 1 != 0;
-    let mut v = Vec::new();
-    for ch in t.chars() {
-        let scan = if (ch as u32) <= 0xFFFF { unsafe { VkKeyScanW(ch as u16) } } else { -1 };
-        let shifts = (scan >> 8) & 0xFF;
-        if scan != -1 && shifts & !1 == 0 {
-            let key = (scan & 0xFF) as u16;
-            let shift = (shifts & 1 != 0) != (caps && ch.is_alphabetic());
-            if shift {
-                v.push(key_input(vk::SHIFT, false));
-            }
-            v.push(key_input(key, false));
-            v.push(key_input(key, true));
-            if shift {
-                v.push(key_input(vk::SHIFT, true));
-            }
-        } else {
-            let mut buf = [0u16; 2];
-            for u in ch.encode_utf16(&mut buf).iter() {
-                v.push(unicode_input(*u, false));
-                v.push(unicode_input(*u, true));
-            }
-        }
+/// A character as the keyboard layout types it: its virtual key and whether it needs Shift, Caps Lock minded; None
+/// for one that needs Ctrl or Alt (AltGr) or that the layout lacks, which then goes as a Unicode packet.
+fn layout_key(ch: char, caps: bool) -> Option<(u16, bool)> {
+    let scan = if (ch as u32) <= 0xFFFF { unsafe { VkKeyScanW(ch as u16) } } else { -1 };
+    let shifts = (scan >> 8) & 0xFF;
+    if scan == -1 || shifts & !1 != 0 {
+        return None;
     }
-    v
+    Some(((scan & 0xFF) as u16, (shifts & 1 != 0) != (caps && ch.is_alphabetic())))
+}
+
+/// Typed text as real input (`input::text_records`, `text_batches`): layout keys with Shift only around their own
+/// character, one Return per line break, packets one character to a call, in small calls with a pause between.
+fn send_text(t: &str) -> Result<(), ComputerError> {
+    let caps = unsafe { GetKeyState(0x14) } & 1 != 0;
+    let recs = crate::input::text_records(t, |c| layout_key(c, caps));
+    for (n, call) in crate::input::text_batches(&recs).into_iter().enumerate() {
+        if n > 0 {
+            std::thread::sleep(Duration::from_millis(crate::input::TEXT_YIELD_MS));
+        }
+        send_or_fail(&records_inputs(call))?;
+    }
+    Ok(())
+}
+
+fn records_inputs(recs: &[crate::input::TextRec]) -> Vec<INPUT> {
+    recs.iter()
+        .map(|r| match *r {
+            crate::input::TextRec::Unicode { unit, up } => unicode_input(unit, up),
+            crate::input::TextRec::Vk { vk, up } => key_input(vk, up),
+        })
+        .collect()
+}
+
+/// A chord's calls (`input::chord_calls`), with TEXT_YIELD_MS between them.
+fn send_calls(calls: &[Vec<crate::input::TextRec>]) -> Result<(), ComputerError> {
+    for (n, call) in calls.iter().enumerate() {
+        if n > 0 {
+            std::thread::sleep(Duration::from_millis(crate::input::TEXT_YIELD_MS));
+        }
+        send_or_fail(&records_inputs(call))?;
+    }
+    Ok(())
 }
 
 /// An event as real input: the pointer moves, keys go to whatever has the focus (the caller raised the window).
@@ -427,40 +443,40 @@ pub fn send_event(e: &Event) -> Result<(), ComputerError> {
             send_or_fail(&v)
         }
         Event::Key { combo, phase } => {
+            use crate::input::TextRec;
             let (v, mods, ch) = resolve_key(combo);
-            let mut out = Vec::new();
-            if *phase != KeyPhase::Up {
-                out.extend(mods_inputs(&mods, false));
-            }
+            let (down, up) = (*phase != KeyPhase::Up, *phase != KeyPhase::Down);
+            let mut key = Vec::new();
             match (v, ch) {
-                (Some(v), _) => {
-                    if *phase != KeyPhase::Up {
-                        out.push(key_input(v, false));
+                (Some(vk), _) => {
+                    if down {
+                        key.push(TextRec::Vk { vk, up: false });
                     }
-                    if *phase != KeyPhase::Down {
-                        out.push(key_input(v, true));
+                    if up {
+                        key.push(TextRec::Vk { vk, up: true });
                     }
                 }
                 (None, Some(ch)) => {
                     let mut buf = [0u16; 2];
-                    for u in ch.encode_utf16(&mut buf).iter() {
-                        if *phase != KeyPhase::Up {
-                            out.push(unicode_input(*u, false));
+                    for &unit in ch.encode_utf16(&mut buf).iter() {
+                        if down {
+                            key.push(TextRec::Unicode { unit, up: false });
                         }
-                        if *phase != KeyPhase::Down {
-                            out.push(unicode_input(*u, true));
+                        if up {
+                            key.push(TextRec::Unicode { unit, up: true });
                         }
                     }
                 }
                 _ => {}
             }
-            if *phase != KeyPhase::Down {
-                out.extend(mods_inputs(&mods, true));
-            }
-            send_or_fail(&out)
+            send_calls(&crate::input::chord_calls(&mods.vks(), &key, down, up))
         }
-        Event::Text(t) => send_or_fail(&text_inputs(t)),
-        Event::Paste => send_or_fail(&[key_input(vk::CONTROL, false), key_input(b'V' as u16, false), key_input(b'V' as u16, true), key_input(vk::CONTROL, true)]),
+        Event::Text(t) => send_text(t),
+        Event::Paste => {
+            use crate::input::TextRec;
+            let v = [TextRec::Vk { vk: b'V' as u16, up: false }, TextRec::Vk { vk: b'V' as u16, up: true }];
+            send_calls(&crate::input::chord_calls(&[vk::CONTROL], &v, true, true))
+        }
     }
 }
 

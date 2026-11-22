@@ -470,10 +470,16 @@ fn where_nobody_sits_set_value_types_a_field_with_real_keys_and_leaves_a_launche
     assert_eq!(*fake.value.lock().unwrap(), "vm-proof.txt");
     let posted = fake.posted.lock().unwrap().clone();
     assert!(matches!(posted[0], (Tier::Session, Event::Key { combo, .. }) if combo.mods.ctrl && combo.key == Key::Vk(b'A' as u16)), "{posted:?}");
-    // two lines: the field keeps a lone CR, and that is the value it was given
+    // two lines: the text goes whole in one event (the platform makes its records: input::text_records), and a
+    // field that keeps a lone CR for it reads back the value it was given
+    fake.posted.lock().unwrap().clear();
     let r = w.ok("action.run", act(&epoch, json!(["ax", "session"]), json!({ "action": "set_value", "element": 2, "value": "one\r\ntwo" })));
     assert_eq!(r["step"]["effect"], json!("changed"), "{r}");
-    assert_eq!(*fake.value.lock().unwrap(), "one\rtwo");
+    let texts: Vec<String> = fake.posted.lock().unwrap().iter().filter_map(|(_, e)| if let Event::Text(t) = e { Some(t.clone()) } else { None }).collect();
+    assert_eq!(texts, vec!["one\r\ntwo".to_string()]);
+    *fake.value.lock().unwrap() = "one\rtwo".into();
+    let r = w.ok("action.run", act(&epoch, json!(["ax", "session"]), json!({ "action": "set_value", "element": 2, "value": "one\r\ntwo" })));
+    assert_eq!(r["step"]["effect"], json!("changed"), "{r}");
     // an empty value: the text selected and deleted
     w.ok("action.run", act(&epoch, json!(["ax", "session"]), json!({ "action": "set_value", "element": 2, "value": "" })));
     assert_eq!(*fake.value.lock().unwrap(), "");
