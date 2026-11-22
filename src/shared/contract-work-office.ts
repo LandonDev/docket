@@ -76,6 +76,69 @@ export interface TeamsLibrary {
   web: string | null
   /** found under ~/Library/CloudStorage, not added by him */
   found: boolean
+  /** it lies in the Windows VM this host keeps (docs/agents/work-files.md "The Windows VM"): its path is the guest's, and a read wakes the VM */
+  vm?: true
+}
+
+/**
+ * One place a host's Teams files come from, and what stands between it and him: OneDrive's folders on
+ * the host itself (`folders`, a Mac or a PC), or OneDrive in the Windows VM the host keeps (`vm`).
+ * The Files view's empty state and Connections say each one's `state`:
+ *  - `ok`: signed in, its libraries listed (a sleeping VM's from the last time it was awake);
+ *  - `no-onedrive`: no OneDrive folder on this host (not installed, or never signed in);
+ *  - `signed-out`: OneDrive in the VM is not signed in: `work.office.vmSignIn`, then his approval;
+ *  - `no-libraries`: signed in, his own files only: no Teams library is synced there yet;
+ *  - `not-set-up`: the Windows VM is not set up on this host (Settings → Work);
+ *  - `error`: it could not be asked; `detail` says why.
+ */
+export const TEAMS_PLACE_STATES = ['ok', 'no-onedrive', 'signed-out', 'no-libraries', 'not-set-up', 'error'] as const
+export type TeamsPlaceState = (typeof TEAMS_PLACE_STATES)[number]
+export interface TeamsPlace {
+  kind: 'folders' | 'vm'
+  state: TeamsPlaceState
+  /** who OneDrive is signed in as, where the place says */
+  account: string | null
+  detail?: string
+}
+
+/** What `work.office.filesLibraries` answers. `places` is absent from a host on an older build. */
+export interface TeamsLibrariesAnswer {
+  host: string
+  libraries: TeamsLibrary[]
+  roots: TeamsRoot[]
+  off: string[]
+  places?: TeamsPlace[]
+}
+
+/** What `work.office.vmSignIn` answers: the computer whose Take over shows the sign-in, and the address it was opened for. */
+export interface VmSignInAnswer {
+  computer: 'vm:windows'
+  account: string | null
+  /** what is on the VM's screen now, in words for the row */
+  line: string
+}
+
+/**
+ * Office and OneDrive in the Windows VM this host keeps, as last read while it was awake (`at`; null: never
+ * read, and then `office` is null too). Reading it never wakes the VM. `account`: who Office is signed in as;
+ * `licensed`: whether that sign-in gave it a licence (null: Office did not say).
+ */
+export interface VmOfficeStatus {
+  office: { installed: boolean; version: string | null; apps: OfficeApp[]; account: string | null; licensed: boolean | null } | null
+  onedrive: TeamsPlace
+  at: number | null
+}
+
+/**
+ * The same library on two machines (his Mac and the VM both sync it): the name OneDrive gave it, less
+ * what the two layouts write differently (`RecWell-TeamRecWell` on a Mac, `RecWell - TeamRecWell` under
+ * Windows). His own files match his own files; a folder he added matches nothing.
+ */
+export function teamsLibraryKey(l: Pick<TeamsLibrary, 'kind' | 'team' | 'library'>): string | null {
+  if (l.kind === 'folder') return null
+  if (l.kind === 'mine') return 'mine'
+  const name = `${l.team}${l.library && !/^(shared )?documents$/i.test(l.library) ? l.library : ''}`.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+  return name ? `lib:${name}` : null
 }
 
 /** One file or folder. `local`: its bytes are on this disk (false: OneDrive keeps it in the cloud until it is opened). `by`: who last saved it, when the file says. */
@@ -169,7 +232,15 @@ export const OfficeRequestSchemas = [
   request('work.office.filesCopyGet', z.object({ workspaceId: z.string().max(200) })),
   request('work.office.filesCopySet', z.object({ workspaceId: z.string().max(200), on: z.boolean() })),
   /** copies a file from the host `source` names into this thread's attachments here, when its workspace allows it; answers the copy's source */
-  request('work.office.filesCopy', z.object({ sessionId: z.string().max(200), source: CanvasSourceSchema }))
+  request('work.office.filesCopy', z.object({ sessionId: z.string().max(200), source: CanvasSourceSchema })),
+  /**
+   * Brings OneDrive's sign-in up on the Windows VM's screen with his address filled in, so that only his
+   * approval is missing; answers `VmSignInAnswer`. He finishes it in a Take over of `vm:windows`. No agent
+   * may call it (a model caller is refused), and nothing here types a password or a code.
+   */
+  request('work.office.vmSignIn', z.object({ account: z.string().max(320).optional() })),
+  /** → VmOfficeStatus: Office and OneDrive in the Windows VM as last read; never wakes it */
+  request('work.office.vmStatus', z.object({}))
 ] as const
 
 /** A pairing code as TempCode shows it. */
@@ -207,6 +278,8 @@ export const OFFICE_CAPS = {
   'work.office.filesSetRoots': 'local',
   'work.office.filesCopyGet': 'read',
   'work.office.filesCopySet': 'admin',
-  'work.office.filesCopy': 'operate'
+  'work.office.filesCopy': 'operate',
+  'work.office.vmSignIn': 'operate',
+  'work.office.vmStatus': 'read'
 } satisfies CapsOf<typeof OfficeRequestSchemas>
 export const OFFICE_RELAY = {} satisfies RelayOf<typeof OfficeRequestSchemas>
