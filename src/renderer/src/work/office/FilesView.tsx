@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import type { TeamsEntry, TeamsFileKind, TeamsLibrary } from "@shared/contract-work-office";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import type { TeamsEntry, TeamsFileKind, TeamsLibrariesAnswer } from "@shared/contract-work-office";
 import { teamsCanvasOf, teamsWebOf } from "@shared/contract-work-office";
 import type { CanvasItem, ContextChip } from "@shared/work";
 import { ChevronRight, Folder, MoreHorizontal, Search, X } from "../../chrome/icons";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { ItemButton } from "../../components/ui/item";
@@ -18,15 +19,17 @@ import { bridgeNewThread } from "../../lib/macBridge";
 import { refusalWords } from "../../lib/settingsHome";
 import { sessionStore } from "../../lib/tcserver/store";
 import type { WireSessionMeta, WorkspaceMeta } from "../../lib/tcserver/types";
+import { shell } from "../../stores/shell";
 import { workOpenPort } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { Cloud, Doc, File, Media, Pdf, Slides, Table, Video, Volume } from "../icons";
-import { linkIdOfHost, localHostId, workspaceSettings } from "../shell/actions";
+import { allowComputers, linkIdOfHost, localHostId, windowDesktops, workspaceSettings } from "../shell/actions";
+import { openVm, signInOnVm } from "../winvm/signIn";
 import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { playRunner } from "../routines/plays/runOn";
-import { appVerb, crumbsOf, libraryGroups, openWay, placeOf, showsHeading, type ShownLibrary } from "./files";
+import { appVerb, crumbsOf, filesNote, openWay, pathIn, placeGroups, placeOf, rowOf, showsHeading, unreachable, type FilesNote, type HostRead, type PlaceCopy, type PlaceGroup, type PlaceRow, type ShownLibrary } from "./files";
 
 /**
  * The Files view of a Work workspace (docs/agents/work-files.md "The Files view"): the Teams and
@@ -37,9 +40,10 @@ import { appVerb, crumbsOf, libraryGroups, openWay, placeOf, showsHeading, type 
  * menu has the app and the web. A file OneDrive keeps in the cloud downloads first, in its row.
  */
 
+/** A folder: its row's key (one place however many machines hold it) and its folders down from the row's top. */
 interface Place {
-  library: string;
-  folder: string;
+  row: string;
+  parts: string[];
 }
 interface State {
   query: string;
@@ -92,36 +96,49 @@ export function Head({ workspace }: WorkViewProps) {
 }
 
 interface Reach {
-  libraries: ShownLibrary[];
-  /** hosts that did not answer, by name */
-  failed: string[];
+  groups: PlaceGroup[];
+  /** every row, each place once */
+  rows: PlaceRow[];
   copy: boolean;
+  /** why nothing (or not everything) is listed; null: nothing to say */
+  note: FilesNote | null;
 }
 
-/** The hosts this workspace may reach Teams files on: its own, then each desktop it may use. */
-function useReach(workspace: WorkspaceMeta, attempt: number): Reach | { error: string } | null {
-  const [reach, setReach] = useState<Reach | { error: string } | null>(null);
+/** The hosts this workspace may reach Teams files on (its own, then each desktop it may use), and what each said. */
+function useReach(workspace: WorkspaceMeta, attempt: number): Reach | null {
+  const [reach, setReach] = useState<Reach | null>(null);
   useEffect(() => {
     let live = true;
     setReach(null);
     void (async () => {
-      const [settings, local] = await Promise.all([workspaceSettings(workspace).catch(() => null), localHostId()]);
+      const [settings, local, desktops] = await Promise.all([workspaceSettings(workspace).catch(() => null), localHostId(), windowDesktops()]);
       // The workspace's desktops are host ids; the window reaches each through its link ("local" for this machine).
-      const desktops = (settings?.mayUseDesktop ?? []).map((id) => linkIdOfHost(id, local)).filter((id): id is string => id !== null);
-      const hosts = [...new Set([workspace.environmentId, ...desktops])].filter((id) => registry.has(id));
-      const answers = await Promise.allSettled(hosts.map((env) => registry.linkOf(env).request<{ libraries: TeamsLibrary[] }>("work.office.filesLibraries", {})));
+      const allowed = (settings?.mayUseDesktop ?? []).map((id) => linkIdOfHost(id, local)).filter((id): id is string => id !== null);
+      const hosts = [...new Set([workspace.environmentId, ...allowed])].filter((id) => registry.has(id));
+      const answers = await Promise.allSettled(hosts.map((env) => registry.linkOf(env).request<TeamsLibrariesAnswer>("work.office.filesLibraries", {})));
       const copy = await registry
         .linkOf(workspace.environmentId)
         .request<{ on: boolean }>("work.office.filesCopyGet", { workspaceId: workspace.id })
         .then((a) => a.on, () => false);
       if (!live) return;
-      const failed = hosts.filter((_, i) => answers[i]!.status === "rejected");
-      if (hosts.length && failed.length === hosts.length) {
-        const first = answers[0] as PromiseRejectedResult;
-        return setReach({ error: refusalWords(first.reason) || "No host answered." });
-      }
-      const libraries = answers.flatMap((a, i) => (a.status === "fulfilled" ? a.value.libraries.map((l) => ({ ...l, env: hosts[i]! })) : []));
-      setReach({ libraries, failed: failed.map((id) => registry.environment(id)?.name ?? id), copy });
+      const windowsVm = !!settings?.windowsVm;
+      const reads: HostRead[] = hosts.map((env, i) => {
+        const a = answers[i]!;
+        const name = registry.environment(env)?.name ?? env;
+        const desktop = desktops.some((d) => d.link === env);
+        return a.status === "fulfilled" ? { env, name, desktop, answer: a.value } : { env, name, desktop, failed: { words: refusalWords(a.reason) || "No answer.", unreachable: unreachable(a.reason) } };
+      });
+      // A library in the Windows VM is this workspace's only while its VM switch is on.
+      const shown = reads.flatMap((r) => (r.answer?.libraries ?? []).filter((l) => windowsVm || !l.vm).map((l) => ({ ...l, env: r.env })));
+      const placeOk = (l: ShownLibrary): boolean => {
+        const places = reads.find((r) => r.env === l.env)?.answer?.places;
+        return !places || places.some((p) => p.kind === (l.vm ? "vm" : "folders") && p.state === "ok");
+      };
+      const groups = placeGroups(shown, workspace.environmentId, placeOk);
+      const rows = groups.flatMap((g) => g.rows);
+      const own = desktops.find((d) => d.link === workspace.environmentId);
+      const notAllowed = desktops.filter((d) => d !== own && !hosts.includes(d.link)).map((d) => d.name);
+      setReach({ groups, rows, copy, note: filesNote({ workspaceEnv: workspace.environmentId, reads, windowsVm, notAllowed, listed: rows }) });
     })();
     return () => {
       live = false;
@@ -130,28 +147,88 @@ function useReach(workspace: WorkspaceMeta, attempt: number): Reach | { error: s
   return reach;
 }
 
+const FIX_LABEL = { allow: "Allow", retry: "Retry", "sign-in": "Sign in to OneDrive", "open-vm": "Open the Windows VM", settings: "Open Settings" } as const;
+
+/** A note's press: it spins until done; a refusal is one toast. */
+function useFix(workspace: WorkspaceMeta, again: () => void): { busy: boolean; run(fix: NonNullable<FilesNote["fix"]>): Promise<void> } {
+  const [busy, setBusy] = useState(false);
+  const run = async (fix: NonNullable<FilesNote["fix"]>): Promise<void> => {
+    if (fix.kind === "retry") return again();
+    if (fix.kind === "settings") return shell.openSettings("work");
+    if (fix.kind === "open-vm") return openVm(fix.env);
+    setBusy(true);
+    try {
+      if (fix.kind === "allow") {
+        await allowComputers(workspace, { vm: fix.vm });
+        again();
+      } else await signInOnVm(fix.env);
+    } catch (err) {
+      failed(fix.kind === "allow" ? "Not allowed" : "The sign-in did not open", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { busy, run };
+}
+
+/** Nothing listed: the one cause and its press, centred where the list would be. */
+function NoteEmpty({ note, workspace, again }: { note: FilesNote; workspace: WorkspaceMeta; again: () => void }) {
+  const fix = useFix(workspace, again);
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyTitle>{note.title}</EmptyTitle>
+        {note.line ? <EmptyDescription>{note.line}</EmptyDescription> : null}
+      </EmptyHeader>
+      {note.fix ? (
+        <Button size="sm" variant="secondary" disabled={fix.busy} onClick={() => void fix.run(note.fix!)}>
+          <BusyLabel busy={fix.busy} label={FIX_LABEL[note.fix.kind]} />
+        </Button>
+      ) : null}
+    </Empty>
+  );
+}
+
+/** Libraries listed, and a place that needs him: one quiet line under the list, with its press. */
+function NoteLine({ note, workspace, again }: { note: FilesNote; workspace: WorkspaceMeta; again: () => void }) {
+  const fix = useFix(workspace, again);
+  return (
+    <div className="mt-5 flex min-h-7 items-center gap-2 text-xs text-muted-foreground">
+      <span className="min-w-0 truncate">{note.title}</span>
+      {note.fix ? (
+        <Button variant="ghost" size="xs" disabled={fix.busy} onClick={() => void fix.run(note.fix!)}>
+          <BusyLabel busy={fix.busy} label={FIX_LABEL[note.fix.kind]} />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function View(props: WorkViewProps) {
   const { workspace } = props;
   const [attempt, setAttempt] = useState(0);
   const reach = useReach(workspace, attempt);
   const { query, place } = useFilesState(workspace.id);
+  const again = () => setAttempt((n) => n + 1);
   if (!reach) return <Bones />;
-  if ("error" in reach) return <EmptyState title="Files did not load" line={reach.error} action={{ label: "Retry", onClick: () => setAttempt((n) => n + 1) }} />;
-  // A desktop that did not answer is the state line, with Retry; what the others hold is listed under it.
-  const failedLine = reach.failed.length ? <ViewStateLine word={`${reach.failed.join(", ")} did not answer`} onRetry={() => setAttempt((n) => n + 1)} /> : null;
-  // Nothing listed while a host did not answer is not "no Teams files": the line says it, over nothing.
-  if (!reach.libraries.length) return failedLine ?? <EmptyState title="No Teams files" line="Sync a channel from Teams with OneDrive on the Mac." />;
-  const library = place ? reach.libraries.find((l) => l.id === place.library) : undefined;
+  const { note } = reach;
+  // A machine that did not answer is the state line, with Retry, over what the others hold (docs/DESIGN.md "The state line").
+  const stateLine = note?.away ? <ViewStateLine word={note.title} onRetry={again} /> : null;
+  if (!reach.rows.length) return stateLine ?? (note ? <NoteEmpty note={note} workspace={workspace} again={again} /> : null);
+  const row = place ? reach.rows.find((r) => r.key === place.row) : undefined;
   return (
     <>
-      {failedLine}
+      {stateLine}
       <div className="@container/files mx-auto w-full max-w-[880px] px-6 py-5">
       {query.trim() ? (
         <Results {...props} reach={reach} query={query.trim()} />
-      ) : library && place ? (
-        <FolderList {...props} reach={reach} library={library} folder={place.folder} />
+      ) : row && place ? (
+        <FolderList {...props} reach={reach} row={row} parts={place.parts} />
       ) : (
-        <Libraries workspace={workspace} libraries={reach.libraries} />
+        <>
+          <Places workspace={workspace} groups={reach.groups} />
+          {note && !stateLine ? <NoteLine note={note} workspace={workspace} again={again} /> : null}
+        </>
       )}
       </div>
     </>
@@ -171,15 +248,14 @@ function Bones() {
 
 const ROW = `-mx-2 h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap rounded-md py-0 text-[13px] ${ROW_PRESS}`;
 
-function Libraries({ workspace, libraries }: { workspace: WorkspaceMeta; libraries: ShownLibrary[] }) {
-  const groups = useMemo(() => libraryGroups(libraries), [libraries]);
+function Places({ workspace, groups }: { workspace: WorkspaceMeta; groups: PlaceGroup[] }) {
   return (
     <>
       {groups.map((g, i) => (
         <section key={g.name || "other"} className={i ? "mt-5" : undefined}>
           {showsHeading(g) ? <h2 className="mb-1 text-xs font-medium text-muted-foreground">{g.name}</h2> : null}
           {g.rows.map((row) => (
-            <ItemButton key={row.key} size="xs" className={ROW} onClick={() => patch(workspace.id, { place: { library: row.library.id, folder: row.folder } })}>
+            <ItemButton key={row.key} size="xs" className={ROW} onClick={() => patch(workspace.id, { place: { row: row.key, parts: [] } })}>
               <Folder className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate text-foreground">{row.label}</span>
             </ItemButton>
@@ -190,23 +266,39 @@ function Libraries({ workspace, libraries }: { workspace: WorkspaceMeta; librari
   );
 }
 
-/** A host's answer to one read, kept per key; a new key starts from nothing. */
-function useRead<T>(env: string, method: string, params: unknown, key: string): { value?: T; error?: string; retry(): void } {
-  const [state, setState] = useState<{ key: string; value?: T; error?: string }>({ key });
+/** A read of a VM library may wake the VM first. */
+const readMs = (library: ShownLibrary): { timeoutMs?: number } => (library.vm ? { timeoutMs: 120_000 } : {});
+
+/**
+ * A folder read from the first copy of its place whose machine answers, in order, kept per key; a new key starts from
+ * nothing. Every entry comes from that one copy, which is the one the rows open from.
+ */
+function useFolder(row: PlaceRow, parts: readonly string[], key: string): { value?: { entries: TeamsEntry[]; copy: PlaceCopy }; error?: string; retry(): void } {
+  const [state, setState] = useState<{ key: string; value?: { entries: TeamsEntry[]; copy: PlaceCopy }; error?: string }>({ key });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
-    registry
-      .linkOf(env)
-      .request<T>(method, params)
-      .then(
-        (value) => live && setState({ key, value }),
-        (err: unknown) => live && setState({ key, error: refusalWords(err) || "The host did not answer." }),
-      );
+    void (async () => {
+      let first: unknown;
+      for (const copy of row.copies) {
+        try {
+          const { library } = copy;
+          const { entries } = await registry
+            .linkOf(library.env)
+            .request<{ entries: TeamsEntry[] }>("work.office.filesList", { source: { at: "file", host: library.host, path: pathIn(copy.folder, parts) } }, readMs(library));
+          return void (live && setState({ key, value: { entries, copy } }));
+        } catch (err) {
+          first ??= err;
+          // A refusal about the folder itself is the answer; only a machine out of reach sends the read to the next copy.
+          if (!unreachable(err)) break;
+        }
+      }
+      if (live) setState({ key, error: refusalWords(first) || "The host did not answer." });
+    })();
     return () => {
       live = false;
     };
-  }, [env, key, attempt]);
+  }, [key, attempt]);
   const current = state.key === key ? state : { key };
   return { ...current, retry: () => setAttempt((n) => n + 1) };
 }
@@ -216,25 +308,32 @@ type ViewProps = WorkViewProps & { reach: Reach };
 /** A crumb above the current folder: the row text's size, muted, so the current one leads by weight and colour alone. */
 const CRUMB = "text-[13px] text-muted-foreground";
 
-function FolderList(props: ViewProps & { library: ShownLibrary; folder: string }) {
-  const { workspace, library, folder } = props;
-  const listed = useRead<{ entries: TeamsEntry[] }>(library.env, "work.office.filesList", { source: { at: "file", host: library.host, path: folder } }, `${library.env}\u0000${folder}`);
-  const crumbs = crumbsOf(library, folder);
+function FolderList(props: ViewProps & { row: PlaceRow; parts: string[] }) {
+  const { workspace, row, parts } = props;
+  const listed = useFolder(row, parts, `${row.key}\u0000${parts.join("\u0000")}`);
+  const crumbs = crumbsOf(row, parts);
   return (
     <>
       <nav aria-label="Folder" className="-ms-2 mb-3 flex min-w-0 items-center gap-0.5">
         <Button variant="ghost" size="xs" className={CRUMB} onClick={() => patch(workspace.id, { place: null })}>
           Files
         </Button>
+        {/* A team is no place of its own across machines: it names the row, and Files goes back to its rows. */}
+        {row.team && row.team !== row.label ? (
+          <span className="flex min-w-0 items-center gap-0.5">
+            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className={`truncate px-2 ${CRUMB}`}>{row.team}</span>
+          </span>
+        ) : null}
         {crumbs.map((crumb, i) => (
-          <span key={crumb.folder} className="flex min-w-0 items-center gap-0.5">
+          <span key={crumb.parts.join("/")} className="flex min-w-0 items-center gap-0.5">
             <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
             {i === crumbs.length - 1 ? (
               <span aria-current="page" className="truncate px-2 text-[13px] font-medium text-foreground">
                 {crumb.label}
               </span>
             ) : (
-              <Button variant="ghost" size="xs" className={`min-w-0 truncate ${CRUMB}`} onClick={() => patch(workspace.id, { place: { library: library.id, folder: crumb.folder } })}>
+              <Button variant="ghost" size="xs" className={`min-w-0 truncate ${CRUMB}`} onClick={() => patch(workspace.id, { place: { row: row.key, parts: crumb.parts } })}>
                 {crumb.label}
               </Button>
             )}
@@ -248,7 +347,7 @@ function FolderList(props: ViewProps & { library: ShownLibrary; folder: string }
       ) : !listed.value.entries.length ? (
         <EmptyState title="No files" />
       ) : (
-        <Entries {...props} rows={listed.value.entries.map((entry) => ({ entry, library }))} />
+        <Entries {...props} rows={listed.value.entries.map((entry) => ({ entry, library: listed.value!.copy.library, at: { row, parts: [...parts, entry.name] } }))} />
       )}
     </>
   );
@@ -262,16 +361,24 @@ function Results(props: ViewProps & { query: string }) {
     const timer = window.setTimeout(() => setAsked(query), 250);
     return () => window.clearTimeout(timer);
   }, [query]);
-  const envs = [...new Set(reach.libraries.map((l) => l.env))];
-  const [found, setFound] = useState<{ key: string; rows: { entry: TeamsEntry; library: ShownLibrary }[]; more: boolean; error?: string } | null>(null);
+  const envs = [...new Set(reach.rows.flatMap((r) => r.copies.map((c) => c.library.env)))];
+  const [found, setFound] = useState<{ key: string; rows: Row[]; more: boolean; error?: string } | null>(null);
   const [round, setRound] = useState(0);
   useEffect(() => {
     let live = true;
     void Promise.allSettled(envs.map((env) => registry.linkOf(env).request<{ entries: TeamsEntry[]; more: boolean }>("work.office.filesSearch", { query: asked }))).then((answers) => {
       if (!live) return;
-      const rows = answers.flatMap((a) => (a.status === "fulfilled" ? a.value.entries : [])).flatMap((entry) => {
-        const library = reach.libraries.find((l) => l.id === entry.library);
-        return library ? [{ entry, library }] : [];
+      // A place's hits come from one copy, the first whose machine answered, so no file is listed twice.
+      const answered = new Set(envs.filter((_, i) => answers[i]!.status === "fulfilled"));
+      const seen = new Set<string>();
+      const rows = answers.flatMap((a) => (a.status === "fulfilled" ? a.value.entries : [])).flatMap((entry): Row[] => {
+        const at = rowOf(reach.rows, entry.library, entry.path);
+        if (!at) return [];
+        if (at.row.copies.find((c) => answered.has(c.library.env)) !== at.copy) return [];
+        const id = `${at.row.key}\u0000${at.parts.join("\u0000")}`;
+        if (seen.has(id)) return [];
+        seen.add(id);
+        return [{ entry, library: at.copy.library, at: { row: at.row, parts: at.parts } }];
       });
       const error = answers.every((a) => a.status === "rejected") ? refusalWords((answers[0] as PromiseRejectedResult).reason) || "No host answered." : undefined;
       setFound({ key: asked, rows: rows.sort((a, b) => b.entry.modified - a.entry.modified), more: answers.some((a) => a.status === "fulfilled" && a.value.more), error });
@@ -304,16 +411,18 @@ function Results(props: ViewProps & { query: string }) {
   );
 }
 
+/** A file or folder as listed: the copy it was read from, and its place (its row and its folders below the row's top). */
+type Row = { entry: TeamsEntry; library: ShownLibrary; at: { row: PlaceRow; parts: string[] } };
 type Busy = { key: string; word: string } | null;
 const rowKey = (library: ShownLibrary, entry: TeamsEntry): string => `${library.env}\u0000${entry.path}`;
 
-function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownLibrary }[]; places?: boolean }) {
+function Entries(props: ViewProps & { rows: Row[]; places?: boolean }) {
   const { rows, places, workspace } = props;
   const [busy, setBusy] = useState<Busy>(null);
   const open = useOpener(props, setBusy);
   return (
     <div role="list">
-      {rows.map(({ entry, library }) => {
+      {rows.map(({ entry, library, at }) => {
         const Glyph = GLYPH[entry.kind];
         const mine = busy?.key === rowKey(library, entry);
         const folder = entry.kind === "folder";
@@ -323,12 +432,12 @@ function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownL
               size="xs"
               className={`${ROW} pe-10`}
               disabled={!!busy}
-              onClick={() => (folder ? patch(workspace.id, { query: "", place: { library: library.id, folder: entry.path } }) : void open.open(entry, library))}
+              onClick={() => (folder ? patch(workspace.id, { query: "", place: { row: at.row.key, parts: at.parts } }) : void open.open(entry, library))}
             >
               <Glyph className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 truncate text-foreground">{entry.name}</span>
               {entry.local ? null : <Cloud aria-label="In the cloud" className="size-3 shrink-0 text-muted-foreground" />}
-              {places ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{placeOf(library, entry.path)}</span> : <span className="flex-1" />}
+              {places ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{placeOf(at.row, at.parts)}</span> : <span className="flex-1" />}
               {mine ? (
                 <span className="flex w-28 shrink-0 items-center justify-end gap-1.5 text-xs text-muted-foreground">
                   <Spinner className="size-3" />
@@ -352,7 +461,7 @@ function Entries(props: ViewProps & { rows: { entry: TeamsEntry; library: ShownL
                     <DropdownMenuItem onClick={() => void open.app(entry, library)}>{appVerb(entry)}</DropdownMenuItem>
                     {library.web ? <DropdownMenuItem onClick={() => window.open(teamsWebOf(library, entry.path)!, "_blank")}>Open on the web</DropdownMenuItem> : null}
                     {/* A play's thread reads the file where it lies: only one on the workspace's own host. */}
-                    {library.env === workspace.environmentId ? <RunPlayItem chip={{ kind: "item", label: entry.name, ref: { at: "file", host: library.host, path: entry.path } }} /> : null}
+                    {library.env === workspace.environmentId && !library.vm ? <RunPlayItem chip={{ kind: "item", label: entry.name, ref: { at: "file", host: library.host, path: entry.path } }} /> : null}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -387,13 +496,13 @@ function useOpener({ workspace, reach }: ViewProps, setBusy: (busy: Busy) => voi
   const fetched = async (entry: TeamsEntry, library: ShownLibrary): Promise<TeamsEntry> => {
     if (entry.local) return entry;
     setBusy({ key: rowKey(library, entry), word: "Downloading…" });
-    return (await registry.linkOf(library.env).request<{ entry: TeamsEntry }>("work.office.filesFetch", { source: source(library, entry) })).entry;
+    return (await registry.linkOf(library.env).request<{ entry: TeamsEntry }>("work.office.filesFetch", { source: source(library, entry) }, library.vm ? { timeoutMs: 660_000 } : {})).entry;
   };
   const app = async (entry: TeamsEntry, library: ShownLibrary): Promise<void> => {
     try {
       // Its app downloads the file itself.
       setBusy({ key: rowKey(library, entry), word: "Opening…" });
-      await registry.linkOf(library.env).request("work.office.filesOpen", { source: source(library, entry) });
+      await registry.linkOf(library.env).request("work.office.filesOpen", { source: source(library, entry) }, readMs(library));
     } catch (err) {
       failed(`${entry.name} did not open`, err);
     } finally {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TeamsEntry, TeamsLibrary } from "@shared/contract-work-office";
+import type { TeamsEntry, TeamsLibrary, TeamsPlace } from "@shared/contract-work-office";
 import type { WorkViewProps } from "../views/registry";
 
 /** The Files view over a fake host link: libraries, a folder, a cloud-only file opening in a new thread's canvas. */
@@ -14,10 +14,22 @@ let macDown = false;
 let searchFails = false;
 let searchNone = false;
 let fetchGate: Promise<void> = Promise.resolve();
+/** the workspace's own Work settings, as the host holds them */
+let settings: { mayUseDesktop: string[]; windowsVm?: boolean } = { mayUseDesktop: ["env_mac"] };
+/** what the box says of its places and the VM's libraries; null: a host on an older build, with no places */
+let boxPlaces: TeamsPlace[] | null = null;
+let vmLibs: TeamsLibrary[] = [];
+let macPlaces: TeamsPlace[] | null = null;
+/** the Mac's read of a folder fails as a machine out of reach */
+let macListDown = false;
+const signIns: string[] = [];
 const opened: string[] = [];
 const T = "/c/S/Purdue Esports - Documents";
 const LIB: TeamsLibrary = { id: "env_mac~1", host: "env_mac", path: T, team: "Purdue Esports", library: null, tenant: "Purdue University", kind: "channels", channels: ["General"], web: "https://p.sharepoint.com/sites/e/Shared Documents", found: true };
 const entry = (name: string, over: Partial<TeamsEntry> = {}): TeamsEntry => ({ name, path: `${T}/General/${name}`, library: LIB.id, kind: name.endsWith(".pdf") ? "pdf" : name.endsWith(".xlsx") ? "workbook" : "folder", size: 10, modified: Date.now(), local: true, by: null, ...over });
+/** The RecWell site's Documents, whole, in the VM: the Mac syncs one of its folders by itself. */
+const VM_LIB: TeamsLibrary = { id: "env_box~9", host: "env_box", path: "C:\\Users\\tcuser\\Purdue University\\RecWell - Documents", team: "RecWell", library: null, tenant: "Purdue University", kind: "channels", channels: ["Team RecWell", "Sport Programs"], web: null, found: true, vm: true };
+const MAC_TEAM: TeamsLibrary = { id: "env_mac~7", host: "env_mac", path: "/c/OneDrive-purdue.edu-RecWell-TeamRecWell", team: "RecWell-TeamRecWell", library: null, tenant: "purdue.edu", kind: "library", channels: [], web: null, found: true };
 const ENTRIES = [entry("Budgets"), entry("Budget.xlsx", { by: "Pat Lee" }), entry("Report.pdf", { local: false })];
 
 const answer = (env: string, method: string, params: unknown): Promise<unknown> => {
@@ -25,11 +37,24 @@ const answer = (env: string, method: string, params: unknown): Promise<unknown> 
   switch (method) {
     case "work.office.filesLibraries":
       if (macDown && env === "local") return Promise.reject(new Error("not connected"));
-      return Promise.resolve({ libraries: env === "local" && !noLibs ? [LIB] : [], roots: [], off: [] });
+      if (env === "box") return Promise.resolve({ host: "env_box", libraries: vmLibs, roots: [], off: [], ...(boxPlaces ? { places: boxPlaces } : {}) });
+      return Promise.resolve({ host: "env_mac", libraries: !noLibs ? [LIB] : [], roots: [], off: [], ...(macPlaces ? { places: macPlaces } : {}) });
+    case "work.workspace.get":
+      return Promise.resolve(settings);
+    case "work.workspace.set":
+      settings = { ...settings, ...(params as { patch: typeof settings }).patch };
+      return Promise.resolve(settings);
+    case "work.office.vmSignIn":
+      signIns.push(env);
+      return Promise.resolve({ computer: "vm:windows", account: "landon@purdue.edu", line: "Waiting for your approval" });
     case "work.office.filesCopyGet":
       return Promise.resolve({ on: copyOn });
-    case "work.office.filesList":
+    case "work.office.filesList": {
+      const path = (params as { source: { path: string } }).source.path;
+      if (env === "local" && macListDown) return Promise.reject(new Error("not connected"));
+      if (path.startsWith("C:\\")) return Promise.resolve({ entries: [{ ...entry("From the VM.pdf"), path: `${path}\\From the VM.pdf`, library: VM_LIB.id }] });
       return Promise.resolve({ entries: ENTRIES });
+    }
     case "work.office.filesSearch":
       if (searchFails) return Promise.reject(new Error("The host did not answer"));
       if (searchNone) return Promise.resolve({ entries: [], more: false });
@@ -55,17 +80,24 @@ vi.mock("../../lib/connection", () => ({
   LOCAL_ENVIRONMENT_ID: "local",
   registry: {
     has: (id: string) => id === "local" || id === "box",
-    link: (id: string) => (id === "local" ? {} : undefined),
+    link: (id: string) => (id === "local" ? { request: () => Promise.resolve({ environmentId: "env_mac" }) } : undefined),
     environment: (id: string) => ({ id, name: id === "local" ? "This Mac" : "The box" }),
+    environments: () => [
+      { id: "local", name: "This Mac", platform: "darwin" },
+      { id: "box", name: "The box", platform: "linux" },
+    ],
     linkOf: (env: string) => ({ environmentId: env, request: (method: string, params: unknown) => answer(env, method, params) }),
   },
 }));
 // The workspace's desktops are host ids: this Mac is env_mac on every host and "local" in its own window.
 vi.mock("../shell/actions", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  workspaceSettings: () => Promise.resolve({ mayUseDesktop: ["env_mac"] }),
   localHostId: () => Promise.resolve("env_mac"),
 }));
+const stage: unknown[] = [];
+let computersOpened = 0;
+vi.mock("../../lib/popOut", () => ({ requestStage: (c: unknown) => stage.push(c) }));
+vi.mock("../../stores/shell", () => ({ shell: { openComputers: () => void computersOpened++, openSettings: vi.fn() } }));
 vi.mock("../../lib/tcserver/store", () => ({ sessionStore: { adopt: vi.fn() } }));
 vi.mock("../../lib/macBridge", () => ({ bridgeNewThread: () => Promise.resolve() }));
 vi.mock("../../lib/workSwitch", () => ({ workOpenPort: { get: () => (id: string) => opened.push(id) }, workPlayPort: { get: () => null }, workViewNow: () => null }));
@@ -85,6 +117,14 @@ beforeEach(() => {
   searchFails = false;
   searchNone = false;
   fetchGate = Promise.resolve();
+  settings = { mayUseDesktop: ["env_mac"] };
+  boxPlaces = null;
+  macPlaces = null;
+  vmLibs = [];
+  macListDown = false;
+  signIns.length = 0;
+  stage.length = 0;
+  computersOpened = 0;
 });
 afterEach(cleanup);
 
@@ -97,7 +137,7 @@ const openGeneral = async (p: WorkViewProps) => {
 describe("the Files view", () => {
   it("lists a team's channels, then a folder with who and whether a file is downloaded", async () => {
     await openGeneral(props("local"));
-    expect(screen.getByRole("button", { name: "Purdue Esports" })).toBeTruthy();
+    expect(screen.getByText("Purdue Esports")).toBeTruthy();
     expect(screen.getByText("General", { selector: "[aria-current]" })).toBeTruthy();
     expect(screen.getByText("Pat Lee")).toBeTruthy();
     expect(screen.getAllByLabelText("In the cloud")).toHaveLength(1);
@@ -188,5 +228,98 @@ describe("the Files view", () => {
     fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "x" } });
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
     expect((screen.getByLabelText("Search files") as HTMLInputElement).value).toBe("");
+  });
+  it("a workspace that may use no computer yet says so, and one press lets it use his desktops and the VM, then lists", async () => {
+    settings = { mayUseDesktop: [] };
+    boxPlaces = [{ kind: "vm", state: "ok", account: "landon@purdue.edu" }];
+    await act(async () => void render(<View {...props("box")} />));
+    expect(await screen.findByText("This workspace can't use This Mac and the Windows VM yet")).toBeTruthy();
+    expect(screen.queryByText(/Sync a channel/)).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Allow" })));
+    expect(settings).toEqual({ mayUseDesktop: ["env_mac"], windowsVm: true });
+    expect(await screen.findByText("Purdue Esports")).toBeTruthy();
+  });
+
+  it("with the Mac the only place and nothing synced there, gives the old advice and names the Mac", async () => {
+    noLibs = true;
+    macPlaces = [{ kind: "folders", state: "no-libraries", account: "landon@purdue.edu" }];
+    await act(async () => void render(<View {...props("box")} />));
+    expect(await screen.findByText("No Teams files on This Mac")).toBeTruthy();
+    expect(screen.getByText("Sync a channel from Teams with OneDrive there.")).toBeTruthy();
+  });
+
+  it("with OneDrive signed out in the VM and nothing else, offers its sign-in, then the Computers page on the VM", async () => {
+    settings = { mayUseDesktop: [], windowsVm: true };
+    boxPlaces = [{ kind: "vm", state: "signed-out", account: null }];
+    await act(async () => void render(<View {...props("box")} />));
+    expect(await screen.findByText("OneDrive on the Windows VM is signed out")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Sign in to OneDrive" })));
+    expect(signIns).toEqual(["box"]);
+    expect(stage).toEqual([{ host: "box", threadId: "vm:windows" }]);
+    expect(computersOpened).toBe(1);
+  });
+
+  it("with the Mac listing and the VM signed out, lists as usual with one quiet line naming the fix", async () => {
+    settings = { mayUseDesktop: ["env_mac"], windowsVm: true };
+    boxPlaces = [{ kind: "vm", state: "signed-out", account: null }];
+    await act(async () => void render(<View {...props("box")} />));
+    expect(await screen.findByText("Purdue Esports")).toBeTruthy();
+    expect(screen.getByText("OneDrive on the Windows VM is signed out")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign in to OneDrive" })).toBeTruthy();
+  });
+
+  it("shows a folder the Mac and the VM both hold once, under the VM's team, and reads it from the VM first", async () => {
+    settings = { mayUseDesktop: ["env_mac"], windowsVm: true };
+    boxPlaces = [{ kind: "vm", state: "ok", account: "landon@purdue.edu" }];
+    vmLibs = [VM_LIB];
+    noLibs = false;
+    const LIB_BEFORE = { ...LIB };
+    Object.assign(LIB, MAC_TEAM);
+    try {
+      await act(async () => void render(<View {...props("box")} />));
+      expect(await screen.findByText("RecWell")).toBeTruthy();
+      expect(screen.getAllByRole("button", { name: "Team RecWell" })).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Sport Programs" })).toBeTruthy();
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Team RecWell" })));
+      expect(await screen.findByText("From the VM.pdf")).toBeTruthy();
+      expect(calls.filter((c) => c.method === "work.office.filesList").map((c) => [c.env, (c.params as { source: { path: string } }).source.path])).toEqual([["box", `${VM_LIB.path}\\Team RecWell`]]);
+    } finally {
+      Object.assign(LIB, LIB_BEFORE);
+    }
+  });
+
+  it("reads a folder from the next copy, at the same place, when the first machine is out of reach, and never a VM library while its switch is off", async () => {
+    settings = { mayUseDesktop: ["env_mac"], windowsVm: false };
+    boxPlaces = [{ kind: "vm", state: "ok", account: "landon@purdue.edu" }];
+    vmLibs = [VM_LIB];
+    await act(async () => void render(<View {...props("box")} />));
+    expect(await screen.findByText("Purdue Esports")).toBeTruthy();
+    expect(screen.queryByText("RecWell")).toBeNull();
+    cleanup();
+    // Mac out of reach for a read: a place both hold is read from the VM at the same folder.
+    settings = { mayUseDesktop: ["env_mac"], windowsVm: true };
+    const LIB_BEFORE = { ...LIB };
+    Object.assign(LIB, MAC_TEAM);
+    boxPlaces = [{ kind: "vm", state: "error", account: null, detail: "asleep" }];
+    macListDown = true;
+    try {
+      await act(async () => void render(<View {...props("box")} />));
+      await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Team RecWell" })));
+      expect(await screen.findByText("From the VM.pdf")).toBeTruthy();
+      expect(calls.filter((c) => c.method === "work.office.filesList").map((c) => c.env)).toEqual(["local", "box"]);
+    } finally {
+      Object.assign(LIB, LIB_BEFORE);
+    }
+  });
+
+  it("opens a file in the VM in its app there, or as a copy he allowed: never in the canvas on its own host", async () => {
+    settings = { mayUseDesktop: [], windowsVm: true };
+    boxPlaces = [{ kind: "vm", state: "ok", account: "landon@purdue.edu" }];
+    vmLibs = [VM_LIB];
+    await act(async () => void render(<View {...props("box")} />));
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Team RecWell" })));
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: /^From the VM\.pdf/ })));
+    expect(calls.filter((c) => c.method === "work.office.filesOpen").map((c) => c.env)).toEqual(["box"]);
+    expect(calls.some((c) => c.method === "session.create")).toBe(false);
   });
 });

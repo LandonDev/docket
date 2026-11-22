@@ -141,6 +141,9 @@ export function teamsLibraryKey(l: Pick<TeamsLibrary, 'kind' | 'team' | 'library
   return name ? `lib:${name}` : null
 }
 
+/** One place two machines may both hold: a team or site and a folder or library of it, as either OneDrive layout names it ("RecWell-TeamRecWell" on a Mac is "RecWell" + "Team RecWell" under Windows). */
+export const teamsPlaceKey = (team: string, label = ''): string => `${team}${/^(shared )?documents$/i.test(label) ? '' : label}`.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+
 /** One file or folder. `local`: its bytes are on this disk (false: OneDrive keeps it in the cloud until it is opened). `by`: who last saved it, when the file says. */
 export interface TeamsEntry {
   name: string

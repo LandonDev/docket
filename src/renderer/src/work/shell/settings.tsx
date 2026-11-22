@@ -26,7 +26,7 @@ import { WinvmSection, WinvmWorkspaceRow } from "../winvm/WinvmSection";
 import { HouseRules } from "../rules/HouseRules";
 import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
 import { WaitingSection } from "../mail/WaitingSection";
-import { hostIdOfLink, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
+import { hostIdOfLink, isDesktop, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
 /**
@@ -229,9 +229,6 @@ export function keyLine(key: LifeosKeyState | undefined): { line: string; failed
   if (key.state === "elsewhere") return { line: "Its key is made on the host that holds its add-ons" };
   return { line: key.error ?? "Its key could not be made", failed: true };
 }
-
-/** The hosts whose desktop a workspace's threads may use: the Macs and Windows machines this window knows. */
-const isDesktop = (platform: string | undefined): boolean => platform === "darwin" || platform === "win32";
 
 /**
  * A Work workspace's own page (`ws:<id>`): its sector (set when it was
