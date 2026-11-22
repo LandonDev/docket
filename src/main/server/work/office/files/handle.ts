@@ -14,7 +14,7 @@ import { NOT_SET_UP } from '../../winvm/keeper'
 import { isGuestPath, missingLibraries, refreshVm, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
 import { vmAllowed, vmKey, vmState } from '../vm/office'
 import { vmCall } from '../vm/link'
-import { SIGN_IN_LINES, walkSignIn } from '../vm/signin'
+import { OFFICE_SIGN_IN_LINES, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn } from '../vm/signin'
 import type { TeamsLibrariesAnswer, TeamsPlace, VmSignInAnswer, VmSyncLibrary } from '@shared/contract-work-office'
 
 /**
@@ -226,8 +226,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
         // OneDrive is done; a fresh Office asks for its own sign-in in the first app he opens, so Word is opened for it.
         const office = stored!.status.office
         if (office.installed && office.licensed !== true) {
-          await vmCall('office.start', {}, { signal })
-          return handled({ computer: 'vm:windows', account: signedIn, line: 'Word is open on the Windows VM: sign in to Office there once.' } satisfies VmSignInAnswer)
+          const reached = await walkOfficeSignIn({ call: vmCall, ...(d.signInWaits ? { waits: d.signInWaits, sleep: async () => {} } : {}) })
+          return handled({ computer: 'vm:windows', account: signedIn, line: OFFICE_SIGN_IN_LINES[reached] } satisfies VmSignInAnswer)
         }
         return handled({ computer: 'vm:windows', account: signedIn, line: `The Windows VM is signed in as ${signedIn}.` } satisfies VmSignInAnswer)
       }

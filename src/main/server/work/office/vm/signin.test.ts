@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ANOTHER_WAY, APPROVE, SIGN_IN_LINES, walkSignIn } from './signin'
+import { ANOTHER_WAY, APPROVE, OFFICE_SIGN_IN_LINES, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn } from './signin'
 
 /** The walk to his phone's number over a fake screen: what is on it after each press, and what is pressed. */
 
@@ -66,5 +66,19 @@ describe("OneDrive's sign-in, walked to his phone", () => {
     const s = screen({ start: [], after: { 'Sign in': [ANOTHER_WAY], [ANOTHER_WAY]: [APPROVE], [APPROVE]: [] } })
     await walkSignIn('him@example.edu', s.deps)
     expect(new Set(s.calls)).toEqual(new Set(['ui.seen', 'onedrive.signin', 'ui.press']))
+  })
+})
+
+describe("Office's sign-in, after OneDrive's", () => {
+  it("starts Word and presses its title bar's Sign in, which opens Microsoft's window", async () => {
+    const calls: string[] = []
+    let tries = 0
+    const reached = await walkOfficeSignIn({ call: async (verb) => (calls.push(verb), verb === 'ui.press' && ++tries === 3 ? 'Sign in' : null), sleep: async () => {}, waits: { first: 3, page: 1, list: 1 } })
+    expect(reached).toBe('window')
+    expect(calls).toEqual(['office.start', 'ui.press', 'ui.press', 'ui.press'])
+    expect(OFFICE_SIGN_IN_LINES.window).toMatch(/finish it there/)
+  })
+  it('leaves Word open and says what to press when the button never shows', async () => {
+    expect(await walkOfficeSignIn({ call: async () => null, sleep: async () => {}, waits: { first: 1, page: 1, list: 1 } })).toBe('word')
   })
 })

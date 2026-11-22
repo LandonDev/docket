@@ -69,3 +69,22 @@ export async function walkSignIn(email: string | null, d: SignInDeps): Promise<S
   }
   return (await press(APPROVE)) ? 'number' : 'choose'
 }
+
+/**
+ * Office's own sign-in, once OneDrive is done: Word is started as he would start it and its title bar's
+ * Sign in pressed, which opens Microsoft's sign-in window. What that window asks is his.
+ */
+export async function walkOfficeSignIn(d: Pick<SignInDeps, 'call' | 'sleep' | 'waits'>): Promise<'window' | 'word'> {
+  const sleep = d.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  await d.call('office.start', {}, { timeoutMs: 30_000 })
+  for (let i = 0; i < (d.waits?.first ?? 12) + 8; i++) {
+    await sleep(1000)
+    if (await d.call('ui.press', { names: [SIGN_IN] }, { timeoutMs: 20_000 }).catch(() => null)) return 'window'
+  }
+  return 'word'
+}
+
+export const OFFICE_SIGN_IN_LINES = {
+  window: "Office's sign-in is open on the Windows VM: finish it there.",
+  word: 'Word is open on the Windows VM: press Sign in at the top of its window.'
+} as const

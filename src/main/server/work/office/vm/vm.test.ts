@@ -431,3 +431,41 @@ describe('what was kept', () => {
     writeFileSync(join(base, 'x', 'ok'), '1')
   })
 })
+
+describe('his sign-in', () => {
+  const person = window
+  it('no thread may ask for it, and a host with no VM says so', async () => {
+    await expect(call('work.office.vmSignIn', {}, { kind: 'model', caps: [], sessionId: 's1' })).rejects.toThrow('Only the owner')
+    vm = { state: 'none', cannot: null }
+    await expect(call('work.office.vmSignIn', {}, person)).rejects.toThrow('not set up')
+  })
+
+  it("walks OneDrive's sign-in with the address Outlook here is signed in as, and says where it stopped", async () => {
+    guest.account = null
+    const asked: { verb: string; args: unknown }[] = []
+    const base = guest.call
+    setVmCall(async (verb, args, opts) => {
+      if (verb.startsWith('ui.') || verb === 'onedrive.signin') {
+        asked.push({ verb, args })
+        return verb === 'ui.seen' ? 'Approve a request on my Microsoft Authenticator app' : verb === 'ui.press' ? ((args as { names: string[] }).names[0] ?? null) : null
+      }
+      return base(verb, args, opts)
+    })
+    const answer = (await call('work.office.vmSignIn', { account: 'him@purdue.edu' }, person)) as { computer: string; account: string; line: string }
+    expect(answer).toEqual({ computer: 'vm:windows', account: 'him@purdue.edu', line: "A number is on the Windows VM's screen: enter it in Microsoft Authenticator on your phone." })
+    expect(asked.at(-1)).toEqual({ verb: 'ui.press', args: { names: ['Approve a request on my Microsoft Authenticator app'] } })
+  })
+
+  it('with OneDrive signed in and Office not licensed, opens Word for its sign-in; with both done, says who', async () => {
+    const asked: string[] = []
+    const base = guest.call
+    setVmCall(async (verb, args, opts) => (verb === 'office.start' || verb.startsWith('ui.') ? (asked.push(verb), verb === 'ui.press' ? 'Sign in' : null) : base(verb, args, opts)))
+    module.handle!({ id: '1', method: 'work.office.filesLibraries', params: {} } as unknown as ClientRequest, box, person)
+    const first = (await call('work.office.vmSignIn', {}, person)) as { line: string }
+    expect(asked[0]).toBe('office.start')
+    expect(first.line).toMatch(/Office's sign-in is open/)
+    guest.office = { ...guest.office, licensed: true, account: 'him@purdue.edu' }
+    const done = (await call('work.office.vmSignIn', {}, person)) as { line: string }
+    expect(done.line).toBe('The Windows VM is signed in as him@purdue.edu.')
+  })
+})
