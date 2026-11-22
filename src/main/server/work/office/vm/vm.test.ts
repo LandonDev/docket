@@ -7,7 +7,7 @@ import type { ClientRequest } from '@shared/contract'
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsLibrary, VmOfficeStatus } from '@shared/contract-work-office'
 import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../../modules'
 import { FakeOffice } from '../fake'
-import { copyDirOf } from '../files/handle'
+import { copyDirOf, setSignInPace } from '../files/handle'
 import { setCloudDir } from '../files/library'
 import { teamsTools, twinOf } from '../files/tools'
 import { office as module, setCarrier } from '../index'
@@ -135,6 +135,7 @@ beforeEach(() => {
   setVmCall(guest.call)
   vm = { state: 'awake', cannot: null }
   setVmState(() => vm)
+  setSignInPace({ first: 2, page: 2, list: 2 })
   setCloudDir(() => join(base, 'no-cloud'))
   setCarrier(() => new FakeOffice())
   forgetAsked()
@@ -144,6 +145,7 @@ beforeEach(() => {
   box = { db, host: 'env_box', dataDir: join(base, 'data'), log: () => {}, reaches: () => false, scopeOf: () => scope, settings: { workspace: () => settings } } as unknown as WorkCtx
 })
 afterEach(() => {
+  setSignInPace(null)
   setVmCall(null)
   setVmState(null)
   rmSync(base, { recursive: true, force: true })

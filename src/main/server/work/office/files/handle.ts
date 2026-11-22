@@ -35,12 +35,22 @@ export interface FilesDeps {
   /** opens an Office file in its app in the Windows VM; absent where the pillar has no VM carrier (a test) */
   vmOpenOffice?: (app: 'excel' | 'word' | 'powerpoint', path: string) => Promise<void>
   ownAccount?: () => string | null
-  /** a test's short waits for the sign-in walk */
-  signInWaits?: { first: number; page: number; list: number }
 }
 
-/** One watch of a sign-in at a time. */
+/** A test's short waits for the sign-in walk; with them set the walk sleeps no time and nothing follows it. */
+let pace: { first: number; page: number; list: number } | null = null
+export const setSignInPace = (waits: { first: number; page: number; list: number } | null): void => void (pace = waits)
+
+/** One watch of a sign-in at a time (vm/signin.ts `followSignIn`); none under a test's pace. */
 let following = false
+function follow(ctx: WorkCtx, account: () => Promise<string | null>, what: string): void {
+  if (following || pace) return
+  following = true
+  void followSignIn({ call: vmCall, account })
+    .then((end) => ctx.log(`office: the Windows VM's ${what} sign-in ${end === 'signed-in' ? 'went through' : 'was not finished in six minutes'}`))
+    .catch((err) => ctx.log(`office: following the sign-in failed: ${err instanceof Error ? err.message : String(err)}`))
+    .finally(() => (following = false))
+}
 
 /** How fresh the VM's kept status must be for a list to use it without asking an awake machine again. */
 const VM_FRESH_MS = 15_000
@@ -229,22 +239,17 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
         // OneDrive is done; a fresh Office asks for its own sign-in in the first app he opens, so Word is opened for it.
         const office = stored!.status.office
         if (office.installed && office.licensed !== true) {
-          const reached = await walkOfficeSignIn({ call: vmCall, ...(d.signInWaits ? { waits: d.signInWaits, sleep: async () => {} } : {}) })
+          const reached = await walkOfficeSignIn({ call: vmCall, ...(pace ? { waits: pace, sleep: async () => {} } : {}) })
+          follow(ctx, async () => (await refreshVm(ctx.db, { wake: false }))?.status.office.account ?? null, 'Office')
           return handled({ computer: 'vm:windows', account: signedIn, line: OFFICE_SIGN_IN_LINES[reached] } satisfies VmSignInAnswer)
         }
         return handled({ computer: 'vm:windows', account: signedIn, line: `The Windows VM is signed in as ${signedIn}.` } satisfies VmSignInAnswer)
       }
       const account = (p.account as string | undefined) ?? d.ownAccount?.() ?? stored?.status.office.account ?? null
       // Walked to the one step that is his: the number for his phone. Nothing here types a password or a code.
-      const reached = await walkSignIn(account, { call: vmCall, key: vmKey, ...(d.signInWaits ? { waits: d.signInWaits, sleep: async () => {} } : {}) })
+      const reached = await walkSignIn(account, { call: vmCall, key: vmKey, ...(pace ? { waits: pace, sleep: async () => {} } : {}) })
       // While he answers on his phone the host answers what Microsoft asks next, so his one approval is enough.
-      if ((reached === 'number' || reached === 'pending') && !following && !d.signInWaits) {
-        following = true
-        void followSignIn({ call: vmCall, account: async () => (await refreshVm(ctx.db, { wake: false }))?.status.onedrive.account ?? null })
-          .then((end) => ctx.log(`office: the Windows VM's OneDrive sign-in ${end === 'signed-in' ? 'went through' : 'was not finished in six minutes'}`))
-          .catch((err) => ctx.log(`office: following the sign-in failed: ${err instanceof Error ? err.message : String(err)}`))
-          .finally(() => (following = false))
-      }
+      if (reached === 'number' || reached === 'pending') follow(ctx, async () => (await refreshVm(ctx.db, { wake: false }))?.status.onedrive.account ?? null, 'OneDrive')
       return handled({ computer: 'vm:windows', account, line: SIGN_IN_LINES[reached] } satisfies VmSignInAnswer)
     }
     case 'work.office.vmSync': {

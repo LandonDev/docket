@@ -125,7 +125,7 @@ export function knockHelper(socket: string, token: string, timeoutMs = 5000): Pr
 export interface HelperKeeper {
   door(): Promise<{ socket: string; token: string }>
   state(): WinvmState
-  admin(script: string): Promise<string>
+  admin(script: string, timeoutMs?: number): Promise<string>
   touch(): void
 }
 
@@ -143,6 +143,8 @@ export interface HelperDoorDeps {
 }
 
 export const WORK_OFF = 'Work is off on this host'
+/** One run of the helper's install script. */
+const SCRIPT_MS = 120_000
 
 export class HelperDoor {
   /** the keeper's `since` of the awake spell the helper was made ready in: a new wake checks it again */
@@ -184,7 +186,13 @@ export class HelperDoor {
       this.readyFor = spell
       return
     }
-    const said = await keeper.admin(helperScript(this.d.source))
+    // The script now and then never returns after a compile (seen twice in ten on 2026-11-22, the helper left as it
+    // was): it gets two minutes and one more run, which has gone through each time.
+    const script = helperScript(this.d.source)
+    const said = await keeper.admin(script, SCRIPT_MS).catch((err) => {
+      this.d.log(`winvm: the helper's install did not finish (${err instanceof Error ? err.message.slice(0, 120) : String(err)}); running it once more`)
+      return keeper.admin(script, SCRIPT_MS)
+    })
     if (said.includes('compiled')) this.d.log('winvm: compiled the Office helper in the guest')
     const end = Date.now() + (this.d.knockMs ?? 20_000)
     for (;;) {

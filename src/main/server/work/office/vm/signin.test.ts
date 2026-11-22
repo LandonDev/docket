@@ -76,7 +76,7 @@ describe("Office's sign-in, after OneDrive's", () => {
     const reached = await walkOfficeSignIn({ call: async (verb) => (calls.push(verb), verb === 'ui.press' && ++tries === 3 ? 'Sign in' : null), sleep: async () => {}, waits: { first: 3, page: 1, list: 1 } })
     expect(reached).toBe('window')
     expect(calls).toEqual(['office.start', 'ui.press', 'ui.press', 'ui.press'])
-    expect(OFFICE_SIGN_IN_LINES.window).toMatch(/finish it there/)
+    expect(OFFICE_SIGN_IN_LINES.window).toMatch(/approve it there/)
   })
   it('leaves Word open and says what to press when the button never shows', async () => {
     expect(await walkOfficeSignIn({ call: async () => null, sleep: async () => {}, waits: { first: 1, page: 1, list: 1 } })).toBe('word')

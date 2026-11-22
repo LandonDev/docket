@@ -143,6 +143,6 @@ export async function walkOfficeSignIn(d: Pick<SignInDeps, 'call' | 'sleep' | 'w
 }
 
 export const OFFICE_SIGN_IN_LINES = {
-  window: "Office's sign-in is open on the Windows VM: finish it there.",
+  window: "Office's sign-in is open on the Windows VM: enter your address and approve it there.",
   word: 'Word is open on the Windows VM: press Sign in at the top of its window.'
 } as const

@@ -174,8 +174,8 @@ export class Keeper {
   }
 
   /** A PowerShell script as the guest's admin: the file tools' checks (files.ts). */
-  admin(script: string): Promise<string> {
-    return this.d.guest.admin(script)
+  admin(script: string, timeoutMs?: number): Promise<string> {
+    return this.d.guest.admin(script, timeoutMs)
   }
 
   /** Keys from the machine's own keyboard, while it is awake: Windows' security prompts take them where they take no program's click (office/vm/signin.ts). */

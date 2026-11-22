@@ -93,6 +93,14 @@ describe('opening the door', () => {
     await door.open()
     expect(k.scripts).toHaveLength(2)
   })
+  it('runs an install that did not finish once more', async () => {
+    const { door, k } = setup()
+    let first = true
+    const admin = (door as unknown as { d: { keeper: () => { admin: (s: string, ms?: number) => Promise<string> } } }).d.keeper().admin
+    ;(door as unknown as { d: { keeper: () => unknown } }).d.keeper = ((orig) => () => ({ ...(orig() as object), admin: async (s: string, ms?: number) => (first ? ((first = false), Promise.reject(new Error('timed out'))) : admin(s, ms)) }))((door as unknown as { d: { keeper: () => unknown } }).d.keeper)
+    await door.open()
+    expect(k.scripts).toHaveLength(1)
+  })
   it('fails in words when the helper never answers', async () => {
     const { door } = setup({ knocks: [false] })
     await expect(door.open()).rejects.toThrow(NO_HELPER)
