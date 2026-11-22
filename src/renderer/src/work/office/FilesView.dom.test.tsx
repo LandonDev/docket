@@ -233,7 +233,8 @@ describe("the Files view", () => {
     settings = { mayUseDesktop: [] };
     boxPlaces = [{ kind: "vm", state: "ok", account: "landon@purdue.edu" }];
     await act(async () => void render(<View {...props("box")} />));
-    expect(await screen.findByText("This workspace can't use This Mac and the Windows VM yet")).toBeTruthy();
+    expect(await screen.findByText("This workspace can't use your computers yet")).toBeTruthy();
+    expect(screen.getByText("Allow This Mac and the Windows VM to list your Teams files.")).toBeTruthy();
     expect(screen.queryByText(/Sync a channel/)).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Allow" })));
     expect(settings).toEqual({ mayUseDesktop: ["env_mac"], windowsVm: true });

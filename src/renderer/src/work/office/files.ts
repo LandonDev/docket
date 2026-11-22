@@ -176,7 +176,7 @@ export function filesNote({ workspaceEnv, reads, windowsVm, notAllowed, listed }
   const canVm = !windowsVm && !!hostVm && hostVm.state !== "not-set-up";
   const allowed = reads.filter((r) => r.env !== workspaceEnv);
   if (!allowed.length && !windowsVm && (notAllowed.length || canVm))
-    return { title: `This workspace can't use ${names([...notAllowed, ...(canVm ? [VM] : [])])} yet`, line: "Allow it to list your Teams files from there.", fix: { kind: "allow", vm: canVm } };
+    return { title: "This workspace can't use your computers yet", line: `Allow ${names([...notAllowed, ...(canVm ? [VM] : [])])} to list your Teams files.`, fix: { kind: "allow", vm: canVm } };
   // b: a machine it may use is not answering.
   if (away.length) return { title: `${names(away.map((r) => r.name))} did not answer`, fix: { kind: "retry" }, away: true };
   // c: OneDrive in the VM needs his sign-in, or the VM is the only place and is not set up.

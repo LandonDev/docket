@@ -219,7 +219,7 @@ most useful thing, checked in this order, with its press:
 | Cause | It says | Press |
 |---|---|---|
 | the workspace's host refused, nothing else answered | "Files did not load", the refusal's words | Retry |
-| it may use no desktop and no VM, and one could help | "This workspace can't use <MacBook> and the Windows VM yet" / "Allow it to list your Teams files from there." | Allow: his desktops this window knows (`allowComputers`, work/shell/actions.ts) and the VM where the host has one, then lists |
+| it may use no desktop and no VM, and one could help | "This workspace can't use your computers yet" / "Allow <MacBook> and the Windows VM to list your Teams files." | Allow: his desktops this window knows (`allowComputers`, work/shell/actions.ts) and the VM where the host has one, then lists |
 | a machine it may use did not answer | "<MacBook> did not answer", on the state line | Retry |
 | OneDrive in the VM is signed out | "OneDrive on the Windows VM is signed out" | Sign in to OneDrive: `work.office.vmSignIn`, then the Computers page on `vm:windows` (work/winvm/signIn.ts) |
 | the VM is the only place and is not set up | "The Windows VM is not set up" | Open Settings (Settings → Work) |

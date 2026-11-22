@@ -124,8 +124,8 @@ describe("what the view says when Teams files are missing", () => {
 
   it("a: it may use no computer yet: names them, and one press allows them", () => {
     expect(note({ reads: [box([folders("no-onedrive"), vm("ok")])], notAllowed: ["MacBook"] })).toEqual({
-      title: "This workspace can't use MacBook and the Windows VM yet",
-      line: "Allow it to list your Teams files from there.",
+      title: "This workspace can't use your computers yet",
+      line: "Allow MacBook and the Windows VM to list your Teams files.",
       fix: { kind: "allow", vm: true },
     });
     expect(note({ reads: [box([vm("not-set-up")])], notAllowed: ["MacBook"] })?.fix).toEqual({ kind: "allow", vm: false });

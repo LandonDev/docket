@@ -172,7 +172,7 @@ function useFix(workspace: WorkspaceMeta, again: () => void): { busy: boolean; r
 }
 
 /** Nothing listed: the one cause and its press, centred where the list would be. */
-function NoteEmpty({ note, workspace, again }: { note: FilesNote; workspace: WorkspaceMeta; again: () => void }) {
+export function NoteEmpty({ note, workspace, again }: { note: FilesNote; workspace: WorkspaceMeta; again: () => void }) {
   const fix = useFix(workspace, again);
   return (
     <Empty>
@@ -190,7 +190,7 @@ function NoteEmpty({ note, workspace, again }: { note: FilesNote; workspace: Wor
 }
 
 /** Libraries listed, and a place that needs him: one quiet line under the list, with its press. */
-function NoteLine({ note, workspace, again }: { note: FilesNote; workspace: WorkspaceMeta; again: () => void }) {
+export function NoteLine({ note, workspace, again }: { note: FilesNote; workspace: WorkspaceMeta; again: () => void }) {
   const fix = useFix(workspace, again);
   return (
     <div className="mt-5 flex min-h-7 items-center gap-2 text-xs text-muted-foreground">
@@ -248,7 +248,7 @@ function Bones() {
 
 const ROW = `-mx-2 h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap rounded-md py-0 text-[13px] ${ROW_PRESS}`;
 
-function Places({ workspace, groups }: { workspace: WorkspaceMeta; groups: PlaceGroup[] }) {
+export function Places({ workspace, groups }: { workspace: WorkspaceMeta; groups: PlaceGroup[] }) {
   return (
     <>
       {groups.map((g, i) => (
