@@ -49,8 +49,11 @@ serves these.
 - `video.close { stream }` ends a stream the same socket opened.
 - `video.paste { stream, text }` puts text into the page he drives. It needs
   a `drive` stream the same socket opened, while he is the driver.
+- `video.copy { stream }` answers `{ text, truncated? }`, the far clipboard's
+  text after his copy there, on the same terms. Only the Windows VM's source
+  has it (its clipboard is not his; the box's browser's paste is the page's).
 
-All three need `approve` (`METHOD_CAPABILITY`).
+All four need `approve` (`METHOD_CAPABILITY`).
 
 The frames never ride the RPC socket. The viewer opens a socket of its own,
 `/video/<stream>?ticket=…`, with the subprotocol `nsl1`. It closes with a code
@@ -417,6 +420,10 @@ first wanted; nothing of it is in the first paint.
   (`SHRINK_QUIET_MS`), so a pop-out left alone does not hold a 4K stream
   open. Either only when the edge is what held the picture down (a Mac's
   window; the box's page is 2560 wide whatever is asked).
+- **The host's link comes back** (a box restart, his link to the box cut and
+  mended): a stream that gave way to the picture or ended while it was down
+  is asked for again at the link's open (`useComputerVideo`), as a place shown
+  again is.
 - **A closed stream** (`afterClose`, messages.ts). A drop that named no
   reason, `slow`, a decoder that failed or stalled: opened again with a
   fresh ticket after 0.5, 1, 2, 4 and 4 seconds, the last frame staying on
@@ -439,7 +446,10 @@ first wanted; nothing of it is in the first paint.
 - **Sharp.** The canvas holds the stream's own pixels. Its box is as wide
   as its column and no wider than those pixels on this screen
   (`sharpWidth`); the Computers page's stage and the full window draw them
-  as large as their room allows, never past two to one (`fitStage`). A
+  as large as their room allows, never past two to one (`fitStage`), and
+  grown past the stream's own pixels they are drawn at a whole scale (1:1,
+  2:1) when that costs at most a fifth of the width (`SNAP_KEEPS`): the
+  1280×800 VM in a room 1400 wide on a 1x screen is 1280 wide and sharp. A
   narrower column scales the picture down, whole.
 - **Counts.** The worker says how many frames it drew and at what rate
   four times a second; they go to the box's `data-frames` and `data-fps`
@@ -581,6 +591,13 @@ phone's full screen ("The phone" below), and from then on:
   is Ctrl there.
 - **Paste** (⌘V, or Ctrl+V elsewhere) is his clipboard's text handed to
   `video.paste`, never typed and never the far clipboard's own.
+- **Copy out of the VM**: a copy or cut chord sent to the Windows VM
+  (Ctrl+C, Ctrl+X, or ⌘C, ⌘X on a Mac) is followed 300 ms later
+  (`COPY_SETTLE_MS`) by `video.copy`, and its text goes on his clipboard.
+  Only text comes back.
+- **No stuck keys**: the box lets go of everything he holds when a drive
+  stream ends under him (his link cut, the window closed), as well as at Hand
+  back (`EngineFeed.close`); the viewer lets go on blur and focus loss.
 - **Never sent**, one list per screen (`DrivenScreen` in videoInput.ts,
   `NeverSent` in box/engineFeed.ts). The box's browser: Ctrl+W, Ctrl+Q,
   Ctrl+N, Ctrl+T and Ctrl+Shift+I, which would close, quit or leave the
@@ -618,7 +635,9 @@ phone's full screen ("The phone" below), and from then on:
 - **Hand back** makes the stream a watch stream on the host, which lets go
   of every key he held; the picture is a picture again.
 - **The VM's wheel** (work/winvm/drive.ts `vmWheel`, the `vm` kind's hook):
-  refused while the VM sleeps, has no window (`pictureOnly`) or Work is off.
+  a VM that is not awake is woken first, so Take over is one press; refused
+  with no window (`pictureOnly`), not set up, or Work off. The app wakes it
+  first too (`takeOver`, lib/computers.ts), for a host from before this.
   Take over hands him the lease (every thread's `windows_*` call is refused
   with "He is driving the Windows VM", and the thread is woken when he hands
   back), holds the keeper awake, and marks his streams (`setDriving`); then
@@ -786,6 +805,19 @@ UAC prompt and the lock screen), and nothing runs in the guest for it.
   4 fps picture from QMP's screenshots (`VmPreviews`, ids `vm-preview_N`,
   JPEG by Electron's encoder) and offers no Take over, and Settings →
   Connections' Windows VM group says which tool is missing ("Live picture").
+
+**His input to its picture**, measured on the box 2026-11-22 by
+`scripts/measure-vm-input-delay.ts` (a client key on the listener at
+127.0.0.1:7677, Take over, a drive stream, 30 pointer moves 400 ms apart, no
+button; load 1.0 to 1.6, the guest at 1280×800 in a 1920×1200 display): the
+first frame after a move came at a median of **5.3 ms**, p95 9.6 ms (X's
+own pointer, captured, encoded and relayed: the box's whole path), and the
+frame where Windows draws its own cursor a steady ~151 ms after that,
+median **157 ms**, p95 161 ms from the move. The box's path is not what
+costs: the guest's redraw after a quiet moment is. Its cause (QEMU's display
+refresh, the tablet's polling, Windows' cursor) is not settled; a run with
+the pointer moving all the time would tell whether it is an idle back-off.
+From the Mac the tunnel's one-way time adds to both.
 
 Measured by `scripts/e2e-winvm-picture.ts` on a fresh standing disk (deleted
 after; run it under `flock -o -n /srv/agents/win-vm/standing/.lock`), through the app's relay with a viewer that acks every frame, the

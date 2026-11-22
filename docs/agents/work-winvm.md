@@ -127,6 +127,16 @@ A box build with no `tc-computer.exe` wakes the machine and says so in `error`.
 
 ## The picture
 
+**Its size is the guest's own.** Windows' basic display driver takes the firmware's mode at a cold boot and keeps
+it through every hibernate. On 2026-11-22 the box's VM had Screen size set to 1920×1200 while it slept at
+1280×800: it resumed with QEMU told the larger mode and read the guest's frame buffer at the wrong stride, so the
+picture (and QMP's screenshot, `shot.sh`) was a scramble. Now, after every wake, the host asks the guest its mode
+(`GUEST_SCREEN_SCRIPT`, guestScreen.ts) and keeps it in `run/screen.json`; the next start sizes QEMU's VGA and the
+display to it (`StandingMachine.start`, `VmScreen.up(guest)`), and a mismatch found on a machine nobody holds or
+drives is put right at once with one sleep and wake. A new disk has no file and starts at the setting, so **the
+Screen size setting is taken by a new Set up**, not by the next wake; a Windows restart inside a run keeps the run's
+size.
+
 Where the `qemu-window` tool (scripts/work-tools/winvm.json) and `screen-relay` are both installed, a wake starts a
 private X display of the VM's own at the guest's 1280×800 first (`VmScreen`, window.ts: the box browser's
 `BoxXDisplay` given a size), and QEMU draws the guest's screen in its GTK window there. QEMU's window dies with its X
@@ -141,12 +151,15 @@ and the numbers, is live-video.md "The Windows VM".
 ## Take over
 
 `computer.drive { computer: 'vm:windows', driver }` reaches the `vm` hook (`vmWheel`, drive.ts), registered at the
-host's wiring (host.ts `wireVmDrive`). It is refused while the machine is not awake ("Wake it first"), has no window,
-or Work is off. Take over: the lease is his (`ownerDrives`: every thread's call refused, the turned-away threads
-noted), the keeper holds the machine awake (`setDriving`), his streams take his input, then every thread's session
-on the VM is stopped. Hand back: his keys let go, the guest's clipboard put back (B9), the keeper and the lease
-freed, and the threads turned away woken with `VM_FREE_NOTICE`. The machine going to sleep under him hands back by
-itself. The keys and the menu are live-video.md "Driving".
+host's wiring (host.ts `wireVmDrive`). A machine asleep, going to sleep or waking is woken first, so Take over is one
+press whatever its state (until 2026-11-22 it was refused with "Wake it first"); it is refused with no window, not
+set up, or Work off. Take over: the lease is his (`ownerDrives`: every thread's call refused, the turned-away threads
+noted, and the thread that held the machine noted with them, since its session is about to be stopped), the keeper
+holds the machine awake (`setDriving`), his streams take his input, then every thread's session on the VM is
+stopped. Hand back: his keys let go, the guest's clipboard put back (B9), the keeper and the lease freed, and the
+threads turned away, the holder he took it from among them, woken with `VM_FREE_NOTICE`. A drive stream that ends
+under him (his link cut, the window gone) lets go of every key and button first (`EngineFeed.close`). The machine
+going to sleep under him hands back by itself. The keys and the menu are live-video.md "Driving".
 
 ## Sleep
 
@@ -217,6 +230,20 @@ names `windows_*` where the shared words say `computer_*`.
   Windows VM". A call held 20 s (a wake, a card) answers with an id, as a bridged computer call does
   (pending.ts), and `windows_result` reads it again or cancels it; nothing runs unread.
 - **The preamble** gains one line where the tools are offered (`VM_PREAMBLE`).
+- **Real input only** (gate.ts `vmTiers`): with nobody at the guest, the session tier replaces the posted ones
+  (`process`, `front`) whenever it is allowed, so a click, a key or typing is `SendInput`. A Work thread's run on
+  2026-11-22 typed a name into Notepad's Save as dialog by UI Automation and by posted keys: the box showed the new
+  name, the step said `changed`, and the dialog saved under the name it had. That is also the likeliest account of
+  B10's held press that answered `sent` without its effect (a replay at a posted tier).
+- **The service knows nobody sits there** (`TC_COMPUTER_NO_PERSON=1`, set by the door for its `serve` child,
+  `Service::without_person`): `set_value` on a text field (`input`, `text area`, `document`) is typed with real keys
+  when the session tier is allowed (Ctrl+A, the value or Delete, then read back), and a launch leaves the app it
+  brought forward in front rather than putting the window that was in front back over it. A value read back is
+  compared with its line breaks made alike (`same_text`): Notepad keeps a lone CR for CRLF, and a right two-line
+  `set_value` failed as `value_not_taken`.
+- **`save_as` is refused** before the call goes (`NO_SAVE_AS`): the Windows service has no save panel step, and the
+  call used to fail as "needs the session tier". The tools' head says how to save instead: Ctrl+S, `set_value` the
+  dialog's File name box, Return.
 
 ### Files
 
@@ -251,7 +278,9 @@ up; each wakes the machine first:
 
 - `vmPaste(text)`: his text on the guest's clipboard, then Ctrl+V to the app in front, at the session tier, on
   a service session of his own (`owner:vm`), never a thread's. For B7's `VideoSource.paste` of `vm:windows`.
-- `vmCopied()`: the guest's clipboard text (cut at 1 MB, `truncated`) for the viewer to hand to his own.
+- `vmCopied()`: the guest's clipboard text (cut at 1 MB, `truncated`) for the viewer to hand to his own: `video.copy`
+  on his drive stream (`VmPicture.copy`, wired by the pillar's start through `configureVmCopy`), asked by the viewer
+  300 ms after a copy or cut chord goes to the VM. Nothing called it before 2026-11-22.
 - `saveClipboard()` at his Take over and `restoreClipboard()` at Hand back (B8): the guest's clipboard comes
   back as it was, so nothing he copied is left for an agent. A clipboard that held no text, or more than 1 MB,
   comes back empty; a Hand back with nothing saved empties it. Only text is kept: an image or files on the
@@ -353,9 +382,19 @@ Run 2026-11-20 (pictures and numbers in `.temp-code/plans/landed/computers-vm/b1
 - `windows_apps` refused "Microsoft Edge" and "Edge": the name went to ShellExecute as it was. An allowed app's
   name now goes to the service as its file (`vmLaunchFile`, policy.ts).
 
-**Still open, found by the run:** the held "Forward" press's replay filled the file name and said `sent`, yet
-nothing was saved. With Save no longer held that path is gone for Notepad, but a held press in a Windows dialog
-that answers `sent` without its effect has not been explained.
+**Explained since** (2026-11-22, a real Work thread on the box, below): the held "Forward" press's replay filled
+the file name and said `sent`, yet nothing was saved. The same dialog ignores a name put in by UI Automation or by
+posted keys; only real input reaches it. The VM now gets real input only ("The tools" above).
+
+**A real Work thread on the box, 2026-11-22** (Life workspace, Claude Opus 5.5 at low effort, 113 s, $0.84): open
+Notepad, type two lines, Ctrl+S into Documents as `vm-proof-1122.txt`, `windows_get` it home. Calls and answers:
+`.temp-code/plans/landed/F-vm-files/p1-run1-calls.txt`. What failed: the two lines by `set_value` answered
+`value_not_taken` though Notepad held them (CR for CRLF); the Save as dialog saved under Notepad's suggested name
+three times while its File name box showed the one typed (by `set_value` at `ax`, by posted keys); `save_as`
+answered "needs the session tier"; Alt+F4 answered "no change seen" and a click on the window's X at the `process`
+tier "changed" with no effect; every launch put the door's console window back in front ("Windows Terminal Host was
+put back"). The file came home under the wrong name and the thread renamed its copy. Each is fixed above, on the
+host and in the service; none of it runs on the box until its next deploy from master.
 - On a headless host the box's own socket may not watch video (`mayWatch`), so the run watches and takes over
   with a client key on the listener, as his Mac or phone would.
 
@@ -378,6 +417,11 @@ that answers `sent` without its effect has not been explained.
 - `files.test.ts`: the file tools over a fake guest and a real workspace folder: the copy each way, the free
   name, the fence at both ends (a step out, a link out, a Work Chat, a bad name, a guest folder that is a
   link), the cap, the refused types, the Result and its undo, a changed file left, another thread refused.
+- `guestScreen.test.ts`: the guest's own size read after a wake and kept, a mismatch put right with one sleep and
+  wake when nobody uses the machine and only recorded when someone does.
+- `gate.test.ts`, `vm.test.ts`: the session tier in place of the posted ones; `save_as` refused before the machine is
+  taken. The service's own Rust suite (`cargo test` in native/tc-computer-win, `tests/input.rs`): `set_value` typed
+  with real keys where nobody sits, the launch leaving its app in front, and the read back blind to line breaks.
 - `clipboard.test.ts`: the paste (text then Ctrl+V to the app in front, at the session tier), the cap, the
   copy out, the clipboard put back at Hand back, emptied when it cannot come back whole.
 - `vm.test.ts`: over the fake computer service, the VM's gate admitting the session tier a headless box
