@@ -14,7 +14,7 @@ const noop = (): void => {};
 
 export const streamOf = (state: PreviewState, mode: LiveStream["mode"] = "video", drive: LiveStream["drive"] = null): LiveStream => ({ state, retry: noop, canvas: { current: null }, ring: { current: null }, mode, drive });
 /** A stream he drives from the place that shows it: its box takes the keyboard. */
-export const driven: NonNullable<LiveStream["drive"]> = { send: noop, paste: async () => undefined };
+export const driven: NonNullable<LiveStream["drive"]> = { send: noop, paste: async () => undefined, copy: async () => null };
 const live = (size = PAGE): PreviewState => ({ status: "live", app: "Chromium", window: "Expense report", ...size, drawn: true });
 
 export const tile = (over: Partial<ComputerTile> = {}): ComputerTile => ({

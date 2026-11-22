@@ -94,7 +94,8 @@ describe('METHOD_CAPABILITY', () => {
         'computer.preview.stop',
         'video.open',
         'video.close',
-        'video.paste'
+        'video.paste',
+        'video.copy'
       ].sort()
     )
   })

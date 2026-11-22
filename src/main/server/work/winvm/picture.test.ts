@@ -7,7 +7,7 @@ import type { EngineLease } from '../browser/box/engine'
 import { VideoRelay, type ViewerSocket } from '../../video/relay'
 import { VideoRpc } from '../../video/rpc'
 import { joinRows } from './host'
-import { configureVmPaste, NO_VM_PASTE, VM_COMPUTER, VmPicture, type VmPictureDeps } from './picture'
+import { configureVmCopy, configureVmPaste, NO_VM_PASTE, VM_COMPUTER, VmPicture, type VmPictureDeps } from './picture'
 
 type Push = ComputerFramePush | ComputerClickPush | ComputerPreviewPush
 
@@ -253,5 +253,24 @@ describe("his Take over, on the VM's video", () => {
     await rpc.paste({ stream: answer.stream, text: 'hi' }, caller)
     expect(pasted).toEqual(['hi'])
     configureVmPaste(null)
+  })
+
+  it('hands his copy in the VM back for his own clipboard, on his own drive stream only, while he drives', async () => {
+    const t = setup()
+    t.picture.setDriving(true)
+    const rpc = new VideoRpc(t.relay, { mintStreamTicket: () => ({ ticket: 'k', expiresIn: 30 }) }, () => true)
+    rpc.addSource(t.picture)
+    const caller = { principal: LOCAL_PRINCIPAL, connection: {}, connectionId: '1' }
+    const answer = await rpc.open({ threadId: 'x', computer: VM_COMPUTER, maxEdge: 1280, drive: true }, caller)
+    if (!answer.ok) throw new Error(answer.reason)
+    await expect(rpc.copy({ stream: answer.stream }, caller)).rejects.toThrow(NO_VM_PASTE)
+    configureVmCopy(async () => ({ text: 'copied in Notepad', truncated: false }))
+    expect(await rpc.copy({ stream: answer.stream }, caller)).toEqual({ text: 'copied in Notepad' })
+    // another socket's stream is not his to read
+    await expect(rpc.copy({ stream: answer.stream }, { ...caller, connection: {} })).rejects.toThrow(/needs a stream you are driving/)
+    // handed back: nothing comes out
+    t.picture.setDriving(false)
+    await expect(rpc.copy({ stream: answer.stream }, caller)).rejects.toThrow(/needs a stream you are driving/)
+    configureVmCopy(null)
   })
 })

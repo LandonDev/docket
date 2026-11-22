@@ -100,6 +100,8 @@ export class VmLease {
     this.owner = on
     if (on) {
       this.clear()
+      // the thread he took it from is stopped (computer/drive.ts): it is woken when he hands back, as one turned away is
+      if (this.holder) this.waiting.add(this.holder.pane)
       this.holder = null
     } else this.release()
   }

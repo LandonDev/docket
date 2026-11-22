@@ -8,7 +8,8 @@ import { VM_COMPUTER, type VmPicture } from './picture'
  * His Take over of the Windows VM (docs/agents/live-video.md "Driving",
  * work-winvm.md "Take over"): `computer.drive { computer: 'vm:windows' }`
  * through computer/drive.ts, which stops every thread's session on the VM
- * once he has the wheel. While he drives, the keeper keeps the machine awake,
+ * once he has the wheel. A machine asleep is woken first: Take over is one press
+ * whatever its state. While he drives, the keeper keeps the machine awake,
  * the lease refuses every thread's call, and his pointer and keys go down his
  * drive streams: the engine types them on the VM's X display, QEMU's window
  * hands them to the guest as a real keyboard and tablet. Hand back lets every
@@ -16,7 +17,6 @@ import { VM_COMPUTER, type VmPicture } from './picture'
  * before he took over (B9), and wakes the threads that were turned away.
  */
 
-export const VM_ASLEEP = 'The Windows VM is asleep. Wake it first.'
 export const VM_NO_WINDOW = 'The Windows VM has no window of its own on this host, so it takes no input from the picture.'
 export const WORK_OFF = 'Work is off on this host.'
 
@@ -45,7 +45,7 @@ export interface VmWheelDeps {
   picture: Pick<VmPicture, 'setDriving' | 'driving' | 'windowless'>
   lease: Pick<VmLease, 'ownerDrives'>
   /** the keeper while Work is on */
-  keeper(): Pick<Keeper, 'state' | 'setDriving'> | null
+  keeper(): Pick<Keeper, 'state' | 'setDriving' | 'wake'> | null
   /** the sessions of the threads that drive the VM now (vm.ts) */
   sessions(): readonly ComputerSessionRow[]
   log?: (line: string) => void
@@ -77,7 +77,8 @@ export function vmWheel(d: VmWheelDeps): ComputerDriveHook<VmDriveAnswer> {
       if (driver === 'agent') return handBack()
       const keeper = d.keeper()
       if (!keeper) throw new Error(WORK_OFF)
-      if (keeper.state().state !== 'awake') throw new Error(VM_ASLEEP)
+      // asleep, going to sleep or waking: his one press wakes it, then takes over (a VM not set up says so)
+      if (keeper.state().state !== 'awake') await keeper.wake()
       if (d.picture.windowless()) throw new Error(VM_NO_WINDOW)
       if (d.picture.driving()) return { computer: VM_COMPUTER, driver: 'owner' }
       d.lease.ownerDrives(true)

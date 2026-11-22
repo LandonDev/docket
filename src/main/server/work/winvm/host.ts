@@ -11,6 +11,7 @@ import { vmWheel } from './drive'
 import type { VmLease } from './lease'
 import { electronJpeg, qmpScreenshot, VmPicture } from './picture'
 import { vmScreen } from './window'
+import { watchGuestScreen } from './guestScreen'
 
 type Rows = Pick<ComputerSessions, 'rows' | 'onRows' | 'stop'>
 
@@ -41,6 +42,15 @@ export function wireVmPicture(o: {
     log: o.log
   })
   o.video.rpc.addSource(picture)
+  // QEMU's display at the size Windows draws at, learned after every wake
+  watchGuestScreen({
+    onState: onWinvmState,
+    keeper: winvmKeeper,
+    shown: () => screen.size,
+    run: p.run,
+    free: () => !picture.driving() && !o.holder?.(),
+    log: o.log
+  })
   return picture
 }
 

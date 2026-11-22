@@ -7,10 +7,11 @@ import { registry } from "../../../lib/connection/registry";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 import type { StreamHandle, StreamView, StreamWant } from "../../../lib/video/streams";
 import { videoEdge } from "../../../lib/video/support";
-import { ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, Viewport, ViewportLine, forgetLeaveSaid, liveFace, streamSize, useDrivingInput, useLiveStream } from "./Viewport";
+import type { DrivenScreen } from "../../../lib/video/videoInput";
+import { COPY_SETTLE_MS, ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, Viewport, ViewportLine, forgetLeaveSaid, liveFace, streamSize, useDrivingInput, useLiveStream } from "./Viewport";
 
 /** The window's streams, stood in for: each acquire is kept, and the test says what its stream does. */
-const h = vi.hoisted(() => ({ supported: true, acquired: [] as FakeStream[], said: [] as string[] }));
+const h = vi.hoisted(() => ({ supported: true, acquired: [] as FakeStream[], said: [] as string[], opens: [] as (() => void)[] }));
 vi.mock("@renderer/components/ui/toaster", () => ({ loadToast: async () => Object.assign((words: string) => void h.said.push(words), { error: () => undefined }) }));
 
 interface FakeStream {
@@ -27,6 +28,7 @@ interface FakeStream {
   released: number;
   inputs: unknown[];
   pasted: string[];
+  copies: number;
   set(view: StreamView): void;
 }
 
@@ -48,6 +50,7 @@ vi.mock("../../../lib/video/streams", () => ({
         released: 0,
         inputs: [],
         pasted: [],
+        copies: 0,
         set(view) {
           stream.state = view;
           for (const fn of [...stream.listeners]) fn();
@@ -62,6 +65,7 @@ vi.mock("../../../lib/video/streams", () => ({
         onClick: (fn) => (stream.clicks.add(fn), () => void stream.clicks.delete(fn)),
         input: (event) => void stream.inputs.push(event),
         paste: async (text) => void stream.pasted.push(text),
+        copy: async () => (stream.copies++, "copied in the VM"),
         retry: () => void stream.retried++,
         release: () => void stream.released++,
       };
@@ -77,6 +81,7 @@ beforeEach(() => {
   h.supported = true;
   h.acquired.length = 0;
   h.said.length = 0;
+  h.opens.length = 0;
   forgetLeaveSaid();
   calls.length = 0;
   width = 304;
@@ -86,7 +91,7 @@ beforeEach(() => {
       return method === "computer.preview.start" ? { preview: "pv_1", app: "Chromium", window: "Concur", width: 960, height: 600 } : null;
     },
     onPush: () => () => undefined,
-    onOpen: () => () => undefined,
+    onOpen: (fn: () => void) => (h.opens.push(fn), () => void h.opens.splice(h.opens.indexOf(fn), 1)),
     onClose: () => () => undefined,
   };
   vi.spyOn(registry, "link").mockImplementation(() => link as never);
@@ -120,11 +125,11 @@ const row = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
 const entry = (key = "s1"): ComputerEntry => ({ host: "box", row: row({ threadId: key }), previewable: true, previewHost: "box", previewKey: key });
 const flush = () => act(async () => {});
 
-function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, back }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; inset?: number; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy" }) {
+function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, back, screen }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; inset?: number; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy"; screen?: DrivenScreen }) {
   const root = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
   const stream = useLiveStream(en, run, box, root, { inset, ...(take === undefined ? {} : { take }), ...(drive === undefined ? {} : { drive }) });
-  useDrivingInput(stream, box);
+  useDrivingInput(stream, box, screen);
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
   return (
@@ -145,9 +150,9 @@ function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, ba
   );
 }
 
-type MountProps = { run?: boolean; take?: boolean; drive?: boolean; inset?: number; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy" };
+type MountProps = { run?: boolean; take?: boolean; drive?: boolean; inset?: number; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy"; screen?: DrivenScreen };
 function mount(props: MountProps = {}) {
-  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} inset={p.inset} onOpen={p.onOpen ?? props.onOpen} back={p.back} />;
+  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} inset={p.inset} onOpen={p.onOpen ?? props.onOpen} back={p.back} screen={p.screen ?? props.screen} />;
   const view = render(tree(props));
   return { ...view, again: (p: MountProps) => view.rerender(tree(p)) };
 }
@@ -292,6 +297,29 @@ describe("the live viewport, as video", () => {
     // the display may be free now
     expect(h.acquired).toHaveLength(2);
     expect(mode()).toBe("video");
+  });
+
+  it("asks for video again when the host's link opens again (a box restart, a cut link mended), and not while it plays", async () => {
+    mount();
+    await flush();
+    const first = h.acquired[0];
+    await act(async () => first.set({ status: "live", width: 1280, height: 800 } as StreamView));
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    expect(h.acquired).toHaveLength(1);
+    // the retries were spent while the link was down: the picture stood in
+    await act(async () => first.set({ status: "over", face: "picture" }));
+    await flush();
+    expect(mode()).toBe("picture");
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    expect(h.acquired).toHaveLength(2);
+    expect(mode()).toBe("video");
+    // a stream that ended while it was gone is asked for again too
+    await act(async () => h.acquired[1].set({ status: "over", face: "stopped" }));
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    expect(h.acquired[1].retried + h.acquired.length).toBeGreaterThan(2);
   });
 
   it("starts from nothing for another session: its own stream, and no frame of the last one", async () => {
@@ -476,4 +504,24 @@ describe("driving the page from the picture", () => {
     expect(stream.inputs.filter((e) => (e as { key?: number }).key === 25)).toEqual([]);
   });
 });
+
+  it("puts a copy made in the Windows VM on his clipboard once the app there has taken the chord", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const written: string[] = [];
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: async () => "", writeText: async (t: string) => void written.push(t) } });
+    mount({ entry: { ...entry(), row: { ...entry().row, driver: "owner" } }, screen: "vm" });
+    await flush();
+    const stream = h.acquired[0];
+    await act(async () => stream.set({ status: "live", width: 1280, height: 800 }));
+    const box = screen.getByRole("application");
+    fireEvent.keyDown(box, { code: "ControlLeft", ctrlKey: true });
+    fireEvent.keyDown(box, { code: "KeyC", ctrlKey: true });
+    // the chord went down the stream; the far clipboard is read only once it settles
+    expect(stream.copies).toBe(0);
+    await act(async () => void vi.advanceTimersByTime(COPY_SETTLE_MS));
+    vi.useRealTimers();
+    await flush();
+    expect(stream.copies).toBe(1);
+    expect(written).toEqual(["copied in the VM"]);
+  });
 });

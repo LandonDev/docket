@@ -71,7 +71,8 @@ describe("the full window's body", () => {
     expect((big.container.querySelector('[data-face="live"]')!.parentElement as HTMLElement).style.width).toBe("1200px");
     big.unmount();
     const small = render(view({ stream: streamOf(frame), room: { width: 640, height: 520 }, dpr: 2 }));
-    expect((small.container.querySelector('[data-face="live"]')!.parentElement as HTMLElement).style.width).toBe("608px");
+    // 608 would be 1.01 screen pixels a pixel: it is drawn one to one, 600, and sharp (stageLayout.ts fitStage)
+    expect((small.container.querySelector('[data-face="live"]')!.parentElement as HTMLElement).style.width).toBe("600px");
   });
 
   it("fades the caption when the pointer rests, and keeps it while the keyboard is in it", () => {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { ComputerSessionRow } from '@shared/contract-computer'
 import type { WinvmState } from '@shared/contract-work-winvm'
 import { configureComputerDrive, configureDriveSessions, driveComputer } from '../../computer/drive'
-import { configureVmClipboard, VM_ASLEEP, VM_NO_WINDOW, vmWheel, WORK_OFF } from './drive'
+import { configureVmClipboard, VM_NO_WINDOW, vmWheel, WORK_OFF } from './drive'
 import { VmLease } from './lease'
 import { VM_COMPUTER } from './picture'
 
@@ -23,7 +23,17 @@ function setup(o: { state?: WinvmState['state']; windowless?: boolean; keeper?: 
       log.push(`picture ${on}`)
     }
   }
-  const keeper = { state: () => ({ state: o.state ?? 'awake' }) as WinvmState, setDriving: (on: boolean) => void log.push(`keeper ${on}`) }
+  let state: WinvmState['state'] = o.state ?? 'awake'
+  const keeper = {
+    state: () => ({ state }) as WinvmState,
+    setDriving: (on: boolean) => void log.push(`keeper ${on}`),
+    wake: async () => {
+      log.push('wake')
+      if (state === 'none') throw new Error('The Windows VM is not set up.')
+      state = 'awake'
+      return { state } as WinvmState
+    }
+  }
   const woken: string[] = []
   const lease = new VmLease({ pane: (id) => id, title: (id) => id, wake: (id) => void woken.push(id) })
   let sessions = [row('t1'), row('t2')]
@@ -80,8 +90,23 @@ describe("his Take over of the Windows VM", () => {
     expect(t.log.at(-1)).toMatch(/clipboard was not kept: no door/)
   })
 
-  it('is refused while it sleeps, with no window, with Work off, and for another VM', async () => {
-    await expect(setup({ state: 'asleep' }).take()).rejects.toThrow(VM_ASLEEP)
+  it('wakes a sleeping machine first, then takes over: one press whatever its state', async () => {
+    const t = setup({ state: 'asleep' })
+    expect(await t.take()).toEqual({ computer: VM_COMPUTER, driver: 'owner' })
+    expect(t.log).toEqual(['wake', 'keeper true', 'picture true'])
+    await expect(setup({ state: 'none' }).take()).rejects.toThrow(/not set up/)
+  })
+
+  it('wakes the thread he took it from when he hands back', async () => {
+    const t = setup()
+    t.lease.take('t1')
+    await t.take()
+    expect(t.woken).toEqual([])
+    await t.back()
+    expect(t.woken).toEqual(['t1'])
+  })
+
+  it('is refused with no window, with Work off, and for another VM', async () => {
     await expect(setup({ windowless: true }).take()).rejects.toThrow(VM_NO_WINDOW)
     await expect(setup({ keeper: false }).take()).rejects.toThrow(WORK_OFF)
     setup()

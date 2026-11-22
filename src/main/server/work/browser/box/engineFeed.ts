@@ -52,6 +52,8 @@ export class EngineFeed implements VideoFeed {
   private generation = 0
   /** the Ctrl, Shift and Alt keys his records have pressed and not let go */
   private readonly held = new Set<number>()
+  /** his records passed on since the last release-all: a close lets go of what they may still hold */
+  private pressed = false
 
   constructor(
     private readonly lease: EngineLease,
@@ -98,11 +100,13 @@ export class EngineFeed implements VideoFeed {
     if (new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(12) !== 0) return
     if (this.never(bytes)) return
     this.on.input?.()
+    this.pressed = true
     this.send(bytes)
   }
 
   release(): void {
     this.held.clear()
+    this.pressed = false
     this.type({ type: 'releaseAll' })
   }
 
@@ -154,6 +158,9 @@ export class EngineFeed implements VideoFeed {
 
   close(): void {
     if (this.closed) return
+    // a drive stream that ends (his link cut, the window gone) lets go of every key and button first: the engine
+    // presses each on the display as it comes, and one left down would stay down for the next viewer
+    if (this.pressed) this.release()
     this.closed = true
     this.sink = null
     const ws = this.ws

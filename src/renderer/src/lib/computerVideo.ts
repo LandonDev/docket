@@ -4,6 +4,7 @@ import type { ComputerEntry } from "./computerSessions";
 import type { InputEvent } from "@server/shared/video/nsl1";
 import type { StreamHandle, StreamView } from "./video/streams";
 import { REGROW_QUIET_MS, nextEdge, pixelRatioOf, videoEdge, videoSupported } from "./video/support";
+import { registry } from "./connection/registry";
 
 /**
  * A computer session as live video (docs/agents/live-video.md "The viewer"):
@@ -29,6 +30,8 @@ export interface VideoOptions extends PreviewOptions {
 export interface VideoDrive {
   send(event: InputEvent): void;
   paste(text: string): Promise<void>;
+  /** the far clipboard's text after his copy there; null when it holds none */
+  copy(): Promise<string | null>;
 }
 
 let loading: Promise<typeof import("./video/streams")> | null = null;
@@ -155,11 +158,29 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
     };
   }, [attempt, box, drive, edge, host, key, run, sync, take]);
 
-  const driving = useMemo<VideoDrive>(() => ({ send: (event) => handle.current?.input(event), paste: async (text) => handle.current?.paste(text) }), []);
+  const driving = useMemo<VideoDrive>(
+    () => ({ send: (event) => handle.current?.input(event), paste: async (text) => handle.current?.paste(text), copy: async () => (await handle.current?.copy()) ?? null }),
+    [],
+  );
 
   const retry = useCallback(() => {
     handle.current?.retry();
     setAttempt((n) => n + 1);
   }, []);
+
+  // The host's link came back (a box restart, his link to it cut and mended): a stream that gave way to the picture
+  // or ended while it was gone is asked for again, as if the place were shown again.
+  const settled = useRef({ gaveWay, ended: false });
+  useLayoutEffect(() => {
+    settled.current = { gaveWay, ended: state.status === "ended" };
+  });
+  useEffect(() => {
+    if (!host) return;
+    return registry.link(host)?.onOpen(() => {
+      if (!settled.current.gaveWay && !settled.current.ended) return;
+      if (videoSupported()) setGaveWay(false);
+      retry();
+    });
+  }, [host, retry]);
   return { state, gaveWay, retry, drive: drive && run && state.status === "live" ? driving : null };
 }

@@ -169,9 +169,11 @@ export class VmScreen {
   /**
    * Starts the display for a machine about to start, and answers what QEMU
    * needs to draw on it; null when it runs with no window (a tool missing,
-   * QEMU refusing the modules, a display that would not start).
+   * QEMU refusing the modules, a display that would not start). `guest`: the
+   * size the guest drew at when it went to sleep (guestScreen.ts), which a
+   * resumed Windows keeps whatever the setting says.
    */
-  async up(): Promise<{ window: VmWindow; env: Record<string, string> } | null> {
+  async up(guest?: VmWindow): Promise<{ window: VmWindow; env: Record<string, string> } | null> {
     await this.down()
     this.why = null
     const tools = this.o.tools()
@@ -179,7 +181,7 @@ export class VmScreen {
     if (this.refused) return this.windowless(this.refused)
     const refused = await (this.o.loads ?? windowLoads)(tools.window).catch((e: Error) => e.message)
     if (refused) return this.windowless(refused)
-    const size = this.o.size?.() ?? VGA_DEFAULT
+    const size = guest ?? this.o.size?.() ?? VGA_DEFAULT
     const display = new BoxXDisplay({ root: this.o.root, tools: tools.video, size, command: stopBlocked, log: (line) => this.o.log?.(`winvm ${line}`) })
     try {
       const pair = await display.start()

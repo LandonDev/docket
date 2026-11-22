@@ -210,7 +210,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   the journal of each call's steps and pictures (computer/history.ts, §17.9) behind the
   right panel's Computer section. [docs/agents/computer-use.md](docs/agents/computer-use.md)
 - **Live video** — the computer an agent drives as H.264 video on screen-relay's NSL1 wire
-  (src/shared/video/nsl1.ts): `video.open`, `video.close`, `video.paste`, a ticket per stream, the
+  (src/shared/video/nsl1.ts): `video.open`, `video.close`, `video.paste`, `video.copy`, a ticket per stream, the
   `/video/<stream>` socket and `VideoRelay` (src/main/server/video/), who may watch (`mayWatch`); the
   box's browser headed on a private display at twice the page's pixels (2560×1600, scale 2) under our own window manager, one `relay-engine` per
   viewer (src/main/server/work/browser/box/); the Mac's windows from tc-computer (`capture.video.*`

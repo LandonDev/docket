@@ -51,6 +51,9 @@ pub struct Service<D: Desktop> {
     pub(crate) video: crate::video::VideoState,
     /// one window brought forward at a time in this process: front and session steps take it, front first, then the file lock
     pub(crate) front_lock: Mutex<()>,
+    /// No person sits at this desktop (the door's child, in a VM, §29.9): an app a launch brings forward stays
+    /// there, and `set_value` on a text field is typed with real keys when the session tier is allowed.
+    pub(crate) no_person: bool,
 }
 
 pub(crate) struct State<H> {
@@ -180,7 +183,14 @@ impl<D: Desktop> Service<D> {
             streams: Mutex::default(),
             video: Default::default(),
             front_lock: Mutex::new(()),
+            no_person: false,
         }
+    }
+
+    /// The service as the door starts it: nobody sits at this desktop (`no_person`).
+    pub fn without_person(mut self) -> Self {
+        self.no_person = true;
+        self
     }
 
     /// A notification to the host; nothing before serving starts.
@@ -564,7 +574,7 @@ impl<D: Desktop> Service<D> {
         // watched for half a second: an app often takes the front a moment after its window shows
         let mut front = None;
         let watch_until = Instant::now() + Duration::from_millis(limits::FRONT_CHOICE_MS as u64);
-        while front.is_none() && Instant::now() < watch_until {
+        while front.is_none() && !self.no_person && Instant::now() < watch_until {
             if let (Some((before_pid, before)), Some((now_pid, _))) = (front_before, self.desktop.front()) {
                 if now_pid == pid && before_pid != pid {
                     let back = self.desktop.raise(before);
@@ -870,6 +880,11 @@ impl<D: Desktop> Service<D> {
         let ax_form = AX_VERBS.contains(&a.action) && a.element.is_some() && a.coordinate.is_none() && a.duration.is_none() && (a.action != ComputerActionName::LeftClick || a.text.is_none());
         let ax_only = matches!(a.action, ComputerActionName::SetValue | ComputerActionName::Perform | ComputerActionName::SelectText);
         let event = crate::input::event_tier(tiers, a);
+        if a.action == ComputerActionName::SetValue && self.no_person && tiers.contains(&Tier::Session) {
+            if let Some(r) = self.set_value_by_keys(target, pid, a, paste_quiet_ms, cancel) {
+                return r;
+            }
+        }
         if ax_form && tiers.contains(&Tier::Ax) {
             match self.ax_step(target, pid, a, tiers) {
                 // a click or typing the element takes no other way goes on to an event tier
@@ -885,6 +900,47 @@ impl<D: Desktop> Service<D> {
         Ok(OkStep { element, input, session: done.session, cursor: done.cursor.map(|p| vec![p.0, p.1]), ..ok(Some(tier)) })
     }
 
+    /// `set_value` on a text field typed with real keys (`no_person`): its text selected with Ctrl+A, then the value
+    /// typed (or Delete for none), then read back. A Save dialog's File name box shows a value UI Automation
+    /// sets but saves the name it had, and only real keys reach the dialog itself (the box's Work run of
+    /// 2026-11-22). None when the element is not a text field: the `ax` tier takes it as before.
+    fn set_value_by_keys(&self, target: &Target, pid: i64, a: &ComputerAction, paste_quiet_ms: Option<i64>, cancel: &AtomicBool) -> Option<Result<OkStep, ComputerError>> {
+        let index = a.element?;
+        let handle = self.element(&target.session, pid, index).ok()?;
+        let deadline = Instant::now() + Duration::from_millis(1000);
+        let node = self.desktop.read(pid, target.window.as_ref(), Some(&handle), deadline).ok()?.root;
+        if !TYPED_ROLES.contains(&node.role.as_str()) {
+            return None;
+        }
+        Some((|| {
+            let want = a.value.clone().unwrap_or_default();
+            let tiers = [Tier::Session];
+            let all = ComputerAction { action: ComputerActionName::Key, element: Some(index), text: Some("ctrl+a".into()), ..Default::default() };
+            self.event_step(&target.session, pid, target.window.as_ref(), &all, &tiers, paste_quiet_ms, cancel)?;
+            let put = if want.is_empty() {
+                ComputerAction { action: ComputerActionName::Key, element: Some(index), text: Some("Delete".into()), ..Default::default() }
+            } else {
+                ComputerAction { action: ComputerActionName::Type, element: Some(index), text: Some(want.clone()), ..Default::default() }
+            };
+            let (tier, done) = self.event_step(&target.session, pid, target.window.as_ref(), &put, &tiers, paste_quiet_ms, cancel)?;
+            // the field's own value once it has taken the keys, for up to 300 ms
+            let until = Instant::now() + Duration::from_millis(300);
+            let mut got = None;
+            loop {
+                got = self.desktop.read(pid, target.window.as_ref(), Some(&handle), Instant::now() + Duration::from_millis(500)).ok().and_then(|w| w.root.value).or(got);
+                if got.as_deref().is_some_and(|g| same_text(&want, g)) || Instant::now() >= until {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            if let Some(g) = got.as_deref().filter(|g| !same_text(&want, g)) {
+                return Err(ComputerError { value: Some(g.to_string()), ..fail(ComputerErrorKind::ValueNotTaken, "the element did not take the value") });
+            }
+            let input = Some(OkStepInput { via: done.via.unwrap_or(InputVia::Keys), clipboard: done.clipboard, on: None });
+            Ok(OkStep { action: a.action, tier: Some(tier), effect: StepEffect::Changed, element: Some(ElementBrief { index, line: String::new() }), input, session: done.session, ..Default::default() })
+        })())
+    }
+
     /// One step at the `ax` tier.
     fn ax_step(&self, target: &Target, pid: i64, a: &ComputerAction, tiers: &[Tier]) -> Result<OkStep, ComputerError> {
         let ok = |tier: Option<Tier>| OkStep { action: a.action, tier, effect: StepEffect::Unknown, ..Default::default() };
@@ -896,7 +952,7 @@ impl<D: Desktop> Service<D> {
         let acted = self.desktop.act(pid, &handle, a)?;
         if a.action == ComputerActionName::SetValue {
             if let (Some(want), Some(got)) = (&a.value, &acted.value) {
-                if want != got {
+                if !same_text(want, got) {
                     return Err(ComputerError { value: Some(got.clone()), ..fail(ComputerErrorKind::ValueNotTaken, "the element did not take the value") });
                 }
             }
@@ -906,6 +962,15 @@ impl<D: Desktop> Service<D> {
         Ok(OkStep { element: Some(ElementBrief { index, line: String::new() }), input, effect, ..ok(Some(Tier::Ax)) })
     }
 }
+
+/// Two texts the same but for how their line breaks are written: a RichEdit keeps `\r` where it was given `\r\n`.
+pub fn same_text(a: &str, b: &str) -> bool {
+    let norm = |s: &str| s.replace("\r\n", "\n").replace('\r', "\n");
+    norm(a) == norm(b)
+}
+
+/// The roles `set_value` types into with real keys where nobody sits at the desktop: a field, not a slider or a list.
+const TYPED_ROLES: &[&str] = &["input", "text area", "document"];
 
 /// What an observation's picture follows: the call's policy and long edge.
 pub(crate) struct Shots {
@@ -936,4 +1001,17 @@ pub fn signature<H>(w: &RawWindow<H>) -> u64 {
         n.caret.hash(&mut h);
     });
     h.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::same_text;
+
+    #[test]
+    fn a_value_read_back_is_the_same_whatever_its_line_breaks() {
+        assert!(same_text("one\r\ntwo", "one\rtwo"));
+        assert!(same_text("one\ntwo", "one\r\ntwo"));
+        assert!(!same_text("one\r\ntwo", "onetwo"));
+        assert!(!same_text("a", "b"));
+    }
 }

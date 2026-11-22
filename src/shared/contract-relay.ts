@@ -265,8 +265,8 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
  *  - away.get, away.set: Away is kept in step between linked hosts by their own peer leg; the box's answer stands for both.
  *  - video.open, video.close: a lane's stream is the box's own to open and close. The phone cannot reach the host it is
  *    relayed to, so the box asks that host to publish the window to it and answers the lane itself (remote/relay.ts
- *    `video`, docs/agents/live-video.md "From his other devices"); neither call crosses as a frame. video.paste goes
- *    into a stream the same socket opened, so it is the box's too.
+ *    `video`, docs/agents/live-video.md "From his other devices"); neither call crosses as a frame. video.paste and
+ *    video.copy go into a stream the same socket opened, so they are the box's too.
  *  - computer.drive: only the box's page and its Windows VM take input, and both are the box's own rows; a Mac's or a
  *    PC's window is never driven from the picture.
  */
@@ -282,6 +282,7 @@ export const RELAY_NOT_CARRIED: readonly ClientRequest['method'][] = [
   'video.open',
   'video.close',
   'video.paste',
+  'video.copy',
   'computer.drive',
   // Work methods whose rows are this host's own (a pillar's relay row says `'never'`, contract-work.ts)
   ...WORK_NOT_CARRIED

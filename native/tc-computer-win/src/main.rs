@@ -114,6 +114,8 @@ fn host(h: tc_computer_win::door::Host) {
     let mut cmd = Command::new(exe);
     cmd.arg("serve").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
     cmd.env_remove("TC_COMPUTER_VIDEO_PIPE").env_remove("TC_COMPUTER_VIDEO_TOKEN");
+    // a host through the door drives a machine nobody sits at (the VM): see Service::without_person
+    cmd.env("TC_COMPUTER_NO_PERSON", "1");
     let mut bytes = None;
     if let Some(b) = h.bytes {
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
@@ -193,7 +195,9 @@ fn serve(args: &[String]) -> i32 {
             return 70;
         }
     };
-    let service = Arc::new(Service::new(desktop, VERSION));
+    let service = Service::new(desktop, VERSION);
+    // the door's child: nobody sits at this desktop (a VM)
+    let service = Arc::new(if std::env::var("TC_COMPUTER_NO_PERSON").as_deref() == Ok("1") { service.without_person() } else { service });
     // live video's bytes pipe (§30): dialed before any line is read, so before initialize is answered
     if let (Ok(name), Ok(token)) = (std::env::var("TC_COMPUTER_VIDEO_PIPE"), std::env::var("TC_COMPUTER_VIDEO_TOKEN")) {
         match tc_computer_win::platform::video::dial(&name) {

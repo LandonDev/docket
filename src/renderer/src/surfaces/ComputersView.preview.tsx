@@ -2,7 +2,8 @@
 // src/renderer/src/surfaces/ComputersView.preview.tsx#ComputersStates`:
 // every fixture of the Computers page's body at its width, on the page's own
 // fill. Rendered by nothing in the app.
-import { ComputersHeader, ComputersPage } from "./ComputersView";
+import { ComputersPage, RestingVmPicture } from "./ComputersView";
+import { restingVmTiles, type VmState } from "../lib/winvmWake";
 import fixtures from "./ComputersView.fixtures";
 
 export function ComputersStates({ only }: { only?: number[] }) {
@@ -21,24 +22,31 @@ export function ComputersStates({ only }: { only?: number[] }) {
   );
 }
 
-// `#ComputersHeaders`: the page's header with nothing to offer, while the Windows VM sleeps, and while it wakes.
-export function ComputersHeaders() {
-  const none = async (): Promise<void> => undefined;
-  const states = [
-    { name: "Nothing asleep", vm: null },
-    { name: "The Windows VM sleeps", vm: { host: "box", waking: false } },
-    { name: "Waking", vm: { host: "box", waking: true } },
+// `#ComputersVm`: the Windows VM's tile on the stage while it is not awake, in each state, at the page's width.
+export function ComputersVm() {
+  const never = (): Promise<void> => new Promise(() => undefined);
+  const states: { name: string; vm: VmState; stage: true }[] = [
+    { name: "Asleep, on the stage: it wakes by itself", vm: { state: "asleep", cannot: null, error: null }, stage: true },
+    { name: "Not set up", vm: { state: "none", cannot: null, error: null }, stage: true },
   ];
   return (
     <div className="flex flex-col gap-8 p-4">
-      {states.map((state) => (
-        <figure key={state.name} className="m-0 flex flex-col gap-2">
-          <figcaption className="text-xs text-muted-foreground">{state.name}</figcaption>
-          <div className="flex flex-col border border-border bg-background" style={{ width: 720 }}>
-            <ComputersHeader besideRail onClose={() => undefined} onToggleSidebar={() => undefined} vm={state.vm} onWake={none} />
-          </div>
-        </figure>
-      ))}
+      {states.map((state) => {
+        const tiles = restingVmTiles({ box: state.vm }, [], () => "The box");
+        return (
+          <figure key={state.name} className="m-0 flex flex-col gap-2">
+            <figcaption className="text-xs text-muted-foreground">{state.name}</figcaption>
+            <div className="flex flex-col border border-border bg-background" style={{ width: 960, height: 640 }}>
+              <ComputersPage
+                tiles={tiles}
+                onOpenSession={() => undefined}
+                size={{ width: 960, height: 640 }}
+                pictureOf={(tile, place) => <RestingVmPicture host="box" vm={tile.vm!} place={place} wake={never} />}
+              />
+            </div>
+          </figure>
+        );
+      })}
     </div>
   );
 }

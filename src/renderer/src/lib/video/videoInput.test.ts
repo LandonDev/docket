@@ -123,6 +123,23 @@ describe("his keys", () => {
     expect(m.keys()).toEqual(["+224", "+6", "-6", "-224"]);
   });
 
+  it("tells the caller a copy or a cut went to the Windows VM, whose clipboard is not his, and never for the box's browser", () => {
+    let copies = 0;
+    const vm = new VideoInput(() => undefined, { mac: false, paste: () => undefined, screen: "vm", copied: () => void copies++ });
+    vm.keyDown({ code: "ControlLeft", ctrlKey: true });
+    vm.keyDown({ code: "KeyC", ctrlKey: true });
+    vm.keyDown({ code: "KeyC", ctrlKey: true, repeat: true });
+    vm.keyDown({ code: "KeyX", ctrlKey: true });
+    vm.keyDown({ code: "KeyA", ctrlKey: true });
+    expect(copies).toBe(2);
+    const mac = new VideoInput(() => undefined, { mac: true, paste: () => undefined, screen: "vm", copied: () => void copies++ });
+    mac.keyDown({ code: "KeyC", command: true });
+    expect(copies).toBe(3);
+    const box = new VideoInput(() => undefined, { mac: false, paste: () => undefined, screen: "browser", copied: () => void copies++ });
+    box.keyDown({ code: "KeyC", ctrlKey: true });
+    expect(copies).toBe(3);
+  });
+
   it("presses the far Caps Lock only when it differs from his", () => {
     const r = rig();
     r.input.keyDown({ code: "KeyA", capsLock: false });

@@ -469,6 +469,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'video.open': 'approve',
   'video.close': 'approve',
   'video.paste': 'approve',
+  'video.copy': 'approve',
   'computer.proofHold': 'local',
   // The thread's computer history: pictures of the person's windows and what was read off them, this desktop's alone.
   'computer.history.read': 'local',

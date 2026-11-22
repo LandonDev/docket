@@ -47,12 +47,24 @@ export function stageLayout(page: Size, count: number): StageLayout {
  * never past twice the stream's own pixels, so a small window stays small
  * instead of turning to blur. `frame` is in the stream's pixels; `dpr` the
  * screen's. Before the frame is known the picture takes 16:10 at the room's
- * size.
+ * size. Grown past the stream's own pixels, it is drawn at a whole number of
+ * screen pixels to each of the stream's (1:1, 2:1) when that costs at most a
+ * fifth of its width: a 1280 by 800 Windows VM in a room 1400 wide on a 1x
+ * screen is drawn 1280 wide and sharp, not 1400 and soft.
  */
+/** The least of its width a picture keeps when it is drawn at a whole scale of its stream's pixels. */
+export const SNAP_KEEPS = 0.8;
+
 export function fitStage(room: Size, frame: Size | null, dpr: number): Size {
   const shape = frame && frame.width > 0 && frame.height > 0 ? frame : { width: 16, height: 10 };
+  const ratio = Math.max(1, dpr);
   let width = Math.min(room.width, (room.height * shape.width) / shape.height);
-  if (frame) width = Math.min(width, (frame.width / Math.max(1, dpr)) * 2);
+  if (frame) {
+    width = Math.min(width, (frame.width / ratio) * 2);
+    const scale = (width * ratio) / frame.width;
+    const whole = Math.floor(scale + 1e-6);
+    if (scale > 1 && whole >= 1 && whole / scale >= SNAP_KEEPS) width = (whole * frame.width) / ratio;
+  }
   width = Math.max(0, Math.floor(width));
   return { width, height: Math.floor((width * shape.height) / shape.width) };
 }

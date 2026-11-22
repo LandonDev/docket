@@ -1,6 +1,6 @@
 import type { ServerPush } from "@server/shared/contract";
 import type { InputEvent } from "@server/shared/video/nsl1";
-import { VIDEO_MIN_EDGE, type VideoCloseFace, type VideoOpenAnswer } from "@server/shared/contract-video";
+import { VIDEO_MIN_EDGE, type VideoCloseFace, type VideoCopyAnswer, type VideoOpenAnswer } from "@server/shared/contract-video";
 import { registry } from "../connection/registry";
 import { afterClose, streamUrl, type FromWorker, type ToWorker } from "./messages";
 import { REGROW, SHRINK, SHRINK_QUIET_MS } from "./support";
@@ -49,6 +49,8 @@ export interface StreamHandle {
   input(event: InputEvent): void;
   /** his clipboard's text into the page he drives, as a paste */
   paste(text: string): Promise<void>;
+  /** the far clipboard's text after his copy in the page he drives (`video.copy`); null when it holds none */
+  copy(): Promise<string | null>;
   /** opens a stream that is over once more */
   retry(): void;
   release(): void;
@@ -166,6 +168,12 @@ export class VideoStreams {
         const stream = mine.opened;
         if (!stream?.drive || !text) return;
         await this.deps.link(mine.host)?.request("video.paste", { stream: stream.stream, text });
+      },
+      copy: async () => {
+        const stream = mine.opened;
+        if (!stream?.drive) return null;
+        const answer = await this.deps.link(mine.host)?.request<VideoCopyAnswer>("video.copy", { stream: stream.stream });
+        return answer?.text ?? null;
       },
       retry: () => {
         if (mine.view.status !== "over" || this.entries.get(id) !== mine) return;

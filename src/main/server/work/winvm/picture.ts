@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
 import type { ComputerFramePush, ComputerPreviewStart, ComputerSessionRow } from '@shared/contract-computer'
 import { PREVIEW_MAX_EDGE, PREVIEW_MIN_EDGE } from '@shared/contract-computer'
-import { VIDEO_FPS, type VideoRefusal } from '@shared/contract-video'
+import { VIDEO_FPS, type VideoCopyAnswer, type VideoRefusal } from '@shared/contract-video'
 import type { WinvmState } from '@shared/contract-work-winvm'
 import { previewRefusal, type PreviewAccess, type Viewer } from '../../computer/preview'
 import { PreviewGate } from '../../computer/previewGate'
@@ -206,6 +206,14 @@ export class VmPicture implements VideoSource {
     await vmPaste(text, (event) => feed.type(event))
   }
 
+  /** His copy in the VM he drives, for his own clipboard: the guest's clipboard text (vm.ts `vmCopied`). */
+  async copy(stream: StreamInfo): Promise<VideoCopyAnswer> {
+    if (!this.streams.has(stream.id) || !this.owner) throw new Error('forbidden: video.copy needs a stream you are driving')
+    if (!vmCopy) throw new Error(NO_VM_PASTE)
+    const { text, truncated } = await vmCopy()
+    return truncated ? { text, truncated } : { text }
+  }
+
   close(): void {
     for (const off of this.offs.splice(0)) off()
     this.previews.endAll()
@@ -214,7 +222,7 @@ export class VmPicture implements VideoSource {
 
 const refuse = (reason: VideoRefusal): VideoOpening => ({ ok: false, reason })
 
-export const NO_VM_PASTE = 'Paste into the Windows VM needs Work on.'
+export const NO_VM_PASTE = 'Paste into and copy out of the Windows VM need Work on.'
 
 /**
  * His paste into the guest (vm.ts `vmPaste`): his text on the guest's clipboard, then Ctrl+V through the service.
@@ -224,6 +232,11 @@ export type VmPaste = (text: string, type: (event: InputEvent) => boolean) => Pr
 let vmPaste: VmPaste | null = null
 export function configureVmPaste(fn: VmPaste | null): void {
   vmPaste = fn
+}
+/** His copy out of the guest (vm.ts `vmCopied`): its clipboard's text. Null while Work is off. */
+let vmCopy: (() => Promise<{ text: string | null; truncated: boolean }>) | null = null
+export function configureVmCopy(fn: typeof vmCopy): void {
+  vmCopy = fn
 }
 /** Whether a paste reaches the guest now: the pillar's start set it. */
 export const vmPasteWired = (): boolean => vmPaste !== null

@@ -273,6 +273,9 @@ export interface LiveStream {
   drive: VideoDrive | null;
 }
 
+/** How long after a copy chord the far clipboard is read: the app there takes the chord, then fills it. */
+export const COPY_SETTLE_MS = 300;
+
 /**
  * While he drives from this place, the box is his keyboard and pointer in
  * the page (docs/agents/live-video.md "Driving"): its events go down the
@@ -290,11 +293,28 @@ export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement |
         .readText()
         .then((text) => (text ? drive.paste(text) : undefined))
         .catch(() => loadToast().then((toast) => toast.error("Couldn't paste into the page")));
+    // a copy in the Windows VM lands on its clipboard, not his: once the app there has taken the chord, its text is his
+    let copies = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const copied = (): void => {
+      const mine = ++copies;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void drive
+          .copy()
+          .then((text) => (text && mine === copies ? navigator.clipboard.writeText(text) : undefined))
+          .catch(() => loadToast().then((toast) => toast.error("Couldn't copy from the page")));
+      }, COPY_SETTLE_MS);
+    };
     if (!leaveSaid) {
       leaveSaid = true;
       void loadToast().then((toast) => toast(`Press ${keyHint(LEAVE_CHORD)} to leave the page`));
     }
-    return attachInput(el, new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el), screen }));
+    const detach = attachInput(el, new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el), screen, copied }));
+    return () => {
+      if (timer) clearTimeout(timer);
+      detach();
+    };
   }, [box, drive, screen]);
   return drive !== null;
 }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { macComputerKey } from "@server/shared/contract-maccomputer";
 import { canTakeOver, computerTiles, viewKey, computersMark, driveName, findComputer, handBack, takeOver, tileKey } from "./computers";
-import { sleepingVm } from "./winvmWake";
+import { restingVm, restingVmTiles, type VmState } from "./winvmWake";
 import { registry } from "./connection/registry";
 import { BOX_BROWSER_BUNDLE } from "./computerSessions";
 
@@ -182,10 +182,42 @@ describe("the Windows VM", () => {
     expect(canTakeOver(tile)).toBe(false);
   });
 
-  it("is offered Wake by the first host whose VM sleeps or wakes, and by none where it is awake or absent", () => {
-    expect(sleepingVm({ mac: "none", box: "asleep" })).toEqual({ host: "box", waking: false });
-    expect(sleepingVm({ box: "waking" })).toEqual({ host: "box", waking: true });
-    expect(sleepingVm({ box: "awake", mac: "none" })).toBeNull();
-    expect(sleepingVm({ box: "setting-up" })).toBeNull();
+  const at = (state: VmState["state"]): VmState => ({ state, cannot: null, error: null });
+
+  it("is a tile in every state: drawn from its state, under the key its live tile has, while it has no row", () => {
+    const [asleep] = restingVmTiles({ box: at("asleep") }, [], nameOf);
+    const [live] = computerTiles({ box: [vm()] }, titleOf, nameOf, mac);
+    expect(asleep).toMatchObject({ title: "Windows VM", where: "The box", computer: "vm:windows", idle: true, doing: null, vm: at("asleep") });
+    expect(tileKey(asleep, [asleep])).toBe(tileKey(live, [live]));
+    // no stream is asked for it
+    expect(asleep.entry.previewable).toBe(false);
+    // its row is there: the live tile alone
+    expect(restingVmTiles({ box: at("awake") }, [live], nameOf)).toEqual([]);
+    // awake before its row came: still a tile, waking
+    expect(restingVmTiles({ box: at("awake") }, [], nameOf)[0].vm?.state).toBe("awake");
+    expect(restingVm(at("awake"))).toMatchObject({ line: "Waking the Windows VM", busy: true, wakes: false });
+  });
+
+  it("says its state in words, and only an asleep or sleeping one is woken by the stage", () => {
+    expect(restingVm(at("asleep"))).toEqual({ line: "Asleep", busy: false, wakes: true });
+    expect(restingVm(at("going-to-sleep"))).toMatchObject({ busy: true, wakes: true });
+    expect(restingVm(at("none"))).toEqual({ line: "Not set up: Settings → Work → Windows VM", busy: false, wakes: false });
+    expect(restingVm(at("setting-up"))).toMatchObject({ line: "Setting up the Windows VM", wakes: false });
+  });
+
+  it("offers Take over asleep, going to sleep or waking, and none while it is not set up or sets up", () => {
+    const offered = (state: VmState["state"]) => canTakeOver(restingVmTiles({ box: at(state) }, [], nameOf)[0]);
+    expect(["asleep", "going-to-sleep", "waking", "awake"].map((s) => offered(s as VmState["state"]))).toEqual([true, true, true, true]);
+    expect(offered("none")).toBe(false);
+    expect(offered("setting-up")).toBe(false);
+  });
+
+  it("is woken by Take over before the wheel is asked for, so one press takes over whatever its state", async () => {
+    const calls: string[] = [];
+    vi.spyOn(registry, "link").mockReturnValue({ request: async (method: string) => void calls.push(method) } as never);
+    await takeOver(restingVmTiles({ box: at("asleep") }, [], nameOf)[0]);
+    expect(calls).toEqual(["work.winvm.wake", "computer.drive"]);
+    vi.restoreAllMocks();
   });
 });
+
