@@ -39,7 +39,7 @@ and opens the door at the next call.
 | `work.winvm.wake` | operate | wakes it and answers once it is awake (about 13 s from hibernate, 20 to 26 s cold) |
 | `work.winvm.sleep` | operate | hibernates it and answers once QEMU has exited |
 | `work.winvm.setup` | admin | answers at once; the progress and the end come as pushes |
-| `work.winvm.settings` | admin | `{ sleepAfter, screen }`: `15m`, `30m` (the default), `2h` or `never`, in the host setting `work.winvm.sleepAfter`; the guest's screen, `1280x800` (the default) or `1920x1200`, in `work.winvm.screen`, taken at the next wake (live-video.md "The Windows VM" has the numbers that offer it) |
+| `work.winvm.settings` | admin | `{ sleepAfter, screen }`: `15m`, `30m` (the default), `2h` or `never`, in the host setting `work.winvm.sleepAfter`; the guest's screen, `1280x800` (the default) or `1920x1200`, in `work.winvm.screen`, used by a new Set up ("The picture") (live-video.md "The Windows VM" has the numbers that offer it) |
 | `work.winvm.points` | read | `{ points }`, newest first |
 | `work.winvm.point.save` | operate | `{ name? }`: a point of the sleeping machine |
 | `work.winvm.point.restore` | admin | `{ id }`: back to a point; the machine stays asleep |
@@ -388,7 +388,7 @@ In order, once the box runs a build with all of Track B:
    many Teams libraries it syncs, or Sign in where it needs him (`work.office.vmSignIn`, then the Computers
    page on the VM).
 4. **Choose its sleep and screen** if the defaults do not suit: Sleeps after (30 minutes) and Screen size
-   (1280 × 800; 1920 × 1200 from the next wake).
+   (1280 × 800; 1920 × 1200 is used by a new Set up: Windows keeps the size it was set up at through every sleep).
 5. **Sign in to what threads should use**, in a Take over from the Computers page: the VM keeps it across
    sleeps. A thread never types a password.
 6. **Before the evaluation ends** (about 17 February 2027, Settings' Edition row; Connections warns 14 days

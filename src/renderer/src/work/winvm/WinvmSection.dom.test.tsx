@@ -105,14 +105,14 @@ describe("the Windows VM in Settings → Work", () => {
     expect(h.calls.at(-1)?.method).toBe("work.winvm.point.save");
   });
 
-  it("sets the screen size from the two offered, taken at the next wake", async () => {
+  it("sets the screen size from the two offered, used by a new Set up", async () => {
     h.state = at({ state: "awake" });
     render(<WinvmSection hosts={["box"]} />);
     await flush();
     const pick = screen.getByRole("combobox", { name: "Screen size" });
     expect(pick.textContent).toContain("1280 × 800");
     // an awake machine keeps the size it woke with
-    expect(screen.getByText("From the next wake")).not.toBeNull();
+    expect(screen.getByText("Used when the VM is set up again")).not.toBeNull();
     await act(async () => {
       fireEvent.click(pick);
     });

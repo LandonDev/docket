@@ -292,8 +292,8 @@ export function WinvmView({ title, state, points, screen, error, pressing, onPre
             <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} />
           </PageRow>
           {screen ? (
-            // the screen is the machine's from a wake on: an awake one keeps the size it woke with
-            <PageRow title="Screen size" description={state.state === "asleep" ? undefined : "From the next wake"}>
+            // Windows keeps the size it was set up at through every sleep (guestScreen.ts): the choice is a new Set up's
+            <PageRow title="Screen size" description="Used when the VM is set up again">
               <ChoiceSelect size="sm" label="Screen size" value={screen} options={SCREENS} onChange={(v) => onScreen(v as WinvmScreen)} />
             </PageRow>
           ) : null}
