@@ -97,10 +97,25 @@ export const VM_KEYS: readonly { id: string; label: string; keys: readonly numbe
   { id: "alt-tab", label: "Alt+Tab", keys: [226, 43] },
 ];
 
-/** While he drives the Windows VM: one quiet button with the keys his own keyboard would keep for itself. */
+/** The picture he drives nearest to an element of its caption: the stage's, the full window's, the pop-out's. */
+export function pictureNear(el: Element | null): HTMLElement | null {
+  for (let n = el?.parentElement ?? null; n; n = n.parentElement) {
+    const picture = n.querySelector<HTMLElement>('[role="application"]');
+    if (picture) return picture;
+  }
+  return null;
+}
+
+/**
+ * While he drives the Windows VM: one quiet button with the keys his own keyboard would keep for itself. A pick gives
+ * the keyboard back to the picture, so the next keys he types go to the VM (Start opened by the Windows key takes them).
+ */
 function KeysMenu({ tile }: { tile: ComputerTile }) {
+  const button = useRef<HTMLButtonElement>(null);
+  const back = { get current() { return pictureNear(button.current) ?? button.current; } };
   return (
     <RowsMenu
+      finalFocus={back}
       label="Keys"
       align="end"
       side="top"
@@ -114,7 +129,7 @@ function KeysMenu({ tile }: { tile: ComputerTile }) {
         });
       }}
       trigger={
-        <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" aria-label="Keys">
+        <Button ref={button} variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" aria-label="Keys">
           <Keyboard className="size-4" />
         </Button>
       }

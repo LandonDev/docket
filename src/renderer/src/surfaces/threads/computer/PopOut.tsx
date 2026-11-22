@@ -6,7 +6,8 @@ import { loadToast } from "@renderer/components/ui/toaster";
 import { TooltipContainerProvider } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
 import { Desktop, Square, X } from "../../../chrome/icons";
-import { canTakeOver, handBack, takeOver, useComputer, type ComputerTile } from "../../../lib/computers";
+import { canTakeOver, driveName, handBack, takeOver, useComputer, type ComputerTile } from "../../../lib/computers";
+import { useDriveHold } from "../../../lib/driveHold";
 import { stopComputer } from "../../../lib/computerSessions";
 import { setPopOutShape } from "../../../lib/native";
 import { POP_OUT_FRAME, closePopOut, usePopOut } from "../../../lib/popOut";
@@ -190,6 +191,7 @@ function PopOutBody({ host, threadId, name, title, onBack }: { host: string; thr
   // it is what he watches: it takes the box's display, and he may drive from it
   const stream = useLiveStream(tile?.entry ?? null, true, box as RefObject<HTMLElement | null>, measure);
   useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""));
+  useDriveHold(tile ? `${tile.entry.host}\n${driveName(tile)}` : null, !!tile?.driving, () => (tile ? handBack(tile) : Promise.resolve()));
   const frame = streamSize(stream.state);
   useEffect(() => {
     title.title = tile?.title ?? name;

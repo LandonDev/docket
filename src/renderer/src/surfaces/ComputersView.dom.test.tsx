@@ -5,7 +5,7 @@ import type { ComputerTile } from "../lib/computers";
 import { closeFullWindow, fullWindowTarget } from "../lib/fullWindow";
 import { closePopOut, popOutTarget, requestStage } from "../lib/popOut";
 import { registry } from "../lib/connection/registry";
-import { ComputersPage, ComputersView, RestingVmPicture, Tile, tileLine } from "./ComputersView";
+import { ComputersPage, ComputersView, pictureFrame, RestingVmPicture, Tile, tileLine } from "./ComputersView";
 import fixtures from "./ComputersView.fixtures";
 import { tile } from "./threads/computer/FullWindow.fixtures";
 
@@ -327,3 +327,69 @@ describe("the Windows VM in every state", () => {
     expect(tries).toBe(2);
   });
 });
+
+describe("driving from the page", () => {
+  const vmTile = (over: Partial<ComputerTile> = {}): ComputerTile => {
+    const base = tile();
+    return tile({ browser: false, computer: "vm:windows", driving: true, doing: null, entry: { ...base.entry, previewHost: "box", previewKey: "vm:windows" }, ...over });
+  };
+
+  it("gives the keyboard back to the picture after a pick from the Keys menu", async () => {
+    vi.spyOn(await import("../lib/computerVideo"), "pressKeys").mockResolvedValue(true);
+    render(<Tile tile={vmTile()} onOpenSession={() => undefined} picture={<div role="application" tabIndex={0} aria-label="Live view of Windows VM" />} />);
+    fireEvent.click(screen.getByRole("button", { name: "Keys" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Windows key" }));
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
+    expect(document.activeElement).toBe(screen.getByRole("application"));
+  });
+
+  it("hands the computer back by itself when the last place of his that shows it goes, and not when he handed back", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const calls: { method: string; params: unknown }[] = [];
+    vi.spyOn(registry, "link").mockReturnValue({ request: async (method: string, params: unknown) => void calls.push({ method, params }) } as never);
+    const view = render(<Tile tile={vmTile()} onOpenSession={() => undefined} />);
+    view.unmount();
+    await act(async () => void vi.advanceTimersByTime(1500));
+    expect(calls).toEqual([{ method: "computer.drive", params: { computer: "vm:windows", driver: "agent" } }]);
+    // handed back with its own button (the row says so): nothing more is sent when the tile goes
+    calls.length = 0;
+    const again = render(<Tile tile={vmTile()} onOpenSession={() => undefined} />);
+    again.rerender(<Tile tile={vmTile({ driving: false })} onOpenSession={() => undefined} />);
+    again.unmount();
+    await act(async () => void vi.advanceTimersByTime(3000));
+    expect(calls).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it("keeps a stray Escape from closing the page while he drives: it is the computer's key then", () => {
+    const closed = vi.fn();
+    h.tiles = [vmTile()];
+    const view = render(<ComputersView onClose={closed} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(closed).not.toHaveBeenCalled();
+    h.tiles = [vmTile({ driving: false })];
+    view.rerender(<ComputersView onClose={closed} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(closed).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for a host whose link is down in the picture's own box, with no stream asked for and no Retry", () => {
+    vi.spyOn(registry, "statuses").mockReturnValue(new Map([["box", {}]]) as never);
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "reconnecting" } as never);
+    render(<ComputersPage tiles={[vmTile({ driving: false })]} onOpenSession={() => undefined} size={{ width: 1200, height: 800 }} />);
+    expect(screen.getByRole("status").textContent).toMatch(/^Reconnecting to /);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(h.streams.every((s) => !s.run)).toBe(true);
+    // the box keeps the picture's size
+    expect((document.querySelector('[data-face="none"]') as HTMLElement).style.aspectRatio).toBe("1280 / 800");
+  });
+
+  it("sizes every face of a picture by one rule: the stream's frame, else the last one seen, else the VM's 1280 by 800", () => {
+    expect(pictureFrame("box\nbrowser:t9", null, false)).toBeNull();
+    expect(pictureFrame("box\nvm:x", null, true)).toEqual({ width: 1280, height: 800 });
+    expect(pictureFrame("box\nvm:x", { width: 1920, height: 1200 }, true)).toEqual({ width: 1920, height: 1200 });
+    // the stream ended or the link dropped: the box keeps the size it had
+    expect(pictureFrame("box\nvm:x", null, true)).toEqual({ width: 1920, height: 1200 });
+  });
+});
+

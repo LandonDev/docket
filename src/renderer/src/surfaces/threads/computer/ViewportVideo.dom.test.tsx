@@ -8,11 +8,11 @@ import type { ComputerEntry } from "../../../lib/computerSessions";
 import type { StreamHandle, StreamView, StreamWant } from "../../../lib/video/streams";
 import { videoEdge } from "../../../lib/video/support";
 import type { DrivenScreen } from "../../../lib/video/videoInput";
-import { COPY_SETTLE_MS, ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, Viewport, ViewportLine, forgetLeaveSaid, liveFace, streamSize, useDrivingInput, useLiveStream } from "./Viewport";
+import { COPY_SETTLE_MS, LEAVE_TOAST_CLASS, ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, Viewport, ViewportLine, forgetLeaveSaid, liveFace, streamSize, useDrivingInput, useLiveStream } from "./Viewport";
 
 /** The window's streams, stood in for: each acquire is kept, and the test says what its stream does. */
-const h = vi.hoisted(() => ({ supported: true, acquired: [] as FakeStream[], said: [] as string[], opens: [] as (() => void)[] }));
-vi.mock("@renderer/components/ui/toaster", () => ({ loadToast: async () => Object.assign((words: string) => void h.said.push(words), { error: () => undefined }) }));
+const h = vi.hoisted(() => ({ supported: true, acquired: [] as FakeStream[], said: [] as string[], toastClass: [] as (string | undefined)[], opens: [] as (() => void)[] }));
+vi.mock("@renderer/components/ui/toaster", () => ({ loadToast: async () => Object.assign((words: string, opts?: { className?: string }) => void (h.said.push(words), h.toastClass.push(opts?.className)), { error: () => undefined }) }));
 
 interface FakeStream {
   host: string;
@@ -81,6 +81,7 @@ beforeEach(() => {
   h.supported = true;
   h.acquired.length = 0;
   h.said.length = 0;
+  h.toastClass.length = 0;
   h.opens.length = 0;
   forgetLeaveSaid();
   calls.length = 0;
@@ -125,11 +126,11 @@ const row = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
 const entry = (key = "s1"): ComputerEntry => ({ host: "box", row: row({ threadId: key }), previewable: true, previewHost: "box", previewKey: key });
 const flush = () => act(async () => {});
 
-function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, back, screen }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; inset?: number; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy"; screen?: DrivenScreen }) {
+function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, back, screen, chordShown }: { entry: ComputerEntry; run: boolean; take?: boolean; drive?: boolean; inset?: number; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy"; screen?: DrivenScreen; chordShown?: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
   const stream = useLiveStream(en, run, box, root, { inset, ...(take === undefined ? {} : { take }), ...(drive === undefined ? {} : { drive }) });
-  useDrivingInput(stream, box, screen);
+  useDrivingInput(stream, box, screen, { chordShown });
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
   return (
@@ -150,9 +151,9 @@ function Live({ entry: en, run, take, drive, inset = VIEWPORT_INSETS, onOpen, ba
   );
 }
 
-type MountProps = { run?: boolean; take?: boolean; drive?: boolean; inset?: number; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy"; screen?: DrivenScreen };
+type MountProps = { run?: boolean; take?: boolean; drive?: boolean; inset?: number; entry?: ComputerEntry; onOpen?: (from: DOMRect) => void; back?: "ready" | "busy"; screen?: DrivenScreen; chordShown?: boolean };
 function mount(props: MountProps = {}) {
-  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} inset={p.inset} onOpen={p.onOpen ?? props.onOpen} back={p.back} screen={p.screen ?? props.screen} />;
+  const tree = (p: MountProps) => <Live entry={p.entry ?? entry()} run={p.run ?? true} take={p.take} drive={p.drive} inset={p.inset} onOpen={p.onOpen ?? props.onOpen} back={p.back} screen={p.screen ?? props.screen} chordShown={p.chordShown ?? props.chordShown} />;
   const view = render(tree(props));
   return { ...view, again: (p: MountProps) => view.rerender(tree(p)) };
 }
@@ -488,6 +489,24 @@ describe("driving the page from the picture", () => {
     await act(async () => h.acquired.at(-1)!.set({ status: "live", width: 1280, height: 800 }));
     await flush();
     expect(h.said).toHaveLength(1);
+  });
+
+  it("says the chord in a toast that takes no pointer, and says nothing where Hand back already wears it", async () => {
+    const owned = (): ComputerEntry => ({ ...entry(), row: { ...entry().row, driver: "owner" } });
+    const shown = mount({ entry: owned(), chordShown: true });
+    await flush();
+    await act(async () => h.acquired[0].set({ status: "live", width: 1280, height: 800 }));
+    await flush();
+    expect(h.said).toEqual([]);
+    shown.unmount();
+    mount({ entry: owned() });
+    await flush();
+    await act(async () => h.acquired.at(-1)!.set({ status: "live", width: 1280, height: 800 }));
+    await flush();
+    expect(h.said).toHaveLength(1);
+    // never over a control, never held open by a resting pointer
+    expect(h.toastClass).toEqual([LEAVE_TOAST_CLASS]);
+    expect(LEAVE_TOAST_CLASS).toBe("pointer-events-none");
   });
 
   it("hands a paste to the host as his clipboard's text", async () => {

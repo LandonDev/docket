@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode, type Ref, type RefObject }
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { cn } from "@renderer/lib/cn";
 import { Minimize2 } from "../../../chrome/icons";
-import { useComputer, type ComputerTile } from "../../../lib/computers";
+import { driveName, handBack, useComputer, type ComputerTile } from "../../../lib/computers";
+import { useDriveHold } from "../../../lib/driveHold";
 import { closeFullWindow, useFullWindow } from "../../../lib/fullWindow";
 import { CAPTION_GAP, CAPTION_HEIGHT, STAGE_INSET, fitStage, type Size } from "../../../lib/stageLayout";
 import { pixelRatioOf } from "../../../lib/video/support";
@@ -160,7 +161,9 @@ export function FullWindow({ onOpenSession }: { onOpenSession: (threadId: string
   const box = useRef<HTMLDivElement>(null);
   const focusOnDrive = useRef(false);
   const stream = useLiveStream(target ? (tile?.entry ?? null) : null, !!target, box as RefObject<HTMLElement | null>, measure);
-  useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""));
+  // its Hand back wears the leave chord: no toast says it again
+  useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""), { chordShown: true });
+  useDriveHold(tile ? `${tile.entry.host}\n${driveName(tile)}` : null, !!tile?.driving, () => (tile ? handBack(tile) : Promise.resolve()));
   useLeaveOnEscape(closeFullWindow);
   useEffect(() => {
     if (!stream.drive || !focusOnDrive.current) return;

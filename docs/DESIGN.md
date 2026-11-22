@@ -1025,9 +1025,21 @@ Every computer being driven now, on every connected host, in one place
   leaves the picture as a key cap inside it; on the Windows VM one quiet
   Keys button before it (a ghost icon button with a tip, 4px apart) opens a
   menu of the keys his own keyboard keeps: Windows key, Ctrl+Alt+Del,
-  Alt+Tab. Take over gives the picture the keyboard as soon as it is his.
+  Alt+Tab; a pick gives the keyboard back to the picture. Take over gives
+  the picture the keyboard as soon as it is his. No toast says the leave
+  chord here: Hand back already wears it. While he drives, Escape is the
+  computer's key and never closes the page. Leaving the page with nothing
+  else of his showing that computer (no full window, no pop-out) hands it
+  back by itself 1.5 seconds later (lib/driveHold.ts).
 - **The picture** is the Computer section's viewport with no cap of its
-  own (`fill`): its place sizes it. A skeleton until the first frame; a
+  own (`fill`): its place sizes it. Every face it has (the live picture,
+  the waiting box, the stopped line) takes one size: the stream's frame,
+  else the last frame that window saw of that computer, else the VM's
+  1280 by 800, through the stage's fit, so nothing moves when one gives
+  way to another. While the host's link is down it is the waiting box,
+  a spinner and "Reconnecting to The box", and no stream is asked for;
+  "The preview stopped" and Retry are for a stream that truly ended with
+  the host linked. A skeleton until the first frame; a
   click on the stage's picture opens the full window. A session this desktop
   may not draw is one muted line in the box's place, naming the machine:
   "Shown on Studio only". The browser /ui lists the tiles with no picture

@@ -255,6 +255,9 @@ function leavePicture(el: HTMLElement): void {
   el.blur();
 }
 
+/** The leave chord's toast takes no pointer: a press goes through it, and a resting pointer does not hold it open. */
+export const LEAVE_TOAST_CLASS = "pointer-events-none";
+
 /** The chord is said once a launch, in a toast, the first time a picture becomes his to drive. */
 let leaveSaid = false;
 export function forgetLeaveSaid(): void {
@@ -281,9 +284,12 @@ export const COPY_SETTLE_MS = 300;
  * the page (docs/agents/live-video.md "Driving"): its events go down the
  * stream as input records, a paste goes to the host as text, and everything
  * he holds is let go when the box loses the keyboard. Ctrl+Alt alone takes
- * the keyboard out of it, to Hand back.
+ * the keyboard out of it, to Hand back. `chordShown`: the place's Hand back
+ * wears that chord as a key cap (the Computers stage, the full window), so no
+ * toast says it again; elsewhere one toast says it once a launch, taking no
+ * pointer, so it never sits over a control nor waits for the pointer to go.
  */
-export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement | null>, screen: DrivenScreen = "browser"): boolean {
+export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement | null>, screen: DrivenScreen = "browser", { chordShown = false }: { chordShown?: boolean } = {}): boolean {
   const drive = stream.drive;
   useEffect(() => {
     const el = box.current;
@@ -306,16 +312,16 @@ export function useDrivingInput(stream: LiveStream, box: RefObject<HTMLElement |
           .catch(() => loadToast().then((toast) => toast.error("Couldn't copy from the page")));
       }, COPY_SETTLE_MS);
     };
-    if (!leaveSaid) {
+    if (!leaveSaid && !chordShown) {
       leaveSaid = true;
-      void loadToast().then((toast) => toast(`Press ${keyHint(LEAVE_CHORD)} to leave the page`));
+      void loadToast().then((toast) => toast(`Press ${keyHint(LEAVE_CHORD)} to leave the page`, { className: LEAVE_TOAST_CLASS }));
     }
     const detach = attachInput(el, new VideoInput(drive.send, { mac: IS_MAC, paste, leave: () => leavePicture(el), screen, copied }));
     return () => {
       if (timer) clearTimeout(timer);
       detach();
     };
-  }, [box, drive, screen]);
+  }, [box, chordShown, drive, screen]);
   return drive !== null;
 }
 

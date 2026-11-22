@@ -16,6 +16,7 @@ import { hostName } from "../../lib/threadResources";
 import { useSessionMetas } from "../../lib/tcserver/store";
 import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, OPEN_OVER, liveFace, pictureClass, RETRY_ENDS, sharpOf, streamSize, useDrivingInput, useLiveStream, VIEWPORT_INSETS, ViewportLine } from "../../surfaces/threads/computer/Viewport";
 import { openFullWindow } from "../../lib/fullWindow";
+import { useDriveHold } from "../../lib/driveHold";
 import { sharpWidth } from "../../lib/video/support";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps } from "../canvas/kind";
@@ -102,6 +103,8 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   // one call: the host hands him the wheel, then stops every session of the tree for its turn
   const takeOver = (): void => press("take", () => setDriver(env, pane, "owner"));
   const handBack = (): void => press("back", () => setDriver(env, pane, "agent"));
+  // this canvas is one of his places that show the page he drives: the last of them to go hands it back (driveHold.ts)
+  useDriveHold(`${env}\nbrowser:${pane}`, face.face === "owner" || (face.face === "held" && face.owner), () => setDriver(env, pane, "agent"));
   const host = siteHost(state);
   // A first read that failed is the state line's alone: the bar holds no bone that would never fill.
   if (error) return null;

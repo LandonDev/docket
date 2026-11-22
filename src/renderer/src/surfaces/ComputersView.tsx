@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { FADE_IN } from "@renderer/components/ui/reveal";
@@ -8,7 +8,9 @@ import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useDocumentVisible } from "../hooks/paneVisibility";
 import { cn } from "../lib/cn";
-import { tileKey, useComputers, viewKey, type ComputerTile } from "../lib/computers";
+import { driveName, handBack, tileKey, useComputers, viewKey, type ComputerTile } from "../lib/computers";
+import { registry } from "../lib/connection/registry";
+import { useDriveHold } from "../lib/driveHold";
 import { previewContext } from "../lib/computerSessions";
 import { openFullWindow } from "../lib/fullWindow";
 import { openPopOut, takeStageRequest, useStageRequest } from "../lib/popOut";
@@ -70,10 +72,13 @@ export type Place = { stage: true; room: Size } | { stage: false };
  */
 function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place: Place; focusOnDrive: RefObject<boolean> }) {
   const seen = useDocumentVisible();
+  const linked = useHostLinked(tile.entry.host);
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
-  const stream = useLiveStream(tile.entry, seen, box, measure, { take: place.stage, drive: place.stage });
-  useDrivingInput(stream, box, drivenScreen(tile.computer));
+  // no stream is asked for while the host's link is down: it is asked for again, as a place shown again, when the link is back
+  const stream = useLiveStream(tile.entry, seen && linked, box, measure, { take: place.stage, drive: place.stage });
+  // the stage's Hand back wears the leave chord: no toast says it again
+  useDrivingInput(stream, box, drivenScreen(tile.computer), { chordShown: place.stage });
   useEffect(() => {
     if (!stream.drive || !focusOnDrive.current) return;
     focusOnDrive.current = false;
@@ -82,7 +87,8 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
   const { state } = stream;
   const over = state.status === "ended" || state.status === "failed";
   const label = tileLabel(tile);
-  const frame = streamSize(state);
+  const frame = pictureFrame(frameKey(tile), streamSize(state), tile.computer.startsWith("vm:"));
+  if (!linked) return <WaitingPicture place={place} frame={frame} label={label} words={`Reconnecting to ${hostName(tile.entry.host)}`} />;
   const fit = place.stage ? fitStage(place.room, frame, pixelRatioOf(measure.current)) : null;
   return (
     <div ref={measure} data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
@@ -93,6 +99,53 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
         label={label}
         size={frame}
         line={over ? <ViewportLine words={state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error} onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined} /> : null}
+      />
+    </div>
+  );
+}
+
+/**
+ * The size a computer's picture box takes, one rule for every face it has (the live picture, the waiting box, the
+ * stopped line): the stream's own once it is known, else the last one this window saw for that computer, else the
+ * Windows VM's 1280 by 800; so nothing moves when one face gives way to another (the Mac's proof saw the live picture
+ * laid out at 788 by 493 for 60 ms before its frame said 640 by 400, after a wake and after a dropped link).
+ */
+const lastFrames = new Map<string, Size>();
+const frameKey = (tile: Pick<ComputerTile, "entry" | "computer">): string => `${tile.entry.host}\n${tile.computer}`;
+export function pictureFrame(key: string, frame: Size | null, vm: boolean): Size | null {
+  if (frame) {
+    lastFrames.set(key, frame);
+    return frame;
+  }
+  return lastFrames.get(key) ?? (vm ? VM_SIZE : null);
+}
+
+/** Whether the host's link is up; a host the registry does not list (none to wait for) counts as up. */
+function useHostLinked(host: string): boolean {
+  return useSyncExternalStore(
+    (fn) => registry.subscribe(fn),
+    () => !registry.statuses().has(host) || registry.statusOf(host).transport === "open",
+  );
+}
+
+/** A picture's box while it waits (the VM waking, the host's link coming back): its words beside a spinner, at the picture's size. */
+function WaitingPicture({ place, frame, label, words, line }: { place: Place; frame: Size | null; label: string; words: string; line?: ReactNode }) {
+  const fit = place.stage ? fitStage(place.room, frame, pixelRatioOf(null)) : null;
+  return (
+    <div data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
+      <Viewport
+        fill
+        face={{ kind: "none" }}
+        label={label}
+        size={frame}
+        line={
+          line ?? (
+            <span role="status" className="flex items-center gap-2 text-xs leading-4 text-muted-foreground">
+              <Spinner aria-hidden className="size-3.5" />
+              <span>{words}</span>
+            </span>
+          )
+        }
       />
     </div>
   );
@@ -132,21 +185,11 @@ export function RestingVmPicture({ host, vm, place, wake = wakeVm }: { host: str
   const line =
     failed !== null ? (
       <ViewportLine words={`Couldn't wake the Windows VM: ${failed}`} onRetry={() => setAttempt((n) => n + 1)} />
-    ) : busy ? (
-      <span role="status" className="flex items-center gap-2 text-xs leading-4 text-muted-foreground">
-        <Spinner aria-hidden className="size-3.5" />
-        <span>{wakes ? WAKING_LINE : rest.line}</span>
-      </span>
-    ) : (
+    ) : busy ? undefined : (
       <ViewportLine words={rest.line} />
     );
-  // on the stage, the room the picture will have, so it comes with nothing moving; in the strip, the strip's width
-  const fit = place.stage ? fitStage(place.room, VM_SIZE, pixelRatioOf(null)) : null;
-  return (
-    <div data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
-      <Viewport fill face={{ kind: "none" }} label="Windows VM" size={VM_SIZE} line={line} />
-    </div>
-  );
+  // the size its live picture will have (the last frame seen, else 1280 by 800), so it comes with nothing moving
+  return <WaitingPicture place={place} frame={pictureFrame(`${host}\nvm:windows`, null, true)} label="Windows VM" words={wakes ? WAKING_LINE : rest.line} line={line} />;
 }
 
 export interface TileProps {
@@ -162,6 +205,8 @@ export interface TileProps {
 
 /** One computer, on the stage or in the strip: the same element either way, so its picture's canvas stays. */
 export function Tile({ tile, onOpenSession, picture, stage = true, onStage, onTookOver }: TileProps) {
+  // a tile of the computer he drives holds his drive: leaving the page with nothing else of his showing it hands it back
+  useDriveHold(`${tile.entry.host}\n${driveName(tile)}`, tile.driving, () => handBack(tile));
   const line = tileLine(tile);
   // where it runs is said once: a picture this desktop may not draw already names the machine
   const where = picture && tile.shownOn ? null : tile.where;
@@ -308,7 +353,8 @@ export function ComputersView({ besideRail = false, onClose, onToggleSidebar, on
   const tiles = useMemo(() => [...live, ...restingVmTiles(vms, live, hostName)], [live, vms]);
   const close = useRef(onClose);
   close.current = onClose;
-  usePageEscape(() => close.current(), { fields: "blur" });
+  // while he drives a computer here Escape is that computer's key: a stray one never closes the page and its drive
+  usePageEscape(() => close.current(), { fields: "blur", enabled: !tiles.some((t) => t.driving) });
   return (
     <div role="region" aria-label="Computers" data-computers className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
       <ComputersHeader besideRail={besideRail} onClose={onClose} onToggleSidebar={onToggleSidebar} />

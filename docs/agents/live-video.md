@@ -423,7 +423,9 @@ first wanted; nothing of it is in the first paint.
 - **The host's link comes back** (a box restart, his link to the box cut and
   mended): a stream that gave way to the picture or ended while it was down
   is asked for again at the link's open (`useComputerVideo`), as a place shown
-  again is.
+  again is. On the Computers page a picture whose host's link is not open asks
+  for no stream at all and shows the waiting box, "Reconnecting to …", at the
+  picture's own size (`pictureFrame`), never "The preview stopped" with Retry.
 - **A closed stream** (`afterClose`, messages.ts). A drop that named no
   reason, `slow`, a decoder that failed or stalled: opened again with a
   fresh ticket after 0.5, 1, 2, 4 and 4 seconds, the last frame staying on
@@ -630,8 +632,18 @@ phone's full screen ("The phone" below), and from then on:
   the page. The keyboard goes to the nearest Hand back (`data-hand-back`:
   the canvas bar's, the full view's), or just leaves the picture when
   that button is busy. A toast says the chord once a launch, the first
-  time a picture becomes his to drive, and the box says it to a screen
-  reader (`aria-description`).
+  time a picture becomes his to drive, where Hand back does not already
+  wear it (`useDrivingInput`'s `chordShown`: the Computers stage and the
+  full window say nothing); it takes no pointer (`LEAVE_TOAST_CLASS`), so
+  it never stands over a control or stays open under a resting pointer.
+  The box says the chord to a screen reader (`aria-description`).
+- **His drive lasts while something of his shows the computer**
+  (lib/driveHold.ts): a Computers tile, the full window, the pop-out or a
+  thread's browser canvas each hold it while mounted; when the last one
+  goes, `computer.drive` hands it back 1.5 s later (`HAND_BACK_AFTER_MS`),
+  keys let go first, so a place giving way to another keeps it.
+- **A Keys menu pick** gives the keyboard back to the picture
+  (`pictureNear`), so his next keys go to the VM.
 - **Hand back** makes the stream a watch stream on the host, which lets go
   of every key he held; the picture is a picture again.
 - **The VM's wheel** (work/winvm/drive.ts `vmWheel`, the `vm` kind's hook):
