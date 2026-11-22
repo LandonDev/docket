@@ -1,7 +1,7 @@
 import type { Principal } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import type { ComputerClickPush } from '@shared/contract-computer'
-import { type VideoOpenAnswer, type VideoRefusal } from '@shared/contract-video'
+import { type VideoCopyAnswer, type VideoOpenAnswer, type VideoRefusal } from '@shared/contract-video'
 import { mayWatch } from '@shared/video/access'
 import type { RemoteAuth, StreamHolder } from '../remote/auth'
 import type { VideoFeed } from './feed'
@@ -51,6 +51,8 @@ export interface VideoSource {
   open(ask: VideoAsk): Promise<VideoOpening | null>
   /** Text into the page he drives; only a source that takes his input has it. */
   paste?(stream: StreamInfo, text: string): Promise<void>
+  /** The far clipboard's text after his copy, for his own; only a source that takes his input has it. */
+  copy?(stream: StreamInfo): Promise<VideoCopyAnswer>
 }
 
 /** Who asks: the socket's principal and the socket itself. */
@@ -156,6 +158,15 @@ export class VideoRpc {
     await source.paste(stream, params.text)
     return null
   }
+
+  /** The far clipboard's text after his copy: his own `drive` stream only, and only while he is the driver. */
+  async copy(params: { stream: string }, caller: VideoCaller): Promise<VideoCopyAnswer> {
+    const stream = this.relay.own(params.stream, caller.connection)
+    if (!stream || stream.scope !== 'drive' || !stream.group || !this.relay.driving(stream.group)) throw new Error('forbidden: video.copy needs a stream you are driving')
+    const source = this.origin.get(stream.id)
+    if (!source?.copy) throw new Error('This stream gives no copy')
+    return source.copy(stream)
+  }
 }
 
 export async function handleVideo(req: ClientRequest, video: VideoRpc, caller: VideoCaller): Promise<{ handled: boolean; result?: unknown }> {
@@ -166,6 +177,8 @@ export async function handleVideo(req: ClientRequest, video: VideoRpc, caller: V
       return { handled: true, result: video.close(req.params.stream, caller) }
     case 'video.paste':
       return { handled: true, result: await video.paste(req.params, caller) }
+    case 'video.copy':
+      return { handled: true, result: await video.copy(req.params, caller) }
     default:
       return { handled: false }
   }

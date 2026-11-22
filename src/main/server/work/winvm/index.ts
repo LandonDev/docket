@@ -11,9 +11,9 @@ import { SshGuest } from './sshGuest'
 import { StandingMachine } from './standing'
 import { PendingCalls } from '../../computer/pending'
 import { VM_PREAMBLE, vmOffered, vmTools } from './tools'
-import { restoreClipboard, saveClipboard, startVm, vmPaste } from './vm'
+import { restoreClipboard, saveClipboard, startVm, vmCopied, vmPaste } from './vm'
 import { configureVmClipboard } from './drive'
-import { configureVmPaste } from './picture'
+import { configureVmCopy, configureVmPaste } from './picture'
 import { vmScreen } from './window'
 import { ensurePuts } from './files'
 
@@ -197,11 +197,13 @@ export const winvm: WorkModule = {
     const paste = (text: string): Promise<void> => vmPaste(text)
     configureVmClipboard(clip)
     configureVmPaste(paste)
+    configureVmCopy(vmCopied)
     // a keeper started beside a running machine takes it as awake, and says so to nobody else
     told(k.state())
     return () => {
       configureVmClipboard(null)
       configureVmPaste(null)
+      configureVmCopy(null)
       stopVm()
       pending.closeAll()
       clearInterval(timer)

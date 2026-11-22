@@ -71,8 +71,14 @@ export const VideoRequestSchemas = [
   /** → null: the caller's own stream ends */
   request('video.close', z.object({ stream: z.string().min(1) })),
   /** → null: text into the page he drives, as a paste; a `drive` stream only */
-  request('video.paste', z.object({ stream: z.string().min(1), text: z.string().min(1).max(VIDEO_PASTE_MAX_CHARS) }))
+  request('video.paste', z.object({ stream: z.string().min(1), text: z.string().min(1).max(VIDEO_PASTE_MAX_CHARS) })),
+  /** → VideoCopyAnswer: the far clipboard's text after his copy in the page he drives, for his own; a `drive` stream only */
+  request('video.copy', z.object({ stream: z.string().min(1) }))
 ] as const
+
+/** What `video.copy` answers: the text, or null when the far clipboard holds none; `truncated` past its cap. */
+export const VideoCopyAnswerSchema = z.object({ text: z.string().nullable(), truncated: z.boolean().optional() })
+export type VideoCopyAnswer = z.infer<typeof VideoCopyAnswerSchema>
 
 /**
  * The codes a stream's socket closes with, and the reason each carries.

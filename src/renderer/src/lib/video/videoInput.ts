@@ -106,7 +106,8 @@ export class VideoInput {
 
   constructor(
     private readonly send: (event: InputEvent) => void,
-    private readonly opts: { mac: boolean; paste: () => void; leave?: () => void; screen?: DrivenScreen },
+    /** `copied`: a copy chord went to the Windows VM, whose clipboard is not his: the caller fetches it for his own */
+    private readonly opts: { mac: boolean; paste: () => void; leave?: () => void; screen?: DrivenScreen; copied?: () => void },
   ) {}
 
   private emit(event: InputEvent): void {
@@ -151,6 +152,7 @@ export class VideoInput {
       if (!e.repeat) this.opts.paste();
       return true;
     }
+    if ((command || control) && (e.code === "KeyC" || e.code === "KeyX") && !e.repeat && this.opts.screen === "vm") this.opts.copied?.();
     if (command) {
       // every other ⌘ chord is the app's
       if (!MAC_CHORDS.has(e.code)) return false;
