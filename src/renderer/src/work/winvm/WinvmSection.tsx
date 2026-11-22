@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { OfficeApp, TeamsLibrariesAnswer, VmOfficeStatus } from "@shared/contract-work-office";
 import { WINVM_EVALUATION_ENDS, type WinvmPoint, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from "@shared/contract-work-winvm";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { confirmAction, errorText } from "../../chrome/ConfirmDialog";
@@ -9,14 +10,17 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { registry } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
+import { signInOnVm } from "./signIn";
 
 /**
  * Settings → Work, Windows VM (docs/DESIGN.md "Settings → Work"; the keeper,
  * docs/agents/work-winvm.md): the box's standing Windows machine on each Work
  * host that can have one. One row says what it is doing with the one press
  * that fits (Set up, Wake, Sleep), then when it sleeps by itself, its
- * restore points (a dialog), the edition and Office. A host that cannot have
- * it (a Mac, a box with no base image) shows nothing.
+ * restore points (a dialog), the edition, and Office and OneDrive as last read
+ * in it (`work.office.vmStatus`, which never wakes it), with OneDrive's
+ * sign-in where it needs his. A host that cannot have it (a Mac, a box with
+ * no base image) shows nothing.
  */
 
 /** The machine's row: its state in a few words, and the one press that fits it. */
@@ -51,6 +55,45 @@ const SCREENS: { value: WinvmScreen; label: string }[] = [
   { value: "1920x1200", label: "1920 × 1200" },
 ];
 
+const APP_NAME: Record<OfficeApp, string> = { excel: "Excel", word: "Word", powerpoint: "PowerPoint", outlook: "Outlook" };
+const listed = (names: readonly string[]): string => (names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
+/** A line of the VM's Office or OneDrive row, and whether its sign-in is the press. */
+export interface VmLine {
+  words: string;
+  signIn?: true;
+  failed?: true;
+}
+
+/** Office in the VM as last read: not read yet, not installed, which apps and who it is signed in as, or the sign-in. */
+export function officeLine(status: VmOfficeStatus): VmLine {
+  const office = status.office;
+  if (!office) return { words: "Not read yet" };
+  if (!office.installed) return { words: "Not installed" };
+  const apps = listed(office.apps.filter((a) => a !== "outlook").map((a) => APP_NAME[a])) || "Installed";
+  if (!office.account) return { words: `${apps}. Sign in to finish`, signIn: true };
+  return { words: `${apps}, signed in as ${office.account}${office.licensed === false ? ", with no licence" : ""}` };
+}
+
+/** OneDrive in the VM: who it is signed in as and how many Teams libraries it syncs, or the sign-in. */
+export function onedriveLine(status: VmOfficeStatus, libraries: number | null): VmLine | null {
+  const place = status.onedrive;
+  const count = libraries === null ? "" : libraries ? `, ${libraries} Teams ${libraries === 1 ? "library" : "libraries"}` : ", no Teams library synced yet";
+  switch (place.state) {
+    case "ok":
+    case "no-libraries":
+      return { words: `Signed in as ${place.account ?? "you"}${place.state === "no-libraries" ? ", no Teams library synced yet" : count}` };
+    case "signed-out":
+      return { words: "Signed out", signIn: true };
+    case "no-onedrive":
+      return { words: "Not installed" };
+    case "error":
+      return { words: place.detail ?? "Could not be read", failed: true };
+    case "not-set-up":
+      return null;
+  }
+}
+
 /** The edition's line: what it is and when it ends. */
 export const evaluationLine = (ends: string): string =>
   `Windows 11 Enterprise evaluation, ends about ${new Date(`${ends}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
@@ -72,7 +115,10 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [pressing, setPressing] = useState(false);
   const [showPoints, setShowPoints] = useState(false);
-  const link = registry.linkOf(env);
+  const [office, setOffice] = useState<{ status: VmOfficeStatus; libraries: number | null } | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
+  const link = useMemo(() => registry.linkOf(env), [env]);
   const load = useCallback((): void => {
     void link.request<WinvmState>("work.winvm.state", {}).then(
       (s) => {
@@ -88,6 +134,17 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
     void link.request<WinvmSettings>("work.winvm.settings", {}).then(
       (v) => setScreen(v.screen),
       () => setScreen(null),
+    );
+    // A host on an older build has no status to give: then the rows are not drawn.
+    void Promise.all([
+      link.request<VmOfficeStatus>("work.office.vmStatus", {}),
+      link.request<TeamsLibrariesAnswer>("work.office.filesLibraries", {}).then(
+        (a) => a.libraries.filter((l) => l.vm && l.kind !== "mine").length,
+        () => null,
+      ),
+    ]).then(
+      ([status, libraries]) => setOffice({ status, libraries }),
+      () => setOffice(null),
     );
   }, [link]);
   useEffect(() => {
@@ -146,6 +203,17 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       load();
     }
   };
+  const signIn = async (): Promise<void> => {
+    setSigningIn(true);
+    setSignInError(null);
+    try {
+      await signInOnVm(env);
+    } catch (err) {
+      setSignInError(errorText(err));
+    } finally {
+      setSigningIn(false);
+    }
+  };
   const pickScreen = async (next: WinvmScreen): Promise<void> => {
     try {
       setScreen(next);
@@ -168,6 +236,8 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
         onSleepAfter={(v) => void setSleepAfter(v)}
         onScreen={(v) => void pickScreen(v)}
         onPoints={() => setShowPoints(true)}
+        office={office}
+        signIn={{ busy: signingIn, error: signInError, onPress: () => void signIn() }}
       />
       {showPoints ? <PointsDialog env={env} state={state} points={points ?? []} onClose={() => setShowPoints(false)} /> : null}
     </>
@@ -186,11 +256,23 @@ export interface WinvmViewProps {
   onSleepAfter: (v: WinvmSleepAfter) => void;
   onScreen: (v: WinvmScreen) => void;
   onPoints: () => void;
+  /** Office and OneDrive in it as last read, and his Teams libraries there; null: not known */
+  office?: { status: VmOfficeStatus; libraries: number | null } | null;
+  signIn?: { busy: boolean; error: string | null; onPress: () => void };
 }
 
 /** The section, pure: the machine's row and, once it is set up, when it sleeps, its points, the edition and Office. */
-export function WinvmView({ title, state, points, screen, error, pressing, onPress, onSleepAfter, onScreen, onPoints }: WinvmViewProps) {
+export function WinvmView({ title, state, points, screen, error, pressing, onPress, onSleepAfter, onScreen, onPoints, office, signIn }: WinvmViewProps) {
   const row = winvmRow(state);
+  const officeRow = office ? officeLine(office.status) : null;
+  const onedriveRow = office ? onedriveLine(office.status, office.libraries) : null;
+  // One sign-in serves both rows: OneDrive's account is Office's. Its press sits on the first row that needs it.
+  const pressOn = onedriveRow?.signIn ? "onedrive" : officeRow?.signIn ? "office" : null;
+  const signInPress = signIn ? (
+    <Button variant="secondary" size="sm" disabled={signIn.busy} onClick={signIn.onPress}>
+      <BusyLabel busy={signIn.busy} label="Sign in" />
+    </Button>
+  ) : null;
   return (
     <PageSection title={title}>
       <PageRow title="Windows" description={row.words} error={state.error ?? error ?? undefined}>
@@ -222,7 +304,20 @@ export function WinvmView({ title, state, points, screen, error, pressing, onPre
             openLabel="Restore points"
           />
           <PageRow title="Edition" description={evaluationLine(WINVM_EVALUATION_ENDS)} />
-          <PageRow title="Office" description="Not installed" />
+          {officeRow ? (
+            <PageRow title="Office" description={officeRow.words} error={pressOn === "office" ? (signIn?.error ?? undefined) : undefined}>
+              {pressOn === "office" ? signInPress : null}
+            </PageRow>
+          ) : null}
+          {onedriveRow ? (
+            <PageRow
+              title="OneDrive"
+              description={onedriveRow.failed ? undefined : onedriveRow.words}
+              error={onedriveRow.failed ? onedriveRow.words : pressOn === "onedrive" ? (signIn?.error ?? undefined) : undefined}
+            >
+              {pressOn === "onedrive" ? signInPress : null}
+            </PageRow>
+          ) : null}
         </>
       ) : null}
     </PageSection>

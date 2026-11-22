@@ -3,9 +3,13 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WinvmPoint, WinvmState } from "@shared/contract-work-winvm";
 import { registry } from "../../lib/connection";
-import { WinvmSection, WinvmWorkspaceRow, evaluationLine, winvmRow } from "./WinvmSection";
+import type { VmOfficeStatus } from "@shared/contract-work-office";
+import { WinvmSection, WinvmWorkspaceRow, evaluationLine, officeLine, onedriveLine, winvmRow } from "./WinvmSection";
 
-const h = vi.hoisted(() => ({ screen: "1280x800", state: null as unknown, points: [] as unknown[], calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
+const signInOnVm = vi.hoisted(() => vi.fn(async (_env: string) => ({ computer: "vm:windows", account: null, line: "" })));
+vi.mock("./signIn", () => ({ signInOnVm }));
+
+const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
 vi.mock("../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../chrome/ConfirmDialog")>()), confirmAction: async () => h.confirm }));
 
 const at = (s: Partial<WinvmState>): WinvmState => ({ state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1, ...s });
@@ -18,6 +22,8 @@ beforeEach(() => {
   h.calls = [];
   h.pushes = [];
   h.confirm = true;
+  h.office = null;
+  signInOnVm.mockClear();
   vi.spyOn(registry, "linkOf").mockImplementation(
     () =>
       ({
@@ -25,6 +31,8 @@ beforeEach(() => {
           h.calls.push({ method, params });
           if (method === "work.winvm.state") return h.state;
           if (method === "work.winvm.points") return { points: h.points };
+          if (method === "work.office.vmStatus") return h.office ?? Promise.reject(new Error("not handled"));
+          if (method === "work.office.filesLibraries") return { host: "box", libraries: [{ vm: true, kind: "channels" }], roots: [], off: [] };
           if (method === "work.winvm.settings") {
             const next = (params as { screen?: string }).screen;
             if (next) h.screen = next;
@@ -41,7 +49,8 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
-const pressed = () => h.calls.filter((c) => !["work.winvm.state", "work.winvm.points", "work.winvm.settings"].includes(c.method)).map((c) => c.method);
+const pressed = () => h.calls.filter((c) => !["work.winvm.state", "work.winvm.points", "work.winvm.settings", "work.office.vmStatus", "work.office.filesLibraries"].includes(c.method)).map((c) => c.method);
+const status = (over: Partial<VmOfficeStatus> = {}): VmOfficeStatus => ({ office: null, onedrive: { kind: "vm", state: "ok", account: "landon@purdue.edu" }, at: 1, ...over });
 
 describe("the Windows VM in Settings → Work", () => {
   it("says its state in a few words with the one press that fits", () => {
@@ -142,5 +151,35 @@ describe("the Windows VM in Settings → Work", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Computer use on the Windows VM" }));
     await flush();
     expect(change).toHaveBeenCalledWith(true);
+  });
+  it("says Office in the VM as last read: not installed, which apps and who, or the sign-in to finish", () => {
+    expect(officeLine(status())).toEqual({ words: "Not read yet" });
+    expect(officeLine(status({ office: { installed: false, version: null, apps: [], account: null, licensed: null } }))).toEqual({ words: "Not installed" });
+    const apps = { installed: true, version: "16.0", apps: ["excel", "word", "powerpoint", "outlook"] as const, licensed: true };
+    expect(officeLine(status({ office: { ...apps, apps: [...apps.apps], account: "landon@purdue.edu" } }))).toEqual({ words: "Excel, Word and PowerPoint, signed in as landon@purdue.edu" });
+    expect(officeLine(status({ office: { ...apps, apps: [...apps.apps], account: null } }))).toEqual({ words: "Excel, Word and PowerPoint. Sign in to finish", signIn: true });
+  });
+
+  it("says OneDrive in the VM: who and how many Teams libraries, or the sign-in", () => {
+    expect(onedriveLine(status(), 3)).toEqual({ words: "Signed in as landon@purdue.edu, 3 Teams libraries" });
+    expect(onedriveLine(status(), 1)?.words).toBe("Signed in as landon@purdue.edu, 1 Teams library");
+    expect(onedriveLine(status({ onedrive: { kind: "vm", state: "no-libraries", account: "landon@purdue.edu" } }), 0)?.words).toBe("Signed in as landon@purdue.edu, no Teams library synced yet");
+    expect(onedriveLine(status({ onedrive: { kind: "vm", state: "signed-out", account: null } }), null)).toEqual({ words: "Signed out", signIn: true });
+    expect(onedriveLine(status({ onedrive: { kind: "vm", state: "not-set-up", account: null } }), null)).toBeNull();
+  });
+
+  it("offers OneDrive's sign-in once, on its row, and draws no Office row for a host that cannot say", async () => {
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(screen.queryByText("Office")).toBeNull();
+    cleanup();
+    h.office = status({ onedrive: { kind: "vm", state: "signed-out", account: null }, office: { installed: true, version: "16.0", apps: ["excel"], account: null, licensed: null } });
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    expect(await screen.findByText("Signed out")).toBeTruthy();
+    expect(screen.getByText("Excel. Sign in to finish")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Sign in" })).toHaveLength(1);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Sign in" })));
+    expect(signInOnVm).toHaveBeenCalledWith("box");
   });
 });
