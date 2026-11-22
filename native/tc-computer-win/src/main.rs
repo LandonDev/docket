@@ -92,9 +92,6 @@ fn listen(args: &[String]) -> i32 {
         }
     };
     eprintln!("listening on {addr}");
-    // the logon task starts the door in a console, which Windows Terminal shows on tcuser's desktop, in front of
-    // the apps a thread opens and where a key meant for them could land: let it go once the door listens
-    let _ = unsafe { windows::Win32::System::Console::FreeConsole() };
     match tc_computer_win::door::run(listener, token, Default::default(), host) {
         Ok(()) => 0,
         Err(e) => {
