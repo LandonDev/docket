@@ -13,7 +13,7 @@ import type { Peers } from '../remote/peers'
 import { SessionRegistry } from '../sessions'
 import { startWork, type Work } from './ctx'
 import { office } from './office/index'
-import { ownerDesktops } from './scope'
+import { LENDING_OFFER, ownerDesktops } from './scope'
 
 /**
  * A new Work workspace starts with things on (the owner's ruling, 2026-11-22): his desktops in
@@ -53,6 +53,9 @@ afterEach(async () => {
 })
 
 describe('ownerDesktops', () => {
+  it("asks for the hosts lending their desktop by the Mac bridge's own offer", () => {
+    expect(LENDING_OFFER).toBe(MAC_BRIDGE_OFFER)
+  })
   it('names this host when it is a Mac or a PC, each saved desktop and each host lending its desktop, once each', () => {
     expect(ownerDesktops({ id: 'box', platform: 'linux' }, [{ id: 'mac', platform: 'darwin' }, { id: 'pi', platform: 'linux' }, { id: 'old' }], ['mac', 'pc'])).toEqual(['mac', 'pc'])
     expect(ownerDesktops({ id: 'mac', platform: 'darwin' }, [{ id: 'win', platform: 'win32' }], [])).toEqual(['mac', 'win'])

@@ -4,7 +4,6 @@ import { CATALOG, type ProviderId } from '@shared/catalog'
 import type { ProjectMeta, ThreadType, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import { NotBuilt, SectorKeySchema, parseWorkSettings, sessionScopeOf, workspaceKindOf, WORK_HOME, WORK_SETTING_KEY, type CanvasSource, type MentionReach, type WorkScope } from '@shared/work'
-import { MAC_BRIDGE_OFFER } from '@shared/contract-macbridge'
 import { configureAddonScope } from '../addons/scope'
 import { workRoot } from '../workRoot'
 import type { ScopePart } from './ctx'
@@ -284,6 +283,8 @@ export function mayUseFarDesktop(session: SessionMeta, host: string | null): boo
 }
 
 const isDesktop = (platform: string | null | undefined): boolean => platform === 'darwin' || platform === 'win32'
+/** `MAC_BRIDGE_OFFER` (@shared/contract-macbridge), spelt here: scope.ts loads no contract (scope.test.ts), and newWorkspace.test.ts holds the two equal. */
+export const LENDING_OFFER = 'mac-bridge'
 
 /**
  * The owner's desktops a new Work workspace may use from the start (the owner's ruling, 2026-11-22: things
@@ -336,7 +337,7 @@ export const scopePart: ScopePart = (ctx, deps) => {
       const made = await deps.registry.createWorkspace(path, name, { kind: 'work', sector })
       // A stored choice, not a default read later: once he turns one off, it stays off.
       const saved = deps.peers?.all().map((link) => ({ id: link.id, platform: link.build?.platform ?? link.env.platform })) ?? []
-      const lending = deps.peerCalls?.registeredIds(MAC_BRIDGE_OFFER) ?? []
+      const lending = deps.peerCalls?.registeredIds(LENDING_OFFER) ?? []
       ctx.settings.set(made.id, { mayUseDesktop: ownerDesktops({ id: deps.environmentId, platform: process.platform }, saved, lending), windowsVm: true })
       return made
     },
