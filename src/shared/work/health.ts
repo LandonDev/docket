@@ -68,8 +68,11 @@ export interface Lapse {
  */
 export const HEALTH_RUN_METHODS: readonly string[] = ['work.lifeos.signOut']
 
-/** The places a `page` fix may open: the LifeOS sign-in dialog, or one of these Settings pages. */
-export const HEALTH_PAGES: readonly string[] = ['lifeos-sign-in', 'settings:work', 'settings:remote', 'settings:connections']
+/**
+ * The places a `page` fix may open: the LifeOS sign-in dialog, OneDrive's sign-in on the Windows VM the row's host
+ * keeps (`work.office.vmSignIn`, then the Computers page on the VM), or one of these Settings pages.
+ */
+export const HEALTH_PAGES: readonly string[] = ['lifeos-sign-in', 'windows-vm-sign-in', 'settings:work', 'settings:remote', 'settings:connections']
 
 /** Whether a fix is one the host passes on and the page carries out. */
 export function fixAllowed(fix: HealthFix): boolean {

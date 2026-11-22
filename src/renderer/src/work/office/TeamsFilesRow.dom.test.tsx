@@ -120,3 +120,12 @@ describe("Teams files in Settings", () => {
     expect(libraryTitle({ kind: "library", team: "RecWell", library: "Site Policies" })).toBe("RecWell Site Policies");
   });
 });
+
+describe("a host's row with nothing synced", () => {
+  it("says OneDrive is not signed in there when its folders say so, else none synced", async () => {
+    const { noneLine } = await import("./TeamsFilesRow");
+    expect(noneLine([{ kind: "folders", state: "no-onedrive", account: null }])).toBe("OneDrive is not signed in here");
+    expect(noneLine([{ kind: "folders", state: "no-libraries", account: "a@b" }])).toBe("None synced");
+    expect(noneLine(undefined)).toBe("None synced");
+  });
+});

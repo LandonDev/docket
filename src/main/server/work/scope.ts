@@ -282,6 +282,22 @@ export function mayUseFarDesktop(session: SessionMeta, host: string | null): boo
   return !!host && !!desktops?.(session).includes(host)
 }
 
+const isDesktop = (platform: string | null | undefined): boolean => platform === 'darwin' || platform === 'win32'
+/** `MAC_BRIDGE_OFFER` (@shared/contract-macbridge), spelt here: scope.ts loads no contract (scope.test.ts), and newWorkspace.test.ts holds the two equal. */
+export const LENDING_OFFER = 'mac-bridge'
+
+/**
+ * The owner's desktops a new Work workspace may use from the start (the owner's ruling, 2026-11-22: things
+ * work by default and he turns them off): this host when it is a Mac or a PC, each saved host whose last
+ * hello named one, and each host that registered here to lend its desktop (the Mac bridge). Settings →
+ * Work lists the same machines as "Computer use on <host>".
+ */
+export function ownerDesktops(here: { id: string; platform: string }, saved: readonly { id: string; platform?: string | null }[], lending: readonly string[]): string[] {
+  const out = isDesktop(here.platform) ? [here.id] : []
+  for (const host of saved) if (isDesktop(host.platform)) out.push(host.id)
+  return [...new Set([...out, ...lending])]
+}
+
 export const scopePart: ScopePart = (ctx, deps) => {
   const facts = scopeFactsOf(deps.registry)
   const here = { host: deps.environmentId, away: () => deps.away?.enabled ?? false }
@@ -318,7 +334,12 @@ export const scopePart: ScopePart = (ctx, deps) => {
       let path = join(root, base)
       for (let n = 2; used.has(path) || existsSync(path); n++) path = join(root, `${base} ${n}`)
       mkdirSync(path, { recursive: true })
-      return deps.registry.createWorkspace(path, name, { kind: 'work', sector })
+      const made = await deps.registry.createWorkspace(path, name, { kind: 'work', sector })
+      // A stored choice, not a default read later: once he turns one off, it stays off.
+      const saved = deps.peers?.all().map((link) => ({ id: link.id, platform: link.build?.platform ?? link.env.platform })) ?? []
+      const lending = deps.peerCalls?.registeredIds(LENDING_OFFER) ?? []
+      ctx.settings.set(made.id, { mayUseDesktop: ownerDesktops({ id: deps.environmentId, platform: process.platform }, saved, lending), windowsVm: true })
+      return made
     },
     admitSession(params) {
       // The router asks only for a create that names Work or carries a chip; any other passes untouched.

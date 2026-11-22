@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { TeamsLibrary, TeamsRoot } from "@shared/contract-work-office";
+import type { TeamsLibrary, TeamsPlace, TeamsRoot } from "@shared/contract-work-office";
 import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
@@ -19,7 +19,15 @@ import { useHostRead } from "../../lib/connection/hostRead";
  * Files → Copy link) for Open on the web. Only this computer's own window edits its list.
  */
 
-type Libraries = { libraries: TeamsLibrary[]; roots: TeamsRoot[]; off: string[] };
+type Libraries = { libraries: TeamsLibrary[]; roots: TeamsRoot[]; off: string[]; places?: TeamsPlace[] };
+
+/** The row's line when it lists nothing: what OneDrive's folders on this host say, where the host says it. */
+export function noneLine(places: readonly TeamsPlace[] | undefined): string {
+  const folders = places?.find((p) => p.kind === "folders");
+  if (folders?.state === "no-onedrive") return "OneDrive is not signed in here";
+  if (folders?.state === "error") return folders.detail ?? "OneDrive's folders could not be read";
+  return "None synced";
+}
 
 /** A library's name as the row reads it. */
 export const libraryTitle = (l: Pick<TeamsLibrary, "kind" | "team" | "library">): string => (l.kind === "mine" ? "My files" : l.library ? `${l.team} ${l.library}` : l.team);
@@ -72,7 +80,7 @@ export function TeamsFilesRow({ link, title, editable }: { link: Link | null | u
   const shown = [...value.libraries.map((l) => ({ folder: l.path, title: libraryTitle(l), library: l, on: true })), ...value.off.map((folder) => ({ folder, title: folder.split(/[\\/]/).pop() ?? folder, library: null, on: false }))];
   return (
     <>
-      <PageRow title={title} description={shown.length ? undefined : "None synced"} error={error ?? undefined}>
+      <PageRow title={title} description={shown.length ? undefined : noneLine(value.places)} error={error ?? undefined}>
         {editable ? (
           <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: "add" })}>
             Add folder…

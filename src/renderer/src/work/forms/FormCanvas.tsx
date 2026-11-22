@@ -885,7 +885,7 @@ function Responses({ view, host, store, item, shell }: { view: FormView; host: F
     store.set({ responsesError: failed ? "The sheet they are written to did not answer." : null });
     return () => store.set({ responsesError: null });
   }, [store, failed]);
-  if (view.state === "draft") return <EmptyState title="No responses yet" />;
+  if (view.state === "draft") return <EmptyState title="Not published" />;
   if (failed) return null;
   if (!got) return <ResponsesSkeleton />;
   if (!got.count) return <EmptyState title="No responses yet" line={view.publishedAt ? `Published ${dayTime(view.publishedAt)}` : undefined} />;

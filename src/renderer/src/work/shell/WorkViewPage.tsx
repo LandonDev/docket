@@ -10,10 +10,14 @@ import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
 import { WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
+import { registry, useEnvironmentStatus } from "../../lib/connection";
 import { openWorkSettings } from "./open";
 import { reopenLifeos, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { clockTime } from "../../lib/duration";
+
+// The sign-in dialog Connections uses, loaded on the press: a view's sign-in opens it in place, never a page without it.
+const SignInDialog = lazy(() => import("./settings").then((m) => ({ default: m.SignInDialog })));
 
 /**
  * The main pane while one of a Work workspace's views is open (App mounts it
@@ -73,8 +77,17 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // The session's own state counts too: its JWT can be refused or go unanswered while the host says connected.
   const signedOut = gated && (state === "signed-out" || state === "refused" || session.state === "signed-out" || session.state === "refused");
   const unreachable = gated && (state === "unreachable" || session.state === "unreachable");
+  // A sign-in he started and has not approved yet, and a host whose Work is off: each says so, with its own press.
+  const pairing = gated && state === "pairing";
+  const off = gated && state === "off";
+  // A host never heard from (asleep, offline): its name and Retry, never bones that pulse for ever.
+  const link = useEnvironmentStatus(environmentId);
+  const away = gated && state === null && link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting";
+  const [signingIn, setSigningIn] = useState(false);
+  const host = registry.environment(environmentId)?.name ?? "This host";
   // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header.
-  const headless = !!def.ownHead && !signedOut;
+  const blocked = signedOut || pairing || off || away;
+  const headless = !!def.ownHead && !blocked;
   // The view covers the thread's pane, which goes inert under it (App.tsx): focus that was in the pane, or fell to the
   // page with it, lands on the view's heading, never on a composer or canvas control no one can see.
   const region = useRef<HTMLDivElement | null>(null);
@@ -109,13 +122,13 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
         <div className="@container/viewhead flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
           <Icon className="size-3.5 text-muted-foreground" />
           <span ref={heading} tabIndex={-1} data-view-heading className="focus-ring flex min-w-0 items-center rounded-sm">
-            {Title && !signedOut ? <Title {...props} /> : <span className="font-medium text-foreground">{def.label}</span>}
+            {Title && !blocked ? <Title {...props} /> : <span className="font-medium text-foreground">{def.label}</span>}
           </span>
           <span className="flex-1" />
-          {Head && !signedOut ? <Head {...props} /> : null}
+          {Head && !blocked ? <Head {...props} /> : null}
         </div>
       )}
-      {unreachable && !signedOut ? (
+      {unreachable && !blocked ? (
         // The state line's shape (DESIGN.md "The state line"): 32px, glyph, the word in its tone, a muted detail, one action.
         <div data-view-state="failed" role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
           <StatusMark
@@ -130,8 +143,15 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
         </div>
       ) : null}
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        {signedOut ? (
-          <EmptyState title="Sign in to LifeOS" action={{ label: "Sign in", onClick: openWorkSettings }} />
+        {away ? (
+          <EmptyState title={`${host} is not connected`} action={{ label: "Retry", onClick: () => registry.retry(environmentId) }} />
+        ) : off ? (
+          <EmptyState title={`Work is off on ${host}`} action={{ label: "Open Settings", onClick: openWorkSettings }} />
+        ) : signedOut || pairing ? (
+          <EmptyState
+            title={pairing ? "The LifeOS sign-in waits for your approval" : state === "refused" || session.state === "refused" ? "LifeOS refused this host's sign-in" : "Sign in to LifeOS"}
+            action={{ label: pairing ? "Show the code" : "Sign in", onClick: () => setSigningIn(true) }}
+          />
         ) : (
           <ViewBoundary label={def.label} onRetry={() => setAttempt((n) => n + 1)}>
             <Suspense fallback={<ViewSkeleton label={def.label} />}>
@@ -140,6 +160,11 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           </ViewBoundary>
         )}
       </div>
+      {signingIn && status ? (
+        <Suspense fallback={null}>
+          <SignInDialog environmentId={environmentId} state={status.lifeos} onClose={() => setSigningIn(false)} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

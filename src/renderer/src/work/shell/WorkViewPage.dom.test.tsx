@@ -53,6 +53,44 @@ describe("the view frame's line", () => {
   });
 });
 
+describe("what stands between a view and LifeOS", () => {
+  const quiet = () =>
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => new Promise(() => {})) } as never);
+  it("Work off on the host says so with Settings, never a sign-in", async () => {
+    quiet();
+    setLifeosStatus("env_box", { lifeos: { state: "off" }, keys: [] });
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await flush();
+    expect(screen.getByText(/^Work is off on /)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
+    expect(screen.queryByText("Sign in to LifeOS")).toBeNull();
+  });
+  it("signed out, Sign in opens the sign-in dialog in place; a sign-in waiting says so and shows its code", async () => {
+    quiet();
+    setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
+    const view = render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await vi.waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy(), { timeout: 5000 });
+    view.unmount();
+    setLifeosStatus("env_box", { lifeos: { state: "pairing", code: "ABCD-1234", expiresAt: Date.now() + 60_000 }, keys: [] });
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await flush();
+    expect(screen.getByText("The LifeOS sign-in waits for your approval")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show the code" })).toBeTruthy();
+  });
+  it("a host never heard from and not connected is named with Retry, not bones for ever", async () => {
+    quiet();
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "offline", fresh: false, lastHello: null, lastError: null, nextRetryAt: null, route: null } as never);
+    const retry = vi.spyOn(registry, "retry").mockImplementation(() => {});
+    render(<ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await flush();
+    expect(screen.getByText(/ is not connected$/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledWith("env_box");
+  });
+});
+
 describe("a view's boundary", () => {
   it("shows what failed with Retry, and Retry mounts the view again", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});

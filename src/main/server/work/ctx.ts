@@ -418,6 +418,11 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
     ctx,
     settings,
     ...admission,
+    async createWorkspace(params, by) {
+      const made = await admission.createWorkspace(params, by)
+      tell('did not set up a new workspace', (m) => m.workspaceCreated?.(made.id, ctx))
+      return made
+    },
     async handle(req, principal, socket) {
       switch (req.method) {
         case 'work.get':

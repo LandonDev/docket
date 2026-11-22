@@ -210,7 +210,7 @@ so drive up to it and stop; never type a password, say he must take over; no com
 names `windows_*` where the shared words say `computer_*`.
 
 - **Who gets them**: a Work thread of a workspace whose Work settings turn on `windowsVm` ("Computer use on
-  the Windows VM", off by default; its switch is B10's), on the host whose VM is set up. A Work Chat never.
+  the Windows VM", on for a Work workspace made since 2026-11-22; its switch is B10's), on the host whose VM is set up. A Work Chat never.
   The setting is read when the tools are listed and again at every call (`vmOffered`), so turning it off
   stops a running thread with "refused: computer use on the Windows VM is off for this workspace".
 - **Waking**: a call on a sleeping machine wakes it first; while it wakes, its row's hold reads "Waking the
@@ -306,8 +306,12 @@ In order, once the box runs a build with all of Track B:
    `tc-computer.exe`.
 2. **Set it up**: Settings → Work → Windows VM → Set up. About ten minutes: the disk from the base image,
    Windows' admin steps, one restart. The row says each step; it ends Awake.
-3. **Turn it on per workspace**: a Work workspace's page → "Computer use on the Windows VM". Off by default;
-   only those workspaces' threads get the `windows_*` tools.
+3. **Per workspace**: a Work workspace's page → "Computer use on the Windows VM". On for a workspace made since
+   2026-11-22 (an older one keeps what it had); only those workspaces' threads get the `windows_*` tools.
+   Settings → Work → Windows VM then says Office and OneDrive in it as last read (`work.office.vmStatus`,
+   which never wakes it): which Office apps and who they are signed in as, who OneDrive is signed in as and how
+   many Teams libraries it syncs, or Sign in where it needs him (`work.office.vmSignIn`, then the Computers
+   page on the VM).
 4. **Choose its sleep and screen** if the defaults do not suit: Sleeps after (30 minutes) and Screen size
    (1280 × 800; 1920 × 1200 from the next wake).
 5. **Sign in to what threads should use**, in a Take over from the Computers page: the VM keeps it across

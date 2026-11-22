@@ -12,6 +12,7 @@ import { useWorkHosts } from "../../lib/workSwitch";
 import { AddinRow } from "../office/AddinRow";
 import { SignInDialog } from "../shell/settings";
 import { useLifeosStatus } from "../shell/lifeos";
+import { signInOnVm } from "../winvm/signIn";
 import { fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
 
 /**
@@ -156,11 +157,12 @@ function FixRow({ placed, now, onDone }: { placed: PlacedRow; now: number; onDon
     if (fix.kind === "page") {
       if (fix.page === "lifeos-sign-in") return setSigningIn(true);
       if (fix.page.startsWith("settings:")) return requestSettings(fix.page.slice("settings:".length) as never);
-      return;
+      if (fix.page !== "windows-vm-sign-in") return;
     }
     setBusy(true);
     try {
-      await registry.linkOf(hostId).request(fix.method, fix.params ?? {});
+      if (fix.kind === "page") await signInOnVm(hostId);
+      else await registry.linkOf(hostId).request(fix.method, fix.params ?? {});
       onDone();
     } catch (err) {
       setError(errorText(err));

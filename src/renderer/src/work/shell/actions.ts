@@ -27,12 +27,18 @@ export function workHome(environments: readonly Environment[] = registry.environ
 }
 export { setWorkHome };
 
-/** A Work workspace on `environmentId`, named for its sector unless named; the host makes its folder. */
+/**
+ * A Work workspace on `environmentId`, named for its sector unless named; the host makes its folder. It starts with
+ * things on (the host stores his desktops it knows, the Windows VM and the Teams copy); the window adds the desktops
+ * only it knows, as a box knows a Mac only while the Mac is linked to it.
+ */
 export async function createWorkWorkspace(environmentId: string, opts: { sector: SectorKey | null; name: string }): Promise<WorkspaceMeta> {
   const link = registry.linkOf(environmentId);
   const meta = await link.request<WireWorkspaceMeta>("workspace.create", { kind: "work", name: opts.name, sector: opts.sector });
+  const workspace = { ...meta, environmentId };
+  await allowComputers(workspace).catch(() => null);
   await workspaceStore.refresh(link);
-  return { ...meta, environmentId };
+  return workspace;
 }
 
 /** Links a code workspace to a sector (null unlinks); its threads then read and draft there. */
@@ -75,6 +81,26 @@ export function localHostId(): Promise<string | null> {
 export const linkIdOfHost = (hostId: string, local: string | null): string | null => (registry.has(hostId) ? hostId : hostId === local ? LOCAL_ENVIRONMENT_ID : null);
 /** A link's host id: this machine's own, else the link's. */
 export const hostIdOfLink = (linkId: string, local: string | null): string => (linkId === LOCAL_ENVIRONMENT_ID && local ? local : linkId);
+
+/** A Mac or a Windows PC: a host whose desktop a Work workspace may use. */
+export const isDesktop = (platform: string | undefined): boolean => platform === "darwin" || platform === "win32";
+
+/** His desktops as this window knows them (Settings → Work's "Computer use on <host>" rows), with their host ids. */
+export async function windowDesktops(environments: readonly Environment[] = registry.environments()): Promise<{ link: string; host: string; name: string }[]> {
+  const local = await localHostId();
+  return environments.filter((e) => isDesktop(e.platform)).map((e) => ({ link: e.id, host: hostIdOfLink(e.id, local), name: e.name }));
+}
+
+/**
+ * Lets a Work workspace use every desktop of his this window knows, and the Windows VM when `vm`: one press, adding to
+ * what it already may use. Writes only when something is missing; answers the settings as they are now.
+ */
+export async function allowComputers(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, opts: { vm?: boolean } = {}): Promise<WorkspaceWorkSettings> {
+  const [settings, desktops] = await Promise.all([workspaceSettings(workspace), windowDesktops()]);
+  const missing = desktops.map((d) => d.host).filter((id) => !settings.mayUseDesktop.includes(id));
+  if (!missing.length && (!opts.vm || settings.windowsVm)) return settings;
+  return setWorkspaceSettings(workspace, { mayUseDesktop: [...settings.mayUseDesktop, ...missing], ...(opts.vm ? { windowsVm: true } : {}) });
+}
 
 export function workspaceSettings(workspace: Pick<WorkspaceMeta, "id" | "environmentId">): Promise<WorkspaceWorkSettings> {
   return registry.linkOf(workspace.environmentId).request<WorkspaceWorkSettings>("work.workspace.get", { workspaceId: workspace.id });

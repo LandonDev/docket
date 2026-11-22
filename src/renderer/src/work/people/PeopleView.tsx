@@ -14,7 +14,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { guestsCall, type GuestLinkRow } from "../guests/api";
 import { Face } from "../mail/face";
 import { mailTo, writeMail } from "../mail/mailto";
-import { useLifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
 import { faceMap, findPeople, linksFor, linkWords, pageIsQuiet, personFor, pictureOf, type DirectoryPerson, type FaceRow, type PageEvent, type PersonPage, type SharedTable } from "./model";
@@ -201,6 +201,8 @@ export function View(props: WorkViewProps) {
   }, [ask, rows, workspaceId]);
 
   if (person) return <PersonPageView {...props} person={person} faces={faces} />;
+  // A session that cannot read is the frame's to say (its sign-in or its line), never a second banner here.
+  if (!props.lifeos.client) return sessionWaits(props.lifeos) ? <ListSkeleton /> : null;
   if (directory.status === "failed") return <EmptyState title="People did not load" line={directory.error} />;
   if (!rows) return <ListSkeleton />;
   return <PeopleList workspaceId={workspaceId} rows={rows} faces={faces} />;

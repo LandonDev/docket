@@ -16,6 +16,9 @@ vi.mock("../../lib/connection", async (original) => ({
 }));
 vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object>()), useWorkHosts: () => new Set(["box", "mac"]) }));
 
+const signInOnVm = vi.hoisted(() => vi.fn(async (_env: string) => ({ computer: "vm:windows", account: null, line: "" })));
+vi.mock("../winvm/signIn", () => ({ signInOnVm }));
+
 const { ConnectionsPage } = await import("./ConnectionsPage");
 
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
@@ -55,6 +58,26 @@ describe("Connections", () => {
     expect(request.mock.calls.map((c) => c[0])).toEqual(["work.health", "work.lifeos.signOut", "work.health"]);
     expect(screen.getByText("Needs you")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+
+  it("a row whose fix is OneDrive's sign-in on the Windows VM brings it up on the row's host, spinning meanwhile, then checks again", async () => {
+    let release!: () => void;
+    signInOnVm.mockImplementationOnce(() => new Promise((done) => (release = () => done({ computer: "vm:windows", account: null, line: "" }))));
+    const request = vi.fn(async () => ({
+      host: "env_box",
+      at: 1,
+      rows: [{ id: "office.onedrive:vm", pillar: "office", group: "Teams files", title: "OneDrive on the Windows VM", state: "needs-you", line: "Signed out", fix: { kind: "page", label: "Sign in…", page: "windows-vm-sign-in" } }],
+    }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    render(<ConnectionsPage />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in…" }));
+    await settle();
+    expect(signInOnVm).toHaveBeenCalledWith("box");
+    expect((screen.getByRole("button", { name: "Sign in…" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => release());
+    await settle();
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("checks a host again when its link comes back, never showing its old rows as now", async () => {
