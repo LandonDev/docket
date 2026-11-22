@@ -1289,8 +1289,8 @@ public static class Guest {
         return null;
       }
 #if UIA
-      case "ui.seen": return Ui.Seen((ArrayList)a["names"]);
-      case "ui.press": return Ui.Press((ArrayList)a["names"]);
+      case "ui.seen": return Ui.Seen((ArrayList)a["names"], a.ContainsKey("in") ? a["in"] as string : null);
+      case "ui.press": return Ui.Press((ArrayList)a["names"], a.ContainsKey("in") ? a["in"] as string : null);
 #endif
       case "onedrive.sync":
         // The link a library's own Sync button opens, for a library named by its ids.
@@ -1310,33 +1310,42 @@ public static class Ui {
 
   // An element of that name that belongs to a sign-in's own process, wherever its frame sits (the
   // account broker's page is drawn inside a frame window of the shell's).
-  static System.Windows.Automation.AutomationElement Find(string name) {
+  // `only`: one of those processes by name, when the caller means that app's own window alone.
+  static System.Windows.Automation.AutomationElement Find(string name, string only) {
     var pids = new HashSet<int>();
-    foreach (var n in PROCESSES) foreach (var p in Process.GetProcessesByName(n)) { pids.Add(p.Id); p.Dispose(); }
+    foreach (var n in PROCESSES) {
+      if (only != null && !n.Equals(only, StringComparison.OrdinalIgnoreCase)) continue;
+      foreach (var p in Process.GetProcessesByName(n)) { pids.Add(p.Id); p.Dispose(); }
+    }
     var cond = new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.NameProperty, name, System.Windows.Automation.PropertyConditionFlags.IgnoreCase);
     var root = System.Windows.Automation.AutomationElement.RootElement;
+    System.Windows.Automation.AutomationElement said = null;
     foreach (System.Windows.Automation.AutomationElement w in root.FindAll(System.Windows.Automation.TreeScope.Children, System.Windows.Automation.Condition.TrueCondition)) {
       try {
         var cls = w.Current.ClassName;
         if (cls == "Shell_TrayWnd" || cls == "Progman") continue;
         foreach (System.Windows.Automation.AutomationElement hit in w.FindAll(System.Windows.Automation.TreeScope.Descendants, cond)) {
-          if (pids.Contains(hit.Current.ProcessId)) return hit;
+          if (!pids.Contains(hit.Current.ProcessId)) continue;
+          // A page may say a button's words in its text too ("Consider choosing No, this app only"): the control wins.
+          var type = hit.Current.ControlType;
+          if (type == System.Windows.Automation.ControlType.Button || type == System.Windows.Automation.ControlType.Hyperlink || type == System.Windows.Automation.ControlType.ListItem) return hit;
+          if (said == null) said = hit;
         }
       } catch (Exception) { }
     }
-    return null;
+    return said;
   }
 
   // Whether any of the names is on a sign-in window now, and which.
-  public static object Seen(ArrayList names) {
-    foreach (var n in names) if (Find((string)n) != null) return (string)n;
+  public static object Seen(ArrayList names, string only) {
+    foreach (var n in names) if (Find((string)n, only) != null) return (string)n;
     return null;
   }
 
   // Presses the first of the names found: its own Invoke, else a click at its middle.
-  public static object Press(ArrayList names) {
+  public static object Press(ArrayList names, string only) {
     foreach (var n in names) {
-      var e = Find((string)n);
+      var e = Find((string)n, only);
       if (e == null) continue;
       object pattern;
       if (e.TryGetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern, out pattern)) { ((System.Windows.Automation.InvokePattern)pattern).Invoke(); return (string)n; }

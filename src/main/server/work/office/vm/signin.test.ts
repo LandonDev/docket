@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ANOTHER_WAY, APPROVE, OFFICE_SIGN_IN_LINES, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn } from './signin'
+import { ANOTHER_WAY, APPROVE, followSignIn, NOT_SENT, OFFICE_SIGN_IN_LINES, SIGN_IN_LINES, THIS_APP_ONLY, walkOfficeSignIn, walkSignIn } from './signin'
 
 /** The walk to his phone's number over a fake screen: what is on it after each press, and what is pressed. */
 
@@ -80,5 +80,62 @@ describe("Office's sign-in, after OneDrive's", () => {
   })
   it('leaves Word open and says what to press when the button never shows', async () => {
     expect(await walkOfficeSignIn({ call: async () => null, sleep: async () => {}, waits: { first: 1, page: 1, list: 1 } })).toBe('word')
+  })
+})
+
+describe('an older request still waiting on his phone', () => {
+  it("says so instead of promising a number, since Microsoft sends no new request meanwhile", async () => {
+    const s = screen({ start: [APPROVE], after: { [APPROVE]: [NOT_SENT[1]!, 'Next'] } })
+    expect(await walkSignIn(null, s.deps)).toBe('pending')
+    expect(SIGN_IN_LINES.pending).toMatch(/deny it on your phone/)
+  })
+})
+
+describe('while he answers on his phone', () => {
+  function world(script: (t: number) => string[]) {
+    let t = 0
+    const pressed: { t: number; name: string; within?: string }[] = []
+    let signs: { at: number; who: string } | null = null
+    return {
+      pressed,
+      signInAt: (at: number, who: string) => void (signs = { at, who }),
+      deps: {
+        call: async (verb: string, args?: Record<string, unknown>) => {
+          const on = script(t)
+          const hit = ((args?.names as string[]) ?? []).find((n) => on.includes(n)) ?? null
+          if (verb === 'ui.press' && hit) pressed.push({ t, name: hit, ...(args?.in ? { within: args.in as string } : {}) })
+          return hit
+        },
+        account: async () => (signs && t >= signs.at ? signs.who : null),
+        sleep: async (ms: number) => void (t += ms),
+        now: () => t,
+        forMs: 60_000,
+        everyMs: 1000
+      }
+    }
+  }
+
+  it("answers Microsoft's device question with \"No, this app only\" within a second of its showing, and ends once OneDrive is signed in", async () => {
+    const w = world((t) => (t >= 7000 && t < 9000 ? [THIS_APP_ONLY, 'Yes'] : []))
+    w.signInAt(12_000, 'him@purdue.edu')
+    expect(await followSignIn(w.deps)).toBe('signed-in')
+    const first = w.pressed.find((p) => p.name === THIS_APP_ONLY)
+    expect(first?.t ?? (w.pressed.length ? -1 : 7000)).toBeLessThanOrEqual(8000)
+    expect(w.pressed.some((p) => p.name === 'Yes')).toBe(false)
+  })
+
+  it("presses Next on \"Request wasn't sent\" every ten seconds, in the sign-in page alone, and Next in OneDrive's own setup", async () => {
+    const w = world((t) => (t < 25_000 ? [NOT_SENT[0]!, 'Next'] : []))
+    expect(await followSignIn(w.deps)).toBe('gave-up')
+    const page = w.pressed.filter((p) => p.within === 'Microsoft.AAD.BrokerPlugin')
+    expect(page.map((p) => p.t)).toEqual([0, 10_000, 20_000])
+    expect(w.pressed.filter((p) => p.within === 'OneDrive').length).toBeGreaterThan(0)
+    expect(w.pressed.every((p) => p.name === 'Next')).toBe(true)
+  })
+
+  it('gives up after its time, having typed nothing', async () => {
+    const w = world(() => [])
+    expect(await followSignIn(w.deps)).toBe('gave-up')
+    expect(w.pressed).toEqual([])
   })
 })

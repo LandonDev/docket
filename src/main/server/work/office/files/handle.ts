@@ -14,7 +14,7 @@ import { NOT_SET_UP } from '../../winvm/keeper'
 import { isGuestPath, missingLibraries, refreshVm, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
 import { vmAllowed, vmKey, vmState } from '../vm/office'
 import { vmCall } from '../vm/link'
-import { OFFICE_SIGN_IN_LINES, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn } from '../vm/signin'
+import { followSignIn, OFFICE_SIGN_IN_LINES, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn } from '../vm/signin'
 import type { TeamsLibrariesAnswer, TeamsPlace, VmSignInAnswer, VmSyncLibrary } from '@shared/contract-work-office'
 
 /**
@@ -38,6 +38,9 @@ export interface FilesDeps {
   /** a test's short waits for the sign-in walk */
   signInWaits?: { first: number; page: number; list: number }
 }
+
+/** One watch of a sign-in at a time. */
+let following = false
 
 /** How fresh the VM's kept status must be for a list to use it without asking an awake machine again. */
 const VM_FRESH_MS = 15_000
@@ -234,6 +237,14 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       const account = (p.account as string | undefined) ?? d.ownAccount?.() ?? stored?.status.office.account ?? null
       // Walked to the one step that is his: the number for his phone. Nothing here types a password or a code.
       const reached = await walkSignIn(account, { call: vmCall, key: vmKey, ...(d.signInWaits ? { waits: d.signInWaits, sleep: async () => {} } : {}) })
+      // While he answers on his phone the host answers what Microsoft asks next, so his one approval is enough.
+      if ((reached === 'number' || reached === 'pending') && !following && !d.signInWaits) {
+        following = true
+        void followSignIn({ call: vmCall, account: async () => (await refreshVm(ctx.db, { wake: false }))?.status.onedrive.account ?? null })
+          .then((end) => ctx.log(`office: the Windows VM's OneDrive sign-in ${end === 'signed-in' ? 'went through' : 'was not finished in six minutes'}`))
+          .catch((err) => ctx.log(`office: following the sign-in failed: ${err instanceof Error ? err.message : String(err)}`))
+          .finally(() => (following = false))
+      }
       return handled({ computer: 'vm:windows', account, line: SIGN_IN_LINES[reached] } satisfies VmSignInAnswer)
     }
     case 'work.office.vmSync': {

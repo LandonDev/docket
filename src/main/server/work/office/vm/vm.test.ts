@@ -184,6 +184,10 @@ describe("the VM's libraries", () => {
     expect(vmPlace(box.db, null)).toBeNull()
     guest.account = null
     expect(((await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer).places).toEqual([{ kind: 'vm', state: 'signed-out', account: null }])
+    // folders an earlier sign-in left listed do not make it signed in
+    await box.db.prepare("UPDATE work_office_files SET value = json_set(value, '$.status.mounts', json(?)) WHERE key = 'vm:status'").run(JSON.stringify(guest.mounts))
+    expect(vmPlace(box.db, vm)).toEqual({ kind: 'vm', state: 'signed-out', account: null })
+    expect(vmLibraries(box.db, 'env_box')).toHaveLength(3)
     guest.account = 'him@purdue.edu'
     guest.mounts = guest.mounts.filter((m) => m.type === 'mine')
     await refreshVm(box.db, { wake: true })
@@ -447,13 +451,15 @@ describe('his sign-in', () => {
     setVmCall(async (verb, args, opts) => {
       if (verb.startsWith('ui.') || verb === 'onedrive.signin') {
         asked.push({ verb, args })
-        return verb === 'ui.seen' ? 'Approve a request on my Microsoft Authenticator app' : verb === 'ui.press' ? ((args as { names: string[] }).names[0] ?? null) : null
+        const names = (args as { names?: string[] }).names ?? []
+        const on = 'Approve a request on my Microsoft Authenticator app'
+        return verb === 'onedrive.signin' ? null : names.includes(on) ? on : null
       }
       return base(verb, args, opts)
     })
     const answer = (await call('work.office.vmSignIn', { account: 'him@purdue.edu' }, person)) as { computer: string; account: string; line: string }
     expect(answer).toEqual({ computer: 'vm:windows', account: 'him@purdue.edu', line: "A number is on the Windows VM's screen: enter it in Microsoft Authenticator on your phone." })
-    expect(asked.at(-1)).toEqual({ verb: 'ui.press', args: { names: ['Approve a request on my Microsoft Authenticator app'] } })
+    expect(asked.filter((a) => a.verb === 'ui.press').at(-1)).toEqual({ verb: 'ui.press', args: { names: ['Approve a request on my Microsoft Authenticator app'] } })
   })
 
   it('with OneDrive signed in and Office not licensed, opens Word for its sign-in; with both done, says who', async () => {

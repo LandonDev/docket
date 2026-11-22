@@ -110,7 +110,7 @@ export function vmRows(vm: ReturnType<NonNullable<OfficeProbe['vm']>>): HealthRo
   const rows: HealthRow[] = []
   const od = { id: 'office.vm.onedrive', pillar: 'office' as const, group: 'Files', title: 'OneDrive on the Windows VM', personal: true as const }
   const libs = `${vm.libraries} Teams ${vm.libraries === 1 ? 'library' : 'libraries'}`
-  if (vm.onedrive.state === 'ok') rows.push({ ...od, state: 'working', line: `Signed in as ${vm.onedrive.account ?? 'him'}, ${libs}` })
+  if (vm.onedrive.state === 'ok') rows.push({ ...od, state: 'working', line: `Signed in as ${vm.onedrive.account}, ${libs}` })
   else if (vm.onedrive.state === 'no-libraries') rows.push({ ...od, state: 'working', line: vm.coming ? `Signed in as ${vm.onedrive.account}, its libraries are on their way` : `Signed in as ${vm.onedrive.account}, no Teams library synced` })
   else if (vm.onedrive.state === 'signed-out') rows.push({ ...od, state: 'needs-you', line: 'Signed out', fix: VM_SIGN_IN })
   else if (vm.onedrive.state === 'no-onedrive') rows.push({ ...od, state: 'broken', line: 'OneDrive is not installed in the Windows VM.' })

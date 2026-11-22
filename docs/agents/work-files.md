@@ -165,10 +165,28 @@ Authenticator app" by the words on them (UI Automation, the helper's `ui.seen`
 and `ui.press`, compiled only into the guest's build). A number is then on the
 VM's screen for his phone. The answer names the computer (`vm:windows`) and
 says where the walk stopped; the window opens the Computers page there. Once
-OneDrive is signed in, a second press opens Word for Office's own sign-in.
-Found live 2026-11-22 up to the list that offers the Authenticator; his
-approval, what OneDrive asks after it, and whether Purdue takes the VM as a
-device are unproven (F-vm-files.md).
+OneDrive is signed in, a second press opens Word and presses Sign in in its
+title bar for Office's own sign-in.
+
+While he answers on his phone the host follows the sign-in for six minutes
+(`followSignIn`), so that his one approval is enough: Microsoft's "Sign in
+to all apps and websites on this device?" is answered "No, this app only"
+within a second (Yes would register the VM as a device with Purdue, which
+is his alone to choose; the price is a second number for Office); "Request
+wasn't sent" (Microsoft sends no new request while an older one waits
+unanswered on his phone, about four minutes) has its Next pressed every ten
+seconds, and the walk then says `pending`, "deny it on your phone"; and Next
+in OneDrive's own setup pages. A request that timed out unanswered is not
+sent again by itself.
+
+Found live 2026-11-22: the walk reaches the number in about ten seconds; he
+approved one; the device question then waited about two minutes for an
+answer, and the sign-in ended "AADSTS70008: The provided authorization code
+or refresh token has expired due to inactivity" and "The credential is
+invalid" (signin-expired-code.png in landed/F-vm-files), which is why the
+follower exists. Purdue did not refuse the VM up to that point. Unproven: a
+sign-in carried to its end, OneDrive's pages after it, and Office's
+(F-vm-files.md).
 
 ## Where the files live (the Purdue rule)
 

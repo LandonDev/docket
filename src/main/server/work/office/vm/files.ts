@@ -209,9 +209,9 @@ export function vmPlace(db: DatabaseSync, vm: { state: string; cannot: string | 
   if (!stored) return { kind: 'vm', state: 'error', account: null, detail: 'OneDrive in the Windows VM has not been read yet.' }
   const od = stored.status.onedrive
   if (!od.installed) return { kind: 'vm', state: 'no-onedrive', account: null }
-  // A folder OneDrive syncs is there to read whoever it says is signed in.
-  if (stored.status.mounts.some((m) => m.type === 'team')) return { kind: 'vm', state: 'ok', account: od.account }
-  return { kind: 'vm', state: od.account ? 'no-libraries' : 'signed-out', account: od.account }
+  // Signed out is signed out, whatever folders an earlier sign-in left listed: nothing in them is kept in step.
+  if (!od.account) return { kind: 'vm', state: 'signed-out', account: null }
+  return { kind: 'vm', state: stored.status.mounts.some((m) => m.type === 'team') ? 'ok' : 'no-libraries', account: od.account }
 }
 
 export function vmOfficeStatus(db: DatabaseSync, vm: { state: string; cannot: string | null } | null): VmOfficeStatus {
