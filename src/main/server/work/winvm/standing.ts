@@ -10,6 +10,7 @@ import { startWatcher } from './watcher'
 import type { VmMachine } from './keeper'
 import { QcowPoints, type PointStore } from './points'
 import type { VmScreen } from './window'
+import { readGuestScreen } from './guestScreen'
 
 const run = promisify(execFile)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -73,7 +74,8 @@ export class StandingMachine implements VmMachine {
       return startQemu(this.c, this.p, machine, { blockStop: true, ...(shown ? { env: shown.env } : {}) })
     }
     // the window's display first: QEMU opens its window as it starts
-    const shown = (await this.screen?.up()) ?? null
+    // at the size the guest slept at: a resumed Windows keeps it (guestScreen.ts)
+    const shown = (await this.screen?.up(readGuestScreen(this.p.run) ?? undefined)) ?? null
     let pid: number | null
     try {
       pid = await boot(shown)
