@@ -370,6 +370,19 @@ describe('EngineFeed', () => {
     expect(w.socket().sent).toEqual([])
   })
 
+  it('lets go of every key and button when a drive stream ends with his records passed, and only then', () => {
+    const r = rig(true, 'vm')
+    r.socket().frame(FRAME(3, 1))
+    r.feed.input(encodeInput({ type: 'keyDown', key: 225 }, 3))
+    r.feed.close()
+    expect(r.socket().sent.map((b) => parseInput(b))).toMatchObject([{ type: 'keyDown', key: 225 }, { type: 'releaseAll' }])
+    // nothing pressed since its last release: nothing more to send
+    const quiet = rig(true, 'vm')
+    quiet.socket().frame(FRAME(3, 1))
+    quiet.feed.close()
+    expect(quiet.socket().sent).toEqual([])
+  })
+
   it('says slow when the engine closes the stream, and error when the engine itself exits', () => {
     const slow = rig(false)
     slow.socket().drop()
