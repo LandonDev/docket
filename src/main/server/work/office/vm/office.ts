@@ -49,12 +49,17 @@ export function setVmHelperStart(fn: (() => Promise<HelperProcess>) | null): voi
   made = new WeakMap()
 }
 
+export const NO_LICENCE = 'Office in the Windows VM is not signed in yet, so it opens files to view only: the owner signs in to it once (Settings → Connections).'
+
 /**
- * A call the helper never answered left it sitting on a dialog in Office, and every later Office call
- * behind it: the helper is ended as the admin, and its door made ready again at the next call.
+ * The VM's carrier with two things said plainly. A call the helper never answered left it sitting on a dialog
+ * in Office: the helper is ended as the admin, and its door made ready again at the next call. And an Office
+ * with no licence refuses most of what is asked of it with a bare code (0x800A03EC, "the license … has
+ * expired"): while the VM's last read says Office is not licensed, such a failure says why (`licensed`).
  */
-function restartOnStall(carrier: ComCarrier, log: (line: string) => void): OfficeCarrier {
+function restartOnStall(carrier: ComCarrier, log: (line: string) => void, licensed: () => boolean): OfficeCarrier {
   const stalled = (err: unknown): boolean => err instanceof OfficeError && /did not answer .* within|has not said within/.test(err.message)
+  const unlicensed = (err: unknown): err is OfficeError => err instanceof OfficeError && err.code === 'failed' && !licensed() && /0x800A03EC|license/i.test(err.message)
   return new Proxy(carrier, {
     get(target, prop, receiver) {
       const v = Reflect.get(target, prop, receiver) as unknown
@@ -68,6 +73,7 @@ function restartOnStall(carrier: ComCarrier, log: (line: string) => void): Offic
             vmHelper().doubt()
             void winvmKeeper()?.admin('Get-Process tc-office -ErrorAction SilentlyContinue | Stop-Process -Force').catch(() => undefined)
           }
+          if (unlicensed(err)) throw new OfficeError(NO_LICENCE, 'not-allowed')
           throw err
         })
       }
@@ -79,7 +85,7 @@ function restartOnStall(carrier: ComCarrier, log: (line: string) => void): Offic
 export function vmHereOf(ctx: WorkCtx): VmHere {
   const had = made.get(ctx.db)
   if (had) return had
-  const carrier = restartOnStall(comCarrier({ start: () => startFor(), log: (line) => ctx.log(line) }), ctx.log)
+  const carrier = restartOnStall(comCarrier({ start: () => startFor(), log: (line) => ctx.log(line) }), ctx.log, () => storedStatus(ctx.db)?.status.office.licensed === true)
   const suggestions = new SuggestionStore(ctx.db)
   const here: VmHere = { carrier, suggestions, excel: new ExcelHelper(carrier, ctx.db, suggestions) }
   made.set(ctx.db, here)

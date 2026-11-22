@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CONHOST_PATH, doorArguments, doorTask, ONEDRIVE_POLICY, SERVICE_PATH, SETUP_STEPS, setupScript, startDoorScript, TOKEN_PATH } from './setup'
+import { CONHOST_PATH, doorArguments, doorTask, OFFICE_POLICY, ONEDRIVE_POLICY, SERVICE_PATH, SETUP_STEPS, setupScript, startDoorScript, TOKEN_PATH } from './setup'
 
 /** The door's logon task and the guest's OneDrive policies, as setup and each wake write them. */
 
@@ -29,5 +29,14 @@ describe("OneDrive's policies in the guest", () => {
     for (const line of ["'FilesOnDemandEnabled' 1", "'KFMBlockOptIn' 1", "'DisableTutorial' 1", "'AllowStorageSenseGlobal' 1", "'ConfigStorageSenseGlobalCadence' 1", "'ConfigStorageSenseCloudContentDehydrationThreshold' 1"]) expect(ONEDRIVE_POLICY).toContain(line)
     expect(ONEDRIVE_POLICY).toContain('HKLM:\\SOFTWARE\\Policies\\Microsoft\\OneDrive')
     expect(setupScript({ token: 'x'.repeat(40) })).toContain(ONEDRIVE_POLICY)
+  })
+})
+
+describe("Office's first run in the guest", () => {
+  it("skips the licensing dialog, which does not draw on this image, by Microsoft's viewer mode policy: he signs in from the title bar", () => {
+    expect(OFFICE_POLICY).toContain("HKLM:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Common\\Licensing")
+    expect(OFFICE_POLICY).toContain("-Name 'ViewerMode' -Value 1 -Type DWord")
+    expect(setupScript({ token: 'x'.repeat(40) })).toContain(OFFICE_POLICY)
+    expect(SETUP_STEPS).toContain('Office viewer mode')
   })
 })

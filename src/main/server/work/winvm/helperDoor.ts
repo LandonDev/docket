@@ -3,7 +3,7 @@ import { connect } from 'node:net'
 import type { WinvmState } from '@shared/contract-work-winvm'
 import { STANDARD_USER } from './machine/config'
 import { psQuote } from './machine/guest'
-import { ONEDRIVE_POLICY, SERVICE_DIR, TASK_FOLDER, TOKEN_PATH } from './setup'
+import { OFFICE_POLICY, ONEDRIVE_POLICY, SERVICE_DIR, TASK_FOLDER, TOKEN_PATH } from './setup'
 
 /**
  * The guest's second door (docs/agents/work-winvm.md "The helper"): tc-office.exe, the Office helper
@@ -39,6 +39,7 @@ export function helperScript(source: string, port = HELPER_PORT, user = STANDARD
 $ErrorActionPreference = 'Stop'
 # a machine set up before these policies gets them here
 ${ONEDRIVE_POLICY}
+${OFFICE_POLICY}
 $exe = ${psQuote(HELPER_PATH)}
 $shaFile = ${psQuote(HELPER_SHA_PATH)}
 $want = ${psQuote(want)}

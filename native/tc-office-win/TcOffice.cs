@@ -58,7 +58,36 @@ public interface ICom {
 public class RealCom : ICom {
   public bool Registered(string progId) { return Type.GetTypeFromProgID(progId, false) != null; }
   public bool Running(string processName) { return Process.GetProcessesByName(processName).Length > 0; }
-  public object Active(string progId) { return Marshal.GetActiveObject(progId); }
+  // The running instance. Excel and Word enter the running object table only once their window has lost
+  // the focus for the first time, so an app started a moment ago (the switch, or a PC nobody has clicked on)
+  // is not there yet: its own window then hands out its object model (OBJID_NATIVEOM), focus or no focus.
+  public object Active(string progId) {
+    try { return Marshal.GetActiveObject(progId); }
+    catch (COMException e) {
+      if ((uint)e.ErrorCode != 0x800401E3) throw;
+      var native = progId == "Excel.Application" ? Native("XLMAIN", "XLDESK", "EXCEL7") : progId == "Word.Application" ? Native("OpusApp", "_WwF", "_WwB", "_WwG") : null;
+      if (native == null) throw;
+      return native;
+    }
+  }
+  [DllImport("oleacc.dll")] static extern int AccessibleObjectFromWindow(IntPtr hwnd, uint id, ref Guid iid, [MarshalAs(UnmanagedType.IDispatch)] out object obj);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
+  // The Application behind the first window of that class chain that answers: main window, then each child class down to the document's.
+  static object Native(params string[] classes) {
+    var iid = new Guid("00020400-0000-0000-C000-000000000046");
+    var top = IntPtr.Zero;
+    while ((top = FindWindowEx(IntPtr.Zero, top, classes[0], null)) != IntPtr.Zero) {
+      var h = top;
+      for (var i = 1; i < classes.Length && h != IntPtr.Zero; i++) h = FindWindowEx(h, IntPtr.Zero, classes[i], null);
+      if (h == IntPtr.Zero) continue;
+      object window;
+      if (AccessibleObjectFromWindow(h, 0xFFFFFFF0, ref iid, out window) != 0 || window == null) continue;
+      try { return window.GetType().InvokeMember("Application", BindingFlags.GetProperty, null, window, null, CultureInfo.InvariantCulture); }
+      catch (Exception) { }
+      finally { Marshal.ReleaseComObject(window); }
+    }
+    return null;
+  }
   static object Invoke(object o, string name, BindingFlags flags, object[] args) {
     try { return o.GetType().InvokeMember(name, flags, null, o, args, CultureInfo.InvariantCulture); }
     catch (TargetInvocationException e) { throw e.InnerException ?? e; }
@@ -936,7 +965,8 @@ public class Office {
     if (r != null) return Obj("code", r.Code, "message", r.Message);
     if (Guest.Has(verb)) return Obj("code", "failed", "message", e.Message);
     string app;
-    var name = Named(APP_OF_VERB.TryGetValue(verb, out app) ? app : "outlook");
+    // `open` names its app in its arguments, not its verb: a failure there is Office's, whichever app it was.
+    var name = APP_OF_VERB.TryGetValue(verb, out app) ? Named(app) : verb == "open" ? "Office" : Named("outlook");
     var com = e as COMException;
     var h = com != null ? (uint)com.ErrorCode : (uint)Marshal.GetHRForException(e);
     var hex = "0x" + h.ToString("X8");

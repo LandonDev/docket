@@ -200,6 +200,10 @@ Step "no programs from tcuser's folders"
 # 7. OneDrive: files on demand, and a downloaded file back in the cloud after a day unopened.
 ${ONEDRIVE_POLICY}
 Step "OneDrive's policies"
+
+# 8. Office skips its first-run licensing dialog, which does not draw here.
+${OFFICE_POLICY}
+Step "Office viewer mode"
 "setup done"
 `
 }
@@ -223,5 +227,19 @@ Set-Policy $ss 'ConfigStorageSenseGlobalCadence' 1
 Set-Policy $ss 'ConfigStorageSenseCloudContentDehydrationThreshold' 1
 `
 
+/**
+ * Office in the guest never shows its first-run licensing dialog (docs/agents/work-office.md "The Windows VM"):
+ * on this image the dialog's own view never draws, so it opens as an empty box that cannot be closed and
+ * nobody could sign in (found 2026-11-22; tcuser's lock-down is not the cause). Microsoft's "Use Viewer Mode"
+ * policy skips it: Office with no licence opens to view and print, with Sign in in its title bar, and from
+ * Version 2205 on a user who signs in with a licence has the whole product while the policy stays. A machine
+ * policy, harmless before Office is installed. Safe to run again.
+ */
+export const OFFICE_POLICY = `
+$lic = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Common\\Licensing'
+if (-not (Test-Path -LiteralPath $lic)) { New-Item -Path $lic -Force | Out-Null }
+Set-ItemProperty -LiteralPath $lic -Name 'ViewerMode' -Value 1 -Type DWord
+`
+
 /** The steps a setup script must carry, by a line each prints; the keeper's test reads them back. */
-export const SETUP_STEPS = ['service folder and token', 'logon task', 'hibernate, no lock on resume', 'Windows Update', "tcuser's policies", "no programs from tcuser's folders", "OneDrive's policies"] as const
+export const SETUP_STEPS = ['service folder and token', 'logon task', 'hibernate, no lock on resume', 'Windows Update', "tcuser's policies", "no programs from tcuser's folders", "OneDrive's policies", 'Office viewer mode'] as const

@@ -84,6 +84,8 @@ One press later (B10, Settings → Work); `work.winvm.setup` now. It needs the b
      Denied leaves its EXE cache empty and the program runs.
    - OneDrive's machine policies (`ONEDRIVE_POLICY`): files on demand always, no folder backup offered, no
      tutorial, and Storage Sense sending a downloaded file back to the cloud after a day unopened.
+   - Office's viewer mode (`OFFICE_POLICY`): its first-run licensing dialog does not draw on this image, and
+     the policy skips it (work-office.md "The Windows VM").
    The script notes each step it reaches in `C:\Windows\Temp\tc-setup.log`. On a fresh guest it has now
    and then hung before its first step while Windows was busy after its first logon (two of six fresh setups
    on 2026-11-20, nothing done in the guest), so the keeper gives it 4 minutes and runs it once more; a last
@@ -389,13 +391,15 @@ In order, once the box runs a build with all of Track B:
    page on the VM).
 4. **Choose its sleep and screen** if the defaults do not suit: Sleeps after (30 minutes) and Screen size
    (1280 × 800; 1920 × 1200 is used by a new Set up: Windows keeps the size it was set up at through every sleep).
-5. **Sign in to what threads should use**, in a Take over from the Computers page: the VM keeps it across
+5. **Sign in to what else threads should use**, in a Take over from the Computers page: the VM keeps it across
    sleeps. A thread never types a password.
 6. **Before the evaluation ends** (about 17 February 2027, Settings' Edition row; Connections warns 14 days
    ahead): buy and enter a real Windows key in a Take over, or rebuild the image (`install.sh --force` after
    the standing disk is gone; what is signed in is lost).
-7. **Office, when he wants it** (B11): install Microsoft 365 Apps and classic Outlook in a Take over, sign in,
-   and say so; until then Settings' Office row says "Not installed".
+7. **Sign in to OneDrive and Office** (once each; Microsoft 365 Apps is installed since 2026-11-22): Settings →
+   Connections → "OneDrive on the Windows VM" → Sign in… walks OneDrive's sign-in to a number for his phone
+   and opens the Computers page on the VM; the same press on "Office on the Windows VM" opens Word, where he
+   presses Sign in in its title bar. Settings' Office and OneDrive rows say who is signed in.
 
 ## The whole job, proven
 

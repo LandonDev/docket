@@ -217,9 +217,28 @@ asleep; a tool call wakes it first. A call the helper never answers ends
 the helper in the guest, since every later Office call would wait behind
 it. Microsoft 365 Apps for enterprise (Excel, Word, PowerPoint, classic
 Outlook; 64-bit, Current Channel) was installed there on 2026-11-22 with
-Microsoft's Office Deployment Tool; it is licensed by his own sign-in, and
-until then the apps are his to sign in to and nothing more
-(F-vm-files.md).
+Microsoft's Office Deployment Tool; it is licensed by his own sign-in.
+Until then it runs in Microsoft's viewer mode (the machine policy
+`ViewerMode`, `OFFICE_POLICY` in winvm/setup.ts): on this image Office's
+first-run licensing dialog never draws its content and cannot be closed
+(found 2026-11-22; tcuser's lock-down is not the cause), and the policy
+skips it, leaving "Sign in" in each app's title bar. Found live before his
+sign-in: the helper opens a workbook and a document, lists them, and reads a
+Word document's paragraphs; Excel refuses a range's read and a save
+("This command is unavailable because the license to use this application
+has expired", or a bare 0x800A03EC), which the VM's carrier says as "not
+signed in yet, so it opens files to view only" (`NO_LICENCE`) while the
+last read of the VM says Office has no licence. From Version 2205 on,
+Microsoft says a user who signs in with a licence has the whole product
+while the policy stays; if the apps still say "(Viewer)" after his sign-in
+and a restart, the policy's value is removed (F-vm-files.md).
+
+- **An app started a moment ago.** Excel and Word enter the running object
+  table only once their window has lost the focus for the first time, so
+  on a PC nobody clicks on `GetActiveObject` answers "not there" for an
+  app `open` just started. The helper then takes the app's object model
+  from its own window (`AccessibleObjectFromWindow` with OBJID_NATIVEOM on
+  Excel's `EXCEL7` or Word's `_WwG`), on every Windows host.
 
 **Where a tool runs** (`placesOf`, addin/index.ts). A host with the apps
 themselves (the Mac, a Windows PC) runs every tool itself, and so does a

@@ -51,6 +51,9 @@ describe("the helper's install script", () => {
     expect(script).toContain("'FilesOnDemandEnabled' 1")
     expect(script).toContain("'ConfigStorageSenseCloudContentDehydrationThreshold' 1")
   })
+  it("sets Office's viewer mode, so a machine set up before it has no empty first-run dialog", () => {
+    expect(script).toContain("-Name 'ViewerMode' -Value 1")
+  })
 })
 
 describe('opening the door', () => {
