@@ -584,6 +584,14 @@ describe("the form kind, round two", () => {
     expect(screen.getByRole("textbox", { name: "Option 1" }).getAttribute("data-slot")).toBe("input");
   });
 
+  it("says a draft's responses are not there because it is not published, never as none", async () => {
+    open(view({ state: "draft" }));
+    await found("[data-form]");
+    fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
+    await waitFor(() => expect(screen.getByText("Not published")).toBeTruthy());
+    expect(screen.queryByText("No responses yet")).toBeNull();
+  });
+
   it("says responses that fail to read on the state line with Retry, not as none", async () => {
     open(view({ state: "open", link: "https://tempcode.landonhale.com/f/AbCdEfGhIjKlMnOp", publishedAt: 1 }));
     await found("[data-form]");

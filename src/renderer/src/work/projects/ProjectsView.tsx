@@ -1,6 +1,7 @@
 import { ConvexProvider } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { sessionWaits } from "../shell/lifeos";
 import { createLifeosProjectsClient, type SectorKey as KitSector } from "work-kit/lifeos";
 import { projectPlace, Projects, ProjectsClientProvider, ProjectsKitProvider, type Project, type ProjectsPlace, type ProjectTask } from "work-kit/projects";
 import "work-kit/projects/styles.css";
@@ -92,8 +93,8 @@ export function View(props: WorkViewProps) {
       },
     });
   });
-  // The frame says signed out and unreachable; with no client yet the session is on its way.
-  if (!convex || !client) return <Bones />;
+  // Bones only while the session is on its way; a failed one is the frame's to say, with nothing pulsing under it.
+  if (!convex || !client) return sessionWaits(lifeos) ? <Bones /> : null;
   return (
     <ConvexProvider client={convex}>
       <ProjectsKitProvider kit={kit}>
