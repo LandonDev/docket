@@ -264,6 +264,100 @@ pub fn pieces(text: &str) -> Option<Vec<Piece>> {
     Some(out)
 }
 
+/// One keyboard record of typed text at the session tier: a UTF-16 unit as a Unicode packet, or a real key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextRec {
+    Unicode { unit: u16, up: bool },
+    Vk { vk: u16, up: bool },
+}
+
+/// The pause between two calls of typed text, so the app has taken one before the next comes.
+pub const TEXT_YIELD_MS: u64 = 8;
+
+/// Typed text as real input, exactly (§29.4.2). A character the keyboard layout types (`keymap`: its virtual key,
+/// and whether it needs Shift, Caps Lock already minded) goes as that key, with Shift down just before it and up just
+/// after it, so no Shift is held past its own character. A line break (CRLF, CR or LF) is one Return, a tab one Tab.
+/// Anything else (an accent the layout lacks, an emoji) is its UTF-16 units as Unicode packets, a surrogate pair kept
+/// together. Measured on the box's VM (2026-11-22): WinUI's Notepad read a run of packets sent in one call as the
+/// last one's character over and over ("Round !!!!!!"); `text_batches` sends them a character to a call.
+pub fn text_records(text: &str, keymap: impl Fn(char) -> Option<(u16, bool)>) -> Vec<TextRec> {
+    let mut out = Vec::new();
+    let mut prev_cr = false;
+    for c in text.chars() {
+        let key = match c {
+            '\n' if prev_cr => {
+                prev_cr = false;
+                continue;
+            }
+            '\n' | '\r' => Some(vk::RETURN),
+            '\t' => Some(vk::TAB),
+            _ => None,
+        };
+        prev_cr = c == '\r';
+        if let Some(vk) = key {
+            out.push(TextRec::Vk { vk, up: false });
+            out.push(TextRec::Vk { vk, up: true });
+            continue;
+        }
+        if let Some((vk, shift)) = keymap(c) {
+            if shift {
+                out.push(TextRec::Vk { vk: vk::SHIFT, up: false });
+            }
+            out.push(TextRec::Vk { vk, up: false });
+            out.push(TextRec::Vk { vk, up: true });
+            if shift {
+                out.push(TextRec::Vk { vk: vk::SHIFT, up: true });
+            }
+            continue;
+        }
+        let mut buf = [0u16; 2];
+        for &unit in c.encode_utf16(&mut buf).iter() {
+            out.push(TextRec::Unicode { unit, up: false });
+            out.push(TextRec::Unicode { unit, up: true });
+        }
+    }
+    out
+}
+
+/// The records in calls, in order, with TEXT_YIELD_MS between every two: one character to a call, and a Shift
+/// down and its up each a call of their own around the character's key. Measured on the box's VM (2026-11-22): with
+/// Shift down and up in the key's own call, WinUI's Notepad read some characters unshifted (`)` as `0`, `Caps` as
+/// `caps`) and dropped one in a run of several to a call; packets of several characters to a call read as the
+/// last one's.
+pub fn text_batches(recs: &[TextRec]) -> Vec<&[TextRec]> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < recs.len() {
+        let len = match recs[i] {
+            TextRec::Vk { vk: vk::SHIFT, .. } => 1,
+            TextRec::Unicode { unit, .. } if (0xD800..0xDC00).contains(&unit) => 4,
+            _ => 2,
+        }
+        .min(recs.len() - i);
+        out.push(&recs[i..i + len]);
+        i += len;
+    }
+    out
+}
+
+/// A chord at the session tier as calls, sent with TEXT_YIELD_MS between them: its modifiers down in a call of their
+/// own, then the key's records, then the modifiers up in reverse order, in a call of their own; a phase that only
+/// presses or only lets go has the one side. Measured on the box's VM (2026-11-22): Alt+F4 sent in one call did not
+/// close WinUI's Notepad (it read the F4 with Alt already up), as Shift sent in one call with its key was missed.
+pub fn chord_calls(mods: &[u16], key: &[TextRec], down: bool, up: bool) -> Vec<Vec<TextRec>> {
+    let mut out = Vec::new();
+    if down && !mods.is_empty() {
+        out.push(mods.iter().map(|&vk| TextRec::Vk { vk, up: false }).collect());
+    }
+    if !key.is_empty() {
+        out.push(key.to_vec());
+    }
+    if up && !mods.is_empty() {
+        out.push(mods.iter().rev().map(|&vk| TextRec::Vk { vk, up: true }).collect());
+    }
+    out
+}
+
 /// A session pixel to a screen pixel, at its centre (§6): `origin + (p + 0.5) / scale`.
 pub fn to_screen(frame: &Rect, space: &CoordinateSpace, p: (i64, i64)) -> (f64, f64) {
     (frame.x + (p.0 as f64 + 0.5) / space.scale, frame.y + (p.1 as f64 + 0.5) / space.scale)
@@ -404,5 +498,71 @@ mod tests {
         assert_eq!(event_tier(&[Tier::Ax, Tier::Process], &act(Key, Some("ctrl+s"))), None);
         assert_eq!(needed_tier(&act(Key, Some("ctrl+s"))), Tier::Session);
         assert_eq!(needed_tier(&act(Scroll, None)), Tier::Process);
+    }
+
+    /// A US layout: letters, digits, space and a few marks; capitals and `!` need Shift.
+    fn us(c: char) -> Option<(u16, bool)> {
+        match c {
+            'a'..='z' => Some((c.to_ascii_uppercase() as u16, false)),
+            'A'..='Z' => Some((c as u16, true)),
+            '0'..='9' => Some((c as u16, false)),
+            ' ' => Some((vk::SPACE, false)),
+            '!' => Some(('1' as u16, true)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn typed_text_is_layout_keys_with_shift_only_around_its_own_character_and_one_return_per_line_break() {
+        use TextRec::*;
+        let k = |vk: u16, up| Vk { vk, up };
+        let (sh, ret) = (vk::SHIFT, vk::RETURN);
+        assert_eq!(
+            text_records("Ab\r\nC d", us),
+            vec![
+                k(sh, false), k(b'A' as u16, false), k(b'A' as u16, true), k(sh, true),
+                k(b'B' as u16, false), k(b'B' as u16, true),
+                k(ret, false), k(ret, true),
+                k(sh, false), k(b'C' as u16, false), k(b'C' as u16, true), k(sh, true),
+                k(vk::SPACE, false), k(vk::SPACE, true),
+                k(b'D' as u16, false), k(b'D' as u16, true),
+            ]
+        );
+        // CR and LF alone are one Return each; a blank line two
+        assert_eq!(text_records("a\nb\rc\n\nd", us).iter().filter(|x| matches!(x, Vk { vk: vk::RETURN, up: false })).count(), 4);
+        // a character the layout lacks, past the BMP: its two surrogates, each down and up
+        assert_eq!(
+            text_records("😀", us),
+            vec![Unicode { unit: 0xD83D, up: false }, Unicode { unit: 0xD83D, up: true }, Unicode { unit: 0xDE00, up: false }, Unicode { unit: 0xDE00, up: true }]
+        );
+        assert_eq!(text_records("é", us), vec![Unicode { unit: 0xE9, up: false }, Unicode { unit: 0xE9, up: true }]);
+    }
+
+    #[test]
+    fn typed_text_goes_a_character_to_a_call_with_shift_in_calls_of_its_own() {
+        let recs = text_records("Ab\r\nC d", us);
+        let calls = text_batches(&recs);
+        assert_eq!(calls.iter().map(|c| c.len()).collect::<Vec<_>>(), vec![1, 2, 1, 2, 2, 1, 2, 1, 2, 2]);
+        assert_eq!(calls[0], &[TextRec::Vk { vk: vk::SHIFT, up: false }]);
+        assert_eq!(calls[4], &[TextRec::Vk { vk: vk::RETURN, up: false }, TextRec::Vk { vk: vk::RETURN, up: true }]);
+        assert_eq!(calls.concat(), recs);
+        // a surrogate pair is one call of its four packets
+        let recs = text_records("a😀", us);
+        assert_eq!(text_batches(&recs).iter().map(|c| c.len()).collect::<Vec<_>>(), vec![2, 4]);
+    }
+
+    #[test]
+    fn a_chord_holds_its_modifiers_in_calls_of_their_own_around_its_key() {
+        let k = |vk: u16, up| TextRec::Vk { vk, up };
+        let f4 = [k(vk::F1 + 3, false), k(vk::F1 + 3, true)];
+        assert_eq!(chord_calls(&[vk::MENU], &f4, true, true), vec![vec![k(vk::MENU, false)], f4.to_vec(), vec![k(vk::MENU, true)]]);
+        let s = [k(b'S' as u16, false), k(b'S' as u16, true)];
+        assert_eq!(
+            chord_calls(&[vk::CONTROL, vk::SHIFT], &s, true, true),
+            vec![vec![k(vk::CONTROL, false), k(vk::SHIFT, false)], s.to_vec(), vec![k(vk::SHIFT, true), k(vk::CONTROL, true)]]
+        );
+        // hold_key's down and up, and a key with no modifier
+        assert_eq!(chord_calls(&[vk::SHIFT], &[k(b'A' as u16, false)], true, false), vec![vec![k(vk::SHIFT, false)], vec![k(b'A' as u16, false)]]);
+        assert_eq!(chord_calls(&[], &[k(vk::RETURN, false), k(vk::RETURN, true)], true, true).len(), 1);
     }
 }

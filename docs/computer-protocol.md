@@ -2465,6 +2465,16 @@ On an element, with no coordinate, modifier or duration; the result says
 | `front` | the same posts, with the window brought forward for the step and the person's front window put back after it, under the session lock (one window forward at a time, here or in another service) | as `process` |
 | `session` | real input by `SendInput`: the window brought forward, the real pointer moved, keys to the focused element (UI Automation's SetFocus first for a step that names one) | every pointer and key verb, modifiers included; `paste` as Ctrl+V |
 
+- **Typing at the session tier** (input.rs `text_records`, `text_batches`): a step's text goes whole to the
+  platform, which types a character the layout has as its key with Shift down and up in calls of their own around
+  it, a line break (CRLF, CR or LF) as one Return, a character the layout lacks as Unicode packets (a surrogate pair
+  together), one character to a `SendInput` call with 8 ms between. A chord's modifiers go down and up in calls of
+  their own around its key (`chord_calls`). Measured on the box's VM (2026-11-22) in WinUI's Notepad: characters
+  several to a call with Shift inside lost capitals and came out of order around a Return; packets several to a
+  call read as the last one's character; Alt+F4 in one call did not close the window. Bringing a window forward
+  sends a pointer move of nothing for the right to take the front, never an Alt tap (a WinUI window's access-key
+  mode would take the next keys).
+
 - **Why no modifiers on posted keys**: an app reads its modifiers from the
   keyboard's state, which a posted message never sets, so `ctrl+s` at
   `process` would arrive as `s`. Such a step answers `needs_tier { needed:

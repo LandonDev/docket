@@ -25,10 +25,23 @@ export const NO_VM = 'refused: the Windows VM is not on this host'
 /** The Windows service has no save panel step (§26.7 is the Mac's): said before the call goes, not as a tier it lacks. */
 export const NO_SAVE_AS = "refused: save_as does not run on Windows; press ctrl+s, set_value the Save as dialog's File name box and press Return"
 
+/** A menu path is the Mac's menu bar: the Windows service has no such route, and the step failed as "no point yet". */
+export const NO_MENU_PATH =
+  'refused: menu: "File > Exit" is a route of the Mac\'s menu bar; on Windows expand the menu item by its [index] (perform expand), then click the item by named'
+
+const steps = (args: unknown): { action?: unknown; menu?: unknown }[] => {
+  const a = args as { action?: unknown; menu?: unknown; actions?: unknown } | null
+  return a ? [a, ...(Array.isArray(a.actions) ? (a.actions as { action?: unknown; menu?: unknown }[]) : [])] : []
+}
+
 /** Whether a computer call asks for `save_as`, alone or as a batch's step. */
 export function asksSaveAs(args: unknown): boolean {
-  const a = args as { action?: unknown; actions?: unknown } | null
-  return a?.action === 'save_as' || (Array.isArray(a?.actions) && a.actions.some((s) => (s as { action?: unknown } | null)?.action === 'save_as'))
+  return steps(args).some((s) => s?.action === 'save_as')
+}
+
+/** Whether a computer call names a target by a menu path, alone or as a batch's step. */
+export function asksMenuPath(args: unknown): boolean {
+  return steps(args).some((s) => typeof s?.menu === 'string')
 }
 
 const LEAD =
@@ -114,6 +127,7 @@ function computerTools(d: VmToolsDeps): WorkTool[] {
         return computerContent(windowsWords(outcome), 'parts')
       }
       if (asksSaveAs(args)) return { ...workText(NO_SAVE_AS), isError: true }
+      if (asksMenuPath(args)) return { ...workText(NO_MENU_PATH), isError: true }
       const refused = h.lease.take(threadId)
       if (refused) return { ...workText(refused), isError: true }
       keeper.touch()

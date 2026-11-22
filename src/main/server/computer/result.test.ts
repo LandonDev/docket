@@ -162,3 +162,23 @@ describe('web results (§25)', () => {
     expect(renderText(o).startsWith(o.steps[0])).toBe(true)
   })
 })
+
+describe('a step that closed its window', () => {
+  const gone = { kind: 'window_not_found', message: 'no window of Notepad matches that title' } as never
+  it('says the window closed, where "can\'t tell" and a failed read sent the thread looking for it', () => {
+    const o = outcomeOf([{ action: 'left_click', coordinate: [925, 15] }], { steps: [{ index: 0, action: 'left_click', status: 'ok', tier: 'session', effect: 'unknown' }], observationError: gone }, [], new Map(), { app: 'Notepad' })
+    expect(o.steps).toEqual(['left_click 925,15 · session · the window closed'])
+    expect(o.body).toBe("Notepad's window closed; computer_apps lists the windows open now")
+    // the whole app gone too, after Alt+F4
+    const f4 = outcomeOf([{ action: 'key', text: 'alt+F4' }], { steps: [{ index: 0, action: 'key', status: 'ok', tier: 'session', effect: 'none' }], observationError: { kind: 'app_not_found', message: 'no app with pid 7' } as never }, [], new Map(), { app: 'Notepad' })
+    expect(f4.steps).toEqual(['key alt+F4 · session · the window closed'])
+  })
+
+  it('leaves a failed read alone when the last step did not run, or the read failed for another reason', () => {
+    const failed = outcomeOf([{ action: 'key', text: 'alt+F4' }], { steps: [{ index: 0, action: 'key', status: 'failed', error: { kind: 'interrupted', message: 'x' } } as never], observationError: gone }, [], new Map(), { app: 'Notepad' })
+    expect(failed.body).toMatch(/^observation failed: /)
+    const other = outcomeOf([{ action: 'key', text: 'a' }], { steps: [{ index: 0, action: 'key', status: 'ok', tier: 'session', effect: 'unknown' }], observationError: { kind: 'timeout', message: 'slow' } as never }, [], new Map(), { app: 'Notepad' })
+    expect(other.steps[0]).toMatch(/can't tell$/)
+    expect(other.body).toMatch(/^observation failed: /)
+  })
+})

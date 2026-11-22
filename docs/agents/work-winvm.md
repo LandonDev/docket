@@ -289,6 +289,15 @@ names `windows_*` where the shared words say `computer_*`.
   brought forward in front rather than putting the window that was in front back over it. A value read back is
   compared with its line breaks made alike (`same_text`): Notepad keeps a lone CR for CRLF, and a right two-line
   `set_value` failed as `value_not_taken`.
+- **Typing is exact** (2026-11-22, round three): the service's session-tier typing was the cause of B2's "Shift
+  lost on the first typed key" and of a thread's "VM proof \rline onevm proof line two"; docs/computer-protocol.md
+  §29.4.2 "Typing at the session tier" says how it types now. Proven on the standing VM with that build run as a
+  second door beside the live one: three lines with capitals, punctuation, quotes and a blank line read back
+  exactly, and Alt+F4 closed Notepad.
+- **A step that closed its window says so** (`WINDOW_CLOSED`, computer/result.ts): the step's line ends "the window
+  closed" and the body names computer_apps, where it said "can't tell" and "observation failed".
+- **A menu path is refused** (`NO_MENU_PATH`): `menu: "File > Exit"` is the Mac's menu bar route; the words say to
+  expand the menu item by its index and click the item by name.
 - **`save_as` is refused** before the call goes (`NO_SAVE_AS`): the Windows service has no save panel step, and the
   call used to fail as "needs the session tier". The tools' head says how to save instead: Ctrl+S, `set_value` the
   dialog's File name box, Return.

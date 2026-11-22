@@ -274,7 +274,8 @@ describe('tiers', () => {
     expect(h.text(first)).toMatch(/^app "Closey" · window "Closey Plain"/m)
     const second = await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 37 })
     expect(last(h, 'action.run').params.window).toEqual({ id: 169001 })
-    expect(h.text(second)).toContain('Closey has no window open.')
+    // the click closed it: said so, not a failed read (result.ts WINDOW_CLOSED)
+    expect(h.text(second)).toContain("Closey's window closed; computer_apps lists the windows open now")
     await h.run('computer_observe', { app: 'Closey' })
     expect(last(h, 'state.get').params.window).toBeUndefined()
   })
@@ -1342,7 +1343,7 @@ describe('fewer calls (§27)', () => {
     await h.run('computer_observe', { app: 'Closey' })
     await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 37 })
     const gone = await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 37 })
-    expect(gone.body).toMatch(/^observation failed: /)
+    expect(gone.body).toBe("Closey's window closed; computer_apps lists the windows open now")
     const sent = acting(h).length
     const o = await h.run('computer_act', { app: 'Closey', window: 'Secret', action: 'type', text: 'x' })
     expect(o).toMatchObject({ isError: true, body: 'read Closey\'s window "Secret" before typing into it' })

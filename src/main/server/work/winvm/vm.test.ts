@@ -14,7 +14,7 @@ import type { ToolCtx, WorkCtx } from '../modules'
 import { VM_TIER_GATE } from './gate'
 import type { Keeper } from './keeper'
 import { LEASE_AFTER_TURN_MS, VM_FREE_NOTICE, VM_OWNER_DRIVES } from './lease'
-import { asksSaveAs, NO_SAVE_AS, NOT_ON_VM, VM_PREAMBLE, vmOffered, vmTools } from './tools'
+import { asksMenuPath, asksSaveAs, NO_MENU_PATH, NO_SAVE_AS, NOT_ON_VM, VM_PREAMBLE, vmOffered, vmTools } from './tools'
 import { setVmHost, startVm, VM_COMPUTER, wireVm, type VmHost } from './vm'
 
 /**
@@ -159,6 +159,15 @@ describe('the tools', () => {
     }
     expect(keeper.wakes).toBe(0)
     expect(asksSaveAs({ action: 'key', text: 'ctrl+s' })).toBe(false)
+    // a menu path is the Mac's route: refused in words that say what to do on Windows
+    for (const [name, args] of [
+      ['windows_act', { app: 'Notepad', action: 'left_click', menu: 'File > Exit' }],
+      ['windows_batch', { app: 'Notepad', actions: [{ action: 'left_click', menu: 'File > Exit' }] }]
+    ] as const) {
+      const r = await call(name, args)
+      expect(text(r)).toBe(NO_MENU_PATH)
+    }
+    expect(asksMenuPath({ action: 'left_click', element: 3 })).toBe(false)
     expect(tools()[2].description).toMatch(/press ctrl\+s, set_value the dialog's File name box and press Return/)
   })
 

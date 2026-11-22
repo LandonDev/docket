@@ -200,6 +200,12 @@ impl<D: Desktop> Service<D> {
                 let text = a.text.clone().unwrap_or_default();
                 let keys = (text.encode_utf16().count() <= input::KEYS_MAX_UNITS).then(|| pieces(&text)).flatten();
                 match keys {
+                    // real input takes the text whole: the platform sends it as Unicode packets and a Return per line
+                    // break, in small calls in order (input::text_records), so nothing it types can overtake the rest
+                    Some(_) if tier == Tier::Session => {
+                        done.via = Some(InputVia::Keys);
+                        events.push(Part::Post(Event::Text(text.clone())));
+                    }
                     Some(ps) => {
                         done.via = Some(InputVia::Keys);
                         events.extend(ps.into_iter().map(|p| {
