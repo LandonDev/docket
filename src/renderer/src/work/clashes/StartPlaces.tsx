@@ -101,7 +101,8 @@ function PlaceRow({ title, label = "Home", place, target, onOpen }: { title: Rea
         {words.description}
       </span>
     ) : (
-      words.description
+      // A pasted link has no spaces to break at: it wraps inside the row, never out of it.
+      <span className="break-words">{words.description}</span>
     );
   return <PageRow data-start={target} title={title} description={description} error={words.error} onOpen={onOpen} openLabel={rowLabel(label, words)} />;
 }

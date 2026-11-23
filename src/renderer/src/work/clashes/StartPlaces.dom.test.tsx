@@ -183,6 +183,19 @@ describe("Start places", () => {
     expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "hypixel", address: "" }, lookupsFor: { sector: "hypixel", on: false } } }]);
   });
 
+  it("wraps a pasted link inside its row, and says a town's centre where the map found no more", () => {
+    const link = "https://maps.example.com/?address=4%20Gym%20Way,Cedar%20Falls&auid=1234567890&ll=40.1,-86.9&q=Gym";
+    lifeos.places = {
+      ...PLACES,
+      jobs: PLACES.jobs.map((j) => (j.sector === "ref" ? { ...j, address: link, state: "failed" as const } : j.sector === "unify" ? { ...j, address: "4 Elm St, Cedar Falls, IN", label: "Cedar Falls, IN", state: "found" as const, rough: true } : j)),
+    };
+    const { container } = render(<StartPlacesSection environmentId="box" />);
+    const line = within(row(container, "ref")).getByText(link);
+    expect(line.className).toContain("break-words");
+    expect(within(row(container, "ref")).getByText("Not found")).toBeTruthy();
+    expect(within(row(container, "unify")).getByText("4 Elm St, Cedar Falls, IN, using the town centre")).toBeTruthy();
+  });
+
   it("names each row's button by what the row says, and turns a spinner while a place is looked up", () => {
     const { container } = render(<StartPlacesSection environmentId="box" />);
     expect(screen.getByRole("button", { name: "Change Cosmic: Home" })).toBeTruthy();

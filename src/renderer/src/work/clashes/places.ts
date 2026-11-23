@@ -7,7 +7,7 @@ import type { SectorKey } from "@shared/work";
  */
 
 /** A place as LifeOS's `settings:startPlaces` gives it; `label` is the place as the map names it. */
-export type StartPlace = { address?: string; label?: string; state: "none" | "looking" | "found" | "failed" };
+export type StartPlace = { address?: string; label?: string; state: "none" | "looking" | "found" | "failed"; /** found only as its town's centre: drives start there */ rough?: boolean };
 export type JobStart = StartPlace & { sector: SectorKey; lookups: boolean };
 export type StartPlaces = { home: StartPlace; jobs: JobStart[] };
 
@@ -40,6 +40,8 @@ export function placeWords(place: StartPlace, target: StartTarget): { descriptio
     case "looking":
       return { description: "Looking up…" };
     case "found":
+      // The map did not find the address itself: the row keeps what he typed and says where its drives start.
+      if (place.rough) return { description: `${place.address ?? place.label}, using the town centre` };
       return { description: place.label || place.address };
     case "failed":
       // The address he typed stays in view, so the slip that lost it can be seen.

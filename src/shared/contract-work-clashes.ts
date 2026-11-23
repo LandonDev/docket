@@ -20,8 +20,15 @@ export const ClashesRequestSchemas = [
   request('work.clashes.leave', z.object({ eventId: id })),
   /** → ClashMiles | null: the drive between two stops, for the workspace's job; null when a stop has no point on the map */
   request('work.clashes.miles', z.object({ workspaceId: z.string().min(1), from: ClashStopSchema, to: ClashStopSchema })),
-  /** → null: on, the clash is fine and goes quiet until either event's time or place changes; off takes that back */
-  request('work.clashes.waive', z.object({ id, on: z.boolean() })),
+  /**
+   * → null: on, the clash is fine and goes quiet until either event's time or place changes; off takes that back.
+   * `seen` is the two events as the dialog showed them at his press: LifeOS refuses the waive when they are no longer so,
+   * so a pair a calendar changed a moment before is never called fine unseen.
+   */
+  request(
+    'work.clashes.waive',
+    z.object({ id, on: z.boolean(), seen: z.array(z.object({ eventId: id, startsAt: at, endsAt: at, location: z.string().max(2000).optional() })).max(2).optional() })
+  ),
   /**
    * → ClashAnswered (`{queued}`): his own answer to one event of a clash, sent at once as his press: a decline, a proposed time, or a move.
    * `queued` says a calendar's act is with LifeOS's sender and not yet on the calendar; a move of an event that lives in LifeOS is written and done.

@@ -14,6 +14,10 @@ describe("a start place's words", () => {
     expect(placeWords({ address: "9 Office Rd", state: "found" }, "ref")).toEqual({ description: "9 Office Rd" });
   });
 
+  it("a place found only as its town's centre keeps what he typed and says where its drives start", () => {
+    expect(placeWords({ address: "4 Elm St, Cedar Falls, IN", label: "Cedar Falls, IN", state: "found", rough: true }, "purdue")).toEqual({ description: "4 Elm St, Cedar Falls, IN, using the town centre" });
+  });
+
   it("a place the map did not find keeps its address and says Not found in red", () => {
     expect(placeWords({ address: "9 Ofice Rd", state: "failed" }, "purdue")).toEqual({ description: "9 Ofice Rd", error: "Not found" });
   });

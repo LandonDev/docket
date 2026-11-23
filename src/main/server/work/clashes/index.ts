@@ -28,7 +28,7 @@ export const clashes: WorkModule = {
       case 'work.clashes.miles':
         return handled(await milesFor(ctx, req.params.workspaceId, req.params.from, req.params.to))
       case 'work.clashes.waive':
-        return handled(await waive(ctx, req.params.id, req.params.on))
+        return handled(await waive(ctx, req.params.id, req.params.on, req.params.seen))
       case 'work.clashes.answer':
         return handled(await answer(ctx, req.params, by))
     }

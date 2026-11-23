@@ -1956,7 +1956,9 @@ Around the canvas:
   his again on the pair as it is; once the time he would have been there by is
   behind him, its line says "I'm running late." and leaves how late to
   him; "This
-  is fine" closes with a toast that carries Undo.
+  is fine" closes with a toast that carries Undo; it goes with the pair
+  as he sees it, and LifeOS refuses it in words when a calendar changed
+  the pair a moment before.
   In the Week and the Month a clashing event's block carries a 6px
   `warning` dot before its title, named "Clashes with another event";
   pressing the event opens its day's list, where the line is. An event
@@ -1968,7 +1970,9 @@ Around the canvas:
   no start of its own; "Not set" for Home with none; a 12px spinner, 8px,
   "Looking up…" until LifeOS has placed a new address, turning by itself;
   the typed address with "Not found" as the row's red line when the map
-  did not find it. Nothing on the row says whether a job's places go to
+  did not find it (a pasted link, which the map is never asked, says so
+  at once and wraps inside the row); the typed address and ", using the
+  town centre" when the map found no more than its town. Nothing on the row says whether a job's places go to
   the map: that lives in the dialog. The row opens a small dialog named
   for Home or the job, and its button is named for what the row says
   ("Change Purdue: Cedar Hall, 4 Elm Street"): one Address field, and for

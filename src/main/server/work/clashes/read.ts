@@ -86,10 +86,19 @@ export async function milesFor(ctx: WorkCtx, workspaceId: string, from: ClashSto
   return leg ? { miles: milesOf(leg.metres), minutes: leg.minutes, measured: leg.measured } : null
 }
 
-/** `work.clashes.waive`: on, the clash goes quiet; off brings it back. */
-export async function waive(ctx: WorkCtx, id: string, on: boolean): Promise<null> {
+/** One event of the pair as the dialog showed it at his press. */
+export interface ClashSeen {
+  eventId: string
+  startsAt: number
+  endsAt: number
+  location?: string | undefined
+}
+
+/** `work.clashes.waive`: on, the clash goes quiet; off brings it back. On, what he saw goes with it, and LifeOS refuses a pair that has changed since. */
+export async function waive(ctx: WorkCtx, id: string, on: boolean, seen?: readonly ClashSeen[]): Promise<null> {
   workOn(ctx)
-  await asked(() => ctx.lifeos.owner().mutation(on ? 'clashes:waive' : 'clashes:unwaive', { id }))
+  const shown = seen?.map(({ eventId, startsAt, endsAt, location }) => ({ eventId, startsAt, endsAt, ...(location !== undefined ? { location } : {}) }))
+  await asked(() => ctx.lifeos.owner().mutation(on ? 'clashes:waive' : 'clashes:unwaive', { id, ...(on && shown ? { seen: shown } : {}) }))
   return null
 }
 

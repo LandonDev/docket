@@ -158,6 +158,23 @@ describe('the wire', () => {
       { fn: 'clashes:waive', args: { id: 'e_staff-e_game' } },
       { fn: 'clashes:unwaive', args: { id: 'e_staff-e_game' } }
     ])
+    // What he saw goes with the waive, for LifeOS to hold the pair to; never with the taking back.
+    calls.length = 0
+    const seen = [
+      { eventId: 'e_staff', startsAt: at(16), endsAt: at(18), location: 'Cedar Hall' },
+      { eventId: 'e_game', startsAt: at(17, 30), endsAt: at(19, 30) }
+    ]
+    await call('work.clashes.waive', { id: 'e_staff-e_game', on: true, seen })
+    await call('work.clashes.waive', { id: 'e_staff-e_game', on: false, seen })
+    expect(calls).toEqual([
+      { fn: 'clashes:waive', args: { id: 'e_staff-e_game', seen } },
+      { fn: 'clashes:unwaive', args: { id: 'e_staff-e_game' } }
+    ])
+    // A pair that changed since is refused in LifeOS's words.
+    answers['clashes:waive'] = () => {
+      throw Object.assign(new Error('[CONVEX M(clashes:waive)] Uncaught ConvexError: These events changed. Look at them again first.'), { data: 'These events changed. Look at them again first.' })
+    }
+    await expect(call('work.clashes.waive', { id: 'e_staff-e_game', on: true, seen })).rejects.toThrow(/^These events changed\. Look at them again first\.$/)
   })
 })
 

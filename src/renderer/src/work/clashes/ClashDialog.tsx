@@ -238,7 +238,9 @@ function Body({
     setError(null);
     setPending(true);
     setBusy("fine");
-    link.request("work.clashes.waive", { id: clash.id, on: true }, { lane: "ui" }).then(
+    // The pair as he sees it goes with the press: LifeOS refuses when a calendar changed it a moment before, and the dialog then shows the pair as it is.
+    const seen = [clash.a, clash.b].map(({ eventId, startsAt, endsAt, location }) => ({ eventId, startsAt, endsAt, ...(location !== undefined ? { location } : {}) }));
+    link.request("work.clashes.waive", { id: clash.id, on: true, seen }, { lane: "ui" }).then(
       () => {
         done("Marked as fine", () => void link.request("work.clashes.waive", { id: clash.id, on: false }, { lane: "ui" }).catch(() => void loadToast().then((toast) => toast.error("Undo did not go through"))));
       },

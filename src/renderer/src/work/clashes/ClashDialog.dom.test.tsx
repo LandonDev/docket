@@ -428,6 +428,18 @@ describe("the Clash dialog", () => {
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("says so when the pair changed a moment before This is fine, and marks nothing fine", async () => {
+    wire.fail = "These events changed. Look at them again first.";
+    const onClose = show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "This is fine" }));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("These events changed. Look at them again first.");
+    expect(toasts.said).toEqual([]);
+    expect(onClose).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "This is fine" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("keeps a refusal in the dialog in LifeOS's words", async () => {
     wire.fail = "this calendar's Google account must be connected again";
     const onClose = show(overlap());
@@ -485,7 +497,12 @@ describe("the Clash dialog", () => {
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "This is fine" }));
     await settle();
-    expect(wire.calls).toEqual([{ method: "work.clashes.waive", params: { id: "ev_a-ev_b", on: true } }]);
+    // What he saw goes with the press: each event's times and its calendar's words for the place, when it has them.
+    const seen = [
+      { eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR },
+      { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR },
+    ];
+    expect(wire.calls).toEqual([{ method: "work.clashes.waive", params: { id: "ev_a-ev_b", on: true, seen } }]);
     expect(toasts.said[0]?.words).toBe("Marked as fine");
     toasts.said[0]?.action?.onClick();
     await settle();
