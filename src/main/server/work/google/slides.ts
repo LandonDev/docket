@@ -1,4 +1,4 @@
-import { quoted } from '@shared/work/changeWords'
+import { quoted, reachWords } from '@shared/work/changeWords'
 import { GoogleError, type GoogleDeckJson } from './client'
 import type { Google } from './google'
 
@@ -17,7 +17,19 @@ interface TextShape {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const textOf = (el: any): string => (el?.shape?.text?.textElements ?? []).map((t: { textRun?: { content?: string } }) => t.textRun?.content ?? '').join('').replace(/\n$/, '')
+const wordsOf = (text: any): string => (text?.textElements ?? []).map((t: { textRun?: { content?: string } }) => t.textRun?.content ?? '').join('').replace(/\n$/, '')
+
+/**
+ * Every box of words on a page, as replace-all reaches them: a shape's, each cell of a table (`<table>:<row>:<col>`,
+ * counted and changed by find and replace, never set whole), and the shapes and tables inside a group.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function boxesOf(el: any): TextShape[] {
+  if (el?.elementGroup) return (el.elementGroup.children ?? []).flatMap(boxesOf)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (el?.table) return (el.table.tableRows ?? []).flatMap((r: any, i: number) => (r.tableCells ?? []).map((c: any, j: number) => ({ objectId: `${el.objectId}:${i}:${j}`, text: wordsOf(c.text) })))
+  return [{ objectId: el?.objectId as string, text: wordsOf(el?.shape?.text) }]
+}
 
 /** Each slide's shapes with words, in order. */
 export async function readDeck(g: Google, account: string, fileId: string): Promise<{ title: string; slides: TextShape[][]; revisionId?: string }> {
@@ -26,7 +38,7 @@ export async function readDeck(g: Google, account: string, fileId: string): Prom
 
 function slidesOf(deck: GoogleDeckJson): { title: string; slides: TextShape[][]; revisionId?: string } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const slides = (deck.slides ?? []).map((s: any) => (s.pageElements ?? []).map((el: any) => ({ objectId: el.objectId as string, text: textOf(el) })).filter((x: TextShape) => x.text))
+  const slides = (deck.slides ?? []).map((s: any) => (s.pageElements ?? []).flatMap(boxesOf).filter((x: TextShape) => x.text))
   return { title: deck.title ?? 'Deck', slides, ...(deck.revisionId ? { revisionId: deck.revisionId as string } : {}) }
 }
 
@@ -36,7 +48,7 @@ export function deckText(d: { title: string; slides: TextShape[][] }): string {
 
 export type DeckEdit = { find: string; replace: string } | { shape: string; text: string }
 /** An edit as it waits: a replace with how many boxes held the words, a shape's with its slide and the words it held, so the press can tell it moved. */
-export type HeldDeckEdit = { find: string; replace: string; boxes?: number; on?: number[] } | { shape: string; text: string; slide: number; was: string }
+export type HeldDeckEdit = { find: string; replace: string; boxes?: number; on?: number[]; count?: number } | { shape: string; text: string; slide: number; was: string }
 
 /**
  * Where a deck stands for these edits, run in order on a copy of its words as Google runs a batch: each replace-all
@@ -57,13 +69,16 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
     if ('find' in e) {
       const on = state.flatMap((s, i) => (s.some((x) => x.text.includes(e.find)) ? [i + 1] : []))
       const boxes = state.flat().filter((x) => x.text.includes(e.find)).length
+      // how many times the words stand in all, so a second match inside a box already counted is seen too
+      const count = state.flat().reduce((n, x) => n + x.text.split(e.find).length - 1, 0)
       if (!boxes) return { error: `"${e.find}" is on no slide.`, owner: `${quoted(e.find)} is on no slide now` }
-      held.push({ find: e.find, replace: e.replace, boxes, on })
+      held.push({ find: e.find, replace: e.replace, boxes, on, count })
       for (const x of state.flat()) x.text = x.text.split(e.find).join(e.replace)
       continue
     }
     const slide = state.findIndex((s) => s.some((x) => x.objectId === e.shape))
-    if (slide < 0) return { error: `There is no shape ${e.shape} with words: take its id from google_slides_read.`, owner: 'a box this changes is gone' }
+    if (e.shape.includes(':')) return { error: `${e.shape} is a table's cell: change its words with find and replace.`, owner: 'a table cell cannot be set whole' }
+    if (slide < 0) return { error: `There is no shape ${e.shape} with words: take its id from google_slides_read.`, owner: 'slide' in e ? `the box on slide ${(e as { slide: number }).slide} is gone` : 'a box this changes is gone' }
     const box = state[slide]!.find((x) => x.objectId === e.shape)!
     held.push({ ...e, slide: slide + 1, was: box.text })
     box.text = e.text
@@ -106,11 +121,18 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
   const moved = edits.findIndex((e, i) => 'slide' in e && (now.held[i] as { slide?: number }).slide !== e.slide)
   if (moved >= 0) return { stale: `a box on slide ${(edits[moved] as { slide: number }).slide} is on slide ${(now.held[moved] as { slide: number }).slide} now` }
   // Replace-all reaches every box with the words: more or fewer, or other slides, than he was shown is not what he approved.
-  const spread = edits.findIndex((e, i) => 'find' in e && ((e.boxes !== undefined && (now.held[i] as { boxes?: number }).boxes !== e.boxes) || (e.on !== undefined && JSON.stringify((now.held[i] as { on?: number[] }).on) !== JSON.stringify(e.on))))
+  type Reach = { boxes?: number; on?: number[]; count?: number }
+  const spread = edits.findIndex((e, i) => {
+    if (!('find' in e)) return false
+    const n = now.held[i] as Reach
+    return (e.boxes !== undefined && n.boxes !== e.boxes) || (e.on !== undefined && JSON.stringify(n.on) !== JSON.stringify(e.on)) || (e.count !== undefined && n.count !== e.count)
+  })
   if (spread >= 0) {
-    const e = edits[spread] as { find: string; boxes: number }
-    const was = now.held[spread] as { boxes: number; on?: number[] }
-    return { stale: was.boxes !== e.boxes ? `${quoted(e.find)} stands in ${was.boxes} boxes now, not the ${e.boxes} shown` : `${quoted(e.find)} stands on other slides now than the ones shown` }
+    const e = edits[spread] as { find: string } & Reach
+    const n = now.held[spread] as Reach
+    if (e.boxes !== undefined && n.boxes !== e.boxes) return { stale: reachWords(e.find, n.boxes ?? 0, e.boxes, 'box') }
+    if (e.count !== undefined && n.count !== e.count) return { stale: reachWords(e.find, n.count ?? 0, e.count, 'place') }
+    return { stale: `${quoted(e.find)} stands on other slides now than the ones shown` }
   }
   await api.deckUpdate(fileId, requestsOf(edits), { requiredRevisionId: d.revisionId })
   return { moved: d.revisionId !== judgedOn }

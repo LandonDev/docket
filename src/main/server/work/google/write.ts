@@ -273,23 +273,27 @@ export function planWrite(base: DocBase, current: readonly Block[], fresh: reado
 }
 
 /** An agent's edits as one `batchUpdate`, made on his press: each `find` must stand once, inside one paragraph Google holds as plain words. */
-export function planSuggest(fresh: readonly DocParagraph[], edits: readonly { find: string; replace: string }[]): { requests: Record<string, unknown>[] } | { error: string } {
+/** Why an edit no longer fits, and which: for the agent's words when held and his at the press. */
+export type PlanMiss = { error: string; at: number; why: 'none' | 'many' | 'chip' | 'overlap'; hits: number }
+
+export function planSuggest(fresh: readonly DocParagraph[], edits: readonly { find: string; replace: string }[]): { requests: Record<string, unknown>[] } | PlanMiss {
   const ops: { at: number; rank: number; request: Record<string, unknown> }[] = []
   const taken: [number, number, string][] = []
-  for (const e of edits) {
-    if (!e.find) return { error: 'Each edit names the words it replaces in `find`.' }
+  for (const [n, e] of edits.entries()) {
+    if (!e.find) return { error: 'Each edit names the words it replaces in `find`.', at: n, why: 'none', hits: 0 }
     const hits: { p: DocParagraph; at: number }[] = []
     for (const p of fresh) {
       for (let i = p.text.indexOf(e.find); i >= 0; i = p.text.indexOf(e.find, i + 1)) hits.push({ p, at: i })
     }
-    if (hits.length !== 1) return { error: hits.length ? `"${e.find}" stands ${hits.length} times: quote more words so it stands once.` : `"${e.find}" is not in the Doc as Google has it now.` }
+    if (hits.length !== 1)
+      return { error: hits.length ? `"${e.find}" stands ${hits.length} times: quote more words so it stands once.` : `"${e.find}" is not in the Doc as Google has it now.`, at: n, why: hits.length ? 'many' : 'none', hits: hits.length }
     const { p, at } = hits[0]
-    if (!p.exact) return { error: `"${e.find}" is in a paragraph holding a chip or a waiting suggestion: leave a comment instead.` }
+    if (!p.exact) return { error: `"${e.find}" is in a paragraph holding a chip or a waiting suggestion: leave a comment instead.`, at: n, why: 'chip', hits: 1 }
     const from = p.start + at
     const to = from + e.find.length
     // Indexes count within a tab: the same numbers in two tabs are two places.
     const tabId = p.tabId ?? ''
-    if (taken.some(([a, b, t]) => t === tabId && from < b && to > a)) return { error: `Two edits touch "${e.find}".` }
+    if (taken.some(([a, b, t]) => t === tabId && from < b && to > a)) return { error: `Two edits touch "${e.find}".`, at: n, why: 'overlap', hits: 1 }
     taken.push([from, to, tabId])
     const tab = p.tabId ? { tabId: p.tabId } : {}
     ops.push({ at: from, rank: 0, request: { deleteContentRange: { range: { startIndex: from, endIndex: to, ...tab } } } })

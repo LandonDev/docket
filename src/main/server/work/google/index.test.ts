@@ -15,6 +15,7 @@ import { googleEdit, googleShare } from './held'
 import { google as module, setOpenBrowser } from './index'
 import { pickerUrl } from './picker'
 import { pollOnce } from './poll'
+import { boxesOf } from './slides'
 import { GOOGLE_TOOLS } from './tools'
 
 /** The google wire, its tools and its held act, against the fake Google. */
@@ -177,7 +178,7 @@ describe('the google tools', () => {
     expect(text(got)).toMatch(/^Held for the owner/)
     expect(JSON.stringify([...fake.files])).toBe(before)
     expect(fake.calls.filter((c) => c.startsWith('POST') && !c.includes('/google/token'))).toEqual([])
-    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026', boxes: 1, on: [1] }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2026' }] }) })])
+    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026', boxes: 1, on: [1], count: 1 }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2026' }] }) })])
     expect(results).toEqual([])
     const done = await googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)
     expect(done.summary).toBe('Made 2 changes in Pitch')
@@ -202,6 +203,27 @@ describe('the google tools', () => {
     await run('google_slides_revise', { item: itemId, edits: [{ find: ' 1 ', replace: '1 ' }, { find: 'Q1', replace: 'Q2' }] })
     // the first edit joins "Q 1" into "Q1" on slide 1, so the second reaches both slides, and the card says so
     expect(held[0]).toMatchObject({ payload: { edits: [{ find: ' 1 ', on: [1] }, { find: 'Q1', boxes: 2, on: [1, 2] }] } })
+  })
+
+  it('reads a deck\'s table cells and grouped shapes as boxes, as replace-all reaches them', () => {
+    const run = (text: string) => ({ textElements: [{ textRun: { content: `${text}\n` } }] })
+    const table = { objectId: 'tb', table: { tableRows: [{ tableCells: [{ text: run('Q1 cost') }, { text: run('Q2') }] }] } }
+    const group = { objectId: 'g', elementGroup: { children: [{ objectId: 'in', shape: { text: run('Q1 inside') } }, table] } }
+    expect(boxesOf(group)).toEqual([
+      { objectId: 'in', text: 'Q1 inside' },
+      { objectId: 'tb:0:0', text: 'Q1 cost' },
+      { objectId: 'tb:0:1', text: 'Q2' },
+    ])
+  })
+
+  it('leaves a deck stale when a box already counted holds the words a second time', async () => {
+    fake.addDeck(ME, 'deck5', 'Twice', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 plan' }] }])
+    const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck5' })
+    await run('google_slides_revise', { item: itemId, edits: [{ find: 'Q1', replace: 'Q2' }] })
+    const deck = fake.files.get('deck5')!.deck!
+    deck.slides[0].texts[0].text = 'Q1 plan, Q1 cost'
+    deck.rev++
+    await expect(googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('"Q1" stands in 2 places now, not the 1 place shown')
   })
 
   it('refuses a batch whose replace-all would reach words another of its edits writes', async () => {

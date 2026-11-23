@@ -136,6 +136,6 @@ describe("planSuggest: an agent's edits as one batchUpdate", () => {
     const fresh = [para('t.1', 'Ship in March.', 1), para('t.2', 'Pay in April.', 1)]
     const plan = planSuggest(fresh, [{ find: 'March', replace: 'May' }, { find: 'April', replace: 'June' }])
     expect('requests' in plan && plan.requests).toHaveLength(4)
-    expect(planSuggest([para('t.1', 'Ship in March.', 1)], [{ find: 'in March', replace: 'x' }, { find: 'March.', replace: 'y' }])).toEqual({ error: 'Two edits touch "March.".' })
+    expect(planSuggest([para('t.1', 'Ship in March.', 1)], [{ find: 'in March', replace: 'x' }, { find: 'March.', replace: 'y' }])).toMatchObject({ error: 'Two edits touch "March.".', at: 1, why: 'overlap' })
   })
 })

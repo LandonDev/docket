@@ -48,9 +48,10 @@ export function changeWords(find: string, replace: string, max = 60): string {
     return `${visible(p)} to ${visible(q)}`
   }
   const [p, q] = x === y || !x || !y ? sides(find, replace, cut) : sides(x, y, cut)
-  // a side with nothing to see reads by its escapes, never as empty quotes
-  const say = (v: string) => (v.replace(/[\p{Cf}]/gu, '').trim() ? `"${v}"` : visible(v))
-  return `${say(p)} to ${say(q)}`
+  // a side with nothing to see reads by its escapes, never as empty quotes or a bare cut: judged on the whole side
+  const seen = (v: string) => v.replace(/[\p{Cf}]/gu, '').trim() !== ''
+  const say = (cutV: string, whole: string) => (seen(whole) ? `"${cutV}"` : visible(cutV))
+  return `${say(p, x === y || !x || !y ? find : x)} to ${say(q, x === y || !x || !y ? replace : y)}`
 }
 
 /** Two sides cut to their limit; when their cuts would read the same, each is cut around where they first differ. */
@@ -82,3 +83,13 @@ export function quoted(v: string, max = 60): string {
   const cut = v.length > max ? `${v.slice(0, max - 1)}…` : v
   return v.replace(/[\p{Cf}]/gu, '').trim() ? `"${cut}"` : visible(cut)
 }
+
+/** "1 place", "3 places", "1 box", "2 boxes". */
+export const counted = (n: number, unit: 'place' | 'box'): string => `${n} ${n === 1 ? unit : unit === 'box' ? 'boxes' : 'places'}`
+
+/** A stale press's reason when words reach another number of places or boxes than he was shown, in his words. */
+export const reachWords = (words: string, now: number, shown: number, unit: 'place' | 'box'): string =>
+  `${quoted(words)} stands in ${counted(now, unit)} now, not the ${counted(shown, unit)} shown`
+
+/** What a press says when the file moved after the change was held, though every change still stood as shown. */
+export const MOVED_SINCE = 'The file had changed since it was held; every change still stood as shown'

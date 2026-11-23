@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
 import { everyBlock, plain, type Block } from 'work-kit/formats'
 import type { CanvasSource } from '@shared/work'
-import { quoted } from '@shared/work/changeWords'
+import { counted, quoted } from '@shared/work/changeWords'
 import type { WorkCtx } from '../modules'
 import { ensureThreadTables } from '../docs/threads'
 import { GoogleError, GOOGLE_MIME, type GoogleApi } from './client'
@@ -206,10 +206,10 @@ export function writeEdits(g: Google, source: GoogleSource, edits: readonly { fi
     const paragraphs = mapGoogleDoc(fresh).paragraphs
     const plan = planSuggest(paragraphs, edits)
     if ('error' in plan) {
-      // in his words, not the agent's: where the words stand now
-      const e = edits.find((x) => paragraphs.reduce((n, p) => n + p.text.split(x.find).length - 1, 0) !== 1) ?? edits[0]!
-      const n = paragraphs.reduce((k, p) => k + p.text.split(e.find).length - 1, 0)
-      return { stale: n === 0 ? `${quoted(e.find)} is no longer in the Doc` : n > 1 ? `${quoted(e.find)} now stands in ${n} places` : `${quoted(e.find)} now sits beside something only Google can change` }
+      // in his words, not the agent's: which change no longer fits, and why
+      const words = quoted(edits[plan.at]?.find ?? '')
+      const why = { none: `${words} is no longer in the Doc`, many: `${words} now stands in ${counted(plan.hits, 'place')}`, chip: `${words} now sits in a paragraph with a chip or a waiting suggestion`, overlap: `two of its changes now touch ${words}` }
+      return { stale: why[plan.why] }
     }
     // The words he was shown, in the paragraph he was shown: moved to another passage, they are not what he approved.
     const strayed = fresh.revisionId === judgedOn ? undefined : edits.find((e) => e.within !== undefined && paragraphs.find((p) => p.text.includes(e.find))?.text !== e.within)

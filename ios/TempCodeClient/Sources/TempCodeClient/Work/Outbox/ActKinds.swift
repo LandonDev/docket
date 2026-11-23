@@ -541,15 +541,14 @@ public extension OutboxModel {
 
     /// That sentence for the card (the desktop's `sentenceAround`): whole when it fits in `max` characters, else cut
     /// around the words at spaces within 20 characters, using the window's whole width. Words past 40 characters are
-    /// shown as " … " in it, since Replace shows them in full below.
+    /// shown as "[…]" in it, since Replace shows them in full below.
     nonisolated static func sentenceAround(_ paragraph: String, _ words: String, max: Int = 120) -> String {
         var text = paragraph.contains(words) ? sentenceOf(paragraph, words) : paragraph
         var key = words
+        // the first place the words stand, as "[…]" with the sentence's own spacing; a bare "…" only marks a cut
         if words.count > 40, let r = text.range(of: words) {
-            text = text.replacingCharacters(in: r, with: "\u{2026}")
-                .replacingOccurrences(of: #"\s*\u{2026}\s*"#, with: " \u{2026} ", options: .regularExpression)
-                .trimmingCharacters(in: .whitespaces)
-            key = "\u{2026}"
+            text = text.replacingCharacters(in: r, with: "[\u{2026}]")
+            key = "[\u{2026}]"
         }
         let s = Array(text)
         if s.count <= max { return text }

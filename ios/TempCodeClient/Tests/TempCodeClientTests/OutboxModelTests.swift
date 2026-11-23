@@ -195,7 +195,9 @@ import TempCodeContract
         #expect(OutboxModel.sentenceOf("He said \"Go now.\" Then we left at 7.", "we left") == "Then we left at 7.")
         #expect(OutboxModel.sentenceOf("He said \"Go now.\" Then we left.", "Go now") == "He said \"Go now.\"")
         let clause = "after the regional qualifiers on the third weekend of March"
-        #expect(OutboxModel.sentenceAround("We play \(clause) and rest after the finals.", clause) == "We play \u{2026} and rest after the finals.")
+        #expect(OutboxModel.sentenceAround("We play \(clause) and rest after the finals.", clause) == "We play [\u{2026}] and rest after the finals.")
+        // the spacing is the sentence's own: "qualifiers, […], and", never " … , "
+        #expect(OutboxModel.sentenceAround("Note: \(clause).", clause) == "Note: [\u{2026}].")
         #expect(OutboxModel.sentenceAround(String(repeating: "lead ", count: 40) + "the end here.", "here").count > 110)
         let long = "The tournament runs three days with sixteen teams in four pools, then a bracket for the top eight and a final on Sunday."
         let longDoc = OutboxModel.actView(item("e13", kind: .googleEdit, payload: .object(["app": .string("doc"), "name": .string("Plan"), "edits": .array([.object(["find": .string(long), "replace": .string("Two days."), "within": .string("Intro here. \(long)")])])])))

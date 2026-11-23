@@ -327,7 +327,11 @@ describe("an agent's change to a shared file, as he approves it", () => {
     expect(sentenceOf('He said "Go now." Then we left.', "Go now")).toBe('He said "Go now."');
     // a long clause is shown around, not again
     const clause = "after the regional qualifiers on the third weekend of March";
-    expect(sentenceAround(`We play ${clause} and rest after the finals.`, clause)).toBe("We play … and rest after the finals.");
+    expect(sentenceAround(`We play ${clause} and rest after the finals.`, clause)).toBe("We play […] and rest after the finals.");
+    // only the first place the words stand is marked, and a "…" the sentence holds already is left as it was
+    const twice = sentenceAround(`Wait… we play ${clause}, then ${clause}.`, clause);
+    expect(twice.split("[\u2026]").length - 1).toBe(1);
+    expect(sentenceAround(`Wait… we play ${clause}.`, clause)).toBe("Wait… we play […].");
     // near the end of a long sentence the window is used whole
     const tailEnd = sentenceAround(`${"lead ".repeat(40)}the end here.`, "here");
     expect(tailEnd.length).toBeGreaterThan(110);

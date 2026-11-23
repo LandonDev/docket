@@ -18,6 +18,8 @@ describe('changeWords: the words a replace changes', () => {
     expect(changeWords('ab', 'a\u200bb')).toBe('"ab" to "a\\u200bb"')
     // a side with nothing to see is never empty quotes
     expect(changeWords('note', '\u200b')).toBe('"note" to "\\u200b"')
+    // a long side of nothing visible keeps its escapes when cut
+    expect(changeWords('note', '\u200b'.repeat(80))).toMatch(/^"note" to "(\\u200b)+…"$/)
     expect(changeWords('x', 'y'.repeat(80))).toBe(`"x" to "${'y'.repeat(59)}…"`)
     // one long word changed past the cut reads where it differs
     const url = `https://purdue0.sharepoint.com/sites/esports/Shared%20Documents/Budgets/spring-lan-budget-`

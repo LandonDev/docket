@@ -208,14 +208,15 @@ const LONG_WORDS = 40;
 
 /**
  * That sentence for the card: whole when it fits in `max` characters, else cut around the words at spaces, using the
- * window's whole width. Words past `LONG_WORDS` are shown as " … " in it, since Replace shows them in full below.
+ * window's whole width. Words past `LONG_WORDS` are shown as "[…]" in it, the sentence's own spacing kept, since
+ * Replace shows them in full below; a bare "…" then only ever marks a cut.
  */
 export function sentenceAround(paragraph: string, words: string, max = 120): string {
   let s = paragraph.includes(words) ? sentenceOf(paragraph, words) : paragraph;
   let key = words;
   if (words.length > LONG_WORDS && s.includes(words)) {
-    s = s.replace(words, "\u2026").replace(/\s*\u2026\s*/, " \u2026 ").trim();
-    key = "\u2026";
+    s = s.replace(words, () => "[\u2026]");
+    key = "[\u2026]";
   }
   if (s.length <= max) return s;
   const at = Math.max(0, s.indexOf(key));

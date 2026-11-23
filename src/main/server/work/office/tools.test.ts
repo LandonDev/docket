@@ -420,7 +420,7 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     const p = held[0]!.payload as OfficeEdit
     // someone added a line: the words still stand once, so it is written, and he is told the file moved
     office.docs.get(DOC)!.paragraphs.push('A co-author wrote this.')
-    await expect(press(p)).resolves.toMatchObject({ summary: expect.stringContaining('It had changed since the suggestion') })
+    await expect(press(p)).resolves.toMatchObject({ summary: expect.stringContaining('The file had changed since it was held') })
     expect(office.docs.get(DOC)!.paragraphs[0]).toBe('Draft two.')
     // the words are gone: stale, nothing written
     office.docs.set(DOC, { paragraphs: ['Draft three.'], tracked: [] })
@@ -428,7 +428,7 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     await expect(press(p)).rejects.toThrow('no longer in it')
     // the words stand in more places than he was shown: stale, nothing written
     office.docs.set(DOC, { paragraphs: ['one and one'], tracked: [] })
-    await expect(press(p)).rejects.toThrow('stand in 2 places now, not the 1')
+    await expect(press(p)).rejects.toThrow('"one" stands in 2 places now, not the 1 place shown')
     expect(office.docs.get(DOC)).toEqual({ paragraphs: ['one and one'], tracked: [] })
   })
 
@@ -464,7 +464,7 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     office.failNext = null
     const real = office.editDocument.bind(office)
     office.editDocument = async (d, e, t) => (await real(d, e, t), 0)
-    await expect(press(p)).resolves.toMatchObject({ summary: expect.stringContaining('Word changed 0 of the 1 places') })
+    await expect(press(p)).resolves.toMatchObject({ summary: expect.stringContaining('Word changed 0 of the 1 place') })
   })
 
   it('reads its words as he approves them', () => {
