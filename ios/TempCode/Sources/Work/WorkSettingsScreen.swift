@@ -6,7 +6,8 @@ import TempCodeContract
 /// where LifeOS stands, the standing grants (each removable, no confirm: a
 /// grant comes back from the next held item), and each add-on's tools with
 /// the rule a Work thread runs them under. A host from before Work, or a key
-/// that cannot read it, is left out. Guest links come with milestone 31.
+/// that cannot read it, is left out. Guest links come with milestone 31. The
+/// Digest leads, once for every host (docs/agents/work-digest.md "The phone").
 struct WorkSettingsScreen: View {
     @Environment(AppModel.self) private var model
 
@@ -16,6 +17,10 @@ struct WorkSettingsScreen: View {
             if hosts.isEmpty {
                 Text("No paired host has Work yet.")
                     .textStep(.meta)
+            }
+            // One digest across hosts: the section writes every host with Work on.
+            if hosts.contains(where: \.work.isOn) {
+                DigestSettingsSection(hosts: hosts.filter(\.work.isOn))
             }
             ForEach(hosts, id: \.environment.id) { client in
                 WorkHostSection(client: client, named: hosts.count > 1)
@@ -235,5 +240,103 @@ private struct WorkHostSection: View {
         case .refused?: "Signed out by LifeOS"
         case .off?, .unknown?, nil: "—"
         }
+    }
+}
+
+/// Settings → Work → Digest: the time, then a level for three groups, each
+/// written to every host with Work on. Every group starts at "When it can’t
+/// wait"; only a changed group is sent. A host that refused a change is that
+/// row's red line.
+private struct DigestSettingsSection: View {
+    /// A row of the section.
+    private enum Row: Hashable {
+        case time
+        case group(TellGroup)
+    }
+
+    let hosts: [EnvironmentClient]
+    /// Each row's refusals, by host name.
+    @State private var refused: [Row: [String: String]] = [:]
+    /// A read that failed on every host.
+    @State private var readFailure: String?
+    /// The picked time until the hosts answer, so the wheel never springs back under his finger.
+    @State private var pickedAt: Date?
+    /// The picked time, written after the wheel rests.
+    @State private var timeWrite: Task<Void, Never>?
+
+    /// The first host that answered: the hosts are written alike.
+    private var settings: DigestSettings? { hosts.lazy.compactMap(\.work.digest.settings).first }
+
+    var body: some View {
+        Section("Digest") {
+            if let settings {
+                DatePicker(selection: Binding(get: { pickedAt ?? DigestModel.atDate(settings.at) }, set: { pick($0) }), displayedComponents: .hourAndMinute) {
+                    Text("Time").textStep(.title)
+                }
+                .disabled(!canAdmin)
+                refusal(.time)
+                ForEach(DigestModel.settingsGroups, id: \.self) { group in
+                    Picker(selection: Binding(get: { DigestModel.level(settings, group) }, set: { level in Task { await write(.group(group), levels: [group.rawValue: level]) } })) {
+                        ForEach(DigestModel.levels, id: \.self) { level in
+                            Text(DigestModel.levelName(level)).tag(level)
+                        }
+                    } label: {
+                        Text(DigestModel.groupName(group)).textStep(.title)
+                    }
+                    .disabled(!canAdmin)
+                    refusal(.group(group))
+                }
+            } else if let readFailure {
+                HStack(spacing: 12) {
+                    Text(readFailure).textStep(.meta, tint: Tint.destructiveText)
+                    Spacer(minLength: 8)
+                    PillButton("Retry") { Task { await read() } }
+                }
+            } else {
+                ProgressView().frame(maxWidth: .infinity)
+            }
+        }
+        .task(id: hosts.map(\.environment.id)) { await read() }
+    }
+
+    private var canAdmin: Bool { hosts.contains { $0.work.canAdmin } }
+
+    /// Each host that refused the row's last change, in the screen's destructive meta.
+    @ViewBuilder
+    private func refusal(_ row: Row) -> some View {
+        if let lines = refused[row], !lines.isEmpty {
+            ForEach(lines.sorted { $0.key < $1.key }, id: \.key) { line in
+                Text(hosts.count > 1 ? "\(line.key): \(line.value)" : line.value)
+                    .textStep(.meta, tint: Tint.destructiveText)
+            }
+        }
+    }
+
+    private func read() async {
+        let missing = hosts.filter { $0.work.digest.settings == nil }
+        guard !missing.isEmpty else { return }
+        var failure: String?
+        for client in missing {
+            do { try await client.work.digest.readSettings() } catch { failure = ActionError.wrap(error).message }
+        }
+        readFailure = settings == nil ? failure : nil
+    }
+
+    /// The wheel moves through every minute on its way; the time is written once it rests.
+    private func pick(_ date: Date) {
+        pickedAt = date
+        timeWrite?.cancel()
+        timeWrite = Task {
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            await write(.time, at: DigestModel.atString(date))
+            pickedAt = nil
+        }
+    }
+
+    private func write(_ row: Row, at: String? = nil, levels: [String: TellLevel]? = nil) async {
+        let refusedById = await WorkDigest.setAll(hosts.map { ($0.environment.id, $0.work.digest) }, at: at, levels: levels)
+        let names = Dictionary(hosts.map { ($0.environment.id, $0.environment.name) }, uniquingKeysWith: { first, _ in first })
+        refused[row] = Dictionary(refusedById.map { (names[$0.key] ?? $0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
     }
 }

@@ -2,60 +2,6 @@ import Foundation
 import Observation
 import TempCodeContract
 
-/// Where a notification or a Live Activity tap lands: a thread on a host,
-/// and the row to open on. Read off an APNs payload's `tc` object (what
-/// infra/hub sends) or the activity's `tempcode://thread/<env>/<session>?seq=`.
-public struct PushTarget: Sendable, Hashable {
-    public var environmentId: String
-    public var sessionId: String
-    public var seq: Int?
-    /// An act held for the owner's press (`tc.held`): the tap opens this item
-    /// in the Outbox (`OutboxModel.key`), never a Send of its own.
-    public var held: String?
-
-    public init(environmentId: String, sessionId: String, seq: Int? = nil, held: String? = nil) {
-        self.environmentId = environmentId
-        self.sessionId = sessionId
-        self.seq = seq
-        self.held = held
-    }
-
-    /// The `tc` object of a hub notification; a payload without a thread (a host down) is nil.
-    public init?(userInfo: [AnyHashable: Any]) {
-        guard let tc = userInfo["tc"] as? [AnyHashable: Any],
-              let environmentId = tc["environmentId"] as? String, !environmentId.isEmpty,
-              let sessionId = tc["threadId"] as? String, !sessionId.isEmpty else { return nil }
-        self.init(environmentId: environmentId, sessionId: sessionId, seq: PushTarget.int(tc["seq"]), held: PushTarget.held(tc["held"]))
-    }
-
-    /// `tc.held` as a held item's key; nil when absent or not a ref this build knows.
-    private static func held(_ value: Any?) -> String? {
-        guard let object = value as? [String: Any], JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object),
-              let ref = try? JSONDecoder().decode(HeldRef.self, from: data) else { return nil }
-        if case .unknown = ref { return nil }
-        return OutboxModel.key(ref)
-    }
-
-    /// `tempcode://thread/<environment>/<session>?seq=<n>`, as the Live Activity's widgetURL.
-    public init?(url: URL) {
-        guard url.scheme == "tempcode", url.host == "thread" else { return nil }
-        let parts = url.pathComponents.filter { $0 != "/" }
-        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
-        let seq = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "seq" }?.value.flatMap(Int.init)
-        self.init(environmentId: parts[0], sessionId: parts[1], seq: seq)
-    }
-
-    private static func int(_ value: Any?) -> Int? {
-        switch value {
-        case let n as Int: n
-        case let n as Double: Int(n)
-        case let s as String: Int(s)
-        default: nil
-        }
-    }
-}
-
 /// The APNs token this phone holds and what each paired host knows of it.
 /// A host learns the token when its socket opens (and again when the token
 /// changes); turning the row off unregisters on every host. The hosts keep

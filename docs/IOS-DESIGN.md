@@ -2352,6 +2352,19 @@ phone does everything the desktop does. What milestone 46 built:
   over the list's foot for five seconds, entering and leaving from the
   same edge (opacity alone with Reduce Motion). The host hears nothing
   until the five seconds end.
+- **The digest** (docs/agents/work-digest.md "The phone") is a pushed list
+  (the sidebar in the split poses), reached from a **Digest** row on Home
+  after the Outbox (the `newspaper` glyph, no count) and from the day's
+  notice. Sections by day, newest first, under the Outbox's gray band step:
+  "Since the digest", "Today, 8:00 AM", "Yesterday", then dates. A row is the
+  job's sector dot in the mark column (a muted ring for a row about no one
+  job), the title, the detail in meta under it, the time as a stamp ("by
+  2:00 PM" for a row with a clock). The dot is the only colour; no counts,
+  no chips. A row the phone has no screen for is not a button. Loading draws
+  the rows' shape; empty is "Nothing Waited"; a host that did not answer is
+  one meta line at the foot. Settings → Work leads with its Digest section:
+  Time, then Held items, Routine results and Messages and mail, each a menu
+  of three levels.
 - **A held notice** (the host's `needs_you` with `tc.held`) opens its item
   over the Outbox. Its category is Open alone: nothing sends from the lock
   screen.

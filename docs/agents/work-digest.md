@@ -265,6 +265,53 @@ same words, so it is not news again.
   opening Settings → Work; a later setup step, a restore point and a wake
   that fail leave the same bare `error`, which the state does not place.
 
+## The phone
+
+The phone reads every Work host's ledger and merges them by the desktop's
+rules; nothing about the wire is the phone's own.
+
+- **Contract.** `scripts/gen-swift-contract.ts` carries `work.digest.list`,
+  `get`, `set` and `seen` and the `work.digest` push (`WorkDigestPush` in
+  `ServerPush`), with `TellGroup`, `TellLevel`, `TellRow`, `DigestDay` and
+  `DigestSettings` named. The zod for them is in `src/shared/wireSchemas.ts`
+  (`TellRowPhoneSchema`, `DigestListPhoneSchema`, `WorkDigestPushSchema`, …).
+  A tell's `open` is one flat `TellOpen` struct on the phone, every field
+  optional, so `{held, thread}` is never read as a bare `{thread}`; its pin is
+  `Reads`. The phone sends no `work.digest.here`: the zone is a desktop's.
+- **Model.** `ios/TempCodeClient/Sources/TempCodeClient/Work/Digest/`:
+  `DigestModel` is pure (the desktop's `mergeRows`, `mergeDays`,
+  `listSections`, `rowWhen` and `emptyLine`; `seenCalls`; `route`, what a
+  row opens; the Settings words); `WorkDigest` is one host's ledger on
+  `WorkHost.digest`, read when the Digest first opens, kept by the push after
+  that, read again when a day is made, cleared when Work goes off.
+- **Screen.** `ios/TempCode/Sources/Work/Digest/DigestScreen.swift`,
+  `Route.digest` (a sidebar list). Title "Digest"; "Since the digest",
+  "Today, 8:00 AM", "Yesterday", then dates; a row is the job's dot (a muted
+  ring for no one job), the title, the detail, the time ("by 2:00 PM" for a
+  row with a clock). A row is a button only where the phone has a route: a
+  thread, a held item (over the Outbox) or a Work view it draws (mail, tasks,
+  agenda, projects, routines). The rows' shape while reading; "Nothing
+  Waited" when empty; "The Mac did not answer" at the foot for a host whose
+  read failed. Opening it sends `work.digest.seen` for every day no host has
+  seen, to every host that holds it. Home has a **Digest** row after the
+  Outbox, with no count, while any host has Work on.
+- **A tap on a notice.** `PushTarget` reads `tc.work` (Push/PushTarget.swift,
+  `route`): `{key, digest}` opens the Digest; `{key, tell, open?}` opens a held
+  item, then a Work view the phone draws, then a thread, each on the notice's
+  host (`tc.environmentId`), and the Digest for anything else or no `open`.
+  `NavigationRouter.open` takes `target.route`. In the foreground a Work notice
+  is a banner, or the list alone while the Digest is on screen. Through the
+  hub `tc.work` is lost and the notice has no thread: a tap opens the app.
+- **Settings → Work.** A Digest section leads, once for every host: Time (a
+  time picker of the "HH:mm" wall time, written once the wheel rests), Held
+  items, Routine results, Messages and mail, each "In the digest", "When it
+  can’t wait" or "Right away". A change goes to every host with Work on as
+  `work.digest.set` with only that group in `levels`; a host that refused is
+  that row's red line.
+- **Tests.** `DigestModelTests.swift`, `PushTargetTests.swift` and
+  `ShellPathsTests.swift` in the client package. The simulator proof (a
+  `xcrun simctl push` of each notice, each tap landing) runs on the Mac.
+
 ## The gate
 
 `work/digest/gate.ts` `makeGate`, handed to the notifier

@@ -13,6 +13,7 @@ private let everyRoute: [Route] = [
     .settings,
     .hosts,
     .outbox,
+    .digest,
     .computers,
     .outboxItem(environmentId: "e", ref: "host:h1"),
     .workSettings,
@@ -22,11 +23,11 @@ private let everyRoute: [Route] = [
 
 @Suite struct ShellPathsTests {
     @Test func `every route has a column: the lists in the sidebar, the project's shell and the screens in the detail`() {
-        #expect(everyRoute.count == 13)
+        #expect(everyRoute.count == 14)
         let sidebar = everyRoute.filter { ShellPaths.column(of: $0) == .sidebar }
         let detail = everyRoute.filter { ShellPaths.column(of: $0) == .detail }
         #expect(sidebar.count + detail.count == everyRoute.count)
-        #expect(sidebar == [.workspace(key: "w"), .archivedThreads(environmentId: "e", projectId: "p"), .archivedProjects(environmentId: "e", workspaceId: "w"), .outbox, .computers])
+        #expect(sidebar == [.workspace(key: "w"), .archivedThreads(environmentId: "e", projectId: "p"), .archivedProjects(environmentId: "e", workspaceId: "w"), .outbox, .digest, .computers])
         #expect(detail.count == 8)
         #expect(ShellPaths.column(of: .outboxItem(environmentId: "e", ref: "host:h1")) == .detail)
         #expect(ShellPaths.column(of: .project(key: "p", thread: "e:s")) == .detail)

@@ -1,0 +1,174 @@
+import Foundation
+import Testing
+import TempCodeContract
+@testable import TempCodeClient
+
+/// The phone's digest (Work/Digest/DigestModel.swift), held to the desktop's
+/// `work/digest/store.ts` and `notice.ts`.
+@Suite struct DigestModelTests {
+    /// 2026-11-23 15:00 in New York.
+    private let now = Date(timeIntervalSince1970: 1_795_464_000)
+    private let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        return calendar
+    }()
+    private let locale = Locale(identifier: "en_US")
+
+    private func ms(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Double {
+        calendar.date(from: DateComponents(year: 2026, month: 11, day: day, hour: hour, minute: minute))!.timeIntervalSince1970 * 1000
+    }
+
+    private func row(_ id: String, key: String? = nil, sector: String? = "purdue", title: String = "Budget review", at: Double, day: String? = nil, toldAt: Double? = nil, by: Double? = nil, open: TellOpen? = nil) -> TellRow {
+        TellRow(id: id, host: "h", kind: "prep.soon", group: .meetings, workspaceId: sector == nil ? nil : "w_\(sector!)", sector: sector, title: title, open: open, by: by, key: key, at: at, how: toldAt != nil ? .now : day != nil ? .digest : .waiting, day: day, toldAt: toldAt)
+    }
+
+    /// ICU writes a narrow no-break space before AM and PM; the words compare as he reads them.
+    private func plain(_ text: String) -> String { text.replacingOccurrences(of: "\u{202F}", with: " ") }
+
+    // MARK: - merge
+
+    @Test func `one key on two hosts is one row, and a row with no key is its own on each host`() {
+        let merged = DigestModel.mergeRows([
+            (environmentId: "env_mac", rows: [row("a1", key: "clash:1", at: ms(23, 9)), row("a2", at: ms(23, 10))]),
+            (environmentId: "env_box", rows: [row("b1", key: "clash:1", at: ms(23, 9, 5)), row("a2", at: ms(23, 10))])
+        ])
+        #expect(merged.count == 3)
+        #expect(merged.filter { $0.row.key == "clash:1" }.count == 1)
+        // the newest of the two wins when neither was told at once
+        #expect(merged.first { $0.row.key == "clash:1" }?.environmentId == "env_box")
+        // newest first
+        #expect(merged.map(\.row.at) == merged.map(\.row.at).sorted(by: >))
+    }
+
+    @Test func `the one told at once wins over a newer one that waited`() {
+        let merged = DigestModel.mergeRows([
+            (environmentId: "env_mac", rows: [row("a1", key: "held:1", at: ms(23, 9), toldAt: ms(23, 9))]),
+            (environmentId: "env_box", rows: [row("b1", key: "held:1", at: ms(23, 11))])
+        ])
+        #expect(merged.count == 1)
+        #expect(merged[0].environmentId == "env_mac")
+        #expect(merged[0].row.toldAt != nil)
+    }
+
+    @Test func `hosts' days of one date are one day, seen once any host's is`() {
+        let days = DigestModel.mergeDays([
+            (environmentId: "env_mac", days: [DigestDay(day: "2026-11-23", madeAt: ms(23, 8, 1), seenAt: nil, count: 2), DigestDay(day: "2026-11-22", madeAt: ms(22, 8), seenAt: nil, count: 1)]),
+            (environmentId: "env_box", days: [DigestDay(day: "2026-11-23", madeAt: ms(23, 8), seenAt: ms(23, 9), count: 3)])
+        ])
+        #expect(days.map(\.day) == ["2026-11-23", "2026-11-22"])
+        #expect(days[0].hosts == ["env_mac", "env_box"])
+        #expect(days[0].madeAt == ms(23, 8))
+        #expect(days[0].seenAt == ms(23, 9))
+        #expect(days[1].seenAt == nil)
+    }
+
+    @Test func `opening the screen marks every unseen day seen on every host that holds it`() {
+        let days = DigestModel.mergeDays([
+            (environmentId: "env_mac", days: [DigestDay(day: "2026-11-23", madeAt: 1, seenAt: nil, count: 2), DigestDay(day: "2026-11-21", madeAt: 1, seenAt: nil, count: 1)]),
+            (environmentId: "env_box", days: [DigestDay(day: "2026-11-23", madeAt: 1, seenAt: nil, count: 1), DigestDay(day: "2026-11-22", madeAt: 1, seenAt: 5, count: 1)])
+        ])
+        let calls = DigestModel.seenCalls(days).map { "\($0.environmentId) \($0.day)" }
+        #expect(calls == ["env_mac 2026-11-23", "env_box 2026-11-23", "env_mac 2026-11-21"])
+        // and a day already seen anywhere is not sent again
+        #expect(!calls.contains { $0.hasSuffix("2026-11-22") })
+    }
+
+    // MARK: - the ledger and the push
+
+    @Test func `the push tells, replaces, takes away and makes a day`() {
+        var ledger = DigestModel.Ledger(days: [], rows: [row("r1", at: 1), row("r2", at: 2)])
+        #expect(!ledger.apply(WorkDigestPush(row: row("r1", title: "Budget review moved", at: 3))))
+        #expect(ledger.rows.map(\.id) == ["r1", "r2"])
+        #expect(ledger.rows[0].title == "Budget review moved")
+        ledger.apply(WorkDigestPush(gone: "r2"))
+        #expect(ledger.rows.map(\.id) == ["r1"])
+        // a day made: read again, the host stamped its rows
+        #expect(ledger.apply(WorkDigestPush(day: DigestDay(day: "2026-11-23", madeAt: 1, seenAt: nil, count: 1))))
+        // the same day seen elsewhere replaces it, and needs no read
+        #expect(!ledger.apply(WorkDigestPush(day: DigestDay(day: "2026-11-23", madeAt: 1, seenAt: 9, count: 1))))
+        #expect(ledger.days.count == 1)
+        #expect(ledger.days[0].seenAt == 9)
+        let settings = DigestSettings(at: "07:30", zone: "America/New_York", levels: ["held": .now], nextAt: 1)
+        ledger.apply(WorkDigestPush(settings: settings))
+        #expect(ledger.settings == settings)
+        ledger.days = [DigestDay(day: "2026-11-24", madeAt: 1, seenAt: nil, count: 1)]
+        ledger.seen("2026-11-24", at: 42)
+        #expect(ledger.days[0].seenAt == 42)
+    }
+
+    @Test func `a host that did not answer is named, and one still reading holds the list`() {
+        let screen = DigestModel.screen([
+            DigestModel.HostInput(environmentId: "env_box", name: "The box", ledger: DigestModel.Ledger(rows: [row("r1", at: 1)]), error: nil),
+            DigestModel.HostInput(environmentId: "env_mac", name: "The Mac", ledger: nil, error: "timed out")
+        ])
+        #expect(screen.entries.count == 1)
+        #expect(screen.silent == ["The Mac"])
+        #expect(!screen.reading)
+        #expect(DigestModel.silentLine("The Mac") == "The Mac did not answer")
+        #expect(DigestModel.screen([DigestModel.HostInput(environmentId: "env_box", name: "The box", ledger: nil, error: nil)]).reading)
+    }
+
+    // MARK: - the list
+
+    @Test func `sections run newest first: since the digest, today at its time, yesterday, then dates`() {
+        let entries = DigestModel.mergeRows([(environmentId: "env_box", rows: [
+            row("w1", sector: "ref", at: ms(23, 12)),
+            row("w2", sector: nil, title: "Unsorted captures", at: ms(23, 13)),
+            row("w3", sector: "cosmic", at: ms(23, 11)),
+            row("t1", sector: "purdue", at: ms(23, 7), day: "2026-11-23"),
+            row("y1", sector: "hypixel", at: ms(22, 7), day: "2026-11-22"),
+            row("o1", sector: "unify", at: ms(16, 7), day: "2026-11-16")
+        ])])
+        let days = [DigestModel.Day(day: "2026-11-23", madeAt: ms(23, 8), seenAt: nil, hosts: ["env_box"])]
+        let sections = DigestModel.sections(entries, days: days, now: now, calendar: calendar, locale: locale)
+        #expect(sections.map { plain($0.title) } == ["Since the digest", "Today, 8:00 AM", "Yesterday", "Mon, Nov 16"])
+        // by job, then newest; a row about no one job last
+        #expect(sections[0].entries.map(\.row.id) == ["w3", "w1", "w2"])
+    }
+
+    @Test func `a section's rows of one job are newest first`() {
+        let entries = DigestModel.mergeRows([(environmentId: "env_box", rows: [row("a", at: ms(23, 9)), row("b", at: ms(23, 10))])])
+        #expect(DigestModel.sections(entries, days: [], now: now, calendar: calendar, locale: locale)[0].entries.map(\.row.id) == ["b", "a"])
+    }
+
+    @Test func `a row with a clock reads by its clock, else the time it was told`() {
+        #expect(plain(DigestModel.when(row("r", at: ms(23, 9, 5)), now: now, calendar: calendar, locale: locale)) == "9:05 AM")
+        #expect(plain(DigestModel.when(row("r", at: ms(23, 9), by: ms(23, 14)), now: now, calendar: calendar, locale: locale)) == "by 2:00 PM")
+        #expect(plain(DigestModel.when(row("r", at: ms(23, 9), by: ms(24, 14)), now: now, calendar: calendar, locale: locale)) == "by Nov 24, 2:00 PM")
+    }
+
+    @Test func `nothing at all says since when`() {
+        #expect(DigestModel.emptyLine(now: now, calendar: calendar, locale: locale) == "Work has had nothing to tell you since Oct 24.")
+    }
+
+    // MARK: - where a press goes
+
+    @Test func `a row opens its thread, held item or view on its host, and nothing the phone has no screen for`() {
+        #expect(DigestModel.route(TellOpen(thread: "s1"), environmentId: "e") == .thread(environmentId: "e", sessionId: "s1", seq: nil))
+        #expect(DigestModel.route(TellOpen(thread: "s1", held: .host(.init(id: "h1"))), environmentId: "e") == .outboxItem(environmentId: "e", ref: "host:h1"))
+        #expect(DigestModel.route(TellOpen(view: "agenda", workspaceId: "w1", at: "ev1"), environmentId: "e") == .workView(environmentId: "e", workspaceId: "w1", view: "agenda"))
+        #expect(DigestModel.route(TellOpen(view: "clashes", workspaceId: "w1"), environmentId: "e") == nil)
+        #expect(DigestModel.route(TellOpen(place: "review"), environmentId: "e") == nil)
+        #expect(DigestModel.route(TellOpen(settings: "connections"), environmentId: "e") == nil)
+        #expect(DigestModel.route(nil, environmentId: "e") == nil)
+    }
+
+    // MARK: - Settings → Work → Digest
+
+    @Test func `every group starts at when it can't wait, in his words`() {
+        #expect(DigestModel.settingsGroups.map(DigestModel.groupName) == ["Held items", "Routine results", "Messages and mail"])
+        #expect(DigestModel.levels.map(DigestModel.levelName) == ["In the digest", "When it can’t wait", "Right away"])
+        let settings = DigestSettings(at: "08:00", zone: "UTC", levels: ["held": .now], nextAt: 0)
+        #expect(DigestModel.level(settings, .held) == .now)
+        #expect(DigestModel.level(settings, .results) == .clock)
+        #expect(DigestModel.level(nil, .people) == .clock)
+    }
+
+    @Test func `the time goes through the picker as the wire's wall time`() {
+        let picked = DigestModel.atDate("07:45", now: now, calendar: calendar)
+        #expect(calendar.dateComponents([.hour, .minute], from: picked) == DateComponents(hour: 7, minute: 45))
+        #expect(DigestModel.atString(picked, calendar: calendar) == "07:45")
+        #expect(DigestModel.atString(DigestModel.atDate("23:05", now: now, calendar: calendar), calendar: calendar) == "23:05")
+    }
+}

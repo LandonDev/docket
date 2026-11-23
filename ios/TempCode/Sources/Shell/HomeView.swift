@@ -45,9 +45,10 @@ struct HomeView: View {
                     hostLines(home.hosts)
                     AwayEndNote()
                     Section {
-                        // Work (milestone 46): the Outbox leads while any host has Work on; Work Chats follows Chats.
+                        // Work (milestone 46): the Outbox leads while any host has Work on, the Digest after it; Work Chats follows Chats.
                         if !home.work.isEmpty {
                             OutboxHomeRow(count: OutboxEntries.count(clients))
+                            DigestHomeRow()
                         }
                         // live video: while anything is being driven on a connected host
                         if !ComputerEntries.tiles(clients).isEmpty {

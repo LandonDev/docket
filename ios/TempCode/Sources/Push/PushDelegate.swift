@@ -132,7 +132,8 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
 
     /// Delivery in the foreground: nothing for the thread on screen; the list only
     /// for a thread whose Live Activity already shows the change, unless it needs
-    /// the person; the banner otherwise.
+    /// the person, and for a notice of Work's while the Digest is on screen; the
+    /// banner otherwise.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let userInfo = notification.request.content.userInfo
         let target = PushTarget(userInfo: userInfo)
@@ -143,7 +144,10 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
                 finish([.banner, .sound, .list])
                 return
             }
-            if handler.pushIsOnScreen(target) {
+            if target.work {
+                // A notice of Work's: a banner, unless the Digest it would open is the screen he is on.
+                finish(handler.router.digestShows ? [.list] : [.banner, .sound, .list])
+            } else if handler.pushIsOnScreen(target) {
                 finish([])
             } else if event != "needs_you", handler.pushHasLiveActivity(target) {
                 finish([.list])

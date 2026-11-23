@@ -23,6 +23,8 @@ public enum Route: Hashable, Codable, Sendable {
     case hosts
     /// The Outbox: every Work host's held items in bands (milestone 46).
     case outbox
+    /// The digest: what Work told him on every Work host, by day (docs/agents/work-digest.md "The phone").
+    case digest
     /// Every computer being driven now, on every connected host, live (docs/agents/live-video.md).
     case computers
     /// One held item; `ref` is `OutboxModel.key(_:)` of its `HeldRef`.

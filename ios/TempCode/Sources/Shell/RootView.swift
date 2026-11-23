@@ -276,6 +276,8 @@ struct RootView: View {
             HostsView()
         case .outbox:
             OutboxScreen()
+        case .digest:
+            DigestScreen()
         case .computers:
             ComputersScreen()
         case .outboxItem(let environmentId, let ref):
@@ -315,6 +317,9 @@ struct RootView: View {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             home.open(.computers)
+        case "digest":
+            // the digest's proof (docs/agents/work-digest.md "The phone"): the Digest list
+            home.open(.digest)
         case "outbox", "outbox-item":
             // Milestone 46's proof: the Outbox, or its first held item, once a host has listed it.
             for _ in 0..<100 where OutboxEntries.of(model.registry.ordered).isEmpty {

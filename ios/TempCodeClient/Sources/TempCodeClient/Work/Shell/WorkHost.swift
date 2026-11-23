@@ -56,6 +56,8 @@ public final class WorkHost: CaptureHost {
     public let canvas: WorkCanvas
     /// The Files place of this host's Work workspaces (Work/Files/FilesHost.swift, the files pillar's F9).
     public let files: FilesHost
+    /// The digest's ledger and settings on this host (Work/Digest/WorkDigest.swift).
+    public let digest: WorkDigest
     @ObservationIgnored private let defaults: UserDefaults
 
     public init(socket: TempCodeSocket, environment: PairedEnvironment, defaults: UserDefaults = .standard) {
@@ -64,6 +66,7 @@ public final class WorkHost: CaptureHost {
         files = FilesHost(wire: SocketFilesWire(socket: socket), environmentId: environment.id, caps: .init(operate: environment.allows(.operate), approve: environment.allows(.approve)))
         // An original a past launch was showing when it ended goes now.
         OriginalFiles.sweepAtLaunch()
+        digest = WorkDigest(socket: socket)
         self.environment = environment
         self.defaults = defaults
         // The cached paint has the Work band: the switch as last read, until this open's answer.
@@ -90,7 +93,8 @@ public final class WorkHost: CaptureHost {
         guard isOn else { return clear() }
         async let outbox: Void = refreshOutbox()
         async let status: Void = refreshLifeos()
-        _ = await (outbox, status)
+        async let ledger: Void = digest.reconnected()
+        _ = await (outbox, status, ledger)
     }
 
     public func refreshOutbox() async {
@@ -111,13 +115,15 @@ public final class WorkHost: CaptureHost {
 
     // MARK: - pushes
 
-    /// `work`, `work.outbox`, `work.lifeos` and `away`; everything else is the client's.
+    /// `work`, `work.outbox`, `work.lifeos`, `work.digest` and `away`; everything else is the client's.
     public func applyPush(_ push: ServerPush) {
         switch push {
         case .workCanvas, .workRoutines:
             canvas.apply(push)
         case .workFiles:
             files.apply(push)
+        case .workDigest(let value):
+            digest.apply(value)
         case .work(let value):
             let was = isOn
             settings = value.settings
@@ -147,6 +153,7 @@ public final class WorkHost: CaptureHost {
         unreviewed = 0
         listed = false
         lifeos = nil
+        digest.clear()
     }
 
     /// The host's answer for one item: kept while it waits, dropped once decided.

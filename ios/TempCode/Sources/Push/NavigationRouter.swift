@@ -23,17 +23,17 @@ final class NavigationRouter {
     /// project), by id: while any is, the clients publish list changes with motion.
     var lists: Set<String> = []
 
-    /// Open the thread and land on the card the push named.
+    /// Open the thread and land on the card the push named. A held act's notice opens the item it names,
+    /// where Send, Edit and Discard are (milestone 46); a notice of Work's opens its tell's target or the
+    /// Digest (`PushTarget.route`).
     func open(_ target: PushTarget) {
-        // A held act's notice opens the item it names, where Send, Edit and Discard are (milestone 46).
-        if let held = target.held {
-            pending = .outboxItem(environmentId: target.environmentId, ref: held)
-            return
-        }
-        pending = .thread(environmentId: target.environmentId, sessionId: target.sessionId, seq: target.seq)
+        pending = target.route
     }
 
     func isVisible(_ target: PushTarget) -> Bool {
-        visible == ThreadKey(environmentId: target.environmentId, sessionId: target.sessionId)
+        !target.work && visible == ThreadKey(environmentId: target.environmentId, sessionId: target.sessionId)
     }
+
+    /// The Digest is on screen: a notice of Work's goes to the list alone.
+    var digestShows: Bool { lists.contains(DigestScreen.listId) }
 }

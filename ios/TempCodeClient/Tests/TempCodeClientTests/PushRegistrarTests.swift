@@ -81,28 +81,6 @@ private final class PushRig {
 private let device = PushRegistrar.Device(token: String(repeating: "ab", count: 32), bundleId: "dev.landon.tempcode.ios", environment: .sandbox)
 private let registered = PushStatus(registered: true, relay: .ok, error: nil, events: [.needsYou], updatedAt: 1)
 
-@Suite("PushTarget")
-struct PushTargetTests {
-    @Test func readsTheHubPayloadAndTheActivityURL() {
-        let payload: [AnyHashable: Any] = ["aps": ["alert": ["title": "t"]], "tc": ["event": "needs_you", "hostId": "box", "environmentId": "env_box", "threadId": "s1", "seq": 42, "ts": 1]]
-        #expect(PushTarget(userInfo: payload) == PushTarget(environmentId: "env_box", sessionId: "s1", seq: 42))
-        #expect(PushTarget(userInfo: ["tc": ["environmentId": "env_box", "threadId": "s1", "seq": "7"]]) == PushTarget(environmentId: "env_box", sessionId: "s1", seq: 7))
-        #expect(PushTarget(userInfo: ["tc": ["environmentId": "env_box", "threadId": "s1"]])?.seq == nil)
-        // A held act's notice opens its item in the Outbox (milestone 46).
-        let held: [AnyHashable: Any] = ["tc": ["environmentId": "env_box", "threadId": "s1", "held": ["at": "lifeos", "table": "outbox", "id": "ob_1"]]]
-        #expect(PushTarget(userInfo: held)?.held == "lifeos:outbox:ob_1")
-        #expect(PushTarget(userInfo: ["tc": ["environmentId": "env_box", "threadId": "s1", "held": ["at": "host", "id": "h2"]]])?.held == "host:h2")
-        #expect(PushTarget(userInfo: ["tc": ["environmentId": "env_box", "threadId": "s1", "held": ["at": "mars", "id": "x"]]])?.held == nil)
-        // A host-down notice names no thread: nothing to open.
-        #expect(PushTarget(userInfo: ["tc": ["event": "host_down", "hostId": "box", "environmentId": "env_box"]]) == nil)
-        #expect(PushTarget(userInfo: [:]) == nil)
-        #expect(PushTarget(url: URL(string: "tempcode://thread/env_box/s1?seq=12")!) == PushTarget(environmentId: "env_box", sessionId: "s1", seq: 12))
-        #expect(PushTarget(url: URL(string: "tempcode://thread/env_box/s1")!) == PushTarget(environmentId: "env_box", sessionId: "s1", seq: nil))
-        #expect(PushTarget(url: URL(string: "tempcode://settings")!) == nil)
-        #expect(PushTarget(url: URL(string: "https://box.example/thread/env/s1")!) == nil)
-    }
-}
-
 @Suite("PushRegistrar")
 struct PushRegistrarTests {
     @Test func summaryReadsTheSwitchThePermissionTheTokenAndTheHosts() {

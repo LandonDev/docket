@@ -98,6 +98,7 @@
 		7A8346F7F523C458D8635A3A /* TempCodeNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A5BDBCF2FD709D21B2A20C30 /* TempCodeNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7B0584C4F4E0F240080A6DDA /* FrameRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A7DC9787096AEB8D4547795 /* FrameRecorder.swift */; };
 		7B0B0117D929F3ED42CC2B6F /* BatchFoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7AE044D6CB90B7ED7BB42D /* BatchFoot.swift */; };
+		DFA01A4389B442BDFFC5E2AD /* DigestScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A652707FA78A5687BCD297 /* DigestScreen.swift */; };
 		7C40D2753AFA569B4A99E039 /* VoiceNoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC05D3CFCFDCFCB7AA3FDDD /* VoiceNoteSheet.swift */; };
 		7D2599C1E29B66B56F911080 /* BoardStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB3C0093C73C91C73DE65042 /* BoardStyles.swift */; };
 		7D6432F20DEB4F489AC97CA9 /* BoardOutcomes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 728030024F26E8BF8E4FE9CF /* BoardOutcomes.swift */; };
@@ -397,6 +398,7 @@
 		D218740EFA1B15F55C8BEB7A /* ActivityGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityGallery.swift; sourceTree = "<group>"; };
 		D852F6F965128E5708F8E991 /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
 		D8FDFFD73D3829024F06B44D /* ToolChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolChip.swift; sourceTree = "<group>"; };
+		F5A652707FA78A5687BCD297 /* DigestScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestScreen.swift; sourceTree = "<group>"; };
 		DBC05D3CFCFDCFCB7AA3FDDD /* VoiceNoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNoteSheet.swift; sourceTree = "<group>"; };
 		DBFA885FA5B64708AE19E54D /* HeldInline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeldInline.swift; sourceTree = "<group>"; };
 		DBFB5E8F9B4F132135F62388 /* PresenceLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceLine.swift; sourceTree = "<group>"; };
@@ -597,6 +599,14 @@
 			path = Activity;
 			sourceTree = "<group>";
 		};
+		F1D959C326CF7E1074F37911 /* Digest */ = {
+			isa = PBXGroup;
+			children = (
+				F5A652707FA78A5687BCD297 /* DigestScreen.swift */,
+			);
+			path = Digest;
+			sourceTree = "<group>";
+		};
 		95EB47CFE8297D7F0C9BFDF8 /* Capture */ = {
 			isa = PBXGroup;
 			children = (
@@ -761,6 +771,7 @@
 				0E8D78E9C7ED96E8F2EFAD50 /* WorkSettingsScreen.swift */,
 				41BC3EB3FB86BBBAC8127145 /* WorkStyles.swift */,
 				95EB47CFE8297D7F0C9BFDF8 /* Capture */,
+				F1D959C326CF7E1074F37911 /* Digest */,
 				CC3548AD7AF1D44576CB1913 /* Items */,
 				CDC7E08CFBEFC943E39C1BD5 /* Life */,
 				8A42BF34F34AF6FC6C1DB000 /* Money */,
@@ -1082,6 +1093,7 @@
 				A251F8807CE6CE1FD9E5EF50 /* NotesSheet.swift in Sources */,
 				754BF7D8F5794DF8645B0A6C /* NotesStyles.swift in Sources */,
 				3D1E875F2E19D4DE074E3A59 /* NoticeRows.swift in Sources */,
+				DFA01A4389B442BDFFC5E2AD /* DigestScreen.swift in Sources */,
 				0586FC85C77BD770B3093A99 /* OnDeviceSpeech.swift in Sources */,
 				E8BF8FE5D7D67237081F336E /* OnDeviceText.swift in Sources */,
 				FEA4BD1CCCB979AB9201E4F5 /* OutboxItemScreen.swift in Sources */,
