@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
  */
 const DIRS = { pdf: import.meta.dirname, slides: join(import.meta.dirname, "../slides") };
 /** The shared modules a canvas may take a value from: no zod in them, nor in what they import a value from. */
-const ZOD_FREE: Record<string, string> = { "@shared/pdfCite": "pdfCite.ts", "@shared/work/slideFormats": "work/slideFormats.ts" };
+const ZOD_FREE: Record<string, string> = { "@shared/pdfCite": "pdfCite.ts", "@shared/work/slideFormats": "work/slideFormats.ts", "@shared/work/deckShow": "work/deckShow.ts" };
 const SHARED = join(import.meta.dirname, "../../../../shared");
 const VALUE_IMPORT = /^import\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/gm;
 const shipped = (dir: string): string[] => readdirSync(dir).filter((f) => /\.tsx?$/.test(f) && !/\.(test|dom\.test|preview|preview\.fixtures)\.tsx?$/.test(f) && f !== "testkit.ts");

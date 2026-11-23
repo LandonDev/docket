@@ -213,6 +213,11 @@ export interface OfficeCarrier {
 
   /** brings the app forward with the file (the switch) */
   open(app: OfficeApp, ref: { kind: 'path'; path: string } | { kind: 'url'; url: string }): Promise<void>
+  /**
+   * Opens a deck in PowerPoint and runs PowerPoint's own slideshow from the first slide (docs/agents/work-office.md
+   * "Presenting in PowerPoint"). Only on his press; offered by a place only once proven there (present.ts).
+   */
+  present?(ref: { kind: 'path'; path: string } | { kind: 'url'; url: string }): Promise<void>
 
   /** A carrier the app itself tells of changes (Windows' Excel): `address` changed on `sheet`, or, with `sheet` '', a co-author's edits were merged somewhere in the book. Returns its off. */
   changes?(fn: (book: string, sheet: string, address: string) => void): () => void

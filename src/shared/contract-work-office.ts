@@ -211,6 +211,12 @@ export const OfficeRequestSchemas = [
   request('work.office.write', ToolCall.extend({ asked: z.boolean().default(false), by: z.string().regex(/^agent:[^:]+:.+$/).optional() })),
   /** brings the app forward with the file: the switch for a Microsoft file */
   request('work.office.switch', z.object({ source: CanvasSourceSchema })),
+  /**
+   * A deck in desktop PowerPoint on the computer its file is on, and PowerPoint's own slideshow from the first slide:
+   * the Present menu's "In PowerPoint". → { presented: true }. With `check`, opens nothing and answers { can }: whether
+   * it can here (PowerPoint there, and the place proven). His press alone: a thread is refused.
+   */
+  request('work.office.present', z.object({ source: CanvasSourceSchema, check: z.boolean().optional() })),
   /** a short code for pairing our Office add-in with this host, good for five minutes (the owner's, never an agent's) */
   request('work.office.addin.pair', z.object({})),
   /** the add-ins paired with this host, and which are connected now */
@@ -277,6 +283,7 @@ export const OFFICE_CAPS = {
   'work.office.read': 'read',
   'work.office.write': 'operate',
   'work.office.switch': 'operate',
+  'work.office.present': 'operate',
   'work.office.addin.pair': 'operate',
   'work.office.addin.list': 'read',
   'work.office.addin.remove': 'operate',

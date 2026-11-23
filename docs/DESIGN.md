@@ -1155,7 +1155,8 @@ Every computer being driven now, on every connected host, in one place
 
 Every kind's body is built on the pane's frame (the tab row, the kind's
 bar, the fold, the review stepper, the selection bar and the composer's chip
-row); the slides kind's PowerPoint side alone says "Not built yet". A sheet's
+row); the slides kind's PowerPoint side is "Open in PowerPoint" in the
+`EmptyState`'s title, the bar keeping what waits in TempCode and Review. A sheet's
 chart axis is 12px, not the prototype's 11px (the type scale allows 11px only
 for key caps and menu labels). Around the canvas, the Outbox, Back from Away,
 routines, house rules and Settings → Work are built to the rules below, but
@@ -2598,7 +2599,11 @@ the room sees, and the presenter's view. One state moves both.
   has From the start, From this slide, Presenter view, each with its key,
   and In a window on the desktop. With more than one display it ends with
   a "Slideshow on" label and a check row a display; the slideshow goes on
-  the other display unless he picks. It is absent while the host has no
+  the other display unless he picks. Last, after a rule, "In PowerPoint"
+  where desktop PowerPoint is on the computer the deck's file is on (absent
+  elsewhere, never greyed): its second line, 12px `muted-foreground`, says
+  how many effects our show plays otherwise or leaves out ("3 effects play
+  only in PowerPoint"), and is absent when there are none. It is absent while the host has no
   picture of the file. Where the format row is drawn (he can edit the
   deck by hand), Present leaves the bar and is the row's way out: the
   row's quiet glyph and word, then a 20px chevron for the same menu, the
@@ -2678,6 +2683,30 @@ the room sees, and the presenter's view. One state moves both.
   ("Motion values"). A slide whose file says it moves on after a time does,
   in both windows, at each of its steps; a black screen or the open picker
   holds it.
+- **The clicker** (`show/Clicker.tsx`; the approved page's "The phone, as
+  a clicker"): the app's own page at phone width (640px or less), while a
+  show of the deck runs on another device of his, draws it over the whole
+  page on `background`, clear of the screen's safe areas, in place of the
+  deck. A 44px bar: End (a quiet text button) at the leading edge, the
+  deck's name 17/22 semibold in the middle, Blank at the trailing edge (a
+  toggle, `foreground` fill and `background` text while on). A 44px line,
+  16px in: one press target holding the Pause or Play glyph, the time talked 17/22 semibold tabular (`warning`
+  past his target) and "of 20:00" 15/20 muted (no target: nothing); "4 / 12"
+  15/20 muted tabular at the end ("End" at the end of the show). The notes
+  at 16/24, scrolling inside themselves ("No notes" muted). Previous: 56px
+  tall, 12px in from the sides, radius 16, on `muted`, an 18px chevron and
+  17/22 medium words, 8px over Next. Next is the lower part of the screen:
+  42% of its height (176px at least), 12px in, at least 16px off the foot
+  (more where the screen's own inset is), radius 32 (concentric with a
+  phone's corner), on `card` with a hairline `border` ring inside, 20px in:
+  at its top what comes, a 15/20 muted line over a 22/28 semibold one
+  ("Slide 5" over the next slide's title, at most three lines; "This slide"
+  over "Build 2 of 4"; "End of show" alone, muted, before the end), at its
+  foot "Next" 22/28 semibold with a 20px chevron; at the end "Close the
+  show" alone. The time's glyph is filled, 18px. Previous, Next and the time press to 0.96 over
+  `--dur-fast` on `--ease-out` (none under reduced motion). No control
+  waits on a hover; the page never scrolls. When the show ends the deck
+  comes back.
 - **Video and sound** play over their shapes in both windows: the room
   hears the slideshow's copy. The transport is in the presenter's view
   only, one 28px row a clip, 8px under the picture the room sees, its Play

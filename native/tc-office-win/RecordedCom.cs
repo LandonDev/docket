@@ -34,7 +34,7 @@ class XCell { public object V; public string F = ""; public string Z = "General"
 class XSheet { public string Name; public Dictionary<long, XCell> Cells = new Dictionary<long, XCell>(); public XBook Book; }
 class XBook { public string Key, Name; public List<XSheet> Sheets = new List<XSheet>(); }
 class WDoc { public string Key, Name, Text; public bool Track; public List<string> Tracked = new List<string>(); }
-class PDeck { public string Key, Name; public List<List<string>> Slides = new List<List<string>>(); }
+class PDeck { public string Key, Name; public bool Saved = true; public List<List<string>> Slides = new List<List<string>>(); }
 class OMail {
   public string Id, Account, From = "", ReplyTo, Subject = "", Html = "", Text = "", Folder = "inbox"; public DateTime At; public bool Read = true; public int Class = 43;
   public List<object[]> Recipients = new List<object[]>(); public object SendUsing;
@@ -111,6 +111,7 @@ public class RecordedCom : ICom {
   public void Start(string file, string args) { started.Add(Office.Obj("file", file, "args", args)); }
   public string AppPath(string exe) { return @"C:\Program Files\Microsoft Office\root\Office16\" + exe.ToUpperInvariant(); }
   public void Foreground(int hwnd) { started.Add(Office.Obj("foreground", hwnd)); }
+  public int Window(string processName, string className, string title) { started.Add(Office.Obj("window", processName + "|" + className + "|" + title)); return 505; }
   public void Release(object o) { }
 
   // ---- A1
@@ -320,7 +321,9 @@ public class RecordedCom : ICom {
     return new Obj("Presentation").Prop("FullName", () => p.Key).Prop("Name", () => p.Name)
       .Prop("Slides", () => Collection<List<string>>("Slides", () => p.Slides, SlideObj, (x, n) => false))
       .Fn("Activate", a => { started.Add(Office.Obj("activate", p.Key)); return null; })
-      .Prop("Windows", () => new Obj("Windows").Fn("Item", a => new Obj("Window").Prop("HWND", () => 303)));
+      .Prop("Windows", () => new Obj("Windows").Fn("Item", a => new Obj("Window").Prop("HWND", () => 303)))
+      .Prop("Saved", () => p.Saved ? -1 : 0).Put("Saved", v => p.Saved = Convert.ToInt32(v) == -1)
+      .Prop("SlideShowSettings", () => ShowSettings(p.Key, () => p.Slides.Count, () => p.Saved = false, () => p.Saved));
   }
 
   // ---- Outlook
@@ -564,7 +567,7 @@ public class RecordedCom : ICom {
   readonly Dictionary<string, bool> createdHidden = new Dictionary<string, bool>();
 
   void SeedRender(Dictionary<string, object> s) {
-    renders.Clear(); createdHidden.Clear();
+    renders.Clear(); createdHidden.Clear(); shows.Clear();
     var r = s.ContainsKey("render") ? (Dictionary<string, object>)s["render"] : new Dictionary<string, object>();
     renderPages = r.ContainsKey("pages") ? Convert.ToInt32(r["pages"]) : 3;
     renderSlides = r.ContainsKey("slides") ? Convert.ToInt32(r["slides"]) : 12;
@@ -659,7 +662,23 @@ public class RecordedCom : ICom {
         if (st == 3) Wrote(videoAt, video);
         return st;
       })
+      .Prop("SlideShowSettings", () => ShowSettings((string)a[0], () => renderSlides, () => { }, () => true))
       .Fn("Close", x => { me["closed"] = true; return null; });
+  }
+  #endregion
+
+  #region Present (SLD9): a deck's own slideshow
+  // What present.run reaches: a deck's SlideShowSettings as the helper sets them, and each Run, kept in `shows`
+  // ({deck, rangeType, starting, ending, slides, saved}) for `_state`. Each write marks the deck changed, as
+  // PowerPoint's own do; `saved` is the deck's mark when the show starts.
+  readonly List<object> shows = new List<object>();
+  Obj ShowSettings(string key, Func<int> count, Action changed, Func<bool> saved) {
+    var me = Office.Obj("deck", key);
+    return new Obj("SlideShowSettings")
+      .Put("RangeType", v => { me["rangeType"] = Convert.ToInt32(v); changed(); })
+      .Put("StartingSlide", v => { me["starting"] = Convert.ToInt32(v); changed(); })
+      .Put("EndingSlide", v => { me["ending"] = Convert.ToInt32(v); changed(); })
+      .Fn("Run", x => { me["slides"] = count(); me["saved"] = saved(); shows.Add(me); return new Obj("SlideShowWindow"); });
   }
   #endregion
 
@@ -698,7 +717,7 @@ public class RecordedCom : ICom {
         return Office.Obj("renders", renders, "running", running.Where(kv => kv.Value).Select(kv => (object)kv.Key).ToList(), "sent", sent, "thrownAway", thrownAway, "answers", answers, "started", started, "calls", calls, "markup", markupNow,
           "drafts", mail.Where(m => m.Folder == "drafts").Select(m => (object)Office.Obj("id", m.Id, "subject", m.Subject, "html", m.Html, "to", Of(m.Recipients, 1, ";"))).ToList(),
           "docs", docs.Select(d => (object)Office.Obj("key", d.Key, "text", d.Text, "tracked", d.Tracked)).ToList(),
-          "decks", decks.Select(p => (object)Office.Obj("key", p.Key, "slides", p.Slides)).ToList(),
+          "decks", decks.Select(p => (object)Office.Obj("key", p.Key, "slides", p.Slides)).ToList(), "shows", shows,
           "events", events.Select(e => (object)Office.Obj("id", e.Id, "subject", e.Subject, "meeting", e.Meeting, "attendees", Of(e.Recipients, 1, ";"))).ToList());
     }
     throw new Refusal("failed", "no test verb " + verb);

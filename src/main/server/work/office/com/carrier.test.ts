@@ -85,6 +85,19 @@ describe('the Windows carrier', () => {
     expect(carrier.kind).toBe('com')
   })
 
+  it('presents a deck in PowerPoint with the helper\'s present.run, and passes its refusals on in its words', async () => {
+    const { carrier, procs } = make((verb, args) =>
+      verb === 'present.run' && (args.ref as { path?: string }).path === 'C:\\gone.pptx' ? refuse({ code: 'not-found', message: 'There is no such deck on this PC.' }) : verb === 'present.run' ? { slides: 12 } : null
+    )
+    await carrier.present!({ kind: 'path', path: 'C:\\talk.pptx' })
+    await carrier.present!({ kind: 'url', url: 'https://contoso.sharepoint.com/Talk.pptx' })
+    await expect(carrier.present!({ kind: 'path', path: 'C:\\gone.pptx' })).rejects.toMatchObject({ code: 'not-found', message: 'There is no such deck on this PC.' })
+    expect(procs[0].seen.slice(0, 2)).toEqual([
+      { verb: 'present.run', args: { ref: { kind: 'path', path: 'C:\\talk.pptx' } } },
+      { verb: 'present.run', args: { ref: { kind: 'url', url: 'https://contoso.sharepoint.com/Talk.pptx' } } }
+    ])
+  })
+
   it("answers the helper's refusals as OfficeErrors with its code, and COM's busy codes as busy", async () => {
     const { carrier } = make((verb) =>
       verb === 'workbooks'

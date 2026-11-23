@@ -50,6 +50,7 @@ interface State {
   thrownAway: string[]
   docs: { key: string; text: string; tracked: string[] }[]
   decks: { key: string; slides: string[][] }[]
+  shows: { deck: string; rangeType: number; starting: number; ending: number; slides: number }[]
   events: { id: string; subject: string; meeting: number; attendees: string }[]
 }
 
@@ -531,6 +532,18 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect(running).not.toContain('excel')
       // his Word, which the job used, is still running
       expect(running).toContain('word')
+    }, 60_000)
+
+    it('present.run: a deck he has open runs its own slideshow of every slide from the first; none is "not installed", a missing file "not found"', async () => {
+      await seed()
+      await carrier.present!({ kind: 'path', path: DECK })
+      const { shows, started } = await state()
+      // his saved deck is still saved when the show starts; the show's window is found by its class and brought forward
+      expect(shows).toEqual([{ deck: DECK, rangeType: 1, starting: 1, ending: 2, slides: 2, saved: true }])
+      expect(started).toEqual([{ window: 'POWERPNT|screenClass|Deck' }, { foreground: 505 }])
+      await expect(carrier.present!({ kind: 'path', path: 'C:\\Users\\owner\\Gone.pptx' })).rejects.toMatchObject({ code: 'not-found', message: 'There is no such deck on this PC.' })
+      await seed({ apps: { powerpoint: { installed: false } } })
+      await expect(carrier.present!({ kind: 'path', path: DECK })).rejects.toMatchObject({ code: 'not-installed', message: 'PowerPoint is not installed on this PC.' })
     }, 60_000)
 
     it('with start, Word is an instance of its own with alerts off; a PowerPoint it starts gets ppAlertsNone too', async () => {

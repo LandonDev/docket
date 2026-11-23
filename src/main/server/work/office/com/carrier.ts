@@ -357,6 +357,8 @@ export function comCarrier(deps: ComDeps = {}): ComCarrier {
     answerEvent: (id, answer, comment) => call('answerEvent', { id, answer, comment }),
     eventByUid: (uid) => call('eventByUid', { uid }),
     open: (app, ref) => call('open', { app, ref }, app),
+    // His press alone: the helper opens the deck in PowerPoint (started if it was shut) and runs its own slideshow.
+    present: async (ref) => void (await call('present.run', { ref }, 'powerpoint')),
     changes(fn) {
       // The helper starts with the first call that needs it (a watched block's first read) and listens from then on.
       link.listeners.add(fn)

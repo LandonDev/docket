@@ -16,13 +16,14 @@ import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
 import { dropCopies, dropItemCopies, filesHandle, type FilesDeps } from './files/handle'
-import { missingLibraries, readVmBehind, storedStatus } from './vm/files'
+import { isGuestPath, missingLibraries, readVmBehind, storedStatus } from './vm/files'
 import { stopVmOffice, vmAllowed, vmAwake, vmHasOffice, vmHereOf, vmState } from './vm/office'
 import { onWinvmState, winvmKeeper } from '../winvm'
 import { ensureFilesTables, librariesOf, libraryOf, setCopyAllowed } from './files/library'
 import { teamsTools } from './files/tools'
 import { officeProbe, officeRows } from './health'
 import { officeConverters, type RenderDeps, type RenderPlace } from './render'
+import { canPresent, presentDeck, type PresentDeps } from './present'
 
 /**
  * The office pillar's server module (docs/agents/work-office.md): one Office
@@ -104,6 +105,15 @@ const renderDeps: RenderDeps = {
   log: (line) => started?.log(line)
 }
 
+/** Presenting in PowerPoint (present.ts): this host's own PowerPoint, or the Windows VM's for a file in its OneDrive. */
+const presentDeps = (ctx: WorkCtx): PresentDeps => ({
+  place: (path) => (path !== null && isGuestPath(path) && process.platform !== 'win32' ? (vmState() ? 'vm' : null) : process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'windows' : null),
+  // the desktop carrier itself, as a render takes it: the add-in carries no slideshow
+  carrier: (place) => (place === 'vm' ? vmHereOf(ctx).carrier : desktopOnce()),
+  vmOffice: () => vmHasOffice(ctx),
+  wake: vmAwake
+})
+
 /** What the Teams files need of the pillar: this host's carrier, Office in the Windows VM for a file there, and his address as Outlook here knows it. */
 const filesDeps = (ctx: WorkCtx): FilesDeps => ({
   carrier: () => hereOf(ctx)?.carrier ?? null,
@@ -183,6 +193,12 @@ export const office: WorkModule = {
         if (!here) throw new Error(NO_OFFICE)
         await here.carrier.open(s.app, s.ref)
         return handled({ opened: true as const })
+      }
+      case 'work.office.present': {
+        const { source, check } = req.params
+        if (check) return handled({ can: await canPresent(ctx, by, source, presentDeps(ctx)) })
+        await presentDeck(ctx, by, source, presentDeps(ctx))
+        return handled({ presented: true as const })
       }
     }
     return NOT_HANDLED

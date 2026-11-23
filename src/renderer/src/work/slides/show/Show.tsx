@@ -13,6 +13,7 @@ import { pdfShowHost, type PdfBytes } from "./pdfShow";
 import { playReducer, StageContext, useMediaUrls, useStepDocs, type MediaAct, type MediaRun, type Picture, type Playing, type ShowStage } from "./stage";
 import { autoAfter, keyAct, motionBetween, nextPress, NOTES_DEFAULT, NOTES_SIZES, showReducer, startShowState, stepNotes, type ShowAct, type ShowMotion, type ShowState, type Slide } from "./state";
 import { pauseTimer, restartTimer, resumeTimer, startTimer, TARGETS, type Target } from "./timer";
+import { actOf, liveOf, usePublish, type ShowRemote } from "./remote";
 
 /**
  * A show, running (docs/agents/work-slides.md "The show"): the file's
@@ -36,6 +37,8 @@ export interface ShowHost {
   media?(rev: string, offset: number, length: number): Promise<Uint8Array>;
   /** Hears that more of the show is ready on the host (a step's picture, a clip): the show reads the deck again. */
   onReady?(listener: (rev: string) => void): () => void;
+  /** The clicker's wire: the show tells the deck's host its state and runs the presses of his other devices (remote.ts). */
+  remote?: ShowRemote;
 }
 
 export type { ShowMode } from "@shared/slidesShow";
@@ -252,6 +255,17 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
       held.current = null;
     };
   }, [host, load]);
+
+  // His other devices see this show and step it (the clicker): each press runs through the same reducer as a key.
+  usePublish(
+    host.remote,
+    () => (state && !state.closed ? liveOf(state, timer, target, ask.title, now()) : null),
+    (press) => {
+      const act = actOf(press);
+      if (act) dispatch(act);
+      else setTimer((was) => (press.act === "pause" ? pauseTimer(was, now()) : resumeTimer(was, now())));
+    },
+  );
 
   const closed = state?.closed ?? false;
   useEffect(() => {

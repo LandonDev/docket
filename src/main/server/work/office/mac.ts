@@ -172,6 +172,15 @@ export const SCRIPTS = {
   renderPowerPoint: js(`var pp = app('Microsoft PowerPoint'); pp.open(Path(a.input)); var p = byKey(pp.presentations, a.input), n = p.slides.length;
     try { pp.save(p, { in: Path(a.output), as: a.to === 'pdf' ? 'save as PDF' : a.to === 'png' ? 'save as PNG' : 'save as MP4' }); return JSON.stringify({ pages: n }) }
     finally { try { pp.close(p, { saving: 'no' }) } catch (e) {} }`),
+  // Presenting in PowerPoint (docs/agents/work-office.md "Presenting in PowerPoint"): the deck `open` just handed the
+  // app, waited for while it opens, then PowerPoint's own slideshow of every slide from the first. Unproven on a Mac:
+  // not offered until its live proof passes (present.ts PRESENT_PROVEN).
+  presentPowerPoint: js(`var pp = app('Microsoft PowerPoint'), p = null;
+    for (var i = 0; i < 60 && !p; i++) { try { p = byKey(pp.presentations, a.key) } catch (e) { if (i === 59) throw e; if (typeof delay === 'function') delay(0.25) } }
+    // The settings' writes mark the deck changed (found live, PowerPoint 16.115): a deck that was saved is marked saved again, so presenting never asks him to save.
+    var was = p.saved(), s = p.slideShowSettings; try { s.rangeType = 'slide show range show all' } catch (e) {} try { s.startingSlide = 1; s.endingSlide = p.slides.length } catch (e) {}
+    if (was) try { p.saved = true } catch (e) {}
+    pp.runSlideShow(s); try { pp.activate() } catch (e) {} return JSON.stringify({ slides: p.slides.length })`),
   answerEvent: js(`var o = app('Microsoft Outlook'); var e = o.calendarEvents.byId(Number(a.id)); var p = { sendingResponse: true }; if (a.comment) p.comment = a.comment;
     if (a.answer === 'accept') o.acceptMeeting(e, p); else if (a.answer === 'decline') o.declineMeeting(e, p); else o.acceptTentativelyMeeting(e, p); return 'null'`)
 } as const
@@ -235,7 +244,8 @@ const APP_OF: Record<ScriptName, OfficeApp> = {
   answerEvent: 'outlook',
   renderWord: 'word',
   renderExcel: 'excel',
-  renderPowerPoint: 'powerpoint'
+  renderPowerPoint: 'powerpoint',
+  presentPowerPoint: 'powerpoint'
 }
 
 const RENDER_SCRIPT: Record<RenderApp, ScriptName> = { word: 'renderWord', excel: 'renderExcel', powerpoint: 'renderPowerPoint' }
@@ -281,8 +291,12 @@ const pgrep = (app: OfficeApp): Promise<boolean> => new Promise((resolve) => exe
 const runSips = (args: string[]): Promise<void> =>
   new Promise((resolve, reject) => execFile('/usr/bin/sips', args, (err) => (err ? reject(new OfficeError(`The slide's picture could not be sized: ${err.message}`)) : resolve())))
 
+/** What `open` said when it failed, in the carrier's words: a file that is not there is `not-found`, said plainly (as the Windows helper says it). */
+export const openFailure = (message: string): OfficeError =>
+  /does not exist/i.test(message) ? new OfficeError('There is no such file on this Mac.', 'not-found') : new OfficeError(`The file did not open: ${message.trim()}`)
+
 const openWith = (args: string[]): Promise<void> =>
-  new Promise((resolve, reject) => execFile('/usr/bin/open', args, (err) => (err ? reject(new OfficeError(`The file did not open: ${err.message}`)) : resolve())))
+  new Promise((resolve, reject) => execFile('/usr/bin/open', args, (err) => (err ? reject(openFailure(err.message)) : resolve())))
 
 export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
   const osa = deps.osa ?? runOsa
@@ -354,6 +368,19 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
       rmSync(dir, { recursive: true, force: true })
     }
   }
+  const open: OfficeCarrier['open'] = async (app, ref) => {
+    if (!installed(app)) throw new OfficeError(`${APP_NAMES[app]} is not installed on this Mac.`, 'not-installed')
+    await (deps.open ?? openWith)(ref.kind === 'path' ? ['-a', APP_NAMES[app], ref.path] : [`ms-${app}:ofe|u|${ref.url}`])
+    // A file OneDrive manages: the first one an app opens raises the system's prompt within a few seconds, and the
+    // open is then no open at all. Said now, in words, not found out by the next call's two-minute silence.
+    if (ref.kind === 'path' && ref.path.includes('/Library/CloudStorage/') && app !== 'outlook') {
+      const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+      for (let i = 0; i < (deps.promptLooks ?? 3); i++) {
+        await sleep(1000)
+        if (await prompted(app)) throw new OfficeError(waitingWords(app), 'needs-consent')
+      }
+    }
+  }
   return {
     kind: 'mac',
     render,
@@ -391,18 +418,11 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
     createEvent: (e) => call('createEvent', { e: e.body === undefined ? e : { ...e, body: textAsHtml(e.body) } }),
     answerEvent: (id, answer, comment) => call('answerEvent', { id, answer, comment }),
     eventByUid: (uid) => call('eventByUid', { uid }),
-    async open(app, ref) {
-      if (!installed(app)) throw new OfficeError(`${APP_NAMES[app]} is not installed on this Mac.`, 'not-installed')
-      await (deps.open ?? openWith)(ref.kind === 'path' ? ['-a', APP_NAMES[app], ref.path] : [`ms-${app}:ofe|u|${ref.url}`])
-      // A file OneDrive manages: the first one an app opens raises the system's prompt within a few seconds, and the
-      // open is then no open at all. Said now, in words, not found out by the next call's two-minute silence.
-      if (ref.kind === 'path' && ref.path.includes('/Library/CloudStorage/') && app !== 'outlook') {
-        const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
-        for (let i = 0; i < (deps.promptLooks ?? 3); i++) {
-          await sleep(1000)
-          if (await prompted(app)) throw new OfficeError(waitingWords(app), 'needs-consent')
-        }
-      }
-    }
+    // His press alone: the deck opened in PowerPoint (which starts it if it was shut), then its own slideshow.
+    async present(ref) {
+      await open('powerpoint', ref)
+      await call('presentPowerPoint', { key: ref.kind === 'path' ? ref.path : ref.url })
+    },
+    open
   }
 }

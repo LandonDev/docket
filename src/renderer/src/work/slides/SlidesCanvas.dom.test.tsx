@@ -5,6 +5,9 @@
  * an agent's revision stepped from the bar slide by slide, a move shown
  * where it lands and where it leaves, the notes, a shape asked about, the
  * PowerPoint switch, and a deck with no picture.
+ *
+ * The `registry` here is a fake whose `linkOf` answers any name, so a wrong host name passes in this file:
+ * powerpoint.dom.test.tsx holds the names against the real registry.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,18 +23,28 @@ import { fakeDoc, fakeEngine } from "../pdf/testkit";
 import type { PdfDoc } from "../pdf/engine";
 import { changeIndex, freePage, renderDetail, slideOfChange, stageWidth } from "./SlidesCanvas";
 import { RENDER_CHANGED } from "./deck";
+import { forgetPowerPoint } from "./powerpoint";
 import { change, deckView, fakeDeckHost, slide } from "./testkit";
 
 const host = vi.hoisted(() => ({
   current: null as ReturnType<typeof import("../canvas/testkit").fakeHost> | null,
   pushes: new Set<(push: never) => void>(),
   opens: new Set<() => void>(),
+  /** The office pillar's answers: PowerPoint on the deck's computer, the switch, "In PowerPoint". */
+  office: { powerpoint: true, present: false, calls: [] as Array<{ method: string; params?: Record<string, unknown> }>, fail: null as string | null },
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
     environmentId: "local",
     connected: true,
-    request: (method: string, params?: Record<string, unknown>) => host.current!.link.request(method, params),
+    request: async (method: string, params?: Record<string, unknown>) => {
+      if (!method.startsWith("work.office.")) return host.current!.link.request(method, params);
+      host.office.calls.push({ method, params });
+      if (method === "work.office.status") return { carrier: "mac", apps: [{ app: "powerpoint", installed: host.office.powerpoint, running: false, allowed: "unknown" }], route: { accounts: [], beatAt: null, error: null } };
+      if (method === "work.office.present") return params?.check ? { can: host.office.present } : { presented: true };
+      if (host.office.fail) throw new Error(host.office.fail);
+      return { opened: true };
+    },
     onPush: (listener: (push: never) => void) => (host.pushes.add(listener), () => host.pushes.delete(listener)),
     onOpen: (listener: () => void) => (host.opens.add(listener), () => host.opens.delete(listener)),
     onClose: () => () => undefined,
@@ -133,6 +146,8 @@ beforeEach(async () => {
   refuseAt = null;
   gate = null;
   moved = false;
+  forgetPowerPoint();
+  host.office = { powerpoint: true, present: false, calls: [], fail: null };
   await new Promise<void>((done) => openMenus(done));
 });
 afterEach(cleanup);
@@ -379,10 +394,35 @@ describe("the slides kind", () => {
     // In a narrow bar the sentence goes whole and Review stays, never a sentence cut mid-word.
     expect(waiting.hasAttribute("data-narrow-hide")).toBe(true);
     expect(waiting.className).toContain("@max-[560px]/bar:hidden");
-    expect(screen.getByText("Not built yet")).toBeTruthy();
+    // The deck opened in PowerPoint on the computer its file is on, and the canvas says so; nothing says "Not built yet".
+    expect(await screen.findByText("Open in PowerPoint")).toBeTruthy();
+    expect(host.office.calls.filter((c) => c.method === "work.office.switch")).toEqual([{ method: "work.office.switch", params: { source: { at: "file", host: "local", path: "/work/deck.pptx" } } }]);
+    expect(screen.queryByText("Not built yet")).toBeNull();
     expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     expect(await screen.findByRole("toolbar", { name: "Review changes" })).toBeTruthy();
+  });
+
+  it("has no PowerPoint side where the deck's computer has no desktop PowerPoint: absent, never greyed", async () => {
+    host.office.powerpoint = false;
+    open({ ...revised(), hosted: true });
+    await found("[data-slides-stage]");
+    await waitFor(() => expect(host.office.calls.some((c) => c.method === "work.office.status")).toBe(true));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole("tablist", { name: "Open in" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "PowerPoint" })).toBeNull();
+  });
+
+  it("says why when PowerPoint did not open the deck, and tries again on his press", async () => {
+    host.office.fail = "Microsoft PowerPoint is not installed on this Mac.";
+    open({ ...revised(), hosted: true });
+    fireEvent.click(within(await screen.findByRole("tablist", { name: "Open in" })).getByRole("tab", { name: "PowerPoint" }));
+    expect(await screen.findByText("Couldn't open it in PowerPoint")).toBeTruthy();
+    expect(screen.getByText("Microsoft PowerPoint is not installed on this Mac.")).toBeTruthy();
+    host.office.fail = null;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Open in PowerPoint")).toBeTruthy();
+    expect(host.office.calls.filter((c) => c.method === "work.office.switch")).toHaveLength(2);
   });
 
   it("Present, at the bar's end, starts a show of the file from the slide on the stage; its menu has the other ways in", async () => {
@@ -409,6 +449,34 @@ describe("the slides kind", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /Presenter view/ }));
     await waitFor(() => expect(shows.asks).toHaveLength(3));
     expect(shows.asks[2]).toMatchObject({ from: 4, mode: "presenter" });
+  });
+
+  it("ends the Present menu with In PowerPoint where the deck's computer can present it, saying how many effects play only there", async () => {
+    shows.asks.length = 0;
+    host.office.present = true;
+    const slides = Array.from({ length: 12 }, (_, i) => slide(i + 1));
+    slides[1] = slide(2, { builds: { steps: [{ shapes: [], paras: [] }, { shapes: [], paras: [] }], changed: 2 } });
+    slides[4] = slide(5, { transition: { kind: "morph", ms: 700 } });
+    // A suggestion waiting is not in the file: what it would add is not counted.
+    slides.push(slide(13, { from: "proposed", builds: { steps: [{ shapes: [], paras: [] }], changed: 9 } }));
+    open(deckView({ slides }));
+    const present = await found("[data-present]");
+    fireEvent.click(within(present).getByRole("button", { name: "Ways to present" }));
+    const row = await screen.findByRole("menuitem", { name: /In PowerPoint/ });
+    expect(row.textContent).toContain("3 effects play only in PowerPoint");
+    const rows = screen.getAllByRole("menuitem");
+    expect(rows.at(-1)).toBe(row);
+    fireEvent.click(row);
+    await waitFor(() => expect(host.office.calls.filter((c) => c.method === "work.office.present" && !c.params?.check)).toEqual([{ method: "work.office.present", params: { source: { at: "file", host: "local", path: "/work/deck.pptx" } } }]));
+    expect(shows.asks).toHaveLength(0);
+  });
+
+  it("gives In PowerPoint no second line when every effect plays as authored", async () => {
+    host.office.present = true;
+    open(deckView());
+    fireEvent.click(within(await found("[data-present]")).getByRole("button", { name: "Ways to present" }));
+    const row = await screen.findByRole("menuitem", { name: /In PowerPoint/ });
+    expect(row.textContent?.trim()).toBe("In PowerPoint");
   });
 
   it("PowerPoint's own keys and a clicker's F5 start a show while the keyboard is in the deck", async () => {
@@ -448,7 +516,7 @@ describe("the slides kind", () => {
     open({ ...revised(), hosted: true });
     await found("[data-present]");
     fireEvent.click(within(await screen.findByRole("tablist", { name: "Open in" })).getByRole("tab", { name: "PowerPoint" }));
-    await screen.findByText("Not built yet");
+    await screen.findByText("Open in PowerPoint");
     expect(document.querySelector("[data-present]")).toBeNull();
     expect(shows.asks).toHaveLength(0);
   });

@@ -10,7 +10,6 @@ import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from ".
 import { dayTime } from "../../lib/duration";
 import { bareKey, chordKey, modKey } from "../../lib/keys";
 import { IS_MAC } from "../../lib/platform";
-import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
@@ -31,11 +30,13 @@ import type { NameAsk } from "./edit/slides";
 import { Picture } from "./Picture";
 import { Sorter } from "./Sorter";
 import { Strip, type PictureOf, type SlideHand } from "./Strip";
-import { present, presentKey, PresentButton, type PresentAsk } from "./Present";
+import { InPowerPointRow, present, presentKey, PresentButton, type PresentAsk } from "./Present";
 import { useOpenShow } from "./openShow";
 import { askPreview, PreviewOpener } from "./preview/ask";
 import { DeckPreviewLayer } from "./preview/DeckPreview";
 import { NoticeLine, useSlideFileActions } from "./slideFileActions";
+import { Clicker, useClickerShow } from "./show/Clicker";
+import { InPowerPoint, openInPowerPoint, useInPowerPoint, usePowerPointOn } from "./powerpoint";
 
 export { freePage } from "./Picture";
 
@@ -160,11 +161,18 @@ export function Body(props: CanvasBodyProps<SlidesState> & SlidesDeps) {
   const host = props.host ?? hostFor(props.env, props.item.id);
   const store = deckStoreOf(props.item.id);
   useDeckView(host, store);
+  // At phone width, a show of this deck running on another of his devices makes the item its clicker.
+  const show = useClickerShow(host.remote);
+  // The Present menu ends with "In PowerPoint" where the deck's computer can present it.
+  const inPowerPoint = useInPowerPoint(useDeck(store).view, props.source, props.env);
+  if (show && host.remote) return <Clicker live={show} remote={host.remote} />;
   // Preview (preview/DeckPreview.tsx) is a state of the item over the deck, which stays mounted under it.
   return (
-    <DeckPreviewLayer env={props.env} itemId={props.item.id} shell={props.shell}>
-      <SlidesBody {...props} host={host} store={store} engine={props.engine ?? pdfjsEngine} />
-    </DeckPreviewLayer>
+    <InPowerPointRow.Provider value={inPowerPoint}>
+      <DeckPreviewLayer env={props.env} itemId={props.item.id} shell={props.shell}>
+        <SlidesBody {...props} host={host} store={store} engine={props.engine ?? pdfjsEngine} />
+      </DeckPreviewLayer>
+    </InPowerPointRow.Provider>
   );
 }
 
@@ -294,7 +302,7 @@ export function SlidesBody({
   // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
   if (error) return null;
   if (!view) return <DeckSkeleton row={source.at === "file"} />;
-  if (side === "powerpoint") return <EmptyState title="Not built yet" />;
+  if (side === "powerpoint") return <InPowerPoint itemId={item.id} onRetry={() => void openInPowerPoint(item.id, source, env)} />;
 
   const revOf = (doc: PdfDoc): string | null => (doc === fileDoc ? fileRender.rev : doc === proposedDoc ? proposedRender.rev : null);
   const shown = view.slides.find((s) => s.key === current) ?? view.slides[0];
@@ -1083,12 +1091,18 @@ function DeckSkeleton({ row }: { row: boolean }) {
 // ── the tab row and the bar ──────────────────────────────────────────
 
 /** A deck that lives in PowerPoint: TempCode or the real app, in the tab row as the sheet's Excel switch is. */
-export function TabEnd({ item }: CanvasBodyProps<SlidesState>) {
+export function TabEnd({ item, source, env }: CanvasBodyProps<SlidesState>) {
   const store = deckStoreOf(item.id);
   const { view, side } = useDeck(store);
-  if (!view?.hosted) return null;
+  // Absent, never greyed, where the deck's computer has no desktop PowerPoint.
+  const here = usePowerPointOn(source, env, !!view?.hosted);
+  if (!view?.hosted || !here) return null;
+  const pick = (next: "tempcode" | "powerpoint"): void => {
+    if (next === "powerpoint") void openInPowerPoint(item.id, source, env);
+    store.set({ side: next });
+  };
   return (
-    <Tabs value={side} onValueChange={(next) => store.set({ side: next as "tempcode" | "powerpoint" })} className="mx-1 shrink-0 gap-0">
+    <Tabs value={side} onValueChange={(next) => pick(next as "tempcode" | "powerpoint")} className="mx-1 shrink-0 gap-0">
       <TabsList aria-label="Open in" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
         <TabsIndicator />
         <TabsTrigger value="tempcode" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
@@ -1110,9 +1124,10 @@ export function TabEnd({ item }: CanvasBodyProps<SlidesState>) {
  * real PowerPoint the stepper is not there: how many changes wait here, and
  * the way back to them.
  */
-export function Bar({ item, env, host: given, engine }: CanvasBodyProps<SlidesState> & SlidesDeps) {
+export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<SlidesState> & SlidesDeps) {
   const store = deckStoreOf(item.id);
   const { view, error, side } = useDeck(store);
+  const inPowerPoint = useInPowerPoint(view, source, env);
   if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
   const pending = view.changes.length;
   const host = given ?? hostFor(env, item.id);
@@ -1124,9 +1139,11 @@ export function Bar({ item, env, host: given, engine }: CanvasBodyProps<SlidesSt
       <div className="ms-auto flex shrink-0 items-center gap-1">
         {view.hand ? <HistoryButton host={host} session={handOf(item.id, host, store)} /> : null}
         {presentHere ? (
-          <PreviewOpener.Provider value={() => askPreview(item.id)}>
-            <PresentButton onPresent={(ask) => startPresenting(host, store, ask, engine)} />
-          </PreviewOpener.Provider>
+          <InPowerPointRow.Provider value={inPowerPoint}>
+            <PreviewOpener.Provider value={() => askPreview(item.id)}>
+              <PresentButton onPresent={(ask) => startPresenting(host, store, ask, engine)} />
+            </PreviewOpener.Provider>
+          </InPowerPointRow.Provider>
         ) : null}
       </div>
     );

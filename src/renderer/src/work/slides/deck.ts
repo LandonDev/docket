@@ -4,6 +4,7 @@ import { registry } from "../../lib/connection";
 import { toBase64 } from "../formats/model";
 import { fromBase64, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import type { ShowHost } from "./show/Show";
+import { linkShowRemote, type ShowRemote } from "./show/remote";
 
 /** The host's side of a deck, as its canvas uses it (src/shared/contract-work-slides.ts). */
 export interface DeckHost {
@@ -34,6 +35,8 @@ export interface DeckHost {
   build?(rev: string, offset: number, length: number): Promise<Uint8Array>;
   media?(rev: string, offset: number, length: number): Promise<Uint8Array>;
   onReady?(listener: (rev: string) => void): () => void;
+  /** The clicker's wire for this deck (show/remote.ts). */
+  remote?: ShowRemote;
 }
 
 /**
@@ -86,6 +89,7 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
       link().onPush((push) => {
         if (push.push === "work.slides.ready" && push.itemId === itemId) listener(push.rev);
       }),
+    remote: linkShowRemote(environmentId, itemId),
   };
 }
 
@@ -98,6 +102,7 @@ export const showHostOf = (host: DeckHost): ShowHost => ({
   ...(host.build ? { step: host.build } : {}),
   ...(host.media ? { media: host.media } : {}),
   ...(host.onReady ? { onReady: host.onReady } : {}),
+  ...(host.remote ? { remote: host.remote } : {}),
 });
 
 /**

@@ -241,8 +241,9 @@ the file is really edited. For a deck:
 - **Who sees the review.** `work.slides.open`, `read` and the `work.slides`
   push reach only a caller who could name the file itself (`fenceItem`,
   `pushFor`): his own window and his own keys. A deck is not guestable, the
-  PowerPoint side of the switch is not built. Save to Google Slides sends
-  the saved bytes of a deck of his own on his press.
+  PowerPoint side of the switch opens his file in his own PowerPoint (no
+  suggestion goes with it). Save to Google Slides sends the saved bytes of a
+  deck of his own on his press.
 - **Accept** writes the change into the file as an ordinary edit; from then
   on it syncs like any save.
 
@@ -512,6 +513,9 @@ thread (`rowSession`):
 | `work.slides.preview` | operate | `{itemId, format, layout?, hidden?, page?, picture?, video?, office?}` → `DeckOut`: the deck as a format holds it ("Preview and export"), made from the file as it is now, or the one already made when the file did not change |
 | `work.slides.previewRead` | read | → `{ data, size, rev }`: bytes of a file `work.slides.preview` made, by its 32-character rev, at most 4 MB a call |
 | `work.slides.reach` | read | → `DeckReach` (`pdf`, `video`): whether PowerPoint draws this deck from this host: `ready`, `asleep`, `not open` or `none` |
+| `work.slides.show.run` | operate | the window that runs a show: `{itemId, showId, live, answered?}`, its state (`live` null: the show ended) and the answer to the last press it took → `{press}`, held until a press comes, a newer call of the show takes its place, or 20 s pass ("The clicker") |
+| `work.slides.show.state` | read | `{itemId?}` → `{shows: ShowLive[]}`: the running shows of a deck, or of every deck, the caller could name |
+| `work.slides.show.press` | operate | `{showId, act, at?, rev}`: a clicker's press → `ShowPressAnswer` (`applied`, or `dropped: 'ended' \| 'moved'`, with the state as it is now) |
 
 A thread's own call (`kind: 'model'`) may not review or set the mode. Every
 change pushes `work.slides` with the view; `work.slides.ready` (`itemId`,
@@ -1159,9 +1163,14 @@ How it works:
   stage show each slide's title on a blank.
 - **PowerPoint.** For a deck that lives in PowerPoint (`hosted`), the tab
   row has the TempCode and PowerPoint switch, where the sheet's Excel
-  switch goes. The PowerPoint side of the switch is not built (the
-  Office milestones, 28 and 29, put Excel behind the grid only): it says "Not built yet", and the bar says
-  how many suggestions wait in TempCode, with Review to go back to them.
+  switch goes, wherever desktop PowerPoint is installed on the computer the
+  file is on (`work.office.status` asked of that host, `powerpoint.tsx`
+  `usePowerPointOn`); where it is not, the switch is absent, never greyed.
+  The PowerPoint side opens the deck there (`work.office.switch`), and the
+  canvas says "Open in PowerPoint" (a spinner and "Opening in PowerPoint…"
+  while the switch runs; "Couldn't open it in PowerPoint" with the
+  office pillar's words and Try again when it fails); the bar says how many
+  suggestions wait in TempCode, with Review to go back to them.
 
 ### Shapes and slides by hand
 
@@ -1497,12 +1506,90 @@ key a clicker sends.
   (End show, Pause, the target's menu); after a press made with the
   pointer the keyboard goes back to the view, so Space is the next slide
   and never a second press of the button he last used.
-- **Not built yet** (each is a later milestone of the same plan): the
-  phone as a clicker, presenting a PDF, "In PowerPoint" (the row reads
-  `ShowDeck.changed`) and the proof
-  against PowerPoint's own count of click effects. A menu in a child window cannot use the app's popover or
+- **In PowerPoint.** The Present menu ends with "In PowerPoint" where
+  desktop PowerPoint is on the computer the deck's file is on and that
+  place is offered: the deck's host answers `work.office.present {source,
+  check: true}` with `{can}` and opens nothing ([work-office.md](work-office.md)
+  "Presenting in PowerPoint"). His press opens the deck there and runs
+  PowerPoint's own slideshow from the first slide. Its second line, 12px
+  muted, counts what our show plays otherwise or leaves out ("3 effects
+  play only in PowerPoint"), from the file's slides in the view
+  (`effectsChanged` in contract-work-slides.ts: each slide's
+  `builds.changed`, and each transition but a fade, a push or a cut, the
+  same sum as `ShowDeck.changed`); with none, no second line. A plain
+  .pptx on his disk presents as much as a Microsoft file. The window finds
+  the deck's computer by the id each host says of itself (`hostOf` in
+  `powerpoint.tsx`: a file names its host by the host's own id, which the
+  window knows as `local`), and offers nothing of PowerPoint, the switch
+  included, where it has no link to that computer. Proven in the
+  box's Windows VM (`.temp-code/plans/landed/SLD679-powerpoint-proof.md`:
+  the show comes to the front, hears his keys and leaves his deck saved),
+  and on his Mac (`landed/SLD9-mac/sld9-mac/results.md`), and still offered
+  nowhere (`PRESENT_PROVEN` is empty): a show in the VM runs on a screen he
+  is not at, and on his Mac PowerPoint quit by itself in four of five runs
+  while other jobs ran there, so it waits for one clean run.
+- A menu in a child window cannot use the app's popover or
   menu components, which mount in the main window's page: the slideshow's
   picker and the presenter's target menu are panels of their own.
+
+### The clicker
+
+Built by SLD9. A running show is stepped from any of his own devices
+through the app's own wire; the show runs in one window, whose state
+(`show/state.ts`) stays the one truth.
+
+- **The window that runs a show** tells the deck's host its public state
+  (`ShowLive`: the deck's name, a revision, the slide's number and the
+  count, the step and the steps, what the next press shows with the next
+  slide's title, the notes of the slide shown, the time talked with
+  paused and target, blank, ended) whenever any of it but the running time
+  changes. It does so with `work.slides.show.run`, a call the host holds
+  until a press comes for it (or 20 s pass, or a newer call takes its
+  place), so presses reach a window on any host and through any socket
+  without a push to one socket (`show/remote.ts` `usePublish`, in
+  `Show.tsx`). The host keeps the state in memory only (`clicker.ts`, no
+  table) and pushes `work.slides.show {itemId, showId, live}` to every
+  socket that could name the deck's file. It forgets a show when its
+  window says it ended (`live: null`, sent as the show's root unmounts),
+  when that window's socket goes while its call waits, after 45 s with no
+  call, and when Work is turned off. The time is counted on from when the
+  host heard it, so no device's clock is trusted.
+- **A press** (`work.slides.show.press {showId, act, at?, rev}`, `act` one
+  of next, prev, blank, goto with `at`, end, pause, resume) is handed to
+  the window, which runs it through the same reducer as a key (`actOf`;
+  pause and resume through the timer) and answers with its next call.
+  Dropped, never applied to a slide he did not see: a press whose `rev` is
+  not the state's (checked by the host, and again by the window, which may
+  have moved on by a key in between), one no window takes within 5 s, one
+  for a show that ended. The answer says `applied` or `dropped: 'ended' |
+  'moved'` with the state as it is now.
+- **Who may.** His own window and his keys that could name the deck's
+  file (`fenceItem`); a key whose caps lack `operate` is refused a press
+  ("Only his own devices drive a show."), and the wire's own gate refuses it
+  first. A thread is refused all three ("A thread never drives a show: a
+  show is his, from his own devices."). A guest link's page reaches only
+  the work service's `/g/` routes, never this wire. A call relayed from
+  another host of his (`by.peer`, carried by the relay's default:
+  `SLIDES_RELAY` names none of these) drives as his own device.
+- **On the phone** it is the app's own page (`/ui`): at most 640px wide,
+  while a show of the deck runs elsewhere, the deck's item is the clicker
+  (`show/Clicker.tsx`, drawn over the page: docs/DESIGN.md "The
+  clicker") and goes back to the canvas when the show ends. Nothing hosted,
+  no ticket and no Swift: the phone's native clicker is a later round and
+  calls the same three methods. The push is not in the phone's Swift
+  contract subset (`gen-swift-contract.ts` `SUBSET`); the phone build adds
+  its rows.
+
+Tests: `clicker.test.ts` (a second device drives, a jump, a stale press
+dropped before and after the window took it, a press no window takes, the
+window's socket going and its silence, a thread and a read-only key
+refused, a deck the key could not name, a relayed call, the time counted
+on), `show/Clicker.dom.test.tsx` (the clicker at 390px in jsdom: the
+prototype's parts, each press with its revision, builds, the end, the
+timer; the item a clicker at phone width and the canvas again when the
+show ends; the publishing window runs a fresh press, drops a stale one and
+ends the show when it unmounts). There is no WebKit run for `/ui` in the
+repo: the clicker was not run in WebKit.
 
 Tests: `builds.test.ts` (the timing tree to steps on the build decks'
 outlines, `fixtures/steps-kinds.json` and `steps-talk.json`, and on trees

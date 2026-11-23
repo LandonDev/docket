@@ -51,6 +51,9 @@ public interface ICom {
   // The app's exe from App Paths, or null.
   string AppPath(string exe);
   void Foreground(int hwnd);
+  // A visible top-level window of the named process with this class, the one whose title holds `title` first; 0 when
+  // none (PowerPoint's slideshow window, which its object model does not name by IDispatch).
+  int Window(string processName, string className, string title);
   // Lets go of a COM object now rather than when the collector gets to it.
   void Release(object o);
   // A new instance of the app, hidden (Render, with `start`: the box's Windows VM only).
@@ -162,6 +165,16 @@ public class RealCom : ICom {
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
   [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr hwnd);
+  [DllImport("user32.dll")] static extern bool AttachThreadInput(int attach, int to, bool on);
+  [DllImport("user32.dll")] static extern int GetWindowThreadProcessId(IntPtr hwnd, out int pid);
+  [DllImport("kernel32.dll")] static extern int GetCurrentThreadId();
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, StringBuilder s, int n);
+  delegate bool EnumProc(IntPtr hwnd, IntPtr arg);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc fn, IntPtr arg);
   public void Release(object o) { if (o != null && Marshal.IsComObject(o)) Marshal.FinalReleaseComObject(o); }
   public object Create(string progId) { return Activator.CreateInstance(Type.GetTypeFromProgID(progId, true)); }
   public List<int> Pids(string processName) { var l = new List<int>(); foreach (var p in Process.GetProcessesByName(processName)) l.Add(p.Id); return l; }
@@ -170,10 +183,35 @@ public class RealCom : ICom {
     catch (Exception) { return null; }
   }
   public void Kill(int pid) { try { Process.GetProcessById(pid).Kill(); } catch (Exception) { } }
+  // Windows refuses the foreground to a process with no input of its own, as this helper is; joined to the input
+  // of the window in front for the moment, it is let through (proven in the box's VM, SLD679).
   public void Foreground(int hwnd) {
     var h = new IntPtr(hwnd);
     if (IsIconic(h)) ShowWindow(h, 9);
-    SetForegroundWindow(h);
+    int pid;
+    var front = GetWindowThreadProcessId(GetForegroundWindow(), out pid);
+    var me = GetCurrentThreadId();
+    var joined = front != 0 && front != me && AttachThreadInput(me, front, true);
+    try { BringWindowToTop(h); SetForegroundWindow(h); }
+    finally { if (joined) AttachThreadInput(me, front, false); }
+  }
+  public int Window(string processName, string className, string title) {
+    var pids = new HashSet<int>(Pids(processName));
+    IntPtr first = IntPtr.Zero, named = IntPtr.Zero;
+    EnumWindows((h, x) => {
+      int pid;
+      GetWindowThreadProcessId(h, out pid);
+      if (!pids.Contains(pid) || !IsWindowVisible(h)) return true;
+      var s = new StringBuilder(512);
+      GetClassName(h, s, s.Capacity);
+      if (s.ToString() != className) return true;
+      if (first == IntPtr.Zero) first = h;
+      s.Clear();
+      GetWindowText(h, s, s.Capacity);
+      if (s.ToString().IndexOf(title, StringComparison.OrdinalIgnoreCase) >= 0) { named = h; return false; }
+      return true;
+    }, IntPtr.Zero);
+    return (named != IntPtr.Zero ? named : first).ToInt32();
   }
 }
 
@@ -208,7 +246,8 @@ public class Office {
   readonly ICom com;
   readonly Action<Dictionary<string, object>> emit;
   readonly Render render;
-  public Office(ICom com, Action<Dictionary<string, object>> emit) { this.com = com; this.emit = emit; render = new Render(com); }
+  readonly Present present;
+  public Office(ICom com, Action<Dictionary<string, object>> emit) { this.com = com; this.emit = emit; render = new Render(com); present = new Present(com); }
 
   static readonly string[] APPS = { "excel", "word", "powerpoint", "outlook" };
   static string ProgId(string app) { return app == "excel" ? "Excel.Application" : app == "word" ? "Word.Application" : app == "powerpoint" ? "PowerPoint.Application" : "Outlook.Application"; }
@@ -951,6 +990,7 @@ public class Office {
 
   public object Run(string verb, Dictionary<string, object> a) {
     if (Render.Has(verb)) return render.Run(verb, a);
+    if (Present.Has(verb)) return present.Run(verb, a);
     switch (verb) {
       case "apps": return Apps();
       case "watch": return Watch(Convert.ToBoolean(a["on"]));
@@ -978,7 +1018,7 @@ public class Office {
 
   static readonly Dictionary<string, string> APP_OF_VERB = new Dictionary<string, string> {
     { "workbooks", "excel" }, { "readRange", "excel" }, { "writeRange", "excel" }, { "documents", "word" }, { "readDocument", "word" }, { "editDocument", "word" },
-    { "presentations", "powerpoint" }, { "readSlides", "powerpoint" }, { "replaceSlideText", "powerpoint" }
+    { "presentations", "powerpoint" }, { "readSlides", "powerpoint" }, { "replaceSlideText", "powerpoint" }, { "present.run", "powerpoint" }
   };
 
   // Any failure as {code, message, hresult}: COM's own codes in words.
@@ -1375,6 +1415,67 @@ public class Render {
   }
 
   static Dictionary<string, object> Obj(params object[] kv) { return Office.Obj(kv); }
+}
+#endregion
+
+#region Present (SLD9: a deck's own slideshow in PowerPoint)
+// ---- Presenting in PowerPoint (docs/agents/work-office.md "Presenting in PowerPoint"): on his press alone, the
+// deck in PowerPoint (opened where it is not open already; PowerPoint started and shown when it was shut), and
+// PowerPoint's own slideshow of every slide, from the first, in front.
+//   present.run {ref: {path} | {url}} -> {slides}
+public class Present {
+  readonly ICom com;
+  public Present(ICom com) { this.com = com; }
+
+  public static bool Has(string verb) { return verb == "present.run"; }
+
+  const int ppShowAll = 1, msoTrue = -1, msoFalse = 0;
+
+  IEnumerable<object> Each(object collection) {
+    var n = Convert.ToInt32(com.Get(collection, "Count"));
+    for (var i = 1; i <= n; i++) yield return com.Call(collection, "Item", i);
+  }
+
+  public object Run(string verb, Dictionary<string, object> a) {
+    var r = a.ContainsKey("ref") ? a["ref"] as Dictionary<string, object> : null;
+    var path = r != null && r.ContainsKey("path") ? r["path"] as string : null;
+    var url = r != null && r.ContainsKey("url") ? r["url"] as string : null;
+    var key = path ?? url;
+    if (key == null) throw new Refusal("failed", "No deck was named.");
+    if (!com.Registered("PowerPoint.Application")) throw new Refusal("not-installed", "PowerPoint is not installed on this PC.");
+    // The deck as his PowerPoint has it open; else his file opened, in PowerPoint started for him and shown when it
+    // was shut: this is his own press.
+    object pp = null, deck = null;
+    if (com.Running("POWERPNT")) {
+      pp = com.Active("PowerPoint.Application");
+      foreach (var d in Each(com.Get(pp, "Presentations"))) if (string.Equals((string)com.Get(d, "FullName"), key, StringComparison.OrdinalIgnoreCase)) { deck = d; break; }
+    }
+    if (deck == null) {
+      if (path != null && !File.Exists(path)) throw new Refusal("not-found", "There is no such deck on this PC.");
+      if (pp == null) pp = com.Create("PowerPoint.Application");
+      try { com.Set(pp, "Visible", msoTrue); } catch (COMException) { }
+      // Open(FileName, ReadOnly, Untitled, WithWindow): his own file, in a window of its own.
+      deck = com.Call(com.Get(pp, "Presentations"), "Open", key, msoFalse, msoFalse, msoTrue);
+    }
+    var count = Convert.ToInt32(com.Get(com.Get(deck, "Slides"), "Count"));
+    if (count == 0) throw new Refusal("refused", "The deck has no slides to show.");
+    // Each of these writes marks the deck changed, where a show alone does not (PowerPoint 16.0): a deck he had saved
+    // is marked saved again, so presenting it never asks him to save it when he closes it.
+    var saved = Convert.ToInt32(com.Get(deck, "Saved")) == msoTrue;
+    var settings = com.Get(deck, "SlideShowSettings");
+    com.Set(settings, "RangeType", ppShowAll);
+    com.Set(settings, "StartingSlide", 1);
+    com.Set(settings, "EndingSlide", count);
+    if (saved) com.Set(deck, "Saved", msoTrue);
+    com.Call(settings, "Run");
+    // The show's own window, by PowerPoint's process and its class: a SlideShowWindow has no HWND by IDispatch
+    // (DISP_E_MEMBERNOTFOUND). In front, it hears his keys; the show runs either way.
+    var name = Path.GetFileNameWithoutExtension((string)com.Get(deck, "Name"));
+    var hwnd = 0;
+    for (var i = 0; i < 10 && (hwnd = com.Window("POWERPNT", "screenClass", name)) == 0; i++) Thread.Sleep(200);
+    if (hwnd != 0) com.Foreground(hwnd);
+    return Office.Obj("slides", count);
+  }
 }
 #endregion
 

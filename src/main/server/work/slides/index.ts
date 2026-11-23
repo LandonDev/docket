@@ -24,6 +24,7 @@ import { mediaPath, prepareShow, showOf, stepPath, stopShows } from './show'
 import { STEPS_CONVERTERS } from './steps'
 import { deckOut, deckReach, outPath } from './out'
 import { VIDEO_CONVERTERS } from './video'
+import { clickerHandle, stopClicker } from './clicker'
 
 /**
  * The slides pillar's server module (docs/agents/work-slides.md): a deck
@@ -113,6 +114,7 @@ export const slides: WorkModule = {
     return () => {
       offPreview()
       stopShows()
+      stopClicker(ctx)
       setSlideRenderer(null)
       setSlideEngine(null)
       forgetHands()
@@ -120,6 +122,8 @@ export const slides: WorkModule = {
     }
   },
   async handle(req, ctx, by, signal) {
+    // The clicker's methods name a show, or no deck at all: they fence the show's deck themselves (clicker.ts).
+    if (req.method.startsWith('work.slides.show.')) return (await clickerHandle(req, ctx, by, signal)) ?? NOT_HANDLED
     // A method the module does not answer (work.slides.list) is not built: it names no item to fence.
     if (!SLIDES_METHODS.has(req.method)) return NOT_HANDLED
     // Every method names an item. A remote key gets nothing of a deck, and changes nothing in it, unless its

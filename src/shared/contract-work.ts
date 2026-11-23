@@ -20,7 +20,7 @@ import { OFFICE_CAPS, OFFICE_RELAY, OfficeRequestSchemas, type OfficePush } from
 import { GOOGLE_CAPS, GOOGLE_RELAY, GoogleRequestSchemas, type GooglePush } from './contract-work-google'
 import { GUESTS_CAPS, GUESTS_RELAY, GuestsRequestSchemas, type GuestsPush } from './contract-work-guests'
 import { PDF_CAPS, PDF_RELAY, PdfRequestSchemas, type PdfPush } from './contract-work-pdf'
-import { SLIDES_CAPS, SLIDES_RELAY, SlidesRequestSchemas, type SlidesPush, type SlidesReadyPush } from './contract-work-slides'
+import { SLIDES_CAPS, SLIDES_RELAY, SlidesRequestSchemas, type SlidesPush, type SlidesReadyPush, type SlidesShowPush } from './contract-work-slides'
 import { MEDIA_CAPS, MEDIA_RELAY, MediaRequestSchemas, type MediaPush } from './contract-work-media'
 import { FRAMEIO_CAPS, FRAMEIO_RELAY, FrameioRequestSchemas, type FrameioPush } from './contract-work-frameio'
 import { MEETINGS_CAPS, MEETINGS_RELAY, MeetingsRequestSchemas, type MeetingsPush } from './contract-work-meetings'
@@ -157,6 +157,7 @@ export type WorkPush =
   | PdfPush
   | SlidesPush
   | SlidesReadyPush
+  | SlidesShowPush
   | MediaPush
   | FrameioPush
   | MeetingsPush

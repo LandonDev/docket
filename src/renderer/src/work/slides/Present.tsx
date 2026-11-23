@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ChevronDown, Play } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -32,6 +32,16 @@ export function presentKey(event: Parameters<typeof bareKey>[0] & { key: string 
 
 const DISPLAY_KEY = "tc.show.display";
 
+/** "In PowerPoint": where the deck's computer can present it (powerpoint.tsx), how many effects play only there, and the press. */
+export interface InPowerPointAsk {
+  changed: number;
+  present(): void;
+}
+/** Given by the deck around its bar and its row: the menu ends with "In PowerPoint" where this holds one. */
+export const InPowerPointRow = createContext<InPowerPointAsk | null>(null);
+/** The row's second line: how many of the deck's effects our show plays otherwise or leaves out. */
+export const effectsWords = (n: number): string => (n === 1 ? "1 effect plays only in PowerPoint" : `${n} effects play only in PowerPoint`);
+
 /**
  * The ways to present, as menu rows, and what a pick of one asks: shared by the button in the bar and the format
  * row's way out. Which display takes the slideshow is asked only where there is a choice; the one he picked is kept
@@ -42,6 +52,7 @@ export function usePresentMenu(onPresent: (ask: PresentAsk) => void, native: Sho
   const [picked, setPicked] = useState<number | null>(null);
   // The deck's Preview, where its Body or bar gives one (preview/ask.ts): the deck as a PDF, handouts, pictures or a video.
   const preview = useContext(PreviewOpener);
+  const inPowerPoint = useContext(InPowerPointRow);
   const readDisplays = useCallback(() => {
     void native?.displays().then(setDisplays, () => setDisplays([]));
   }, [native]);
@@ -66,6 +77,9 @@ export function usePresentMenu(onPresent: (ask: PresentAsk) => void, native: Sho
     ...(displays.length > 1
       ? ([{ kind: "sep" }, { kind: "label", label: "Slideshow on" }, ...displays.map((d) => ({ kind: "item" as const, id: `display:${d.id}`, label: d.label, checked: d.id === display, keepOpen: true }))] satisfies MenuRow[])
       : []),
+    ...(inPowerPoint
+      ? ([{ kind: "sep" }, { kind: "item", id: "powerpoint", label: "In PowerPoint", ...(inPowerPoint.changed > 0 ? { description: effectsWords(inPowerPoint.changed) } : {}) }] satisfies MenuRow[])
+      : []),
   ];
   const onPick = (id: string): void => {
     if (id === "start") ask("start", "full");
@@ -73,6 +87,7 @@ export function usePresentMenu(onPresent: (ask: PresentAsk) => void, native: Sho
     else if (id === "presenter") ask("here", "presenter");
     else if (id === "windowed") ask("here", "windowed");
     else if (id === "preview") preview?.();
+    else if (id === "powerpoint") inPowerPoint?.present();
     else if (id.startsWith("display:")) {
       const next = Number(id.slice(8));
       setPicked(next);

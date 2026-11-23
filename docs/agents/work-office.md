@@ -179,8 +179,10 @@ not his, and answers "not open".
   TempCode is not answers the same, in other words). A proxy left by an app
   that quit is dropped and the next call attaches afresh. The one exception
   is `open`, the switch: an open file's window is activated and brought
-  forward (Windows may refuse a background process the foreground: the
-  window is then active in its app, not in front); a file not open starts
+  forward (Windows refuses a background process the foreground, so the
+  helper joins the input of the window in front for that moment,
+  `RealCom.Foreground`; proven for the slideshow in the box's VM, SLD679,
+  not yet for `open`); a file not open starts
   the app from App Paths with it, and a URL goes to `ms-<app>:ofe|u|<url>`.
 - **Busy.** An OLE message filter retries an app's "retry later" for ten
   seconds; past that COM's RPC_E_CALL_REJECTED (0x80010001) or
@@ -442,6 +444,45 @@ The runner's own refusals before a run (DOC1.1) keep its words: "the machine tha
 asleep, and only his own press wakes it", "… is not open on <host>". A job for a shared library's file runs
 only where the file is, and a result over 64 MiB that would cross hosts fails in words, both by the runner's
 rules.
+
+## Presenting in PowerPoint
+
+Milestone SLD9 of the editors plan (the landing note is `.temp-code/plans/landed/SLD9-switch-clicker.md`). The deck
+canvas's Present menu ends with "In PowerPoint" ([work-slides.md](work-slides.md) "The show"): his press opens the
+deck in desktop PowerPoint on the computer its file is on and runs PowerPoint's own slideshow of every slide from the
+first, so every effect plays as authored.
+
+- **The method**: `work.office.present {source, check?}` (operate, `present.ts`). `source` is the deck's own: a plain
+  file (`{at: 'file'}`, a `.pptx`, `.pptm`, `.ppt`, `.ppsx`, `.pps`, `.potx` or `.odp`) or a Microsoft file of
+  PowerPoint's (`{at: 'microsoft', app: 'powerpoint'}`, by path or address); its host must be this one ("That deck
+  presents on the computer it is on."), and a path is fenced as the switch's is (`ctx.reaches`). With `check` it
+  opens nothing and answers `{can}`: the place is proven, its carrier has the verb, and PowerPoint is installed
+  there (the VM: Office as last read, never woken to ask). Without it, his press: `{presented: true}`, or "PowerPoint
+  is not in reach on the computer this deck is on." A thread is refused: "A thread never presents."
+- **The verb**: `OfficeCarrier.present(ref)`. **His Mac** (`mac.ts`): the switch's own `open -a "Microsoft
+  PowerPoint"` (which starts PowerPoint if it was shut: this is his press), then the JXA script `presentPowerPoint`,
+  which waits up to 15 s for the deck to be open, sets its `slide show settings` (`range type` all, from slide 1 to
+  the last) and runs `run slide show`, then brings PowerPoint forward. **Windows** (`com/carrier.ts`): the helper's
+  `present.run {ref}` → `{slides}` (`TcOffice.cs` `#region Present`): the deck his PowerPoint has open by its full
+  name, else his file opened in a window of its own (`Presentations.Open(path, ReadOnly false, Untitled false,
+  WithWindow true)`, PowerPoint started and shown when it was shut); `SlideShowSettings` `RangeType` ppShowAll,
+  `StartingSlide` 1, `EndingSlide` the count, `Run()`, its window brought forward. Those three writes mark the deck
+  changed where a show alone does not, so a deck he had saved is marked saved again before `Run()`: presenting never
+  asks him to save. A `SlideShowWindow` has no `HWND` by IDispatch (`DISP_E_MEMBERNOTFOUND`): the show's window is
+  PowerPoint's visible `screenClass` window whose title holds the deck's name (`ICom.Window`), and it hears his keys
+  only once in front. No slides: "The deck has no slides
+  to show."; no file: "There is no such deck on this PC."; no PowerPoint: "PowerPoint is not installed on this PC."
+  **The box's Windows VM**: the same helper, for a deck in its OneDrive (a guest path), woken by his press first.
+  The add-in carries no slideshow: the host takes the desktop carrier itself, as a render does.
+- **Who offers it**: `PRESENT_PROVEN` in `present.ts`, one set of places (`mac`, `windows`, `vm`), **empty**: a place
+  offers it once its own live proof passes and the show would run where he is ("Not proven" below says where each
+  stands). Turning a place on is that one line.
+- **Recorded**: `RecordedCom.cs` `#region Present (SLD9)`: a deck's `SlideShowSettings` as set and each `Run` with
+  the deck's saved mark then, read back as `shows` by `_state`, and the window found and brought forward in `started`
+  (`com/rig.test.ts`, opt-in). Tests: `present.test.ts` (offered nowhere until proven;
+  a plain file and a web address; a thread, not a deck, another host and the fence refused; the VM woken only by the
+  press; the module's `check`; the helper's region), `mac.test.ts` (the open then the script; the script over a
+  stand-in PowerPoint), `com/carrier.test.ts` (`present.run` and its refusals).
 
 ## The add-in
 
@@ -755,6 +796,19 @@ hands a program one synchronous handle for stdin and stdout, and a read
 waiting on it holds every write back. Node gives the helper two pipes.
 
 ## Not proven
+
+**Presenting in PowerPoint**: run live in two places on 2026-11-23, and still offered in none (`PRESENT_PROVEN`
+empty). **The box's Windows VM** (`.temp-code/plans/landed/SLD679-powerpoint-proof.md`, part D): eight steps pass
+after two fixes found there (the show is brought forward by joining the input of the window in front, since
+`SlideShowWindow.HWND` does not exist through IDispatch; a saved deck is marked saved again after the settings'
+writes); not offered there because the show runs on the VM's screen, which he is not at. **His Mac**
+(`.temp-code/plans/landed/SLD9-mac/sld9-mac/results.md`, PowerPoint 16.115.1): `present` starts PowerPoint, shows
+slide 1 full screen in front, a key moves it on, a second press reuses the open deck, a missing file is said
+plainly, and with the fix found there (the range type's name is 'slide show range show all'; the saved mark is put
+back) the deck stays saved. Not offered yet: in four of five runs PowerPoint quit by itself 13 to 67 s into the show
+with nobody at the Mac (a clean `terminate:`, no crash, no sender seen), while other jobs ran on that Mac. It needs
+one more run on a quiet Mac (present from shut, watch the process three minutes) before `mac` joins the set. A
+Windows PC: unrun.
 
 **Office as a renderer**: on his Mac, none of the five pairs (the JXA names `saveAs`, `saveWorkbookAs`, `save
 … as 'save as PNG'` and `'save as MP4'` follow the dictionaries, unrun; and whether a file in the app's own

@@ -556,6 +556,73 @@ export const DeckOutSchema = z.object({
 })
 export type DeckOutAsk = z.infer<typeof DeckOutSchema>
 
+/**
+ * A running show as the clicker sees it (docs/agents/work-slides.md "The clicker"): what the window that runs it
+ * told its host last. The host keeps it in memory only, and forgets it when the show ends or that window's socket goes.
+ */
+export interface ShowLive {
+  showId: string
+  itemId: string
+  /** the deck's name */
+  title: string
+  /** moves on with every change below but the time; a press carries the one it was made on */
+  rev: number
+  /** the slide shown: its number in the deck, and the deck's count (hidden slides counted) */
+  slide: number
+  count: number
+  /** builds of the slide shown so far, of how many */
+  step: number
+  steps: number
+  /** what the next press shows */
+  next: { kind: 'build'; step: number; of: number } | { kind: 'slide'; number: number; title: string } | { kind: 'end' } | { kind: 'close' }
+  /** the notes of the slide shown */
+  notes: string
+  /** the time he has talked, as of the moment this was sent (`elapsed`, ms); `target` in minutes, null for none */
+  timer: { elapsed: number; paused: boolean; target: number | null }
+  blank: boolean
+  ended: boolean
+}
+
+/** What a clicker may ask of a running show: the reducer's own acts (show/state.ts), and the timer's. */
+export const SHOW_PRESS_ACTS = ['next', 'prev', 'blank', 'goto', 'end', 'pause', 'resume'] as const
+export type ShowPressAct = (typeof SHOW_PRESS_ACTS)[number]
+/** A press handed to the window that runs the show, numbered by the host. */
+export interface ShowPress {
+  seq: number
+  act: ShowPressAct
+  /** a slide's number, for `goto` */
+  at?: number
+  /** the state's revision the press was made on */
+  rev: number
+}
+/** A press's answer: `applied`, or `dropped` (the show ended, or moved on from the state the press was made on), with the state as it is now. */
+export type ShowPressAnswer = { applied: true; live: ShowLive | null } | { dropped: 'ended' | 'moved'; live: ShowLive | null }
+
+// What a show plays of a deck's effects lives in a module with no zod, so the deck's own chunk may take it (work/pdf/firstPaint.test.ts).
+export { effectsChanged, SHOW_PLAYED_TRANSITIONS } from './work/deckShow'
+
+const words = (max: number) => z.string().max(max)
+const count = z.number().int().min(0).max(100_000)
+export const ShowLiveSchema = z.object({
+  title: words(500),
+  rev: z.number().int().min(0),
+  slide: count,
+  count,
+  step: count,
+  steps: count,
+  next: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('build'), step: count, of: count }),
+    z.object({ kind: z.literal('slide'), number: count, title: words(2000) }),
+    z.object({ kind: z.literal('end') }),
+    z.object({ kind: z.literal('close') })
+  ]),
+  notes: words(200_000),
+  timer: z.object({ elapsed: z.number().min(0).max(1e10), paused: z.boolean(), target: z.number().int().min(1).max(1000).nullable() }),
+  blank: z.boolean(),
+  ended: z.boolean()
+})
+const showId = z.string().regex(/^[A-Za-z0-9_-]{8,64}$/)
+
 const itemId = z.string().min(1).max(100)
 /**
  * His own edits as a request carries them: checked by `SlideOpSchema` as they come in, and typed here by the
@@ -613,13 +680,25 @@ export const SlidesRequestSchemas = [
   /** → { data: base64, size, rev }: bytes of a file `work.slides.preview` made, by its rev */
   request('work.slides.previewRead', z.object({ itemId, rev: z.string().regex(/^[0-9a-f]{32}$/), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → DeckReach: whether PowerPoint can draw this deck from here */
-  request('work.slides.reach', z.object({ itemId }))
+  request('work.slides.reach', z.object({ itemId })),
+  /**
+   * The window that runs a show: its state as it is now (null: the show ended), and the answer to the last press it
+   * was handed. → { press: ShowPress | null }: held until a press for this show comes, a newer call of the same show
+   * takes its place, or 20 s pass. The show is forgotten when it ends, or when this call's socket goes while it waits.
+   */
+  request('work.slides.show.run', z.object({ itemId, showId, live: ShowLiveSchema.nullable(), answered: z.object({ seq: z.number().int().min(1), applied: z.boolean() }).optional() })),
+  /** → { shows: ShowLive[] }: the running shows the caller may see, of one deck or of all */
+  request('work.slides.show.state', z.object({ itemId: itemId.optional() })),
+  /** → ShowPressAnswer: a press from a clicker, handed to the window that runs the show, which runs it as a key */
+  request('work.slides.show.press', z.object({ showId, act: z.enum(SHOW_PRESS_ACTS), at: z.number().int().min(1).max(100_000).optional(), rev: z.number().int().min(0) }))
 ] as const
 
 /** A deck's view changed: an agent revised it, or a change was accepted or rejected. */
 export type SlidesPush = { push: 'work.slides'; sessionId: string; view: DeckView }
 /** More of a deck's show is ready (a step's picture, a video made playable): a show of file revision `rev` reads it again. */
 export type SlidesReadyPush = { push: 'work.slides.ready'; sessionId: string; itemId: string; rev: string }
+/** A running show changed, began or ended (`live` null): every device of his that could name the deck's file hears it. */
+export type SlidesShowPush = { push: 'work.slides.show'; itemId: string; showId: string; live: ShowLive | null }
 
 export const SLIDES_CAPS = {
   'work.slides.open': 'read',
@@ -639,6 +718,9 @@ export const SLIDES_CAPS = {
   'work.slides.attach': 'operate',
   'work.slides.preview': 'operate',
   'work.slides.previewRead': 'read',
-  'work.slides.reach': 'read'
+  'work.slides.reach': 'read',
+  'work.slides.show.run': 'operate',
+  'work.slides.show.state': 'read',
+  'work.slides.show.press': 'operate'
 } satisfies CapsOf<typeof SlidesRequestSchemas>
 export const SLIDES_RELAY = {} satisfies RelayOf<typeof SlidesRequestSchemas>

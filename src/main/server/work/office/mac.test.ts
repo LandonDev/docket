@@ -1,6 +1,6 @@
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import { ACCESS_PROMPT_SCRIPT, macCarrier, NEW_OUTLOOK, SCRIPTS, textAsHtml, waitingWords, type ScriptName } from './mac'
+import { ACCESS_PROMPT_SCRIPT, macCarrier, NEW_OUTLOOK, SCRIPTS, textAsHtml, waitingWords, type ScriptName, openFailure } from './mac'
 import { OSA_TIMEOUT_MS, osaError, OsaTimeout, type Osa } from './osa'
 
 /**
@@ -280,6 +280,34 @@ describe('PowerPoint decks', () => {
   })
 })
 
+describe('the slideshow script', () => {
+  it('runs the deck\'s own slideshow over every slide from the first, and brings PowerPoint forward', () => {
+    const settings: Record<string, unknown> = {}
+    const ran: unknown[] = []
+    const d: Record<string, unknown> = { fullName: () => '/Users/owner/Talk.pptx', name: () => 'Talk.pptx', slides: { length: 12 }, slideShowSettings: settings, saved: () => true }
+    let active = false
+    const pp = { running: () => true, presentations: elements([d]), runSlideShow: (s: unknown) => void ran.push(s), activate: () => void (active = true) }
+    expect(runScript('presentPowerPoint', { key: '/Users/owner/Talk.pptx' }, { 'Microsoft PowerPoint': pp })).toEqual({ slides: 12 })
+    expect(settings).toEqual({ rangeType: 'slide show range show all', startingSlide: 1, endingSlide: 12 })
+    expect(ran).toEqual([settings])
+    expect(active).toBe(true)
+    // the settings' writes mark the deck changed: a saved deck is marked saved again
+    expect(d.saved).toBe(true)
+  })
+
+  it('leaves a deck with unsaved changes marked changed', () => {
+    const d: Record<string, unknown> = { fullName: () => '/Users/owner/Talk.pptx', name: () => 'Talk.pptx', slides: { length: 3 }, slideShowSettings: {}, saved: () => false }
+    const pp = { running: () => true, presentations: elements([d]), runSlideShow: () => undefined, activate: () => undefined }
+    runScript('presentPowerPoint', { key: '/Users/owner/Talk.pptx' }, { 'Microsoft PowerPoint': pp })
+    expect(typeof d.saved).toBe('function')
+  })
+
+  it('says so when the deck never opened', () => {
+    const pp = { running: () => true, presentations: elements([]), runSlideShow: () => undefined }
+    expect(() => runScript('presentPowerPoint', { key: '/Users/owner/Talk.pptx' }, { 'Microsoft PowerPoint': pp })).toThrow('Nothing open named /Users/owner/Talk.pptx. (-1728)')
+  })
+})
+
 describe("Word's HFS names", () => {
   const doc = (full: string) => ({ fullName: () => full, name: () => full.split(/[:/]/).pop(), textObject: { content: () => 'One\rTwo' } })
   const word = (...docs: ReturnType<typeof doc>[]) => ({ 'Microsoft Word': { running: () => true, documents: elements(docs) } })
@@ -374,6 +402,26 @@ describe('the Mac carrier', () => {
     await c.open('excel', { kind: 'url', url: 'https://contoso.sharepoint.com/B.xlsx' })
     expect(seen).toEqual([])
     expect(opened).toEqual([['-a', 'Microsoft Excel', '/tmp/B.xlsx'], ['ms-excel:ofe|u|https://contoso.sharepoint.com/B.xlsx']])
+  })
+
+  it('says a file that is not there plainly, and any other failure of open in its own words', () => {
+    // what /usr/bin/open said for a missing deck on his Mac (the live proof, 2026-11-23)
+    const gone = openFailure('Command failed: /usr/bin/open -a Microsoft PowerPoint /Users/owner/No such deck.pptx\nThe file /Users/owner/No such deck.pptx does not exist.\n')
+    expect([gone.message, gone.code]).toEqual(['There is no such file on this Mac.', 'not-found'])
+    const other = openFailure('Command failed: /usr/bin/open -a Microsoft PowerPoint /x\nLSOpenURLsWithRole() failed with error -10810.\n')
+    expect(other.code).toBe('failed')
+    expect(other.message).toBe('The file did not open: Command failed: /usr/bin/open -a Microsoft PowerPoint /x\nLSOpenURLsWithRole() failed with error -10810.')
+  })
+
+  it("presents a deck: PowerPoint opens it with the switch's own open, then runs its slideshow by script", async () => {
+    const seen: string[][] = []
+    const opened: string[][] = []
+    const c = macCarrier({ osa: recorded({ presentPowerPoint: JSON.stringify({ slides: 12 }) }, seen), installed: (app) => app === 'powerpoint', open: async (a) => void opened.push(a) })
+    await c.present!({ kind: 'path', path: '/Users/owner/Talk.pptx' })
+    expect(opened).toEqual([['-a', 'Microsoft PowerPoint', '/Users/owner/Talk.pptx']])
+    expect(seen).toEqual([['presentPowerPoint', JSON.stringify({ key: '/Users/owner/Talk.pptx' })]])
+    const none = macCarrier({ osa: recorded({}, seen), installed: () => false, open: async (a) => void opened.push(a) })
+    await expect(none.present!({ kind: 'path', path: '/Users/owner/Talk.pptx' })).rejects.toMatchObject({ code: 'not-installed' })
   })
 
   it('says New Outlook cannot carry mail, from its own setting, without running a script', async () => {
