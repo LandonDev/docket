@@ -47,7 +47,8 @@ async function settled(page: Page, scene: string): Promise<void> {
 
 async function shots(browser: Chromium, url: string, dir: string, only: string[] | null): Promise<void> {
   mkdirSync(dir, { recursive: true })
-  for (const scene of MESSAGES_SCENES) {
+  // The Outbox's own view of a held reply is a scene of its own, beside the view's.
+  for (const scene of [...MESSAGES_SCENES, 'outbox-reply']) {
     if (scene.startsWith('heavy') || (only && !only.includes(scene))) continue
     for (const width of [1280, 640]) {
       for (const theme of ['dark', 'light']) {
