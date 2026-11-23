@@ -958,7 +958,8 @@ surface (lib/threadMenu.ts). Menus and popovers load with their first use,
 out of the first paint (chrome/menuRows.tsx). A label on hover is `Tip` or
 `TruncateTip`, never a `title=`. `TruncateTip` mounts no tooltip trigger
 while its text fits; it checks the element and any truncating text inside
-it on mount, text changes and resize. Activity labels, fleet goals, home
+it on mount, text changes and resize. Its text breaks a word too long for
+the tip, such as a link. Activity labels, fleet goals, home
 titles and split-view titles all use it. An Agents row's title and status
 line are measured the same way (`useTruncated`) but feed the row's one
 tooltip on its open control, which says what a line cuts with the model and
