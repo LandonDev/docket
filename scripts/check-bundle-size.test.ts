@@ -64,6 +64,8 @@ describe('checkBundle', () => {
 
     it('pass a chunk that is pdf.js alone', () => {
       expect(checkBundle(withChunks({ 'pdf-a.js': [PDFJS] }), 4096, [{ file: 'pdf-a.js', tags: badJsxTags(PDFJS_SOURCE) }]).ok).toBe(true)
+      // the legacy build, which the app loads
+      expect(checkBundle(withChunks({ 'pdf-l.js': ['/repo/node_modules/pdfjs-dist/legacy/build/pdf.mjs'] }), 4096, [{ file: 'pdf-l.js', tags: badJsxTags(PDFJS_SOURCE) }]).ok).toBe(true)
     })
 
     it('still read our PDF canvas chunk, and a chunk where our code sits beside pdf.js', () => {

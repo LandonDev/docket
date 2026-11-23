@@ -66,9 +66,15 @@ let loading: Promise<Loaded> | null = null;
  * pdf.js and one worker for the window, handed to every document: a
  * document closing never takes the worker down under one that is opening,
  * as the shared `workerPort` would.
+ *
+ * Both are pdf.js's legacy build, which carries its own polyfills. The
+ * modern build calls `Map.prototype.getOrInsertComputed`, which the app's
+ * Chromium (142, in Electron 39) does not have: with it no page was ever
+ * drawn in the desktop app, in the window or in the worker
+ * (engineBuild.test.ts holds this to what the app's Chromium runs).
  */
 function loadPdfjs(): Promise<Loaded> {
-  loading ??= Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?worker"), import("./pdfjsData")]).then(([pdfjs, Worker, shipped]) => ({
+  loading ??= Promise.all([import("pdfjs-dist/legacy/build/pdf.mjs"), import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?worker"), import("./pdfjsData")]).then(([pdfjs, Worker, shipped]) => ({
     pdfjs,
     // pdf.js's CMaps, two standard fonts and image decoders, by name from the build's assets.
     data: shipped.ShippedData,

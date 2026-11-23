@@ -303,6 +303,16 @@ How it works:
   `engine.ts`); nothing of it is in the first paint. A zoom repaints a
   page once the column settles, and the old picture stays until the new
   one is whole.
+- **The legacy build, in the window and in the worker.** `engine.ts` loads
+  `pdfjs-dist/legacy/build/pdf.mjs` and its worker. pdf.js 6.5's modern
+  build calls `Map.prototype.getOrInsertComputed`, which the desktop app's
+  Chromium (142, in Electron 39) does not have, and brings no polyfill:
+  with it every page failed in the app ("this._requestsByChunk
+  .getOrInsertComputed is not a function") while the headless-Chrome
+  proof, whose Chromium is newer, passed. The legacy build carries its own
+  polyfills. `engineBuild.test.ts` holds the choice; the slides build found
+  it on the first live run of a deck in a real window (SLD1) and made the
+  change, since both canvases draw through this file.
 - **Bytes by range.** The engine opens the file with pdf.js's
   `PDFDataRangeTransport` fed by `work.pdf.read`, so a long file over the
   tunnel shows its first page before the rest has come (a 34 MB, 300-page

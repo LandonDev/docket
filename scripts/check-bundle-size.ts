@@ -166,9 +166,10 @@ export function badJsxTags(source: string): string[] {
  * `createElement`: pdf.js's SVG factory makes its annotation icons with
  * `svgFactory.createElement("svg:line")`, which is no JSX and renders no DOM
  * tag. A chunk is passed over only when such a build is the whole of it, so
- * any code of ours bundled beside it is still read (milestone 33).
+ * any code of ours bundled beside it is still read (milestone 33). The app
+ * loads the legacy build (work/pdf/engine.ts says why); both are named.
  */
-const VENDOR_STRING_TAGS = ['node_modules/pdfjs-dist/build/pdf.mjs']
+const VENDOR_STRING_TAGS = ['node_modules/pdfjs-dist/build/pdf.mjs', 'node_modules/pdfjs-dist/legacy/build/pdf.mjs']
 
 function vendorOnly(map: BundleMap, file: string): boolean {
   const row = map.chunks[`assets/${file}`]
