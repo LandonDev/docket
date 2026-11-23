@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SheetMutationJson } from "@shared/contract-work-sheets";
 import { RULE_MUTATIONS, RULE_NOISE, RULES_SET } from "@shared/work/sheets";
-import { forPackage, latestRules, ruleKinds } from "./sync";
+import { forPackage, latestRules, ofUnit, ruleKinds } from "./sync";
 
 /**
  * A rule changed in an opened Excel file's grid (a conditional format, a validation, a name, the
@@ -90,5 +90,15 @@ describe("a move in an opened Excel file", () => {
 
   it("a block cut on one sheet and pasted on another is kept too: what a move may not cross, the host finds in the file", () => {
     expect(kept(block("s2"), { formats: true, moves: true })).toEqual({ keep: [block("s2")] });
+  });
+});
+
+describe("which mutations are the workbook's", () => {
+  it("one that names the grid's workbook, or no unit, is; the cell editor's own document is not", () => {
+    expect(ofUnit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "s1" } }, "book")).toBe(true);
+    expect(ofUnit({ id: "sheet.mutation.set-worksheet-name", params: {} }, "book")).toBe(true);
+    expect(ofUnit({ id: "doc.mutation.rich-text-editing", params: { unitId: "__INTERNAL_EDITOR__DOCS_NORMAL", actions: [] } }, "book")).toBe(false);
+    // a grid that cannot say its workbook's id keeps every mutation, as before
+    expect(ofUnit({ id: "doc.mutation.rich-text-editing", params: { unitId: "__INTERNAL_EDITOR__DOCS_NORMAL" } }, "")).toBe(true);
   });
 });

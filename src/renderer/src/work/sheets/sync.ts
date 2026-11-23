@@ -78,6 +78,12 @@ export const stoppedWords = sheetStopWords;
 const inUnit = (mutation: SheetMutationJson, unitId: string): SheetMutationJson =>
   mutation.params && typeof mutation.params === "object" && "unitId" in mutation.params ? { ...mutation, params: { ...(mutation.params as object), unitId } } : mutation;
 
+/** Whether a mutation changes this grid's workbook: one that names another unit (the cell editor's document) does not; one that names none is the workbook's. */
+export const ofUnit = (mutation: SheetMutationJson, unitId: string): boolean => {
+  const named = mutation.params && typeof mutation.params === "object" ? (mutation.params as { unitId?: unknown }).unitId : undefined;
+  return typeof named !== "string" || !unitId || named === unitId;
+};
+
 const message = (error: unknown, fallback: string): string => (error instanceof Error && error.message ? error.message : fallback);
 
 interface Laid {
@@ -249,8 +255,10 @@ export class SheetSync {
       gather();
     });
     const offMutation = grid.onMutation((mutation) => {
-      // What the grid does to take a stopped change back is not his edit.
-      if (BOOKKEEPING.has(mutation.id) || this.reverting) return;
+      // What the grid does to take a stopped change back is not his edit, and neither is a change to another unit: the
+      // cell editor's own document takes each key he types (`doc.mutation.rich-text-editing`), and what he commits
+      // comes as the workbook's own mutation.
+      if (BOOKKEEPING.has(mutation.id) || this.reverting || !ofUnit(mutation, grid.unitId)) return;
       const view = this.state.view;
       if (view?.store === "package") {
         const got = forPackage(mutation, (sheet, row, col) => grid.formula(sheet, row, col), {

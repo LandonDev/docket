@@ -466,6 +466,20 @@ describe("the sheet kind", () => {
     expect(edits()[0].mutations).toEqual([set(3, 1, 4)]);
   });
 
+  it("a value typed into a cell of an Excel file is sent, however the cell editor's own document changed under each key", async () => {
+    // The Mac run of 2026-11-23 (Roster.xlsx in a Files tab): each key he typed changed Univer's cell editor, a document of
+    // its own, and the grid reported it; it was stopped as a change the file cannot keep, so Return left the old value.
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    const key = (text: string): SheetMutationJson => ({ id: "doc.mutation.rich-text-editing", params: { unitId: "__INTERNAL_EDITOR__DOCS_NORMAL", actions: [], textRanges: [], text } });
+    for (const text of ["H", "a", "n", "d"]) act(() => grid.edit(key(text)));
+    act(() => grid.edit(set(1, 0, "Hand")));
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[0]).toEqual({ baseRev: 3, mutations: [set(1, 0, "Hand")] });
+    expect(grid.undone).toBe(0);
+    expect(toasts.said).toEqual([]);
+  });
+
   it("a workbook Excel or Google holds keeps cell contents: a pasted style is left out, a width is stopped, in that store's words", async () => {
     open(sheetView({ store: "package", rev: 3, reach: { parts: ["formatting"], to: "google" } }));
     await gridUp();
