@@ -118,7 +118,9 @@ describe("an invoice", () => {
     await settle();
     expect(host.asked.map((a) => a.method)).toEqual(["work.money.invoice", "work.formats.print", "work.money.keep"]);
     const invoice = { kind: "invoice", number: "1042", to: "Harlan Valley Officials", date: today(), due: addDays(today(), 30), lines: [{ what: "Varsity games", quantity: 2, rate: 7500 }], from: FROM };
-    expect(host.asked[0].params).toEqual({ workspaceId: "ws", invoice });
+    // The page and the kept file name one Create by one key.
+    expect(host.asked[0].params).toEqual({ workspaceId: "ws", key: expect.any(String), invoice });
+    expect(host.asked[2].params.key).toBe(host.asked[0].params.key);
     expect(host.asked[1].params).toEqual({ name: "Invoice 1042 Harlan Valley", html: "<h1>Invoice 1042</h1>", paper: "Letter" });
     expect(host.asked[2].params).toMatchObject({ workspaceId: "ws", what: "invoice", invoice, part: 0, parts: 1 });
     expect(onCreated).toHaveBeenCalledWith(kept, invoice);

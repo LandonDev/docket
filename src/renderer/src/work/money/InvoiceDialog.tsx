@@ -67,11 +67,15 @@ export function invoiceOf(kind: InvoiceKind, form: InvoiceForm): Invoice | null 
   };
 }
 
+/** The host's refusal of a number already used: "Invoice 1001 is taken. The next free number is 1002." */
+const TAKEN = /\bis taken\b/i;
+
 export const invoiceTitle = (kind: InvoiceKind, number: string): string => (kind === "invoice" ? `Invoice ${number}` : `Purchase request ${number}`);
 
 /** Create: the host checks the invoice and answers its page, the page is printed, and the PDF is kept with its row. */
 export async function createInvoice(env: string, workspaceId: string, invoice: Invoice, key: string): Promise<MoneyKept> {
-  const page = await request<MoneyInvoicePage>(env, "work.money.invoice", { workspaceId, invoice });
+  // The page and the kept file name one Create by one key: the host takes the number for it.
+  const page = await request<MoneyInvoicePage>(env, "work.money.invoice", { workspaceId, key, invoice });
   const printed = await printPage(env, page.name.replace(/\.pdf$/i, ""), page.html);
   return keepPrinted(env, { workspaceId, what: "invoice", invoice }, printed.data, key);
 }
@@ -147,6 +151,12 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
       (err: Error) => {
         setPending(false);
         setError(err.message);
+        // A number another Create holds or a row carries: the next free one goes in Number, the host's sentence stays, and he presses Create again.
+        if (TAKEN.test(err.message))
+          request<MoneyInvoiceNext>(env, "work.money.invoiceNext", { workspaceId, kind }).then(
+            (n) => patch({ number: n.number }),
+            () => {},
+          );
       },
     );
   };

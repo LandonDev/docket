@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
-import { receiptSource, type CalendarOffer, type MoneyRead } from "@shared/contract-work-money";
+import { receiptSource, type CalendarOffer, type MoneyProblem, type MoneyRead } from "@shared/contract-work-money";
 import { loadToast } from "../../components/ui/toaster";
 import { formatDay, formatMoney, invoiceTotal, isReceiptName, milesLine, RECEIPT_EXTS, sigOf, today, type LedgerRow, type OwedRow } from "@shared/work/money";
 import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID } from "@aliax/charts/chart";
@@ -148,7 +148,7 @@ export function View({ env, workspace }: WorkViewProps) {
   const root = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
-  const columns = read?.problems.find((p) => p.kind === "columns") ?? null;
+  const columns = read?.problems.find((p): p is ColumnsProblem => p.kind === "columns") ?? null;
   const { restoring } = useShared(ui);
   const restoreWaits = restoring[workspace.id] === true;
   const setRestoreWaits = (on: boolean) => set({ restoring: { ...ui.get().restoring, [workspace.id]: on } });
@@ -331,6 +331,16 @@ export function View({ env, workspace }: WorkViewProps) {
   );
 }
 
+type ColumnsProblem = Extract<MoneyProblem, { kind: "columns" }>;
+type MileageProblem = Extract<MoneyProblem, { kind: "mileage" }>;
+
+/** The mileage log's fault in its place: "The mileage log has no Miles column, so its trips are not counted." */
+export function mileageWords(p: MileageProblem): string {
+  if (p.reason === "outside") return "The mileage log leads outside this job's folder, so its trips are not counted.";
+  const what = p.missing.length > 1 ? `${p.missing.slice(0, -1).join(", ")} or ${p.missing[p.missing.length - 1]}` : (p.missing[0] ?? "Miles");
+  return `The mileage log has no ${what} column, so its trips are not counted.`;
+}
+
 /** The created toast's second line when the invoice's row waits as a suggestion. */
 export const INVOICE_WAITS = "Its row waits in the ledger for you to accept.";
 
@@ -386,6 +396,7 @@ function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { en
   const [category, setCategory] = useState<string | null>(null);
   // A category of another period does not narrow this one.
   const narrowed = category && read.byCategory.some((c) => c.category.toLowerCase() === category.toLowerCase()) ? category : null;
+  const mileage = read.problems.find((p): p is MileageProblem => p.kind === "mileage") ?? null;
   const rows = narrowed ? read.rows.filter((r) => (r.category || "Other").toLowerCase() === narrowed.toLowerCase()) : read.rows;
   return (
     <Column>
@@ -410,7 +421,19 @@ function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { en
       >
         {rows.length ? <Entries env={env} workspaceId={workspaceId} read={read} rows={rows} /> : <p className="text-[13px] text-muted-foreground">Nothing in {label}</p>}
       </Section>
-      {read.miles.miles > 0 ? (
+      {mileage ? (
+        // The log cannot be read, so its miles are not the truth: one quiet line in the miles line's place, never a zero.
+        <Section title="Mileage">
+          <p data-mileage-problem className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted-foreground">
+            <span>{mileageWords(mileage)}</span>
+            {mileage.reason === "columns" ? (
+              <Button variant="link" className="h-auto p-0 text-[13px] font-normal text-foreground" onClick={() => withToast(() => openBook(env, workspaceId, "mileage"))}>
+                Open mileage log
+              </Button>
+            ) : null}
+          </p>
+        </Section>
+      ) : read.miles.miles > 0 ? (
         <Section title="Mileage">
           <Facts parts={splitFacts(milesLine(read.miles))} className="text-[13px] text-muted-foreground" />
         </Section>
@@ -464,8 +487,11 @@ function Figure({ label, cents }: { label: string; cents: number }) {
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 type TooltipProps = Parameters<typeof ChartTooltipContent>[0];
 
+/** The year's bars: no bar below the axis, so a month whose in or out is below zero (a refund he typed) draws that bar at nothing. */
+export const byMonthBars = (months: readonly { month: number; in: number; out: number }[]) => months.map((m) => ({ month: MONTH_SHORT[m.month - 1], in: Math.max(0, m.in), out: Math.max(0, m.out) }));
+
 function ByMonth({ read }: { read: MoneyRead }) {
-  const data = read.byMonth.map((m) => ({ month: MONTH_SHORT[m.month - 1], in: m.in, out: m.out }));
+  const data = byMonthBars(read.byMonth);
   return (
     <Section title="In and out by month">
       <div>

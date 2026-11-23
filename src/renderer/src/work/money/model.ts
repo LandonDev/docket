@@ -1,5 +1,5 @@
 import type { EntryFields } from "@shared/contract-work-money";
-import { centsOf, daysBetween, formatMoney, monthPeriod, today, yearPeriod, type LedgerRow, type Period, type Status } from "@shared/work/money";
+import { centsOf, daysBetween, formatMoney, moneyWords, monthPeriod, sheetOnly, today, yearPeriod, type LedgerRow, type Period, type Status } from "@shared/work/money";
 import { compactTick } from "@aliax/lib/viz";
 
 /**
@@ -42,11 +42,11 @@ export function stepPeriod(p: PeriodState, by: -1 | 1): PeriodState {
 export const signedMoney = (cents: number): string => (cents > 0 ? `+${formatMoney(cents)}` : formatMoney(-cents));
 
 /** A row's amount as the table shows it. */
-export const rowMoney = (row: Pick<LedgerRow, "in" | "out">): string =>
-  row.in && row.out ? `+${formatMoney(row.in)} and ${formatMoney(row.out)}` : row.in ? `+${formatMoney(row.in)}` : formatMoney(row.out);
+/** A row's money in the one form the shared rules write (`moneyWords`): "+$30.00", "$20.00", "+$30.00 and $20.00", "-$20.00 out". */
+export const rowMoney = (row: Pick<LedgerRow, "in" | "out">): string => moneyWords(row);
 
-/** A row he typed in the sheet with money both in and out: the one-way form cannot hold it, so it is edited in the ledger. */
-export const bothWays = (row: Pick<LedgerRow, "in" | "out"> | null | undefined): boolean => !!row && row.in > 0 && row.out > 0;
+/** A row the one-way form cannot say (money both ways, or an amount below zero): it opens read only, the ledger the way to change it. */
+export const sheetRow = (row: Pick<LedgerRow, "in" | "out"> | null | undefined): "both" | "negative" | null => (row ? sheetOnly(row) : null);
 
 /** "$1.2k" from a thousand up, "$450", or "$2.50" where the dollars are not whole: the chart's axis, from cents, so neighbouring ticks never read the same. */
 export function shortMoney(cents: number): string {

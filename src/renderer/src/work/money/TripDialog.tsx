@@ -6,6 +6,7 @@ import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
 import { Input } from "../../components/ui/input";
 import { heardTrip, request } from "./api";
+import { newKey } from "./print";
 import { AmountInput, noHeldReturn } from "./fields";
 import { amountText, offerDay, parseAmount } from "./model";
 
@@ -79,7 +80,10 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
   const [events, setEvents] = useState<CalendarOffer[] | null>(offer ? [] : null);
   const [error, setError] = useState<string | null>(null);
   const patch = (p: Partial<TripForm>) => setForm((f) => ({ ...f, ...p }));
-  const params = tripParams(workspaceId, form);
+  // A trip typed by hand: one key for the dialog's life, so the same Add again writes nothing twice.
+  const [key] = useState(newKey);
+  const typed = tripParams(workspaceId, form);
+  const params = typed && !typed.eventId ? { ...typed, key } : typed;
 
   // By hand: the job's events of the last 60 days, to start from one.
   useEffect(() => {

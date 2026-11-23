@@ -11,7 +11,7 @@ import { cn } from "../../lib/cn";
 import { atOf, openBook, saveEntry, withToast } from "./api";
 import { Button } from "../../components/ui/button";
 import { AmountInput } from "./fields";
-import { blankForm, bothWays, canSave, fieldsOfForm, formOfRow, rowMoney, statusChoices, type EntryForm } from "./model";
+import { blankForm, canSave, fieldsOfForm, formOfRow, rowMoney, sheetRow, statusChoices, type EntryForm } from "./model";
 import { sigOf } from "@shared/work/money";
 
 /**
@@ -29,6 +29,9 @@ const WAYS = [
   { value: "in", label: "Received" },
 ] as const;
 const NEW_CATEGORY = "\u0000new";
+
+/** Why a row opens read only, in the host's own words. */
+const SHEET_WORDS = { both: "This row has money in and money out. Edit it in the ledger.", negative: "This row has an amount below zero. Edit it in the ledger." } as const;
 
 const TITLES: Record<EntryMode, string> = { new: "New entry", edit: "Entry", confirm: "Confirm receipt" };
 
@@ -115,7 +118,8 @@ function EntryBody({
   const ready = canSave(form);
   const finish = (fn: () => void) => (close ? close(fn) : fn());
   // A row with money both in and out does not fit the one-way form: it is shown, not edited, and the ledger is the way to change it.
-  const locked = mode === "edit" && bothWays(row);
+  const sheet = mode === "edit" ? sheetRow(row) : null;
+  const locked = sheet !== null;
 
   const submit = () => {
     if (pending || busy) return;
@@ -157,7 +161,7 @@ function EntryBody({
 
   const fields = (
     <fieldset disabled={locked} className="contents">
-      {locked ? <p className="text-xs text-muted-foreground">This row has money in and money out. Edit it in the ledger.</p> : null}
+      {locked ? <p className="text-xs text-muted-foreground">{SHEET_WORDS[sheet!]}</p> : null}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Amount">
           {locked ? <Input value={rowMoney(row!)} readOnly className="tabular-nums" /> : <AmountInput ref={amount} value={form.amount} placeholder="0.00" onChange={(e) => patch({ amount: e.target.value })} />}

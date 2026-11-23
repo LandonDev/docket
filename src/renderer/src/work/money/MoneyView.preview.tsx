@@ -26,11 +26,12 @@ import { ALL_ROWS, BOTH_WAYS, EMPTY_READ, NOVEMBER, RECEIPT_SVG, readOf } from "
  * over the view (`drop`), each dialog (`dialog-*`, `picture-failed`), the header's
  * menus (`menu-add`, `menu-more`), a canvas item's More (`item-verb`) and a row
  * with money both ways, read only (`dialog-both-ways`); `columns` is a renamed
- * header (Open ledger) and `columns-restore` headers simply gone (Restore columns).
+ * header (Open ledger) and `columns-restore` headers simply gone (Restore columns);
+ * `mileage-problem` a mileage log that cannot be read.
  * Made-up data; rendered by nothing in the app.
  */
 
-type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb" | "picture-failed" | "confirm-offers" | "dialog-both-ways" | "columns-restore";
+type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb" | "picture-failed" | "confirm-offers" | "dialog-both-ways" | "columns-restore" | "mileage-problem";
 let state: State = "month";
 let reads = 0;
 
@@ -68,6 +69,9 @@ function answer(period: Period): Promise<MoneyRead> {
     case "columns-restore":
       // The headers are simply gone, no cells stranded: Restore columns.
       return Promise.resolve(readOf(period, [], { made: true, problems: [{ kind: "columns", missing: ["In", "Out"], renamed: [] }], toConfirm: [TO_CONFIRM[0]] }));
+    case "mileage-problem":
+      // The mileage log lost its Miles column: its line says so in the miles' place, the ledger still reads.
+      return Promise.resolve(readOf(period, paid, { problems: [{ kind: "mileage", reason: "columns", missing: ["Miles"] }], miles: { miles: 0, value: 0, rate: null } }));
     case "confirm-offers":
       return Promise.resolve(readOf(period, paid, { calendar: CALENDAR }));
     case "picture-failed":

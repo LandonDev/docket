@@ -35,9 +35,14 @@ export const NOVEMBER: LedgerRow[] = [
   ledgerRow("2026-11-05", "State Officials Assn", "Dues and registration", -4500, { status: "Unpaid", what: "Second-half dues" }),
   ledgerRow("2026-11-03", "Corner Fuel", "Travel", -4415, { receipt: "Receipts/2026/2026-11-03 Corner Fuel 44.15.jpg" }),
   ledgerRow("2026-11-01", "Ridgeline Conference", "Game fees", 6500),
+  // A refund he typed in the sheet as a correction: Out below zero, kept with its sign.
+  ledgerRow("2026-11-17", "Stripe & Whistle Supply", "Uniform and gear", 0, { out: -2000, what: "Refund on the jacket" }),
   // Typed in the sheet with money both ways: the fee in, the crew's dinner out of it.
   ledgerRow("2026-11-19", "Harlan Valley Officials", "Game fees", 0, { in: 3000, out: 2000, what: "Fee less crew dinner" }),
 ];
+
+/** The refund: Out below zero. */
+export const REFUND = NOVEMBER[NOVEMBER.length - 2];
 
 /** The row with money both in and out. */
 export const BOTH_WAYS = NOVEMBER[NOVEMBER.length - 1];
