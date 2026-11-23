@@ -22,6 +22,7 @@ import { onWinvmState } from '../winvm'
 import { ensureFilesTables, librariesOf, libraryOf, setCopyAllowed } from './files/library'
 import { teamsTools } from './files/tools'
 import { officeProbe, officeRows } from './health'
+import { officeConverters, type RenderDeps, type RenderPlace } from './render'
 
 /**
  * The office pillar's server module (docs/agents/work-office.md): one Office
@@ -33,7 +34,10 @@ import { officeProbe, officeRows } from './health'
 
 const desktopCarrier = (): OfficeCarrier | null =>
   process.platform === 'darwin' ? macCarrier() : process.platform === 'win32' ? comCarrier() : process.platform === 'linux' ? owaCarrier() : null
-let carrierFor: () => OfficeCarrier | null = () => withAddin(desktopCarrier(), addinHub)
+/** One desktop carrier for the process: the tools reach it through the add-in's wrapper, a render directly (one helper on a PC, not two). */
+let desktop: OfficeCarrier | null | undefined
+const desktopOnce = (): OfficeCarrier | null => (desktop === undefined ? (desktop = desktopCarrier()) : desktop)
+let carrierFor: () => OfficeCarrier | null = () => withAddin(desktopOnce(), addinHub)
 /** A test hands its own carrier (a `FakeOffice`); null: this host has none. */
 export const setCarrier = (fn: () => OfficeCarrier | null): void => {
   carrierFor = fn
@@ -83,6 +87,21 @@ const excelChanges = (ctx: () => WorkCtx | null): TriggerSource => ({
 })
 
 let started: WorkCtx | null = null
+
+/**
+ * Office as a renderer here (render.ts): his Mac's apps, a Windows PC's, or the box's Windows VM. Read at each job:
+ * nothing renders while Work is off, and the VM's state is the keeper's of the moment.
+ */
+const renderDeps: RenderDeps = {
+  place: (): RenderPlace | null => (!started ? null : process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'windows' : process.platform === 'linux' && vmState() ? 'vm' : null),
+  carrier: (place) => (!started ? null : place === 'vm' ? vmHereOf(started).carrier : desktopOnce()),
+  vm: {
+    state: vmState,
+    office: () => (started ? (storedStatus(started.db)?.status.office ?? null) : null),
+    wake: vmAwake
+  },
+  log: (line) => started?.log(line)
+}
 
 /** What the Teams files need of the pillar: this host's carrier, Office in the Windows VM for a file there, and his address as Outlook here knows it. */
 const filesDeps = (ctx: WorkCtx): FilesDeps => ({
@@ -200,6 +219,8 @@ export const office: WorkModule = {
     // his press on a change held in the VM's Office goes back there, woken first
     vm: async (ctx) => (await vmAwake(), vmHereOf(ctx).carrier)
   }),
+  // Office as a renderer: docx → pdf+word and the rest, each offered by a carrier only once proven there (render.ts).
+  convert: officeConverters(renderDeps),
   triggers: [excelChanges(() => started)],
   preamble: () =>
     'Office files open on the Mac, a Windows PC or this host\'s Windows VM are reached with the `office_*` tools (`office_files` lists them, each with the computer it is on). A workbook range is read with `office_range_read` and written with `office_range_write`, passing the hash you read as `base`. Mail sends, replies, forwards, invitations and answers to invitations are held for the owner\'s press; say so plainly when you make one. ' +

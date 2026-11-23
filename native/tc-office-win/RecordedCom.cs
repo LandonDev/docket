@@ -467,6 +467,7 @@ public class RecordedCom : ICom {
       if (a.ContainsKey("visible")) visible[kv.Key] = Convert.ToBoolean(a["visible"]);
     }
     oldExcel = s.ContainsKey("oldExcel") && Convert.ToBoolean(s["oldExcel"]);
+    SeedRender(s);
     guard = s.ContainsKey("guard") && Convert.ToBoolean(s["guard"]);
     // The apps stay the same objects across seeds, as a running Office does, and so does an event handler given to Excel.
     busy = 0; failMember = null;
@@ -510,11 +511,17 @@ public class RecordedCom : ICom {
     }
     if (excel != null) return;
     excel = new Obj("Excel.Application").Prop("Version", () => oldExcel ? "16.0 (2016)" : "16.0").Prop("Hwnd", () => 101).Put("Visible", v => { }).Prop("Visible", () => visible["excel"])
-      .Prop("Workbooks", () => Collection<XBook>("Workbooks", () => books, BookObj, (b, n) => b.Key == n || b.Name == n));
+      .Prop("Workbooks", () => Collection<XBook>("Workbooks", () => books, BookObj, (b, n) => b.Key == n || b.Name == n).Fn("Open", RenderBook))
+      .Put("DisplayAlerts", v => renders.Add(Office.Obj("set", "excel.DisplayAlerts", "value", v))).Put("AutomationSecurity", v => renders.Add(Office.Obj("set", "excel.AutomationSecurity", "value", v)))
+      .Fn("Quit", a => { Quit("excel"); return null; });
     word = new Obj("Word.Application").Prop("Version", () => "16.0").Put("Visible", v => { }).Prop("Visible", () => visible["word"])
-      .Prop("Documents", () => Collection<WDoc>("Documents", () => docs, DocObj, (d, n) => d.Key == n || d.Name == n));
+      .Prop("Documents", () => Collection<WDoc>("Documents", () => docs, DocObj, (d, n) => d.Key == n || d.Name == n).Fn("Open", RenderDoc))
+      .Put("DisplayAlerts", v => renders.Add(Office.Obj("set", "word.DisplayAlerts", "value", v))).Put("AutomationSecurity", v => renders.Add(Office.Obj("set", "word.AutomationSecurity", "value", v)))
+      .Fn("Quit", a => { Quit("word"); return null; });
     powerpoint = new Obj("PowerPoint.Application").Prop("Version", () => "16.0").Prop("Visible", () => visible["powerpoint"] ? -1 : 0)
-      .Prop("Presentations", () => Collection<PDeck>("Presentations", () => decks, DeckObj, (p, n) => p.Key == n || p.Name == n));
+      .Prop("Presentations", () => Collection<PDeck>("Presentations", () => decks, DeckObj, (p, n) => p.Key == n || p.Name == n).Fn("Open", RenderDeck))
+      .Put("AutomationSecurity", v => renders.Add(Office.Obj("set", "powerpoint.AutomationSecurity", "value", v)))
+      .Fn("Quit", a => { Quit("powerpoint"); return null; });
     outlook = new Obj("Outlook.Application").Prop("Version", () => "16.0.0.0")
       .Prop("Explorers", () => new Obj("Explorers").Prop("Count", () => visible["outlook"] ? 1 : 0)).Prop("Inspectors", () => new Obj("Inspectors").Prop("Count", () => 0))
       .Fn("GetNamespace", a => Namespace())
@@ -523,6 +530,116 @@ public class RecordedCom : ICom {
 
   static string Leaf(string key) { var i = Math.Max(key.LastIndexOf('\\'), key.LastIndexOf('/')); return i < 0 ? key : key.Substring(i + 1); }
   static IEnumerable List(Dictionary<string, object> o, string key) { return o.ContainsKey(key) && o[key] != null ? (IEnumerable)o[key] : new object[0]; }
+
+  #region Render (SLD2): the copy opened, drawn and closed
+  // What the render verbs reach: a copy opened from the helper's own job folder, its app's own export, the copy
+  // closed, and an app of the helper's own quit. An export writes a small file that says what was asked
+  // ("recorded pdf word pages=3 input=1234"), so a test reads what reached Office from the file that came back.
+  int renderPages = 3, renderSlides = 12;
+  double slideWidth = 960, slideHeight = 540;
+  List<object[]> renderSheets = new List<object[]>();
+  string renderVideo = "done";
+  readonly List<object> renders = new List<object>();
+  readonly Dictionary<string, bool> createdHidden = new Dictionary<string, bool>();
+
+  void SeedRender(Dictionary<string, object> s) {
+    renders.Clear(); createdHidden.Clear();
+    var r = s.ContainsKey("render") ? (Dictionary<string, object>)s["render"] : new Dictionary<string, object>();
+    renderPages = r.ContainsKey("pages") ? Convert.ToInt32(r["pages"]) : 3;
+    renderSlides = r.ContainsKey("slides") ? Convert.ToInt32(r["slides"]) : 12;
+    slideWidth = r.ContainsKey("slideWidth") ? Convert.ToDouble(r["slideWidth"]) : 960;
+    slideHeight = r.ContainsKey("slideHeight") ? Convert.ToDouble(r["slideHeight"]) : 540;
+    renderVideo = r.ContainsKey("video") ? (string)r["video"] : "done";
+    renderSheets = new List<object[]>();
+    foreach (Dictionary<string, object> sh in List(r, "sheets")) renderSheets.Add(new object[] { Convert.ToInt32(sh["pages"]), !sh.ContainsKey("visible") || Convert.ToBoolean(sh["visible"]) });
+    if (renderSheets.Count == 0) { renderSheets.Add(new object[] { 1, true }); renderSheets.Add(new object[] { 1, true }); }
+  }
+
+  // A new instance: hidden, and running from now until it quits.
+  public object Create(string progId) {
+    var app = AppOfProgId(progId);
+    calls.Add("create " + app);
+    if (!installed[app]) throw Err(unchecked((int)0x80040154), "Class not registered (Exception from HRESULT: 0x80040154 (REGDB_E_CLASSNOTREG))");
+    renders.Add(Office.Obj("created", app));
+    if (!running[app]) { running[app] = true; visible[app] = false; createdHidden[app] = true; }
+    return Active2(app);
+  }
+
+  void Quit(string app) {
+    renders.Add(Office.Obj("quit", app));
+    if (createdHidden.ContainsKey(app)) { createdHidden.Remove(app); running[app] = false; visible[app] = true; }
+  }
+
+  static void Wrote(object path, string text) { System.IO.File.WriteAllText((string)path, text); }
+  static long SizeOf(object path) {
+    var p = (string)path;
+    if (!System.IO.File.Exists(p)) throw Err(unchecked((int)0x800A1436), "This file could not be found. (" + p + ")");
+    return new System.IO.FileInfo(p).Length;
+  }
+
+  Obj RenderDoc(object[] a) {
+    var input = SizeOf(a[0]);
+    var me = Office.Obj("open", "word", "path", a[0], "readOnly", a[2], "recent", a[3], "visible", a[11], "password", a[4]);
+    renders.Add(me);
+    return new Obj("Document")
+      .Fn("ComputeStatistics", x => { if (Convert.ToInt32(x[0]) != 2) throw Err(E_UNKNOWN, "only pages here"); return renderPages; })
+      .Fn("ExportAsFixedFormat", x => { if (Convert.ToInt32(x[1]) != 17) throw Err(E_UNKNOWN, "only PDF here"); Wrote(x[0], "recorded pdf word pages=" + renderPages + " input=" + input); return null; })
+      .Fn("Close", x => { me["closed"] = Convert.ToInt32(x[0]); return null; });
+  }
+
+  Obj RenderBook(object[] a) {
+    var input = SizeOf(a[0]);
+    var me = Office.Obj("open", "excel", "path", a[0], "readOnly", a[2], "recent", a[12], "password", a[4]);
+    renders.Add(me);
+    var sheets = renderSheets.Select(x => new Obj("Worksheet").Prop("Visible", () => (bool)x[1] ? -1 : 0)
+      .Prop("PageSetup", () => new Obj("PageSetup").Prop("Pages", () => new Obj("Pages").Prop("Count", () => (int)x[0])))).ToList();
+    return new Obj("Workbook")
+      .Prop("Windows", () => new Obj("Windows").Fn("Item", x => new Obj("Window").Put("Visible", v => me["windowVisible"] = Convert.ToBoolean(v))))
+      .Prop("Sheets", () => Collection<Obj>("Sheets", () => sheets, x => x, (x, n) => false))
+      .Fn("ExportAsFixedFormat", x => {
+        if (Convert.ToInt32(x[0]) != 0) throw Err(E_UNKNOWN, "only PDF here");
+        var pages = renderSheets.Where(s => (bool)s[1]).Sum(s => (int)s[0]);
+        Wrote(x[1], "recorded pdf excel pages=" + pages + " ignorePrintAreas=" + Convert.ToBoolean(x[4]) + " input=" + input);
+        return null;
+      })
+      .Fn("Close", x => { me["closed"] = Convert.ToBoolean(x[0]); return null; });
+  }
+
+  Obj RenderDeck(object[] a) {
+    var input = SizeOf(a[0]);
+    var me = Office.Obj("open", "powerpoint", "path", a[0], "readOnly", a[1], "withWindow", a[3]);
+    renders.Add(me);
+    var statuses = new Queue<int>(renderVideo == "fail" ? new[] { 1, 4 } : new[] { 2, 1, 1, 3 });
+    object videoAt = null; string video = null;
+    Func<int, Obj> slide = n => new Obj("Slide").Fn("Export", x => {
+      if ((string)x[1] != "PNG") throw Err(E_UNKNOWN, "only PNG here");
+      Wrote(x[0], "recorded png slide=" + n + " " + Convert.ToInt32(x[2]) + "x" + Convert.ToInt32(x[3]) + " input=" + input);
+      return null;
+    });
+    var slides = new Obj("Slides").Prop("Count", () => renderSlides).Fn("Item", x => {
+      var n = Convert.ToInt32(x[0]);
+      if (n < 1 || n > renderSlides) throw Err(E_BADINDEX, "Slides.Item : Integer out of range.");
+      return slide(n);
+    });
+    return new Obj("Presentation")
+      .Prop("Slides", () => slides)
+      .Prop("PageSetup", () => new Obj("PageSetup").Prop("SlideWidth", () => slideWidth).Prop("SlideHeight", () => slideHeight))
+      .Fn("SaveAs", x => { if (Convert.ToInt32(x[1]) != 32) throw Err(E_UNKNOWN, "only PDF here"); Wrote(x[0], "recorded pdf powerpoint pages=" + renderSlides + " input=" + input); return null; })
+      .Fn("CreateVideo", x => {
+        videoAt = x[0];
+        video = "recorded mp4 seconds=" + Convert.ToInt32(x[2]) + " height=" + Convert.ToInt32(x[3]) + " fps=" + Convert.ToInt32(x[4]) + " input=" + input;
+        me["video"] = Office.Obj("timings", x[1], "seconds", x[2], "height", x[3]);
+        return null;
+      })
+      .Prop("CreateVideoStatus", () => {
+        if (video == null) return 0;
+        var st = statuses.Count > 1 ? statuses.Dequeue() : statuses.Peek();
+        if (st == 3) Wrote(videoAt, video);
+        return st;
+      })
+      .Fn("Close", x => { me["closed"] = true; return null; });
+  }
+  #endregion
 
   // ---- the test verbs
   public object Test(string verb, Dictionary<string, object> a, Office office) {
@@ -549,7 +666,7 @@ public class RecordedCom : ICom {
         return null;
       }
       case "_state":
-        return Office.Obj("sent", sent, "thrownAway", thrownAway, "answers", answers, "started", started, "calls", calls, "markup", markupNow,
+        return Office.Obj("renders", renders, "running", running.Where(kv => kv.Value).Select(kv => (object)kv.Key).ToList(), "sent", sent, "thrownAway", thrownAway, "answers", answers, "started", started, "calls", calls, "markup", markupNow,
           "drafts", mail.Where(m => m.Folder == "drafts").Select(m => (object)Office.Obj("id", m.Id, "subject", m.Subject, "html", m.Html, "to", Of(m.Recipients, 1, ";"))).ToList(),
           "docs", docs.Select(d => (object)Office.Obj("key", d.Key, "text", d.Text, "tracked", d.Tracked)).ToList(),
           "decks", decks.Select(p => (object)Office.Obj("key", p.Key, "slides", p.Slides)).ToList(),

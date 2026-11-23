@@ -1,7 +1,9 @@
+import { closeSync, openSync, readSync, writeSync } from 'node:fs'
+import { extname } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { OFFICE_APPS, type OfficeAllowed, type OfficeApp, type OfficeAppState, type OfficeCell } from '@shared/contract-work-office'
 import { errorText } from '@shared/work/ids'
-import { OfficeError, type OfficeCarrier } from '../carrier'
+import { OfficeError, type OfficeCarrier, type RenderAsk, type RenderDone } from '../carrier'
 import { spawnHelper } from './helper'
 
 /**
@@ -40,6 +42,10 @@ export interface ComDeps {
 }
 
 export const COM_TIMEOUT_MS = 120_000
+/** A render's own call: PowerPoint takes its time over a video (the helper itself gives up at 15 minutes). */
+export const RENDER_TIMEOUT_MS = 20 * 60_000
+/** A render's copy and result cross the helper's wire in chunks of this many bytes (the helper takes at most 4 MiB). */
+export const RENDER_CHUNK = 2 * 1024 * 1024
 export const SEND_TIMEOUT_MS = 30 * 60_000
 const READY_MS = 30_000
 
@@ -187,11 +193,11 @@ class Link {
     else p.reject(comError(f.error))
   }
 
-  private send(c: Conn, verb: string, args: unknown): Promise<unknown> {
+  private send(c: Conn, verb: string, args: unknown, timeoutMs?: number): Promise<unknown> {
     if (c.dead) return Promise.reject(new OfficeError('tc-office stopped.'))
     const id = this.next++
     const sending = sends(verb, args)
-    const ms = sending ? this.deps.sendTimeoutMs : this.deps.timeoutMs
+    const ms = sending ? this.deps.sendTimeoutMs : (timeoutMs ?? this.deps.timeoutMs)
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         c.pending.delete(id)
@@ -217,8 +223,8 @@ class Link {
     return run
   }
 
-  call<T>(verb: string, args: unknown): Promise<T> {
-    return this.queued(async () => (await this.send(await this.open(), verb, args)) as T)
+  call<T>(verb: string, args: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
+    return this.queued(async () => (await this.send(await this.open(), verb, args, opts.timeoutMs)) as T)
   }
 
   /** Tell a running helper to start or stop listening; a stopped one is told at its next start. */
@@ -232,6 +238,8 @@ class Link {
 }
 
 export interface ComCarrier extends OfficeCarrier {
+  /** Office as a renderer through the helper's render verbs (render.ts). */
+  render(ask: RenderAsk): Promise<RenderDone>
   /** One request on the helper's wire as it stands: for diagnostics and the rig's tests (their `_` verbs). */
   call<T>(verb: string, args: unknown): Promise<T>
   /** Stop the helper (the office module's stop, when Work is turned off; tests); the next call starts it again. */
@@ -254,6 +262,55 @@ export function comCarrier(deps: ComDeps = {}): ComCarrier {
     }
   }
   const mail = (m: unknown, send: boolean) => call<string | null>('mail', { m, send })
+  /**
+   * Office as a renderer: the copy goes to the helper in chunks, into a job folder of its own (it names the folder,
+   * so a host never names a path on that PC), is drawn there and comes back in chunks; the folder goes after.
+   */
+  const render = async (ask: RenderAsk): Promise<RenderDone> => {
+    const stopped = (): void => {
+      if (ask.signal?.aborted) throw new OfficeError('cancelled')
+    }
+    stopped()
+    const { job } = await call<{ job: string }>('render.begin', { app: ask.app, ext: extname(ask.input).slice(1).toLowerCase() }, ask.app)
+    try {
+      const fd = openSync(ask.input, 'r')
+      try {
+        const buf = Buffer.alloc(RENDER_CHUNK)
+        for (let offset = 0; ; ) {
+          const n = readSync(fd, buf, 0, RENDER_CHUNK, offset)
+          if (n <= 0) break
+          stopped()
+          await link.call('render.put', { job, offset, data: buf.subarray(0, n).toString('base64') })
+          offset += n
+        }
+      } finally {
+        closeSync(fd)
+      }
+      stopped()
+      const { bytes, ...done } = await link.call<RenderDone & { bytes: number }>(
+        'render.run',
+        { job, to: ask.to, start: ask.start === true, ...(ask.slide !== undefined ? { slide: ask.slide } : {}), ...(ask.width !== undefined ? { width: ask.width } : {}), ...(ask.seconds !== undefined ? { seconds: ask.seconds } : {}), ...(ask.height !== undefined ? { height: ask.height } : {}) },
+        { timeoutMs: RENDER_TIMEOUT_MS }
+      )
+      allowedSeen.set(ask.app, 'yes')
+      const out = openSync(ask.output, 'w')
+      try {
+        for (let offset = 0; offset < bytes; ) {
+          stopped()
+          const got = await link.call<{ data: string; size: number }>('render.get', { job, offset, length: RENDER_CHUNK })
+          const chunk = Buffer.from(got.data, 'base64')
+          if (!chunk.length) throw new OfficeError(`tc-office sent ${offset} of the ${bytes} bytes it rendered.`)
+          writeSync(out, chunk)
+          offset += chunk.length
+        }
+      } finally {
+        closeSync(out)
+      }
+      return done
+    } finally {
+      await link.call('render.end', { job }).catch(() => undefined)
+    }
+  }
   return {
     kind: 'com',
     async apps() {
@@ -293,6 +350,7 @@ export function comCarrier(deps: ComDeps = {}): ComCarrier {
         if (!link.listeners.size) link.watch(false)
       }
     },
+    render,
     call: (verb, args) => link.call(verb, args),
     stop: () => link.stop()
   }

@@ -53,6 +53,8 @@ public interface ICom {
   void Foreground(int hwnd);
   // Lets go of a COM object now rather than when the collector gets to it.
   void Release(object o);
+  // A new instance of the app, hidden (Render, with `start`: the box's Windows VM only).
+  object Create(string progId);
 }
 
 public class RealCom : ICom {
@@ -156,6 +158,7 @@ public class RealCom : ICom {
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
   [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
   public void Release(object o) { if (o != null && Marshal.IsComObject(o)) Marshal.FinalReleaseComObject(o); }
+  public object Create(string progId) { return Activator.CreateInstance(Type.GetTypeFromProgID(progId, true)); }
   public void Foreground(int hwnd) {
     var h = new IntPtr(hwnd);
     if (IsIconic(h)) ShowWindow(h, 9);
@@ -193,7 +196,8 @@ public class Office {
   public const int Version = 1;
   readonly ICom com;
   readonly Action<Dictionary<string, object>> emit;
-  public Office(ICom com, Action<Dictionary<string, object>> emit) { this.com = com; this.emit = emit; }
+  readonly Render render;
+  public Office(ICom com, Action<Dictionary<string, object>> emit) { this.com = com; this.emit = emit; render = new Render(com); }
 
   static readonly string[] APPS = { "excel", "word", "powerpoint", "outlook" };
   static string ProgId(string app) { return app == "excel" ? "Excel.Application" : app == "word" ? "Word.Application" : app == "powerpoint" ? "PowerPoint.Application" : "Outlook.Application"; }
@@ -935,6 +939,7 @@ public class Office {
   }
 
   public object Run(string verb, Dictionary<string, object> a) {
+    if (Render.Has(verb)) return render.Run(verb, a);
     switch (verb) {
       case "apps": return Apps();
       case "watch": return Watch(Convert.ToBoolean(a["on"]));
@@ -970,6 +975,11 @@ public class Office {
     var r = e as Refusal;
     if (r != null) return Obj("code", r.Code, "message", r.Message);
     if (Guest.Has(verb)) return Obj("code", "failed", "message", e.Message);
+    if (Render.Has(verb)) {
+      var busy = e as COMException;
+      if (busy != null && Busy(busy)) return Obj("code", "busy", "message", "Office is busy with a dialog: try again once it is closed.", "hresult", "0x" + ((uint)busy.ErrorCode).ToString("X8"));
+      return Obj("code", "failed", "message", "Office could not render the copy: " + e.Message);
+    }
     string app;
     // `open` names its app in its arguments, not its verb: a failure there is Office's, whichever app it was.
     var name = APP_OF_VERB.TryGetValue(verb, out app) ? Named(app) : verb == "open" ? "Office" : Named("outlook");
@@ -989,6 +999,280 @@ public class Office {
     return Obj("code", "failed", "message", name + " answered: " + e.Message, "hresult", hex);
   }
 }
+
+#region Render (SLD2: Office as a renderer)
+// ---- Office as a renderer (docs/agents/work-office.md "Office as a renderer"): a copy of a file, sent here in
+// chunks into a job folder of the helper's own, opened read only with no window, drawn by Word, Excel or
+// PowerPoint themselves (a PDF, one slide as a PNG, the deck as a video), closed, and read back in chunks.
+// The host never names a path on this PC: the folder and its two file names are the helper's.
+//   render.begin {app, ext}                         -> {job}
+//   render.put   {job, offset, data}                (base64, in order)
+//   render.run   {job, to, start, slide?, width?, seconds?, height?} -> {pages?, width?, height?, seconds?, bytes}
+//   render.get   {job, offset, length}              -> {data, size}
+//   render.end   {job}
+// `start` lets it start the app, hidden, when none runs (the box's Windows VM, nobody's desktop); without it an app
+// that is not open is refused, as the other verbs refuse it. An app that turns a call away (a dialog open) is `busy`.
+public class Render {
+  readonly ICom com;
+  public Render(ICom com) { this.com = com; }
+
+  public static bool Has(string verb) { return verb.StartsWith("render."); }
+
+  class Job { public string Dir, App, Ext; public long Size; }
+  readonly Dictionary<string, Job> jobs = new Dictionary<string, Job>();
+  public const int ChunkMax = 4 * 1024 * 1024;
+  public const long InputMax = 512L * 1024 * 1024;
+  const int VideoMaxMs = 15 * 60 * 1000;
+  static readonly Dictionary<string, string> EXT_OF = new Dictionary<string, string> { { "word", "docx" }, { "excel", "xlsx" }, { "powerpoint", "pptx" } };
+
+  public static string Short(string app) { return app == "word" ? "Word" : app == "excel" ? "Excel" : "PowerPoint"; }
+  static string ProgId(string app) { return app == "word" ? "Word.Application" : app == "excel" ? "Excel.Application" : "PowerPoint.Application"; }
+  static string Proc(string app) { return app == "word" ? "WINWORD" : app == "excel" ? "EXCEL" : "POWERPNT"; }
+  static readonly object Missing = System.Reflection.Missing.Value;
+
+  public static string Root() { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TempCode", "render"); }
+
+  static int Int(Dictionary<string, object> a, string key, int fallback, int min, int max) {
+    if (!a.ContainsKey(key) || a[key] == null) return fallback;
+    int v;
+    try { v = Convert.ToInt32(a[key], CultureInfo.InvariantCulture); } catch (Exception) { throw new Refusal("failed", key + " is not a whole number."); }
+    if (v < min || v > max) throw new Refusal("failed", key + " must be from " + min + " to " + max + ".");
+    return v;
+  }
+
+  Job JobOf(object raw) {
+    var id = raw as string;
+    Job j;
+    if (id == null || id.Length != 32 || !jobs.TryGetValue(id, out j)) throw new Refusal("not-found", "No such render job.");
+    return j;
+  }
+
+  public object Run(string verb, Dictionary<string, object> a) {
+    switch (verb) {
+      case "render.begin": return Begin(a["app"] as string, a["ext"] as string);
+      case "render.put": return Put(JobOf(a["job"]), Convert.ToInt64(a["offset"], CultureInfo.InvariantCulture), (string)a["data"]);
+      case "render.run": return Draw(JobOf(a["job"]), a);
+      case "render.get": return Get(JobOf(a["job"]), Convert.ToInt64(a["offset"], CultureInfo.InvariantCulture), Int(a, "length", ChunkMax, 1, ChunkMax));
+      case "render.end": return End(a["job"] as string);
+    }
+    throw new Refusal("failed", "tc-office has no verb " + verb + ".");
+  }
+
+  object Begin(string app, string ext) {
+    string want;
+    if (app == null || !EXT_OF.TryGetValue(app, out want) || ext != want) throw new Refusal("failed", "Office renders a .docx in Word, a .xlsx in Excel and a .pptx in PowerPoint.");
+    Sweep();
+    var id = Guid.NewGuid().ToString("N");
+    var dir = Path.Combine(Root(), id);
+    Directory.CreateDirectory(dir);
+    jobs[id] = new Job { Dir = dir, App = app, Ext = ext };
+    return Obj("job", id);
+  }
+
+  // A job folder left by a helper that stopped mid-job goes after a day.
+  static void Sweep() {
+    try {
+      if (!Directory.Exists(Root())) return;
+      foreach (var d in Directory.GetDirectories(Root())) {
+        try { if (DateTime.UtcNow - Directory.GetLastWriteTimeUtc(d) > TimeSpan.FromDays(1)) Directory.Delete(d, true); } catch (Exception) { }
+      }
+    } catch (Exception) { }
+  }
+
+  object Put(Job j, long offset, string data) {
+    var bytes = Convert.FromBase64String(data);
+    if (bytes.Length > ChunkMax) throw new Refusal("failed", "A chunk is at most 4 MB.");
+    if (offset != j.Size) throw new Refusal("failed", "The copy's chunks came out of order.");
+    if (j.Size + bytes.Length > InputMax) throw new Refusal("failed", "Office renders a file of at most 512 MB.");
+    using (var f = new FileStream(Path.Combine(j.Dir, "input." + j.Ext), FileMode.Append, FileAccess.Write)) f.Write(bytes, 0, bytes.Length);
+    j.Size += bytes.Length;
+    return null;
+  }
+
+  object Get(Job j, long offset, int length) {
+    var path = OutputOf(j);
+    if (path == null) throw new Refusal("not-found", "The render has no output yet.");
+    using (var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
+      if (offset < 0 || offset > f.Length) throw new Refusal("failed", "Past the end of the output.");
+      f.Position = offset;
+      var buf = new byte[(int)Math.Min(length, f.Length - offset)];
+      var n = 0;
+      while (n < buf.Length) { var r = f.Read(buf, n, buf.Length - n); if (r <= 0) break; n += r; }
+      return Obj("data", Convert.ToBase64String(buf, 0, n), "size", f.Length);
+    }
+  }
+
+  static string OutputOf(Job j) {
+    foreach (var ext in new[] { "pdf", "png", "mp4" }) { var p = Path.Combine(j.Dir, "output." + ext); if (File.Exists(p)) return p; }
+    return null;
+  }
+
+  object End(string id) {
+    Job j;
+    if (id != null && jobs.TryGetValue(id, out j)) {
+      jobs.Remove(id);
+      try { Directory.Delete(j.Dir, true); } catch (Exception) { }
+    }
+    return null;
+  }
+
+  // ---- drawing: the app's own export of the copy, which is closed after whatever happens.
+  object Draw(Job j, Dictionary<string, object> a) {
+    var to = a["to"] as string;
+    var start = a.ContainsKey("start") && Convert.ToBoolean(a["start"]);
+    if (!(to == "pdf" || (j.App == "powerpoint" && (to == "png" || to == "mp4")))) throw new Refusal("failed", Short(j.App) + " does not render a ." + to + " here.");
+    var input = Path.Combine(j.Dir, "input." + j.Ext);
+    if (!File.Exists(input) || j.Size == 0) throw new Refusal("failed", "The copy did not arrive.");
+    var old = OutputOf(j);
+    if (old != null) File.Delete(old);
+    var output = Path.Combine(j.Dir, "output." + to);
+    bool mine;
+    var app = Attach(j.App, start, out mine);
+    try {
+      Dictionary<string, object> done;
+      if (j.App == "word") done = Word(app, input, output, mine);
+      else if (j.App == "excel") done = Excel(app, input, output, mine);
+      else done = PowerPoint(app, input, output, to, a);
+      if (!File.Exists(output)) throw new Refusal("failed", Short(j.App) + " made no " + to.ToUpperInvariant() + ".");
+      done["bytes"] = new FileInfo(output).Length;
+      return done;
+    } catch (COMException e) {
+      if (Office.Busy(e)) throw new Refusal("busy", Short(j.App) + " is busy with a dialog: try again once it is closed.");
+      throw new Refusal("failed", Short(j.App) + " could not render the copy: " + e.Message);
+    } finally {
+      if (mine) Quit(j.App, app);
+      com.Release(app);
+    }
+  }
+
+  // The running app, or with `start` one of our own, hidden. Excel with `start` is always one of our own: a
+  // workbook opened in his Excel would take a window in front of him.
+  object Attach(string app, bool start, out bool mine) {
+    mine = false;
+    if (!com.Registered(ProgId(app))) throw new Refusal("not-installed", "No " + Short(app) + " is in reach: it is not installed on this PC.");
+    var running = com.Running(Proc(app));
+    if (running && !(start && app == "excel")) {
+      try { return com.Active(ProgId(app)); }
+      catch (COMException e) {
+        if (Office.Busy(e)) throw new Refusal("busy", Short(app) + " is busy with a dialog: try again once it is closed.");
+        if ((uint)e.ErrorCode != 0x800401E3 || !start) throw new Refusal("not-running", Short(app) + " is open but not reachable: it may be starting.");
+      }
+    }
+    if (!start) throw new Refusal("not-running", Short(app) + " is not open on this PC.");
+    var made = com.Create(ProgId(app));
+    // PowerPoint is one app per session: a create while it runs is the running one, not ours to quit.
+    mine = !(app == "powerpoint" && running);
+    if (mine && app != "powerpoint") {
+      try { com.Set(made, "DisplayAlerts", app == "word" ? (object)0 : false); } catch (COMException) { }
+    }
+    // No macro of the copy runs: msoAutomationSecurityForceDisable, on an app of our own only.
+    if (mine) { try { com.Set(made, "AutomationSecurity", 3); } catch (COMException) { } }
+    return made;
+  }
+
+  void Quit(string app, object a) {
+    try {
+      if (app == "powerpoint") { if (Convert.ToInt32(com.Get(com.Get(a, "Presentations"), "Count")) == 0) com.Call(a, "Quit"); }
+      else if (app == "word") com.Call(a, "Quit", 0);
+      else com.Call(a, "Quit");
+    } catch (Exception x) { Console.Error.WriteLine("tc-office: quitting " + app + ": " + x.Message); }
+  }
+
+  // A password the copy cannot have: an encrypted file then fails at once instead of asking in a dialog.
+  const string NoPassword = "tc-office-no-password";
+
+  Dictionary<string, object> Word(object w, string input, string output, bool mine) {
+    // Open(FileName, ConfirmConversions, ReadOnly, AddToRecentFiles, PasswordDocument, PasswordTemplate, Revert,
+    //      WritePasswordDocument, WritePasswordTemplate, Format, Encoding, Visible, OpenAndRepair, DocumentDirection, NoEncodingDialog)
+    var d = com.Call(com.Get(w, "Documents"), "Open", input, false, true, false, NoPassword, NoPassword, false, NoPassword, NoPassword, Missing, Missing, false, false, Missing, true);
+    try {
+      // wdStatisticPages, as Word counts them for this copy
+      var pages = Convert.ToInt32(com.Call(d, "ComputeStatistics", 2));
+      // ExportAsFixedFormat(OutputFileName, wdExportFormatPDF, OpenAfterExport, wdExportOptimizeForPrint, wdExportAllDocument,
+      //      From, To, wdExportDocumentContent, IncludeDocProps, KeepIRM, wdExportCreateNoBookmarks, DocStructureTags, BitmapMissingFonts, UseISO19005_1)
+      com.Call(d, "ExportAsFixedFormat", output, 17, false, 0, 0, 1, 1, 0, true, true, 0, true, true, false);
+      return Obj("pages", pages);
+    } finally {
+      try { com.Call(d, "Close", 0); } catch (Exception x) { Console.Error.WriteLine("tc-office: closing the copy: " + x.Message); }
+      com.Release(d);
+    }
+  }
+
+  Dictionary<string, object> Excel(object xl, string input, string output, bool mine) {
+    // Open(Filename, UpdateLinks, ReadOnly, Format, Password, WriteResPassword, IgnoreReadOnlyRecommended, Origin, Delimiter,
+    //      Editable, Notify, Converter, AddToMru)
+    var b = com.Call(com.Get(xl, "Workbooks"), "Open", input, 0, true, Missing, NoPassword, NoPassword, true, Missing, Missing, false, false, Missing, false);
+    try {
+      // In his own Excel, the copy's window is hidden at once.
+      if (!mine) { try { com.Set(com.Call(com.Get(b, "Windows"), "Item", 1), "Visible", false); } catch (COMException e) { if (Office.Busy(e)) throw; } }
+      var pages = 0;
+      foreach (var s in Each(com.Get(b, "Sheets"))) {
+        try {
+          if (Convert.ToInt32(com.Get(s, "Visible")) != -1) continue;
+          pages += Convert.ToInt32(com.Get(com.Get(com.Get(s, "PageSetup"), "Pages"), "Count"));
+        } catch (COMException e) { if (Office.Busy(e)) throw; }
+      }
+      // ExportAsFixedFormat(xlTypePDF, Filename, xlQualityStandard, IncludeDocProperties, IgnorePrintAreas = false: the workbook's own print settings, From, To, OpenAfterPublish)
+      com.Call(b, "ExportAsFixedFormat", 0, output, 0, true, false, Missing, Missing, false);
+      return Obj("pages", pages);
+    } finally {
+      try { com.Call(b, "Close", false); } catch (Exception x) { Console.Error.WriteLine("tc-office: closing the copy: " + x.Message); }
+      com.Release(b);
+    }
+  }
+
+  Dictionary<string, object> PowerPoint(object pp, string input, string output, string to, Dictionary<string, object> a) {
+    // Open(FileName, ReadOnly = msoTrue, Untitled = msoFalse, WithWindow = msoFalse)
+    var p = com.Call(com.Get(pp, "Presentations"), "Open", input, -1, 0, 0);
+    try {
+      var slides = com.Get(p, "Slides");
+      var count = Convert.ToInt32(com.Get(slides, "Count"));
+      if (to == "pdf") {
+        // ppSaveAsPDF
+        com.Call(p, "SaveAs", output, 32);
+        return Obj("pages", count);
+      }
+      if (to == "png") {
+        var n = Int(a, "slide", 1, 1, 100000);
+        if (n > count) throw new Refusal("not-found", "The deck has " + count + " slide" + (count == 1 ? "" : "s") + "; there is no slide " + n + ".");
+        var width = Int(a, "width", 1920, 16, 8192);
+        var setup = com.Get(p, "PageSetup");
+        var sw = Convert.ToDouble(com.Get(setup, "SlideWidth"), CultureInfo.InvariantCulture);
+        var sh = Convert.ToDouble(com.Get(setup, "SlideHeight"), CultureInfo.InvariantCulture);
+        var height = (int)Math.Max(1, Math.Round(width * sh / sw));
+        com.Call(com.Call(slides, "Item", n), "Export", output, "PNG", width, height);
+        return Obj("width", width, "height", height);
+      }
+      var seconds = Int(a, "seconds", 5, 1, 600);
+      var tall = Int(a, "height", 720, 240, 2160);
+      // CreateVideo(FileName, UseTimingsAndNarrations, DefaultSlideDuration, VertResolution, FramesPerSecond, Quality)
+      com.Call(p, "CreateVideo", output, false, seconds, tall, 30, 85);
+      // PpMediaTaskStatus: 1 in progress, 2 queued, 3 done, 4 failed
+      var waited = 0;
+      for (;;) {
+        var status = Convert.ToInt32(com.Get(p, "CreateVideoStatus"));
+        if (status == 3) break;
+        if (status == 4) throw new Refusal("failed", "PowerPoint could not make the video.");
+        if (status != 1 && status != 2) throw new Refusal("failed", "PowerPoint did not start the video.");
+        if (waited >= VideoMaxMs) throw new Refusal("failed", "PowerPoint did not finish the video within 15 minutes.");
+        Thread.Sleep(250);
+        waited += 250;
+      }
+      return Obj("seconds", count * seconds, "height", tall);
+    } finally {
+      try { com.Call(p, "Close"); } catch (Exception x) { Console.Error.WriteLine("tc-office: closing the copy: " + x.Message); }
+      com.Release(p);
+    }
+  }
+
+  IEnumerable<object> Each(object collection) {
+    var n = Convert.ToInt32(com.Get(collection, "Count"));
+    for (var i = 1; i <= n; i++) yield return com.Call(collection, "Item", i);
+  }
+
+  static Dictionary<string, object> Obj(params object[] kv) { return Office.Obj(kv); }
+}
+#endregion
 
 // ---- OneDrive's folders and what is signed in, for a host that reaches this PC through the helper's
 // door (the box's Windows VM: docs/agents/work-teams-files.md "The Windows VM"). No COM here: each verb runs

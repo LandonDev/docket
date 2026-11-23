@@ -118,6 +118,37 @@ export interface EventOut {
 
 export type EventAnswer = 'accept' | 'decline' | 'tentative'
 
+/** The apps that render a file of theirs (docs/agents/work-office.md "Office as a renderer"). */
+export type RenderApp = 'word' | 'excel' | 'powerpoint'
+
+/** One render: a copy of his file, drawn by its own app. */
+export interface RenderAsk {
+  app: RenderApp
+  /** a PDF of the whole file; one slide as a PNG; the deck as a video (PowerPoint's alone) */
+  to: 'pdf' | 'png' | 'mp4'
+  /** a copy in the job's own folder on this host: the carrier opens it read only, never the file he has open */
+  input: string
+  /** where the result goes, on this host */
+  output: string
+  /** a PNG's slide, from 1, and its width in pixels */
+  slide?: number
+  width?: number
+  /** a video's seconds on each slide, and its height in pixels */
+  seconds?: number
+  height?: number
+  /** may start the app, hidden, when none runs: the box's Windows VM, which is nobody's desktop. Never on his Mac or PC. */
+  start?: boolean
+  signal?: AbortSignal
+}
+
+/** What the app said of what it drew: a PDF's pages as the app counts them, a picture's size, a video's length. */
+export interface RenderDone {
+  pages?: number
+  width?: number
+  height?: number
+  seconds?: number
+}
+
 /** A change to a document: text put at its start or end, or every match of `find` replaced. */
 export type DocEdit = { insert: string; at: 'start' | 'end' } | { find: string; replace: string }
 
@@ -167,6 +198,9 @@ export interface OfficeCarrier {
   changes?(fn: (book: string, sheet: string, address: string) => void): () => void
   /** Let go of what the carrier keeps running (Windows' helper process) when the module stops. */
   stop?(): void
+
+  /** Office as a renderer: the app draws a copy of a file (render.ts); absent where the carrier cannot. */
+  render?(ask: RenderAsk): Promise<RenderDone>
 }
 
 /** A refusal in words the agent and the screen show as they are. */

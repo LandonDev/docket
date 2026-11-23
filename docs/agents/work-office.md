@@ -27,7 +27,8 @@ the sheet canvas.
 | `office/held.ts` | the held acts `office.mail.send`, `office.calendar.op` and `office.edit`, and `cleanMailHtml` |
 | `office/shared.ts` | `fileShared`, the one test of whether others can open a file, and `fileKey` |
 | `office/route.ts` | `OutlookRoute`: LifeOS's Outlook-account mail and calendar acts, carried by this host's Outlook |
-| `office/index.ts` | the module: tables, wire, tools, acts, the Excel trigger source, the route's start |
+| `office/index.ts` | the module: tables, wire, tools, acts, the Excel trigger source, the route's start, the render converters' place |
+| `office/render.ts` | Office as a renderer: the five converters, `ready` by place, `RENDER_PROVEN`, the refusals' words ("Office as a renderer") |
 | `addins/office/` | the add-in itself: `manifest.xml`, `taskpane.html`, `taskpane.js` (its screen), `core.js` (what it does), the icons as base64 |
 | `office/addin/keys.ts` | `AddinKeys`: the pairing code and each add-in's key (only its hash is kept) |
 | `office/addin/hub.ts` | `AddinHub`: main's end of the relay, the add-ins on it and the calls made to them |
@@ -337,6 +338,84 @@ cookies hold a Microsoft sign-in, `apps()` asks the page at most once an
 hour. Logins come as the browser's do ([work-browser.md](work-browser.md)
 "Logins"). `TEMP_CODE_OWA_URL` points the page at a stand-in.
 
+## Office as a renderer
+
+Milestone SLD2 of the editors plan (`.temp-code/plans/editors/slides.md`; the landing note is
+`.temp-code/plans/landed/SLD2.md`). Real Word, Excel and PowerPoint draw a file for the conversion runner
+([work-formats.md](work-formats.md) "Jobs", [work-editors.md](work-editors.md)). The office module registers
+five converters (`render.ts`, `officeConverters`), named as the structural pairs are:
+
+| Pair | Drawn by | Options |
+|---|---|---|
+| `docx → pdf+word` | Word's `ExportAsFixedFormat` | none |
+| `xlsx → pdf+excel` | Excel's `ExportAsFixedFormat`, with the workbook's own print areas and page setup (`IgnorePrintAreas` false) | none |
+| `pptx → pdf+powerpoint` | PowerPoint's `SaveAs` as PDF | none |
+| `pptx → png+powerpoint` | `Slide.Export` as PNG | `slide` (from 1, default 1), `width` (16 to 8192 pixels, default 1920; the height follows the slide's shape) |
+| `pptx → mp4+powerpoint` | `CreateVideo` | `secondsPerSlide` (1 to 600, default 5), `height` (480, 720, 1080 or 2160, default 720) |
+
+A pillar calls `ctx.convert({ input, from: 'docx', to: 'pdf+word' })`; the output is a `.pdf` in the job's
+own folder. Each converter has no `needs` and gives `ready(job)`. It copies the input into the job's own
+scratch folder and hands the carrier that copy, never the file he has open. One file comes back.
+
+**Where, and who offers what.** `renderDeps` in `index.ts` picks the place: his Mac on darwin (`macCarrier`), a
+Windows PC on win32 (`comCarrier`), the box's Windows VM on Linux when the keeper has one (`vmHereOf`). **A
+carrier offers a pair only once that pair's own live proof passed on that carrier**: `RENDER_PROVEN` in
+`render.ts`, one list per place. Until then the pair answers `none` there, and the runner asks a linked host.
+Today:
+
+- **The Windows VM**: `RENDER_PROVEN.vm` (see the landing note for each proof's numbers).
+- **His Mac**: none. The JXA path is written and tested over a recorded osascript, but a recording proves
+  nothing about the Mac's apps; each pair joins `RENDER_PROVEN.mac` only after a Mac child's live proof.
+- **A Windows PC**: none. A proof in the VM is not a PC's (his PC has his own Word open in front of him).
+
+**`ready`**, never waking or starting anything:
+
+| Place | `ready` | `asleep` | `not open` | `none` |
+|---|---|---|---|---|
+| Mac, PC | the app runs | never | the app is installed and shut | unproven, or the app is not installed |
+| VM | the VM is awake, Office installed and not unlicensed | the VM sleeps, or is waking or going to sleep | never | unproven, no VM, setting up, Office not read, not installed, or with no licence |
+
+**The VM is never woken for a render nobody pressed for.** The runner runs an `asleep` pair only for a job
+carrying his press (`pressOf`, formats/jobs.ts); the converter checks again at run time, and only then calls
+`vmAwake`. A thread can make no press, a forwarded job carries none, and a JSON `pressed` is not one. The VM may
+start Word, Excel or PowerPoint there hidden (`start: true`): it is nobody's desktop. Excel there is always an
+instance of the helper's own, so a workbook never opens in a window someone looks at. On a Mac or a PC the app
+must already be open: the pillar never starts an app unseen.
+
+**The helper's render verbs** (`TcOffice.cs`, `#region Render`). The host never names a path on that PC:
+`render.begin {app, ext}` makes a job folder under `%LOCALAPPDATA%\TempCode\render\<id>` and answers its id;
+`render.put` takes the copy in base64 chunks of 2 MiB (4 MiB at most, 512 MB in all); `render.run` opens the
+copy read only with no window (Word `Visible` false and out of recent files; Excel read only, its window hidden
+in his own Excel; PowerPoint `WithWindow` false), draws it, closes it unsaved and quits an app it started;
+`render.get` reads the result back; `render.end` removes the folder (folders a stopped helper left go after a
+day). A password the copy cannot have is passed, so an encrypted Word or Excel file fails at once instead of
+asking in a dialog. An app of the helper's own runs with macros off (`AutomationSecurity` 3). `render.run` may
+take 20 minutes (`RENDER_TIMEOUT_MS`): a video is polled through `CreateVideoStatus` up to 15. The page counts
+are the apps' own: Word's `ComputeStatistics(wdStatisticPages)`, the sum of each visible sheet's
+`PageSetup.Pages.Count`, PowerPoint's slide count.
+
+**The Mac** (`mac.ts`, `renderWord`, `renderExcel`, `renderPowerPoint`): the copy goes into the app's own
+container (`~/Library/Containers/com.microsoft.Word/Data/Library/Caches/TempCode/<id>/`), so the sandboxed app
+opens and saves it with no Grant File Access prompt; Word saves as `format PDF`, Excel as `PDF file format`,
+PowerPoint as `save as PDF`, `save as PNG` (a folder of slides: the one asked is kept and sized by `sips`) or
+`save as MP4` (its own length per slide: `secondsPerSlide` and `height` do not reach it). The copy is closed
+unsaved and the folder removed.
+
+**The refusals, in words** (`RENDER_WORDS`). A refusal from the run is the runner's kinds, so a pillar maps them
+to `NotInReach` as DOC1.1 says:
+
+| What | Error | Words |
+|---|---|---|
+| the app is shut on his Mac or PC | `NotReadyError('not open')` | "PowerPoint is not open on this Mac." / "Word is not open on this PC." |
+| the VM sleeps and nobody pressed | `NotReadyError('asleep')` | "Windows is asleep, and only his own press wakes it." |
+| a dialog is open in the app, or it stopped answering | `OfficeError` code `busy` | "Word is busy with a dialog: try again once it is closed." |
+| no such app here, or the pair unproven | `NoConverterError` | "No Word is in reach." |
+
+The runner's own refusals before a run (DOC1.1) keep its words: "the machine that converts docx to pdf+word is
+asleep, and only his own press wakes it", "… is not open on <host>". A job for a shared library's file runs
+only where the file is, and a result over 64 MiB that would cross hosts fails in words, both by the runner's
+rules.
+
 ## The add-in
 
 Our own Office.js task pane add-in for Excel, Word and PowerPoint, on the
@@ -617,6 +696,13 @@ canary, its `service.svc` checks every `__type` and answers as Exchange
 does): who is signed in, a formatted send read back from Sent, the route end
 to end, booking, an invitation by UID and its answer, a session that ends.
 
+Office as a renderer: `render.test.ts` runs the five converters over a drawing `FakeOffice` through the real
+job runner (the copy, the options, each refusal, the press, two runners whose link passes
+`work.formats.convert`'s own request schema, a shared file, the 64 MiB cap), the Windows carrier's render
+verbs over a stand-in helper, and the Mac's over a recorded osascript with its scripts in a sandbox.
+`com/rig.test.ts` runs the render verbs on the recorded COM surface (each app's open, export and close as
+Microsoft documents them, a created app quit after, busy, not open, not installed).
+
 Windows: `com/carrier.test.ts` runs the carrier's wire against a stand-in
 helper (each verb's request, refusals and busy codes, the allowed state, a
 helper that cannot start, stops, hangs or never says ready, Excel's events
@@ -642,6 +728,12 @@ hands a program one synchronous handle for stdin and stdout, and a read
 waiting on it holds every write back. Node gives the helper two pipes.
 
 ## Not proven
+
+**Office as a renderer**: on his Mac, none of the five pairs (the JXA names `saveAs`, `saveWorkbookAs`, `save
+… as 'save as PNG'` and `'save as MP4'` follow the dictionaries, unrun; and whether a file in the app's own
+container opens with no prompt); on a Windows PC, none; in the VM, what the landing note does not list as
+proven. A password-protected deck may raise PowerPoint's password dialog (Open takes no password), which holds
+the helper until the call's time runs out and the helper is ended.
 
 **Windows**: nothing has run against real Office on Windows (the rig has
 none, by the owner's choice). The recorded surface follows Microsoft's

@@ -1,7 +1,10 @@
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { extname, join } from 'node:path'
 import { OFFICE_APPS, type OfficeAllowed, type OfficeApp, type OfficeCell } from '@shared/contract-work-office'
-import { APP_NAMES, OfficeError, type OfficeCarrier } from './carrier'
+import { APP_NAMES, OfficeError, type OfficeCarrier, type RenderApp, type RenderAsk, type RenderDone } from './carrier'
 import { OSA_TIMEOUT_MS, OsaTimeout, runOsa, type Osa } from './osa'
 
 /**
@@ -155,6 +158,20 @@ export const SCRIPTS = {
     var es = o.calendarEvents.whose({ _and: [{ startTime: { _greaterThanEquals: from } }, { startTime: { _lessThan: to } }] }); var ids = all(es.id()), ics = all(es.icalendarData());
     for (var i = 0; i < ids.length; i++) if (String(ics[i] || '').replace(/\\r?\\n[ \\t]/g, '').split(/\\r?\\n/).indexOf('UID:' + a.uid) >= 0) return JSON.stringify(String(ids[i]));
     return 'null'`),
+  // Office as a renderer (docs/agents/work-office.md "Office as a renderer"): a copy in the app's own container,
+  // opened in the app he has open, saved as by the app itself, closed unsaved. Unproven on a Mac: not offered
+  // until each pair's own live proof passes (render.ts RENDER_PROVEN).
+  renderWord: js(`var w = app('Microsoft Word'); w.open(Path(a.input)); var d = byKey(w.documents, a.input), pages = null;
+    try { try { pages = Number(w.computeStatistics(d, { statistic: 'statistic pages' })) } catch (e) {}
+      w.saveAs(d, { fileName: a.output, fileFormat: 'format PDF' }); return JSON.stringify({ pages: pages }) }
+    finally { try { w.close(d, { saving: 'no' }) } catch (e) {} }`),
+  renderExcel: js(`var xl = app('Microsoft Excel'); xl.open(Path(a.input)); var b = byKey(xl.workbooks, a.input);
+    try { xl.saveWorkbookAs(b, { filename: a.output, fileFormat: 'PDF file format' }); return JSON.stringify({}) }
+    finally { try { xl.close(b, { saving: 'no' }) } catch (e) {} }`),
+  // PNG saves every slide into a folder (Slide1.png, …): the host keeps the one asked for. A video is PowerPoint's MP4.
+  renderPowerPoint: js(`var pp = app('Microsoft PowerPoint'); pp.open(Path(a.input)); var p = byKey(pp.presentations, a.input), n = p.slides.length;
+    try { pp.save(p, { in: Path(a.output), as: a.to === 'pdf' ? 'save as PDF' : a.to === 'png' ? 'save as PNG' : 'save as MP4' }); return JSON.stringify({ pages: n }) }
+    finally { try { pp.close(p, { saving: 'no' }) } catch (e) {} }`),
   answerEvent: js(`var o = app('Microsoft Outlook'); var e = o.calendarEvents.byId(Number(a.id)); var p = { sendingResponse: true }; if (a.comment) p.comment = a.comment;
     if (a.answer === 'accept') o.acceptMeeting(e, p); else if (a.answer === 'decline') o.declineMeeting(e, p); else o.acceptTentativelyMeeting(e, p); return 'null'`)
 } as const
@@ -215,8 +232,16 @@ const APP_OF: Record<ScriptName, OfficeApp> = {
   events: 'outlook',
   createEvent: 'outlook',
   eventByUid: 'outlook',
-  answerEvent: 'outlook'
+  answerEvent: 'outlook',
+  renderWord: 'word',
+  renderExcel: 'excel',
+  renderPowerPoint: 'powerpoint'
 }
+
+const RENDER_SCRIPT: Record<RenderApp, ScriptName> = { word: 'renderWord', excel: 'renderExcel', powerpoint: 'renderPowerPoint' }
+/** Each app's sandbox: a file in its own container opens and saves with no "Grant File Access" prompt for him to answer. */
+export const RENDER_CONTAINER: Record<RenderApp, string> = { word: 'com.microsoft.Word', excel: 'com.microsoft.Excel', powerpoint: 'com.microsoft.Powerpoint' }
+export const renderFolder = (home: string, app: RenderApp): string => join(home, 'Library', 'Containers', RENDER_CONTAINER[app], 'Data', 'Library', 'Caches', 'TempCode')
 
 export interface MacDeps {
   osa?: Osa
@@ -230,6 +255,10 @@ export interface MacDeps {
   /** how long `open` looks for the system's file-access prompt after opening a file OneDrive manages, in looks of a second; default 3 */
   promptLooks?: number
   sleep?: (ms: number) => Promise<void>
+  /** the home whose app containers a render's copy goes in; default the user's */
+  home?: string
+  /** `sips` with its arguments: a slide's PNG brought to the width asked */
+  sips?: (args: string[]) => Promise<void>
 }
 
 /**
@@ -248,6 +277,9 @@ const appPath = (app: OfficeApp): string => `/Applications/${APP_NAMES[app]}.app
 
 // By the bundle's executable path, not `-x <name>`: macOS cuts a process's name to 16 characters, so "Microsoft PowerPoint" and "Microsoft Outlook" never matched.
 const pgrep = (app: OfficeApp): Promise<boolean> => new Promise((resolve) => execFile('/usr/bin/pgrep', ['-f', `${appPath(app)}/Contents/MacOS/`], (err) => resolve(!err)))
+
+const runSips = (args: string[]): Promise<void> =>
+  new Promise((resolve, reject) => execFile('/usr/bin/sips', args, (err) => (err ? reject(new OfficeError(`The slide's picture could not be sized: ${err.message}`)) : resolve())))
 
 const openWith = (args: string[]): Promise<void> =>
   new Promise((resolve, reject) => execFile('/usr/bin/open', args, (err) => (err ? reject(new OfficeError(`The file did not open: ${err.message}`)) : resolve())))
@@ -292,8 +324,38 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
     if (typeof made === 'object' && made && 'refused' in made) throw new OfficeError(made.refused, 'refused')
     return made
   }
+  /**
+   * Office as a renderer on this Mac: only in an app he already has open (never started unseen), on a copy in that
+   * app's container, which goes after. Not offered until proven (render.ts RENDER_PROVEN.mac).
+   */
+  const render = async (ask: RenderAsk): Promise<RenderDone> => {
+    if (!installed(ask.app)) throw new OfficeError(`No ${APP_NAMES[ask.app]} is in reach: it is not installed on this Mac.`, 'not-installed')
+    if (!(await running(ask.app))) throw new OfficeError(`${APP_NAMES[ask.app].replace('Microsoft ', '')} is not open on this Mac.`, 'not-running')
+    const dir = join(renderFolder(deps.home ?? homedir(), ask.app), randomBytes(8).toString('hex'))
+    mkdirSync(dir, { recursive: true })
+    try {
+      const input = join(dir, `input${extname(ask.input).toLowerCase()}`)
+      copyFileSync(ask.input, input)
+      const output = ask.to === 'png' ? join(dir, 'slides') : join(dir, `output.${ask.to}`)
+      const done = await call<{ pages?: number | null }>(RENDER_SCRIPT[ask.app], { input, output, to: ask.to })
+      if (ask.to === 'png') {
+        const want = ask.slide ?? 1
+        const made = existsSync(output) ? readdirSync(output).filter((f) => /\.png$/i.test(f)) : []
+        const slide = made.find((f) => Number(/(\d+)\.png$/i.exec(f)?.[1]) === want)
+        if (!slide) throw new OfficeError(made.length ? `The deck has ${made.length} slides; there is no slide ${want}.` : 'PowerPoint made no picture of the slides.', made.length ? 'not-found' : 'failed')
+        await (deps.sips ?? runSips)(['--resampleWidth', String(ask.width ?? 1920), join(output, slide), '--out', ask.output])
+        return { width: ask.width ?? 1920 }
+      }
+      if (!existsSync(output)) throw new OfficeError(`${APP_NAMES[ask.app]} made no ${ask.to.toUpperCase()}.`)
+      copyFileSync(output, ask.output)
+      return typeof done?.pages === 'number' ? { pages: done.pages } : {}
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
   return {
     kind: 'mac',
+    render,
     async outlookProblem() {
       return installed('outlook') && (await (deps.newOutlook ?? readNewOutlook)()) ? NEW_OUTLOOK : null
     },

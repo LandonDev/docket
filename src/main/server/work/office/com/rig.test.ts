@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SheetChange } from 'work-kit/sheet/source'
 import type { HeldItem, WorkToolResult } from '@shared/work'
 import type { ActCtx, ToolCtx } from '../../modules'
@@ -39,6 +41,8 @@ const NOTES = 'C:\\Users\\owner\\Documents\\Notes.docx'
 const DECK = 'C:\\Users\\owner\\Documents\\Deck.pptx'
 
 interface State {
+  renders: Record<string, unknown>[]
+  running: string[]
   sent: { account?: string; to?: string; cc?: string; bcc?: string; subject?: string; html?: string; invite?: string; meeting?: number }[]
   answers: { id: string; response: number; sent: boolean; body: string }[]
   started: Record<string, unknown>[]
@@ -416,6 +420,80 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       await expect(carrier.readMail('42')).rejects.toMatchObject({ code: 'not-allowed' })
       expect((await carrier.apps()).find((a) => a.app === 'outlook')).toMatchObject({ allowed: 'no' })
     })
+  })
+
+  describe('Office as a renderer (the render verbs)', () => {
+    let dir: string
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'tc-render-rig-'))
+    })
+    afterEach(() => rmSync(dir, { recursive: true, force: true }))
+    const copy = (name: string, bytes = 'a copy'): string => {
+      const p = join(dir, name)
+      writeFileSync(p, bytes)
+      return p
+    }
+    const out = (name: string): string => join(dir, name)
+
+    it("Word: the copy opened read only, out of recent files, with no window, drawn by ExportAsFixedFormat, closed unsaved, in his own Word", async () => {
+      await seed({ render: { pages: 3 } })
+      expect(await carrier.render({ app: 'word', to: 'pdf', input: copy('input.docx', '12345'), output: out('o.pdf') })).toEqual({ pages: 3 })
+      expect(readFileSync(out('o.pdf'), 'utf8')).toBe('recorded pdf word pages=3 input=5')
+      const { renders, running } = await state()
+      expect(renders).toEqual([expect.objectContaining({ open: 'word', readOnly: true, recent: false, visible: false, password: 'tc-office-no-password', closed: 0 })])
+      expect(String(renders[0]!.path)).toMatch(/\\TempCode\\render\\[0-9a-f]{32}\\input\.docx$/)
+      expect(running).toContain('word')
+    }, 60_000)
+
+    it("Excel, where the host may start one: an Excel of its own, hidden, no macro, the workbook's own print areas, every visible sheet's pages, quit after", async () => {
+      await seed({ render: { sheets: [{ pages: 1 }, { pages: 2 }, { pages: 4, visible: false }] } })
+      expect(await carrier.render({ app: 'excel', to: 'pdf', input: copy('input.xlsx'), output: out('o.pdf'), start: true })).toEqual({ pages: 3 })
+      expect(readFileSync(out('o.pdf'), 'utf8')).toBe('recorded pdf excel pages=3 ignorePrintAreas=False input=6')
+      const { renders } = await state()
+      expect(renders).toEqual([
+        { created: 'excel' },
+        { set: 'excel.DisplayAlerts', value: false },
+        { set: 'excel.AutomationSecurity', value: 3 },
+        expect.objectContaining({ open: 'excel', readOnly: true, recent: false, closed: false }),
+        { quit: 'excel' }
+      ])
+    }, 60_000)
+
+    it('PowerPoint: a PDF of every slide, one slide as a PNG at a width, a video, and a slide that is not there', async () => {
+      await seed({ render: { slides: 12, slideWidth: 960, slideHeight: 540 } })
+      expect(await carrier.render({ app: 'powerpoint', to: 'pdf', input: copy('input.pptx'), output: out('o.pdf') })).toEqual({ pages: 12 })
+      expect(readFileSync(out('o.pdf'), 'utf8')).toBe('recorded pdf powerpoint pages=12 input=6')
+      expect(await carrier.render({ app: 'powerpoint', to: 'png', input: copy('input.pptx'), output: out('s.png'), slide: 3, width: 1920 })).toEqual({ width: 1920, height: 1080 })
+      expect(readFileSync(out('s.png'), 'utf8')).toBe('recorded png slide=3 1920x1080 input=6')
+      expect(await carrier.render({ app: 'powerpoint', to: 'mp4', input: copy('input.pptx'), output: out('v.mp4'), seconds: 1, height: 720 })).toEqual({ seconds: 12, height: 720 })
+      expect(readFileSync(out('v.mp4'), 'utf8')).toBe('recorded mp4 seconds=1 height=720 fps=30 input=6')
+      await expect(carrier.render({ app: 'powerpoint', to: 'png', input: copy('input.pptx'), output: out('x.png'), slide: 13 })).rejects.toMatchObject({ code: 'not-found', message: 'The deck has 12 slides; there is no slide 13.' })
+      const { renders } = await state()
+      expect(renders.filter((r) => r.open)).toHaveLength(4)
+      for (const r of renders.filter((x) => x.open)) expect(r).toMatchObject({ readOnly: -1, withWindow: 0, closed: true })
+      expect(renders.find((r) => r.video)).toMatchObject({ video: { timings: false, seconds: 1, height: 720 } })
+      await seed({ render: { video: 'fail' } })
+      await expect(carrier.render({ app: 'powerpoint', to: 'mp4', input: copy('input.pptx'), output: out('w.mp4') })).rejects.toMatchObject({ message: 'PowerPoint could not make the video.' })
+    }, 120_000)
+
+    it('an app he has not open is refused, never started, unless the host may start one hidden (the VM), which it quits after', async () => {
+      await seed({ apps: { word: { running: false } } })
+      await expect(carrier.render({ app: 'word', to: 'pdf', input: copy('input.docx'), output: out('o.pdf') })).rejects.toMatchObject({ code: 'not-running', message: 'Word is not open on this PC.' })
+      expect((await state()).renders).toEqual([])
+      await carrier.render({ app: 'word', to: 'pdf', input: copy('input.docx'), output: out('o.pdf'), start: true })
+      const { renders, running } = await state()
+      expect(renders[0]).toEqual({ created: 'word' })
+      expect(renders.at(-1)).toEqual({ quit: 'word' })
+      expect(running).not.toContain('word')
+    }, 60_000)
+
+    it('a dialog in the app is busy, in its name; no Word at all is "No Word is in reach"', async () => {
+      await seed()
+      await carrier.call('_busy', { calls: 1 })
+      await expect(carrier.render({ app: 'word', to: 'pdf', input: copy('input.docx'), output: out('o.pdf') })).rejects.toMatchObject({ code: 'busy', message: 'Word is busy with a dialog: try again once it is closed.' })
+      await seed({ apps: { word: { installed: false } } })
+      await expect(carrier.render({ app: 'word', to: 'pdf', input: copy('input.docx'), output: out('o.pdf'), start: true })).rejects.toMatchObject({ code: 'not-installed', message: 'No Word is in reach: it is not installed on this PC.' })
+    }, 60_000)
   })
 })
 
