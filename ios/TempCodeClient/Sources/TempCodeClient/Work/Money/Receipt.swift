@@ -173,7 +173,9 @@ public final class Receipt {
         let file = "\(key).\(ext)"
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try data.write(to: url(file), options: .atomic)
-        let draft = ReceiptDraft(key: key, file: file, name: "Receipt \(Self.stamp(now())).\(ext)", mime: mime)
+        var draft = ReceiptDraft(key: key, file: file, name: "Receipt \(Self.stamp(now())).\(ext)", mime: mime)
+        // Hosts that answered already: the picker's first sector until he picks.
+        draft.sector = sectors.first
         self.pages[key] = pages
         drafts.append(draft)
         currentKey = key
@@ -224,7 +226,9 @@ public final class Receipt {
         reading = true
         defer { reading = false }
         if draft.lines == nil {
-            let pictures = pages[key] ?? (draft.mime == "image/jpeg" ? scan(draft).map { [$0] } : nil) ?? []
+            // A JPEG is its own one page; a PDF's pages are known only while the app that scanned it runs.
+            let held = pages[key] ?? []
+            let pictures = held.isEmpty && draft.mime == "image/jpeg" ? scan(draft).map { [$0] } ?? [] : held
             if !pictures.isEmpty, let lines = try? await source.lines(of: pictures) {
                 update(key) { $0.lines = lines }
             }

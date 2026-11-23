@@ -206,6 +206,22 @@ private let scan = Data("a made-up receipt".utf8)
         #expect(again.amount == "10.43")
     }
 
+    @Test func `a JPEG handed over with no pages is read from its file, a PDF without its pages is not read`() async throws {
+        let phone = Phone()
+        let receipt = phone.receipt()
+        let host = StubHost()
+        try receipt.add(file: scan, mime: "image/jpeg", pages: [])
+        await receipt.find([host])
+        await receipt.read([host])
+        #expect(phone.text.reads == 1)
+        try receipt.add(file: scan, mime: "application/pdf", pages: [])
+        await receipt.read([host])
+        #expect(phone.text.reads == 1)
+        // Unread, it goes without lines: the host reads it itself.
+        #expect(await receipt.save([host])?.state == .ready)
+        #expect(host.received.last?.lines == nil)
+    }
+
     @Test func `no host in time leaves the fields empty and says so`() async throws {
         let phone = Phone()
         let receipt = phone.receipt()
