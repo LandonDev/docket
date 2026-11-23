@@ -148,9 +148,15 @@ export interface DocPreviewDeps {
 
 const linkRequest: Request = (env, method, params, opts) => registry.linkOf(env).request(method, params, opts);
 
+/** The font a document's text is in on paper when nothing names one: Office's own default, drawn with its twin. */
+export const DOC_PAPER_FONT = "Calibri";
+
 async function writePage(editor: AnyEditor, title: string, print: { paper: "A4" | "Letter" } | null): Promise<string> {
   const { htmlDocument } = await import("work-kit/formats/html");
-  return htmlDocument(editor, editor.document as never, print ? { title, print } : { title });
+  if (!print) return htmlDocument(editor, editor.document as never, { title });
+  // The print window loads no file, so the page carries its faces: the same ones LibreOffice draws Word's file with.
+  const { printFonts } = await import("../formats/fonts");
+  return htmlDocument(editor, editor.document as never, { title, print, fonts: await printFonts([], DOC_PAPER_FONT) });
 }
 
 const cancelled = (): DOMException => new DOMException("The draw was cancelled", "AbortError");

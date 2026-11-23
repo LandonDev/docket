@@ -77,6 +77,16 @@ describe('the hosted pages', () => {
       expect(html, page).toContain("script-src 'self'")
       expect(html, page).not.toContain('Not built')
     }
+    // A document's fonts (work-kit/fonts): each face is a file of this origin's own, which the guest page's
+    // `font-src 'self'` lets it read; no page links one, since a face is fetched only when text is drawn with it.
+    const assets = readdirSync(join(out, 'hosted', 'assets'))
+    for (const family of ['Carlito', 'Caladea', 'LiberationSans', 'LiberationSerif', 'LiberationMono']) {
+      for (const style of ['Regular', 'Bold', 'Italic', 'BoldItalic']) {
+        expect(assets.filter((name) => name.startsWith(`${family}-${style}-`) && name.endsWith('.woff2')), `${family}-${style}`).toHaveLength(1)
+      }
+    }
+    expect(readFileSync(join(out, 'hosted', 'guest', 'index.html'), 'utf8')).toContain("font-src 'self'")
+    expect(readFileSync(join(out, 'hosted', 'guest', 'index.html'), 'utf8')).not.toContain('.woff2')
     // A light viewer never starts dark: the guest page's scheme script is a plain one, so it runs
     // before the stylesheet paints, and it sets the light class from the viewer's system alone.
     const guest = readFileSync(join(out, 'hosted', 'guest', 'index.html'), 'utf8')

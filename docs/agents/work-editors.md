@@ -234,6 +234,74 @@ await printPdf(name, bytes); // says where it went; rejects with the reason
   own (the kind keys it by a count of asks), so ⌘P opens on Print even when he
   moved to another format inside Preview.
 
+## Fonts
+
+A file's font is named as Office names it and drawn with a free twin of the
+same metrics, the same file on every machine, so the editor, the PDF and
+LibreOffice's pictures break lines on the same glyph widths:
+
+| Named | Drawn with |
+|---|---|
+| Calibri | Carlito |
+| Cambria | Caladea |
+| Arial | Liberation Sans |
+| Times New Roman | Liberation Serif |
+| Courier New | Liberation Mono |
+
+A font with no twin here (Aptos, a brand font) keeps its name and is drawn
+with Carlito; where he picks fonts its row says "Drawn as Carlito"
+(`drawnAs(name)`). A machine that has the real font uses it: the stack is the
+name, then the twin, then the generic (`fontStack('Calibri')` is
+`"Calibri", "Carlito", sans-serif`). An export writes the Office name.
+
+The faces are work-kit's (`work-kit/fonts`, twenty woff2 files made from the
+TrueType files LibreOffice 26.8.3 carries; its README has how they are made
+and checked). **They ship whole.** The plan had a Latin subset for the hosted
+page; a subset is a Modified Version under the Open Font License and may not
+keep the name Carlito, so there are none, and anyone who subsets these files
+must rename them (`work-kit/src/fonts/licences/NOTE.md`).
+
+Every kind draws through one file, `src/renderer/src/work/formats/fonts.ts`:
+
+```ts
+import { ensureFonts, fontStack, drawnAs, printFonts } from "../formats/fonts";
+await ensureFonts(["Calibri", "Aptos"]);          // before text in them is laid out
+element.style.fontFamily = fontStack("Calibri");  // what draws it
+const fonts = await printFonts(names, "Calibri"); // for a page a print window loads
+```
+
+- `ensureFonts(names)` registers each family once per page, under its twin's
+  name, in a `<style data-work-fonts>` of its own, and waits until the faces
+  are read (`document.fonts.load`). It never rejects. Call it before you
+  measure or lay out; `font-display` is `block`, so text is never drawn in a
+  fallback face and then moved.
+- Each face is a file of its own in the build, fetched only when text is
+  drawn with it. Nothing of this is in first paint
+  (`scripts/entryGraph.test.ts`), and a file that names no font loads nothing.
+- The hosted pages get the same files from their own origin (`font-src
+  'self'`; `src/main/workBuild.test.ts` holds that the hosted build emits all
+  twenty and that no page links one).
+- A print window loads no file, so its page carries its faces as `data:`
+  URLs: `printFonts(names, body)` answers what `htmlDocument`'s `fonts`
+  takes (the `@font-face` rules and the body's family list). A document's PDF
+  is drawn in Calibri's twin this way.
+- LibreOffice on a host carries the same five families, so no tool manifest
+  ships them; if a host's ever lacks one, a `scripts/work-tools/fonts.json`
+  is where it goes.
+- A document loads the fonts its text names as it opens and as it comes to
+  name more (`work/docs/fonts.ts`, `useDocFonts`), in the app and on the
+  guest page.
+
+The check that the claim holds is a live test,
+`src/main/server/work/formats/fontWrap.live.test.ts` (run with
+`TEMP_CODE_WORK_TOOLS_DATA` set): forty paragraphs in the five families, set
+in the shipped woff2 in Chromium and by the real LibreOffice from a Word file
+that names the Office fonts, compared line count by line count. Measured on
+the box (LibreOffice 26.8.3, Chromium 1248, Letter with inch margins, 11 pt):
+40 of 40 paragraphs take the same number of lines, which the test holds; in
+39 of 40 every word is on the same line. Only the regular faces at one size
+are measured, and WebKit, the Mac and Word itself are not.
+
 ## The conversion runner: a renderer that is an app or a machine
 
 `ctx.convert` (`src/main/server/work/formats/jobs.ts`,

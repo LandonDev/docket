@@ -56,6 +56,7 @@
 @source "../../../node_modules/work-kit/src/editor/use-document.ts";
 @source "../../../node_modules/work-kit/src/editor/use-mounted.ts";
 @source "../../../node_modules/work-kit/src/editor/viewer.ts";
+@source "../../../node_modules/work-kit/src/fonts/index.ts";
 @source "../../../node_modules/work-kit/src/formats/clipboard/index.ts";
 @source "../../../node_modules/work-kit/src/formats/diff/index.ts";
 @source "../../../node_modules/work-kit/src/formats/html/index.ts";

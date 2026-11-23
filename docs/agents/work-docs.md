@@ -123,7 +123,7 @@ for as long as the document is the same one:
 | Format | Drawn | By |
 |---|---|---|
 | Word, OpenDocument, Rich Text | the exported file itself, converted on the host (`work.formats.preview`) | LibreOffice |
-| PDF | the document's print page, written here from the editor's blocks and printed on the host | TempCode |
+| PDF | the document's print page, written here from the editor's blocks and printed on the host, in Calibri's twin (the page carries its faces: work-editors.md "Fonts") | TempCode |
 | Print | the same PDF: the pages that go to paper | TempCode ("As it will print") |
 | Markdown | the host's text (`work.formats.export`) | the file's own text |
 | Web page | the page written here, in a frame where no script runs and nothing is fetched | the file's own page |
@@ -159,7 +159,8 @@ for as long as the document is the same one:
   host's own among them.
 - **Not yet.** The document has no page set-up, so Preview's Page section is absent and a
   PDF is printed on the locale's paper with the print page's own margins;
-  fonts are the print page's system stack; "Check in Word" is not offered (no
+  the editor still draws in the system's font, since no text can name one
+  until the format row lands; "Check in Word" is not offered (no
   Office renderer is registered); headers, footers and columns a Word file
   carried are not counted in the lines.
 

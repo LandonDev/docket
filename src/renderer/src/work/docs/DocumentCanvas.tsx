@@ -29,6 +29,7 @@ import { importsFirst } from "../formats/model";
 import { Doc, Export } from "../icons";
 import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { useGoogleDoc } from "../google/docMore";
+import { useDocFonts } from "./fonts";
 import { docHost, servedBy, type DocHost } from "./host";
 import { docPreviewSource } from "./previewSource";
 import { decided, reviewOf } from "./review";
@@ -640,6 +641,17 @@ export function DocumentFrame({
   onEditor?(editor: AnyEditor | null): void;
 }) {
   const scheme = useColorScheme();
+  // The fonts the document names are loaded as it opens and as it comes to name more (work/docs/fonts.ts).
+  const [editor, setEditor] = useState<AnyEditor | null>(null);
+  useDocFonts(editor);
+  const tell = useRef(onEditor);
+  useEffect(() => {
+    tell.current = onEditor;
+  }, [onEditor]);
+  const heard = useCallback((next: AnyEditor | null) => {
+    setEditor(next);
+    tell.current?.(next);
+  }, []);
   return (
     <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER }}>
       <EditorAdaptersProvider adapters={doc.adapters}>
@@ -658,7 +670,7 @@ export function DocumentFrame({
               {...(onAsk ? { onAsk } : {})}
               review={review ?? null}
               {...(onReviewPick ? { onReviewPick } : {})}
-              {...(onEditor ? { onEditor } : {})}
+              onEditor={heard}
             />
           </div>
         </div>

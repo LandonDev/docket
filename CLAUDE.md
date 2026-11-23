@@ -262,7 +262,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   src/main/server/batch.ts). [docs/agents/master-threads.md](docs/agents/master-threads.md)
 - **Work editors** — what the document, sheet and deck kinds share: who hears a key (`data-editor-keys`,
   `MenuState.editing`), File → Print… and Export… as one `work:command` event a kind's Body answers
-  (`useWorkCommands`), the Preview contract (`work/formats/preview.ts`, `previewProblems`), and the conversion
+  (`useWorkCommands`), the Preview contract (`work/formats/preview.ts`, `previewProblems`), Print (`printOut.ts`), a file's
+  fonts (`work/formats/fonts.ts`: Office names drawn with work-kit's free twins), and the conversion
   runner's `+renderer` formats, `ready`, his press and the shared-file rule.
   [docs/agents/work-editors.md](docs/agents/work-editors.md)
 - **Work: money** — receipts to a ledger by job (pillar 60, one of Work's pillars): the ledger is

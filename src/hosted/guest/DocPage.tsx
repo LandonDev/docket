@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type DocumentStatus, type EditorAdapters } from "work-kit/editor";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
+import { useDocFonts } from "@renderer/work/docs/fonts";
 import { Comment } from "@renderer/work/icons";
 import { commentLeft } from "./place";
 import { OpenFailed, type Opened, type Session } from "./session";
@@ -51,6 +52,9 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
   );
   const wide = useWide(MEASURE + MARGIN + 64);
   const frame = useRef<HTMLDivElement>(null);
+  // The fonts the document names, from this service's own files (`font-src 'self'`).
+  const [editor, setEditor] = useState<Parameters<typeof useDocFonts>[0]>(null);
+  useDocFonts(editor);
   // Anything wrong with the socket may be a link that went: the page asks once, and shows the end if it is gone.
   const [status, setStatus] = useState<DocumentStatus | null>(null);
   const onStatus = (next: DocumentStatus | null): void => {
@@ -82,6 +86,7 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
               threadMargin={threads ? (wide ? "side" : "under") : undefined}
               threadList={!!threads}
               onStatus={onStatus}
+              onEditor={setEditor}
             />
           </div>
           {opened.role === "comment" ? <SelectionComment session={session} frame={frame} onMade={() => threads?.refresh()} /> : null}
