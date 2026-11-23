@@ -163,7 +163,7 @@ struct ReceiptSheet: View {
     /// The host has it: the light impact, where it went, and the sheet closes unless another waits.
     private func landed() {
         saved += 1
-        if let line = receipt.outcome { FleetToastCenter.shared.post(message: line) }
+        if let line = receipt.outcome { FleetToastCenter.shared.post(note: line) }
         // Another waits: the sheet goes on to it.
         if receipt.pending == 0 { dismiss() }
     }

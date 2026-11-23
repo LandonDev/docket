@@ -231,11 +231,13 @@ struct FleetConfirmSheet: View {
 enum FleetNotice: Hashable {
     case batch(BatchToast)
     case message(String)
+    /// Where something went: plain words that leave like a clean batch.
+    case note(String)
 
     var summary: String {
         switch self {
         case .batch(let toast): toast.summary
-        case .message(let text): text
+        case .message(let text), .note(let text): text
         }
     }
 
@@ -244,6 +246,7 @@ enum FleetNotice: Hashable {
         switch self {
         case .batch(let toast): !toast.failed.isEmpty
         case .message: true
+        case .note: false
         }
     }
 }
@@ -268,6 +271,11 @@ final class FleetToastCenter {
     /// One action's failure, in the same line.
     func post(message: String) {
         show(.message(message))
+    }
+
+    /// An outcome that needs nothing more: in the plain ink, gone after four seconds.
+    func post(note: String) {
+        show(.note(note))
     }
 
     private func show(_ next: FleetNotice) {
@@ -302,6 +310,8 @@ struct FleetToastLine: View {
             case .message(let message):
                 Text(message)
                     .foregroundStyle(Tint.destructive)
+            case .note(let note):
+                Text(note)
             case .batch(let toast):
                 Text(toast.headline)
                     .fontWeight(.semibold)
