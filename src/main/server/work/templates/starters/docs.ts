@@ -66,8 +66,8 @@ export const DOCS: Record<string, () => DocFixture> = {
       blocks: [
         d.h1('Release {{Version}}'),
         d.facts([
-          ['Released', '{{Date}}'],
-          ['Prepared by', '{{Name}}'],
+          ['Release date', 'Date of the rollout'],
+          ['Prepared', '{{Date}} by {{Name}}'],
           ['Downtime', 'None expected, or the window and its length']
         ]),
         d.h2('Highlights'),
@@ -330,7 +330,7 @@ export const DOCS: Record<string, () => DocFixture> = {
           ]
         ),
         d.h2('Ejections, injuries and conduct'),
-        d.p('Anyone ejected, any injury that stopped play, any unsporting conduct, with names and numbers. Write "None" if there was nothing.'),
+        d.p('Anyone ejected, any injury that stopped play, any unsporting conduct, with names and numbers. Write “None” if there was nothing.'),
         d.h2('Follow-up'),
         ...d.bullets(['Reports still to file, and with whom.', 'Anything to raise with the schools or the assignor.']),
         d.p('Submitted by {{Name}} on {{Date}}.')
@@ -544,6 +544,8 @@ export const DOCS: Record<string, () => DocFixture> = {
         ...d.bullets(['Morning:', 'Afternoon:', 'Evening:']),
         d.h3('Day two'),
         ...d.bullets(['Morning:', 'Afternoon:', 'Evening:']),
+        // The itinerary keeps page one; the lists to work through before going stand together on page two.
+        d.newPage(),
         d.h2('Before we leave'),
         ...d.checks(['Passports or IDs checked', 'Bookings printed or saved offline', 'Bank told of travel', 'Home: mail, plants, keys']),
         d.h2('Packing'),

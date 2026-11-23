@@ -201,10 +201,60 @@ describe('the starter sheets', () => {
     const sheet = partOf('unify/Invoice.xlsx', 'xl/worksheets/sheet1.xml')
     const strings = partOf('unify/Invoice.xlsx', 'xl/sharedStrings.xml')
     expect(strings).toContain('Email or phone')
-    expect(sheet).toContain('<f>IF(ISNUMBER(D8),D8+N(D10),"")</f>'.replace(/"/g, '&quot;').replace(/&quot;/g, '"'))
-    expect(sheet).toMatch(/<c r="D10" s="\d+"><v>30<\/v><\/c>/)
+    expect(sheet).toContain('<f>IF(ISNUMBER(D9),D9+N(D11),"")</f>')
+    expect(sheet).toMatch(/<c r="D11" s="\d+"><v>30<\/v><\/c>/)
+    // The sender's address is whole, as Bill to's is: street, then city, state and ZIP.
+    expect(strings.indexOf('<t>City, state, ZIP</t>')).toBeGreaterThan(-1)
+    expect(sheet).toMatch(/<c r="A6" s="\d+" t="s">/)
+    // A line's amount waits for both its quantity and its rate.
+    expect(sheet).toContain('<f>IF(AND(ISNUMBER(B15),ISNUMBER(C15)),B15*C15,"")</f>')
+    expect(sheet).toContain('<f>SUM(D15:D22)</f>')
+    // A short row parts the Payment heading's rule from the note, which sits in the middle of its box.
+    expect(sheet).toContain('<row r="29" ht="6" customHeight="1"></row>')
+    expect(partOf('unify/Invoice.xlsx', 'xl/styles.xml')).toContain('<alignment horizontal="left" vertical="center" wrapText="1" indent="1"/>')
     // The payment note names no number of days: the terms cell is the one place it lives.
     const note = /<t>(Pay by bank transfer[^<]*)<\/t>/.exec(strings)![1]!
     expect(note).not.toMatch(/\d/)
+  })
+})
+
+describe('the starters, round two of the council', () => {
+  it.each(docxFiles)('%s: the page header prints from page two on, the footer on every page', (file) => {
+    const doc = partOf(file, 'word/document.xml')
+    if (!doc.includes('<w:headerReference w:type="default"')) return
+    expect(doc).toContain('<w:titlePg/>')
+    const rels = partOf(file, 'word/_rels/document.xml.rels')
+    const target = (id: string): string => new RegExp(`Id="${id}"[^>]*Target="([^"]+)"`).exec(rels)![1]!
+    const ref = (type: string, kind: 'header' | 'footer'): string | undefined => new RegExp(`<w:${kind}Reference w:type="${type}" r:id="([^"]+)"/>`).exec(doc)?.[1]
+    const first = partOf(file, `word/${target(ref('first', 'header')!)}`)
+    expect(first.replace(/<[^>]+>/g, '')).toBe('')
+    const footer = ref('default', 'footer')
+    if (footer) expect(partOf(file, `word/${target(ref('first', 'footer')!)}`)).toBe(partOf(file, `word/${target(footer)}`))
+  })
+
+  it.each(docxFiles)('%s: a quoted word wears typographic quotes', (file) => {
+    const words = [...partOf(file, 'word/document.xml').matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join(' ')
+    expect(words).not.toMatch(/["']|&quot;|&apos;/)
+  })
+
+  it('the Release note leaves its release date for him and dates its draft', () => {
+    const xml = partOf('cosmic/Release note.docx', 'word/document.xml')
+    expect(xml).toContain('Date of the rollout')
+    expect(xml).toMatch(/Prepared<\/w:t>[\s\S]*?\{\{Date\}\} by \{\{Name\}\}/)
+  })
+
+  it('the Trip plan starts its lists to work through on a page of their own', () => {
+    const xml = partOf('life/Trip plan.docx', 'word/document.xml')
+    expect(xml).toMatch(/<w:pStyle w:val="Heading2"\/><w:pageBreakBefore\/><\/w:pPr><w:r>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t[^>]*>Before we leave<\/w:t>/)
+    expect(xml).not.toContain('<w:br w:type="page"/>')
+  })
+
+  it('a budget totals the differences of the rows that have an actual, and leaves the balance until both sides have one', () => {
+    const travel = partOf('purdue/Travel budget.xlsx', 'xl/worksheets/sheet1.xml')
+    expect(travel).toContain('<f>IF(COUNT(F10:F16)=0,"",SUM(G10:G16))</f>')
+    const monthly = partOf('life/Monthly budget.xlsx', 'xl/worksheets/sheet1.xml')
+    expect(monthly).toContain('<f>IF(COUNT(C5:C6)=0,"",SUM(D5:D6))</f>')
+    expect(monthly).toContain('<f>IF(COUNT(C10:C22)=0,"",SUM(D10:D22))</f>')
+    expect(monthly).toContain('<f>IF(AND(COUNT(C5:C6)&gt;0,COUNT(C10:C22)&gt;0),C7-C23,"")</f>')
   })
 })

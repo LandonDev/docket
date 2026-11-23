@@ -44,8 +44,7 @@ export const DECKS: Record<string, NewDeck> = {
     title: 'Review deck',
     slides: [
       { layout: 'title', title: '{{Video}}', subtitle: 'Review · {{Name}} · {{Date}}' },
-      { layout: 'bullets', title: 'Where we are', bullets: ['Cut: first, second, or final', 'What changed since the last review'] },
-      { layout: 'bullets', title: 'Watch', bullets: ['Link to the cut: add it here', 'Password: add it here', 'Running time: 0:00, against a target of 0:00'] },
+      { layout: 'bullets', title: 'Watch', bullets: ['The cut (first, second, or final): its link here', 'Password: add it here', 'Running time: 0:00, against a target of 0:00'] },
       {
         layout: 'table',
         title: 'Notes from the last review',
@@ -82,7 +81,7 @@ export const DECKS: Record<string, NewDeck> = {
       },
       {
         layout: 'table',
-        title: 'Goals',
+        title: 'Goals at mid-term',
         table: [
           ['Goal', 'Target', 'Result', 'Status'],
           ['Goal one', '100', '104', 'Done'],

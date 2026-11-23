@@ -25,8 +25,8 @@ const range = (from: number, to: number): number[] => Array.from({ length: to - 
 const YES_NO = ['Yes', 'No']
 
 function invoice(): SheetIn[] {
-  const first = 14
-  const last = 21
+  const first = 15
+  const last = 22
   const lines: [string, number, number][] = [
     ['Item one: what was done or supplied', 1, 1200],
     ['Item two', 4, 150],
@@ -39,18 +39,20 @@ function invoice(): SheetIn[] {
     [c('From', 'label')],
     [c('{{Job}}', 'input')],
     [c('Street address', 'input')],
+    [c('City, state, ZIP', 'input')],
     [c('Email or phone', 'input')],
     [],
     [c('Bill to', 'label'), null, c('Invoice date', 'labelRight'), c('{{Date}}', 'inputDate')],
     [c('{{Client}}', 'input'), null, c('Invoice number', 'labelRight'), c('{{Invoice number}}', 'input')],
     [c('Street address', 'input'), null, c('Terms', 'labelRight'), c(30, 'inputTerms')],
     // The due date is the invoice date and the terms' days: one value drives it, and the payment note names no number.
-    [c('City, state, ZIP', 'input'), null, c('Due date', 'labelRight'), f('IF(ISNUMBER(D8),D8+N(D10),"")', 'date', '')],
+    [c('City, state, ZIP', 'input'), null, c('Due date', 'labelRight'), f('IF(ISNUMBER(D9),D9+N(D11),"")', 'date', '')],
     [],
     [c('Description', 'head'), c('Qty', 'headRight'), c('Rate', 'headRight'), c('Amount', 'headRight')],
     ...range(first, last).map((r, i) => {
       const [what, qty, rate] = lines[i] ?? [null, null, null]
-      return [c(what, 'cell'), c(qty, 'cellNumber'), c(rate, 'cellCurrency'), f(`IF(B${r}="","",B${r}*C${r})`, 'cellCurrency', qty === null || rate === null ? '' : cents(qty * rate))]
+      // A line has an amount once both its quantity and its rate are numbers; an entered zero still counts.
+      return [c(what, 'cell'), c(qty, 'cellNumber'), c(rate, 'cellCurrency'), f(`IF(AND(ISNUMBER(B${r}),ISNUMBER(C${r})),B${r}*C${r},"")`, 'cellCurrency', qty === null || rate === null ? '' : cents(qty * rate))]
     }),
     [null, null, c('Subtotal', 'labelRight'), f(`SUM(D${first}:D${last})`, 'currency', subtotal)],
     [null, null, c('Tax rate', 'labelRight'), c(0, 'inputPercent')],
@@ -58,12 +60,14 @@ function invoice(): SheetIn[] {
     [c(null, 'total'), c(null, 'total'), c('Total due', 'totalLabel'), f(`D${last + 1}+D${last + 3}`, 'totalCurrency', subtotal)],
     [],
     span(c('Payment', 'section'), 4, 'section'),
+    [],
     [c('Pay by bank transfer by the due date, quoting the invoice number. Account name: {{Job}}. Bank, account and routing numbers: add yours here.', 'note'), c(null, 'note'), c(null, 'note'), c(null, 'note')],
     [],
     [c('Thank you for your business.', 'muted')]
   ]
-  const note = last + 7
-  return [{ name: 'Invoice', cols: [46, 9, 15, 19], rows, grid: false, merges: [`A${note}:D${note}`], heights: { [note]: 36 }, footer: '&L{{Job}}&RPage &P of &N' }]
+  const note = last + 8
+  // A short row between the Payment heading's rule and the note's box.
+  return [{ name: 'Invoice', cols: [46, 9, 15, 19], rows, grid: false, merges: [`A${note}:D${note}`], heights: { [note - 1]: 6, [note]: 36 }, footer: '&L{{Job}}&RPage &P of &N' }]
 }
 
 function releaseChecklist(): SheetIn[] {
@@ -181,7 +185,7 @@ function travelBudget(): SheetIn[] {
       return [c(cat, 'cell'), c(item, 'cell'), typeof qty === 'number' ? c(qty, 'cellNumber') : f(qty, 'cellNumber', qtyOf[qty]!), c(cost, 'cellCurrency'), f(`C${r}*D${r}`, 'cellCurrency', estimates[i]!), c(null, 'cellCurrency'), f(`IF(ISNUMBER(F${r}),E${r}-F${r},"")`, 'cellCurrency', ''), c(null, 'cellWrap')]
     }),
     [c('Other', 'cell'), c('Contingency, a tenth of the rest', 'cell'), c(1, 'cellNumber'), f(`ROUND(SUM(E${first}:E${last - 1})*0.1,0)`, 'cellCurrency', contingency), f(`C${last}*D${last}`, 'cellCurrency', contingency), c(null, 'cellCurrency'), f(`IF(ISNUMBER(F${last}),E${last}-F${last},"")`, 'cellCurrency', ''), c(null, 'cellWrap')],
-    [c('Total', 'total'), c(null, 'total'), c(null, 'total'), c(null, 'total'), f(`SUM(E${first}:E${last})`, 'totalCurrency', estimate), f(`IF(COUNT(F${first}:F${last})=0,"",SUM(F${first}:F${last}))`, 'totalCurrency', ''), f(`IF(COUNT(F${first}:F${last})=0,"",E${total}-F${total})`, 'totalCurrency', ''), c(null, 'total')],
+    [c('Total', 'total'), c(null, 'total'), c(null, 'total'), c(null, 'total'), f(`SUM(E${first}:E${last})`, 'totalCurrency', estimate), f(`IF(COUNT(F${first}:F${last})=0,"",SUM(F${first}:F${last}))`, 'totalCurrency', ''), f(`IF(COUNT(F${first}:F${last})=0,"",SUM(G${first}:G${last}))`, 'totalCurrency', ''), c(null, 'total')],
     [null, null, null, c('Per traveler', 'labelRight'), f(`IF(B4>0,E${total}/B4,"")`, 'currency', cents(estimate / travelers)), f(`IF(AND(B4>0,COUNT(F${first}:F${last})>0),N(F${total})/B4,"")`, 'currency', '')]
   ]
   return [{ name: 'Budget', cols: [14, 42, 7, 12, 13, 13, 13, 28], rows, printTitles: [9, 9], landscape: true, header: '&L{{Job}}&R{{Trip}}' }]
@@ -277,12 +281,13 @@ function monthlyBudget(): SheetIn[] {
     f(sign === 1 ? `IF(ISNUMBER(C${r}),C${r}-B${r},"")` : `IF(ISNUMBER(C${r}),B${r}-C${r},"")`, 'cellCurrency', ''),
     c(null, 'cellWrap')
   ]
-  const totalRow = (name: string, from: number, to: number, r: number, sign: 1 | -1, planned: number): CellIn[] => [
+  const totalRow = (name: string, from: number, to: number, planned: number): CellIn[] => [
     c(name, 'total'),
     f(`SUM(B${from}:B${to})`, 'totalCurrency', planned),
     // Entries are counted, not read as zero: an entered $0 shows and has its difference, a blank shows nothing.
     f(`IF(COUNT(C${from}:C${to})=0,"",SUM(C${from}:C${to}))`, 'totalCurrency', ''),
-    f(sign === 1 ? `IF(COUNT(C${from}:C${to})=0,"",C${r}-B${r})` : `IF(COUNT(C${from}:C${to})=0,"",B${r}-C${r})`, 'totalCurrency', ''),
+    // The rows' own differences, summed: a row with no actual yet adds nothing.
+    f(`IF(COUNT(C${from}:C${to})=0,"",SUM(D${from}:D${to}))`, 'totalCurrency', ''),
     c(null, 'total')
   ]
   const rows: CellIn[][] = [
@@ -291,14 +296,14 @@ function monthlyBudget(): SheetIn[] {
     [],
     head('Income'),
     ...income.map(([name, planned], i) => line(name, planned, iFirst + i, 1)),
-    totalRow('Total income', iFirst, iLast, iTotal, 1, incomeTotal),
+    totalRow('Total income', iFirst, iLast, incomeTotal),
     [],
     head('Expenses'),
     ...expenses.map(([name, planned], i) => line(name, planned, eFirst + i, -1)),
-    totalRow('Total expenses', eFirst, eLast, eTotal, -1, expenseTotal),
+    totalRow('Total expenses', eFirst, eLast, expenseTotal),
     [],
     span(c('Summary', 'section'), 5, 'section'),
-    [c('Left over', 'label'), f(`B${iTotal}-B${eTotal}`, 'currency', cents(incomeTotal - expenseTotal)), f(`IF(COUNT(C${iFirst}:C${iLast},C${eFirst}:C${eLast})=0,"",N(C${iTotal})-N(C${eTotal}))`, 'currency', ''), null, c('Income less expenses', 'muted')],
+    [c('Left over', 'label'), f(`B${iTotal}-B${eTotal}`, 'currency', cents(incomeTotal - expenseTotal)), f(`IF(AND(COUNT(C${iFirst}:C${iLast})>0,COUNT(C${eFirst}:C${eLast})>0),C${iTotal}-C${eTotal},"")`, 'currency', ''), null, c('Income less expenses', 'muted')],
     [c('Saved', 'label'), f(`IF(N(B${iTotal})>0,B${savings}/B${iTotal},"")`, 'percent', saved / incomeTotal), f(`IF(AND(N(C${iTotal})>0,ISNUMBER(C${savings})),C${savings}/C${iTotal},"")`, 'percent', ''), null, c('Savings as a share of income', 'muted')]
   ]
   return [{ name: 'Budget', cols: [26, 14, 14, 14, 34], rows, grid: false, header: '&LMonthly budget' }]

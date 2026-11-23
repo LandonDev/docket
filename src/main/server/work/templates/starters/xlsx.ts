@@ -198,7 +198,7 @@ const XFS: Record<CellStyle, Xf> = {
   inputPercent: { style: 'Input', fill: 2, border: 4, fmt: 166 },
   inputMonth: { style: 'Input', fill: 2, border: 4, fmt: 167, align: LEFT },
   inputNumber: { style: 'Input', fill: 2, border: 4, fmt: 168 },
-  note: { style: 'Note', fill: 3, border: 4, align: '<alignment horizontal="left" vertical="top" wrapText="1" indent="1"/>' },
+  note: { style: 'Note', fill: 3, border: 4, align: '<alignment horizontal="left" vertical="center" wrapText="1" indent="1"/>' },
   currency: { style: 'Currency', fmt: 164 },
   percent: { style: 'Percent', fmt: 166 },
   date: { style: 'Normal', fmt: 165, align: LEFT },

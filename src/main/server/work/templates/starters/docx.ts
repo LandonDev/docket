@@ -45,6 +45,8 @@ export function docBuilder() {
     h1: (text: string): Block => block('heading', inline(text), { level: 1 }),
     h2: (text: string): Block => block('heading', inline(text), { level: 2 }),
     h3: (text: string): Block => block('heading', inline(text), { level: 3 }),
+    /** The heading after it starts a new page (the pass makes it the heading's own `pageBreakBefore`). */
+    newPage: (): Block => ({ id: id(), type: 'pageBreak', props: {}, children: [] }),
     p: (text: string): Block => block('paragraph', inline(text)),
     bullets: (items: string[]): Block[] => items.map((t) => block('bulletListItem', inline(t))),
     numbered: (items: string[]): Block[] => items.map((t) => block('numberedListItem', inline(t))),
@@ -156,6 +158,8 @@ function themeBody(xml: string): string {
           .replace(/<w:p>(?!<w:pPr><w:spacing w:after="0"\/><\/w:pPr><\/w:p>)/g, '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr>')
           .replace(/<w:p><w:pPr><w:spacing w:after="0"\/><\/w:pPr><w:pPr>/g, '<w:p><w:pPr><w:spacing w:after="0"/>')
       )
+      // A page break before a heading is the heading's own: no empty line is left at the top of the new page.
+      .replace(/<w:p><w:r><w:br w:type="page"\/><\/w:r><\/w:p><w:p><w:pPr><w:pStyle w:val="(Heading\d)"\/>/g, '<w:p><w:pPr><w:pStyle w:val="$1"/><w:pageBreakBefore/>')
       // A row that is no head says nothing: the writer's `<w:tblHeader w:val="off"/>` is read as a head by readers that look only for the tag (work-kit's readDocx among them).
       .replace(/<w:trPr><w:tblHeader w:val="(?:off|false|0)"\/><\/w:trPr>/g, '')
       .replace(/<w:tblHeader w:val="(?:off|false|0)"\/>/g, '')
@@ -239,5 +243,45 @@ export function themeDocx(bytes: Uint8Array): Uint8Array {
     const text = typeof files[name] === 'string' ? (files[name] as string) : ''
     if (text && name !== 'word/theme/theme1.xml' && literalColours(text).length) throw new Error(`${name} still holds a literal colour after the theme pass: ${literalColours(text)[0]}`)
   }
-  return makeZip(files)
+  return makeZip(headerFromPageTwo(files))
+}
+
+const HEADER_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml'
+const FOOTER_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml'
+const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+
+/**
+ * The page header prints from page two on, as the sheets' does: page one's
+ * title says it already, and a one-page document has none. Word's way is a
+ * first page of its own (`w:titlePg`) with an empty header of its own; the
+ * footer (the page's number) is copied to that first page, so it still
+ * prints on every page.
+ */
+export function headerFromPageTwo(files: Record<string, Uint8Array | string>): Record<string, Uint8Array | string> {
+  const text = (name: string): string | null => {
+    const part = files[name]
+    return part === undefined ? null : typeof part === 'string' ? part : new TextDecoder().decode(part)
+  }
+  const doc = text('word/document.xml')
+  const header = text('word/header1.xml')
+  const footer = text('word/footer1.xml')
+  const rels = text('word/_rels/document.xml.rels')
+  const types = text('[Content_Types].xml')
+  if (!doc || !header || !rels || !types || !doc.includes('<w:headerReference w:type="default"')) return files
+  const out = { ...files }
+  out['word/header2.xml'] = header.replace(/(<w:hdr\b[^>]*>)[\s\S]*(<\/w:hdr>)/, '$1<w:p/>$2')
+  let firstRefs = '<w:headerReference w:type="first" r:id="rIdFirstHeader"/>'
+  let newRels = `<Relationship Id="rIdFirstHeader" Type="${REL}/header" Target="header2.xml"/>`
+  let newTypes = `<Override PartName="/word/header2.xml" ContentType="${HEADER_TYPE}"/>`
+  if (footer) {
+    out['word/footer2.xml'] = footer
+    firstRefs += '<w:footerReference w:type="first" r:id="rIdFirstFooter"/>'
+    newRels += `<Relationship Id="rIdFirstFooter" Type="${REL}/footer" Target="footer2.xml"/>`
+    newTypes += `<Override PartName="/word/footer2.xml" ContentType="${FOOTER_TYPE}"/>`
+  }
+  out['word/_rels/document.xml.rels'] = rels.replace('</Relationships>', `${newRels}</Relationships>`)
+  out['[Content_Types].xml'] = types.replace('</Types>', `${newTypes}</Types>`)
+  // References come first in a section's properties; `w:titlePg` stands before `w:docGrid`.
+  out['word/document.xml'] = doc.replace(/<w:sectPr>/, `<w:sectPr>${firstRefs}`).replace(/(<w:docGrid\b)/, '<w:titlePg/>$1')
+  return out
 }
