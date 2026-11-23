@@ -96,7 +96,8 @@ export function SettingsSection() {
                   void loadDigest().finally(() => setRetrying(false));
                 }}
               >
-                <BusyLabel busy={retrying} label="Retry" />
+                {/* At the line's end: the word sits at the end of the room kept for the spinner, under the heading's own verb. */}
+                <BusyLabel busy={retrying} label="Retry" align="end" />
               </Button>
             }
           >

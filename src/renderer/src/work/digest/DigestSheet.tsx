@@ -146,8 +146,9 @@ export function DigestList({
       {unanswered ? (
         <div className="flex items-center gap-2">
           <p className="min-w-0 flex-1 text-xs text-muted-foreground">{unanswered}</p>
-          <Button variant="ghost" size="xs" disabled={retrying} onClick={retry}>
-            <BusyLabel busy={retrying} label="Retry" />
+          {/* Its word ends where the rows' times end; its box overhangs the column as a row's does. */}
+          <Button variant="ghost" size="xs" className="-me-2" disabled={retrying} onClick={retry}>
+            <BusyLabel busy={retrying} label="Retry" align="end" />
           </Button>
         </div>
       ) : null}
