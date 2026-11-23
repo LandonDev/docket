@@ -197,8 +197,11 @@ export function sentenceAround(paragraph: string, words: string, max = 120): str
   if (at < 0) return paragraph.length > max ? `${paragraph.slice(0, max - 1)}…` : paragraph;
   // The sentence starts after the last ".", "!" or "?" and its space before the words, else at the paragraph's start.
   const start = /^[\s\S]*[.!?]\s+/.exec(paragraph.slice(0, at))?.[0].length ?? 0;
-  const tail = paragraph.slice(at + words.length).search(/[.!?](\s|$)/);
-  const end = tail < 0 ? paragraph.length : at + words.length + tail + 1;
+  // It ends at the first stop with a space or the paragraph's end after it, from the words' own last character on,
+  // so words that end in a stop end their sentence there.
+  const last = at + Math.max(0, words.length - 1);
+  const tail = paragraph.slice(last).search(/[.!?](\s|$)/);
+  const end = tail < 0 ? paragraph.length : last + tail + 1;
   let s = paragraph.slice(start, end).trim();
   if (s.length <= max) return s;
   // Still long: the words with what fits on either side.
@@ -207,6 +210,9 @@ export function sentenceAround(paragraph: string, words: string, max = 120): str
   s = `${from > 0 ? "…" : ""}${s.slice(from, from + max)}${from + max < s.length ? "…" : ""}`;
   return s;
 }
+
+/** Whether a sentence says more than the words it holds: not when only stops, quotes, spaces or a cut's "…" remain. */
+export const addsWords = (sentence: string, words: string): boolean => sentence.replace(words.trim(), "").replace(/[\s.!?,;:"'\u2018\u2019\u201c\u201d\u2026]/g, "") !== "";
 
 const slidesWords = (on: number[]): string => (on.length === 1 ? `slide ${on[0]}` : `slides ${on.slice(0, -1).join(", ")} and ${on.at(-1)}`);
 
@@ -230,7 +236,7 @@ export function editRows(edits: unknown, places?: unknown): { label: string; val
     const sentence = str(e.within) !== null ? sentenceAround(e.within as string, from) : null;
     if (typeof e.shape === "string") rows.push(...row("Where", num(e.slide) === null ? null : `Slide ${e.slide}`));
     // the sentence the words stand in, unless it is the words themselves
-    else if (sentence !== null && sentence !== from.trim()) rows.push({ label: "Where", value: sentence });
+    else if (sentence !== null && addsWords(sentence, from)) rows.push({ label: "Where", value: sentence });
     else if (on.length) {
       // a deck's replace by its slides, with how far it reaches: Slides counts boxes, PowerPoint places
       const many = boxes ?? count;
@@ -396,7 +402,8 @@ export function kindRows(kind: string, payload: unknown): KindRows | null {
           ...row("In", app && p.vm === true ? `${app} in the Windows VM` : app),
           ...(insert === null ? editRows([{ ...e, ...(Array.isArray(p.on) ? { on: p.on } : {}) }], p.places) : [{ label: "Where", value: e.at === "start" ? "At the start" : "At the end", gap: true as const }]),
         ],
-        body: insert,
+        // words with nothing to see are shown by their escapes, never as a blank body
+        body: insert === null ? null : shown(insert),
       };
     }
     case "google.edit":

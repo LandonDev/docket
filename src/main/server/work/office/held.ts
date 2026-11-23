@@ -234,7 +234,7 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       const e = p.edit
       // how far it reaches first, so a cut line never loses it
       const many = p.places > 1 ? `${p.places} places, ` : ''
-      const what = 'find' in e ? many + (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : `add "${clip(e.insert)}" at its ${e.at}`
+      const what = 'find' in e ? many + (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : `add "${clip(e.insert)}" at the ${e.at}`
       return { summary: `Make the change in ${p.name}: ${what}`, verb: 'Make the change' }
     },
     async execute(p, ctx) {
@@ -247,6 +247,11 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       if (key === null) throw new ActNotSent(`${p.name} is not open in ${app} on this computer: open it, then press again. Nothing was changed.`)
       const texts = await fileText(c, p.app, key)
       const moved = textHash(texts) !== p.base
+      if ('find' in p.edit && p.app === 'powerpoint' && p.on) {
+        const find = p.edit.find
+        const on = (await c.readSlides(key)).filter((s) => s.texts.some((t) => t.includes(find))).map((s) => s.index)
+        if (JSON.stringify(on) !== JSON.stringify(p.on)) throw new ActStale(`${p.name} changed since: the words stand on other slides now than the ones he was shown. Nothing was changed`)
+      }
       if ('find' in p.edit) {
         const now = placesOf(texts, p.edit.find)
         if (now === 0) throw new ActStale(`${p.name} changed since: the words this replaces are no longer in it. Nothing was changed`)

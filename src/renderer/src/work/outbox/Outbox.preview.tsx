@@ -94,10 +94,25 @@ const EDITS = [
   edit(
     6,
     "office.edit",
-    'Make the change in Jersey order.docx: add "Sizes still to confirm: two players." at its end',
+    'Make the change in Jersey order.docx: add "Sizes still to confirm: two players." at the end',
     "Make the change",
     { host: "local", app: "word", key: "https://purdue0.sharepoint.com/sites/esports/Jersey order.docx", name: "Jersey order.docx", edit: { insert: "Sizes still to confirm: two players.", at: "end" }, places: 0, base: "x" },
     at(20, 9, 30),
+  ),
+  edit(
+    5,
+    "google.edit",
+    'Make the change in Travel plan: "Bring IDs." to "Bring your student ID and a photo ID."',
+    "Make the change",
+    {
+      app: "doc",
+      account: "landon@purdue.edu",
+      fileId: "1DoC",
+      name: "Travel plan",
+      edits: [{ find: "Bring IDs.", replace: "Bring your student ID and a photo ID.", within: "The bus leaves the CoRec at 7 AM. Bring IDs. Lunch is on the team card." }],
+      revisionId: "r2",
+    },
+    at(20, 9, 10),
   ),
 ];
 
@@ -105,7 +120,7 @@ const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", la
 
 type State = "offer" | "plain" | "edits";
 let state: State = "offer";
-/** Which held change shows in the detail (the oldest waiting item is the one selected): 0 a Word replace, 1 a deck's two changes, 2 a Word insert. */
+/** Which held change shows in the detail (the oldest waiting item is the one selected): 0 a Word replace, 1 a deck's two changes, 2 a Word insert, 3 a Doc's replace. */
 let pick = 0;
 const waitingEdits = (): OutboxItem[] => EDITS.map((e, i) => (i === pick ? { ...e, createdAt: at(20, 8) } : e));
 let ready = false;

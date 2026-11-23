@@ -399,6 +399,15 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     expect(def.keep).toBeUndefined()
   })
 
+  it('leaves a deck change stale when its words stand on other slides than he was shown', async () => {
+    office.decks.set(DECK, [['Q1 plan'], ['Close']])
+    await run('office_slides_replace', { deck: DECK, find: 'Q1', replace: 'Q2', because: 'own' })
+    expect(held[0]).toMatchObject({ payload: { on: [1] } })
+    office.decks.set(DECK, [['Open'], ['Q1 plan']])
+    await expect(press(held[0]!.payload)).rejects.toThrow('other slides')
+    expect(office.decks.get(DECK)).toEqual([['Open'], ['Q1 plan']])
+  })
+
   it('makes a deck change on his press, as a plain replace', async () => {
     office.decks.set(DECK, [['Q1 plan']])
     await run('office_slides_replace', { deck: DECK, find: 'Q1', replace: 'Q2', because: 'own' })
@@ -463,7 +472,7 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     expect(words({ find: 'one', replace: 'two' })).toEqual({ summary: 'Make the change in Brief.docx: "one" to "two"', verb: 'Make the change' })
     expect(words({ find: 'one', replace: '' }).summary).toBe('Make the change in Brief.docx: take out "one"')
     expect(editAct().words({ host: 'h', app: 'word', key: '/x/Brief.docx', name: 'Brief.docx', edit: { find: 'Q1', replace: 'Q2' }, places: 4, base: 'b' }).summary).toBe('Make the change in Brief.docx: 4 places, "Q1" to "Q2"')
-    expect(words({ insert: 'x', at: 'end' }).summary).toBe('Make the change in Brief.docx: add "x" at its end')
+    expect(words({ insert: 'x', at: 'end' }).summary).toBe('Make the change in Brief.docx: add "x" at the end')
   })
 
   it('names a file by its key', () => {

@@ -69,7 +69,9 @@ public extension OutboxModel {
                     // An insert is a change of its own group like any other: where it goes, its words the body.
                     gaps.insert(rows.count)
                     rows.append(("Where", word(e["at"]) == "start" ? "At the start" : "At the end"))
-                    body = insert
+                    // words with nothing to see are shown by their escapes, never as a blank body
+                    let seen = String(String.UnicodeScalarView(insert.unicodeScalars.filter { $0.properties.generalCategory != .format }))
+                    body = seen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? exactQuote(insert) : insert
                 } else {
                     var withSlides = e
                     if let on = o["on"] { withSlides["on"] = on }
@@ -433,7 +435,9 @@ public extension OutboxModel {
         guard case .object(let o)? = item.payload, case .string(let name)? = o["name"], let at = item.summary.range(of: " in \(name): ") else { return splitSummary(item.summary).about }
         let about = String(item.summary[at.upperBound...])
         guard case .array(let edits)? = o["edits"], edits.count > 1 else { return about }
-        return "\(edits.count) changes: \(about.replacingOccurrences(of: #" and \d+ more$"#, with: "", options: .regularExpression))"
+        // the first change's own reach ("3 boxes, ") is the detail's, not the line's beside the count
+        let first = about.replacingOccurrences(of: #" and \d+ more$"#, with: "", options: .regularExpression).replacingOccurrences(of: #"^\d+ (boxes|places), "#, with: "", options: .regularExpression)
+        return "\(edits.count) changes: \(first)"
     }
 
     private nonisolated static let editApp = ["word": "Word", "powerpoint": "PowerPoint", "doc": "Google Docs", "slides": "Google Slides"]
@@ -461,7 +465,7 @@ public extension OutboxModel {
                 let on: [Int] = if case .array(let a)? = e["on"] { a.compactMap { if case .number(let n) = $0 { Int(n) } else { nil } } } else { [] }
                 // Where: a Doc's sentence the words stand in, the slides a replace-all reaches, or how many places.
                 let sentence: String? = if case .string(let within)? = e["within"], !within.isEmpty { sentenceAround(within, find) } else { nil }
-                if let sentence, sentence != find.trimmingCharacters(in: .whitespaces) { rows.append(("Where", sentence)) }
+                if let sentence, addsWords(sentence, find) { rows.append(("Where", sentence)) }
                 else if !on.isEmpty {
                     // a deck's replace by its slides, with how far it reaches: Slides counts boxes, PowerPoint places
                     let many = boxes ?? count
@@ -483,6 +487,15 @@ public extension OutboxModel {
         return (rows, starts)
     }
 
+    /// Whether a sentence says more than the words it holds: not when only stops, quotes, spaces or a cut's "…"
+    /// remain (the desktop's `addsWords`).
+    nonisolated static func addsWords(_ sentence: String, _ words: String) -> Bool {
+        let trimmed = words.trimmingCharacters(in: .whitespaces)
+        let rest = trimmed.isEmpty ? sentence : sentence.replacingOccurrences(of: trimmed, with: "")
+        let quiet: Set<Character> = [".", "!", "?", ",", ";", ":", "\"", "'", "\u{2018}", "\u{2019}", "\u{201C}", "\u{201D}", "\u{2026}"]
+        return rest.contains { !$0.isWhitespace && !quiet.contains($0) }
+    }
+
     /// "slide 4", "slides 2 and 5", "slides 1, 3 and 6" (the desktop's `slidesWords`).
     nonisolated static func slidesWords(_ on: [Int]) -> String {
         on.count == 1 ? "slide \(on[0])" : "slides \(on.dropLast().map(String.init).joined(separator: ", ")) and \(on.last!)"
@@ -499,8 +512,9 @@ public extension OutboxModel {
             if enders.contains(paragraph[prev]) && start < hit.lowerBound && paragraph[start].isWhitespace { break }
             start = prev
         }
-        // It ends at ".", "!" or "?" with a space or the paragraph's end after it, never at "$4.50"'s point.
-        var end = hit.upperBound
+        // It ends at ".", "!" or "?" with a space or the paragraph's end after it, never at "$4.50"'s point, looking
+        // from the words' own last character, so words that end in a stop end their sentence there.
+        var end = hit.isEmpty ? hit.upperBound : paragraph.index(before: hit.upperBound)
         while end < paragraph.endIndex {
             let next = paragraph.index(after: end)
             if enders.contains(paragraph[end]) && (next == paragraph.endIndex || paragraph[next].isWhitespace) { end = next; break }

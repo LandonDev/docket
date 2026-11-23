@@ -1,6 +1,6 @@
 /** The generic view's own rows for the kinds without a view: what goes in his words, never an id, a revision, a path or JSON. */
 import { describe, expect, it } from "vitest";
-import { exactQuote, kindHeading, kindRows, megabytes, sentenceAround } from "./kindRows";
+import { addsWords, exactQuote, kindHeading, kindRows, megabytes, sentenceAround } from "./kindRows";
 
 const noise = (rows: ReturnType<typeof kindRows>) => JSON.stringify(rows);
 
@@ -327,11 +327,18 @@ describe("an agent's change to a shared file, as he approves it", () => {
     expect(sentenceAround("The LAN is set. $4,180 is the total for food. Bring IDs.", "$4,180")).toBe("$4,180 is the total for food.");
     expect(sentenceAround("Budget is final. Thursday at 7 AM we leave. Bring IDs.", "Thursday at 7 AM")).toBe("Thursday at 7 AM we leave.");
     expect(sentenceAround("Lunch is set. We leave at 7 sharp, $4.50 a head.", "$4.50")).toBe("We leave at 7 sharp, $4.50 a head.");
+    // words that end in a stop end their sentence there, wherever it falls
+    expect(sentenceAround("Budget is final. Bring IDs. See you at 7.", "Bring IDs.")).toBe("Bring IDs.");
+    expect(sentenceAround("Budget is final. Bring IDs. See you at 7.", "Bring IDs")).toBe("Bring IDs.");
+    expect(addsWords("Bring IDs.", "Bring IDs")).toBe(false);
+    expect(addsWords("…a long clause cut…", "a long clause cut")).toBe(false);
+    expect(addsWords("We leave at 7 sharp, $4.50 a head.", "$4.50")).toBe(true);
     const whole = { app: "doc", name: "Brief", edits: [{ find: "Bring IDs.", replace: "Bring your IDs.", within: "Budget is final. Bring IDs." }] };
     expect(kindRows("google.edit", whole)!.fields.map((f) => f.label)).toEqual(["In", "Replace", "With"]);
   });
 
   it("names a PowerPoint replace's slides, and shows a change with nothing to see by its escapes", () => {
+    expect(kindRows("office.edit", { app: "word", name: "Brief.docx", edit: { insert: "\u200b", at: "end" } })!.body).toBe('"\\u200b"');
     expect(kindRows("office.edit", { app: "powerpoint", name: "Pitch.pptx", places: 2, on: [2, 5], edit: { find: "Q1", replace: "Q2" } })!.fields[1]).toEqual({ label: "Where", value: "2 places on slides 2 and 5", gap: true });
     expect(kindRows("office.edit", { app: "word", name: "Brief.docx", places: 1, edit: { find: "\u200b", replace: "" } })!.fields[1]).toEqual({ label: "Take out", value: '"\\u200b"', gap: true });
   });

@@ -196,6 +196,17 @@ describe('the google tools', () => {
     expect(fake.files.get('deck2')!.deck!.slides[0].texts.map((t) => t.text)).toEqual(['Q1 goals', 'Q1 budget'])
   })
 
+  it('leaves a box change stale when the box is on another slide than he was shown', async () => {
+    fake.addDeck(ME, 'deck3', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Intro' }] }, { objectId: 's2', texts: [{ objectId: 't2', text: 'Budget' }] }])
+    const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck3' })
+    await run('google_slides_revise', { item: itemId, edits: [{ shape: 't2', text: 'Costs' }] })
+    expect(held[0]).toMatchObject({ payload: { edits: [{ shape: 't2', slide: 2 }] } })
+    const deck = fake.files.get('deck3')!.deck!
+    deck.slides.reverse()
+    deck.rev++
+    await expect(googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('is on slide 1 now')
+  })
+
   it("holds a Doc's edits on this host: nothing goes to Google, and his press writes them plainly", async () => {
     fake.addDoc(ME, 'doc2', 'Brief', [['NORMAL_TEXT', 'We ship in March.']])
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'doc2' })

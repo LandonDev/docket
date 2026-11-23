@@ -526,6 +526,9 @@ describe("the Outbox", () => {
     // A file named with ": " keeps the change whole, and several changes lead with their count.
     const deck = { kind: "google.edit", verb: "Make 2 changes", state: "held", summary: 'Make 2 changes in Nationals: travel: "7 AM" to "6:30 AM" and 1 more', payload: { name: "Nationals: travel", edits: [{}, {}] } } as never;
     expect(rowWords(deck)).toEqual({ act: "Change Nationals: travel", about: '2 changes: "7 AM" to "6:30 AM"' });
+    // the first change's own reach is the detail's, not the line's beside the count
+    const reach = { kind: "google.edit", verb: "Make 2 changes", state: "held", summary: 'Make 2 changes in Plan: 3 boxes, "Q1" to "Q2" and 1 more', payload: { name: "Plan", edits: [{}, {}] } } as never;
+    expect(rowWords(reach).about).toBe('2 changes: "Q1" to "Q2"');
   });
 
   it("says an empty list once at either width: in the list when narrow, in the detail when wide", async () => {

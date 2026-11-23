@@ -90,7 +90,8 @@ export function rowWords(item: Pick<HostItem, "kind" | "summary" | "verb" | "pay
     const lead = typeof p.name === "string" ? item.summary.indexOf(` in ${p.name}: `) : -1;
     const about = lead >= 0 ? item.summary.slice(lead + ` in ${p.name}: `.length) : splitSummary(item.summary).about;
     const n = Array.isArray(p.edits) ? p.edits.length : 1;
-    return { act: changed, about: about && n > 1 ? `${n} changes: ${about.replace(/ and \d+ more$/, "")}` : about };
+    // Several changes: their count leads, and the first one's own reach ("3 boxes, ") is left to the detail.
+    return { act: changed, about: about && n > 1 ? `${n} changes: ${about.replace(/ and \d+ more$/, "").replace(/^\d+ (boxes|places), /, "")}` : about };
   }
   if (item.kind === "share.google") {
     const p = (item.payload ?? {}) as { email?: unknown; name?: unknown };

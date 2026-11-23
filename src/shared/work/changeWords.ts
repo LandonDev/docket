@@ -43,19 +43,22 @@ export function changeWords(find: string, replace: string, max = 60): string {
   const y = words(to)
   // Words that differ only in spaces or in characters that cannot be seen show whole, with those escaped, so the
   // summary never reads "a" to "a".
-  if (looksAlike(find, replace)) return `${visible(cut(find))} to ${visible(cut(replace))}`
-  if (x === y || !x || !y) return pair(find, replace, cut)
-  return pair(x, y, cut)
+  if (looksAlike(find, replace)) {
+    const [p, q] = sides(find, replace, cut)
+    return `${visible(p)} to ${visible(q)}`
+  }
+  const [p, q] = x === y || !x || !y ? sides(find, replace, cut) : sides(x, y, cut)
+  return `"${p}" to "${q}"`
 }
 
-/** Two sides in quotes; when their cuts would read the same, each is cut around where they first differ instead. */
-function pair(x: string, y: string, cut: (s: string) => string): string {
-  if (cut(x) !== cut(y)) return `"${cut(x)}" to "${cut(y)}"`
+/** Two sides cut to their limit; when their cuts would read the same, each is cut around where they first differ. */
+function sides(x: string, y: string, cut: (s: string) => string): [string, string] {
+  if (cut(x) !== cut(y)) return [cut(x), cut(y)]
   let at = 0
   while (at < x.length && at < y.length && x[at] === y[at]) at++
   const from = Math.max(0, at - 20)
   const around = (s: string) => cut(`${from > 0 ? '…' : ''}${s.slice(from)}`)
-  return `"${around(x)}" to "${around(y)}"`
+  return [around(x), around(y)]
 }
 
 /** Two texts that read alike on screen: the same once spaces are squeezed and invisible characters dropped. */

@@ -89,6 +89,9 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
   if ('error' in now) return { stale: now.error }
   const edited = edits.find((e, i) => 'was' in e && (now.held[i] as { was?: string }).was !== e.was)
   if (edited) return { stale: `A shape on slide ${'slide' in edited ? edited.slide : '?'} holds other words than it did.` }
+  // a box moved to another slide is not the one he was shown
+  const moved = edits.findIndex((e, i) => 'slide' in e && (now.held[i] as { slide?: number }).slide !== e.slide)
+  if (moved >= 0) return { stale: `A box he was shown on slide ${(edits[moved] as { slide: number }).slide} is on slide ${(now.held[moved] as { slide: number }).slide} now.` }
   // Replace-all reaches every box with the words: more or fewer than he was shown is not what he approved.
   const spread = edits.findIndex((e, i) => 'find' in e && ((e.boxes !== undefined && (now.held[i] as { boxes?: number }).boxes !== e.boxes) || (e.on !== undefined && JSON.stringify((now.held[i] as { on?: number[] }).on) !== JSON.stringify(e.on))))
   if (spread >= 0) {
