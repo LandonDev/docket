@@ -8,7 +8,10 @@ import type { Source } from './index'
  * someone else on them in this host's linked workspaces.
  *
  * - `starting`: each minute, a meeting that begins within ten minutes is
- *   told with its start as its clock, so it interrupts. Its key is the
+ *   told with its start as its clock, so it interrupts. Prep itself is asked
+ *   each five minutes for the next twenty (one LifeOS read), so a meeting
+ *   made or moved inside its last five minutes may be told late or not at
+ *   all. Its key is the
  *   event and its start, the same on every host that holds the job, so two
  *   hosts tell it once and a meeting that moved is told again. Once it has
  *   begun it leaves the read, and its row and toast go with it.
@@ -19,7 +22,15 @@ import type { Source } from './index'
 const MINUTE = 60_000
 /** How long before its start a meeting is told. */
 export const STARTS_WITHIN_MS = 10 * MINUTE
+/** Prep is asked this often, for this far ahead; each minute between is answered from what it last said. */
+export const ASK_EVERY_MS = 5 * MINUTE
+export const ASK_AHEAD_MS = 20 * MINUTE
 const DAY = 24 * 60 * MINUTE
+
+/** What prep last answered, a host process: one LifeOS read each five minutes, not each minute. */
+let asked: { at: number; meetings: PrepUpcoming[] } | null = null
+/** Test seam. */
+export const forgetUpcoming = (): void => void (asked = null)
 
 const names = (m: Pick<PrepUpcoming, 'with'>): string | undefined => {
   const who = m.with.filter(Boolean)
@@ -33,8 +44,11 @@ export const prepStarting: Source = {
   every: MINUTE,
   prefix: 'prep:',
   async read(env, now) {
-    const { meetings } = await env.call<{ meetings: PrepUpcoming[] }>('work.prep.upcoming', { from: now, to: now + STARTS_WITHIN_MS })
-    return meetings
+    if (!asked || now - asked.at >= ASK_EVERY_MS || now < asked.at) {
+      const { meetings } = await env.call<{ meetings: PrepUpcoming[] }>('work.prep.upcoming', { from: now, to: now + ASK_AHEAD_MS })
+      asked = { at: now, meetings }
+    }
+    return asked.meetings
       .filter((m) => m.startsAt > now && m.startsAt - now <= STARTS_WITHIN_MS)
       .map((m) => {
         const detail = names(m)

@@ -61,6 +61,9 @@ describe('the sources frame', () => {
     expect(told).toEqual([tell('fine')])
     // a source that threw ends nothing it told before
     expect(only).toEqual([])
+    // the same fault at the next read is not said again; once it reads, a later fault is
+    await s.beforeDay(1)
+    expect(logs).toHaveLength(1)
   })
 
   it("with a prefix, passes the keys still named, its tells' own or the read's keep", async () => {

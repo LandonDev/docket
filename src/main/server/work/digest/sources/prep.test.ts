@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { PrepUpcoming } from '@shared/contract-work-prep'
 import type { Tell } from '@shared/work/tell'
 import type { SourceEnv } from './index'
-import { prepReady, prepStarting, STARTS_WITHIN_MS } from './prep'
+import { ASK_AHEAD_MS, forgetUpcoming, prepReady, prepStarting } from './prep'
 
 /** Meetings from the prep pillar's read: one that is about to start interrupts, a brief that is ready waits. */
 
@@ -28,16 +28,22 @@ function env(meetings: PrepUpcoming[] | Error): { env: SourceEnv; asked: { metho
   }
 }
 
+beforeEach(forgetUpcoming)
+
 describe('a meeting about to start', () => {
-  it('is read each minute from prep, for the next ten minutes alone', async () => {
+  it('is looked at each minute, with prep asked each five for the next twenty: one LifeOS read, not five', async () => {
     const { env: e, asked } = env([meeting()])
-    await prepStarting.read(e, at('13:52'))
-    expect(asked).toEqual([{ method: 'work.prep.upcoming', params: { from: at('13:52'), to: at('13:52') + STARTS_WITHIN_MS } }])
+    await prepStarting.read(e, at('13:45'))
+    for (const minute of ['13:46', '13:47', '13:48', '13:49']) await prepStarting.read(e, at(minute))
+    expect(asked).toEqual([{ method: 'work.prep.upcoming', params: { from: at('13:45'), to: at('13:45') + ASK_AHEAD_MS } }])
+    await prepStarting.read(e, at('13:50'))
+    expect(asked).toHaveLength(2)
     expect(prepStarting).toMatchObject({ pillar: 'prep', every: 60_000, prefix: 'prep:' })
   })
   it('is told ten minutes before with its start as its clock, in his words and his zone, opening its page', async () => {
     const { env: e } = env([meeting()])
     expect(await prepStarting.read(e, at('13:49'))).toEqual([])
+    // from what prep said a minute ago: no second ask is needed to tell it on time
     expect(await prepStarting.read(e, at('13:50'))).toEqual([
       { kind: 'prep.starting', workspaceId: 'ws-purdue', title: 'Budget review starts at 2:00 PM', detail: 'With Dana Reyes', key: `prep:ev1:${at('14:00')}`, open: { view: 'prep', workspaceId: 'ws-purdue', at: 'ev1' }, by: at('14:00') }
     ] satisfies Tell[])

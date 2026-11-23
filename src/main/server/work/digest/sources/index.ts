@@ -63,6 +63,8 @@ export interface SourcesDeps {
 export class Sources {
   private readonly last = new Map<string, number>()
   private readonly running = new Set<string>()
+  /** Sources whose last read failed: a fault is said once, not at every beat, until a read succeeds. */
+  private readonly failing = new Set<string>()
 
   constructor(private readonly deps: SourcesDeps) {}
 
@@ -98,8 +100,10 @@ export class Sources {
       const { tells, keep } = Array.isArray(read) ? { tells: read, keep: undefined } : read
       for (const tell of tells) ctx.tell(tell)
       if (source.prefix) ctx.tell.only(source.prefix, keep ?? tells.flatMap((t) => (t.key ? [t.key] : [])))
+      this.failing.delete(source.id)
     } catch (err) {
-      ctx.log(`digest: the ${source.id} source was not read: ${errorText(err)}`)
+      if (!this.failing.has(source.id)) ctx.log(`digest: the ${source.id} source was not read: ${errorText(err)}`)
+      this.failing.add(source.id)
     } finally {
       this.running.delete(source.id)
     }
