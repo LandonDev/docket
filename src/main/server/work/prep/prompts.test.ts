@@ -99,7 +99,11 @@ describe('words for a prep thread', () => {
 
   it('tells a recording’s thread that prep_read waits for the file, and never to read in a loop', () => {
     const text = followMessage(page, { recording: true })
-    expect(text).toContain('Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read, which waits while it is transcribed.')
+    expect(text).toContain('Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read, which waits while it is transcribed. If it could not be read, say why and stop: write no outcome and draft no mail. Otherwise call prep_follow_up')
+    // a recording the host could not read is said as that, never as something to read
+    const unread = pageWords({ ...page, notesFile: { kind: 'meeting', itemId: 'it1', title: 'Staff sync.m4a', error: 'The transcriber is not installed on env_box.' } })
+    expect(unread).toContain('His notes were a recording or a transcript this host could not read: The transcriber is not installed on env_box.')
+    expect(unread).not.toContain('Read it with meeting_read')
     expect(text).not.toContain('read again')
   })
 

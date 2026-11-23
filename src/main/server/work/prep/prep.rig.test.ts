@@ -548,6 +548,7 @@ describe('a recording or a transcript as the notes', () => {
     // the thread is told to read the meeting, and to write tasks through prep alone
     const text = starts.mock.calls[0]![0].text
     expect(text).toContain('Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read')
+    expect(text).toContain('If it could not be read, say why and stop')
     expect(text).toContain('write no actions with meeting_notes')
     expect(text).not.toContain('Use his notes.')
     expect(starts.mock.calls[0]![0]).toMatchObject({ title: 'Follow up: Staff sync', about: { kind: 'event', ref: { at: 'lifeos', table: 'events', id: 'ev1' } } })

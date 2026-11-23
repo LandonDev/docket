@@ -42,7 +42,9 @@ export function pageWords(page: PrepPage): string {
     section('Brief', doc.brief.matters.map(lineWords))
     section('Already agreed', doc.brief.agreed.map(lineWords))
   }
-  if (page.notesFile?.kind === 'meeting') lines.push('', `His notes are a recording or a transcript, open beside this thread as meeting ${page.notesFile.itemId}. Read it with meeting_read.`)
+  if (page.notesFile?.kind === 'meeting') {
+    lines.push('', page.notesFile.error ? `His notes were a recording or a transcript this host could not read: ${page.notesFile.error}` : `His notes are a recording or a transcript, open beside this thread as meeting ${page.notesFile.itemId}. Read it with meeting_read.`)
+  }
   if (page.notesFile?.kind === 'document') {
     lines.push('', page.notesFile.itemId ? `His notes are the document “${page.notesFile.title}”, open beside this thread as item ${page.notesFile.itemId}. Read it with doc_read.` : `His notes are the document “${page.notesFile.title}” in the workspace’s folder.`)
   }
@@ -79,7 +81,7 @@ export function followMessage(page: PrepPage, opts: { recording?: boolean; docum
     opts.document
       ? 'His notes are in a document that is being opened beside you. Call prep_read: it names the item. Read it with doc_read, and change nothing in it. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.'
       : opts.recording
-      ? 'The meeting’s recording or transcript is being opened beside you as a meeting, and transcribed on this host if it is a recording. Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read, which waits while it is transcribed. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Write the tasks with prep_follow_up alone: write no actions with meeting_notes, or each task would be suggested twice. Never call add_task.'
+      ? 'The meeting’s recording or transcript is being opened beside you as a meeting, and transcribed on this host if it is a recording. Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read, which waits while it is transcribed. If it could not be read, say why and stop: write no outcome and draft no mail. Otherwise call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Write the tasks with prep_follow_up alone: write no actions with meeting_notes, or each task would be suggested twice. Never call add_task.'
       : 'Use his notes. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.',
     MAIL,
     'End with the outcome as your last message.'
