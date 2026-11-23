@@ -233,6 +233,21 @@ Proof: `bun run ui:preview src/renderer/src/work/messages/MessagesView.preview.t
 (scenes are listed in the file); tests `model.test.ts`, `MessagesView.dom.test.tsx`, `Composer.dom.test.tsx`,
 `ChatReplyAct.dom.test.tsx`, `ways.dom.test.tsx`, `files.dom.test.tsx`, `open.dom.test.tsx`.
 
+## Proving it
+
+`bun scripts/messages-preview.ts` runs the view in a real Chromium with no
+app, no host and no sign-in: it bundles
+`src/renderer/src/work/messages/preview/page.tsx`, compiles the renderer's
+own stylesheet and serves both under the app's page policy
+(`scripts/lib/previewSite.ts`). `--shots <dir>` shoots every scene, dark and
+light, at 1280 and 640. `--speed` (run it pinned: `taskset -c 0-3`) times
+first paint of 2,000 conversations beside twelve and of 5,000 messages
+beside an everyday conversation, then scrolls hard through each and fails on
+any task over 50ms. `--live <token file> --sector cosmic` is the one live
+read: the view's own screens on LifeOS itself as a sign-in narrowed to one
+sector; it prints counts and keeps no picture, since what is on the page is
+his chat.
+
 ## Proofs
 
 `messages/messages.test.ts` (the fence on each read, health's rows and the
