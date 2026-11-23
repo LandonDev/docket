@@ -288,9 +288,10 @@ the pane holds the view, the zoom, the bar's fact and the print.
   than on screen, and work-kit's own report says how far that is closed.
   The Word file LibreOffice draws is another engine's layout: its page
   count can differ from Pages' by a page.
-- **Undo does not take back a change of the page set-up** (nor of a named
-  style or the theme): the document's `page` map is outside the editor's
-  undo. He sets it back in Page set-up.
+- **Undo takes back a change of the page set-up, a header or a footer** as
+  one step, apart from his typing (work-kit `PageFlow.undoable`). A named
+  style's or the theme's change is not a step of Undo: an Undo never takes
+  a document's styling away. He sets those back in the format row.
 - **Not built here**: a reader's own switch and zoom (a document he can only
   read opens by the width rule and has no row to change it), and keeping the
   same words in view across a switch of view.
