@@ -1965,9 +1965,12 @@ Around the canvas:
   whatever else changed, for that one job alone (another job's start or
   switch, changed elsewhere meanwhile, is kept). The fields are locked
   while Save is out, for ten seconds at most: then the dialog says
-  "LifeOS did not answer. Save again to be sure." and he can; once the
-  reads show the Save landed after all, the words go and what it sent is
-  no longer his edit, so those fields follow the reads again. An address
+  "LifeOS did not answer. Save again to be sure." and he can. A read
+  that shows what Save sent is the Save done, whatever became of its
+  answer: while Save is out the dialog closes on it; after the wait ran
+  out the words go and what it sent is no longer his edit. An edit is
+  what differs from what is stored: a switch flipped back, or a value a
+  read comes to agree with, follows the reads again. An address
   is compared and sent as LifeOS keeps it, runs of spaces as one. An open
   dialog keeps what he typed when a read fails or the session drops (a
   field he has not touched follows the reads, and Save is on whenever

@@ -167,16 +167,34 @@ export function StartPlaceForm({
   const form = { ...saved, ...edits };
   const [error, setError] = useState<string | null>(shownError);
   const job: SectorKey | null = target === "home" ? null : target;
-  // What a Save whose answer never came sent. Once the reads show those values, it landed: its words go, and its edits are simply what is stored now, so they are dropped and those fields follow the reads again (a change made elsewhere since is not undone by his next Save). An edit he made after it stays. Asked when the wait ends as well as at each read: the read may have shown the write before the wait ran out.
-  const [unsure, setUnsure] = useState<Partial<typeof saved> | null>(null);
+  /** One field as he sets it. Set back to what is stored, it is no edit: the field follows the reads again, and a change made to it elsewhere is never undone by a Save of something else. */
+  const edit = <F extends keyof typeof saved>(field: F, value: (typeof saved)[F]): void =>
+    setEdits(({ [field]: _was, ...rest }) => (value === saved[field] ? rest : { ...rest, [field]: value }) as Partial<typeof saved>);
+  // The same when a read brings what he had set: an edit that says what is stored is no edit, whoever stored it.
   useEffect(() => {
-    if (!unsure) return;
-    const fields = Object.keys(unsure) as (keyof typeof saved)[];
-    if (!fields.every((field) => sameField(saved[field], unsure[field]))) return;
-    setUnsure(null);
+    setEdits((edits) => {
+      const kept = Object.entries(edits).filter(([field, value]) => value !== saved[field as keyof typeof saved]);
+      return kept.length === Object.keys(edits).length ? edits : (Object.fromEntries(kept) as Partial<typeof saved>);
+    });
+  }, [saved.address, saved.lookups]);
+  // What the Save that is out, or that got no answer, sent. Once the reads show those values it landed, whatever became of its answer: while it is still out, that is the Save done, and the dialog closes as it would on the answer; after a wait that ran out, its words go and its edits, now simply what is stored, are dropped (an edit he made since stays). Seen from the moment Save starts, so a change made elsewhere after it landed is not taken for a Save that failed.
+  const [sent, setSent] = useState<Partial<typeof saved> | null>(null);
+  const finished = useRef(false);
+  const finish = (): void => {
+    if (finished.current) return;
+    finished.current = true;
+    setPending(null);
+    close ? close(onClose) : onClose();
+  };
+  useEffect(() => {
+    if (!sent) return;
+    const fields = Object.keys(sent) as (keyof typeof saved)[];
+    if (!fields.every((field) => sameField(saved[field], sent[field]))) return;
+    if (pending === "save") return finish();
+    setSent(null);
     setError(null);
-    setEdits((edits) => Object.fromEntries(Object.entries(edits).filter(([field, value]) => !sameField(value, unsure[field as keyof typeof saved]))));
-  }, [saved.address, saved.lookups, unsure]);
+    setEdits((edits) => Object.fromEntries(Object.entries(edits).filter(([field, value]) => !sameField(value, sent[field as keyof typeof saved]))));
+  }, [saved.address, saved.lookups, sent, pending]);
 
   const linesId = useId();
   const address = useRef<HTMLInputElement>(null);
@@ -184,33 +202,31 @@ export function StartPlaceForm({
     event.preventDefault();
     const patch = savePatch(target, saved, form);
     if (!patch || pending || blocked !== null) return;
+    finished.current = false;
     setPending("save");
     setError(null);
-    setUnsure(null);
+    setSent(fieldsOf(patch));
     // The write is given an end: a session that drops under it would leave the dialog locked. One job set alone is the same write twice over, so Save again is safe.
-    answered(send(patch), UNSURE).then(
-      () => {
-        setPending(null);
-        close ? close(onClose) : onClose();
-      },
-      (err: unknown) => {
-        setPending(null);
-        const words = refusalWords(err) || "LifeOS refused it";
-        if (words === UNSURE) setUnsure(fieldsOf(patch));
-        setError(words);
-      },
-    );
+    answered(send(patch), UNSURE).then(finish, (err: unknown) => {
+      // The reads showed it landed while the answer was out: the dialog has closed on that.
+      if (finished.current) return;
+      setPending(null);
+      const words = refusalWords(err) || "LifeOS refused it";
+      // A refusal is an answer: nothing landed, and nothing is left to look for.
+      if (words !== UNSURE) setSent(null);
+      setError(words);
+    });
   };
 
   return (
     <form onSubmit={submit}>
       <ModalBody>
         <Field label="Address">
-          <Input ref={address} autoFocus disabled={pending !== null} value={form.address} onChange={(e) => setEdits((f) => ({ ...f, address: e.target.value }))} placeholder={job ? "Home" : undefined} autoComplete="off" spellCheck={false} />
+          <Input ref={address} autoFocus disabled={pending !== null} value={form.address} onChange={(e) => edit("address", e.target.value)} placeholder={job ? "Home" : undefined} autoComplete="off" spellCheck={false} />
         </Field>
         {job ? (
           <FieldRow label="Look up event places on Apple Maps" description={<span id={linesId}>When off, this job's event places never leave your machines.</span>}>
-            <Switch checked={form.lookups} disabled={pending !== null} aria-describedby={linesId} onCheckedChange={(on) => setEdits((f) => ({ ...f, lookups: on }))} />
+            <Switch checked={form.lookups} disabled={pending !== null} aria-describedby={linesId} onCheckedChange={(on) => edit("lookups", on)} />
           </FieldRow>
         ) : null}
         {/* One line at a time: why LifeOS cannot be read now, before what it said of an earlier Save; and the wait, while a read is out. An earlier Save's words stand only while the form still differs from what LifeOS holds: once a Save that timed out is seen to have landed, there is nothing left to save again. */}
@@ -235,7 +251,7 @@ export function StartPlaceForm({
               variant="ghost"
               disabled={pending !== null}
               onClick={() => {
-                setEdits((f) => ({ ...f, address: "" }));
+                edit("address", "");
                 // The verb leaves with the address: the keyboard goes on from the field it emptied.
                 address.current?.focus();
               }}

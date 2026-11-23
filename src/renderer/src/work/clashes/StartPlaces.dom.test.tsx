@@ -355,7 +355,7 @@ describe("Start places", () => {
     expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "purdue", address: "14 Oak Ct" } } }]);
   });
 
-  it("sees a Save that landed before its wait ran out: the read showed it first, and the timeout then finds nothing unsure", async () => {
+  it("takes a read that shows what Save sent as the Save done, while its answer is still out: the dialog closes, and nothing later asks for it again", async () => {
     const view = render(<StartPlacesSection environmentId="box" />);
     const dialog = await open("Change Purdue");
     const stored = (more: object) => ({ ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "purdue" ? { ...j, ...more } : j)) });
@@ -365,27 +365,74 @@ describe("Start places", () => {
       fireEvent.click(within(dialog).getByRole("switch"));
       fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
       await act(async () => {});
-      // The read shows the write while the Save's own answer is still out; then the link drops under it.
+      // The read shows the write while the Save's own answer is out. That is the Save landed: the dialog closes on it.
       lifeos.places = stored({ lookups: true });
       view.rerender(<StartPlacesSection environmentId="box" />);
       await act(async () => {});
+      await act(async () => void vi.advanceTimersByTime(500));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      // Another window turns the lookups off before the answer's wait would have run out: no dialog comes back to ask for a retry.
+      lifeos.places = stored({ lookups: false });
+      view.rerender(<StartPlacesSection environmentId="box" />);
       await act(async () => void vi.advanceTimersByTime(10_000));
+      expect(screen.queryByRole("dialog")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
     lifeos.silent = false;
-    await act(async () => {});
-    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");
-    // Lookups are turned off elsewhere: the switch follows, and an address Save sends the address alone.
-    lifeos.places = stored({ lookups: false });
+    // Opened again, the form is what LifeOS holds: off. An address Save sends the address alone.
+    const again = await open("Change Purdue");
+    expect(within(again).getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    fireEvent.change(within(again).getByLabelText("Address"), { target: { value: "14 Oak Ct" } });
+    lifeos.sent = [];
+    await save(again);
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "purdue", address: "14 Oak Ct" } } }]);
+  });
+
+  it("counts a switch flipped and flipped back as no edit: it follows a later read, and an address Save sends the address alone", async () => {
+    lifeos.places = { ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "purdue" ? { ...j, lookups: true } : j)) };
+    const view = render(<StartPlacesSection environmentId="box" />);
+    const dialog = await open("Change Purdue");
+    const toggle = () => within(screen.getByRole("dialog")).getByRole("switch");
+    fireEvent.click(toggle());
+    fireEvent.click(toggle());
+    expect(toggle().getAttribute("aria-checked")).toBe("true");
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    // Another window turns Purdue's lookups off: the switch here was left as stored, so it follows.
+    lifeos.places = PLACES;
     view.rerender(<StartPlacesSection environmentId="box" />);
     await act(async () => {});
-    expect(within(screen.getByRole("dialog")).getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    expect(toggle().getAttribute("aria-checked")).toBe("false");
     fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Address"), { target: { value: "14 Oak Ct" } });
-    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");
-    lifeos.sent = [];
     await save(screen.getByRole("dialog"));
     expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "purdue", address: "14 Oak Ct" } } }]);
+    // Nor is an edit a read comes to agree with: he turns Ref's lookups off, another window does the same, then turns them on again, and the switch here follows.
+    cleanup();
+    lifeos.sent = [];
+    lifeos.places = PLACES;
+    const other = render(<StartPlacesSection environmentId="box" />);
+    await open("Change Ref");
+    fireEvent.click(toggle());
+    expect(toggle().getAttribute("aria-checked")).toBe("false");
+    const ref0 = (on: boolean) => ({ ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "ref" ? { ...j, lookups: on } : j)) });
+    lifeos.places = ref0(false);
+    other.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    lifeos.places = ref0(true);
+    other.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(toggle().getAttribute("aria-checked")).toBe("true");
+    expect((within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    // An address typed back to what is stored is no edit either, though a space after it while he types is kept.
+    cleanup();
+    lifeos.sent = [];
+    render(<StartPlacesSection environmentId="box" />);
+    const ref = await open("Change Ref");
+    const field = within(ref).getByLabelText("Address") as HTMLInputElement;
+    fireEvent.change(field, { target: { value: "2 Gym Ln " } });
+    expect(field.value).toBe("2 Gym Ln ");
+    fireEvent.change(field, { target: { value: "2 Gym Ln" } });
+    expect((within(ref).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("lets a field he has not touched follow the reads, and never offers to send it back", async () => {
