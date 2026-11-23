@@ -429,7 +429,8 @@ export function StepForm({
   // The event ended while the step was open: as in the list, an event that is over has no way out.
   const now = useMinute();
   const over = !cleared && !pending && event.endsAt <= now;
-  const held = cleared ? "Nothing was sent." : over ? "This event is over." : stale ? "These events changed. Go back for a new time." : null;
+  // "Nothing was sent." is said only when that is known: after a Send of his that got no answer, the clash may be gone because the act went.
+  const held = cleared && !lost ? "Nothing was sent." : over ? "This event is over." : stale ? "These events changed. Go back for a new time." : null;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (pending) return;

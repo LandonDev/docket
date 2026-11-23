@@ -1936,7 +1936,9 @@ Around the canvas:
   reader); a step he is typing in stays when the calendar settles the
   clash meanwhile: the title turns to "No longer a clash", the step's one
   sentence turns to "Nothing was sent." (read out as it turns) in the
-  lines the sentence held, Send is off, and nothing moves. A step with
+  lines the sentence held, Send is off, and nothing moves; unless a Send
+  of his got no answer, when the sentence stays and the alert says to
+  check the calendar, since the clash may be gone because the act went. A step with
   times whose pair changed under it (either event's time, or the drive)
   holds Send the same way and says "These events changed. Go back for a
   new time.", since its offer was made for the pair as it was (never

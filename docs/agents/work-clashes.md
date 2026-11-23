@@ -162,7 +162,9 @@ The pillar has no view of its own and no row in the column.
   keeps the clash it showed while his own press is out and while it closes,
   and keeps an open step with what he typed when the calendar settles the
   clash meanwhile: the title says it is gone, the step's sentence turns to
-  "Nothing was sent." and the step sends nothing.
+  "Nothing was sent." and the step sends nothing (unless a Send of his got
+  no answer: the act may be why the clash is gone, so the sentence stays
+  and the alert says to check the calendar).
   What a read said for certain holds while a later read is out or fails, so
   a clash seen gone never returns from the opener's copy. A step's time
   field left as offered sends the instant offered, each field on its own

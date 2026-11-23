@@ -406,6 +406,28 @@ describe("the Clash dialog", () => {
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("never says Nothing was sent after a Send that got no answer: the clash may be gone because the decline went", async () => {
+    wire.lost = "timeout";
+    const view = (live: ClashMarks) => {
+      marks.now = live;
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(marksOf({ clashes: [overlap()], leaves: [] })));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await settle();
+    // LifeOS queued the decline and dropped the clash; the host's answer was lost.
+    rerender(view(marksOf({ clashes: [], leaves: [] })));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
+    const step = document.querySelector("[data-clash-step]")!;
+    expect(step.textContent).not.toContain("Nothing was sent.");
+    expect(step.querySelector("[aria-live=polite]")?.textContent).toBe("Its organizer is told you declined.");
+    expect(screen.getByRole("alert").textContent).toBe("The host did not confirm the send. Check the calendar before trying again.");
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("keeps a refusal in the dialog in LifeOS's words", async () => {
     wire.fail = "this calendar's Google account must be connected again";
     const onClose = show(overlap());
