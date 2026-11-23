@@ -1,7 +1,7 @@
 import type { SheetCellDiff, SheetMutationJson } from '@shared/contract-work-sheets'
 import type { A1Range } from './a1'
 import type { ComposeAsk } from './compose'
-import type { ActAnswer, ActAsk } from './acts'
+import type { ActAnswer, ActAsk } from './actAsks'
 import type { Inspected, PackageRules, ReadCell, SaveAnswer } from './jobs'
 import type { EditSpec } from './patch/patch'
 import type { StructuralOp } from './structural'

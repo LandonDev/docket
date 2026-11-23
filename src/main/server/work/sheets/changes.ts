@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { SheetChange } from '@shared/contract-work-sheets'
 import type { Principal } from '@shared/work'
-import type { ChartAsk, NoteAsk, PageAsk, TableAsk } from './acts'
+import type { ChartAsk, NoteAsk, PageAsk, TableAsk } from './actAsks'
 import type { FormatAsk, RuleAsk } from './asks'
 import type { Which } from './suggestions'
 
