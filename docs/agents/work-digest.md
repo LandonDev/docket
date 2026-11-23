@@ -201,7 +201,11 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
   (Today) and the one unseen day is today (`onlyToday`: Today shows that
   day alone); with an older day unseen too it opens the sheet, which holds
   every day. Opening or closing it marks every unseen day seen on every
-  host that holds it, so each window's toast goes with the push.
+  host that holds it, so each window's toast goes with the push. A mark
+  whose host did not answer (its link was down) is kept in localStorage
+  (`work.digest.seen.pending`), read as seen meanwhile and said again when
+  the link opens (`sendSeen`, `seenHere` in store.ts): a lost connection
+  never brings back a notice he closed.
 - A toast is drawn again only when its words change, so its Open and its
   close read what it stands for at the press (`live` in DigestHost.tsx):
   the same words may have come to mean another telling of a thing, or
@@ -219,12 +223,15 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 - **The system notification.** `src/main/notice.ts`: `app:notice {key,
   title, body, silent?}` and `app:notice-close {key}`; main shows an
   Electron `Notification` only while no app window is focused, once per key
-  across windows, and again with no sound when its words change
-  (`noticeStep`: a count that fell); the body keeps two lines, a thing's
-  title and its detail, and the fold's names every open one (`nowLine`,
-  newest first). The fold's notice is keyed by its newest telling
-  (`work-now@<telling>`, `toastOfNotice`), so a thing that joins the fold
-  is a new notice with its sound. A key is the window's own name for a
+  across windows, and again when its words change (`noticeStep`); the body
+  keeps two lines, a thing's title and its detail, and the fold's names
+  every open one (`nowLine`, newest first). Whether it sounds is the
+  window's to say: a notice sounds only when it holds a telling not heard
+  before (`heard` in DigestHost.tsx, `systemNotices`), so a thing that
+  joins the fold sounds, while a fold that loses a thing, or breaks up
+  into things he heard one by one, is shown again quietly; a thing told
+  more than a minute before the window opened is not news to the ear
+  either. A key is the window's own name for a
   notice and comes back on the click: main keeps it whole, never cleaned
   or cut. Every window asks for the same keys, so main keeps
   who asks (`Claims`): a window that lets go or closes takes a notification

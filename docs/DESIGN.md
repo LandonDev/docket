@@ -1540,7 +1540,9 @@ Around the canvas:
   only then: the title is the job's name ("Work" for the digest and for a
   thing about no one job), the body the same words, a thing's detail on a
   line of its own (never joined by a colon: most titles hold one already);
-  the digest's is silent. A toast's presses read what it stands for at the
+  the digest's is silent, and one sounds only for a thing he has not heard
+  yet (a fold that shrinks or breaks up is quiet). A toast's presses read
+  what it stands for at the
   press, and a toast that stays never covers a control: the Outbox seats
   the stack above an open item's verbs (`registerToastAnchor`). The list is a `Sheet` from the right, 480px, titled "Digest": no
   page, no rail row and no count, since Today owns the day's page.

@@ -14,8 +14,6 @@ import type { DigestView, MergedDay } from "./store";
 
 export const DIGEST_TOAST = "work-digest";
 export const NOW_FOLD_TOAST = "work-now";
-/** The toast a system notification's key stands for: the fold's key carries its newest telling after an `@`. */
-export const toastOfNotice = (key: string): string => (key.startsWith(`${NOW_FOLD_TOAST}@`) ? NOW_FOLD_TOAST : key);
 /** More interrupts than this at once are one toast. */
 export const FOLD_PAST = 3;
 /** An interrupt he neither opened nor dismissed leaves the window after a day; the list keeps it. */
@@ -88,18 +86,20 @@ export interface SystemNotice {
   silent?: boolean;
 }
 
-/** The same two things as system notifications, for a person looking at another app: the digest's is silent. A thing's detail is a line of its own, never joined by a colon (most titles hold one already). */
-export function systemNotices(digest: DigestNotice | null, toasts: readonly NowToast[]): SystemNotice[] {
+/**
+ * The same two things as system notifications, for a person looking at another app: the digest's is silent. A
+ * thing's detail is a line of its own, never joined by a colon (most titles hold one already). A notice sounds only
+ * when it holds a telling not heard before (`heard`): a thing that joins the fold sounds, while a fold that loses a
+ * thing, or breaks up into the things he already heard one by one, says so quietly.
+ */
+export function systemNotices(digest: DigestNotice | null, toasts: readonly NowToast[], heard: (row: TellRow) => boolean = () => false): SystemNotice[] {
   const out: SystemNotice[] = [];
   if (digest) out.push({ key: `digest:${digest.days[0]!.day}`, title: "Work", body: digest.line, silent: true });
   for (const toast of toasts) {
     const one = toast.rows.length === 1 ? toast.rows[0]! : null;
     // Folded: every open one by name, newest first, as the phone's banner says it (`nowLine`); the toast keeps its short count.
     const body = one ? (toast.detail ? `${toast.title}\n${toast.detail}` : toast.title) : nowLine([...toast.rows].reverse().map((r) => r.title));
-    // The fold's notice is keyed by its newest telling: a thing that joins the fold is a new notice, with its sound,
-    // while a count that only falls is the same one, shown again quietly.
-    const key = one ? toast.id : `${toast.id}@${tellingOf(toast.rows[toast.rows.length - 1]!)}`;
-    out.push({ key, title: one?.sector ? sectorName(one.sector) : "Work", body });
+    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body, ...(toast.rows.every(heard) ? { silent: true } : {}) });
   }
   return out;
 }

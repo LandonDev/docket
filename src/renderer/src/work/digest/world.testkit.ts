@@ -15,11 +15,12 @@ export interface World {
   down: Set<string>;
   refuses: Set<string>;
   pushers: Map<string, Set<(push: DigestPush) => void>>;
+  openers: Map<string, Set<() => void>>;
   /** a write waits for this before it answers */
   slow?: Promise<void> | null;
 }
 
-export const makeWorld = (): World => ({ calls: [], rows: new Map(), days: new Map(), settings: new Map(), down: new Set(), refuses: new Set(), pushers: new Map() });
+export const makeWorld = (): World => ({ calls: [], rows: new Map(), days: new Map(), settings: new Map(), down: new Set(), refuses: new Set(), pushers: new Map(), openers: new Map() });
 
 export const SETTINGS: DigestSettings = { at: "08:00", zone: "America/Chicago", levels: {}, nextAt: 0 };
 
@@ -43,7 +44,12 @@ export function linkOf(world: World, env: string) {
       world.pushers.set(env, set);
       return () => void set.delete(listener);
     },
-    onOpen: () => () => undefined,
+    onOpen: (listener: () => void) => {
+      const set = world.openers.get(env) ?? new Set();
+      set.add(listener);
+      world.openers.set(env, set);
+      return () => void set.delete(listener);
+    },
     onClose: () => () => undefined,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       world.calls.push({ env, method, params });
@@ -95,6 +101,11 @@ export function connectionMock(world: World, real: object) {
     ],
   };
 }
+
+/** The host's link opens again. */
+export const reopen = (world: World, env: string): void => {
+  for (const listener of world.openers.get(env) ?? []) listener();
+};
 
 export const push = (world: World, env: string, p: Omit<DigestPush, "push">): void => {
   for (const listener of world.pushers.get(env) ?? []) listener({ push: "work.digest", ...p });

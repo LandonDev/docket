@@ -193,6 +193,23 @@ describe("Settings → Work → Digest", () => {
     await waitFor(() => expect(sets().map((c) => c.params.at)).toEqual(["07:30", "07:30", "06:30", "06:30"]));
   });
 
+  it("going back to the time the hosts still hold, while another is on its way, is his latest edit and is sent after it", async () => {
+    let answer: (() => void) | null = null;
+    w().slow = new Promise<void>((resolve) => (answer = resolve));
+    render(<SettingsSection />);
+    const time = (await screen.findByLabelText("Time of the digest")) as HTMLInputElement;
+    fireEvent.change(time, { target: { value: "07:30" } });
+    fireEvent.blur(time);
+    await waitFor(() => expect(sets()).toHaveLength(2));
+    // Back to 08:00 before any host has confirmed 07:30.
+    fireEvent.change(time, { target: { value: "08:00" } });
+    fireEvent.blur(time);
+    await waitFor(() => expect(sets().map((c) => c.params.at)).toEqual(["07:30", "07:30", "08:00", "08:00"]));
+    await act(async () => answer!());
+    w().slow = null;
+    await waitFor(() => expect(time.value).toBe("08:00"));
+  });
+
   it("a time he typed and left the section before the rest was over is still written", async () => {
     const view = render(<SettingsSection />);
     fireEvent.change(await screen.findByLabelText("Time of the digest"), { target: { value: "05:15" } });

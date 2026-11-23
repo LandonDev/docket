@@ -16,8 +16,8 @@ vi.mock("../../lib/connection", async (original) => {
 
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { DigestSheet } from "./DigestSheet";
-import { digestNow, loadDigest, mergeDays, mergeRows, resetDigestStore, useDigest } from "./store";
-import { push, resetWorld, tell, type World } from "./world.testkit";
+import { digestNow, loadDigest, markSeen, mergeDays, mergeRows, resetDigestStore, useDigest } from "./store";
+import { push, reopen, resetWorld, tell, type World } from "./world.testkit";
 
 const w = (): World => world.current as World;
 const at = (day: number, h: number, m = 0): number => new Date(2026, 10, day, h, m).getTime();
@@ -131,6 +131,30 @@ describe("the store", () => {
     expect(view.days).toEqual([{ day: "2026-11-24", madeAt: 90, seenAt: 95, hosts: ["box", "mac"], madeBy: { box: 100, mac: 90 } }]);
     expect(mergeRows([[tell({ key: "k", at: 1 })], [tell({ key: "k", at: 2, host: "mac" })]])).toMatchObject([{ host: "mac" }]);
     expect(mergeDays([])).toEqual([]);
+  });
+  it("a day he closed while its host was away stays seen: through the host's next answer, and said again when its link opens", async () => {
+    const day = { day: "2026-11-24", madeAt: 100, seenAt: null, count: 1 };
+    w().days.set("box", [day]);
+    w().rows.set("box", [tell({ day: "2026-11-24", how: "digest" })]);
+    await loadDigest();
+    // The link drops; he closes the notice.
+    w().down.add("box");
+    markSeen(digestNow().days);
+    await Promise.resolve();
+    expect(digestNow().days[0]!.seenAt).not.toBeNull();
+    // The host is back and still says unseen: the mark he made holds, and is said to it again.
+    w().down.clear();
+    w().calls.length = 0;
+    reopen(w(), "box");
+    await loadDigest();
+    expect(digestNow().days[0]!.seenAt).not.toBeNull();
+    expect(w().calls.filter((c) => c.method === "work.digest.seen").map((c) => [c.env, c.params.day])).toEqual([["box", "2026-11-24"]]);
+    // Heard: nothing is kept to say again.
+    await Promise.resolve();
+    w().calls.length = 0;
+    reopen(w(), "box");
+    expect(w().calls.filter((c) => c.method === "work.digest.seen")).toEqual([]);
+    expect(localStorage.getItem("work.digest.seen.pending")).toBeNull();
   });
   it("keeps the push: a row told, a row gone, a day seen", async () => {
     w().rows.set("box", [tell({ id: "a", title: "First" })]);

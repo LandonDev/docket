@@ -11,7 +11,7 @@ import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
-import { DIGEST_TOAST, digestNotice, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, toastOfNotice, type NowToast } from "./notice";
+import { DIGEST_TOAST, digestNotice, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
 import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
 
@@ -28,6 +28,8 @@ import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen
  */
 
 const DISMISSED_KEY = "work.digest.dismissed";
+/** A thing told longer than this before the window opened was heard already: its notice is shown without a sound. */
+const HEARD_BEFORE_MS = 60_000;
 
 function readDismissed(): Set<string> {
   try {
@@ -193,7 +195,11 @@ export function DigestHost() {
   );
 
   // The same two things as system notifications, for a person looking at another app (src/main/notice.ts).
-  const system = useMemo(() => systemNotices(digest, toasts), [digest, toasts]);
+  // A telling sounds once, when its notice is first asked; what was told before this window opened is not news to
+  // the ear. So a fold that loses a thing, or breaks up into its things, is shown again without a sound.
+  const heard = useRef(new Set<string>());
+  const openedAt = useRef(Date.now() - HEARD_BEFORE_MS);
+  const system = useMemo(() => systemNotices(digest, toasts, (row) => heard.current.has(tellingOf(row)) || (row.toldAt ?? 0) < openedAt.current), [digest, toasts]);
   const asked = useRef(new Map<string, string>());
   useEffect(() => {
     // Its words: asked again when either line changes, so the notice says what the toast says.
@@ -201,11 +207,12 @@ export function DigestHost() {
     for (const key of asked.current.keys()) if (!next.has(key)) void systemNotice.close(key);
     for (const notice of system) if (asked.current.get(notice.key) !== next.get(notice.key)) void systemNotice.show(notice);
     asked.current = next;
-  }, [system]);
+    for (const toast of toasts) for (const row of toast.rows) heard.current.add(tellingOf(row));
+  }, [system, toasts]);
   useEffect(() => {
     const off = systemNotice.onOpen((key) => {
       if (key.startsWith("digest:")) return live.current.openDigest();
-      const toast = live.current.toasts.find((t) => t.id === toastOfNotice(key));
+      const toast = live.current.toasts.find((t) => t.id === key);
       if (toast) live.current.openToast(toast);
     });
     return () => {

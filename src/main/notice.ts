@@ -8,8 +8,9 @@ import { BrowserWindow, ipcMain, Notification, type WebContents } from 'electron
  *
  * A window asks with `app:notice {key, title, body, silent?}`. Main shows
  * it only while no app window is focused, once per key across windows, and
- * again without a sound when its words change; a click brings a window that
- * asked forward and tells it which key
+ * again when its words change (silent unless the ask holds news: the window
+ * says which); a click brings a window that asked forward and tells it which
+ * key
  * (`app:notice-open`). `app:notice-close {key}` lets go of this window's
  * ask: the notification is taken back once no window still asks for it.
  */
@@ -26,8 +27,8 @@ export interface NoticeAsk {
 /**
  * What an ask does to the notification of its key: `said` is what the one out now says (undefined: none is out).
  * Shown only while no app window is focused, and once per key however many windows ask. Its words changed while it
- * is out (four things became five): it is shown again in the new words, or only taken back when a window is in
- * front now and its toast says them.
+ * is out (four things became five, or three): it is shown again in the new words, or only taken back when a window
+ * is in front now and its toast says them.
  */
 export function noticeStep(said: string | undefined, words: string, anyFocused: boolean): 'show' | 'replace' | 'withdraw' | 'keep' {
   if (said === undefined) return anyFocused ? 'keep' : 'show'
@@ -125,8 +126,8 @@ export function registerNotices(): void {
     if (step === 'keep') return
     if (step !== 'show') withdraw(ask.key)
     if (step === 'withdraw') return
-    // Shown again for new words: no second sound.
-    const notification = new Notification({ title: ask.title, body: ask.body, silent: ask.silent === true || step === 'replace' })
+    // Whether it sounds is the window's to say: it knows which of the things in it he has heard already.
+    const notification = new Notification({ title: ask.title, body: ask.body, silent: ask.silent === true })
     shown.set(ask.key, notification)
     words.set(ask.key, wordsOf(ask))
     const forget = (): void => {

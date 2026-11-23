@@ -81,7 +81,9 @@ export function SettingsSection() {
     waiting.current = null;
     // Already on its way: leaving the field does not send the same time twice.
     if (sending.current === next) return true;
-    if (!AT.test(next) || next === settings?.at) return false;
+    // The time the hosts hold already is no change, unless another time is on its way to them: going back to it
+    // then is his latest edit, and is sent after the one before it.
+    if (!AT.test(next) || (next === settings?.at && sending.current === null)) return false;
     sending.current = next;
     // The field keeps what he typed until the hosts have answered: it never falls back to the old time meanwhile,
     // and only this edit's own answer lets go of it.

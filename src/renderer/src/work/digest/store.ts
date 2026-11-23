@@ -174,7 +174,7 @@ function view(): DigestView {
   const on = [...workSwitch.hosts()];
   const states = on.map((id) => ({ environmentId: id, state: hosts.get(id) })).filter((h): h is { environmentId: string; state: HostState } => !!h.state);
   snapshot = {
-    days: mergeDays(states.map((h) => ({ environmentId: h.environmentId, days: h.state.days }))),
+    days: mergeDays(states.map((h) => ({ environmentId: h.environmentId, days: seenHere(h.environmentId, h.state.days) }))),
     rows: mergeRows(states.map((h) => h.state.rows)),
     settings: newestSettings(states.flatMap((h) => (h.state.settings ? [h.state.settings] : []))),
     loaded: on.length > 0 && on.every((id) => hosts.get(id)?.loaded),
@@ -221,16 +221,67 @@ function sayHere(environmentId: string): void {
   if (zone) void registry.linkOf(environmentId).request("work.digest.here", { zone }).catch(() => {});
 }
 
+// ── seen, until the host has heard ───────────────────────────────────────
+
+const SEEN_KEY = "work.digest.seen.pending";
+/**
+ * The days he opened or closed whose host has not answered yet, by host,
+ * with when. Kept through a reload and said again when the host's link
+ * opens, and laid over what the host answers meanwhile: a lost connection
+ * never brings back a notice he closed.
+ */
+const pendingSeen = new Map<string, Map<string, number>>();
+function readPendingSeen(): void {
+  pendingSeen.clear();
+  try {
+    const kept = JSON.parse(localStorage.getItem(SEEN_KEY) ?? "{}") as Record<string, Record<string, number>>;
+    for (const [environmentId, days] of Object.entries(kept ?? {})) pendingSeen.set(environmentId, new Map(Object.entries(days ?? {}).filter(([, at]) => typeof at === "number")));
+  } catch {
+    // Nothing kept: a notice closed while a host was away may show once more.
+  }
+}
+function writePendingSeen(): void {
+  try {
+    // The newest 40 days a host: the ledger keeps thirty.
+    const kept = Object.fromEntries([...pendingSeen].filter(([, days]) => days.size > 0).map(([id, days]) => [id, Object.fromEntries([...days].sort().slice(-40))]));
+    if (Object.keys(kept).length) localStorage.setItem(SEEN_KEY, JSON.stringify(kept));
+    else localStorage.removeItem(SEEN_KEY);
+  } catch {
+    // A full store only means the mark is not kept through a reload.
+  }
+}
+readPendingSeen();
+
+/** A host's days as he left them: one he opened whose host has not heard yet reads seen. */
+const seenHere = (environmentId: string, days: readonly DigestDay[]): DigestDay[] => {
+  const pending = pendingSeen.get(environmentId);
+  return pending?.size ? days.map((d) => (d.seenAt === null && pending.has(d.day) ? { ...d, seenAt: pending.get(d.day)! } : d)) : [...days];
+};
+
+/** Says a day was seen to its host, and keeps saying it until the host answers. */
+function sendSeen(environmentId: string, day: string, at = Date.now()): void {
+  const days = pendingSeen.get(environmentId) ?? new Map<string, number>();
+  if (!days.has(day)) days.set(day, at);
+  pendingSeen.set(environmentId, days);
+  writePendingSeen();
+  void registry
+    .linkOf(environmentId)
+    .request("work.digest.seen", { day })
+    .then(() => {
+      pendingSeen.get(environmentId)?.delete(day);
+      writePendingSeen();
+    })
+    .catch(() => {
+      // Kept: said again when the link opens.
+    });
+}
+
 /** He opened these days' digest: every host that holds one is told, and each window's notice goes with the push. */
 export function markSeen(days: readonly MergedDay[]): void {
   for (const day of days) {
     if (day.seenAt !== null) continue;
-    for (const environmentId of day.hosts) {
-      const state = hosts.get(environmentId);
-      // At once here, so the notice leaves on the press and not on the host's answer.
-      if (state) hosts.set(environmentId, { ...state, days: state.days.map((d) => (d.day === day.day && d.seenAt === null ? { ...d, seenAt: Date.now() } : d)) });
-      void registry.linkOf(environmentId).request("work.digest.seen", { day: day.day }).catch(() => {});
-    }
+    // At once here (the pending mark reads seen), so the notice leaves on the press and not on the host's answer.
+    for (const environmentId of day.hosts) sendSeen(environmentId, day.day);
   }
   changed();
 }
@@ -304,6 +355,8 @@ export function resetDigestStore(): void {
   loading.clear();
   aligning = false;
   writing = 0;
+  pendingSeen.clear();
+  writePendingSeen();
   sheetOpen = false;
   changed();
 }
@@ -338,6 +391,8 @@ registry.onLink((link, event) => {
   });
   link.onOpen(() => {
     if (!workSwitch.hosts().has(link.environmentId)) return;
+    // What he saw while this host was away is said now.
+    for (const [day, at] of pendingSeen.get(link.environmentId) ?? []) sendSeen(link.environmentId, day, at);
     void loadHost(link.environmentId);
     sayHere(link.environmentId);
   });

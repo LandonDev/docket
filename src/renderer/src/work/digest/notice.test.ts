@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, toastOfNotice, unansweredLine } from "./notice";
+import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, unansweredLine } from "./notice";
 import type { MergedDay } from "./store";
 
 /** What the desktop shows of the digest, as rules over made-up rows. */
@@ -108,13 +108,20 @@ describe("the system notifications", () => {
     ]);
     const many = Array.from({ length: 4 }, (_, i) => row({ key: `k${i}`, how: "now", toldAt: i + 1 }));
     // folded: every open one by name, newest first, as the phone's banner says it
-    // keyed by its newest telling: a thing that joins the fold is a new notice, with its sound; fewer is the same one
-    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now@k:k3@4", title: "Work", body: "4 things need you: Morning summary; Morning summary; Morning summary; Morning summary" }]);
-    const five = [...many, row({ key: "k4", how: "now", toldAt: 9 })];
-    expect(systemNotices(null, nowToasts(five))[0]!.key).toBe("work-now@k:k4@9");
-    expect(systemNotices(null, nowToasts(five.slice(1)))[0]!.key).toBe("work-now@k:k4@9");
-    expect(toastOfNotice("work-now@k:k4@9")).toBe("work-now");
-    expect(toastOfNotice("work-now:k:prep:1")).toBe("work-now:k:prep:1");
+    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now", title: "Work", body: "4 things need you: Morning summary; Morning summary; Morning summary; Morning summary" }]);
+  });
+  it("sound only for a telling not heard before: a thing that joins sounds, a fold that loses one or breaks up does not", () => {
+    const many = Array.from({ length: 5 }, (_, i) => row({ key: `k${i}`, how: "now", toldAt: i + 1 }));
+    const heard = new Set(many.slice(0, 4).map(tellingOf));
+    const isHeard = (r: TellRow): boolean => heard.has(tellingOf(r));
+    // the fifth joined: the fold holds an unheard telling
+    expect(systemNotices(null, nowToasts(many), isHeard)[0]!.silent).toBeUndefined();
+    // the newest went: four he heard remain
+    expect(systemNotices(null, nowToasts(many.slice(0, 4)), isHeard)[0]).toMatchObject({ key: "work-now", silent: true });
+    // the fold breaks up: each of the three is one he heard
+    expect(systemNotices(null, nowToasts(many.slice(0, 3)), isHeard).map((n) => n.silent)).toEqual([true, true, true]);
+    // a thing on its own, new: it sounds
+    expect(systemNotices(null, nowToasts([many[4]!]), isHeard)[0]!.silent).toBeUndefined();
   });
 });
 
