@@ -7,8 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const lifeos = vi.hoisted(() => ({ startsAt: new Date(2027, 1, 10, 15, 0).getTime(), asked: [] as unknown[], loading: false, drawn: [] as number[] }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  // The owner session the clash read rides (work/clashes/mark.tsx): none here, so no row carries a clash.
-  useLifeosSession: () => ({ environmentId: "box", sector: null, client: null, state: "connecting" }),
   useLifeosQuery: (_session: unknown, name: string, args: unknown) => {
     lifeos.asked.push({ name, args });
     return lifeos.loading ? { status: "loading" } : { status: "ready", value: { startsAt: lifeos.startsAt } };

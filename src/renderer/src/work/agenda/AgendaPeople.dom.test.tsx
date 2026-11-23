@@ -7,8 +7,6 @@ const now = Date.now();
 const lifeos = vi.hoisted(() => ({ asked: [] as unknown[] }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  // The owner session the clash read rides (work/clashes/mark.tsx): none here, so no row carries a clash.
-  useLifeosSession: () => ({ environmentId: "box", sector: null, client: null, state: "connecting" }),
   useLifeosQuery: (_session: unknown, name: string, args: unknown) => {
     lifeos.asked.push({ name, args });
     return name === "people:directory"

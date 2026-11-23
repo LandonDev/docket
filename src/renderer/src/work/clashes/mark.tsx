@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { clashLine, listFrom, type Clash, type LifeosRange } from "@shared/work/clashes";
 import type { SectorKey } from "@shared/work";
 import { TruncateTip } from "../../components/tip";
+import { registry } from "../../lib/connection";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useLifeosQuery, useLifeosSession } from "../shell/lifeos";
 import { marksOf, NO_MARKS, type ClashMarks } from "./model";
@@ -13,7 +14,8 @@ import { openClash } from "./open";
  * one. Each side carries this host's Work workspace for its job.
  */
 export function useClashes(environmentId: string, from: number, to: number): ClashMarks {
-  const session = useLifeosSession(environmentId, null);
+  // A view whose host this window no longer holds draws no clash, rather than asking a link that is gone.
+  const session = useLifeosSession(registry.has(environmentId) ? environmentId : "", null);
   const read = useLifeosQuery<LifeosRange>(session, "clashes:range", { from, to });
   const workspaces = useWorkspaces();
   const range = read.status === "ready" ? read.value : null;
