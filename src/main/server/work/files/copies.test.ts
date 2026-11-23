@@ -1,12 +1,12 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { CopyBack, FilesOpened, FilesTabs } from '@shared/contract-work-files'
 import { canvasSourcePath, filesPaneOf } from '@shared/work'
 import { copySavesBack } from '@shared/work/files'
 import type { Caller } from '../modules'
-import { filesHandle as officeHandle } from '../office/files/handle'
+import { copyDirOf, filesHandle as officeHandle } from '../office/files/handle'
 import { setCloudDir, setCopyAllowed } from '../office/files/library'
 import { copiesInFlight, copyRecord, copySaved, copyTiming, retryWaiting, sendBack, settleCopies } from './copies'
 import { closeFilesState, filesHandle } from './handle'
@@ -214,6 +214,29 @@ describe('a file that changed on its computer', () => {
     expect(readFileSync(copy, 'utf8')).toBe('theirs')
     expect(copyRecord(box.ctx, WS, MAC, path)).toMatchObject({ state: 'ok', version: versionWord(await versionOf(path)) })
     expect(await backOf(tabId)).toEqual({ is: 'ok' })
+  })
+
+  it("Reload after Keep Both reads the file the tab now shows into the copy its item names, in the tab's one folder", async () => {
+    const { copy, tabId, item } = await openFar('Roster.xlsx', 'ours')
+    writeFileSync(join(mac.team, 'General', 'Roster.xlsx'), 'theirs')
+    await editorSaves(copy, 'mine')
+    await settled()
+    await call('work.files.copyKeep', { tabId })
+    const mine = join(mac.team, 'General', 'Roster (mine).xlsx')
+    writeFileSync(mine, 'mine, changed on mac')
+    await editorSaves(copy, 'his unsent change')
+    await settled()
+    expect((await backOf(tabId))?.is).toBe('changed')
+    await call('work.files.copyReload', { tabId })
+    // The item the tab shows still names its copy, and that copy holds the Mac's file now.
+    const shown = box.canvas.get((await call<FilesTabs>('work.files.tabs', {})).tabs.find((t) => t.id === tabId)!.itemId!)!
+    expect(canvasSourcePath(shown.source)).toBe(copy)
+    expect(item.id).toBe(shown.id)
+    expect(readFileSync(copy, 'utf8')).toBe('mine, changed on mac')
+    expect(copyRecord(box.ctx, WS, MAC, mine)).toMatchObject({ copy, state: 'ok', version: versionWord(await versionOf(mine)) })
+    expect(await backOf(tabId)).toEqual({ is: 'ok' })
+    // One folder for the tab: no other was made beside it.
+    expect(readdirSync(copyDirOf(box.dataDir, filesPaneOf(WS)))).toEqual([basename(dirname(copy))])
   })
 
   it('a file gone there is said as gone, and nothing is made under its old name', async () => {

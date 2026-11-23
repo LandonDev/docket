@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { realpathSync, rmSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { constants, realpathSync, rmSync } from 'node:fs'
+import { open, readFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { CopyBack, FileOrigin, FileTab, WrittenBack } from '@shared/contract-work-files'
 import { filesPaneOf, type CanvasKind, type CanvasSource } from '@shared/work'
 import { COPY_ACROSS_MAX, freeName, splitName } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
-import { copyIn } from '../office/files/handle'
+import { copyAllowed } from '../office/files/library'
 import { vmList } from '../office/vm/files'
 import { VmUnreachable } from '../office/vm/link'
 import { vmState } from '../office/vm/office'
@@ -57,6 +57,8 @@ export interface CopyRow {
 const LOCAL: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
 /** How long a closed tab's copy waits for its kind's last save before it is sent and let go (a test sets it to 0). */
 export const copyTiming = { grace: 3000 }
+/** One read of the guest's file, as `copyIn` reads one. */
+const PIECE = 4 * 1024 * 1024
 const TOO_BIG = (name: string): string => `${name} is over ${COPY_ACROSS_MAX / 1024 / 1024} MB, too big to send back.`
 export const NOT_SAVING = "This copy's changes stay here."
 const ONLY_HOST = "A copy is sent back by the workspace's own host."
@@ -280,16 +282,51 @@ export async function copyBack(ctx: WorkCtx, by: Caller, p: { workspaceId: strin
   return now ? backOf(now) : { is: 'ok' }
 }
 
-/** `work.files.copyReload`: the file as it is on its computer now, read into the copy's place; what was not sent is dropped. */
+/** The file's bytes and its version as its own computer has them now, from one look; nothing is written here. */
+async function freshBytes(ctx: WorkCtx, r: CopyRow, signal?: AbortSignal): Promise<{ data: Buffer; version: string }> {
+  if (!copyAllowed(ctx.db, r.workspace_id)) throw new Error('This workspace keeps Teams files where they are: turn on Copy Teams files in its settings to open one here.')
+  const ref: CanvasSource = { at: 'file', host: r.host, path: r.path }
+  if (r.vm) {
+    // The guest's file, still in a library OneDrive syncs there, read in pieces by the helper's version.
+    const at = locate(ctx, LOCAL, r.workspace_id, ref, 'work.files.copyReload')
+    if (at.in !== 'library' || !at.library.vm) throw new Error(NOT_SAVING)
+    const parts: Buffer[] = []
+    let version: string | undefined
+    for (let offset = 0; ; ) {
+      const got = await vmReadVersioned(r.path, offset, PIECE, version, signal)
+      version = got.version
+      const buf = Buffer.from(got.data, 'base64')
+      parts.push(buf)
+      offset += buf.length
+      if (got.end || !buf.length) break
+      if (offset > COPY_ACROSS_MAX) throw new Error(TOO_BIG(r.name))
+    }
+    return { data: Buffer.concat(parts), version: version! }
+  }
+  const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(r.workspace_id), workspaceId: r.workspace_id }, signal } as never, r.host)
+  const got = (await far.call('office', 'filesRead', { source: ref, as: 'bytes' })) as { data: string; version?: string }
+  if (typeof got.version !== 'string') throw new Error('The other computer runs an older TempCode: update it to reload here.')
+  return { data: Buffer.from(got.data, 'base64'), version: got.version }
+}
+
+/**
+ * `work.files.copyReload`: the file as it is on its computer now, written into the copy the tab's item already names
+ * (after Keep Both that file is another than the one first copied, and its copy stays in the tab's one folder); what
+ * was not sent is dropped. The copy is written without following a link, as `copyIn` writes one.
+ */
 export async function copyReload(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string }, signal?: AbortSignal): Promise<void> {
   const { tab, r } = recordOfTab(ctx, by, p.workspaceId, p.tabId)
   admitOwner(by, r)
   await flights.get(r.id)?.run
-  const made = await copyIn(ctx, filesPaneOf(p.workspaceId), { at: 'file', host: r.host, path: r.path }, signal)
-  if (!made.version) throw new Error('The other computer runs an older TempCode: update it to reload here.')
-  const copy = (made.source as { path: string }).path
-  const data = await readFile(copy)
-  recordCopy(ctx, { workspaceId: p.workspaceId, host: r.host, path: r.path, vm: !!r.vm, copy, name: tab.name, kind: r.kind as CanvasKind, version: made.version, sha256: sha(data) })
+  const fresh = await freshBytes(ctx, r, signal)
+  const out = await open(r.copy, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0), 0o600)
+  try {
+    await out.writeFile(fresh.data)
+    await out.sync()
+  } finally {
+    await out.close()
+  }
+  recordCopy(ctx, { workspaceId: p.workspaceId, host: r.host, path: r.path, vm: !!r.vm, copy: r.copy, name: tab.name, kind: r.kind as CanvasKind, version: fresh.version, sha256: sha(fresh.data) })
   said(ctx, p.workspaceId)
 }
 

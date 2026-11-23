@@ -132,6 +132,17 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
     expect(kept.tabs.find((t) => t.id === tabId)).toMatchObject({ name: 'Roster (mine).xlsx', copyOf: { host: HOST, path: mine, vm: true }, back: { is: 'ok' } })
   })
 
+  it("Reload reads the guest's file into the copy the tab's item names, by the helper's version", async () => {
+    const { copy, tabId } = await open()
+    disk.get(ROSTER.toLowerCase())!.data = Buffer.from('changed in the VM').toString('base64')
+    disk.get(ROSTER.toLowerCase())!.modified = 1500
+    await save(copy, 'mine')
+    expect((await back(tabId))?.is).toBe('changed')
+    await call('work.files.copyReload', { tabId })
+    expect(readFileSync(copy, 'utf8')).toBe('changed in the VM')
+    expect(copyRecord(rig.ctx, WS, HOST, ROSTER)).toMatchObject({ copy, state: 'ok', version: versionIn(ROSTER) })
+  })
+
   it('waits when the VM does not answer, and refuses a thread', async () => {
     const { copy, tabId } = await open()
     setVmCall(async () => {
