@@ -17,7 +17,7 @@ import { loadDigest, openDigestSheet, setDigest, useDigest } from "./store";
  */
 
 /** The groups he sets, in the section's order. The rest stay at their clock and have no row. */
-export const SETTING_GROUPS: readonly TellGroup[] = ["held", "results", "people"];
+export const SETTING_GROUPS: readonly TellGroup[] = ["held", "results", "people", "meetings"];
 
 const LEVEL_CHOICES = TELL_LEVELS.map((value) => ({ value, label: LEVEL_NAMES[value] }));
 const AT = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -63,7 +63,7 @@ export function SettingsSection() {
             {view.errors[0]?.error ?? "The digest's settings did not load"}
           </PageError>
         ) : (
-          <PageRowsSkeleton rows={[{ control: "number" }, { control: "select" }, { control: "select" }, { control: "select" }]} />
+          <PageRowsSkeleton rows={[{ control: "number" }, { control: "select" }, { control: "select" }, { control: "select" }, { control: "select" }]} />
         )}
       </PageSection>
     );

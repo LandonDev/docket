@@ -7,8 +7,8 @@ import { lapses } from './lapses'
 /** A sign-in or a licence about to end, as the host tells it: the two stages, the clock on the last day, and what goes when it is renewed. */
 
 const DAY = 86_400_000
-const NOW = new Date(2026, 10, 23, 9, 0).getTime()
-const until = new Date(2026, 11, 5, 13, 22).getTime()
+const NOW = Date.parse('2026-11-23T09:00:00-06:00')
+const until = Date.parse('2026-12-05T13:22:00-06:00')
 
 const env = (found: { id: string; title: string; until: number }[]): SourceEnv =>
   ({
@@ -19,6 +19,7 @@ const env = (found: { id: string; title: string; until: number }[]): SourceEnv =
     },
     workspaces: () => [],
     day: '2026-11-23',
+    zone: 'America/Chicago',
     since: 0
   }) as SourceEnv
 const read = (found: Parameters<typeof env>[0], now: number): SourceRead => lapses.read(env(found), now) as SourceRead
@@ -40,9 +41,13 @@ describe('the lapses source', () => {
   it('read again with nothing changed it says the same words: a re-read is not news', () => {
     expect(read([evaluation], NOW).tells).toEqual(read([evaluation], NOW + 6 * 3_600_000).tells)
   })
+  it("writes the time in his zone, whatever zone the host runs in", () => {
+    // 1:22 PM in Chicago is 7:22 PM in UTC: the title says his own clock
+    expect(read([evaluation], until - 5 * 3_600_000).tells[0]!.title).toBe('Windows evaluation ends Dec 5 at 1:22 PM')
+  })
   it('names the year when the end is in another one', () => {
-    const next = new Date(2027, 0, 5, 1, 22).getTime()
-    expect(read([{ ...evaluation, until: next }], new Date(2026, 11, 28, 9, 0).getTime()).tells[0]!.title).toBe('Windows evaluation ends Jan 5, 2027')
+    const next = Date.parse('2027-01-05T01:22:00-06:00')
+    expect(read([{ ...evaluation, until: next }], Date.parse('2026-12-28T09:00:00-06:00')).tells[0]!.title).toBe('Windows evaluation ends Jan 5, 2027')
   })
   it('keeps both stages of a lapse still listed, and none of one renewed or gone', () => {
     expect(read([evaluation], NOW).keep).toEqual([`lapse:winvm:evaluation:${until}:0`, `lapse:winvm:evaluation:${until}:1`])

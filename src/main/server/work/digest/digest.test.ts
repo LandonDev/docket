@@ -111,6 +111,10 @@ describe('a tell', () => {
     rig.digest.tell({ kind: 'nobody.listed', workspaceId: null, title: 'Something else happened' })
     expect(rig.logs.filter((l) => l.includes('nobody.listed'))).toHaveLength(1)
   })
+  it("the weekly review's, told with no target, opens its page on its week", () => {
+    const row = rig.digest.tell({ kind: 'review.ready', workspaceId: null, title: 'Your week is ready to review', detail: 'Nov 16 to 22', key: 'review:2026-11-16' })!
+    expect(row).toMatchObject({ group: 'review', open: { place: 'review', at: '2026-11-16' }, how: 'waiting' })
+  })
   it('with no title or no kind is dropped', () => {
     expect(rig.digest.tell({ kind: 'outbox.held', workspaceId: null, title: '  ' })).toBeNull()
     expect(rig.digest.tell({ kind: '', workspaceId: null, title: 'x' })).toBeNull()

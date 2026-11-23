@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { TELL_GROUPS } from '@shared/work/tell'
-import { decide, DIGEST_TELLS, groupsByKind, groupsListed, KEEP_MS, retold } from './rule'
+import { decide, defaultOpen, DIGEST_TELLS, groupsByKind, groupsListed, KEEP_MS, retold } from './rule'
 
 /** The whole rule as a table: a level, a clock, and whether he hears now or in the digest. */
 
@@ -56,5 +56,15 @@ describe('the kinds', () => {
     expect(groupsByKind(modules).get('clashes.new')).toBe('clashes')
     expect(groupsByKind(modules).get('nobody.listed')).toBeUndefined()
     expect(groupsListed(modules)).toEqual(['held', 'clashes'])
+  })
+})
+
+describe('a kind whose teller names no target', () => {
+  it("the weekly review opens its page on the week its key names; a sibling's own listing of the kind wins over the digest's", () => {
+    expect(defaultOpen({ kind: 'review.ready', key: 'review:2026-11-16' })).toEqual({ place: 'review', at: '2026-11-16' })
+    expect(defaultOpen({ kind: 'review.ready' })).toEqual({ place: 'review' })
+    expect(defaultOpen({ kind: 'routines.done', key: 'thread:t1' })).toBeUndefined()
+    expect(groupsByKind([{ tells: DIGEST_TELLS }]).get('review.ready')).toBe('review')
+    expect(groupsByKind([{ tells: [{ kind: 'review.ready', group: 'system', name: 'its own' }] }, { tells: DIGEST_TELLS }]).get('review.ready')).toBe('system')
   })
 })

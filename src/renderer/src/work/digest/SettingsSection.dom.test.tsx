@@ -38,16 +38,16 @@ afterEach(() => {
 });
 
 describe("Settings → Work → Digest", () => {
-  it("is one section: the time, then three rows that all start at the same level, and nothing explained under them", async () => {
+  it("is one section: the time, then four rows that all start at the same level, and nothing explained under them", async () => {
     render(<SettingsSection />);
     const section = within(await screen.findByRole("region", { name: "Digest" }));
     const time = (await section.findByLabelText("Time of the digest")) as HTMLInputElement;
     expect(time.type).toBe("time");
     expect(time.value).toBe("08:00");
-    expect(SETTING_GROUPS).toEqual(["held", "results", "people"]);
-    expect(section.getAllByText(/^(Time|Held items|Routine results|Messages and mail)$/).map((el) => el.textContent)).toEqual(["Time", "Held items", "Routine results", "Messages and mail"]);
+    expect(SETTING_GROUPS).toEqual(["held", "results", "people", "meetings"]);
+    expect(section.getAllByText(/^(Time|Held items|Routine results|Messages and mail|Meetings)$/).map((el) => el.textContent)).toEqual(["Time", "Held items", "Routine results", "Messages and mail", "Meetings"]);
     // every select reads the default, in his words
-    expect(section.getAllByText("When it can't wait")).toHaveLength(3);
+    expect(section.getAllByText("When it can't wait")).toHaveLength(4);
     // no describing line under any row
     expect(document.querySelectorAll("[data-slot=item-description]")).toHaveLength(0);
   });
@@ -74,7 +74,7 @@ describe("Settings → Work → Digest", () => {
     expect(((await screen.findByLabelText("Time of the digest")) as HTMLInputElement).value).toBe("17:30");
     expect(screen.getByText("In the digest")).toBeTruthy();
     expect(screen.getByText("Right away")).toBeTruthy();
-    expect(screen.getAllByText("When it can't wait")).toHaveLength(1);
+    expect(screen.getAllByText("When it can't wait")).toHaveLength(2);
   });
 
   it("a host that refused is the row's red line, naming the host", async () => {

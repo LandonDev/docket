@@ -11,7 +11,7 @@ import type { Notifier } from '../../remote/notifier'
 import { makeDeliverer, ofDay } from './deliver'
 import { makeGate, runPressed } from './gate'
 import { makeDay } from './make'
-import { decide, groupsByKind, groupsListed, LATE_MS, retold } from './rule'
+import { decide, defaultOpen, groupsByKind, groupsListed, LATE_MS, retold } from './rule'
 import { Sources } from './sources'
 import { SOURCES } from './sources/list'
 import { DigestStore, type LedgerRow } from './store'
@@ -161,7 +161,8 @@ export class Digest {
     }
     const now = this.clock()
     const detail = typeof t.detail === 'string' ? tellLine(t.detail, DETAIL_MAX) : ''
-    const open = t.open ? TellOpenSchema.safeParse(t.open) : null
+    const target = t.open ?? defaultOpen(t)
+    const open = target ? TellOpenSchema.safeParse(target) : null
     const by = typeof t.by === 'number' && Number.isFinite(t.by) ? t.by : undefined
     const workspaceId = t.workspaceId ?? null
     const said = {
@@ -362,6 +363,7 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
       modules: () => WORK_MODULES,
       sources: SOURCES,
       day: (now) => dayOf(made.zone(), lastDigest(made.at(), made.zone(), now)),
+      zone: () => made.zone(),
       since: () => made.store.days()[0]?.madeAt ?? 0
     })
     made.beats.push((now) => sources.beat(now))

@@ -109,7 +109,7 @@ export function WorkSettingsBody() {
 }
 
 /** The digest's settings (work/digest), in the digest's own chunk. */
-const DigestSection = workDigestChunk.surface("SettingsSection", <PageRowsSkeleton rows={[{ control: "number" }, { control: "select" }, { control: "select" }, { control: "select" }]} />);
+const DigestSection = workDigestChunk.surface("SettingsSection", <PageRowsSkeleton rows={[{ control: "number" }, { control: "select" }, { control: "select" }, { control: "select" }, { control: "select" }]} />);
 
 /** Mail's settings, in a chunk of their own: the mail client loads only when Settings shows them. */
 const mailSettingsChunk = defineChunk("work-mail-settings", () => import("../mail/MailSettingsSection"));

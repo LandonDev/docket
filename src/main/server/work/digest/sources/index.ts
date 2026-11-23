@@ -23,6 +23,8 @@ export interface SourceEnv {
   workspaces(): { id: string; name: string; sector: string }[]
   /** the day of the digest being made, or of the last one made: for a row told once a day */
   day: string
+  /** the zone the digest runs in (the last desktop's): every time a title says is written in it, never in the host's own */
+  zone: string
   /** when this host last made a digest; 0: never */
   since: number
 }
@@ -54,6 +56,7 @@ export interface SourcesDeps {
   modules(): readonly WorkModule[]
   sources: readonly Source[]
   day(now: number): string
+  zone(): string
   since(): number
 }
 
@@ -79,6 +82,7 @@ export class Sources {
       },
       workspaces: () => ctx.db.prepare("SELECT id, name, sector FROM workspaces WHERE kind = 'work' AND sector IS NOT NULL ORDER BY created_at").all() as unknown as { id: string; name: string; sector: string }[],
       day: this.deps.day(now),
+      zone: this.deps.zone(),
       since: this.deps.since()
     }
   }

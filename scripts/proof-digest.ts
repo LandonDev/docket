@@ -102,7 +102,7 @@ const ctx = {
   log: (l: string) => void logs.push(l),
   tell: Object.assign((t: Parameters<Digest['tell']>[0]) => void digest.tell(t), { done: (key: string) => digest.done(key), only: (prefix: string, keys: readonly string[]) => digest.only(prefix, keys), quiet: (id: string) => digest.quiet(id) })
 } as unknown as WorkCtx
-const sources = new Sources({ ctx, modules: () => modules, sources: [lapses], day: () => '2026-11-24', since: () => 0 })
+const sources = new Sources({ ctx, modules: () => modules, sources: [lapses], day: () => '2026-11-24', zone: () => ZONE, since: () => 0 })
 digest.beats.push((now) => sources.beat(now))
 notifier.setGate(
   makeGate({
