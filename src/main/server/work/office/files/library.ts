@@ -190,7 +190,7 @@ export const isLocal = (s: Pick<Stats, 'size' | 'blocks'>): boolean => s.size ==
 const OFFICE_ZIP = /\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i
 const whoCache = new Map<string, string | null>()
 /** Who last saved an Office file, from its own properties; read only from a file already on disk, so a list never downloads one. */
-function whoOf(path: string, s: Stats): string | null {
+export function whoOf(path: string, s: Stats): string | null {
   if (!OFFICE_ZIP.test(path) || !isLocal(s)) return null
   const key = `${path}\u0000${s.mtimeMs}\u0000${s.size}`
   if (whoCache.has(key)) return whoCache.get(key)!
