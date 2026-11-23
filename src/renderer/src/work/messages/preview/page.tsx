@@ -33,7 +33,7 @@ function Live({ sector }: { sector: string }) {
   client.setAuth(async () => jwt!);
   const session: LifeosSession = { environmentId: "preview", sector, client, state: "connected" };
   return (
-    <MessagesDataProvider value={liveData(session, sector)}>
+    <MessagesDataProvider value={liveData(session, sector, "preview", `live-${sector}`)}>
       <MessagesScreen workspaceId={`live-${sector}`} job={sector} />
     </MessagesDataProvider>
   );
