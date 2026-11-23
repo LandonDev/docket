@@ -58,6 +58,16 @@ export const ROTATE_RISE = 22;
 export const ROTATE_STEM = 12;
 
 /**
+ * How far under the slide's bottom edge the pane's floating bar (Ask) is anchored. The frame lays the bar above its
+ * anchor, 6px off and 32px tall (canvas/SelectionBar.tsx), so this leaves it 4px under the picture: never over a shape,
+ * a handle or the typing box, where his next press goes.
+ */
+export const ASK_UNDER = 42;
+
+/** Where the floating bar is anchored for a picked shape: under the slide's bottom-left corner, in page pixels. */
+export const askAnchor = (slide: { left: number; bottom: number }): { left: number; top: number } => ({ left: slide.left, top: slide.bottom + ASK_UNDER });
+
+/**
  * A selection as it is drawn on a stage of `width` by `height` CSS pixels: the outline's corners, the eight
  * handles (corners and edge midpoints, clockwise from the top-left), and the rotate handle with its stem, which
  * rise from the middle of the top edge away from the shape, so the whole selection turns with it.
@@ -87,3 +97,37 @@ export function readingOrder(shapes: readonly DeckShape[]): DeckShape[] {
 
 /** What a shape is called where it has no words: by what it is. */
 export const KIND_WORDS: Readonly<Record<DeckShapeKind, string>> = { text: "Text", other: "Shape", picture: "Picture", table: "Table", chart: "Chart", media: "Media", connector: "Line", frame: "Object" };
+
+/**
+ * Where a shape's words are laid on a stage of `width` by `height` CSS pixels: the corner they start from, how far
+ * they run across and down, and the turn. Words keep reading the right way in a mirrored shape, as PowerPoint and
+ * LibreOffice draw them: flipped across they read as before, flipped down they turn half round. Either way they start
+ * at the drawn top-right corner and run toward the drawn top-left.
+ */
+export function textFrameOf(quad: Quad, flip: boolean, width: number, height: number): { left: number; top: number; width: number; height: number; turn: number } {
+  const c = quad.map(([x, y]) => ({ x: x * width, y: y * height }));
+  const [origin, across, down] = flip ? [c[1], c[0], c[2]] : [c[0], c[1], c[3]];
+  const dx = across.x - origin.x;
+  const dy = across.y - origin.y;
+  return { left: origin.x, top: origin.y, width: Math.hypot(dx, dy), height: Math.hypot(down.x - origin.x, down.y - origin.y), turn: (Math.atan2(dy, dx) * 180) / Math.PI };
+}
+
+/**
+ * The colour of the ground a shape's words sit on, from samples of the drawn picture just inside its edges (each an
+ * RGBA): the colour most of them share, near enough. On a flat fill that is the fill; on a picture or a gradient it
+ * is the one colour the edges have most of, so the box is that flat colour while he types. Null with no samples.
+ */
+export function groundOf(samples: ReadonlyArray<readonly [number, number, number, number]>): string | null {
+  const counts = new Map<string, { n: number; rgb: [number, number, number] }>();
+  for (const [r, g, b, a] of samples) {
+    if (a < 128) continue;
+    // Within 8 of a step: anti-aliased edges and JPEG noise count with the fill.
+    const key = [r, g, b].map((v) => v >> 3).join(",");
+    const got = counts.get(key);
+    if (got) got.n++;
+    else counts.set(key, { n: 1, rgb: [r, g, b] });
+  }
+  let best: { n: number; rgb: [number, number, number] } | null = null;
+  for (const c of counts.values()) if (!best || c.n > best.n) best = c;
+  return best ? `#${best.rgb.map((v) => v.toString(16).padStart(2, "0")).join("")}` : null;
+}

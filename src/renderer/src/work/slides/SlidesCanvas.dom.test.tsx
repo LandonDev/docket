@@ -823,7 +823,9 @@ describe("the slides kind", () => {
     expect(bar.querySelector('[data-slot="skeleton"]')).not.toBeNull();
     const bones = await found("[data-slides-skeleton]");
     expect(bones.className).toContain("@container");
-    expect(bones.firstElementChild!.className).toContain("@max-[400px]:flex-col-reverse");
+    expect(bones.lastElementChild!.className).toContain("@max-[400px]:flex-col-reverse");
+    // A file he can most often edit by hand holds the format row's place too, so nothing drops when it lands.
+    expect(bones.querySelector("[data-slides-skeleton-row]")?.className).toContain("h-9");
     // The stage row sits on the stage band with its inset, as the loaded slide does, so nothing moves when the deck lands.
     const stage = bones.querySelector("[data-slides-skeleton-stage]")!;
     expect(stage.className).toContain("bg-(--slide-stage)");

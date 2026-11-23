@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { DeckMode, DeckView, ShowDeck } from "@shared/contract-work-slides";
+import type { DeckMode, DeckVersion, DeckView, ShowDeck, SlideOp } from "@shared/contract-work-slides";
 import { registry } from "../../lib/connection";
 import { fromBase64, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import type { ShowHost } from "./show/Show";
@@ -15,6 +15,14 @@ export interface DeckHost {
   review(changes: string[] | "all", verdict: "accept" | "reject", rev?: string): Promise<DeckView>;
   mode(mode: DeckMode): Promise<DeckView>;
   undo(writeId: string): Promise<DeckView>;
+  /** His own edits, written into the file at once, whole or not at all (refused with a sentence). */
+  edit(ops: SlideOp[]): Promise<DeckView>;
+  /** Takes his last edit back, or puts back the one he took back. */
+  step(dir: "undo" | "redo"): Promise<DeckView>;
+  /** The kept copies of the deck, newest first. */
+  versions(): Promise<DeckVersion[]>;
+  /** Puts a kept copy in the file's place; the deck as it is now is kept first. */
+  restore(version: string): Promise<DeckView>;
   onView(listener: (view: DeckView) => void): () => void;
 }
 
@@ -36,6 +44,10 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
     review: (changes, verdict, rev) => call("work.slides.review", { changes, verdict, ...(rev !== undefined ? { rev } : {}) }),
     mode: (mode) => call("work.slides.mode", { mode }),
     undo: (writeId) => call("work.slides.undo", { writeId }),
+    edit: (ops) => call("work.slides.edit", { ops }),
+    step: (dir) => call("work.slides.step", { dir }),
+    versions: () => call("work.slides.versions"),
+    restore: (version) => call("work.slides.restore", { version }),
     onView: (listener) =>
       link().onPush((push) => {
         if (push.push === "work.slides" && push.view.itemId === itemId) listener(push.view);
@@ -122,9 +134,11 @@ export function useDeckView(host: DeckHost, store: DeckStore): void {
 }
 
 /**
- * One of the deck's renders opened in the engine, at its revision: null until it is; `error` when it could not be read;
- * `rev`, the revision the open doc was read at. Bytes from another revision (the deck moved on mid-read) are no failure:
- * the doc stays null and `onChanged` asks for the view again, whose new revision reads afresh.
+ * One of the deck's renders opened in the engine, at its revision: null until the first is; `error` when it could not be
+ * read; `rev`, the revision the open doc was read at. A new revision is opened beside the one shown, which stays (and
+ * every picture painted from it) until the new one is open, so the stage never blanks between two revisions of the
+ * deck. Bytes from another revision (the deck moved on mid-read) are no failure: what is shown stays and `onChanged`
+ * asks for the view again, whose new revision reads afresh.
  */
 export function useRender(
   host: DeckHost,
@@ -136,37 +150,47 @@ export function useRender(
   const [state, setState] = useState<{ doc: PdfDoc | null; error: string | null; rev: string | null }>({ doc: null, error: null, rev: null });
   const changed = useRef(onChanged);
   changed.current = onChanged;
+  // The doc on screen is let go only once another has taken its place on screen (after the pictures painted from it
+  // have stopped their paints), or the render is gone.
+  const shown = useRef<PdfDoc | null>(null);
+  const show = setState;
+  useEffect(() => {
+    const was = shown.current;
+    shown.current = state.doc;
+    if (was && was !== state.doc) was.destroy();
+  }, [state.doc]);
+  useEffect(() => () => shown.current?.destroy(), []);
   // Each Retry reads the picture again from its first byte.
   const [attempt, setAttempt] = useState(0);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const rev = render?.rev;
   const size = render?.size;
   useEffect(() => {
-    setState({ doc: null, error: null, rev: null });
-    if (rev === undefined || size === undefined) return;
+    if (rev === undefined || size === undefined) return show({ doc: null, error: null, rev: null });
     let live = true;
     let opened: PdfDoc | null = null;
     const failed = (error: unknown): void => {
       if (!live) return;
       const message = error instanceof Error && error.message ? error.message : String(error);
       if (message === RENDER_CHANGED) {
-        opened?.destroy();
+        if (opened && opened !== shown.current) opened.destroy();
         opened = null;
-        setState({ doc: null, error: null, rev: null });
         changed.current?.();
         return;
       }
-      setState({ doc: null, error: message, rev: null });
+      show({ doc: null, error: message, rev: null });
     };
     engine.open({ size, read: (offset, length) => host.read(which, offset, length, rev), onFail: (message) => failed(new Error(message)) }).then((got) => {
       if (!live) return got.destroy();
       opened = got;
-      setState({ doc: got, error: null, rev });
+      show({ doc: got, error: null, rev });
     }, failed);
     return () => {
       live = false;
-      opened?.destroy();
+      // A doc opened for a revision already left behind goes; the one on screen stays until the next replaces it.
+      if (opened && opened !== shown.current) opened.destroy();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, which, rev, size, engine, attempt]);
   return { ...state, retry };
 }

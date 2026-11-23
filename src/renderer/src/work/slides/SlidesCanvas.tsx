@@ -1,18 +1,25 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { Bbox } from "@shared/contract-work-pdf";
 import type { DeckShape, DeckSlide, DeckView, SlideChange } from "@shared/contract-work-slides";
+import { formatKeyOf } from "work-kit/format/keys";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
-import { bareKey } from "../../lib/keys";
+import { bareKey, chordKey, modKey } from "../../lib/keys";
+import { IS_MAC } from "../../lib/platform";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { CSS_PER_POINT, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
 import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
-import { HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, readingOrder, ROTATE_HANDLE, selectionOf, type Quad } from "./geometry";
+import { DeckRow, keyAct, targetOf, type Target } from "./edit/DeckRow";
+import { HistoryButton } from "./edit/History";
+import { typable, type Sel } from "./edit/model";
+import { CONFLICT_WORD, HandSession, type HandState, type Start } from "./edit/session";
+import { TypingBox } from "./edit/TypingBox";
+import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, readingOrder, ROTATE_HANDLE, selectionOf, textFrameOf, type Quad } from "./geometry";
 import { present, presentKey, PresentButton, type PresentAsk } from "./Present";
 
 /**
@@ -35,6 +42,10 @@ export interface SlidesDeps {
   height?: number;
   /** A preview's: the shape picked on the stage when it mounts. */
   picked?: number;
+  /** A preview's: the typing box open on a shape when the stage mounts, with words selected, on a ground jsdom cannot read. */
+  typing?: { shape: number; sel?: Sel; ground?: string };
+  /** A preview's: how wide the format row and its controls are, which jsdom cannot measure. */
+  rowMeasure?: (el: HTMLElement) => number;
 }
 
 const hosts = new Map<string, DeckHost>();
@@ -46,6 +57,16 @@ function hostFor(env: string, itemId: string): DeckHost {
     hosts.set(key, host);
   }
   return host;
+}
+
+/** His hand on a deck, one per item and host while the window lives: the body, the row and the bar share it. */
+const hands = new WeakMap<DeckHost, Map<string, HandSession>>();
+function handOf(itemId: string, host: DeckHost, store: DeckStore): HandSession {
+  let items = hands.get(host);
+  if (!items) hands.set(host, (items = new Map()));
+  let session = items.get(itemId);
+  if (!session) items.set(itemId, (session = new HandSession(host, store)));
+  return session;
 }
 
 export const STRIP = 140;
@@ -109,8 +130,24 @@ export function Body(props: CanvasBodyProps<SlidesState> & SlidesDeps) {
   return <SlidesBody {...props} host={host} store={store} engine={props.engine ?? pdfjsEngine} />;
 }
 
-export function SlidesBody({ item, source, shell, host, store, engine, width: fixedWidth, height: fixedHeight, picked: firstPicked }: CanvasBodyProps<SlidesState> & { host: DeckHost; store: DeckStore; engine: PdfEngine; width?: number; height?: number; picked?: number }) {
+export function SlidesBody({
+  item,
+  source,
+  shell,
+  host,
+  store,
+  engine,
+  width: fixedWidth,
+  height: fixedHeight,
+  picked: firstPicked,
+  typing: firstTyping,
+  rowMeasure,
+}: CanvasBodyProps<SlidesState> & Omit<SlidesDeps, "host" | "engine"> & { host: DeckHost; store: DeckStore; engine: PdfEngine }) {
   const { view, error, current, side } = useDeck(store);
+  const session = handOf(item.id, host, store);
+  const hand = useSyncExternalStore(session.subscribe, session.get, session.get);
+  // A box open when the tab closes, or the item leaves, commits.
+  useEffect(() => () => void session.commit(), [session]);
   // A render whose bytes moved on mid-read asks for the view again, whose new revision reads afresh.
   const refresh = useCallback(() => void openDeck(host, store), [host, store]);
   const fileRender = useRender(host, "file", view?.renders.file ?? null, engine, refresh);
@@ -120,7 +157,9 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
   // The host's own word first; else a render this window could not read.
   const renderError = view?.renderError ?? fileRender.error ?? proposedRender.error ?? undefined;
   const box = useRef<HTMLDivElement>(null);
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: fixedWidth ?? 0, height: fixedHeight ?? 0 });
+  const [tone, setTone] = useState<"dark" | "light">("light");
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || fixedWidth) return;
@@ -182,49 +221,89 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
   const bound = pictured && proposedDoc !== null && proposedRender.rev === view?.renders.proposed?.rev;
   const seen = !!shownSlide && !!shownDoc && painted?.key === shownSlide.key && painted.doc === shownDoc && stageOn !== null && painted.stage === stageOn;
   const held = !reviewRev || (pictured && !(bound && seen));
-  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store);
+  const target = view ? targetOf(view, shownSlide, hand, session) : null;
+  const reload = useCallback(() => void session.reload(), [session]);
+  useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store, hand, session, reload);
 
   // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
   if (error) return null;
-  if (!view) return <DeckSkeleton />;
+  if (!view) return <DeckSkeleton row={source.at === "file"} />;
   if (side === "powerpoint") return <EmptyState title="Not built yet" />;
 
   const docOf = (slide: DeckSlide): PdfDoc | null => (slide.from === "proposed" ? proposedDoc : fileDoc);
+  const revOf = (doc: PdfDoc): string | null => (doc === fileDoc ? fileRender.rev : doc === proposedDoc ? proposedRender.rev : null);
   const shown = view.slides.find((s) => s.key === current) ?? view.slides[0];
   const narrow = size.width > 0 && size.width < NARROW;
+  const presentFrom = (ask: PresentAsk): void => {
+    void session.commit();
+    startPresenting(host, store, ask, engine);
+  };
   return (
     <div
-      ref={box}
+      ref={setRoot}
       data-slides
-      className={`flex min-h-0 min-w-0 flex-1 ${narrow ? "flex-col-reverse" : ""}`}
+      data-editor-keys={view.hand ? "slides" : "read"}
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
       style={fixedHeight ? { height: fixedHeight } : undefined}
       onKeyDown={(event) => {
-        // The keys that start a show, while the keyboard is in the deck (PowerPoint's own, and a clicker's F5).
+        // The keys that start a show, while the keyboard is in the deck (PowerPoint's own, and a clicker's F5); in the
+        // typing box ⌘↩ is the box's, and a show started from it takes his words first.
         const ask = canPresent(view) ? presentKey(event) : null;
-        if (!ask) return;
-        event.preventDefault();
-        startPresenting(host, store, ask, engine);
+        if (ask) {
+          event.preventDefault();
+          presentFrom(ask);
+          return;
+        }
+        if (!view.hand || (event.target as Element).closest?.("input, textarea, [contenteditable=true], [data-slide-typing]")) return;
+        // His own edits to the file: the platform's undo and redo keys.
+        const z = event.key.toLowerCase() === "z";
+        if (modKey(event) && !event.altKey && (z || (!IS_MAC && event.key.toLowerCase() === "y" && !event.shiftKey))) {
+          event.preventDefault();
+          const dir = z && !event.shiftKey ? "undo" : "redo";
+          // With the box open (the keyboard on the row) they are the box's own.
+          if (hand.box) session[dir]();
+          else if (view.hand[dir]) void session.step(dir);
+          return;
+        }
+        // The row's keys, on the picked shape.
+        const key = formatKeyOf(event.nativeEvent, "slides", { mac: IS_MAC, editorKeys: true });
+        if (key && keyAct(key, target, session)) event.preventDefault();
       }}
     >
-      <Strip view={view} current={shown?.key ?? null} narrow={narrow} docOf={docOf} pictures={!view.renderError} onPick={select} />
-      {shown ? (
-        <Main
-          key={shown.key}
-          view={view}
-          slide={shown}
-          doc={view.renderError ? null : docOf(shown)}
-          onMount={stageCame}
-          onUnmount={stageWent}
-          onPainted={(doc, stage) => live.current.has(stage) && setPainted({ key: shown.key, doc, stage })}
-          onPaintFailed={(stage) => setPainted((p) => (p?.stage === stage ? null : p))}
-          width={narrow ? size.width : size.width - STRIP}
-          height={narrow ? size.height - 96 : size.height}
-          itemTitle={item.title}
-          source={source}
-          shell={shell}
-          picked={firstPicked}
-        />
-      ) : null}
+      {view.hand ? <DeckRow view={view} target={target} hand={hand} session={session} tone={tone} boundary={root} onPresent={canPresent(view) ? presentFrom : undefined} measure={rowMeasure} /> : null}
+      <div ref={box} className={`flex min-h-0 min-w-0 flex-1 ${narrow ? "flex-col-reverse" : ""}`}>
+        <Strip view={view} current={shown?.key ?? null} narrow={narrow} fileDoc={fileDoc} proposedDoc={proposedDoc} pictures={!view.renderError} onPick={select} />
+        {shown ? (
+          <Main
+            key={shown.key}
+            view={view}
+            slide={shown}
+            doc={view.renderError ? null : docOf(shown)}
+            onMount={stageCame}
+            onUnmount={stageWent}
+            onPainted={(doc, stage) => {
+              if (live.current.has(stage)) setPainted({ key: shown.key, doc, stage });
+              session.painted(shown.key, revOf(doc));
+            }}
+            onPaintFailed={(stage) => {
+              setPainted((p) => (p?.stage === stage ? null : p));
+              session.paintFailed(shown.key);
+            }}
+            onTone={setTone}
+            width={narrow ? size.width : size.width - STRIP}
+            height={narrow ? size.height - 96 : size.height}
+            itemTitle={item.title}
+            source={source}
+            shell={shell}
+            picked={firstPicked}
+            typing={firstTyping}
+            session={session}
+            hand={hand}
+            target={target}
+            tone={tone}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -245,6 +324,9 @@ function useFeeds(
   reviewRev: string | undefined,
   held: boolean,
   store: DeckStore,
+  hand: HandState,
+  session: HandSession,
+  reload: () => void,
 ): void {
   const inPowerPoint = side === "powerpoint";
   const mode = view?.mode;
@@ -254,16 +336,32 @@ function useFeeds(
     return () => shell.mode(null);
   }, [shell, host, mode, inPowerPoint, run]);
 
+  // His own edit that did not go in comes before a picture that could not be drawn: his words wait in the box.
+  const failure = hand.failure;
   useEffect(() => {
     shell.statusLine(
       error
         ? { tone: "failed", word: "Couldn't open this deck", detail: error, action: { label: "Retry", run: retry } }
-        : renderError
-          ? { tone: "failed", word: "Can't draw the slides", detail: renderDetail(renderError), action: retryRender ? { label: "Retry", run: retryRender } : undefined }
-          : null,
+        : failure?.conflict
+          ? { tone: "failed", word: failure.message, detail: "Your words are still in the box", action: failure.message === CONFLICT_WORD ? { label: "Reload", run: reload } : undefined }
+          : failure
+            ? { tone: "failed", word: "Couldn't save your words", detail: failure.message, action: { label: "Retry", run: () => session.commit() } }
+            : renderError
+              ? { tone: "failed", word: "Can't draw the slides", detail: renderDetail(renderError), action: retryRender ? { label: "Retry", run: retryRender } : undefined }
+              : null,
     );
     return () => shell.statusLine(null);
-  }, [shell, error, renderError, retry, retryRender]);
+  }, [shell, error, renderError, retry, retryRender, failure, reload, session]);
+
+  // What saved means for the file, where he can edit it by hand (FILES-SEAM.md "Save state").
+  const editable = !!view?.hand && !inPowerPoint;
+  const saved = editable ? session.saved(reload) : null;
+  const savedKey = saved ? `${saved.state}:${saved.at ?? ""}:${saved.detail ?? ""}` : "";
+  useEffect(() => {
+    shell.saved?.(saved);
+    return () => shell.saved?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shell, savedKey]);
 
   const written = view?.written;
   const pending = view?.changes.length ?? 0;
@@ -315,7 +413,25 @@ function useFeeds(
 
 const FRAME_TINT = { add: "bg-(--add-bg)", del: "bg-(--del-bg)" } as const;
 
-function Strip({ view, current, narrow, docOf, pictures, onPick }: { view: DeckView; current: string | null; narrow: boolean; docOf(slide: DeckSlide): PdfDoc | null; pictures: boolean; onPick(key: string): void }) {
+/** The strip draws again only when the deck, the slide on the stage or a render does: not on each word he types. */
+const Strip = memo(function Strip({
+  view,
+  current,
+  narrow,
+  fileDoc,
+  proposedDoc,
+  pictures,
+  onPick,
+}: {
+  view: DeckView;
+  current: string | null;
+  narrow: boolean;
+  fileDoc: PdfDoc | null;
+  proposedDoc: PdfDoc | null;
+  pictures: boolean;
+  onPick(key: string): void;
+}) {
+  const docOf = (slide: DeckSlide): PdfDoc | null => (slide.from === "proposed" ? proposedDoc : fileDoc);
   const list = useRef<HTMLDivElement>(null);
   // The current slide stays in view when the stepper moves the stage.
   useEffect(() => {
@@ -390,7 +506,7 @@ function Strip({ view, current, narrow, docOf, pictures, onPick }: { view: DeckV
       })}
     </div>
   );
-}
+});
 
 /** Whether an element is in its scroller's view, or near it; true where nothing lays out (a test, a static page). */
 function useInView(ref: { current: Element | null }, margin = "200px"): boolean {
@@ -522,6 +638,34 @@ export function toneOf(host: HTMLElement): "dark" | "light" {
   return sum / n < 128 ? "dark" : "light";
 }
 
+/**
+ * The colour of the slide just inside a shape's edges, read from the stage's drawn picture (`groundOf`): seven
+ * samples along each edge, 3px in. Null where nothing is drawn yet (no canvas, or a picture with no pixels to read).
+ */
+function groundAt(stage: Element | null, quad: Quad, width: number, height: number): string | null {
+  const canvas = stage?.querySelector("canvas");
+  const ctx = canvas?.getContext("2d", { willReadFrequently: true });
+  if (!canvas || !ctx || canvas.width === 0 || width <= 0) return null;
+  const k = canvas.width / width;
+  const pts = quad.map(([x, y]) => ({ x: x * width, y: y * height }));
+  const mid = { x: pts.reduce((n, p) => n + p.x, 0) / 4, y: pts.reduce((n, p) => n + p.y, 0) / 4 };
+  const samples: Array<[number, number, number, number]> = [];
+  for (let i = 0; i < 4; i++) {
+    const [a, b] = [pts[i], pts[(i + 1) % 4]];
+    for (let j = 1; j <= 7; j++) {
+      const t = j / 8;
+      const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      const toward = Math.hypot(mid.x - p.x, mid.y - p.y) || 1;
+      const x = Math.round((p.x + ((mid.x - p.x) / toward) * 3) * k);
+      const y = Math.round((p.y + ((mid.y - p.y) / toward) * 3) * k);
+      if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
+      const [r, g, bl, al] = ctx.getImageData(x, y, 1, 1).data;
+      samples.push([r, g, bl, al]);
+    }
+  }
+  return groundOf(samples);
+}
+
 /** Every stage mount ever made in this window, counted: each takes the next as its token. */
 let stageMounts = 0;
 
@@ -538,10 +682,24 @@ function Main({
   onPaintFailed,
   onMount,
   onUnmount,
+  onTone,
   picked: firstPicked,
+  typing: firstTyping,
+  session,
+  hand,
+  target,
+  tone,
 }: {
   /** the shape picked when the stage mounts (a preview) */
   picked?: number;
+  /** the box open when the stage mounts (a preview) */
+  typing?: SlidesDeps["typing"];
+  session: HandSession;
+  hand: HandState;
+  target: Target;
+  /** the picture's tone, read from its pixels when it paints */
+  tone: "dark" | "light";
+  onTone(tone: "dark" | "light"): void;
   view: DeckView;
   slide: DeckSlide;
   doc: PdfDoc | null;
@@ -566,25 +724,33 @@ function Main({
   const size = doc?.size(slide.page);
   const aspect = size ? size.width / size.height : 16 / 9;
   const w = width > 0 ? stageWidth(width, height, aspect) : STAGE_MAX;
-  const [tone, setTone] = useState<"dark" | "light">("light");
-  const [picked, setPicked] = useState<number | null>(firstPicked ?? null);
+  // The shape picked is the session's, so the row acts on it; it is let go when the stage leaves the slide.
+  const picked = hand.picked?.slideKey === slide.key ? hand.picked.shapeId : null;
+  useLayoutEffect(() => {
+    if (firstPicked !== undefined) session.pick(slide.key, firstPicked);
+    return () => {
+      if (session.get().picked?.slideKey === slide.key) session.pick(slide.key, null);
+    };
+  }, [session, slide.key, firstPicked]);
   const change = slide.change ? view.changes.find((c) => c.id === slide.change) : undefined;
   const tints = TINTS[tone];
   // A press takes the keyboard to the shape it picked, so Escape and the arrows answer after a pick by pointer.
   const byPointer = useRef(false);
   const pick = (shape: DeckShape, el: HTMLElement): void => {
-    setPicked(shape.id);
+    session.pick(slide.key, shape.id);
     const words = shape.text.replace(/\s+/g, " ").trim();
     const short = words.length > 40 ? `${words.slice(0, 40).trimEnd()}…` : words;
     // A shape with no words is named by what it is.
     const what = words ? `“${short}”` : KIND_WORDS[shape.kind ?? "other"];
+    // The bar floats under the slide, not beside the shape: over the picture it would take the press meant for the next shape.
+    const at = askAnchor((layer.current?.parentElement ?? el).getBoundingClientRect());
     shell.selection({
       chip: { kind: "selection", label: `${what}, slide ${slide.number ?? slide.id}`, ref: source, quote: `${words ? `${words}\n` : ""}(${itemTitle}, slide id ${slide.id}, shape ${shape.id} "${shape.name}")` },
-      rect: el.getBoundingClientRect(),
+      rect: new DOMRect(at.left, at.top, 0, 0),
     });
   };
   const unpick = (): void => {
-    setPicked(null);
+    session.pick(slide.key, null);
     shell.selection(null);
   };
   useEffect(() => () => shell.selection(null), [shell]);
@@ -607,6 +773,34 @@ function Main({
   const h = Math.round(w / aspect);
   const selected = shapes.find((s) => s.id === picked);
   const selection = selected ? selectionOf(selected.quad, w, h) : null;
+  // The typing box, while it is on this slide: on the shape's corners as the deck has them now.
+  const boxHere = hand.box?.slideKey === slide.key ? hand.box : null;
+  const boxShape = boxHere ? (shapes.find((s) => s.id === boxHere.shape.id) ?? null) : null;
+  const [ground, setGround] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    if (boxShape) setGround(groundAt(layer.current?.parentElement ?? null, boxShape.quad, w, h));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boxShape?.id, w, h]);
+  // While he types the floating bar steps aside; once the box goes, the shape is Ask's again, in its new words.
+  const typingHere = !!boxHere;
+  const wasTyping = useRef(typingHere);
+  useEffect(() => {
+    if (typingHere) shell.selection(null);
+    else if (wasTyping.current && selected) {
+      const el = buttonOf(selected.id);
+      if (el) pick(selected, el);
+    }
+    wasTyping.current = typingHere;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typingHere]);
+  /** A second press on a picked text shape, Return or F2 on it: his words go in a box over it. */
+  const openBox = (shape: DeckShape, start: Start): boolean => session.open(slide, shape, start);
+  useLayoutEffect(() => {
+    const shape = firstTyping && shapes.find((s) => s.id === firstTyping.shape);
+    if (!shape || !openBox(shape, "end")) return;
+    if (firstTyping.sel) session.select(firstTyping.sel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // A change to the notes is drawn once, in the Notes section; the list above it is the slide's shapes.
   const notesEdit = change?.edits.find((e) => e.where === NOTES_WHERE);
   const edits = change?.edits.filter((e) => e !== notesEdit) ?? [];
@@ -621,7 +815,7 @@ function Main({
             ghost={slide.tint === "del"}
             title={slide.title}
             onPainted={(el) => {
-              setTone(toneOf(el));
+              onTone(toneOf(el));
               if (doc) onPainted(doc, stage);
             }}
             onFailed={() => onPaintFailed(stage)}
@@ -640,6 +834,7 @@ function Main({
               const under = box.width > 0 && box.height > 0 ? hit(shapes, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height) : null;
               const el = under ? buttonOf(under.id) : null;
               if (under && el) {
+                if (under.id === picked && typable(under) && openBox(under, { x: event.clientX, y: event.clientY })) return;
                 byPointer.current = true;
                 el.focus({ preventScroll: true });
                 byPointer.current = false;
@@ -652,6 +847,12 @@ function Main({
               if (!at) return;
               if (event.key === "Escape") {
                 unpick();
+                return;
+              }
+              // Return opens the box with the words selected, F2 with the caret at their end, as in PowerPoint.
+              if ((event.key === "Enter" && bareKey(event)) || (event.key === "F2" && !chordKey(event))) {
+                const shape = shapes.find((s) => s.id === at);
+                if (shape && typable(shape) && openBox(shape, event.key === "Enter" ? "all" : "end")) event.preventDefault();
                 return;
               }
               // The bare arrows only: with a modifier they are someone else's (a word, a line, the window).
@@ -688,6 +889,22 @@ function Main({
                 />
               );
             })}
+            {boxHere && boxShape ? (
+              <TypingBox
+                key={boxHere.id}
+                session={session}
+                box={boxHere}
+                target={target}
+                place={textFrameOf(boxShape.quad, !!boxShape.flip, w, h)}
+                emu={w / (view.size?.width ?? (aspect < 1.5 ? 9_144_000 : 12_192_000))}
+                frame={boxShape.frame}
+                // With no picture the slide is the blank's own fill, and so is the box.
+                ground={firstTyping?.ground ?? ground ?? (doc ? null : "var(--muted)")}
+                tone={tone}
+                label={boxShape.label ?? KIND_WORDS[boxShape.kind ?? "other"]}
+                onLeave={() => buttonOf(boxShape.id)?.focus({ preventScroll: true })}
+              />
+            ) : null}
             {selection ? <Selection selection={selection} width={w} height={h} /> : null}
           </div>
         </div>
@@ -786,10 +1003,21 @@ function Diff({ before, after }: { before: string; after: string }) {
   );
 }
 
-/** Loading, in the body's shape: the strip beside the stage, or under it in a canvas under 400px (`NARROW`), as the body lays it out. */
-function DeckSkeleton() {
+/**
+ * Loading, in the body's shape: the strip beside the stage, or under it in a canvas under 400px (`NARROW`), as the
+ * body lays it out; for a file, which he can most often edit, the format row's 36px over them, so nothing drops when
+ * the deck lands.
+ */
+function DeckSkeleton({ row }: { row: boolean }) {
   return (
-    <div data-slides-skeleton aria-busy="true" aria-label="Loading" className="@container flex min-h-0 flex-1">
+    <div data-slides-skeleton aria-busy="true" aria-label="Loading" className="@container flex min-h-0 flex-1 flex-col">
+      {row ? (
+        <div data-slides-skeleton-row className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
+          <Skeleton className="h-3 w-10" />
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-3 w-16" />
+        </div>
+      ) : null}
       <div className="flex min-h-0 min-w-0 flex-1 @max-[400px]:flex-col-reverse">
         <div className="flex w-[140px] shrink-0 flex-col overflow-hidden border-e border-border bg-sidebar pt-2 pr-2 pl-1 @max-[400px]:w-auto @max-[400px]:flex-row @max-[400px]:gap-1 @max-[400px]:border-e-0 @max-[400px]:border-t @max-[400px]:p-2">
           {Array.from({ length: 7 }, (_, i) => (
@@ -839,17 +1067,29 @@ export function TabEnd({ item }: CanvasBodyProps<SlidesState>) {
 
 /**
  * While the deck loads the bar holds one bone where the mode will be, so the
- * body does not drop 32px when it lands. In TempCode it ends with Present
- * (Present.tsx); in the real PowerPoint the stepper is not there: how many
- * changes wait here, and the way back to them.
+ * body does not drop 32px when it lands. In TempCode it ends with History
+ * where he can edit the deck by hand, and with Present (Present.tsx) where the
+ * format row is not drawn (the row's way out is Present otherwise); in the
+ * real PowerPoint the stepper is not there: how many changes wait here, and
+ * the way back to them.
  */
 export function Bar({ item, env, host: given, engine }: CanvasBodyProps<SlidesState> & SlidesDeps) {
   const store = deckStoreOf(item.id);
   const { view, error, side } = useDeck(store);
   if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
   const pending = view.changes.length;
-  // Present, at the bar's end, wherever the host has a picture of the file to show.
-  if (side !== "powerpoint") return canPresent(view) ? <PresentButton onPresent={(ask) => startPresenting(given ?? hostFor(env, item.id), store, ask, engine)} /> : null;
+  const host = given ?? hostFor(env, item.id);
+  if (side !== "powerpoint") {
+    // Present, at the bar's end, wherever the host has a picture of the file to show and the row does not hold it.
+    const presentHere = !view.hand && canPresent(view);
+    if (!view.hand && !presentHere) return null;
+    return (
+      <div className="ms-auto flex shrink-0 items-center gap-1">
+        {view.hand ? <HistoryButton host={host} session={handOf(item.id, host, store)} /> : null}
+        {presentHere ? <PresentButton onPresent={(ask) => startPresenting(host, store, ask, engine)} /> : null}
+      </div>
+    );
+  }
   if (pending === 0) return null;
   return (
     <>

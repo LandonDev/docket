@@ -31,15 +31,17 @@ export function presentKey(event: Parameters<typeof bareKey>[0] & { key: string 
 
 const DISPLAY_KEY = "tc.show.display";
 
-export function PresentButton({ onPresent, native = nativeShow() }: { onPresent(ask: PresentAsk): void; native?: ShowNative | null }) {
+/**
+ * The ways to present, as menu rows, and what a pick of one asks: shared by the button in the bar and the format
+ * row's way out. Which display takes the slideshow is asked only where there is a choice; the one he picked is kept
+ * for this window's session, so the main press goes where he last sent the slideshow, menu opened or not.
+ */
+export function usePresentMenu(onPresent: (ask: PresentAsk) => void, native: ShowNative | null = nativeShow()): { rows: MenuRow[]; onPick(id: string): void; present(): void; readDisplays(): void } {
   const [displays, setDisplays] = useState<Awaited<ReturnType<ShowNative["displays"]>>>([]);
   const [picked, setPicked] = useState<number | null>(null);
-  // Which display takes the slideshow is asked only where there is a choice, and read when the menu opens.
   const readDisplays = useCallback(() => {
     void native?.displays().then(setDisplays, () => setDisplays([]));
   }, [native]);
-  // The display he picked is kept for this window's session, and the displays are read once the button is up, so the
-  // press on Present itself goes where he last sent the slideshow, menu opened or not.
   useEffect(() => {
     try {
       const raw = Number(sessionStorage.getItem(DISPLAY_KEY));
@@ -76,10 +78,17 @@ export function PresentButton({ onPresent, native = nativeShow() }: { onPresent(
       }
     }
   };
-  const warm = (): void => void loadShow().catch(() => undefined);
+  return { rows, onPick, present: () => ask("here", "full"), readDisplays };
+}
+
+/** The show's own chunk, loaded when the pointer first reaches a way to present. */
+export const warmShow = (): void => void loadShow().catch(() => undefined);
+
+export function PresentButton({ onPresent, native = nativeShow() }: { onPresent(ask: PresentAsk): void; native?: ShowNative | null }) {
+  const { rows, onPick, present, readDisplays } = usePresentMenu(onPresent, native);
   return (
-    <div data-present className="ms-auto flex shrink-0 items-center gap-px" onPointerEnter={warm} onFocus={warm}>
-      <Button variant="secondary" size="xs" className="rounded-e-none" aria-label="Present" onClick={() => ask("here", "full")}>
+    <div data-present className="ms-auto flex shrink-0 items-center gap-px" onPointerEnter={warmShow} onFocus={warmShow}>
+      <Button variant="secondary" size="xs" className="rounded-e-none" aria-label="Present" onClick={present}>
         <Play className="size-2.5 fill-current" />
         <span className="@max-[560px]/bar:sr-only">Present</span>
       </Button>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeckShape } from "@shared/contract-work-slides";
-import { hit, inQuad, pickable, PICKABLE, readingOrder, ROTATE_RISE, selectionOf, type Quad } from "./geometry";
+import { ASK_UNDER, askAnchor, groundOf, hit, inQuad, pickable, PICKABLE, readingOrder, ROTATE_RISE, selectionOf, textFrameOf, type Quad } from "./geometry";
 
 const box = (x0: number, y0: number, x1: number, y1: number): Quad => [
   [x0, y0],
@@ -85,5 +85,43 @@ describe("the order keys move a selection in", () => {
   it("is reading order, top to bottom then left to right, over what can be picked", () => {
     const shapes = [shape(1, box(0.5, 0.5, 0.9, 0.9)), shape(2, box(0.1, 0.1, 0.9, 0.2)), shape(3, box(0.1, 0.5, 0.4, 0.9)), shape(4, box(0.1, 0.3, 0.2, 0.4), { kind: "frame" })];
     expect(readingOrder(shapes).map((s) => s.id)).toEqual([2, 3, 1]);
+  });
+});
+
+describe("the typing box's place", () => {
+  const box: Quad = [[0.1, 0.2], [0.5, 0.2], [0.5, 0.4], [0.1, 0.4]];
+  it("lays the words along the shape's own top edge, from its top-left corner", () => {
+    expect(textFrameOf(box, false, 1000, 500)).toEqual({ left: 100, top: 100, width: 400, height: 100, turn: 0 });
+  });
+  it("turns with a turned shape", () => {
+    // A quarter turn clockwise about the box's centre (0.3, 0.3) on a square stage.
+    const turned: Quad = [[0.4, 0.1], [0.4, 0.5], [0.2, 0.5], [0.2, 0.1]];
+    const frame = textFrameOf(turned, false, 1000, 1000);
+    expect(frame.turn).toBeCloseTo(90);
+    expect([frame.left, frame.top, frame.width, frame.height]).toEqual([400, 100, 400, 200]);
+  });
+  it("keeps the words readable in a mirrored shape: across, as before; down, half round", () => {
+    const across: Quad = [[0.5, 0.2], [0.1, 0.2], [0.1, 0.4], [0.5, 0.4]];
+    expect(textFrameOf(across, true, 1000, 500)).toEqual({ left: 100, top: 100, width: 400, height: 100, turn: 0 });
+    const down: Quad = [[0.1, 0.4], [0.5, 0.4], [0.5, 0.2], [0.1, 0.2]];
+    const frame = textFrameOf(down, true, 1000, 500);
+    expect(frame.turn).toBeCloseTo(180);
+    expect([frame.left, frame.top, frame.width, frame.height]).toEqual([500, 200, 400, 100]);
+  });
+});
+
+describe("the ground under the words", () => {
+  it("is the colour most samples share, noise and see-through ones aside", () => {
+    const fill = [31, 78, 121, 255] as const;
+    expect(groundOf([fill, fill, [33, 79, 122, 255], [255, 255, 255, 255], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])).toBe("#1f4e79");
+    expect(groundOf([])).toBeNull();
+    expect(groundOf([[1, 2, 3, 10]])).toBeNull();
+  });
+});
+
+describe("the floating bar's anchor", () => {
+  it("is under the slide's bottom-left corner, far enough that the 32px bar laid 6px above it clears the picture", () => {
+    expect(askAnchor({ left: 200, bottom: 437.5 })).toEqual({ left: 200, top: 437.5 + ASK_UNDER });
+    expect(ASK_UNDER - 6 - 32).toBeGreaterThanOrEqual(4);
   });
 });

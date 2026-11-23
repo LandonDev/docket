@@ -11,14 +11,17 @@ import { ChatFooter } from "../../surfaces/threads/chatSlots";
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import { CANVAS } from "../canvas/registry";
-import { applyCanvasPush, resetCanvasStore } from "../canvas/store";
+import { applyCanvasPush, resetCanvasStore, setFolded } from "../canvas/store";
 import type { PdfEngine } from "../pdf/engine";
 import { deckStoreOf } from "./deck";
 import * as SlidesCanvas from "./SlidesCanvas";
-import { SPONSOR, sponsorDoc } from "./SlidesCanvas.preview.fixtures";
-import { change, deckView, fakeDeckHost, slide } from "./testkit";
+import type { DeckParagraph } from "@shared/contract-work-slides";
+import { SelectionTools } from "../canvas/SelectionBar";
+import { VersionList } from "./edit/History";
+import { DECK_GROUND, DECK_INK, DECK_MUTED, DECK_THEME, SPONSOR, sponsorDoc } from "./SlidesCanvas.preview.fixtures";
+import { change, deckView, fakeDeckHost, slide, textShape } from "./testkit";
 
-export type SlidesMoment = "sugg" | "notes" | "ppt" | "loading" | "nopicture" | "picked" | "turned";
+export type SlidesMoment = "sugg" | "notes" | "ppt" | "loading" | "nopicture" | "picked" | "turned" | "typing" | "row" | "rownarrow" | "history";
 
 void workCanvasChunk.load();
 
@@ -51,7 +54,45 @@ function revised(hosted: boolean): DeckView {
   });
 }
 
-function setUp(moment: SlidesMoment): { view: DeckView; current?: string; engine?: PdfEngine; picked?: number } {
+/** The widths the format row's controls draw at (work-kit's own measures), for a page where nothing lays out. */
+const ROW_WIDTHS: Record<string, number> = { undo: 28, redo: 28, font: 120, size: 44, bold: 28, italic: 28, underline: 28, colour: 28, align: 40, bullets: 28, numbers: 28 };
+const measureAt =
+  (width: number) =>
+  (el: HTMLElement): number =>
+    el.dataset.formatItem ? (ROW_WIDTHS[el.dataset.formatItem] ?? 28) : el.dataset.formatEnd === "out" ? 108 : width;
+
+/** "Who comes" as he edits it: the title and its three points as text shapes in the deck's own look, where the picture draws them. */
+function whoComes(): DeckView {
+  const run = (text: string, size: number, color: string, bold = false) => ({ text, font: "Arial", size, color, ...(bold ? { bold } : {}) });
+  const points: DeckParagraph[] = ["480 players across 3 titles", "6,200 stream viewers", "38% from engineering"].map((text) => ({ level: 0, align: "left", list: "none", runs: [run(text, 18, DECK_MUTED)] }));
+  const order = [1, 2, 3, 4, 5, 6, 8];
+  return deckView({
+    slides: order.map((id, i) =>
+      slide(id, {
+        number: i + 1,
+        title: title(id),
+        page: i + 1,
+        shapes:
+          id === 3
+            ? [
+                textShape(2, [{ level: 0, align: "left", list: "none", runs: [run("Who comes", 30, DECK_INK, true)] }], [0.086, 0.165, 0.72, 0.265], { label: "Title", frame: { anchor: "top", insets: [0, 0, 0, 0], fit: "none", wrap: true } }),
+                textShape(3, points, [0.086, 0.3, 0.72, 0.6], { label: "Text", frame: { anchor: "top", insets: [0, 0, 0, 0], fit: "none", wrap: true } }),
+              ]
+            : [],
+      }),
+    ),
+    renders: { file: { rev: "f", size: 1, pages: 7 }, proposed: null },
+    hand: { undo: true, redo: false },
+    size: { width: 9_144_000, height: 5_143_500 },
+    theme: DECK_THEME,
+  });
+}
+
+function setUp(moment: SlidesMoment): { view: DeckView; current?: string; engine?: PdfEngine; picked?: number; typing?: SlidesCanvas.SlidesDeps["typing"]; width?: number } {
+  if (moment === "typing") return { view: whoComes(), current: "3", typing: { shape: 3, sel: { from: [1, 0], to: [1, 5] }, ground: DECK_GROUND }, width: 862 };
+  if (moment === "row") return { view: whoComes(), current: "3", picked: 2, width: 1200 };
+  if (moment === "rownarrow") return { view: whoComes(), current: "3", picked: 2, width: 520 };
+  if (moment === "history") return { view: whoComes(), current: "3", width: 864 };
   if (moment === "notes") {
     const order = [1, 2, 3, 4, 5, 6, 8];
     return {
@@ -86,13 +127,29 @@ function setUp(moment: SlidesMoment): { view: DeckView; current?: string; engine
   return { view: revised(moment === "ppt"), current: "2" };
 }
 
+const hosts = new Map<SlidesMoment, ReturnType<typeof fakeDeckHost>>();
+
+/**
+ * The pane's floating bar for a picked shape, as the frame draws it (a static page cannot hold the portal it opens
+ * in): hidden here, and laid by the page that shows the preview where the frame lays it, above the anchor `askAnchor`
+ * gives (geometry.ts), so a look at a real width shows where it falls.
+ */
+function AskBar() {
+  return (
+    <div data-preview-askbar hidden className="flex w-auto flex-row rounded-xl bg-popover p-1 text-sm text-popover-foreground shadow-overlay ring-1 ring-border">
+      <SelectionTools selection={{ chip: { kind: "selection", label: "“Who comes”, slide 3", ref: { at: "file", host: "local", path: "/work/Sponsor deck.pptx" } }, rect: new DOMRect() }} onAsk={() => undefined} />
+    </div>
+  );
+}
+
 export function SlidesPreview({ moment = "sugg" }: { moment?: SlidesMoment }) {
   resetCanvasStore();
   const sessionId = `preview-slides-${moment}`;
   const itemId = `${sessionId}-item`;
   const item: CanvasItem = { id: itemId, sessionId, workspaceId: "ws", kind: "slides" as CanvasKind, title: "Sponsor deck.pptx", source: { at: "file", host: "local", path: "/work/Sponsor deck.pptx" }, state: "open", position: 0, rev: 0, createdAt: 0, updatedAt: 0 };
-  const { view, current, engine, picked } = setUp(moment);
-  const host = fakeDeckHost({ ...view, itemId });
+  const { view, current, engine, picked, typing, width } = setUp(moment);
+  // One host a moment, whatever renders the page again: the deck's hand is kept by its host.
+  const host = hosts.get(moment) ?? hosts.set(moment, fakeDeckHost({ ...view, itemId })).get(moment)!;
   const store = deckStoreOf(itemId);
   if (moment === "loading") host.open = () => new Promise(() => undefined);
   else store.view({ ...view, itemId });
@@ -103,21 +160,56 @@ export function SlidesPreview({ moment = "sugg" }: { moment?: SlidesMoment }) {
   const docs = [sponsorDoc([1, 2, 3, 4, 5, 6, 8]), sponsorDoc([1, 2, 3, 6, 4, 7, 5, 8])];
   const fake: PdfEngine = engine ?? { open: async () => docs[Math.min(1, opened++)] };
   const module = {
-    Body: (props: CanvasBodyProps) => <SlidesCanvas.Body {...(props as CanvasBodyProps<undefined>)} host={host} engine={fake} width={454} height={492} picked={picked} />,
-    Bar: SlidesCanvas.Bar as never,
+    Body: (props: CanvasBodyProps) => (
+      <SlidesCanvas.Body {...(props as CanvasBodyProps<undefined>)} host={host} engine={fake} width={width ?? 454} height={width ? 456 : 492} picked={picked} typing={typing} rowMeasure={measureAt(width ?? 454)} />
+    ),
+    Bar: (props: CanvasBodyProps) => <SlidesCanvas.Bar {...(props as CanvasBodyProps<undefined>)} host={host} engine={fake} />,
     TabEnd: SlidesCanvas.TabEnd as never,
   };
   const chunk = defineChunk(`preview-slides-${moment}`, () => Promise.resolve(module));
   void chunk.load();
   const kinds: Record<CanvasKind, CanvasKindDef> = { ...CANVAS, slides: { ...CANVAS.slides, chunk: chunk as never } };
   applyCanvasPush({ sessionId, items: [item], opened: itemId });
+  // The canvas alone, as a Files tab or a folded thread has it: the row at its full width or narrowed.
+  if (width) {
+    setFolded(sessionId, true);
+    return (
+      <div className="relative flex h-[560px] overflow-hidden rounded-xl border border-border" style={{ width }}>
+        <CanvasSeat session={{ id: sessionId, environmentId: "local" }} kinds={kinds}>
+          <div />
+        </CanvasSeat>
+        {moment === "history" ? <HistoryOpen /> : null}
+        {moment === "row" ? <AskBar /> : null}
+      </div>
+    );
+  }
   return (
-    <div className="flex h-[560px] w-full overflow-hidden rounded-xl border border-border">
+    <div className="relative flex h-[560px] w-full overflow-hidden rounded-xl border border-border">
       <CanvasSeat session={{ id: sessionId, environmentId: "local" }} kinds={kinds}>
         <div className="flex min-h-0 flex-1 flex-col justify-end">
           <ChatFooter slots={{ transcript: null, strip: null, composer: <Composer {...composerFixtureBase} sessionId={sessionId} /> }} />
         </div>
       </CanvasSeat>
+      {moment === "picked" || moment === "turned" ? <AskBar /> : null}
+    </div>
+  );
+}
+
+/** History open from the deck's bar, as its popover draws it (a static page cannot hold the portal it opens in). */
+function HistoryOpen() {
+  const now = Date.now();
+  const kept = {
+    list: [
+      { id: "v4", at: now - 4 * 60_000, size: 1, first: false },
+      { id: "v3", at: now - 52 * 60_000, size: 1, first: false },
+      { id: "v2", at: now - 26 * 3_600_000, size: 1, first: false },
+      { id: "v1", at: now - 3 * 86_400_000, size: 1, first: true },
+    ],
+    error: null,
+  };
+  return (
+    <div className="absolute end-2 top-[74px] flex w-[280px] flex-col rounded-xl bg-popover p-1 text-sm text-popover-foreground shadow-overlay ring-1 ring-border">
+      <VersionList kept={kept} restoring={null} onRetry={() => undefined} onRestore={() => undefined} />
     </div>
   );
 }

@@ -9,9 +9,19 @@ export default [
   { name: "Real PowerPoint", props: { moment: "ppt" } },
   { name: "A shape picked on the stage: its outline, eight handles and the rotate handle", props: { moment: "picked" } },
   { name: "A turned shape picked: the selection turns with it", props: { moment: "turned" } },
+  { name: "Typing on a slide: the box over the points, “6,200” selected, the row on it", props: { moment: "typing" } },
+  { name: "The format row at 1,200px: a picked title, every control in the row", props: { moment: "row" } },
+  { name: "The format row at 520px: what does not fit waits in ⋯", props: { moment: "rownarrow" } },
+  { name: "History open from the bar", props: { moment: "history" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "No picture: LibreOffice is not here", props: { moment: "nopicture" } },
 ];
+
+/** The deck's own ground, title ink and point ink (its picture's colours, not the app's). */
+export const DECK_GROUND = "#131417";
+export const DECK_INK = "F4F4F5";
+export const DECK_MUTED = "C9CAD0";
+export const DECK_THEME = { colors: { dk1: "131417", lt1: "F4F4F5", dk2: "1F2024", lt2: "C9CAD0", accent1: "CFB991", accent2: "4472C4" }, major: "Arial", minor: "Arial" };
 
 export interface PreviewSlide {
   title: string;

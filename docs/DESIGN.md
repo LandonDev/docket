@@ -2362,7 +2362,10 @@ the room sees, and the presenter's view. One state moves both.
   and In a window on the desktop. With more than one display it ends with
   a "Slideshow on" label and a check row a display; the slideshow goes on
   the other display unless he picks. It is absent while the host has no
-  picture of the file.
+  picture of the file. Where the format row is drawn (he can edit the
+  deck by hand), Present leaves the bar and is the row's way out: the
+  row's quiet glyph and word, then a 20px chevron for the same menu, the
+  same press.
 - **The slideshow** is the slide on `matte`, fitted to the window, and
   nothing else. Its window wears the dark theme whatever the app wears, so
   its bar keeps one look over every deck. Blank is the matte alone. After
@@ -2691,7 +2694,7 @@ his hands and leaves no trace on what he was searching from.
   on.
 
 **The slide editor** (`src/renderer/src/work/slides/SlidesCanvas.tsx`,
-`geometry.ts`). A picked shape is outlined along its own edges, turned with
+`geometry.ts`, `edit/`). A picked shape is outlined along its own edges, turned with
 it: a 1px line, eight 8px handles (2px radius) at the corners and the
 middles of the sides, and a 10px round turn handle on a 12px stem, 22px
 above the top edge. One look in both themes and on any slide: the line is
@@ -2700,6 +2703,70 @@ line's colour, because the selection sits on the deck, not on the app. It
 is drawn at screen size whatever the slide's size, as one SVG over the
 picture that takes no pointer. Nothing animates: a selection is made many
 times a minute. A shape that cannot be picked shows no hover.
+
+- **The floating bar** (Ask) for a picked shape is anchored under the
+  slide's bottom-left corner (`askAnchor`, geometry.ts), not beside the
+  shape: the frame lays it above its anchor, so it falls just under the
+  picture, never over a shape, a handle or the typing box, where his next
+  press goes. While he types it steps aside.
+- **The typing box** (`edit/TypingBox.tsx`). A second press on a picked
+  text shape opens it with the caret where he pressed; Return on a picked
+  shape opens it with its words selected, F2 with the caret at their end.
+  The box lies on the shape's own corners, turned with it (a shape flipped
+  across reads as before, one flipped down turns half round, as PowerPoint
+  draws them), with the shape's insets and anchor, each run in its font,
+  size, weight, slant, underline and colour, each paragraph in its
+  alignment and list, all scaled to the stage. A single line is 1.2 of its
+  size. It is filled with the slide's own colour read from the drawn
+  picture just inside the shape's edges, so the old words never show
+  through; on a picture or a gradient that is the colour most of the edge
+  has, flat. The selection keeps its outline and handles over it. The
+  caret is the first run's colour; a selection is `sel-bg-paper` on a
+  light slide and `sel-bg-dark-pic` on a dark one, and it stays drawn
+  while the row holds the keyboard. No spinner and no word: while his
+  words are on their way, and until the stage has painted the new picture
+  of that slide, the box stays as it is and takes no pointer, then goes.
+  The picture under it is never blanked between two revisions. A shape on
+  a slide an agent's suggestion changes takes no box: the press says
+  "Accept or reject the suggestion on this slide first" once.
+- **The row's deck arm** (work-kit's `FormatRow`, kind `slides`, the
+  first unscrolled row of the body wherever the host says he can edit the
+  deck by hand; absent, never greyed, where he cannot). Undo, Redo | font
+  (120px) and size | Bold, Italic, Underline, text colour | align (left,
+  centre, right, justify), Bulleted, Numbered | Present, its way out, with
+  the ways to present in its menu. It acts on the box's selection while the
+  box is open, else on the whole of the picked text shape (written at
+  once); with neither its controls rest at 50%. It shows the selection's
+  look, a value where all of it agrees and nothing where it mixes; a
+  toggle is on only when all of it is. A press on a toggle leaves the caret
+  in the box. The colour picker's theme is the deck's; Automatic is the
+  theme's dark ink on a light slide and its light ink on a dark one. The
+  layout select, Insert, Slide and Sorter and shape fill come with the next
+  milestone and are not drawn before.
+- **History** is a quiet button at the end of the deck's bar (its glyph
+  and word; under 560px of bar the glyph, with its tip), only where he can
+  edit the deck by hand. It opens a 280px popover: the kept copies newest
+  first, each a 36px row with its time in the app's words (`dayTime`), the
+  first one kept with a 12px muted line, "Before TempCode changed it", and
+  Restore at the row's end by the hover reveal. Three bones while the list
+  comes; "No versions yet" with none; the host's reason with Retry when it
+  cannot be read. A restore closes it; the copy from just before is the
+  newest next time.
+- **Keys**, while the keyboard is in the deck (its body is marked
+  `data-editor-keys="slides"`, `read` where he cannot edit it):
+
+  | Act | Keys |
+  | --- | --- |
+  | Type into a picked text shape | a second press, Return (words selected), F2 (caret at the end) |
+  | Commit the box | a press outside it and the row, ⌘↩, Tab out of it, closing the tab |
+  | Put the words back | Escape in the box |
+  | Up to the row with the box open, and back | Shift-Tab in the box; Escape on the row |
+  | New paragraph, line break | Return, Shift-Return |
+  | A list item in and out | Tab and Shift-Tab at its start |
+  | Bold, Italic, Underline, size up and down, Bulleted, Numbered | ⌘B, ⌘I, ⌘U, ⇧⌘. and ⇧⌘,, ⇧⌘8, ⇧⌘7: on the box's selection (a caret in a word takes the word), else the picked shape |
+  | Undo, Redo | ⌘Z, ⇧⌘Z (Ctrl+Y off the Mac): the box's own while it is open, else his edits to the file |
+
+  A paste into the box is plain text, each line a paragraph.
 
 ## Scrolling
 
@@ -2871,6 +2938,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | A slide or a build changing in a show | a cut to a picture already painted: the page a press shows next is painted under the one shown, and the one shown stays until the new one is whole, so nothing dips to black | — | the same |
 | The slideshow's bar | on a real move of the pointer: opacity 0→1 and a rise of 4px, `--dur-base` `--ease-out` | 2000ms after the last move (`PRESENT_IDLE_MS`), with the pointer hidden at the same moment: opacity →0 and 4px back down, `--dur-base` `--ease-exit`; held while the pointer is on it or its picker is open | opacity alone |
 | The slideshow's picker and the presenter's target menu (panels of their own window, so no portal) | the popover's: fade + scale 0.95→1 from the trigger's side, `--dur-base` `--ease-out` | at once | fade only |
+| The slide editor: a shape picked, the typing box opening, going and waiting for its picture | none: a selection and the box are there at once and go at once; the old picture stays until the new one has painted | none | none |
 | The Mac's computer-use banner ("The Mac's computer-use banner" below) | opacity, `--dur-base` `--ease-out` | opacity, `--dur-fast` `--ease-exit`, then the window hides | `--dur-fast` |
 
 Rules: animate `transform` and `opacity` (and height only through the
