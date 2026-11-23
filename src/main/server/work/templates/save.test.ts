@@ -135,6 +135,17 @@ describe('save', () => {
     await expect(saveTemplate(rig.ctx, phone, { workspaceId: WS, source: file(source) }, { pillars: none })).rejects.toThrow(OUT_OF_REACH)
     expect(shelfFiles()).toEqual([])
   })
+
+  it('lets a key that reaches the workspace copy a starter and a template for all jobs, which lie in the app\'s own folders', async () => {
+    const starter = rig.put(join(rig.starters, 'ref', 'Game report.docx'), docx('{{Home}}'))
+    const shared = rig.put(join(sharedDir(rig.ctx), 'Letter.docx'), docx('{{To}}'))
+    expect((await saveTemplate(rig.ctx, phone, { workspaceId: WS, source: file(starter), name: 'Game report' }, { pillars: none })).id).toBe('job:Game report.docx')
+    expect((await saveTemplate(rig.ctx, phone, { workspaceId: WS, source: file(shared), name: 'Letter' }, { pillars: none })).id).toBe('job:Letter.docx')
+    expect(shelfFiles()).toEqual(['Game report.docx', 'Letter.docx'])
+    // Any other file in the app's own folders stays out of reach.
+    const other = rig.put(join(rig.ctx.dataDir, 'work-templates', 'scratch', 'x.docx'), docx('x'))
+    await expect(saveTemplate(rig.ctx, phone, { workspaceId: WS, source: file(other) }, { pillars: none })).rejects.toThrow(OUT_OF_REACH)
+  })
 })
 
 describe('the fields of a file, read before it is saved', () => {

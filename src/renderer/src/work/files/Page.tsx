@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEven
 import type { FileCrumb, FilePage, FileTab } from "@shared/contract-work-files";
 import { matchesName, nameWords } from "@shared/work/fileSearch";
 import { canDo, DEFAULT_SORT, MAKE_WORDS, refusal, type FileEntry, type FilePlace, type FileSort, type FileSortBy, type FolderRef, type MakeKind } from "@shared/work/files";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerDownRight, FileText, MoreHorizontal, Plus, Search, type IconComponent } from "../../chrome/icons";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerDownRight, FileText, Layers, MoreHorizontal, Plus, Search, type IconComponent } from "../../chrome/icons";
 import { RowsContextMenu, RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { VirtualRows } from "../../chrome/railVirtualRows";
 import { Tip } from "../../components/tip";
@@ -473,7 +473,7 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
   const rows: MenuRow[] = [
     ...makes.map((kind): MenuRow => ({ kind: "item", id: `make:${kind}`, label: MAKE_WORDS[kind], icon: MAKE_GLYPH[kind] })),
     ...(acts.fromTemplate || acts.addFromDrive || upload ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
-    ...(acts.fromTemplate ? ([{ kind: "item", id: "template", label: "From a Template…" }] satisfies MenuRow[]) : []),
+    ...(acts.fromTemplate ? ([{ kind: "item", id: "template", label: "From a Template…", icon: Layers }] satisfies MenuRow[]) : []),
     ...(acts.addFromDrive ? ([{ kind: "item", id: "drive", label: "Add from Drive…" }] satisfies MenuRow[]) : []),
     ...(upload ? ([{ kind: "item", id: "upload", label: "Upload Files…", icon: Upload }] satisfies MenuRow[]) : []),
     { kind: "sep" },

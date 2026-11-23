@@ -190,9 +190,14 @@ try {
           await sleep(600)
           run.check('and Cancel keeps the file', existsSync(join(folder, 'Templates', 'East report.docx')))
         } else {
+          /** Whether the shelf on screen has a tile of that name. */
+          const tileShown = (name: string): Promise<boolean> => run.page<boolean>(`[...document.querySelectorAll('[data-tile] [data-tile-open]')].some((e) => e.getAttribute('aria-label') === ${JSON.stringify(name)})`)
           run.check('Trash took the file off the shelf', await run.until('the file leaves', 5000, () => !existsSync(join(folder, 'Templates', 'East report.docx'))))
+          run.check('and its tile off the page', await run.until('the tile leaves', 5000, async () => !(await tileShown('East report'))))
           await run.press('Undo')
           run.check('and Undo puts it back', await run.until('the file returns', 8000, () => existsSync(join(folder, 'Templates', 'East report.docx'))))
+          // The tile too, in the view he is looking at: Files restores the file and tells of it on its own push.
+          run.check('with its tile on the page again', await run.until('the tile returns', 8000, () => tileShown('East report')))
           await sleep(800)
         }
       }

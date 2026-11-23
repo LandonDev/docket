@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { copyFile, link, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
@@ -101,10 +101,19 @@ async function shelfFile(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, sour
   return { from: path, form }
 }
 
+/**
+ * Whether a path is a starter or a template for all jobs on this workspace's shelf. Those lie in the app's own
+ * folders, which no key's fence names; a key that reaches the workspace may copy one ("Edit a copy").
+ */
+function shelved(ctx: WorkCtx, workspaceId: string, path: string): boolean {
+  const shelf = shelfOf(ctx, workspaceId)
+  return [...shelf.entries, ...shelf.hiddenEntries, ...shelf.replacedEntries].some((e) => e.where !== 'job' && e.path === path)
+}
+
 export async function saveTemplate(ctx: WorkCtx, by: Caller, ask_: SaveAsk, deps: SaveDeps = {}): Promise<Template> {
   const workspace = workspaceOf(ctx, ask_.workspaceId)
   const path = pathOf(ctx, ask_.source)
-  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, path) || !ctx.reaches(by, workspace.path))) throw new Error(OUT_OF_REACH)
+  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, workspace.path) || (!ctx.reaches(by, path) && !shelved(ctx, workspace.id, path)))) throw new Error(OUT_OF_REACH)
   const formed = templateFormOf(path)
   let info
   try {
@@ -161,8 +170,13 @@ async function moveNoReplace(from: string, to: string): Promise<void> {
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'EEXIST') throw new Error(`A template named ${splitName(basename(to)).stem} is already there.`)
     if (code !== 'EXDEV' && code !== 'EPERM' && code !== 'ENOTSUP' && code !== 'EOPNOTSUPP' && code !== 'ENOSYS') throw err
-    if (existsSync(to)) throw new Error(`A template named ${splitName(basename(to)).stem} is already there.`)
-    await copyFile(from, to)
+    // No hard links on this disk: an exclusive copy, which also never replaces a file that took the name meanwhile.
+    try {
+      await copyFile(from, to, constants.COPYFILE_EXCL)
+    } catch (again) {
+      if ((again as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`A template named ${splitName(basename(to)).stem} is already there.`)
+      throw again
+    }
     await rm(from, { force: true })
   }
 }
@@ -245,7 +259,7 @@ export function unhideTemplates(ctx: WorkCtx, by: Caller, workspaceId: string, r
 export function fieldsOfSource(ctx: WorkCtx, by: Caller, workspaceId: string, source: CanvasSource): TemplateFields {
   const workspace = workspaceOf(ctx, workspaceId)
   const path = pathOf(ctx, source)
-  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, path) || !ctx.reaches(by, workspace.path))) throw new Error(OUT_OF_REACH)
+  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, workspace.path) || (!ctx.reaches(by, path) && !shelved(ctx, workspace.id, path)))) throw new Error(OUT_OF_REACH)
   const formed = templateFormOf(path)
   if (!formed) throw new Error(NOT_A_TEMPLATE)
   if (formed.form === 'tcdoc') return { fields: tcdocFields(path) }

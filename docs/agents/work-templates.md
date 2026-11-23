@@ -94,7 +94,7 @@ Opening is the caller's: the window opens the file in a Files tab; a tool calls 
 
 `ctx.peer` refuses its own host, so Files' `work.files.make` and `work.files.trash`, and the exports of formats and sheets, are called through the module's `handle` from the registry (`WORK_MODULES`), with the real caller, so Files' door judges who pressed.
 
-A remote key makes, saves and lists only for a workspace whose folder it may reach (`ctx.reaches`).
+A remote key makes, saves and lists only for a workspace whose folder it may reach (`ctx.reaches`). A save's source must be in its reach too, but for a starter or a template for all jobs on that workspace's shelf: those lie in the app's own folders, which no key's fence names, and "Edit a copy" copies one.
 
 ## The wire (`src/shared/contract-work-templates.ts`)
 

@@ -293,8 +293,9 @@ platform's convention outranks ours there.
 ### File kind tints
 
 A file's kind has one colour, and only its glyph takes it, in the Files
-place's rows, tiles and file headers. `KindGlyph` (work/files/KindGlyph.tsx)
-draws it. Never a row's fill, a chip, text or a border, and never on a canvas
+place's rows, tiles and file headers, and on a template's tile, which is a
+file's tile (the Templates view and New from a template). `KindGlyph`
+(work/files/KindGlyph.tsx) draws it. Never a row's fill, a chip, text or a border, and never on a canvas
 tab row or the sidebar's place rows: there the glyph is `muted-foreground`.
 
 | Token | Kind | Dark | Light |
@@ -3144,7 +3145,7 @@ tool row in the transcript keeps its tool icon beside its humanized verb.
 Three glyphs carry colour: `StatusMark`'s, for a state, the type glyph
 (`TypeGlyph`), in its type's tint ("Type tints"), and a file's kind glyph
 (`KindGlyph`), in its kind's tint ("File kind tints"), in the Files place's
-rows, tiles and file headers only; every canvas tab row draws it muted, so no
+rows, tiles and file headers and on a template's tile only; every canvas tab row draws it muted, so no
 thread's canvas changes. Every other glyph is
 uncoloured: a subagent's role glyph (`AGENT_GLYPHS`), a tool's, the host's.
 The host glyph (chrome/HostGlyph.tsx) stays as it is: 12px, uncoloured, the
