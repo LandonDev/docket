@@ -273,6 +273,15 @@ export const workOpenPort = {
   },
 };
 
+/** What the day's digest notice opens (work/digest): Today registers its page here; unset, the notice opens the digest's own list. */
+let digestOpens: (() => void) | null = null;
+export const digestOpensPort = {
+  get: () => digestOpens,
+  set(next: (() => void) | null): void {
+    digestOpens = next;
+  },
+};
+
 /** A file drop Work opens (work/canvas/fileDrop.tsx), marked first; the composer lets it pass. */
 const claimedDrops = new WeakSet<Event>();
 export const claimFileDrop = (event: Event): void => void claimedDrops.add(event);

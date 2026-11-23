@@ -1,0 +1,330 @@
+import { randomUUID } from 'node:crypto'
+import type { DatabaseSync } from 'node:sqlite'
+import type { DigestDay, DigestList, DigestPush, DigestSettings } from '@shared/contract-work-digest'
+import { errorText } from '@shared/work/ids'
+import { DEFAULT_AT, DEFAULT_LEVEL } from '@shared/work/digest'
+import { DETAIL_MAX, TELL_GROUPS, TELL_LEVELS, TITLE_MAX, tellLine, TellOpenSchema, type Tell, type TellGroup, type TellKind, type TellLevel } from '@shared/work/tell'
+import type { CtxPart } from '../ctx'
+import { WORK_MODULES, type WorkCtx } from '../modules'
+import { dayOf, knownZone, lastDigest, nextDigest, zoneOr } from './clock'
+import { makeDay } from './make'
+import { decide, groupsByKind, groupsListed, LATE_MS, retold } from './rule'
+import { DigestStore, type LedgerRow } from './store'
+
+/**
+ * `ctx.tell`, and the digest's ledger behind it (docs/agents/work-digest.md).
+ * Made once at boot, Work on or off; nothing here runs on a clock until the
+ * module's `start` (work/digest/index.ts), which only runs while Work is on.
+ */
+
+export const TICK_MS = 30_000
+
+/** Who carries a notice to him. Absent, a row the rule calls "now" is kept as due and sent by the first tick that has one. */
+export interface Deliverer {
+  /** Tells him of `row` at once; `open` is every interrupt still open, this one among them. False: nobody took it. */
+  now(row: LedgerRow, open: LedgerRow[]): boolean
+  /** A row he was told of at once is no longer true; `open` is what is still open. */
+  gone(row: LedgerRow, open: LedgerRow[]): void
+  /** The day's one notice, of the rows that waited. */
+  digest(day: DigestDay, rows: LedgerRow[]): void
+}
+
+export interface DigestDeps {
+  db: DatabaseSync
+  host: string
+  enabled(): boolean
+  log(line: string): void
+  push(p: DigestPush): void
+  /** who lists which kinds: the registry */
+  modules(): readonly { tells?: TellKind[] }[]
+  now?(): number
+}
+
+const levelsOf = (text: string | null): Partial<Record<TellGroup, TellLevel>> => {
+  try {
+    const raw = JSON.parse(text ?? '{}') as Record<string, unknown>
+    return Object.fromEntries(Object.entries(raw).filter(([g, l]) => (TELL_GROUPS as readonly string[]).includes(g) && (TELL_LEVELS as readonly string[]).includes(l as string))) as Partial<Record<TellGroup, TellLevel>>
+  } catch {
+    return {}
+  }
+}
+
+export class Digest {
+  readonly store: DigestStore
+  deliverer: Deliverer | null = null
+  private readonly unknown = new Set<string>()
+  private readonly clock: () => number
+
+  constructor(private readonly o: DigestDeps) {
+    this.store = new DigestStore(o.db, o.host)
+    this.clock = o.now ?? Date.now
+  }
+
+  // ── what he set ─────────────────────────────────────────────────────
+  at(): string {
+    return this.store.setting('at') ?? DEFAULT_AT
+  }
+  zone(): string {
+    return zoneOr(this.store.setting('zone'))
+  }
+  levels(): Partial<Record<TellGroup, TellLevel>> {
+    return levelsOf(this.store.setting('levels'))
+  }
+  levelOf(group: TellGroup): TellLevel {
+    return this.levels()[group] ?? DEFAULT_LEVEL
+  }
+  nextAt(now = this.clock()): number {
+    return nextDigest(this.at(), this.zone(), now)
+  }
+  settings(): DigestSettings {
+    return { at: this.at(), zone: this.zone(), levels: this.levels(), nextAt: this.nextAt() }
+  }
+  set(patch: { at?: string; levels?: Partial<Record<TellGroup, TellLevel>> }): DigestSettings {
+    if (patch.at && patch.at !== this.at()) {
+      this.store.setSetting('at', patch.at)
+      this.settled()
+    }
+    if (patch.levels) {
+      // Only what he changed is kept: a group set back to the default has no row.
+      const next = { ...this.levels(), ...patch.levels }
+      for (const g of TELL_GROUPS) if (next[g] === DEFAULT_LEVEL) delete next[g]
+      this.store.setSetting('levels', JSON.stringify(next))
+    }
+    const settings = this.settings()
+    this.o.push({ push: 'work.digest', settings })
+    return settings
+  }
+  /** The desktop he is at says its zone; the newest is kept. */
+  here(zone: string): void {
+    if (!knownZone(zone)) throw new Error(`unknown time zone: ${zone}`)
+    if (this.store.setting('zone') === zone) return
+    this.store.setSetting('zone', zone)
+    this.settled()
+    this.o.push({ push: 'work.digest', settings: this.settings() })
+  }
+  /** A new time or zone misses nothing: a digest time it puts in the past is not made late. */
+  private settled(): void {
+    const handled = Number(this.store.setting('handled') ?? NaN)
+    if (!Number.isFinite(handled)) return
+    const at = lastDigest(this.at(), this.zone(), this.clock())
+    if (at > handled) this.store.setSetting('handled', String(at))
+  }
+
+  // ── telling ─────────────────────────────────────────────────────────
+  private groupOf(kind: string): TellGroup {
+    const group = groupsByKind(this.o.modules()).get(kind)
+    if (group) return group
+    if (!this.unknown.has(kind)) {
+      this.unknown.add(kind)
+      this.o.log(`digest: no module lists the kind ${kind} in its tells; kept under system`)
+    }
+    return 'system'
+  }
+  private sectorOf(workspaceId: string | null): string | null {
+    if (!workspaceId) return null
+    try {
+      return (this.o.db.prepare('SELECT sector FROM workspaces WHERE id = ?').get(workspaceId) as { sector?: string | null } | undefined)?.sector ?? null
+    } catch {
+      return null
+    }
+  }
+  /** Hands a row to the deliverer; one nobody takes is kept as due. */
+  private tellNow(row: LedgerRow, now: number): LedgerRow {
+    let taken = false
+    try {
+      taken = this.deliverer?.now(row, [...this.store.openNow(now).filter((r) => r.id !== row.id), row]) ?? false
+    } catch (err) {
+      this.o.log(`digest: a notice was not sent: ${errorText(err)}`)
+    }
+    const next: LedgerRow = taken ? { ...row, how: 'now', toldAt: now, due: false } : { ...row, due: true }
+    this.store.put(next)
+    return next
+  }
+
+  tell(t: Tell): LedgerRow | null {
+    if (!this.o.enabled()) return null
+    const title = typeof t?.title === 'string' ? tellLine(t.title, TITLE_MAX) : ''
+    if (!title || typeof t.kind !== 'string' || !t.kind) {
+      this.o.log('digest: a tell with no kind or no title was dropped')
+      return null
+    }
+    const now = this.clock()
+    const detail = typeof t.detail === 'string' ? tellLine(t.detail, DETAIL_MAX) : ''
+    const open = t.open ? TellOpenSchema.safeParse(t.open) : null
+    const by = typeof t.by === 'number' && Number.isFinite(t.by) ? t.by : undefined
+    const workspaceId = t.workspaceId ?? null
+    const said = {
+      kind: t.kind,
+      group: this.groupOf(t.kind),
+      workspaceId,
+      sector: this.sectorOf(workspaceId),
+      title,
+      ...(detail ? { detail } : {}),
+      ...(open?.success ? { open: open.data } : {}),
+      ...(by !== undefined ? { by } : {}),
+      ...(t.key ? { key: t.key } : {})
+    }
+    const prev = t.key ? this.store.byKey(t.key) : null
+    let row: LedgerRow
+    let again = true
+    if (prev) {
+      const same = prev.kind === said.kind && prev.title === title && (prev.detail ?? '') === detail && prev.by === by && JSON.stringify(prev.open ?? null) === JSON.stringify(said.open ?? null)
+      if (same) return prev
+      if (prev.toldAt != null) {
+        // He was told at once already: the words follow, and he hears again only when its clock moved earlier.
+        again = retold(prev, said)
+        row = { ...said, id: prev.id, host: prev.host, at: prev.at, how: prev.how, day: prev.day, toldAt: again ? null : prev.toldAt, due: false }
+      } else {
+        // In a digest already and it changed: it is news again, for the next one.
+        row = { ...said, id: prev.id, host: prev.host, at: now, how: 'waiting', day: null, toldAt: null, due: prev.due }
+      }
+    } else {
+      row = { ...said, id: randomUUID(), host: this.o.host, at: now, how: 'waiting', day: null, toldAt: null, due: false }
+    }
+    if (again && decide(row, this.levelOf(row.group), this.nextAt(now)) === 'now') row = this.tellNow(row, now)
+    else {
+      if (again && row.toldAt == null) row = { ...row, how: row.day ? 'digest' : 'waiting', due: false }
+      this.store.put(row)
+    }
+    this.o.push({ push: 'work.digest', row: wireRow(row) })
+    return row
+  }
+
+  done(key: string): void {
+    const row = typeof key === 'string' && key ? this.store.byKey(key) : null
+    if (!row) return
+    this.store.remove(row.id)
+    if (row.toldAt != null) {
+      try {
+        this.deliverer?.gone(row, this.store.openNow(this.clock()))
+      } catch (err) {
+        this.o.log(`digest: a notice was not withdrawn: ${errorText(err)}`)
+      }
+    }
+    this.o.push({ push: 'work.digest', gone: row.id })
+  }
+
+  quiet(sessionId: string): void {
+    if (typeof sessionId === 'string' && sessionId) this.store.quiet(sessionId, this.clock())
+  }
+
+  // ── the clock ───────────────────────────────────────────────────────
+  /**
+   * One look, each 30 s while Work is on: a due row goes out once a deliverer
+   * exists, a waiting row whose clock has come inside the window is told at
+   * once whatever digest it is in, and at the digest's time the day is made.
+   */
+  tick(now = this.clock()): void {
+    if (!this.o.enabled()) return
+    if (this.deliverer) {
+      for (const row of this.store.due()) {
+        // Too late to be of use: it waits for the digest like the rest.
+        if (row.by != null && row.by < now - LATE_MS) this.store.put({ ...row, due: false })
+        else this.pushRow(this.tellNow(row, now))
+      }
+    }
+    const next = this.nextAt(now)
+    for (const row of this.store.clocked(now)) {
+      if (decide(row, this.levelOf(row.group), next) === 'now') this.pushRow(this.tellNow(row, now))
+    }
+    const at = lastDigest(this.at(), this.zone(), now)
+    const handled = Number(this.store.setting('handled') ?? NaN)
+    // The first look ever: nothing was missed, so nothing is made late.
+    if (!Number.isFinite(handled)) return void this.store.setSetting('handled', String(at))
+    if (at <= handled) return
+    this.store.setSetting('handled', String(at))
+    const made = makeDay(this.store, dayOf(this.zone(), at), now)
+    if (!made) return
+    this.o.push({ push: 'work.digest', day: made.day })
+    try {
+      this.deliverer?.digest(made.day, made.rows)
+    } catch (err) {
+      this.o.log(`digest: the day's notice was not sent: ${errorText(err)}`)
+    }
+  }
+  private pushRow(row: LedgerRow): void {
+    this.o.push({ push: 'work.digest', row: wireRow(row) })
+  }
+  start(o: { interval?: false } = {}): () => void {
+    this.tick()
+    const timer = o.interval === false ? null : setInterval(() => this.guarded(), TICK_MS)
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }
+  private guarded(): void {
+    try {
+      this.tick()
+    } catch (err) {
+      this.o.log(`digest: a look at the ledger failed: ${errorText(err)}`)
+    }
+  }
+
+  // ── reads ───────────────────────────────────────────────────────────
+  list(o: { day?: string; since?: number } = {}): DigestList {
+    return {
+      days: o.day ? this.store.days().filter((d) => d.day === o.day) : this.store.days(),
+      rows: this.store.rows(o).map(wireRow),
+      waiting: this.store.waitingCount(),
+      groups: groupsListed(this.o.modules())
+    }
+  }
+  seen(day: string): void {
+    const before = this.store.day(day)
+    if (!before || before.seenAt != null) return
+    const after = this.store.seen(day, this.clock())
+    if (after) this.o.push({ push: 'work.digest', day: after })
+  }
+  workspaceRemoved(workspaceId: string): void {
+    for (const id of this.store.removeWorkspace(workspaceId)) this.o.push({ push: 'work.digest', gone: id })
+  }
+}
+
+/** A ledger row as the wire carries it. */
+export const wireRow = ({ due: _due, ...row }: LedgerRow): Omit<LedgerRow, 'due'> => row
+
+const hosts = new WeakMap<WorkCtx, Digest>()
+/** The digest of a context, for its module and its sources; undefined when the part could not be made. */
+export const digestOf = (ctx: WorkCtx): Digest | undefined => hosts.get(ctx)
+
+/**
+ * The part is total: siblings call `ctx.tell?.(…)` with no try, so nothing
+ * here may throw, not while it is made and not when it is called. A fault is
+ * logged once and the call returns.
+ */
+export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
+  let said = false
+  const fault = (what: string, err: unknown): void => {
+    if (said) return
+    said = true
+    try {
+      ctx.log(`digest: ${what}: ${errorText(err)}`)
+    } catch {
+      /* a log that throws stops nothing */
+    }
+  }
+  let digest: Digest | null = null
+  try {
+    digest = new Digest({ db: deps.db, host: deps.environmentId, enabled: () => ctx.enabled(), log: (line) => ctx.log(line), push: (p) => ctx.push(p, { need: 'read' }), modules: () => WORK_MODULES })
+    hosts.set(ctx, digest)
+  } catch (err) {
+    fault('ctx.tell did not start', err)
+  }
+  const quietly =
+    <A>(what: string, run: (d: Digest, a: A) => void) =>
+    (a: A): void => {
+      try {
+        if (digest) run(digest, a)
+      } catch (err) {
+        fault(what, err)
+      }
+    }
+  const tell = Object.assign(
+    quietly<Tell>('a tell was not kept', (d, t) => void d.tell(t)),
+    {
+      done: quietly<string>('a tell was not withdrawn', (d, key) => d.done(key)),
+      quiet: quietly<string>('a quiet thread was not kept', (d, id) => d.quiet(id))
+    }
+  )
+  return { tell }
+}

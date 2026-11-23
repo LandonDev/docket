@@ -37,6 +37,7 @@ import type { StoreSync } from '../remote/storeSync'
 import type { SessionRegistry } from '../sessions'
 import type { storeRpc } from '../storeRpc'
 import { canvasPart } from './canvas/ctx'
+import { tellPart } from './digest/ctx'
 import { convertPart } from './formats/jobs'
 import { lifeosPart } from './lifeos/ctx'
 import { WORK_LOAD_FAULTS, WORK_MODULES, workModulesAsked, type Caller, type PushTo, type ToolCtx, type WorkCtx, type WorkModule, type WorkSend, type WorkTool } from './modules'
@@ -139,6 +140,7 @@ export type ScopePart = (ctx: WorkCtx, deps: WorkPartDeps) => Pick<WorkCtx, 'sco
  *   results                           work/outbox/results.ts   milestone 14
  *   convert                           work/formats/jobs.ts     milestone 15
  *   service                           work/service/ctx.ts      milestone 18
+ *   tell                              work/digest/ctx.ts       round 3, row 10
  */
 export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, push: WorkSend): { ctx: WorkCtx; admission: WorkAdmission } {
   const ctx = {
@@ -173,6 +175,7 @@ export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, pu
     part('outbox/results.ts', ['results'], () => resultsPart(ctx, deps)),
     part('formats/jobs.ts', ['convert'], () => convertPart(ctx, deps)),
     part('service/ctx.ts', ['service'], () => servicePart(ctx, deps)),
+    part('digest/ctx.ts', ['tell'], () => tellPart(ctx, deps)),
     // Not a member: the host handles the routines engine needs and the context does not carry (milestone 32).
     part('routines/host.ts', [], () => (routinesHostPart(deps), {})),
     // Not a member: the mirrors of LifeOS's projects follow LifeOS while Work is on.

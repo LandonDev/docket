@@ -52,7 +52,8 @@ export const PILLAR_IDS = [
   'search',
   'review',
   'clashes',
-  'templates'
+  'templates',
+  'digest'
 ] as const
 export type PillarId = (typeof PILLAR_IDS)[number]
 export const PillarIdSchema = z.enum(PILLAR_IDS)
@@ -103,7 +104,9 @@ export const PILLAR_MILESTONE: Record<PillarId, number> = {
   /** clashes across jobs with the drive time counted (plan-7BzZxxMKA7yn), round 3's row 8 */
   clashes: 58,
   /** templates per job (plan-jcTUPnk4t-9Y), round 3's row 5 */
-  templates: 59
+  templates: 59,
+  /** one daily digest (plan-xY0MUDj2t7Wh), round 3's row 10 */
+  digest: 64
 }
 
 /**

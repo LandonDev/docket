@@ -61,7 +61,7 @@ describe('the names', () => {
     expect([...PILLAR_IDS]).toEqual([
       'outbox', 'canvas', 'lifeos', 'routines', 'rules', 'mail', 'tasks', 'agenda', 'docs', 'history', 'formats', 'sheets',
       'office', 'google', 'guests', 'pdf', 'slides', 'media', 'frameio', 'meetings', 'forms', 'dashboards', 'browser', 'projects', 'winvm', 'capture', 'files', 'prep', 'money', 'search',
-      'review', 'clashes', 'templates'
+      'review', 'clashes', 'templates', 'digest'
     ])
     expect(new Set(PILLAR_IDS).size).toBe(PILLAR_IDS.length)
     expect(Object.keys(PILLAR_MILESTONE).sort()).toEqual([...PILLAR_IDS].sort())

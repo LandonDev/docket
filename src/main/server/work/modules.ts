@@ -28,6 +28,7 @@ import type {
   WorkspaceWorkSettings,
   WorkToolOf
 } from '@shared/work'
+import type { Tell, TellKind } from '@shared/work/tell'
 import type { ConvertJob, ConvertResult, Converter } from './formats/jobs'
 import type { LifeosClient, WorkLink } from './lifeos/ctx'
 import type { SearchSource } from './search/source'
@@ -107,6 +108,8 @@ export interface WorkModule {
   workspaceRemoved?(workspaceId: string, ctx: WorkCtx): void
   /** The pillar's own connections on this host, for Connections (docs/agents/work-connections.md). */
   health?: HealthSource
+  /** Every kind of news the pillar tells through `ctx.tell`, each with its group (docs/agents/work-digest.md). */
+  tells?: TellKind[]
 }
 
 /** A host job a routine may run in place of a model thread: no thread, no model. */
@@ -255,6 +258,20 @@ export interface WorkCtx {
   }
   /** milestone 15 */
   convert(job: ConvertJob): Promise<ConvertResult>
+  /**
+   * The one way a pillar tells him something (work/digest/ctx.ts,
+   * docs/agents/work-digest.md). Say what is true and, only when he alone
+   * can unblock it, the time after which it is too late (`by`): the digest's
+   * rule decides whether it interrupts or waits for the day's one notice.
+   * Never throws, and does nothing while Work is off.
+   */
+  tell: {
+    (t: Tell): void
+    /** it is no longer true: the row goes, and a notice of it is withdrawn */
+    done(key: string): void
+    /** this thread started on its own, not on his press: its done, failed and stuck wait for the digest */
+    quiet(sessionId: string): void
+  }
 }
 
 /** What a tool's `run` gets: the context, the calling thread and its scope. */
@@ -319,7 +336,8 @@ export const PILLAR_LOADERS: PillarLoaders = {
   search: () => import('./search').then((m) => m.search),
   review: () => import('./review').then((m) => m.review),
   clashes: () => import('./clashes').then((m) => m.clashes),
-  templates: () => import('./templates').then((m) => m.templates)
+  templates: () => import('./templates').then((m) => m.templates),
+  digest: () => import('./digest').then((m) => m.digest)
 }
 
 let loaded: Promise<Map<PillarId, string>> | null = null
