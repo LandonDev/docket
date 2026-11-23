@@ -26,11 +26,12 @@ const VIEW_AT: Record<string, "event" | "mail" | "task" | "project" | "person"> 
   people: "person",
 };
 
-export function routeOf(row: Pick<TellRow, "open" | "host">): Route {
+export function routeOf(row: Pick<TellRow, "open" | "host"> & { environmentId?: string }): Route {
   const open: TellOpen | undefined = row.open;
   if (!open) return { to: "none" };
   // A held item names its thread too: the item is what opens.
-  if ("held" in open) return { to: "outbox", item: `${row.host}:${open.held.at}:${open.held.id}` };
+  // The Outbox keys an item by the link it came over ("local" for this machine's own), not the host's own id.
+  if ("held" in open) return { to: "outbox", item: `${row.environmentId ?? row.host}:${open.held.at}:${open.held.id}` };
   if ("thread" in open) return { to: "thread", sessionId: open.thread };
   if ("view" in open) {
     const view: OpenWorkView = { workspaceId: open.workspaceId, view: open.view };

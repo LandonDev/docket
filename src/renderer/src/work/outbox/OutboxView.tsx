@@ -211,14 +211,15 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
   useEffect(() => {
     if (!wanted) return;
     const held = outbox.waiting.some((item) => keyOf(item) === wanted) ? "waiting" : outbox.sent.some((item) => keyOf(item) === wanted) ? "sent" : null;
-    if (held) {
-      setTab(held);
-      setSelected(wanted);
-      setOpened(true);
-    }
-    // Decided and gone, or never here: the page is as it opens.
-    if (held || outbox.loaded) wantOutboxItem(null);
+    // Not held yet is not "gone": the lists the page opens with may be from before the item was made, and are read
+    // again as it mounts. One that is never found is let go when the page closes.
+    if (!held) return;
+    setTab(held);
+    setSelected(wanted);
+    setOpened(true);
+    wantOutboxItem(null);
   }, [wanted, outbox]);
+  useEffect(() => () => wantOutboxItem(null), []);
   // Ticks hold only items still waiting.
   const tickedItems = outbox.waiting.filter((item) => ticked.has(keyOf(item)) && batchable(item));
   const tick = (item: HostItem, on: boolean) =>

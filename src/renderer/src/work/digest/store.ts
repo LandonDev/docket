@@ -12,9 +12,13 @@ import { workSwitch } from "../../lib/workSwitch";
  * days of the same date are one day.
  */
 
+/** A tell with the link it came over: the id this window knows its host by ("local" for this machine's own), which a route to another surface's item needs. */
+export type HostTell = TellRow & { environmentId: string };
+const tagged = (environmentId: string, rows: readonly TellRow[]): HostTell[] => rows.map((row) => ({ ...row, environmentId }));
+
 type HostState = {
   days: DigestDay[];
-  rows: TellRow[];
+  rows: HostTell[];
   settings: DigestSettings | null;
   loaded: boolean;
   error: string | null;
@@ -26,7 +30,7 @@ export type MergedDay = { day: string; madeAt: number; seenAt: number | null; ho
 export type DigestView = {
   days: MergedDay[];
   /** newest first; one row a key across hosts */
-  rows: TellRow[];
+  rows: HostTell[];
   /** the first host that answered: the hosts are written alike */
   settings: DigestSettings | null;
   /** every host with Work on has answered once, or failed to */
@@ -48,8 +52,8 @@ function changed(): void {
 }
 
 /** One row a key: the one he was told of at once wins, else the newest. */
-export function mergeRows(lists: readonly (readonly TellRow[])[]): TellRow[] {
-  const byName = new Map<string, TellRow>();
+export function mergeRows<R extends TellRow>(lists: readonly (readonly R[])[]): R[] {
+  const byName = new Map<string, R>();
   for (const rows of lists) {
     for (const row of rows) {
       const name = row.key ? `k:${row.key}` : `i:${row.host}:${row.id}`;
@@ -95,7 +99,7 @@ export function loadHost(environmentId: string): Promise<void> {
   const link = registry.linkOf(environmentId);
   const load = Promise.all([link.request<DigestList>("work.digest.list", {}), link.request<DigestSettings>("work.digest.get", {})])
     .then(([list, settings]) => {
-      hosts.set(environmentId, { days: list.days, rows: list.rows, settings, loaded: true, error: null });
+      hosts.set(environmentId, { days: list.days, rows: tagged(environmentId, list.rows), settings, loaded: true, error: null });
     })
     .catch((err: unknown) => {
       hosts.set(environmentId, { ...(hosts.get(environmentId) ?? emptyHost()), loaded: true, error: errorText(err) });
@@ -207,8 +211,8 @@ export function resetDigestStore(): void {
   changed();
 }
 /** Test seam: a host's ledger as if it had answered. */
-export function seedDigestHost(environmentId: string, state: Partial<HostState>): void {
-  hosts.set(environmentId, { ...emptyHost(), loaded: true, ...state });
+export function seedDigestHost(environmentId: string, state: Partial<Omit<HostState, "rows">> & { rows?: TellRow[] }): void {
+  hosts.set(environmentId, { ...emptyHost(), loaded: true, ...state, rows: tagged(environmentId, state.rows ?? []) });
   changed();
 }
 
@@ -227,7 +231,7 @@ registry.onLink((link, event) => {
     if (!state?.loaded) return;
     let next = state;
     if (push.day) next = { ...next, days: [push.day, ...next.days.filter((d) => d.day !== push.day!.day)] };
-    if (push.row) next = { ...next, rows: [push.row, ...next.rows.filter((r) => r.id !== push.row!.id)] };
+    if (push.row) next = { ...next, rows: [...tagged(link.environmentId, [push.row]), ...next.rows.filter((r) => r.id !== push.row!.id)] };
     if (push.gone) next = { ...next, rows: next.rows.filter((r) => r.id !== push.gone) };
     if (push.settings) next = { ...next, settings: push.settings };
     // A day made stamps its rows on the host: read them again rather than guess.

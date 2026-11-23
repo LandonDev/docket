@@ -29,6 +29,9 @@ describe("routeOf", () => {
     expect(route({ held: { at: "host", id: "h1" } })).toEqual({ to: "outbox", item: "box:host:h1" });
     expect(route({ held: { at: "lifeos", table: "calendarOps", id: "op1" }, thread: "t1" })).toEqual({ to: "outbox", item: "box:lifeos:op1" });
   });
+  it("names the held item by the link its row came over: this machine's own host is \"local\" to the window, whatever the host calls itself", () => {
+    expect(routeOf({ host: "env_9f2c", environmentId: "local", open: { held: { at: "host", id: "h1" } } })).toEqual({ to: "outbox", item: "local:host:h1" });
+  });
   it("a settings section opens Settings there, and a tell with no target opens nothing", () => {
     expect(route({ settings: "connections" })).toEqual({ to: "settings", section: "connections" });
     expect(route()).toEqual({ to: "none" });

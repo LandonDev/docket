@@ -108,7 +108,7 @@ vi.mock("../../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { batchVerb, canEdit, OutboxView, rowWords } from "./OutboxView";
-import { resetOutboxStore } from "./store";
+import { loadOutbox, resetOutboxStore, wantOutboxItem } from "./store";
 
 const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem> = {}): OutboxItem => ({
   ref: { at: "lifeos", table: "outbox", id },
@@ -183,6 +183,32 @@ describe("the Outbox", () => {
     expect(screen.getByText(/About Budget\./)).toBeTruthy();
     fireEvent.click(screen.getByText("Post message with Slack"));
     expect(screen.getByText("staff")).toBeTruthy();
+  });
+
+  it("opens on the item a notice asked for, not the first: even when the lists it mounts with are from before that item was made", async () => {
+    // As at launch: the store read each host while nothing was held, so it says loaded with empty lists.
+    const later = world.items;
+    world.items = new Map();
+    await loadOutbox();
+    world.items = later;
+    wantOutboxItem("box:lifeos:o3");
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    await waitFor(() => expect(document.querySelector("[aria-current=true]")?.textContent).toContain("Send to Events booking"), { timeout: 5000 });
+    // taken once: a later reload leaves his own pick alone
+    fireEvent.click(screen.getAllByText("Send to Dana Lee")[0]!);
+    await act(async () => void (await loadOutbox()));
+    expect(document.querySelector("[aria-current=true]")?.textContent).toContain("Send to Dana Lee");
+  });
+
+  it("an item asked for that is gone leaves the page as it opens, and is forgotten when the page closes", async () => {
+    wantOutboxItem("box:lifeos:nothing");
+    const view = render(<OutboxView besideRail onClose={() => undefined} />);
+    await waitFor(() => expect(document.querySelector("[aria-current=true]")?.textContent).toContain("Send to Dana Lee"), { timeout: 5000 });
+    view.unmount();
+    world.items.get("box")!.push(mail("nothing", "Late Arrival", "Later"));
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    await waitFor(() => expect(screen.getAllByText("Send to Late Arrival").length).toBeGreaterThan(0), { timeout: 5000 });
+    expect(document.querySelector("[aria-current=true]")?.textContent).toContain("Send to Dana Lee");
   });
 
   it("sends a LifeOS draft with the updatedAt it was shown with, through the host that holds it", async () => {
