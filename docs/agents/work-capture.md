@@ -153,6 +153,12 @@ Note":
   the work proof set ends with it light and dark (w60, w61), and
   `TC_WORK_ONLY=capture` shoots it alone.
 
+The receipt glyph (`doc.viewfinder`, "Receipt") sits beside the microphone
+under the same rule, but it is Money's, not capture's: it scans a receipt
+and sends it to the job's ledger on its host, and nothing of it goes to
+LifeOS (docs/agents/work-money.md; the sheet is docs/IOS-DESIGN.md "The
+receipt").
+
 
 LifeOS takes in his mail itself, so a forwarded mail needs nothing of
 TempCode: a mail **he sent** to an address of one of his mailboxes with

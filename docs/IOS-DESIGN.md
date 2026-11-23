@@ -2530,6 +2530,43 @@ phone"):
   impact; the release returns on `fast`. Reduce Motion dims the press to
   `pressDim` and keeps the colour. No ring, no level meter, no glow.
 
+The receipt (Money, docs/agents/work-money.md):
+
+- **The way in** is `doc.viewfinder` ("Receipt") beside the microphone,
+  under the same rule. A press opens VisionKit's document camera at once,
+  full screen as the system draws it (the one full-screen view besides
+  Safari and the live picture); it finds the page's edges and flattens it.
+  A receipt that still waits (a Save that failed) opens its sheet instead of
+  the camera. The simulator has no document camera: a DEBUG build takes a
+  made-up scan in its place (`ReceiptFixture`).
+- **The scan** is read on the phone (`OnDeviceText`: Vision's accurate
+  recognizer, no language correction, never a server). One page goes as a
+  JPEG, its long edge 2000 px, at the first quality that fits 2 MiB; several
+  pages go as one PDF, each page fitted to the same Letter bound.
+- **The sheet** fills the height (`tcSheet(.editor)`), "Receipt" ("Receipt 1
+  of 2" while two wait): the scan as a 56 pt picture at the row radius with
+  the 10 % outline (the photos pattern) beside Amount (the decimal pad; a
+  word turns it destructive and holds Save off), then Date (a date picker,
+  never after today; Add Date until one is read or picked) and Seller; then
+  Category (the job's own list, what was read chosen, and None) and Job (the
+  sectors some host keeps a job in, each with its dot and the job's name,
+  the last one used first; a spinner while the hosts answer), the reason a
+  Save failed as that section's footer in destructive text; last, Scan
+  Another and Discard Receipt (it asks first). The fields fill when a host's
+  parser answers, with no spinner or mark in them; what he typed first
+  stands. Cancel keeps the draft; Save is the one confirm, a spinner while
+  the parts go, a light impact when the host has it.
+- **Save** sends the scan in parts of at most 2 MiB to one host, under one
+  key, with the lines and the fields. With an amount and a date the host
+  files it in the job's ledger at once; without, it waits in the desktop's
+  To confirm list. Either answer removes the draft; while another waits, the
+  sheet goes on to it.
+- **Nothing lost.** The scan is a file in Application Support and the rest
+  is in the phone's defaults (`work.money.receipt`) from the moment the
+  camera closes, so Cancel, a failed Save and a quit keep it. A retry keeps
+  the key and goes back to the host that took the last try while it keeps
+  the job, so nothing is filed twice.
+
 Not on the phone, and why: the Docs row and LifeOS's project cards on a
 Work workspace's screen (no wire lists a workspace's documents yet); a
 native review row for a document or sheet (its suggestions live inside
