@@ -29,6 +29,7 @@ import type {
 } from '@shared/work'
 import type { ConvertJob, ConvertResult, Converter } from './formats/jobs'
 import type { LifeosClient, WorkLink } from './lifeos/ctx'
+import type { SearchSource } from './search/source'
 import type { CollabClaims } from './service/ctx'
 import { errorText, PILLAR_IDS } from '@shared/work/ids'
 
@@ -83,6 +84,8 @@ export interface WorkModule {
   convert?: Converter[]
   /** The kinds of thing the composer's `@` finds in this pillar (work-canvas.md "Mentions"): each searches only within `reach`. */
   mentions?: MentionSource[]
+  /** The kinds of thing Work search finds in this pillar (work-search.md "How a pillar registers"): each searches only within the ask's reach. A pillar with `mentions` and no `search` is found through them. */
+  search?: SearchSource[]
   /** Joined, in module order, after the preamble's fixed head. */
   preamble?(scope: WorkScope): string | null
   /** Pollers and subscriptions. Never called while Work is off; its return stops them. */
@@ -299,7 +302,8 @@ export const PILLAR_LOADERS: PillarLoaders = {
   capture: () => import('./capture').then((m) => m.capture),
   files: () => import('./files').then((m) => m.files),
   prep: () => import('./prep').then((m) => m.prep),
-  money: () => import('./money').then((m) => m.money)
+  money: () => import('./money').then((m) => m.money),
+  search: () => import('./search').then((m) => m.search)
 }
 
 let loaded: Promise<Map<PillarId, string>> | null = null
