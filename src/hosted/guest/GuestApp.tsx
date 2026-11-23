@@ -121,7 +121,8 @@ export function GuestApp() {
           <Skeleton className="h-4 w-48" />
         )}
       </header>
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
+      {/* Where a document is drawn as sheets (DocPage.tsx), the page under the header is their stage, to its edges and its foot. */}
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-auto has-[.te-pages-stage]:bg-(--stage)">
         {opened ? (
           <Suspense fallback={<Bones />}>
             {opened.kind === "project" ? (

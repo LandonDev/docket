@@ -56,6 +56,8 @@ describe("a project's link on the guest's page", () => {
     expect(line().textContent).toMatch(/Spring LAN.*Landon Hale.*Can view.*until/);
     expect(within(line()).getByRole("tab", { name: "Board" })).toBeTruthy();
     expect(within(line()).queryByRole("button", { name: /Back/ })).toBeNull();
+    // Under the line the page is the sheets' stage wherever a document is drawn as sheets (DocPage.tsx).
+    expect(document.querySelector("main")!.className.split(" ")).toContain("has-[.te-pages-stage]:bg-(--stage)");
   });
 
   it("opens a document in place as its text, with the way back first in the line", async () => {

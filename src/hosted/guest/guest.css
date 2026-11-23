@@ -38,13 +38,41 @@ main {
     margin-inline-end: -16px;
   }
 
+  /* The row's empty stretch before the Flow | Pages switch lies over those 16px: a tap there is More's. */
+  [data-guest-row] [data-slot="format-row"] > span[aria-hidden] {
+    pointer-events: none;
+  }
+
   [data-guest-row] [data-slot="format-row"] :is(button, input) {
     min-width: 44px;
     min-height: 44px;
   }
 
+  /* The Flow | Pages switch: its track grows to the finger's 44px and each half fills it less the track's 2px. */
+  [data-guest-row] [data-slot="format-segment"] {
+    height: 44px;
+  }
+
+  [data-guest-row] [data-slot="format-row"] [data-slot="format-segment"] [role="radio"] {
+    min-height: 40px;
+    height: 40px;
+  }
+
+  /* The switch drawn as glyphs is budgeted 28px a half: 40px each keeps it inside the row's end padding. */
+  [data-guest-row] [data-slot="format-row"] [data-format-end="view"]:not([data-full]) [role="radio"] {
+    min-width: 40px;
+  }
+
   /* More's rows keep their names whole beside a key or a value ("Bulleted list", "Ctrl+Shift+8"). */
   [data-slot="format-menu"] {
     min-width: min(304px, calc(100vw - 32px));
+  }
+}
+
+/* Under 640px a document is always Flow (DocPage.tsx): a sheet fitted to a phone sets 11 pt text near 7px. The
+   row has no switch there, so it stays Style, Bold, Italic and More. */
+@media (max-width: 639.98px) {
+  [data-guest-row] [data-format-end="view"] {
+    display: none;
   }
 }

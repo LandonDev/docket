@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DOCUMENT_SCHEMA } from "work-kit/collab";
-import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type DocumentStatus, type EditorAdapters } from "work-kit/editor";
+import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type DocumentPage, type DocumentStatus, type DocumentView, type EditorAdapters, type PageZoom } from "work-kit/editor";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { DOC_FONTS } from "@renderer/work/docs/fonts";
 import { Comment } from "@renderer/work/icons";
+import { openingView, openingZoom, PAGES_FROM } from "./opening";
 import { commentLeft } from "./place";
 import { OpenFailed, commentsOnPage, type Opened, type Session } from "./session";
 import { guestThreads } from "./threads";
@@ -14,10 +15,27 @@ import { guestThreads } from "./threads";
  * on the link's socket. An edit link writes; a comment link reads and
  * comments on what it selects (the service marks the words); a view link
  * reads. What a link may not do is not drawn.
+ *
+ * A styled document is drawn as sheets of its paper where the page is 640px
+ * wide or more as it opens (docs/DESIGN.md "Work editors: Document pages"),
+ * and an Edit link's row holds the switch and the zoom. Under 640px it is
+ * always Flow and the row has no switch (guest.css): a sheet fitted to a
+ * phone is too small to read.
  */
 
 const MEASURE = 672;
 const MARGIN = 296;
+
+/**
+ * What the column gives up while the editor draws sheets (its `.te-pages-stage` is in it): its
+ * measure and its padding, so the stage runs edge to edge under the header. Said in CSS, as in the
+ * app's pane: the frame that draws the sheets is the frame that makes room.
+ */
+const IN_PAGES = {
+  column: "has-[.te-pages-stage]:max-w-none has-[.te-pages-stage]:p-0",
+  status: "group-has-[.te-pages-stage]/doc:mb-0 group-has-[.te-pages-stage]/doc:max-w-none group-has-[.te-pages-stage]/doc:bg-background group-has-[.te-pages-stage]/doc:px-4",
+  text: "group-has-[.te-pages-stage]/doc:pr-0",
+};
 
 export function DocPage({ session, opened, scheme, onGone }: { session: Session; opened: Opened; scheme: "light" | "dark"; onGone(): void }) {
   const doc = opened.doc!;
@@ -52,6 +70,32 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
     [session, opened, threads, fresh],
   );
   const wide = useWide(MEASURE + MARGIN + 64);
+  // Flow or Pages, and Pages' zoom: what the page's width says as it opens, then his own pick in the row. A later resize changes nothing.
+  const [opens] = useState(() => ({ view: openingView(window.innerWidth), zoom: openingZoom(window.innerWidth) }));
+  const [picked, setPicked] = useState<{ view?: DocumentView; zoom?: PageZoom }>({});
+  const onView = useCallback((view: DocumentView) => setPicked((was) => ({ ...was, view })), []);
+  const onZoom = useCallback((zoom: PageZoom) => setPicked((was) => ({ ...was, zoom })), []);
+  // Only a styled document is ever drawn as sheets, and one that was classic when it opened stays in Flow when he styles it:
+  // the text never jumps onto sheets under his hands.
+  const [styled, setStyled] = useState(false);
+  const [classic, setClassic] = useState(false);
+  const styledNow = useRef(false);
+  const onPage = useCallback((page: DocumentPage | null) => {
+    styledNow.current = page !== null;
+    setStyled(page !== null);
+  }, []);
+  const read = useRef(false);
+  const onEditor = useCallback((editor: unknown) => {
+    if (!editor || read.current) return;
+    read.current = true;
+    setClassic(!styledNow.current);
+  }, []);
+  // Sheets need 640px now, too: a tablet turned narrow, or a phone turned back upright, reads Flow until there is room again.
+  const room = useWide(PAGES_FROM);
+  const view = room ? (picked.view ?? (classic ? "flow" : opens.view)) : "flow";
+  const sheets = styled && view === "pages";
+  // On sheets a comment opens at its words: there is no margin beside a sheet, and no list under the last one.
+  const side = wide && !!threads && !sheets;
   const frame = useRef<HTMLDivElement>(null);
   const [rowSlot, setRowSlot] = useState<HTMLDivElement | null>(null);
   // Anything wrong with the socket may be a link that went: the page asks once, and shows the end if it is gone.
@@ -65,9 +109,9 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
       <EditorAdaptersProvider adapters={adapters}>
         {/* The format row's place: the page's first row under its header, held while the text scrolls under it, as in the app's pane. */}
         {opened.role === "edit" ? <div ref={setRowSlot} data-guest-row className="sticky top-0 z-10 w-full min-w-0 flex-none bg-background" /> : null}
-        <div ref={frame} data-guest-document={opened.role} className="relative mx-auto w-full min-w-0 px-4 pt-6 pb-10 sm:px-8" style={{ maxWidth: MEASURE + (wide && threads ? MARGIN : 0) + 64 }}>
+        <div ref={frame} data-guest-document={opened.role} className={`group/doc relative mx-auto w-full max-w-(--doc-column) min-w-0 px-4 pt-6 pb-10 sm:px-8 ${IN_PAGES.column}`} style={{ "--doc-column": `${MEASURE + (side ? MARGIN : 0) + 64}px`, "--doc-margin": `${side ? MARGIN : 0}px` } as React.CSSProperties}>
           {status ? (
-            <div role="status" className="mb-3 flex h-8 items-center gap-2 border-b border-border text-[13px]" style={{ maxWidth: MEASURE }}>
+            <div role="status" className={`mb-3 flex h-8 max-w-[672px] items-center gap-2 border-b border-border text-[13px] ${IN_PAGES.status}`}>
               <span className="min-w-0 truncate text-muted-foreground">{status.message}</span>
               {status.retry ? (
                 <Button variant="ghost" size="xs" className="ms-auto" onClick={status.retry}>
@@ -76,12 +120,12 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
               ) : null}
             </div>
           ) : null}
-          <div className="[--link:var(--accent)]" style={{ paddingRight: wide && threads ? MARGIN : 0 }}>
+          <div className={`pr-(--doc-margin) [--link:var(--accent)] ${IN_PAGES.text}`}>
             <DocumentEditor
               documentName={doc}
               editable={opened.role === "edit"}
               canComment={commentsOnPage(session.mode.kind, opened.role)}
-              threadMargin={threads ? (wide ? "side" : "under") : undefined}
+              threadMargin={threads && !sheets ? (side ? "side" : "under") : undefined}
               threadList={!!threads}
               onStatus={onStatus}
               // An Edit link gets the format row; Comment and View get none. The page is built with the service it is
@@ -89,6 +133,14 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
               formatRow={opened.role === "edit"}
               formatRowInto={rowSlot}
               hostSchema={DOCUMENT_SCHEMA}
+              view={view}
+              zoom={picked.zoom ?? opens.zoom}
+              onView={onView}
+              onZoom={onZoom}
+              onPage={onPage}
+              onEditor={onEditor}
+              title={opened.title}
+              locale={navigator.language}
             />
           </div>
           {opened.role === "comment" ? <SelectionComment session={session} frame={frame} onMade={() => threads?.refresh()} /> : null}
