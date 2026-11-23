@@ -173,7 +173,7 @@ export const teamsKindOf = (name: string): TeamsFileKind => TEAMS_KIND[kindOfEnt
 
 /** The Office app behind a kind, if one is. */
 export const teamsAppOf = (kind: TeamsFileKind, name = ''): 'excel' | 'word' | 'powerpoint' | null =>
-  kind === 'workbook' && !/\.csv$/i.test(name) ? 'excel' : kind === 'document' ? 'word' : kind === 'deck' ? 'powerpoint' : null
+  kind === 'workbook' && !/\.(csv|tsv)$/i.test(name) ? 'excel' : kind === 'document' ? 'word' : kind === 'deck' ? 'powerpoint' : null
 
 /**
  * The canvas item a file opens as on `host`: a workbook with real Excel behind it, a Word file or deck

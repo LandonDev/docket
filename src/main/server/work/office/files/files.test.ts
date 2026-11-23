@@ -216,9 +216,12 @@ describe('a file', () => {
     expect(at('B.xlsx', true)).toEqual({ kind: 'sheet', source: { at: 'file', host: 'env_mac', path: '/t/B.xlsx' } })
     // The one table of file types (files.ts `kindOfEntry`) decides: a CSV is a sheet read as the file it is, with no Excel behind it.
     expect(at('list.csv')).toEqual({ kind: 'sheet', source: { at: 'file', host: 'env_mac', path: '/t/list.csv' } })
-    // An old Office form has its app behind it in place; as a copy no canvas reads it.
+    // An old Office form has its app behind it in place; as a copy the sheet kind reads it, as an Excel copy of its own.
     expect(at('old.xls')).toEqual({ kind: 'sheet', source: { at: 'microsoft', host: 'env_mac', app: 'excel', name: 'old.xls', ref: { kind: 'path', path: '/t/old.xls' } } })
-    expect(at('old.xls', true)).toBeNull()
+    expect(at('old.xls', true)).toEqual({ kind: 'sheet', source: { at: 'file', host: 'env_mac', path: '/t/old.xls' } })
+    // A .tsv has no app behind it, as a .csv has none.
+    expect(at('scores.tsv')).toEqual({ kind: 'sheet', source: { at: 'file', host: 'env_mac', path: '/t/scores.tsv' } })
+    expect(at('macro.xlsb', true)).toBeNull()
     // Text and sound wait for the file kind: until then they open in their own app.
     expect(at('notes.txt')).toBeNull()
     expect(at('README.md')).toBeNull()

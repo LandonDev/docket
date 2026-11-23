@@ -15,20 +15,22 @@ registers.
 | a file `.xlsx` or `.xlsm` ("a package") | main, `src/main/server/work/sheets/packages.ts` | the package stays the truth: each edit is patched into it (the patch writer) as a revision |
 | a LifeOS sheet (`{at: 'lifeos', table: 'sheets'}`) | the Work service, `sheets/host/` | a Univer snapshot and an op log in LifeOS (`sheets`, `sheetOps`, `sheetSnapshots`, `sheetSuggestionCells`; M17) |
 | a file `.tcsheet` | the Work service, `sheets/host/` | the same, in one zip on this host's disk |
-| a file `.csv` | the Work service, as a `.tcsheet` read from it once (`csvSheetPath`: `<userData>/sheets/csv/<hash>.tcsheet`) | its own op log; Save as CSV writes it back over the .csv, Export as Excel beside it |
+| a file `.csv` | the Work service, as a `.tcsheet` read from it once (`csvSheetPath`: `<userData>/sheets/csv/<hash>.tcsheet`) | its own op log; Save as CSV writes it back over the .csv, Export as Excel beside it. One others can open saves each edit through to the file ("A `.csv` others can open") |
+| a file `.xls`, `.ods` or `.tsv` | main, as a package: the Excel copy made of it (`formatsIn.ts`, "Other formats in"; LibreOffice reads an .xls and an .ods, a .tsv is read here) | each edit is patched into the copy; the file itself changes by his press alone (Save back) |
 | a workbook in Excel (`{at: 'microsoft', app: 'excel'}`) | Excel, through the office pillar's helper (`office/grid.ts`, [work-office.md](work-office.md) "Excel behind the grid") | written through Excel, cell contents only; the view says `store: 'package'` |
 | a Google spreadsheet (`{at: 'google'}`) | Google, through the google pillar (`google/grid.ts`, [work-google.md](work-google.md) "Sheets") | each write compared, then one `values:batchUpdate`; the view says `store: 'package'`; the switch opens it in Google |
 
 `held.ts` maps an item to its store (`heldOf`) and the key its
 suggestions, mode and charts are kept under (`storeKey`: `file:<path>`,
-`lifeos:<id>`, `tcsheet:<path>`). A new sheet (`work.sheets.create`, the
+`lifeos:<id>`, `tcsheet:<path>`; for a copy of another format the path is
+the copy's). A new sheet (`work.sheets.create`, the
 `sheet_create` tool) is a LifeOS sheet when the thread's workspace has a
 sector and LifeOS is connected, else a `.tcsheet` under
 `<userData>/sheets/made/<id>/`.
 
 ## A mail's attachment
 
-A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the file the host fetched into the item's own folder (`heldOf`, work-canvas.md "Fetched sources"): a package, or a CSV's sheet of our own. Edits write that copy, never the mail or his folder; Download saves it. A .xls or .ods is not a kind `kindForFile` gives the sheet, so it is saved.
+A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the file the host fetched into the item's own folder (`heldOf`, work-canvas.md "Fetched sources"): a package, or a CSV's sheet of our own. Edits write that copy, never the mail or his folder; Download saves it. An .xls, .ods or .tsv from a mail opens as the Excel copy of the fetched file ("Other formats in"); its Save as Excel lands in the workspace's own folder.
 
 ## Packages
 
@@ -125,17 +127,36 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   (`sweep`), opened again or not. A shared workbook's save folder is made
   for this process and its owner alone.
   **A `.csv` others can open** is read into a cache in the same scratch
-  (`sharedCsvDir`), named for the file as it stands so a co-author's newer
-  file is read again, and opens to read ("…it opens here to read. Save a
-  copy to edit it."): an edit would live only in a cache that does not
-  last, so none is taken (`host` refuses `apply`, `cells`, `review` and
-  `restore` for it). One exception keeps his work: a shared `.csv` he had
+  (`sharedCsvDir`), and since that cache does not last no edit is left in
+  it alone: every change to it (`apply`, `cells`, `review`, `restore`,
+  whoever asks) runs through `formatsInCsv.ts` `throughCsv`, which makes
+  the change and then writes the file through Files' door (`saveFile`: its
+  lock, one whole replace, and only while the file is still the bytes that
+  were just read). The file is patched, not written again (`patchCsv`): a
+  field nobody changed keeps its own bytes (`1.50`, a quoted name), each
+  row its own line break and count of fields, and the byte-order mark, the
+  blank lines at the end and the last line's break stay as they were, so
+  one edit is one field in a co-author's diff. A change that leaves the
+  cells as they were (a suggestion that waits) writes nothing. The cache is
+  named for the file as it stood when read, so a co-author's newer file is
+  read into a new one; a file that changed because this host saved an edit
+  keeps its cache and its revisions (`sharedCsvCache`), so the grid goes on
+  from where it was. An edit made against a file that changed meanwhile is
+  refused before it is made, or answered as a conflict by the door, and
+  the file keeps the other writer's bytes ("…changed in its folder, so this
+  edit was not saved. Open it again to edit the newer file."). A file a
+  save would damage opens to read, with the reason (`sharedCsvReadOnly`):
+  bytes that are not UTF-8, a folder he can only read, more than 32 MB.
+  A typed formula reaches the file as the value it gives. One exception
+  keeps his work as it was: a shared `.csv` he had
   already edited here before this rule keeps its sheet among the app's
   files, editable as before (`csvEdited`; a sheet that cannot be read just
   now counts as edited, so only a read that says revision 0 lets one go),
   saved back through Files' door, and that sheet follows the file when it
-  is renamed or moved. A read-only tab already open is not told when the
-  file changes: it shows the newer file when it is opened again. **What he writes out of a
+  is renamed or moved. An open tab is not told when a co-author changes the
+  file: its next edit meets the newer file's sheet at an earlier revision
+  (a conflict), so the grid reads the newer file and sends the edit again
+  on top of it. **What he writes out of a
   sheet others can open** (a sheet as .csv, a .csv as .xlsx) is a copy he
   takes: it lands in his own workspace's folder (`ownFolderOf`), never
   beside the file, where a library would sync it to the team, and never
@@ -284,6 +305,89 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   press (Reload on an opened Excel file, whose grid no longer matches it;
   Retry elsewhere, where the edits wait), and why a file cannot be changed
   here. Edits are sent as he makes them and flushed when the body goes.
+
+## Other formats in
+
+`formatsIn.ts`, `formatsInBack.ts`, `src/shared/work/sheetFormats.ts`; tests `formatsIn.test.ts`
+(a stand-in converter, Files' dummy team library), `formatsIn.wired.test.ts`
+(through `work.sheets.*` and the tools), `formatsIn.seat.test.ts` (where
+Files seats them) and `formatsIn.live.test.ts` (the real LibreOffice on the
+corpus's `formats-in/ledger.xls`, `.ods` and `.tsv`).
+
+An `.xls`, an `.ods` or a `.tsv` opens in the sheet editor as an Excel copy
+made of it (`heldOf` → `importedHeld`: `{at: 'package', path: <the copy>,
+from: {path, format}}`). LibreOffice reads an .xls and an .ods (the
+runner's own `xls → xlsx` and `ods → xlsx`). A .tsv is plain text and
+needs no converter: it is read here as a .csv is (tabs split it, a quoted
+field is one field, numbers are numbers, `007` stays text) into one sheet
+named for the file, written by the model writer; one that is not UTF-8, or
+over 32 MB, is refused in words. (Preview's `tsv → xlsx` pair is not used
+for this: it keeps a quoted field's quotes as text.) The copy is an
+opened package like any other, so the grid, the format row, History, the
+tools and Preview work on it with no second way; `SheetView.imported`
+(`{format, name, stale?, noBack?}`) says it is one, and the view goes by
+the file's own name.
+
+- **Where the copy lies.** His own file's: `<userData>/sheets/imports/<hash
+  of the path>/copy.xlsx`, kept, so closing the tab loses nothing. A file
+  others can open (`sharedOf`): `<userData>/work-files/preview-scratch/
+  sheets/imports/<item id>/copy.xlsx`, a folder of its tab's own, converted
+  on this host alone (`shared: true` on the job), out of both backups, gone
+  with the tab (`itemsRemoved` → `dropSharedImports`) and at each start;
+  the package store treats that copy as a shared workbook (`sheetsOf`'s
+  `is`), so its revision copies and log follow the same rule. Such a file
+  named by its path alone, with no tab to hold a copy, is refused in words
+  ("…open it in the canvas first"). Nothing is ever written beside the
+  file. Beside the copy, `source.json` keeps the file's version as Files'
+  door words it and how the copy stood when the two last agreed.
+- **When it is made again** (`ensureImported`, asked on every request for
+  the item; two stats when nothing changed): the first time; and when the
+  file changed (Excel saved it, a sync replaced it) while the copy holds
+  nothing of his, which the grids see as a change from outside. A file
+  only touched, renamed or synced again with the same bytes is the same
+  file. A copy he has edited is never made again under him: it is kept and
+  the view says `stale`.
+- **Save back** (`work.sheets.imported {act: 'back'}`): the copy is
+  written as the format it was and put over the file through Files' door
+  (`saveFile`), only while the file is still the version the copy was made
+  from. An .xls and an .ods are made in the OS temp folder by the pairs
+  `xlsx → xls+calc` and `xlsx → ods+calc` (`formatsInBack.ts`,
+  `SHEET_BACK_CONVERTERS` in the module's `convert`): LibreOffice's own
+  Python loads the copy with macros off, works every formula out again and
+  then stores it. The plain `--convert-to` pairs are not used here, since
+  LibreOffice keeps the results it finds in an .xlsx, and an edit saved
+  without the calc engine leaves those as they were before it. A .tsv is
+  patched with the first sheet's values (`patchCsv` with a tab): a field
+  nobody changed keeps its bytes, and a formula goes back as its value.
+  A file that changed since is not written; else it is refused ("…changed since this copy was
+  made. Save as Excel to keep your edits."), and a file that is gone is not
+  made again. The answer's `drops` says what the format left behind of
+  this workbook, counted by Preview's `sheetDrops`. A file that holds
+  macros (an .xls's VBA storage, an .ods's `Basic/` or `Scripts/`) is never
+  written back, since the copy keeps none: the view says `noBack`.
+- **Save as Excel** (`act: 'xlsx'`): the copy written out as `<name>.xlsx`
+  through `makeFile`, never over anything ("Ledger 2.xlsx"): beside his own
+  file; in the workspace's own folder for a file others can open or one
+  that lies among the app's files (a mail's), refused in words where there
+  is none. In a Files tab the tab becomes the .xlsx and the copy goes; in a
+  thread the .xlsx opens beside it.
+- **Read again** (`act: 'again'`): drops the copy's edits and converts the
+  file as it is now; offered only when `stale`.
+- **Who may press.** His own press alone: a thread's call and another
+  host's are refused, and a remote key changes a file others can open only
+  with `approve`. A thread reads and writes the copy through the sheet
+  tools under the write rule, as any package; it cannot move the file.
+- **Renamed or moved in Files** (`moved.ts` → `importMoved`): his own
+  file's copy follows it with its edits and what the package store keeps
+  by the copy's path. A shared file's copy is found by its tab.
+- **Where Files seats them**: `kindOfEntry` gives all three to the sheet
+  kind, and `openAs` seats a library's as the file it is (no Office app
+  behind it); `teamsAppOf` gives a `.tsv` no app, as a `.csv` has none.
+- **The window** (`ImportLine.tsx`, `imported.ts`): one quiet line over the
+  grid says where his edits go and what saving back as the format drops,
+  with Save back; where the copy cannot go back it says why and the press
+  is Save as Excel. More names both ways out, and Discard edits and read
+  again when the file moved on. A press answers in one toast.
 
 ## Structural edits
 
@@ -1223,6 +1327,12 @@ The harness corpus also keeps the workbooks the editors plan measured with
 
 ## Not built
 
+- For a copy of another format ("Other formats in"): the line does not say
+  whether the copy holds edits not yet saved back; Files shows no count of
+  suggestions waiting on such a file (they are kept by the copy's path);
+  what a trip through LibreOffice changes in an .xls or .ods beyond what
+  `sheetDrops` counts is not listed; real Excel has not opened a file
+  saved back.
 - Rich text in an opened Excel file: stopped as he tries, until it is
   saved. Moves are saved where the file allows ("Structural edits").
 - The model writer leaves out notes and our charts.

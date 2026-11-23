@@ -16,7 +16,8 @@ export const sheetCanvas: CanvasKindDef = defineCanvasKind<SheetState>({
   opens: {
     sources: [{ at: "lifeos", table: "sheets" }, { at: "microsoft", app: "excel" }],
     mime: ["application/vnd.google-apps.spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel.sheet.macroEnabled.12", "text/csv"],
-    ext: ["tcsheet", "xlsx", "xlsm", "csv"],
+    // (an .xls, .ods or .tsv opens as an Excel copy the host makes: formatsIn.ts)
+    ext: ["tcsheet", "xlsx", "xlsm", "csv", "xls", "ods", "tsv"],
   },
   phone: "web",
   guestable: true,

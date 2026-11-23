@@ -1,4 +1,5 @@
 import type { SheetChart, SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
+import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
 import { isLightScheme } from "../../lib/appearance";
 import { registry } from "../../lib/connection";
 import { openUrl } from "../../lib/native";
@@ -47,6 +48,8 @@ export interface SheetHost {
   chart(chart: SheetChart, remove?: boolean): Promise<SheetView>;
   /** Writes the sheet out on the host (`work.sheets.export`); answers where it went, and what the file could not hold. */
   exportAs(format: "xlsx" | "csv", sheet?: string): Promise<{ path: string; left?: string[] }>;
+  /** What he does with the Excel copy of an .xls, .ods or .tsv (`work.sheets.imported`): save it back, save it out as .xlsx, or read the file again. */
+  imported(act: SheetImportAct): Promise<SheetImportDone>;
   /** Opens the file in the app `view.reach.to` names; refused where it is not on the host. The full editor answers its page, opened in the browser. */
   switchApp(): Promise<void>;
   /** Something landed on this item. */
@@ -67,6 +70,7 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
     undo: (writeId) => call("work.sheets.undo", { writeId }),
     chart: (chart, remove = false) => call("work.sheets.chart", { chart, remove }),
     exportAs: (format, sheet) => call("work.sheets.export", { format, ...(sheet ? { sheet } : {}) }),
+    imported: (act) => call("work.sheets.imported", { act }),
     switchApp: async () => {
       // The full editor is a page of its own. From a light window it opens light; from a dark one it
       // follows the browser's system, as it did (dark is held: docs/agents/appearance.md).

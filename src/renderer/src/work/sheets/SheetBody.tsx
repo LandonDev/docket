@@ -21,6 +21,8 @@ import { Export, Share } from "../icons";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
 import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
+import { ImportLine } from "./ImportLine";
+import { importRows, runImport } from "./imported";
 import { chartBars, chartFrom, chartTicks, saidLine, savedLine, sheetChanges, tickText, type ChartBar as Bars } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
 import { guestSource } from "../guests/api";
@@ -214,6 +216,8 @@ export function Body(props: Props) {
           onRules={() => setRules((open) => (open ? null : { view: "lists" }))}
         />
       ) : null}
+      {/* A sheet that is the Excel copy of an .xls, .ods or .tsv says so in one quiet line, with its one press. */}
+      {view.imported ? <ImportLine imported={view.imported} shared={view.shared} run={(act) => runImport((a) => sync.host.imported(a), view.imported!, act)} /> : null}
       {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
       {google.dialog}
       <div className={stacked ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1"}>
@@ -445,6 +449,7 @@ function useSelectionFeed(
 
   const wide = !!range && range.endColumn > range.startColumn && !locked && !!handle;
   const store = sync.state.view?.store;
+  const imported = sync.state.view?.imported;
   // Share in More only while the bar's Share has given way, so it is never offered twice.
   const way = shareWayOf(sync);
   const shareGone = useSyncExternalStore(way.subscribe, way.gone, way.gone) && !!guestSource(source);
@@ -474,10 +479,12 @@ function useSelectionFeed(
       ...(store ? [{ id: "preview", label: "Preview…", icon: Export, run: () => showPreview("last") }] : []),
       ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync.host, "csv", activeName()) }] : []),
       ...(googleRow ? [googleRow] : []),
+      // The copy of an .xls, .ods or .tsv: saved back as the format it was, or out as Excel.
+      ...importRows(imported, (act) => (imported ? runImport((a) => sync.host.imported(a), imported, act) : Promise.resolve())),
       ...(shareGone ? [{ id: "share", label: "Share", icon: Share, run: () => way.ask() }] : []),
     ]);
     return () => shell.more?.(null);
-  }, [shell, sync, wide, handle, grid, act, store, activeName, shareGone, way, showPreview, googleRow]);
+  }, [shell, sync, wide, handle, grid, act, store, imported, activeName, shareGone, way, showPreview, googleRow]);
 }
 
 const letters = (column: number): string => {

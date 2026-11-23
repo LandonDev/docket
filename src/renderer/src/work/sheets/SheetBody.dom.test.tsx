@@ -689,6 +689,45 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "export").at(-1)?.[1]).toMatchObject({ format: "csv" }));
   });
 
+  it("a sheet opened as an Excel copy says so in one quiet line over the grid, and Save back asks the host and names what the format dropped", async () => {
+    open(sheetView({ store: "package", name: "Ledger.xls", imported: { format: "xls", name: "Ledger.xls" } }));
+    sheetHost.importDrops = ["2 tables become plain ranges"];
+    await gridUp();
+    const line = document.querySelector<HTMLElement>("[data-sheet-import]")!;
+    expect(line.textContent).toBe("Edits save to an Excel copy. Saving back as .xls drops tables and newer functions.Save back");
+    // between the format row and the grid
+    expect(line.compareDocumentPosition(document.querySelector("[data-fake-grid]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(line).getByRole("button", { name: "Save back" }));
+    await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "imported").at(-1)?.[1]).toEqual({ act: "back" }));
+    await waitFor(() => expect(toasts.said).toContain("Saved Ledger.xls"));
+    // an ordinary Excel file has no such line
+    cleanup();
+    resetSheetSyncs();
+    open(sheetView({ store: "package" }));
+    await gridUp();
+    expect(document.querySelector("[data-sheet-import]")).toBeNull();
+  });
+
+  it("More names both ways out of a copy; a file that changed under his edits loses Save back and gains Discard edits and read again", async () => {
+    open(sheetView({ store: "package", name: "Ledger.ods", imported: { format: "ods", name: "Ledger.ods" } }));
+    await gridUp();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    expect(await screen.findByRole("menuitem", { name: "Save back as .ods" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Save as Excel" }));
+    await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "imported").at(-1)?.[1]).toEqual({ act: "xlsx" }));
+    cleanup();
+    resetSheetSyncs();
+    open(sheetView({ store: "package", name: "Ledger.ods", imported: { format: "ods", name: "Ledger.ods", stale: true } }));
+    sheetHost.importRefusal = "Ledger.ods is no longer where it was.";
+    await gridUp();
+    expect(document.querySelector("[data-sheet-import]")!.textContent).toBe("This file changed since the copy was made, so it is not saved back.Save as Excel");
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    expect(screen.queryByRole("menuitem", { name: "Save back as .ods" })).toBeNull();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Discard edits and read again" }));
+    // a refusal is the host's own words, in one toast
+    await waitFor(() => expect(toasts.said).toContain("Ledger.ods is no longer where it was."));
+  });
+
   it("opens Preview over the grid, which stays mounted and out of reach, and Edit puts him back", async () => {
     open(sheetView({ store: "package" }));
     await gridUp();

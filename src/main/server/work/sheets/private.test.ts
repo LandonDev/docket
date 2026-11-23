@@ -708,28 +708,32 @@ describe('what this host keeps of an Excel file others can open', () => {
 
 /**
  * A .csv others can open, and what is written out of a sheet others can open (the editors plan,
- * "University files"): the .csv's sheet is a cache in Files' scratch and opens to read; an export
- * never lands beside the shared file or where a backup reads, and goes with its tab.
+ * "University files"): the .csv's sheet is a cache in Files' scratch, and since the cache does not
+ * last each edit is saved through to the file; an export never lands beside the shared file or
+ * where a backup reads, and goes with its tab.
  */
 describe('a .csv and an export in a folder others can open', () => {
   const filesUnder = (root: string): string[] => (existsSync(root) ? readdirSync(root, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name)) : [])
   const scratch = (): string => join(dir, 'work-files', 'preview-scratch', 'sheets')
 
-  it('a shared .csv opens to read, from a cache in the scratch; nothing of it among the app\'s own files; no edit and no tool write lands', async () => {
+  it('a shared .csv is read into a cache in the scratch, nothing of it among the app\'s own files; an edit and an asked write are saved through to the file (formatsIn.wired.test.ts holds the rest)', async () => {
     const csv = join(library, 'List.csv')
     writeFileSync(csv, `name,code\nAda,${SECRET}\n`)
     const itemId = open(csv, 'List.csv')
     const view = await call<SheetView>('work.sheets.open', { itemId })
-    expect(view).toMatchObject({ store: 'csv', shared: true, readOnly: 'This .csv is in a folder others can open, so it opens here to read. Save a copy to edit it.' })
+    expect(view).toMatchObject({ store: 'csv', shared: true })
+    expect(view.readOnly).toBeUndefined()
     expect(filesUnder(join(dir, 'sheets', 'csv'))).toEqual([])
     expect(filesUnder(join(scratch(), 'csv'))).toHaveLength(1)
     const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 5: { 0: { v: 'x' } } } } }
-    await expect(call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [typed] })).rejects.toThrow('it opens here to read')
-    state.said.push('put x in A6 please')
-    const wrote = await tool('sheet_write', { item: itemId, cells: [{ at: 'A6', v: 'x' }], because: 'asked', quote: 'put x in A6' })
-    expect(wrote.isError).toBe(true)
-    expect(wrote.text).toContain('it opens here to read')
-    expect(readFileSync(csv, 'utf8')).toBe(`name,code\nAda,${SECRET}\n`)
+    expect(await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [typed] })).toEqual({ rev: view.rev + 1 })
+    expect(readFileSync(csv, 'utf8')).toBe(`name,code\nAda,${SECRET}\n\n\n\nx\n`)
+    state.said.push('put y in A7 please')
+    const wrote = await tool('sheet_write', { item: itemId, cells: [{ at: 'A7', v: 'y' }], because: 'asked', quote: 'put y in A7' })
+    expect(wrote.isError).toBeUndefined()
+    expect(readFileSync(csv, 'utf8')).toBe(`name,code\nAda,${SECRET}\n\n\n\nx\ny\n`)
+    expect(filesUnder(join(dir, 'sheets', 'csv'))).toEqual([])
+    expect(readdirSync(library)).toEqual(['List.csv'])
   })
 
   it('his own .csv is a sheet he edits, kept among the app\'s files as before', async () => {

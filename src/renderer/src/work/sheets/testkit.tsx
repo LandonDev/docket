@@ -67,6 +67,9 @@ export type FakeSheetHost = SheetHost & {
   switchWait: Promise<void> | null;
   /** what an export says the file could not hold; a test sets it */
   exportLeft?: string[];
+  /** what `imported` answers for a copy of another format: a refusal in the host's words, or what the format left behind */
+  importRefusal?: string;
+  importDrops?: string[];
   /** Set: open never answers (the loading state). */
   hold: boolean;
 };
@@ -142,6 +145,11 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook): FakeSheet
     async exportAs(format: "xlsx" | "csv", sheet?: string) {
       host.calls.push(["export", { format, sheet }]);
       return { path: `/host/files/${host.view.name.replace(/\.[^.]+$/, "")}.${format}`, ...(host.exportLeft ? { left: host.exportLeft } : {}) };
+    },
+    async imported(act) {
+      host.calls.push(["imported", { act }]);
+      if (host.importRefusal) throw new Error(host.importRefusal);
+      return act === "again" ? {} : { path: `/host/files/${act === "back" ? host.view.name : host.view.name.replace(/\.[^.]+$/, ".xlsx")}`, ...(host.importDrops ? { drops: host.importDrops } : {}) };
     },
     async switchApp() {
       host.calls.push(["switch", null]);

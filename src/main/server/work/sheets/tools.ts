@@ -9,6 +9,7 @@ import { parseA1 } from './a1'
 import { agentFormat, FORMAT_MAX_CELLS, FormatSchema, formatWords, heldOfPackage, place, ruleClash, ruleListMutation, ruleModel, ruleMutations, RuleSchema, ruleWords, where, type FormatAsk, type Placed, type RuleAsk } from './asks'
 import type { RulesHeld } from './host/wire'
 import type { ChangeAsk } from './changes'
+import { ensureImported } from './formatsIn'
 import { ensureCsvSheet, heldOf, heldOfPath, host, sheetsOf, storeKey, type Held, type Sheets } from './held'
 import type { A1Cell } from './host/wire'
 import { mutationsOf } from './mutations'
@@ -73,6 +74,8 @@ async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Prom
     if (held.at === 'package') (await sheetsOf(ctx)).packages.hold(held.path, '', ctx.sessionId)
   }
   ensureCsvSheet(held, ctx.dataDir)
+  // An .xls, .ods or .tsv is read and written through its Excel copy (formatsIn.ts); the file changes by his press alone.
+  await ensureImported(ctx, held)
   const stored = held.at === 'service' ? (await host(ctx, 'open', { sheet: held.ref })).shared : false
   return { held, item, shared: stored || sharedOf(ctx, source) || ctx.scope.shared(source) }
 }

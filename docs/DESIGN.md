@@ -2705,6 +2705,26 @@ set by hand.
   B2:B9"). One whose rows or columns moved since says so there and can
   only be rejected.
 
+**A sheet opened as a copy** (an `.xls`, `.ods` or `.tsv`, which opens as
+an Excel copy: `work/sheets/ImportLine.tsx`). The deck's quiet line again,
+between the format row and the grid: 12px muted words, a 12px inset, 4px
+above and below, a hairline under it, then one press 8px after the words,
+a link button in the same 12px with its busy label, off while it runs and
+as tall as the line to a pointer. The words say where his edits go and
+what the first format drops: "Edits save to an Excel copy. Saving back as
+.xls drops tables and newer functions.", then "Save back"; for a file
+others can open, "Edits stay in this tab's Excel copy until you save
+back." Where the copy cannot go back the words say why ("This file changed
+since the copy was made, so it is not saved back.", "This file holds
+macros, which an Excel copy does not keep, so it is not saved back.") and
+the press is "Save as Excel", the way that keeps his edits. The words wrap
+to a second line in a narrow pane and are never cut, since they say what a
+save would lose. More keeps "Save back as .xls" and "Save as Excel", and
+"Discard edits and read again" only when the file changed under his edits.
+A press that went through is one toast, "Saved Ledger.xls", with what the
+format left behind of this workbook under it; a refusal is one toast in
+the host's own words.
+
 **A deck that is read only here** (an imported `.ppt`, `.pps`, `.ppsx`,
 `.odp` or `.key`, or a Google deck). It has no format row and no mode; the
 bar keeps Present. One quiet line sits above the stage: 12px muted words,

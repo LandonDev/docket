@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Principal } from './work/ids'
+import { SHEET_IMPORT_ACTS, type SheetImported } from './work/sheetFormats'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -178,6 +179,8 @@ export interface SheetView {
   reach?: SheetReach
   /** why it opens read only here (.xlsb, Strict OOXML, a password), when it does */
   readOnly?: string
+  /** the workbook is the Excel copy of an .xls, .ods or .tsv: edits save to the copy, and the file changes by his press (`work.sheets.imported`) */
+  imported?: SheetImported
   /** a package whose dates count from 1904: the grid shows them moved into Univer's 1900 system */
   date1904?: boolean
   /** the last save of a package failed: said once over the grid, with Retry */
@@ -326,7 +329,16 @@ export const SheetsRequestSchemas = [
   /** → { data: base64 }: bytes of one render by range. A `rev` no longer kept is refused: draw it again. */
   request('work.sheets.previewRead', z.object({ itemId, rev: z.string().regex(/^[a-f0-9]{32}$/), offset: z.number().int().min(0), length: z.number().int().min(1).max(SHEET_PREVIEW_READ_MAX) })),
   /** → SheetExportAnswer: the file in `format` made now from the workbook as it stands, read with `previewRead`. */
-  request('work.sheets.previewExport', z.object({ itemId, format: z.enum(SHEET_PREVIEW_FORMATS), sheet: z.string().max(200).optional() }))
+  request('work.sheets.previewExport', z.object({ itemId, format: z.enum(SHEET_PREVIEW_FORMATS), sheet: z.string().max(200).optional() })),
+  /**
+   * → SheetImportDone: what he does with the Excel copy of an .xls, .ods or .tsv (`SheetView.imported`). `back`
+   * writes the copy over the file as the format it was, only while the file is still the one the copy was made
+   * from (`drops`: what the format left behind of this workbook); `xlsx` writes it out as an .xlsx, never over
+   * anything (beside his own file, in his workspace's folder for a file others can open) and opens that
+   * (`itemId`); `again` drops the copy's edits and reads the file again. His press alone: a thread's call and
+   * another host's are refused, and a remote key changes a file others can open only with `approve`.
+   */
+  request('work.sheets.imported', z.object({ itemId, act: z.enum(SHEET_IMPORT_ACTS) }))
 ] as const
 
 /**
@@ -354,6 +366,7 @@ export const SHEETS_CAPS = {
   'work.sheets.preview': 'operate',
   'work.sheets.previewOffice': 'read',
   'work.sheets.previewRead': 'read',
-  'work.sheets.previewExport': 'read'
+  'work.sheets.previewExport': 'read',
+  'work.sheets.imported': 'operate'
 } satisfies CapsOf<typeof SheetsRequestSchemas>
 export const SHEETS_RELAY = {} satisfies RelayOf<typeof SheetsRequestSchemas>

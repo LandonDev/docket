@@ -9,6 +9,7 @@ import type { FileBytes, FileCrumb, FileDone, FilePage, FileRef, FileSaved, File
 import { teamsCanvasOf, teamsKindOf } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, handled, NOT_HANDLED, type CanvasItem, type CanvasKind, type CanvasSource, type Handled } from '@shared/work'
 import { copySavesBack, DEFAULT_SORT, extOf, freeName, kindOfEntry, PLACE, refKey, refusal, seatOf, splitName, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef } from '@shared/work/files'
+import { sheetImportFormat } from '@shared/work/sheetFormats'
 import { fencedItem } from '../canvas/store'
 import type { Caller, WorkCtx } from '../modules'
 import { copyIn, threadsHolding } from '../office/files/handle'
@@ -287,6 +288,9 @@ export function openAs(ctx: WorkCtx, at: Located, name: string, as?: CanvasKind)
     const form = extOf(name)
     const own = kindOfEntry(name).canvas
     if (!as && own && isFileForm(form) && fileMakerFor(own, form)) return { kind: own, source: file! }
+    // So does a form the sheet editor opens as an Excel copy of its own making (an .xls, .ods or .tsv: sheets/formatsIn.ts):
+    // the copy is its tab's alone, under the preview scratch, and the file changes only by his press, through `saveFile`.
+    if (!as && own === 'sheet' && sheetImportFormat(name)) return { kind: own, source: file! }
     // Else an Office file in a library has its app behind it; anything else is the file it is.
     const found = teamsCanvasOf({ name, path: at.path, kind: teamsKindOf(name) }, ctx.host)
     if (as) return { kind: as, source: found && as === found.kind ? found.source : file! }

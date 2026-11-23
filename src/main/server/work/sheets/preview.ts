@@ -260,7 +260,7 @@ async function workbookOf(ctx: WorkCtx, ref: SheetRef): Promise<IWorkbookData> {
 /** The words a model writer's `left` says, as `exportSheet` says them. */
 const leftWords = (left: { what: string; sheet?: string }[]): string[] => left.map((l) => (l.sheet ? `${l.what} on ${l.sheet}` : `the ${l.what}`.replace('the the ', 'the ')))
 
-const stemOf = (title: string): string => title.replace(/\.(xlsx|xlsm|tcsheet|csv)$/i, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim() || 'Sheet'
+const stemOf = (title: string): string => title.replace(/\.(xlsx|xlsm|tcsheet|csv|xls|ods|tsv)$/i, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim() || 'Sheet'
 
 /**
  * Where an item's renders are kept: for a file others can open, a folder of its item's own under Files' preview

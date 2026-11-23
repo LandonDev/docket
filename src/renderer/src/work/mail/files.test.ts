@@ -31,10 +31,13 @@ describe("which files open beside the mail", () => {
     for (const name of ["notes.docx", "brief.odt", "terms.rtf", "README.md", "list.txt"]) expect(viewKind(file(name)), name).toBe("document");
     expect(viewKind(file("call.m4a"))).toBe("meeting");
     expect(viewKind(file("memo.mp3", { contentType: "audio/mpeg" }))).toBe("meeting");
-    // What kindForFile gives no kind is saved: an archive, a spreadsheet of the old formats.
+    // A spreadsheet of the old formats opens in the sheet kind, as an Excel copy of the fetched file.
+    expect(viewKind(file("old.xls", { contentType: "application/vnd.ms-excel" }))).toBe("sheet");
+    expect(viewKind(file("plan.ods"))).toBe("sheet");
+    expect(viewKind(file("scores.tsv"))).toBe("sheet");
+    // What kindForFile gives no kind is saved: an archive, a binary workbook.
     expect(viewKind(file("archive.zip", { contentType: "application/zip" }))).toBeNull();
-    expect(viewKind(file("old.xls", { contentType: "application/vnd.ms-excel" }))).toBeNull();
-    expect(viewKind(file("plan.ods"))).toBeNull();
+    expect(viewKind(file("macro.xlsb"))).toBeNull();
     // A file that does not name its mail thread, message and part cannot be found by the host.
     expect(viewKind(file("Q3 report.pdf", { partId: undefined }))).toBeNull();
     expect(viewKind(file("Q3 report.pdf", { threadId: undefined }))).toBeNull();

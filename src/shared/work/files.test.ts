@@ -70,12 +70,15 @@ describe('the one kind table', () => {
   it('gives text and archives to the file kind, and seats in a tab what has no viewer of its own', () => {
     for (const name of ['README.md', 'notes.txt', 'plan.markdown', 'main.ts', 'data.json']) expect(kindOfEntry(name)).toEqual({ kind: 'text', canvas: 'file' })
     // Every file opens in a Files tab: its kind's viewer, else the file kind.
-    expect(['Budget.xlsx', 'scan.pdf', 'README.md', 'bundle.zip', 'old.xls', 'logo.svg', 'Makefile', 'thing.xyz'].map((n) => seatOf(n))).toEqual(['sheet', 'pdf', 'file', 'file', 'file', 'file', 'file', 'file'])
+    expect(['Budget.xlsx', 'scan.pdf', 'README.md', 'bundle.zip', 'macro.xlsb', 'logo.svg', 'Makefile', 'thing.xyz'].map((n) => seatOf(n))).toEqual(['sheet', 'pdf', 'file', 'file', 'file', 'file', 'file', 'file'])
     // Beside a thread only what it always opened: text he writes as a document, and nothing else the file kind shows.
-    expect(['README.md', 'notes.txt', 'plan.markdown', 'main.ts', 'bundle.zip', 'Makefile', 'Budget.xlsx', 'old.xls'].map((n) => threadCanvasOf(n))).toEqual(['document', 'document', 'document', null, null, null, 'sheet', null])
+    expect(['README.md', 'notes.txt', 'plan.markdown', 'main.ts', 'bundle.zip', 'Makefile', 'Budget.xlsx', 'macro.xlsb'].map((n) => threadCanvasOf(n))).toEqual(['document', 'document', 'document', null, null, null, 'sheet', null])
     expect(threadCanvasOf('notes', 'text/plain')).toBeNull()
-    for (const name of ['old.xls', 'macro.xlsb', 'form.docm']) expect(kindOfEntry(name).canvas).toBeNull()
-    expect(kindOfEntry('old.xls').kind).toBe('sheet')
+    for (const name of ['macro.xlsb', 'form.docm']) expect(kindOfEntry(name).canvas).toBeNull()
+    expect(kindOfEntry('macro.xlsb').kind).toBe('sheet')
+    // An .xls, an .ods and a .tsv are the sheet kind's: it opens each as an Excel copy (sheets/formatsIn.ts).
+    for (const name of ['old.xls', 'plan.ODS', 'scores.tsv']) expect(kindOfEntry(name)).toEqual({ kind: 'sheet', canvas: 'sheet' })
+    expect(['old.xls', 'scores.tsv'].map((n) => [seatOf(n), threadCanvasOf(n)])).toEqual([['sheet', 'sheet'], ['sheet', 'sheet']])
     for (const ext of ['ppt', 'pps', 'ppsx', 'odp', 'key']) expect(kindOfEntry(`Talk.${ext.toUpperCase()}`)).toEqual({ kind: 'deck', canvas: 'slides' })
   })
 

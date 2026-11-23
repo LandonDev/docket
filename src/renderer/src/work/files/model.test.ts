@@ -170,10 +170,12 @@ describe("where a file opens", () => {
     expect(openWay(f("notes.txt"), folder, ws)).toBe("tab");
     // What has no viewer of its own still opens: the file kind shows its facts.
     expect(openWay(f("bundle.zip"), folder, ws)).toBe("tab");
-    expect(openWay(f("old.xls"), folder, ws)).toBe("tab");
-    // An old Office form has its app behind it in a library on the workspace's own host.
-    expect(openWay(f("old.xls"), here, ws)).toBe("tab");
-    expect(openWay(f("old.xls"), far, ws)).toBe("app");
+    expect(openWay(f("macro.xlsb"), folder, ws)).toBe("tab");
+    // An old Office form the sheet kind does not read has its app behind it in a library on the workspace's own host.
+    expect(openWay(f("macro.xlsb"), here, ws)).toBe("tab");
+    expect(openWay(f("macro.xlsb"), far, ws)).toBe("app");
+    // An .xls is the sheet kind's, as an .xlsx is: it opens in a tab wherever an .xlsx would.
+    for (const place of [folder, here, far]) expect(openWay(f("old.xls"), place, ws)).toBe(openWay(f("Budget.xlsx"), place, ws));
     // Text in a library is the file it is; a library's sound waits for its player, in its app.
     expect(openWay(f("notes.txt"), here, ws)).toBe("tab");
     expect(openWay(f("call.m4a"), here, ws)).toBe("app");

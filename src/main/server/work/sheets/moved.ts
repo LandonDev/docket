@@ -5,6 +5,7 @@ import { dirname, extname, join } from 'node:path'
 import { canvasSourcePath, type CanvasSource } from '@shared/work'
 import type { FileMoved } from '../files/hooks'
 import { servicePaths } from '../service/config'
+import { importMoved } from './formatsIn'
 import { csvEdited, csvSheetPath, ownCsvPath, PACKAGE_EXT, sharedCopies } from './held'
 
 /**
@@ -20,6 +21,8 @@ import { csvEdited, csvSheetPath, ownCsvPath, PACKAGE_EXT, sharedCopies } from '
  *  - a `.tcsheet`: what is keyed `tcsheet:<path>`, and its waiting suggestions' file in the Work
  *    service's folder (`work-service/sheets/suggestions/`, by the path's hash);
  *  - a `.csv`: the sheet it opens as (`sheets/csv/<hash>.tcsheet`), with that sheet's own keys.
+ *  - an `.xls`, `.ods` or `.tsv` of his own: the Excel copy it opens as (`sheets/imports/<hash>/`, formatsIn.ts),
+ *    with his edits, and what the copy keeps as an opened package.
  */
 
 const hash = (path: string): string => createHash('sha256').update(path).digest('hex').slice(0, 24)
@@ -50,19 +53,10 @@ export const sheetFileMoved: FileMoved = (from: CanvasSource, to: CanvasSource, 
   const b = canvasSourcePath(to)
   if (a === null || b === null || a === b) return
   const ext = extname(a).toLowerCase()
-  if (PACKAGE_EXT.has(ext)) {
-    at.db.prepare('DELETE FROM work_sheets_ops WHERE path = ?').run(b)
-    at.db.prepare('DELETE FROM work_sheets_files WHERE path = ?').run(b)
-    at.db.prepare('UPDATE work_sheets_ops SET path = ? WHERE path = ?').run(b, a)
-    at.db.prepare('UPDATE work_sheets_files SET path = ? WHERE path = ?').run(b, a)
-    // Who holds a workbook others can open follows it too; whether the new place is one is asked again when it is next touched.
-    at.db.prepare('DELETE FROM work_sheets_shared WHERE path = ?').run(b)
-    at.db.prepare('UPDATE work_sheets_shared SET path = ? WHERE path = ?').run(b, a)
-    rekey(at.db, `file:${a}`, `file:${b}`)
-    carry(join(at.dataDir, 'sheets', 'files', hash(a)), join(at.dataDir, 'sheets', 'files', hash(b)))
-    carry(join(sharedCopies(at.dataDir), hash(a)), join(sharedCopies(at.dataDir), hash(b)))
-    return
-  }
+  // (a shared file's copy is its tab's own and is found by the tab, wherever the file goes)
+  const copy = importMoved(at.dataDir, a, b)
+  if (copy) return movePackage(at, copy.from, copy.to)
+  if (PACKAGE_EXT.has(ext)) return movePackage(at, a, b)
   if (ext === '.tcsheet') {
     rekey(at.db, `tcsheet:${a}`, `tcsheet:${b}`)
     carry(sideFile(at.dataDir, a), sideFile(at.dataDir, b))
@@ -81,4 +75,18 @@ export const sheetFileMoved: FileMoved = (from: CanvasSource, to: CanvasSource, 
     carry(sideFile(at.dataDir, was), sideFile(at.dataDir, now))
     carry(was, now)
   }
+}
+
+/** What is kept of an opened package by its path, moved from `a` to `b`. */
+function movePackage(at: Parameters<FileMoved>[2], a: string, b: string): void {
+  at.db.prepare('DELETE FROM work_sheets_ops WHERE path = ?').run(b)
+  at.db.prepare('DELETE FROM work_sheets_files WHERE path = ?').run(b)
+  at.db.prepare('UPDATE work_sheets_ops SET path = ? WHERE path = ?').run(b, a)
+  at.db.prepare('UPDATE work_sheets_files SET path = ? WHERE path = ?').run(b, a)
+  // Who holds a workbook others can open follows it too; whether the new place is one is asked again when it is next touched.
+  at.db.prepare('DELETE FROM work_sheets_shared WHERE path = ?').run(b)
+  at.db.prepare('UPDATE work_sheets_shared SET path = ? WHERE path = ?').run(b, a)
+  rekey(at.db, `file:${a}`, `file:${b}`)
+  carry(join(at.dataDir, 'sheets', 'files', hash(a)), join(at.dataDir, 'sheets', 'files', hash(b)))
+  carry(join(sharedCopies(at.dataDir), hash(a)), join(sharedCopies(at.dataDir), hash(b)))
 }

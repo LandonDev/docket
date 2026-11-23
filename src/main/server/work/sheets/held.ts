@@ -9,6 +9,8 @@ import { FenceError } from '../../remote/fence'
 import { fetchedFile } from '../canvas/fetch'
 import { sharedOf } from '../files/policy'
 import { Toolchain } from '../formats/tools'
+import { ensureImported, importedHeld, importedOf, isSharedImport, type ImportedFrom } from './formatsIn'
+import { sharedCsvCache, sharedCsvReadOnly, throughCsv } from './formatsInCsv'
 import { fullEditorHere } from './fullEditor'
 import type { Caller, WorkCtx } from '../modules'
 import { excelStore } from '../office/excel'
@@ -31,7 +33,8 @@ import { offersGoogle } from './toGoogleOffer'
  * its socket.
  */
 
-export type Held = { at: 'package'; path: string } | { at: 'service'; ref: SheetRef; csv?: string } | { at: 'excel'; ref: ExcelRef } | { at: 'google'; ref: GoogleSheetRef }
+/** `from`: the package is the Excel copy of an .xls, .ods or .tsv (formatsIn.ts), which changes only by his press. */
+export type Held = { at: 'package'; path: string; from?: ImportedFrom } | { at: 'service'; ref: SheetRef; csv?: string } | { at: 'excel'; ref: ExcelRef } | { at: 'google'; ref: GoogleSheetRef }
 
 export const PACKAGE_EXT = new Set(['.xlsx', '.xlsm'])
 
@@ -50,7 +53,10 @@ export function heldOf(item: Pick<CanvasItem, 'source' | 'title'> & Partial<Pick
     if (ext === '.tcsheet') return { at: 'service', ref: { tcsheet: s.path } }
     // A .csv opens as a sheet of our own, read from it once: saving writes it back, or out as .xlsx.
     if (ext === '.csv' && dataDir) return { at: 'service', ref: { tcsheet: csvSheetPath(dataDir, s.path) }, csv: s.path }
-    throw new Error(`${basename(s.path)} is not a workbook this canvas opens (.xlsx, .xlsm, .tcsheet or .csv).`)
+    // An .xls, an .ods or a .tsv opens as an Excel copy LibreOffice makes of it: a shared file's copy is its tab's own.
+    const copy = dataDir ? importedHeld(dataDir, s.path, sharedCsv(s.path), item.id) : null
+    if (copy) return copy
+    throw new Error(`${basename(s.path)} is not a workbook this canvas opens (.xlsx, .xlsm, .tcsheet, .csv, .xls, .ods or .tsv).`)
   }
   // A workbook that lives in Excel: Excel is the truth, the office pillar's helper reads and writes it (milestone 28).
   const excel = excelRefOf(s)
@@ -76,8 +82,9 @@ export function heldOfPath(path: string, dataDir: string): Exclude<Held, { at: '
 export function csvSheetPath(dataDir: string, csv: string): string {
   // His own .csv, and a shared one he had edited here before this rule: the sheet among the app's files, as before.
   if (!sharedCsv(csv) || csvEdited(ownCsvPath(dataDir, csv))) return ownCsvPath(dataDir, csv)
-  // A .csv others can open: a cache named for the file as it stands, so a co-author's newer file is read again.
-  return join(sharedCsvDir(dataDir), `${nameOfCsv(csv)}-${stampOfCsv(csv)}.tcsheet`)
+  // A .csv others can open: a cache named for the file as it stood when read, so a co-author's newer file is read
+  // again; a file that changed because an edit here was saved through keeps its cache (formatsInCsv.ts).
+  return sharedCsvCache(sharedCsvDir(dataDir), csv)
 }
 const nameOfCsv = (csv: string): string => createHash('sha256').update(csv).digest('hex').slice(0, 24)
 /** The sheet a .csv opens as among the app's own files. */
@@ -105,20 +112,12 @@ export function csvEdited(sheet: string): boolean {
   return rev > 0
 }
 const editedSeen = new Map<string, { stamp: string; edited: boolean }>()
-const stampOfCsv = (csv: string): string => {
-  try {
-    const st = statSync(csv)
-    return createHash('sha256').update(`${st.size}:${st.mtimeMs}`).digest('hex').slice(0, 8)
-  } catch {
-    return 'gone'
-  }
-}
-
 /**
  * A .csv others can open (the editors plan, "University files"): the sheet it is read into is a cache under
- * Files' scratch (out of the backups, cleared at each start), and it opens to read: an edit would live only in
- * that cache until he saved it back, and the cache does not last. Which file that is, is the host's rule
- * (`sharedOf`), set once the pillar has its context; before that, and in a test that sets none, no file is.
+ * Files' scratch (out of the backups, cleared at each start). The cache does not last, so no edit is left in it
+ * alone: every change to it is saved through to the file at once (`host`, formatsInCsv.ts `throughCsv`). Which
+ * file that is, is the host's rule (`sharedOf`), set once the pillar has its context; before that, and in a test
+ * that sets none, no file is.
  */
 let sharedPath: ((path: string) => boolean) | null = null
 export const setSharedPath = (fn: ((path: string) => boolean) | null): void => {
@@ -132,9 +131,8 @@ const sharedCsv = (csv: string): boolean => {
   }
 }
 export const sharedCsvDir = (dataDir: string): string => join(dataDir, 'work-files', 'preview-scratch', 'sheets', 'csv')
-/** Whether a sheet the service holds is the read-only cache of a .csv others can open. */
+/** Whether a sheet the service holds is the cache of a .csv others can open. */
 export const isSharedCsvSheet = (dataDir: string, ref: unknown): boolean => typeof (ref as { tcsheet?: unknown } | null)?.tcsheet === 'string' && (ref as { tcsheet: string }).tcsheet.startsWith(sharedCsvDir(dataDir) + sep)
-export const SHARED_CSV_READS = 'This .csv is in a folder others can open, so it opens here to read. Save a copy to edit it.'
 
 /** Makes the sheet a .csv opens as, the first time: the CSV's cells as its first snapshot. */
 export function ensureCsvSheet(held: Held, dataDir?: string): void {
@@ -207,7 +205,8 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
         return done.output
       },
       (path) => fileKey(ctx, path),
-      { root: sharedCopies(ctx.dataDir), is: (path) => sharedOf(ctx, { at: 'file', host: ctx.host, path }) }
+      // (the copy made of an .xls, .ods or .tsv others can open is as private as that file: formatsIn.ts)
+      { root: sharedCopies(ctx.dataDir), is: (path) => isSharedImport(ctx.dataDir, path) || sharedOf(ctx, { at: 'file', host: ctx.host, path }) }
     ),
     suggestions,
     changes,
@@ -262,9 +261,11 @@ export async function fileKey(ctx: WorkCtx, path: string): Promise<string> {
 
 /** One call to the Work service's sheet host. */
 export async function host<A extends HostAsk['op']>(ctx: WorkCtx, op: A, body: Omit<Extract<HostAsk, { op: A }>, 'op'>): Promise<HostAnswer<A>> {
-  // The cache of a .csv others can open takes no change, whoever asks: it opens to read (`SHARED_CSV_READS`).
-  if (WRITES.has(op) && isSharedCsvSheet(ctx.dataDir, (body as { sheet?: unknown }).sheet)) throw new Error(SHARED_CSV_READS)
-  return (await ctx.service.internal(`/internal/sheet/${op}`, body)) as HostAnswer<A>
+  const ask = async (): Promise<HostAnswer<A>> => (await ctx.service.internal(`/internal/sheet/${op}`, body)) as HostAnswer<A>
+  // The cache of a .csv others can open does not last: a change to it, whoever makes it, is saved through to the file (or refused).
+  const sheet = (body as { sheet?: unknown }).sheet
+  if (WRITES.has(op) && isSharedCsvSheet(ctx.dataDir, sheet)) return throughCsv(ctx, (sheet as { tcsheet: string }).tcsheet, ask)
+  return ask()
 }
 const WRITES: ReadonlySet<string> = new Set(['apply', 'cells', 'review', 'restore'])
 
@@ -291,6 +292,7 @@ export function setChart(ctx: WorkCtx, store: string, chart: SheetChart, remove:
 export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   const held = heldOf(item, s.ctx.dataDir)
   ensureCsvSheet(held, s.ctx.dataDir)
+  await ensureImported(s.ctx, held)
   const key = storeKey(held)
   // A Files tab's owner is no thread and has no scope: what others can open is read from the source itself.
   const scope = s.ctx.scopeOf(item.sessionId)
@@ -301,9 +303,12 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     const st = await s.packages.open(held.path)
     // A workbook others can open is held by this tab: its copies go when the tab does (index.ts `itemsRemoved`).
     s.packages.hold(held.path, item.id, item.sessionId)
+    const imported = importedOf(held)
     return {
       ...base,
-      name: basename(held.path),
+      // A copy of another format goes by the name of the file it was made from.
+      name: imported?.name ?? basename(held.path),
+      ...(imported ? { imported } : {}),
       store: 'package',
       ...(SHEET_ROW.package.length ? { row: [...SHEET_ROW.package] } : {}),
       // moved cells go through LibreOffice, as an insert does: a host with none forwards the job
@@ -362,8 +367,8 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     suggestions: st.suggestions,
     ...changesOf(s, key),
     ...(written ? { written } : {}),
-    // A .csv others can open is a cache that does not last: it opens to read.
-    ...(isSharedCsvSheet(s.ctx.dataDir, held.ref) ? { readOnly: SHARED_CSV_READS } : {}),
+    // A .csv others can open saves each edit through to its file; one a save would damage opens to read.
+    ...(held.csv && isSharedCsvSheet(s.ctx.dataDir, held.ref) && sharedCsvReadOnly(held.csv) ? { readOnly: sharedCsvReadOnly(held.csv)! } : {}),
     ...(st.missing ? { missing: true } : {})
   }
 }

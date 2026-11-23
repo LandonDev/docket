@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, extname, join } from 'node:path'
+import { basename, dirname, extname, join } from 'node:path'
 import type { IWorkbookData } from '@univerjs/core'
 import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
@@ -15,6 +15,8 @@ import { blankWorkbook } from './host/backends'
 import type { SheetRef } from './host/wire'
 import { writeCsv, writeXlsx, writeXlsxWhole } from './writer'
 import { ensureChangeTables } from './changes'
+import { dropSharedImports, ensureImported, importAct } from './formatsIn'
+import { SHEET_BACK_CONVERTERS } from './formatsInBack'
 import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setChart, setSharedPath, sheetsOf, storeKey, viewFor, viewOf, type Held, type Sheets } from './held'
 import { sheetFileMoved } from './moved'
 import { ensurePackageTables, type Moved } from './packages'
@@ -110,7 +112,10 @@ export const sheets: WorkModule = {
     const item = typeof named === 'string' ? itemOf(ctx, named) : null
     if (item) {
       fence(ctx, by, item, req.method)
-      ensureCsvSheet(heldOf(item, ctx.dataDir), ctx.dataDir)
+      const held = heldOf(item, ctx.dataDir)
+      ensureCsvSheet(held, ctx.dataDir)
+      // An .xls, .ods or .tsv is read through its Excel copy, made the first time it is asked for.
+      await ensureImported(ctx, held)
     }
     switch (req.method) {
       case 'work.sheets.open':
@@ -222,7 +227,8 @@ export const sheets: WorkModule = {
         if (held.at === 'google') return handled({ opened: true as const, url: await (await import('../google/grid')).webLink(ctx, held.ref) })
         if (held.at !== 'package') throw new Error('This sheet opens only here for now.')
         if (fullEditorHere(ctx.dataDir)) return handled({ opened: true as const, url: await openFull(ctx, item!, held.path, by, req.params.scheme) })
-        await openInExcel(held.path)
+        // (Excel opens the file itself, not the copy made of an .xls or .ods)
+        await openInExcel(held.from?.path ?? held.path)
         return handled({ opened: true as const })
       }
       case 'work.sheets.export':
@@ -238,6 +244,13 @@ export const sheets: WorkModule = {
         return handled(readSheetPreview(ctx, item!, req.params))
       case 'work.sheets.previewExport':
         return handled(await exportPreview(s, item!, req.params))
+      // The Excel copy of an .xls, .ods or .tsv: saved back, saved out as .xlsx, or read again (formatsIn.ts). His press alone.
+      case 'work.sheets.imported': {
+        const done = await importAct(s, by, item!, heldOf(item!, ctx.dataDir), req.params.act)
+        // The view's line follows (the file and the copy agree again), and a copy read again reloads its grids.
+        if (req.params.act !== 'xlsx') await announce(s, item!)
+        return handled(done)
+      }
     }
     return NOT_HANDLED
   },
@@ -268,7 +281,8 @@ export const sheets: WorkModule = {
     }
   },
   tools: () => sheetTools,
-  convert: [...STRUCTURAL_CONVERTERS, ...SHEET_PREVIEW_CONVERTERS],
+  // (the last pair writes the Excel copy of an .xls or .ods back as that format, recalculated: formatsInBack.ts)
+  convert: [...STRUCTURAL_CONVERTERS, ...SHEET_PREVIEW_CONVERTERS, ...SHEET_BACK_CONVERTERS],
   preamble: () =>
     'A sheet in the canvas is read with `sheet_read` and changed with `sheet_write` or `sheet_suggest`, cells in A1. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a sheet others share, your own idea waits as a suggestion he steps through cell by cell.',
   // A workbook others can open keeps nothing here past its tab or its thread (packages.ts `release`).
@@ -276,6 +290,8 @@ export const sheets: WorkModule = {
     const ids = items.filter((item) => item.kind === 'sheet').map((item) => item.id)
     // What Preview made of a shared workbook goes with its item, at once (preview.ts `storeFor`).
     for (const id of ids) dropSharedPreviews(ctx.dataDir, id)
+    // So does the Excel copy made for a tab of an .xls, .ods or .tsv others can open.
+    for (const id of ids) dropSharedImports(ctx.dataDir, id)
     if (ids.length) void sheetsOf(ctx).then((s) => s.packages.release({ items: ids })).catch(() => {})
   },
   sessionsRemoved(ids, ctx) {
@@ -401,7 +417,7 @@ async function workbookOf(ctx: WorkCtx, ref: SheetRef): Promise<IWorkbookData> {
  */
 export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string): Promise<{ path: string; left?: string[] }> {
   const held = heldOf(item, s.ctx.dataDir)
-  const base = item.title.replace(/\.(xlsx|xlsm|tcsheet|csv)$/i, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim() || 'Sheet'
+  const base = item.title.replace(/\.(xlsx|xlsm|tcsheet|csv|xls|ods|tsv)$/i, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim() || 'Sheet'
   // What he writes out of a sheet others can open is a copy he takes: it lands in his own workspace's folder, never
   // beside the file (a library would sync it to the team) and never among what the app keeps for him.
   const shared = sharedOf(s.ctx, item.source)
@@ -414,8 +430,9 @@ export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 
   if (held.at === 'excel') throw new Error(`${item.title} lives in Excel: save or export it there.`)
   if (held.at === 'google') throw new Error(`${item.title} lives in Google: download it there with File → Download.`)
   if (held.at === 'package') {
-    if (format === 'xlsx') throw new Error('This is an Excel file already: every edit is saved into it.')
-    const path = beside(held.path, `${base}.csv`)
+    if (format === 'xlsx') throw new Error(held.from ? `This is an Excel copy of ${basename(held.from.path)}: he saves it back, or as Excel, from the sheet itself.` : 'This is an Excel file already: every edit is saved into it.')
+    // (a copy of another format lies among the app's files: its .csv goes beside the file it was made from)
+    const path = beside(held.from?.path ?? held.path, `${base}.csv`)
     writeFileSync(path, await s.jobs.csv(held.path, sheet))
     return { path }
   }
