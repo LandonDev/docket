@@ -194,6 +194,41 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 - The command `open_digest` (Go → Digest, no key) opens the sheet; it is
   greyed while no host has Work on (`MenuFacts.digest`).
 
+## Sources
+
+A source tells the news of a pillar that hands a read, not a tell
+(`work/digest/sources/`, listed in `SOURCES` in `list.ts`). Each reads its
+pillar only through that module's own `handle` as this host's reader
+(`env.call`), or LifeOS on the owner session where the pillar itself reads
+it that way and has no method for the fact. The frame (`sources/index.ts`
+`Sources`) skips a source whose pillar is not loaded, reads one with
+`every: 0` only before a day is made (`beforeDay`, ten seconds each), one
+with a beat at the first look and then each `every`, logs one that throws
+and reads the rest, and with `prefix` ends every row under it a read no
+longer names (`ctx.tell.only`). A re-read with nothing changed says the
+same words, so it is not news again.
+
+- `lapses`: a sign-in or licence about to end, from `lapsesOf`, each 6 h;
+  `lapse:<pillar>:<id>:<until>:<stage>`; 14 days before it waits, on the
+  last day it carries `by` its end.
+- `waiting` (mail): each linked job's sent mails with no answer that are
+  due, read from LifeOS's `mailWaits:list` for the sector as `mail_waiting`
+  reads it, at digest time; `mail-waiting:<workspaceId>:<day>`, "3 sent
+  mails have no answer", opens Mail. A new row each day it is true.
+- `guests` (docs): each document whose last edit since the last digest (a
+  day, before the first) was a guest's, from `work.docs.find`'s `lastBy`, at
+  digest time; `guest-edit:<entry key>:<day>`, "A guest edited Pricing
+  notes" (the list names no guest), opens Docs.
+- `capture`: captures waiting in Life's "Unsorted", one row a day,
+  `capture-unsorted:<day>`, "4 captures to sort", opening Tasks in the
+  Life workspace. Tells nothing yet: the capture pillar has no method that
+  counts them (`unsortedTell` is the row it will make).
+- `winvm`: a failure only he can fix, from `work.winvm.state` each 5
+  minutes, under `winvm:`. Only a setup that failed before it made the disk
+  (`none` with an `error`) is told, `winvm:setup`, its reason the detail,
+  opening Settings → Work; a later setup step, a restore point and a wake
+  that fail leave the same bare `error`, which the state does not place.
+
 ## The swap for Today
 
 `digestOpensPort` in `src/renderer/src/lib/workSwitch.ts` is the whole
