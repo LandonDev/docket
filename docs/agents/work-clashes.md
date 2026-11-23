@@ -25,7 +25,10 @@ the look of each surface is docs/DESIGN.md "Clashes".
   Times read in the zone the caller passes, with ordinary spaces. `clashLine`
   names the other event's job only when it is another job, and prefixes its
   time with its weekday (its date more than three days off; `timeNear`,
-  which the dialog's time spans and the row menu's `clashTime` use too) when it
+  which the dialog's time spans and the row menu's `clashTime` use too; the
+  second time a clock shows, the night the clocks go back, is "second 1:30
+  AM"; `clashLines` gives a row its lines and tells two drive lines that
+  would read alike apart by the other event's start) when it
   starts on another day than the one the line
   is read under (the event's own start day, or `opts.on` when a list shows
   the row under another). A shortfall worked out without the map is said to

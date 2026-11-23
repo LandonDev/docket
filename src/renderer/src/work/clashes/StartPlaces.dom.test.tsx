@@ -240,8 +240,9 @@ describe("Start places", () => {
     await act(async () => {});
     expect(typed()).toBe("12 Oak Ct");
     expect(saveOff()).toBe(true);
-    // A session still connecting is a wait too, never "Not signed in".
+    // A session still connecting is a wait too, never "Not signed in", and comes before what an earlier read said.
     lifeos.loading = false;
+    lifeos.failed = "LifeOS did not answer";
     lifeos.state = "connecting";
     view.rerender(<StartPlacesSection environmentId="box" />);
     await act(async () => {});
@@ -249,6 +250,7 @@ describe("Start places", () => {
     expect(saveOff()).toBe(true);
     expect(within(screen.getByRole("dialog")).getByRole("status").textContent).toBe("Waiting for LifeOS…");
     expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");
+    lifeos.failed = null;
     lifeos.state = "connected";
     lifeos.loading = true;
     view.rerender(<StartPlacesSection environmentId="box" />);

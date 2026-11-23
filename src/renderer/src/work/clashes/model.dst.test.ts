@@ -3,7 +3,7 @@
 process.env.TZ = "America/New_York";
 
 import { afterAll, describe, expect, it } from "vitest";
-import { endHint, fieldOf, formOf, spanOf, whenOf } from "./model";
+import { endHint, fieldOf, formOf, hintsOf, spanOf, whenOf } from "./model";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -41,7 +41,22 @@ describe("a step's times when the clocks change", () => {
     const offered = { start: SECOND_1_30, end: SECOND_1_30 + 90 * MINUTE };
     const form = { ...formOf(offered), to: "01:45" };
     expect(whenOf(form, offered)).toEqual({ start: SECOND_1_30, end: SECOND_1_30 + 15 * MINUTE });
-    expect(endHint(form, offered)).toBeUndefined();
+    // Both are the second time their clocks show, and each field says so.
+    expect(hintsOf(form, offered)).toEqual({ from: "Second 1:30 AM", to: "Second 1:45 AM" });
+  });
+
+  it("says Second under each field whose instant is the second time its clock shows, beside the end's day when there is one", () => {
+    // The first 1:15 AM to the second 1:30: 75 minutes, which the two clocks alone would read as fifteen.
+    const across = { start: FIRST_1_30 - 15 * MINUTE, end: SECOND_1_30 };
+    expect(formOf(across)).toEqual({ day: "2026-11-01", from: "01:15", to: "01:30" });
+    expect(hintsOf(formOf(across), across)).toEqual({ to: "Second 1:30 AM" });
+    // The night before, into the second 1:30.
+    const night = { start: new Date(2026, 9, 31, 23, 0).getTime(), end: SECOND_1_30 };
+    expect(hintsOf(formOf(night), night)).toEqual({ to: "Next day, second 1:30 AM" });
+    // Typed, both read as their first times: nothing to say.
+    expect(hintsOf({ day: "2026-11-01", from: "01:15", to: "01:30" })).toEqual({});
+    // A refusal keeps only the day it is about.
+    expect(hintsOf({ day: "2027-03-13", from: "23:00", to: "02:30" })).toEqual({ to: "Next day" });
   });
 
   it("takes a To earlier on the clock as the next day's on the day that is 25 hours long", () => {

@@ -1858,14 +1858,17 @@ Around the canvas:
   named only when it is another job, and its time takes its weekday when
   it starts on another day within three days ("Wed 11:00 PM"), its date
   further off ("Jan 14, 9:00 AM"): a weekday reads as the nearest day of
-  that name, and within three days that is always the true one. An event with several
+  that name, and within three days that is always the true one. Two
+  drive lines that would read alike each take the other event's start
+  ("15 min short before Site visit (Ref), 10:30 AM"). An event with several
   clashes has a line for each, so every one named can be opened. A line
   is a link `Button` at the line's own 16px that takes an underline on
   hover and opens that clash's dialog; the row's menu has
   Show clash, or with several "Show clash with Varsity Basketball" for
   each (two of one name take their job and time, the time as the line
   says it: "Show clash with Stand-up (Ref, Fri 9:00 AM)"). An event that is over carries none, and a clash goes from the
-  row, its menu and its dot once either of its events is over. The line arrives with its
+  row, its menu and its dot once its later event is over (Running late
+  is for the time after the earlier one ends). The line arrives with its
   read and nothing pulses for it. "Leave 4:35" under the time is from
   where he will be: the event before when that ends within three hours,
   else the day's start.
@@ -1903,9 +1906,11 @@ Around the canvas:
   its end is past its Day, and one that ends further on than the next day
   names that day under To ("Sat, Nov 28"). A time the clocks skip on the
   day it falls on is refused in words, its field ringed in `destructive`
-  until he edits and the day still named under To; an end that is the
-  second time its clock shows, the night the clocks go back, says so
-  under To ("Second 1:30 AM"); a time already gone is refused too. Send
+  until he edits and the day still named under To; a From or a To that
+  is the second time its clock shows, the night the clocks go back, says
+  so under its field ("Second 1:30 AM", "Next day, second 1:30 AM"), as
+  an event's own times do ("1:30 AM – second 1:30 AM"); a time already
+  gone is refused too. Send
   holds its width and spins, and the step's fields are locked while it
   is out; a toast answers the press and the dialog closes on the clash it
   showed, though his own press is what ended it; a refusal stays in the

@@ -19,6 +19,21 @@ afterAll(() => {
   delete process.env.TZ;
 });
 
+describe("a step on the night the clocks go back", () => {
+  it("says which 1:30 AM an event ends at, in its times and under the field", () => {
+    // 2026-11-01 in New York: 1:00 to 1:59 AM comes twice. A game from the first 1:30 to the second, and a call that offers it the hour after.
+    const first = Date.UTC(2026, 10, 1, 5, 30);
+    const game = side("ev_a", "Late game", first, first + 3_600_000, ["propose"]);
+    const call = side("ev_b", "Call", first - 15 * 60_000, first + 15 * 60_000, []);
+    render(<StepForm clash={{ id: "ev_b-ev_a", kind: "overlap", a: call, b: game }} step={{ side: "b", way: "propose" }} pending={false} onBack={() => {}} onSend={() => {}} />);
+    expect(screen.getByRole("group", { name: "Late game" }).textContent).toContain("1:30 AM – second 1:30 AM");
+    // Offered the quarter hour after the call ends: the first 1:45 AM to the second 1:45.
+    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("01:45");
+    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("01:45");
+    expect(document.querySelector("[data-clash-step]")?.textContent).toContain("Second 1:45 AM");
+  });
+});
+
 describe("a step's times on the day the clocks go forward", () => {
   it("marks the field whose time the clocks skip, says so, sends nothing, and lets go of both when he edits", () => {
     expect(new Date(2027, 2, 14, 2, 30).getHours()).toBe(3);

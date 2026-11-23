@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { clashLine, listFrom, type Clash, type LifeosRange } from "@shared/work/clashes";
+import { clashLines, listFrom, type Clash, type LifeosRange } from "@shared/work/clashes";
 import type { SectorKey } from "@shared/work";
 import { TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
@@ -36,10 +36,11 @@ export function useClashes(environmentId: string, from: number, to: number): Cla
  * clash's dialog, so each one named can be reached from the row.
  */
 export function ClashLines({ clashes, eventId, environmentId, day }: { clashes: readonly Clash[]; eventId: string; environmentId: string; /** the day the row sits under in its list */ day?: number }) {
+  const lines = clashLines(clashes, eventId, day === undefined ? {} : { on: day });
   return (
     <>
-      {clashes.map((clash) => {
-        const words = clashLine(clash, eventId, day === undefined ? {} : { on: day });
+      {clashes.map((clash, i) => {
+        const words = lines[i]!;
         return (
           <TruncateTip key={clash.id} text={words}>
             <Button

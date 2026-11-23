@@ -137,7 +137,7 @@ describe("a clash on the Agenda row", () => {
     expect(screen.queryByRole("menuitem", { name: "Show clash" })).toBeNull();
   });
 
-  it("drops a clash once the other event is over, from the row, its menu and the Week's dot, though this event still runs", async () => {
+  it("drops a clash once its later event is over, from the row, its menu and the Week's dot, though this event still runs", async () => {
     const running = { ...meeting, startsAt: now - 5 * HOUR, endsAt: now + 2 * HOUR };
     events.rows = [running];
     const done = side("ev_done", "ref", "Stand-up", now - 4 * HOUR, now - 3 * HOUR);
@@ -160,6 +160,29 @@ describe("a clash on the Agenda row", () => {
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
     await act(async () => {});
     expect(drawn.marked.at(-1)).toEqual([]);
+  });
+
+  it("keeps a clash on the later event's row, its menu and the Week's dot after the earlier event ends: that is when he is running late", async () => {
+    events.rows = [meeting];
+    const left = side("ev_left", "ref", "Varsity Basketball", now - 3 * HOUR, now - 60_000);
+    lifeos.range = { clashes: [{ id: "ev_left-ev_meeting", kind: "drive", a: left as never, b: overlap.clashes[0]!.a, minutes: 44, measured: true, shortBy: 14 }], leaves: [] };
+    render(<View {...props} />);
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: "14 min short after Varsity Basketball (Ref)" })).toBeTruthy();
+    fireEvent.contextMenu(screen.getByRole("listitem"));
+    await act(async () => {});
+    expect(screen.getByRole("menuitem", { name: "Show clash" })).toBeTruthy();
+    cleanup();
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    await act(async () => {});
+    expect(drawn.marked.at(-1)).toEqual(["ev_meeting"]);
   });
 
   it("hands the Week and the Month the events that clash, for their dot", async () => {

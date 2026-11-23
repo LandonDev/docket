@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clashLine, clashTime, clashTitle, driveLine, leaveLine, milesOf, tellWords, timeNear, type Clash, type ClashSide } from './clashes'
+import { clashLine, clashLines, clashTime, clashTitle, driveLine, leaveLine, milesOf, tellWords, timeNear, type Clash, type ClashSide } from './clashes'
 
 /** The words a clash is shown in, on made-up events, read in one zone (EST in November). */
 
@@ -60,6 +60,15 @@ describe('clashLine', () => {
     expect(clashLine(clash, 'e_night', ZONE)).toBe('Overlaps Shift (Life), 11:30 PM')
     expect(clashLine(clash, 'e_night', { ...ZONE, on: at(26, 0) })).toBe('Overlaps Shift (Life), Wed 11:30 PM')
   })
+  it('tells two drive clashes with later events of one name apart by their starts, and leaves lines that already differ alone', () => {
+    const checkIn = side({ eventId: 'e_in', sector: 'purdue', title: 'Check-in', startsAt: at(26, 9), endsAt: at(26, 10) })
+    const visit = (id: string, minute: number) => side({ eventId: id, sector: 'ref', title: 'Site visit', startsAt: at(26, 10, minute), endsAt: at(26, 12) })
+    const first: Clash = { id: 'e_in-e_v1', kind: 'drive', a: checkIn, b: visit('e_v1', 30), minutes: 45, measured: true, shortBy: 15 }
+    const second: Clash = { id: 'e_in-e_v2', kind: 'drive', a: checkIn, b: visit('e_v2', 40), minutes: 55, measured: true, shortBy: 15 }
+    expect(clashLines([first, second], 'e_in', ZONE)).toEqual(['15 min short before Site visit (Ref), 10:30 AM', '15 min short before Site visit (Ref), 10:40 AM'])
+    expect(clashLines([first, { ...second, shortBy: 25 }], 'e_in', ZONE)).toEqual(['15 min short before Site visit (Ref)', '25 min short before Site visit (Ref)'])
+    expect(clashLines([overlap], 'e_staff', ZONE)).toEqual([clashLine(overlap, 'e_staff', ZONE)])
+  })
   it("names the other event's date, not its weekday, more than three days off: a weekday reads as the nearest day of that name", () => {
     // A block of eight days overlaps a stand-up on its first Thursday and the one a week on.
     const block = side({ eventId: 'e_block', sector: 'purdue', title: 'Training', startsAt: at(19, 8), endsAt: at(26, 12) })
@@ -81,6 +90,11 @@ describe('clashLine', () => {
     expect(timeNear(at(22, 9), at(26, 9), ZONE)).toBe('Nov 22, 9:00 AM')
     expect(timeNear(at(20, 9), at(26, 9), ZONE)).toBe('Nov 20, 9:00 AM')
     expect(timeNear(at(26, 9), at(19, 9), ZONE)).toBe('Nov 26, 9:00 AM')
+    // The night the clocks go back (Nov 1), the second time a clock shows says so: the clock alone names two instants.
+    expect(timeNear(at(1, 0, 30), at(1, 12), ZONE)).toBe('1:30 AM')
+    expect(timeNear(at(1, 1, 30), at(1, 12), ZONE)).toBe('second 1:30 AM')
+    expect(timeNear(at(1, 1, 30), at(2, 12), ZONE)).toBe('Sun second 1:30 AM')
+    expect(timeNear(at(1, 2, 30), at(1, 12), ZONE)).toBe('2:30 AM')
     // Any seven days in a row read as seven different words.
     expect(new Set([20, 21, 22, 23, 24, 25, 26].map((d) => timeNear(at(d, 9), at(23, 9), ZONE))).size).toBe(7)
   })

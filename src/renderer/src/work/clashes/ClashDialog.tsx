@@ -19,9 +19,9 @@ import { refusalWords } from "../../lib/settingsHome";
 import { openWorkView } from "../../lib/workSwitch";
 import { writeMail } from "../mail/mailto";
 import { sectorName } from "../shell/actions";
-import { sessionFailure, useLifeosSession } from "../shell/lifeos";
+import { sessionFailure, sessionWaits, useLifeosSession } from "../shell/lifeos";
 import { useClashes } from "./mark";
-import { doneWords, endHint, fieldOf, formOf, freeAfter, lateDraft, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
+import { doneWords, fieldOf, formOf, freeAfter, hintsOf, lateDraft, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
 
 /**
@@ -224,7 +224,7 @@ function Body({
     const workspaceId = clash.b.workspaceId;
     if (!workspaceId) return;
     // A session that cannot read says so: a press never ends in nothing.
-    if (!session.client) return setError(sessionFailure(session.state));
+    if (!session.client) return setError(sessionWaits(session) ? "LifeOS is still connecting" : sessionFailure(session.state));
     setError(null);
     setPending(true);
     setBusy("late");
@@ -375,6 +375,7 @@ export function StepForm({
     setError(null);
   };
   const bad = fieldOf(error);
+  const hints = hintsOf(form, offered);
   const timed = step.way !== "decline";
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -401,10 +402,10 @@ export function StepForm({
             <Field label="Day">
               <Input autoFocus type="date" disabled={pending} value={form.day} onChange={(e) => patch({ day: e.target.value })} />
             </Field>
-            <Field label="From">
+            <Field label="From" hint={hints.from}>
               <Input type="time" disabled={pending} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
             </Field>
-            <Field label="To" hint={endHint(form, offered)}>
+            <Field label="To" hint={hints.to}>
               <Input type="time" disabled={pending} aria-invalid={bad === "to" || undefined} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
             </Field>
           </div>

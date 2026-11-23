@@ -53,8 +53,8 @@ export function StartPlacesSection({ environmentId }: { environmentId: string })
         lookups={job?.lookups ?? false}
         settings={held.settings}
         // Save writes the maps whole from the last read: it waits for a read that is current.
-        // A session still connecting is a wait like a read that is out, not a sign-out.
-        blocked={ready ? null : (failed ?? (connected || sessionWaits(session) ? "" : sessionFailure(session.state)))}
+        // A session still connecting is a wait like a read that is out, not a sign-out, and comes before what an earlier read said: a query keeps its last answer for a render after the session turns.
+        blocked={ready ? null : sessionWaits(session) ? "" : (failed ?? (connected ? "" : sessionFailure(session.state)))}
         onClose={() => setOpen(null)}
       />
     ) : null;

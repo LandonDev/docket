@@ -1,5 +1,5 @@
 import type { MailtoDraft } from "work-kit/mail";
-import { clockOf, type Clash, type ClashList, type ClashSide, type ClashWay, type Leave } from "@shared/work/clashes";
+import { clockOf, isSecond, type Clash, type ClashList, type ClashSide, type ClashWay, type Leave } from "@shared/work/clashes";
 
 /**
  * What the screens need of a clash list, worked out once: each event's clashes,
@@ -183,12 +183,23 @@ function read(form: TimeForm, offered?: Span): { when: Span | string; day?: stri
 export const spanOf = (form: TimeForm): Span | string => whenOf(form);
 
 const endDay = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
-/** What To says under it when the fields alone do not say which end goes: "Next day" when the end is not on its Day, or the day itself when it is further on (said of a To the clocks skip too, so its refusal has a day to be about); "Second 1:30 AM" when it is the second time that clock shows on the Day (short enough to sit on one line under the field). */
-export function endHint(form: TimeForm, offered?: Span): string | undefined {
+/**
+ * What From and To say under them when the fields alone do not say which
+ * instant goes. Either: "Second 1:30 AM" when it is the second time that
+ * clock shows, the night the clocks go back. To: "Next day" when the end is
+ * not on its Day, or the day itself when it is further on (said of a To the
+ * clocks skip too, so its refusal has a day to be about).
+ */
+export function hintsOf(form: TimeForm, offered?: Span): { from?: string; to?: string } {
   const { when, day: sought } = read(form, offered);
-  // On the Day, at or before From on the clock: the second time that clock shows, which the two fields alone cannot say.
-  if (typeof when !== "string" && dayField(when.end) === dayField(when.start) && timeField(when.end) <= timeField(when.start)) return `Second ${clockOf(when.end)}`;
+  const second = (at: number) => (isSecond(at) ? `second ${clockOf(at)}` : undefined);
+  const capital = (words: string) => words.charAt(0).toUpperCase() + words.slice(1);
   const day = typeof when !== "string" ? dayField(when.end) : fieldOf(when) === "to" ? sought : undefined;
-  if (day === undefined || day === form.day) return undefined;
-  return day === dayPlus(form.day, 1) ? "Next day" : endDay.format(noon(day));
+  const on = day === undefined || day === form.day ? undefined : day === dayPlus(form.day, 1) ? "Next day" : endDay.format(noon(day));
+  if (typeof when === "string") return on ? { to: on } : {};
+  const from = second(when.start);
+  const to = [on, second(when.end)].filter(Boolean).join(", ");
+  return { ...(from ? { from: capital(from) } : {}), ...(to ? { to: capital(to) } : {}) };
 }
+/** The line under To alone. */
+export const endHint = (form: TimeForm, offered?: Span): string | undefined => hintsOf(form, offered).to;

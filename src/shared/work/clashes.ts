@@ -208,8 +208,10 @@ function dayNumber(at: number, opts: ClashWordsOpts): number {
 export function timeNear(at: number, on: number, opts: ClashWordsOpts = {}): string {
   const apart = Math.abs(dayNumber(at, opts) - dayNumber(on, opts))
   const lead = apart === 0 ? '' : apart <= 3 ? `${dayOf(at, opts)} ` : `${format('date', opts.timeZone).format(at)}, `
-  return `${lead}${clockOf(at, opts)}`
+  return `${lead}${isSecond(at, opts) ? 'second ' : ''}${clockOf(at, opts)}`
 }
+/** Whether an instant is the second time its clock shows, in the hour the clocks repeat: said as "second 1:30 AM", since the clock alone names two instants. */
+export const isSecond = (at: number, opts: ClashWordsOpts = {}): boolean => clockOf(at - 3_600_000, opts) === clockOf(at, opts)
 
 /** "38 min", "1 hr", "1 hr 10 min". */
 function durationOf(minutes: number): string {
@@ -243,6 +245,17 @@ export function clashLine(clash: Clash, eventId: string, opts: ClashWordsOpts = 
   const named = other.sector === own.sector ? other.title : `${other.title} (${labelOf(other.sector, opts)})`
   if (clash.kind === 'overlap') return `Overlaps ${named}, ${clashTime(clash, eventId, opts)}`
   return `${shortWords(clash)} ${earlier ? 'before' : 'after'} ${named}`
+}
+
+/**
+ * An event's lines, one a clash, as `clashLine` says each; two drive clashes
+ * that would read alike (two later events of one name) each take the other
+ * event's start, as the menu says it: "15 min short before Site visit (Ref),
+ * 10:30 AM".
+ */
+export function clashLines(clashes: readonly Clash[], eventId: string, opts: ClashWordsOpts = {}): string[] {
+  const lines = clashes.map((clash) => clashLine(clash, eventId, opts))
+  return lines.map((line, i) => (clashes[i]!.kind === 'drive' && lines.indexOf(line) !== lines.lastIndexOf(line) ? `${line}, ${clashTime(clashes[i]!, eventId, opts)}` : line))
 }
 
 /** The other event's start as a line says it: "6:00 PM", with its weekday when it starts on another day than the one the line is read under ("Wed 11:00 PM"), or its date more than three days off ("Jan 14, 9:00 AM"). */

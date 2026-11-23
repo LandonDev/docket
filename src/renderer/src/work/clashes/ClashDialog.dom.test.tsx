@@ -29,10 +29,10 @@ vi.mock("../../lib/connection", async (original) => ({
 }));
 const marks = vi.hoisted(() => ({ now: null as unknown }));
 vi.mock("./mark", () => ({ useClashes: () => marks.now }));
-const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false }));
+const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  useLifeosSession: () => (lifeos.gone ? { environmentId: "box", sector: null, state: "unreachable", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: async () => ({ attendees: lifeos.attendees }) } }),
+  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: async () => ({ attendees: lifeos.attendees }) } }),
 }));
 const toasts = vi.hoisted(() => ({ said: [] as { words: string; action?: { label: string; onClick: () => void } }[] }));
 vi.mock("../../components/ui/toaster", () => ({
@@ -73,6 +73,7 @@ beforeEach(() => {
   mail.drafts.length = 0;
   lifeos.attendees = [];
   lifeos.gone = false;
+  lifeos.connecting = false;
 });
 afterEach(() => {
   cleanup();
@@ -376,6 +377,16 @@ describe("the Clash dialog", () => {
     expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
     expect(mail.drafts).toEqual([]);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("says LifeOS is still connecting when Running late is pressed in that wait, never that he is signed out", async () => {
+    lifeos.connecting = true;
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("LifeOS is still connecting");
+    expect(mail.drafts).toEqual([]);
   });
 
   it("reads the clash by its id when the opener did not hand it over: bones, then the clash", async () => {

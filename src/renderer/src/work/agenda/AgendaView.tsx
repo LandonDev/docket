@@ -163,11 +163,11 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   const marks = useClashes(environmentId, from, to);
   // When to leave is the rule's once it has answered (from the event before, when that is where he will be); LifeOS's own until then.
   // The dot in the Week and the Month is for what is still his to settle, as the list's line is: an event that is over wears none.
-  // A clash is his to settle while both its events are still to come or under way: once either is over, its line, its menu row and its dot go.
+  // A clash is his to settle until its later event is over: Running late is for the time after the earlier one ends. An event that is over drops its own line (the row's `past`).
   const clashesOf = useMemo(() => {
     const live = new Map<string, readonly Clash[]>();
     for (const [id, list] of marks.clashes) {
-      const kept = list.filter((c) => c.a.endsAt >= now && c.b.endsAt >= now);
+      const kept = list.filter((c) => c.b.endsAt >= now);
       if (kept.length) live.set(id, kept.length === list.length ? list : kept);
     }
     return live;
