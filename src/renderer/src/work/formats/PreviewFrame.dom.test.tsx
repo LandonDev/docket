@@ -7,6 +7,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createKeyResolver } from "../../lib/appCommands";
 
 const toasts = vi.hoisted(() => [] as string[]);
 vi.mock("../../components/ui/toaster", () => ({
@@ -298,6 +299,42 @@ describe("the frame", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
     await waitFor(() => expect(toasts).toEqual(["error: the disk is full"]));
     expect(localStorage.getItem("work.preview.format.document")).toBe("pdf");
+  });
+
+  it("a print is not the format Export… opens on next: that stays the last file he made", async () => {
+    const f = fake({ formats: [...FORMATS, { id: "print", label: "Print", paged: true, verb: "Print…" }] });
+    await show(f, { initial: "print" });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Print…" })));
+    expect(f.exported).toEqual(["print"]);
+    expect(localStorage.getItem("work.preview.format.document")).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("tab", { name: "PDF" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
+    expect(localStorage.getItem("work.preview.format.document")).toBe("pdf");
+  });
+
+  it("holds its own keys as a file he can only read: ⌘P can be Print in it, and ⌘B stays the app's", async () => {
+    const f = fake();
+    await show(f);
+    const frame = document.querySelector<HTMLElement>("[data-preview]")!;
+    expect(frame.getAttribute("data-editor-keys")).toBe("read");
+    // As the document mounts it: inside the Body's root, which says what the kind answers, and beside the editor.
+    frame.parentElement!.setAttribute("data-editor-answers", "export print");
+    const resolve = createKeyResolver();
+    const key = (k: string) => new KeyboardEvent("keydown", { key: k, code: `Key${k.toUpperCase()}`, ctrlKey: true, bubbles: true });
+    const heard = (k: string) => {
+      let got: ReturnType<typeof resolve> = null;
+      const on = (e: KeyboardEvent): void => void (got = resolve(e, { lightboxOpen: false }));
+      window.addEventListener("keydown", on, true);
+      screen.getByRole("button", { name: "Edit" }).dispatchEvent(key(k));
+      window.removeEventListener("keydown", on, true);
+      return got;
+    };
+    expect(heard("p")).toEqual({ id: "print" });
+    expect(heard("b")).toEqual({ id: "toggle_sidebar" });
+    expect(heard("k")).toEqual({ id: "open_search" });
+    // A kind that answers no Print leaves ⌘P the app's.
+    frame.parentElement!.setAttribute("data-editor-answers", "export");
+    expect(heard("p")).toEqual({ id: "go_to_file" });
   });
 
   it("the one primary button says the format's own verb", async () => {

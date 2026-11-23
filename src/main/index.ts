@@ -356,6 +356,7 @@ app.whenReady().then(async () => {
     // Capture from anywhere (capture.ts): his key opens the capture window while Work is on here.
     const running = server
     registerCapture({ work: running.workSwitch, port: () => running.port })
+    void import('./printOut').then((m) => m.registerPrintOut()).catch((err: unknown) => console.error('[print] not registered', err))
   }
   setTimeout(() => flushCompileCache(), FLUSH_AFTER_MS).unref()
 

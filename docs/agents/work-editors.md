@@ -92,8 +92,8 @@ return <div ref={root} data-editor-keys="document">…</div>;
   resolver or App.tsx.
 
 Today the document answers `export` by opening Preview on the format he last
-used. `print`, `find` and the sheet's and the deck's answers come with their
-milestones.
+used and `print` by opening it on Print ("Print" below). `find` and the
+sheet's and the deck's answers come with their milestones.
 
 ## Preview: the contract
 
@@ -185,6 +185,54 @@ only by case resolve to one on the Mac's disk, where the release is built.
 answers each broken rule in words. Each build runs it on its own source in its
 own tests: `expect(await previewProblems(source)).toEqual([])`. It exports only
 when asked (`exports: true`), since an export writes a file.
+
+### Print
+
+Print is a format of Preview, not a dialog of its own: File → Print… and ⌘P
+open Preview on the kind's `print` format, which shows the pages that will go
+to paper, and the frame's one button reads Print…. A kind lists it as
+`{ id: 'print', label: 'Print', paged: true, verb: 'Print…' }`, draws it as
+its PDF, and in `export('print')` hands that PDF's bytes to one call:
+
+```ts
+// src/renderer/src/work/formats/printOut.ts
+import { printPdf } from "../formats/printOut";
+await printPdf(name, bytes); // says where it went; rejects with the reason
+```
+
+- **In the desktop app** the bytes go to main (`print:pdf`,
+  `src/main/printOut.ts`), which answers only a window's own page, checks
+  the bytes are a PDF, writes them to `<temp>/TempCode-print/<uuid>/<name>.pdf`
+  (a file only he can read, named by `safeFileName` and short enough for any
+  file system) and opens that file in this computer's own PDF viewer. The
+  toast says "Opened in your PDF viewer to print"; he prints from there with
+  the viewer's own Print. Copies older than a day go at the next print and at
+  launch, and no more than twenty are kept. A folder that is not a real one
+  of his own where the copies should be (a link, a file) is never written
+  through or swept.
+- **In a browser** (`/ui`) the toast says "The PDF is ready to print" with
+  one press, Open, which opens the PDF in a tab of its own, where the
+  browser's viewer prints it. It waits for his press because a browser opens
+  a tab only on one, and the press that asked for the print is long past by
+  the time the pages are drawn and read; a tab opened without it is blocked
+  and nothing says so. (A hidden frame that prints by itself was tried and
+  dropped: the page's policy blocks a `blob:` frame, and a PDF in a frame is
+  not printed dependably by every browser.)
+- **Why the viewer and not Electron's print.** The plan tried four paths in
+  order on his Mac (macOS 27.2, Electron 39.8.10, no printer set up).
+  `webContents.print` failed before any dialog with "No printers available on
+  the network" from a hidden window, from a shown one and from a window of
+  page pictures; only the system's viewer printed, and saved as PDF, with or
+  without a printer. If a later Electron prints with none set up, the change
+  is in `src/main/printOut.ts` alone: `PrintAnswer.via` already names how it
+  went, and `PRINT_WORDS` holds what is said for each.
+- A print is not held: nothing leaves the computer. It is not remembered as
+  the format to open next either, so Export… still opens on the last file he
+  made.
+- The frame is marked `data-editor-keys="read"`, so ⌘P pressed again inside
+  Preview is the kind's Print… and not Go to File…. Each ask is a frame of its
+  own (the kind keys it by a count of asks), so ⌘P opens on Print even when he
+  moved to another format inside Preview.
 
 ## The conversion runner: a renderer that is an app or a machine
 

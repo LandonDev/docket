@@ -79,6 +79,8 @@ export const webApi: Api = {
   // The page's one host says its platform in its hello; nothing is known before it.
   platform: "",
   getServerPort: () => Promise.resolve(null),
+  // Print… in a browser opens the PDF in a tab on his press (work/formats/printOut.ts): nothing is handed to main.
+  printPdf: () => Promise.resolve({ ok: false as const, error: "desktop only" }),
   // The capture key is the desktop's (src/main/capture.ts): a browser holds no key over other apps.
   captureKey: { get: () => Promise.reject(new Error("desktop only")), set: () => Promise.reject(new Error("desktop only")) },
   // The page at /ui has one host and no main process: nothing to paint from before its socket.

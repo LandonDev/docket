@@ -194,11 +194,12 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
     try {
       const made = await source.export(formatId);
       try {
-        globalThis.localStorage?.setItem(lastKey(kind), formatId);
+        if (current?.verb !== "Print…") globalThis.localStorage?.setItem(lastKey(kind), formatId);
       } catch {
         // private mode / quota
       }
-      // The system's own save or print dialog is the answer, unless the source says where the file went.
+      // The system's own save or print dialog is the answer, unless the source says where the file went. A print is not
+      // the format to open on next: Export… opens on the last file he made.
       if (made.where) void loadToast().then((toast) => toast(`Saved ${made.name} to ${made.where}`));
     } catch (error) {
       void loadToast().then((toast) => toast.error(messageOf(error, current?.verb === "Print…" ? "It could not be printed" : "It could not be exported")));
@@ -378,6 +379,8 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
     <div
       ref={frame}
       data-preview={formatId}
+      // Its own keys, as an editor he can only read: ⌘P is Print here when the kind answers it, and ⌘B stays the app's.
+      data-editor-keys="read"
       className="flex h-full min-h-0 min-w-0 flex-col bg-background"
       onKeyDown={(event) => {
         // Escape goes back to the words, unless a menu or the Page popover (drawn outside the frame) had it first.

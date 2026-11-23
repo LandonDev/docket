@@ -30,12 +30,14 @@ import { servedBy } from "./host";
  * what the host's own writer said it dropped after it.
  */
 
-export type DocFormat = "docx" | "pdf" | "md" | "html" | "odt" | "rtf";
+export type DocFormat = "docx" | "pdf" | "print" | "md" | "html" | "odt" | "rtf";
 
 /** In the bar's order: what Word and mail read first. */
 export const DOC_FORMATS: readonly (PreviewFormat & { id: DocFormat })[] = [
   { id: "docx", label: "Word", ext: "docx", paged: true, verb: "Export" },
   { id: "pdf", label: "PDF", ext: "pdf", paged: true, verb: "Export" },
+  // What goes to paper is the PDF: the same picture, and the verb is Print….
+  { id: "print", label: "Print", paged: true, verb: "Print…" },
   { id: "md", label: "Markdown", ext: "md", paged: false, verb: "Export" },
   { id: "html", label: "Web page", ext: "html", paged: false, verb: "Export" },
   { id: "odt", label: "OpenDocument", ext: "odt", paged: true, verb: "Export" },
@@ -102,7 +104,7 @@ const some = (n: number, one: string, many: string): string | null => (n > 0 ? (
  */
 export function docDrops(format: DocFormat, facts: DocFacts): string[] {
   const lines: (string | null)[] = [];
-  const paper = format === "pdf" || format === "html";
+  const paper = format === "pdf" || format === "print" || format === "html";
   if (format === "docx" || format === "odt" || format === "rtf") {
     lines.push(some(facts.suggestions, "1 suggestion goes as a tracked change", "{n} suggestions go as tracked changes"));
     if (format === "rtf") lines.push(some(facts.replied, "1 comment loses its replies", "{n} comments lose their replies"));
@@ -134,6 +136,8 @@ export interface DocPreviewDeps {
   request?: Request;
   page?(editor: AnyEditor, title: string, print: { paper: "A4" | "Letter" } | null): Promise<string>;
   save?(name: string, blob: Blob): void;
+  /** hands a PDF to this computer to print, which says where it went (work/formats/printOut.ts) */
+  print?(name: string, bytes: Uint8Array): Promise<void>;
   locale?: string;
 }
 
@@ -154,6 +158,12 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
   const request = deps.request ?? linkRequest;
   const page = deps.page ?? writePage;
   const save = deps.save ?? saveFile;
+  const print =
+    deps.print ??
+    (async (name: string, bytes: Uint8Array): Promise<void> => {
+      const { printPdf } = await import("../formats/printOut");
+      await printPdf(name, bytes);
+    });
   const stem = (): string => fileStem(deps.title);
   /** What a call names: the item is this host's alone, so a host that serves the document for it is told the source only. */
   const target = (home: boolean): { source: CanvasSource; itemId?: string } => ({ source: deps.source, ...(home && deps.itemId ? { itemId: deps.itemId } : {}) });
@@ -240,6 +250,8 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
         return { picture: { kind: "html", html }, drops: docDrops("html", facts()) };
       }
       if (format === "pdf" || format === "docx" || format === "odt" || format === "rtf") return drawPaged(format, opts.signal);
+      // Print is the PDF: the pages that will go to paper, with a PDF's own lines, the host's among them.
+      if (format === "print") return drawPaged("pdf", opts.signal);
       throw new Error(`A document does not go out as ${format}`);
     },
     async export(format) {
@@ -255,7 +267,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
         save(made.name, new Blob([fromBase64(made.data)], { type: mimeOf(id) }));
         return { name: made.name };
       }
-      if (id !== "pdf") throw new Error(`A document does not go out as ${format}`);
+      if (id !== "pdf" && id !== "print") throw new Error(`A document does not go out as ${format}`);
       // The print the preview makes: an unchanged document is answered from the render the host keeps, the bytes he saw.
       let made = await render("pdf", new AbortController().signal);
       let bytes: Uint8Array<ArrayBuffer>;
@@ -266,7 +278,8 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
         made = await render("pdf", new AbortController().signal);
         bytes = await whole(bytesOf(made.env, made.home, made.answer));
       }
-      save(made.answer.name, new Blob([bytes], { type: mimeOf(id) }));
+      if (id === "print") await print(made.answer.name, bytes);
+      else save(made.answer.name, new Blob([bytes], { type: mimeOf("pdf") }));
       return { name: made.answer.name };
     },
   };

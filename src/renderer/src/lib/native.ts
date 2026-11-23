@@ -579,6 +579,11 @@ export function saveDownload(name: string, bytes: Uint8Array): Promise<string> {
   return api().app.saveDownload(name, bytes);
 }
 
+/** Hands a PDF to this computer's own PDF viewer to print (src/main/printOut.ts); a browser has none and answers so. */
+export function printPdfFile(name: string, bytes: Uint8Array): ReturnType<typeof window.api.printPdf> {
+  return api().printPdf(name, bytes);
+}
+
 export function openUrl(url: string): Promise<void> {
   return api().app.openUrl(url);
 }

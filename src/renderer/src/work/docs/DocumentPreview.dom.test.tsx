@@ -44,13 +44,19 @@ vi.mock("work-kit/editor", async (original) => {
     },
   };
 });
-const previews = vi.hoisted(() => [] as Array<{ kind: string; title: string; readOnly?: boolean; formats: string[]; source: unknown; onClose(): void }>);
-vi.mock("../formats/PreviewFrame", () => ({
-  Preview: (props: { kind: string; title: string; readOnly?: boolean; source: { formats: { id: string }[] }; onClose(): void }) => {
-    previews.push({ kind: props.kind, title: props.title, ...(props.readOnly !== undefined ? { readOnly: props.readOnly } : {}), formats: props.source.formats.map((f) => f.id), source: props.source, onClose: props.onClose });
+const previews = vi.hoisted(() => [] as Array<{ kind: string; title: string; readOnly?: boolean; initial?: string; formats: string[]; source: unknown; onClose(): void }>);
+const frames = vi.hoisted(() => ({ mounted: 0 }));
+vi.mock("../formats/PreviewFrame", async () => {
+  const { useEffect } = await import("react");
+  return {
+  Preview: (props: { kind: string; title: string; readOnly?: boolean; initial?: string; source: { formats: { id: string }[] }; onClose(): void }) => {
+    // A frame mounted anew starts on the format it was asked for; one that only renders again does not.
+    useEffect(() => void frames.mounted++, []);
+    previews.push({ kind: props.kind, title: props.title, ...(props.readOnly !== undefined ? { readOnly: props.readOnly } : {}), ...(props.initial ? { initial: props.initial } : {}), formats: props.source.formats.map((f) => f.id), source: props.source, onClose: props.onClose });
     return <div data-fake-preview>Preview of {props.title}</div>;
   },
-}));
+  };
+});
 
 const { workCommands } = await import("../../lib/appCommands");
 const { Body } = await import("./DocumentCanvas");
@@ -92,14 +98,14 @@ describe("Preview, a state of the document", () => {
     expect(opened.editors).toBe(1);
     expect(under().hasAttribute("inert")).toBe(true);
     expect(under().className).toContain("invisible");
-    expect(previews.at(-1)).toMatchObject({ kind: "document", title: "Run of show", readOnly: false, formats: ["docx", "pdf", "md", "html", "odt", "rtf"] });
+    expect(previews.at(-1)).toMatchObject({ kind: "document", title: "Run of show", readOnly: false, formats: ["docx", "pdf", "print", "md", "html", "odt", "rtf"] });
+    // Export… opens on the format he last used, not on one it names.
+    expect(previews.at(-1)!.initial).toBeUndefined();
   });
 
   it("File → Export… and ⇧⌘E open it too, and Edit puts him back in the words", async () => {
     await mount();
     expect(workCommands.has("export")).toBe(true);
-    // No Print until the document can print: the menu's row stays greyed and ⌘P stays Go to File.
-    expect(workCommands.has("print")).toBe(false);
     await act(async () => void workCommands.run("export"));
     expect(slot()).not.toBeNull();
     const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((run) => (run(0), 0));
@@ -109,6 +115,43 @@ describe("Preview, a state of the document", () => {
     expect(opened.focused).toBe(1);
     expect(opened.editors).toBe(1);
     raf.mockRestore();
+  });
+
+  it("File → Print… and ⌘P open it on Print, and move it there when it is already up on another format", async () => {
+    await mount();
+    // The document answers Print: the menu's row is live, and ⌘P is Print while the caret is in it.
+    expect(workCommands.has("print")).toBe(true);
+    const root = document.querySelector("[data-editor-answers]")!;
+    expect(root.getAttribute("data-editor-answers")).toBe("export print");
+    expect(root.contains(document.querySelector("[data-editor-keys]"))).toBe(true);
+    await act(async () => void workCommands.run("print"));
+    expect(previews.at(-1)).toMatchObject({ kind: "document", initial: "print" });
+    cleanup();
+    previews.length = 0;
+
+    await mount();
+    await act(async () => void workCommands.run("export"));
+    const before = previews.length;
+    expect(previews.at(-1)!.initial).toBeUndefined();
+    await act(async () => void workCommands.run("print"));
+    expect(previews.length).toBeGreaterThan(before);
+    expect(previews.at(-1)!.initial).toBe("print");
+    expect(document.querySelectorAll("[data-fake-preview]")).toHaveLength(1);
+  });
+
+  it("each ask is a frame of its own: ⌘P again, after he moved to another format inside Preview, is Print again", async () => {
+    await mount();
+    frames.mounted = 0;
+    await act(async () => void workCommands.run("print"));
+    expect(frames.mounted).toBe(1);
+    // He picks PDF inside the frame (the body cannot see that), then presses ⌘P: a new frame, on Print.
+    await act(async () => void workCommands.run("print"));
+    expect(frames.mounted).toBe(2);
+    expect(previews.at(-1)!.initial).toBe("print");
+    await act(async () => void workCommands.run("export"));
+    expect(frames.mounted).toBe(3);
+    expect(previews.at(-1)!.initial).toBeUndefined();
+    expect(document.querySelectorAll("[data-fake-preview]")).toHaveLength(1);
   });
 
   it("a document he can only read previews the same way, with the way out reading Back", async () => {

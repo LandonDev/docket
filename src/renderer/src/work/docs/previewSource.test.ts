@@ -120,6 +120,7 @@ const editor = { document: [{ type: "paragraph", props: {}, content: [{ type: "t
 
 function source(h: ReturnType<typeof host>, over: Partial<DocPreviewDeps> = {}) {
   const saved: { name: string; bytes: Uint8Array; type: string }[] = [];
+  const printed: { name: string; bytes: Uint8Array }[] = [];
   const pages: (string | null)[] = [];
   const made = docPreviewSource({
     env: "env_box",
@@ -131,10 +132,11 @@ function source(h: ReturnType<typeof host>, over: Partial<DocPreviewDeps> = {}) 
     request: h.request,
     page: async (_editor, title, print) => (pages.push(print?.paper ?? null), `<!doctype html><html><head><title>${title}</title></head><body>page</body></html>`),
     save: (name, blob) => void blob.arrayBuffer().then((buffer) => saved.push({ name, bytes: new Uint8Array(buffer), type: blob.type })),
+    print: async (name, bytes) => void printed.push({ name, bytes }),
     locale: "en-US",
     ...over,
   });
-  return { source: made, saved, pages };
+  return { source: made, saved, printed, pages };
 }
 const signal = (): AbortSignal => new AbortController().signal;
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -145,11 +147,12 @@ describe("the document's Preview source", () => {
     expect(await previewProblems(source(h).source)).toEqual([]);
   });
 
-  it("lists Word first, then PDF, Markdown, a web page, OpenDocument and Rich Text, and no Print until it can print", () => {
+  it("lists Word first, then PDF and Print, Markdown, a web page, OpenDocument and Rich Text", () => {
     const h = host();
     expect(source(h).source.formats.map((f) => [f.id, f.label, f.paged, f.verb])).toEqual([
       ["docx", "Word", true, "Export"],
       ["pdf", "PDF", true, "Export"],
+      ["print", "Print", true, "Print…"],
       ["md", "Markdown", false, "Export"],
       ["html", "Web page", false, "Export"],
       ["odt", "OpenDocument", true, "Export"],
@@ -275,6 +278,36 @@ describe("the document's Preview source", () => {
     expect(saved.map((f) => [f.name, f.type])).toEqual([["Plan spring.html", "text/html;charset=utf-8"]]);
     expect(new TextDecoder().decode(saved[0]!.bytes)).toContain("<body>page</body>");
     expect(h.calls).toEqual([]);
+  });
+
+  it("Print is the PDF's own pages with a PDF's losses, and Print… hands those bytes to this computer, saving nothing", async () => {
+    const h = host();
+    const { source: s, saved, printed, pages } = source(h);
+    const drawn = await s.draw("print", { signal: signal() });
+    expect(pages).toEqual(["Letter"]);
+    expect(h.calls[0]!.params).toMatchObject({ format: "pdf", paper: "Letter" });
+    expect(drawn.picture).toMatchObject({ kind: "paged", pages: 3, drawnBy: "tempcode" });
+    expect(drawn.drops).toEqual(["2 comments stay behind", "1 suggestion stays out until you accept it", "1 footnote moves to the end"]);
+    // What the host left out of the pages is said on Print as on PDF: they are the same pages.
+    h.state.warnings = ["2 pictures from the web left out of the PDF"];
+    expect((await s.draw("print", { signal: signal() })).drops).toEqual((await s.draw("pdf", { signal: signal() })).drops);
+    expect((await s.draw("print", { signal: signal() })).drops).toContain("2 pictures from the web left out of the PDF");
+    expect(await s.export("print")).toEqual({ name: "Plan.pdf" });
+    await flush();
+    expect(printed).toHaveLength(1);
+    expect(printed[0]!.name).toBe("Plan.pdf");
+    expect(new TextDecoder().decode(printed[0]!.bytes)).toContain("%PDF-1.7 v1");
+    expect(saved).toEqual([]);
+    // What he printed is the document as it stands at the press.
+    h.state.text = "v2";
+    await s.export("print");
+    expect(new TextDecoder().decode(printed[1]!.bytes)).toContain("%PDF-1.7 v2");
+  });
+
+  it("says why when this computer could not print it", async () => {
+    const h = host();
+    const { source: s } = source(h, { print: () => Promise.reject(new Error("No application knows how to open this file")) });
+    await expect(s.export("print")).rejects.toThrow("No application knows how to open this file");
   });
 
   it("a cancelled draw answers no picture, and a document still opening cannot be drawn as a page", async () => {

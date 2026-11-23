@@ -101,8 +101,10 @@ place for a LifeOS document). What it tells the pane:
   a key"). The Docs view draws the same frame, so the rule holds there too.
 - **Export…** in the pane's More, File → Export… and ⇧⌘E open Preview on
   the format he last used: the body answers the `export` command
-  (`useWorkCommands`). It answers no `print` or `find` yet, so File → Print…
-  is greyed and ⌘P and ⌘F stay the app's.
+  (`useWorkCommands`).
+- **Print…** in the File menu, and ⌘P while the caret is in the document,
+  open Preview on Print: the body answers `print` too. It answers no `find`
+  yet, so ⌘F stays the app's.
 
 ## Preview
 
@@ -120,6 +122,7 @@ for as long as the document is the same one:
 |---|---|---|
 | Word, OpenDocument, Rich Text | the exported file itself, converted on the host (`work.formats.preview`) | LibreOffice |
 | PDF | the document's print page, written here from the editor's blocks and printed on the host | TempCode |
+| Print | the same PDF: the pages that go to paper | TempCode ("As it will print") |
 | Markdown | the host's text (`work.formats.export`) | the file's own text |
 | Web page | the page written here, in a frame where no script runs and nothing is fetched | the file's own page |
 
@@ -147,8 +150,12 @@ for as long as the document is the same one:
   | PDF, Web page | "2 comments stay behind", "3 suggestions stay out until you accept them", "1 footnote moves to the end" (every colour is kept: the page writes it inline) |
   | Markdown | comments and suggestions as a PDF's, "Colours stay behind", "Underlines stay behind" |
 
-- **Not yet.** There is no Print format (Print… lands with the print path);
-  the document has no page set-up, so Preview's Page section is absent and a
+- **Print…** hands the PDF to this computer's own PDF viewer, which prints
+  it (`work/formats/printOut.ts`, work-editors.md "Print"): the same render a
+  PDF export saves, so an unchanged document prints the pages he saw. In
+  `/ui` the PDF opens in a tab on his press. Print's lines are a PDF's, the
+  host's own among them.
+- **Not yet.** The document has no page set-up, so Preview's Page section is absent and a
   PDF is printed on the locale's paper with the print page's own margins;
   fonts are the print page's system stack; "Check in Word" is not offered (no
   Office renderer is registered); headers, footers and columns a Word file

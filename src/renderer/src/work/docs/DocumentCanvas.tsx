@@ -271,13 +271,19 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   // Preview is a state of the item: it takes the body, and the editor stays mounted under it, out of reach, with its place kept.
   const root = useRef<HTMLDivElement | null>(null);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
-  const [previewing, setPreviewing] = useState(false);
+  const [previewing, setPreviewing] = useState<PreviewOn>(false);
+  // Each ask is counted: Print… pressed while Preview shows another format, however he got there, opens it on Print anew.
+  const [asked, setAsked] = useState(0);
+  const showPreview = useCallback((on: PreviewOn) => {
+    setPreviewing(on);
+    if (on) setAsked((n) => n + 1);
+  }, []);
   // A failed open is said once, on the state line with Retry; the body under it stays empty rather than pulse.
   return (
     <DropImport env={env} sessionId={item.sessionId} editor={null}>
       <div ref={root} className="relative h-full">
         <div ref={setSlot} data-doc-preview={previewing || undefined} className={previewing ? "absolute inset-0 z-10" : "hidden"} />
-        <div className={previewing ? "invisible h-full" : "h-full"} inert={previewing || undefined}>
+        <div className={previewing ? "invisible h-full" : "h-full"} inert={previewing ? true : undefined}>
           <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
             {(width) =>
               opened === null ? (
@@ -292,7 +298,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                   more={google}
                   itemId={item.id}
                   root={root}
-                  preview={{ slot, on: previewing, set: setPreviewing }}
+                  preview={{ slot, on: previewing, asked, set: showPreview }}
                 />
               ) : null
             }
@@ -365,11 +371,14 @@ export function Scroller({
 
 const NO_MORE: MoreEntry[] = [];
 
-/** Where the body draws Preview, and whether it is up. */
+/** Where the body draws Preview, and whether it is up: on the format he last used, or on Print. */
+type PreviewOn = false | "last" | "print";
 interface PreviewSlot {
   slot: HTMLElement | null;
-  on: boolean;
-  set(on: boolean): void;
+  on: PreviewOn;
+  /** how many times it was asked for: a new ask is a new frame */
+  asked: number;
+  set(on: PreviewOn): void;
 }
 
 /** The open document: the editor and everything it tells the pane. */
@@ -426,13 +435,14 @@ function Opened({
   const [editor, setEditor] = useState<AnyEditor | null>(null);
   const review = useDocReview(host, open, shell, editor);
 
-  // Export… in the pane's More, File → Export… and ⇧⌘E all open Preview on the format he last used (work/formats/PreviewFrame.tsx).
+  // Export… in the pane's More, File → Export… and ⇧⌘E all open Preview on the format he last used; File → Print… and
+  // ⌘P open it on Print (work/formats/PreviewFrame.tsx).
   const showPreview = preview.set;
   useEffect(() => {
-    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => showPreview(true) }]);
+    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => showPreview("last") }]);
     return () => shell.more?.(null);
   }, [shell, more, showPreview]);
-  useWorkCommands(root, { export: () => showPreview(true) });
+  useWorkCommands(root, { export: () => showPreview("last"), print: () => showPreview("print") });
   // The document went (a tab closed, another opened in its place): its Preview goes with it.
   useEffect(() => () => showPreview(false), [showPreview]);
 
@@ -479,7 +489,13 @@ function Opened({
         onReviewPick={review.pick}
         onEditor={setEditor}
       />
-      {preview.on && preview.slot ? createPortal(<Preview source={source} title={open.title} kind="document" readOnly={open.role !== "edit"} onClose={closePreview} />, preview.slot) : null}
+      {preview.on && preview.slot
+        ? createPortal(
+            // Print… asked for while it is up on another format moves it to Print: a new frame on that format.
+            <Preview key={preview.asked} source={source} title={open.title} kind="document" {...(preview.on === "print" ? { initial: "print" } : {})} readOnly={open.role !== "edit"} onClose={closePreview} />,
+            preview.slot,
+          )
+        : null}
     </div>
   );
 }

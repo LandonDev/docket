@@ -83,6 +83,8 @@ const api = {
   /** This machine's `process.platform`, for its host glyph before the local hello. */
   platform: process.platform as string,
   getServerPort: (): Promise<number | null> => ipcRenderer.invoke('server-port'),
+  /** Print… (src/main/printOut.ts): a PDF's bytes handed to this computer's own PDF viewer. */
+  printPdf: (name: string, bytes: Uint8Array): Promise<{ ok: true; via: 'viewer' } | { ok: false; error: string }> => ipcRenderer.invoke('print:pdf', name, bytes),
   /** The capture key (src/main/capture.ts): the one set, the default, and whether it is held; `set(null)` turns it off. */
   captureKey: {
     get: (): Promise<CaptureKeyState> => ipcRenderer.invoke('capture:key:get'),
