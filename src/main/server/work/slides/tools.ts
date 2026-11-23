@@ -10,8 +10,9 @@ import type { ToolCtx, WorkTool } from '../modules'
 import { paneItem, sourcePath } from '../pdf/file'
 import { allocateIds, isNote, slideOfOp, type DeckInfo } from './deck'
 import { writeNewDeck } from './newDeck'
+import { attachFile } from './attach'
 import { rowSession, SlidesStore } from './store'
-import { announce, applyTo, deckKey, deckOf, OWN_FILE, renderPath, scratch, serial, sharedDeck, withDeck, writeInto } from './view'
+import { announce, applyTo, deckDir, deckKey, deckOf, OWN_FILE, renderPath, scratch, serial, sharedDeck, withDeck, writeInto } from './view'
 
 /**
  * The tools a Work thread reads and revises a deck with
@@ -124,7 +125,7 @@ export const slidesTools: WorkTool[] = [
   {
     name: 'slides_edit',
     description:
-      'Revises a deck in the canvas, by slide id and shape id from `slides_read`: `text` (a shape\'s paragraphs; each keeps its look), `cell` (row and column from 0), `notes`, `chart` (new data, same look), `add` (a slide from one of the deck\'s layouts by name, after a slide id, 0 for first), `remove`, `move`. ' +
+      'Revises a deck in the canvas, by slide id and shape id from `slides_read`: `text` (a shape\'s paragraphs; each keeps its look), `cell` (row and column from 0), `notes`, `chart` (new data, same look), `add` (a slide from one of the deck\'s layouts by name, after a slide id, 0 for first), `remove`, `move`, `runs` (a shape\'s paragraphs as runs: each `from` the run whose look it keeps, with a font, size, bold, italic, underline or colour set on top) and `format` (a look on a whole shape, or on a `range` of its characters); a shape\'s place and size in EMU (`geometry`), its `order`, `fill` and `line`; `insert` (a text box, a shape, a picture or video by its path on this host, a table, a chart) and `delete`; a table\'s rows and columns (`grid`); a slide hidden (`hide`), copied (`duplicate`) or given another `layout`; the deck\'s `section`s and `theme`. ' +
       'An `add` is given an id in the answer; give it `id` yourself to edit the new slide in the same list. ' +
       'Each revised slide is a suggestion the person steps through and accepts. When the deck says "Agent writes", the edit goes into the file at once if `because` is `own`, or `asked` with `quote`: the person\'s own words asking for it. ' +
       'The edits are checked first: if one cannot be made, nothing is kept and the answer says why.',
@@ -141,6 +142,10 @@ export const slidesTools: WorkTool[] = [
       try {
         const it = deckItem(ctx, a.item)
         const store = new SlidesStore(ctx.db)
+        // A picture or a video an edit adds is a file on this host the agent names by its path: copied beside the
+        // deck now, so the edit still has it when it is accepted, and named from here on by the host's own token.
+        const attach = a.ops.some((op) => op.op === 'insert' && op.file !== undefined) ? await deckDir(ctx, it, 'attach') : null
+        if (attach) a.ops = a.ops.map((op) => (op.op === 'insert' && op.file !== undefined ? { ...op, file: attachFile(attach, op.file) } : op))
         // Others can open it (a deck in PowerPoint, a Teams or OneDrive library, a cloud folder): nothing an agent
         // thought of itself reaches the file, and so their screens, until the person accepts it.
         const shared = sharedDeck(ctx, it)

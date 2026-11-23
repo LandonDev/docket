@@ -20,6 +20,40 @@ const slide = z.number().int().positive()
 /** A shape on a slide: its id, or its name as PowerPoint's selection pane shows it. */
 const shape = z.union([z.number().int().nonnegative(), z.string().min(1).max(200)])
 const text = z.string().max(20_000)
+/**
+ * A colour: a hex with no hash, or one of the deck's theme colours by its slot with Office's tint (above 0
+ * lighter, below 0 darker), which stays the theme's when the theme changes.
+ */
+const colour = z.union([
+  z.string().regex(/^[0-9a-fA-F]{6}$/),
+  z.object({ slot: z.enum(['dk1', 'lt1', 'dk2', 'lt2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink', 'tx1', 'tx2', 'bg1', 'bg2']), tint: z.number().min(-1).max(1).optional() })
+])
+export type DeckColour = z.infer<typeof colour>
+/** A length on the slide in EMU (914,400 to an inch, 12,700 to a point). */
+const emu = z.number().int().min(-60_000_000).max(60_000_000)
+/** A shape's box as it lies on the slide before any turn: left, top, width, height, in EMU. */
+const box = z.tuple([emu, emu, emu.min(1), emu.min(1)])
+
+/** What he set on a run; what is absent stays as it was. */
+const runLook = {
+  /** a typeface by its name ("Calibri") */
+  font: z.string().min(1).max(100).optional(),
+  /** points, as drawn */
+  size: z.number().min(1).max(4000).optional(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  color: colour.optional()
+}
+/** What he set on a paragraph. */
+const paraLook = {
+  level: z.number().int().min(0).max(8).optional(),
+  align: z.enum(['left', 'center', 'right', 'justify']).optional(),
+  list: z.enum(['none', 'bullet', 'number']).optional()
+}
+/** One cell of a table, row and column from 0; absent for a shape's own words. */
+const cellAt = { row: z.number().int().min(0).optional(), col: z.number().int().min(0).optional() }
+const at = z.tuple([z.number().int().min(0), z.number().int().min(0)])
 
 export const SlideOpSchema = z.discriminatedUnion('op', [
   /** A shape's words. `paragraphs`: one entry a paragraph; each keeps its first run's look. */
@@ -49,7 +83,90 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
   }),
   z.object({ op: z.literal('remove'), slide }),
   /** Moves a slide to after slide `after` (0: first). */
-  z.object({ op: z.literal('move'), slide, after: z.number().int().min(0) })
+  z.object({ op: z.literal('move'), slide, after: z.number().int().min(0) }),
+  /**
+   * A shape's (or one cell's) paragraphs as runs. A paragraph `from` an old one keeps its spacing, level and list;
+   * a run `from` an old run ([paragraph, run], both from 0, counted as the outline lists them) keeps that run's
+   * look, and what the run sets goes on top. A run from nowhere takes its paragraph's first look.
+   */
+  z.object({
+    op: z.literal('runs'),
+    slide,
+    shape,
+    ...cellAt,
+    paragraphs: z
+      .array(z.object({ from: z.number().int().min(0).optional(), ...paraLook, runs: z.array(z.object({ text, from: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(), ...runLook })).max(400) }))
+      .min(1)
+      .max(200)
+  }),
+  /**
+   * A look set on a shape's words: on all of them (every cell, for a table), on one cell, or on a `range` of
+   * characters ([paragraph, character], both from 0; a line break counts as one character).
+   */
+  z.object({
+    op: z.literal('format'),
+    slide,
+    shape,
+    ...cellAt,
+    range: z.object({ from: at, to: at }).optional(),
+    set: z.object({ ...runLook, ...paraLook }).refine((v) => Object.keys(v).length > 0, 'set at least one thing')
+  }),
+  /** Where a shape is, how big, how far turned (degrees clockwise) and whether mirrored. `box` is `DeckShape.own.box`'s form. */
+  z.object({ op: z.literal('geometry'), slide, shape, box: box.optional(), rot: z.number().min(-360).max(360).optional(), flipH: z.boolean().optional(), flipV: z.boolean().optional() }),
+  /** A shape's place among those it lies over and under. */
+  z.object({ op: z.literal('order'), slide, shape, to: z.enum(['front', 'back', 'forward', 'backward']) }),
+  /**
+   * A new shape on a slide, in its box. `text`: a text box. `shape`: a drawn shape by PowerPoint's name for its
+   * outline (`preset`: "rect", "ellipse", "rightArrow"). `picture` and `video`: a file, which the host brings with
+   * the edit (`file`: for an agent, an absolute path on the deck's host; for his own edit, what `work.slides.attach`
+   * answered). `table`: `rows` by `cols`. `chart`: its data. `id`: the shape id to give it, when the same list edits it.
+   */
+  z.object({
+    op: z.literal('insert'),
+    slide,
+    what: z.enum(['text', 'shape', 'picture', 'table', 'chart', 'video']),
+    box,
+    id: z.number().int().positive().max(2_000_000_000).optional(),
+    text: text.optional(),
+    preset: z.string().regex(/^[A-Za-z0-9]{1,40}$/).optional(),
+    file: z.string().min(1).max(1000).optional(),
+    rows: z.number().int().min(1).max(50).optional(),
+    cols: z.number().int().min(1).max(30).optional(),
+    chart: z
+      .object({
+        type: z.enum(['bar', 'line', 'pie']).default('bar'),
+        categories: z.array(z.string().max(500)).min(1).max(500),
+        series: z.array(z.object({ name: z.string().max(500), values: z.array(z.number().nullable()).max(500) })).min(1).max(50)
+      })
+      .optional()
+  }),
+  /** A shape off its slide, with what only it used: its picture, chart or media, and the effects that played on it. */
+  z.object({ op: z.literal('delete'), slide, shape }),
+  /** A shape's fill: a colour, or null for none. */
+  z.object({ op: z.literal('fill'), slide, shape, color: colour.nullable() }),
+  /** A shape's outline: its colour (null: none), its weight in points, its dash. */
+  z.object({ op: z.literal('line'), slide, shape, color: colour.nullable().optional(), width: z.number().min(0).max(100).optional(), dash: z.enum(['solid', 'dash', 'dot']).optional() }),
+  /** A table's row or column put in before place `at` (from 0; the count puts it last), or the one at `at` taken out. */
+  z.object({ op: z.literal('grid'), slide, shape, what: z.enum(['row', 'col']), act: z.enum(['insert', 'delete']), at: z.number().int().min(0).max(1000) }),
+  /** A slide left out of the show, or put back in. */
+  z.object({ op: z.literal('hide'), slide, hidden: z.boolean() }),
+  /** A copy of a slide, right after it. `id` is given by the host. */
+  z.object({ op: z.literal('duplicate'), slide, id: slide.optional() }),
+  /** The deck's sections: one started at slide `at`, one renamed or taken away by its place in the list (from 0). */
+  z.discriminatedUnion('act', [
+    z.object({ op: z.literal('section'), act: z.literal('add'), at: slide, name: z.string().min(1).max(200) }),
+    z.object({ op: z.literal('section'), act: z.literal('rename'), section: z.number().int().min(0).max(1000), name: z.string().min(1).max(200) }),
+    z.object({ op: z.literal('section'), act: z.literal('remove'), section: z.number().int().min(0).max(1000) })
+  ]),
+  /** Another of the deck's layouts for a slide, by name: only where each of the slide's placeholders has its match there. */
+  z.object({ op: z.literal('layout'), slide, layout: z.string().min(1).max(200) }),
+  /** The deck's colours (by Office's twelve names) and its heading and body fonts, into its theme. */
+  z.object({
+    op: z.literal('theme'),
+    colors: z.partialRecord(z.enum(['dk1', 'lt1', 'dk2', 'lt2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink']), z.string().regex(/^[0-9a-fA-F]{6}$/)).optional(),
+    major: z.string().min(1).max(100).optional(),
+    minor: z.string().min(1).max(100).optional()
+  })
 ])
 export type SlideOp = z.infer<typeof SlideOpSchema>
 
@@ -144,6 +261,16 @@ export interface DeckShape {
   /** for a text shape: its paragraphs as runs, and its frame */
   paragraphs?: DeckParagraph[]
   frame?: DeckTextFrame
+  /**
+   * Its own box as it lies on the slide before any turn (left, top, width, height in EMU), its own turn in
+   * degrees and its flips: what a `geometry` edit takes. Absent for a shape in a group that is turned or
+   * flipped, which is moved in PowerPoint.
+   */
+  own?: { box: [number, number, number, number]; rot: number; flipH: boolean; flipV: boolean }
+  /** its own fill where it says one: a hex, or `none`. Absent: what its style or theme gives it. */
+  fill?: string
+  /** its own outline where it says one */
+  line?: { color?: string; width?: number; dash?: string }
 }
 
 /** A slide's own transition, as the file names it. */
@@ -239,8 +366,28 @@ export interface DeckView {
   size?: { width: number; height: number }
   /** each layout a slide can take: its name and the placeholders it holds */
   layouts?: Array<{ name: string; master: number; holds: Array<{ kind: string; idx: number }> }>
+  /**
+   * A picture of the layouts, where the host has one: a PDF read with `work.slides.read {which: 'layouts'}`, page n
+   * the nth entry of `layouts`. `rev` changes only when a layout, a master or the theme does.
+   */
+  layoutsPic?: { rev: string; size: number }
   /** the deck's theme: twelve colours as hex by Office's names (dk1, lt1, accent1 …), and its heading and body fonts */
   theme?: { colors: Record<string, string>; major: string; minor: string }
+  /**
+   * Present where he can edit the deck by hand (a .pptx on this host): whether one of his own edits can be taken
+   * back or put back now. Both are false once anything else changed the file.
+   */
+  hand?: { undo: boolean; redo: boolean }
+}
+
+/** One kept copy of the deck from before a change (docs/agents/work-slides.md "Versions"). */
+export interface DeckVersion {
+  id: string
+  /** when it was kept, ms */
+  at: number
+  size: number
+  /** the deck as it was before TempCode first changed it: kept for good */
+  first: boolean
 }
 
 /**
@@ -272,12 +419,18 @@ export interface ShowDeck {
 }
 
 const itemId = z.string().min(1).max(100)
+/**
+ * His own edits as a request carries them: checked by `SlideOpSchema` as they come in, and typed here by the
+ * edits' own name rather than by the schema's whole shape. The wire's one union of every request is what the
+ * compiler works through for each request; the edits' schema, spelt out inside it, was more than it would take.
+ */
+const opsOnWire = z.array(SlideOpSchema).min(1).max(100) as unknown as z.ZodType<SlideOp[]>
 
 export const SlidesRequestSchemas = [
   /** → DeckView: reads the deck and renders it (and the proposed deck, when changes wait), which can take seconds the first time */
   request('work.slides.open', z.object({ itemId })),
-  /** → { data: base64, size, rev }: bytes of one of the deck's renders, a PDF */
-  request('work.slides.read', z.object({ itemId, which: z.enum(['file', 'proposed']), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
+  /** → { data: base64, size, rev }: bytes of one of the deck's renders, a PDF. `layouts`: one page per entry of `DeckView.layouts`, each layout as an empty slide that says what goes where (`DeckView.layoutsPic`). */
+  request('work.slides.read', z.object({ itemId, which: z.enum(['file', 'proposed', 'layouts']), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → { data: base64, size, rev }: bytes of one slide's own picture (a one-page PDF), by the slide's id in the file or in the proposed deck; `rev` is the slide's `pic.rev` */
   request('work.slides.slide', z.object({ itemId, which: z.enum(['file', 'proposed']), slide, offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → DeckView: accept writes the changes into the file; reject drops them */
@@ -296,7 +449,21 @@ export const SlidesRequestSchemas = [
   /** → DeckView: what the agent does to this deck from now on */
   request('work.slides.mode', z.object({ itemId, mode: z.enum(['suggests', 'writes']) })),
   /** → DeckView: puts the file back as it was before the agent's direct write */
-  request('work.slides.undo', z.object({ itemId, writeId: z.string() }))
+  request('work.slides.undo', z.object({ itemId, writeId: z.string() })),
+  /** → DeckView: his own edits, written into the file at once. Refused for a thread: an agent edits through `slides_edit`, under the hold. */
+  request('work.slides.edit', z.object({ itemId, ops: opsOnWire })),
+  /** → DeckView: takes his last edit back, or puts back the one he took back */
+  request('work.slides.step', z.object({ itemId, dir: z.enum(['undo', 'redo']) })),
+  /** → DeckVersion[]: the kept copies, newest first */
+  request('work.slides.versions', z.object({ itemId })),
+  /** → DeckView: puts a kept copy in the file's place; the deck as it is now is kept first */
+  request('work.slides.restore', z.object({ itemId, version: z.string().min(1).max(100) })),
+  /**
+   * → { token }: one piece of a picture or a video he is adding by hand, at most 4 MB of it. The first piece names
+   * the file and is answered its token; each next piece gives the token and follows on. An `insert` edit then names
+   * the file by that token (`file`). Refused for a thread: an agent's edit names a path on the deck's host.
+   */
+  request('work.slides.attach', z.object({ itemId, name: z.string().min(1).max(300), token: z.string().max(100).optional(), data: z.string().max(5_600_000) }))
 ] as const
 
 /** A deck's view changed: an agent revised it, or a change was accepted or rejected. */
@@ -309,6 +476,11 @@ export const SLIDES_CAPS = {
   'work.slides.slide': 'read',
   'work.slides.review': 'operate',
   'work.slides.mode': 'operate',
-  'work.slides.undo': 'operate'
+  'work.slides.undo': 'operate',
+  'work.slides.edit': 'operate',
+  'work.slides.step': 'operate',
+  'work.slides.versions': 'read',
+  'work.slides.restore': 'operate',
+  'work.slides.attach': 'operate'
 } satisfies CapsOf<typeof SlidesRequestSchemas>
 export const SLIDES_RELAY = {} satisfies RelayOf<typeof SlidesRequestSchemas>

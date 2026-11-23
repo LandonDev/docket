@@ -1,15 +1,20 @@
-import { statSync } from 'node:fs'
+import { statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkModule } from '../modules'
 import { statePath, Toolchain } from '../formats/tools'
 import { fenceItem, itemOf, readRange } from '../pdf/file'
+import { attachPiece } from './attach'
+import { BLANK_DECK } from './blankDeck'
+import { handEdit, handStep, restoreVersion, versionsOf } from './hand'
+import { forgetHands } from './handLine'
+import { deckPreviewer } from './preview'
 import { createResident, type Resident } from './resident'
 import { SLIDES_CONVERTERS } from './deck'
 import { ensureSlidesTables, SlidesStore } from './store'
 import { slidesTools } from './tools'
-import { registerFileMoved } from '../files/hooks'
-import { accept, announce, ChangedSinceError, fileMoved, itemsGone, reject, renderPath, seatOf, sessionsGone, setSlideEngine, setSlideRenderer, showOf, slidePath, StaleChangesError, undo, viewOf } from './view'
+import { registerFileMaker, registerFileMoved, registerFilePreviewer } from '../files/hooks'
+import { accept, announce, ChangedSinceError, deckDir, fileMoved, itemsGone, reject, renderPath, seatOf, sessionsGone, setSlideEngine, setSlideRenderer, showOf, slidePath, StaleChangesError, undo, viewOf } from './view'
 
 /**
  * The slides pillar's server module (docs/agents/work-slides.md): a deck
@@ -19,11 +24,34 @@ import { accept, announce, ChangedSinceError, fileMoved, itemsGone, reject, rend
  * deck with. The .pptx stays the truth; an edit written into it leaves
  * every part it did not change byte for byte as it was.
  */
-const SLIDES_METHODS: ReadonlySet<string> = new Set(['work.slides.open', 'work.slides.read', 'work.slides.slide', 'work.slides.show', 'work.slides.review', 'work.slides.mode', 'work.slides.undo'])
+const SLIDES_METHODS: ReadonlySet<string> = new Set([
+  'work.slides.open',
+  'work.slides.read',
+  'work.slides.slide',
+  'work.slides.show',
+  'work.slides.review',
+  'work.slides.mode',
+  'work.slides.undo',
+  'work.slides.edit',
+  'work.slides.step',
+  'work.slides.versions',
+  'work.slides.restore',
+  'work.slides.attach'
+])
 
 // A deck's rows and folder are kept by its file's path: a rename or a move through Files re-keys them in the
 // rename's own savepoint. Registered when the module loads; the files pillar keeps it whenever it starts.
 registerFileMoved((from, to, at) => fileMoved(from, to, at))
+
+// A new deck made in Files: a blank .pptx with PowerPoint's own layouts, which the deck kind then edits in place.
+// Written where Files says and never over a file: Files moves it into the place itself.
+registerFileMaker('slides', {
+  forms: ['pptx'],
+  async blank(target) {
+    if (target.form !== 'pptx') throw new Error(`A deck is made as a .pptx, not a .${target.form}.`)
+    writeFileSync(target.path, BLANK_DECK, { flag: 'wx', mode: 0o600 })
+  }
+})
 
 // One resident a host for the life of the process: Work turned off and on again takes up the same one, which
 // waits for its old LibreOffice to end before it starts another on the same profile.
@@ -58,9 +86,13 @@ export const slides: WorkModule = {
         return ''
       }
     })
+    // Files asks for a deck's slide as a picture (a thumbnail, a look before opening).
+    const offPreview = registerFilePreviewer('slides', deckPreviewer(ctx))
     return () => {
+      offPreview()
       setSlideRenderer(null)
       setSlideEngine(null)
+      forgetHands()
       void resident.stop()
     }
   },
@@ -107,6 +139,30 @@ export const slides: WorkModule = {
       }
       case 'work.slides.undo': {
         await undo(ctx, item, req.params.writeId)
+        return handled(await announce(ctx, item, signal))
+      }
+      // His own edits (hand.ts): written at once. A thread's own call is refused: an agent edits through
+      // slides_edit, where the mode and the hold decide what reaches the file.
+      case 'work.slides.edit': {
+        if (by.kind === 'model') throw new Error('Only the owner edits a deck by hand; an agent uses slides_edit.')
+        await handEdit(ctx, item, req.params.ops, signal)
+        return handled(await announce(ctx, item, signal))
+      }
+      case 'work.slides.step': {
+        if (by.kind === 'model') throw new Error('Only the owner takes back his own edits.')
+        await handStep(ctx, item, req.params.dir, signal)
+        return handled(await announce(ctx, item, signal))
+      }
+      case 'work.slides.versions':
+        return handled(await versionsOf(ctx, item))
+      case 'work.slides.attach': {
+        if (by.kind === 'model') throw new Error('Only the owner adds a file by hand; an agent names a path in slides_edit.')
+        seatOf(ctx, item)
+        return handled(attachPiece(await deckDir(ctx, item, 'attach'), { name: req.params.name, ...(req.params.token !== undefined ? { token: req.params.token } : {}), data: Buffer.from(req.params.data, 'base64') }))
+      }
+      case 'work.slides.restore': {
+        if (by.kind === 'model') throw new Error('Only the owner restores a version of a deck.')
+        await restoreVersion(ctx, item, req.params.version)
         return handled(await announce(ctx, item, signal))
       }
     }

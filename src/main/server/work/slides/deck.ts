@@ -1,4 +1,4 @@
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { SlideOpSchema, type DeckParagraph, type DeckPoint, type DeckShapeKind, type DeckTextFrame, type DeckView, type SlideOp, type SlideTransition } from '@shared/contract-work-slides'
@@ -14,6 +14,9 @@ import { DECK_PY } from './deckScript'
  * part an edit did not change keeps the input's bytes.
  */
 
+/** The name a file an edit brings goes by in the job: `f0.png`, `f1.mp4`. */
+export const ATTACHED = /^f\d+(\.[A-Za-z0-9]{1,8})?$/
+
 export interface DeckInfo {
   /** the slide's size in EMU */
   width: number
@@ -26,6 +29,8 @@ export interface DeckInfo {
   /** each layout with its master and the placeholders it holds (an outline kept by an older script has none) */
   layoutInfo?: NonNullable<DeckView['layouts']>
   theme?: NonNullable<DeckView['theme']>
+  /** one hash of everything the deck's layouts are drawn from (masters, layouts, themes): the layout picker's pictures are kept under it */
+  layoutsDraws?: string
 }
 export interface SlideInfo {
   /** p:sldId/@id: kept by every save, so a slide is paired across revisions by it */
@@ -65,6 +70,11 @@ export interface ShapeInfo {
   media?: 'video' | 'audio'
   paragraphs?: DeckParagraph[]
   frame?: DeckTextFrame
+  /** its own box on the slide before any turn (EMU), its turn and flips: what a `geometry` edit takes */
+  own?: { box: [number, number, number, number]; rot: number; flipH: boolean; flipV: boolean }
+  /** its own fill (a hex, or `none`) and outline, where it says them itself */
+  fill?: string
+  line?: { color?: string; width?: number; dash?: string }
   /** every paragraph joined by \n; '' for a shape with no text */
   text: string
   /** a table's cells, row by row */
@@ -74,7 +84,50 @@ export interface ShapeInfo {
 
 const TIMEOUT_MS = 5 * 60_000
 // Options may come from another host's key: anything but a list of edits is refused.
-const EditOptions = z.object({ ops: z.array(SlideOpSchema).min(1).max(500), strict: z.boolean().optional() })
+/** `files`: the names of the files the edits bring (a picture, a video), in the order they follow the deck in a `pptxplus` input. */
+const EditOptions = z.object({ ops: z.array(SlideOpSchema).min(1).max(500), strict: z.boolean().optional(), files: z.array(z.string().regex(ATTACHED)).max(64).optional() })
+
+/**
+ * The deck an edit job works on. A `pptxplus` input is the deck and, after it, the files its edits bring, as one
+ * file (`joinStep`): the conversion runner carries one file, and a job run on another host must take them along.
+ * They are laid out where the deck tool looks: `files/<name>` beside the edits.
+ */
+function deckIn(job: { from: string; input: string }, run: ConvertRun, files: readonly string[]): string {
+  if (job.from !== 'pptxplus') return job.input
+  const deck = join(run.tmp, 'in.pptx')
+  mkdirSync(join(run.tmp, 'files'), { recursive: true })
+  splitStep(job.input, [deck, ...files.map((name) => join(run.tmp, 'files', name))])
+  return deck
+}
+
+async function runEdit(job: { from: string; input: string; output: string; options?: unknown }, run: ConvertRun): Promise<{ warnings: string[] }> {
+  const parsed = EditOptions.safeParse(job.options ?? {})
+  if (!parsed.success) throw new Error('the edits are not a list of slide edits')
+  const ops = join(run.tmp, 'ops.json')
+  const out = join(run.tmp, 'out.pptx')
+  const said = join(run.tmp, 'warnings.json')
+  writeFileSync(ops, JSON.stringify(parsed.data.ops))
+  await runDeck(run, ['apply', deckIn(job, run, parsed.data.files ?? []), ops, out, said])
+  const warnings = JSON.parse(readFileSync(said, 'utf8')) as string[]
+  // Strict: nothing is kept unless every edit went in (the output stays in tmp, which the runner removes).
+  if (parsed.data.strict && warnings.some((w) => !isNote(w))) throw new Error(warnings.filter((w) => !isNote(w)).join(' '))
+  copyFileSync(out, job.output)
+  return { warnings }
+}
+
+// His own edit, in one run of the tool: the edited deck, the pack that turns it back into the input (deckScript.ts
+// "undo packs") and the edited deck's outline. Always strict: an edit of his that does not go in whole writes nothing.
+async function runStep(job: { from: string; input: string; output: string; options?: unknown }, run: ConvertRun): Promise<{ warnings: string[] }> {
+  const parsed = EditOptions.safeParse(job.options ?? {})
+  if (!parsed.success) throw new Error('the edits are not a list of slide edits')
+  const [ops, out, said, pack, info] = ['ops.json', 'out.pptx', 'warnings.json', 'back.pack', 'info.json'].map((f) => join(run.tmp, f))
+  writeFileSync(ops, JSON.stringify(parsed.data.ops))
+  await runDeck(run, ['step', deckIn(job, run, parsed.data.files ?? []), ops, out, said, pack, info])
+  const warnings = JSON.parse(readFileSync(said, 'utf8')) as string[]
+  if (warnings.some((w) => !isNote(w))) throw new Error(warnings.filter((w) => !isNote(w)).join(' '))
+  joinStep([out, pack, info], job.output)
+  return { warnings }
+}
 
 async function runDeck(run: ConvertRun, args: string[]): Promise<void> {
   const py = run.tools.bin('python-pptx')
@@ -95,26 +148,102 @@ export const SLIDES_CONVERTERS: Converter[] = [
       return {}
     }
   },
+  // A deck of one slide per layout of the input, for the layout picker's pictures (view.ts "the layouts' picture").
   {
     from: 'pptx',
-    to: 'pptxedit',
+    to: 'pptxlayouts',
     needs: 'python-pptx',
     async run(job, run) {
-      const parsed = EditOptions.safeParse(job.options ?? {})
-      if (!parsed.success) throw new Error('the edits are not a list of slide edits')
-      const ops = join(run.tmp, 'ops.json')
-      const out = join(run.tmp, 'out.pptx')
-      const said = join(run.tmp, 'warnings.json')
-      writeFileSync(ops, JSON.stringify(parsed.data.ops))
-      await runDeck(run, ['apply', job.input, ops, out, said])
-      const warnings = JSON.parse(readFileSync(said, 'utf8')) as string[]
-      // Strict: nothing is kept unless every edit went in (the output stays in tmp, which the runner removes).
-      if (parsed.data.strict && warnings.some((w) => !isNote(w))) throw new Error(warnings.filter((w) => !isNote(w)).join(' '))
-      copyFileSync(out, job.output)
-      return { warnings }
+      await runDeck(run, ['layouts', job.input, job.output])
+      return {}
+    }
+  },
+  { from: 'pptx', to: 'pptxedit', needs: 'python-pptx', run: runEdit },
+  // The same, with the files the edits bring carried in the input (a picture, a video).
+  { from: 'pptxplus', to: 'pptxedit', needs: 'python-pptx', run: runEdit },
+  { from: 'pptx', to: 'pptxstep', needs: 'python-pptx', run: runStep },
+  { from: 'pptxplus', to: 'pptxstep', needs: 'python-pptx', run: runStep },
+  // An edit taken back or put back: a deck and the pack to apply to it in; the deck after, the pack back and its outline out.
+  {
+    from: 'pptxstep',
+    to: 'pptxstep',
+    needs: 'python-pptx',
+    async run(job, run) {
+      const [now, pack, out, back, info] = ['now.pptx', 'in.pack', 'out.pptx', 'back.pack', 'info.json'].map((f) => join(run.tmp, f))
+      splitStep(job.input, [now, pack])
+      await runDeck(run, ['unstep', now, pack, out, back, info])
+      joinStep([out, back, info], job.output)
+      return {}
     }
   }
 ]
+
+const CHUNK = 1 << 20
+function copyInto(fd: number, from: string, start = 0, length = statSync(from).size - start): void {
+  const src = openSync(from, 'r')
+  try {
+    const buf = Buffer.allocUnsafe(Math.min(CHUNK, Math.max(1, length)))
+    let left = length
+    let at = start
+    while (left > 0) {
+      const got = readSync(src, buf, 0, Math.min(buf.length, left), at)
+      if (got <= 0) throw new Error('the file ended early')
+      writeSync(fd, buf, 0, got)
+      left -= got
+      at += got
+    }
+  } finally {
+    closeSync(src)
+  }
+}
+
+const NOT_STEP = 'not a deck with its pack'
+
+/**
+ * Several files as one, since the conversion runner carries one file each way (a deck, the pack that reverses an
+ * edit, the deck's outline): how many, eight bytes of each one's length, then each in turn.
+ */
+export function joinStep(parts: readonly string[], out: string): void {
+  const fd = openSync(out, 'w', 0o600)
+  try {
+    const head = Buffer.alloc(4 + 8 * parts.length)
+    head.writeUInt32BE(parts.length)
+    parts.forEach((part, i) => head.writeBigUInt64BE(BigInt(statSync(part).size), 4 + 8 * i))
+    writeSync(fd, head)
+    for (const part of parts) copyInto(fd, part)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/** The files of one `joinStep` made, the first `outs.length` of them, each written to its path. */
+export function splitStep(file: string, outs: readonly string[]): void {
+  const size = statSync(file).size
+  const src = openSync(file, 'r')
+  let lengths: number[]
+  try {
+    const count = Buffer.alloc(4)
+    if (readSync(src, count, 0, 4, 0) !== 4) throw new Error(NOT_STEP)
+    const n = count.readUInt32BE()
+    if (n < outs.length || n > 16) throw new Error(NOT_STEP)
+    const head = Buffer.alloc(8 * n)
+    if (readSync(src, head, 0, head.length, 4) !== head.length) throw new Error(NOT_STEP)
+    lengths = Array.from({ length: n }, (_, i) => Number(head.readBigUInt64BE(8 * i)))
+    if (lengths.some((l) => !Number.isSafeInteger(l) || l < 0) || 4 + 8 * n + lengths.reduce((a, l) => a + l, 0) !== size) throw new Error(NOT_STEP)
+  } finally {
+    closeSync(src)
+  }
+  let at = 4 + 8 * lengths.length
+  outs.forEach((to, i) => {
+    const fd = openSync(to, 'w', 0o600)
+    try {
+      copyInto(fd, file, at, lengths[i])
+    } finally {
+      closeSync(fd)
+    }
+    at += lengths[i]
+  })
+}
 
 /** A note the deck tool adds about an edit that went in ("note: edit N: …", a link it took out): never a failure. */
 export const isNote = (w: string): boolean => w.startsWith('note: ')
@@ -135,16 +264,29 @@ const ID_MAX = 2_147_483_647
  * still none a waiting add holds.
  */
 export function allocateIds(ops: SlideOp[], info: DeckInfo): SlideOp[] {
-  let high = Math.max(255, ...info.slides.map((s) => s.id), ...ops.map((o) => (o.op === 'add' && o.id !== undefined ? o.id : 0)))
+  let high = Math.max(255, ...info.slides.map((s) => s.id), ...ops.map((o) => (makesSlide(o) && o.id !== undefined ? o.id : 0)))
   return ops.map((o) => {
-    if (o.op !== 'add' || o.id !== undefined) return o
+    if (!makesSlide(o) || o.id !== undefined) return o
     // A deck near the ceiling has no room for the gap: the next free id above everything.
     high = high + HOST_ID_GAP + 1 <= ID_MAX ? high + HOST_ID_GAP + 1 : high + 1
     return { ...o, id: high }
   })
 }
 
-/** The slide each op belongs to, as the stepper groups them: the op's `slide`, or an add's `id` (0 before allocateIds gives it one). */
+/** An edit that makes a new slide, whose id the host gives: a slide from a layout, or a copy of one. */
+const makesSlide = (op: SlideOp): op is Extract<SlideOp, { op: 'add' | 'duplicate' }> => op.op === 'add' || op.op === 'duplicate'
+
+/** The slide number the stepper counts an edit of the deck itself under (its theme, a section renamed or taken away): no slide's. */
+export const DECK_ITSELF = 0
+
+/**
+ * The slide each op belongs to, as the stepper groups them: the op's `slide`; the `id` of the slide an add or a
+ * copy makes (0 before allocateIds gives it one); the slide a new section starts at; `DECK_ITSELF` for an edit of
+ * the deck as a whole.
+ */
 export function slideOfOp(op: SlideOp): number {
-  return op.op === 'add' ? (op.id ?? 0) : op.slide
+  if (makesSlide(op)) return op.id ?? 0
+  if (op.op === 'theme') return DECK_ITSELF
+  if (op.op === 'section') return op.act === 'add' ? op.at : DECK_ITSELF
+  return op.slide
 }

@@ -147,6 +147,14 @@ drops it. Agents suggest; the owner accepts.
   (the first 16 characters of the page's name) and size, so a client keeps the
   picture of a slide an edit did not touch and reads only the one that
   changed. A page not kept yet is split from the deck's PDF.
+- **A render never holds up a write** (`predraw`). Before a read takes its
+  turn on the deck's queue, the pictures it will need are drawn beside the
+  queue: on the queue only the outlines are read and the missing PDFs
+  named; the drawing runs off it, once for a PDF however many ask. So his
+  next edit goes into the file while the picture of the last is still
+  being drawn. A picture that turns out stale is kept under its own key
+  and harms nothing; one that fails beside the queue is drawn again on it,
+  which then says why.
 - **One chain per deck.** `serial(ctx, item, fn)` runs every step that reads
   or writes a deck's files after the one before, in the deck's own line
   (`seatOf`): two opens at once render once, a write never races a render,
@@ -242,6 +250,215 @@ the file is really edited. For a deck:
 
 Tests: `slides.test.ts`, "a deck in a place others can open".
 
+### Edits by hand
+
+Built by SLD4 (`hand.ts`, `handLine.ts`). He edits a deck himself: the edit
+is his own, so it goes into the file at once, whatever the tab's mode and
+whoever else can open the file. A thread cannot call any of this: an agent
+edits through `slides_edit`, where the mode and the hold decide what reaches
+the file.
+
+- **Two edits for words and their look** (`SlideOpSchema`, `deckScript.ts`
+  `op_runs`, `op_format`), which `slides_edit` takes too, under the rules
+  that stand:
+  - `runs`: a shape's (or one cell's) paragraphs as runs. A paragraph `from`
+    an old paragraph keeps its spacing, level and list; a run `from` an old
+    run (`[paragraph, run]`, counted as the outline lists them, line breaks
+    and fields included) keeps that run's own properties, and what the run
+    sets (`font`, `size`, `bold`, `italic`, `underline`, `color`) goes on
+    top. A run from nowhere takes its paragraph's first look. A line break
+    in a run's words is a break; a field he did not retype stays a field;
+    an empty paragraph keeps the look his next words will take.
+  - `format`: a look on a whole shape (every cell, for a table), on one
+    cell, or on a `range` of characters (`[paragraph, character]`, a line
+    break counting one), cutting runs in two where the range does. It sets
+    the run look and `level`, `align` and `list`.
+  - What is written is what PowerPoint writes: a run's properties in the
+    schema's order (`RPR_ORDER`; PowerPoint 16 opened one out of order
+    with no word, but a stricter reader may not), a font as `a:latin` and
+    `a:cs`, a colour as `a:srgbClr` or the theme's own `a:schemeClr`, a
+    size in hundredths of a point (divided by the shape's shrink, so the
+    size he asks for is the size drawn), a list as PowerPoint's own bullet
+    or `arabicPeriod` with its hanging indent, a paragraph taken out of a
+    list with `a:buNone` and no indent.
+- **One run of the tool for an edit.** `pptx → pptxstep` applies the edits
+  under strict (an edit of his that does not go in whole writes nothing),
+  makes the pack that reverses them and reads the new deck's outline, all
+  in one Python process; the three come back as one file (`joinStep`,
+  `splitStep`: the conversion runner carries one file each way). The
+  outline is kept under the new file's key (`keepOutline`), so the view is
+  not read again.
+- **Undo and Redo walk packs.** A pack (`pack`, `unpack` in the script) is
+  what turns one deck back into another, part for part: the first deck's
+  order of parts, and the bytes of each part the second changed or lost.
+  Applying it puts every part back byte for byte, so the byte rule holds
+  both ways and an undone picture or chart leaves no part behind.
+  `pptxstep → pptxstep` applies a pack and answers the pack that reverses
+  that. The packs are files in the deck's `undo/` folder (under `.cache`
+  for his own file, in the item's folder for a shared one); which comes
+  next is kept in memory (`hands`), so his undo ends when the app does, as
+  it does in PowerPoint. The last 100 edits can be taken back.
+- **The line holds only while the file is what it left.** It is checked by
+  the file's hash: an accepted suggestion, an agent's write, a restored
+  version or a save from another program ends it, and `DeckView.hand` then
+  says `{undo: false, redo: false}`. A suggestion that waits changes
+  nothing in the file and leaves the line as it is; his edit lands under
+  it and the proposed deck is drawn again on the new file.
+- **A save he makes meanwhile is never overwritten**: the file is replaced
+  only while it is still what was read (`replaceKeeping`), as every write
+  is.
+- **A rename carries the line** (`handMoved`, with `fileMoved`).
+
+### Shapes, slides and the deck
+
+Built by SLD5 (`deckScript.ts`). Each is an edit of `SlideOpSchema`: his own
+through `work.slides.edit`, an agent's through `slides_edit` under the rules
+that stand. Each was held, on a real deck through python-pptx, to **the
+exact parts it may change** (`deck.test.ts` "his own edits: shapes, slides
+and the deck"); every other part keeps its bytes.
+
+| Edit | What it does | Parts it may change |
+|---|---|---|
+| `geometry` | a shape's box as it lies on the slide before any turn (`box`: left, top, width, height in EMU), its turn in degrees, its flips | the slide |
+| `order` | `front`, `back`, `forward`, `backward`, within its own group | the slide |
+| `insert` | a text box, a drawn shape by PowerPoint's name for its outline (`preset`), a table, in a `box` | the slide |
+| `insert` a picture | the file it brings | the slide, its relationships, the new media part (and a content type, for the deck's first picture of a kind) |
+| `insert` a chart | its data | the slide, its relationships, the content types; a chart part with its own workbook |
+| `insert` a video | the file it brings | the slide (with its timing node), its relationships, the media and a poster picture |
+| `delete` | a shape off its slide, with what only it used (its picture, chart or media) and the effects that played on it | the slide, its relationships; the parts only it used go |
+| `fill`, `line` | a colour or none; the outline's weight in points and its dash | the slide |
+| `grid` | a table's row or column put in before a place, or taken out; the table grows and shrinks by it | the slide |
+| `hide` | a slide left out of the show | the slide |
+| `duplicate` | a copy right after its slide, with its own copy of each chart and workbook; pictures and media are shared, as PowerPoint shares them | the new slide and what it holds for itself, the presentation, the content types |
+| `section` | one started at a slide, one renamed, one taken away (its slides join the one before; the first one's, the next) | the presentation |
+| `layout` | another of the deck's layouts for a slide | the slide's relationship to its layout |
+| `theme` | twelve colours and two fonts, into the theme of every slide master | the theme parts |
+
+- **A colour** is a hex, or one of the theme's by its slot with Office's
+  tint (`{slot: 'accent1', tint: 0.4}`: `a:schemeClr` with `lumMod` and
+  `lumOff`), so it stays the theme's when the theme changes. The same for
+  a run's colour in `runs` and `format`.
+- **Where a shape is** comes with the outline as `DeckShape.own`: its box
+  on the slide before any turn, its own turn and its flips, which is what
+  `geometry` takes. A shape in a plain group is placed in the group's own
+  numbers and lands where the slide says. A shape in a group that is
+  turned or flipped has no `own` and is moved in PowerPoint. A table, a
+  chart or a diagram cannot be turned.
+- **What is PowerPoint's.** A layout is offered only where each of the
+  slide's placeholders has its match in the new one (same index and
+  kind): any other change says "change this layout in PowerPoint". A
+  table with merged cells keeps its rows and columns for PowerPoint. A
+  table's and a chart's fill are set there.
+- **Effects go with their shape.** A `delete` takes the shape's effects
+  out of the slide's timing (the whole effect, and any group it leaves
+  empty, up to the main sequence), so no timing names a shape that is
+  gone, which PowerPoint would repair.
+- **The outline** also says a shape's own `fill` and `line` where it says
+  them itself, and the stepper says a change of this kind in words
+  ("Moved or resized", "Added", "Removed", "fill #FF0000", "Hidden").
+  An edit of the deck itself (its theme, a section renamed) is one change
+  of its own, "The deck" (`DECK_ITSELF`).
+
+### Files an edit brings
+
+`attach.ts`. A picture or a video for an `insert` is a file the host keeps
+in the deck's `attach/` folder under a name of its own (a token), and an
+edit names it by that token and nothing else, never a path.
+
+- **By hand**: `work.slides.attach` takes the file in pieces of at most
+  4 MB; the first piece names it and is answered the token. A picture up
+  to 50 MB, a video up to 500 MB. A thread is refused.
+- **An agent** names an absolute path on the deck's host in `slides_edit`;
+  the tool copies the file in at once and stores the token, so the
+  suggestion still has its picture when the file it came from moves on.
+- **When the edit runs** the files ride with the deck as one input
+  (`pptxplus`: the deck, then each file, `joinStep`), so a job another
+  host runs has them; the tool finds them as `files/f0.png` beside the
+  edits.
+- **They go** once his edit has put them in the file, and an hour after
+  they came where no waiting edit names them (`sweepAttached`, after any
+  change). His own file's are kept by the file with its versions (a
+  waiting suggestion outlives a closed tab); a shared file's in the
+  item's folder.
+
+### The layouts' picture
+
+The layout picker shows each layout as a picture. The deck tool makes a deck
+of one slide per layout of the file (`layouts_deck`: every slide of the file
+gone, each layout's title saying the layout's name and its text places
+saying what they are), and it is drawn as any deck is, beside the deck's
+queue when the deck opens. The PDF is kept in the deck's `render/` folder,
+named by one hash of what the layouts are drawn from (`layoutsDraws`: the
+masters, their layouts and themes and what those hold; no slide), so an
+edit to a slide never draws it again, and the newest two stay. The view
+names it (`DeckView.layoutsPic {rev, size}`), page n being the nth entry of
+`DeckView.layouts`; `work.slides.read {which: 'layouts'}` reads it by range.
+A file others can open keeps it in its tab's own folder and draws it on this
+host alone.
+
+### A new deck by hand
+
+`blankDeck.ts` holds a blank .pptx (16:9, one Title Slide, PowerPoint's own
+eleven layouts, the Office theme), and the module registers the deck kind's
+maker with Files (`registerFileMaker`, form `pptx`): Files writes it where
+it says, never over a file, and the deck kind then edits it in place.
+`src/shared/work/deckThemes.ts` lists the themes a deck can be given
+(`DECK_THEMES`: Office, TempCode, Office 2007 to 2010, Greyscale), each a
+`theme` edit (`themeEdit`).
+
+### Proven against real PowerPoint
+
+Every edit of SLD4 and SLD5, and the older ones, on real decks, in
+Microsoft 365's PowerPoint in the box's Windows VM (2026-11-23;
+`.temp-code/plans/landed/SLD45-powerpoint-proof.md`, its decks, scripts and
+read-backs in `landed/SLD45-proof/`): 29 decks, 340 checks, none failed.
+
+- Each deck, and the copy PowerPoint saved of it, opened with no repair
+  prompt, by automation's `Open` and the way a double-click opens it (the
+  only way that showed PowerPoint's own "found a problem… Repair" on a
+  deck broken on purpose).
+- PowerPoint read back what each edit set: each run's words, font, size,
+  bold, italic, underline and colour (a theme colour with its tint as the
+  theme's); a shape's `Left`, `Top`, `Width`, `Height`, `Rotation` and
+  flips to within 0.6 pt; its order, fill and line; a table's rows,
+  columns and cells; a chart's series; a picture and a video; a hidden
+  slide; the slides' order; the sections; `CustomLayout.Name`; the theme's
+  fonts and colours; the notes.
+- An edit taken back and put back (`pptxstep → pptxstep`) gives the base
+  and the edited deck again, byte for byte on the box and in what
+  PowerPoint reads.
+- What makes PowerPoint repair is a dangling reference (a timing node
+  naming a shape that is gone): `delete` takes a shape's effects with it
+  and opened clean. Run properties out of the schema's order, and an
+  unknown element, opened with no word.
+
+### Versions
+
+`history/` holds copies of the deck from before changes (`keepHistory`):
+
+- An agent's direct write always keeps one: its Undo needs it. His own
+  edits keep one a minute (`VERSION_EVERY_MS`).
+- The newest thirty stay; the first ever, the deck as it was before
+  TempCode changed it (`….first.pptx`), stays for good; the one an agent's
+  Undo points at is never dropped.
+- `work.slides.versions` lists them newest first; `work.slides.restore`
+  puts one in the file's place, through the queue and `replaceKeeping`,
+  keeping the deck as it is now first, so a restore can itself be taken
+  back from the list. A version is named by its file's name and nothing
+  else, never a path.
+- His own file's versions live by the file and outlive a closed tab; a
+  shared file's live in the item's folder and go with it.
+
+### A slide for Files
+
+`preview.ts` registers the deck kind's previewer (`registerFilePreviewer`):
+slide `page` of a .pptx on this host as a PNG, with the deck's count of
+slides so Files' preview pages through it. Where a tab is open on the
+file its kept picture is used and nothing is drawn. Else the slide is drawn
+once (by the LibreOffice kept running, else a whole export) into a scratch
+folder under `.cache/preview/` that goes when the picture is read. A file
+others can open is drawn on this host alone and keeps nothing.
+
 ### Tables
 
 `store.ts`, made in `ensure` (no `BEGIN` or `COMMIT`: it runs inside the
@@ -277,6 +494,11 @@ thread (`rowSession`):
 | `work.slides.review` | operate | accept or reject changes by id, or `all` → `DeckView`; an optional `rev` (the proposed render's, as the view advertised it) binds the press to that preview: when the changes moved on since, nothing is accepted or rejected, every client is told the deck as it is, and the call fails with "The suggestions changed since this preview". The phone always sends it and reads the render's bytes only at that rev; the desktop's strip sends none and is not checked |
 | `work.slides.mode` | operate | `suggests` or `writes` → `DeckView` |
 | `work.slides.undo` | operate | puts the file back before the agent's direct write → `DeckView` |
+| `work.slides.edit` | operate | his own edits (`{itemId, ops}`), written into the file at once, whole or not at all → `DeckView`; refused for a thread |
+| `work.slides.step` | operate | `{itemId, dir: 'undo' \| 'redo'}`: takes his last edit back or puts back the one he took back → `DeckView`; refused for a thread |
+| `work.slides.versions` | read | → `DeckVersion[]`, the kept copies newest first |
+| `work.slides.restore` | operate | `{itemId, version}`: puts a kept copy in the file's place → `DeckView`; refused for a thread |
+| `work.slides.attach` | operate | one piece of a picture or a video he is adding by hand → `{token}`; refused for a thread |
 
 A thread's own call (`kind: 'model'`) may not review or set the mode. Every
 change pushes `work.slides` with the view. There is no method named `list`.
@@ -284,7 +506,7 @@ change pushes `work.slides` with the view. There is no method named `list`.
 The listener's path fence reads only the paths a request names, and these
 methods name an item id. So `handle` fences the item itself, once, before
 any method runs: `fenceItem` (pdf/file.ts) asks the listener's own fence
-(`ctx.reaches`) and refuses a remote key every one of the seven methods on a
+(`ctx.reaches`) and refuses a remote key every one of the twelve methods on a
 deck whose file it could not name itself, with the fence's own error. The
 key gets nothing of the view and changes nothing. A deck a thread made sits
 in its own folder and passes; this host's own window always passes.
@@ -345,8 +567,9 @@ A slide's timing tree (builds) is read by SLD6, with the show's builds.
 
 ### Converters
 
-`deck.ts` registers two, both `needs: 'python-pptx'`, so a host without it
-forwards them:
+`deck.ts` registers these, all `needs: 'python-pptx'`, so a host without it
+forwards them (the `pptxstep` pairs are "Edits by hand" above; a `pptxplus`
+input is the deck with the files its edits bring):
 
 - `pptx → deckinfo`: writes `DeckInfo` as JSON (to a file, never to stdout:
   `runTool` keeps only the last half megabyte).
@@ -442,6 +665,27 @@ slide's.
   is the only one drawn; `work.slides.slide` by range. Behind the gate, an
   edit through the module draws one slide with the real LibreOffice kept
   running, which ends when Work is turned off.
+- `slides.test.ts` "his own edits to a deck": an edit written at once and
+  told to every seat, in one run of the tool; a thread refused; an edit
+  that does not go in whole; Undo, Redo and what an edit after an undo
+  drops; the 100 steps; what ends the line; an edit under a waiting
+  suggestion; a save meanwhile; versions kept, listed, restored and
+  pruned; a rename; a shared file; a write that does not wait for a
+  render. "A slide as a picture for Files": drawn once and nothing kept,
+  a tab's picture used, a shared file, what is not a deck.
+- `deck.test.ts` "his own edits" (behind the gate, real python-pptx):
+  `runs` and `format` on a PowerPoint-saved deck (one part changes, the
+  look kept and set, the schema's order, a range that cuts runs, a
+  table), and an edit taken back and put back part for part.
+- `deck.test.ts` "his own edits: shapes, slides and the deck" (behind the
+  gate): each edit of SLD5 by the parts it may change, what it refuses,
+  and LibreOffice opening a deck that holds one of each.
+- `slides.test.ts` "the files an edit brings": a picture by hand in
+  pieces, under a token, as one input, gone once it is in the file; what
+  is refused; an agent's by its path; the sweep.
+- `blankDeck.test.ts`: the blank deck, the maker for Files, the themes.
+- `view.test.ts`: a look-only change said in words; a shape added,
+  removed, moved, recoloured and reordered; a change of the deck itself.
 - `pictures.test.ts`: split and stitch (the same bytes each time), the
   three ways a version's PDF is made, the same picture twice drawn once,
   a new engine drawing every slide again, a slide count that does not
@@ -459,9 +703,23 @@ slide's.
   own slide's alone, notes move none, the theme or the deck's settings
   move them all.
 - The renderer: `geometry.test.ts` (hit testing through turned and grouped
-  shapes, the selection's handles, reading order), `boxes.test.ts` (the
-  measured corners within their bounds) and the picking cases of
-  `SlidesCanvas.dom.test.tsx`.
+  shapes, the selection's handles, reading order, the typing box's place
+  through a turn and both flips, the ground's colour), `boxes.test.ts` (the
+  measured corners within their bounds), the picking cases of
+  `SlidesCanvas.dom.test.tsx`, `edit/model.test.ts` (the outline read in,
+  a look on a range splitting runs, a caret's word and its waiting look,
+  Return, a paste, what the row shows, the `runs` edit, nothing changed,
+  `rebase`), `edit/dom.test.ts` (drawn and read back, words the browser
+  puts in no run, two paragraphs joined, its own last break, places and
+  selections) and `HandEditor.dom.test.tsx` (the box's whole life in the
+  real pane: open by a second press, Return and F2, Escape, a look on a
+  range, the commit's edit, nothing sent, the old picture kept until the
+  new one paints, a refused edit, a conflict and Reload, Return, a line
+  break, a paste and the box's own undo, Shift-Tab to the row and Escape
+  back, the commit on close, a slide with a suggestion; the row present,
+  absent and resting, the picked shape's look and its `format` edit, the
+  box's selection, the keys; History and its loading and empty states;
+  what saved means).
 
 ## A mail's attachment
 
@@ -476,12 +734,16 @@ stage".
 | File | What it does |
 |---|---|
 | `canvas.ts` | The kind's def |
-| `SlidesCanvas.tsx` | The chunk: `Body` (the strip and the stage), `Bar` (the line while PowerPoint shows the deck) and `TabEnd` (the TempCode and PowerPoint switch) |
-| `geometry.ts` | Hit testing, the selection's outline and handles, reading order and which kinds can be picked (pure) |
-| `deck.ts` | `DeckHost` (the methods and the push), the per-item store the three parts share (the view, the slide on the stage, which app shows it), and `useRender`, which opens one of the deck's renders in pdf.js |
-| `Present.tsx` | Present, the split button at the end of the deck's bar, its menu, and the keys that start a show while the keyboard is in the deck |
+| `SlidesCanvas.tsx` | The chunk: `Body` (the format row, the strip and the stage), `Bar` (History, Present where the row is not drawn, the line while PowerPoint shows the deck) and `TabEnd` (the TempCode and PowerPoint switch) |
+| `geometry.ts` | Hit testing, the selection's outline and handles, reading order, which kinds can be picked, where a shape's words are laid (`textFrameOf`) and the ground under them (`groundOf`) (pure) |
+| `deck.ts` | `DeckHost` (the methods and the push), the per-item store the three parts share (the view, the slide on the stage, which app shows it), and `useRender`, which opens one of the deck's renders in pdf.js and keeps the one shown until the next has opened |
+| `Present.tsx` | Present: the split button at the end of the deck's bar, the ways to present as menu rows (`usePresentMenu`, which the format row's way out shares), and the keys that start a show while the keyboard is in the deck |
+| `edit/model.ts` | His words in a shape as runs (pure): the outline read in, a look laid on a range, typing, Return, a paste, what the row shows, the `runs` and `format` edits |
+| `edit/dom.ts` | The typing box's words in the page: drawn from the model, read back run by run, places and selections both ways |
+| `edit/session.ts` | `HandSession`: the shape picked, the typing box's life, the box's own undo, and his edits on their way to the host (one per item and host, shared by the body, the row and the bar) |
+| `edit/TypingBox.tsx`, `edit/DeckRow.tsx`, `edit/History.tsx` | The box over a shape, the deck's format row (its glyphs are in `work/icons.tsx`), History in the bar |
 | `show/` | The show, a chunk of its own loaded when the pointer first reaches Present: `state.ts` (the state and its keys), `timer.ts`, `Show.tsx` (a show running), `places.ts` (the documents it is drawn in), `Audience.tsx` (the slideshow), `Presenter.tsx` (the presenter's view), `pictures.tsx` (a slide painted at a window's size) |
-| `testkit.ts`, `SlidesCanvas.dom.test.tsx`, `SlidesCanvas.preview.tsx` | A host that keeps one view, the tests, the preview |
+| `testkit.ts`, `*.dom.test.tsx`, `SlidesCanvas.preview.tsx` | A host that keeps one view and answers his edits, the tests, the preview |
 
 How it works:
 
@@ -541,6 +803,99 @@ How it works:
   switch goes. The PowerPoint side of the switch is not built (the
   Office milestones, 28 and 29, put Excel behind the grid only): it says "Not built yet", and the bar says
   how many suggestions wait in TempCode, with Review to go back to them.
+
+### Typing on a slide
+
+His own hand on the deck (SLD4; the look is docs/DESIGN.md "The slide
+editor"). It is offered where the view carries `hand`: a .pptx on this
+host that he can write. The host writes each of his edits into the file at
+once (`work.slides.edit`), whole or not at all.
+
+- **The box.** A second press on a picked text shape (a shape the outline
+  lists with `paragraphs`), Return or F2 on it, opens the typing box over
+  it: the outline's runs as the model (`modelOf`: each run with the
+  `[paragraph, run]` it came from and the look it is drawn in), drawn into a
+  contenteditable one span a run (`edit/dom.ts`). He types into it as into
+  any text; the browser's own words are read back after each keystroke
+  (`readModel`), each piece into the run whose span holds it. A look, a
+  Return, a line break, a paste and his undo go through the model and the
+  box is drawn again (`act`), so the browser never makes its own `<b>` or
+  history: `beforeinput` takes its bold, its paragraph and its undo.
+- **A look on a range** splits the runs at its ends and sets the look on
+  those between (`applyLook`); a caret in a word takes the word, as
+  PowerPoint does, and a caret elsewhere keeps the look for the next words
+  typed (`pending`, a run of their own).
+- **The commit** is one `runs` edit (`runsOp`): every paragraph with the
+  paragraph it came from (a paragraph made by Return keeps the one it was
+  split from, so its level and list), every run with the run it came from
+  and only what he set on it; words in a paragraph that had none carry the
+  run the paragraph's cut continued, else nothing (the host gives them the
+  paragraph's first look). Nothing is sent when the op equals the shape's
+  own (`unchanged`). A press anywhere but the box, the row and the row's
+  layers commits, as does ⌘↩, Tab out of it, the tab closing (the body's
+  unmount) and a show started from it.
+- **Until the picture lands** the box stays (`landing`), drawn and taking
+  no pointer, and goes once the stage paints the slide from a render other
+  than the one it was opened over (`painted`), or at once where there is no
+  picture to wait for, or when the paint fails. `useRender` keeps the old
+  render open (and every picture painted from it) until the new one has
+  opened, and pdf.js replaces a picture only once the new one is whole, so
+  neither the stage nor the strip blanks between two revisions. The box is
+  filled with the colour most samples just inside the shape's edges share
+  (`groundOf`, read from the stage's canvas); on a picture or a gradient
+  ground that is one flat colour while he types, which hides the old words
+  and flattens the ground under the box until the new picture lands.
+- **A refused edit** puts the box back to typing with his words and says
+  why on the pane's state line ("Couldn't save your words", the host's
+  sentence, Retry). **A conflict**: the shape's words in the view are no
+  longer the ones the box opened on (another program, an agent's direct
+  write, an accept from another seat), or the host says the file moved
+  while it was written. Nothing is sent; the box keeps his words; the state
+  line says "The deck changed while you typed" with Reload, which reads the
+  deck again and keeps his words over the shape as it is now, each `from`
+  the new words still have kept (`rebase`), so the next commit sends them
+  over what is there.
+- **A slide an agent's suggestion changes** takes no box and no look from
+  the row: its picture and shapes are the proposed deck's, and a hand edit
+  built on them would write the suggestion's words as his. The press says
+  "Accept or reject the suggestion on this slide first".
+- **The floating bar.** Picking a shape feeds Ask (`shell.selection`) with
+  a rect under the slide's bottom-left corner (`askAnchor`: 42px under the
+  picture's bottom edge), not the shape's own: the frame lays its bar above
+  the rect (canvas/SelectionBar.tsx, `side="top"`, 6px off, 28 to 32px
+  tall), so it falls under the picture and never takes a press meant for
+  the next shape. Measured in a browser on the preview: 8px under the
+  slide on a 290px stage beside a thread and on a 544px one. It is taken
+  back while the box is open and fed again, with the new words, when the
+  box goes.
+- **The row** (`edit/DeckRow.tsx`) acts on the box's selection while the
+  box is open (sent with its commit), else on the picked text shape whole:
+  one `format` edit with what he set, at once, the look shown over the
+  shape until the deck comes back with it (`shapeLook`). Undo and Redo are
+  the box's own while it is open, else `work.slides.step`, live by
+  `view.hand`. A colour goes as the hex it resolves to in the deck's theme
+  (the edit holds no theme colour yet); Automatic is the theme's `dk1` on a
+  light slide and `lt1` on a dark one. Present is the row's way out and
+  leaves the bar. The body's root is marked `data-editor-keys="slides"`
+  (`read` without `hand`), so ⌘B and ⌘K are the editor's there; the row's
+  keys come from work-kit's table (`formatKeyOf`, kind `slides`).
+- **History** (`edit/History.tsx`) lists `work.slides.versions` on each
+  opening and puts one back with `work.slides.restore`.
+- **What saved means** (`shell.saved`, FILES-SEAM.md "Save state"):
+  `saving` while one of his edits is on its way, `saved` with the time of
+  the last one after, `conflict` with Reload as above; nothing without
+  `hand`. The frame draws it nowhere beside a thread.
+- **Fonts.** A run is set in `fontStack(name)` (work-kit/fonts): the font
+  itself, then its free twin. The faces are registered by the documents
+  build's `ensureFonts` (work/formats/fonts.ts) on master; this branch's
+  base had no such file, so until it is called here the box draws with the
+  machine's fonts where the twin is not loaded.
+
+What it does not know yet, from the outline: a paragraph's indents and
+spacing (the box hangs a list's mark a quarter inch in and sets lines at
+1.2), and the look of an empty paragraph's next words (an empty
+placeholder's box takes the deck's body font at 18pt until the picture
+lands in the layout's own size).
 
 Where it differs from the prototype: the prototype draws its slides in
 HTML, so it tints the changed words in place and strikes the removed ones.

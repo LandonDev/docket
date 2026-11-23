@@ -3553,6 +3553,7 @@ public enum Methods {
             public enum Which: RawRepresentable, Codable, Hashable, Sendable {
                 case file
                 case proposed
+                case layouts
                 /// A value this build does not know; `rawValue` keeps it.
                 case unknown(String)
 
@@ -3560,6 +3561,7 @@ public enum Methods {
                     switch rawValue {
                     case "file": self = .file
                     case "proposed": self = .proposed
+                    case "layouts": self = .layouts
                     default: self = .unknown(rawValue)
                     }
                 }
@@ -3568,6 +3570,7 @@ public enum Methods {
                     switch self {
                     case .file: "file"
                     case .proposed: "proposed"
+                    case .layouts: "layouts"
                     case .unknown(let value): value
                     }
                 }

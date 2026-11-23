@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { Bbox } from '@shared/contract-work-pdf'
 import type { DeckShape, DeckSlide, DeckView, ShowDeck, SlideChange, SlideOp } from '@shared/contract-work-slides'
@@ -8,9 +8,12 @@ import { errorText } from '@shared/work/ids'
 import { sharedOf } from '../files/policy'
 import { NoConverterError } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
-import { copyWhole, hasMagic, itemDir, ItemFileError, pushFor, sourcePath } from '../pdf/file'
-import { isNote, type DeckInfo, type ShapeInfo, type SlideInfo } from './deck'
+import { canvasItemDir } from '../canvas/store'
+import { copyWhole, hasMagic, ItemFileError, pushFor, sourcePath } from '../pdf/file'
+import { sweepAttached, withAttached } from './attach'
+import { DECK_ITSELF, isNote, type DeckInfo, type ShapeInfo, type SlideInfo } from './deck'
 import { DECK_PY } from './deckScript'
+import { handMoved, handState } from './handLine'
 import { deckPicture, pageName, prunePages, splitPdf, type SlideRenderer } from './pictures'
 import { rowSession, SlidesStore, type DeckWrite, type PendingOp } from './store'
 
@@ -31,7 +34,7 @@ export const OWN_FILE = 'deck.pptx'
 const RENDERS_KEPT = 4
 /** One-page pictures kept per deck: enough for a long deck's every slide across a few versions. */
 const PAGES_KEPT = 1200
-const HISTORY_KEPT = 10
+const HISTORY_KEPT = 30
 /** LibreOffice's PDF export with hidden slides in, so page n is slide n. */
 export const RENDER_FILTER = 'impress_pdf_Export:{"ExportHiddenSlides":{"type":"boolean","value":"true"}}'
 
@@ -59,7 +62,7 @@ const realOf = (path: string): string => {
 /** A file's deck key: one for the file however it is named (a link, a Microsoft file by its path). */
 export const fileKey = (path: string): string => `file:${realOf(path)}`
 /** The path a source names on this host when it is a plain file there, else null. */
-const filePathOf = (source: CanvasSource): string | null => (source.at === 'file' || (source.at === 'microsoft' && source.ref.kind === 'path') ? canvasSourcePath(source) : null)
+export const filePathOf = (source: CanvasSource): string | null => (source.at === 'file' || (source.at === 'microsoft' && source.ref.kind === 'path') ? canvasSourcePath(source) : null)
 
 /**
  * The deck an item shows (store.ts "Kept by the deck, not the item"): `file:<real path>` for a file on this host,
@@ -93,11 +96,16 @@ export const deckCache = (dataDir: string, key: string): string => join(dataDir,
  * nothing made from it outlives its tab).
  */
 export async function deckDir(ctx: Ctx, item: CanvasItem, ...sub: string[]): Promise<string> {
-  const key = deckKey(item)
-  if (!key.startsWith('file:') || sharedDeck(ctx, item)) return itemDir(ctx, item, ...sub)
-  const dir = join(sub[0] === 'history' ? deckBase(ctx.dataDir, key) : deckCache(ctx.dataDir, key), ...sub)
+  const dir = deckFolder(ctx, item, ...sub)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   return dir
+}
+/** Where a folder of the deck's is, made or not. */
+export function deckFolder(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, ...sub: string[]): string {
+  const key = deckKey(item)
+  if (!key.startsWith('file:') || sharedDeck(ctx, item)) return join(canvasItemDir(ctx.dataDir, item.sessionId, item.id), ...sub)
+  // What cannot be made again (his versions, the files a waiting edit brings) is kept by the file; the rest under `.cache`.
+  return join(sub[0] === 'history' || sub[0] === 'attach' ? deckBase(ctx.dataDir, key) : deckCache(ctx.dataDir, key), ...sub)
 }
 
 // ── one chain per deck ───────────────────────────────────────────────
@@ -121,6 +129,7 @@ export function serial<T>(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: C
 /** The LibreOffice kept running, where the host has one (set by the module when Work starts; null: every render starts its own). */
 let renderer: SlideRenderer | null = null
 export const setSlideRenderer = (next: SlideRenderer | null): void => void (renderer = next)
+export const slideRenderer = (): SlideRenderer | null => renderer
 /** What this host draws with, as the module reads it (the toolchain as installed: a new LibreOffice or font pack is a new word). */
 let engine: () => string = () => ''
 export const setSlideEngine = (next: (() => string) | null): void => void (engine = next ?? (() => ''))
@@ -158,7 +167,7 @@ export const deckShared = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: 
  */
 export const sharedDeck = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): boolean => deckShared(ctx, item) || new SlidesStore(ctx.db).sharedDeck(deckKey(item))
 /** The mark a conversion of a shared deck's copy carries: the copy lies under app data, so the runner cannot tell by its path. */
-const sharedJob = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): { shared?: true } => (sharedDeck(ctx, item) ? { shared: true } : {})
+export const sharedJob = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): { shared?: true } => (sharedDeck(ctx, item) ? { shared: true } : {})
 
 // ── renders ──────────────────────────────────────────────────────────
 
@@ -182,7 +191,20 @@ function touch(path: string): void {
 /** Keeps the newest four versions in `render/`, by key. */
 function prune(dir: string): void {
   const byKey = new Map<string, number>()
+  // The layouts' pictures are few and outlive many versions of the slides: the newest two stay, by their own count.
+  const looks = readdirSync(dir)
+    .filter((f) => f.startsWith(LAYOUTS_PREFIX))
+    .map((f) => {
+      try {
+        return { f, at: statSync(join(dir, f)).mtimeMs }
+      } catch {
+        return { f, at: 0 }
+      }
+    })
+    .sort((a, b) => b.at - a.at)
+  for (const { f } of looks.slice(2)) rmSync(join(dir, f), { force: true })
   for (const f of readdirSync(dir)) {
+    if (f.startsWith(LAYOUTS_PREFIX)) continue
     const key = f.split('.')[0]
     try {
       byKey.set(key, Math.max(byKey.get(key) ?? 0, statSync(join(dir, f)).mtimeMs))
@@ -197,8 +219,32 @@ function prune(dir: string): void {
 const renderErrorOf = (err: unknown): string =>
   err instanceof NoConverterError ? 'There is no picture of the slides: LibreOffice is not installed on this host or on one it reaches.' : `There is no picture of the slides: ${errorText(err)}`
 
-/** The outline and the PDF of the deck at `input`, kept under `key` (made once, then read). */
-async function build(ctx: Ctx, item: CanvasItem, key: string, input: string, signal?: AbortSignal): Promise<Built> {
+/** Draws the PDF of the deck at `input` to `pdf`, slide by slide where it can (pictures.ts). */
+async function drawPdf(ctx: Ctx, item: CanvasItem, input: string, info: DeckInfo, pdf: string, signal?: AbortSignal): Promise<void> {
+  // Only the slides whose picture changed are drawn, by the LibreOffice kept running; a whole export the
+  // toolchain's own way when there is none or it fails.
+  const pages = await deckDir(ctx, item, 'pages')
+  await deckPicture(
+    {
+      dir: pages,
+      salt: pictureSalt(),
+      renderer,
+      whole: async (from, to, sig) => void (await ctx.convert({ from: 'pptx', to: 'pdf', input: from, output: to, options: { filter: RENDER_FILTER }, ...sharedJob(ctx, item), ...(sig ? { signal: sig } : {}) })),
+      log: (line) => console.warn(line)
+    },
+    input,
+    info.slides,
+    pdf,
+    signal
+  )
+  prunePages(pages, PAGES_KEPT)
+}
+
+/**
+ * The outline and the PDF of the deck at `input`, kept under `key` (made once, then read). With `draw` false a
+ * PDF that is not kept yet is left undrawn (`pdf` null, no `renderError`): `predraw` draws it beside the queue.
+ */
+async function build(ctx: Ctx, item: CanvasItem, key: string, input: string, signal?: AbortSignal, draw = true): Promise<Built> {
   const dir = await deckDir(ctx, item, 'render')
   const json = join(dir, `${key}.json`)
   const pdf = join(dir, `${key}.pdf`)
@@ -222,25 +268,9 @@ async function build(ctx: Ctx, item: CanvasItem, key: string, input: string, sig
   }
   touch(json)
   let renderError: string | undefined
-  if (!existsSync(pdf)) {
+  if (draw && !existsSync(pdf)) {
     try {
-      // Slide by slide (pictures.ts): only the slides whose picture changed are drawn, by the LibreOffice kept
-      // running; a whole export the toolchain's own way when there is none or it fails.
-      const pages = await deckDir(ctx, item, 'pages')
-      await deckPicture(
-        {
-          dir: pages,
-          salt: pictureSalt(),
-          renderer,
-          whole: async (from, to, sig) => void (await ctx.convert({ from: 'pptx', to: 'pdf', input: from, output: to, options: { filter: RENDER_FILTER }, ...sharedJob(ctx, item), ...(sig ? { signal: sig } : {}) })),
-          log: (line) => console.warn(line)
-        },
-        input,
-        info.slides,
-        pdf,
-        signal
-      )
-      prunePages(pages, PAGES_KEPT)
+      await drawPdf(ctx, item, input, info, pdf, signal)
     } catch (err) {
       if (signal?.aborted) throw err
       renderError = renderErrorOf(err)
@@ -251,10 +281,33 @@ async function build(ctx: Ctx, item: CanvasItem, key: string, input: string, sig
   return { key, info, pdf: existsSync(pdf) ? pdf : null, ...(renderError ? { renderError } : {}) }
 }
 
+/**
+ * Keeps an outline the deck tool already read of the file whose bytes hash to `fileHash` (his own edit reads it
+ * in the same run), under the key `build` looks for. One that is not an outline is dropped: `build` reads it again.
+ */
+export async function keepOutline(ctx: Ctx, item: CanvasItem, fileHash: string, from: string): Promise<void> {
+  try {
+    const info = JSON.parse(readFileSync(from, 'utf8')) as DeckInfo
+    if (!Array.isArray(info.slides)) return
+    const json = join(await deckDir(ctx, item, 'render'), `${sha(RENDER_V() + fileHash)}.json`)
+    const tmp = `${json}.${randomUUID().slice(0, 8)}.tmp`
+    copyFileSync(from, tmp)
+    renameSync(tmp, json)
+  } catch {
+    /* no outline to keep: read again when asked */
+  }
+}
+
 /** Applies edits to a copy of the deck: under `strict` any edit that does not go in fails the whole list with its sentences. */
 export async function applyTo(ctx: Ctx, item: CanvasItem, input: string, ops: SlideOp[], output: string, strict: boolean, signal?: AbortSignal): Promise<string[]> {
-  const done = await ctx.convert({ from: 'pptx', to: 'pptxedit', input, output, options: { ops, strict }, ...sharedJob(ctx, item), ...(signal ? { signal } : {}) })
-  return done.warnings
+  // The files the edits bring (a picture, a video) ride with the deck as one input (attach.ts).
+  const job = withAttached(await deckDir(ctx, item, 'attach'), await scratch(ctx, item, 'plus'), input, ops)
+  try {
+    const done = await ctx.convert({ from: job.from, to: 'pptxedit', input: job.input, output, options: { ops: job.ops, strict, ...(job.files.length ? { files: job.files } : {}) }, ...sharedJob(ctx, item), ...(signal ? { signal } : {}) })
+    return done.warnings
+  } finally {
+    job.done()
+  }
 }
 
 /** A scratch file in the item's `tmp/` folder (kept out of `render/`, whose files are counted by key). */
@@ -265,7 +318,7 @@ export async function scratch(ctx: Ctx, item: CanvasItem, what: string): Promise
 const proposedKey = (fileHash: string, pending: readonly PendingOp[]): string => sha(RENDER_V() + fileHash + JSON.stringify(pending.map((p) => p.op)))
 
 /** The deck with every pending edit in; null when nothing waits. */
-async function proposedBuilt(ctx: Ctx, item: CanvasItem, input: string, fileHash: string, pending: readonly PendingOp[], signal?: AbortSignal): Promise<Built | null> {
+async function proposedBuilt(ctx: Ctx, item: CanvasItem, input: string, fileHash: string, pending: readonly PendingOp[], signal?: AbortSignal, draw = true): Promise<Built | null> {
   if (!pending.length) return null
   const key = proposedKey(fileHash, pending)
   const dir = await deckDir(ctx, item, 'render')
@@ -281,8 +334,128 @@ async function proposedBuilt(ctx: Ctx, item: CanvasItem, input: string, fileHash
     }
   }
   touch(copy)
-  return build(ctx, item, key, copy, signal)
+  return build(ctx, item, key, copy, signal, draw)
 }
+
+// ── the layouts' picture ─────────────────────────────────────────────
+
+const LAYOUTS_PREFIX = 'layouts-'
+
+/** Where the picture of a deck's layouts is kept: named by what the layouts are drawn from and what draws them. Null for an outline that has no hash of them. */
+function layoutsPdf(dir: string, info: DeckInfo): { path: string; rev: string } | null {
+  if (!info.layoutsDraws) return null
+  const name = pageName(pictureSalt(), `layouts:${info.layoutsDraws}`)
+  return { path: join(dir, `${LAYOUTS_PREFIX}${name.slice(0, 32)}.pdf`), rev: name.slice(0, 16) }
+}
+
+/**
+ * Draws the layout picker's picture: a deck of one slide per layout of `input` (the deck tool makes it, each
+ * placeholder saying what it is), drawn as any deck is. Made once for a deck's layouts, whatever its slides do.
+ */
+async function drawLayouts(ctx: Ctx, item: CanvasItem, input: string, pdf: string, signal?: AbortSignal): Promise<void> {
+  const deck = await scratch(ctx, item, 'layouts')
+  const tmp = `${pdf}.${randomUUID().slice(0, 8)}.tmp`
+  try {
+    await ctx.convert({ from: 'pptx', to: 'pptxlayouts', input, output: deck, ...sharedJob(ctx, item), ...(signal ? { signal } : {}) })
+    let drawn = false
+    if (renderer && renderer.here?.() !== false) {
+      try {
+        await renderer.deck(deck, tmp, signal)
+        drawn = true
+      } catch (err) {
+        if (signal?.aborted) throw err
+      }
+    }
+    if (!drawn) await ctx.convert({ from: 'pptx', to: 'pdf', input: deck, output: tmp, options: { filter: RENDER_FILTER }, ...sharedJob(ctx, item), ...(signal ? { signal } : {}) })
+    renameSync(tmp, pdf)
+  } finally {
+    rmSync(deck, { force: true })
+    rmSync(tmp, { force: true })
+  }
+}
+
+/** The layouts' picture as the view names it, where it is kept. */
+function layoutsPic(dir: string, info: DeckInfo): DeckView['layoutsPic'] | undefined {
+  const at = layoutsPdf(dir, info)
+  if (!at) return undefined
+  try {
+    const size = statSync(at.path).size
+    touch(at.path)
+    return { rev: at.rev, size }
+  } catch {
+    return undefined
+  }
+}
+
+// ── pictures beside the queue ────────────────────────────────────────
+
+/** The pictures being drawn beside the deck's queue, by the PDF each makes. */
+const drawing = new Map<string, Promise<void>>()
+/** PDFs a draw beside the queue failed at: left to the queue's own build, which says why, and not tried twice a read. */
+const gaveUp = new Set<string>()
+
+/**
+ * Draws the pictures the deck's view is about to need, beside the deck's queue: a render never holds up a write.
+ * On the queue it reads only what is cheap (the outlines, and which PDFs are not kept yet); the drawing itself
+ * runs off it, once for a PDF however many ask. A picture that turns out stale (the file moved on meanwhile) is
+ * kept under its own key and harms nothing; one that fails is drawn again on the queue, which then says why.
+ */
+async function predraw(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<void> {
+  const todo = await serial(ctx, item, async () => {
+    const path = await deckPath(ctx, item)
+    const copy = await scratch(ctx, item, 'live')
+    copyWhole(path, copy)
+    try {
+      const hash = hashFile(copy)
+      const dir = await deckDir(ctx, item, 'render')
+      const out: Array<{ pdf: string; input: string; info: DeckInfo; scratch: boolean; layouts?: true }> = []
+      const file = await build(ctx, item, sha(RENDER_V() + hash), copy, signal, false)
+      if (!file.pdf) {
+        // The file's copy for the drawing: its own, since the one read here goes when this step ends.
+        const input = await scratch(ctx, item, 'draw')
+        copyWhole(copy, input)
+        out.push({ pdf: join(dir, `${file.key}.pdf`), input, info: file.info, scratch: true })
+      }
+      const pending = new SlidesStore(ctx.db).pending(deckKey(item))
+      const proposed = await proposedBuilt(ctx, item, copy, hash, pending, signal, false)
+      if (proposed && !proposed.pdf) out.push({ pdf: join(dir, `${proposed.key}.pdf`), input: join(dir, `${proposed.key}.pptx`), info: proposed.info, scratch: false })
+      // The layout picker's picture, where the deck has a picture at all: made once for these layouts.
+      const looks = layoutsPdf(dir, file.info)
+      if (looks && !existsSync(looks.path) && !gaveUp.has(looks.path) && !drawing.has(looks.path)) {
+        const input = await scratch(ctx, item, 'draw')
+        copyWhole(copy, input)
+        out.push({ pdf: looks.path, input, info: file.info, scratch: true, layouts: true })
+      }
+      return out
+    } finally {
+      rmSync(copy, { force: true })
+    }
+  })
+  await Promise.all(
+    todo.map((job) => {
+      let run = drawing.get(job.pdf)
+      if (!run && gaveUp.has(job.pdf)) {
+        if (job.scratch) rmSync(job.input, { force: true })
+        return undefined
+      }
+      if (!run) {
+        run = (job.layouts ? drawLayouts(ctx, item, job.input, job.pdf) : drawPdf(ctx, item, job.input, job.info, job.pdf))
+          .catch(() => {
+            if (gaveUp.size > 500) gaveUp.clear()
+            gaveUp.add(job.pdf)
+          })
+          .finally(() => {
+            drawing.delete(job.pdf)
+            if (job.scratch) rmSync(job.input, { force: true })
+          })
+        drawing.set(job.pdf, run)
+      } else if (job.scratch) rmSync(job.input, { force: true })
+      return run
+    })
+  )
+}
+/** `predraw`, never the reason a read fails: the queue's own build draws what is still missing and says why. */
+const drawAhead = (ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<void> => predraw(ctx, item, signal).catch(() => {})
 
 export interface Deck {
   path: string
@@ -340,7 +513,10 @@ const deckShape = (s: ShapeInfo, label?: string): DeckShape => ({
   ...(s.shape ? { shape: s.shape } : {}),
   ...(s.media ? { media: s.media } : {}),
   ...(s.paragraphs ? { paragraphs: s.paragraphs } : {}),
-  ...(s.frame ? { frame: s.frame } : {})
+  ...(s.frame ? { frame: s.frame } : {}),
+  ...(s.own ? { own: s.own } : {}),
+  ...(s.fill ? { fill: s.fill } : {}),
+  ...(s.line ? { line: s.line } : {})
 })
 
 /** A part of a slide in the person's words, by what it is ("Title", "Text"), never PowerPoint's shape name ("Title 1"). */
@@ -378,6 +554,33 @@ export function partNames(shapes: readonly ShapeInfo[]): Map<number, string> {
   )
 }
 
+/** One of a few values in words: the one all share, "some x" where only some have it, nothing where none does. */
+const shared = <T,>(values: readonly T[], say: (v: T) => string, mixed: string): string => {
+  const kinds = [...new Set(values)]
+  return kinds.length === 0 ? '' : kinds.length === 1 ? say(kinds[0]) : mixed
+}
+const ALIGN_WORDS = { left: 'left', center: 'centred', right: 'right', justify: 'justified' } as const
+const LIST_WORDS = { none: '', bullet: 'bullets', number: 'numbers' } as const
+
+/** A shape's look in a few words ("Calibri, 28 pt, bold, centred"), for a change that reworded nothing. */
+export function lookWords(paragraphs: ShapeInfo['paragraphs']): string {
+  if (!paragraphs?.length) return ''
+  const runs = paragraphs.flatMap((p) => p.runs.filter((r) => r.text.trim() !== ''))
+  const flag = (on: (r: (typeof runs)[number]) => boolean, word: string): string => (runs.length === 0 || !runs.some(on) ? '' : runs.every(on) ? word : `some ${word}`)
+  return [
+    shared(runs.flatMap((r) => (r.font ? [r.font] : [])), (v) => v, 'mixed fonts'),
+    shared(runs.flatMap((r) => (r.size ? [r.size] : [])), (v) => `${v} pt`, 'mixed sizes'),
+    flag((r) => !!r.bold, 'bold'),
+    flag((r) => !!r.italic, 'italic'),
+    flag((r) => !!r.underline, 'underlined'),
+    shared(runs.flatMap((r) => (r.color ? [r.color] : [])), (v) => `#${v}`, 'mixed colours'),
+    shared(paragraphs.map((p) => p.align), (v) => ALIGN_WORDS[v], 'mixed alignment'),
+    shared(paragraphs.map((p) => p.list), (v) => LIST_WORDS[v], 'some in a list')
+  ]
+    .filter(Boolean)
+    .join(', ')
+}
+
 /** What the words were and are on one slide, shape by shape, cell by cell, then the notes. */
 export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefined): { edits: SlideChange['edits']; boxes: Bbox[] } {
   const edits: SlideChange['edits'] = []
@@ -407,11 +610,60 @@ export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefi
     } else if ((old?.text ?? '') !== s.text) {
       edits.push({ where, before: old?.text ?? '', after: s.text })
       moved = true
+    } else if (!old) {
+      // A shape the change adds with no words of its own (a picture, a drawn shape, an empty text box).
+      edits.push({ where, before: '', after: 'Added' })
+      moved = true
+    } else if (old && JSON.stringify(old.paragraphs ?? null) !== JSON.stringify(s.paragraphs ?? null)) {
+      // The same words in another look (a `format` or a `runs` edit): said in words, so the stepper never shows a change with nothing in it.
+      const [before, after] = [lookWords(old.paragraphs), lookWords(s.paragraphs)]
+      edits.push({ where: `${where}, look`, before: before === after ? 'As it was' : before, after: before === after ? 'Changed within the text' : after })
+      moved = true
+    }
+    // The same shape somewhere else, another size, turned, in another colour or behind other shapes: said in a few words.
+    if (old) {
+      const placed = (x: ShapeInfo): string => JSON.stringify([x.quad ?? x.bbox, x.rot ?? 0, !!x.flip])
+      const paint = (x: ShapeInfo): string => [x.fill ? (x.fill === 'none' ? 'no fill' : `fill #${x.fill}`) : '', x.line ? `outline ${[x.line.color === 'none' ? 'none' : x.line.color ? `#${x.line.color}` : '', x.line.width !== undefined ? `${x.line.width} pt` : '', x.line.dash ?? ''].filter(Boolean).join(' ')}` : ''].filter(Boolean).join(', ')
+      const said: Array<[string, string]> = []
+      if (placed(old) !== placed(s)) said.push(['Where it was', 'Moved or resized'])
+      if (paint(old) !== paint(s)) said.push([paint(old) || 'Its style\'s colours', paint(s) || 'Its style\'s colours'])
+      if (said.length) {
+        edits.push({ where: `${where}, look`, before: said.map((x) => x[0]).join('; '), after: said.map((x) => x[1]).join('; ') })
+        if (s.bbox && !moved) boxes.push(s.bbox)
+      }
     }
     if (moved && s.bbox) boxes.push(s.bbox)
   }
+  // Shapes the change takes off the slide, by what each was.
+  if (before && after) {
+    const still = new Set(after.shapes.map((s) => s.id))
+    const wasNames = partNames(before.shapes)
+    for (const s of before.shapes) if (!still.has(s.id)) edits.push({ where: wasNames.get(s.id) ?? roleOf(s), before: shapeText(s) || 'There', after: 'Removed' })
+    // The order the shapes that stay lie in, front to back.
+    const order = (x: SlideInfo, keep: Set<number>): string => x.shapes.filter((s) => keep.has(s.id)).map((s) => s.id).join(',')
+    const both = new Set(before.shapes.filter((s) => still.has(s.id)).map((s) => s.id))
+    if (order(before, both) !== order(after, both)) edits.push({ where: 'Order', before: 'As it was', after: 'Shapes brought forward or sent back' })
+    if (before.hidden !== after.hidden) edits.push({ where: 'In the show', before: before.hidden ? 'Hidden' : 'Shown', after: after.hidden ? 'Hidden' : 'Shown' })
+    if (before.layout !== after.layout) edits.push({ where: 'Layout', before: before.layout, after: after.layout })
+  }
   if ((before?.notes ?? '') !== (after?.notes ?? '')) edits.push({ where: 'Notes', before: before?.notes ?? '', after: after?.notes ?? '' })
   return { edits, boxes }
+}
+
+/** What an edit of the deck as a whole changed: its theme's colours and fonts, its sections. */
+function deckEdits(file: DeckInfo, proposed: DeckInfo | null): SlideChange['edits'] {
+  if (!proposed) return []
+  const edits: SlideChange['edits'] = []
+  const fonts = (t: DeckInfo['theme']): string => (t ? [t.major, t.minor].filter(Boolean).join(' and ') : '')
+  const colours = (t: DeckInfo['theme']): string => (t ? Object.entries(t.colors).map(([slot, hex]) => `${slot} #${hex}`).join(', ') : '')
+  if (fonts(file.theme) !== fonts(proposed.theme)) edits.push({ where: 'Theme fonts', before: fonts(file.theme), after: fonts(proposed.theme) })
+  if (colours(file.theme) !== colours(proposed.theme)) {
+    const changed = Object.keys(proposed.theme?.colors ?? {}).filter((slot) => file.theme?.colors[slot] !== proposed.theme?.colors[slot])
+    edits.push({ where: 'Theme colours', before: changed.map((slot) => `${slot} #${file.theme?.colors[slot] ?? ''}`).join(', '), after: changed.map((slot) => `${slot} #${proposed.theme?.colors[slot] ?? ''}`).join(', ') })
+  }
+  const names = (d: DeckInfo): string => d.sections.map((s) => s.name).join(', ')
+  if (names(file) !== names(proposed)) edits.push({ where: 'Sections', before: names(file) || 'None', after: names(proposed) || 'None' })
+  return edits
 }
 
 /** The pending changes, one per slide, in the order their first edit was made. */
@@ -422,9 +674,11 @@ export function changesOf(file: DeckInfo, proposed: DeckInfo | null, pending: re
   const inProposed = new Map((proposed?.slides ?? []).map((s) => [s.id, s]))
   return [...groups.entries()].map(([slideId, ops]) => {
     const kinds = new Set(ops.map((o) => o.op.op))
-    const kind: SlideChange['kind'] = kinds.has('add') ? 'added' : kinds.has('remove') ? 'removed' : ['text', 'cell', 'notes', 'chart'].some((k) => kinds.has(k as SlideOp['op'])) ? 'changed' : 'moved'
+    // A slide moved and nothing else is a move; a slide made (from a layout, or as a copy) is added; any other edit changes it.
+    const kind: SlideChange['kind'] = kinds.has('add') || kinds.has('duplicate') ? 'added' : kinds.has('remove') ? 'removed' : [...kinds].every((k) => k === 'move') ? 'moved' : 'changed'
     const before = inFile.get(slideId)
     const after = inProposed.get(slideId)
+    if (slideId === DECK_ITSELF) return { id: changeIdOf(slideId), kind: 'changed', slideId, label: 'The deck', edits: deckEdits(file, proposed), by: ops[0].by }
     const label = (after ?? before)?.title || `Slide ${slideId}`
     return { id: changeIdOf(slideId), kind, slideId, label, edits: kind === 'removed' || kind === 'moved' ? [] : editsOf(before, after).edits, by: ops[0].by }
   })
@@ -530,7 +784,8 @@ export function viewFrom(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: Ca
     // The deck as it would be with the changes in, when some wait: its size, layouts and theme.
     size: { width: shownInfo.width, height: shownInfo.height },
     ...(shownInfo.layoutInfo ? { layouts: shownInfo.layoutInfo } : {}),
-    ...(shownInfo.theme ? { theme: shownInfo.theme } : {})
+    ...(shownInfo.theme ? { theme: shownInfo.theme } : {}),
+    hand: handState(deckKey(item), deck.hash)
   }
 }
 
@@ -547,13 +802,17 @@ function pageOf(pages: string, built: Built | null, s: SlideInfo): { path: strin
 }
 
 export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<DeckView> {
+  await drawAhead(ctx, item, signal)
   return serial(ctx, item, async () => {
     const deck = await deckOf(ctx, item, signal)
     const pages = await deckDir(ctx, item, 'pages')
-    return viewFrom(ctx, item, deck, (from, s) => {
+    const view = viewFrom(ctx, item, deck, (from, s) => {
       const page = pageOf(pages, from === 'file' ? deck.file : deck.proposed, s)
       return page ? { rev: page.rev, size: page.size } : undefined
     })
+    // The file's own layouts: a suggested theme shows on the slides it would change, not in the picker.
+    const looks = layoutsPic(await deckDir(ctx, item, 'render'), deck.file.info)
+    return looks ? { ...view, layoutsPic: looks } : view
   })
 }
 
@@ -562,6 +821,7 @@ export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): 
  * deck's PDF when it is not (a deck drawn before pages were kept one by one).
  */
 export async function slidePath(ctx: Ctx, item: CanvasItem, which: 'file' | 'proposed', slideId: number, signal?: AbortSignal): Promise<{ path: string; rev: string }> {
+  await drawAhead(ctx, item, signal)
   return serial(ctx, item, async () => {
     const deck = await deckOf(ctx, item, signal)
     const built = which === 'file' ? deck.file : deck.proposed
@@ -581,6 +841,7 @@ export async function slidePath(ctx: Ctx, item: CanvasItem, which: 'file' | 'pro
 
 /** What a show draws from: the file as it is, in its own order, whatever suggestions wait. */
 export async function showOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<ShowDeck> {
+  await drawAhead(ctx, item, signal)
   return serial(ctx, item, async () => {
     const { path, hash, file } = await deckOf(ctx, item, signal)
     return {
@@ -597,6 +858,9 @@ export async function showOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): 
 /** Tells every client what the deck is now, and answers it. */
 export async function announce(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<DeckView> {
   const view = await viewOf(ctx, item, signal)
+  // After any change: the files no waiting edit names any more go (an hour after they came, so one he is adding now stays).
+  const attach = deckFolder(ctx, item, 'attach')
+  if (existsSync(attach)) sweepAttached(attach, new SlidesStore(ctx.db).pending(deckKey(item)).map((p) => p.op))
   // A deck outside the remote roots: only a socket holding admin (this host's own window holds every capability)
   // hears of it. The push API narrows by capability alone, so an admin key still does; see work-slides.md.
   ctx.push({ push: 'work.slides', sessionId: item.sessionId, view }, pushFor(item))
@@ -612,7 +876,30 @@ export async function announce(ctx: Ctx, item: CanvasItem, signal?: AbortSignal)
 }
 
 /** The render a read is served from: built if it is not yet. */
-export async function renderPath(ctx: Ctx, item: CanvasItem, which: 'file' | 'proposed', signal?: AbortSignal): Promise<{ path: string; rev: string }> {
+export async function renderPath(ctx: Ctx, item: CanvasItem, which: 'file' | 'proposed' | 'layouts', signal?: AbortSignal): Promise<{ path: string; rev: string }> {
+  await drawAhead(ctx, item, signal)
+  if (which === 'layouts') {
+    return serial(ctx, item, async () => {
+      const deck = await deckOf(ctx, item, signal)
+      const at = layoutsPdf(await deckDir(ctx, item, 'render'), deck.file.info)
+      if (!at) throw new ItemFileError('There is no picture of the layouts.', 'not-here')
+      // Drawn beside the queue when the deck opened; here only where that did not happen (it failed, or was let go).
+      if (!existsSync(at.path)) {
+        const input = await scratch(ctx, item, 'draw')
+        try {
+          copyWhole(deck.path, input)
+          await drawLayouts(ctx, item, input, at.path, signal)
+        } catch (err) {
+          if (signal?.aborted) throw err
+          throw new ItemFileError(renderErrorOf(err), 'not-here')
+        } finally {
+          rmSync(input, { force: true })
+        }
+      }
+      touch(at.path)
+      return at
+    })
+  }
   const deck = await serial(ctx, item, () => deckOf(ctx, item, signal))
   const b = which === 'file' ? deck.file : deck.proposed
   if (!b) throw new ItemFileError('No changes wait on this deck.', 'missing')
@@ -622,13 +909,28 @@ export async function renderPath(ctx: Ctx, item: CanvasItem, which: 'file' | 'pr
 
 // ── writes ───────────────────────────────────────────────────────────
 
-/** Keeps the file as it is before a write, as `history/<time>.pptx` (the newest ten); answers its name. */
-async function keepHistory(ctx: Ctx, item: CanvasItem, path: string): Promise<string> {
+/** A kept copy's name: its time, so names sort by age; the deck as it was before TempCode first changed it ends `.first.pptx`. */
+const versionName = (first: boolean): string => `${Date.now().toString().padStart(15, '0')}-${randomUUID().slice(0, 4)}${first ? '.first' : ''}.pptx`
+export const versionAt = (name: string): number => Number(name.slice(0, 15)) || 0
+export const isFirstVersion = (name: string): boolean => name.endsWith('.first.pptx')
+/** His own edits keep one copy a minute; an agent's write always keeps its own, for its Undo. */
+export const VERSION_EVERY_MS = 60_000
+
+/**
+ * Keeps the file as it is before a write, in `history/` (docs/agents/work-slides.md "Versions"): the newest
+ * thirty, the first ever for good, and never the one an agent's Undo still points at. `hand`: one of his own
+ * edits, which keeps a copy only when the newest is a minute old. Answers the copy's name, or null when none
+ * was kept.
+ */
+export async function keepHistory(ctx: Ctx, item: CanvasItem, path: string, hand = false): Promise<string | null> {
   const dir = await deckDir(ctx, item, 'history')
-  const name = `${Date.now().toString().padStart(15, '0')}-${randomUUID().slice(0, 4)}.pptx`
-  copyWhole(path, join(dir, name))
   const all = readdirSync(dir).filter((f) => f.endsWith('.pptx')).sort()
-  for (const old of all.slice(0, Math.max(0, all.length - HISTORY_KEPT))) rmSync(join(dir, old), { force: true })
+  if (hand && all.length && Date.now() - versionAt(all[all.length - 1]) < VERSION_EVERY_MS) return null
+  const name = versionName(all.length === 0)
+  copyWhole(path, join(dir, name))
+  const held = new SlidesStore(ctx.db).written(deckKey(item))?.before
+  const loose = [...all, name].filter((f) => !isFirstVersion(f) && f !== held)
+  for (const old of loose.slice(0, Math.max(0, loose.length - HISTORY_KEPT))) rmSync(join(dir, old), { force: true })
   return name
 }
 
@@ -642,7 +944,7 @@ export async function writeInto(ctx: Ctx, item: CanvasItem, path: string, ops: S
     if (expect && was !== expect) throw new Error('The deck changed while this was being made. Nothing was written; look at it again.')
     const notes = (await applyTo(ctx, item, base, ops, out, true, signal)).filter(isNote)
     // The copy from before is kept first: a write that fails after it leaves the file as it was and no stray copy.
-    const before = await keepHistory(ctx, item, base)
+    const before = (await keepHistory(ctx, item, base))!
     try {
       replaceKeeping(path, out, was)
     } catch (err) {
@@ -662,7 +964,7 @@ export async function writeInto(ctx: Ctx, item: CanvasItem, path: string, ops: S
  * overwritten. A link is followed, so its target is written, and the
  * file's mode is kept.
  */
-function replaceKeeping(path: string, from: string, was: string): void {
+export function replaceKeeping(path: string, from: string, was: string): void {
   const real = realpathSync(path)
   if (hashFile(real) !== was) throw new Error('The deck changed while this was being made. Nothing was written; look at it again.')
   chmodSync(from, statSync(real).mode & 0o7777)
@@ -924,6 +1226,7 @@ export function fileMoved(from: CanvasSource, to: CanvasSource, at: { db: WorkCt
   for (const key of keys) {
     if (key === now) continue
     store.rekey(key, now)
+    handMoved(key, now)
     for (const folder of [deckBase, deckCache]) {
       const [old, next] = [folder(at.dataDir, key), folder(at.dataDir, now)]
       if (existsSync(old) && !existsSync(next)) renameSync(old, next)

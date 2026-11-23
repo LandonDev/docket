@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
-import type { DeckView, ShowDeck, SlideOp } from '@shared/contract-work-slides'
+import type { DeckVersion, DeckView, ShowDeck, SlideOp } from '@shared/contract-work-slides'
 import type { SessionMeta } from '@shared/events'
 import type { CanvasSource, WorkScope } from '@shared/work'
 import { openDb, Store } from '../../db'
@@ -42,8 +42,10 @@ vi.mock('../files/policy', async (original) => {
 const { startWork } = await import('../ctx')
 const { canvas } = await import('../canvas')
 const { slides } = await import('.')
-const { SLIDES_CONVERTERS } = await import('./deck')
-const { deckBase, deckCache, deckKey, fileKey, fileMoved, setSlideRenderer } = await import('./view')
+const { SLIDES_CONVERTERS, joinStep, splitStep } = await import('./deck')
+const { hands, HAND_STEPS } = await import('./handLine')
+const { deckBase, deckCache, deckKey, fileKey, fileMoved, RENDER_FILTER, setSlideRenderer } = await import('./view')
+const { filePreviewerFor } = await import('../files/hooks')
 /** Where a deck keeps its renders and versions: by the file for a file of his own, else in the item's own folder. */
 const folderOf = (item: { id: string; source: CanvasSource }, sub = 'render'): string =>
   deckKey(item as never).startsWith('file:') && !sharedPaths.size ? (sub === 'history' ? deckBase : deckCache)(dir, deckKey(item as never)) : join(dir, 'canvas', 't1', item.id)
@@ -83,6 +85,8 @@ function applyFake(d: FakeDeck, ops: SlideOp[]): string[] {
       if (op.body) s.shapes[1].text = op.body.join('\n')
       return place(s, op.after)
     }
+    // An edit of the deck itself (a section, the theme) names no slide: the fake leaves it be.
+    if (!('slide' in op)) return
     const k = at(op.slide)
     if (k < 0) return say(`there is no slide ${op.slide}`)
     const s = d.slides[k]
@@ -97,6 +101,13 @@ function applyFake(d: FakeDeck, ops: SlideOp[]): string[] {
       return place(s, op.after)
     }
     if (op.op === 'notes') return void (s.notes = op.text)
+    if (op.op === 'insert') {
+      // A file the edit brings is read where the job laid it out: its size stands for the picture.
+      const brought = op.file !== undefined ? (attached.get(op.file) ?? null) : undefined
+      if (brought === null) return say(`the ${op.what} to add did not come with the edit`)
+      return void s.shapes.push({ id: op.id ?? Math.max(...s.shapes.map((x) => x.id)) + 1, name: 'New', kind: op.what === 'picture' ? 'picture' : 'text', bbox: [0, 0, 1, 1], text: brought !== undefined ? `${op.what} of ${brought} bytes` : (op.text ?? '') })
+    }
+    if (!('shape' in op)) return
     const sh = s.shapes.find((x) => (typeof op.shape === 'number' ? x.id === op.shape : x.name === op.shape))
     if (!sh) return say(`slide ${op.slide} has no shape ${op.shape}`)
     if (op.op === 'text') {
@@ -107,9 +118,30 @@ function applyFake(d: FakeDeck, ops: SlideOp[]): string[] {
   return warnings
 }
 
+/** The files the job in hand brought, by the names its edits use (`f0.png`), as sizes. */
+const attached = new Map<string, number>()
+/** A fake job's deck: a `pptxplus` input is split as the real converter splits it, its files noted by name. */
+function fakeDeckIn(job: { from: string; input: string; output: string; options?: unknown }): string {
+  attached.clear()
+  if (job.from !== 'pptxplus') return job.input
+  const names = (job.options as { files?: string[] }).files ?? []
+  const deck = `${job.output}.in`
+  const files = names.map((_, i) => `${job.output}.f${i}`)
+  splitStep(job.input, [deck, ...files])
+  names.forEach((name, i) => {
+    attached.set(name, statSync(files[i]).size)
+    rmSync(files[i])
+  })
+  return deck
+}
+
 const calls: string[] = []
 /** Every job a converter was handed: what it made, and whether it was marked a shared file's. */
 const jobs: Array<{ to: string; shared?: boolean }> = []
+/** Whether the fake outline says what its layouts are drawn from (the picker's picture is made only then). */
+let looks = false
+/** The fake deck's outline as the deck tool writes it. */
+const fakeInfo = (d: FakeDeck): string => JSON.stringify({ width: 12192000, height: 6858000, sections: [], ...d, ...(looks ? { layoutsDraws: createHash('sha256').update(d.layouts.join('\n')).digest('hex') } : {}) })
 /** Runs while the fake edit runs: the owner saving the file meanwhile. */
 let duringEdit: (() => void) | null = null
 /** Holds the outline job until it resolves: a long first render on the item's queue. */
@@ -127,24 +159,77 @@ const FAKE: Converter[] = [
       jobs.push({ to: job.to, shared: job.shared })
       await holdInfo
       const d = readFake(job.input)
-      writeFileSync(job.output, JSON.stringify({ width: 12192000, height: 6858000, sections: [], ...d }))
+      // With `looks` on, the outline says what its layouts are drawn from, as the real tool does: here, their names.
+      writeFileSync(job.output, fakeInfo(d))
       return {}
     }
   },
+  // The deck of one slide per layout, for the picker's picture: the fake's is a deck of that many slides.
   {
     from: 'pptx',
-    to: 'pptxedit',
+    to: 'pptxlayouts',
     async run(job) {
-      calls.push('pptxedit')
+      calls.push('pptxlayouts')
       jobs.push({ to: job.to, shared: job.shared })
-      editInputs.push(job.input)
-      duringEdit?.()
       const d = readFake(job.input)
-      const { ops, strict } = job.options as { ops: SlideOp[]; strict?: boolean }
-      const warnings = applyFake(d, ops)
-      if (strict && warnings.some((w) => !w.startsWith('note: '))) throw new Error(warnings.join(' '))
-      writeFileSync(job.output, fakeBytes(d))
-      return { warnings }
+      writeFileSync(job.output, fakeBytes({ layouts: d.layouts, slides: d.layouts.map((name, i) => slide(1000 + i, name)) }))
+      return {}
+    }
+  },
+  ...(['pptx', 'pptxplus'] as const).map(
+    (from): Converter => ({
+      from,
+      to: 'pptxedit',
+      async run(job) {
+        calls.push(from === 'pptx' ? 'pptxedit' : 'pptxedit+files')
+        jobs.push({ to: job.to, shared: job.shared })
+        editInputs.push(job.input)
+        duringEdit?.()
+        const d = readFake(fakeDeckIn(job))
+        const { ops, strict } = job.options as { ops: SlideOp[]; strict?: boolean }
+        const warnings = applyFake(d, ops)
+        if (strict && warnings.some((w) => !w.startsWith('note: '))) throw new Error(warnings.join(' '))
+        writeFileSync(job.output, fakeBytes(d))
+        return { warnings }
+      }
+    })
+  ),
+  // His own edit: the edited deck with its pack. The fake's pack is the whole deck from before.
+  ...(['pptx', 'pptxplus'] as const).map(
+    (from): Converter => ({
+      from,
+      to: 'pptxstep',
+      async run(job) {
+        calls.push(from === 'pptx' ? 'pptxstep' : 'pptxstep+files')
+        jobs.push({ to: job.to, shared: job.shared })
+        duringEdit?.()
+        const before = fakeDeckIn(job)
+        const d = readFake(before)
+        const warnings = applyFake(d, (job.options as { ops: SlideOp[] }).ops)
+        if (warnings.some((w) => !w.startsWith('note: '))) throw new Error(warnings.join(' '))
+        const [next, info] = [`${job.output}.next`, `${job.output}.info`]
+        writeFileSync(next, fakeBytes(d))
+        // The outline the tool reads in the same run, as its `deckinfo` job would write it.
+        writeFileSync(info, fakeInfo(d))
+        joinStep([next, before, info], job.output)
+        rmSync(next)
+        rmSync(info)
+        return { warnings }
+      }
+    })
+  ),
+  {
+    from: 'pptxstep',
+    to: 'pptxstep',
+    async run(job) {
+      calls.push('unstep')
+      jobs.push({ to: job.to, shared: job.shared })
+      const [now, pack, info] = [`${job.output}.now`, `${job.output}.pack`, `${job.output}.info`]
+      splitStep(job.input, [now, pack])
+      writeFileSync(info, fakeInfo(readFake(pack)))
+      joinStep([pack, now, info], job.output)
+      for (const f of [now, pack, info]) rmSync(f)
+      return {}
     }
   },
   {
@@ -199,6 +284,7 @@ async function host(converters: Converter[], dataDir?: string): Promise<void> {
   pushes.length = 0
   calls.length = 0
   duringEdit = null
+  looks = false
   holdInfo = null
   editInputs.length = 0
   typed.clear()
@@ -819,7 +905,7 @@ const PICTURED: Converter[] = [
       return {}
     }
   },
-  FAKE[1],
+  FAKE.find((c) => c.from === 'pptx' && c.to === 'pptxedit')!,
   {
     from: 'pptx',
     to: 'pdf',
@@ -1132,6 +1218,454 @@ describe('a deck kept by its file, drawn slide by slide', () => {
     new SlidesStore(db).add(deckKey(item), '', [{ slide: 257, op: { op: 'notes', slide: 257, text: 'another thread’s' } }], 'agent:env_test:t9')
     slides.sessionsRemoved!(['t1'], work.ctx)
     expect(new SlidesStore(db).pending(deckKey(item)).map((p) => p.by)).toEqual(['agent:env_test:t9'])
+  })
+})
+
+describe('his own edits to a deck', () => {
+  let path: string
+  beforeEach(async () => {
+    await host(FAKE)
+    path = join(dir, 'Show.pptx')
+    writeFileSync(path, fakeBytes(FAKE_DECK))
+  })
+  afterEach(close)
+  const retitle = (item: { id: string }, slide: number, title: string) => call('work.slides.edit', { itemId: item.id, ops: [{ op: 'text', slide, shape: 2, paragraphs: [title] }] })
+  const titles = (): string[] => readFake(path).slides.map((s) => s.title)
+
+  it('writes an edit into the file at once, whatever the mode, and tells every seat; a thread is refused', async () => {
+    const item = openDeck(fileSource(path))
+    expect((await call('work.slides.open', { itemId: item.id })).hand).toEqual({ undo: false, redo: false })
+    calls.length = 0
+    const view = await retitle(item, 256, 'First')
+    // One run of the tool for the edit: the new deck's outline came with it and is not read again.
+    expect(calls.filter((c) => c === 'pptxstep' || c === 'deckinfo')).toEqual(['pptxstep'])
+    expect(titles()).toEqual(['First', 'Two', 'Three', 'Four'])
+    expect(view).toMatchObject({ mode: 'suggests', changes: [], hand: { undo: true, redo: false } })
+    expect(view.slides[0].title).toBe('First')
+    expect((pushes.at(-1) as { view: DeckView }).view.rev).toBe(view.rev)
+    const thread = { kind: 'model' as const, caps: [], sessionId: 't1' }
+    const asThread = (method: string, params: unknown) => slides.handle!(ClientRequestSchema.parse(req(method, params)), work.ctx, thread)
+    await expect(asThread('work.slides.edit', { itemId: item.id, ops: [{ op: 'notes', slide: 256, text: 'x' }] })).rejects.toThrow('Only the owner edits a deck by hand')
+    await expect(asThread('work.slides.step', { itemId: item.id, dir: 'undo' })).rejects.toThrow('Only the owner')
+    await expect(asThread('work.slides.restore', { itemId: item.id, version: 'x' })).rejects.toThrow('Only the owner')
+    expect(titles()[0]).toBe('First')
+  })
+
+  it('an edit that does not go in whole writes nothing and keeps no pack', async () => {
+    const item = openDeck(fileSource(path))
+    await expect(call('work.slides.edit', { itemId: item.id, ops: [{ op: 'notes', slide: 256, text: 'x' }, { op: 'notes', slide: 999, text: 'y' }] })).rejects.toThrow('there is no slide 999')
+    expect(readFake(path)).toEqual(FAKE_DECK)
+    expect(readdirSync(join(deckCache(dir, deckKey(item)), 'undo'))).toEqual([])
+    expect((await call('work.slides.open', { itemId: item.id })).hand).toEqual({ undo: false, redo: false })
+  })
+
+  it('Undo and Redo walk his edits; an edit after an undo drops what was taken back', async () => {
+    const item = openDeck(fileSource(path))
+    await retitle(item, 256, 'A')
+    await retitle(item, 257, 'B')
+    await retitle(item, 258, 'C')
+    const step = (dir: 'undo' | 'redo') => call('work.slides.step', { itemId: item.id, dir })
+    expect((await step('undo')).hand).toEqual({ undo: true, redo: true })
+    expect(titles()).toEqual(['A', 'B', 'Three', 'Four'])
+    await step('undo')
+    expect(titles()).toEqual(['A', 'Two', 'Three', 'Four'])
+    expect((await step('redo')).hand).toEqual({ undo: true, redo: true })
+    expect(titles()).toEqual(['A', 'B', 'Three', 'Four'])
+    await step('undo')
+    await step('undo')
+    expect(readFake(path)).toEqual(FAKE_DECK)
+    await expect(step('undo')).rejects.toThrow('There is nothing to undo')
+    await step('redo')
+    const view = await retitle(item, 259, 'D')
+    expect(titles()).toEqual(['A', 'Two', 'Three', 'D'])
+    expect(view.hand).toEqual({ undo: true, redo: false })
+    await expect(step('redo')).rejects.toThrow('There is nothing to redo')
+    // One pack a step that can still be walked: two edits stand, nothing waits to be put back.
+    expect(readdirSync(join(deckCache(dir, deckKey(item)), 'undo'))).toHaveLength(2)
+  })
+
+  it(`keeps the last ${HAND_STEPS} edits and lets the packs of older ones go`, async () => {
+    const item = openDeck(fileSource(path))
+    await retitle(item, 256, 'A')
+    const hand = hands.get(deckKey(item))!
+    const first = hand.steps[0].undo!
+    // The line is full of earlier edits: the next one pushes the oldest out.
+    hand.steps.unshift(...Array.from({ length: HAND_STEPS - 1 }, () => ({ undo: null, redo: null })))
+    hand.at = hand.steps.length
+    hand.steps[0] = { undo: first, redo: null }
+    hand.steps[HAND_STEPS - 1] = { undo: null, redo: null }
+    await retitle(item, 257, 'B')
+    expect(hand.steps).toHaveLength(HAND_STEPS)
+    expect(readdirSync(join(deckCache(dir, deckKey(item)), 'undo'))).not.toContain(first)
+  })
+
+  it('anything else that changes the file ends the line: a save from outside, an accepted suggestion', async () => {
+    const item = openDeck(fileSource(path))
+    await retitle(item, 256, 'A')
+    writeFileSync(path, fakeBytes({ ...FAKE_DECK, layouts: ['Other'] }))
+    expect((await call('work.slides.open', { itemId: item.id })).hand).toEqual({ undo: false, redo: false })
+    await expect(call('work.slides.step', { itemId: item.id, dir: 'undo' })).rejects.toThrow('the deck has changed since your last edit')
+    await retitle(item, 256, 'B')
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'n' }] })
+    // A suggestion that waits changes nothing in the file: his line stands.
+    expect((await call('work.slides.open', { itemId: item.id })).hand).toEqual({ undo: true, redo: false })
+    expect((await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept' })).hand).toEqual({ undo: false, redo: false })
+  })
+
+  it('a write never waits for a render: his edit goes into the file while the deck\'s picture is still being drawn', async () => {
+    let release!: () => void
+    const held = new Promise<void>((res) => (release = res))
+    let first = true
+    const page = async (output: string, ids: number[]): Promise<void> => {
+      const doc = await PDFDocument.create()
+      for (const id of ids) doc.addPage([id, 100])
+      writeFileSync(output, await doc.save())
+    }
+    setSlideRenderer({
+      slide: async (input, n, output) => {
+        await page(output, [readFake(input).slides[n - 1].id])
+        return readFake(input).slides.length
+      },
+      deck: async (input, output) => {
+        // The first picture of the deck takes its time.
+        if (first) {
+          first = false
+          await held
+        }
+        await page(output, readFake(input).slides.map((s) => s.id))
+      }
+    })
+    try {
+      const item = openDeck(fileSource(path))
+      const opening = call('work.slides.open', { itemId: item.id })
+      await new Promise((res) => setTimeout(res, 30))
+      const editing = retitle(item, 256, 'First')
+      // Written while the first picture is still held.
+      await vi.waitFor(() => expect(titles()[0]).toBe('First'))
+      release()
+      const [opened, edited] = await Promise.all([opening, editing])
+      expect(edited.slides[0].title).toBe('First')
+      expect(edited.renders.file).not.toBeNull()
+      expect(opened.renders.file ?? edited.renders.file).not.toBeNull()
+    } finally {
+      release()
+      setSlideRenderer(null)
+    }
+  })
+
+  it('his edit lands under a suggestion that waits, which is drawn again on the new file', async () => {
+    const item = openDeck(fileSource(path))
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['Suggested'] }] })
+    const view = await retitle(item, 256, 'Mine')
+    expect(titles()[0]).toBe('Mine')
+    expect(readFake(path).slides[1].shapes[1].text).toBe('About Two')
+    expect(view.changes).toHaveLength(1)
+    expect(view.slides[0].title).toBe('Mine')
+    expect(view.slides[1].shapes[1].text).toBe('Suggested')
+  })
+
+  it('a save he makes while his edit is being made is never overwritten', async () => {
+    const item = openDeck(fileSource(path))
+    const saved = { ...FAKE_DECK, layouts: ['Saved meanwhile'] }
+    duringEdit = () => writeFileSync(path, fakeBytes(saved))
+    await expect(retitle(item, 256, 'A')).rejects.toThrow('The deck changed while this was being made')
+    duringEdit = null
+    expect(readFake(path)).toEqual(saved)
+    expect(readdirSync(join(deckCache(dir, deckKey(item)), 'undo'))).toEqual([])
+  })
+
+  it('keeps a copy from before his first edit for good, then one a minute; a version is listed and restored', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-23T10:00:00Z') })
+    try {
+      const item = openDeck(fileSource(path))
+      await retitle(item, 256, 'A')
+      await retitle(item, 256, 'B')
+      let versions = await call<DeckVersion[]>('work.slides.versions', { itemId: item.id })
+      expect(versions.map((v) => v.first)).toEqual([true])
+      vi.setSystemTime(new Date('2026-11-23T10:01:01Z'))
+      await retitle(item, 256, 'C')
+      versions = await call<DeckVersion[]>('work.slides.versions', { itemId: item.id })
+      expect(versions.map((v) => v.first)).toEqual([false, true])
+      expect(versions[0].at).toBeGreaterThan(versions[1].at)
+      // The first is the deck as it was before TempCode changed it.
+      vi.setSystemTime(new Date('2026-11-23T10:05:00Z'))
+      const view = await call('work.slides.restore', { itemId: item.id, version: versions[1].id })
+      expect(readFake(path)).toEqual(FAKE_DECK)
+      expect(view.hand).toEqual({ undo: false, redo: false })
+      // The deck as it was just before the restore is kept, so the restore can be taken back from the list.
+      const after = await call<DeckVersion[]>('work.slides.versions', { itemId: item.id })
+      expect(after).toHaveLength(3)
+      await call('work.slides.restore', { itemId: item.id, version: after[0].id })
+      expect(titles()[0]).toBe('C')
+      await expect(call('work.slides.restore', { itemId: item.id, version: '../../Show.pptx' })).rejects.toThrow('That version is no longer kept')
+      await expect(call('work.slides.restore', { itemId: item.id, version: '000000000000000-abcd.pptx' })).rejects.toThrow('That version is no longer kept')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the newest thirty copies, the first for good, and the one an agent’s Undo points at', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-23T10:00:00Z') })
+    try {
+      const item = openDeck(fileSource(path))
+      await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
+      await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'agent' }] })
+      const held = new SlidesStore(db).written(deckKey(item))!.before
+      for (let i = 0; i < 33; i++) {
+        vi.setSystemTime(new Date(Date.parse('2026-11-23T10:02:00Z') + i * 61_000))
+        await retitle(item, 256, `T${i}`)
+      }
+      const kept = readdirSync(join(deckBase(dir, deckKey(item)), 'history'))
+      // Thirty loose copies, and beside them the first (which is also the one the agent's Undo points at).
+      expect(kept).toHaveLength(31)
+      expect(kept).toContain(held)
+      expect(kept.filter((f) => f.endsWith('.first.pptx'))).toEqual([held])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a file renamed under its deck keeps his line of edits', async () => {
+    const item = openDeck(fileSource(path))
+    await retitle(item, 256, 'A')
+    const to = join(dir, 'Renamed.pptx')
+    renameSync(path, to)
+    fileMoved(fileSource(path), fileSource(to), { db, dataDir: dir })
+    const moved = canvasStoreOf(db).open('t1', { kind: 'slides', source: fileSource(to), title: 'Renamed' })
+    expect((await call('work.slides.step', { itemId: moved.id, dir: 'undo' })).hand).toEqual({ undo: false, redo: true })
+    expect(readFake(to)).toEqual(FAKE_DECK)
+  })
+
+  it('on a file others can open his edit still writes at once, on this host alone, and its copies go with the tab', async () => {
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    sharedPaths.add(team)
+    try {
+      const item = openDeck(fileSource(shared))
+      jobs.length = 0
+      const view = await call('work.slides.edit', { itemId: item.id, ops: [{ op: 'text', slide: 256, shape: 2, paragraphs: ['Mine'] }] })
+      expect(readFake(shared).slides[0].title).toBe('Mine')
+      expect(view.hand).toEqual({ undo: true, redo: false })
+      expect(jobs.length).toBeGreaterThan(0)
+      expect(jobs.every((j) => j.shared === true)).toBe(true)
+      // Nothing of it is kept by the file under app data, and nothing beside the file.
+      expect([existsSync(deckBase(dir, deckKey(item))), existsSync(deckCache(dir, deckKey(item)))]).toEqual([false, false])
+      expect(readdirSync(team)).toEqual(['Show.pptx'])
+      expect(readdirSync(join(dir, 'canvas', 't1', item.id)).sort()).toEqual(expect.arrayContaining(['history', 'undo']))
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+})
+
+describe('the files an edit brings', () => {
+  let path: string
+  beforeEach(async () => {
+    await host(FAKE)
+    path = join(dir, 'Show.pptx')
+    writeFileSync(path, fakeBytes(FAKE_DECK))
+  })
+  afterEach(close)
+  const piece = (item: { id: string }, name: string, data: Buffer, token?: string) => call<{ token: string }>('work.slides.attach', { itemId: item.id, name, data: data.toString('base64'), ...(token ? { token } : {}) })
+  const kept = (item: { id: string; source: CanvasSource }): string[] => (existsSync(join(deckBase(dir, deckKey(item as never)), 'attach')) ? readdirSync(join(deckBase(dir, deckKey(item as never)), 'attach')) : [])
+
+  it('a picture he adds by hand comes in pieces under a token, rides with his edit as one input, and goes once it is in the file', async () => {
+    const item = openDeck(fileSource(path))
+    const { token } = await piece(item, 'Team photo.PNG', Buffer.alloc(1000, 1))
+    expect(token).toMatch(/^[0-9a-f-]{36}\.png$/)
+    expect((await piece(item, 'Team photo.PNG', Buffer.alloc(500, 2), token)).token).toBe(token)
+    expect(kept(item)).toEqual([token])
+    calls.length = 0
+    const view = await call('work.slides.edit', { itemId: item.id, ops: [{ op: 'insert', slide: 256, what: 'picture', file: token, box: [0, 0, 100, 100] }] })
+    expect(calls.filter((c) => c.startsWith('pptxstep'))).toEqual(['pptxstep+files'])
+    expect(view.slides[0].shapes.at(-1)).toMatchObject({ kind: 'picture', text: 'picture of 1500 bytes' })
+    expect(readFake(path).slides[0].shapes).toHaveLength(3)
+    // In the file: the copy beside the deck is not needed again.
+    expect(kept(item)).toEqual([])
+    // Taken back and put back with no file to bring: the packs hold what the edit changed.
+    expect((await call('work.slides.step', { itemId: item.id, dir: 'undo' })).slides[0].shapes).toHaveLength(2)
+    expect((await call('work.slides.step', { itemId: item.id, dir: 'redo' })).slides[0].shapes).toHaveLength(3)
+  })
+
+  it('refuses a file that is no picture or video, one too large, a token that is not this deck\'s, and a thread', async () => {
+    const item = openDeck(fileSource(path))
+    await expect(piece(item, 'notes.docx', Buffer.from('x'))).rejects.toThrow('is not a picture or a video a deck can hold')
+    await expect(piece(item, 'a.png', Buffer.from('x'), '../../etc/passwd')).rejects.toThrow('That is not a file being added to this deck.')
+    await expect(piece(item, 'a.png', Buffer.from('x'), '00000000-0000-0000-0000-000000000000.png')).rejects.toThrow('That is not a file being added to this deck.')
+    const { token } = await piece(item, 'big.png', Buffer.alloc(1024))
+    const real = join(deckBase(dir, deckKey(item)), 'attach', token)
+    // A picture past the most a deck here takes: refused, and what came of it is dropped.
+    const { PICTURE_MAX } = await import('./attach')
+    writeFileSync(real, Buffer.alloc(0))
+    const { truncateSync } = await import('node:fs')
+    truncateSync(real, PICTURE_MAX)
+    await expect(piece(item, 'big.png', Buffer.alloc(8), token)).rejects.toThrow('is larger than 50 MB')
+    expect(kept(item)).toEqual([])
+    const thread = { kind: 'model' as const, caps: [], sessionId: 't1' }
+    await expect(slides.handle!(ClientRequestSchema.parse(req('work.slides.attach', { itemId: item.id, name: 'a.png', data: '' })), work.ctx, thread)).rejects.toThrow('Only the owner adds a file by hand')
+    // An edit that names a file which did not come writes nothing.
+    await expect(call('work.slides.edit', { itemId: item.id, ops: [{ op: 'insert', slide: 256, what: 'picture', file: 'nope.png', box: [0, 0, 100, 100] }] })).rejects.toThrow('did not come with the edit')
+    expect(readFake(path)).toEqual(FAKE_DECK)
+  })
+
+  it('an agent\'s edit brings a file by its path: copied beside the deck at once, named by its token while it waits, in the file when accepted', async () => {
+    const item = openDeck(fileSource(path))
+    const photo = join(dir, 'photo.jpg')
+    writeFileSync(photo, Buffer.alloc(2048, 7))
+    const r = await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'insert', slide: 257, what: 'picture', file: photo, box: [0, 0, 100, 100] }] })
+    expect(r.isError).toBeFalsy()
+    const waiting = new SlidesStore(db).pending(deckKey(item))
+    const token = (waiting[0].op as { file: string }).file
+    expect(token).toMatch(/^[0-9a-f-]{36}\.jpg$/)
+    expect(kept(item)).toEqual([token])
+    // The file it came from moves on: the suggestion still has its picture.
+    rmSync(photo)
+    const view = await call('work.slides.open', { itemId: item.id })
+    expect(view.changes).toEqual([expect.objectContaining({ slideId: 257, kind: 'changed', edits: [{ where: 'Picture', before: '', after: 'picture of 2048 bytes' }] })])
+    expect(readFake(path)).toEqual(FAKE_DECK)
+    await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept', rev: view.changesRev })
+    expect(readFake(path).slides[1].shapes.at(-1)).toMatchObject({ kind: 'picture', text: 'picture of 2048 bytes' })
+    const bad = await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'insert', slide: 257, what: 'picture', file: join(dir, 'gone.png'), box: [0, 0, 100, 100] }] })
+    expect(textOf(bad)).toContain('There is no file at')
+  })
+
+  it('lets go of a file no waiting edit names: at once when an edit used it, after an hour when it was never used', async () => {
+    const { sweepAttached } = await import('./attach')
+    const folder = join(dir, 'attach-test')
+    mkdirSync(folder)
+    const { utimesSync } = await import('node:fs')
+    for (const name of ['waiting.png', 'used.png', 'fresh.png', 'stale.png']) writeFileSync(join(folder, name), 'x')
+    const old = new Date(Date.now() - 2 * 60 * 60_000)
+    utimesSync(join(folder, 'stale.png'), old, old)
+    utimesSync(join(folder, 'waiting.png'), old, old)
+    sweepAttached(folder, [{ op: 'insert', slide: 256, what: 'picture', file: 'waiting.png', box: [0, 0, 1, 1] }], ['used.png'])
+    expect(readdirSync(folder).sort()).toEqual(['fresh.png', 'waiting.png'])
+  })
+})
+
+describe('the picture of a deck\'s layouts', () => {
+  let path: string
+  beforeEach(async () => {
+    await host(FAKE)
+    path = join(dir, 'Show.pptx')
+    writeFileSync(path, fakeBytes({ ...FAKE_DECK, layouts: ['Title Slide', 'Title and Content', 'Blank'] }))
+  })
+  afterEach(close)
+  const made = (): number => calls.filter((c) => c === 'pptxlayouts').length
+
+  it('is drawn once when the deck opens, named in the view, read by range, and not drawn again for an edit to a slide', async () => {
+    looks = true
+    const item = openDeck(fileSource(path))
+    const view = await call('work.slides.open', { itemId: item.id })
+    expect(view.layoutsPic).toEqual({ rev: expect.stringMatching(/^[0-9a-f]{16}$/), size: expect.any(Number) })
+    expect(made()).toBe(1)
+    const got = await call<{ data: string; size: number; rev: string }>('work.slides.read', { itemId: item.id, which: 'layouts', offset: 0, length: 1 << 20 })
+    expect(got.rev).toBe(view.layoutsPic!.rev)
+    expect(Buffer.from(got.data, 'base64').toString('latin1').startsWith('%PDF-')).toBe(true)
+    // An edit to a slide's words leaves the layouts, and so their picture, as they were.
+    const after = await call('work.slides.edit', { itemId: item.id, ops: [{ op: 'text', slide: 256, shape: 2, paragraphs: ['First'] }] })
+    expect(after.layoutsPic).toEqual(view.layoutsPic)
+    expect(made()).toBe(1)
+    // Other layouts are another picture.
+    writeFileSync(path, fakeBytes({ ...FAKE_DECK, layouts: ['Title Slide', 'Two Content'] }))
+    const changed = await call('work.slides.open', { itemId: item.id })
+    expect(changed.layoutsPic!.rev).not.toBe(view.layoutsPic!.rev)
+    expect(made()).toBe(2)
+  })
+
+  it('is absent where the outline cannot say what the layouts are drawn from, and the read says so', async () => {
+    const item = openDeck(fileSource(path))
+    expect((await call('work.slides.open', { itemId: item.id })).layoutsPic).toBeUndefined()
+    expect(made()).toBe(0)
+    await expect(call('work.slides.read', { itemId: item.id, which: 'layouts', offset: 0, length: 10 })).rejects.toThrow('There is no picture of the layouts.')
+  })
+
+  it('is drawn on this host alone for a file others can open, and kept in its tab\'s own folder', async () => {
+    looks = true
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    sharedPaths.add(team)
+    try {
+      const item = openDeck(fileSource(shared))
+      jobs.length = 0
+      expect((await call('work.slides.open', { itemId: item.id })).layoutsPic).toBeDefined()
+      expect(jobs.filter((j) => j.to === 'pptxlayouts').map((j) => j.shared)).toEqual([true])
+      expect(jobs.every((j) => j.shared === true)).toBe(true)
+      expect(readdirSync(join(dir, 'canvas', 't1', item.id, 'render')).some((f) => f.startsWith('layouts-'))).toBe(true)
+      expect([existsSync(deckBase(dir, deckKey(item))), existsSync(deckCache(dir, deckKey(item)))]).toEqual([false, false])
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+})
+
+describe('a slide as a picture for Files', () => {
+  let path: string
+  beforeEach(async () => {
+    await host(FAKE)
+    path = join(dir, 'Show.pptx')
+    writeFileSync(path, fakeBytes(FAKE_DECK))
+  })
+  afterEach(close)
+  const preview = (source: CanvasSource, page = 1) => filePreviewerFor('slides')!(source, { page, width: 320 })
+  const scratch = (): string[] => (existsSync(join(dir, 'work-slides', '.cache', 'preview')) ? readdirSync(join(dir, 'work-slides', '.cache', 'preview')) : [])
+
+  it('draws a slide of a deck no tab has open, once, and keeps nothing of it', async () => {
+    calls.length = 0
+    const png = await preview(fileSource(path), 2)
+    // The fake's picture is no PDF, so nothing is said of how many slides there are.
+    expect(Buffer.from(png as Uint8Array).subarray(1, 4).toString()).toBe('PNG')
+    expect(calls).toEqual([`pdf ${RENDER_FILTER}`, 'png 2'])
+    expect(scratch()).toEqual([])
+    expect(new SlidesStore(db).seats(deckKey({ id: 'x', source: fileSource(path) } as never))).toEqual([])
+  })
+
+  it('says how many slides the deck has, for the preview to page through, from a tab\'s picture and from a fresh one', async () => {
+    await close()
+    await host([...PICTURED, FAKE.find((c) => c.from === 'pdf' && c.to === 'png')!])
+    path = join(dir, 'Show.pptx')
+    writeFileSync(path, fakeBytes(FAKE_DECK))
+    expect(await preview(fileSource(path), 2)).toMatchObject({ pages: 4 })
+    const item = openDeck(fileSource(path))
+    await call('work.slides.open', { itemId: item.id })
+    expect(await preview(fileSource(path), 4)).toMatchObject({ pages: 4 })
+  })
+
+  it('uses the picture a tab on the file already has: nothing is drawn again', async () => {
+    const item = openDeck(fileSource(path))
+    await call('work.slides.open', { itemId: item.id })
+    calls.length = 0
+    expect(await preview(fileSource(path), 3)).not.toBeNull()
+    expect(calls).toEqual(['png 3'])
+  })
+
+  it('draws a file others can open on this host alone, and is no picture for what is not a deck', async () => {
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const shared = join(team, 'Show.pptx')
+    writeFileSync(shared, fakeBytes(FAKE_DECK))
+    sharedPaths.add(team)
+    try {
+      jobs.length = 0
+      expect(await preview(fileSource(shared))).not.toBeNull()
+      expect(jobs.map((j) => j.shared)).toEqual([true, true])
+      expect(readdirSync(team)).toEqual(['Show.pptx'])
+      expect(scratch()).toEqual([])
+    } finally {
+      sharedPaths.clear()
+    }
+    const junk = join(dir, 'notes.pptx')
+    writeFileSync(junk, 'hello')
+    expect(await preview(fileSource(junk))).toBeNull()
+    expect(await preview(fileSource(join(dir, 'gone.pptx')))).toBeNull()
+    expect(await preview(fileSource(join(dir, 'Show.key')))).toBeNull()
+    // A deck that cannot be drawn is no picture, never a throw.
+    writeFileSync(junk, fakeBytes(FAKE_DECK))
+    expect(await preview({ at: 'thread' } as CanvasSource)).toBeNull()
   })
 })
 
