@@ -37,6 +37,8 @@ export interface ThreadDraft {
   unknown?: boolean;
   /** The Outbox page's own key for the item (`<host>:<ref.at>:<ref.id>`), so Open in Outbox picks that very item. */
   outboxKey?: string;
+  /** `text` is his revision the Outbox refused to save, kept here (page.ts `keepDraftEdit`), not the item's own words. */
+  unsaved?: boolean;
 }
 
 /** What a press on a file does: show it beside the conversation, or save it to Downloads. */
@@ -87,7 +89,9 @@ export interface MessagesData {
   /** What a press on a file does here. */
   fileVerb(file: ChatFile): FileVerb;
   /** Opens a stored file beside the conversation, or saves it. */
-  openFile(chatId: string, message: ChatMessage, file: ChatFile): void;
+  openFile(chatId: string, messageId: string, file: ChatFile): void;
+  /** One file by its id (LifeOS's `chats:file`), for a file asked for whose message has left the loaded page. */
+  useFile(fileId: string | null): LifeosQuery<ChatFile | null>;
 }
 
 const NONE: ReadonlySet<string> = new Set();
@@ -117,6 +121,7 @@ export const WAITING: MessagesData = {
   requestFiles: () => Promise.reject(new Error("LifeOS is not connected")),
   fileVerb: () => "save",
   openFile: () => {},
+  useFile: () => LOADING,
 };
 
 const Data = createContext<MessagesData>(WAITING);

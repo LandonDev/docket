@@ -137,31 +137,31 @@ export function ReplyBody({
       <div className="flex flex-col gap-2 border-t border-border pt-4">
         {/* The quote's slot holds its place through every state, and can hold the keys while it reads again. */}
         <div ref={slot} data-quote-slot tabIndex={-1} role="group" aria-label="The message it answers" className="focus-ring rounded-sm empty:hidden">
-        {answered === "loading" ? (
-          <div data-answers="loading" aria-hidden className="flex h-5 items-center gap-1.5">
-            <Skeleton className="size-3 rounded-sm" />
-            <Skeleton className="h-2.5 w-[60%]" />
-          </div>
-        ) : answered === "gone" || answered === "unreadable" ? (
-          <p data-answers={answered} className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <CornerDownRight aria-hidden className="size-3 shrink-0" />
-            {answered === "gone" ? "The message it answers is no longer here" : "The message it answers could not be read"}
-            {answered === "unreadable" && onRetry ? (
-              <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
-                Retry
-              </Button>
-            ) : null}
-          </p>
-        ) : answered ? (
-          <p data-answers className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <CornerDownRight aria-hidden className="size-3 shrink-0" />
-            {/* "Dana Lee: words", cut where the line ends. */}
-            <span className="min-w-0 truncate">
-              {named ? null : <span className="font-medium">{answered.who}: </span>}
-              {answered.text.replace(/\s+/g, " ").trim()}
-            </span>
-          </p>
-        ) : null}
+          {answered === "loading" ? (
+            <div data-answers="loading" aria-hidden className="flex h-5 items-center gap-1.5">
+              <Skeleton className="size-3 rounded-sm" />
+              <Skeleton className="h-2.5 w-[60%]" />
+            </div>
+          ) : answered === "gone" || answered === "unreadable" ? (
+            <p data-answers={answered} className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <CornerDownRight aria-hidden className="size-3 shrink-0" />
+              {answered === "gone" ? "The message it answers is no longer here" : "The message it answers could not be read"}
+              {answered === "unreadable" && onRetry ? (
+                <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
+                  Retry
+                </Button>
+              ) : null}
+            </p>
+          ) : answered ? (
+            <p data-answers className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <CornerDownRight aria-hidden className="size-3 shrink-0" />
+              {/* "Dana Lee: words", cut where the line ends. */}
+              <span className="min-w-0 truncate">
+                {named ? null : <span className="font-medium">{answered.who}: </span>}
+                {answered.text.replace(/\s+/g, " ").trim()}
+              </span>
+            </p>
+          ) : null}
         </div>
         <div className="whitespace-pre-wrap break-words text-sm leading-[22px] text-foreground">{reply.text}</div>
       </div>

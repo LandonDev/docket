@@ -269,6 +269,9 @@ export interface FixtureOptions {
   slowDraft?: boolean;
   /** A held draft's press is refused with these words and the item stays held (a revision conflict, say). */
   refuseDraft?: string;
+  /** A held draft pressed with words other than its own is refused before anything is saved (the host's check of an edit, a
+   * reply over LifeOS's length), with these words; the item keeps its old words. */
+  editRefused?: string;
   /** Undo waits for `release`. */
   slowUndo?: boolean;
   /** Mark unread reaches the list only at `catchUp`, as LifeOS's answer comes after the command. */
@@ -547,6 +550,11 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       if (options.slow || options.slowDraft) await new Promise<void>((go) => (letGo = go));
       if (options.refuse) throw new Error(options.refuse);
       if (options.refuseDraft) throw new Error(options.refuseDraft);
+      if (options.editRefused) {
+        const chatOf = chatOfDraft(draft.id);
+        const stored = chatOf ? drafts[chatOf]!.find((d) => d.id === draft.id)?.text : undefined;
+        if (text !== stored) throw new Error(options.editRefused);
+      }
       log.pressed.push({ id: draft.id, text });
       const chatId = chatOfDraft(draft.id);
       if (!chatId) return;
@@ -590,8 +598,19 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       }
     },
     fileVerb,
-    openFile(chatId, message, file) {
-      log.opened.push({ chatId, messageId: message._id, file: file._id, verb: fileVerb(file) });
+    useFile(fileId) {
+      useVersion();
+      if (!fileId) return LOADING;
+      for (const chatId of threads.keys()) {
+        for (const message of messagesOf(chatId)) {
+          const file = message.files.find((f) => f._id === fileId);
+          if (file) return ready(file);
+        }
+      }
+      return ready(null);
+    },
+    openFile(chatId, messageId, file) {
+      log.opened.push({ chatId, messageId, file: file._id, verb: fileVerb(file) });
     },
   };
 }

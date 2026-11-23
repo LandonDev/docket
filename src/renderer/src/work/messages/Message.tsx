@@ -125,7 +125,7 @@ function Files({ workspaceId, message, chatId, chat }: { workspaceId: string; me
   // A file whose bytes have not come is asked for by the conversation, which opens it once they do (or lets the ask go if
   // the file fails), wherever its message has scrolled by then.
   const open = useCallback(
-    (file: ChatFile) => () => (file.status === "stored" ? data.openFile(chatId, message, file) : wantFile(workspaceId, chatId, { messageId: message._id, fileId: file._id })),
+    (file: ChatFile) => () => (file.status === "stored" ? data.openFile(chatId, message._id, file) : wantFile(workspaceId, chatId, { messageId: message._id, fileId: file._id, file })),
     [data, workspaceId, chatId, message],
   );
   // An ask LifeOS did not take leaves its files unfetched: each says so.

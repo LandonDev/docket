@@ -207,9 +207,11 @@ describe("the failed line's smaller points", () => {
     enter();
     await flush();
     expect(document.querySelector("[data-press-status]")).toBe(status);
-    expect(status.textContent).toBe(`Not sent. ${HELD_DRAFT.thread}`);
+    expect(status.textContent).toBe(`Not sent. ${HELD_DRAFT.thread}. Slack said the thread is archived.`);
     const line = failedLine()!;
     expect(line.className).toContain("flex-wrap");
-    expect(within(line).getByText("Slack said the thread is archived").className).toContain("ms-1");
+    // Round 7 (Opus C1): the 10px is the line's gap, not a margin that travels with a wrapped reason.
+    expect(line.className).toContain("gap-x-2.5");
+    expect(within(line).getByText("Slack said the thread is archived").className).not.toContain("ms-1");
   });
 });

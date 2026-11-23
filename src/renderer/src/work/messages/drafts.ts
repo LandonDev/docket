@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useMessagesData, type ThreadDraft } from "./data";
-import { markDraft, useDraftMarks, usePendingPress } from "./page";
+import { keepDraftEdit, markDraft, useDraftEdits, useDraftMarks, usePendingPress } from "./page";
 
 /**
  * The threads' drafts still waiting in a conversation, as the composer and Undo
@@ -14,20 +14,29 @@ export function useWaitingDrafts(workspaceId: string, chatId: string): readonly 
   const all = useMessagesData().useDrafts(chatId);
   const marks = useDraftMarks(workspaceId, chatId);
   const press = usePendingPress(workspaceId, chatId);
+  const edits = useDraftEdits(workspaceId, chatId);
   useEffect(() => {
     for (const [id, mark] of marks) {
       const listed = all.find((d) => d.id === id);
       if (!listed || ("failed" in mark && listed.failed !== undefined)) markDraft(workspaceId, chatId, id, null);
     }
-  }, [all, marks, workspaceId, chatId]);
+    // A kept revision goes once the item holds it (a save went through) or the draft has gone.
+    for (const [id, text] of edits) {
+      const listed = all.find((d) => d.id === id);
+      if (!listed || listed.text === text) keepDraftEdit(workspaceId, chatId, id, null);
+    }
+  }, [all, marks, edits, workspaceId, chatId]);
   return useMemo(
     () =>
       all.flatMap((d): ThreadDraft[] => {
         const mark = marks.get(d.id);
         if (d.id === press?.draft || (mark && "settled" in mark)) return [];
-        return mark && "failed" in mark && d.failed === undefined ? [{ ...d, failed: mark.failed, ...(mark.unknown ? { unknown: true } : {}) }] : [d];
+        // His revision the Outbox refused to save stands in for the item's words until a save of it goes through.
+        const edit = d.failed === undefined ? edits.get(d.id) : undefined;
+        const own = edit !== undefined && edit !== d.text ? { ...d, text: edit, unsaved: true } : d;
+        return mark && "failed" in mark && own.failed === undefined ? [{ ...own, failed: mark.failed, ...(mark.unknown ? { unknown: true } : {}) }] : [own];
       }),
-    [all, marks, press],
+    [all, marks, press, edits],
   );
 }
 

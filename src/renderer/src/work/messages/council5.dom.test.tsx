@@ -99,7 +99,8 @@ describe("the failed line", () => {
     const line = failedLine()!;
     // The composer's own status region, always mounted, speaks it (round 6: a region that arrives filled is not spoken).
     expect(document.querySelector("[data-press-status]")!.getAttribute("role")).toBe("status");
-    expect(document.querySelector("[data-press-status]")!.textContent).toBe(`Not sent. ${HELD_DRAFT.thread}`);
+    // Round 7 (Opus C2): it says why too, each part ending once.
+    expect(document.querySelector("[data-press-status]")!.textContent).toBe(`Not sent. ${HELD_DRAFT.thread}. Slack said the thread is archived.`);
     const name = within(line).getByText(HELD_DRAFT.thread!);
     expect(name.className).toContain("text-foreground");
     expect(line.textContent!.indexOf("Not sent.")).toBeLessThan(line.textContent!.indexOf(HELD_DRAFT.thread!));

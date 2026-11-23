@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { ChatFile } from "@shared/work/messages";
 import type { RowAnchor } from "../../lib/transcriptWindow";
 import type { ChatFilter } from "./model";
 
@@ -258,6 +259,49 @@ export function useDraftMarks(workspaceId: string, chatId: string): ReadonlyMap<
 }
 
 /**
+ * A held draft's revision the Outbox has not taken (his edit, pressed and refused before it was saved: a reply over
+ * LifeOS's length, say), kept by the draft's id until a save of it succeeds or the draft goes. Use draft and the line
+ * read it in place of the item's words, so a refused save never costs him his edit.
+ */
+const draftEdits = new Map<string, ReadonlyMap<string, string>>();
+const NO_EDITS: ReadonlyMap<string, string> = new Map();
+const editListeners = new Set<() => void>();
+export const draftEditsOf = (workspaceId: string, chatId: string): ReadonlyMap<string, string> => draftEdits.get(key(workspaceId, chatId)) ?? NO_EDITS;
+export function keepDraftEdit(workspaceId: string, chatId: string, draftId: string, text: string | null): void {
+  const at = key(workspaceId, chatId);
+  const next = new Map(draftEdits.get(at) ?? NO_EDITS);
+  if (text !== null) next.set(draftId, text);
+  else if (!next.delete(draftId)) return;
+  if (next.size) draftEdits.set(at, next);
+  else draftEdits.delete(at);
+  for (const listener of editListeners) listener();
+}
+export function useDraftEdits(workspaceId: string, chatId: string): ReadonlyMap<string, string> {
+  return useSyncExternalStore(
+    (fn) => {
+      editListeners.add(fn);
+      return () => void editListeners.delete(fn);
+    },
+    () => draftEditsOf(workspaceId, chatId),
+    () => draftEditsOf(workspaceId, chatId),
+  );
+}
+
+/**
+ * The drafts a conversation's composer has already met, while the window lives: only one it has not met fills an empty
+ * field. Kept with the conversation, not the composer's mount, so a remount (leaving and coming back, a Retry) never
+ * puts back a draft he already saw and pushed aside.
+ */
+const seenDrafts = new Map<string, Set<string>>();
+export const draftSeen = (workspaceId: string, chatId: string, draftId: string): boolean => seenDrafts.get(key(workspaceId, chatId))?.has(draftId) ?? false;
+export function seeDraft(workspaceId: string, chatId: string, draftId: string): void {
+  const at = key(workspaceId, chatId);
+  const seen = seenDrafts.get(at) ?? new Set<string>();
+  seen.add(draftId);
+  seenDrafts.set(at, seen);
+}
+
+/**
  * The held reply whose press from this composer failed last (or may have gone): it owns the composer's line over any
  * other draft waiting, with its Open in Outbox, until he opens it there or the Outbox's state for it changes.
  */
@@ -287,6 +331,8 @@ export function useFailedPress(workspaceId: string, chatId: string): string | nu
 export interface FileWant {
   messageId: string;
   fileId: string;
+  /** The file as it was asked for (its name and type), for an open made after its message left the loaded page. */
+  file?: ChatFile;
 }
 const fileWants = new Map<string, readonly FileWant[]>();
 const NO_WANTS: readonly FileWant[] = [];
@@ -363,6 +409,8 @@ export function resetPages(): void {
   visits.clear();
   fileWants.clear();
   failedPresses.clear();
+  draftEdits.clear();
+  seenDrafts.clear();
   visitPlaces.clear();
   unreadHeld.clear();
   presses.clear();

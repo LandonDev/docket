@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { CHAT_ROUTES, SOURCE_APP, SOURCE_NAME, type ChatDetail } from "@shared/work/messages";
 import { CircleDot } from "../../chrome/icons";
 import { COMPOSER_SURFACE } from "../../chrome/ComposerBar";
-import { Tip } from "../../components/tip";
+import { TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { StatusMark } from "../../components/ui/status";
 import { loadToast } from "../../components/ui/toaster";
@@ -12,7 +12,7 @@ import { workOpenPort } from "../../lib/workSwitch";
 import { useMessagesData, type ThreadDraft } from "./data";
 import { firstName } from "./model";
 import { fieldOrigin, useWaitingDrafts } from "./drafts";
-import { fieldAsPressed, keepFailedPress, keepPress, keepRefusal, keepTyped, markDraft, pendingPress, stillPressed, typedIn, usePendingPress, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
+import { draftSeen, fieldAsPressed, keepDraftEdit, keepFailedPress, keepPress, seeDraft, keepRefusal, keepTyped, markDraft, pendingPress, stillPressed, typedIn, usePendingPress, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
 import { QUICK_ANSWERS } from "./quick";
 
 /**
@@ -66,14 +66,15 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   // Send acts on the origin: a held draft's words press the held item, his own go as his own reply and leave the draft
   // waiting. A draft gone meanwhile (sent or discarded elsewhere) leaves its words as his own.
   // A draft arriving fills an empty field once; his own words are never written over, and a field emptied by a Send
-  // still on its way waits for its answer (a refusal puts the pressed words back).
+  // still on its way waits for its answer (a refusal of his own words puts them back; a refused held press leaves the
+  // field as it is and keeps an unsaved edit with the draft, for Use draft).
   // A draft already waiting when the field held other words (another draft's, or his) is no arrival: it waits behind
   // Use draft, even once the field empties.
-  const seen = useRef(new Set<string>());
+  // Met drafts are kept with the conversation (page.ts), so a remount never refills one he pushed aside.
   useEffect(() => {
     if (pending) return;
-    const fresh = drafts.filter((d) => d.failed === undefined && !seen.current.has(d.id));
-    for (const d of fresh) seen.current.add(d.id);
+    const fresh = drafts.filter((d) => d.failed === undefined && !draftSeen(workspaceId, chatId, d.id));
+    for (const d of fresh) seeDraft(workspaceId, chatId, d.id);
     if (draft && fresh.includes(draft) && !typedIn(workspaceId, chatId).trim()) keepTyped(workspaceId, chatId, draft.text, draft.id);
   }, [drafts, draft, pending, workspaceId, chatId]);
   // Words tied to a held reply that has since failed (here or in another window) are the item's, kept in the Outbox: its
@@ -123,8 +124,10 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   };
   /**
    * The field empties at the press; the pressed words (and the held draft's id when a draft was pressed) wait aside in
-   * page.ts until LifeOS answers. Sent words never sit in the field, so nothing goes twice. On a refusal they come back
-   * in front of whatever he typed since, a line between, with the draft's id when a draft was pressed.
+   * page.ts until LifeOS answers. Sent words never sit in the field, so nothing goes twice. What a refusal does depends
+   * on what was pressed: his own words come back in front of whatever he typed since, a line between, as his own; a
+   * held draft's do not come back into the field at all (the item keeps them, his unsaved revision kept beside it, and
+   * Use draft brings them back), the field left as he has it; a held draft whose item failed shows its failed line.
    */
   const send = async (): Promise<void> => {
     const pressed = fieldAsPressed(workspaceId, chatId);
@@ -151,8 +154,11 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
         markDraft(workspaceId, chatId, pressing.id, { failed: refusalOf(err), ...((err as { unknown?: boolean }).unknown ? { unknown: true } : {}) });
         keepFailedPress(workspaceId, chatId, pressing.id);
       } else if (pressing) {
-        // Refused, the item stays held with its words: they come back only through Use draft. Whatever the field holds
-        // now (a reply his Undo put back, words typed since) stays his own, untouched.
+        // Refused, the item stays held: the pressed words come back only through Use draft. An edit the Outbox may not
+        // have saved (a refused save, a reply over LifeOS's length) is kept under the draft's id until a save of it goes
+        // through, so Use draft brings back his revision, not the item's old words. Whatever the field holds now (a
+        // reply his Undo put back, words typed since) stays his own, untouched.
+        if (sent !== pressing.text || pressing.unsaved) keepDraftEdit(workspaceId, chatId, pressing.id, sent);
         keepRefusal(workspaceId, chatId, refusalOf(err));
       } else {
         const now = typedIn(workspaceId, chatId);
@@ -228,7 +234,12 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
       <div data-composer className="mx-auto w-full max-w-[728px] px-6 pb-4">
         {alert ? <div className="flex min-h-6 items-center px-3 pb-1">{alert}</div> : null}
         {note ? <div className="flex min-h-6 items-center px-3 pb-1">{note}</div> : null}
-        <div className={cn("rounded-xl transition-[border-color] duration-(--dur-fast) ease-(--ease-out) has-focus:border-input motion-reduce:transition-none", COMPOSER_SURFACE)}>
+        {/* The field focus standard at the composer's outer edge (`focus-field`: the ring inside the border), for focus in
+            the field alone: the foot row's buttons keep their own rings, and the edge stays at rest while one holds them. */}
+        <div
+          data-composer-box
+          className={cn("focus-field rounded-xl [&:focus-within:not(:has(textarea:focus))]:border-border [&:focus-within:not(:has(textarea:focus))]:shadow-none", COMPOSER_SURFACE)}
+        >
           <textarea
             ref={field}
             rows={1}
@@ -278,7 +289,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
         </div>
         {/* One status region, always mounted, so a screen reader speaks what became of his press as it changes. */}
         <span role="status" data-press-status className="sr-only">
-          {draft && failed ? failedWords(draft) : ""}
+          {draft && failed ? spokenFailure(draft) : ""}
         </span>
       </div>
     </div>
@@ -294,12 +305,21 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
 function DraftLine({ draft, why, onUse }: { draft: ThreadDraft; why?: string; onUse?: () => void }) {
   const open = draft.threadId ? () => workOpenPort.get()?.(draft.threadId!) : undefined;
   return (
-    // The name and the reason take the room; the controls stand at the line's far end, apart from the thread's name.
-    <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
-      <CircleDot aria-hidden className="size-3.5 shrink-0 text-warning" />
-      <span className="shrink-0 text-muted-foreground">{draft.thread ? "Drafted in" : "Drafted in a thread"}</span>
-      {draft.thread ? <span className="min-w-0 truncate font-medium text-foreground">{draft.thread}</span> : null}
-      {why ? <span className="ms-1 min-w-0 truncate text-muted-foreground">{why}</span> : null}
+    // The name and the reason take the room; the controls stand at the line's far end, apart from the thread's name. Where
+    // room runs short the line wraps: the reason (why the button is Copy) is read whole, and only the title takes "…".
+    <span data-draft-line className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
+      {/* The mark, "Drafted in" and the name hold together; the reason is 10px on by the line's gap, so a wrapped row
+          starts flush with the mark. */}
+      <span className="flex min-w-0 max-w-full items-center gap-1.5">
+        <CircleDot aria-hidden className="size-3.5 shrink-0 text-warning" />
+        <span className="shrink-0 text-muted-foreground">{draft.thread ? "Drafted in" : "Drafted in a thread"}</span>
+        {draft.thread ? (
+          <TruncateTip text={draft.thread}>
+            <span className="min-w-0 truncate font-medium text-foreground">{draft.thread}</span>
+          </TruncateTip>
+        ) : null}
+      </span>
+      {why ? <span className="min-w-0 text-muted-foreground">{why}</span> : null}
       {onUse ? (
         <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" onClick={onUse}>
           Use draft
@@ -314,30 +334,43 @@ function DraftLine({ draft, why, onUse }: { draft: ThreadDraft; why?: string; on
   );
 }
 
-/** What became of a failed press, in one breath: the word and the thread's name. */
-const failedWords = (draft: ThreadDraft): string => [draft.unknown ? "May have gone." : "Not sent.", draft.thread].filter(Boolean).join(" ");
+/** A failed press's reason: LifeOS's words, or the Outbox's own when it cannot know whether the reply went. */
+const failedReason = (draft: ThreadDraft): string => (draft.unknown ? "Check whether it went first" : (draft.failed ?? ""));
+/** Parts read as sentences, each ending once: a part already ending in a stop gets no second one. */
+const sentences = (parts: readonly (string | undefined)[]): string =>
+  parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .map((part) => (/[.!?…]$/.test(part) ? part : `${part}.`))
+    .join(" ");
+/** What the composer's status region says of a failed press: the word, the thread and why, as the line shows them. */
+const spokenFailure = (draft: ThreadDraft): string => sentences([draft.unknown ? "May have gone." : "Not sent.", draft.thread, failedReason(draft)]);
 
 /**
  * A thread's held reply whose press failed: the word ("Not sent.", or "May have gone." when the Outbox cannot know
- * whether it went), the thread's name in ink as the draft line names it, LifeOS's reason muted 10px after it (or the
- * Outbox's own "Check whether it went first"), the route's reason while the button is Copy, and the one way on: Open in
- * Outbox, on that very item. The line wraps rather than cutting its reasons; the whole of it is also the control's tip.
- * The composer's status region speaks it.
+ * whether it went) and the thread's name in ink, held together; then 10px on, muted, LifeOS's reason (or the Outbox's own
+ * "Check whether it went first"), the route's reason while the button is Copy, and the one way on: Open in Outbox, on
+ * that very item. The line wraps rather than cutting its reasons, a wrapped row flush with the mark (the 10px is the
+ * line's gap, not a margin that travels); only the thread's name may be cut, its whole shown on hover while it is. The
+ * composer's status region speaks it.
  */
 function FailedLine({ draft, why, onOpen }: { draft: ThreadDraft; why?: string; onOpen: () => void }) {
   const unknown = draft.unknown === true;
-  const reason = unknown ? "Check whether it went first" : draft.failed;
   return (
-    <span data-draft-failed={unknown ? "unknown" : "failed"} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
-      <StatusMark state={unknown ? "waiting" : "failed"} word={unknown ? "May have gone." : "Not sent."} className="shrink-0" />
-      {draft.thread ? <span className="min-w-0 max-w-full truncate font-medium text-foreground">{draft.thread}</span> : null}
-      <span className="ms-1 min-w-0 text-muted-foreground">{reason}</span>
-      {why ? <span className="ms-1 min-w-0 text-muted-foreground">{why}</span> : null}
-      <Tip label={[failedWords(draft), reason, why].filter(Boolean).join(". ")}>
-        <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" onClick={onOpen}>
-          Open in Outbox
-        </Button>
-      </Tip>
+    <span data-draft-failed={unknown ? "unknown" : "failed"} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
+      <span className="flex min-w-0 max-w-full items-center gap-1.5">
+        <StatusMark state={unknown ? "waiting" : "failed"} word={unknown ? "May have gone." : "Not sent."} className="shrink-0" />
+        {draft.thread ? (
+          <TruncateTip text={draft.thread}>
+            <span className="min-w-0 truncate font-medium text-foreground">{draft.thread}</span>
+          </TruncateTip>
+        ) : null}
+      </span>
+      <span className="min-w-0 text-muted-foreground">{failedReason(draft)}</span>
+      {why ? <span className="min-w-0 text-muted-foreground">{why}</span> : null}
+      <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" onClick={onOpen}>
+        Open in Outbox
+      </Button>
     </span>
   );
 }

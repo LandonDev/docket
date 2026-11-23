@@ -175,7 +175,7 @@ files: there a file is the plain line LifeOS stored.
 | `files.ts` | `viewKind` (the canvas kind `kindForFile` names, when the canvas fetches it), `fileVerb`, `chatFileSource` (the mail arm with `from: 'chat'`). |
 | `threads.ts` | `chatChip` ("Dana Lee in Slack", a message's words as `quote`), `threadRows` (Start thread; Mention in a thread only while one is open), `linkRows` (Open in the app, Copy link), `mention`, `StartThreadProvider`. |
 | `fixtures.ts`, `pictures.fixtures.ts` | The seam from a made-up studio, Starboard, kept in memory (a reply lands as his own message, an undo takes it away, a pressed draft goes), with switches: `loading`, `empty`, `noSource`, `stale`, `drafted`, `drafts`, `routes`, `refuse`, and `manyChats`/`manyMessages` for the speed proof; two made-up pictures as `data:` addresses. |
-| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search, what he typed in each conversation (live: Undo writes back into it), a message asked for (`wantMessage`), whose words the field holds (`keepTyped(…, from)`) and its revision (`typedRev`), the pending press (`keepPress`), what became of a draft before the Outbox's list says so (`markDraft`: settled or failed), the visit's "New", its place (`visitPlaceOf`) and his held unread mark (`markUnreadHeld`), the way back to the list (`returnTo`, `peekReturn`, `takeReturn`); outside React, the list's scroll and each conversation's place. |
+| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search, what he typed in each conversation (live: Undo writes back into it), a message asked for (`wantMessage`), files asked for before their bytes came (`wantFile`), an unsaved draft revision (`keepDraftEdit`) and the drafts met (`seeDraft`), whose words the field holds (`keepTyped(…, from)`) and its revision (`typedRev`), the pending press (`keepPress`), what became of a draft before the Outbox's list says so (`markDraft`: settled or failed), the visit's "New", its place (`visitPlaceOf`) and his held unread mark (`markUnreadHeld`), the way back to the list (`returnTo`, `peekReturn`, `takeReturn`); outside React, the list's scroll and each conversation's place. |
 | `model.ts` | Pure rules: `rowTime`, `dayWords`, `rowLine`, `chatFact`, `newSince`, `wantsRead`, `blocksOf` (runs inside five minutes, days, "New"), `estimateOf`, `isPicture`, `pictureBox` (360 by 270), `linkParts` and `opensOutside` (http, https, mailto), `markWords`, `aroundMatch`. |
 | `MessagesView.tsx` | The frame (`ListFrame`, Mail's: 296px, 260 to 480, `tc.messages.listWidth`), the narrow rule at 640px (one tree in both layouts: under it the list or the pane is hidden, never remounted), the conversation in a `CanvasSeat` on `messagesPaneOf` (toggle "Messages"), `useOpened` (`OpenWorkView.chat` and `.message`, taken once), `MessagesScreen` for the preview. |
 | `ChatList.tsx`, `Conversation.tsx`, `Message.tsx`, `Composer.tsx` | The list, the conversation, one message (its reply state, pictures and files), the composer. |
@@ -241,9 +241,17 @@ The look is docs/DESIGN.md "The Messages view".
   page.ts as the pending press (`keepPress`) until LifeOS answers, and while
   it is pending Return and the button do nothing more for that conversation
   on any mount, so nothing goes twice and sent words never sit in the field.
-  On a refusal the pressed words come back before whatever he typed since, a
-  line between, with the draft's id when a draft was pressed, and the
-  refusal shows. A held draft pressed or discarded here is marked settled in
+  What a refusal does depends on what was pressed. His own words come back
+  before whatever he typed since, a line between, as his own, and the refusal
+  shows. A held draft's do not come back into the field: the item keeps its
+  words, and the words he pressed, when they differ from the item's (an edit
+  the Outbox refused to save: a revision conflict, a host that did not
+  answer, a reply over LifeOS's 4,000 characters, which the host checks
+  before it saves), are kept with the draft in page.ts (`keepDraftEdit`)
+  until a save of them goes through or the draft goes; Use draft brings that
+  revision back, before any words of his own in the field. The field stays
+  as he has it, and the refusal shows above the draft's line rather than in
+  its place. A held draft pressed or discarded here is marked settled in
   page.ts (`markDraft`) and left out of the drafts (`useWaitingDrafts`,
   drafts.ts) until the Outbox's own list drops it, so its line, Use draft
   and a fill of an empty field never come back for the round trip, on any
@@ -252,26 +260,27 @@ The look is docs/DESIGN.md "The Messages view".
   says "Not sent." when the outcome is known, or "May have gone." with the
   Outbox's own "Check whether it went first" when it is not (`outcomeUnknown`,
   carried on the draft and on the rejected press as `unknown`), then the
-  thread's name in ink, the reason muted 10px after it, the route's reason
-  while the button is Copy, and Open in Outbox, which opens that very item
-  (`wantOutboxItem(<host>:<ref.at>:<ref.id>)`) in whichever tab holds it, its
-  tip the whole line. The line wraps rather than cutting its reasons. A
-  status region always mounted in the composer (`data-press-status`) speaks
-  the word and the thread as they appear. The last press from this composer
+  thread's name in ink, the reason muted 10px after it (the line's gap, so a
+  wrapped row starts flush), the route's reason while the button is Copy,
+  and Open in Outbox, which opens that very item
+  (`wantOutboxItem(<host>:<ref.at>:<ref.id>)`) in whichever tab holds it. The
+  line wraps rather than cutting its reasons; only the thread's name may be
+  cut, its whole shown on hover while it is (`TruncateTip`), and nothing
+  repeats the line in a tip. A status region always mounted in the composer
+  (`data-press-status`) speaks the word, the thread and why, each sentence
+  ending once. The last press from this composer
   that failed or may have gone owns the line over any other draft waiting
   (`keepFailedPress`), until he opens it in the Outbox or the Outbox's list
   no longer holds it failed. Its words never come into the field, and the
-  row wears no "a draft waits" mark for it. A held press refused with the
-  item still held (a revision conflict) leaves its words with the item,
-  offered by Use draft; whatever the field holds then (a reply his Undo put
-  back, words typed since) stays his own, untouched, and the refusal shows
-  above the draft's line rather than in its place. Whose words the field holds is answered once, against every draft
+  row wears no "a draft waits" mark for it. Whose words the field holds is answered once, against every draft
   still waiting (`fieldOrigin`, drafts.ts: held, copy-only, failed, or his
   own), for the line, Send and the cleanup alike: a failure from elsewhere
   empties the field only if it still holds the item's own words, and an edit
   he was making stays as his own words. A draft already waiting when the
   field held other words never fills it later; only a draft that arrives
-  does. Every step that awaits (Send, Discard, Copy's cleanup, Undo and the
+  does, and the drafts met are kept with the conversation in page.ts
+  (`seeDraft`), so a remount never refills one he pushed aside. The waiting
+  draft's line wraps the route's reason whole; only its title is cut. Every step that awaits (Send, Discard, Copy's cleanup, Undo and the
   save inside it) takes the field as pressed before it awaits
   (`fieldAsPressed`: words, origin, revision) and judges by it after
   (`stillPressed`): Discard and the cleanup after Copy empty the field only
@@ -336,7 +345,11 @@ The look is docs/DESIGN.md "The Messages view".
   at the foot is said once in a polite status.
 - **Failures.** Each failure line (the list, a search, a conversation, its
   messages) has Retry, which mounts the failing reads again, so LifeOS is
-  asked afresh; the seam needs no verb for it. Sources that did not load make
+  asked afresh; the seam needs no verb for it. Retry takes its own button
+  away, so when it held the keys the list's or the conversation's pane holds
+  them while the read runs (`data-list-pane`, `data-conversation-pane`), and
+  what lands takes them from it: the rows or results, the column, or the next
+  failure's Retry. Sources that did not load make
   an empty list say it did not load. A conversation that fails keeps its
   toolbar, so the way back stays under 640px.
 - **Pictures and files.** A message's `listed` files are asked for as it
@@ -354,7 +367,10 @@ The look is docs/DESIGN.md "The Messages view".
   `aria-busy`; a press asks the conversation to open it (`wantFile`, by
   message and file id in page.ts), which settles once, wherever the message
   has scrolled: it opens the file when it is stored, or lets the ask go when
-  the file fails. Leaving the conversation drops the asks. No toast for a
+  the file fails. When newer messages push the file's message out of the
+  loaded page, the conversation watches the file by its id on the same
+  sector instead (`useFile`, LifeOS's `chats:file`), under the same rules.
+  Leaving the conversation drops the asks. No toast for a
   file that is merely on its way. A file a canvas kind shows opens in the view's own pane
   (`openItem(env, messagesPaneOf(ws), {kind, source: chatFileSource(…)})`,
   the host fetching it as the owner); any other is saved to Downloads once

@@ -13,7 +13,7 @@ import { useMessagesData, type Paged } from "./data";
 import { Composer } from "./Composer";
 import { MessageBlock } from "./Message";
 import { blocksOf, chatFact, estimateOf, menuKey, newSince, wantsRead, type Block } from "./model";
-import { dropWanted, heldUnread, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, settleFile, useFileWants, useWanted, visitPlaceOf, visitSince } from "./page";
+import { dropWanted, heldUnread, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, settleFile, useFileWants, useWanted, type FileWant, visitPlaceOf, visitSince } from "./page";
 import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 
 /**
@@ -25,10 +25,27 @@ import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows
  * open and the window is in front. The composer sits at its foot.
  */
 export function Conversation(props: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void }) {
-  // Retry asks LifeOS afresh: the conversation's reads are mounted again.
+  // Retry asks LifeOS afresh: the conversation's reads are mounted again. The press takes its own button away, so when it
+  // held the keys the conversation's pane holds them while the read runs (a stable target, as the Outbox quote's slot),
+  // and what lands takes them from it: the column, or the next failure's Retry.
   const [attempt, setAttempt] = useState(0);
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  return <ConversationBody key={attempt} {...props} retry={retry} />;
+  const pane = useRef<HTMLDivElement>(null);
+  const keep = useRef(false);
+  const retry = useCallback(() => {
+    keep.current = pane.current?.contains(document.activeElement) ?? false;
+    setAttempt((n) => n + 1);
+  }, []);
+  useLayoutEffect(() => {
+    if (!keep.current) return;
+    keep.current = false;
+    const fell = document.activeElement === null || document.activeElement === document.body;
+    if (fell) pane.current?.focus({ preventScroll: true });
+  }, [attempt]);
+  return (
+    <div ref={pane} tabIndex={-1} data-conversation-pane className="focus-ring h-full min-h-0">
+      <ConversationBody key={attempt} {...props} retry={retry} />
+    </div>
+  );
 }
 
 function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void; retry: () => void }) {
@@ -86,11 +103,22 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
       const file = message?.files.find((f) => f._id === want.fileId);
       if (!message || !file || (file.status !== "stored" && file.status !== "failed")) continue;
       settleFile(workspaceId, chatId, want);
-      if (file.status === "stored") data.openFile(chatId, message, file);
+      if (file.status === "stored") data.openFile(chatId, message._id, file);
     }
   }, [fileWants, messages, data, workspaceId, chatId]);
+  // One whose message has left the loaded page (newer messages pushed it past the page's count) is watched by its file
+  // id on the same sector instead, under the same rules: settled once, let go with the visit.
+  const loaded = messages.status === "ready" ? messages.value.rows : null;
+  const away = loaded ? fileWants.filter((want) => !loaded.some((m) => m._id === want.messageId)) : [];
 
   const failed = detail.status === "failed" || messages.status === "failed";
+  // A Retry's read landing while the pane holds the keys: the column takes them, or the next failure's Retry does.
+  const settled = failed || (messages.status === "ready" && detail.status === "ready");
+  useEffect(() => {
+    if (!settled || !document.activeElement?.hasAttribute("data-conversation-pane")) return;
+    const pane = document.activeElement as HTMLElement;
+    pane.querySelector<HTMLElement>(failed ? "[data-slot=empty] button" : "[role=log]")?.focus({ preventScroll: true });
+  }, [settled, failed]);
   const gone = detail.status === "ready" && !detail.value;
   return (
     <div data-conversation className="flex h-full min-h-0 flex-col">
@@ -105,9 +133,26 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
       ) : (
         <Column workspaceId={workspaceId} chat={chat} since={since} page={messages.value} onPlaced={onPlaced} />
       )}
+      {away.map((want) => (
+        <FileWatch key={`${want.messageId}:${want.fileId}`} workspaceId={workspaceId} chatId={chatId} want={want} />
+      ))}
       {detail.status === "ready" && detail.value && !failed ? <Composer workspaceId={workspaceId} detail={detail.value} /> : null}
     </div>
   );
+}
+
+/** A file asked for whose message is no longer in the loaded page: read by its id until it is stored (opened) or fails. */
+function FileWatch({ workspaceId, chatId, want }: { workspaceId: string; chatId: string; want: FileWant }) {
+  const data = useMessagesData();
+  const file = data.useFile(want.fileId);
+  useEffect(() => {
+    if (file.status !== "ready") return;
+    const now = file.value;
+    if (now && now.status !== "stored" && now.status !== "failed") return;
+    settleFile(workspaceId, chatId, want);
+    if (now?.status === "stored") data.openFile(chatId, want.messageId, { ...want.file, ...now });
+  }, [file, data, workspaceId, chatId, want]);
+  return null;
 }
 
 // ── The toolbar ──

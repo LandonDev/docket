@@ -110,7 +110,7 @@ describe("a chat's file in the canvas", () => {
     const { liveData } = await import("./live");
     const data = liveData({ environmentId: "box", sector: "cosmic", client: null, state: "connected" }, "cosmic", "box", "ws");
     const message = MESSAGES.c_lucas!.find((m) => m._id === "c_lucas_m1")!;
-    data.openFile("c_lucas", message, message.files[0]!);
+    data.openFile("c_lucas", message._id, message.files[0]!);
     expect(canvas.items).toEqual([
       [
         "box",

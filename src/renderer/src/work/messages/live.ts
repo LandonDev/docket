@@ -194,11 +194,13 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
       if (!client) throw new Error("LifeOS is not connected");
       await client.mutation(makeFunctionReference<"mutation">("chats:requestFiles"), { messageId });
     },
+    // One file by its id, on the workspace's sector session: LifeOS's `chats:file` row (status and address).
+    useFile: (fileId) => useQuery<ChatFile | null>(session, "chats:file", fileId ? { id: fileId } : null),
     fileVerb,
-    openFile: (chatId, message, file) => {
+    openFile: (chatId, messageId, file) => {
       const kind = viewKind(file);
       if (kind) {
-        void openItem(env, messagesPaneOf(workspaceId), { kind, source: chatFileSource(chatId, message._id, file), title: file.name.slice(0, 200) });
+        void openItem(env, messagesPaneOf(workspaceId), { kind, source: chatFileSource(chatId, messageId, file), title: file.name.slice(0, 200) });
         return;
       }
       void saveFile(file).then(
