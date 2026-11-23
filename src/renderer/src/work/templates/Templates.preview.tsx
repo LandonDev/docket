@@ -14,8 +14,8 @@ import { Head, View } from "./TemplatesView";
  * The Templates pillar's screens over one fixed host, for `bun run ui:preview
  * src/renderer/src/work/templates/Templates.preview.tsx#<Export> --props '{"width":560}'`:
  * the view under the frame's 40px header (`state`: shelf, hidden, loading,
- * empty, error), New from a template, a template's fields (`state`: rest,
- * pending, error) and Save as template (its fields read from the host). A dialog draws in a portal a static page cannot
+ * empty, error), New from a template (`hidden`: no tile left), a template's fields
+ * (`state`: rest, pending, error, made: made but not opened) and Save as template (its fields read from the host). A dialog draws in a portal a static page cannot
  * hold, so each is drawn in the Modal's own box (chrome/Modal.tsx) around its
  * real body. `width` sets the box the screen stands in. Rendered by nothing in
  * the app.
@@ -112,8 +112,9 @@ function ModalBox({ title, size, children }: { title: string; size: "sm" | "md";
   );
 }
 
-export function TemplateDialogPreview({ width, kept = false }: { width?: number; kept?: boolean }) {
-  viewState = "shelf";
+export function TemplateDialogPreview({ width, kept = false, hidden = false }: { width?: number; kept?: boolean; hidden?: boolean }) {
+  // `hidden`: every starter hidden and none of his own, so no tile is left.
+  viewState = hidden ? "empty" : "shelf";
   return (
     <Box width={width}>
       <ModalBox title="New from a template" size="md">
@@ -133,7 +134,7 @@ export function TemplateDialogPreview({ width, kept = false }: { width?: number;
   );
 }
 
-export function FieldsPreview({ width, state = "rest" }: { width?: number; state?: "rest" | "pending" | "error" }) {
+export function FieldsPreview({ width, state = "rest" }: { width?: number; state?: "rest" | "pending" | "error" | "made" }) {
   const report = SHELF[2]!;
   return (
     <Box width={width}>
@@ -141,7 +142,8 @@ export function FieldsPreview({ width, state = "rest" }: { width?: number; state
         <FieldsForm
           template={report}
           pending={state === "pending"}
-          error={state === "error" ? "The workspace's folder is gone" : null}
+          error={state === "error" ? "The workspace's folder is gone" : state === "made" ? "Game report - North was made but did not open. The Files view is busy" : null}
+          {...(state === "made" ? { made: { values: { Home: "North", Away: "Central" } } } : {})}
           onBack={noop}
           onCancel={noop}
           onCreate={noop}
