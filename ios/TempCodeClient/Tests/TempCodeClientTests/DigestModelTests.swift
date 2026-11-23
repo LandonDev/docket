@@ -78,15 +78,18 @@ import TempCodeContract
 
     @Test func `the push tells, replaces, takes away and makes a day`() {
         var ledger = DigestModel.Ledger(days: [], rows: [row("r1", at: 1), row("r2", at: 2)])
-        #expect(!ledger.apply(WorkDigestPush(row: row("r1", title: "Budget review moved", at: 3))))
+        let replaced = ledger.apply(WorkDigestPush(row: row("r1", title: "Budget review moved", at: 3)))
+        #expect(!replaced)
         #expect(ledger.rows.map(\.id) == ["r1", "r2"])
         #expect(ledger.rows[0].title == "Budget review moved")
         ledger.apply(WorkDigestPush(gone: "r2"))
         #expect(ledger.rows.map(\.id) == ["r1"])
         // a day made: read again, the host stamped its rows
-        #expect(ledger.apply(WorkDigestPush(day: DigestDay(day: "2026-11-23", madeAt: 1, seenAt: nil, count: 1))))
+        let made = ledger.apply(WorkDigestPush(day: DigestDay(day: "2026-11-23", madeAt: 1, seenAt: nil, count: 1)))
+        #expect(made)
         // the same day seen elsewhere replaces it, and needs no read
-        #expect(!ledger.apply(WorkDigestPush(day: DigestDay(day: "2026-11-23", madeAt: 1, seenAt: 9, count: 1))))
+        let seenElsewhere = ledger.apply(WorkDigestPush(day: DigestDay(day: "2026-11-23", madeAt: 1, seenAt: 9, count: 1)))
+        #expect(!seenElsewhere)
         #expect(ledger.days.count == 1)
         #expect(ledger.days[0].seenAt == 9)
         let settings = DigestSettings(at: "07:30", zone: "America/New_York", levels: ["held": .now], nextAt: 1)
