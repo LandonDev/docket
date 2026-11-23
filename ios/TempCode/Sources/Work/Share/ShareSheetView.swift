@@ -15,8 +15,10 @@ struct ShareSheetView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if model.ordered.isEmpty {
-                    ContentUnavailableView("No Work Workspace", systemImage: "folder", description: Text("Turn Work on in TempCode and make a workspace. Then you can save files into it from here."))
+                if model.picks.isEmpty {
+                    ContentUnavailableView("Nothing to Save", systemImage: "doc", description: Text(model.unreadWords ?? ""))
+                } else if model.ordered.isEmpty {
+                    ContentUnavailableView("No Work Workspace", systemImage: "folder", description: Text("Turn Work on in TempCode and make a workspace."))
                 } else {
                     form
                 }
@@ -24,11 +26,13 @@ struct ShareSheetView: View {
             .navigationTitle("Save to TempCode")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: cancel)
-                        .disabled(model.phase == .saved)
+                // Once Save is pressed the files are in the queue and the app sends what is left: Done alone closes.
+                if model.phase == .picking && !model.picks.isEmpty {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
                 }
-                ToolbarItem(placement: .confirmationAction) { confirm }
+                if model.picks.isEmpty || !model.ordered.isEmpty {
+                    ToolbarItem(placement: .confirmationAction) { confirm }
+                }
             }
             .navigationDestination(for: ShareFolder.self) { folder in
                 ShareFolderList(model: model, folder: folder, path: $path)
@@ -40,7 +44,7 @@ struct ShareSheetView: View {
             saved += 1
             // The check is read, then the sheet closes itself.
             Task {
-                try? await Task.sleep(for: .milliseconds(700))
+                try? await Task.sleep(for: ShareMetrics.closeWait)
                 done()
             }
         }
@@ -52,7 +56,7 @@ struct ShareSheetView: View {
             if !model.earlier.isEmpty {
                 Section {
                     ForEach(model.earlier) { item in
-                        ShareRefusedRow(item: item) { Task { await model.retry(item) } }
+                        ShareRefusedRow(item: item, trying: model.trying.contains(item.id), retry: { Task { await model.retry(item) } }, discard: { model.discard(item) })
                             .swipeActions(edge: .trailing) {
                                 Button("Discard", systemImage: "trash", role: .destructive) { model.discard(item) }
                             }
@@ -64,28 +68,19 @@ struct ShareSheetView: View {
             Section {
                 what
             } footer: {
-                if case .refused(let words) = model.phase { Text(words).foregroundStyle(Tint.destructiveText) }
+                let unread = model.unreadWords
+                let refused = refusedWords
+                if unread != nil || refused != nil {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let unread { Text(unread) }
+                        if let refused { Text(refused).foregroundStyle(Tint.destructiveText) }
+                    }
+                }
             }
             Section {
                 ForEach(model.ordered) { target in
                     Button { model.choose(target) } label: {
-                        HStack(spacing: Layout.rowGap) {
-                            SectorDot(sector: target.workspace.sector)
-                                .frame(width: Layout.glyphWidth)
-                            VStack(alignment: .leading, spacing: 2) {
-                                // The label ink as a colour: `.primary` is hierarchical, and inside a Button it is the tint.
-                                Text(target.workspace.name).foregroundStyle(Color.primary)
-                                if model.severalHosts { Text(target.host.name).textStep(.meta) }
-                            }
-                            Spacer(minLength: 8)
-                            if target.id == model.target?.id {
-                                Image(systemName: "checkmark")
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.tint)
-                                    .accessibilityHidden(true)
-                            }
-                        }
-                        .contentShape(Rectangle())
+                        ShareWorkspaceRow(target: target, showsHost: model.severalHosts, checked: target.id == model.target?.id)
                     }
                     .accessibilityAddTraits(target.id == model.target?.id ? .isSelected : [])
                     .accessibilityIdentifier("share-workspace")
@@ -98,7 +93,7 @@ struct ShareSheetView: View {
             if let folder = model.folder, let target = model.target {
                 Section {
                     NavigationLink(value: ShareFolder.top(name: target.workspace.folderName)) {
-                        Label(folder.name, systemImage: "folder")
+                        FolderLabel(name: folder.name)
                     }
                     .accessibilityIdentifier("share-folder")
                 } header: {
@@ -108,6 +103,11 @@ struct ShareSheetView: View {
         }
         .listStyle(.insetGrouped)
         .disabled(model.phase != .picking && model.earlier.isEmpty)
+    }
+
+    private var refusedWords: String? {
+        if case .refused(let words) = model.phase { return words }
+        return nil
     }
 
     /// One file: its picture or glyph, its name as a field, its size. Several: how many, and their pictures.
@@ -136,9 +136,21 @@ struct ShareSheetView: View {
         }
     }
 
-    /// Save in its own place: the word, then a bar that follows the bytes, then a check.
+    /// Save in its own place: the word, then a bar that follows the bytes, then a check. Done alone when
+    /// nothing shared could be read.
     @ViewBuilder
     private var confirm: some View {
+        if model.picks.isEmpty {
+            Button("Done", action: done)
+                .fontWeight(.semibold)
+                .accessibilityIdentifier("share-done")
+        } else {
+            phaseConfirm
+        }
+    }
+
+    @ViewBuilder
+    private var phaseConfirm: some View {
         switch model.phase {
         case .picking:
             Button("Save") { Task { await model.save() } }
@@ -172,6 +184,50 @@ enum ShareMetrics {
     static let mark: CGFloat = 44
     /// Save's progress bar, in the bar item's place.
     static let bar: CGFloat = 56
+    /// How long the check shows before the sheet closes itself.
+    static let closeWait: Duration = .milliseconds(700)
+}
+
+/// A workspace row: its sector's dot, its name, its host's when there are several, and a check on the chosen.
+private struct ShareWorkspaceRow: View {
+    let target: ShareTargets.Target
+    let showsHost: Bool
+    let checked: Bool
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        HStack(spacing: Layout.rowGap) {
+            SectorDot(sector: target.workspace.sector)
+                .frame(width: Layout.glyphWidth)
+            VStack(alignment: .leading, spacing: 2) {
+                // The label ink as a colour: `.primary` is hierarchical, and inside a Button it is the tint. A
+                // colour overrides the list's disabled ink, so the row dims itself with the rest while it saves.
+                Text(target.workspace.name).foregroundStyle(isEnabled ? Color.primary : Color.secondary)
+                if showsHost { Text(target.host.name).textStep(.meta) }
+            }
+            Spacer(minLength: 8)
+            if checked {
+                Image(systemName: "checkmark")
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+/// A folder's row: the glyph in the secondary ink, as the Files screen's rows have it.
+private struct FolderLabel: View {
+    let name: String
+
+    var body: some View {
+        Label {
+            Text(name)
+        } icon: {
+            Image(systemName: "folder").foregroundStyle(.secondary)
+        }
+    }
 }
 
 /// A file's picture, or the glyph of what it is.
@@ -196,13 +252,15 @@ private struct PickMark: View {
     }
 }
 
-/// A file an earlier save left refused: its name, the host's words, Try Again. The share sheet leads with
-/// these, and so does the workspace's Files screen in the app (Work/ShareRefused.swift).
+/// A file an earlier save left refused: its name, the words that say why, Try Again, or Discard when no
+/// retry can change the answer. The share sheet leads with these, and so does the workspace's Files screen
+/// in the app (Work/ShareRefused.swift).
 struct ShareRefusedRow: View {
     let item: ShareItem
     /// The file is on its way again: a spinner stands where Try Again was.
     var trying = false
     let retry: () -> Void
+    let discard: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -213,8 +271,12 @@ struct ShareRefusedRow: View {
             Spacer(minLength: 8)
             if trying {
                 ProgressView()
-            } else {
+            } else if item.canRetry {
                 Button("Try Again", action: retry)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            } else {
+                Button("Discard", role: .destructive, action: discard)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
@@ -238,7 +300,7 @@ private struct ShareFolderList: View {
                     Text("No folders here").textStep(.meta).listRowSeparator(.hidden)
                 }
                 ForEach(folders, id: \.self) { child in
-                    NavigationLink(value: child) { Label(child.name, systemImage: "folder") }
+                    NavigationLink(value: child) { FolderLabel(name: child.name) }
                 }
             } else if let failure = model.folderFailure {
                 Text(failure).textStep(.meta).listRowSeparator(.hidden)

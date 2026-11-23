@@ -16,6 +16,8 @@ struct ItemPage: View {
     @State private var sharing: CanvasItem?
     @State private var previewing: CanvasItem?
     @State private var failure: String?
+    /// Print is reading its pages: a spinner stands in More's place.
+    @State private var printing = false
     /// More's Find reaches the kind's viewer through these; the viewer keeps its own Ask here.
     @State private var commands = ReaderCommands(ownsAsk: false)
     /// The shown item's comments and the changes that wait on it (`ReaderFrame` fills it).
@@ -41,7 +43,8 @@ struct ItemPage: View {
                 header(item)
                 Divider()
                 ReaderFrame(client: client, item: item, commands: commands, file: $file, sheet: $sheet) {
-                    ItemBodyView(client: client, item: item, ask: { asking = $0 })
+                    // A key that may only read has no Ask: the host would refuse its words.
+                    ItemBodyView(client: client, item: item, ask: client.work.canOperate ? { asking = $0 } : nil)
                         .id(item.id)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -90,15 +93,21 @@ struct ItemPage: View {
             }
             // One item: its name is the segment's label already, so the row holds only its More.
             Spacer(minLength: 8)
-            Menu {
-                // The reader page's own rows (Work/Reader): one menu for a file wherever it shows.
-                ReaderMoreRows(verbs: ReaderVerbs.of(item, facts(item))) { run($0, on: item) }
-            } label: {
-                Image(systemName: GlassMetrics.moreSymbol)
+            if printing {
+                ProgressView()
                     .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel("Reading the pages to print")
+            } else {
+                Menu {
+                    // The reader page's own rows (Work/Reader): one menu for a file wherever it shows.
+                    ReaderMoreRows(verbs: ReaderVerbs.of(item, facts(item))) { run($0, on: item) }
+                } label: {
+                    Image(systemName: GlassMetrics.moreSymbol)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("More")
+                .accessibilityIdentifier("item-more")
             }
-            .accessibilityLabel("More")
-            .accessibilityIdentifier("item-more")
         }
         .padding(.leading, Layout.textEdge)
         .padding(.trailing, Layout.textEdge - 12)
@@ -109,6 +118,7 @@ struct ItemPage: View {
     private func facts(_ item: CanvasItem) -> ReaderFacts {
         let file = file?.item.id == item.id ? file : nil
         return ReaderFacts(
+            canOperate: client.work.canOperate,
             canApprove: client.work.canApprove,
             inThread: true,
             waiting: file?.waiting ?? 0,
@@ -126,6 +136,12 @@ struct ItemPage: View {
                 do { try await client.work.canvas.close(item) } catch { failure = ActionError.wrap(error).message }
             }
         case .preview: previewing = item
+        case .print:
+            Task {
+                printing = true
+                defer { printing = false }
+                do { try await ReaderPrint.run(client: client, item: item) } catch { failure = ActionError.wrap(error).message }
+            }
         case .comments: sheet = .comments
         case .review: sheet = .review
         case .share: break
@@ -184,6 +200,8 @@ struct AskSheet: View {
     @State private var text = ""
     @State private var sending = false
     @State private var error: String?
+    /// A thread an earlier Send started whose file would not open in it: Send again finishes that one.
+    @State private var started: String?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -233,10 +251,14 @@ struct AskSheet: View {
                 try await client.work.ask(sessionId: sessionId, chip: chip, text: words)
                 thread = sessionId
             case .file(let workspaceId, let item):
-                thread = try await client.work.ask(workspaceId: workspaceId, item: item, chip: chip, text: words) { client.session($0) }
+                thread = try await client.work.ask(workspaceId: workspaceId, item: item, chip: chip, text: words, into: started) { client.session($0) }
             }
             dismiss()
             sent(thread)
+        } catch let stopped as FileAsk.NotSeated {
+            // His words stay in the field; the thread is kept for the next Send.
+            started = stopped.threadId
+            self.error = ActionError.wrap(stopped.cause).message
         } catch {
             self.error = ActionError.wrap(error).message
         }

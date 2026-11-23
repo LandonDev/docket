@@ -38,6 +38,18 @@ struct ShareRig {
     }
 
     var itemsDir: URL { root.appendingPathComponent("group/items", isDirectory: true) }
+
+    /// The same queue as another process sees it: its own claims, the same clock.
+    func process(_ holder: String) -> ShareInbox {
+        let clock = clock
+        return ShareInbox(root: root.appendingPathComponent("group"), now: { clock.now() }, holder: holder)
+    }
+
+    /// What a send that the host refused leaves: claimed, then marked.
+    func refuse(_ item: ShareItem, _ words: String, final: Bool = false) throws {
+        _ = try #require(inbox.claim(item.id))
+        try inbox.mark(item.id, .refused, words: words, isFinal: final)
+    }
 }
 
 @Suite struct ShareInboxTests {
@@ -46,10 +58,10 @@ struct ShareRig {
         let mine = try rig.add(Data("a".utf8), named: "a.txt")
         let other = try rig.add(Data("b".utf8), named: "b.txt", to: ShareDestination(hostId: "box", workspaceId: "w2", folder: .top(name: "Unify")))
         let waiting = try rig.add(Data("c".utf8), named: "c.txt")
-        try rig.inbox.mark(mine.id, .refused, words: "There is a file named a.txt in that folder already.")
-        try rig.inbox.mark(other.id, .refused, words: "No.")
+        try rig.refuse(mine, "Receipts is not there any more.")
+        try rig.refuse(other, "No.")
         #expect(rig.inbox.refused(hostId: "box", workspaceId: "w1").map(\.id) == [mine.id])
-        #expect(rig.inbox.refused(hostId: "box", workspaceId: "w1").first?.words == "There is a file named a.txt in that folder already.")
+        #expect(rig.inbox.refused(hostId: "box", workspaceId: "w1").first?.words == "Receipts is not there any more.")
         #expect(rig.inbox.refused(hostId: "mac", workspaceId: "w1").isEmpty)
         #expect(rig.inbox.item(waiting.id)?.state == .queued)
     }
@@ -128,17 +140,92 @@ struct ShareRig {
         #expect(claimed.state == .sending)
         #expect(rig.inbox.item(item.id)?.state == .sending)
         #expect(rig.inbox.claim(item.id) == nil, "the other process cannot take it")
-        let other = ShareInbox(root: rig.root.appendingPathComponent("group"))
+        let other = rig.process("app")
         #expect(other.claim(item.id) == nil)
+        #expect(throws: (any Error).self, "only the holder marks it") { try other.mark(item.id, .done) }
+        #expect(rig.inbox.item(item.id)?.state == .sending)
         try rig.inbox.mark(item.id, .refused, words: "Files cannot take an upload yet.")
         let refused = try #require(rig.inbox.item(item.id))
         #expect(refused.state == .refused)
         #expect(refused.words == "Files cannot take an upload yet.")
-        // Try Again: claimed once more, the old words gone.
-        let again = try #require(other.claim(item.id))
-        #expect(again.words == nil)
-        try other.mark(item.id, .queued)
+        #expect(other.claim(item.id) == nil, "a refused item is not sent until Try Again")
+        // Try Again: queued once more, the old words gone, and then it can be claimed.
+        #expect(other.retry(item.id))
         #expect(rig.inbox.item(item.id)?.state == .queued)
+        #expect(rig.inbox.item(item.id)?.words == nil)
+        #expect(other.claim(item.id)?.state == .sending)
+    }
+
+    @Test func `Try Again moves a refused item alone, read from disk, and leaves anything else as it is`() throws {
+        let rig = try ShareRig()
+        let other = rig.process("app")
+        let item = try rig.add(Data("abc".utf8))
+        #expect(!rig.inbox.retry(item.id), "queued already")
+        #expect(rig.inbox.item(item.id)?.state == .queued)
+        try rig.refuse(item, "No.", final: true)
+        #expect(other.retry(item.id))
+        _ = try #require(other.claim(item.id))
+        // A row shown before the other process took the item again: its Try Again changes nothing.
+        #expect(!rig.inbox.retry(item.id), "another process is sending it")
+        #expect(rig.inbox.item(item.id)?.state == .sending)
+        try other.mark(item.id, .done)
+        #expect(!rig.inbox.retry(item.id), "the host has it")
+        #expect(rig.inbox.item(item.id)?.state == .done)
+        #expect(!rig.inbox.retry("never-was"))
+    }
+
+    @Test func `only the process holding the claim marks an item, also once its claim was taken back`() throws {
+        let rig = try ShareRig()
+        let other = rig.process("app")
+        let item = try rig.add(Data("abc".utf8))
+        #expect(throws: (any Error).self, "queued and unclaimed") { try rig.inbox.mark(item.id, .done) }
+        #expect(rig.inbox.item(item.id)?.state == .queued)
+        _ = try #require(rig.inbox.claim(item.id))
+        rig.clock.advance(ShareInbox.claimLease + 1)
+        // The first process went quiet past its lease; the other takes the item back and sends it.
+        _ = try #require(other.claim(item.id))
+        #expect(throws: (any Error).self, "the first process no longer holds it") { try rig.inbox.mark(item.id, .queued) }
+        #expect(rig.inbox.item(item.id)?.state == .sending)
+        try other.mark(item.id, .done)
+        #expect(rig.inbox.item(item.id)?.state == .done)
+    }
+
+    @Test func `discard waits out another process's live claim, and takes its own or a dead one`() throws {
+        let rig = try ShareRig()
+        let other = rig.process("app")
+        let item = try rig.add(Data("abc".utf8))
+        _ = try #require(other.claim(item.id))
+        #expect(!rig.inbox.discard(item.id))
+        #expect(rig.inbox.item(item.id)?.state == .sending)
+        #expect(other.discard(item.id), "its own claim")
+        #expect(rig.inbox.item(item.id) == nil)
+
+        let dead = try rig.add(Data("dead".utf8))
+        _ = try #require(other.claim(dead.id))
+        rig.clock.advance(ShareInbox.claimLease + 1)
+        #expect(rig.inbox.discard(dead.id), "a claim past its lease belongs to a process that died")
+        #expect(rig.inbox.item(dead.id) == nil)
+
+        let free = try rig.add(Data("free".utf8))
+        #expect(rig.inbox.discard(free.id))
+        #expect(rig.inbox.items().isEmpty)
+    }
+
+    @Test func `a refusal no retry can change is kept final until Try Again, and an older manifest is not final`() throws {
+        let rig = try ShareRig()
+        let item = try rig.add(Data("abc".utf8))
+        try rig.refuse(item, "The file is no longer on this phone.", final: true)
+        let refused = try #require(rig.inbox.item(item.id))
+        #expect(refused.isFinal == true)
+        #expect(!refused.canRetry)
+        #expect(rig.inbox.retry(item.id))
+        #expect(rig.inbox.item(item.id)?.canRetry == true)
+        // A manifest written before the flag.
+        let old = #"{"createdAt":1,"folder":{"name":"Esports"},"hostId":"box","id":"old","name":"a.txt","sha256":"\#(item.sha256)","size":3,"state":"refused","words":"No.","workspaceId":"w1"}"#
+        let decoded = try JSONDecoder().decode(ShareItem.self, from: Data(old.utf8))
+        #expect(decoded.isFinal == nil)
+        #expect(decoded.attempts == nil)
+        #expect(decoded.canRetry)
     }
 
     @Test func `a claim left by a process that died is taken back after its lease`() throws {
@@ -165,7 +252,7 @@ struct ShareRig {
         try rig.inbox.mark(done.id, .done)
         #expect(!FileManager.default.fileExists(atPath: rig.inbox.payload(done).path))
         #expect(rig.inbox.item(done.id)?.state == .done)
-        try rig.inbox.mark(refused.id, .refused, words: "No.")
+        try rig.refuse(refused, "No.")
         rig.inbox.sweep()
         #expect(rig.inbox.items().map(\.id) == [waiting.id, refused.id])
         rig.inbox.discard(refused.id)

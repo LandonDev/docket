@@ -20,6 +20,9 @@ public struct DeckPager: Equatable, Sendable {
     public let pages: [Page]
     /// The render's own page count: the stamp counts what PDFKit opened.
     public let count: Int
+    /// The host sends speaker notes (a host from before them sends none): the notes' room is then there for
+    /// every deck, and a slide without any says "No notes", whether or not another slide has some.
+    public let hasNotes: Bool
 
     public init(_ deck: DeckPhoneView, render: DeckRender, count: Int) {
         let from: DeckPhoneView.Slide.From = render == .proposed ? .proposed : .file
@@ -28,6 +31,7 @@ public struct DeckPager: Equatable, Sendable {
             .sorted { $0.page < $1.page }
             .map { Page(key: $0.key, page: $0.page, title: $0.title, notes: ($0.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines), hidden: $0.hidden) }
         self.count = count
+        hasNotes = deck.slides.contains { $0.notes != nil }
     }
 
     public func slide(at page: Int) -> Page? { pages.first { $0.page == page } }
@@ -36,8 +40,6 @@ public struct DeckPager: Equatable, Sendable {
     public func page(for key: String) -> Int? { pages.first { $0.key == key }?.page }
 
     public func notes(at page: Int) -> String { slide(at: page)?.notes ?? "" }
-
-    public var hasNotes: Bool { pages.contains { !$0.notes.isEmpty } }
 
     /// "4 of 12", as the PDF's stamp reads.
     public func stamp(at page: Int) -> String { "\(min(max(1, page), max(1, count))) of \(max(1, count))" }

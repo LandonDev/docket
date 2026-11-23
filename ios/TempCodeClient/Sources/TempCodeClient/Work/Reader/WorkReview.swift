@@ -115,9 +115,16 @@ public final class WorkReview {
         }
     }
 
-    /// Accept or reject one row. False when the host refused it: the row stays with its words.
+    /// A decision is on its way. One runs at a time: while one does, `decide` and `decideAll` send nothing.
+    public private(set) var deciding = false
+
+    /// Accept or reject one row. False when the host refused it (the row stays with its words), or another
+    /// decision was still running.
     @discardableResult
     public func decide(_ row: ReviewRow, accept: Bool) async -> Bool {
+        guard !deciding else { return false }
+        deciding = true
+        defer { deciding = false }
         do {
             switch subject {
             case .document(let source):
@@ -134,33 +141,35 @@ public final class WorkReview {
         }
     }
 
-    /// Accept or reject every row he sees, and nothing else: the host is sent the rows' own ids, branch by
-    /// branch for a document, so a change an agent added since the list was read is never decided unseen.
-    /// False when the host refused any: those rows stay with its words.
+    /// Accept or reject every row he sees, and nothing else: the rows on screen are taken before the first call,
+    /// and the host is sent their own ids, branch by branch for a document. A change an agent added since, or a
+    /// push that reads a branch again between two calls, is never decided unseen. False when the host refused any
+    /// (those rows stay with its words), or another decision was still running.
     @discardableResult
     public func decideAll(accept: Bool) async -> Bool {
+        guard !deciding else { return false }
+        deciding = true
+        defer { deciding = false }
         switch subject {
         case .document(let source):
-            var branches: [String] = []
-            for row in rows { if let branch = row.branch, !branches.contains(branch) { branches.append(branch) } }
             var all = true
-            for branch in branches {
+            for batch in ReviewBatch.of(rows) {
                 do {
-                    let seen = rows.filter { $0.branch == branch }.map(\.target)
-                    _ = try await work.socket.request(Methods.WorkHistoryDecide.self, .init(source: source, branchId: branch, which: .array(seen), accept: accept))
-                    rows.removeAll { $0.branch == branch && seen.contains($0.target) }
+                    _ = try await work.socket.request(Methods.WorkHistoryDecide.self, .init(source: source, branchId: batch.branch, which: .array(batch.targets), accept: accept))
+                    rows.removeAll { batch.ids.contains($0.id) }
                 } catch {
-                    refuse(rows.filter { $0.branch == branch }.map(\.id), ActionError.wrap(error).message)
+                    refuse(batch.ids, ActionError.wrap(error).message)
                     all = false
                 }
             }
             return all
         case .sheet(let itemId):
+            let seen = rows
             do {
-                take(try await work.socket.request(Methods.WorkSheetsReview.self, .init(itemId: itemId, which: .object(.init(ids: rows.map(\.target))), verdict: accept ? .accept : .reject)))
+                take(try await work.socket.request(Methods.WorkSheetsReview.self, .init(itemId: itemId, which: .object(.init(ids: seen.map(\.target))), verdict: accept ? .accept : .reject)))
                 return true
             } catch {
-                refuse(rows.map(\.id), ActionError.wrap(error).message)
+                refuse(seen.map(\.id), ActionError.wrap(error).message)
                 return false
             }
         }
@@ -227,6 +236,31 @@ public final class WorkReview {
         case .bool(let flag)?: return flag ? "TRUE" : "FALSE"
         case .unknown?, nil: return ""
         }
+    }
+}
+
+/// A document's rows of one branch, as he saw them: what Accept All or Reject All sends for the branch, and the
+/// rows a refusal of that call stays on.
+struct ReviewBatch: Equatable, Sendable {
+    let branch: String
+    /// The blocks the host decides by.
+    let targets: [String]
+    /// The rows those blocks are.
+    let ids: [String]
+
+    /// A batch per branch, in the order the branches first show; a row with no branch is in none.
+    static func of(_ rows: [ReviewRow]) -> [ReviewBatch] {
+        var batches: [ReviewBatch] = []
+        for row in rows {
+            guard let branch = row.branch else { continue }
+            if let index = batches.firstIndex(where: { $0.branch == branch }) {
+                let batch = batches[index]
+                batches[index] = ReviewBatch(branch: branch, targets: batch.targets + [row.target], ids: batch.ids + [row.id])
+            } else {
+                batches.append(ReviewBatch(branch: branch, targets: [row.target], ids: [row.id]))
+            }
+        }
+        return batches
     }
 }
 

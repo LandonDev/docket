@@ -181,6 +181,13 @@ export class Session {
   }
 }
 
+/**
+ * Whether the page's own Comment action shows. A guest comments through the page. The owner's comments are made
+ * in TempCode (the phone's own Comment, the desktop's margin): `Session.comment` refuses his, so the page's
+ * action would take his words and send none of them.
+ */
+export const commentsOnPage = (mode: Mode["kind"], role: string): boolean => mode === "guest" && role !== "view";
+
 /** A comment body (the editor's block JSON) as the plain words the service takes. */
 export function textOf(body: string): string {
   const out: string[] = [];

@@ -32,6 +32,7 @@ enum ClickerFake {
         default: break
         }
         show.notes = state == "nonotes" ? "" : notes[show.slide - 1]
+        show.notesSlide = show.slide
         let held = Held(state == "ended" ? nil : show, refusing: state == "refused")
         let model = ClickerModel(wire: held.wire)
         if state == "refused" {
@@ -70,6 +71,7 @@ enum ClickerFake {
                 return nil
             }
             show.notes = ClickerFake.notes[show.slide - 1]
+            show.notesSlide = show.slide
             show.rev += 1
             self.show = show
             return show

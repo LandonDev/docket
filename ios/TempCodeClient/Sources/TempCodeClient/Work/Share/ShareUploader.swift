@@ -22,6 +22,11 @@ extension ShareFolder {
 /// take is said before a byte moves; `work.files.upload` to begin; the bytes from disk in the host's chunk
 /// size, one chunk in memory at a time, each `attachment.chunk` awaited before the next; then
 /// `attachment.commit`. The extension runs it right after Save, the app at launch and on foreground.
+///
+/// Each begin carries the op `<item id>-<attempts>`. The host answers the same upload id for the same op, so a
+/// begin whose answer was lost is sent again as it was and starts no second save. Once the host answers an
+/// op, the item counts it spent and the next begin sends a fresh one: after an upload the host forgot, after a
+/// lost connection mid-upload, after a refusal.
 @MainActor
 public final class ShareUploader {
     /// The calls an upload makes, so a test needs no socket. `.socket(_:)` is the real one.
@@ -63,7 +68,8 @@ public final class ShareUploader {
     private enum Outcome {
         case done
         case queued
-        case refused(String)
+        /// `final`: no retry can change it.
+        case refused(String, final: Bool)
     }
 
     public let inbox: ShareInbox
@@ -89,11 +95,12 @@ public final class ShareUploader {
         switch await upload(claimed, progress: progress) {
         case .done: after.state = .done
         case .queued: after.state = .queued
-        case .refused(let words):
+        case .refused(let words, let isFinal):
             after.state = .refused
             after.words = words
+            after.isFinal = isFinal ? true : nil
         }
-        try? inbox.mark(item.id, after.state, words: after.words)
+        try? inbox.mark(item.id, after.state, words: after.words, isFinal: after.isFinal == true)
         return inbox.item(item.id) ?? after
     }
 
@@ -111,9 +118,25 @@ public final class ShareUploader {
         return sent
     }
 
-    /// "<name> is larger than <host> takes (<limit>)."
-    public static func tooLarge(name: String, host: String, limit: Int) -> String {
-        "\(name) is larger than \(host) takes (\(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .file)))."
+    /// "<host> takes files up to 200 MB." The row above already names the file.
+    public static func tooLarge(host: String, limit: Int) -> String {
+        "\(host) takes files up to \(wholeBinary(limit))."
+    }
+
+    /// A count of bytes in units of 1024, rounded down to a whole number so a limit is never overstated:
+    /// 200 MB, 1 GB, 512 bytes.
+    static func wholeBinary(_ bytes: Int) -> String {
+        var value = max(0, bytes)
+        for unit in ["bytes", "KB", "MB", "GB"] {
+            if value < 1024 { return "\(value) \(unit)" }
+            value /= 1024
+        }
+        return "\(value) TB"
+    }
+
+    /// The op of an item's begin, the same until the host answers it.
+    static func op(_ item: ShareItem, attempts: Int) -> String {
+        "\(item.id)-\(attempts)"
     }
 
     // MARK: - the upload
@@ -125,18 +148,23 @@ public final class ShareUploader {
         } catch {
             return Self.outcome(of: error)
         }
-        if item.size > settings.maxBytes { return .refused(Self.tooLarge(name: item.name, host: hostName, limit: settings.maxBytes)) }
+        if item.size > settings.maxBytes { return .refused(Self.tooLarge(host: hostName, limit: settings.maxBytes), final: true) }
         let step = AttachmentUpload.chunkBytes(answered: settings.chunkBytes)
+        var attempts = item.attempts ?? 0
         var begunAgain = false
         while true {
             let uploadId: String
             do {
                 try Task.checkCancellation()
-                let params = Methods.WorkFilesUpload.Params(workspaceId: item.workspaceId, at: item.folder.at, name: item.name, size: item.size, sha256: item.sha256, op: UUID().uuidString.lowercased())
+                let params = Methods.WorkFilesUpload.Params(workspaceId: item.workspaceId, at: item.folder.at, name: item.name, size: item.size, sha256: item.sha256, op: Self.op(item, attempts: attempts))
                 uploadId = try await request.begin(params)
             } catch {
+                // Unanswered: the next try sends the same op. Refused: the host keeps that answer for the op.
+                if !(error is CancellationError || Self.isUnreachable(error)) { try? inbox.spent(item.id, attempts: attempts + 1) }
                 return Self.outcome(of: error)
             }
+            attempts += 1
+            try? inbox.spent(item.id, attempts: attempts)
             do {
                 try await chunks(item, uploadId: uploadId, step: step, progress: progress)
                 try Task.checkCancellation()
@@ -178,9 +206,9 @@ public final class ShareUploader {
     }
 
     private static func outcome(of error: any Error) -> Outcome {
-        if let local = error as? LocalError { return .refused(local.words) }
+        if let local = error as? LocalError { return .refused(local.words, final: true) }
         if error is CancellationError || isUnreachable(error) { return .queued }
-        return .refused(ActionError.wrap(error).message)
+        return .refused(ActionError.wrap(error).message, final: false)
     }
 
     private static func isUnreachable(_ error: any Error) -> Bool {

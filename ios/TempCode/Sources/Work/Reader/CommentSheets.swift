@@ -19,13 +19,15 @@ struct CommentSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text(quote)
+                    Text("“\(quote)”")
                         .textStep(.meta)
                         .lineLimit(4)
                         .accessibilityLabel("On: \(quote)")
                     TextField("Comment", text: $text, axis: .vertical)
                         .lineLimit(2...8)
                         .focused($focused)
+                        // Locked while the post is on its way: the words sent are the words he sees.
+                        .disabled(posting)
                         .onChange(of: text) { error = nil }
                         .accessibilityIdentifier("comment-text")
                 } footer: {
@@ -64,7 +66,8 @@ struct CommentSheet: View {
 }
 
 /// A document's comments: open threads first, then resolved; a reply field in the bottom bar; swipe to
-/// resolve. A tap on a thread turns the field to that thread; with none picked it starts a new one.
+/// resolve. A tap on a thread turns an empty field to that thread; with none picked it starts a new one.
+/// Words in the field keep their thread (`DraftTarget`) until he closes the "Replying to" line.
 struct CommentsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let comments: WorkComments
@@ -74,6 +77,8 @@ struct CommentsSheet: View {
     @State private var sending = false
     @State private var error: String?
     @State private var sentCount = 0
+    /// Try Again's read is on its way.
+    @State private var retrying = false
     @FocusState private var focused: Bool
 
     private var words: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -81,9 +86,9 @@ struct CommentsSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if comments.open.isEmpty, comments.resolved.isEmpty {
+                if comments.open.isEmpty, comments.resolved.isEmpty, comments.failure == nil {
                     // A small list's empty state is one quiet line, not a whole-screen view.
-                    Text(comments.failure ?? "No comments")
+                    Text("No comments")
                         .textStep(.meta)
                         .listRowSeparator(.hidden)
                         .accessibilityIdentifier("comments-empty")
@@ -99,6 +104,22 @@ struct CommentsSheet: View {
                 }
             }
             .listStyle(.plain)
+            .overlay {
+                // A failed read with nothing to show: the host's words and Try Again, as the app's other reads.
+                if comments.open.isEmpty, comments.resolved.isEmpty, let failure = comments.failure {
+                    if retrying {
+                        ProgressView()
+                    } else {
+                        ContentUnavailableView {
+                            Label("Can’t Read Comments", systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(failure)
+                        } actions: {
+                            Button("Try Again") { Task { await retry() } }
+                        }
+                    }
+                }
+            }
             .navigationTitle("Comments")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -123,7 +144,7 @@ struct CommentsSheet: View {
     private func row(_ thread: CommentThread) -> some View {
         Button {
             guard canWrite, !thread.resolved else { return }
-            replyingTo = thread
+            replyingTo = DraftTarget.moved(replyingTo, to: thread, draft: text)
             focused = true
         } label: {
             CommentThreadRow(thread: thread)
@@ -148,7 +169,9 @@ struct CommentsSheet: View {
                         .textStep(.meta)
                         .lineLimit(1)
                     Spacer(minLength: 8)
+                    // His own press: the words, if any, become a new comment.
                     Button("Stop Replying", systemImage: "xmark") { self.replyingTo = nil }
+                        .disabled(sending)
                         .labelStyle(.iconOnly)
                         .imageScale(.small)
                         .foregroundStyle(.secondary)
@@ -162,6 +185,8 @@ struct CommentsSheet: View {
                     .font(.body)
                     .lineLimit(1...4)
                     .focused($focused)
+                    // Locked while a post is on its way: the words sent are the words he sees.
+                    .disabled(sending)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .frame(minHeight: 36)
@@ -206,24 +231,34 @@ struct CommentsSheet: View {
         .animation(Motion.crossFade, value: error)
     }
 
-    /// His words stay in the field until the host has them.
+    /// His words stay in the field until the host has them; only the words that went out are cleared.
     private func send() async {
+        let sent = text
+        let target = replyingTo
         sending = true
         defer { sending = false }
         do {
-            if let replyingTo { try await comments.reply(to: replyingTo.id, body: words) } else { try await comments.post(body: words, quote: nil) }
-            text = ""
-            replyingTo = nil
+            if let target { try await comments.reply(to: target.id, body: words) } else { try await comments.post(body: words, quote: nil) }
+            if text == sent {
+                text = ""
+                replyingTo = nil
+            }
             sentCount += 1
         } catch {
             self.error = ActionError.wrap(error).message
         }
     }
 
+    private func retry() async {
+        retrying = true
+        defer { retrying = false }
+        await comments.load()
+    }
+
     private func resolve(_ thread: CommentThread) async {
         do {
             try await comments.resolve(thread.id, !thread.resolved)
-            if replyingTo?.id == thread.id { replyingTo = nil }
+            if replyingTo?.id == thread.id { replyingTo = DraftTarget.moved(replyingTo, to: nil, draft: text) }
         } catch {
             self.error = ActionError.wrap(error).message
         }

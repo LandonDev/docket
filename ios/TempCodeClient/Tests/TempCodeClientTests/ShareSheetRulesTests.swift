@@ -13,14 +13,25 @@ struct ShareSheetRulesTests {
     @Test func `every file with the host is saved; one it refused says why; one that waits says the app will send it`() {
         #expect(SharePhase.after([item("a", .done), item("b", .done)], host: "The box") == .saved)
         #expect(SharePhase.after([item("a", .done), item("b", .queued)], host: "The box") == .waiting("The box can’t be reached. TempCode will save this when it can."))
-        #expect(SharePhase.after([item("a", .queued), item("b", .refused, words: "b is larger than The box takes (200 MB).")], host: "The box") == .refused("b is larger than The box takes (200 MB)."))
+        #expect(SharePhase.after([item("a", .queued), item("b", .refused, words: "The box takes files up to 200 MB.")], host: "The box") == .refused("The box takes files up to 200 MB."))
         #expect(SharePhase.after([item("a", .refused)], host: "The box") == .refused("The box did not take a."))
     }
 
-    @Test func `the bar is the share of every file together`() {
-        #expect(SharePhase.share(done: 0, of: 2, current: 0.5) == 0.25)
-        #expect(SharePhase.share(done: 1, of: 2, current: 1) == 1)
-        #expect(SharePhase.share(done: 0, of: 0, current: 1) == 0)
+    @Test func `the bar is the share of every file's bytes together`() {
+        // A small photo, then a video nine times its size: the photo fills a tenth of the bar.
+        #expect(SharePhase.share(sizes: [100, 900], done: 0, current: 1) == 0.1)
+        #expect(SharePhase.share(sizes: [100, 900], done: 1, current: 0.5) == 0.55)
+        #expect(SharePhase.share(sizes: [100, 900], done: 1, current: 1) == 1)
+        #expect(SharePhase.share(sizes: [0, 0], done: 0, current: 1) == 0.5, "files of no bytes count one each")
+        #expect(SharePhase.share(sizes: [], done: 0, current: 1) == 0)
+    }
+
+    @Test func `what could not be read is named, or counted when it is more than one`() {
+        #expect(ShareSummary.unread([], of: 3) == nil)
+        #expect(ShareSummary.unread(["Photo.heic"], of: 3) == "Could not read Photo.heic.")
+        #expect(ShareSummary.unread(["a.png", "b.png"], of: 3) == "Could not read 2 of 3 files.")
+        #expect(ShareSummary.unread(["a.png", "b.png"], of: 2) == "Could not read any of the 2 files.")
+        #expect(ShareSummary.hostGone == "That computer is no longer on this phone.")
     }
 
     @Test func `several files are counted in their own noun, and a mix is files`() {

@@ -73,6 +73,8 @@ final class ShareSheetModel {
     private let keys: any KeyStore
     private(set) var targets: ShareTargets
     var picks: [SharePick]
+    /// The names of what was shared and could not be read: never saved, said in the first group.
+    let unread: [String]
     /// One file's name, which he may change before Save.
     var name: String
     private(set) var target: ShareTargets.Target?
@@ -80,24 +82,32 @@ final class ShareSheetModel {
     private(set) var phase: SharePhase = .picking
     /// What an earlier save left refused: the host's words, Try Again, Discard.
     private(set) var earlier: [ShareItem] = []
+    /// The earlier rows on their way again, for the spinner in Try Again's place.
+    private(set) var trying: Set<String> = []
     /// The folder whose inside is being read, for the spinner in its row.
     private(set) var loading: ShareFolder?
     /// Why a folder's inside could not be read.
     private(set) var folderFailure: String?
     @ObservationIgnored private var links: [String: ShareHostLink] = [:]
+    /// This save's items: what it refused is said in the first group, not among the earlier rows.
+    @ObservationIgnored private var thisSave: Set<String> = []
 
-    init(inbox: ShareInbox, root: URL, keys: any KeyStore, picks: [SharePick]) {
+    init(inbox: ShareInbox, root: URL, keys: any KeyStore, picks: [SharePick], unread: [String] = []) {
         self.inbox = inbox
         self.root = root
         self.keys = keys
         self.picks = picks
+        self.unread = unread
         name = picks.first?.name ?? ""
         targets = ShareTargets.read(root: root)
         // The last place used leads the list and is the one checked.
         target = targets.ordered.first
         folder = target?.workspace.folder
-        earlier = inbox.items().filter { $0.state == .refused }
+        readEarlier()
     }
+
+    /// What could not be read, in the first group's words.
+    var unreadWords: String? { ShareSummary.unread(unread, of: picks.count + unread.count) }
 
     var ordered: [ShareTargets.Target] { targets.ordered }
     var severalHosts: Bool { targets.hosts.count > 1 }
@@ -152,10 +162,11 @@ final class ShareSheetModel {
             do {
                 queued.append(try inbox.add(pick.url, to: destination, name: ShareSummary.name(wanted, kind: pick.kind, at: Date().addingTimeInterval(Double(index)))))
             } catch {
-                phase = .refused("\(pick.name) could not be read.")
+                phase = .refused(ShareSummary.unread([pick.name], of: 1) ?? "")
                 return
             }
         }
+        thisSave = Set(queued.map(\.id))
         targets.used(hostId: target.host.id, workspaceId: target.workspace.id, folder: destination.folder, at: Date().timeIntervalSince1970 * 1000)
         try? targets.write(root: root)
         let link = link(target.host)
@@ -164,29 +175,47 @@ final class ShareSheetModel {
             return
         }
         let uploader = link.uploader(inbox)
+        let sizes = queued.map(\.size)
         var results: [ShareItem] = []
         for item in queued {
             let done = results.count
             results.append(await uploader.send(item) { [weak self] share in
-                self?.phase = .saving(SharePhase.share(done: done, of: queued.count, current: share))
+                self?.phase = .saving(SharePhase.share(sizes: sizes, done: done, current: share))
             })
         }
         phase = SharePhase.after(results, host: target.host.name)
-        earlier = inbox.items().filter { $0.state == .refused && !results.map(\.id).contains($0.id) }
+        readEarlier()
     }
 
-    /// An earlier refusal, tried once more on its own host.
+    /// An earlier refusal, tried once more on its own host. A row another process moved meanwhile is read
+    /// again as it is now.
     func retry(_ item: ShareItem) async {
-        guard let host = targets.hosts.first(where: { $0.id == item.hostId }) else { return discard(item) }
-        try? inbox.mark(item.id, .queued)
-        let link = link(host)
-        if await link.open(), let queued = inbox.item(item.id) { _ = await link.uploader(inbox).send(queued) }
-        earlier = inbox.items().filter { $0.state == .refused }
+        guard !trying.contains(item.id), let host = targets.hosts.first(where: { $0.id == item.hostId }) else { return }
+        trying.insert(item.id)
+        defer { trying.remove(item.id) }
+        if inbox.retry(item.id) {
+            let link = link(host)
+            if await link.open(), let queued = inbox.item(item.id) { _ = await link.uploader(inbox).send(queued) }
+        }
+        readEarlier()
     }
 
     func discard(_ item: ShareItem) {
         inbox.discard(item.id)
-        earlier.removeAll { $0.id == item.id }
+        readEarlier()
+    }
+
+    /// The refused rows from the queue. One whose host left the list can only be discarded here: Try Again
+    /// would have nowhere to send it.
+    private func readEarlier() {
+        let hosts = Set(targets.hosts.map(\.id))
+        earlier = inbox.items().filter { $0.state == .refused && !thisSave.contains($0.id) }.map { item in
+            guard !hosts.contains(item.hostId) else { return item }
+            var gone = item
+            gone.words = ShareSummary.hostGone
+            gone.isFinal = true
+            return gone
+        }
     }
 
     /// The sheet is closing: the sockets go, and the sheet's own copies with them.

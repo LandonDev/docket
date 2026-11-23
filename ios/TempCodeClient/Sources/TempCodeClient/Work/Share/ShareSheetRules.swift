@@ -26,10 +26,15 @@ public enum SharePhase: Equatable, Sendable {
         "\(host) can’t be reached. TempCode will save this when it can."
     }
 
-    /// The share of the whole that has gone: files already done, plus the one going now.
-    public static func share(done: Int, of count: Int, current: Double) -> Double {
-        guard count > 0 else { return 0 }
-        return min(1, (Double(done) + min(1, max(0, current))) / Double(count))
+    /// The share of the whole that has gone, by bytes: the files already done, plus the part of the one
+    /// going now. `sizes` are every file's, in the order they go. Files of no bytes count one each.
+    public static func share(sizes: [Int], done: Int, current: Double) -> Double {
+        let weights = sizes.allSatisfy({ $0 <= 0 }) ? sizes.map { _ in 1.0 } : sizes.map { Double(max(0, $0)) }
+        let total = weights.reduce(0, +)
+        guard total > 0 else { return 0 }
+        let before = weights.prefix(max(0, done)).reduce(0, +)
+        let now = done >= 0 && done < weights.count ? weights[done] * min(1, max(0, current)) : 0
+        return min(1, (before + now) / total)
     }
 }
 
@@ -46,6 +51,18 @@ public enum ShareSummary {
         else { noun = count == 1 ? "file" : "files" }
         return "\(count) \(noun)"
     }
+
+    /// The first group's line when some of what was shared could not be read: "Could not read Photo.heic."
+    /// or "Could not read 2 of 3 files."; nil when every file was read. `total` counts every file shared.
+    public static func unread(_ names: [String], of total: Int) -> String? {
+        guard let first = names.first else { return nil }
+        if names.count == 1 { return "Could not read \(first)." }
+        if names.count >= total { return "Could not read any of the \(names.count) files." }
+        return "Could not read \(names.count) of \(total) files."
+    }
+
+    /// A refused row's words when Try Again finds its host gone from the sheet's list.
+    public static let hostGone = "That computer is no longer on this phone."
 
     /// A name the host takes for a file shared with none, or with one it would refuse: one path component.
     public static func name(_ suggested: String?, kind: Kind, at date: Date, calendar: Calendar = .current) -> String {
@@ -65,7 +82,8 @@ public enum ShareSummary {
 }
 
 /// The folders inside one folder of a workspace's own place, for the sheet's folder picker: folders only,
-/// every page, in the host's order. A place others can open is never listed: a `ShareFolder` cannot name one.
+/// every page, in the host's order. The sheet starts it at the workspace's own folder, so it offers only that
+/// folder and the folders under it.
 public enum ShareFolders {
     /// The most pages one level is read to: a folder of thousands of folders shows its first ones.
     public static let pageCap = 20

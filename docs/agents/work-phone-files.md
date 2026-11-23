@@ -16,12 +16,14 @@ The native clicker is built and has no way in yet: "The clicker" below.
   route `Route.file(environmentId:item:sessionId:)` (a `CanvasItem` is
   `Codable`, so a launch restores the page). It wraps the kind's own view
   (`ItemBodyView`), which the thread's Item segment (`ItemPage`) shows too.
-- The bar is the system's: the file's name, Ask (only with a thread to send
-  to) and More. More's rows are one rule for both hosts of a file,
-  `ReaderVerbs.of(item, facts)` in the client package: Find… (a PDF, a deck),
-  Comments, Review Changes, Page Preview, Share…, Make a Guest Link, Close. A
-  row is there only when it can act: `ReaderFacts` carries what the host and
-  the key allow, and a host that lacks a wire simply has no row.
+- The bar is the system's: the file's name (`ReaderVerbs.title`: without
+  `.tcdoc` or `.tcsheet`), Ask (a key that may operate) and More. More's rows
+  are one rule for both hosts of a file, `ReaderVerbs.of(item, facts)` in the
+  client package: Find… (a PDF, a deck), Comments, Review Changes, Page
+  Preview (a document) or Print… (a PDF, a deck), Share…, Make a Guest Link,
+  Close. A row is there only when it can act: `ReaderFacts` carries what the
+  host and the key allow (a key that may only read has no Ask and no Close),
+  and a host that lacks a wire simply has no row.
 - `ReaderFrame` wraps the kind's view on both hosts: the review row while
   changes wait, the sheets for comments and review, and Comment in the hosted
   editor's edit menu. `ReaderFile` (client) holds one file's `WorkComments`
@@ -52,8 +54,13 @@ The native clicker is built and has no way in yet: "The clicker" below.
   `rev`, so a second open in the same run paints at once and then asks the
   host; bytes of another `rev` are swapped in. A render painted from memory
   shows no review row until the host has answered. Everything is dropped on
-  a memory warning. Nothing of a file is written to the phone's disk
-  (`ReaderCache.keepsOnDisk` is false: the owner's ruling).
+  a memory warning. Nothing of a file is kept on the phone's disk
+  (`ReaderCache.keepsOnDisk` is false: the owner's ruling). A video is the
+  one thing the player must read from a file: its copy (`MediaFiles`, under
+  the temporary folder) goes when its view closes, a picture's the moment it
+  is decoded, and a launch removes any a crash left (`sweepAtLaunch`). A kept
+  place is stored under a digest of the host and the file's key
+  (`ReaderPlaces.key`), never a path or a name.
 - **Loading** draws the paper's shape with a bar that follows the bytes read
   (`ChunkedRead.share`); a failure is one line with the host's reason and
   Try Again.
@@ -74,12 +81,19 @@ scripts/gen-swift-contract.ts): `work.docs.open`, `threads`, `thread`,
 - `WorkComments`: a document's threads, open first then resolved; `post`,
   `reply`, `resolve`. A press the host refuses throws and changes nothing
   held, so the screen keeps his words. Bodies are the editor's block JSON on
-  the wire and plain words on the phone.
+  the wire and plain words on the phone. `DraftTarget.moved` is the field's
+  rule: a tap on a thread, or the thread resolving, moves only an empty
+  field; words keep their thread until he closes the "Replying to" line.
 - Both drop the answer of a read that a newer one overtook, and `ReaderFrame`
   is the one place a push reloads them.
 - `WorkReview`: a row per change. Accept All and Reject All send the ids of
   the rows on screen, never the host's "all": a change an agent added since
-  the list was read is not decided unseen. A document's rows are the blocks of its
+  the list was read is not decided unseen. The rows are taken, a
+  `ReviewBatch` per branch, before the first call, so a push that reads a
+  branch again between two calls adds nothing, and a refusal stays on the
+  batch's own rows. One decision runs at a time (`deciding`): `decide` and
+  `decideAll` send nothing while one does, and Review Changes turns its
+  swipes and bar off. A document's rows are the blocks of its
   pending branches (old and new words); a sheet's are its open suggestions
   (the cell, its value and the proposed one, the agent's reason once per
   change set, `ReviewGroup`). A decision the host takes drops the row; one it
@@ -87,20 +101,29 @@ scripts/gen-swift-contract.ts): `work.docs.open`, `threads`, `thread`,
   Univer's id, not its tab, so an address reads "C4".
 - It works for LifeOS's documents and for documents and sheets kept as files
   (`ReaderFile.parts`): the docs pillar keeps threads and branches for both.
+- The page's review row over a document or a sheet only counts and opens
+  Review Changes (`DeckReviewRow` with `decides: false` in `ReaderFrame`):
+  the hosted page draws no suggestion marks for the owner, so a decision there
+  would write changes he has not seen. A deck's row, in `PdfItemView`, keeps
+  its buttons.
 - `ChangeText` draws what went (struck through, red) and what came
   (underlined, green) for the history compare and Review Changes alike.
 
 ## Page Preview
 
-`PagePreview` pushes the file as it will print, read from the host at one
+`PagePreview` pushes a document as it will print, read from the host at one
 `rev` (`PagePreviewSource`: pages that moved on under the read are refused),
-with the system's Print. A PDF prints as itself and a deck as its file's
-render. A document's pages are its Word file as the host draws it
+with the system's Print. Its pages are its Word file as the host draws it
 (`work.formats.preview {format: 'docx'}`, then `previewRead` by range): the
 window's own print page needs a window, which a phone has not. The row is
 there for a key that may act, on a host that has the call (`HostCan`); a host
 with no LibreOffice says so where the pages would be. Not built for a sheet:
 its pages wait for the sheets build's `work.sheets.preview`.
+
+A PDF and a deck have no Page Preview: the reader already shows the pages
+that print. More's Print… reads them at one `rev` (`WorkCanvas.printPages`: a
+PDF as itself, a deck as its file's own render, never the proposed one) and
+opens the system's print sheet (`ReaderPrint`).
 
 ## The hosted editor
 
@@ -131,18 +154,24 @@ is docs/IOS-DESIGN.md "The clicker").
   slides build's SLD9 (.temp-code/plans/editors/slides.md), which is not on
   master.
 - `ClickerModel` holds the show (`ClickerShow`: the deck's item and name, the
-  slide from 1, the count, the slide's notes, when it began, Blank, `rev`).
-  A press answers at once: false where it can do nothing (Next on the last
-  slide, Previous on the first), else the slide moves before the host
-  answers and the press goes in a task of its own, made on the `rev` it saw.
+  slide from 1, the count, the notes and `notesSlide`, the slide they belong
+  to, every slide's notes when the host sends them, `allNotes`, when it
+  began, Blank, `rev`). A press answers at once: false where it can do
+  nothing (Next on the last slide, Previous on the first), else the slide
+  moves before the host answers and the press joins one queue. The queue
+  sends a press only once the one before it is answered, the first on the
+  `rev` he saw and each later one on the `rev` the answer before it left.
   Answers and pushes are taken by `rev`, so an older one never overwrites a
   newer, and while his presses are on the way a push behind them does not
-  pull the count back. A refusal puts the slide back to what the host last
-  said and keeps its words (`ClickerRefusal`); the show ending, by a push or
-  by End Show, sets `ended`.
-- The model counts on the host moving `rev` by one for each change it takes:
-  a second press made before the first is answered is made on the show the
-  first will leave. SLD9 must keep that, or say the rule it keeps instead.
+  pull the count back. A refusal drops the presses queued behind it, puts
+  the slide back to what the host last said and keeps its words
+  (`ClickerRefusal`); the show ending, by a push or by End Show, sets
+  `ended`.
+- `ClickerModel.notes` is the notes only while `notesSlide` is the slide the
+  count shows, else nil, and the screen draws nothing in their place. A
+  press takes the new slide's from `allNotes` at once; without them, the
+  host's notes are taken as soon as an answer or a push carries the shown
+  slide's. SLD9's adapter should fill `allNotes` from the deck's notes.
 - `ClickerPanes` (Shell/ClickerPanes.swift) is the layout rule: stacked
   upright, split on its side and on the Duo unfolded, on the division band
   where it leaves room.
@@ -175,38 +204,70 @@ pictures and three movies.
   `work.files.list {foldersOnly}`), Save. `ShareViewController`
   (ios/TempCode/ShareExtension/) copies each shared file into its own
   temporary folder while the other app still lends it, then shows the sheet.
+  It keeps a result per file: one it could not copy is named in the first
+  group's footer and the rest still save; when none could be read the sheet
+  says so with Done alone, never a silent cancel. Once Save is pressed the
+  files are in the queue, so Cancel goes and Done alone closes.
 - **One queue, one uploader.** `ShareInbox` (client, Work/Share/) is a folder
   an item in the App Group: the payload copied by stream with its sha256,
   then an atomic manifest written last, so a crash mid-copy leaves nothing
   that lists. `ShareUploader` begins with `work.files.upload`, sends the
   bytes from disk a chunk at a time (`attachment.chunk`), commits, and aborts
-  on a cancel. A file over the host's limit is said before a byte moves; a
-  host that cannot be reached leaves the item queued; a host's refusal is
-  kept on the item in its words. The extension runs it right after Save; the
-  app drains the same queue at launch, on foreground and when a host's state
-  moves (`ShareBridge.drain`).
+  on a cancel. A file over the host's limit is said before a byte moves
+  ("<host> takes files up to 200 MB."); a host that cannot be reached leaves
+  the item queued; a host's refusal is kept on the item in its words. The
+  extension runs it right after Save; the app drains the same queue at
+  launch, on foreground and when a host's state moves (`ShareBridge.drain`).
+- **Claims.** A process takes an item by renaming its manifest and writes
+  its own name in it (`ShareInbox.thisProcess`). Only a queued item can be
+  claimed; only the holder may `mark` it; `discard` refuses while another
+  process's live claim holds it; Try Again is `retry`, which moves a refused
+  item alone, read from disk, and answers false for anything else. A claim
+  untouched for `claimLease` belongs to a process that died and is taken
+  back.
+- **Ops.** Each begin sends the op `<item id>-<attempts>`, `attempts` kept on
+  the manifest. The host answers the same upload id for the same op
+  (`runOp`, upload.ts), so a begin whose answer was lost is sent again
+  unchanged and starts no second save. Once the host answers an op it is
+  spent and the next begin sends a fresh one: after an upload the host
+  forgot, a connection lost mid-upload, or a refusal. Not covered: a commit
+  the host made whose answer was lost. The next try finds the upload id gone,
+  which the phone cannot tell from an expired upload, and saves a second
+  copy under a free name. Closing that needs the host to keep a commit's
+  answer against the op.
+- **Final refusals.** What no retry can change is marked `isFinal` on the
+  manifest (absent in an older one: retryable): the phone's "<host> takes
+  files up to …", "The file is no longer on this phone." and "The file
+  changed on this phone after it was shared." Its row offers Discard in Try
+  Again's place.
 - **What the extension knows** comes from the app: `ShareTargets` (the hosts
   and their Work workspaces, ordered by last use, with the last folder) in
   the App Group, and `ShareKeys`: a second copy of a host's key in the
   group's keychain, only for a key that may operate, removed when the host
   is. `ShareBridge.publish` writes both whenever the hosts or their
   workspaces change.
-- **Only a workspace's own folder** is ever a place to save: a `ShareFolder`
-  cannot name a Teams or OneDrive library.
+- **Only a workspace's own folder** is offered: the picker starts at the
+  workspace's own folder and lists only the folders under it. A `ShareFolder`
+  could name any folder of a host; the picker never offers one outside.
 - The folder picker reads with the Files build's own contract rows
   (`work.files.list`, `FilesListing`, `FolderRef`): the phone names each row
   once. It does not go through `FilesHost`, which lists whole folders a page
   at a time for a screen; the picker asks for folders only.
 - It raises no notice. The sheet says how the save went; an item the host
-  refused shows at the top of the next sheet with Try Again and Discard, and
-  at the head of its workspace's Files screen in the app (`ShareRefused`,
-  `ShareRefusedSection`, ios/TempCode/Sources/Work/ShareRefused.swift; the
-  rows are `ShareInbox.refused(hostId:workspaceId:)`).
-- The sheet's words and states are pure rules with tests (`SharePhase`,
-  `ShareSummary`, `ShareFolders` in `ShareSheetRules.swift`).
+  refused shows at the top of the next sheet with Try Again (a spinner while
+  it goes) and Discard, and at the head of its workspace's Files screen in
+  the app (`ShareRefused`, `ShareRefusedSection`,
+  ios/TempCode/Sources/Work/ShareRefused.swift; the rows are
+  `ShareInbox.refused(hostId:workspaceId:)`). In the sheet, a row whose host
+  is no longer in the list reads "That computer is no longer on this phone."
+  with Discard: Try Again never deletes.
+- The sheet's words and states are pure rules with tests (`SharePhase`, its
+  bar weighted by each file's bytes; `ShareSummary`, with what could not be
+  read; `ShareFolders` in `ShareSheetRules.swift`).
 
 Proof: `TC_PROOF_SET=work TC_WORK_ONLY=share` opens the same sheet over Home
-in each state (`TC_TEST_SHARE`, `ShareProofSheet`), then makes one real save;
+in each state (`TC_TEST_SHARE`, `ShareProofSheet`; `unread` and `unread-all`
+draw a file not read), then makes one real save;
 `verifyShare` reads the workspace's folder back by the file's sha256. Not
 proven: the sheet from another app's share sheet (the simulator registers the
 extension; the drive was not run), and a large video on a phone network.
@@ -236,8 +297,14 @@ this build's (PF5).
   desktop's docked chat does (docs/agents/work-files.md "Ask"), in its
   order: `session.create` in the workspace with the file's chip as `about`,
   `work.canvas.open` with the file's kind, source and title, then
-  `session.send`. An open the host refuses does not stop the words. He lands
-  in the thread. Nothing is made until he sends.
+  `session.send`. He lands in the thread, which opens on its Item segment
+  (the file), Chat one swipe away. Nothing is made until he sends. The phone is
+  stricter than the desktop in two things. Where the file will not open in
+  the new thread the words do not go: the sheet keeps them with the host's
+  reason, and Send again opens the file in that same thread and sends
+  (`FileAsk.NotSeated`). And a lookup that fails is said, never read as "no
+  thread holds it": only a host from before `work.files.threads` starts a
+  thread unasked.
 - **Share…** has no row. The one way to share a file from the phone today is
   the guest link, which is its own row (Make a Guest Link, a LifeOS document
   or sheet, a key that may approve). No wire lets a remote key draft a mail

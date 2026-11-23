@@ -129,6 +129,15 @@ public final class WorkComments {
     }
 }
 
+/// Where the comment field's words go: a thread he replies to, or nil for a new comment.
+public enum DraftTarget {
+    /// A tap on a thread, or the thread he replies to resolved, asks to move the field to `asked`. An empty
+    /// field moves; words in it keep their target, so they never land on another thread or none.
+    public static func moved<Target>(_ current: Target?, to asked: Target?, draft: String) -> Target? {
+        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? asked : current
+    }
+}
+
 /// The Work service's name for a document, as the `work.docs` push names it
 /// (main/server/work/docs/target.ts): a LifeOS document's own id; any other
 /// source (a project note, a .tcdoc, a Google Doc) as `work.docs.open` answers.

@@ -2,8 +2,17 @@ import Foundation
 import TempCodeContract
 
 extension WorkCanvas {
-    /// The print pages of an item this host can draw now, or nil: Page Preview's row is then absent.
+    /// A document's print pages where this host can draw them now, or nil: Page Preview's row is then absent.
+    /// A PDF and a deck have no Page Preview: the reader already shows the pages that print (`printPages`).
     public func preview(for item: CanvasItem) -> PagePreviewSource? {
+        switch ItemBody.of(item) {
+        case .hosted, .unavailable: documentPreview(item)
+        default: nil
+        }
+    }
+
+    /// The pages More's Print sends to the system's print sheet for a PDF or a deck, read at one `rev`.
+    public func printPages(for item: CanvasItem) -> PagePreviewSource? {
         switch ItemBody.of(item) {
         case .pdf:
             // A PDF prints as itself.
@@ -23,8 +32,6 @@ extension WorkCanvas {
                 },
                 read: { _, offset, length in try await self.deckFrame(item.id, offset: offset, length: length) }
             )
-        case .hosted, .unavailable:
-            return documentPreview(item)
         default:
             return nil
         }

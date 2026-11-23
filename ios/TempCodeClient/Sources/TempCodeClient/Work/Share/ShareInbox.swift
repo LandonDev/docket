@@ -3,9 +3,9 @@ import CryptoKit
 #endif
 import Foundation
 
-/// A folder inside a Work workspace's own folder, as Save to TempCode names it: the workspace's top
-/// (`{at: 'place', id: 'folder'}`) or a folder under it (`{at: 'file', host, path}`, as the host listed it).
-/// Nothing else can be said here, so a Teams or OneDrive library is never a place to save into.
+/// A folder Save to TempCode saves into: the workspace's own folder (`{at: 'place', id: 'folder'}`) or a
+/// folder under it (`{at: 'file', host, path}`, as the host listed it). The type could name any folder of a
+/// host; the sheet's picker only ever offers the workspace's own folder and the folders under it.
 public struct ShareFolder: Codable, Hashable, Sendable {
     /// The folder's name, as the sheet's row says it.
     public let name: String
@@ -52,7 +52,7 @@ public struct ShareItem: Codable, Identifiable, Equatable, Sendable {
         case queued
         /// One process holds it and is sending it now.
         case sending
-        /// The host said no; `words` are its words. Waits for Try Again or Discard.
+        /// The host or the phone said no; `words` say why. Waits for Try Again or Discard.
         case refused
         /// The host has it. Its bytes are gone from the phone; the next sweep drops the rest.
         case done
@@ -68,10 +68,16 @@ public struct ShareItem: Codable, Identifiable, Equatable, Sendable {
     public let sha256: String
     public var state: State
     public var words: String?
+    /// A refusal no retry can change: the row offers Discard alone. Absent in an older manifest: Try Again.
+    public var isFinal: Bool?
+    /// How many of this item's `work.files.upload` ops the host has answered; the next is `<id>-<attempts>`.
+    public var attempts: Int?
+    /// The process that holds the claim, while one does.
+    var holder: String?
     /// Wall-clock milliseconds of the share.
     public let createdAt: Double
 
-    public init(id: String, hostId: String, workspaceId: String, folder: ShareFolder, name: String, size: Int, sha256: String, state: State, words: String? = nil, createdAt: Double) {
+    public init(id: String, hostId: String, workspaceId: String, folder: ShareFolder, name: String, size: Int, sha256: String, state: State, words: String? = nil, isFinal: Bool? = nil, createdAt: Double) {
         self.id = id
         self.hostId = hostId
         self.workspaceId = workspaceId
@@ -81,8 +87,12 @@ public struct ShareItem: Codable, Identifiable, Equatable, Sendable {
         self.sha256 = sha256
         self.state = state
         self.words = words
+        self.isFinal = isFinal
         self.createdAt = createdAt
     }
+
+    /// Try Again can change the answer.
+    public var canRetry: Bool { isFinal != true }
 
     public var destination: ShareDestination {
         ShareDestination(hostId: hostId, workspaceId: workspaceId, folder: folder)
@@ -91,23 +101,29 @@ public struct ShareItem: Codable, Identifiable, Equatable, Sendable {
 
 /// The share queue in the app group: a folder per item under `root/items`, its bytes in `payload` and what
 /// it is in `manifest.json`, written last. A copy cut short leaves a folder with no manifest, which no list
-/// shows and `sweep()` removes. The extension and the app both use it; a process takes an item to send by
-/// renaming its manifest to `manifest.claimed.json`, which only one of them can do. Capture and Money may
-/// queue a file with `add(_:to:)` too. It holds only what he shared in.
+/// shows and `sweep()` removes. The extension and the app both use it; a process takes an item by renaming
+/// its manifest to `manifest.claimed.json`, which only one of them can do, and writes its own name in it.
+/// Only that process may mark the item, and no other may discard it while the claim is live. Capture and
+/// Money may queue a file with `add(_:to:)` too. It holds only what he shared in.
 public final class ShareInbox: Sendable {
     /// A claim not touched for this long belongs to a process that died: the host drops an upload idle as long.
     public static let claimLease: TimeInterval = 10 * 60
     /// A folder still being copied into is left alone this long before a sweep takes it for a crash.
     public static let halfGrace: TimeInterval = 10 * 60
     static let copyBytes = 1024 * 1024
+    /// This process's name in the claims it makes.
+    public static let thisProcess = UUID().uuidString.lowercased()
 
     public let root: URL
     private let now: @Sendable () -> Date
+    private let holder: String
 
-    /// `root`: the app group's container on the phone, a temp folder in tests.
-    public init(root: URL, now: @escaping @Sendable () -> Date = { Date() }) {
+    /// `root`: the app group's container on the phone, a temp folder in tests. `holder`: whose claims these
+    /// are, this process's unless a test stands in for another.
+    public init(root: URL, now: @escaping @Sendable () -> Date = { Date() }, holder: String = ShareInbox.thisProcess) {
         self.root = root
         self.now = now
+        self.holder = holder
     }
 
     private var itemsDir: URL { root.appendingPathComponent("items", isDirectory: true) }
@@ -177,20 +193,38 @@ public final class ShareInbox: Sendable {
         return item
     }
 
-    /// Takes the item for this process to send: nil when another process holds it or it is gone. A claim
-    /// left by a process that died is taken back first. The item comes back `sending`.
+    /// Takes a queued item for this process to send: nil when another process holds it, it is not queued or
+    /// it is gone. A claim left by a process that died is taken back first. The item comes back `sending`.
     public func claim(_ id: String) -> ShareItem? {
-        if isStale(claimed(id)) { try? move(claimed(id), to: manifest(id)) }
-        do {
-            try move(manifest(id), to: claimed(id))
-        } catch {
+        guard var item = take(id) else { return nil }
+        guard item.state == .queued else {
+            release(id, item)
             return nil
         }
-        guard var item = read(claimed(id)) else { return nil }
         item.state = .sending
         item.words = nil
-        try? write(item, to: claimed(id))
+        item.isFinal = nil
+        guard (try? write(item, to: claimed(id))) != nil else {
+            release(id, item)
+            return nil
+        }
         return item
+    }
+
+    /// Try Again on a refused item: queued once more, its words gone. Read from disk, so a row shown before
+    /// another process moved the item changes nothing: false unless the item was refused and free.
+    @discardableResult
+    public func retry(_ id: String) -> Bool {
+        guard var item = take(id) else { return false }
+        guard item.state == .refused else {
+            release(id, item)
+            return false
+        }
+        item.state = .queued
+        item.words = nil
+        item.isFinal = nil
+        release(id, item)
+        return read(manifest(id))?.state == .queued
     }
 
     /// Keeps this process's claim alive through a long upload.
@@ -198,22 +232,39 @@ public final class ShareInbox: Sendable {
         try? FileManager.default.setAttributes([.modificationDate: now()], ofItemAtPath: claimed(id).path)
     }
 
-    /// Sets an item's state and the host's words. Any state but `sending` lets go of a claim; `done`
-    /// removes the bytes.
-    public func mark(_ id: String, _ state: ShareItem.State, words: String? = nil) throws {
-        let held = FileManager.default.fileExists(atPath: claimed(id).path)
-        let at = held ? claimed(id) : manifest(id)
-        guard var item = read(at) else { throw CocoaError(.fileNoSuchFile) }
+    /// Sets the state of an item this process holds, with the words that say why and whether a retry could
+    /// change them. Any state but `sending` lets go of the claim; `done` removes the bytes. Throws when the
+    /// item is gone or this process does not hold it.
+    public func mark(_ id: String, _ state: ShareItem.State, words: String? = nil, isFinal: Bool = false) throws {
+        guard var item = held(id) else { throw CocoaError(.fileNoSuchFile) }
         item.state = state
         item.words = words
-        try write(item, to: at)
-        if held && state != .sending { try move(at, to: manifest(id)) }
+        item.isFinal = isFinal ? true : nil
+        if state != .sending { item.holder = nil }
+        try write(item, to: claimed(id))
+        if state != .sending { try move(claimed(id), to: manifest(id)) }
         if state == .done { try? FileManager.default.removeItem(at: payload(item)) }
     }
 
-    /// Drops the item and its bytes.
-    public func discard(_ id: String) {
+    /// Notes that the host answered `attempts` of this held item's ops, so the next begin sends a fresh one.
+    func spent(_ id: String, attempts: Int) throws {
+        guard var item = held(id) else { throw CocoaError(.fileNoSuchFile) }
+        item.attempts = attempts
+        try write(item, to: claimed(id))
+    }
+
+    /// Drops the item and its bytes: false, and nothing goes, while another process's live claim holds it.
+    @discardableResult
+    public func discard(_ id: String) -> Bool {
+        // Taking the manifest first keeps a claim from starting while the folder goes.
+        if (try? move(manifest(id), to: claimed(id))) == nil,
+           FileManager.default.fileExists(atPath: claimed(id).path),
+           !isStale(claimed(id)),
+           read(claimed(id))?.holder != holder {
+            return false
+        }
         try? FileManager.default.removeItem(at: dir(id))
+        return true
     }
 
     /// Removes what a crash left half copied and every item the host already has.
@@ -228,6 +279,48 @@ public final class ShareInbox: Sendable {
         }
     }
 
+    // MARK: - claims
+
+    /// Renames the manifest to the claim and writes this process's name in it; nil when another process
+    /// holds the item or it is gone. A stale claim is taken back first.
+    private func take(_ id: String) -> ShareItem? {
+        if isStale(claimed(id)) {
+            // A claim whose process died goes back as `item` reports it: queued and free. Left `sending`, no
+            // process could claim it again.
+            if var dead = read(claimed(id)) {
+                if dead.state == .sending { dead.state = .queued }
+                dead.holder = nil
+                try? write(dead, to: claimed(id))
+            }
+            try? move(claimed(id), to: manifest(id))
+        }
+        guard (try? move(manifest(id), to: claimed(id))) != nil else { return nil }
+        guard var item = read(claimed(id)) else {
+            try? move(claimed(id), to: manifest(id))
+            return nil
+        }
+        item.holder = holder
+        guard (try? write(item, to: claimed(id))) != nil else {
+            try? move(claimed(id), to: manifest(id))
+            return nil
+        }
+        return item
+    }
+
+    /// Lets go of a claim taken with `take`, the item written as given with no holder.
+    private func release(_ id: String, _ item: ShareItem) {
+        var item = item
+        item.holder = nil
+        try? write(item, to: claimed(id))
+        try? move(claimed(id), to: manifest(id))
+    }
+
+    /// The item when this process holds its claim.
+    private func held(_ id: String) -> ShareItem? {
+        guard let item = read(claimed(id)), item.holder == holder else { return nil }
+        return item
+    }
+
     // MARK: - files
 
     private func read(_ url: URL) -> ShareItem? {
@@ -239,6 +332,8 @@ public final class ShareInbox: Sendable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try encoder.encode(item).write(to: url, options: .atomic)
+        // Stamped with this inbox's clock, as `touch` is: a lease is measured against `now`, never the wall clock.
+        try? FileManager.default.setAttributes([.modificationDate: now()], ofItemAtPath: url.path)
     }
 
     /// rename(2): fails when `from` is gone, so of two processes renaming the same manifest one wins.

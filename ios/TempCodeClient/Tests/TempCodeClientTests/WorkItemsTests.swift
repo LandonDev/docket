@@ -163,7 +163,25 @@ struct WorkItemsTests {
         // The failed second read left the whole first copy, and no part file.
         #expect(try Data(contentsOf: file) == Data([1, 2, 3]))
         #expect(!FileManager.default.fileExists(atPath: file.appendingPathExtension("part").path()))
-        try? FileManager.default.removeItem(at: file)
+        // The view that played it closed: the copy goes.
+        MediaFiles.remove(file)
+        #expect(!FileManager.default.fileExists(atPath: file.path()))
+    }
+
+    @Test func aLaunchClearsTheMediaCopiesAPastRunLeft() async throws {
+        let base = FileManager.default.temporaryDirectory.appending(path: "media-sweep-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let video = MediaFiles.file(item: "i1", version: "v1", base: base)
+        let picture = MediaFiles.file(item: "picture", version: "t1", ext: "img", base: base)
+        try Data([1]).write(to: video)
+        try Data([2]).write(to: video.appendingPathExtension("part"))
+        try Data([3]).write(to: picture)
+        let other = base.appending(path: "notes.txt")
+        try Data([4]).write(to: other)
+        #expect(MediaFiles.sweep(base: base) == 3)
+        // Only the media copies went.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: base.path()) == ["notes.txt"])
     }
 
     private func routine(_ id: String, kind: String, nextAt: Int?, ended: Bool = false, proposed: Bool = false, ends: String = #"{"kind":"never"}"#) throws -> RoutinePhoneRow {

@@ -31,11 +31,12 @@ final class ShareHost: @unchecked Sendable {
             },
             begin: { params in
                 self.note("begin")
-                if let error = self.beginError { throw error }
+                // Kept before any error: a begin whose answer is lost was still sent.
                 let id = self.lock.withLock { () -> String in
                     self._begun.append(params)
                     return "u\(self._begun.count)"
                 }
+                if let error = self.beginError { throw error }
                 return id
             },
             chunk: { uploadId, index, data in
@@ -67,6 +68,11 @@ final class ShareHost: @unchecked Sendable {
         return (rig, host, ShareUploader(inbox: rig.inbox, hostId: "box", hostName: "The box", request: host.send))
     }
 
+    /// The same host as another process's uploader reaches it, on the same queue.
+    private func sender(_ rig: ShareRig, _ host: ShareHost, as holder: String) -> ShareUploader {
+        ShareUploader(inbox: rig.process(holder), hostId: "box", hostName: "The box", request: host.send)
+    }
+
     @Test func `settings, begin, the chunks in order from disk, commit; the host has it and the phone keeps no bytes`() async throws {
         let (rig, host, uploader) = try rig()
         let folder = ShareFolder(name: "Events", host: "box", path: "/srv/work/Esports/Events")
@@ -82,7 +88,8 @@ final class ShareHost: @unchecked Sendable {
         #expect(begun.name == "photo.jpeg")
         #expect(begun.size == 10)
         #expect(begun.sha256 == item.sha256)
-        #expect(begun.op.count >= 8)
+        #expect(begun.op == "\(item.id)-0")
+        #expect(begun.op.count >= 8, "the host's least")
         #expect(begun.asked == nil, "never sent")
         #expect(fractions == [0.4, 0.8, 1, 1])
         #expect(!FileManager.default.fileExists(atPath: rig.inbox.payload(item).path))
@@ -104,9 +111,35 @@ final class ShareHost: @unchecked Sendable {
         let after = await uploader.send(item)
         #expect(host.calls == ["settings"])
         #expect(after.state == .refused)
-        let limit = ByteCountFormatter.string(fromByteCount: 5, countStyle: .file)
-        #expect(after.words == "photo.jpeg is larger than The box takes (\(limit)).")
-        #expect(FileManager.default.fileExists(atPath: rig.inbox.payload(item).path), "kept for Try Again or Discard")
+        #expect(after.words == "The box takes files up to 5 bytes.")
+        #expect(after.isFinal == true, "no retry makes the file smaller")
+        #expect(rig.inbox.item(item.id)?.canRetry == false)
+        #expect(FileManager.default.fileExists(atPath: rig.inbox.payload(item).path), "kept for Discard")
+    }
+
+    @Test func `the limit is said in units of 1024, as a whole number that never overstates it`() {
+        #expect(ShareUploader.tooLarge(host: "Mac", limit: 200 * 1024 * 1024) == "Mac takes files up to 200 MB.")
+        #expect(ShareUploader.wholeBinary(512) == "512 bytes")
+        #expect(ShareUploader.wholeBinary(1024) == "1 KB")
+        #expect(ShareUploader.wholeBinary(1024 * 1024 * 3 / 2) == "1 MB")
+        #expect(ShareUploader.wholeBinary(2 * 1024 * 1024 * 1024) == "2 GB")
+        #expect(ShareUploader.wholeBinary(5 * 1024 * 1024 * 1024 * 1024) == "5 TB")
+    }
+
+    @Test func `a file gone or changed on the phone is refused for good, before or between chunks`() async throws {
+        let (rig, host, uploader) = try rig()
+        let gone = try rig.add(bytes)
+        try FileManager.default.removeItem(at: rig.inbox.payload(gone))
+        let first = await uploader.send(gone)
+        #expect(first.state == .refused)
+        #expect(first.words == "The file is no longer on this phone.")
+        #expect(first.isFinal == true)
+        let changed = try rig.add(bytes)
+        try Data("ABC".utf8).write(to: rig.inbox.payload(changed))
+        let second = await uploader.send(changed)
+        #expect(second.words == "The file changed on this phone after it was shared.")
+        #expect(second.isFinal == true)
+        #expect(host.calls.filter { $0.hasPrefix("abort") }.count == 2, "the host drops each partial upload")
     }
 
     @Test func `a sha mismatch the host refuses at commit keeps its words`() async throws {
@@ -127,7 +160,35 @@ final class ShareHost: @unchecked Sendable {
         let after = await uploader.send(item)
         #expect(after.state == .refused)
         #expect(after.words == "Files cannot take an upload yet: that arrives with its milestone.")
+        #expect(after.canRetry, "the host may take it later")
         #expect(host.calls == ["settings", "begin"])
+        // The host keeps its answer for that op: Try Again sends a fresh one.
+        host.beginError = nil
+        #expect(rig.inbox.retry(item.id))
+        #expect(await uploader.send(item).state == .done)
+        #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-1"])
+    }
+
+    @Test func `a begin whose answer was lost is sent again with the same op, from either process`() async throws {
+        let (rig, host, uploader) = try rig()
+        host.beginError = TransportError.closed(CloseReason(kind: .network, message: "connection lost"))
+        let item = try rig.add(bytes)
+        #expect(await uploader.send(item).state == .queued)
+        host.beginError = nil
+        // The app sends it later: the host answers the same upload id for that op, so no second save starts.
+        let after = await sender(rig, host, as: "app").send(item)
+        #expect(after.state == .done)
+        #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-0"])
+    }
+
+    @Test func `a connection lost once the host answered spends that op`() async throws {
+        let (rig, host, uploader) = try rig()
+        host.chunkFailures = [2: TransportError.notConnected]
+        let item = try rig.add(bytes)
+        #expect(await uploader.send(item).state == .queued)
+        #expect(rig.inbox.item(item.id)?.attempts == 1)
+        #expect(await uploader.send(item).state == .done)
+        #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-1"])
     }
 
     @Test func `cancel aborts the upload on the host and the item goes back to the queue`() async throws {
@@ -169,7 +230,7 @@ final class ShareHost: @unchecked Sendable {
             "begin", "chunk u2 0 \(b64(0 ..< 4))", "chunk u2 1 \(b64(4 ..< 8))", "chunk u2 2 \(b64(8 ..< 10))", "commit u2"
         ])
         #expect(host.begun.count == 2)
-        #expect(host.begun[0].op != host.begun[1].op, "a fresh op per attempt")
+        #expect(host.begun.map(\.op) == ["\(item.id)-0", "\(item.id)-1"], "a fresh op once the first was answered")
         // Forgotten twice: the host's words, no third try.
         let again = try rig.add(bytes)
         host.chunkFailures = [6: expired, 7: expired]
@@ -182,7 +243,7 @@ final class ShareHost: @unchecked Sendable {
     @Test func `an item another process is sending is left to it`() async throws {
         let (rig, host, uploader) = try rig()
         let item = try rig.add(bytes)
-        _ = ShareInbox(root: rig.root.appendingPathComponent("group")).claim(item.id)
+        _ = rig.process("app").claim(item.id)
         let after = await uploader.send(item)
         #expect(after.state == .sending)
         #expect(host.calls.isEmpty)
@@ -195,7 +256,7 @@ final class ShareHost: @unchecked Sendable {
         let other = try rig.add(Data("mac".utf8), to: ShareDestination(hostId: "mac", workspaceId: "w9", folder: .top(name: "Admin")))
         rig.clock.advance(1)
         let refused = try rig.add(Data("no".utf8))
-        try rig.inbox.mark(refused.id, .refused, words: "No.")
+        try rig.refuse(refused, "No.")
         rig.clock.advance(1)
         let second = try rig.add(Data("two".utf8))
         var seen: [String] = []

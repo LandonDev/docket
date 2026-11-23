@@ -307,6 +307,8 @@ try {
         )) as string[]
         const comment = selected.find((c) => /^comment$/i.test(c))
         draws.doc.push(`with "the charter bus" selected, the controls shown: ${selected.length ? selected.map((c) => `"${c}"`).join(', ') : 'none'}; a Comment control: ${comment ? 'yes' : 'no'}`)
+        // The owner's comments are made in TempCode (the phone's own Comment): the page's action would send none of his words.
+        say(`${comment ? 'FAIL' : 'PASS'} .tcdoc: the owner's page offers no Comment of its own over selected words${comment ? ' (it showed one)' : ''}`)
         if (comment) try {
           await page.locator('button, [role=button], [role=menuitem]').filter({ hasText: /^Comment$/ }).first().click({ timeout: 10_000 })
           await sleep(800)
@@ -341,7 +343,9 @@ try {
         // Type at the end of the first paragraph, as a tap there and the keyboard would.
         const before = statSync(memo.source.path!).mtimeMs
         const first = page.locator('.ProseMirror p').first()
-        await first.tap()
+        // The selection's own toolbar may still hang over the paragraph's right side for a moment: the tap lands on its first words.
+        await sleep(600)
+        await first.tap({ position: { x: 6, y: 10 }, force: true })
         await page.evaluate(() => {
           const p = document.querySelector('.ProseMirror p')!
           const r = document.createRange()
@@ -486,7 +490,7 @@ async function fileText(path: string): Promise<string> {
 
 /** Why the page draws what it does, from its code (src/hosted/guest); the lines under each say what was seen. */
 const WHY_DOC =
-  "The page is the owner's own editor (DocPage.tsx), editable, and his typing reaches the file. Comments: the agent's thread is marked in the text itself (one `.bn-thread-mark` around \"the charter bus\"), but nothing shows it: no tint, no card, no count, because for the owner `Session.threads()` answers no rows (session.ts reads comments on a guest's link only), so the threads adapter DocPage hands the editor (guestThreads) has none to draw. The editor still offers Comment over selected words (canComment and a margin are set), and its composer opens under the text, but a comment made there never reaches the host: `Session.comment` throws \"Comments are made in TempCode.\" for the owner, and the page shows no words for it; the draft just stays in the field. Suggestions: DocPage passes DocumentEditor no `review` (nor `onReviewPick`), so the waiting branch is neither drawn on the text nor offered for Accept or Reject."
+  "The page is the owner's own editor (DocPage.tsx), editable, and his typing reaches the file. Comments: the agent's thread is marked in the text itself (one `.bn-thread-mark` around \"the charter bus\"), but nothing shows it: no tint, no card, no count, because for the owner `Session.threads()` answers no rows (session.ts reads comments on a guest's link only), so the threads adapter DocPage hands the editor (guestThreads) has none to draw. The page offers the owner no Comment of its own (`commentsOnPage` in session.ts: a guest's alone), since `Session.comment` takes a guest's words only; his comments are made in TempCode, on the phone through Comment in the edit menu."
 const WHY_SHEET =
   "The page is the owner's grid (SheetPage.tsx), editable, with the name box, the formula bar and the tab row; his typing reaches the file. It passes SheetCanvas no `marks`, and neither the redeemed answer (routes/item.ts) nor the sheet socket's state carries suggestions, so the three suggested cells show what the file holds (B2 1200, B4 400, C4 empty) with no mark, and nothing offers Accept or Reject."
 

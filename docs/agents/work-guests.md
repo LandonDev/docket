@@ -269,6 +269,11 @@ its place is one others can open, the pass is dropped, the sheet's socket
 closes within a second and the document's token is not renewed (it runs out
 within ten minutes). Tests: guests/fileTicket.test.ts.
 
+The page's own Comment action is a guest's (`commentsOnPage` in
+src/hosted/guest/session.ts): the owner's pass shows none, since the page
+would take his words and send none of them (`Session.comment` is a guest's).
+His comments are made in TempCode: on the phone, Comment in the edit menu.
+
 ## The screens
 
 - **Share** on a document's and a sheet's bar (`guests/Share.tsx`, mounted

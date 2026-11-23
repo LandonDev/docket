@@ -1,5 +1,8 @@
 import Foundation
 import TempCodeContract
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
 
 /// Where he stopped in a file (the phone's reader, PF1).
 public struct ReaderPlace: Codable, Equatable, Sendable {
@@ -64,7 +67,19 @@ public final class ReaderPlaces {
         return (1...max(1, pages)).contains(place.page) ? place.page : nil
     }
 
-    static func key(host: String, file: String) -> String { "\(host)\n\(file)" }
+    /// What a place is kept under: a digest of the host and the file's key, so the list a backup copies
+    /// holds numbers alone, never a file's path or name.
+    static func key(host: String, file: String) -> String {
+        let named = Data("\(host)\n\(file)".utf8)
+        #if canImport(CryptoKit)
+        return SHA256.hash(data: named).map { String(format: "%02x", $0) }.joined()
+        #else
+        // The box's test build has no CryptoKit: FNV-1a stands in there, and nowhere a phone runs.
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in named { hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01b3 }
+        return String(hash, radix: 16)
+        #endif
+    }
 
     /// A file's key: where it lives, so the same file opened from a thread and from Files is one place.
     public static func fileKey(_ item: CanvasItem) -> String {

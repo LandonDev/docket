@@ -109,6 +109,9 @@ private let branches = #"{"branches":["#
     + #"{"kind":"removed","id":"k3","left":{"text":"Cut this"}}],"lines":[]}}"#
     + #"],"names":{"agent:h1:s1":"Budget thread"}}"#
 
+/// `branches` after the agent added a block to b2.
+private let branchesGrown = branches.replacingOccurrences(of: #"{"kind":"removed","id":"k3","left":{"text":"Cut this"}}"#, with: #"{"kind":"removed","id":"k3","left":{"text":"Cut this"}},{"kind":"added","id":"k4","right":{"text":"Added since"}}"#)
+
 private func suggestion(_ id: String, set: String, row: Int, col: Int, base: String, proposed: String, state: String = "pending", reason: String? = nil) -> String {
     let why = reason.map { #","reason":"\#($0)""# } ?? ""
     return #"{"id":"\#(id)","changeSet":"\#(set)","by":"agent:h1:s1","sheet":"sheet1","row":\#(row),"col":\#(col),"base":\#(base),"proposed":\#(proposed),"state":"\#(state)"\#(why)}"#
@@ -252,6 +255,53 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
         #expect(review.words == "1 change")
     }
 
+    @Test func `Accept All sends the rows on screen when he pressed, though a push reads a branch again between two calls`() async throws {
+        let rig = try ReaderRig()
+        let fake = await rig.open()
+        let review = WorkReview(work: rig.work, subject: .document(doc))
+        let load = Task { await review.load() }
+        fake.answer(id: try #require(await rig.next(fake, "work.history.branches")).id, result: branches)
+        await load.value
+
+        let all = Task { await review.decideAll(accept: true) }
+        let first = try #require(await rig.next(fake, "work.history.decide"))
+        #expect(first.params == .object(["source": docJSON, "branchId": .string("b1"), "which": .array([.string("k1"), .string("k2")]), "accept": .bool(true)]))
+        // While the first call waits, a push reads the branches again: the agent added k4 to b2.
+        let reload = Task { await review.load() }
+        fake.answer(id: try #require(await rig.next(fake, "work.history.branches")).id, result: branchesGrown)
+        await reload.value
+        #expect(review.rows.map(\.id) == ["b1/k1", "b1/k2", "b2/k3", "b2/k4"])
+        fake.answer(id: first.id, result: #"{"left":0}"#)
+        let second = try #require(await rig.next(fake, "work.history.decide"))
+        #expect(second.params == .object(["source": docJSON, "branchId": .string("b2"), "which": .array([.string("k3")]), "accept": .bool(true)]))
+        fake.answer(id: second.id, result: #"{"left":1}"#)
+        #expect(await all.value)
+        #expect(review.rows.map(\.id) == ["b2/k4"], "the block added since waits for him")
+    }
+
+    @Test func `while one decision runs, another sends nothing`() async throws {
+        let rig = try ReaderRig()
+        let fake = await rig.open()
+        let review = WorkReview(work: rig.work, subject: .document(doc))
+        let load = Task { await review.load() }
+        fake.answer(id: try #require(await rig.next(fake, "work.history.branches")).id, result: branches)
+        await load.value
+
+        let one = Task { await review.decide(review.rows[0], accept: false) }
+        let sent = try #require(await rig.next(fake, "work.history.decide"))
+        #expect(review.deciding)
+        let calls = fake.sentRequests.count
+        #expect(await review.decide(review.rows[1], accept: false) == false)
+        #expect(await review.decideAll(accept: true) == false)
+        #expect(fake.sentRequests.count == calls)
+        #expect(review.deciding, "the second press does not end the first's")
+        #expect(review.rows.allSatisfy { $0.refusal == nil })
+        fake.answer(id: sent.id, result: #"{"left":1}"#)
+        #expect(await one.value)
+        #expect(!review.deciding)
+        #expect(review.rows.map(\.id) == ["b1/k2", "b2/k3"])
+    }
+
     @Test func `a sheet's review: a row per open cell, its refusal kept on the row, then all`() async throws {
         let rig = try ReaderRig()
         let fake = await rig.open()
@@ -378,6 +428,20 @@ private let s3 = suggestion("g3", set: "cs2", row: 0, col: 26, base: #"{"v":"Dra
 }
 
 struct ReviewGroupTests {
+    @Test func `Accept All's calls: a batch per branch, in order, each with its blocks and its rows`() {
+        let rows = [
+            ReviewRow(id: "b1/x", kind: .block(old: "a", new: "b"), group: nil, reason: nil, refusal: nil, branch: "b1", target: "x"),
+            ReviewRow(id: "b2/y", kind: .block(old: "c", new: "d"), group: nil, reason: nil, refusal: nil, branch: "b2", target: "y"),
+            ReviewRow(id: "b1/z", kind: .block(old: "", new: "e"), group: nil, reason: nil, refusal: nil, branch: "b1", target: "z"),
+            ReviewRow(id: "g1", kind: .cell(address: "A1", old: "", new: "1"))
+        ]
+        #expect(ReviewBatch.of(rows) == [
+            ReviewBatch(branch: "b1", targets: ["x", "z"], ids: ["b1/x", "b1/z"]),
+            ReviewBatch(branch: "b2", targets: ["y"], ids: ["b2/y"])
+        ])
+        #expect(ReviewBatch.of([]).isEmpty)
+    }
+
     @Test func `the changes that came together sit under one heading, in the host's order`() {
         let rows = [
             ReviewRow(id: "a", kind: .cell(address: "C4", old: "120", new: "180"), group: "set1", reason: "Bus quote came in higher"),
@@ -401,5 +465,19 @@ struct ReviewGroupTests {
         #expect(groups[1].heading == nil)
         // The host's own name for a branch with no reason is not one.
         #expect(ReviewGroup.of([ReviewRow(id: "b3/q", kind: .block(old: "a", new: "b"), reason: "Suggestions")]).first?.heading == nil)
+    }
+}
+
+struct DraftTargetTests {
+    @Test func `an empty field follows a tap; words in it keep their thread`() {
+        #expect(DraftTarget.moved(nil, to: "t1", draft: "") == "t1")
+        #expect(DraftTarget.moved("t1", to: "t2", draft: "  \n") == "t2", "blank space is no draft")
+        #expect(DraftTarget.moved("t1", to: "t2", draft: "Agreed") == "t1")
+        #expect(DraftTarget.moved(nil, to: "t2", draft: "A new point") == nil, "a new comment's words stay a new comment")
+    }
+
+    @Test func `the thread he replies to resolved: an empty field turns to a new comment, words stay a reply`() {
+        #expect(DraftTarget.moved("t1", to: nil, draft: "") == nil)
+        #expect(DraftTarget.moved("t1", to: nil, draft: "One more thing") == "t1")
     }
 }

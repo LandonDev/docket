@@ -28,24 +28,28 @@ final class ShareRefused {
     }
 
     /// Once more, on the file's own host; its row goes when the host takes it, else it stays with the new words.
+    /// A row the extension moved meanwhile is only read again.
     func retry(_ item: ShareItem, client: EnvironmentClient) async {
         guard let root, !trying.contains(item.id) else { return }
         trying.insert(item.id)
         defer { trying.remove(item.id) }
         let inbox = ShareInbox(root: root)
-        try? inbox.mark(item.id, .queued)
-        if let queued = inbox.item(item.id) {
+        if inbox.retry(item.id), let queued = inbox.item(item.id) {
             _ = await ShareUploader(inbox: inbox, hostId: client.environment.id, hostName: client.environment.name, request: .client(client)).send(queued)
         }
         read(client: client, workspaceId: item.workspaceId)
     }
 
+    /// Drops the file, unless the extension is sending it this moment.
     func discard(_ item: ShareItem) {
-        if let root { ShareInbox(root: root).discard(item.id) }
+        guard let root, ShareInbox(root: root).discard(item.id) else { return }
         items.removeAll { $0.id == item.id }
     }
 
     #if DEBUG
+    /// The seeded refusal, in words the host gives an upload whose folder went away (policy.ts `locate`).
+    static let proofWords = "Receipts is not there any more."
+
     /// The Files proof (`TC_TEST_ACTION=files-refused`): one refused picture for this workspace, in a queue of
     /// its own under the temporary folder, so the App Group's is never touched.
     private func seedForProof(client: EnvironmentClient, workspaceId: String) {
@@ -58,14 +62,15 @@ final class ShareRefused {
         let workspace = client.workspaces.first { $0.id == workspaceId }
         let destination = ShareDestination(hostId: client.environment.id, workspaceId: workspaceId, folder: .top(name: workspace?.name ?? "Files"))
         guard let item = try? inbox.add(file, to: destination, name: "Receipt March.pdf") else { return }
-        try? inbox.mark(item.id, .refused, words: "There is a file named Receipt March.pdf in that folder already.")
+        _ = inbox.claim(item.id)
+        try? inbox.mark(item.id, .refused, words: Self.proofWords)
         root = inbox.root
     }
     #endif
 }
 
 /// The section at the head of a workspace's Files screen: a row for each file a save left refused, with the
-/// host's words, Try Again and a swipe to Discard. Nothing when there is none.
+/// words that say why, Try Again (Discard when no retry can help) and a swipe to Discard. Nothing when there is none.
 struct ShareRefusedSection: View {
     let client: EnvironmentClient
     let workspaceId: String
@@ -85,7 +90,7 @@ struct ShareRefusedSection: View {
                             .foregroundStyle(.secondary)
                             .frame(width: mark, height: mark)
                             .accessibilityHidden(true)
-                        ShareRefusedRow(item: item, trying: refused.trying.contains(item.id)) { Task { await refused.retry(item, client: client) } }
+                        ShareRefusedRow(item: item, trying: refused.trying.contains(item.id), retry: { Task { await refused.retry(item, client: client) } }, discard: { refused.discard(item) })
                     }
                     .padding(.vertical, Layout.rowVertical)
                     .frame(minHeight: Layout.rowHeight)

@@ -202,6 +202,12 @@ private struct VideoVersionView: View {
         }
         .onAppear { notes = view.notes.filter { $0.anchor.versionId == versionId && $0.kind == .comment } }
         .task(id: round) { await load() }
+        // The copy the player read from lasts as long as this view: nothing of the file stays on the phone.
+        .onDisappear {
+            player?.pause()
+            player = nil
+            MediaFiles.remove(MediaFiles.file(item: item.id, version: versionId))
+        }
     }
 
     /// Try Again: the same read again; a file that came down but would not play is fetched afresh.
@@ -341,6 +347,8 @@ private struct TokenPicture: View {
         .task {
             do {
                 let file = MediaFiles.file(item: "picture", version: token, ext: "img")
+                // The picture is decoded from its copy, and the copy goes at once: what shows is in memory alone.
+                defer { MediaFiles.remove(file) }
                 if !FileManager.default.fileExists(atPath: file.path()) { try await client.work.canvas.mediaFile(token: token, to: file) }
                 // Decoded at the size a phone shows, never whole: a 40 MP picture is 160 MB as pixels.
                 let options = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 2048] as CFDictionary

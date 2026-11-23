@@ -25,12 +25,15 @@ struct FileReaderPage: View {
     @State private var sharing = false
     @State private var previewing = false
     @State private var failure: String?
+    /// Print is reading its pages: a spinner stands in More's place.
+    @State private var printing = false
     /// The file's comments and the changes that wait on it (`ReaderFrame` fills it).
     @State private var file: ReaderFile?
     @State private var sheet: ReaderSheet?
 
     private var facts: ReaderFacts {
         ReaderFacts(
+            canOperate: client.work.canOperate,
             canApprove: client.work.canApprove,
             inThread: thread != nil,
             waiting: file?.waiting ?? 0,
@@ -41,10 +44,12 @@ struct FileReaderPage: View {
 
     private var verbs: [ReaderVerb] { ReaderVerbs.of(item, facts) }
 
-    /// Where Ask sends: the thread beside the file, else the file's workspace for a key that may start a thread.
+    /// Where Ask sends, for a key that may act: the thread beside the file, else the file's workspace, where
+    /// Ask finds or starts the thread. A key that may only read has no Ask: the host would refuse its words.
     private var askTarget: AskTarget? {
+        guard client.work.canOperate else { return nil }
         if let thread { return .thread(thread) }
-        if let workspaceId, client.work.canOperate { return .file(workspaceId: workspaceId, item: item) }
+        if let workspaceId { return .file(workspaceId: workspaceId, item: item) }
         return nil
     }
 
@@ -62,7 +67,8 @@ struct FileReaderPage: View {
         }
             .background(Surface.chrome)
             .environment(commands)
-            .environment(\.readerTap, ReaderVerbs.immerses(item) ? { immersive.toggle() } : nil)
+            // The bar leaves and returns on the fade the foot takes.
+            .environment(\.readerTap, ReaderVerbs.immerses(item) ? { withAnimation(Motion.base) { immersive.toggle() } } : nil)
             .environment(\.readerImmersive, immersive)
             .navigationTitle(ReaderVerbs.title(item.title))
             .navigationBarTitleDisplayMode(.inline)
@@ -78,21 +84,23 @@ struct FileReaderPage: View {
                 }
                 if !verbs.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            ReaderMoreRows(verbs: verbs, run: run)
-                        } label: {
-                            Image(systemName: GlassMetrics.moreSymbol)
+                        if printing {
+                            ProgressView().accessibilityLabel("Reading the pages to print")
+                        } else {
+                            Menu {
+                                ReaderMoreRows(verbs: verbs, run: run)
+                            } label: {
+                                Image(systemName: GlassMetrics.moreSymbol)
+                            }
+                            .accessibilityLabel("More")
+                            .accessibilityIdentifier("item-more")
                         }
-                        .accessibilityLabel("More")
-                        .accessibilityIdentifier("item-more")
                     }
                 }
             }
             .sheet(item: $asking) { chip in
                 if let askTarget {
-                    AskSheet(client: client, target: askTarget, chip: chip) { thread in
-                        navigator.open(.thread(environmentId: client.environment.id, sessionId: thread, seq: nil))
-                    }
+                    AskSheet(client: client, target: askTarget, chip: chip) { thread in openThread(thread) }
                 }
             }
             .sheet(isPresented: $sharing) {
@@ -122,7 +130,7 @@ struct FileReaderPage: View {
                 let words = action.dropFirst("files-ask".count).drop { $0 == ":" }
                 guard !words.isEmpty else { return ask() }
                 if let thread = try? await client.work.ask(workspaceId: workspaceId, item: item, chip: ChipWords.item(item), text: String(words), session: { client.session($0) }) {
-                    navigator.open(.thread(environmentId: client.environment.id, sessionId: thread, seq: nil))
+                    openThread(thread)
                 }
             }
             // `TC_TEST_SHEET`: `reader-preview` pushes Page Preview; `reader-comments`, `reader-review` and
@@ -152,9 +160,21 @@ struct FileReaderPage: View {
         if let picked = commands.ask { picked() } else { asking = ChipWords.item(item) }
     }
 
+    /// His words went to a thread: he is taken to it. It opens on its first segment, the file (Chat is one
+    /// swipe away); landing on Chat is an open finding in the landing note.
+    private func openThread(_ thread: String) {
+        navigator.open(.thread(environmentId: client.environment.id, sessionId: thread, seq: nil))
+    }
+
     private func run(_ verb: ReaderVerb) {
         switch verb {
         case .find: commands.showFind()
+        case .print:
+            Task {
+                printing = true
+                defer { printing = false }
+                do { try await ReaderPrint.run(client: client, item: item) } catch { failure = ActionError.wrap(error).message }
+            }
         case .guestLink: sharing = true
         case .close:
             Task {

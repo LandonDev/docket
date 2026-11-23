@@ -1168,6 +1168,8 @@ work_share() {
   ( TC_SHARE=refused shot s06-share-refused-light home "" "" "" 10 )
   ( TC_SHARE=earlier shot s07-share-earlier-light home "" "" "" 10 )
   ( TC_SHARE=empty shot s08-share-empty-light home "" "" "" 10 )
+  # One of three shared files could not be read: the sheet says which, and still saves the rest.
+  ( TC_SHARE=unread shot s12-share-unread-light home "" "" "" 10 )
   appearance dark
   ( TC_SHARE=one shot s09-share-one-dark home "" "" "" 10 )
   ( TC_SHARE=earlier shot s10-share-earlier-dark home "" "" "" 10 )
@@ -1205,10 +1207,8 @@ work_reader() {
   ( TC_ITEM=slides TC_ACTION=reader-tap shot r07-reader-deck-bars-hidden-light reader "$thread" "" "" 16 )
   # The same deck in the thread's Item segment: the segment bar, the row with More, the viewer's own Ask.
   ( TC_ITEM=slides shot r09-item-deck-notes-light thread "$thread" item "" 16 )
-  # Page Preview: a PDF as itself and a deck's own render, with Print in the bar.
-  ( TC_ITEM=pdf TC_SHEET=reader-preview shot r14-reader-page-preview-light reader "$thread" "" "" 14 )
-  ( TC_ITEM=slides TC_SHEET=reader-preview shot r15-reader-deck-preview-light reader "$thread" "" "" 16 )
-  # A document's pages are its Word file as the host draws it (LibreOffice on the test server's Mac).
+  # Page Preview is a document's alone (a PDF and a deck already show the pages that print, and have Print in More):
+  # its pages are its Word file as the host draws it (LibreOffice on the test server's Mac), with Print in the bar.
   ( TC_ITEM="Travel memo" TC_SHEET=reader-preview shot r16-reader-document-preview-light reader "$thread" "" "" 30 )
   # Comments and review (seedReview): a document kept as a file with a comment thread and a waiting suggestion, and a
   # sheet with a waiting change set. The test server serves no page a phone can open, so each file's body is its
@@ -1224,7 +1224,7 @@ work_reader() {
   ( TC_ITEM="Travel memo" TC_SHEET=reader-review shot r35-review-document-dark reader "$thread" "" "" 14 )
   ( TC_ITEM="Travel memo" TC_SHEET=reader-comments shot r36-comments-dark reader "$thread" "" "" 14 )
   ( TC_ITEM="Travel budget" TC_SHEET=reader-review shot r37-review-sheet-cells-dark reader "$thread" "" "" 14 )
-  ( TC_ITEM=pdf TC_SHEET=reader-preview shot r38-reader-page-preview-dark reader "$thread" "" "" 14 )
+  ( TC_ITEM="Travel memo" TC_SHEET=reader-preview shot r38-reader-document-preview-dark reader "$thread" "" "" 30 )
   appearance light
   # The presses, read back on the host afterwards (verifyReview): a comment posted, then every change accepted.
   ( TC_ITEM="Travel memo" TC_SHEET=reader-comments TC_ACTION="comment-post:Booked, both days." shot r39-comment-posted-light reader "$thread" "" "" 16 )

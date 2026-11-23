@@ -265,14 +265,15 @@ struct PdfPages: View {
                 viewer
                     .frame(height: layout.slide.map { CGFloat($0) })
                 if layout.notes, let pager {
-                    SlideNotes(words: pager.notes(at: page))
+                    // In a wide column the slide is narrower than the column: the notes start at its left edge.
+                    SlideNotes(words: pager.notes(at: page), width: layout.slide.map { min(proxy.size.width, CGFloat($0) * aspect) })
                         .id(page)
-                        .opacity(immersive ? 0 : 1)
+                        .footHidden(immersive)
                 }
                 if filmstrip {
                     DeckFilmstrip(view: view, page: page, pages: pages, aspect: aspect, hidden: Set((pager?.pages ?? []).filter(\.hidden).map(\.page)))
                         .frame(height: ReaderMetrics.filmstrip)
-                        .opacity(immersive ? 0 : 1)
+                        .footHidden(immersive)
                 }
             }
             // The foot leaves and returns with the bars: a fade, nothing travels.
@@ -302,8 +303,11 @@ struct PdfPages: View {
             self.aspect = aspect
         }
         .overlay(alignment: .bottom) {
-            PageStamp(words: "\(page) of \(pages)")
-                .opacity(immersive ? 0 : 1)
+            // One page needs no count.
+            if pages > 1 {
+                PageStamp(words: "\(page) of \(pages)")
+                    .footHidden(immersive)
+            }
         }
         .overlay(alignment: .topTrailing) {
             // The reader page has Ask in its bar; in a thread's Item segment the viewer carries it.
@@ -325,9 +329,18 @@ struct PdfPages: View {
     }
 }
 
-/// A slide's speaker notes under it: the reading measure, scrolling on their own.
+private extension View {
+    /// The foot while the bars are hidden: it keeps its room and fades, and takes no touch and no VoiceOver.
+    func footHidden(_ hidden: Bool) -> some View {
+        opacity(hidden ? 0 : 1).allowsHitTesting(!hidden).accessibilityHidden(hidden)
+    }
+}
+
+/// A slide's speaker notes under it: the reading measure from the slide's left edge, scrolling on their own.
 private struct SlideNotes: View {
     let words: String
+    /// The slide's drawn width; nil is the whole column.
+    var width: CGFloat?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -339,6 +352,7 @@ private struct SlideNotes: View {
                     .frame(maxWidth: ReaderMetrics.measure, alignment: .leading)
                     .padding(.horizontal, Layout.textEdge)
                     .padding(.vertical, 12)
+                    .frame(maxWidth: width ?? .infinity, alignment: .leading)
                     .frame(maxWidth: .infinity)
                     .textSelection(.enabled)
             }
@@ -502,6 +516,8 @@ private struct DeckFilmstrip: View {
             if hidden.contains(number) {
                 Image(systemName: "eye.slash.fill")
                     .font(.caption2)
+                    // The thumbnail is a fixed 48 pt: at the largest text sizes the mark would cover the slide.
+                    .dynamicTypeSize(...DynamicTypeSize.large)
                     .foregroundStyle(.white)
                     .padding(3)
                     .background(Color.black.opacity(0.55), in: Circle())

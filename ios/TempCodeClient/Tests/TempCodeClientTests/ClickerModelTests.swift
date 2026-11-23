@@ -35,6 +35,10 @@ final class FakeClickerHost {
             case .blank: show.blank.toggle()
             case .end: break
             }
+            if show.notesSlide != show.slide {
+                show.notes = "Notes \(show.slide)"
+                show.notesSlide = show.slide
+            }
             show.rev += 1
             current = press == .end ? nil : show
             answer = .success(current)
@@ -135,6 +139,7 @@ final class FakeClickerHost {
         var moved = show
         moved.slide = 9
         moved.notes = "Thank the sponsors."
+        moved.notesSlide = 9
         moved.rev = 11
         model.apply(moved)
         #expect(model.show?.slide == 9)
@@ -177,34 +182,39 @@ final class FakeClickerHost {
         #expect(model.show?.slide == 5)
     }
 
-    @Test func `two quick presses send two calls in order and the older answer never overwrites the newer`() async {
+    @Test func `two quick presses reach the wire in order, the second on the rev the first left`() async {
         let (model, host) = await loaded(show)
         host.holding = true
         #expect(model.press(.next))
         #expect(model.press(.next))
         #expect(model.show?.slide == 6, "the count follows his finger")
+        await host.waitForCalls(1)
+        await Task.yield()
+        #expect(host.calls == ["next 7"], "the second waits for the first's answer")
+        host.release(0)
         await host.waitForCalls(2)
         #expect(host.calls == ["next 7", "next 8"])
-        // The newer answer first, then the older one.
+        #expect(model.show?.slide == 6, "the count never steps back between the two answers")
         host.release(1)
-        await Task.yield()
-        #expect(model.show?.slide == 6)
-        host.release(0)
         await model.settle()
         #expect(model.show?.slide == 6)
         #expect(model.show?.rev == 9)
+        #expect(model.show == host.current)
+    }
 
-        // In order, the count never steps back between the two answers.
+    @Test func `a refused first press drops the presses queued behind it and puts the count back`() async {
+        let (model, host) = await loaded(show)
+        host.holding = true
+        host.refusal = "This key can read, not act."
         #expect(model.press(.next))
         #expect(model.press(.next))
-        await host.waitForCalls(4)
-        host.release(2)
-        await Task.yield()
-        #expect(model.show?.slide == 8)
-        host.release(3)
+        #expect(model.press(.blank))
+        await host.waitForCalls(1)
+        host.release(0)
         await model.settle()
-        #expect(model.show?.slide == 8)
-        #expect(model.show?.rev == 11)
+        #expect(host.calls == ["next 7"])
+        #expect(model.show == show)
+        #expect(model.refusal == "This key can read, not act.")
     }
 
     @Test func `a push behind his presses on the way does not pull the count back`() async {
@@ -212,15 +222,76 @@ final class FakeClickerHost {
         host.holding = true
         #expect(model.press(.next))
         #expect(model.press(.next))
-        await host.waitForCalls(2)
+        await host.waitForCalls(1)
         var echo = show
         echo.slide = 5
         echo.rev = 8
         model.apply(echo)
         #expect(model.show?.slide == 6)
         host.release(0)
+        await host.waitForCalls(2)
         host.release(1)
         await model.settle()
         #expect(model.show?.slide == 6)
+    }
+
+    @Test func `the notes never show another slide's words: none until the host says the new slide's`() async {
+        let (model, host) = await loaded(show)
+        #expect(model.notes == "Welcome the teams.")
+        host.holding = true
+        #expect(model.press(.next))
+        #expect(model.show?.slide == 5)
+        #expect(model.notes == nil, "slide 4's notes are not slide 5's")
+        await host.waitForCalls(1)
+        host.release(0)
+        await model.settle()
+        #expect(model.notes == "Notes 5")
+    }
+
+    @Test func `the host's notes are taken as soon as they match the slide, with presses still on the way`() async {
+        let (model, host) = await loaded(show)
+        host.holding = true
+        #expect(model.press(.next))
+        #expect(model.press(.blank))
+        await host.waitForCalls(1)
+        #expect(model.notes == nil)
+        host.release(0)
+        await host.waitForCalls(2)
+        #expect(model.notes == "Notes 5", "slide 5's notes, while Blank is on its way")
+        #expect(model.show?.blank == true)
+        host.release(1)
+        await model.settle()
+        #expect(model.notes == "Notes 5")
+    }
+
+    @Test func `a show that carries every slide's notes gives the new slide's at once`() async {
+        var all = show
+        all.allNotes = (1...12).map { "Notes \($0)" }
+        let (model, host) = await loaded(all)
+        host.holding = true
+        #expect(model.press(.next))
+        #expect(model.notes == "Notes 5", "before the host answers")
+        #expect(model.press(.previous))
+        #expect(model.press(.previous))
+        #expect(model.notes == "Notes 3")
+        await host.waitForCalls(1)
+        host.release(0)
+        await host.waitForCalls(2)
+        host.release(1)
+        await host.waitForCalls(3)
+        host.release(2)
+        await model.settle()
+        #expect(model.show?.slide == 3)
+        #expect(model.notes == "Notes 3")
+    }
+
+    @Test func `a pushed show whose notes are for another slide shows none`() async {
+        let (model, _) = await loaded(show)
+        var pushed = show
+        pushed.slide = 6
+        pushed.rev = 9
+        model.apply(pushed)
+        #expect(model.show?.slide == 6)
+        #expect(model.notes == nil)
     }
 }

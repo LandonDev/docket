@@ -49,7 +49,7 @@ struct PagePreview: View {
     }
 
     /// The system's print sheet over the pages shown.
-    private static func print(_ pages: Data, name: String) {
+    static func print(_ pages: Data, name: String) {
         let printer = UIPrintInteractionController.shared
         let info = UIPrintInfo(dictionary: nil)
         info.jobName = name
@@ -62,5 +62,16 @@ struct PagePreview: View {
     private struct Unreadable: LocalizedError, CustomStringConvertible {
         var description: String { "The pages did not open." }
         var errorDescription: String? { description }
+    }
+}
+
+/// More's Print for a PDF and a deck: the reader already shows the pages that print, so there is no second
+/// look at them. The bytes are read at one `rev` and handed to the system's print sheet.
+enum ReaderPrint {
+    @MainActor
+    static func run(client: EnvironmentClient, item: CanvasItem) async throws {
+        guard let source = client.work.canvas.printPages(for: item) else { return }
+        let pages = try await source.data()
+        PagePreview.print(pages, name: ReaderVerbs.title(item.title))
     }
 }

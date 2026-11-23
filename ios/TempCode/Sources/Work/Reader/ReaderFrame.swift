@@ -19,7 +19,8 @@ enum ReaderSheet: Identifiable, Hashable {
 
 /// What a file's page adds around the kind's own view, wherever the file shows (the reader page, a
 /// thread's Item segment): the review row while an agent's changes wait, the sheets for comments and
-/// review, and Comment in the hosted editor's edit menu. The host owns `file` and `sheet`, since its More
+/// review, and Comment in the hosted editor's edit menu. The row only counts and opens Review Changes:
+/// the page draws none of a document's or a sheet's changes, so he decides them where he can read them. The host owns `file` and `sheet`, since its More
 /// reads the one and sets the other.
 struct ReaderFrame<Content: View>: View {
     let client: EnvironmentClient
@@ -30,7 +31,6 @@ struct ReaderFrame<Content: View>: View {
     /// The bars are hidden (a tap on the page): the review row goes with them.
     var immersive = false
     @ViewBuilder let content: Content
-    @State private var deciding = false
 
     private var canWrite: Bool { client.work.canOperate }
     /// The file's parts, only once they are this item's: on a switch of items the host still holds the last one's
@@ -40,10 +40,8 @@ struct ReaderFrame<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             if let review = own?.review, (own?.waiting ?? 0) > 0, !immersive {
-                // The deck's own row: how many wait (a tap lists them), Reject, and Accept as the one tinted button.
-                DeckReviewRow(words: review.words, busy: deciding, decides: canWrite, open: { sheet = .review }) { accept in
-                    Task { await decideAll(review, accept: accept) }
-                }
+                // The deck's row with no buttons: how many wait, and a tap lists them.
+                DeckReviewRow(words: review.words, decides: false, open: { sheet = .review }) { _ in }
                 Divider()
             }
             content
@@ -69,12 +67,5 @@ struct ReaderFrame<Content: View>: View {
                 if let comments = own?.comments { CommentSheet(comments: comments, quote: quote) }
             }
         }
-    }
-
-    /// Every change at once. One the host refuses keeps its row with the host's words: the list opens to show them.
-    private func decideAll(_ review: WorkReview, accept: Bool) async {
-        deciding = true
-        defer { deciding = false }
-        if !(await review.decideAll(accept: accept)) { sheet = .review }
     }
 }

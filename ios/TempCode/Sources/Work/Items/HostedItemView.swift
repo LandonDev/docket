@@ -33,8 +33,8 @@ struct HostedItemView: View {
                 if let fallback {
                     fallback
                 } else {
-                    // The bar already names the file: the page says where it opens, then the host's own words.
-                    ContentUnavailableView("Opens on Your Computer", systemImage: "desktopcomputer", description: Text(refusal))
+                    // The bar already names the file, and the host's words say where it opens.
+                    ContentUnavailableView("Can’t Open Here", systemImage: "desktopcomputer", description: Text(refusal))
                 }
             } else if failed {
                 ContentUnavailableView {

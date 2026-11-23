@@ -3,7 +3,7 @@ import TempCodeContract
 
 /// A row of an open file's More menu (the phone's reader).
 public enum ReaderVerb: String, CaseIterable, Sendable, Identifiable {
-    case find, comments, review, preview, share, guestLink, close
+    case find, comments, review, preview, print, share, guestLink, close
 
     public var id: String { rawValue }
 
@@ -13,6 +13,7 @@ public enum ReaderVerb: String, CaseIterable, Sendable, Identifiable {
         case .comments: "Comments"
         case .review: "Review Changes"
         case .preview: "Page Preview"
+        case .print: "Print…"
         case .share: "Share…"
         case .guestLink: "Make a Guest Link"
         case .close: "Close"
@@ -25,6 +26,7 @@ public enum ReaderVerb: String, CaseIterable, Sendable, Identifiable {
         case .comments: "text.bubble"
         case .review: "checklist"
         case .preview: "doc.viewfinder"
+        case .print: "printer"
         case .share: "square.and.arrow.up"
         case .guestLink: "person.badge.plus"
         case .close: "xmark.square"
@@ -34,20 +36,23 @@ public enum ReaderVerb: String, CaseIterable, Sendable, Identifiable {
 
 /// What the host and the key allow for the file that shows: the rest of what decides a row.
 public struct ReaderFacts: Equatable, Sendable {
+    /// The key can act: Close takes the file out of its thread only for a key that may.
+    public var canOperate: Bool
     /// The key can press Send, Edit and Discard: a guest link is made through that door.
     public var canApprove: Bool
     /// The item sits in a thread's tab row, which Close takes it out of.
     public var inThread: Bool
     /// Changes an agent proposed that wait for him.
     public var waiting: Int
-    /// The host draws this file's print pages (`work.formats.preview`, `work.sheets.preview`), or the file is its own.
+    /// The host draws this file's print pages (`work.formats.preview`, `work.sheets.preview`): a document, a sheet.
     public var previews: Bool
     /// The host keeps comment threads for this file.
     public var comments: Bool
     /// One way to share this file exists for this key.
     public var shares: Bool
 
-    public init(canApprove: Bool = false, inThread: Bool = false, waiting: Int = 0, previews: Bool = false, comments: Bool = false, shares: Bool = false) {
+    public init(canOperate: Bool = false, canApprove: Bool = false, inThread: Bool = false, waiting: Int = 0, previews: Bool = false, comments: Bool = false, shares: Bool = false) {
+        self.canOperate = canOperate
         self.canApprove = canApprove
         self.inThread = inThread
         self.waiting = waiting
@@ -67,10 +72,12 @@ public enum ReaderVerbs {
         if body == .pdf || body == .slides { verbs.append(.find) }
         if facts.comments { verbs.append(.comments) }
         if facts.waiting > 0 { verbs.append(.review) }
-        if facts.previews { verbs.append(.preview) }
+        // A PDF and a deck already show the pages that print, so they have Print and no second look at
+        // the same pages; a document's pages are drawn for it, so it has Page Preview, with Print inside.
+        if body == .pdf || body == .slides { verbs.append(.print) } else if facts.previews { verbs.append(.preview) }
         if facts.shares { verbs.append(.share) }
         if body.guestSource != nil, facts.canApprove { verbs.append(.guestLink) }
-        if facts.inThread { verbs.append(.close) }
+        if facts.inThread, facts.canOperate { verbs.append(.close) }
         return verbs
     }
 

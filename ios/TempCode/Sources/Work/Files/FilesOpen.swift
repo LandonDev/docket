@@ -40,15 +40,25 @@ struct FileItemScreen: View {
                     .environment(\.hostedFallback, fallback)
             } else if let error {
                 FilesFailed(title: "Can’t Open \(entry.name)", message: error) { self.error = nil; round += 1 }
-            } else {
+            } else if ![.pdf, .deck].contains(entry.kind) {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                // The paper's shape at once, as the reader's own loading draws it.
+                ReaderLoading(aspect: entry.kind == .deck ? ReaderMetrics.slideAspect : ReaderMetrics.paperAspect, progress: nil)
+                    .padding(Layout.textEdge)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Surface.chrome)
             }
         }
         .navigationTitle(ReaderVerbs.title(entry.name))
         .navigationBarTitleDisplayMode(.inline)
         .task(id: round) {
+            // A document or sheet goes to the hosted editor: its web view is made ready while the file is seated.
+            if [.document, .sheet].contains(entry.kind) { HostedWebPool.shared.warm() }
             do {
-                item = try await client.work.files.open(workspaceId, entry)
+                let seated = try await client.work.files.open(workspaceId, entry)
+                client.work.canvas.warmTicket(seated)
+                item = seated
             } catch {
                 self.error = ActionError.wrap(error).message
             }
@@ -202,7 +212,8 @@ struct FileQuickLookScreen: View {
                 openButton
             case .readOnly:
                 Text("Edit on your computer").textStep(.meta)
-                openButton
+                // The system's Quick Look has no viewer for our own two formats: their pages above are the look.
+                if ReaderVerbs.title(entry.name) == entry.name { openButton }
             case .tooBig:
                 Text("Over 50 MB. Open it on your computer.").textStep(.meta)
             case .facts(let host):

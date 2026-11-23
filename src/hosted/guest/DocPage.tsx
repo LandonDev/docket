@@ -6,7 +6,7 @@ import { Textarea } from "@renderer/components/ui/textarea";
 import { DOC_FONTS } from "@renderer/work/docs/fonts";
 import { Comment } from "@renderer/work/icons";
 import { commentLeft } from "./place";
-import { OpenFailed, type Opened, type Session } from "./session";
+import { OpenFailed, commentsOnPage, type Opened, type Session } from "./session";
 import { guestThreads } from "./threads";
 
 /**
@@ -80,7 +80,7 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
             <DocumentEditor
               documentName={doc}
               editable={opened.role === "edit"}
-              canComment={opened.role !== "view"}
+              canComment={commentsOnPage(session.mode.kind, opened.role)}
               threadMargin={threads ? (wide ? "side" : "under") : undefined}
               threadList={!!threads}
               onStatus={onStatus}

@@ -55,8 +55,9 @@ enum ShareBridge {
 #if DEBUG
 /// The proofs' share sheet (`TC_TEST_SHARE=<state>`): the same view the extension shows, over Home, on a
 /// queue of its own under the temporary folder so the App Group's is never touched. States: `one`,
-/// `several`, `saving`, `saved`, `waiting`, `refused`, `earlier`, `empty` draw the sheet with no host
-/// asked; `save` really saves a picture into the first Work workspace's folder.
+/// `several`, `saving`, `saved`, `waiting`, `refused`, `earlier`, `unread` (one of three not read),
+/// `unread-all`, `empty` draw the sheet with no host asked; `save` really saves a picture into the first
+/// Work workspace's folder.
 struct ShareProofSheet: View {
     let registry: ClientRegistry
     let state: String
@@ -79,19 +80,21 @@ struct ShareProofSheet: View {
         let root = FileManager.default.temporaryDirectory.appending(path: "share-proof-\(UUID().uuidString)", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         if state != "empty" { try? ShareBridge.targets(registry, earlier: ShareTargets()).write(root: root) }
-        let count = state == "several" ? 3 : 1
-        let picks = (1...count).compactMap { Self.picture(number: $0, in: root) }
+        let count = state == "several" ? 3 : state == "unread" ? 2 : state == "unread-all" ? 0 : 1
+        let picks: [SharePick] = count == 0 ? [] : (1...count).compactMap { Self.picture(number: $0, in: root) }
+        let unread = state.hasPrefix("unread") ? ["Photo.heic"] : []
         let inbox = ShareInbox(root: root)
-        let made = ShareSheetModel(inbox: inbox, root: root, keys: registry.store.keys, picks: picks)
+        let made = ShareSheetModel(inbox: inbox, root: root, keys: registry.store.keys, picks: picks, unread: unread)
         let host = made.ordered.first?.host.name ?? "The host"
         switch state {
         case "saving": made.show(.saving(0.6))
         case "saved": made.show(.saved)
         case "waiting": made.show(.waiting(SharePhase.unreachable(host)))
-        case "refused": made.show(.refused(ShareUploader.tooLarge(name: picks.first?.name ?? "Photo.png", host: host, limit: 200 * 1024 * 1024)))
+        case "refused": made.show(.refused(ShareUploader.tooLarge(host: host, limit: 200 * 1024 * 1024)))
         case "earlier":
             if let target = made.ordered.first, let pick = picks.first, let item = try? inbox.add(pick.url, to: target.destination(), name: "Receipt March.pdf") {
-                try? inbox.mark(item.id, .refused, words: "There is a file named Receipt March.pdf in that folder already.")
+                _ = inbox.claim(item.id)
+                try? inbox.mark(item.id, .refused, words: ShareRefused.proofWords)
                 if let refused = inbox.item(item.id) { made.show(.picking, earlier: [refused]) }
             }
         default: break

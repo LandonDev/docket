@@ -81,7 +81,7 @@ struct ClickerScreen: View {
     private var content: some View {
         if model.ended {
             ContentUnavailableView {
-                Label("The show ended", systemImage: "play.rectangle")
+                Label("The Show Ended", systemImage: "play.rectangle")
             } actions: {
                 Button("Done") { close() }
             }
@@ -125,18 +125,20 @@ struct ClickerScreen: View {
         }
     }
 
-    /// The slide's speaker notes, at the size he stepped to; back at the top on each slide.
+    /// The slide's speaker notes, at the size he stepped to; back at the top on each slide. Nothing while the
+    /// slide's notes are on their way: never another slide's. No text selection: a drag there steps the show.
     private func notes(_ show: ClickerShow) -> some View {
         ScrollView {
             Group {
-                if show.notes.isEmpty {
-                    Text("No notes")
-                        .textStep(.meta)
-                } else {
-                    Text(show.notes)
-                        .transcriptType(ClickerMetrics.notesType(notesSize))
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
+                if let notes = model.notes {
+                    if notes.isEmpty {
+                        Text("No notes")
+                            .textStep(.meta)
+                    } else {
+                        Text(notes)
+                            .transcriptType(ClickerMetrics.notesType(notesSize))
+                            .foregroundStyle(.primary)
+                    }
                 }
             }
             .frame(maxWidth: ReaderMetrics.measure, alignment: .leading)
@@ -146,8 +148,11 @@ struct ClickerScreen: View {
         }
         .id(show.slide)
         .frame(maxHeight: .infinity)
+        // A line the scroll cuts at large sizes stops short of the count line instead of touching it.
+        .padding(.bottom, ClickerMetrics.gap)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(show.notes.isEmpty ? "No notes" : "Notes: \(show.notes)")
+        .accessibilityLabel(model.notes.map { $0.isEmpty ? "No notes" : "Notes: \($0)" } ?? "")
+        .accessibilityHidden(model.notes == nil)
         .accessibilityIdentifier("clicker-notes")
     }
 
@@ -182,7 +187,7 @@ struct ClickerScreen: View {
                 .font(.largeTitle.weight(.semibold))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .foregroundStyle(show.isLast ? HierarchicalShapeStyle.tertiary : .primary)
-                .background(Surface.fill, in: RoundedRectangle.corner(Radius.sheet))
+                .background(Surface.fill, in: RoundedRectangle.corner(Radius.field))
             }
             .buttonStyle(.pressable)
             .frame(height: nextHeight)
@@ -206,7 +211,12 @@ struct ClickerScreen: View {
             }
             Spacer(minLength: 0)
             if let startedAt = show.startedAt {
-                ElapsedText(since: Int(startedAt), step: .title)
+                // Tabular digits that do not roll: a second's tick is not news, the slide count is.
+                Tick(every: 1) { tick in
+                    Text(TimeFormat.elapsed(since: Int(startedAt), now: tick))
+                        .textStep(.title)
+                        .monospacedDigit()
+                }
             }
         }
         .frame(minHeight: Layout.rowHeight)

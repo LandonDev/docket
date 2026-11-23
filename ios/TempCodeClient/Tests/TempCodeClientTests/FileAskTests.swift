@@ -5,13 +5,11 @@ import TempCodeContract
 
 /// A stand-in connection: each method answers from its queue of JSON (or refuses), and every request is kept.
 private actor AskWire: FilesWire {
-    struct Refused: Error {}
-
-    private var answers: [String: [String?]] = [:]
+    private var answers: [String: [Result<String, TransportError>]] = [:]
     private(set) var sent: [(method: String, params: String)] = []
 
-    func answer(_ method: String, _ json: String) { answers[method, default: []].append(json) }
-    func refuse(_ method: String, _ words: String) { answers[method, default: []].append(nil) }
+    func answer(_ method: String, _ json: String) { answers[method, default: []].append(.success(json)) }
+    func refuse(_ method: String, _ words: String) { answers[method, default: []].append(.failure(.server(method: method, message: words))) }
     func methods() -> [String] { sent.map(\.method) }
     func params(_ method: String) -> [String] { sent.filter { $0.method == method }.map(\.params) }
 
@@ -19,11 +17,10 @@ private actor AskWire: FilesWire {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         sent.append((M.name, String(decoding: try encoder.encode(params), as: UTF8.self)))
-        guard var queue = answers[M.name], !queue.isEmpty else { throw Refused() }
+        guard var queue = answers[M.name], !queue.isEmpty else { throw TransportError.server(method: M.name, message: "no answer for \(M.name)") }
         let next = queue.removeFirst()
         answers[M.name] = queue
-        guard let next else { throw Refused() }
-        return try JSONDecoder().decode(M.Output.self, from: Data(next.utf8))
+        return try JSONDecoder().decode(M.Output.self, from: Data(try next.get().utf8))
     }
 }
 
@@ -73,14 +70,41 @@ private actor AskWire: FilesWire {
         #expect(opened.contains(#""sessionId":"new""#) && opened.contains(#""kind":"pdf""#) && opened.contains("Bracket.pdf"))
     }
 
-    @Test func `an open the host refuses does not stop the words, and a host that names no holder starts a thread`() async throws {
+    @Test func `a file that will not open in the new thread holds the words, and Send again finishes that thread`() async throws {
         let wire = AskWire()
-        await wire.refuse("work.files.threads", "bad request")
+        await wire.answer("work.files.threads", #"{"threads":[]}"#)
         await wire.answer("session.create", String(decoding: try JSONEncoder().encode(meta("new")), as: UTF8.self))
         await wire.refuse("work.canvas.open", "That file is out of reach.")
+        var kept: String?
+        do {
+            _ = try await FileAsk.send(wire: wire, workspaceId: "w1", item: item, chip: chip, text: "Hello") { _ in nil }
+            Issue.record("the words went without the file")
+        } catch let stopped as FileAsk.NotSeated {
+            kept = stopped.threadId
+        }
+        #expect(kept == "new")
+        #expect(await wire.methods() == ["work.files.threads", "session.create", "work.canvas.open"])
+        // The second press: no lookup, no second thread; the file opens, then the words go.
+        await wire.answer("work.canvas.open", String(decoding: try JSONEncoder().encode(item), as: UTF8.self))
         await wire.answer("session.send", "null")
-        let went = try await FileAsk.send(wire: wire, workspaceId: "w1", item: item, chip: chip, text: "Hello") { _ in nil }
+        let went = try await FileAsk.send(wire: wire, workspaceId: "w1", item: item, chip: chip, text: "Hello", into: kept) { _ in nil }
         #expect(went == "new")
-        #expect(await wire.methods().last == "session.send")
+        #expect(await wire.methods() == ["work.files.threads", "session.create", "work.canvas.open", "work.canvas.open", "session.send"])
+    }
+
+    @Test func `a lookup that fails is said, and only a host from before the call starts a thread unasked`() async throws {
+        let wire = AskWire()
+        await wire.refuse("work.files.threads", "MacBook is out of reach.")
+        await #expect(throws: (any Error).self) {
+            _ = try await FileAsk.send(wire: wire, workspaceId: "w1", item: item, chip: chip, text: "Hello") { _ in nil }
+        }
+        #expect(await wire.methods() == ["work.files.threads"])
+        // A host from before `work.files.threads` refuses the method as unknown: a new thread takes the words.
+        let old = AskWire()
+        await old.refuse("work.files.threads", #"bad request: [{"code":"invalid_union_discriminator","message":"No matching discriminator","path":["method"]}]"#)
+        await old.answer("session.create", String(decoding: try JSONEncoder().encode(meta("new")), as: UTF8.self))
+        await old.answer("work.canvas.open", String(decoding: try JSONEncoder().encode(item), as: UTF8.self))
+        await old.answer("session.send", "null")
+        #expect(try await FileAsk.send(wire: old, workspaceId: "w1", item: item, chip: chip, text: "Hello") { _ in nil } == "new")
     }
 }

@@ -74,6 +74,7 @@ public final class WorkHost: CaptureHost {
         files = FilesHost(wire: SocketFilesWire(socket: socket), environmentId: environment.id, caps: .init(operate: environment.allows(.operate), approve: environment.allows(.approve)))
         // An original a past launch was showing when it ended goes now.
         OriginalFiles.sweepAtLaunch()
+        MediaFiles.sweepAtLaunch()
         digest = WorkDigest(socket: socket)
         self.environment = environment
         self.defaults = defaults

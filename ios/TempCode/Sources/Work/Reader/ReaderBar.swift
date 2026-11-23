@@ -118,7 +118,7 @@ struct PageStamp: View {
             .textStep(.meta)
             .monospacedDigit()
             .padding(.horizontal, 12)
-            .frame(height: ReaderMetrics.stamp)
+            .frame(minHeight: ReaderMetrics.stamp)
             .tcGlass()
             .padding(.bottom, ReaderMetrics.stampInset)
             .accessibilityIdentifier("pdf-page")
