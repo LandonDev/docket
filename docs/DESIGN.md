@@ -1279,7 +1279,13 @@ The kinds, each a hand-made body built from components/ui:
   widths and scroll; a number never clips. A sheet's chart object is plain
   bars on the neutral. A Microsoft-hosted file has a switch in the tab row
   beside ⋯ ("TempCode", "Excel"); the hosted app then fills the body edge
-  to edge and our formula bar and sheet tabs go.
+  to edge and our formula bar and sheet tabs go. An opened Excel file that
+  holds what only Excel does says so at the end of the kind's own tools
+  in the bar, under the switch it explains and apart from the mode's
+  word, in the bar's own 12px muted text with no glyph and no chip: "2
+  pivot tables and macros open in Excel". The line gives way through its
+  words before any control does (it truncates, with the whole of it in a
+  `TruncateTip`).
 - **Document.** The shared block editor in a 672px measure, a 52px
   leading gutter for the block handle, a 24px glyph rail in the trailing
   gutter when 24px is free, and a margin column (24px gap, 272px card)

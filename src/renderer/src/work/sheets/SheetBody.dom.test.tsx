@@ -760,6 +760,49 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(full.querySelector('[data-slot="busy-label"]')?.hasAttribute("data-busy")).toBe(false));
   });
 
+  it("says what waits in Excel on the bar of an opened Excel file, beside the switch, and nothing on any other sheet", async () => {
+    open(sheetView({ store: "package", reach: { parts: ["2 pivot tables", "macros"], to: "excel" } }));
+    await gridUp();
+    const bar = await waitFor(() => document.querySelector("[data-canvas-bar]")!);
+    expect(bar.querySelector("[data-sheet-waits]")?.textContent).toBe("2 pivot tables and macros open in Excel");
+    expect(screen.getByRole("tablist", { name: "Open in" })).toBeTruthy();
+    cleanup();
+    resetSheetSyncs();
+    resetCanvasStore();
+    // A workbook Google holds has the switch for what our grid does not do there: its bar says nothing of it.
+    open(sheetView({ store: "package", reach: { parts: ["formatting"], to: "google" } }));
+    await gridUp();
+    await screen.findByRole("tablist", { name: "Open in" });
+    expect(document.querySelector("[data-sheet-waits]")).toBeNull();
+  });
+
+  it("offers Save to Google Sheets in More on the host's word alone, and never for a workbook that reads only", async () => {
+    open(sheetView());
+    await gridUp();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("menuitem", { name: "Preview…" });
+    expect(screen.queryByRole("menuitem", { name: "Save to Google Sheets" })).toBeNull();
+    cleanup();
+    resetSheetSyncs();
+    resetCanvasStore();
+    open(sheetView({ canUpload: true, readOnly: "This file cannot be opened here: it has a password" }));
+    await gridUp();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("menuitem", { name: "Preview…" });
+    expect(screen.queryByRole("menuitem", { name: "Save to Google Sheets" })).toBeNull();
+    cleanup();
+    resetSheetSyncs();
+    resetCanvasStore();
+    open(sheetView({ canUpload: true }));
+    await gridUp();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    const rows = (await screen.findAllByRole("menuitem")).map((row) => row.textContent);
+    // After Preview…, with the other ways out.
+    expect(rows.indexOf("Save to Google Sheets")).toBe(rows.indexOf("Preview…") + 1);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Save to Google Sheets" }));
+    expect(await screen.findByRole("dialog", { name: "Save to Google Sheets" })).toBeTruthy();
+  });
+
   it("offers Share only on a sheet a guest link can reach, a LifeOS sheet", async () => {
     open(sheetView());
     await gridUp();

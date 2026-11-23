@@ -18,7 +18,7 @@ import { IS_MAC } from "../../lib/platform";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import { Export, Share } from "../icons";
-import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
+import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
 import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
 import { chartBars, chartFrom, chartTicks, saidLine, savedLine, sheetChanges, tickText, type ChartBar as Bars } from "./model";
@@ -27,6 +27,8 @@ import { guestSource } from "../guests/api";
 import { useWorkCommands } from "../formats/command";
 import { Preview } from "../formats/PreviewFrame";
 import { sheetPreviewSource } from "./preview";
+import { ExcelWaits } from "./excelWaits";
+import { useSaveToGoogle } from "./toGoogle";
 import { ShareButton } from "../guests/Share";
 
 /**
@@ -132,7 +134,9 @@ export function Body(props: Props) {
     setPreviewing(on);
     setAsked((n) => n + 1);
   }, []);
-  useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, act, showPreview);
+  // Save to Google Sheets: offered on the host's word, once the workbook has opened; a file that reads only here, or moved, is not sent.
+  const google = useSaveToGoogle({ env: props.env, itemId: item.id, offered: ready && !locked && view?.canUpload === true });
+  useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, act, showPreview, google.row);
   // File → Export… and ⇧⌘E open Preview on the format he last used; File → Print… and ⌘P on Print. Answered once the grid is
   // up, when the root they are offered for is there.
   useWorkCommands(frame, ready ? { export: () => showPreview("last"), print: () => showPreview("print") } : {});
@@ -211,6 +215,7 @@ export function Body(props: Props) {
         />
       ) : null}
       {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
+      {google.dialog}
       <div className={stacked ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1"}>
         <Canvas
           key={book.key}
@@ -413,6 +418,7 @@ function useSelectionFeed(
   frame: { current: HTMLDivElement | null },
   act: (work: Promise<SheetView>, fallback: string) => Promise<void>,
   showPreview: (on: "last") => void,
+  googleRow: MoreEntry | null,
 ): void {
   const range = selection?.range;
   const many = !!range && (range.endRow > range.startRow || range.endColumn > range.startColumn);
@@ -467,10 +473,11 @@ function useSelectionFeed(
       // saves back over it.
       ...(store ? [{ id: "preview", label: "Preview…", icon: Export, run: () => showPreview("last") }] : []),
       ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync.host, "csv", activeName()) }] : []),
+      ...(googleRow ? [googleRow] : []),
       ...(shareGone ? [{ id: "share", label: "Share", icon: Share, run: () => way.ask() }] : []),
     ]);
     return () => shell.more?.(null);
-  }, [shell, sync, wide, handle, grid, act, store, activeName, shareGone, way, showPreview]);
+  }, [shell, sync, wide, handle, grid, act, store, activeName, shareGone, way, showPreview, googleRow]);
 }
 
 const letters = (column: number): string => {
@@ -680,8 +687,9 @@ export function Bar(props: Props) {
   const sync = syncFor(props);
   const { view, book, failed } = useSheetSync(sync);
   if (failed) return null;
-  // Only a LifeOS sheet shares; Share is whole or gone, hidden in the narrow bar before it could be cut.
-  if (view && book) return guestSource(props.source) ? <BarShare {...props} way={shareWayOf(sync)} /> : null;
+  // Only a LifeOS sheet shares; Share is whole or gone, hidden in the narrow bar before it could be cut. An opened
+  // Excel file says what waits in Excel, in words that give way before any control does.
+  if (view && book) return guestSource(props.source) ? <BarShare {...props} way={shareWayOf(sync)} /> : <ExcelWaits reach={view.reach} store={view.store} />;
   return <Skeleton className="h-3 w-30" />;
 }
 

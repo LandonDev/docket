@@ -220,7 +220,7 @@ describe('an opened package', () => {
 
   it('offers the switch for a file with a pivot table or macros', async () => {
     for (const [file, part] of [
-      ['pivot.xlsx', 'pivot tables'],
+      ['pivot.xlsx', '2 pivot tables'],
       ['macro.xlsm', 'macros']
     ]) {
       const p = join(scratch, `${n}-${file}`)

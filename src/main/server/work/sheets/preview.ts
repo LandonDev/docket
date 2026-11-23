@@ -521,7 +521,8 @@ export interface PreviewParams {
 
 /** `work.sheets.preview`: the picture of `format`, with what it drops. */
 export async function previewSheet(s: Sheets, item: CanvasItem, params: PreviewParams, signal?: AbortSignal): Promise<SheetPreviewAnswer> {
-  // "Check in Excel" is a later milestone: the source offers no `office()`, so nothing asks.
+  // "Check in Excel" (`by: 'office'`) is checkExcel.ts's, and the module answers it before this is called: a draw
+  // here is LibreOffice's, and is never handed back under Excel's name.
   if (params.by === 'office') throw new Error('Excel is not in reach from here yet.')
   return again(async () => {
     const book = await bookOf(s, item)

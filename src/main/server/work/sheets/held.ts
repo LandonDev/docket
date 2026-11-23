@@ -21,6 +21,7 @@ import { cellsOfMutations, PackageStore } from './packages'
 import { ChangeStore } from './changes'
 import { SuggestionStore } from './suggestions'
 import type { SheetJobs } from './workerClient'
+import { offersGoogle } from './toGoogleOffer'
 
 /**
  * Where a sheet item lives and how the pillar reaches it
@@ -294,7 +295,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   // A Files tab's owner is no thread and has no scope: what others can open is read from the source itself.
   const scope = s.ctx.scopeOf(item.sessionId)
   const shared = sharedOf(s.ctx, item.source) || (scope?.shared(item.source) ?? false)
-  const base = { itemId: item.id, sessionId: item.sessionId, mode: s.suggestions.mode(key), charts: chartsOf(s.ctx, key) }
+  const base = { itemId: item.id, sessionId: item.sessionId, mode: s.suggestions.mode(key), charts: chartsOf(s.ctx, key), ...(offersGoogle(s.ctx, held, item.source) ? { canUpload: true as const } : {}) }
   const written = s.suggestions.written(key)
   if (held.at === 'package') {
     const st = await s.packages.open(held.path)

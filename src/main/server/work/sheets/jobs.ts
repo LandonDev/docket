@@ -13,6 +13,7 @@ import { patchRules, readRules, type DefinedNames, type RulesEdit, type SheetFil
 import { patchTables, readTables, type TablesEdit } from './patch/tables'
 import { formatEditsOf } from './formats'
 import { diffWorkbooks } from './diff'
+import { waitsOf } from './excelWaits'
 import { graft } from './graft'
 import { writeCsv } from './writer'
 import type { StructuralOp } from './structural'
@@ -63,23 +64,9 @@ export interface SaveAnswer {
   }
 }
 
-/** What the importer counts, said as a person reads it, for the things only Excel does (the sheet research §8). */
-const REACH: Record<string, string> = {
-  vbaProject: 'macros',
-  formControls: 'form controls',
-  pivotTables: 'pivot tables',
-  pivotCaches: 'pivot tables',
-  slicers: 'slicers',
-  powerQuery: 'Power Query',
-  dataConnections: 'data connections',
-  externalLinks: 'links to other workbooks',
-  charts: 'charts',
-  chartsheets: 'charts',
-  dataTables: 'what-if tables'
-}
-
+/** What our grid cannot reach in a package: the things only Excel does, counted from the importer's report (excelWaits.ts). */
 export function reachOf(report: Pick<ImportReport, 'unsupported'>): SheetReach | null {
-  const parts = [...new Set(report.unsupported.map((u) => REACH[u.kind]).filter((p): p is string => !!p))]
+  const parts = waitsOf(report)
   return parts.length ? { parts, to: 'excel' } : null
 }
 

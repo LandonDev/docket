@@ -445,9 +445,9 @@ Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
   sheet's, answers "That preview is gone: draw it again." and the frame
   draws once more. `work.sheets.previewExport {itemId, format, sheet?}`
   makes the file now and answers its `rev`, `size` and `name`, read the
-  same way. `by: 'office'` is refused: "Check in Excel" is a later
-  milestone and the source offers no `office()`. A sheet he can only read
-  previews and exports like any other: none of these change the file.
+  same way. `by: 'office'` is his press on "Check in Excel" (below). A
+  sheet he can only read previews and exports like any other: none of
+  these change the file.
 - **What is drawn.** The workbook is the package as its revision stands
   (`packages.fileAt` at the store's newest rev), or for a sheet the
   service holds, the .xlsx the model writer makes of its snapshot
@@ -607,6 +607,85 @@ Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
   stand-in runner, not over a real link. The sheet's Page set-up rows
   (SHT6) are not in this tree, so the source offers no `setup` yet.
 
+### Check in Excel
+
+Excel's own PDF of the workbook, beside LibreOffice's (SHT9;
+`sheets/checkExcel.ts`, the canvas's `office()` in `preview.ts`). It is
+the office pillar's render, `xlsx → pdf+excel`
+([work-office.md](work-office.md) "Office as a renderer"), asked through
+the conversion runner, so that pillar's rules are the rules: a carrier
+offers the pair only once its own live proof passed (`RENDER_PROVEN`: the
+box's Windows VM, no Mac and no PC yet), Excel draws a copy in the job's
+own folder, and a sleeping VM is woken only by a job that carries his
+press.
+
+- **The wire.** `work.sheets.previewOffice {itemId}` answers
+  `{ app: 'excel', state }` with `ready`, `asleep`, `not open` or `none`;
+  it wakes nothing and starts nothing, and tells a caller whose press
+  would not be his own `none`. `work.sheets.preview` with
+  `by: 'office'` answers Excel's pages (`drawnBy: 'excel'`, the whole
+  workbook, read by range like any render) or `{ notInReach }` when Excel
+  went out of reach since the look. The press asks the state afresh before
+  the workbook is read, so an Excel shut since is said and never answered
+  from a kept picture.
+- **Whose press.** His own, made on this host (`pressOf`): a thread,
+  another host of his on his behalf, and a remote key that cannot approve
+  are refused with "Check in Excel needs your own press." before anything
+  is read.
+- **Which workbooks.** Never one others can open (`madeFromShared`): the
+  renderer may be another computer than the file's own, as the document's
+  Check in Word rules. Never a macro workbook: the pair takes an .xlsx,
+  and Excel refuses macros under that name. Never one Excel or Google
+  holds. Each answers `none`, and the frame offers no Check in Excel.
+- **What goes and what is kept.** The workbook as it stands: an opened
+  Excel file's bytes, a sheet of ours as the .xlsx the model writer makes.
+  The drops are the Excel format's. Excel's PDF is kept by the workbook's
+  content hash beside Preview's renders, so a second press on the same
+  workbook asks Excel nothing; the scratch copy goes when the call ends.
+- **The frame.** "Check in Excel" stands on the Excel format alone, at the
+  end of the line over the first page; "Waking Windows" or "Drawing in
+  Excel" while it runs; "As Excel draws it" after. Where Excel is shut or
+  not in reach the frame offers nothing, and a press that loses it says
+  "Excel is not in reach" once and LibreOffice's picture stays.
+- **Proven with stand-ins, not live.** `checkExcel.test.ts` runs the real
+  runner and the office pillar's real converters over that pillar's fake
+  Office; `previewOffice.test.ts` holds the canvas's source to the Preview
+  contract in every state. No real Excel drew a workbook through this
+  path in SHT9: the pair's own live proof in the VM is the office
+  pillar's (SLD2), and Excel's PDFs of the print fixtures above were made
+  there by script, not through `checkInExcel`. Excel draws the whole
+  workbook, so a sheet of thousands of pages takes Excel as long as it
+  takes and comes back as one PDF.
+
+### Save to Google Sheets
+
+More → Save to Google Sheets puts a copy of the workbook in his Drive as a
+Google spreadsheet (SHT9; `sheets/toGoogle.ts`, `toGoogleOffer.ts`, the
+canvas's `toGoogle.tsx`). The act is the google pillar's
+([work-google.md](work-google.md) "Save to Google"): `work.google.upload`
+is his press at his own window, never a thread's and never another host's
+on his behalf, behind the item's file fence, and it refuses a file from a
+shared library before any byte is read. It is not a held act: the copy
+lands in his own Drive, shared with nobody. Threads have no upload tool.
+
+- The sheets pillar registers the bytes (`registerUploadBytes('sheet',
+  sheetUploadBytes)`, in the module's `start`): the workbook as Preview's
+  Excel format draws it, an opened Excel file as it stands on disk (an
+  .xlsm as one, with its own MIME type), a sheet of ours as the .xlsx the
+  model writer makes. What that format's line in Preview says it leaves
+  out, the Google copy lacks too; what Drive's own conversion changes is
+  Google's.
+- The row is offered on the host's word (`SheetView.canUpload`,
+  `offersGoogle`): a workbook this host holds that is his own. Not one
+  Excel or Google holds, not one in a library, a cloud folder or on
+  another host, not a Teams snapshot; and not while the file opens to
+  read only or has moved.
+- The dialog is the google pillar's (`UploadGoogleDialog`): an account of
+  his that allows Drive files, Save, then a toast with Open in Google.
+- `toGoogle.test.ts` runs the google pillar's own wire over its fake
+  Google and this pillar's real provider over real workbooks in dummy
+  folders. No Google was reached and nothing was written to a real Drive.
+
 ## Sheets the service holds
 
 `sheets/host/host.ts` (`SheetHost`) keeps one headless Univer
@@ -697,7 +776,10 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 
 `sheet_read`, `sheet_write`, `sheet_suggest`, `sheet_format`, `sheet_rule`,
 `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
-read and 1,000 a write. `sheet_write`, `sheet_format` and `sheet_rule` say
+read and 1,000 a write. A read of an opened Excel file ends with one line
+when the file holds what only Excel changes ("This workbook also holds 2
+pivot tables: only Excel changes those…", `waitsNote`), so a thread does
+not claim a change it could not make. `sheet_write`, `sheet_format` and `sheet_rule` say
 why (`because`), under one rule (`ruled`):
 
 - `asked` with `quote`, the owner's own words in the thread
@@ -841,7 +923,15 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
 - The switch: when `view.reach` is set (macros, pivot tables, charts, Power
   Query, data connections, links to other workbooks, form controls,
   slicers, what-if tables), "TempCode | Excel" or "TempCode | Full editor"
-  sits in the tab row (`reach.to`). Excel opens the file in desktop Excel
+  sits in the tab row (`reach.to`). For an opened Excel file the parts are
+  counted from the importer's report (`excelWaits.ts` `waitsOf`: a
+  workbook's pivot tables and charts summed across its sheets, one as "a
+  pivot table", macros and Power Query named without a count), and the
+  kind's bar says them in one muted line at the end of its tools, under
+  the switch, "2 pivot tables and macros open in Excel"
+  (`excelWaits.tsx`): cut at the bar's room, whole in a tip while it is
+  cut. A workbook Excel or Google holds has the switch and no
+  line. Excel opens the file in desktop Excel
   where it is installed; Full editor opens it in ONLYOFFICE on the box (next
   section), and its side spins until the host answers the page, which opens
   in the browser (`work.sheets.switch` answers `{ opened, url? }`).
@@ -1137,7 +1227,15 @@ The harness corpus also keeps the workbooks the editors plan measured with
   saved. Moves are saved where the file allows ("Structural edits").
 - The model writer leaves out notes and our charts.
 - An agent adds rules and formats (`sheet_rule`, `sheet_format`); it does
-  not change or remove a rule, merge cells or sort.
+  not change or remove a rule, merge cells or sort. The plan promised
+  agents no more than those two tools, and SHT9 added none: a thread has
+  no tool for a table, a chart, page set-up, Preview, Check in Excel or
+  Save to Google Sheets.
+- Check in Excel on his Mac or a Windows PC: the office pillar offers the
+  pair on no carrier but the box's VM until its own proof passes there.
+  Check in Excel for a macro workbook, and for a workbook others can open.
+- Excel's own picture of a page range: Check in Excel draws the whole
+  workbook.
 - A table made in the grid on an opened Excel file, a chart, page set-up:
   later milestones.
 - Presence on the canvas.

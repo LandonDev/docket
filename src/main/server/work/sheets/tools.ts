@@ -13,6 +13,7 @@ import { ensureCsvSheet, heldOf, heldOfPath, host, sheetsOf, storeKey, type Held
 import type { A1Cell } from './host/wire'
 import { mutationsOf } from './mutations'
 import { PACKAGE_UNIT } from './packages'
+import { waitsNote } from './excelWaits'
 
 /**
  * The tools a Work thread reads and changes a sheet with
@@ -284,7 +285,7 @@ export const sheetTools: WorkTool[] = [
     name: 'sheet_read',
     description:
       'Reads cells of a sheet: each cell\'s value, and its formula when it has one. `range` is A1 (B4:D9, or \'Q1 Budget\'!A1:F40 for another tab; at most 10,000 cells a call). ' +
-      'Pass `item` for a sheet open in the canvas, or `file` for an .xlsx, .xlsm or .tcsheet path.',
+      'Pass `item` for a sheet open in the canvas, or `file` for an .xlsx, .xlsm or .tcsheet path. For an Excel file it also says what only Excel changes there (pivot tables, charts, macros).',
     input: z.object({ ...target, range: z.string().min(2).max(300) }),
     readOnly: true,
     run: async (args, ctx) => {
@@ -294,7 +295,9 @@ export const sheetTools: WorkTool[] = [
         const s = await sheetsOf(ctx)
         const got = t.held.at === 'package' ? await s.packages.read(t.held.path, a.range) : await host(ctx, 'range', { sheet: t.held.ref, range: a.range })
         const lines = got.cells.map((row) => row.map(show).filter(Boolean).join('  |  ')).filter(Boolean)
-        return workText(`${got.sheet}\n${lines.length ? lines.join('\n') : '(every cell in that range is empty)'}`)
+        // What the sheet tools do not reach in this file, so the thread does not claim a change it could not make.
+        const waits = t.held.at === 'package' ? waitsNote((await s.packages.open(t.held.path)).inspected.reach?.parts) : ''
+        return workText(`${got.sheet}\n${lines.length ? lines.join('\n') : '(every cell in that range is empty)'}${waits ? `\n\n${waits}` : ''}`)
       } catch (err) {
         return fail(errorText(err))
       }

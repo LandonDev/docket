@@ -13,6 +13,7 @@ export default [
   { name: "A chart over the cells", props: { moment: "chart" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "Read only", props: { moment: "readonly" } },
+  { name: "An Excel file with what only Excel does: the bar says what waits there", props: { moment: "waits" } },
 ];
 
 const usd = (v: number) => ({ v, s: "usd" });

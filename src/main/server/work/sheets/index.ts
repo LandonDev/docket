@@ -7,7 +7,9 @@ import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Princip
 import { canvasItemDir } from '../canvas/store'
 import { sharedOf, workspaceHere } from '../files/policy'
 import { registerFileMaker, registerFileMoved, registerFilePreviewer, registerFileWaiting, type FileMaker } from '../files/hooks'
+import { registerUploadBytes } from '../google/uploads'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
+import { checkInExcel, excelReach } from './checkExcel'
 import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
 import { blankWorkbook } from './host/backends'
 import type { SheetRef } from './host/wire'
@@ -20,6 +22,7 @@ import { dropSharedPreviews, dropSharedPreviewsOf, exportPreview, previewSheet, 
 import { mapCell, STRUCTURAL_CONVERTERS } from './structural'
 import { ensureSuggestionTables, type Which } from './suggestions'
 import { layChange, sheetTools, Unplaced, writeAccepted } from './tools'
+import { sheetUploadBytes } from './toGoogle'
 import { sheetWaiting } from './waiting'
 
 /**
@@ -100,7 +103,7 @@ export const sheets: WorkModule = {
     ensureChangeTables(db)
     db.exec('CREATE TABLE IF NOT EXISTS work_sheets_charts (store TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY (store, id))')
   },
-  async handle(req, ctx, by) {
+  async handle(req, ctx, by, signal) {
     if (!req.method.startsWith('work.sheets.')) return NOT_HANDLED
     const s = await sheetsOf(ctx)
     const named = (req as { params?: { itemId?: unknown } }).params?.itemId
@@ -226,7 +229,11 @@ export const sheets: WorkModule = {
         return handled(await exportSheet(s, item!, req.params.format, req.params.sheet))
       // Preview and export (preview.ts): a sheet he can only read still previews; nothing here changes the file.
       case 'work.sheets.preview':
+        // "Check in Excel" is his press alone (checkExcel.ts): Excel's own picture, or why none came.
+        if (req.params.by === 'office') return handled(await checkInExcel(s, item!, by, signal))
         return handled(await previewSheet(s, item!, req.params))
+      case 'work.sheets.previewOffice':
+        return handled(await excelReach(s, item!, by))
       case 'work.sheets.previewRead':
         return handled(readSheetPreview(ctx, item!, req.params))
       case 'work.sheets.previewExport':
@@ -246,11 +253,14 @@ export const sheets: WorkModule = {
     // Files' page picture of a workbook: the first page of its print, drawn as Preview draws it. A crash's scratch goes.
     sweepPreviewScratch(ctx.dataDir)
     const offPreviewer = registerFilePreviewer('sheet', sheetFilePreviewer(ctx))
+    // Save to Google Sheets: the google pillar's upload asks this pillar for the workbook's bytes (toGoogle.ts).
+    const offGoogle = registerUploadBytes('sheet', sheetUploadBytes)
     const off = (): void => {
       offWaiting()
       offMoved()
       offMaker()
       offPreviewer()
+      offGoogle()
     }
     return () => {
       off()

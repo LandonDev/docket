@@ -18,7 +18,7 @@ import { BUDGET, BUDGET_CHANGES, INVOICES, SPEND } from "./SheetBody.preview.fix
 import { resetSheetSyncs, SheetSync, syncOf, type Workbook } from "./sync";
 import { fakeGrid, fakeSheetHost, sheetView, type FakeGrid } from "./testkit";
 
-export type SheetMoment = "suggestions" | "stepped" | "own" | "format" | "proposed" | "chart" | "loading" | "readonly";
+export type SheetMoment = "suggestions" | "stepped" | "own" | "format" | "proposed" | "chart" | "loading" | "readonly" | "waits";
 
 void workCanvasChunk.load();
 
@@ -58,6 +58,14 @@ function setUp(moment: SheetMoment): { view: SheetView; book: Workbook; title: s
       book: SPEND,
       grid: fakeGrid({ selection: "B3" }),
       view: sheetView({ shared: true, charts: [{ id: "c1", sheet: "budget", range: "A1:B6", title: "Spend by category", row: 7, col: 0 }] }),
+    };
+  // An opened Excel file that holds what only Excel does: the bar says what waits there, beside the switch.
+  if (moment === "waits")
+    return {
+      title: "Season stats.xlsx",
+      book: INVOICES,
+      grid: fakeGrid({ selection: "F4", columns: 7 }),
+      view: sheetView({ name: "Season stats.xlsx", store: "package", mode: "writes", canUpload: true, reach: { parts: ["2 pivot tables", "12 charts", "macros"], to: "excel" } }),
     };
   if (moment === "loading") return { ...budget, grid: fakeGrid(), view: sheetView(), hold: true };
   if (moment === "readonly") return { ...budget, grid: fakeGrid({ selection: "E5" }), view: sheetView({ readOnly: "Saved as .xlsb, which opens here only to read" }) };

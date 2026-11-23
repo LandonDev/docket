@@ -189,6 +189,8 @@ export interface SheetView {
   row?: SheetRowControl[]
   /** an opened Excel file whose host saves moved cells, rows and columns (sheets/structural.ts); absent, the canvas stops a move as he makes it */
   moves?: true
+  /** Save to Google Sheets is offered: a workbook of his own that this host holds (sheets/toGoogle.ts `canSaveToGoogle`) */
+  canUpload?: true
 }
 
 /** One revision in a sheet's history. */
@@ -241,7 +243,8 @@ export type SheetPreviewAnswer = { drops: string[] } & (
       pages: number
       /** set when the PDF holds only the first pages of the whole: `of` is about how many there are */
       shown?: { from: number; to: number; of: number }
-      drawnBy: 'libreoffice'
+      /** `excel` only for his press on "Check in Excel" (`by: 'office'`): Excel's own PDF of the whole workbook */
+      drawnBy: 'libreoffice' | 'excel'
     }
   | { kind: 'table'; name: string; rows: string[][]; sheets: string[] }
   | { kind: 'html'; html: string }
@@ -304,7 +307,9 @@ export const SheetsRequestSchemas = [
    * → SheetPreviewAnswer: the workbook as `format` makes it, for the Preview frame, drawn on the host that holds
    * the file. A paged format draws `pages` (1-based, inclusive; the first 50 when absent); `sheet` picks the sheet
    * a CSV or TSV holds. Renders are kept by content hash, and a file others can open keeps its own in its item's
-   * folder alone.
+   * folder alone. `by: 'office'` is his press on "Check in Excel" (sheets/checkExcel.ts): Excel's own PDF of the
+   * workbook, `drawnBy: 'excel'`, or `{ notInReach: 'asleep' | 'not open' | 'none' }` when Excel went out of
+   * reach since `previewOffice` was asked; refused for any caller whose press is not his own.
    */
   request(
     'work.sheets.preview',
@@ -316,6 +321,8 @@ export const SheetsRequestSchemas = [
       by: z.literal('office').optional()
     })
   ),
+  /** → { app: 'excel', state: 'ready' | 'asleep' | 'not open' | 'none' }: whether Excel can draw this workbook from this host now. Wakes nothing and starts nothing. */
+  request('work.sheets.previewOffice', z.object({ itemId })),
   /** → { data: base64 }: bytes of one render by range. A `rev` no longer kept is refused: draw it again. */
   request('work.sheets.previewRead', z.object({ itemId, rev: z.string().regex(/^[a-f0-9]{32}$/), offset: z.number().int().min(0), length: z.number().int().min(1).max(SHEET_PREVIEW_READ_MAX) })),
   /** → SheetExportAnswer: the file in `format` made now from the workbook as it stands, read with `previewRead`. */
@@ -345,6 +352,7 @@ export const SHEETS_CAPS = {
   'work.sheets.switch': 'operate',
   'work.sheets.export': 'operate',
   'work.sheets.preview': 'operate',
+  'work.sheets.previewOffice': 'read',
   'work.sheets.previewRead': 'read',
   'work.sheets.previewExport': 'read'
 } satisfies CapsOf<typeof SheetsRequestSchemas>

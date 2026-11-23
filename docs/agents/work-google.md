@@ -193,9 +193,12 @@ Drive through Drive's format conversion. A document still uploads its
 Word export, with suggestions arriving as Google's. Slides registers
 its saved PowerPoint bytes with `registerUploadBytes('slides', read)`:
 the file itself, or an import's converted snapshot. The call
-returns the new file's ID and link. Sheets can register its own byte
-provider. Until SHT9 does so, the upload answers that Save to Google
-Sheets is not built yet.
+returns the new file's ID and link. Sheets registers its own bytes with
+`registerUploadBytes('sheet', sheetUploadBytes)` when its module starts
+(sheets/toGoogle.ts; [work-sheets.md](work-sheets.md) "Save to Google
+Sheets"): an opened Excel file as it stands, or a sheet of ours as the
+.xlsx the model writer makes. On a host whose sheets module is not
+running, the upload answers that Save to Google Sheets is not built yet.
 
 The owner's save goes straight to Drive and records a result. Threads
 have no upload tool. `uploadOfficeFile` checks, for every kind's provider:
@@ -217,4 +220,4 @@ each file's sharing, and `files.list` a page at a time (`pageMost`). Tests:
 tests check the deck mirror, Read again, the mirror shown when Drive cannot
 be reached, the copy to edit by caller, the exact bytes and MIME type of a
 deck's upload, a peer's upload and a Teams snapshot refused for every kind,
-and the reply for a sheet before the sheets build registers its own.
+and the reply for a sheet where the sheets module has registered none.
