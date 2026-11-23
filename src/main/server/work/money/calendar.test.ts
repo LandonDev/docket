@@ -4,10 +4,18 @@ import type { CalendarOffer, MoneyRead, MoneyTripped } from '@shared/contract-wo
 import { payCategory } from '@shared/work/money'
 import type { Caller } from '../modules'
 import { money } from '.'
-import { dayOfEvent, forgetCalendar } from './calendar'
+import { dayOfEvent, forgetCalendar, setMeasure } from './calendar'
 import { bench, LOCAL, req, type Bench } from './testing'
 
 /* Pay and mileage from the calendar: what is offered, what a press adds, and what is remembered. */
+
+// Clashes' measure of a drive, standing in: a leg per pair of stops, by the event's id.
+const legs = new Map<string, { miles: number; minutes: number; measured: boolean } | null>()
+const drivesAsked: unknown[][] = []
+const standIn = async (_ctx: unknown, workspaceId: string, from: { event?: string }, to: { event?: string }) => {
+  drivesAsked.push([workspaceId, from, to])
+  return legs.get(from.event ?? to.event ?? '') ?? null
+}
 
 let b: Bench
 const call = async <T>(method: string, params: unknown, by: Caller = LOCAL): Promise<T> => ((await money.handle!(req(method, params), b.ctx, by)) as { result: T }).result
@@ -24,6 +32,9 @@ const trip = (o: CalendarOffer, over: Record<string, unknown> = {}) => call<Mone
 beforeEach(() => {
   b = bench()
   forgetCalendar()
+  legs.clear()
+  drivesAsked.length = 0
+  setMeasure(standIn)
 })
 
 describe('what the calendar offers', () => {
@@ -152,6 +163,47 @@ describe('adding a trip', () => {
     await expect(call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-11-20', title: 'X', miles: 1 }, MODEL)).rejects.toThrow('Only the owner')
     await expect(call('work.money.skip', { workspaceId: 'ws-ref', eventId: 'e' }, MODEL)).rejects.toThrow('Only the owner')
     await expect(call('work.money.rate', { workspaceId: 'ws-ref', year: 2026, rate: 0.72 }, MODEL)).rejects.toThrow('Only the owner')
+  })
+})
+
+describe('miles from Clashes', () => {
+  it('fills the miles of a place he never gave, there and back, and offers one press only when both legs were measured along roads', async () => {
+    b.lifeos.events = [game('Harrison', 2, { amount: { cents: 7500, currency: 'USD' } }), game('West Side', 3, { amount: { cents: 8000, currency: 'USD' } }), game('Nowhere', 4)]
+    legs.set('Harrison', { miles: 12.04, minutes: 21, measured: true })
+    legs.set('West Side', { miles: 30, minutes: 40, measured: false })
+    const got = await offered()
+    expect(got.map((o) => [o.eventId, o.miles, o.measured])).toEqual([
+      ['Nowhere', null, false],
+      ['West Side', 60, false],
+      ['Harrison', 24.1, true]
+    ])
+    // Two legs an event, from the job's start and back.
+    expect(drivesAsked).toContainEqual(['ws-ref', { start: true }, { event: 'Harrison' }])
+    expect(drivesAsked).toContainEqual(['ws-ref', { event: 'Harrison' }, { start: true }])
+    // Asked once: the next read holds what it was told.
+    const asked = drivesAsked.length
+    await offered()
+    expect(drivesAsked).toHaveLength(asked)
+  })
+
+  it('asks nothing for a place whose miles he already gave, and his miles are his own word', async () => {
+    b.lifeos.events = [game('Harrison', 9), game('Harrison', 2, { _id: 'again' })]
+    legs.set('Harrison', { miles: 12, minutes: 20, measured: false })
+    const [first] = await offered()
+    expect(first).toMatchObject({ miles: 24, measured: false })
+    // He checked the estimate and accepted 26 miles: kept by place.
+    await trip(first, { fee: 7500, miles: 26 })
+    const [next] = await offered()
+    expect(next).toMatchObject({ eventId: 'again', miles: 26, measured: true })
+  })
+})
+
+describe('miles with no Clashes to ask', () => {
+  it('leaves the miles for him to type when the clashes pillar cannot measure (Work off there, LifeOS away)', async () => {
+    // The real call, on a LifeOS that refuses: no miles, and the view still paints.
+    setMeasure(null)
+    b.lifeos.events = [game('Harrison', 2)]
+    expect(await offered()).toMatchObject([{ eventId: 'Harrison', miles: null, measured: false }])
   })
 })
 

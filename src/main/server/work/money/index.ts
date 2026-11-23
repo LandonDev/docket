@@ -6,6 +6,7 @@ import { categoriesFor } from '@shared/work/money'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { registerFileMoved } from '../files/hooks'
+import { MONEY_TELLS, moneySearch } from './borders'
 import { addRow, editRow, MONEY_FOLDER, openBooks, payRow, restoreColumns } from './book'
 import { offers, placed } from './calendar'
 import { accept, drop, filedPicture, forgetJob, jobOfWaiting, parseFor, receive, resume, toConfirm, waitingPicture } from './inbox'
@@ -181,7 +182,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
   }
 }
 
-export const money: WorkModule = {
+const module: WorkModule = {
   id: 'money',
   ensure: ensureMoneyTables,
   handle,
@@ -192,6 +193,7 @@ export const money: WorkModule = {
       ? "Money: `money_read` reads this job's ledger (a sheet the owner keeps). `money_add` leaves an entry and `money_receipt` a receipt's file in the owner's To confirm list. You never write the ledger: nothing you add is in it until the owner accepts it in the Money view, so never say an entry was recorded."
       : null,
   convert: MONEY_CONVERTERS,
+  search: [moneySearch],
   start(ctx) {
     const stopReading = resume(ctx)
     const off = registerFileMoved(movedHook(ctx))
@@ -205,3 +207,6 @@ export const money: WorkModule = {
     dropWorkspace(ctx, workspaceId)
   }
 }
+
+// `tells` rides beside the module until the digest declares it on WorkModule; then it moves into the literal above.
+export const money: WorkModule = Object.assign(module, { tells: MONEY_TELLS })

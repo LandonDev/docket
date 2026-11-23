@@ -164,7 +164,8 @@ export function linesOfExtract(x: Extract): ReceiptLine[] {
 const SCAN_WIDTH = 2000
 
 async function pdfLines(ctx: Ctx, path: string, signal?: AbortSignal): Promise<ReceiptLine[]> {
-  const read = await ctx.convert({ from: 'pdf', to: 'extract', input: path, options: { pages: '1-2', tables: false }, signal })
+  // The first two pages at most: a page list would be refused for a file with fewer ("Page 2 is not in this file").
+  const read = await ctx.convert({ from: 'pdf', to: 'extract', input: path, options: { maxPages: 2, tables: false }, signal })
   const lines = linesOfExtract(JSON.parse(readFileSync(read.output, 'utf8')) as Extract)
   if (lines.length) return lines
   // No text layer: a scan. Its first page is read as a picture.

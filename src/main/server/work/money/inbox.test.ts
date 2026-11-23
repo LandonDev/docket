@@ -173,6 +173,8 @@ describe('a receipt comes in', () => {
     // The text PDF never reached the picture reader; the scan was drawn at 2000 wide, then read.
     expect(b.converted.map((j) => `${j.from}>${j.to}`)).toEqual(['pdf>extract', 'pdf>extract', 'pdf>png', 'png>lines'])
     expect(b.converted[2].options).toEqual({ page: 1, width: 2000 })
+    // No page list: a one-page file is read whole, never refused for a page it lacks.
+    expect(b.converted[0].options).toEqual({ maxPages: 2, tables: false })
   })
 
   it('makes a HEIC a JPEG first, then reads it', async () => {
