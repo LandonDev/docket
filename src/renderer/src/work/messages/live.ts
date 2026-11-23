@@ -164,6 +164,12 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
       const after = await sendItem(pressed);
       if (!wentOut(after)) throw new Error(notSentWords(after));
     },
+    saveDraft: async (draft, text) => {
+      const item = heldItem(env, draft.id);
+      if (!item) throw new Error("This draft is no longer waiting");
+      const payload = (item.payload ?? {}) as { text?: string };
+      if (payload.text !== text) await editItem(item, { ...payload, text });
+    },
     dropDraft: async (draft) => {
       if (draft.held) {
         const item = heldItem(env, draft.id);

@@ -46,6 +46,8 @@ const SCENES: Record<string, () => Scene> = {
   "no-route": () => ({ page: { chatId: "c_playtest" } }),
   "mac-offline": () => ({ data: { routes: { c_jordan: { can: false, why: "Your Mac isn't running LifeOS" } } }, page: { chatId: "c_jordan" } }),
   "held-draft": () => ({ data: { drafts: { c_dana: [HELD_DRAFT] } }, page: { chatId: "c_dana" } }),
+  // A held draft where the route says no: Copy, LifeOS's reason on the draft's line, the draft kept.
+  "held-draft-offline": () => ({ data: { drafts: { c_jordan: [{ ...HELD_DRAFT, id: "held_2", text: "Running ten minutes late, save me a seat by the window." }] }, routes: { c_jordan: { can: false, why: "Your Mac isn't running LifeOS" } } }, page: { chatId: "c_jordan" } }),
   "copy-draft": () => ({ data: { drafts: { c_playtest: [COPY_DRAFT] } }, page: { chatId: "c_playtest" } }),
   "open-pictures": () => ({ page: { chatId: "c_art" } }),
   "open-files": () => ({ page: { chatId: "c_lucas" } }),

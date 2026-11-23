@@ -13,7 +13,7 @@ import { useMessagesData, type Paged } from "./data";
 import { Composer } from "./Composer";
 import { MessageBlock } from "./Message";
 import { blocksOf, chatFact, estimateOf, menuKey, newSince, wantsRead, type Block } from "./model";
-import { dropWanted, keepPlace, keepVisitSince, placeOf, useWanted, visitSince } from "./page";
+import { dropWanted, heldUnread, holdUnread, keepPlace, keepVisitSince, placeOf, releaseUnread, useWanted, visitSince } from "./page";
 import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 
 /**
@@ -42,7 +42,8 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   const visited = visitSince(workspaceId, chatId);
   if (visited === undefined && chat) keepVisitSince(workspaceId, chatId, newSince(chat));
   const since = visited !== undefined ? visited : chat ? newSince(chat) : null;
-  // The read mark waits until the column has placed him: a conversation whose messages did not come is not read.
+  // The read mark waits until the column has placed him (on the message he was sent to, or where it opens once that
+  // lookup ends) and holds a ready page: a conversation whose messages did not come is not read.
   const [placed, setPlaced] = useState(false);
   const onPlaced = useCallback(() => setPlaced(true), []);
   // The list's row lends the toolbar its name while the conversation itself has not answered.
@@ -50,20 +51,22 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   const rowName = listed.status === "ready" ? listed.value.rows.find((row) => row._id === chatId)?.name : undefined;
 
   // His Mark unread holds: nothing marks the conversation read again until a newer message from someone else comes.
-  // An unread mark that comes with no newer message is his: noted as it is drawn, before any effect could mark it read.
+  // An unread mark that comes with no newer message is his: noted as it is drawn, before any effect could mark it read,
+  // and kept with the visit in page.ts, so a Retry or the 640px crossing finds it held. The visit's end lets it go.
   const lastIn = chat?.lastInAt ?? 0;
-  const [held, setHeld] = useState<number | null>(null);
+  const held = heldUnread(workspaceId, chatId);
   const [seen, setSeen] = useState<{ unread: boolean; lastIn: number } | null>(null);
   if (chat && (!seen || seen.unread !== chat.unread || seen.lastIn !== lastIn)) {
-    if (seen && !seen.unread && chat.unread && lastIn <= seen.lastIn) setHeld(lastIn);
+    if (seen && !seen.unread && chat.unread && lastIn <= seen.lastIn) holdUnread(workspaceId, chatId, lastIn);
+    else if (held !== undefined && lastIn > held) releaseUnread(workspaceId, chatId);
     setSeen({ unread: chat.unread, lastIn });
   }
-  const holding = held !== null && lastIn <= held;
+  const holding = held !== undefined && lastIn <= held;
 
   // Opening marks it read; so does a newer message while it is open and the window is in front, or his coming back to
   // the window while something waits.
   const markRead = data.markRead;
-  const wants = placed && chat && !holding ? wantsRead(chat) : false;
+  const wants = placed && messages.status === "ready" && chat && !holding ? wantsRead(chat) : false;
   const marked = useRef(false);
   useEffect(() => {
     if (!wants) return;
@@ -266,6 +269,12 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
     anchor.current = atFoot.current ? null : layout.anchorAt(view.current.up);
   };
   const over = (index: number, air: number): number => layout.offsetOf(index + 1) + air - view.current.height;
+  /** Opens over "New", else where he left it, else at the foot, and tells the conversation he is placed. */
+  const placeOpening = (): void => {
+    const kept = placeOf(workspaceId, chatId);
+    goTo(fresh >= 0 ? over(fresh, NEW_AIR) : kept ? (layout.scrollTopFor(kept) ?? 0) : 0);
+    onPlaced();
+  };
 
   const wanted = useWanted(workspaceId, chatId);
   // "New" above the first page: older pages are read until it is held (a bounded number), and the column opens there.
@@ -275,6 +284,38 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
   const range = layout.range(view.current.up, view.current.height, OVERSCAN);
   const shown = upward.slice(range.start, range.end);
 
+  // Sizes that change with no draw of the column (a picture falling to its failure line, a sash drag rewrapping the
+  // words, the window's own height) are watched, as the transcript watches its rows: a drawn block or the viewport
+  // whose size is not the one kept draws the column again, and that draw's measure moves the offsets and holds his place.
+  const watcher = useRef<{ observer: ResizeObserver; nodes: Set<Element> } | null>(null);
+  const watch = (el: HTMLElement, nodes: Iterable<HTMLElement>): void => {
+    if (typeof ResizeObserver === "undefined") return;
+    const w = (watcher.current ??= {
+      observer: new ResizeObserver((entries) => {
+        const differs = entries.some(({ target }) => {
+          const node = target as HTMLElement;
+          const key = node.dataset.block;
+          if (!key) return node.clientHeight > 0 && node.clientHeight !== view.current.height;
+          const index = layout.indexOf(key);
+          return node.offsetHeight > 0 && index >= 0 && Math.abs(layout.sizeOf(index) - node.offsetHeight) >= 1;
+        });
+        if (differs) redraw();
+      }),
+      nodes: new Set(),
+    });
+    const drawn = new Set<Element>([el, ...nodes]);
+    for (const node of w.nodes) if (!drawn.has(node)) w.observer.unobserve(node);
+    for (const node of drawn) if (!w.nodes.has(node)) w.observer.observe(node);
+    w.nodes = drawn;
+  };
+  useEffect(
+    () => () => {
+      watcher.current?.observer.disconnect();
+      watcher.current = null;
+    },
+    [],
+  );
+
   // After each draw: measure what is drawn, open where it should, count what came, keep his place against any change
   // under it, and draw again if the window reaches past what is drawn.
   useLayoutEffect(() => {
@@ -282,7 +323,9 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
     if (!el) return;
     if (el.clientHeight) view.current.height = el.clientHeight;
     const changes: { index: number; delta: number }[] = [];
-    for (const node of el.querySelectorAll<HTMLElement>("[data-block]")) {
+    const drawn = [...el.querySelectorAll<HTMLElement>("[data-block]")];
+    watch(el, drawn);
+    for (const node of drawn) {
       const height = node.offsetHeight;
       // A static render or a hidden pane measures nothing: the estimates stand.
       if (!height) continue;
@@ -296,12 +339,10 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
           page.more();
         }
       } else {
-        // Where the column opens: on a message he was sent to (its own effect places it), over "New", else where he
-        // left it, else its foot.
+        // Where the column opens: on a message he was sent to (its own effect places it, or this place once that
+        // lookup ends without it), over "New", else where he left it, else its foot.
         opened.current = true;
-        const kept = placeOf(workspaceId, chatId);
-        if (!wanted) goTo(fresh >= 0 ? over(fresh, NEW_AIR) : kept ? (layout.scrollTopFor(kept) ?? 0) : 0);
-        onPlaced();
+        if (!wanted) placeOpening();
       }
     } else if (atFoot.current) view.current.up = 0;
     else if (anchor.current) view.current.up = layout.scrollTopFor(anchor.current) ?? view.current.up + anchorShift(changes, layout.indexOf(anchor.current.key));
@@ -346,8 +387,13 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
     if (finding.current.id !== wanted) finding.current = { id: wanted, asked: -1, pages: 0 };
     const index = upward.findIndex((block) => block.id === wanted);
     if (index < 0) {
-      if (page.done || finding.current.pages >= FIND_PAGES) dropWanted(workspaceId);
-      else if (finding.current.asked !== page.rows.length) {
+      if (page.done || finding.current.pages >= FIND_PAGES) {
+        // The lookup ended without it: the column opens where it would have, and only now is he placed.
+        dropWanted(workspaceId);
+        opened.current = true;
+        placeOpening();
+        redraw();
+      } else if (finding.current.asked !== page.rows.length) {
         finding.current = { ...finding.current, asked: page.rows.length, pages: finding.current.pages + 1 };
         page.more();
       }
@@ -485,7 +531,7 @@ export function ColumnBones() {
   ];
   return (
     // The scroller's strip is kept here too, so the bones stand where the messages will.
-    <div aria-busy aria-label="Loading messages" className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden [scrollbar-gutter:stable]">
+    <div role="status" aria-busy aria-label="Loading messages" className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden [scrollbar-gutter:stable]">
       <div className={cn(COLUMN, "flex flex-col gap-4 pt-4 pb-5")}>
         {runs.map((lines, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: fixed bones that never reorder

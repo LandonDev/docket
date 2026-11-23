@@ -65,6 +65,8 @@ export interface MessagesData {
   useDrafts(chatId: string | null): readonly ThreadDraft[];
   /** Presses a held draft with these words: an edit is saved to it first. Rejects with why nothing went. */
   sendDraft(draft: ThreadDraft, text: string): Promise<void>;
+  /** Saves his edit to a held draft's words, the Outbox's edit, without pressing it. */
+  saveDraft(draft: ThreadDraft, text: string): Promise<void>;
   /** Discards a held draft, or drops a copy-only one. */
   dropDraft(draft: ThreadDraft): Promise<void>;
   /** Asks LifeOS's worker to fetch a message's files it only listed; rejects when LifeOS did not take the ask. */
@@ -96,6 +98,7 @@ export const WAITING: MessagesData = {
   retry: () => Promise.reject(new Error("LifeOS is not connected")),
   useDrafts: () => NO_DRAFTS,
   sendDraft: () => Promise.reject(new Error("LifeOS is not connected")),
+  saveDraft: () => Promise.reject(new Error("LifeOS is not connected")),
   dropDraft: () => Promise.resolve(),
   requestFiles: () => Promise.reject(new Error("LifeOS is not connected")),
   fileVerb: () => "save",

@@ -442,9 +442,9 @@ const ChatRowView = memo(function ChatRowView({
 });
 
 /** Rows of bones in the row's own grid and height, so nothing moves when the list lands. */
-export function RowBones() {
+export function RowBones({ label = "Loading conversations" }: { label?: string }) {
   return (
-    <div role="status" aria-busy aria-label="Loading conversations" data-row-bones className="min-h-0 flex-1 overflow-hidden px-1.5">
+    <div role="status" aria-busy aria-label={label} data-row-bones className="min-h-0 flex-1 overflow-hidden px-1.5">
       {Array.from({ length: BONES }, (_, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed bones that never reorder
         <div key={i} aria-hidden style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }} className={ROW_GRID}>
@@ -453,7 +453,7 @@ export function RowBones() {
             <Skeleton className="size-6 rounded-full" />
           </span>
           <span className="flex h-5 items-center justify-between gap-6">
-            <Skeleton className="h-3 max-w-40" style={{ width: `${[44, 30, 52, 36, 48, 28, 40, 34][i]}%` }} />
+            <Skeleton className="h-3" style={{ width: [120, 88, 148, 104, 136, 80, 112, 96][i] }} />
             <Skeleton className="h-2.5 w-9" />
           </span>
           <span className="flex h-5 items-center">
@@ -465,11 +465,12 @@ export function RowBones() {
   );
 }
 
-function ListEmpty({ title, action, takesReturn }: { title: string; action?: { label: string; onClick: () => void }; takesReturn?: string }) {
+/** An empty list's line and its one action; `takesReturn` (a workspace coming back to an emptied list) or `takesFocus` puts the keys on the action. */
+function ListEmpty({ title, action, takesReturn, takesFocus }: { title: string; action?: { label: string; onClick: () => void }; takesReturn?: string; takesFocus?: boolean }) {
   const button = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
-    if (takesReturn && takeReturn(takesReturn)) button.current?.focus();
-  }, [takesReturn]);
+    if (takesFocus || (takesReturn && takeReturn(takesReturn))) button.current?.focus();
+  }, [takesReturn, takesFocus]);
   return (
     <Empty className={LIST_EMPTY}>
       <EmptyHeader>
@@ -539,10 +540,13 @@ function SearchHits({ workspaceId, query, narrow, onOpen, retry }: { workspaceId
     const target = list.some((hit) => hit.messageId === back.hit) ? back.hit! : list[Math.min(back.index, list.length - 1)]!.messageId;
     setActive(target);
     listbox.current?.focus({ preventScroll: true });
+    // The results drew afresh at their top: the hit he left (or the one now in its place) is brought into view.
+    document.getElementById(hitId(target))?.scrollIntoView?.({ block: "nearest" });
   }, [back, list]);
   if (hits.status === "failed") return <ListEmpty title="The search did not run" action={retryOf(retry)} />;
-  if (!list) return <RowBones />;
-  if (list.length === 0) return <ListEmpty title="No matches" action={{ label: "Clear search", onClick: () => patchPage(workspaceId, { query: "" }) }} />;
+  if (!list) return <RowBones label="Loading search results" />;
+  // Come back to no hits at all: the keys go to Clear search.
+  if (list.length === 0) return <ListEmpty title="No matches" action={{ label: "Clear search", onClick: () => patchPage(workspaceId, { query: "" }) }} takesFocus={Boolean(back)} />;
   const open = (hit: ChatHit): void => {
     setActive(hit.messageId);
     setOpened(hit.messageId);

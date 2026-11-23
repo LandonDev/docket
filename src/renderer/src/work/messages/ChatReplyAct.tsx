@@ -32,10 +32,13 @@ export function replyOf(payload: unknown): ChatReplyPayload | null {
 export function answeredOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: ChatDetail | null | undefined, page: readonly ChatMessage[] | undefined): { who: string; text: string } | null {
   const id = reply.replyTo ?? detail?.chat.lastInId;
   const found = id ? page?.find((m) => m._id === id) : undefined;
-  if (found) return { who: found.who.name, text: found.text };
+  if (found) return { who: found.who.me ? "You" : found.who.name, text: wordsOf(found.text) };
   if (!reply.replyTo && detail && !detail.chat.lastFromMe && detail.chat.lastText) return { who: detail.chat.lastWho, text: detail.chat.lastText };
   return null;
 }
+
+/** A parent with no words of its own still says what it is. */
+const wordsOf = (text: string | undefined): string => (text?.trim() ? text : "A picture or file");
 
 /** What `rawMessages:get` answers for one message. */
 type RawMessage = { message: { author?: { name?: string }; fromMe?: boolean; text?: string } | null } | null;
@@ -48,7 +51,8 @@ export type Answered = { who: string; text: string } | "loading" | "gone" | "unr
  * newest page when it is there; else read by its id on the item's own sector
  * (also when the page itself did not load, if the reply names it); "loading"
  * until LifeOS has answered, so the words never jump; "gone" only when LifeOS
- * answers that it is absent; "unreadable" when that read failed.
+ * answers that it is absent; "unreadable" when that read failed, or when the
+ * conversation's own read failed and so no message to answer could be found.
  */
 export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: LifeosQuery<ChatDetail | null>, page: LifeosQuery<{ page: ChatMessage[] }>, byId: LifeosQuery<RawMessage> | null): Answered {
   if (detail.status === "loading" && !reply.replyTo) return "loading";
@@ -56,12 +60,12 @@ export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Lifeo
   const inPage = page.status === "ready" ? answeredOf(reply, ready(detail), page.value.page) : null;
   if (inPage) return inPage;
   const id = reply.replyTo ?? ready(detail)?.chat?.lastInId;
-  if (!id) return detail.status === "loading" ? "loading" : null;
+  if (!id) return detail.status === "loading" ? "loading" : detail.status === "failed" && !reply.replyTo ? "unreadable" : null;
   if (!byId || byId.status === "loading") return "loading";
   if (byId.status === "failed") return "unreadable";
   const message = byId.value?.message;
-  if (!message?.text) return "gone";
-  return { who: message.fromMe ? "You" : (message.author?.name ?? "Someone"), text: message.text };
+  if (!message) return "gone";
+  return { who: message.fromMe ? "You" : (message.author?.name ?? "Someone"), text: wordsOf(message.text) };
 }
 
 /**
@@ -92,8 +96,9 @@ function Reads({ item, env, retry }: ActViewProps & { retry: () => void }) {
 
 /** The held reply as he reads it before his press: to whom, where, what it answers, its words. */
 export function ReplyBody({ reply, chat, answered, onRetry }: { reply: ChatReplyPayload; chat?: Pick<ChatRow, "source" | "accountName" | "kind">; answered: Answered; onRetry?: () => void }) {
-  // In a direct chat the writer of what it answers is the one it goes to, named on the To line already.
-  const direct = chat?.kind === "direct";
+  // In a direct chat the writer is left out when it is the one the reply goes to, named on the To line already; his own
+  // words still say "You".
+  const named = chat?.kind === "direct" && answered !== null && typeof answered === "object" && answered.who === (reply.to ?? reply.chat);
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-4">
       <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
@@ -123,7 +128,7 @@ export function ReplyBody({ reply, chat, answered, onRetry }: { reply: ChatReply
             <CornerDownRight aria-hidden className="size-3 shrink-0" />
             {/* "Dana Lee: words", cut where the line ends. */}
             <span className="min-w-0 truncate">
-              {direct ? null : <span className="font-medium">{answered.who}: </span>}
+              {named ? null : <span className="font-medium">{answered.who}: </span>}
               {answered.text.replace(/\s+/g, " ").trim()}
             </span>
           </p>

@@ -75,11 +75,11 @@ const CHANNEL = thread("c_builds", [
 const REPLIES = thread("c_design", [
   [MIA, today(10, 12), "New pass on the inventory screen is up. Biggest change: items sort by rarity first, then by type."],
   [ANA, today(10, 20), "Love the rarity sort. The tooltip delay feels long though."],
-  [MIA, today(10, 24), "It's 400ms right now, I can bring it to 250.", { replyTo: { who: "Ana Ruiz", text: "Love the rarity sort. The tooltip delay feels long though." } }],
+  [MIA, today(10, 24), "It's 400ms right now, I can bring it to 250.", { replyTo: { id: "c_design_m1", who: "Ana Ruiz", text: "Love the rarity sort. The tooltip delay feels long though." } }],
   [PRIYA, today(11, 3), "Can we keep the old sort as an option? Speedrunners will ask for it."],
-  [MIA, today(11, 9), "Yes, I'll add it under the sort menu.", { replyTo: { who: "Priya Shah", text: "Can we keep the old sort as an option? Speedrunners will ask for it." } }],
+  [MIA, today(11, 9), "Yes, I'll add it under the sort menu.", { replyTo: { id: "c_design_m3", who: "Priya Shah", text: "Can we keep the old sort as an option? Speedrunners will ask for it." } }],
   [ME, today(11, 30), "Looks great. Ship it to playtest with 0.9.6."],
-  [ANA, today(14, 2), "250 feels right. One nit: the rarity border is hard to see on the dark theme.", { replyTo: { who: "Mia Chen", text: "It's 400ms right now, I can bring it to 250." } }],
+  [ANA, today(14, 2), "250 feels right. One nit: the rarity border is hard to see on the dark theme.", { replyTo: { id: "c_design_m2", who: "Mia Chen", text: "It's 400ms right now, I can bring it to 250." } }],
 ]);
 
 const PLAYTEST = thread("c_playtest", [
@@ -255,6 +255,8 @@ export interface FixtureOptions {
   searchPending?: string;
   /** Messages that are still loading, for a conversation's bones. */
   messagesLoading?: boolean;
+  /** Older pages of messages fail to come: the page asked for past the first turns to a failure. */
+  olderFail?: boolean;
   now?: number;
 }
 
@@ -268,6 +270,7 @@ export interface FixtureLog {
   undone: string[];
   retried: string[];
   pressed: { id: string; text: string }[];
+  saved: { id: string; text: string }[];
   dropped: string[];
   requested: string[];
   opened: { chatId: string; messageId: string; file: string; verb: FileVerb }[];
@@ -299,7 +302,7 @@ export interface FixtureControls {
 
 export function fixtureData(options: FixtureOptions = {}): MessagesData & FixtureControls {
   const now = options.now ?? NOW;
-  const log: FixtureLog = { read: [], unread: [], chats: [], searched: [], sent: [], undone: [], retried: [], pressed: [], dropped: [], requested: [], opened: [] };
+  const log: FixtureLog = { read: [], unread: [], chats: [], searched: [], sent: [], undone: [], retried: [], pressed: [], saved: [], dropped: [], requested: [], opened: [] };
   let rows = options.empty || options.noSource ? [] : (options.chats ?? CHATS);
   const threads = new Map<string, ChatMessage[]>(Object.entries(options.messages ?? MESSAGES));
   // Discord silent since Nov 3 holds nothing newer than Nov 3: its conversations move back to before its last sync.
@@ -415,11 +418,11 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     useMessages(chatId) {
       useVersion();
       const [count, setCount] = useState(50);
-      const [failed] = useState(() => failing("messages"));
+      const [failed, setFailed] = useState(() => failing("messages"));
       if (failed) return FAILED;
       if (options.loading || options.messagesLoading || !chatId) return LOADING;
       const all = messagesOf(chatId);
-      const page: Paged<ChatMessage> = { rows: all.slice(0, count), done: count >= all.length, more: () => setCount((c) => c + 50) };
+      const page: Paged<ChatMessage> = { rows: all.slice(0, count), done: count >= all.length, more: () => (options.olderFail ? setFailed(true) : setCount((c) => c + 50)) };
       return ready(page);
     },
     useSources() {
@@ -483,11 +486,20 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       return chatId ? (drafts[chatId] ?? NO_DRAFTS) : NO_DRAFTS;
     },
     async sendDraft(draft, text) {
+      if (options.slow) await new Promise<void>((go) => (letGo = go));
+      if (options.refuse) throw new Error(options.refuse);
       log.pressed.push({ id: draft.id, text });
       const chatId = chatOfDraft(draft.id);
       if (!chatId) return;
       dropped(chatId, draft.id);
       reply(chatId, text);
+    },
+    async saveDraft(draft, text) {
+      log.saved.push({ id: draft.id, text });
+      const chatId = chatOfDraft(draft.id);
+      if (!chatId) return;
+      drafts = { ...drafts, [chatId]: drafts[chatId]!.map((d) => (d.id === draft.id ? { ...d, text } : d)) };
+      changed();
     },
     async dropDraft(draft) {
       log.dropped.push(draft.id);

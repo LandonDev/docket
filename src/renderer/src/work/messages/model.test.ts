@@ -149,7 +149,7 @@ describe("a search's lit words", () => {
   });
   it("starts a long message's line a little before what it found, and only past 40 characters", () => {
     const text = "Seeing a spike of save sync failures on the new build after the patch, and the controller fix is still pending";
-    expect(aroundMatch(text, "controller")).toBe("…patch, and the controller fix is still pending");
+    expect(aroundMatch(text, "controller")).toBe("…and the controller fix is still pending");
     expect(aroundMatch("I'll take the controller bug, no worries.", "controller")).toBe("I'll take the controller bug, no worries.");
     expect(aroundMatch("nothing here", "zebra")).toBe("nothing here");
   });
@@ -179,6 +179,15 @@ describe("the quote of the message right above", () => {
     expect(answersMessage(above, { who: "Ana Ruiz", text: "Love the rarity sort.", id: "m0" })).toBe(false);
     expect(answersMessage(above, { who: "Ana Ruiz", text: "Love the rarity sort." })).toBe(true);
     expect(answersMessage({ _id: "m2", who: { name: "Alex Kim", me: true }, text: "On it" }, { who: "You", text: "On it" })).toBe(true);
+  });
+  it("puts no … where nothing was cut, and cuts at the lead's budget where no word starts inside it", () => {
+    // Room for 13 characters, the match at 15: "I'll" is cut at the space inside the budget, and said so.
+    expect(aroundMatch("I'll take the controller bug, no worries.", "controller", 13, 12)).toBe("…take the controller bug, no worries.");
+    // The whole lead fits the budget: nothing is cut, so no "…".
+    expect(aroundMatch("I'll take the controller bug, no worries.", "controller", 5, 20)).toBe("I'll take the controller bug, no worries.");
+    // Deep inside a run with no spaces (a URL), the cut falls at the budget and the match shows.
+    const url = "Nightly is up at https://example.com/releases/builds/nightly/windows/controller";
+    expect(aroundMatch(url, "controller", 40, 12)).toBe("…tly/windows/controller");
   });
   it("shows the match when only a little room is left", () => {
     const text = "Seeing a spike of save sync failures on the new build, the controller fix is pending";

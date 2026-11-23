@@ -247,6 +247,10 @@ export function aroundMatch(text: string, query: string, after = 40, lead = 12):
     at += part.length;
   }
   if (at >= flat.length || at <= after) return flat;
-  const space = flat.lastIndexOf(" ", at - lead);
-  return `…${flat.slice(space + 1)}`;
+  // Start at a word when one starts inside the lead's budget; else at the budget itself, also inside a long run with no
+  // spaces (a URL), so the match always shows. Nothing cut, no "…".
+  if (at <= lead) return flat;
+  const space = flat.indexOf(" ", at - lead);
+  const start = space >= 0 && space < at ? space + 1 : at - lead;
+  return start <= 0 ? flat : `…${flat.slice(start)}`;
 }

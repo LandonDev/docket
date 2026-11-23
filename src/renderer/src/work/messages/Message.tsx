@@ -17,7 +17,7 @@ import { Face } from "../mail/face";
 import { useMessagesData, type FileVerb } from "./data";
 import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
-import { keepTyped, typedIn } from "./page";
+import { keepTyped, typedFromDraft, typedIn } from "./page";
 
 /**
  * One message in the conversation's column (docs/agents/work-messages.md):
@@ -271,7 +271,8 @@ function FileFailed({ file, why, source, link, onRetry }: { file: ChatFile; why:
   return (
     <p data-file-failed className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
       <FileGlyph aria-hidden className="me-1 size-3.5 shrink-0" />
-      <span className="font-medium text-foreground">{file.name}</span>
+      {/* A long unbroken name wraps inside the message rather than running past it. */}
+      <span className="min-w-0 font-medium text-foreground [overflow-wrap:anywhere]">{file.name}</span>
       <span>{why ?? "Couldn't load this file"}</span>
       {onRetry ? (
         <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
@@ -294,8 +295,28 @@ function FileFailed({ file, why, source, link, onRetry }: { file: ChatFile; why:
  */
 function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; workspaceId: string; chatId: string }) {
   const data = useMessagesData();
+  const drafts = data.useDrafts(chatId);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  /**
+   * His undone words are his own and never take a draft's id. In front of his own words, a line between; where the
+   * field holds a thread's draft, an edit of a held one is saved to it first (the Outbox's edit), then the field takes
+   * his words and the draft waits behind Use draft. An edit of a copy-only draft cannot be kept there, so it stays in
+   * the field behind his words, as his own.
+   */
+  const undo = async (): Promise<void> => {
+    const from = typedFromDraft(workspaceId, chatId);
+    const draft = from ? drafts.find((d) => d.id === from) : undefined;
+    const held = typedIn(workspaceId, chatId);
+    // The edit is saved before the words come back: a refusal leaves both where they were.
+    if (draft?.held && held.trim() && held !== draft.text) await data.saveDraft(draft, held.trim());
+    const words = await data.undo(chatId, reply.outboxId);
+    const now = typedIn(workspaceId, chatId);
+    // What the field holds now, if it is still the draft's, waits as the draft; anything else is his own and stays.
+    const still = from !== null && typedFromDraft(workspaceId, chatId) === from && draft !== undefined;
+    const behind = now.trim() && !(still && (draft.held || now === draft.text)) ? now : "";
+    keepTyped(workspaceId, chatId, behind ? `${words}\n${behind}` : words, null);
+  };
   const act = (run: () => Promise<void>): void => {
     setBusy(true);
     setRefused(null);
@@ -321,14 +342,7 @@ function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; wor
           variant="ghost"
           size="xs"
           disabled={busy}
-          onClick={() =>
-            act(async () => {
-              // The words come back into an empty field, or in front of what he has typed since, a line between.
-              const words = await data.undo(chatId, reply.outboxId);
-              const now = typedIn(workspaceId, chatId);
-              keepTyped(workspaceId, chatId, now.trim() ? `${words}\n${now}` : words);
-            })
-          }
+          onClick={() => act(undo)}
         >
           <BusyLabel busy={busy} label="Undo" />
         </Button>

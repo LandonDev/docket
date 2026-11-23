@@ -91,6 +91,8 @@ describe("the composer across visits and while a press goes", () => {
     cleanup();
     resetPages();
     mount({ drafts: { c_playtest: [COPY_DRAFT] } }, "c_playtest");
+    // Emptied, the field's next words are his own: Discard leaves them.
+    fireEvent.change(field(), { target: { value: "" } });
     fireEvent.change(field(), { target: { value: "My own thanks" } });
     await press("Discard");
     expect(field().value).toBe("My own thanks");
@@ -233,10 +235,9 @@ describe("the list", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Clear filter" }));
   });
 
-  it("says its bones are loading conversations, and caps a name bone", () => {
+  it("says its bones are loading conversations", () => {
     mount({ loading: true });
     const bones = screen.getByRole("status", { name: "Loading conversations" });
     expect(bones.getAttribute("aria-busy")).toBe("true");
-    expect(bones.querySelector(".max-w-40")).not.toBeNull();
   });
 });

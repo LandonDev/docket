@@ -1769,8 +1769,11 @@ Around the canvas:
   rows' place (the last answer stays while the next words are asked), the
   conversation's name in a row's ink and the time, then who ("You: " alone in
   a direct chat) and the words, cut to start a little before the match only
-  where the measured line could not show it otherwise, lit in `foreground`
-  medium. Under 640px the conversation's toolbar line reads "Last synced
+  where the measured line could not show it otherwise (at a word where one
+  starts close before it, else mid-run, so the match shows even deep in a
+  URL; "…" only where words were cut), lit in `foreground` medium. A
+  search's first bones say "Loading search results", the reader's "Loading
+  messages". Name bones are fixed widths in pixels, different row to row. Under 640px the conversation's toolbar line reads "Last synced
   Nov 3" at the name's own left edge.
   The conversation's toolbar is 44px over a hairline: the name 13px
   semibold (a direct chat's opens the person in People when LifeOS knows
@@ -1798,7 +1801,8 @@ Around the canvas:
   shape while it comes; any other file is Mail's 40px chip with its 28px
   tile, named by its press ("View runner-budget.xlsx", "Download
   build.zip"); a file that cannot come is one 12px muted line, its glyph,
-  its name in medium `foreground`, why, and 8px on Try again (where asking
+  its name in medium `foreground` (a long unbroken name wraps inside the
+  message), why, and 8px on Try again (where asking
   or reading again may help) and Open in the app as quiet controls; a
   picture whose bytes do not draw takes the same line. A picture is never wider than its message. The composer sits at the column's foot
   on the composer's surface (`card`, a hairline, radius 12): a field of one
@@ -1807,12 +1811,14 @@ Around the canvas:
   12px line when there is something to say: LifeOS's reason where nothing
   can send (the button is then Copy, with Open in the app quiet beside it),
   a thread's draft (the amber circle-dot, "Drafted in" and the thread's
-  name in medium, for a copy-only draft LifeOS's reason, then its controls
-  so the line ends with them: Use draft while the field holds his own words,
+  name in medium, LifeOS's reason while its button is Copy, for a copy-only
+  draft or a held one where the route says no, then its controls in ink so
+  the line ends with them: Use draft while the field holds his own words,
   Open thread; Discard
   beside the primary), or a refusal in red. His reply shows as his own message with one 12px line under it:
   "Sending" and Undo (in ink, as Retry), or the red mark, "Not sent.", LifeOS's reason and
-  Retry. A message that arrives at the foot rises 4px and fades in over
+  Retry. The field empties at Send's press, the button turning busy until
+  LifeOS answers. A message that arrives at the foot rises 4px and fades in over
   `--dur-fast`; nothing else moves.
 - **People** (the People view, work/people/; docs/agents/work-people.md).
   The list is a 720px column, one 32px row a

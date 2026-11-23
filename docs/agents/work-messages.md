@@ -175,7 +175,7 @@ files: there a file is the plain line LifeOS stored.
 | `files.ts` | `viewKind` (the canvas kind `kindForFile` names, when the canvas fetches it), `fileVerb`, `chatFileSource` (the mail arm with `from: 'chat'`). |
 | `threads.ts` | `chatChip` ("Dana Lee in Slack", a message's words as `quote`), `threadRows` (Start thread; Mention in a thread only while one is open), `linkRows` (Open in the app, Copy link), `mention`, `StartThreadProvider`. |
 | `fixtures.ts`, `pictures.fixtures.ts` | The seam from a made-up studio, Starboard, kept in memory (a reply lands as his own message, an undo takes it away, a pressed draft goes), with switches: `loading`, `empty`, `noSource`, `stale`, `drafted`, `drafts`, `routes`, `refuse`, and `manyChats`/`manyMessages` for the speed proof; two made-up pictures as `data:` addresses. |
-| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search, what he typed in each conversation (live: Undo writes back into it), a message asked for (`wantMessage`); outside React, the list's scroll and each conversation's place. |
+| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search, what he typed in each conversation (live: Undo writes back into it), a message asked for (`wantMessage`), whose words the field holds (`keepTyped(…, from)`), the pending press (`keepPress`), the visit's "New" and his held unread mark; outside React, the list's scroll and each conversation's place. |
 | `model.ts` | Pure rules: `rowTime`, `dayWords`, `rowLine`, `chatFact`, `newSince`, `wantsRead`, `blocksOf` (runs inside five minutes, days, "New"), `estimateOf`, `isPicture`, `pictureBox` (360 by 270), `linkParts` and `opensOutside` (http, https, mailto), `markWords`, `aroundMatch`. |
 | `MessagesView.tsx` | The frame (`ListFrame`, Mail's: 296px, 260 to 480, `tc.messages.listWidth`), the narrow rule at 640px, the conversation in a `CanvasSeat` on `messagesPaneOf` (toggle "Messages"), `useOpened` (`OpenWorkView.chat` and `.message`, taken once), `MessagesScreen` for the preview. |
 | `ChatList.tsx`, `Conversation.tsx`, `Message.tsx`, `Composer.tsx` | The list, the conversation, one message (its reply state, pictures and files), the composer. |
@@ -192,14 +192,20 @@ The look is docs/DESIGN.md "The Messages view".
   so it opens at its foot with no script, a new message at the foot keeps
   him there, and an older page added at the top moves nothing he sees; a
   block that changes size under his place shifts the window by `anchorShift`.
+  One ResizeObserver watches the viewport and every drawn block, as the
+  transcript watches its rows: a size that changes with no draw of the column
+  (a picture falling to its failure line, a sash drag rewrapping the words)
+  draws it again, and that draw's measure moves the offsets and holds his place.
 - **Unread.** LifeOS's mark (`ChatRow.unread`). Opening a conversation marks
   it read when it is unread or someone wrote since he last saw it
   (`wantsRead`); so does a message that arrives while it is open and the
   window is in front, or his coming back to the window. His own Mark unread
-  holds: nothing marks the conversation read again until he opens it anew or
-  a newer message from someone else comes. The read mark waits until the
-  column has placed him, so a conversation whose messages did not come is
-  not marked read. "New" is read from the first answer and kept for the
+  holds, kept with the visit in page.ts (`holdUnread`), so a Retry or the
+  640px crossing finds it held: nothing marks the conversation read again
+  until a newer message from someone else comes or the visit ends. The read
+  mark waits until the column has placed him (on a wanted message, or where
+  it opens once that lookup ends without it) and needs a ready page, so a
+  conversation whose messages did not come is not marked read. "New" is read from the first answer and kept for the
   visit in page.ts (`visitSince`), so a Retry or a remount finds the same
   line; leaving the conversation ends the visit (`newSince`): over the first message from someone else since his mark, the
   service's own or his own last word, and only for one he has opened before
@@ -208,7 +214,9 @@ The look is docs/DESIGN.md "The Messages view".
 - **The composer.** Send when the source is LifeOS's (`CHAT_ROUTES`) and the
   route says yes; else Copy, Open in the app beside it, LifeOS's `route.why`
   above (for a Copy source whose route says yes, "LifeOS can't reply in
-  Discord yet"). A thread's held reply wins over a copy-only draft; either
+  Discord yet"). The route chooses the button: a held draft where it says no
+  is copied, LifeOS's reason on the draft's line, and it and its id stay
+  until the route returns. A thread's held reply wins over a copy-only draft; either
   fills an empty field once and never writes over his words. Send acts on
   whose words the field holds: the draft's (or his edit of them) press the
   held item, saving an edit to it first (`work.outbox.edit`) and pressing
@@ -218,13 +226,23 @@ The look is docs/DESIGN.md "The Messages view".
   puts the draft's words before his. Whose words they are is kept beside them
   in page.ts (`keepTyped(…, from)`), so leaving and coming back, a Retry or
   the 640px crossing find a draft still a draft; a draft gone meanwhile
-  leaves its words as his own. A Send or a Discard empties the field only if
-  it still holds exactly what it held at the press (for Discard, the draft's
-  own words); anything he typed or replaced meanwhile stays as he left it. A refusal is kept with the conversation
-  (`page.ts`) until he types or sends again. His own reply shows from
-  LifeOS's row: `queued` is "Sending" with Undo (the words back into an
-  empty field, else before what is there, a line between), `sending`
-  "Sending", `failed` "Not sent." with the reason and Retry.
+  leaves its words as his own. Send empties the field at the press; the
+  pressed words (and the held draft's id when a draft was pressed) wait in
+  page.ts as the pending press (`keepPress`) until LifeOS answers, and while
+  it is pending Return and the button do nothing more for that conversation
+  on any mount, so nothing goes twice and sent words never sit in the field.
+  On a refusal the pressed words come back before whatever he typed since, a
+  line between, with the draft's id when a draft was pressed, and the
+  refusal shows. Discard empties the field if and only if its words are that
+  draft's (tied by its id, edited or not) at the press and unchanged when it
+  settles. A refusal is kept with the conversation (`page.ts`) until he
+  types or sends again. His own reply shows from LifeOS's row: `queued` is
+  "Sending" with Undo, `sending` "Sending", `failed` "Not sent." with the
+  reason and Retry. Undone words are his own and never take a draft's id:
+  into an empty field, else before his own words, a line between; where the
+  field holds a held draft, an edit of it is saved first (`saveDraft`, the
+  Outbox's edit), then the field takes his words and the draft waits behind
+  Use draft.
 - **Threads.** Start thread is the toolbar's 28px button and a row on the
   row's and a message's menus; a message's chip carries its words as
   `quote`. Mention in a thread puts the chip in the thread open in the window
@@ -244,7 +262,11 @@ The look is docs/DESIGN.md "The Messages view".
   list wears the focus ring. Search hits are one list the same way; a search
   keeps its last hits on screen while the next words are asked (bones only
   before the first answer), and a hit's line is measured so the word it
-  found always shows. In the column the
+  found always shows: the line is cut at a space only where one falls inside
+  the lead's budget, else at the budget itself (also deep in a URL), and
+  "…" stands only where words were cut. Back under 640px brings the hit he
+  left (or the one now in its place) into view; with no hits left, Clear
+  search takes the keys. In the column the
   arrows move from message to message and the menu key opens one's menu; a
   message's ⋯ is no tab stop. The log says nothing of itself (`aria-live
   off`), so an older page drawn on the way up is not read out; what arrives
@@ -273,9 +295,11 @@ The look is docs/DESIGN.md "The Messages view".
   holds its place until LifeOS answers. A reply that names its message is
   read by id also when the page did not load; "The message it answers is no
   longer here" only when LifeOS answers that it is absent, "could not be
-  read" with Retry when the read failed. The quote is "Writer: words", cut
-  where its line ends; in a direct chat the writer is the To line's, so the
-  quote is the words alone.
+  read" with Retry when that read failed, or when the conversation's own
+  read failed and so no message to answer could be found. A parent with no
+  words says "A picture or file". The quote is "Writer: words", cut where its
+  line ends; in a direct chat the writer is left out only when it is the
+  recipient, so his own words still say "You:".
 - **Not yet.** One-press answers (`QUICK_ANSWERS` is empty).
 
 Proof: `bun run ui:preview src/renderer/src/work/messages/MessagesView.preview.tsx#MessagesPreview --props '{"scene":"open-direct","width":1280}'`

@@ -3,19 +3,20 @@
  * A thread's held chat reply in the Outbox (`chat.reply`): where it goes, the message it answers as
  * one quoted line, then its words exactly as they go, read from LifeOS on the item's own sector.
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeldItem } from "@shared/work";
 import { ACT_VIEWS } from "../acts/registry";
 import { CHATS, MESSAGES } from "./fixtures";
 
-const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], answer: true, raw: undefined as unknown, pageFails: false, rawFails: false }));
+const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], answer: true, raw: undefined as unknown, pageFails: false, rawFails: false, detailFails: false }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
   useLifeosSession: (environmentId: string, sector: string) => ({ environmentId, sector, client: {}, state: "connected" }),
   useLifeosQuery: (_session: unknown, name: string, args: { id?: string; chatId?: string }) => {
     lifeos.asked.push({ name, args });
     if (!lifeos.answer) return { status: "loading" };
+    if (name === "chats:get" && lifeos.detailFails) return { status: "failed", error: "LifeOS did not answer" };
     if (name === "chats:get") return { status: "ready", value: { chat: CHATS.find((c) => c._id === args.id), source: null, route: { can: true } } };
     if (name === "chats:messages") return lifeos.pageFails ? { status: "failed", error: "LifeOS did not answer" } : { status: "ready", value: { page: MESSAGES[args.chatId!] ?? [] } };
     if (name === "rawMessages:get") return lifeos.rawFails ? { status: "failed", error: "LifeOS did not answer" } : lifeos.raw === undefined ? { status: "loading" } : { status: "ready", value: lifeos.raw };
@@ -32,6 +33,7 @@ afterEach(() => {
   lifeos.raw = undefined;
   lifeos.pageFails = false;
   lifeos.rawFails = false;
+  lifeos.detailFails = false;
 });
 
 const item = (payload: unknown): HeldItem =>
@@ -115,5 +117,25 @@ describe("the held reply's view", () => {
     const asked = lifeos.asked.length;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(lifeos.asked.length).toBeGreaterThan(asked);
+  });
+
+  it("says the message it answers could not be read, with Retry, when the conversation's read failed and the reply names none", () => {
+    lifeos.detailFails = true;
+    render(<View env="box" item={item({ chatId: "c_dana", source: "slack", chat: "Dana Lee", text: "Yes." })} />);
+    const line = document.querySelector<HTMLElement>("[data-answers='unreadable']")!;
+    expect(line.textContent).toContain("The message it answers could not be read");
+    expect(within(line).getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("says what a parent with no words is, and keeps 'no longer here' for one that is absent", () => {
+    lifeos.raw = { message: { author: { name: "Ana Ruiz" }, fromMe: false, text: "" }, thread: null };
+    render(<View env="box" item={item({ chatId: "c_design", replyTo: "far_3", source: "slack", chat: "#design-review", to: "Ana Ruiz", text: "Nice." })} />);
+    expect(document.querySelector("[data-answers]")!.textContent).toBe("Ana Ruiz: A picture or file");
+  });
+
+  it("in a direct chat leaves out only the recipient's name, so his own words still say You", () => {
+    lifeos.raw = { message: { author: { name: "Alex Kim" }, fromMe: true, text: "I'll send the build tonight." }, thread: null };
+    render(<View env="box" item={item({ chatId: "c_dana", replyTo: "mine_1", source: "slack", chat: "Dana Lee", text: "Sent." })} />);
+    expect(document.querySelector("[data-answers]")!.textContent).toBe("You: I'll send the build tonight.");
   });
 });

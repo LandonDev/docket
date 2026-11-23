@@ -152,7 +152,43 @@ export function useRefusal(workspaceId: string, chatId: string): string | null {
 const visits = new Map<string, number | null>();
 export const visitSince = (workspaceId: string, chatId: string): number | null | undefined => visits.get(key(workspaceId, chatId));
 export const keepVisitSince = (workspaceId: string, chatId: string, since: number | null): void => void visits.set(key(workspaceId, chatId), since);
-export const endVisit = (workspaceId: string, chatId: string): void => void visits.delete(key(workspaceId, chatId));
+/** His deliberate unread mark, kept with the visit: the newest message from someone else when he set it. */
+const unreadHeld = new Map<string, number>();
+export const heldUnread = (workspaceId: string, chatId: string): number | undefined => unreadHeld.get(key(workspaceId, chatId));
+export const holdUnread = (workspaceId: string, chatId: string, lastIn: number): void => void unreadHeld.set(key(workspaceId, chatId), lastIn);
+export const releaseUnread = (workspaceId: string, chatId: string): void => void unreadHeld.delete(key(workspaceId, chatId));
+export function endVisit(workspaceId: string, chatId: string): void {
+  visits.delete(key(workspaceId, chatId));
+  unreadHeld.delete(key(workspaceId, chatId));
+}
+
+/**
+ * A press of Send on its way, per conversation: the words it took and the held
+ * draft it pressed, if any. The field empties at the press; while one is
+ * pending no other Send goes for that conversation, on any mount.
+ */
+export interface PendingPress {
+  text: string;
+  draft: string | null;
+}
+const presses = new Map<string, PendingPress>();
+const pressListeners = new Set<() => void>();
+export const pendingPress = (workspaceId: string, chatId: string): PendingPress | undefined => presses.get(key(workspaceId, chatId));
+export function keepPress(workspaceId: string, chatId: string, press: PendingPress | null): void {
+  if (press) presses.set(key(workspaceId, chatId), press);
+  else if (!presses.delete(key(workspaceId, chatId))) return;
+  for (const listener of pressListeners) listener();
+}
+export function usePendingPress(workspaceId: string, chatId: string): PendingPress | undefined {
+  return useSyncExternalStore(
+    (fn) => {
+      pressListeners.add(fn);
+      return () => void pressListeners.delete(fn);
+    },
+    () => pendingPress(workspaceId, chatId),
+    () => pendingPress(workspaceId, chatId),
+  );
+}
 
 // ── A message to bring into view ──
 
@@ -195,6 +231,8 @@ export function resetPages(): void {
   typed.clear();
   typedFrom.clear();
   visits.clear();
+  unreadHeld.clear();
+  presses.clear();
   opened.clear();
   wanted.clear();
   returns.clear();
