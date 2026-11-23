@@ -346,12 +346,18 @@ public class Office {
     return com.Get(ws, "Range", address);
   }
 
+  // Formula2 is a cell's formula as an Excel with dynamic arrays keeps it. An Excel before them does not know the
+  // name; one without them (Excel 2019, or the box's VM, Microsoft 365 16.0.20625, where SEQUENCE is #NAME?)
+  // knows it and refuses every call with 0x800A03EC, as it does HasSpill. There Formula is the same formula. A
+  // write that 0x800A03EC refuses for its own sake (a bad formula, a locked cell) is refused by Formula again.
+  public static bool NoFormula2(COMException e) { var h = (uint)e.ErrorCode; return h == 0x80020006 || h == 0x800A03EC; }
+
   public object ReadRange(string book, string sheet, string address) {
     var r = Range(book, sheet, address);
     var values = Grid(com.Get(r, "Value"));
     object f;
     try { f = com.Get(r, "Formula2"); }
-    catch (COMException e) { if ((uint)e.ErrorCode != 0x80020006) throw; f = com.Get(r, "Formula"); }
+    catch (COMException e) { if (!NoFormula2(e)) throw; f = com.Get(r, "Formula"); }
     var formulas = Grid(f);
     var rows = values.Length;
     var cols = rows > 0 ? values[0].Length : 0;
@@ -400,7 +406,7 @@ public class Office {
       if (!formulas) com.Set(r, "Value", v);
       else {
         try { com.Set(r, "Formula2", v); }
-        catch (COMException e) { if ((uint)e.ErrorCode != 0x80020006) throw; com.Set(r, "Formula", v); }
+        catch (COMException e) { if (!NoFormula2(e)) throw; com.Set(r, "Formula", v); }
       }
     } finally { writing--; }
     return null;
@@ -1229,7 +1235,7 @@ public static class Guest {
     return null;
   }
 
-  // Office as installed and signed in here, read from the registry alone: no app is started.
+  // Office as installed and signed in here, read from what Office itself keeps: no app is started.
   static object OfficeStatus() {
     var apps = new List<object>();
     foreach (var pair in new[] { new[] { "excel", "Excel.Application" }, new[] { "word", "Word.Application" }, new[] { "powerpoint", "PowerPoint.Application" }, new[] { "outlook", "Outlook.Application" } })
@@ -1241,16 +1247,83 @@ public static class Guest {
         using (var k = hklm.OpenSubKey(@"SOFTWARE\Microsoft\Office\ClickToRun\Configuration")) { version = version ?? Str(k, "VersionToReport"); }
       } catch (Exception) { }
     }
-    string account = null;
-    using (var ids = User(@"Software\Microsoft\Office\16.0\Common\Identity\Identities")) {
-      if (ids != null) foreach (var id in ids.GetSubKeyNames()) using (var k = ids.OpenSubKey(id)) { account = account ?? Str(k, "EmailAddress") ?? Str(k, "SignInName"); }
+    const string LICENSING = @"Software\Microsoft\Office\16.0\Common\Licensing\LicensingNext";
+    // A signed-in user's licence: his account id (the CID) to the licence's id, written when Office takes one.
+    var cids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    using (var map = User(LICENSING + @"\CIDToLicenseIdsMapping")) {
+      if (map != null) foreach (var cid in map.GetValueNames()) { cids.Add(cid); var id = Str(map, cid); if (id != null) ids.Add(id); }
+    }
+    var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    var shared = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+    string account = OfficeAccount(Path.Combine(local, @"Microsoft\OneAuth\accounts"), cids);
+    // Builds before OneAuth kept the account here.
+    using (var idk = User(@"Software\Microsoft\Office\16.0\Common\Identity\Identities")) {
+      if (idk != null) foreach (var id in idk.GetSubKeyNames()) using (var k = idk.OpenSubKey(id)) { account = account ?? Str(k, "EmailAddress") ?? Str(k, "SignInName"); }
     }
     object licensed = null;
-    using (var map = User(@"Software\Microsoft\Office\16.0\Common\Licensing\LicensingNext\LicenseIdToEmailMapping")) {
-      if (map != null) licensed = map.GetValueNames().Length > 0;
-      else if (account == null && apps.Count > 0) licensed = false;
+    if (apps.Count > 0) {
+      // A user's licence that is his (named in the mapping), or a device's, Provisioned and not expired. The grace
+      // Office starts with (InstalledGraceKey) and viewer mode hold neither.
+      var held = Licensed(Path.Combine(local, @"Microsoft\Office\Licenses"), ids) || Licensed(Path.Combine(shared, @"Microsoft\Office\Licenses"), null);
+      using (var old = User(LICENSING + @"\LicenseIdToEmailMapping")) { if (old != null && old.GetValueNames().Length > 0) held = true; }
+      licensed = held;
     }
     return Office.Obj("installed", apps.Count > 0, "version", version, "apps", apps, "account", account, "licensed", licensed);
+  }
+
+  // The address of the account Office is signed in with, from OneAuth's own record of it (one JSON file per
+  // account, no token in it): one associated with Office, the one holding a licence first.
+  public static string OfficeAccount(string dir, ICollection<string> licensedCids) {
+    string any = null;
+    string[] files;
+    try { files = Directory.GetFiles(dir); } catch (Exception) { return null; }
+    foreach (var file in files) {
+      try {
+        if (new FileInfo(file).Length > 1 << 20) continue;
+        var a = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(file));
+        var status = a.ContainsKey("association_status") ? a["association_status"] as string : null;
+        var linked = status == null ? null : new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(status);
+        if (linked == null || !linked.ContainsKey("com.microsoft.Office") || linked["com.microsoft.Office"] as string != "associated") continue;
+        var mail = (a.ContainsKey("email") ? a["email"] as string : null) ?? (a.ContainsKey("login_name") ? a["login_name"] as string : null);
+        if (string.IsNullOrEmpty(mail)) continue;
+        var id = a.ContainsKey("id") ? a["id"] as string : null;
+        if (id != null && licensedCids != null && licensedCids.Contains(id)) return mail;
+        any = any ?? mail;
+      } catch (Exception) { }
+    }
+    return any;
+  }
+
+  // Whether a folder of Office's licence files (Licenses\5\..., UTF-16 JSON whose License is base64 JSON) holds
+  // one in force: Status Provisioned, no ExpiresOn in the past, and its LicenseId among `ids` where those are given.
+  public static bool Licensed(string dir, ICollection<string> ids) {
+    if (ids != null && ids.Count == 0) return false;
+    string[] files;
+    try { files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories); } catch (Exception) { return false; }
+    foreach (var file in files) {
+      try {
+        if (new FileInfo(file).Length > 1 << 20) continue;
+        var bytes = File.ReadAllBytes(file);
+        var text = bytes.Length > 1 && (bytes[1] == 0 || (bytes[0] == 0xFF && bytes[1] == 0xFE)) ? Encoding.Unicode.GetString(bytes) : Encoding.UTF8.GetString(bytes);
+        var outer = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(text.TrimStart('\uFEFF'));
+        var body = outer != null && outer.ContainsKey("License") ? outer["License"] as string : null;
+        if (body == null) continue;
+        var lic = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(Encoding.UTF8.GetString(Convert.FromBase64String(body)));
+        if (InForce(lic, ids, DateTime.UtcNow)) return true;
+      } catch (Exception) { }
+    }
+    return false;
+  }
+
+  public static bool InForce(Dictionary<string, object> lic, ICollection<string> ids, DateTime now) {
+    if (lic == null || !"Provisioned".Equals(lic.ContainsKey("Status") ? lic["Status"] as string : null, StringComparison.OrdinalIgnoreCase)) return false;
+    var id = lic.ContainsKey("LicenseId") ? lic["LicenseId"] as string : null;
+    if (ids != null && (id == null || !ids.Contains(id))) return false;
+    var ends = lic.ContainsKey("ExpiresOn") ? lic["ExpiresOn"] as string : null;
+    DateTime at;
+    if (!string.IsNullOrEmpty(ends) && DateTime.TryParse(ends, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out at) && at <= now) return false;
+    return true;
   }
 
   static void Shell(string target) {
