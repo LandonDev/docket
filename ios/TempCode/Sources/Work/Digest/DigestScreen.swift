@@ -68,7 +68,7 @@ struct DigestScreen: View {
             ForEach(sections) { section in
                 Section {
                     ForEach(section.entries) { entry in
-                        DigestRow(entry: entry, now: now)
+                        DigestRow(entry: entry, day: section.day, now: now)
                     }
                 } header: {
                     DayHeader(title: section.title)
@@ -124,6 +124,8 @@ struct DigestScreen: View {
 private struct DigestRow: View {
     @Environment(ShellNavigator.self) private var navigator
     let entry: DigestModel.Entry
+    /// The day key of the heading the row sits under: a time told that day needs no day of its own.
+    let day: String
     let now: Date
 
     private var row: TellRow { entry.row }
@@ -169,7 +171,7 @@ private struct DigestRow: View {
             }
             Spacer(minLength: 8)
             // The stamp step in `label`, as the Outbox's stamps: tertiary measured 1.7:1 on white.
-            Text(DigestModel.when(row, now: now))
+            Text(DigestModel.when(row, now: now, day: day))
                 .textStep(.stamp, tint: Color(.label))
         }
         .padding(.vertical, Layout.rowVertical)

@@ -2361,7 +2361,8 @@ phone does everything the desktop does. What milestone 46 built:
   job), the title, the detail in meta under it, the time as a stamp; the dot
   and the time sit on the title's first line, as the Inbox's rows do ("by
   2:00 PM" for a row whose clock was ahead when it was told and its words do
-  not already say, else when it was told; a day that is not today named). The dot is the only colour; no counts,
+  not already say, a day that is not today named; else when it was told, its
+  day named only when it is not the day of the row's heading). The dot is the only colour; no counts,
   no chips. A row the phone has no screen for is not a button. Loading draws
   the rows' shape; empty is "Nothing Waited"; a host that did not answer is
   one meta line at the foot. Settings → Work has its Digest section after the

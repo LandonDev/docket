@@ -161,6 +161,8 @@ public enum DigestModel {
     public struct Section: Sendable, Hashable, Identifiable {
         public var id: String
         public var title: String
+        /// The day key its heading names ("2026-11-23"); today's for "Since the digest".
+        public var day: String
         public var entries: [Entry]
     }
 
@@ -170,8 +172,8 @@ public enum DigestModel {
     public nonisolated static func sections(_ entries: [Entry], days: [Day], now: Date, calendar: Calendar = .current, locale: Locale = .current) -> [Section] {
         var out: [Section] = []
         let since = entries.filter { $0.row.day == nil }
-        if !since.isEmpty { out.append(Section(id: "since", title: "Since the digest", entries: byJob(since))) }
         let today = dayKey(now, calendar)
+        if !since.isEmpty { out.append(Section(id: "since", title: "Since the digest", day: today, entries: byJob(since))) }
         let yesterday = calendar.date(byAdding: .day, value: -1, to: now).map { dayKey($0, calendar) }
         let madeAt = Dictionary(days.map { ($0.day, $0.madeAt) }, uniquingKeysWith: { first, _ in first })
         let dayKeys = Set(entries.compactMap(\.row.day)).sorted(by: >)
@@ -184,7 +186,7 @@ public enum DigestModel {
             } else {
                 title = dateWords(day, calendar: calendar, locale: locale)
             }
-            out.append(Section(id: day, title: title, entries: byJob(entries.filter { $0.row.day == day })))
+            out.append(Section(id: day, title: title, day: day, entries: byJob(entries.filter { $0.row.day == day })))
         }
         return out
     }
@@ -206,9 +208,12 @@ public enum DigestModel {
     /// send that failed: `by` is its failure) is no deadline, and a clock the row's own words already say
     /// ("Budget review starts at 2:00 PM") is not said twice: either row ends with when it was told (the
     /// desktop's `rowWhen`).
-    public nonisolated static func when(_ row: TellRow, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
+    /// `day` is the day key of the heading the row sits under (today's when nil): a told time on that day is
+    /// the plain clock, one on another day names its day.
+    public nonisolated static func when(_ row: TellRow, now: Date, day: String? = nil, calendar: Calendar = .current, locale: Locale = .current) -> String {
         if let by = row.by, by > row.at, !says(row, clock(date(by), calendar, locale)) { return "by \(dayTime(date(by), now: now, calendar, locale))" }
-        return dayTime(date(row.at), now: now, calendar, locale)
+        let told = date(row.at)
+        return dayKey(told, calendar) == (day ?? dayKey(now, calendar)) ? clock(told, calendar, locale) : dayTime(told, now: now, calendar, locale)
     }
 
     /// The row's title or detail holds `clock`. Spaces compare as spaces: a formatter may write a narrow

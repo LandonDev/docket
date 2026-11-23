@@ -137,6 +137,19 @@ import TempCodeContract
 
     private func when(_ row: TellRow) -> String { plain(DigestModel.when(row, now: now, calendar: calendar, locale: locale)) }
 
+    @Test func `a told time names its day only when it is not the day of the row's heading`() {
+        let under = { (row: TellRow, day: String) in self.plain(DigestModel.when(row, now: self.now, day: day, calendar: self.calendar, locale: self.locale)) }
+        // under "Yesterday" (Sun Nov 22): told that morning, and told the evening before
+        #expect(under(row("r", at: ms(22, 7, 1), day: "2026-11-22"), "2026-11-22") == "7:01 AM")
+        #expect(under(row("r", at: ms(21, 21, 14), day: "2026-11-22"), "2026-11-22") == "Sat 9:14 PM")
+        // under "Today, 8:00 AM": told yesterday afternoon
+        #expect(under(row("r", at: ms(22, 16, 20), day: "2026-11-23"), "2026-11-23") == "Sun 4:20 PM")
+        // each section carries the day its heading names; "Since the digest" is today's
+        let entries = DigestModel.mergeRows([(environmentId: "env_box", rows: [row("s", at: ms(23, 12)), row("y", at: ms(22, 7), day: "2026-11-22")])])
+        let sections = DigestModel.sections(entries, days: [], now: now, calendar: calendar, locale: locale)
+        #expect(sections.map(\.day) == ["2026-11-23", "2026-11-22"])
+    }
+
     @Test func `a row with a clock reads by its clock, else the time it was told, each naming a day that is not today`() {
         #expect(when(row("r", at: ms(23, 9, 5))) == "9:05 AM")
         #expect(when(row("r", at: ms(23, 9), by: ms(23, 14))) == "by 2:00 PM")

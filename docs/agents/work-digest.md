@@ -290,8 +290,10 @@ rules; nothing about the wire is the phone's own.
   ring for no one job), the title, the detail, the time: "by 2:00 PM" for a
   row whose clock was still ahead when it was told and its words do not
   already say (a failed send's clock is its failure: no "by"), else when it
-  was told, a
-  day that is not today named ("Mon 2:02 PM", "Nov 26, 2:00 PM"). A row is a button only where the phone has a route: a
+  was told; a clock ahead names a day that is not today ("Nov 26, 2:00 PM"),
+  a told time names its day only when it is not the day of the row's heading
+  ("Sun 9:14 PM" under "Yesterday", "7:01 AM" for that morning;
+  `DigestModel.Section.day`, `when(…, day:)`). A row is a button only where the phone has a route: a
   thread, a held item (over the Outbox) or a Work view it draws (mail, tasks,
   agenda, projects, routines). The rows' shape while reading; "Nothing
   Waited" when empty; "The Mac did not answer" at the foot for a host whose
