@@ -49,6 +49,12 @@ describe('ios/TempCode/project.yml', () => {
     }
   })
 
+  it('says why it asks for the camera (the receipt), in the yml and the checked-in plist', () => {
+    const plist = readFileSync(resolve(import.meta.dirname, '../ios/TempCode/Info.plist'), 'utf8')
+    expect(yml).toMatch(/\n\s+NSCameraUsageDescription: \S/)
+    expect(plist).toContain('<key>NSCameraUsageDescription</key>')
+  })
+
   it('keeps the launch screen the Duo prepare page asks for', () => {
     expect(yml).toContain('UILaunchScreen: {}')
   })

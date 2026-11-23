@@ -92,6 +92,8 @@ targets:
         # A voice note (Work/Capture): heard and transcribed on the phone only.
         NSMicrophoneUsageDescription: TempCode listens while you hold the microphone to take a voice note.
         NSSpeechRecognitionUsageDescription: Your voice notes are transcribed on this iPhone and never leave it.
+        # A receipt (Work/Money): the document camera, read on the phone, sent to his own host.
+        NSCameraUsageDescription: TempCode uses the camera to scan a receipt you choose to file.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:

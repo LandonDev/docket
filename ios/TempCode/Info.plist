@@ -29,6 +29,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>TempCode uses the camera to scan a receipt you choose to file.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>TempCode listens while you hold the microphone to take a voice note.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

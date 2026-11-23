@@ -302,6 +302,7 @@ private let scan = Data("a made-up receipt".utf8)
         #expect(next.sectors == ["ref", "cosmic", "unify"])
         #expect(next.sector == "ref")
         #expect(next.categories == ["Meals", "Software", "Travel"])
+        #expect(next.jobName("ref") == "Ref")
     }
 
     @Test func `several wait, oldest first, and a saved one hands the sheet the next`() async throws {

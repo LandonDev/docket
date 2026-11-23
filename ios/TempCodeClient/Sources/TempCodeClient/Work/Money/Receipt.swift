@@ -155,6 +155,9 @@ public final class Receipt {
         return list
     }
 
+    /// The job a sector's receipts go to, by the name its host gives it.
+    public func jobName(_ sector: String) -> String? { job(in: sector)?.name }
+
     /// The scan's bytes, for the sheet's picture.
     public func scan(_ draft: ReceiptDraft) -> Data? { try? Data(contentsOf: url(draft.file)) }
     /// The pages the camera gave, while the app runs.

@@ -25,6 +25,8 @@ struct HomeView: View {
     @State private var capturing: VoiceNote?
     /// Made at the first press and kept, so a draft outlives the sheet.
     @State private var voiceNote: VoiceNote?
+    /// A receipt (Work/Money), from `doc.viewfinder` beside the microphone: the camera, then its sheet.
+    @State private var receiptFlow = ReceiptFlow()
     @State private var pairingAgain: PairedEnvironment?
     @State private var launched = false
     /// The first body has been on screen: from here on, event rows animate in.
@@ -117,6 +119,12 @@ struct HomeView: View {
                     Button("Voice Note", systemImage: "mic") { captureVoice() }
                         .accessibilityIdentifier("voice-note")
                 }
+                if ReceiptFlow.available {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Receipt", systemImage: "doc.viewfinder") { receiptFlow.press() }
+                            .accessibilityIdentifier("receipt")
+                    }
+                }
             }
             ToolbarItem(placement: .primaryAction) {
                 Button("Settings", systemImage: "gearshape") { navigator.open(.settings) }
@@ -127,9 +135,11 @@ struct HomeView: View {
         .sheet(isPresented: $adding) { AddEnvironmentSheet() }
         .sheet(isPresented: $addingWork) { NewWorkWorkspaceSheet() }
         .sheet(item: $capturing) { VoiceNoteSheet(note: $0) }
+        .receiptFlow(receiptFlow)
         #if DEBUG
         .task(id: model.ready) { if model.ready, TestHooks.sheet == "new-work" { try? await Task.sleep(for: .seconds(2)); addingWork = true } }
         .task(id: model.ready) { if model.ready, TestHooks.sheet == "voice-note" { try? await Task.sleep(for: .seconds(2)); captureVoice() } }
+        .task(id: model.ready) { if model.ready, TestHooks.sheet == "receipt" { try? await Task.sleep(for: .seconds(2)); receiptFlow.openForProof() } }
         #endif
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
         .onChange(of: router.restoredSheet, initial: true) { restoreSheet() }
