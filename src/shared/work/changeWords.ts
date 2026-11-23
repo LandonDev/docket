@@ -74,3 +74,9 @@ export const visible = (v: string): string =>
     const code = c.codePointAt(0)!
     return code > 0xffff ? `\\u{${code.toString(16)}}` : `\\u${code.toString(16).padStart(4, '0')}`
   })
+
+/** One side for a line: in quotes and cut, or by its escapes when nothing of it can be seen. */
+export function quoted(v: string, max = 60): string {
+  const cut = v.length > max ? `${v.slice(0, max - 1)}…` : v
+  return v.replace(/[\p{Cf}]/gu, '').trim() ? `"${cut}"` : visible(cut)
+}

@@ -94,7 +94,7 @@ const EDITS = [
   edit(
     6,
     "office.edit",
-    'Make the change in Jersey order.docx: add "Sizes still to confirm: two players." at the end',
+    'Make the change in Jersey order.docx: add at the end: "Sizes still to confirm: two players."',
     "Make the change",
     { host: "local", app: "word", key: "https://purdue0.sharepoint.com/sites/esports/Jersey order.docx", name: "Jersey order.docx", edit: { insert: "Sizes still to confirm: two players.", at: "end" }, places: 0, base: "x" },
     at(20, 9, 30),

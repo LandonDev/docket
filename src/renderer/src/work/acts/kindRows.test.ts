@@ -1,6 +1,6 @@
 /** The generic view's own rows for the kinds without a view: what goes in his words, never an id, a revision, a path or JSON. */
 import { describe, expect, it } from "vitest";
-import { addsWords, exactQuote, kindHeading, kindRows, megabytes, sentenceAround } from "./kindRows";
+import { addsWords, exactQuote, kindHeading, kindRows, megabytes, sentenceAround, sentenceOf } from "./kindRows";
 
 const noise = (rows: ReturnType<typeof kindRows>) => JSON.stringify(rows);
 
@@ -321,6 +321,7 @@ describe("an agent's change to a shared file, as he approves it", () => {
     // a single slide reads as that slide; a long sentence is cut around the words
     expect(kindRows("google.edit", { app: "slides", edits: [{ find: "Q1", replace: "Q2", boxes: 1, on: [4] }] })!.fields[1]).toEqual({ label: "Where", value: "Slide 4", gap: true });
     expect(sentenceAround(`${"x".repeat(300)} March ${"y".repeat(300)}`, "March").length).toBeLessThanOrEqual(122);
+    expect(sentenceOf("A. B c d. E.", "c")).toBe("B c d.");
   });
 
   it("finds the sentence the words stand in wherever it falls, and drops it when it is the words themselves", () => {
@@ -333,6 +334,12 @@ describe("an agent's change to a shared file, as he approves it", () => {
     expect(addsWords("Bring IDs.", "Bring IDs")).toBe(false);
     expect(addsWords("…a long clause cut…", "a long clause cut")).toBe(false);
     expect(addsWords("We leave at 7 sharp, $4.50 a head.", "$4.50")).toBe(true);
+    // a replace past the cut is judged on the whole sentence: no Where that repeats it
+    const long = "The tournament runs three days with sixteen teams in four pools, then a bracket for the top eight and a final on Sunday.";
+    expect(kindRows("google.edit", { app: "doc", name: "Plan", edits: [{ find: long, replace: "Two days.", within: `Intro here. ${long}` }] })!.fields.map((f) => f.label)).toEqual(["In", "Replace", "With"]);
+    // a long sentence is cut at spaces, never inside a word
+    const cut = sentenceAround(`Lead. ${"word ".repeat(40)}target ${"more ".repeat(40)}end.`, "target");
+    expect(cut.startsWith("…word ") && cut.endsWith("more…") && cut.includes("target")).toBe(true);
     const whole = { app: "doc", name: "Brief", edits: [{ find: "Bring IDs.", replace: "Bring your IDs.", within: "Budget is final. Bring IDs." }] };
     expect(kindRows("google.edit", whole)!.fields.map((f) => f.label)).toEqual(["In", "Replace", "With"]);
   });

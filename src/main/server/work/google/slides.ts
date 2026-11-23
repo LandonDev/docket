@@ -43,6 +43,13 @@ export type HeldDeckEdit = { find: string; replace: string; boxes?: number; on?:
  */
 function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held: HeldDeckEdit[] } | { error: string } {
   const held: HeldDeckEdit[] = []
+  // A replace-all runs over the words the batch's other edits put in: words one edit writes that another finds would
+  // change more than either shows, so such a batch is refused, to be sent as two.
+  for (const e of edits) {
+    if (!('find' in e)) continue
+    const other = edits.find((x) => x !== e && ('find' in x ? x.replace : x.text).includes(e.find))
+    if (other) return { error: `"${e.find}" stands in what another edit of this batch writes: send them as two calls.` }
+  }
   for (const e of edits) {
     if ('find' in e) {
       const boxes = d.slides.flat().filter((x) => x.text.includes(e.find)).length
@@ -91,7 +98,7 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
   if (edited) return { stale: `A shape on slide ${'slide' in edited ? edited.slide : '?'} holds other words than it did.` }
   // a box moved to another slide is not the one he was shown
   const moved = edits.findIndex((e, i) => 'slide' in e && (now.held[i] as { slide?: number }).slide !== e.slide)
-  if (moved >= 0) return { stale: `A box he was shown on slide ${(edits[moved] as { slide: number }).slide} is on slide ${(now.held[moved] as { slide: number }).slide} now.` }
+  if (moved >= 0) return { stale: `a box on slide ${(edits[moved] as { slide: number }).slide} is on slide ${(now.held[moved] as { slide: number }).slide} now.` }
   // Replace-all reaches every box with the words: more or fewer than he was shown is not what he approved.
   const spread = edits.findIndex((e, i) => 'find' in e && ((e.boxes !== undefined && (now.held[i] as { boxes?: number }).boxes !== e.boxes) || (e.on !== undefined && JSON.stringify((now.held[i] as { on?: number[] }).on) !== JSON.stringify(e.on))))
   if (spread >= 0) {

@@ -464,8 +464,9 @@ public extension OutboxModel {
                 let boxes: Double? = if case .number(let n)? = e["boxes"] { n } else { nil }
                 let on: [Int] = if case .array(let a)? = e["on"] { a.compactMap { if case .number(let n) = $0 { Int(n) } else { nil } } } else { [] }
                 // Where: a Doc's sentence the words stand in, the slides a replace-all reaches, or how many places.
-                let sentence: String? = if case .string(let within)? = e["within"], !within.isEmpty { sentenceAround(within, find) } else { nil }
-                if let sentence, addsWords(sentence, find) { rows.append(("Where", sentence)) }
+                // judged on the whole sentence, shown cut: a long replace never shows its own words twice
+                let within: String? = if case .string(let w)? = e["within"], !w.isEmpty { w } else { nil }
+                if let within, addsWords(sentenceOf(within, find), find) { rows.append(("Where", sentenceAround(within, find))) }
                 else if !on.isEmpty {
                     // a deck's replace by its slides, with how far it reaches: Slides counts boxes, PowerPoint places
                     let many = boxes ?? count
@@ -491,7 +492,8 @@ public extension OutboxModel {
     /// remain (the desktop's `addsWords`).
     nonisolated static func addsWords(_ sentence: String, _ words: String) -> Bool {
         let trimmed = words.trimmingCharacters(in: .whitespaces)
-        let rest = trimmed.isEmpty ? sentence : sentence.replacingOccurrences(of: trimmed, with: "")
+        // the first place the words stand, as the desktop's `replace` takes it
+        let rest = trimmed.isEmpty ? sentence : sentence.range(of: trimmed).map { sentence.replacingCharacters(in: $0, with: "") } ?? sentence
         let quiet: Set<Character> = [".", "!", "?", ",", ";", ":", "\"", "'", "\u{2018}", "\u{2019}", "\u{201C}", "\u{201D}", "\u{2026}"]
         return rest.contains { !$0.isWhitespace && !quiet.contains($0) }
     }
@@ -501,32 +503,45 @@ public extension OutboxModel {
         on.count == 1 ? "slide \(on[0])" : "slides \(on.dropLast().map(String.init).joined(separator: ", ")) and \(on.last!)"
     }
 
-    /// The sentence of a paragraph that holds the words, cut to about 120 characters around them (the desktop's
-    /// `sentenceAround`).
-    nonisolated static func sentenceAround(_ paragraph: String, _ words: String, max: Int = 120) -> String {
-        guard let hit = paragraph.range(of: words) else { return paragraph.count > max ? String(paragraph.prefix(max - 1)) + "…" : paragraph }
+    /// The sentence of a paragraph that holds the words, whole (the desktop's `sentenceOf`): it starts after the last
+    /// stop and space before them, and ends at the first stop with a space or the paragraph's end after it, looking
+    /// from the words' own last character.
+    nonisolated static func sentenceOf(_ paragraph: String, _ words: String) -> String {
+        guard let hit = paragraph.range(of: words) else { return paragraph }
         let enders: Set<Character> = [".", "!", "?"]
-        var start = hit.lowerBound
-        while start > paragraph.startIndex {
-            let prev = paragraph.index(before: start)
-            if enders.contains(paragraph[prev]) && start < hit.lowerBound && paragraph[start].isWhitespace { break }
-            start = prev
+        var start = paragraph.startIndex
+        var i = paragraph.startIndex
+        while i < hit.lowerBound {
+            let next = paragraph.index(after: i)
+            if enders.contains(paragraph[i]), next < hit.lowerBound, paragraph[next].isWhitespace {
+                var j = next
+                while j < hit.lowerBound, paragraph[j].isWhitespace { j = paragraph.index(after: j) }
+                start = j
+            }
+            i = next
         }
-        // It ends at ".", "!" or "?" with a space or the paragraph's end after it, never at "$4.50"'s point, looking
-        // from the words' own last character, so words that end in a stop end their sentence there.
         var end = hit.isEmpty ? hit.upperBound : paragraph.index(before: hit.upperBound)
         while end < paragraph.endIndex {
             let next = paragraph.index(after: end)
             if enders.contains(paragraph[end]) && (next == paragraph.endIndex || paragraph[next].isWhitespace) { end = next; break }
             end = next
         }
-        let sentence = paragraph[start..<end].trimmingCharacters(in: .whitespaces)
-        if sentence.count <= max { return sentence }
-        let chars = Array(sentence)
-        let at = sentence.distance(from: sentence.startIndex, to: sentence.range(of: words)?.lowerBound ?? sentence.startIndex)
-        let from = Swift.max(0, at - Swift.max(0, (max - words.count) / 2))
-        let to = Swift.min(chars.count, from + max)
-        return (from > 0 ? "…" : "") + String(chars[from..<to]) + (to < chars.count ? "…" : "")
+        return paragraph[start..<end].trimmingCharacters(in: .whitespaces)
+    }
+
+    /// That sentence for the card, cut to about `max` characters around the words, each cut at a space when one is
+    /// within 20 characters (the desktop's `sentenceAround`).
+    nonisolated static func sentenceAround(_ paragraph: String, _ words: String, max: Int = 120) -> String {
+        let s = Array(paragraph.contains(words) ? sentenceOf(paragraph, words) : paragraph)
+        if s.count <= max { return String(s) }
+        let text = String(s)
+        let at = text.range(of: words).map { text.distance(from: text.startIndex, to: $0.lowerBound) } ?? 0
+        var from = Swift.max(0, at - Swift.max(0, (max - words.count) / 2))
+        var to = Swift.min(s.count, from + max)
+        let space = { (i: Int) -> Int in var k = Swift.min(i, s.count - 1); while k >= 0, s[k] != " " { k -= 1 }; return k }
+        if from > 0, space(from) >= 0, space(from) >= from - 20 { from = space(from) + 1 }
+        if to < s.count, space(to) > from, space(to) >= to - 20 { to = space(to) }
+        return (from > 0 ? "…" : "") + String(s[from..<to]).trimmingCharacters(in: .whitespaces) + (to < s.count ? "…" : "")
     }
 
     private nonisolated static func word(_ value: JSONValue?) -> String? {

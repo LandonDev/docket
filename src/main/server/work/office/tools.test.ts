@@ -471,8 +471,10 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     const words = (edit: OfficeEdit['edit']) => editAct().words({ host: 'h', app: 'word', key: '/x/Brief.docx', name: 'Brief.docx', edit, places: 1, base: 'b' })
     expect(words({ find: 'one', replace: 'two' })).toEqual({ summary: 'Make the change in Brief.docx: "one" to "two"', verb: 'Make the change' })
     expect(words({ find: 'one', replace: '' }).summary).toBe('Make the change in Brief.docx: take out "one"')
+    // nothing to see: its escapes, in the line too
+    expect(words({ insert: '\u200b', at: 'end' }).summary).toBe('Make the change in Brief.docx: add at the end: "\\u200b"')
     expect(editAct().words({ host: 'h', app: 'word', key: '/x/Brief.docx', name: 'Brief.docx', edit: { find: 'Q1', replace: 'Q2' }, places: 4, base: 'b' }).summary).toBe('Make the change in Brief.docx: 4 places, "Q1" to "Q2"')
-    expect(words({ insert: 'x', at: 'end' }).summary).toBe('Make the change in Brief.docx: add "x" at the end')
+    expect(words({ insert: 'x', at: 'end' }).summary).toBe('Make the change in Brief.docx: add at the end: "x"')
   })
 
   it('names a file by its key', () => {

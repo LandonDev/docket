@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
 import { eventById, OfficeError, type OfficeCarrier } from './carrier'
-import { changeWords } from '@shared/work/changeWords'
+import { changeWords, quoted } from '@shared/work/changeWords'
 import { fileKey } from './shared'
 
 /**
@@ -109,7 +109,14 @@ export type OfficeEdit = z.infer<typeof OfficeEditSchema>
 
 /** A file's text as an edit is judged on it: a document's paragraphs, or a deck's text boxes slide by slide. */
 export async function fileText(c: OfficeCarrier, app: OfficeEdit['app'], key: string): Promise<string[]> {
-  return app === 'word' ? c.readDocument(key) : (await c.readSlides(key)).flatMap((s) => s.texts)
+  return (await fileRead(c, app, key)).texts
+}
+
+/** A file's text and, for a deck, the slides that hold some words: from one read, so the count and the slides agree. */
+export async function fileRead(c: OfficeCarrier, app: OfficeEdit['app'], key: string): Promise<{ texts: string[]; on: (find: string) => number[] | undefined }> {
+  if (app === 'word') return { texts: await c.readDocument(key), on: () => undefined }
+  const slides = await c.readSlides(key)
+  return { texts: slides.flatMap((s) => s.texts), on: (find) => slides.filter((s) => s.texts.some((t) => t.includes(find))).map((s) => s.index) }
 }
 export const textHash = (texts: readonly string[]): string => createHash('sha256').update(JSON.stringify(texts)).digest('hex')
 /** How many places hold the words. */
@@ -234,7 +241,8 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       const e = p.edit
       // how far it reaches first, so a cut line never loses it
       const many = p.places > 1 ? `${p.places} places, ` : ''
-      const what = 'find' in e ? many + (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : `add "${clip(e.insert)}" at the ${e.at}`
+      // an insert's place first, so a cut line keeps it
+      const what = 'find' in e ? many + (e.replace ? changeWords(e.find, e.replace) : `take out ${quoted(e.find)}`) : `add at the ${e.at}: ${quoted(e.insert)}`
       return { summary: `Make the change in ${p.name}: ${what}`, verb: 'Make the change' }
     },
     async execute(p, ctx) {
@@ -245,17 +253,14 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       const app = p.app === 'word' ? 'Word' : 'PowerPoint'
       const key = await fileKey({ carrier: c }, p.app === 'word' ? 'document' : 'deck', p.key)
       if (key === null) throw new ActNotSent(`${p.name} is not open in ${app} on this computer: open it, then press again. Nothing was changed.`)
-      const texts = await fileText(c, p.app, key)
+      const { texts, on: slidesOf } = await fileRead(c, p.app, key)
       const moved = textHash(texts) !== p.base
-      if ('find' in p.edit && p.app === 'powerpoint' && p.on) {
-        const find = p.edit.find
-        const on = (await c.readSlides(key)).filter((s) => s.texts.some((t) => t.includes(find))).map((s) => s.index)
-        if (JSON.stringify(on) !== JSON.stringify(p.on)) throw new ActStale(`${p.name} changed since: the words stand on other slides now than the ones he was shown. Nothing was changed`)
-      }
+      if ('find' in p.edit && p.on && JSON.stringify(slidesOf(p.edit.find)) !== JSON.stringify(p.on))
+        throw new ActStale(`${p.name} changed since: the words now stand on other slides than the ones shown. Nothing was changed.`)
       if ('find' in p.edit) {
         const now = placesOf(texts, p.edit.find)
-        if (now === 0) throw new ActStale(`${p.name} changed since: the words this replaces are no longer in it. Nothing was changed`)
-        if (now !== p.places) throw new ActStale(`${p.name} changed since: the words stand in ${now} places now, not the ${p.places} this was suggested for. Nothing was changed`)
+        if (now === 0) throw new ActStale(`${p.name} changed since: the words this replaces are no longer in it. Nothing was changed.`)
+        if (now !== p.places) throw new ActStale(`${p.name} changed since: the words stand in ${now} places now, not the ${p.places} this was suggested for. Nothing was changed.`)
       }
       let n: number
       if (p.app === 'word') n = await c.editDocument(key, p.edit, false)

@@ -190,6 +190,12 @@ import TempCodeContract
         #expect(!OutboxModel.addsWords("Bring IDs.", "Bring IDs"))
         #expect(!OutboxModel.addsWords("…a long clause cut…", "a long clause cut"))
         #expect(OutboxModel.addsWords("We leave at 7 sharp, $4.50 a head.", "$4.50"))
+        #expect(OutboxModel.sentenceOf("A. B c d. E.", "c") == "B c d.")
+        let long = "The tournament runs three days with sixteen teams in four pools, then a bracket for the top eight and a final on Sunday."
+        let longDoc = OutboxModel.actView(item("e13", kind: .googleEdit, payload: .object(["app": .string("doc"), "name": .string("Plan"), "edits": .array([.object(["find": .string(long), "replace": .string("Two days."), "within": .string("Intro here. \(long)")])])])))
+        #expect(longDoc.fields.map(\.label) == ["In", "Replace", "With"])
+        let cut = OutboxModel.sentenceAround("Lead. " + String(repeating: "word ", count: 40) + "target " + String(repeating: "more ", count: 40) + "end.", "target")
+        #expect(cut.hasPrefix("…word ") && cut.hasSuffix("more…") && cut.contains("target"))
         let reach = OutboxModel.rowWords(item("e12", kind: .googleEdit, summary: "Make 2 changes in Plan: 3 boxes, \"Q1\" to \"Q2\" and 1 more", payload: .object(["name": .string("Plan"), "edits": .array([.object([:]), .object([:])])])))
         #expect(reach.line == "2 changes: \"Q1\" to \"Q2\"")
         let deckWord = OutboxModel.actView(item("e11", kind: .officeEdit, payload: .object(["app": .string("powerpoint"), "name": .string("Pitch.pptx"), "places": .number(2), "on": .array([.number(2), .number(5)]), "edit": .object(["find": .string("Q1"), "replace": .string("Q2")])])))

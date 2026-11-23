@@ -191,24 +191,29 @@ const EDIT_APP: Record<string, string> = { word: "Word", powerpoint: "PowerPoint
 /** Words as they go: a value with nothing to see (spaces, breaks, a zero-width space) is quoted with its escapes, so it never reads as nothing. */
 const shown = (v: string): string => (v.replace(/\p{Cf}/gu, "").trim() ? v : visible(v));
 
-/** The sentence of a paragraph that holds the words, cut to about 120 characters around them. */
-export function sentenceAround(paragraph: string, words: string, max = 120): string {
+/** The sentence of a paragraph that holds the words, whole: it starts after the last stop and space before them, and
+ * ends at the first stop with a space or the paragraph's end after it, looking from the words' own last character. */
+export function sentenceOf(paragraph: string, words: string): string {
   const at = paragraph.indexOf(words);
-  if (at < 0) return paragraph.length > max ? `${paragraph.slice(0, max - 1)}…` : paragraph;
-  // The sentence starts after the last ".", "!" or "?" and its space before the words, else at the paragraph's start.
+  if (at < 0) return paragraph;
   const start = /^[\s\S]*[.!?]\s+/.exec(paragraph.slice(0, at))?.[0].length ?? 0;
-  // It ends at the first stop with a space or the paragraph's end after it, from the words' own last character on,
-  // so words that end in a stop end their sentence there.
   const last = at + Math.max(0, words.length - 1);
   const tail = paragraph.slice(last).search(/[.!?](\s|$)/);
-  const end = tail < 0 ? paragraph.length : last + tail + 1;
-  let s = paragraph.slice(start, end).trim();
+  return paragraph.slice(start, tail < 0 ? paragraph.length : last + tail + 1).trim();
+}
+
+/** That sentence for the card, cut to about `max` characters around the words, each cut at a space. */
+export function sentenceAround(paragraph: string, words: string, max = 120): string {
+  const s = paragraph.includes(words) ? sentenceOf(paragraph, words) : paragraph;
   if (s.length <= max) return s;
-  // Still long: the words with what fits on either side.
-  const pad = Math.max(0, Math.floor((max - words.length) / 2));
-  const from = Math.max(0, at - start - pad);
-  s = `${from > 0 ? "…" : ""}${s.slice(from, from + max)}${from + max < s.length ? "…" : ""}`;
-  return s;
+  const at = Math.max(0, s.indexOf(words));
+  let from = Math.max(0, at - Math.max(0, Math.floor((max - words.length) / 2)));
+  let to = Math.min(s.length, from + max);
+  // back to whole words where a space is near: a cut splits a word only when the text has no space close by
+  const space = (i: number) => s.lastIndexOf(" ", i);
+  if (from > 0 && space(from) >= from - 20 && space(from) >= 0) from = space(from) + 1;
+  if (to < s.length && space(to) > from && space(to) >= to - 20) to = space(to);
+  return `${from > 0 ? "…" : ""}${s.slice(from, to).trim()}${to < s.length ? "…" : ""}`;
 }
 
 /** Whether a sentence says more than the words it holds: not when only stops, quotes, spaces or a cut's "…" remain. */
@@ -233,10 +238,11 @@ export function editRows(edits: unknown, places?: unknown): { label: string; val
     const on = Array.isArray(e.on) ? (e.on as unknown[]).filter((n): n is number => typeof n === "number") : [];
     const boxes = num(e.boxes);
     const count = num(places);
-    const sentence = str(e.within) !== null ? sentenceAround(e.within as string, from) : null;
+    // judged on the whole sentence, shown cut: a long replace never shows its own words twice
+    const whole = str(e.within) !== null ? sentenceOf(e.within as string, from) : null;
     if (typeof e.shape === "string") rows.push(...row("Where", num(e.slide) === null ? null : `Slide ${e.slide}`));
     // the sentence the words stand in, unless it is the words themselves
-    else if (sentence !== null && addsWords(sentence, from)) rows.push({ label: "Where", value: sentence });
+    else if (whole !== null && addsWords(whole, from)) rows.push({ label: "Where", value: sentenceAround(e.within as string, from) });
     else if (on.length) {
       // a deck's replace by its slides, with how far it reaches: Slides counts boxes, PowerPoint places
       const many = boxes ?? count;

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { changeWords } from '@shared/work/changeWords'
+import { changeWords, quoted } from '@shared/work/changeWords'
 import type { ActKindDef } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
 import { GoogleError, GOOGLE_MIME } from './client'
@@ -97,7 +97,7 @@ const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)
 /** How far a replace-all reaches, first, when it is more than one box: "3 boxes, ". */
 const reach = (e: GoogleEdit['edits'][number]): string => ('boxes' in e && e.boxes && e.boxes > 1 ? `${e.boxes} boxes, ` : '')
 const editWords = (e: GoogleEdit['edits'][number]): string =>
-  'find' in e ? reach(e) + (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : e.text ? `slide ${e.slide}'s ${changeWords(e.was, e.text)}` : `take out slide ${e.slide}'s "${clip(e.was)}"`
+  'find' in e ? reach(e) + (e.replace ? changeWords(e.find, e.replace) : `take out ${quoted(e.find)}`) : e.text ? `slide ${e.slide}'s ${changeWords(e.was, e.text)}` : `take out slide ${e.slide}'s ${quoted(e.was)}`
 
 /** No matcher: no grant covers an agent's change to a file others can open, and no Away releases it. */
 export const googleEdit: ActKindDef<GoogleEdit> = {
@@ -122,7 +122,8 @@ export const googleEdit: ActKindDef<GoogleEdit> = {
       if (err instanceof GoogleError && ['refused', 'not-found', 'bad-request', 'conflict', 'needs-consent', 'no-account', 'signed-out', 'too-wide'].includes(err.code)) throw new ActNotSent(err.message)
       throw err
     }
-    if ('stale' in got) throw new ActStale(`${p.name} changed since: ${got.stale.replace(/\.$/, '')}. Nothing was changed`)
+    // one sentence after the colon, lower-cased where it starts with a word, and a stop at its end
+    if ('stale' in got) throw new ActStale(`${p.name} changed since: ${got.stale.replace(/\.$/, '').replace(/^[A-Z](?=[a-z ])/, (c) => c.toLowerCase())}. Nothing was changed.`)
     const n = p.edits.length
     return { summary: `Made ${n === 1 ? 'the change' : `${n} changes`} in ${p.name}${got.moved ? '. It had changed since the suggestion; every change still fit' : ''}`, ref: { at: 'google', fileId: p.fileId } }
   },

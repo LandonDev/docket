@@ -8,7 +8,7 @@ import type { ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { parseA1, rangeCells } from '../sheets/a1'
 import type { SuggestionStore } from '../sheets/suggestions'
 import { eventById, type OfficeCarrier } from './carrier'
-import { cleanMailHtml, fileText, placesOf, textHash, type OfficeEdit } from './held'
+import { cleanMailHtml, fileRead, placesOf, textHash, type OfficeEdit } from './held'
 import { cellOf, EXCEL_MAX_CELLS, excelStore, type ExcelHelper } from './excel'
 import { fileKey, fileShared, sharedKey } from './shared'
 
@@ -344,10 +344,10 @@ export const OFFICE_TOOLS: OfficeTool[] = [
  * so the press can tell whether it moved.
  */
 async function held(env: Env, app: OfficeEdit['app'], key: string, asked: string, edit: OfficeEdit['edit']): Promise<WorkToolResult> {
-  const texts = await fileText(env.carrier, app, key)
+  const { texts, on: slidesOf } = await fileRead(env.carrier, app, key)
   const places = 'find' in edit ? placesOf(texts, edit.find) : 0
   // a deck's slides that hold the words, so the card can name them
-  const on = app === 'powerpoint' && 'find' in edit ? (await env.carrier.readSlides(key)).filter((s) => s.texts.some((t) => t.includes(edit.find))).map((s) => s.index) : undefined
+  const on = app === 'powerpoint' && 'find' in edit ? slidesOf(edit.find) : undefined
   if ('find' in edit && places === 0) return workText('Nothing matched.')
   const name = fileName(key) || asked
   const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts), ...(on ? { on } : {}), ...(env.vm ? { vm: true as const } : {}) } satisfies OfficeEdit })
