@@ -116,6 +116,13 @@ describe("running late", () => {
     expect(lateDraft(overlap(), [], T0 + 2 * HOUR + 10 * MINUTE).body).toBe("I'm running late.");
   });
 
+  it("counts the time he would have been there by from the earlier event's end and the drive, whatever the later one's arrive-by", () => {
+    // A 6:15 to 7:15 meeting, 40 minutes from an 8:00 game that wants him there at 7:45: he gets there at 7:55, 10 minutes short.
+    const early = drive({ a: side("a", 6.25, 1), b: side("b", 8, 2), minutes: 40, shortBy: 10 });
+    expect(lateDraft(early, [], T0 + 7.75 * HOUR).body).toBe("I'm running about 10 minutes late.");
+    expect(lateDraft(early, [], T0 + 8 * HOUR).body).toBe("I'm running late.");
+  });
+
   it("knows when the pair a step's offer was made from has changed", () => {
     expect(pairStamp(drive())).toBe(pairStamp(drive()));
     expect(pairStamp(drive({ b: side("b", 1, 2) }))).not.toBe(pairStamp(drive()));

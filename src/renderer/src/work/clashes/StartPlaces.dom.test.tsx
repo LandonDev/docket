@@ -286,6 +286,51 @@ describe("Start places", () => {
     }
   });
 
+  it("measures the form against what LifeOS holds now: a Save that timed out and landed after all can be undone", async () => {
+    const view = render(<StartPlacesSection environmentId="box" />);
+    const dialog = await open("Change Purdue");
+    vi.useFakeTimers();
+    try {
+      lifeos.silent = true;
+      fireEvent.click(within(dialog).getByRole("switch"));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+      await act(async () => {});
+      await act(async () => void vi.advanceTimersByTime(10_000));
+    } finally {
+      vi.useRealTimers();
+    }
+    lifeos.silent = false;
+    // The write landed after the wait ended: the live read now says Purdue's lookups are on.
+    lifeos.places = { ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "purdue" ? { ...j, lookups: true } : j)) };
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    const saveOff = () => (within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled;
+    // The switch shows on, as stored: nothing to save.
+    expect(saveOff()).toBe(true);
+    // He turns it back off: that differs from what LifeOS holds, so Save is on and sends it.
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("switch"));
+    expect(saveOff()).toBe(false);
+    lifeos.sent = [];
+    await save(screen.getByRole("dialog"));
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { lookupsFor: { sector: "purdue", on: false } } }]);
+  });
+
+  it("lets a field he has not touched follow the reads, and never offers to send it back", async () => {
+    const view = render(<StartPlacesSection environmentId="box" />);
+    await open("Change Ref");
+    // Another window gives Ref a new start while this dialog is open.
+    lifeos.places = { ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "ref" ? { ...j, address: "7 Arena Way", state: "looking" as const } : j)) };
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    const dialog = screen.getByRole("dialog");
+    expect((within(dialog).getByLabelText("Address") as HTMLInputElement).value).toBe("7 Arena Way");
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    // His own change to the switch goes alone: the address he left is not in the patch.
+    fireEvent.click(within(dialog).getByRole("switch"));
+    await save(dialog);
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { lookupsFor: { sector: "ref", on: false } } }]);
+  });
+
   it("a refusal's words stay in the dialog", async () => {
     lifeos.refuse = "refused: that address is too long";
     render(<StartPlacesSection environmentId="box" />);

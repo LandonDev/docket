@@ -157,7 +157,10 @@ The pillar has no view of its own and no row in the column.
   refuses it, in words and with its field marked invalid (`fieldOf`,
   `ClashStep.dst.dom.test.tsx`). A start already gone is
   refused. A step with times whose pair changed under it (`pairStamp`)
-  holds Send and points back for a fresh offer. A move of an event with
+  holds Send and points back for a fresh offer, and one whose event ended
+  while it was open says so and sends nothing. A step is its event's by
+  id, and the dialog knows its pair under either order of the id, which
+  flips when one of the two moves to start first. A move of an event with
   guests says they are told.
 - `model.ts` holds the pure parts: the marks, the time a move or a proposal
   starts filled with (the earlier event: the latest quarter hour that ends a
@@ -214,7 +217,9 @@ while it reads, the read's error in a red line if it fails.
   empties the field, and Save sends that with whatever else he changed, so a
   flipped switch is never dropped. Save stays off until something changed,
   spins while LifeOS answers, then closes; a refusal stays in the dialog in
-  LifeOS's words, as an alert. No toast: the row changes. The dialog stands
+  LifeOS's words, as an alert. No toast: the row changes. The form is what LifeOS holds now with his
+  edits laid over it: a field he has not touched follows the reads, and
+  Save is on whenever the form differs from what is stored now. The dialog stands
   on what the reads last gave whole, so it and what he typed stay when a
   read fails, the session drops or a read is out; Save waits until the
   reads are current again, so he saves beside what LifeOS holds now. Why LifeOS

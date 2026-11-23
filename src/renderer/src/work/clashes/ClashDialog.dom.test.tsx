@@ -142,6 +142,78 @@ describe("the Clash dialog", () => {
     expect((screen.getByLabelText("From") as HTMLInputElement).value).not.toBe(offered);
   });
 
+  it("does not hold a step under his own Move when the read shows the moved pair before the host answers", async () => {
+    wire.hold = () => {};
+    const view = (clash: Clash) => {
+      marks.now = marksOf({ clashes: [clash], leaves: [] });
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(overlap()));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Move…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await settle();
+    // LifeOS has moved the game and still finds a clash; the host has not answered the press yet.
+    rerender(view(overlap(meeting(["decline", "propose"]), { ...game(["move", "late"]), startsAt: T0 + 1.5 * HOUR, endsAt: T0 + 3.5 * HOUR })));
+    await settle();
+    const said = document.querySelector("[data-clash-step] [aria-live=polite]")!;
+    expect(said.textContent).toBe("It moves on your calendar.");
+    await act(async () => wire.hold?.());
+    await settle();
+    expect(toasts.said[0]?.words).toBe("Moved Varsity Basketball");
+  });
+
+  it("holds an open step once its event is over, as the list gives such an event no way out", async () => {
+    vi.useFakeTimers({ now: T0 + HOUR, toFake: ["Date"] });
+    try {
+      show(overlap());
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+      fireEvent.change(screen.getByLabelText("Note"), { target: { value: "Could not make it" } });
+      // The meeting ends while the step is open; the press comes five minutes on.
+      vi.setSystemTime(T0 + 2 * HOUR + 5 * 60_000);
+      fireEvent.submit(document.querySelector("[data-clash-step]")!);
+      await settle();
+      expect(wire.calls).toEqual([]);
+      expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe("Could not make it");
+    } finally {
+      vi.useRealTimers();
+    }
+    // Opened after its end by a stale route: the step says so and Send is off.
+    cleanup();
+    vi.useFakeTimers({ now: T0 + 2 * HOUR + 5 * 60_000, toFake: ["Date"] });
+    try {
+      const { StepForm } = await import("./ClashDialog");
+      render(<StepForm clash={overlap()} step={{ side: "a", way: "decline" }} pending={false} onBack={() => {}} onSend={() => {}} />);
+      expect(document.querySelector("[data-clash-step] [aria-live=polite] span:not(.invisible)")?.textContent).toBe("This event is over.");
+      expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("knows the same two events under a flipped id: one moves to start first, they still clash, and the step stays on its event", async () => {
+    const view = (clash: Clash) => {
+      marks.now = marksOf({ clashes: [clash], leaves: [] });
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(overlap()));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    expect(screen.getByRole("group", { name: "Staff meeting" })).toBeTruthy();
+    // The game moves to start an hour before the meeting: LifeOS now names the pair game first.
+    const first = { ...game(["move", "late"]), startsAt: T0 - HOUR, endsAt: T0 + HOUR };
+    rerender(view({ ...overlap(first, meeting(["decline", "propose"])), id: "ev_b-ev_a" }));
+    await settle();
+    expect(screen.queryByRole("dialog", { name: "No longer a clash" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Two things at once" })).toBeTruthy();
+    // Still the meeting's decline, and it goes for the meeting.
+    expect(screen.getByRole("group", { name: "Staff meeting" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await settle();
+    expect(wire.calls[0]).toMatchObject({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "decline" } });
+  });
+
   it("says a start beside the dialog's day and an end beside its start: a weekday within three days, a date further off", async () => {
     const times = (title: string) => within(screen.getByRole("group", { name: title })).getByText(/ – /).textContent;
     // A block that began a week before the day the dialog names: both ends dated, never a few hours on the first day.

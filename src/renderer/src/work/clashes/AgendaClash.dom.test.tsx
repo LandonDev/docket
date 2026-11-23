@@ -128,7 +128,7 @@ describe("a clash on the Agenda row", () => {
   it("draws no line and no menu row for an event with no clash, or one that is over", async () => {
     const over = { ...meeting, _id: "ev_over", startsAt: now - 3 * HOUR, endsAt: now - HOUR };
     events.rows = [over, { ...meeting, _id: "ev_free" }];
-    lifeos.range = { clashes: [{ ...overlap.clashes[0]!, id: "ev_over-ev_game", a: { ...overlap.clashes[0]!.a, eventId: "ev_over" } }], leaves: [] };
+    lifeos.range = { clashes: [{ ...overlap.clashes[0]!, id: "ev_over-ev_game", a: { ...overlap.clashes[0]!.a, eventId: "ev_over", startsAt: over.startsAt, endsAt: over.endsAt } }], leaves: [] };
     render(<View {...props} />);
     await act(async () => {});
     expect(screen.queryByRole("button", { name: /^Overlaps/ })).toBeNull();
@@ -185,6 +185,31 @@ describe("a clash on the Agenda row", () => {
     expect(drawn.marked.at(-1)).toEqual(["ev_meeting"]);
   });
 
+  it("keeps the line, the menu row and the dot of an event with no end for the hour LifeOS runs it, though the list greys it at its start", async () => {
+    // A check-in with no end began a quarter hour ago: the Agenda reads its start as its end, LifeOS runs it an hour.
+    const checkIn = { ...meeting, startsAt: now - 15 * 60_000, endsAt: undefined };
+    events.rows = [checkIn];
+    const side0 = { ...overlap.clashes[0]!.a, startsAt: checkIn.startsAt, endsAt: checkIn.startsAt + HOUR };
+    lifeos.range = { clashes: [{ ...overlap.clashes[0]!, a: side0, b: { ...game, startsAt: now - 5 * 60_000, endsAt: now + HOUR } as never }], leaves: [] };
+    render(<View {...props} />);
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: /^Overlaps Varsity Basketball \(Ref\)/ })).toBeTruthy();
+    fireEvent.contextMenu(screen.getByRole("listitem"));
+    await act(async () => {});
+    expect(screen.getByRole("menuitem", { name: "Show clash" })).toBeTruthy();
+    cleanup();
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    await act(async () => {});
+    expect(drawn.marked.at(-1)).toEqual(["ev_meeting"]);
+  });
+
   it("hands the Week and the Month the events that clash, for their dot", async () => {
     events.rows = [meeting];
     lifeos.range = overlap;
@@ -206,7 +231,7 @@ describe("a clash on the Agenda row", () => {
 
   it("marks no event that is over in the Week or the Month, as the list drops its line", async () => {
     events.rows = [{ ...meeting, startsAt: now - 3 * HOUR, endsAt: now - HOUR }];
-    lifeos.range = overlap;
+    lifeos.range = { clashes: [{ ...overlap.clashes[0]!, a: { ...overlap.clashes[0]!.a, startsAt: now - 3 * HOUR, endsAt: now - HOUR } }], leaves: [] };
     render(
       <>
         <Head {...props} />

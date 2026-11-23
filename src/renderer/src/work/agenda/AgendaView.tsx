@@ -163,16 +163,16 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   const marks = useClashes(environmentId, from, to);
   // When to leave is the rule's once it has answered (from the event before, when that is where he will be); LifeOS's own until then.
   // The dot in the Week and the Month is for what is still his to settle, as the list's line is: an event that is over wears none.
-  // A clash is his to settle until its later event is over: Running late is for the time after the earlier one ends. An event that is over drops its own line (the row's `past`).
+  // A clash is his to settle until its later event is over: Running late is for the time after the earlier one ends. An event that is over drops its own line. Over is by the end LifeOS gave the clash's side, which runs an event with no end for an hour, as the rule that found the clash does.
   const clashesOf = useMemo(() => {
     const live = new Map<string, readonly Clash[]>();
     for (const [id, list] of marks.clashes) {
-      const kept = list.filter((c) => c.b.endsAt >= now);
+      const kept = list.filter((c) => c.b.endsAt >= now && (c.a.eventId === id ? c.a : c.b).endsAt >= now);
       if (kept.length) live.set(id, kept.length === list.length ? list : kept);
     }
     return live;
   }, [marks.clashes, now]);
-  const marked = useMemo(() => new Set((events ?? []).filter((e) => clashesOf.has(e._id) && endOf(e) >= now).map((e) => e._id)), [events, clashesOf, now]);
+  const marked = useMemo(() => new Set((events ?? []).filter((e) => clashesOf.has(e._id)).map((e) => e._id)), [events, clashesOf]);
   const leaveOf = (event: AgendaEvent) => {
     if (!marks.ready) return leaveAt(event, now);
     return !event.allDay && event.startsAt > now ? marks.leaves.get(event._id)?.leaveAt : undefined;
@@ -239,8 +239,8 @@ export const EventRow = memo(function EventRow({
   environmentId: string;
 }) {
   const done = over ?? past;
-  // A clash with something that is over is no longer his to settle.
-  const clash = past ? undefined : clashes;
+  // The list hands a row only the clashes still his to settle: both sides' ends are the clash's own.
+  const clash = clashes;
   // LifeOS's event carries its attendees; the shared type does not name them.
   const met = knownAttendees((event as AgendaEvent & { attendees?: { address: string }[] }).attendees, people);
   return (

@@ -36,7 +36,10 @@ import { answered } from "./wait";
  */
 
 type Side = "a" | "b";
-type Step = { side: Side; way: Exclude<ClashWay, "late"> };
+/** A step is its event's, by id: the pair may swap order under it when one of the two moves. */
+type Step = { eventId: string; way: Exclude<ClashWay, "late"> };
+/** The same two events with the later first: a clash's id is the earlier event's then the later's (ids hold no hyphen), so it flips when their order does. */
+const flipped = (id: string) => id.split("-").reverse().join("-");
 const eventGet = makeFunctionReference<"query">("events:get");
 
 export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => void }) {
@@ -45,7 +48,8 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   const first = startOfDay(ask.clash ? ask.clash.a.startsAt : Date.now());
   const [from, to] = [first, addDays(first, 14)];
   const marks = useClashes(ask.environmentId, from, to);
-  const live = [...marks.clashes.values()].flat().find((c) => c.id === ask.id);
+  // The pair in either order: when one of the two moves to start first and they still clash, it is the same clash under a flipped id.
+  const live = [...marks.clashes.values()].flat().find((c) => c.id === ask.id || c.id === flipped(ask.id));
   const [pending, setPending] = useState(false);
   // His own press may be what ends the clash ("This is fine", a decline): the dialog keeps the clash it showed while that press is out and while it closes, and never turns to "No longer a clash" under his hand.
   const [settled, setSettled] = useState(false);
@@ -245,24 +249,25 @@ function Body({
   };
 
   if (step) {
+    const side: Side = clash.a.eventId === step.eventId ? "a" : "b";
     return (
       <StepForm
         clash={clash}
-        step={step}
+        step={{ side, way: step.way }}
         pending={pending}
         refused={refused}
         cleared={cleared}
         onBack={() => {
-          from.current = `${step.side}:${step.way}`;
+          from.current = `${side}:${step.way}`;
           setRefused(null);
           setStep(null);
         }}
         onSend={(params) => {
           setRefused(null);
           setPending(true);
-          link.request("work.clashes.answer", { eventId: clash[step.side].eventId, way: step.way, ...params }, { lane: "ui" }).then(
+          link.request("work.clashes.answer", { eventId: step.eventId, way: step.way, ...params }, { lane: "ui" }).then(
             () => {
-              done(doneWords(step.way, clash[step.side].title));
+              done(doneWords(step.way, clash[side].title));
             },
             (err: unknown) => {
               setPending(false);
@@ -274,7 +279,7 @@ function Body({
     );
   }
 
-  return <Events clash={clash} pending={pending} busy={busy} error={error} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ side, way }))} bodyRef={body} />;
+  return <Events clash={clash} pending={pending} busy={busy} error={error} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ eventId: clash[side].eventId, way }))} bodyRef={body} />;
 }
 
 /** The two events in time order with the drive between them, the ways out under each, and the foot. */
@@ -360,7 +365,7 @@ export function StepForm({
   onSend,
 }: {
   clash: Clash;
-  step: Step;
+  step: { side: Side; way: Step["way"] };
   pending: boolean;
   /** what LifeOS said of the last Send, in its own words */
   refused?: string | null;
@@ -385,11 +390,17 @@ export function StepForm({
   const timed = step.way !== "decline";
   // The offer was worked out from the pair as it was when the step opened. If either event's time or the drive has changed since, a time he has not looked at again may clash anew: the step holds Send and points back, where a fresh offer is made.
   const [opened] = useState(() => pairStamp(clash));
-  const stale = timed && !cleared && pairStamp(clash) !== opened;
+  // Never under his own press: a move that goes through changes the pair, and the step is closing on what he sent.
+  const stale = timed && !cleared && !pending && pairStamp(clash) !== opened;
+  // The event ended while the step was open: as in the list, an event that is over has no way out.
+  const now = useMinute();
+  const over = !cleared && !pending && event.endsAt <= now;
+  const held = cleared ? "Nothing was sent." : over ? "This event is over." : stale ? "These events changed. Go back for a new time." : null;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (pending) return;
-    if (cleared || stale) return;
+    // Asked of the clock again at the press, since the minute's tick may be behind it.
+    if (held || event.endsAt <= Date.now()) return;
     const when = timed ? whenOf(form, offered) : null;
     if (typeof when === "string") return setError(when);
     // A proposal goes to another person and a move has no Undo: neither goes to a time already gone.
@@ -403,9 +414,8 @@ export function StepForm({
         <EventBlock side={event} day={startOfDay(clash.b.startsAt)} />
         {/* One place, always there: what goes and to whom, or that nothing went once the two no longer clash, read out as it turns. The first sentence keeps its lines under the second, so the fields below stay where they are. */}
         <p aria-live="polite" className="grid text-[13px] leading-5 text-muted-foreground">
-          <span className={cn("col-start-1 row-start-1", (cleared || stale) && "invisible")}>{wayWords(step.way, event.guests)}</span>
-          {cleared ? <span className="col-start-1 row-start-1">Nothing was sent.</span> : null}
-          {stale ? <span className="col-start-1 row-start-1">These events changed. Go back for a new time.</span> : null}
+          <span className={cn("col-start-1 row-start-1", held && "invisible")}>{wayWords(step.way, event.guests)}</span>
+          {held ? <span className="col-start-1 row-start-1">{held}</span> : null}
         </p>
         {timed ? (
           <div className="grid grid-cols-[minmax(0,1fr)_112px_112px] gap-2">
@@ -429,7 +439,7 @@ export function StepForm({
           <ErrorLine error={error ?? refused} />
         </div>
       </ModalBody>
-      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending} disabled={cleared || stale}>
+      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending} disabled={held !== null}>
         <Button data-clash-back variant="secondary" disabled={pending} onClick={onBack}>
           Back
         </Button>

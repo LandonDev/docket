@@ -159,8 +159,10 @@ export function StartPlaceForm({
   error?: string | null;
 }) {
   const close = useModalClose();
-  const [saved] = useState(() => ({ address: place.address ?? "", lookups }));
-  const [form, setForm] = useState(saved);
+  // What LifeOS holds now, as the reads say, with what he changed laid over it. A field he has not touched follows the reads, and Save is on whenever the form differs from what is stored now: a Save that timed out and landed after all can be undone, and a change made elsewhere to a field he left alone is never sent back.
+  const saved = { address: place.address ?? "", lookups };
+  const [edits, setEdits] = useState<Partial<typeof saved>>({});
+  const form = { ...saved, ...edits };
   const [error, setError] = useState<string | null>(shownError);
   const job: SectorKey | null = target === "home" ? null : target;
 
@@ -189,11 +191,11 @@ export function StartPlaceForm({
     <form onSubmit={submit}>
       <ModalBody>
         <Field label="Address">
-          <Input ref={address} autoFocus disabled={pending !== null} value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} placeholder={job ? "Home" : undefined} autoComplete="off" spellCheck={false} />
+          <Input ref={address} autoFocus disabled={pending !== null} value={form.address} onChange={(e) => setEdits((f) => ({ ...f, address: e.target.value }))} placeholder={job ? "Home" : undefined} autoComplete="off" spellCheck={false} />
         </Field>
         {job ? (
           <FieldRow label="Look up event places on Apple Maps" description={<span id={linesId}>When off, this job's event places never leave your machines.</span>}>
-            <Switch checked={form.lookups} disabled={pending !== null} aria-describedby={linesId} onCheckedChange={(on) => setForm((f) => ({ ...f, lookups: on }))} />
+            <Switch checked={form.lookups} disabled={pending !== null} aria-describedby={linesId} onCheckedChange={(on) => setEdits((f) => ({ ...f, lookups: on }))} />
           </FieldRow>
         ) : null}
         {/* One line at a time: why LifeOS cannot be read now, before what it said of an earlier Save; and the wait, while a read is out. */}
@@ -218,7 +220,7 @@ export function StartPlaceForm({
               variant="ghost"
               disabled={pending !== null}
               onClick={() => {
-                setForm((f) => ({ ...f, address: "" }));
+                setEdits((f) => ({ ...f, address: "" }));
                 // The verb leaves with the address: the keyboard goes on from the field it emptied.
                 address.current?.focus();
               }}

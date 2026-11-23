@@ -1868,7 +1868,9 @@ Around the canvas:
   each (two of one name take their job and time, the time as the line
   says it: "Show clash with Stand-up (Ref, Fri 9:00 AM)"). An event that is over carries none, and a clash goes from the
   row, its menu and its dot once its later event is over (Running late
-  is for the time after the earlier one ends). The line arrives with its
+  is for the time after the earlier one ends). Over is by the end LifeOS
+  gave the clash, so an event with no end keeps its line for the hour
+  the rule runs it. The line arrives with its
   read and nothing pulses for it. "Leave 4:35" under the time is from
   where he will be: the event before when that ends within three hours,
   else the day's start.
@@ -1925,11 +1927,14 @@ Around the canvas:
   lines the sentence held, Send is off, and nothing moves. A step with
   times whose pair changed under it (either event's time, or the drive)
   holds Send the same way and says "These events changed. Go back for a
-  new time.", since its offer was made for the pair as it was. What a
+  new time.", since its offer was made for the pair as it was (never
+  under his own press, which is what changed it); a step whose event
+  ended while it was open says "This event is over." and sends nothing. What a
   read said for certain holds while a later read is out or fails: a clash
   seen gone never comes back from an old copy; a read that failed says why in the body; two
   events that no longer clash are the title "No longer a clash" over the
-  foot, with nothing between. Running late… opens Mail's composer in
+  foot, with nothing between; the same two that still clash after one
+  moved to start first are the same clash. Running late… opens Mail's composer in
   that job's workspace with the people on the event and one line, and
   lets go with LifeOS's words when the read of those people gets no
   answer in ten seconds; once the time he would have been there by is
@@ -1959,7 +1964,9 @@ Around the canvas:
   switch, changed elsewhere meanwhile, is kept). The fields are locked
   while Save is out, for ten seconds at most: then the dialog says
   "LifeOS did not answer. Save again to be sure." and he can. An open
-  dialog keeps what he typed when a read fails or the session drops: it
+  dialog keeps what he typed when a read fails or the session drops (a
+  field he has not touched follows the reads, and Save is on whenever
+  the form differs from what LifeOS holds now): it
   says why in its alert, before what LifeOS said of an earlier Save, and
   Save waits for a read that is current; while a read is merely out or
   the session is still connecting, one 12px muted line says "Waiting for

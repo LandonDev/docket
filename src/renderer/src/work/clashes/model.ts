@@ -70,8 +70,8 @@ export function lateMinutes(clash: Clash): number {
 /** The mail Running late… opens in Mail's composer: the people on the later event, and one line. */
 export function lateDraft(clash: Clash, to: readonly string[], now = 0): MailtoDraft {
   const minutes = lateMinutes(clash);
-  // Once the time he would have been there by is behind him, the figure is no longer true: the line says he is late and leaves how late to him.
-  const body = now > clash.b.startsAt + minutes * MINUTE ? "I'm running late." : `I'm running about ${minutes} ${minutes === 1 ? "minute" : "minutes"} late.`;
+  // Once the time he would have been there by is behind him (the earlier event's end and the drive, which an arrive-by does not move), the figure is no longer true: the line says he is late and leaves how late to him.
+  const body = now > clash.a.endsAt + (clash.minutes ?? 0) * MINUTE ? "I'm running late." : `I'm running about ${minutes} ${minutes === 1 ? "minute" : "minutes"} late.`;
   return { to: [...to], cc: [], bcc: [], subject: `Running late: ${clash.b.title}`, body };
 }
 
