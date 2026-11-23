@@ -81,7 +81,7 @@ struct ReceiptSheet: View {
                 await receipt.find(hosts)
                 await receipt.read(hosts)
                 #if DEBUG
-                await ReceiptFixture.saveForProof(receipt, hosts: hosts) { saved += 1 }
+                await ReceiptFixture.saveForProof(receipt, hosts: hosts) { landed() }
                 #endif
             }
         }
@@ -127,6 +127,11 @@ struct ReceiptSheet: View {
 
     private func save() async {
         guard await receipt.save(hosts) != nil else { return }
+        landed()
+    }
+
+    /// The host has it: the light impact, and the sheet closes unless another waits.
+    private func landed() {
         saved += 1
         // Another waits: the sheet goes on to it.
         if receipt.pending == 0 { dismiss() }
