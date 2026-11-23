@@ -738,6 +738,27 @@ describe('a recording that never arrived', () => {
     expect(second.itemId).not.toBe(first.itemId)
   })
 
+  it('keeps every thread that wrote the outcome, oldest first and each once, so a rewrite hides no earlier mail', async () => {
+    fakeStarts()
+    await note('Dana drives the van.')
+    const one = await follow()
+    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'The van is settled.' }] }, one.sessionId)
+    lifeos.outbox.push({ _id: 'ob1', status: 'draft', sector: 'purdue', origin: { threadId: one.sessionId }, message: { subject: 'Staff sync follow-up', to: [{ address: 'maya@x.test' }] } })
+    const two = await rig.rpc<{ sessionId: string }>('work.prep.followUp', { ...params, restart: true })
+    expect(two.sessionId).not.toBe(one.sessionId)
+    // the second thread is shown the mail that waits, so it drafts none
+    expect(words(await call('prep_read', { event: 'ev1' }, two.sessionId))).toContain('Follow-up mail already waiting for his press in the Outbox:\n- “Staff sync follow-up” to maya@x.test')
+    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'The van and the forms are settled.' }] }, two.sessionId)
+    // the first thread's mail is still on the page after the rewrite, and a third follow-up would still be told of it
+    let got = await page()
+    expect(got.doc.after?.by).toEqual([one.sessionId, two.sessionId])
+    expect(got.drafts).toEqual([{ outboxId: 'ob1', subject: 'Staff sync follow-up', to: ['maya@x.test'] }])
+    await call('prep_follow_up', { event: 'ev1', summary: [{ text: 'The van and the forms are settled.' }] }, one.sessionId)
+    got = await page()
+    expect(got.doc.after?.by).toEqual([two.sessionId, one.sessionId])
+    expect(got.drafts).toHaveLength(1)
+  })
+
   it('lets go of it over an outcome too: what an earlier thread wrote stays, and the header has no thread to wait on', async () => {
     fakeStarts()
     await note('Dana drives the van.')
@@ -750,7 +771,7 @@ describe('a recording that never arrived', () => {
     expect(dropped).toMatchObject({ followSessionId: null, followUntil: null })
     expect(dropped.doc.after?.summary).toEqual([{ text: 'The van is settled.' }])
     // the outcome keeps who wrote it, so that thread's mail stays on the page
-    expect(dropped.doc.after?.by).toBe(done.sessionId)
+    expect(dropped.doc.after?.by).toEqual([done.sessionId])
   })
 
   it('takes nothing else with it: a notes document the recording was to stand beside is still the page’s', async () => {
@@ -980,6 +1001,16 @@ describe('a recording the host could not read', () => {
       expect(got).toMatchObject({ notesFile: null, followSessionId: typed.sessionId })
     })
     expect(resume).not.toHaveBeenCalled()
+  })
+
+  it('names the notes document kept beside it as the notes, and says what became of the recording', async () => {
+    fakeStarts()
+    const source = { at: 'file' as const, host: 'box', path: '/tmp/ws-purdue/Staff sync notes.docx' }
+    new PrepStore(rig.work.ctx.db).write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: START, endsAt: null, peopleKeys: [] }, () => ({ people: [], brief: null, notes: null, after: null }), (doc) => ({ ...doc, notes: { text: '', at: 1, file: source } }), START)
+    await rig.rpc('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    await withMeetings(meetings('failed', 'The transcriber is not installed on env_box.'), async () => {
+      expect((await page()).notesFile).toMatchObject({ kind: 'document', title: 'Staff sync notes.docx', source, error: 'Staff sync.m4a could not be read: The transcriber is not installed on env_box.' })
+    })
   })
 
   it('still counts as notes for a typed follow-up while it holds a file, and no longer once it never got one', async () => {

@@ -517,6 +517,16 @@ describe("Add people", () => {
     expect(dialog.getByRole("button", { name: "Add “Jordan Ellis” by name" })).toBeTruthy();
   });
 
+  it("offers no Add by name for one of the list's own people typed whole, by name or by address: their row is the one to tick", async () => {
+    const dialog = await open();
+    const search = dialog.getByLabelText("Search people");
+    for (const typed of ["sam@x.test", "SAM  whitaker"]) {
+      fireEvent.change(search, { target: { value: typed } });
+      expect(dialog.getAllByRole("checkbox").map((c) => c.getAttribute("aria-label")), typed).toEqual(["Sam Whitaker"]);
+      expect(dialog.queryByRole("button", { name: /by name/ }), typed).toBeNull();
+    }
+  });
+
   it("holds the list still while Save is on its way: no tick and no typed name moves it, and the search keeps its caret", async () => {
     const dialog = await open();
     fireEvent.click(dialog.getByRole("checkbox", { name: "Sam Whitaker" }));
@@ -1105,6 +1115,26 @@ describe("after the meeting", () => {
     expect(back.getByText(/The notes were not kept/)).toBeTruthy();
   });
 
+  it("says in its own words when the notes are too long to keep, sends nothing, and stays open on them", async () => {
+    await mount();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
+    const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    const long = "x".repeat(60_001);
+    fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: long } });
+    const asked = host.asked.length;
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Follow up" })));
+    expect(dialog.getByText("These notes are too long to keep (60,000 characters at most). Shorten them, or clear the field and use the transcript file.")).toBeTruthy();
+    // Cancel keeps first, so it says the same and stays; nothing was sent to be refused in the host's words
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Cancel" })));
+    expect(screen.getByRole("dialog", { name: "Notes" })).toBeTruthy();
+    expect(host.asked).toHaveLength(asked);
+    expect((dialog.getByLabelText("Notes") as HTMLTextAreaElement).value).toHaveLength(60_001);
+    // shortened, it goes
+    fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: "Dana drives the van." } });
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Follow up" })));
+    expect(host.asked.map((a) => a.method).slice(asked)).toEqual(expect.arrayContaining(["work.prep.notes", "work.prep.followUp"]));
+  });
+
   it("never carries a dialog to another meeting's page", async () => {
     await mount();
     await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
@@ -1200,6 +1230,25 @@ describe("a recording or a transcript as the notes", () => {
     expect(head().getByRole("button", { name: "Add notes" })).toBeTruthy();
   });
 
+  it("lets why a recording could not be read wrap on its row, and names a kept notes document as the notes with Follow up", async () => {
+    const why = "It stopped when Work was turned off on box. The recording is fine: pick it again to read it.";
+    host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, meetingItemId: "it1" } }, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync.m4a", error: why } });
+    await mount();
+    const line = section("Notes").getByText(why);
+    expect(line.className).toContain("text-pretty");
+    expect(line.className).not.toContain("truncate");
+    // a file's own name still gives way
+    expect(section("Notes").getByText("Staff sync.m4a").className).toContain("truncate");
+    // with his notes document kept beside it, the document is the notes: the row names it, says what became of the recording, and the header follows up from it
+    cleanup();
+    resetPrep();
+    const source = { at: "file" as const, host: "box", path: "/work/purdue/Staff sync notes.docx" };
+    host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, meetingItemId: "it1", file: source } }, notesFile: { kind: "document", title: "Staff sync notes.docx", source, error: `Staff sync.m4a could not be read: ${why}` } });
+    await mount();
+    expect(rowsOf("Notes")).toEqual([`Staff sync notes.docxStaff sync.m4a could not be read: ${why}`]);
+    expect(head().getByRole("button", { name: "Follow up" })).toBeTruthy();
+  });
+
   it("names the recording on the page, and its row opens the thread it shows beside", async () => {
     const opened: string[] = [];
     workOpenPort.set((id) => void opened.push(id));
@@ -1235,7 +1284,7 @@ describe("notes written in a document", () => {
     await vi.waitFor(() => expect(outside.opened).toHaveLength(2));
   });
 
-  it("spins on Write in a document while the document is made, never on Follow up", async () => {
+  it("spins beside Write in a document while the document is made, and never on Follow up", async () => {
     await mount();
     await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
     const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
@@ -1243,9 +1292,13 @@ describe("notes written in a document", () => {
     let answer: () => void = () => {};
     host.slow = new Promise<void>((resolve) => (answer = resolve));
     await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Write in a document" })));
-    const busy = (name: string) => dialog.getByRole("button", { name }).querySelector("[data-slot=busy-label]")?.getAttribute("data-busy") ?? null;
-    expect(busy("Write in a document")).toBe("true");
-    expect(busy("Follow up")).toBeNull();
+    // beside the verb, not inside it: the resting verb keeps no room for a spinner
+    const spinner = dialog.getByRole("status", { name: "Making the notes document" });
+    const verb = dialog.getByRole("button", { name: "Write in a document" });
+    expect(verb.nextElementSibling).toBe(spinner);
+    expect(verb.querySelector("[data-slot=busy-label]")).toBeNull();
+    expect((verb as HTMLButtonElement).disabled).toBe(true);
+    expect(dialog.getByRole("button", { name: "Follow up" }).querySelector("[data-slot=busy-label]")?.getAttribute("data-busy") ?? null).toBeNull();
     expect((dialog.getByRole("button", { name: "Follow up" }) as HTMLButtonElement).disabled).toBe(true);
     host.slow = null;
     await act(async () => answer());

@@ -221,17 +221,21 @@ export const fileTitle = (path: string): string => path.split(/[\\/]/).pop() || 
  */
 export async function notesFileOf(ctx: WorkCtx, notes: PrepDoc['notes'], followSessionId: string | null | undefined): Promise<PrepPage['notesFile']> {
   if (!notes) return null
+  let unread: string | undefined
   try {
     const item = notes.meetingItemId ? ctx.canvas.get(notes.meetingItemId) : null
     if (item?.kind === 'meeting') {
       // A recording this host could not read says so on the page: its transcription may fail long after the dialog closed.
       const meeting = await meetingOf(ctx, item.id)
-      return { kind: 'meeting', itemId: item.id, title: item.title, ...(meeting?.status === 'failed' ? { error: meeting.error?.trim() || 'This host could not read it.' } : {}) }
+      const error = meeting?.status === 'failed' ? meeting.error?.trim() || 'This host could not read it.' : undefined
+      // With a notes document kept beside it, the document is the notes a follow-up will read: the row names it, and says what became of the recording.
+      if (!error || notes.file?.at !== 'file') return { kind: 'meeting', itemId: item.id, title: item.title, ...(error ? { error } : {}) }
+      unread = `${item.title} could not be read: ${error}`
     }
     const file = notes.file
     if (file?.at !== 'file') return null
     const held = followSessionId ? ctx.canvas.forSession(ctx.canvas.paneOf(followSessionId)).find((i) => i.kind === 'document' && i.source.at === 'file' && i.source.path === file.path) : undefined
-    return { kind: 'document', title: fileTitle(file.path), source: file, ...(held ? { itemId: held.id } : {}) }
+    return { kind: 'document', title: fileTitle(file.path), source: file, ...(held ? { itemId: held.id } : {}), ...(unread ? { error: unread } : {}) }
   } catch {
     // A host whose canvas is not running names no file; the notes' words still show.
     return null
@@ -320,8 +324,8 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
           }
         )
       : Promise.resolve(null),
-    // The mail of the thread that wrote the outcome, and of the page's thread now: a later follow-up hides neither.
-    Promise.all([...new Set([row?.doc.after?.by, row?.followSessionId].filter((id): id is string => !!id))].map((threadId) => draftsOf(client, sector, threadId))).then(
+    // The mail of every thread that wrote the outcome, and of the page's thread now: a later follow-up hides none of it.
+    Promise.all([...new Set([...(row?.doc.after?.by ?? []), row?.followSessionId].filter((id): id is string => !!id))].map((threadId) => draftsOf(client, sector, threadId))).then(
       (lists) => lists.flat().filter((draft, i, all) => all.findIndex((d) => d.outboxId === draft.outboxId) === i),
       () => {
         problems.push('drafts')

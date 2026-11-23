@@ -323,8 +323,8 @@ describe('follow-up drafts', () => {
   })
 
   it('keeps the mail of the thread that wrote the outcome when a later follow-up takes the page’s thread, each draft once', async () => {
-    const { ctx, lifeos, store } = world()
-    const after = { summary: [{ text: 'Settled.' }], decisions: [], questions: [], tasks: [], at: NOW, by: 'follow-1' }
+    const { ctx, db, lifeos, store } = world()
+    const after = { summary: [{ text: 'Settled.' }], decisions: [], questions: [], tasks: [], at: NOW, by: ['follow-1'] }
     store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => ({ ...doc, after }), NOW, { follow: 'follow-2' })
     const draft = { status: 'draft', sector: 'purdue', message: { subject: 'Staff sync follow-up', to: [{ address: 'tom@x.test' }] } }
     lifeos.outbox.push({ ...draft, _id: 'first', origin: { threadId: 'follow-1' } }, { ...draft, _id: 'second', origin: { threadId: 'follow-2' } })
@@ -337,6 +337,14 @@ describe('follow-up drafts', () => {
     // and it stays once the page has let go of every thread
     store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW, { follow: null })
     expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page.drafts.map((d) => d.outboxId)).toEqual(['first'])
+    // the second thread rewrote the outcome: both writers are kept, so the first one's mail is still there
+    store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => ({ ...doc, after: { ...after, by: ['follow-1', 'follow-2'] } }), NOW, { follow: 'follow-2' })
+    expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page.drafts.map((d) => d.outboxId)).toEqual(['first', 'second'])
+    // a page written when one writer was kept as a bare id still reads
+    db.prepare("UPDATE work_prep_pages SET doc = json_set(doc, '$.after.by', 'follow-1') WHERE event_id = 'ev1'").run()
+    const old = await gather(ctx, 'ws-purdue', 'ev1', NOW)
+    expect(old.page.doc.after?.by).toEqual(['follow-1'])
+    expect(old.page.doc.after?.summary).toEqual([{ text: 'Settled.' }])
   })
 
   it('names drafts in problems if LifeOS cannot read them and still shows the page', async () => {

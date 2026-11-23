@@ -768,7 +768,8 @@ function Notes({ text, lines, file, onOpenFile }: { text: string; lines: 2 | 6; 
       <h2 className="mb-1 text-xs font-medium text-muted-foreground">Notes</h2>
       {file ? (
         <div role="list">
-          <LineRow text={file.title} line={file.error} onOpen={onOpenFile} />
+          {/* Why a recording could not be read is not cut short: the meetings pillar passes a converter's own sentence through. */}
+          <LineRow text={file.title} line={file.error} wrap={!!file.error} onOpen={onOpenFile} />
         </div>
       ) : null}
       {text ? (
@@ -944,12 +945,12 @@ function RowBox({ onOpen, className, children }: { onOpen: (() => void) | undefi
 }
 
 /** One line of the page: its words, a muted second line, a fact at the end. */
-function LineRow({ text, line, trail, onOpen }: { text: string; line?: string | undefined; trail?: string | undefined; onOpen: (() => void) | undefined }) {
+function LineRow({ text, line, trail, wrap = false, onOpen }: { text: string; line?: string | undefined; trail?: string | undefined; /** the second line wraps, never cut */ wrap?: boolean; onOpen: (() => void) | undefined }) {
   return (
     <RowBox onOpen={onOpen}>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className={cn("text-foreground", onOpen ? "truncate" : "text-pretty select-text")}>{text}</span>
-        {line ? <span className="truncate text-xs text-muted-foreground">{line}</span> : null}
+        {line ? <span className={cn("text-xs text-muted-foreground", wrap ? "text-pretty" : "truncate")}>{line}</span> : null}
       </span>
       {trail ? <span className={TRAIL}>{trail}</span> : null}
     </RowBox>

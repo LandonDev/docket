@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PrepAddedPerson, PrepPage } from "@shared/contract-work-prep";
+import { PREP_NOTES_MAX, prepFold, type PrepAddedPerson, type PrepPage } from "@shared/contract-work-prep";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Search } from "../../chrome/icons";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
@@ -79,7 +79,9 @@ export function PeopleForm({
   };
   const typed = query.trim();
   // A name he may add: not one the list already holds, and not someone the calendar lists, typed by their name or their address.
-  const canName = typed.length > 0 && !all.some((p) => p.name.toLowerCase() === typed.toLowerCase()) && !namesInvitee(typed, page);
+  // The list's own person, typed by their whole name or address, is theirs to tick: a second row by name would be the same person twice.
+  const typedKey = prepFold(typed);
+  const canName = typed.length > 0 && !all.some((p) => prepFold(p.name) === typedKey || (p.address ? prepFold(p.address) === typedKey : false)) && !namesInvitee(typed, page);
   const addNamed = () => {
     if (pending) return;
     const person = { name: typed };
@@ -202,8 +204,11 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
   const changed = () => text.trim() !== kept.current.trim();
   // A follow-up thread this window holds and knows has stopped is not waited on, as from the header's verb.
   const restart = threadStopped(page.followSessionId, useSessionMetaValue(page.followSessionId, (meta) => meta.status));
+  // The host keeps 60,000 characters of notes; a pasted transcript can run past that, and belongs in the file route.
+  const tooLong = () => text.trim().length > PREP_NOTES_MAX;
   const keep = async () => {
     if (!changed()) return;
+    if (tooLong()) throw new Error(TOO_LONG);
     await keepPrepNotes(env, workspaceId, eventId, text);
     kept.current = text;
     dropNotes(workspaceId, eventId);
@@ -245,10 +250,11 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
    * sent then; if the host does not take it, it is held for this meeting and the dialog opens again on it.
    */
   const sendLate = (typed: string) =>
-    void keepPrepNotes(env, workspaceId, eventId, typed).then(
+    // Notes too long to keep are not sent to be refused in the host's words: they are held, and the dialog says why in its own.
+    void (typed.trim().length > PREP_NOTES_MAX ? Promise.reject(new Error(TOO_LONG)) : keepPrepNotes(env, workspaceId, eventId, typed)).then(
       () => dropNotes(workspaceId, eventId),
       (err: unknown) => {
-        holdNotes(workspaceId, eventId, typed, `The notes were not kept: ${refusalWords(err) || "the host did not answer"}`);
+        holdNotes(workspaceId, eventId, typed, err instanceof Error && err.message === TOO_LONG ? TOO_LONG : `The notes were not kept: ${refusalWords(err) || "the host did not answer"}`);
         reopenNotes.current?.(workspaceId, eventId);
       },
     );
@@ -290,6 +296,8 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
     </Modal>
   );
 }
+
+const TOO_LONG = `These notes are too long to keep (${PREP_NOTES_MAX.toLocaleString("en-US")} characters at most). Shorten them, or clear the field and use the transcript file.`;
 
 /** How the page opens the Notes dialog again, for a close whose save failed after the dialog had gone: it is told whose notes they were, and opens only on that meeting's own page. */
 export const reopenNotes: { current: ((workspaceId: string, eventId: string) => void) | null } = { current: null };
@@ -373,8 +381,10 @@ export function NotesForm({
                 Use a recording or transcript
               </Button>
               <Button variant="ghost" size="xs" className="font-normal text-muted-foreground" disabled={busy} onClick={() => onDocument(done)}>
-                <BusyLabel busy={pending === "document"} label="Write in a document" />
+                Write in a document
               </Button>
+              {/* Beside the verb he pressed, not inside it: the resting verb keeps no room for a spinner, so it starts where the one before it ends. */}
+              {pending === "document" ? <Spinner role="status" aria-label="Making the notes document" className="size-3 shrink-0" /> : null}
             </span>
           )}
           <input

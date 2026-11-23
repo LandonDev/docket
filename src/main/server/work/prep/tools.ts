@@ -4,6 +4,7 @@ import {
   PREP_MATTERS_MAX,
   PREP_PEOPLE_MAX,
   PREP_TASKS_MAX,
+  PREP_WRITERS_MAX,
   PrepAddedPersonSchema,
   PrepFileRefSchema,
   PrepLineSchema,
@@ -148,7 +149,9 @@ const followUp = tool(
       const input = (args.tasks ?? []).map(({ due, ...task }) => ({ ...task, ...(due ? { due: dueAt(due) } : {}) }))
       const { tasks, suggestionSeq } = rewriteTasks(input, doc.after?.tasks ?? [], row?.suggestionSeq ?? 0)
       const at = Date.now()
-      const after = { summary: args.summary ?? [], decisions: args.decisions ?? [], questions: args.questions ?? [], tasks, at, by: ctx.sessionId }
+      // Every thread that wrote the outcome is kept, so the mail an earlier one drafted stays on the page after this rewrite.
+      const by = [...(doc.after?.by ?? []).filter((id) => id !== ctx.sessionId), ctx.sessionId].slice(-PREP_WRITERS_MAX)
+      const after = { summary: args.summary ?? [], decisions: args.decisions ?? [], questions: args.questions ?? [], tasks, at, by }
       writePage(ctx, workspaceId, event, last, { ...doc, after }, at, { suggestionSeq })
       return workText(`Kept the outcome for “${event.title}”. Suggested tasks wait for the owner on the meeting’s page.`)
     })

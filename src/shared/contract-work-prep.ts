@@ -24,6 +24,8 @@ export const PREP_PEOPLE_MAX = 40
 export const PREP_PEOPLE_DRAWN = 12
 export const PREP_NOTES_MAX = 60_000
 export const PREP_TASKS_MAX = 20
+/** How many of an outcome's writing threads a page remembers, for their follow-up mail. */
+export const PREP_WRITERS_MAX = 6
 /** The longest span `work.prep.upcoming` reads in one call. */
 export const PREP_UPCOMING_MAX_MS = 31 * 86_400_000
 
@@ -97,8 +99,11 @@ export const PrepDocSchema = z.object({
       questions: z.array(PrepLineSchema).max(PREP_LINES_MAX),
       tasks: z.array(PrepSuggestionSchema).max(PREP_TASKS_MAX),
       at: z.number(),
-      /** the thread that wrote it: its follow-up mail stays on the page when a later follow-up takes the page's thread */
-      by: z.string().optional()
+      /**
+       * The threads that wrote it, oldest first, the newest six: a follow-up mail any of them drafted stays on the
+       * page when a later follow-up rewrites the outcome. (One id alone in a page written before the list.)
+       */
+      by: z.preprocess((v) => (typeof v === 'string' ? [v] : v), z.array(z.string()).max(PREP_WRITERS_MAX)).optional()
     })
     .nullable()
 })
@@ -106,7 +111,7 @@ export interface PrepDoc {
   people: PrepAddedPerson[]
   brief: { matters: PrepLine[]; agreed: PrepLine[]; files: PrepFileRef[]; at: number; by: string } | null
   notes: { text: string; at: number; file?: CanvasSource; meetingItemId?: string } | null
-  after: { summary: PrepLine[]; decisions: PrepLine[]; questions: PrepLine[]; tasks: PrepSuggestion[]; at: number; by?: string } | null
+  after: { summary: PrepLine[]; decisions: PrepLine[]; questions: PrepLine[]; tasks: PrepSuggestion[]; at: number; by?: string[] } | null
 }
 export const emptyPrepDoc = (): PrepDoc => ({ people: [], brief: null, notes: null, after: null })
 
@@ -211,7 +216,10 @@ export interface PrepNotesFile {
   kind: 'meeting' | 'document'
   title: string
   itemId?: string
-  /** a recording this host could not read (no transcriber, a file it cannot parse): why, in the meeting's own words */
+  /**
+   * A recording this host could not read (no transcriber, a file it cannot parse): why, in the meeting's own words.
+   * On a document, the recording kept beside it could not be read; the document is still the notes.
+   */
   error?: string
   /** a document's own file, so the window can open it before any thread holds it */
   source?: CanvasSource
