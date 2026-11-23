@@ -19,7 +19,19 @@ const ROOT = resolve(import.meta.dirname, '..')
 export const NOTICES_FILE = join(ROOT, 'THIRD-PARTY-NOTICES.md')
 
 /** devDependencies whose code the bundler copies into out/ (main, renderer, the Work service, the hosted pages). */
-export const BUNDLED = ['react', 'react-dom', 'pdfjs-dist', 'work-kit', 'y-prosemirror', 'y-protocols', 'convex', '@modelcontextprotocol/sdk'] as const
+export const BUNDLED = [
+  'react', 'react-dom', 'pdfjs-dist', 'work-kit', 'y-prosemirror', 'y-protocols', 'convex',
+  '@modelcontextprotocol/sdk', '@muse-code/sdk', '@base-ui/react', '@codemirror/autocomplete',
+  '@codemirror/commands', '@codemirror/lang-css', '@codemirror/lang-html', '@codemirror/lang-javascript',
+  '@codemirror/lang-json', '@codemirror/lang-markdown', '@codemirror/lang-python', '@codemirror/lang-rust',
+  '@codemirror/language', '@codemirror/lint', '@codemirror/merge', '@codemirror/search', '@codemirror/state',
+  '@codemirror/view', '@hugeicons/core-free-icons', '@hugeicons/react', '@lezer/common', '@lezer/highlight',
+  '@shikijs/monaco', '@tanstack/react-virtual', '@xterm/xterm',
+  'aliax-core', 'class-variance-authority', 'clsx', 'codemirror', 'cuelume', 'mermaid', 'monaco-editor',
+  'motion', 'prettier', 'qrcode', 'react-material-icon-theme', 'recharts', 'rehype-harden', 'shiki',
+  'simple-icons', 'sonner', 'streamdown', 'tailwind-merge', 'tailwindcss', 'tw-animate-css', 'unified',
+  'zustand'
+] as const
 
 /** Licences allowed in what we ship (the master's ruling of 2026-11-19), SPDX ids. */
 export const PERMISSIVE = new Set([

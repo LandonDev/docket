@@ -103,7 +103,10 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   (scripts/release-publish.sh) ships HEAD's 1.0.N to the feed; both are
   buttons in Settings → Hosts, pressed by the user. The build runs
   itself again with an 8 GB heap (scripts/lib/buildHeap.ts, from
-  electron.vite.config.ts). No AI attribution
+  electron.vite.config.ts). The app's node_modules is
+  `dependencies` alone, the packages out/main and out/preload load;
+  everything else is a devDependency compiled into out/
+  (scripts/shippedDeps.test.ts). No AI attribution
   trailers in commits. [docs/agents/releases.md](docs/agents/releases.md)
 - **Code-only updates** — a green commit's `out/` in the owner's Mac app in minutes, no signed
   bundle: release.ts packs it after the tag and the push (scripts/code-pack.ts, the base stamp

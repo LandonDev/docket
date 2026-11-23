@@ -868,6 +868,27 @@ the zip 312 MB to 381 MB (the published 1.0.277 zip was 425 MB for the
 same reason). electron-builder.yml now leaves `ios/`, `infra/` and
 `docs/` out.
 
+The bundle also carried 425 packages of node_modules, 34,414 of its 36,468
+files: every library the renderer uses was in `dependencies`, so
+electron-builder copied each one in and signed it, though electron-vite
+had already compiled them into out/. Since 2026-11-23 `dependencies` holds
+only the 15 packages out/main and out/preload load at run time, and
+electron-builder.yml trims sources, docs and other platforms' binaries
+from those (scripts/shippedDeps.test.ts holds both, and the count). The
+dry run on the Mac, before and after, the same day:
+
+| | before (1.0.363 tree) | after |
+| --- | --- | --- |
+| TempCode.app | 36,468 files, 1.1 GB | 3,359 files, 702 MB |
+| app/node_modules | 34,414 files, 677 MB, 425 packages | 1,295 files, 263 MB, 69 packages |
+| app/out | 1,694 files | 1,704 files |
+| zip | 346 MB | 254 MB |
+| `phase ✓ sign` | 5m55s | 3m30s |
+| `phase ✓ total` (`GATE_SKIP=1`) | 8m1s | 4m47s |
+
+The Mac's load was high and not the same in the two runs, so read the
+times as a range; the same tree's sign took 3m42s on a quieter day.
+
 The proofs: `bun run script:e2e-updater` (two signed, un-notarized copies,
 check → download → restart over CDP) passed against this script's output
 on 2026-10-21; `scripts/release-publish.sh --pack-only` and `--dry-run`

@@ -29,6 +29,18 @@ files:
   # work-kit is private source; the renderer and main bundles in out/ carry what
   # the app uses of it, compiled. Its folder never ships (scripts/workKitPin.test.ts).
   - '!node_modules/work-kit/**'
+  # node_modules ships only what out/main and out/preload load at run time: package.json's
+  # `dependencies`, kept to those by scripts/shippedDeps.test.ts; every library the renderer
+  # uses is compiled into out/ and is a devDependency. Signing time follows the file count
+  # (36,467 files took 3m42s in 1.0.363), so what ships of those packages is cut further
+  # here: sources, other builds of the same code, and binaries neither the Mac (arm64) nor
+  # Windows (x64) runs. electron-builder already drops *.d.ts, READMEs and test folders.
+  - '!node_modules/node-pty/{deps,scripts,src,third_party,typings,node-addon-api}/**'
+  - '!node_modules/node-pty/prebuilds/{darwin-x64,win32-arm64}/**'
+  - '!node_modules/pdf-lib/{dist,es,src,ts3.4}/**'
+  - '!node_modules/zod/src/**'
+  - '!node_modules/undici/docs/**'
+  - '!node_modules/**/*.d.{cts,mts}'
 # The app spawns real child processes out of node_modules (claude cli.js,
 # vtsls); asar would hide them behind a virtual path. Size over surprises.
 asar: false

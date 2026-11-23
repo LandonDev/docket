@@ -10,8 +10,7 @@
 extends: ./electron-builder.yml
 files:
   # A package manager installs one platform's binaries: the builder's. None of those belong in a
-  # Windows app: the Claude Agent SDK's own CLI (a Mach-O or ELF `claude`), and the native halves
-  # of build tools that ride along (lightningcss, Tailwind's oxide).
+  # Windows app: the Claude Agent SDK's own CLI (a Mach-O or ELF `claude`) above all.
   - '!node_modules/**/*-{darwin,linux}-{x64,arm64}{,-gnu,-musl}/**'
   # On a Windows builder the SDK's win32 CLI is installed too; the staged copy below is the one
   # that ships, checked against bun.lock.

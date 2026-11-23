@@ -44,7 +44,7 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 
 ## Packages shipped in the app
 
-726 packages. A package's builds for each platform (its optional dependencies) ship under its own licence and are not listed apart.
+709 packages. A package's builds for each platform (its optional dependencies) ship under its own licence and are not listed apart.
 
 | Package | Version | Licence | Copyright |
 |---|---|---|---|
@@ -93,11 +93,6 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 | @hugeicons/react | 1.1.10 | MIT | Copyright (c) 2025 Hugeicons |
 | @iconify/types | 2.0.0 | MIT | Copyright (c) 2021 - 2022 Vjacheslav Trushkin / Iconify OÜ |
 | @iconify/utils | 3.1.7 | MIT | Copyright (c) 2021-PRESENT Vjacheslav Trushkin |
-| @jridgewell/gen-mapping | 0.3.13 | MIT | Copyright 2024 Justin Ridgewell <justin@ridgewell.name> |
-| @jridgewell/remapping | 2.3.5 | MIT | Copyright 2024 Justin Ridgewell <justin@ridgewell.name> |
-| @jridgewell/resolve-uri | 3.1.2 | MIT | Copyright 2019 Justin Ridgewell <jridgewell@google.com> |
-| @jridgewell/sourcemap-codec | 1.5.5 | MIT | Copyright 2024 Justin Ridgewell <justin@ridgewell.name> |
-| @jridgewell/trace-mapping | 0.3.31 | MIT | Copyright 2024 Justin Ridgewell <justin@ridgewell.name> |
 | @js-sdsl/ordered-map | 4.4.2 | MIT | Copyright (c) 2021 Zilong Yao |
 | @lezer/common | 1.5.2 | MIT | Copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others |
 | @lezer/css | 1.3.6 | MIT | Copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others |
@@ -170,13 +165,8 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 | @shikijs/vscode-textmate | 10.1.0 | MIT | Copyright (c) Microsoft Corporation |
 | @standard-schema/spec | 1.1.0 | MIT | Copyright (c) 2024 Colin McDonnell |
 | @standard-schema/utils | 0.3.0 | MIT | Copyright (c) 2024 Fabian Hiller |
-| @streamdown/code | 1.1.1 | Apache-2.0 | Copyright 2023 Vercel, Inc. |
-| @streamdown/mermaid | 1.0.2 | Apache-2.0 | Copyright 2023 Vercel, Inc. |
 | @tabler/icons | 3.52.0 | MIT | Copyright (c) 2020-2026 Paweł Kuna |
 | @tabler/icons-react | 3.52.0 | MIT | Copyright (c) 2020-2026 Paweł Kuna |
-| @tailwindcss/node | 4.3.3 | MIT | Copyright (c) Tailwind Labs, Inc. |
-| @tailwindcss/oxide | 4.3.3 | MIT | Copyright (c) Tailwind Labs, Inc. |
-| @tailwindcss/vite | 4.3.3 | MIT | Copyright (c) Tailwind Labs, Inc. |
 | @tanstack/react-virtual | 3.14.12 | MIT | Copyright (c) 2021-present Tanner Linsley |
 | @tanstack/virtual-core | 3.17.10 | MIT | Copyright (c) 2021-present Tanner Linsley |
 | @tiptap/core | 3.34.0 | MIT | Copyright (c) 2025, Tiptap GmbH |
@@ -394,7 +384,6 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 | delaunator | 5.1.0 | ISC | Copyright (c) 2026, Mapbox |
 | depd | 2.0.0 | MIT | Copyright (c) 2014-2018 Douglas Christopher Wilson |
 | dequal | 2.0.3 | MIT | Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com) |
-| detect-libc | 2.1.2 | Apache-2.0 |  |
 | detect-node-es | 1.1.0 | MIT | Copyright (c) 2017 Ilya Kantor |
 | devlop | 1.1.0 | MIT | Copyright (c) 2023 Titus Wormer <tituswormer@gmail.com> |
 | dijkstrajs | 1.0.3 | MIT | Copyright (C) 2008 |
@@ -406,7 +395,6 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 | electron-updater | 6.8.9 | MIT | Copyright (c) 2015 Loopline Systems |
 | emoji-regex | 8.0.0 | MIT |  |
 | encodeurl | 2.0.0 | MIT | Copyright (c) 2016 Douglas Christopher Wilson |
-| enhanced-resolve | 5.24.5 | MIT |  |
 | entities | 6.0.1 | BSD-2-Clause | Copyright (c) Felix Böhm |
 | es-define-property | 1.0.1 | MIT | Copyright (c) 2024 Jordan Harband |
 | es-errors | 1.3.0 | MIT | Copyright (c) 2024 Jordan Harband |
@@ -486,7 +474,6 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 | isarray | 1.0.0 | MIT |  |
 | isexe | 2.0.0 | ISC | Copyright (c) Isaac Z. Schlueter and Contributors |
 | isomorphic.js | 0.2.5 | MIT | Copyright (c) 2020 Kevin Jahns <kevin.jahns@protonmail.com>. |
-| jiti | 2.7.0 | MIT | Copyright (c) Pooya Parsa <pooya@pi0.io> |
 | jose | 6.2.8 | MIT | Copyright (c) 2018 Filip Skokan |
 | js-yaml | 4.3.1 | MIT | Copyright (C) 2011-2015 by Vitaly Puzrin |
 | json-schema-traverse | 1.0.0 | MIT | Copyright (c) 2017 Evgeny Poberezkin |
@@ -504,7 +491,6 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 | lib0 | 0.2.120 | MIT | Copyright (c) 2019 Kevin Jahns <kevin.jahns@protonmail.com>. |
 | lib0 | 1.0.0-rc.36 | MIT | Copyright (c) 2019 Kevin Jahns <kevin.jahns@protonmail.com>. |
 | lie | 3.3.0 | MIT |  |
-| lightningcss | 1.32.0 | MPL-2.0 | (c) under Patent Claims infringed by Covered Software in the absence of |
 | linkifyjs | 4.4.0 | MIT | Copyright (c) 2024 Nick Frasser |
 | locate-path | 5.0.0 | MIT | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) |
 | lodash-es | 4.18.1 | MIT |  |
@@ -515,7 +501,6 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 | longest-streak | 3.1.0 | MIT | Copyright (c) 2015 Titus Wormer <mailto:tituswormer@gmail.com> |
 | lru-cache | 6.0.0 | ISC | Copyright (c) Isaac Z. Schlueter and Contributors |
 | lucide-react | 0.525.0 | ISC | Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022. |
-| magic-string | 0.30.21 | MIT | Copyright 2018 Rich Harris |
 | markdown-table | 3.0.4 | MIT | Copyright (c) Titus Wormer <tituswormer@gmail.com> |
 | marked | 14.0.0 | MIT | Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/); Copyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/); Copyright © 2004, John Gruber |
 | marked | 16.4.2 | MIT | Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/); Copyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/); Copyright © 2004, John Gruber |
@@ -688,7 +673,6 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 | side-channel-weakmap | 1.0.2 | MIT | Copyright (c) 2019 Jordan Harband |
 | simple-icons | 16.30.0 | CC0-1.0 |  |
 | sonner | 2.0.8 | MIT | Copyright (c) 2023 Emil Kowalski |
-| source-map-js | 1.2.1 | BSD-3-Clause | Copyright (c) 2009-2011, Mozilla Foundation and contributors |
 | space-separated-tokens | 2.0.2 | MIT | Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com> |
 | statuses | 2.0.2 | MIT | Copyright (c) 2014 Jonathan Ong <me@jongleberry.com>; Copyright (c) 2016 Douglas Christopher Wilson <doug@somethingdoug.com> |
 | streamdown | 2.6.0 | Apache-2.0 | Copyright 2023 Vercel, Inc. |
@@ -705,7 +689,6 @@ The speech models credit their makers as CC BY 4.0 asks: Parakeet TDT 0.6B v2 by
 | tailwind-merge | 2.6.2 | MIT | Copyright (c) 2021 Dany Castillo |
 | tailwind-merge | 3.6.0 | MIT | Copyright (c) 2021 Dany Castillo |
 | tailwindcss | 4.3.3 | MIT | Copyright (c) Tailwind Labs, Inc. |
-| tapable | 2.3.3 | MIT |  |
 | tiny-invariant | 1.3.3 | MIT | Copyright (c) 2019 Alexander Reardon |
 | tiny-typed-emitter | 2.1.0 | MIT | Copyright (c) 2020 Zurab Benashvili (binier) <zura.bena@gmail.com> |
 | tinyexec | 1.3.1 | MIT | Copyright (c) 2024 Tinylibs |

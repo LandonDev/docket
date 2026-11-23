@@ -224,6 +224,19 @@ the box pushes `release-available { version }` down every registered Mac's
 socket and the Mac's updater fetches it; on the Mac the announcer is the
 local updater itself.
 
+**What the app carries of node_modules is `dependencies` alone**, with their own dependencies.
+That means the packages out/main and out/preload load at run time: those they `require`, plus
+those main reads a file of by path (the Agent SDK's CLI and manifest, vtsls, node-pty's prebuilds).
+Everything else is a devDependency: whatever the renderer, the Work service and the hosted pages
+use, plus aliax-core, @muse-code/sdk and work-kit, which main compiles in. A package main starts
+to import is a devDependency, which electron-vite compiles into out/, unless it must stay a file
+on disk (a native addon, a program it spawns, a file it reads). Each package in `dependencies` is
+copied in and signed file by file: 425 packages of renderer libraries made 34,414 of 1.0.363's
+36,468 files. scripts/shippedDeps.test.ts holds the rule from the source, holds it from a built
+out/ when there is one, and keeps the count of files copied from node_modules under its budget;
+electron-builder.yml trims sources, docs and other platforms' binaries inside what ships. The
+numbers are in docs/release-gate.md "The publish, phase by phase".
+
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.
 
