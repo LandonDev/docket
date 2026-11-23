@@ -41,6 +41,8 @@ export type MenuFacts = {
   /** This machine's Away is on (lib/away.ts). */
   away: boolean;
   workFile: boolean;
+  /** Some host has Work on: Search Work… has somewhere to look. */
+  workOn?: boolean;
   /** A Work editor on screen answers Print… and Export… (lib/appCommands.ts `workCommands`). */
   print?: boolean;
   export?: boolean;
@@ -67,6 +69,7 @@ export function menuStateOf(f: MenuFacts): MenuState {
   if (!f.dockUsable) disabled.push("toggle_terminal");
   if (f.unread === 0) disabled.push("mark_all_read");
   if (!f.workFile) disabled.push("open_file");
+  if (!f.workOn) disabled.push("search_work");
   if (!f.print) disabled.push("print");
   if (!f.export) disabled.push("export");
   for (const action of Object.keys(FLEET_IDS) as BatchAction[]) {
@@ -100,6 +103,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }, caret?: Eve
     counts: batchCounts(metas, { catalog, lastSeen, floor, scope: EVERYWHERE, now: Date.now() }),
     away: awayEnabled(),
     workFile: workFilePort.get()?.can() ?? false,
+    workOn: workSwitch.anyOn(),
     print: workCommands.has("print"),
     export: workCommands.has("export"),
     editing: caret !== undefined ? editorHeld(caret) : typeof document === "undefined" ? [] : editorHeld(document.activeElement),

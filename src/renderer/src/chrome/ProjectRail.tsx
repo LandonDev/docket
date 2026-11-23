@@ -104,7 +104,9 @@ import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { useComputersMark } from "../lib/computers";
 import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
 import { RowsContextMenu, type MenuRow } from "./menuRows";
-import { aliaxChunk, computersChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk, workOutboxChunk, workShellChunk } from "../surfaces/chunks";
+import { aliaxChunk, computersChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk, workOutboxChunk, workSearchChunk, workShellChunk } from "../surfaces/chunks";
+import { openWorkSearch } from "../lib/workSearchPort";
+import { shortcutFor } from "../lib/settings";
 
 /** The Customize dialog loads with the click (its menu warms it). */
 const CustomizeGroupDialog = customizeChunk.surface("CustomizeGroupDialog");
@@ -721,6 +723,7 @@ export function ProjectRail({
               <ProjectSection
                 label="Work"
                 addLabel="Add Work workspace"
+                headingBefore={workRows.length === 0 ? undefined : workSearchMark()}
                 items={workRows}
                 statusKey={statusKey}
                 onAdd={workRows.length === 0 ? undefined : openWorkAdd}
@@ -820,10 +823,14 @@ type SortableHandle = ReturnType<typeof useSortable>;
 /** The saved logos, mascots and colours every row's glyph reads. */
 type GroupLooks = Parameters<typeof workspaceLook>[1];
 
+/** The Work heading's search mark: Work search (lib/workSearchPort.ts), its key in the tip, its chunk warmed by a hover or focus. */
+const workSearchMark = () => ({ label: "Search Work", icon: Search, onClick: () => openWorkSearch(), shortcut: shortcutFor("Work", "Search Work"), intent: workSearchChunk.intent });
+
 function ProjectSection({
   label,
   addLabel = "Add workspace",
   addExpanded,
+  headingBefore,
   pinnable = true,
   items,
   statusKey,
@@ -852,6 +859,8 @@ function ProjectSection({
   addLabel?: string;
   /** The + opens a menu that is open now. */
   addExpanded?: boolean;
+  /** A second verb on the heading, before its + (Work's search). */
+  headingBefore?: Parameters<typeof RailHeading>[0]["before"];
   /** The rows offer Pin (a Work workspace's do not: it has its own heading). */
   pinnable?: boolean;
   items: RailItem[];
@@ -884,7 +893,7 @@ function ProjectSection({
 }) {
   return (
     <div className="shrink-0 px-2 pt-4">
-      <RailHeading action={onAdd ? { label: addLabel, icon: Plus, onClick: onAdd, menu: addExpanded !== undefined, expanded: addExpanded } : undefined}>
+      <RailHeading before={headingBefore} action={onAdd ? { label: addLabel, icon: Plus, onClick: onAdd, menu: addExpanded !== undefined, expanded: addExpanded } : undefined}>
         {label}
       </RailHeading>
       <div className="flex flex-col gap-1">

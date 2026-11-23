@@ -163,6 +163,7 @@ export const MENU_TREE: MenuSection[] = [
     label: 'Go',
     items: [
       cmd('open_search', 'Search…', 'CmdOrCtrl+K'),
+      cmd('search_work', 'Search Work…', 'CmdOrCtrl+Shift+K'),
       cmd('go_to_file', 'Go to File…', 'CmdOrCtrl+P'),
       cmd('go_to_symbol', 'Go to Symbol…', 'CmdOrCtrl+Shift+O'),
       cmd('show_hierarchy', 'Type Hierarchy', 'CmdOrCtrl+T'),

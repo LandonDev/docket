@@ -71,6 +71,7 @@ export const APP_COMMANDS = [
   "show_hierarchy",
   "save_all",
   "open_search",
+  "search_work",
   "open_inbox",
   "open_computers",
   "open_notes",
@@ -359,6 +360,8 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
       if (key === "r") return { id: "toggle_panel" };
       if (key === "o") return { id: "go_to_symbol" };
       if (key === "m") return { id: "toggle_message_list" };
+      // Work search (lib/workSearchPort.ts). In a code editor the key stays the editor's delete-line.
+      if (key === "k") return within(target, CODEMIRROR) || insideMonaco(target) ? null : { id: "search_work" };
       if (key === "e" && workCommands.has("export")) return { id: "export" };
       return null;
     }
@@ -387,8 +390,10 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
 /** The menu route's overlay guard, mirroring the DOM one. */
 export function menuCommandAllowed(
   id: AppCommandId,
-  ctx: { dialogOpen: boolean; lightboxOpen: boolean },
+  ctx: { dialogOpen: boolean; lightboxOpen: boolean; workSearchOpen?: boolean },
 ): boolean {
+  // Work search's own key, pressed again inside it, flips its scope: the one dialog that hears its command.
+  if (id === "search_work" && ctx.workSearchOpen && !ctx.lightboxOpen) return true;
   if (ctx.dialogOpen || ctx.lightboxOpen) return DIALOG_SAFE.has(id);
   return true;
 }

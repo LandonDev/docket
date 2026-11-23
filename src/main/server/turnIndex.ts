@@ -327,9 +327,10 @@ export class TurnIndex {
 
   /** The search over one file's index: hits ranked by bm25 (lower is
    *  better), joined to `events` for ts and role, with FTS5's snippet.
-   *  Binds: the MATCH expression, then the workspace id when asked. The
-   *  caller unions the two files and orders. */
-  matchSql(table: IndexTable, workspace: boolean): string {
+   *  Binds: the MATCH expression, then the workspace id when asked. `work`
+   *  holds it to Work threads (`sessions.scope`). The caller unions the two
+   *  files and orders. */
+  matchSql(table: IndexTable, workspace: boolean, work = false): string {
     // FTS5's auxiliary functions and MATCH take the table's own name, never
     // an alias; inside this SELECT `events_fts` is the one in `table`'s file.
     return `SELECT ti.session_id AS sessionId, (events_fts.rowid & ${SEQ_MASK}) AS seq, e.ts AS ts,
@@ -340,9 +341,12 @@ export class TurnIndex {
        JOIN turn_index ti ON ti.ordinal = (events_fts.rowid >> 32)
        JOIN ${table} e ON e.session_id = ti.session_id AND e.seq = (events_fts.rowid & ${SEQ_MASK})
        JOIN sessions s ON s.id = ti.session_id
-       WHERE events_fts MATCH ? ${workspace ? 'AND s.workspace_id = ?' : ''}`
+       WHERE events_fts MATCH ? ${workspace ? 'AND s.workspace_id = ?' : ''} ${work ? WORK_ROWS_SQL : ''}`
   }
 }
+
+/** A search held to Work threads: the row's own stamp, never a workspace's kind. */
+export const WORK_ROWS_SQL = `AND s.scope = 'work'`
 
 function rowidOf(ordinal: number, seq: number): bigint {
   return (BigInt(ordinal) << ORDINAL_SHIFT) | BigInt(seq)

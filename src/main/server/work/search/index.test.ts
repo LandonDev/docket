@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
 import { ClientRequestSchema } from '@shared/contract'
 import { SEARCH_RECENTS, SEARCH_RECENTS_KEPT, type SearchAnswer } from '@shared/work/search'
@@ -20,6 +20,8 @@ const opened = (rig: ReturnType<typeof makeRig>, h: ReturnType<typeof hit>, by: 
 
 const registry = [...WORK_MODULES]
 const own = [...OWN_SOURCES]
+// Each test names the sources it asks; the pillar's own are proven in sources/.
+beforeEach(() => void OWN_SOURCES.splice(0, OWN_SOURCES.length))
 afterEach(() => {
   WORK_MODULES.splice(0, WORK_MODULES.length, ...registry)
   OWN_SOURCES.splice(0, OWN_SOURCES.length, ...own)

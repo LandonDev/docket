@@ -50,6 +50,7 @@ import { lifeosProjectIn, mirrorsPart } from './projects/mirrors'
 import { ensureWorkTables } from './schema'
 import { scopePart } from './scope'
 import { routinesHostPart } from './routines/host'
+import { searchHostPart } from './search/host'
 import { servicePart } from './service/ctx'
 import { WorkSettingsStore } from './settings'
 import { inputShapeOf } from './toolInput'
@@ -183,6 +184,8 @@ export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, pu
     part('digest/ctx.ts', ['tell'], () => tellPart(ctx, deps)),
     // Not a member: the host handles the routines engine needs and the context does not carry (milestone 32).
     part('routines/host.ts', [], () => (routinesHostPart(deps), {})),
+    // Not a member: the Work threads' rows and the thread index, for Work search.
+    part('search/host.ts', [], () => (searchHostPart(deps), {})),
     // Not a member: the mirrors of LifeOS's projects follow LifeOS while Work is on.
     part('projects/mirrors.ts', [], () => (mirrorsPart(ctx, deps), {}))
   )

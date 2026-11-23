@@ -8,7 +8,23 @@ is proven is in `.temp-code/plans/landed/R3-search.md`.
 Files: `src/shared/work/search.ts` (the names, pure),
 `src/shared/contract-work-search.ts` (the wire's zod),
 `src/main/server/work/search/` (the host), `src/renderer/src/work/search/`
-(the picker).
+(the picker), `src/renderer/src/lib/workSearchPort.ts` (its door, the only
+part in the first paint). The look is docs/DESIGN.md "Work search".
+
+## What he gets
+
+One field, opened with ⌘⇧K (Ctrl+Shift+K on Windows and Linux) from
+anywhere in the app while Work is on, from Go → Search Work…, or with a
+click on the search mark beside the rail's **Work** heading. He types;
+results stand under kind headings from every job, each row with its job.
+Return opens the thing in its own view in its own job, moving the window
+there first. ⌘↩ starts a thread about it. The key again narrows to the job
+the window is in, and again widens. ⌘K is still the app's Search (threads,
+code and notes of every place).
+
+A screen that wants this field calls `openWorkSearch({ text?, workspaceId?,
+kind? })` from `lib/workSearchPort.ts` (safe in the first paint). No screen
+draws a second everything-search.
 
 ## How a pillar registers
 
@@ -54,8 +70,12 @@ when `reach.chats`). `open` says how the window opens the hit in place:
 Other fields a source may set: `lifeos: true` (read from LifeOS: not asked
 while LifeOS is not connected, and asked of one host only), `unranked: true`
 (its order is a list's, not a ranking, so a thing he opened before goes
-first), `snippet` on a hit (the matched words in their line, drawn in the
-fact's place), `chip` (the thing as a thread's context, for ⌘↩).
+first), `when: 'alone'` (asked only for "All … for q", never as he types: a
+search that walks), `tier` as a function of the context (decided at each
+ask: what a host holds in memory is instant, the same read from LifeOS is
+not); on a hit, `snippet` (the matched words in their line, drawn in the
+fact's place), `chip` (the thing as a thread's context, for ⌘↩) and
+`cloud: true` (a file kept in the cloud alone).
 
 **A pillar that has `mentions` and no `search` is found already.** The
 mention bridge (`search/mentions.ts`) asks each mention source once a job in
@@ -136,7 +156,153 @@ a chip carried. Empty text answers the newest eight whose job still exists;
 a deleted job takes its rows with it (`workspaceRemoved`).
 `SEARCH_RECENTS = 0` turns the list off.
 
+## The sources this pillar brings
+
+`search/sources/`, each small, each on what exists. `OWN_SOURCES`
+(search/index.ts) lists them.
+
+| Kind | Tier | Reads | Opens |
+|---|---|---|---|
+| person | instant from the mirror, else network | `people:list`, kept by a name or an address; a person is in a job when one of `sectors` is | `{ view: 'people', with: { person } }` |
+| mail | network | `mail:search { text }`, each thread kept by the sector it sits in; a snippet only when the words are in neither its subject nor its sender | `{ view: 'mail', with: { mail } }` |
+| task | open tasks instant from the mirror; network for all | a key he typed (`PUR-41`) through `tasks:byKeys` first, then `tasks:search { text, sector? }` | `{ view: 'tasks', with: { task } }` |
+| event | instant from the mirror, else network | `events:range` from 30 days back to 120 days ahead (`EVENTS_BACK_DAYS`, `EVENTS_AHEAD_DAYS`), kept by title and place, what is coming first | `{ view: 'agenda', with: { event } }` |
+| doc | network | a sector at a time: the newest page of `docs:list` by title, then `catalog:search { sector, text }` with its line (a title outside that page read with `docs:get`) | `{ view: 'docs', with: { doc: { id, title } } }` |
+| project | network | `projects:list { sector? }` by name and description | `{ view: 'projects', with: { project } }` |
+| thread | instant by title, network by its words | the host's rows for titles; `Store.searchEvents { query, scope: 'work' }` for words, with the index's own snippet (thread notes among them) | `{ to: 'thread', sessionId, seq? }` |
+| file | instant; a second source `when: 'alone'` | `work.files.names { workspaceId, text }` a job in reach; for "All files", `work.files.search { workspaceId, query }` | `{ to: 'file', ref, name }` |
+| message | network | `work.messages.search { workspaceId, query, limit }` a job in reach | `{ view: 'messages', with: { chat, message } }` |
+| money | network | `work.money.search { workspaceId, query, limit }` a job in reach: the ledger's rows, newest first | `{ view: 'money' }` |
+| item, held, routine, card, any later kind | as its mention source | every module's `mentions` with no `search` source of its kind | `{ to: 'chip', chip }` |
+
+LifeOS is asked once for the whole reach where a function allows it
+(`mail:search`, `people:list`, `tasks:search` and `events:range` with no
+sector when the reach has more than one). The host reads LifeOS as the
+owner, so the reach is the fence here: a row is kept only when a job in
+reach has its sector, and that job is the hit's.
+
+**The mirror** (`search/mirror.ts`): `people:list`, the open tasks
+(`tasks:list`) and `events:range` for the window are held in this host's
+memory by live LifeOS queries, started from the module's `start` (so never
+while Work is off) and asked again each day as the window moves. Warm, a
+search for a person, an open task or an event makes no call at all. What it
+holds is dropped the moment LifeOS is not connected, and the sources ask
+LifeOS as before until each list arrives again.
+
+**Threads** come through a host part (`search/host.ts`, called once from
+`buildWorkCtx` as `routines/host.ts` is, since a pillar never sees `deps`):
+the registry's rows for titles and the FTS5 index every host keeps for
+words. Both are held to rows stamped `scope: 'work'`, the words by the
+query itself (`Store.searchEvents` takes `scope`), so a code thread is never
+answered whatever it says. A thread in a project has no `workspace_id` on
+its row; its job is its project's.
+
+**Files, Messages and Money** are theirs to find. `search/ask.ts` finds the pillar
+that owns a method and calls its module's `handle` with the caller the
+search was given, so that pillar's own fences answer. A method that is not
+built, not known, or whose pillar did not load is absent: the source says
+nothing. Search reads no file, walks no folder, downloads nothing and keeps
+no file index. The Documents source stands down for a job once Files
+answers `work.files.names` and lists a LifeOS place for it
+(`filesHoldLifeos`), since a document is then a file there.
+
+## The window
+
+`src/renderer/src/work/search/`, one lazy chunk (`workSearchChunk`).
+
+- `model.ts` (pure) is the list as data: generations, what is out, the rows
+  in their order, the highlight. `controller.ts` runs the asks: every host
+  at once for its instant tier on each change of his words, then each
+  source a host named on its own, 120 ms after his last key and from two
+  characters, so each lands when it is ready.
+- `hosts.ts`: every connected host with Work on is asked, the Work home for
+  what LifeOS holds and the rest with `own: true`. A job is a sector's Work
+  workspaces on every host (one a sector a host). A host with Work on that
+  is not connected is one quiet line.
+- `Picker.tsx` draws the model's rows in `PickerDialog` and decides no
+  order. `hold.ts` is the rule that keeps a row he moved to in its place:
+  the scroller moves by what landed above it, and its box is no taller than
+  the rows from there down.
+- `open.ts`: Return. The window enters the hit's job when it is in another
+  (`project.enterWorkspace`), the thing opens by its `open`, and the hit's
+  host is told (`work.search.opened`). A file goes through
+  `work.files.open`, then the Files view.
+
+## For agents
+
+`work_search { query, kinds?, limit? }` (read only; `search/tools.ts`) runs
+both tiers over the thread's own reach and answers plain lines under kind
+headings: a LifeOS row with `table:id` for the LifeOS tools, a thread by
+its id, a file by its place. It ends with one line a source it could not
+search. It has no argument that names a job, a workspace or a sector. One
+line of the Work preamble names it.
+
+## What a search costs
+
+`bun run script:bench-work-search -- --db <a copy>` (scripts/bench-work-search.ts;
+the copy is `sqlite3 'file:<live>?mode=ro' "VACUUM INTO '<copy>'"`, never a
+`cp` of a live file). Measured 2026-11-23 on a copy of the box's database
+(14,709 threads, 9 of them Work, 2.25 million events), two pinned cores,
+the variants interleaved, the median of five runs with the worst in
+brackets, load average 25 on 32 cores:
+
+| Measure | Median (worst) |
+|---|---|
+| Thread titles, the Work rows | 1.2 ms (5.8) |
+| Thread titles, every thread counted as Work (14,709 rows) | 4.8 ms (8.3) |
+| Transcript words held to Work rows: "budget" | 9.9 ms (10.1) |
+| the same, "the" (the commonest word there is) | 47.6 ms (50.8) |
+| the same, two words | 9.9 ms (13.6) |
+| Transcript words with no scope, as the app's Search asks: "budget", "the", two words | 25, 113, 20 ms |
+| A LifeOS source's own work on the host (2,000 people, 600 events, 300 projects in a stand-in): person, mail, task, event, doc, project | 2.5, 0.07, 0.06, 0.45, 0.36, 0.16 ms |
+| The mirror warm: person, open task, event | 2.3 (4.5), 0.27, 0.25 ms |
+| The mirror's memory: 2,000 people, 400 open tasks, 600 events | about 0.9 MB of heap |
+
+Through the wire on an isolated instance (the live proof, a LifeOS
+stand-in): `work.search.query` for the instant tier answers in 2.3 ms at
+the median, each source asked alone in 0.8 to 1.4 ms.
+
+So the instant tier is a few milliseconds on a host with fifteen thousand
+threads, and the mirror costs under a megabyte. The transcript query, the
+heavy one, stays under 50 ms at the median even for the commonest word,
+and in the app it runs on the reader worker, off the host's loop: no bulk
+lane was asked for. **Not measured:** how long LifeOS itself takes to
+answer `mail:search` and the rest. No run was made against the real
+LifeOS; a stand-in answers at once.
+
 ## What search keeps, and Purdue
 
-Search keeps nothing but those recent rows. It registers no act kind: it
-sends, posts, shares, books and submits nothing.
+Search keeps nothing but the recent rows: a title, a kind, an id and a job.
+It registers no act kind: it sends, posts, shares, books and submits
+nothing. It asks Files for names and never opens, reads, converts or
+downloads a file; the contents of a Teams library are searched by nobody
+(`sources/filesReads.test.ts` watches every file read during a search over
+a stand-in library and expects none). Nothing in LifeOS or work-kit changed
+for it.
+
+## What is not searched
+
+- A LifeOS row of a sector with no Work workspace on the host that asks.
+- People and events by anything but a name, an address, a title or a
+  place: LifeOS has no text index for them. Events outside the window.
+- A task's description (LifeOS's index is on titles).
+- A file's contents, anywhere. Files in a place Files has not listed yet.
+- Code threads, code files and notes: the app's Search on ⌘K.
+- A subagent's thread by its title (by its words it is found).
+
+## Proofs
+
+- Unit: `search/*.test.ts` and `sources/*.test.ts` on the host (the frame
+  with fake sources, each source against a LifeOS in memory, threads on a
+  real database, Files and Messages against stand-in modules, the tool's
+  fence with the real reach rule), `work/search/*.test.ts` in the window
+  (the model, the controller with a clock the test moves, the opener, the
+  picker in jsdom).
+- Live: `env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-search.ts` after
+  a build: an isolated instance under xvfb with two jobs, made-up threads
+  and a LifeOS stand-in of made-up rows (`TEMP_CODE_WORK_SEARCH_STANDIN`,
+  `search/standIn.ts`; only an isolated instance takes it). It signs in to
+  nothing and reads no row of his.
+- The design page: `bun run ui:preview
+  src/renderer/src/work/search/WorkSearch.preview.tsx#WorkSearchPreview
+  --shot`, every state in both themes.

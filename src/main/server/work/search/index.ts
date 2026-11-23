@@ -1,10 +1,18 @@
 import { handled, NOT_HANDLED } from '@shared/work'
 import { inReach, type SearchAnswer } from '@shared/work/search'
-import { WORK_MODULES, type WorkModule } from '../modules'
+import { WORK_MODULES, type WorkCtx, type WorkModule } from '../modules'
 import { windowReach } from './reach'
+import { startMirror } from './mirror'
 import { dropWorkspace, ensureRecents, openedAt, recentGroup, recordOpened } from './recents'
 import { namesOnlyReachable, runSearch } from './run'
 import type { SearchSource } from './source'
+import { fileSources } from './sources/files'
+import { lifeosSources } from './sources/lifeos'
+import { messageSource } from './sources/messages'
+import { moneySource } from './sources/money'
+import { threadSources } from './sources/threads'
+import { standInOf, withStandIn } from './standIn'
+import { searchPreamble, searchTools } from './tools'
 
 /**
  * The search pillar's server module (docs/agents/work-search.md): one field
@@ -16,12 +24,17 @@ import type { SearchSource } from './source'
  */
 
 /** This pillar's own sources. One stands down for a kind a module lists a `search` source of. */
-export const OWN_SOURCES: SearchSource[] = []
+export const OWN_SOURCES: SearchSource[] = [...lifeosSources, messageSource(), ...fileSources(), ...threadSources, moneySource()]
+
+/** A proof's made-up LifeOS, on an isolated instance alone (search/standIn.ts); null everywhere else. */
+const STAND_IN = standInOf()
+const reading = <C extends WorkCtx>(ctx: C): C => (STAND_IN ? withStandIn(ctx, STAND_IN) : ctx)
 
 export const search: WorkModule = {
   id: 'search',
   ensure: ensureRecents,
-  async handle(req, ctx, by, signal) {
+  async handle(req, own, by, signal) {
+    const ctx = reading(own)
     switch (req.method) {
       case 'work.search.query': {
         const { text, workspaceId, tier, sources, kind, own } = req.params
@@ -42,6 +55,10 @@ export const search: WorkModule = {
     }
     return NOT_HANDLED
   },
+  // People, open tasks and events kept in memory while Work is on, so they are found with no round trip.
+  start: (ctx) => startMirror(reading(ctx)),
+  tools: () => searchTools(() => OWN_SOURCES).map((tool) => ({ ...tool, run: (args, ctx) => tool.run(args, reading(ctx)) })),
+  preamble: searchPreamble,
   workspaceRemoved(workspaceId, ctx) {
     dropWorkspace(ctx.db, workspaceId)
   }

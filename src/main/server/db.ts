@@ -8,7 +8,7 @@ import {
 } from '@shared/contract-m3a'
 import { mkdirSync } from 'node:fs'
 import { timed } from './stalls'
-import { ftsQuery, TURN_ROW_SQL, TurnIndex, turnText, type BackfillOptions } from './turnIndex'
+import { ftsQuery, TURN_ROW_SQL, TurnIndex, turnText, WORK_ROWS_SQL, type BackfillOptions } from './turnIndex'
 import type { EventReader } from './dbWorkers'
 import { dirname } from 'node:path'
 import { seedRowJson } from './wire'
@@ -945,7 +945,7 @@ export class Store {
 
   /** Notes whose text contains the needle (case-insensitive), newest first:
    *  what session search folds in beside the transcript hits. */
-  searchNotes(options: { query: string; workspaceId?: string; limit?: number }): {
+  searchNotes(options: { query: string; workspaceId?: string; limit?: number; scope?: 'work' }): {
     sessionId: string
     updatedAt: number
     snippet: string
@@ -958,6 +958,7 @@ export class Store {
                  FROM session_notes n JOIN sessions s ON s.id = n.session_id
                  WHERE instr(lower(n.text), ?) > 0
                    ${options.workspaceId ? 'AND s.workspace_id = ?' : ''}
+                   ${options.scope === 'work' ? WORK_ROWS_SQL : ''}
                  ORDER BY n.updated_at DESC
                  LIMIT ?`
     const params = options.workspaceId ? [needle, needle, options.workspaceId, limit] : [needle, needle, limit]
@@ -1627,12 +1628,15 @@ export class Store {
     limit?: number
     /** Also walk the cold file (archived threads' logs). */
     archived?: boolean
+    /** Only Work threads (`sessions.scope`): what Work search asks (work/search/host.ts). */
+    scope?: 'work'
   }): Promise<SessionSearchResult> {
     const needle = options.query.trim().toLowerCase()
     const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
     if (!needle) return { hits: [], truncated: false }
     this.flushEvents()
     const ws = options.workspaceId
+    const work = options.scope === 'work'
     const tables: ('events' | 'cold.events')[] = options.archived ? ['events', 'cold.events'] : ['events']
     // The scan the search was before the index: every turn row of a table,
     // or only the rows of sessions the backfill has not reached yet.
@@ -1646,13 +1650,14 @@ export class Store {
        WHERE ${TURN_ROW_SQL}
          AND instr(lower(json_extract(e.payload, '$.text')), ?) > 0
          ${ws ? 'AND s.workspace_id = ?' : ''}
+         ${work ? WORK_ROWS_SQL : ''}
          ${pendingOnly ? `AND e.session_id IN (SELECT p.id FROM sessions p LEFT JOIN turn_index ti ON ti.session_id = p.id AND ti.ready = 1 WHERE ti.session_id IS NULL)` : ''}`
     const parts: string[] = []
     const params: (string | number)[] = []
     const match = this.turnIndex.available ? ftsQuery(options.query) : ''
     if (match) {
       for (const table of tables) {
-        parts.push(this.turnIndex.matchSql(table, !!ws))
+        parts.push(this.turnIndex.matchSql(table, !!ws, work))
         params.push(match)
         if (ws) params.push(ws)
       }
@@ -1685,7 +1690,7 @@ export class Store {
     // The threads' working notes (threadNotes.ts) search beside the
     // transcript rows: one hit per thread, newest first, ahead of the rows
     // (what a thread chose to keep outranks what it said), under the same cap.
-    const notes: SessionSearchHit[] = this.searchNotes({ query: needle, workspaceId: options.workspaceId, limit }).map((n) => ({
+    const notes: SessionSearchHit[] = this.searchNotes({ query: needle, workspaceId: options.workspaceId, limit, ...(work ? { scope: 'work' as const } : {}) }).map((n) => ({
       sessionId: n.sessionId,
       seq: 0,
       role: 'assistant',

@@ -3,6 +3,7 @@ import { reveal, yields } from "../components/ui/reveal";
 import { Button } from "../components/ui/button";
 import { DropdownMenuTrigger } from "../components/ui/lazy-menus";
 import { useTruncated } from "../components/tip";
+import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import type { IntentProps } from "../lib/lazyChunk";
@@ -298,18 +299,35 @@ export function RailHeading({
   id,
   children,
   action,
+  before,
 }: {
   id?: string;
   children: string;
   /** The heading's one verb; `menu` marks one that opens a menu (aria-haspopup, and expanded while it is open). */
   action?: { label: string; icon: IconComponent; onClick: (event: MouseEvent<HTMLButtonElement>) => void; menu?: boolean; expanded?: boolean };
+  /** A second verb before it, for a heading that has two (Work: search, then add): its tip may carry a key cap, and hover or focus warms its chunk. */
+  before?: { label: string; icon: IconComponent; onClick: () => void; shortcut?: string; intent?: IntentProps };
 }) {
   const Icon = action?.icon;
+  const BeforeIcon = before?.icon;
   return (
     <div className="flex h-7 shrink-0 items-center gap-1 pr-1 pl-3">
       <span id={id} data-rail-heading className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
         {children}
       </span>
+      {before && BeforeIcon ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-xs" aria-label={before.label} onClick={before.onClick} {...before.intent} className="text-muted-foreground hover:text-foreground" />}
+          >
+            <BeforeIcon className="size-3.5" />
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {before.label}
+            {before.shortcut ? <Kbd size="sm">{before.shortcut}</Kbd> : null}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
       {action && Icon ? (
         <Tooltip>
           <TooltipTrigger

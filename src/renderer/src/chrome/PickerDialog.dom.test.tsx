@@ -34,6 +34,48 @@ describe("PickerDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("draws Go to File's field as it always was: the glyph and the input, nothing before his words and nothing at the field's end", async () => {
+    await act(async () => {
+      render(
+        <PickerDialog label="Go to File" search={createRef()} query="" onQuery={vi.fn()} onSearchKey={vi.fn()} onClose={vi.fn()}>
+          <p>rows</p>
+        </PickerDialog>,
+      );
+    });
+    const group = document.querySelector("[data-slot=input-group]")!;
+    expect([...group.children].map((el) => el.getAttribute("data-slot"))).toEqual(["input-group-leading", "input"]);
+    expect(document.querySelector("[data-picker-leading]")).toBeNull();
+    // the frame's children, in order: its title for a reader, the field, the rule, the list
+    expect([...screen.getByRole("dialog").children].map((el) => el.getAttribute("data-slot") ?? el.tagName)).toEqual(["dialog-title", "input-group", "separator", "P"]);
+  });
+
+  it("takes a word before his words and a control at the field's end when a picker has them (Work search)", async () => {
+    await act(async () => {
+      render(
+        <PickerDialog label="Search Work" search={createRef()} query="budget" onQuery={vi.fn()} onSearchKey={vi.fn()} onClose={vi.fn()} leading="Mail" trailing={<button type="button">All jobs</button>}>
+          <p>rows</p>
+        </PickerDialog>,
+      );
+    });
+    const group = document.querySelector("[data-slot=input-group]")!;
+    expect([...group.children].map((el) => el.getAttribute("data-slot") ?? (el.hasAttribute("data-picker-leading") ? "picker-leading" : el.tagName))).toEqual(["input-group-leading", "picker-leading", "input", "input-group-trailing"]);
+    expect(document.querySelector("[data-picker-leading]")!.textContent).toBe("Mail");
+    expect(screen.getByRole("button", { name: "All jobs" })).toBeTruthy();
+  });
+
+  it("says why it was asked to close, so a picker may take Escape for a step back first", async () => {
+    const onClose = vi.fn();
+    await act(async () => {
+      render(
+        <PickerDialog label="Search Work" search={createRef()} query="" onQuery={vi.fn()} onSearchKey={vi.fn()} onClose={onClose}>
+          <p>rows</p>
+        </PickerDialog>,
+      );
+    });
+    await act(async () => fireEvent.keyDown(screen.getByRole("textbox", { name: "Search Work" }), { key: "Escape" }));
+    expect(onClose).toHaveBeenCalledWith("escape-key");
+  });
+
   it("runs the rule under the field to both edges of the frame", async () => {
     await act(async () => {
       render(

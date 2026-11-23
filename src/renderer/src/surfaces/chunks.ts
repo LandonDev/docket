@@ -110,6 +110,10 @@ export const workOutboxChunk = defineChunk("work-outbox", () => import("../work/
  *  rows and the Go menu, and warmed at idle while a host has Work on; each place's body is a chunk of its own. */
 export const workPlacesChunk = defineChunk("work-places", () => import("../work/places"));
 
+/** Work search: the one field over everything in Work (work/search), asked for by its key, its menu row or the rail's
+ *  mark; first paint holds only the door (lib/workSearchPort.ts). */
+export const workSearchChunk = defineChunk("work-search", () => import("../work/search"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -146,6 +150,7 @@ export const allChunks = {
   workShellChunk,
   workOutboxChunk,
   workPlacesChunk,
+  workSearchChunk,
   computersChunk,
   fullWindowChunk,
   popOutChunk,

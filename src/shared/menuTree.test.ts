@@ -126,6 +126,7 @@ describe('menu tree', () => {
     ])
     expect(section('Go')).toEqual([
       ['Search…', 'Cmd+K'],
+      ['Search Work…', 'Shift+Cmd+K'],
       ['Go to File…', 'Cmd+P'],
       ['Go to Symbol…', 'Shift+Cmd+O'],
       ['Type Hierarchy', 'Cmd+T'],

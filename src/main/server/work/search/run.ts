@@ -16,7 +16,7 @@ import {
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { mentionBridge } from './mentions'
 import { emptyReach } from './reach'
-import type { SearchSource } from './source'
+import type { SearchSource, SearchTier } from './source'
 
 /**
  * The frame every search runs in (docs/agents/work-search.md "The frame").
@@ -45,7 +45,7 @@ export function listSources(modules: readonly WorkModule[], own: readonly Search
     const fresh = sources.filter((s) => !taken.has(s.kind))
     for (const source of fresh) {
       const twins = fresh.filter((o) => o.kind === source.kind)
-      const base = twins.length > 1 ? `${pillar}.${source.kind}/${source.tier}` : `${pillar}.${source.kind}`
+      const base = twins.length > 1 ? `${pillar}.${source.kind}/${typeof source.tier === 'string' ? source.tier : 'auto'}` : `${pillar}.${source.kind}`
       const same = out.filter((l) => l.id === base || l.id.startsWith(`${base}#`)).length
       out.push({ id: same ? `${base}#${same + 1}` : base, pillar, source })
     }
@@ -89,14 +89,15 @@ export async function runSearch(ctx: WorkCtx, o: SearchRun): Promise<SearchAnswe
   let listed = listSources(o.modules, o.own)
     .filter((l) => (o.kind === undefined || l.source.kind === o.kind) && (!o.kinds || o.kinds.includes(l.source.kind)))
     .filter((l) => !(o.skipLifeos && l.source.lifeos))
+    .filter((l) => l.source.when !== 'alone' || o.kind !== undefined)
   const quiet: SearchQuiet[] = []
   // LifeOS not connected: none of its sources is asked, and it is said once, in the session's own words.
   if (listed.some((l) => l.source.lifeos) && !safely(() => ctx.lifeos.connected())) {
     listed = listed.filter((l) => !l.source.lifeos)
     quiet.push({ cause: 'lifeos', line: await lifeosWords(ctx) })
   }
-  const asked = o.sources ? listed.filter((l) => o.sources!.includes(l.id)) : o.tier === 'instant' ? listed.filter((l) => l.source.tier === 'instant') : listed
-  const pending = o.sources || o.tier !== 'instant' ? [] : listed.filter((l) => l.source.tier !== 'instant').map((l) => ({ source: l.id, kind: l.source.kind }))
+  const asked = o.sources ? listed.filter((l) => o.sources!.includes(l.id)) : o.tier === 'instant' ? listed.filter((l) => tierOf(l.source, ctx) === 'instant') : listed
+  const pending = o.sources || o.tier !== 'instant' ? [] : listed.filter((l) => tierOf(l.source, ctx) !== 'instant').map((l) => ({ source: l.id, kind: l.source.kind }))
   const limit = o.limit ?? (o.kind !== undefined ? SEARCH_ALL : SEARCH_PER_GROUP)
   const groups = await Promise.all(asked.map((l) => askOne(ctx, l, { ...o, text }, limit, quiet)))
   return {
@@ -104,6 +105,16 @@ export async function runSearch(ctx: WorkCtx, o: SearchRun): Promise<SearchAnswe
     groups: groups.filter((g): g is SearchGroup => g !== null).sort((a, b) => searchRank(a.kind) - searchRank(b.kind)),
     pending,
     quiet: quiet.filter((q, i) => quiet.findIndex((other) => other.cause === q.cause) === i)
+  }
+}
+
+/** A source's tier now. One whose tier cannot be read is asked over the network. */
+export function tierOf(source: SearchSource, ctx: WorkCtx): SearchTier {
+  if (typeof source.tier === 'string') return source.tier
+  try {
+    return source.tier(ctx)
+  } catch {
+    return 'network'
   }
 }
 

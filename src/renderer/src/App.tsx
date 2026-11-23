@@ -298,9 +298,10 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
-import { openWorkView, useWorkOn, useWorkView, workHome, workFilePort, workOpenPort, workStartPort } from "./lib/workSwitch";
+import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
+import { openWorkView, useWorkOn, useWorkView, workHome, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
+import { isBareSeed, onWorkSearch, searchWork, type WorkSearchSeed } from "./lib/workSearchPort";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -314,6 +315,7 @@ const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="sear
 const ThreadBatchDialog = dialogsChunk.surface("ThreadBatchDialog");
 const FilePicker = pickersChunk.surface("FilePicker");
 const SymbolPicker = pickersChunk.surface("SymbolPicker");
+const WorkSearch = workSearchChunk.surface("WorkSearch");
 const WhatsNewDialog = dialogsChunk.surface("WhatsNewDialog");
 const NewWorkspaceDialog = dialogsChunk.surface("NewWorkspaceDialog");
 const RemoteFolderDialog = dialogsChunk.surface("RemoteFolderDialog");
@@ -469,6 +471,15 @@ export default function App() {
   const popOutOpen = usePopOut() !== null;
   const workViewShown = useWorkView() !== null;
   const workOn = useWorkOn();
+  // Work search (lib/workSearchPort.ts): the key, the menu row, the rail's mark and any screen open it here. The
+  // key pressed again while it is open is the picker's own to hear: it flips its scope.
+  const [workSearch, setWorkSearch] = useState<{ seed: WorkSearchSeed; opened: number } | null>(null);
+  useEffect(() => onWorkSearch((seed) => setWorkSearch((open) => (open && isBareSeed(seed) ? open : { seed, opened: (open?.opened ?? 0) + 1 }))), []);
+  const closeWorkSearch = useCallback(() => setWorkSearch(null), []);
+  // Work turned off under it: it closes, and does not come back when Work is turned on again.
+  useEffect(() => {
+    if (!workOn) setWorkSearch(null);
+  }, [workOn]);
   // Work turned off on every host: its Outbox page goes with it.
   useEffect(() => {
     if (!workOn && outboxViewOpen) shell.closeOutbox();
@@ -3247,6 +3258,8 @@ export default function App() {
         case "show_hierarchy": return go(a.onShowHierarchy);
         case "save_all": return go(a.onSaveAll);
         case "open_search": return go(a.onOpenSearch);
+        // Nothing while no host has Work on: there is nothing to search.
+        case "search_work": return go(() => void searchWork(workSwitch.anyOn()));
         case "open_inbox": return go(a.onOpenInbox);
         case "open_computers": return go(shell.openComputers);
         case "mark_all_read": return go(() => markAllSeen(sessionStore.metas().map((m) => m.id)));
@@ -3346,6 +3359,7 @@ export default function App() {
           !menuCommandAllowed(id, {
             dialogOpen: dialogOpen(),
             lightboxOpen: isLightboxOpen() || isHtmlRenderOverlayOpen(),
+            workSearchOpen: !!document.querySelector("[data-work-search]"),
           })
         ) {
           return;
@@ -3693,6 +3707,10 @@ export default function App() {
           onOpenFile={onOpenFile}
           onClose={shell.closeFilePicker}
         />
+      ) : null}
+
+      {workSearch && workOn ? (
+        <WorkSearch key={workSearch.opened} seed={workSearch.seed} onClose={closeWorkSearch} />
       ) : null}
 
       {symbolPickerOpen ? (

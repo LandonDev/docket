@@ -200,7 +200,7 @@ export type Keybinding = {
   /** Each entry is one chord as caps; a second entry is an alternative. */
   keys: string[][];
   /** Where the binding holds, when not everywhere. */
-  scope?: "editor" | "outside-editor" | "files";
+  scope?: "editor" | "outside-editor" | "files" | "work-search";
 };
 
 /** `desktopOnly`: the bindings act only in the desktop app (the terminal), so /ui leaves the group out.
@@ -293,7 +293,12 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
   {
     // The canvas pane's selection bar (work/canvas/SelectionBar.tsx): Ask puts the selection in the thread's composer.
     title: "Work",
-    bindings: [{ name: "Ask about the selection", keys: [[CMD, "L"]] }],
+    bindings: [
+      { name: "Search Work", keys: [[CMD, SHF, "K"]] },
+      { name: "Open a search result", keys: [[RET]], scope: "work-search" },
+      { name: "Start a thread about a search result", keys: [[CMD, RET]], scope: "work-search" },
+      { name: "Ask about the selection", keys: [[CMD, "L"]] },
+    ],
     work: true,
   },
 ];
@@ -311,6 +316,7 @@ export const KEYBINDING_SCOPE_LABEL: Record<NonNullable<Keybinding["scope"]>, st
   editor: "In the editor",
   "outside-editor": "Outside the editor",
   files: "In the file tree",
+  "work-search": "While searching",
 };
 
 /** The groups with only the bindings whose name, group or keys match;

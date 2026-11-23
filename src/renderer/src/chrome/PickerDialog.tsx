@@ -6,10 +6,23 @@ import { Separator } from "../components/ui/separator";
 import { cn } from "../lib/cn";
 import { Search } from "./icons";
 
+type FrameProps = {
+  label: string;
+  search: RefObject<HTMLInputElement | null>;
+  query: string;
+  onQuery: (query: string) => void;
+  onSearchKey: (e: KeyboardEvent<HTMLInputElement>) => void;
+  /** Stands in the field before his words, muted: what the list is narrowed to (Work search's one kind). */
+  leading?: ReactNode;
+  /** The field's own end: a control that belongs to the search (Work search's scope, its spinner). */
+  trailing?: ReactNode;
+  children: ReactNode;
+};
+
 /**
- * The frame of a go-to picker (Go to File, Go to Symbol): a Dialog near the
- * top of the window with the search field on top and the list under it.
- * Escape and a press outside close it.
+ * The frame of a go-to picker (Go to File, Go to Symbol, Work search): a
+ * Dialog near the top of the window with the search field on top and the
+ * list under it. Escape and a press outside close it.
  */
 export function PickerDialog({
   open = true,
@@ -19,20 +32,17 @@ export function PickerDialog({
   onQuery,
   onSearchKey,
   onClose,
+  leading,
+  trailing,
   children,
   ...data
-}: {
+}: FrameProps & {
   open?: boolean;
-  label: string;
-  search: RefObject<HTMLInputElement | null>;
-  query: string;
-  onQuery: (query: string) => void;
-  onSearchKey: (e: KeyboardEvent<HTMLInputElement>) => void;
-  onClose: () => void;
-  children: ReactNode;
+  /** `reason` is the dialog's own word for how it was asked to close (`escape-key`, `outside-press`). */
+  onClose: (reason?: string) => void;
 } & Record<`data-${string}`, boolean>) {
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
+    <Dialog open={open} onOpenChange={(next, details) => (next ? undefined : onClose(details?.reason))}>
       <DialogContent
         showCloseButton={false}
         instant
@@ -41,26 +51,42 @@ export function PickerDialog({
         {...data}
       >
         <DialogTitle className="sr-only">{label}</DialogTitle>
-        <InputGroup leading={<Search className="size-3.5" />} className="h-9 border-transparent">
-          <GroupInput
-            ref={search}
-            value={query}
-            placeholder={label}
-            aria-label={label}
-            spellCheck={false}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            onChange={(e) => onQuery(e.target.value)}
-            onKeyDown={onSearchKey}
-          />
-        </InputGroup>
-        {/* Across the frame's 4px inset to both edges: a full-width
-            separator shifted by -mx-1 stopped 8px short of the right. */}
-        <Separator data-picker-rule className="-mx-1 mb-1 data-[orientation=horizontal]:w-auto" />
-        {children}
+        <PickerFrame label={label} search={search} query={query} onQuery={onQuery} onSearchKey={onSearchKey} leading={leading} trailing={trailing}>
+          {children}
+        </PickerFrame>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** What the dialog holds: the field, the rule under it, the list. Its own piece so a design page can draw a picker with no dialog round it. */
+export function PickerFrame({ label, search, query, onQuery, onSearchKey, leading, trailing, children }: FrameProps) {
+  return (
+    <>
+      <InputGroup leading={<Search className="size-3.5" />} trailing={trailing} className="h-9 border-transparent">
+        {leading ? (
+          <span data-picker-leading className="shrink-0 text-[13px] text-muted-foreground">
+            {leading}
+          </span>
+        ) : null}
+        <GroupInput
+          ref={search}
+          value={query}
+          placeholder={label}
+          aria-label={label}
+          spellCheck={false}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          onChange={(e) => onQuery(e.target.value)}
+          onKeyDown={onSearchKey}
+        />
+      </InputGroup>
+      {/* Across the frame's 4px inset to both edges: a full-width
+          separator shifted by -mx-1 stopped 8px short of the right. */}
+      <Separator data-picker-rule className="-mx-1 mb-1 data-[orientation=horizontal]:w-auto" />
+      {children}
+    </>
   );
 }
 

@@ -8,6 +8,7 @@ import { setOutboxFailed, setOutboxWaiting, setWorkOn, workSwitch } from "../lib
 import { WORK_PLACE_ROWS } from "../lib/workPlaces";
 import { shellStore } from "../stores/shell";
 import { Clock } from "./icons";
+import { onWorkSearch } from "../lib/workSearchPort";
 import { mountProbe } from "../test/renderProbe";
 import { ProjectRail } from "./ProjectRail";
 import { SettingsNav } from "./SettingsRail";
@@ -110,6 +111,7 @@ describe("the rail with Work off", () => {
     expect(shown.rows).toEqual([CODE.path]);
     expect(shown.headings).not.toContain("Work");
     expect(shown.labels).not.toContain("Work Chats");
+    expect(withWork.querySelector('[aria-label="Search Work"]')).toBeNull();
     expect(loads.shell).toBe(0);
   });
 });
@@ -126,6 +128,25 @@ describe("the rail with Work on", () => {
     expect(work.querySelector('[aria-label="Pin workspace"]')).toBeNull();
     expect(root.querySelector('[aria-label="Add Work workspace"]')?.getAttribute("aria-haspopup")).toBe("menu");
     expect(loads.shell).toBeGreaterThan(0);
+  });
+
+  it("puts a search mark on the Work heading, before its +, that opens Work search; none while there is no job to search", async () => {
+    setWorkOn("local", true);
+    const heard: unknown[] = [];
+    const off = onWorkSearch((seed) => heard.push(seed));
+    const root = await mountRail([CODE, WORK]);
+    const mark = root.querySelector<HTMLButtonElement>('[aria-label="Search Work"]')!;
+    const add = root.querySelector('[aria-label="Add Work workspace"]')!;
+    expect(mark.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(mark.parentElement).toBe(add.parentElement);
+    mark.click();
+    expect(heard).toEqual([{}]);
+    off();
+    probe?.unmount();
+    workspaceStore.reset();
+    sessionStore.reset();
+    const bare = await mountRail([CODE]);
+    expect(bare.querySelector('[aria-label="Search Work"]')).toBeNull();
   });
 
   it("puts Work Chats after Chats, and draws no Outbox row with no page for it to open", async () => {

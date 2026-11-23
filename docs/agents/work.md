@@ -87,7 +87,10 @@ Settings → Work.
   keeps a Work workspace out of the code list, pinned or not, always; with
   Work on it sits under the **Work** heading, led by its sector's dot
   (`SectorDot`, chrome/WorkspaceGlyph.tsx, the `--sector-*` tokens in
-  index.css), with no Pin. The heading's + opens the menu the chunk answers
+  index.css), with no Pin. Before the heading's + is a search mark that
+  opens Work search (`openWorkSearch`, lib/workSearchPort.ts; ⌘⇧K;
+  [work-search.md](work-search.md)), drawn while there is a Work workspace.
+  The heading's + opens the menu the chunk answers
   through `workRailPort` (work/shell/WorkRailHost.tsx): one row per sector
   no Work workspace has yet (one click makes it on `workHome()`: the host
   picked on the Work page, else the box, else this machine), Sign in to
@@ -347,6 +350,7 @@ edits none of these.
 | Deleted canvas items (a Files tab closed) | the canvas store's `remove` and `removePanes` (work/canvas/ctx.ts) | `itemsRemoved` of its module, for rows and files it keeps by item |
 | Database | `ensureWorkTables(db)` | `ensure` of its module |
 | Modules | `PILLAR_LOADERS` and `WORK_MODULES` (work/modules.ts) | `src/main/server/work/<pillar>/index.ts` |
+| Search | `runSearch` (work/search/run.ts) reads every module's `search`, and its `mentions` where it has no `search` of a kind | `search: [source]` on its module ([work-search.md](work-search.md)) |
 | Tools | `withWorkTools(options, session)` beside `withMacTools` for Claude; `app.workTools`, `app.workCall` and `app.workCancel` on the bridge for Codex and Muse | `tools` of its module |
 | Path fence | `workSourcePaths` in `fenceRequest` (remote/fence.ts) | none: it names files inside a `CanvasSource` |
 | Moves between hosts | `registerMoveModule(db, module)` and `tableMoveModule` (src/main/server/sessionMove.ts), called from a part at boot | the part's own file (the canvas: work/canvas/move.ts) |

@@ -64,6 +64,8 @@ describe("command map: chords", () => {
     expect(resolve(key("r", { meta: true, shift: true }), ctx)).toEqual({ id: "toggle_panel" });
     expect(resolve(key("o", { meta: true, shift: true }), ctx)).toEqual({ id: "go_to_symbol" });
     expect(resolve(key("m", { meta: true, shift: true }), ctx)).toEqual({ id: "toggle_message_list" });
+    expect(resolve(key("k", { meta: true, shift: true }), ctx)).toEqual({ id: "search_work" });
+    expect(resolve(key("k", { ctrl: true, shift: true }), ctx)).toEqual({ id: "search_work" });
     expect(resolve(key("1", { meta: true }), ctx)).toEqual({ id: "activate_tab", index: 0 });
   });
 
@@ -166,6 +168,23 @@ describe("command map: guards", () => {
     expect(resolve(key("1", { meta: true }, "dialog"), ctx)).toBeNull();
   });
 
+  it("⌘⇧K is Work search everywhere but inside a dialog and a code editor, where it stays delete-line", () => {
+    expect(resolve(key("k", { meta: true, shift: true }, "dialog"), ctx)).toBeNull();
+    expect(resolve(key("k", { meta: true, shift: true }, "codemirror"), ctx)).toBeNull();
+    expect(resolve(key("k", { meta: true, shift: true }, "monaco"), ctx)).toBeNull();
+    expect(resolve(key("k", { meta: true, shift: true }, "terminal"), ctx)).toEqual({ id: "search_work" });
+    // ⌘K is still the app's Search
+    expect(resolve(key("k", { meta: true }), ctx)).toEqual({ id: "open_search" });
+  });
+
+  it("the menu lets Work search's own key through its own dialog, to flip the scope, and through no other", () => {
+    expect(menuCommandAllowed("search_work", { dialogOpen: true, lightboxOpen: false })).toBe(false);
+    expect(menuCommandAllowed("search_work", { dialogOpen: true, lightboxOpen: false, workSearchOpen: true })).toBe(true);
+    expect(menuCommandAllowed("search_work", { dialogOpen: true, lightboxOpen: true, workSearchOpen: true })).toBe(false);
+    expect(menuCommandAllowed("go_to_file", { dialogOpen: true, lightboxOpen: false, workSearchOpen: true })).toBe(false);
+    expect(menuCommandAllowed("search_work", { dialogOpen: false, lightboxOpen: false })).toBe(true);
+  });
+
   it("the menu route mirrors the overlay guard", () => {
     expect(menuCommandAllowed("go_to_file", { dialogOpen: true, lightboxOpen: false })).toBe(false);
     expect(menuCommandAllowed("zoom_in", { dialogOpen: true, lightboxOpen: false })).toBe(true);
@@ -236,6 +255,13 @@ describe("a Work editor holding the caret owns its keys", () => {
     expect(resolve(inEditor("k", null), ctx)).toEqual({ id: "open_search" });
     expect(resolve(inEditor("b", "read"), ctx)).toEqual({ id: "toggle_sidebar" });
     expect(resolve(inEditor("k", "read"), ctx)).toEqual({ id: "open_search" });
+  });
+
+  it("⌘⇧K reaches Work search from inside a Work editor of every kind: no editor holds a shifted chord", () => {
+    for (const mark of ["", "document", "read"]) {
+      expect(resolve(inEditor("k", mark, { meta: true, shift: true }), ctx)).toEqual({ id: "search_work" });
+      expect(resolve(inEditor("k", mark, { ctrl: true, shift: true }), ctx)).toEqual({ id: "search_work" });
+    }
   });
 
   it("⌘P is Go to File and ⌘F the app's until the editor holding the caret answers them; then they are Print and its find, in a read-only root too", () => {

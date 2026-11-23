@@ -136,8 +136,8 @@ export class Run {
     this.undo.unshift({ label, fn })
   }
 
-  /** Launches the instance, attaches to its window, turns Work on (unless `work: false`). */
-  async start(opts: { work?: boolean } = {}): Promise<void> {
+  /** Launches the instance, attaches to its window, turns Work on (unless `work: false`). `env` adds the run's own test seams (a job that needs no real LifeOS names its stand-in there). */
+  async start(opts: { work?: boolean; env?: Record<string, string> } = {}): Promise<void> {
     this.port = await freePort()
     this.workPort = await freePort()
     if (await fetch(`http://127.0.0.1:${this.port}/json/version`).then(() => true, () => false)) throw new Error(`debug port ${this.port} is in use`)
@@ -163,7 +163,8 @@ export class Run {
       TEMP_CODE_APP_TOKEN_SEED: this.seed,
       TEMP_CODE_WORK_TOKEN_SEED: this.seed,
       // No model runs: a thread's turn would act on his real mail with words no cleanup knows.
-      TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9'
+      TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9',
+      ...opts.env
     }
     const electron = join(REPO, 'node_modules', '.bin', 'electron')
     // Linux draws into xvfb; a Mac opens a real window (a Mac child runs only after the idle gate).

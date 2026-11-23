@@ -1883,6 +1883,64 @@ opening puts the focus on Edit.
   `paper` by `lib/tokenContrast.test.ts`. Nothing inside the paper, a slide
   or the web frame is ours.
 
+#### Work search
+
+One field over everything in Work (`work/search/Picker.tsx`; the account is
+docs/agents/work-search.md). It is a picker, never a page: it opens under
+his hands and leaves no trace on what he was searching from.
+
+- **The frame** is `PickerDialog`, the Go to File shell: 560px, the field
+  36px over a hairline, 28px rows at the frame's 4px inset, appearing at
+  once. The dialog's own exit is the shell's. Nothing in the list moves or
+  fades: it is read tens of times a day.
+- **The key** is ⌘⇧K, a command of its own (`search_work`); ⌘K stays the
+  app's Search. The place to click is a ghost search mark on the rail's
+  **Work** heading, before its +, with the key in its tip. No other screen
+  draws a field for everything: a view's own filter stays the view's, and
+  a screen that wants this one calls `openWorkSearch`.
+- **The scope** is the field's own end: a quiet button reading "All jobs",
+  or a job's dot and name. It opens on All jobs every time. ⌘⇧K again
+  narrows to the job the window is in and again widens; a click opens the
+  menu of All jobs and each job. While a source is still out a `Spinner`
+  stands before it, in the field.
+- **Groups** stand in one fixed order by kind (People, Mail, Messages,
+  Tasks, Agenda, Files, Documents, Projects, Threads, then the rest),
+  never by speed or score, under the menu group label (11px medium muted,
+  `px-3 pt-2 pb-1`): the `@` list's own headings.
+- **A row** is the `@` list's own, one line: a 16px glyph of its kind, the
+  title (13px, as wide as its words, the matched ones in the foreground's
+  weight through `MatchText`), the fact or the matched line right after it
+  (12px muted, cut first), then at the row's end the job and the time
+  (12px muted, tabular, each a column of one width). A file kept in the
+  cloud wears Files' cloud mark after its name.
+- **The job** is the sector dot and the job's name in 12px muted, in a
+  column of one width so the names line up; never a chip. It is drawn only
+  while the results can mix jobs (All jobs, with more than one job in
+  reach). Scoped to one job the column is gone.
+- **Four rows a kind**, then one muted row, "All mail for “budget”":
+  Return on it narrows the picker to that kind (thirty rows), the kind's
+  name standing muted before his words in the field. Escape steps back
+  out; a second Escape closes.
+- **The list holds still.** Rows on screen never change order among
+  themselves. Until he moves the highlight it stays on the first row.
+  Once he has moved it, by arrow or pointer, the highlighted row keeps its
+  place on screen: what lands above it is taken up by the scroller in the
+  same frame, so the row under his eye, and the one Return will take,
+  never moves.
+- **Nothing typed** shows Recent: the last eight things he opened from
+  search, any job. No hint text and no tips.
+- **Nothing found** is one muted row, "Nothing for “q”" (`PickerNote`).
+  Scoped to one job it is followed by one row he can take, "Search all
+  jobs".
+- **What could not be searched** is one muted line a cause at the list's
+  foot, in LifeOS's or the host's own words: "LifeOS is signed out on
+  MacBook.", "The box is offline.", "Mail did not answer." One line for
+  LifeOS covers every kind it feeds. No button: Settings → Connections has
+  the fix. A source that does not exist on a host says nothing.
+- **Return opens in place**: the picker closes, the window enters the
+  thing's job if it is in another, and the thing opens in its own view,
+  its thread or a Files tab. ⌘↩ starts a thread about it where the kind can
+  be a chip. Right-click gives the same two with their keys.
 
 ## Scrolling
 
