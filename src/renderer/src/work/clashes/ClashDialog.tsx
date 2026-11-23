@@ -19,10 +19,12 @@ import { refusalWords } from "../../lib/settingsHome";
 import { openWorkView } from "../../lib/workSwitch";
 import { writeMail } from "../mail/mailto";
 import { sectorName } from "../shell/actions";
+import { useMinute } from "../tasks/minute";
 import { sessionFailure, sessionWaits, useLifeosSession } from "../shell/lifeos";
 import { useClashes } from "./mark";
-import { doneWords, fieldOf, formOf, freeAfter, hintsOf, lateDraft, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
+import { doneWords, fieldOf, formOf, freeAfter, hintsOf, lateDraft, pairStamp, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
+import { answered } from "./wait";
 
 /**
  * The Clash dialog (docs/DESIGN.md "Clashes"): the two events in time order
@@ -33,27 +35,15 @@ import type { ClashAsk } from "./open";
  * own send; "This is fine" quiets the clash until a time or a place moves.
  */
 
-/** How long Running late waits for the event's people before it says LifeOS did not answer. */
-const LATE_WAIT = 10_000;
-/** A read with an end. Convex's own query never times out, and one whose client is closed under it never settles: without this the dialog would stay locked on its spinner. An answer after the end is dropped. */
-function answered<T>(read: Promise<T>): Promise<T> {
-  return new Promise((yes, no) => {
-    const timer = setTimeout(() => no(new Error("LifeOS did not answer")), LATE_WAIT);
-    read.then(
-      (value) => (clearTimeout(timer), yes(value)),
-      (err: unknown) => (clearTimeout(timer), no(err)),
-    );
-  });
-}
-
 type Side = "a" | "b";
 type Step = { side: Side; way: Exclude<ClashWay, "late"> };
 const eventGet = makeFunctionReference<"query">("events:get");
 
 export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => void }) {
-  // The clash's own day or two when the opener handed it over, else the fortnight every opener reads.
-  // Whole local days (a day is 23 or 25 hours when the clocks change), so no event of the pair falls outside the read.
-  const [from, to] = ask.clash ? [startOfDay(ask.clash.a.startsAt), addDays(startOfDay(ask.clash.b.startsAt), 1)] : [startOfDay(Date.now()), addDays(startOfDay(Date.now()), 14)];
+  // The fortnight from the earlier event's day when the opener handed the clash over, else from today, as every opener reads.
+  // Whole local days (a day is 23 or 25 hours when the clocks change). A fortnight, not the pair's own day or two: an event of the pair that moves to another day and still clashes must stay in the read, or the dialog would call the clash gone.
+  const first = startOfDay(ask.clash ? ask.clash.a.startsAt : Date.now());
+  const [from, to] = [first, addDays(first, 14)];
   const marks = useClashes(ask.environmentId, from, to);
   const live = [...marks.clashes.values()].flat().find((c) => c.id === ask.id);
   const [pending, setPending] = useState(false);
@@ -247,7 +237,7 @@ function Body({
         const to = (event?.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
         if (!to.length) return failed(null, "Nobody on this event has an address");
         openWorkView({ workspaceId, view: "mail" });
-        writeMail(lateDraft(clash, to));
+        writeMail(lateDraft(clash, to, Date.now()));
         close ? close(onClose) : onClose();
       },
       (err: unknown) => failed(err, "LifeOS did not answer"),
@@ -309,8 +299,11 @@ export function Events({
 }) {
   const drive = driveLine(clash);
   const day = startOfDay(clash.b.startsAt);
+  const now = useMinute();
   const ways = (side: Side) => {
     const event = clash[side];
+    // An event that is over allows none: a decline of a game he has just refereed helps no one. Running late is the later event's, which is not over while its clash shows.
+    if (event.endsAt <= now) return null;
     // Running late needs Mail in that job's workspace on this host.
     const can = event.can.filter((way) => way !== "late" || (side === "b" && Boolean(event.workspaceId)));
     if (!can.length) return null;
@@ -390,10 +383,13 @@ export function StepForm({
   const bad = fieldOf(error);
   const hints = hintsOf(form, offered);
   const timed = step.way !== "decline";
+  // The offer was worked out from the pair as it was when the step opened. If either event's time or the drive has changed since, a time he has not looked at again may clash anew: the step holds Send and points back, where a fresh offer is made.
+  const [opened] = useState(() => pairStamp(clash));
+  const stale = timed && !cleared && pairStamp(clash) !== opened;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (pending) return;
-    if (cleared) return;
+    if (cleared || stale) return;
     const when = timed ? whenOf(form, offered) : null;
     if (typeof when === "string") return setError(when);
     // A proposal goes to another person and a move has no Undo: neither goes to a time already gone.
@@ -407,8 +403,9 @@ export function StepForm({
         <EventBlock side={event} day={startOfDay(clash.b.startsAt)} />
         {/* One place, always there: what goes and to whom, or that nothing went once the two no longer clash, read out as it turns. The first sentence keeps its lines under the second, so the fields below stay where they are. */}
         <p aria-live="polite" className="grid text-[13px] leading-5 text-muted-foreground">
-          <span className={cn("col-start-1 row-start-1", cleared && "invisible")}>{wayWords(step.way, event.guests)}</span>
+          <span className={cn("col-start-1 row-start-1", (cleared || stale) && "invisible")}>{wayWords(step.way, event.guests)}</span>
           {cleared ? <span className="col-start-1 row-start-1">Nothing was sent.</span> : null}
+          {stale ? <span className="col-start-1 row-start-1">These events changed. Go back for a new time.</span> : null}
         </p>
         {timed ? (
           <div className="grid grid-cols-[minmax(0,1fr)_112px_112px] gap-2">
@@ -432,7 +429,7 @@ export function StepForm({
           <ErrorLine error={error ?? refused} />
         </div>
       </ModalBody>
-      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending} disabled={cleared}>
+      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending} disabled={cleared || stale}>
         <Button data-clash-back variant="secondary" disabled={pending} onClick={onBack}>
           Back
         </Button>

@@ -1888,7 +1888,8 @@ Around the canvas:
   hairline, which carries the drive in 12px muted at its middle when both
   have a point ("38 min drive, 24 mi", "About 40 min, 25 mi"). Under each
   event, 8px down, are the ways out it allows and no others, as outline
-  `sm` buttons: Decline, Propose new time…, Move…, Running late…. The foot
+  `sm` buttons: Decline, Propose new time…, Move…, Running late…; an
+  event that is over allows none. The foot
   has "This is fine" (ghost) at its start and Close at its end.
   A way out swaps the body for its one step: the event, one 13px muted
   sentence of what goes and to whom (the event stands above it and is not
@@ -1921,14 +1922,19 @@ Around the canvas:
   reader); a step he is typing in stays when the calendar settles the
   clash meanwhile: the title turns to "No longer a clash", the step's one
   sentence turns to "Nothing was sent." (read out as it turns) in the
-  lines the sentence held, Send is off, and nothing moves. What a
+  lines the sentence held, Send is off, and nothing moves. A step with
+  times whose pair changed under it (either event's time, or the drive)
+  holds Send the same way and says "These events changed. Go back for a
+  new time.", since its offer was made for the pair as it was. What a
   read said for certain holds while a later read is out or fails: a clash
   seen gone never comes back from an old copy; a read that failed says why in the body; two
   events that no longer clash are the title "No longer a clash" over the
   foot, with nothing between. Running late… opens Mail's composer in
   that job's workspace with the people on the event and one line, and
   lets go with LifeOS's words when the read of those people gets no
-  answer in ten seconds; "This
+  answer in ten seconds; once the time he would have been there by is
+  behind him, its line says "I'm running late." and leaves how late to
+  him; "This
   is fine" closes with a toast that carries Undo.
   In the Week and the Month a clashing event's block carries a 6px
   `warning` dot before its title, named "Clashes with another event";
@@ -1951,7 +1957,8 @@ Around the canvas:
   empties the field and leaves focus there, and Save sends that with
   whatever else changed, for that one job alone (another job's start or
   switch, changed elsewhere meanwhile, is kept). The fields are locked
-  while Save is out. An open
+  while Save is out, for ten seconds at most: then the dialog says
+  "LifeOS did not answer. Save again to be sure." and he can. An open
   dialog keeps what he typed when a read fails or the session drops: it
   says why in its alert, before what LifeOS said of an earlier Save, and
   Save waits for a read that is current; while a read is merely out or

@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Clash, ClashSide } from "@shared/work/clashes";
-import { startOfDay } from "work-kit/views/lib/agenda";
+import { addDays, startOfDay } from "work-kit/views/lib/agenda";
 import { formatDayHeading } from "work-kit/views/lib/format";
 import { marksOf, NO_MARKS, type ClashMarks } from "./model";
 
@@ -27,8 +27,8 @@ vi.mock("../../lib/connection", async (original) => ({
     }),
   },
 }));
-const marks = vi.hoisted(() => ({ now: null as unknown }));
-vi.mock("./mark", () => ({ useClashes: () => marks.now }));
+const marks = vi.hoisted(() => ({ now: null as unknown, asked: [] as unknown[] }));
+vi.mock("./mark", () => ({ useClashes: (...asked: unknown[]) => ((marks.asked = asked), marks.now) }));
 const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
@@ -93,6 +93,53 @@ describe("the Clash dialog", () => {
     expect(within(dialog).getByText("Purdue")).toBeTruthy();
     expect(within(dialog).getByText("Cedar Hall, 4 Elm St")).toBeTruthy();
     expect(within(dialog).getByText("Maple Ridge High School")).toBeTruthy();
+  });
+
+  it("reads the fortnight from the earlier event's day, so an event of the pair that moves to another day stays in the read", async () => {
+    show(overlap());
+    await settle();
+    const from = startOfDay(T0);
+    expect(marks.asked).toEqual(["box", from, addDays(from, 14)]);
+  });
+
+  it("offers no way out under an event that is over, and keeps Running late under the later one", async () => {
+    // Five minutes after the meeting ended; the game is under way.
+    vi.useFakeTimers({ now: T0 + 2 * HOUR + 5 * 60_000, toFake: ["Date"] });
+    try {
+      show(overlap());
+      await settle();
+      const ways = [...document.querySelectorAll("[data-way]")].map((b) => b.getAttribute("data-way"));
+      expect(ways).toEqual(["b:move", "b:late"]);
+      expect(within(screen.getByRole("group", { name: "Staff meeting" })).queryByRole("button")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("holds a timed step whose pair changed under it: it says so in the sentence's place, sends nothing, and Back gives a fresh offer", async () => {
+    const view = (clash: Clash) => {
+      marks.now = marksOf({ clashes: [clash], leaves: [] });
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(overlap()));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Propose new time…" }));
+    const offered = (screen.getByLabelText("From") as HTMLInputElement).value;
+    // The game moves an hour later while the step is open.
+    const moved = overlap(meeting(["decline", "propose"]), { ...game(["move", "late"]), startsAt: T0 + 2 * HOUR, endsAt: T0 + 4 * HOUR });
+    rerender(view(moved));
+    await settle();
+    const said = document.querySelector("[data-clash-step] [aria-live=polite]")!;
+    expect(said.querySelector("span:not(.invisible)")?.textContent).toBe("These events changed. Go back for a new time.");
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(document.querySelector("[data-clash-step]")!);
+    await settle();
+    expect(wire.calls).toEqual([]);
+    // What he typed is still his to read; a decline, which names no time, is never held.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Propose new time…" }));
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText("From") as HTMLInputElement).value).not.toBe(offered);
   });
 
   it("says a start beside the dialog's day and an end beside its start: a weekday within three days, a date further off", async () => {

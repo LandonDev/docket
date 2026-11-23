@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Clash, ClashSide } from "@shared/work/clashes";
-import { doneWords, endHint, formOf, freeAfter, lateDraft, lateMinutes, marksOf, sideOf, spanOf, wayWords, whenOf } from "./model";
+import { doneWords, endHint, formOf, freeAfter, lateDraft, lateMinutes, marksOf, pairStamp, sideOf, spanOf, wayWords, whenOf } from "./model";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -108,6 +108,20 @@ describe("running late", () => {
       body: "I'm running about 15 minutes late.",
     });
     expect(lateDraft(drive({ shortBy: 1 }), []).body).toBe("I'm running about 1 minute late.");
+  });
+
+  it("leaves the minutes out once the time he would have been there by is behind him", () => {
+    // The game began at 1:00 with an hour shared and no drive: he was due at 2:00. At 1:50 the figure still holds; at 2:10 it does not.
+    expect(lateDraft(overlap(), [], T0 + HOUR + 50 * MINUTE).body).toBe("I'm running about 60 minutes late.");
+    expect(lateDraft(overlap(), [], T0 + 2 * HOUR + 10 * MINUTE).body).toBe("I'm running late.");
+  });
+
+  it("knows when the pair a step's offer was made from has changed", () => {
+    expect(pairStamp(drive())).toBe(pairStamp(drive()));
+    expect(pairStamp(drive({ b: side("b", 1, 2) }))).not.toBe(pairStamp(drive()));
+    expect(pairStamp(drive({ minutes: 50 }))).not.toBe(pairStamp(drive()));
+    // A new title or place alone is the same pair of times.
+    expect(pairStamp(drive({ a: side("a", 0, 1, { title: "Renamed" }) }))).toBe(pairStamp(drive()));
   });
 });
 

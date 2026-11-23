@@ -14,6 +14,7 @@ import { refusalWords } from "../../lib/settingsHome";
 import { sectorName } from "../shell/actions";
 import { sessionFailure, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
 import { formChanged, placeWords, rowLabel, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
+import { answered } from "./wait";
 
 /**
  * Settings → Work, "Start places" (docs/agents/work-clashes.md): where each
@@ -171,7 +172,8 @@ export function StartPlaceForm({
     if (!patch || pending || blocked !== null) return;
     setPending("save");
     setError(null);
-    send(patch).then(
+    // The write is given an end: a session that drops under it would leave the dialog locked. One job set alone is the same write twice over, so Save again is safe.
+    answered(send(patch), "LifeOS did not answer. Save again to be sure.").then(
       () => {
         setPending(null);
         close ? close(onClose) : onClose();

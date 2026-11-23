@@ -68,10 +68,15 @@ export function lateMinutes(clash: Clash): number {
 }
 
 /** The mail Running late… opens in Mail's composer: the people on the later event, and one line. */
-export function lateDraft(clash: Clash, to: readonly string[]): MailtoDraft {
+export function lateDraft(clash: Clash, to: readonly string[], now = 0): MailtoDraft {
   const minutes = lateMinutes(clash);
-  return { to: [...to], cc: [], bcc: [], subject: `Running late: ${clash.b.title}`, body: `I'm running about ${minutes} ${minutes === 1 ? "minute" : "minutes"} late.` };
+  // Once the time he would have been there by is behind him, the figure is no longer true: the line says he is late and leaves how late to him.
+  const body = now > clash.b.startsAt + minutes * MINUTE ? "I'm running late." : `I'm running about ${minutes} ${minutes === 1 ? "minute" : "minutes"} late.`;
+  return { to: [...to], cc: [], bcc: [], subject: `Running late: ${clash.b.title}`, body };
 }
+
+/** The pair's times and drive as one word: a step's offer was worked out from these, and is stale once they change. */
+export const pairStamp = (clash: Clash): string => [clash.a.startsAt, clash.a.endsAt, clash.b.startsAt, clash.b.endsAt, clash.minutes ?? "", clash.shortBy ?? ""].join("|");
 
 /** The verb on a way's button, and what its step says goes. */
 export const WAY_LABEL: Record<ClashWay, string> = { decline: "Decline", propose: "Propose new time…", move: "Move…", late: "Running late…" };

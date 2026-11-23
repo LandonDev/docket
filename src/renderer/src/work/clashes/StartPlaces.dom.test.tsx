@@ -12,6 +12,7 @@ const lifeos = vi.hoisted(() => ({
   sent: [] as { name: string; args: unknown }[],
   refuse: null as string | null,
   failed: null as string | null,
+  silent: false,
 }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
@@ -24,6 +25,7 @@ vi.mock("../shell/lifeos", async (original) => ({
         ? {
             mutation: async (ref: never, args: unknown) => {
               lifeos.sent.push({ name: getFunctionName(ref), args });
+              if (lifeos.silent) await new Promise<never>(() => {});
               if (lifeos.refuse) throw new Error(lifeos.refuse);
               return null;
             },
@@ -69,6 +71,7 @@ beforeEach(() => {
   lifeos.sent = [];
   lifeos.refuse = null;
   lifeos.failed = null;
+  lifeos.silent = false;
 });
 afterEach(cleanup);
 
@@ -256,6 +259,31 @@ describe("Start places", () => {
     await save(screen.getByRole("dialog"));
     expect(lifeos.sent).toHaveLength(1);
     expect(lifeos.sent[0]).toMatchObject({ name: "settings:update", args: { startFor: { sector: "purdue", address: "12 Oak Ct" }, lookupsFor: { sector: "purdue", on: true } } });
+  });
+
+  it("lets go of a Save that LifeOS never answers: ten seconds on it says so, keeps what he typed and lets him save again", async () => {
+    render(<StartPlacesSection environmentId="box" />);
+    const dialog = await open("Change Ref");
+    fireEvent.change(within(dialog).getByLabelText("Address"), { target: { value: "3 Court St" } });
+    vi.useFakeTimers();
+    try {
+      lifeos.silent = true;
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+      await act(async () => {});
+      expect((within(dialog).getByLabelText("Address") as HTMLInputElement).disabled).toBe(true);
+      await act(async () => void vi.advanceTimersByTime(10_000));
+      expect(within(dialog).getByRole("alert").textContent).toBe("LifeOS did not answer. Save again to be sure.");
+      const field = within(dialog).getByLabelText("Address") as HTMLInputElement;
+      expect([field.disabled, field.value]).toEqual([false, "3 Court St"]);
+      expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
+      // The same one-job write again: safe whether or not the first landed.
+      lifeos.silent = false;
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+      await act(async () => {});
+      expect(lifeos.sent.map((s) => s.args)).toEqual([{ startFor: { sector: "ref", address: "3 Court St" } }, { startFor: { sector: "ref", address: "3 Court St" } }]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a refusal's words stay in the dialog", async () => {

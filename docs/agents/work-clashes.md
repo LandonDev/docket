@@ -131,11 +131,14 @@ The pillar has no view of its own and no row in the column.
   each way's one step. Decline, a proposed time and a move go through
   `work.clashes.answer`; "This is fine" through `work.clashes.waive`, with
   Undo on its toast. Running late reads the event's people (`events:get`,
-  given ten seconds: Convex's own read has no end, and the dialog is locked
-  while it is out)
+  given ten seconds by `answered` in `clashes/wait.ts`: Convex's own call
+  has no end, and the dialog is locked while it is out; a Start place Save
+  is given the same)
   and opens Mail's composer in that job's workspace (`mail/mailto.ts`), so it
   is offered only where this host has that workspace. The dialog reads the
-  clash's own day or two (whole local days); a clash that is gone says so in
+  fortnight from the earlier event's day (whole local days; not the pair's
+  own day or two, so an event that moves to another day and still clashes
+  stays in the read); an event that is over gets no way out; a clash that is gone says so in
   its title, and a read that failed with nothing handed over says why. It
   keeps the clash it showed while his own press is out and while it closes,
   and keeps an open step with what he typed when the calendar settles the
@@ -153,7 +156,9 @@ The pillar has no view of its own and no row in the column.
   To is looked for on the day it falls on, so only that day's skipped hour
   refuses it, in words and with its field marked invalid (`fieldOf`,
   `ClashStep.dst.dom.test.tsx`). A start already gone is
-  refused. A move of an event with guests says they are told.
+  refused. A step with times whose pair changed under it (`pairStamp`)
+  holds Send and points back for a fresh offer. A move of an event with
+  guests says they are told.
 - `model.ts` holds the pure parts: the marks, the time a move or a proposal
   starts filled with (the earlier event: the latest quarter hour that ends a
   drive before the later one, while that is ahead and on its day; else the
