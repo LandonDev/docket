@@ -26,11 +26,20 @@
  *  - a path of box's own disk outside its roots stays refused at the fence, by its own host or by a
  *    claim of another host's; a Windows guest path still passes the fence (and box, with no VM, refuses it)
  *
+ * A copy saves back (docs/agents/work-files.md "A copy saves back"), once mac's bridge lets box run (read+run):
+ *  - a workbook and a text file of mac's library open as copies in tabs; each copy's bytes changed as the owner's
+ *    save leaves them, then `work.files.copyBack` as the window asks it: mac's file holds the new bytes and the tab
+ *    says when its file took them
+ *  - mac's file changed behind the copy's back: the send is the conflict and mac's file is left as it was; Keep Both
+ *    puts his bytes beside it as "Roster (mine).xlsx" and the tab shows that file; Reload reads mac's file back in
+ *  - a read key is refused, and so is a thread's own idea on the copy (sheets_write), mac's file untouched
+ *
  * Run: env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-files-open-remote.ts   (electron-vite build first)
  * Dummy files only. Nothing here touches /Applications/TempCode.app, a real HOME or the box's live service.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHmac, randomBytes } from 'node:crypto'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -39,6 +48,9 @@ import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
 import { attach, type Cdp } from './lib/packagedApp'
 
 const REPO = resolve(import.meta.dir, '..')
+/** box's Work token key, so this script calls a thread's tools as its bridge does (work/ctx.ts `TEMP_CODE_WORK_TOKEN_SEED`). */
+const WORK_SEED = randomBytes(32).toString('hex')
+const workToken = (sessionId: string): string => createHmac('sha256', Buffer.from(WORK_SEED, 'hex')).update(sessionId).digest('base64url')
 const KEEP = process.env.TC_E2E_KEEP === '1'
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
@@ -107,6 +119,7 @@ function launch(inst: Inst, windowed: boolean): void {
     TEMP_CODE_CLAIM_SHIM: '0',
     TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9',
     TEMP_CODE_WORK_ROOT: inst.work,
+    TEMP_CODE_WORK_TOKEN_SEED: WORK_SEED,
     AGENT_CLI_CREDENTIAL_STORE: 'file',
     NODE_ENV: 'production',
     SHELL: '/bin/bash'
@@ -286,6 +299,86 @@ try {
     const got = await fromWindow(boxId, 'work.files.open', { workspaceId: ws.id, ref: { at: 'file', host, path: join(box.home, 'secret.txt') } })
     check(`Files: an open of box's ${host === boxId ? 'own path' : 'path claimed for mac'} outside the roots makes no tab`, !got.ok, got.ok ? 'opened' : got.error)
   }
+
+  // ── A copy saves back ────────────────────────────────────────────────
+  // mac lets box run its Files verbs now: a copy's bytes go back through work.files.writeBack, a peer's operate verb.
+  await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'read+run' })
+  const roster = join(library, 'General', 'Roster.xlsx')
+  const agenda = join(library, 'General', 'Agenda.md')
+  copyFileSync(join(REPO, 'resources', 'work-files', 'blank', 'blank.xlsx'), roster)
+  writeFileSync(agenda, '# Agenda\n')
+  type Back = { is: string; at?: number; detail?: string }
+  type TabRow = { id: string; name: string; copyOf?: { host: string; path: string }; back?: Back }
+  const tabRow = async (tabId: string): Promise<TabRow | undefined> => {
+    const got = await fromWindow<{ tabs: TabRow[] }>(boxId, 'work.files.tabs', { workspaceId: ws.id })
+    return got.ok ? got.value.tabs.find((t) => t.id === tabId) : undefined
+  }
+  const openCopy = async (path: string): Promise<{ tabId: string; copy: string } | null> => {
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    const got = await fromWindow<{ tabId?: string; item?: { source: { path?: string } } }>(boxId, 'work.files.open', { workspaceId: ws.id, ref: { at: 'file', host: macId, path }, name })
+    if (got.ok && got.value.tabId && got.value.item?.source.path) return { tabId: got.value.tabId, copy: got.value.item.source.path }
+    log(`open ${name}: ${got.ok ? 'no tab' : got.error}`)
+    return null
+  }
+  const sendBack = (tabId: string) => fromWindow<Back>(boxId, 'work.files.copyBack', { workspaceId: ws.id, tabId })
+  const sheet = await openCopy(roster)
+  const text = await openCopy(agenda)
+  if (!check('save back: a workbook and a text file of mac open as copies that save back', !!sheet && !!text && (await tabRow(sheet.tabId))?.back?.is === 'ok' && (await tabRow(text.tabId))?.back?.is === 'ok')) throw new Error('no copies that save back')
+  // The owner's save leaves new bytes in each copy; then the window asks, as it does once a kind says it saved.
+  const edited = Buffer.concat([readFileSync(sheet!.copy), Buffer.from('owner edit')])
+  writeFileSync(sheet!.copy, edited)
+  const sent = await sendBack(sheet!.tabId)
+  check("save back: the workbook's bytes reach mac's file", sent.ok && sent.value.is === 'ok' && readFileSync(roster).equals(edited), sent.ok ? JSON.stringify(sent.value) : sent.error)
+  check('save back: the tab says when its file took them (the recorded version moved)', !!(await tabRow(sheet!.tabId))?.back?.at)
+  writeFileSync(text!.copy, '# Agenda\n- doors at 5\n')
+  const sentText = await sendBack(text!.tabId)
+  check("save back: the text file's words reach mac's file", sentText.ok && readFileSync(agenda, 'utf8') === '# Agenda\n- doors at 5\n', sentText.ok ? JSON.stringify(sentText.value) : sentText.error)
+  const mtime = Bun.file(roster).lastModified
+  const idle = await sendBack(sheet!.tabId)
+  check('save back: asked again with nothing changed, nothing is written', idle.ok && idle.value.is === 'ok' && Bun.file(roster).lastModified === mtime)
+
+  // mac's file changed behind the copy: it is never written over.
+  writeFileSync(roster, 'changed on mac')
+  writeFileSync(sheet!.copy, Buffer.concat([edited, Buffer.from(' again')]))
+  const clash = await sendBack(sheet!.tabId)
+  check('save back: a file that changed on mac is the conflict, and is left as it was', clash.ok && clash.value.is === 'changed' && readFileSync(roster, 'utf8') === 'changed on mac', clash.ok ? JSON.stringify(clash.value) : clash.error)
+  const both = await fromWindow<{ tabs: TabRow[] }>(boxId, 'work.files.copyKeep', { workspaceId: ws.id, tabId: sheet!.tabId })
+  const mine = join(library, 'General', 'Roster (mine).xlsx')
+  const kept = both.ok ? both.value.tabs.find((t) => t.id === sheet!.tabId) : undefined
+  check('save back: Keep Both puts his bytes beside it on mac, and the tab shows that file', existsSync(mine) && readFileSync(mine).equals(readFileSync(sheet!.copy)) && kept?.name === 'Roster (mine).xlsx' && kept.copyOf?.path === mine && readFileSync(roster, 'utf8') === 'changed on mac', both.ok ? JSON.stringify(kept) : both.error)
+  writeFileSync(mine, 'mine, changed on mac')
+  writeFileSync(sheet!.copy, 'his unsent change')
+  await sendBack(sheet!.tabId)
+  const reloaded = await fromWindow(boxId, 'work.files.copyReload', { workspaceId: ws.id, tabId: sheet!.tabId })
+  check("save back: Reload reads mac's file into the copy and drops what was not sent", reloaded.ok && readFileSync(sheet!.copy, 'utf8') === 'mine, changed on mac' && (await tabRow(sheet!.tabId))?.back?.is === 'ok', reloaded.ok ? '' : reloaded.error)
+
+  // A read key may not send a copy back.
+  const pairing = await rpc<{ code: string }>(box, 'remote.pairings.create', { audience: 'client', caps: ['read'], name: 'reader (e2e)' })
+  const paired = await fetch(`http://127.0.0.1:${box.remote}/api/pair`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: pairing.code, kind: 'key' }) }).then((r) => r.json() as Promise<{ key: string }>)
+  const ticket = await fetch(`http://127.0.0.1:${box.remote}/api/ticket`, { method: 'POST', headers: { authorization: `Bearer ${paired.key}` } }).then((r) => r.json() as Promise<{ ticket: string }>)
+  writeFileSync(text!.copy, '# Agenda\n- a reader\n')
+  const readerSaid = await new Promise<string>((ok) => {
+    const sock = new WebSocket(`ws://127.0.0.1:${box.remote}/ws?ticket=${encodeURIComponent(ticket.ticket)}`)
+    const timer = setTimeout(() => (sock.close(), ok('(no answer)')), 20_000)
+    sock.addEventListener('open', () => sock.send(JSON.stringify({ id: 'r', method: 'work.files.copyBack', params: { workspaceId: ws.id, tabId: text!.tabId } })))
+    sock.addEventListener('message', (ev) => {
+      const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; error?: string }
+      if (frame.id !== 'r') return
+      clearTimeout(timer)
+      sock.close()
+      ok(frame.ok ? '(sent)' : (frame.error ?? '(refused)'))
+    })
+  })
+  check('save back: a read key is refused, and nothing reaches mac', readerSaid !== '(sent)' && readFileSync(agenda, 'utf8') === '# Agenda\n- doors at 5\n', readerSaid)
+  writeFileSync(text!.copy, '# Agenda\n- doors at 5\n')
+
+  // A thread's own idea on the copy is a suggestion at most: the copy reads as shared to the sheet's hold.
+  const before = readFileSync(sheet!.copy)
+  const tool = deck.sessionId
+    ? await rpc<{ content?: { text?: string }[]; isError?: boolean }>(box, 'app.workCall', { sessionId: deck.sessionId, token: workToken(deck.sessionId), call: 1, tool: 'sheets_write', args: { file: sheet!.copy, cells: [{ at: 'A1', v: 'from a thread' }], because: 'own' } }).catch((err: Error) => ({ content: [{ text: err.message }], isError: true }))
+    : { content: [{ text: '(no thread)' }], isError: true }
+  const said = tool.content?.map((c) => c.text ?? '').join(' ') ?? ''
+  check("save back: a thread's own idea on the copy is held or refused, and mac's file is untouched", !/^Wrote/.test(said) && readFileSync(sheet!.copy).equals(before) && readFileSync(mine, 'utf8') === 'mine, changed on mac', said.slice(0, 200))
 
   // The fence still holds a path of box's own disk to its roots, however the source names its host.
   const outside = join(box.home, 'secret.txt')

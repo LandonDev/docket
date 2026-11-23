@@ -5,7 +5,14 @@
  * OneDrive itself says so (a row under HKCU\Software\SyncEngines\Providers\OneDrive). No OneDrive, no sign-in.
  *
  *   scripts/win-vm/up.sh && native/tc-office-win/build-in-rig.sh f8
- *   bun scripts/proof-files-vm.ts [dir]      (dir: where build-in-rig.sh left the helper; default f8)
+ *   bun scripts/proof-bun.ts scripts/proof-files-vm.ts [dir]      (dir: where build-in-rig.sh left the helper; default f8)
+ *
+ * The last steps run TempCode's own Files code (in this process, on a scratch database and folder) against the
+ * rig's helper, as the box runs it against its VM: a copy of a dummy file out of the dummy mount opened in a Files
+ * tab, read with the helper's version; his change sent back by that version (the guest's file changes); a send after
+ * the guest's file changed, answered as the conflict with the guest's file left as it was; and Keep Both, his bytes
+ * beside it as "Roster (mine).xlsx" (docs/agents/work-files.md "A copy saves back"). These need `node:sqlite`, so
+ * the proof runs under scripts/proof-bun.ts.
  *
  * Make a folder and a text file, rename, move, a write with a stale version (a conflict) and with the right one,
  * a file and a folder sent to the Recycle Bin and found there, a path outside the mount refused by the helper
@@ -232,9 +239,74 @@ async function main(): Promise<void> {
     ps(`Get-ChildItem '${BIN}' | ForEach-Object { Set-ItemProperty -Path $_.PSPath -Name NukeOnDelete -Value 0 -Type DWord }`)
   }
 
+  await saveBack(h)
+
   await h.stop()
   ps(`Remove-Item -Path 'HKCU:\\Software\\SyncEngines\\Providers\\OneDrive\\TcProofDummy' -Recurse -Force`)
   log('ALL HELD')
+}
+
+/**
+ * A copy saves back, through TempCode's own code: the box's Files module, its stand-in context of tests
+ * (files/testkit.ts: temp folders, an in-memory database), and the rig's helper as its VM.
+ */
+async function saveBack(h: Helper): Promise<void> {
+  const FOLDER = `${MOUNT}\\Saveback`
+  const ROSTER = `${FOLDER}\\Roster.xlsx`
+  ps([`New-Item -ItemType Directory -Force -Path '${FOLDER}' | Out-Null`, `Set-Content -LiteralPath '${ROSTER}' -Value 'as the team left it' -NoNewline`].join('\n'))
+  const kit = await import('../src/main/server/work/files/testkit')
+  const { filesHandle, closeFilesState } = await import('../src/main/server/work/files/handle')
+  const { copiesInFlight } = await import('../src/main/server/work/files/copies')
+  const { setVmCall } = await import('../src/main/server/work/office/vm/link')
+  const { setVmState } = await import('../src/main/server/work/office/vm/office')
+  const { setCopyAllowed } = await import('../src/main/server/work/office/files/library')
+  const { setThreadsMayWrite } = await import('../src/main/server/work/files/policy')
+  const rig = kit.makeRig()
+  try {
+    const status = (await h.call('guest.status')).value
+    // What the box keeps of its VM's last read: the mounts and the verbs the helper said it has.
+    rig.db.prepare(`INSERT OR REPLACE INTO work_office_files (key, value) VALUES ('vm:status', ?)`).run(JSON.stringify({ at: Date.now(), status: { ...status, mounts: [{ path: MOUNT, type: 'team', web: null }] }, tops: { [MOUNT]: ['Saveback'] } }))
+    setVmState(() => ({ state: 'awake', cannot: null }))
+    setVmCall(async (verb, args) => {
+      const a = await h.call(verb, (args ?? {}) as Record<string, unknown>)
+      if (!a.ok) throw Object.assign(new Error(a.error?.message ?? verb), { code: a.error?.code })
+      return a.value
+    })
+    setCopyAllowed(rig.db, kit.WS, true)
+    setThreadsMayWrite(true)
+    const call = async <T>(method: string, params: Record<string, unknown>): Promise<T> => ((await filesHandle({ id: 'p', method, params: { workspaceId: kit.WS, ...params } } as never, rig.ctx, kit.window)) as { result: T }).result
+    const opened = await call<{ tabId: string; item: { source: { path: string } } }>('work.files.open', { ref: { at: 'file', host: kit.HOST, path: ROSTER }, name: 'Roster.xlsx' })
+    const copy = opened.item.source.path
+    const { readFileSync, writeFileSync } = await import('node:fs')
+    ok(readFileSync(copy, 'utf8') === 'as the team left it', 'save back: the copy holds the guest file\'s bytes', copy)
+    const tab = async (): Promise<{ back?: { is: string }; name: string; copyOf?: { path: string } }> => (await call<{ tabs: { id: string; back?: { is: string }; name: string; copyOf?: { path: string } }[] }>('work.files.tabs', {})).tabs.find((t) => t.id === opened.tabId)!
+    ok((await tab()).back?.is === 'ok', 'save back: the tab is a copy that saves back', await tab())
+
+    writeFileSync(copy, 'his change')
+    const sent = await call<{ is: string }>('work.files.copyBack', { tabId: opened.tabId })
+    const there = ps(`Get-Content -LiteralPath '${ROSTER}' -Raw`)
+    ok(sent.is === 'ok' && there === 'his change', 'save back: sent by the version it was read at, the bytes in the guest change', { sent, there })
+
+    ps(`Set-Content -LiteralPath '${ROSTER}' -Value 'changed in the VM' -NoNewline`)
+    writeFileSync(copy, 'his second change')
+    const clash = await call<{ is: string }>('work.files.copyBack', { tabId: opened.tabId })
+    const left = ps(`Get-Content -LiteralPath '${ROSTER}' -Raw`)
+    ok(clash.is === 'changed' && left === 'changed in the VM', "save back: after the guest's file changed it is refused as the conflict, the guest's file as it was", { clash, left })
+
+    await call('work.files.copyKeep', { tabId: opened.tabId })
+    const mine = ps(`Get-Content -LiteralPath '${FOLDER}\\Roster (mine).xlsx' -Raw`)
+    const kept = await tab()
+    ok(mine === 'his second change' && kept.name === 'Roster (mine).xlsx' && kept.copyOf?.path === `${FOLDER}\\Roster (mine).xlsx`, 'save back: Keep Both writes his beside it in the guest, and the tab shows that file', { mine, kept })
+    const tmpLeft = ps(`(Get-ChildItem -LiteralPath '${FOLDER}' -Force | Where-Object Name -like '*.tmp').Count`)
+    ok(tmpLeft === '0', 'save back: no staged file is left beside them', tmpLeft)
+    await Promise.all(copiesInFlight())
+  } finally {
+    setVmCall(null)
+    setThreadsMayWrite(false)
+    closeFilesState(rig.db)
+    rig.close()
+    ps(`Remove-Item -LiteralPath '${FOLDER}' -Recurse -Force`)
+  }
 }
 
 main().catch((err) => fail('the proof threw', err instanceof Error ? err.stack : err))
