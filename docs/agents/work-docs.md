@@ -215,7 +215,8 @@ for as long as the document is the same one:
 
 | Format | Drawn | By |
 |---|---|---|
-| Word, OpenDocument, Rich Text | the exported file itself, converted on the host (`work.formats.preview`) | LibreOffice |
+| Word | the exported Word file (`work.formats.preview`) | LibreOffice, or Word on Check in Word |
+| OpenDocument, Rich Text | the exported file itself, converted on the host (`work.formats.preview`) | LibreOffice |
 | PDF | the document's print page, written here from the editor's blocks and printed on the host: a styled document's with its own styles, theme, paper and margins (`htmlDocument`'s `page`) and the faces it names; a classic one's in Calibri's twin (work-editors.md "Fonts") | TempCode |
 | Print | the same PDF: the pages that go to paper | TempCode ("As it will print") |
 | Markdown | the host's text (`work.formats.export`) | the file's own text |
@@ -228,6 +229,12 @@ for as long as the document is the same one:
   goes out on a host that cannot draw it. A PDF is the same print the
   preview makes, read from the render the host keeps: an unchanged document
   saves the bytes he saw. The system's save dialog is the answer.
+- **Check in Word** is offered on Word when the app is ready or this host's
+  Windows VM can wake on his press. The Word picture has a rev of its own.
+  If Word is out of reach after he presses, the LibreOffice picture stays.
+  A file others can open (a library's, the cloud folder's) is never offered
+  it: the Office renderer may be another computer than the file's own, and
+  which one it is is the office pillar's to say.
 - A LifeOS document another host serves is drawn, read and exported on that
   host (`servedBy`), as it is opened there; that host is told the source and
   never this host's item, and keeps the render with no item (swept after a
@@ -241,7 +248,7 @@ for as long as the document is the same one:
   | Format | Lines |
   |---|---|
   | Word, OpenDocument | "3 suggestions go as tracked changes" (a person's; comments go whole); an agent's "stay out until you accept them" |
-  | Rich Text | the same, and "2 comments lose their replies" (counted from the threads someone answered) |
+  | Rich Text | the same suggestion lines, "Replies to 2 comments become separate comments", "Theme text colours become fixed colours" |
   | PDF, Print, Web page | "2 comments stay behind", "3 suggestions stay out until you accept them", "1 footnote moves to the end" (every colour, font, size and style is kept: the page writes them) |
   | Markdown | comments and suggestions as a PDF's, "Colours stay behind", "Underlines stay behind", and the styling lines below |
 
@@ -249,21 +256,22 @@ for as long as the document is the same one:
   has it (`blockFacts` counts runs that name a font or a size, paragraphs with
   spacing of their own, paragraphs that wear a named style): "Fonts and sizes
   stay behind", "Named styles stay behind", "Paragraph spacing stays behind".
-  Only Markdown says them. Word keeps all of it (work-kit's writer writes
-  fonts by their Office names, sizes, colours, the named styles by Word's own
-  ids, spacing, the theme and the page; work-formats.md), and OpenDocument and
-  Rich Text are made from that Word file.
+  Only Markdown says them. The Word export is what LibreOffice converts.
+
+  The live fixture in `formats/previewLosses.live.test.ts` measured the
+  conversions back through Word. OpenDocument kept the reply linked to its
+  comment and kept the theme colour linked. Rich Text kept both comment
+  texts as separate comments and set the theme text colour to its RGB
+  value. Both kept the person's tracked insertion, the footnote,
+  font, size, highlight, underline, Title style, paragraph spacing, two
+  columns, and the header and footer with their page fields.
 - **Print…** hands the PDF to this computer's own PDF viewer, which prints
   it (`work/formats/printOut.ts`, work-editors.md "Print"): the same render a
   PDF export saves, so an unchanged document prints the pages he saw. In
   `/ui` the PDF opens in a tab on his press. Print's lines are a PDF's, the
   host's own among them.
-- **Not yet.** There is no Page set-up yet, so Preview's Page section is
-  absent: a styled document prints on the paper it was given when it was
-  first styled, with inch margins, and a classic one on the locale's paper
-  with the print page's own margins; "Check in Word" is not offered (no
-  Office renderer is registered); headers, footers and columns a Word file
-  carried are not counted in the lines.
+- A styled document's Page section edits its own set-up. The PDF and Print
+  write that page, and Word exports the page and its running bands.
 
 ## Where the Docs view went
 

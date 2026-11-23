@@ -69,6 +69,14 @@ export function changesOf(diff: BlockDiff): number {
 
 export const formatsRoutes: InternalRoute[] = [
   {
+    path: '/internal/formats/previewOffice',
+    milestone: 21,
+    async run(body, ctx) {
+      await targetOf(body, ctx)
+      return {}
+    }
+  },
+  {
     path: '/internal/formats/export',
     milestone: 21,
     async run(body, ctx) {

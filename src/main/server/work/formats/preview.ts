@@ -1,15 +1,16 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, fstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { inflateRawSync } from 'node:zlib'
 import { PDFDocument } from 'pdf-lib'
-import type { PreviewAnswer, PreviewFormatId } from '@shared/contract-work-formats'
+import type { PreviewAnswer, PreviewFormatId, PreviewOfficeAnswer, PreviewResult } from '@shared/contract-work-formats'
 import type { CanvasSource } from '@shared/work'
-import { attachmentDoc, lifeosRow, targetOf, titleOf, type DocTarget } from '../docs/target'
+import { attachmentDoc, lifeosRow, serviceTarget, targetOf, titleOf, type DocTarget } from '../docs/target'
 import type { Caller, WorkCtx } from '../modules'
 import { madeFromShared, serviceExport } from './exporter'
 import { droppedWords, safeName, scratchDir } from './importer'
 import { printToPdf } from './print'
+import { NoConverterError, NotReadyError, pressOf, runnerOf, type Press } from './jobs'
 
 /**
  * A document drawn as the file a format makes of it, for the Preview frame
@@ -20,11 +21,12 @@ import { printToPdf } from './print'
  * answered without converting, and read by range.
  */
 
-type PreviewParams = { source: CanvasSource; itemId?: string; format: PreviewFormatId; html?: string; paper?: 'A4' | 'Letter' }
+type PreviewParams = { source: CanvasSource; itemId?: string; format: PreviewFormatId; html?: string; paper?: 'A4' | 'Letter'; by?: 'word' }
 type ReadParams = { source: CanvasSource; itemId?: string; rev: string; offset: number; length: number }
 
 const PART = /^[A-Za-z0-9_.-]{1,80}$/
-const FORMATS = new Set(['pdf', 'docx', 'odt', 'rtf'])
+const WORD_RENDER = 'docx+word'
+const FORMATS = new Set(['pdf', 'docx', 'odt', 'rtf', WORD_RENDER])
 const GONE = 'that preview is gone: draw it again'
 const DAY = 24 * 60 * 60_000
 
@@ -111,7 +113,7 @@ export function wordContent(docx: Buffer): Buffer[] {
 }
 
 /** Pages by pdf-lib; a PDF it cannot read is counted by its page objects. Never fewer than one. */
-async function pagesOf(pdf: Uint8Array): Promise<number> {
+export async function pagesOf(pdf: Uint8Array): Promise<number> {
   try {
     const doc = await PDFDocument.load(pdf, { ignoreEncryption: true, updateMetadata: false, throwOnInvalidObject: false })
     return Math.max(1, doc.getPageCount())
@@ -155,10 +157,54 @@ async function keep(dir: string, format: string, rev: string, picture: Uint8Arra
   return answer
 }
 
-export async function previewDoc(ctx: WorkCtx, by: Caller, params: PreviewParams): Promise<PreviewAnswer> {
+type OfficeParams = Pick<PreviewParams, 'source' | 'itemId'>
+
+const sharedSource = (ctx: WorkCtx, t: DocTarget, source: CanvasSource) =>
+  madeFromShared(ctx, t.source) || madeFromShared(ctx, source)
+
+export async function previewOffice(ctx: WorkCtx, by: Caller, params: OfficeParams): Promise<PreviewOfficeAnswer> {
+  const t = await targetOf(ctx, by, 'work.formats.previewOffice', params.source)
+  if (params.itemId !== undefined) folderOf(ctx, t, params.itemId, params.source)
+  if (t.at === 'lifeos') await ctx.service.internal('/internal/formats/previewOffice', serviceTarget(t, false))
+  const runner = await runnerOf(ctx)
+  // A file others can open is never handed to Word from here: the Office renderer may be another computer than
+  // the file's own (the box's Windows VM), and which one it is is the office pillar's to say, not this one's.
+  if (sharedSource(ctx, t, params.source)) return { app: 'word', state: 'none' }
+  return { app: 'word', state: await runner?.readiness('docx', 'pdf+word', false) ?? 'none' }
+}
+
+async function drawDocx(
+  ctx: WorkCtx,
+  docx: Uint8Array,
+  format: 'docx' | 'odt' | 'rtf',
+  opts: { shared: boolean; press?: Press; here?: boolean; signal?: AbortSignal }
+): Promise<{ pdf: Buffer; warnings: string[] }> {
+  const dir = mkdtempSync(join(scratchDir(ctx), 'draw-'))
+  const { press, ...job } = opts
+  const warnings = new Set<string>()
+  try {
+    let input = join(dir, 'input.docx')
+    writeFileSync(input, docx)
+    if (format !== 'docx') {
+      const done = await ctx.convert({ ...job, from: 'docx', to: format, input, output: join(dir, `input.${format}`) })
+      done.warnings.forEach((w) => warnings.add(w))
+      input = done.output
+    }
+    const drawn = await ctx.convert({ ...job, from: format, to: press ? 'pdf+word' : 'pdf', input, output: join(dir, 'picture.pdf'), ...(press ? { pressed: press } : {}) })
+    drawn.warnings.forEach((w) => warnings.add(w))
+    return { pdf: readFileSync(drawn.output), warnings: [...warnings] }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+export async function previewDoc(ctx: WorkCtx, by: Caller, params: PreviewParams): Promise<PreviewResult> {
+  const format = params.format
+  if (params.by !== undefined && (params.by !== 'word' || format !== 'docx')) throw new Error('Word only draws the Word preview')
+  const press = params.by === 'word' ? pressOf(by) : undefined
+  if (params.by === 'word' && !press) throw new Error('Check in Word needs your own press')
   const t = await targetOf(ctx, by, 'work.formats.preview', params.source)
   const dir = folderOf(ctx, t, params.itemId, params.source)
-  const format = params.format
   if (format === 'pdf') {
     if (params.html === undefined) throw new Error('a PDF preview needs its print page')
     const paper = params.paper ?? 'A4'
@@ -169,35 +215,65 @@ export async function previewDoc(ctx: WorkCtx, by: Caller, params: PreviewParams
     const { pdf, warnings } = await printToPdf(params.html, { paper, dir: scratchDir(ctx) })
     return keep(dir, format, rev, pdf, `${safeName(title)}.pdf`, 'tempcode', warnings)
   }
-  // Word, OpenDocument and RTF: LibreOffice's picture of the file Export writes (`exportDoc`, which needs no renderer for Word).
   const got = await serviceExport(ctx, t, 'docx')
   const docx = Buffer.from(got.data ?? '', 'base64')
-  const rev = revOf(format, ...wordContent(docx))
-  // An agent's suggestions stay out of the file (formats/serviceRoutes.ts): counted afresh each time, never kept with the render.
+  const key = press ? WORD_RENDER : format
+  const rev = revOf(key, ...wordContent(docx))
+  // An agent's suggestions stay out of the file and are counted afresh, outside the render.
   const held = (answer: PreviewAnswer): PreviewAnswer => (got.held ? { ...answer, heldSuggestions: got.held } : answer)
-  const kept = keptRender(dir, format, rev)
+  const kept = keptRender(dir, key, rev)
   if (kept) return held(kept)
-  const shared = madeFromShared(ctx, params.source)
-  const warnings = new Set(droppedWords(got.dropped ?? {}))
-  const scratch: string[] = []
+  const shared = sharedSource(ctx, t, params.source)
+  // Word never draws a file others can open from here (see previewOffice).
+  if (press && shared) return { notInReach: 'none' }
+  const name = `${safeName(got.title)}.${format}`
   try {
-    const input = join(scratchDir(ctx), `${randomUUID()}.docx`)
-    scratch.push(input)
-    writeFileSync(input, docx)
-    let file = input
-    if (format !== 'docx') {
-      const done = await ctx.convert({ from: 'docx', to: format, input, shared })
-      scratch.push(done.output)
-      done.warnings.forEach((w) => warnings.add(w))
-      file = done.output
-    }
-    const drawn = await ctx.convert({ from: format, to: 'pdf', input: file, shared })
-    scratch.push(drawn.output)
-    drawn.warnings.forEach((w) => warnings.add(w))
-    return held(await keep(dir, format, rev, readFileSync(drawn.output), `${safeName(got.title)}.${format}`, 'libreoffice', [...warnings]))
-  } finally {
-    for (const f of scratch) rmSync(f, { force: true })
+    const loose = params.itemId && !shared && !press && format === 'docx' ? findWordPdf(ctx, t, rev, false) : null
+    if (loose) return held(await keep(dir, key, rev, loose.pdf, name, 'libreoffice', loose.warnings))
+    const { pdf, warnings } = await drawDocx(ctx, docx, format, { shared, press })
+    return held(await keep(dir, key, rev, pdf, name, press ? 'word' : 'libreoffice', [...new Set([...droppedWords(got.dropped ?? {}), ...warnings])]))
+  } catch (err) {
+    if (press && err instanceof NotReadyError) return { notInReach: err.state }
+    if (press && err instanceof NoConverterError) return { notInReach: 'none' }
+    throw err
   }
+}
+
+const privateWordDir = (ctx: WorkCtx, t: DocTarget) => join(previewsRoot(ctx.dataDir), '_', sourceKey(t.source))
+
+function findWordPdf(ctx: WorkCtx, t: DocTarget, rev: string, tabs: boolean): { pdf: Buffer; warnings: string[] } | null {
+  const dirs = [privateWordDir(ctx, t)]
+  const subdirs = (dir: string) =>
+    existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []
+  if (tabs) {
+    const root = previewsRoot(ctx.dataDir)
+    for (const owner of subdirs(root)) {
+      if (owner === '_') continue
+      for (const item of subdirs(join(root, owner))) dirs.push(join(root, owner, item, sourceKey(t.source)))
+    }
+  }
+  for (const dir of dirs) {
+    const made = keptRender(dir, 'docx', rev)
+    if (!made) continue
+    try {
+      return { pdf: readFileSync(join(dir, `docx.${rev}.pdf`)), warnings: made.warnings }
+    } catch {
+      // The tab closed or drew a new revision.
+    }
+  }
+  return null
+}
+
+/** The same Word export and LibreOffice render for Files. Shared files keep no render here. */
+export async function fileDocumentPdf(ctx: WorkCtx, t: DocTarget, shared: boolean, signal?: AbortSignal): Promise<Buffer> {
+  const got = await serviceExport(ctx, t, 'docx')
+  const docx = Buffer.from(got.data ?? '', 'base64')
+  const rev = revOf('docx', ...wordContent(docx))
+  const kept = shared ? null : findWordPdf(ctx, t, rev, true)
+  if (kept) return kept.pdf
+  const { pdf, warnings } = await drawDocx(ctx, docx, 'docx', { shared, here: true, signal })
+  if (!shared) await keep(privateWordDir(ctx, t), 'docx', rev, pdf, `${safeName(got.title)}.docx`, 'libreoffice', [...new Set([...droppedWords(got.dropped ?? {}), ...warnings])])
+  return pdf
 }
 
 export async function readPreview(ctx: WorkCtx, by: Caller, params: ReadParams): Promise<{ data: string }> {

@@ -1,4 +1,4 @@
-import type { ExportAnswer, PreviewAnswer, PreviewFormatId } from "@shared/contract-work-formats";
+import type { ExportAnswer, PreviewAnswer, PreviewFormatId, PreviewOfficeAnswer, PreviewResult } from "@shared/contract-work-formats";
 import { PREVIEW_READ_MAX } from "@shared/contract-work-formats";
 import type { CanvasSource } from "@shared/work";
 import type { AnyEditor } from "work-kit/editor";
@@ -6,7 +6,7 @@ import type { DocumentPage } from "work-kit/editor/page";
 import { paraOf } from "work-kit/editor/para";
 import { registry } from "../../lib/connection";
 import { fileStem, fromBase64, mimeOf, paperFor, saveFile } from "../formats/model";
-import type { Drawn, PreviewBytes, PreviewFormat, PreviewSource } from "../formats/preview";
+import { NotInReach, type Drawn, type PreviewBytes, type PreviewFormat, type PreviewSource } from "../formats/preview";
 import { docFonts } from "./fonts";
 import { servedBy } from "./host";
 
@@ -60,6 +60,8 @@ export interface DocFacts {
   footnotes: number;
   /** runs and blocks with any colour, text or background */
   colours: number;
+  /** runs whose text colour is set by the theme */
+  themeColours?: number;
   underlines: number;
   /** runs that name a font or a size */
   fonts?: number;
@@ -74,8 +76,8 @@ type Loose = { type?: unknown; props?: Record<string, unknown>; content?: unknow
 const coloured = (value: unknown): boolean => typeof value === "string" && value !== "" && value !== "default";
 
 /** What the editor's blocks hold that a format may drop: colours, underlines, footnotes, fonts and sizes, a paragraph's own formatting. */
-export function blockFacts(blocks: readonly unknown[]): Required<Pick<DocFacts, "footnotes" | "colours" | "underlines" | "fonts" | "spacing" | "styles">> {
-  const facts = { footnotes: 0, colours: 0, underlines: 0, fonts: 0, spacing: 0, styles: 0 };
+export function blockFacts(blocks: readonly unknown[]): Required<Pick<DocFacts, "footnotes" | "colours" | "themeColours" | "underlines" | "fonts" | "spacing" | "styles">> {
+  const facts = { footnotes: 0, colours: 0, themeColours: 0, underlines: 0, fonts: 0, spacing: 0, styles: 0 };
   const inline = (content: unknown): void => {
     if (!Array.isArray(content)) {
       // A table's content: rows of cells, each holding inline content.
@@ -87,6 +89,7 @@ export function blockFacts(blocks: readonly unknown[]): Required<Pick<DocFacts, 
       if (piece.type === "footnote") facts.footnotes++;
       const styles = piece.styles ?? {};
       if (coloured(styles.textColor) || coloured(styles.backgroundColor) || coloured(styles.color) || coloured(styles.highlight)) facts.colours++;
+      if (typeof styles.color === "string" && styles.color.startsWith("theme:")) facts.themeColours++;
       if (coloured(styles.fontFamily) || coloured(styles.fontSize)) facts.fonts++;
       if (styles.underline === true) facts.underlines++;
       // A link holds its own runs.
@@ -126,11 +129,10 @@ const some = (n: number, one: string, many: string): string | null => (n > 0 ? (
 /**
  * What a format drops of this document, one plain line each, counted from
  * the document. Each line says what happens to the thing. Only what is true
- * of today's writers is said: Word and OpenDocument take comments and
- * people's suggestions whole, and an agent's stay out until he accepts them
- * (the host counts them, `heldSuggestions`); Rich Text takes a comment without its replies; a PDF
- * and a web page gather footnotes at the end (and keep every colour, which
- * the page writes inline); Markdown has no colour and no underline.
+ * of today's writers is said. LibreOffice keeps linked replies in OpenDocument.
+ * In Rich Text, it makes them separate comments and sets theme text colours
+ * to their current RGB values (formats/previewLosses.live.test.ts).
+ * An agent's suggestions stay out of the file until he accepts them.
  */
 export function docDrops(format: DocFormat, facts: DocFacts): string[] {
   const lines: (string | null)[] = [];
@@ -139,7 +141,10 @@ export function docDrops(format: DocFormat, facts: DocFacts): string[] {
     const held = Math.min(facts.held ?? 0, facts.suggestions);
     lines.push(some(facts.suggestions - held, "1 suggestion goes as a tracked change", "{n} suggestions go as tracked changes"));
     lines.push(some(held, "1 suggestion stays out until you accept it", "{n} suggestions stay out until you accept them"));
-    if (format === "rtf") lines.push(some(facts.replied, "1 comment loses its replies", "{n} comments lose their replies"));
+    if (format === "rtf") {
+      lines.push(some(facts.replied, "Replies to 1 comment become separate comments", "Replies to {n} comments become separate comments"));
+      if ((facts.themeColours ?? 0) > 0) lines.push("Theme text colours become fixed colours");
+    }
   } else {
     lines.push(some(facts.comments, "1 comment stays behind", "{n} comments stay behind"));
     lines.push(some(facts.suggestions, "1 suggestion stays out until you accept it", "{n} suggestions stay out until you accept them"));
@@ -244,21 +249,21 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
   };
 
   /** The format as pages on the host: a render it already keeps for this very text is answered as it is. */
-  const render = async (format: PreviewFormatId, signal: AbortSignal): Promise<{ env: string; home: boolean; answer: PreviewAnswer }> => {
+  const render = async (format: PreviewFormatId, signal: AbortSignal, by?: "word"): Promise<{ env: string; home: boolean; answer: PreviewAnswer }> => {
     const paper = paperFor(deps.locale ?? globalThis.navigator?.language ?? "en-US");
     const html = format === "pdf" ? await page(mustHaveEditor(), deps.title, { paper }, deps.styled?.() ?? null) : undefined;
     if (signal.aborted) throw cancelled();
-    const made = await onHost(async (env, home) => ({
-      env,
-      home,
-      answer: await request<PreviewAnswer>(env, "work.formats.preview", { ...target(home), format, ...(html ? { html, paper } : {}) }, { timeoutMs: 5 * 60_000 }),
-    }));
-    if (signal.aborted) throw cancelled();
-    return made;
+    return onHost(async (env, home) => {
+      if (signal.aborted) throw cancelled();
+      const answer = await request<PreviewResult>(env, "work.formats.preview", { ...target(home), format, ...(html ? { html, paper } : {}), ...(by ? { by } : {}) }, { timeoutMs: 5 * 60_000 });
+      if (signal.aborted) throw cancelled();
+      if ("notInReach" in answer) throw new NotInReach("Word", answer.notInReach);
+      return { env, home, answer };
+    });
   };
 
-  const drawPaged = async (format: PreviewFormatId, signal: AbortSignal): Promise<Drawn> => {
-    const made = await render(format, signal);
+  const drawPaged = async (format: PreviewFormatId, signal: AbortSignal, by?: "word"): Promise<Drawn> => {
+    const made = await render(format, signal, by);
     return {
       picture: { kind: "paged", pdf: bytesOf(made.env, made.home, made.answer), pages: made.answer.pages, drawnBy: made.answer.drawnBy },
       drops: unique([...docDrops(format, { ...facts(), held: made.answer.heldSuggestions ?? 0 }), ...made.answer.warnings.map(asLine)]),
@@ -283,8 +288,17 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
 
   return {
     formats: [...DOC_FORMATS],
+    async office(format = "docx") {
+      if (format !== "docx") return null;
+      const { state } = await onHost((env, home) => request<PreviewOfficeAnswer>(env, "work.formats.previewOffice", target(home)));
+      return { app: "Word", state };
+    },
     async draw(format, opts) {
       if (opts.signal.aborted) throw cancelled();
+      if (opts.by === "office") {
+        if (format !== "docx") throw new NotInReach("Word", "none");
+        return drawPaged("docx", opts.signal, "word");
+      }
       if (format === "md") {
         const made = await written("md");
         if (opts.signal.aborted) throw cancelled();

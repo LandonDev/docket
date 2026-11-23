@@ -180,13 +180,13 @@ export interface PreviewSource {
   formats: PreviewFormat[];
   setup?: PageSetupModel;
   /**
-   * Whether the real Office app can draw this file now: drives "Check in
-   * Word". Absent: never offered. `ready` and `asleep` offer it (a press on
+   * Whether the real Office app can draw this format now: drives "Check in
+   * Word". Absent or null: never offered. `ready` and `asleep` offer it (a press on
    * an asleep one wakes the machine and draws); `not open` is an app he has
    * shut, which no press starts unseen; `none` is no Office in reach of a
    * press from this window.
    */
-  office?(): Promise<{ app: OfficeApp; state: "ready" | "asleep" | "not open" | "none" }>;
+  office?(format?: string): Promise<{ app: OfficeApp; state: "ready" | "asleep" | "not open" | "none" } | null>;
   /** Draws the format. `by: 'office'` is his press on "Check in …": the app's own picture, or a rejection with NotInReach. */
   draw(format: string, opts: DrawOptions): Promise<Drawn>;
   /**

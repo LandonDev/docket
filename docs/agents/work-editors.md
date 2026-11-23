@@ -107,7 +107,7 @@ docs/DESIGN.md "Work editors: Preview"). The frame is
 interface PreviewSource {
   formats: PreviewFormat[]            // { id, label, ext?, paged, verb }
   setup?: PageSetupModel              // one arm per kind over CommonSetup
-  office?(): Promise<{ app, state }>  // drives "Check in Word"; absent: never offered
+  office?(format?): Promise<{ app, state } | null> // null when this format has no Office draw
   draw(format, { by?, pages?, sheet?, signal }): Promise<{ picture, drops }>
   export(format): Promise<{ name }>
 }
@@ -128,7 +128,7 @@ interface PreviewSource {
   orientation, margins in points (`MARGIN_PRESETS` are Word's Normal, Narrow,
   Moderate and Wide) and the header and footer each on or off. The document,
   the sheet and the deck each add their own fields in their arm.
-- **`office()`** says whether a press can get the real app's picture:
+- **`office(format)`** says whether a press can get the real app's picture for the selected format:
   `ready` and `asleep` offer "Check in Word" (the press on an asleep machine
   is what wakes it), `not open` is an app he has shut, which nothing starts
   unseen, and `none` is no Office in reach of a press from this window.

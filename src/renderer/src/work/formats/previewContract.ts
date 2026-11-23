@@ -106,9 +106,10 @@ export async function previewProblems(source: PreviewSource, opts: ContractOptio
   }
 
   if (source.office) {
-    const { app, state } = await source.office();
     const first = formats.find((f) => f.paged && (!opts.only || opts.only.includes(f.id)));
-    if (first) {
+    const office = first ? await source.office(first.id) : null;
+    if (first && office) {
+      const { app, state } = office;
       const asked = await source.draw(first.id, { by: "office", signal: new AbortController().signal }).then(
         (drawn) => ({ drawn }),
         (err: unknown) => ({ err }),

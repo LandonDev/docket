@@ -87,9 +87,12 @@ export const FormatsRequestSchemas = [
       format: z.enum(PREVIEW_FORMATS),
       /** `pdf` alone: the window's print page, as `work.formats.print` takes it */
       html: z.string().max(60 * 1024 * 1024).optional(),
-      paper: z.enum(['A4', 'Letter']).optional()
-    })
+      paper: z.enum(['A4', 'Letter']).optional(),
+      by: z.literal('word').optional()
+    }).refine((p) => !p.by || p.format === 'docx', 'Word only draws the Word preview')
   ),
+  /** Is Word in reach of a press on this document? (→ PreviewOfficeAnswer) */
+  request('work.formats.previewOffice', z.object({ source: CanvasSourceSchema, itemId: z.string().min(1).max(80).optional() })),
   /**
    * Bytes of one render's picture, a PDF (→ { data } as base64), at most
    * PREVIEW_READ_MAX a call. `rev` names the render; one that is gone (the
@@ -113,7 +116,7 @@ export interface PreviewAnswer {
   /** the picture's size in bytes: a PDF */
   size: number
   pages: number
-  drawnBy: 'tempcode' | 'libreoffice'
+  drawnBy: 'tempcode' | 'libreoffice' | 'word'
   /** the name the file goes out under: "Run of show.docx" */
   name: string
   /** what the file could not carry, one line each, a person's words */
@@ -121,6 +124,14 @@ export interface PreviewAnswer {
   /** an agent's suggestions left out of the file until he accepts them, counted as the canvas counts them (Word, OpenDocument, Rich Text) */
   heldSuggestions?: number
 }
+
+export interface PreviewOfficeAnswer {
+  app: 'word'
+  state: Readiness
+}
+
+/** A Word check can lose reach between the readiness check and the press. */
+export type PreviewResult = PreviewAnswer | { notInReach: Exclude<Readiness, 'ready'> }
 
 /** What `work.formats.import` answers: the document it made, and what the file held that the document could not. */
 export interface ImportAnswer {
@@ -167,7 +178,8 @@ export const FORMATS_CAPS = {
   'work.formats.export': 'read',
   'work.formats.print': 'operate',
   'work.formats.preview': 'operate',
-  'work.formats.previewRead': 'read'
+  'work.formats.previewRead': 'read',
+  'work.formats.previewOffice': 'read'
 } satisfies CapsOf<typeof FormatsRequestSchemas>
 /** A forwarded job is between two linked hosts, never carried on a relayed lane. */
 export const FORMATS_RELAY = { 'work.formats.convert': 'never' } satisfies RelayOf<typeof FormatsRequestSchemas>

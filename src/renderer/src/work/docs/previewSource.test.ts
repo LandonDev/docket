@@ -5,6 +5,7 @@ vi.mock("../../lib/connection", () => ({ registry: { linkOf: () => ({ request: (
 import type { AnyEditor } from "work-kit/editor";
 import type { DocumentPage } from "work-kit/editor/page";
 import { paraText } from "work-kit/editor/para";
+import { NotInReach } from "../formats/preview";
 import { previewProblems } from "../formats/previewContract";
 import { blockFacts, DOC_FORMATS, docDrops, docPreviewSource, type DocFacts, type DocPreviewDeps } from "./previewSource";
 
@@ -33,8 +34,8 @@ describe("what a document holds that a format may drop", () => {
       },
       { type: "table", props: {}, content: { type: "tableContent", rows: [{ cells: [[{ type: "text", text: "a", styles: { textColor: "purple" } }], { content: [{ type: "text", text: "b", styles: { underline: true } }] }] }] } },
     ];
-    expect(blockFacts(blocks)).toEqual({ footnotes: 2, colours: 5, underlines: 3, fonts: 0, spacing: 0, styles: 0 });
-    expect(blockFacts([])).toEqual({ footnotes: 0, colours: 0, underlines: 0, fonts: 0, spacing: 0, styles: 0 });
+    expect(blockFacts(blocks)).toEqual({ footnotes: 2, colours: 5, themeColours: 0, underlines: 3, fonts: 0, spacing: 0, styles: 0 });
+    expect(blockFacts([])).toEqual({ footnotes: 0, colours: 0, themeColours: 0, underlines: 0, fonts: 0, spacing: 0, styles: 0 });
   });
 
   it("counts the styling a format may not hold: runs that name a font or a size, a run's own colours, a paragraph's spacing, a named style", () => {
@@ -52,7 +53,7 @@ describe("what a document holds that a format may drop", () => {
       },
       { type: "heading", props: { level: 2 }, content: [{ type: "text", text: "plain", styles: { bold: true } }] },
     ];
-    expect(blockFacts(blocks)).toEqual({ footnotes: 0, colours: 2, underlines: 0, fonts: 3, spacing: 2, styles: 2 });
+    expect(blockFacts(blocks)).toEqual({ footnotes: 0, colours: 2, themeColours: 1, underlines: 0, fonts: 3, spacing: 2, styles: 2 });
   });
 });
 
@@ -63,9 +64,8 @@ describe("In this format", () => {
     for (const f of DOC_FORMATS) expect(docDrops(f.id, NONE), f.id).toEqual([]);
   });
 
-  it("Word and OpenDocument take comments whole and suggestions as tracked changes", () => {
+  it("Word takes comments whole and suggestions as tracked changes", () => {
     expect(docDrops("docx", full)).toEqual(["3 suggestions go as tracked changes"]);
-    expect(docDrops("odt", full)).toEqual(["3 suggestions go as tracked changes"]);
     expect(docDrops("docx", { ...NONE, suggestions: 1 })).toEqual(["1 suggestion goes as a tracked change"]);
     expect(docDrops("docx", { ...NONE, comments: 5 })).toEqual([]);
   });
@@ -78,15 +78,24 @@ describe("In this format", () => {
     expect(docDrops("docx", { ...NONE, suggestions: 1, held: 4 })).toEqual(["1 suggestion stays out until you accept it"]);
   });
 
-  it("Rich Text takes a comment without its replies: said of the comments someone answered, never of one that stands alone", () => {
-    expect(docDrops("rtf", full)).toEqual(["3 suggestions go as tracked changes", "1 comment loses its replies"]);
-    expect(docDrops("rtf", { ...NONE, comments: 4, replied: 2 })).toEqual(["2 comments lose their replies"]);
-    expect(docDrops("rtf", { ...NONE, comments: 2 })).toEqual([]);
+  it("OpenDocument keeps linked replies, theme colours and styled paragraphs", () => {
+    const styled: DocFacts = { ...full, themeColours: 3, fonts: 2, styles: 1, spacing: 1 };
+    expect(docDrops("odt", styled)).toEqual(["3 suggestions go as tracked changes"]);
+  });
+
+  it("Rich Text makes replies separate comments and fixes theme text colours", () => {
+    expect(docDrops("rtf", { ...full, themeColours: 2 })).toEqual([
+      "3 suggestions go as tracked changes", "Replies to 1 comment become separate comments", "Theme text colours become fixed colours",
+    ]);
+    expect(docDrops("rtf", { ...NONE, comments: 4, replied: 2 })).toEqual(["Replies to 2 comments become separate comments"]);
+    expect(docDrops("rtf", { ...NONE, comments: 2, colours: 2 })).toEqual([]);
+    expect(docDrops("rtf", { ...NONE, themeColours: 1 })).toEqual(["Theme text colours become fixed colours"]);
   });
 
   it("a PDF and a web page leave comments and suggestions here and gather footnotes at the end; they keep every colour", () => {
     const lines = ["2 comments stay behind", "3 suggestions stay out until you accept them", "1 footnote moves to the end"];
     expect(docDrops("pdf", full)).toEqual(lines);
+    expect(docDrops("print", full)).toEqual(lines);
     expect(docDrops("html", full)).toEqual(lines);
     expect(docDrops("pdf", { ...NONE, comments: 1, suggestions: 1, footnotes: 2 })).toEqual(["1 comment stays behind", "1 suggestion stays out until you accept it", "2 footnotes move to the end"]);
     // The page writes a text colour and a highlight inline (work-kit's HTML writer): neither is lost.
@@ -119,18 +128,23 @@ function host() {
   const fileBytes = new Uint8Array([80, 75, 3, 4, 9, 9, 9, 9, 9, 9]);
   const renders = new Map<string, Uint8Array>();
   let n = 0;
-  const state = { servedBy: null as string | null, gone: false, warnings: [] as string[], drawable: true, text: "v1", held: 0 };
+  const state = { servedBy: null as string | null, gone: false, warnings: [] as string[], drawable: true, text: "v1", held: 0, office: "ready" as "ready" | "asleep" | "not open" | "none", declined: null as "asleep" | null };
   const request = async <T,>(env: string, method: string, params: unknown): Promise<T> => {
     const p = params as Record<string, unknown>;
     calls.push({ env, method, params: p });
-    if (state.servedBy && env !== state.servedBy) throw new Error(`served elsewhere: ${state.servedBy}`);
+    if (state.servedBy && env !== state.servedBy) throw new Error(`this host does not serve LifeOS documents; ${state.servedBy} does, and here they are read-only`);
     // A host that serves the document for another knows nothing of that one's items.
     if (state.servedBy && p.itemId !== undefined) throw new Error("that item is not open");
+    if (method === "work.formats.previewOffice") return { app: "word", state: state.office } as T;
     if (method === "work.formats.preview") {
+      if (p.by === "word") {
+        if (state.declined) return { notInReach: state.declined } as T;
+        if (state.office === "none" || state.office === "not open") return { notInReach: state.office } as T;
+      }
       if (!state.drawable && p.format !== "pdf") throw new Error("libreoffice is not installed on env_box, and no linked host converts docx to pdf");
       const rev = `${"0".repeat(31)}${++n}`;
       renders.set(rev, new TextEncoder().encode(`%PDF-1.7 ${state.text}\n1 0 obj\n<<>>\nendobj\n%%EOF\n`));
-      return { rev, size: renders.get(rev)!.length, pages: 3, drawnBy: p.format === "pdf" ? "tempcode" : "libreoffice", name: `Plan.${String(p.format)}`, warnings: state.warnings, ...(state.held ? { heldSuggestions: state.held } : {}) } as T;
+      return { rev, size: renders.get(rev)!.length, pages: 3, drawnBy: p.by === "word" ? "word" : p.format === "pdf" ? "tempcode" : "libreoffice", name: `Plan.${String(p.format)}`, warnings: state.warnings, ...(state.held ? { heldSuggestions: state.held } : {}) } as T;
     }
     if (method === "work.formats.previewRead") {
       const got = state.gone ? undefined : renders.get(String(p.rev));
@@ -182,6 +196,55 @@ describe("the document's Preview source", () => {
   it("keeps the Preview contract", async () => {
     const h = host();
     expect(await previewProblems(source(h).source)).toEqual([]);
+  });
+
+  it.each(["ready", "asleep", "not open", "none"] as const)("keeps the contract when Word is %s", async (state) => {
+    const h = host();
+    h.state.office = state;
+    const { source: s } = source(h);
+    expect(await s.office!()).toEqual({ app: "Word", state });
+    expect(await previewProblems(s, { only: ["docx"] })).toEqual([]);
+    const draw = s.draw("docx", { by: "office", signal: signal() });
+    if (state === "ready" || state === "asleep") {
+      expect(await draw).toMatchObject({ picture: { drawnBy: "word" } });
+    } else {
+      try {
+        await draw;
+        throw new Error("expected a refusal");
+      } catch (err) {
+        expect(err).toBeInstanceOf(NotInReach);
+        expect(err).toMatchObject({ app: "Word", why: state });
+      }
+    }
+    expect(h.calls.at(-1)?.params).toMatchObject({ format: "docx", by: "word" });
+  });
+
+  it("only offers Office for Word, and passes through a late asleep refusal", async () => {
+    const h = host();
+    const { source: s } = source(h);
+    for (const format of ["odt", "rtf", "pdf", "print", "md", "html"]) {
+      expect(await s.office!(format)).toBeNull();
+      await expect(s.draw(format, { by: "office", signal: signal() })).rejects.toBeInstanceOf(NotInReach);
+    }
+    expect(h.calls).toEqual([]);
+    h.state.declined = "asleep";
+    await expect(s.draw("docx", { by: "office", signal: signal() })).rejects.toMatchObject({ app: "Word", why: "asleep" });
+  });
+
+  it("asks the LifeOS serving host for Word readiness and its render", async () => {
+    const h = host();
+    h.state.servedBy = "env_mac";
+    const lifeos = { at: "lifeos", table: "docs", id: "plan" } as const;
+    const { source: s } = source(h, { source: lifeos });
+    expect(await s.office!("docx")).toEqual({ app: "Word", state: "ready" });
+    const draw = await s.draw("docx", { by: "office", signal: signal() });
+    expect(draw.picture).toMatchObject({ drawnBy: "word" });
+    expect(h.calls.map((c) => [c.env, c.method, c.params.itemId])).toEqual([
+      ["env_box", "work.formats.previewOffice", "i1"],
+      ["env_mac", "work.formats.previewOffice", undefined],
+      ["env_box", "work.formats.preview", "i1"],
+      ["env_mac", "work.formats.preview", undefined],
+    ]);
   });
 
   it("lists Word first, then PDF and Print, Markdown, a web page, OpenDocument and Rich Text", () => {

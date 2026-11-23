@@ -27,7 +27,8 @@ export interface DocHost {
 
 /** The host that serves a LifeOS document, from the refusal of one that does not ("served elsewhere: env_box"). */
 export function servedBy(err: unknown): string | null {
-  const m = /served elsewhere: (\S+)/.exec(err instanceof Error ? err.message : String(err));
+  const words = err instanceof Error ? err.message : String(err);
+  const m = /served elsewhere: (\S+)/.exec(words) ?? /this host does not serve LifeOS documents; (\S+) does,/.exec(words);
   return m ? m[1]! : null;
 }
 

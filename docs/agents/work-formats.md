@@ -309,19 +309,19 @@ byte what they were) or markdown. An agent's pending branch (`agent:`,
 out and counted, and `ExportAnswer` and `PreviewAnswer` carry the count as
 `heldSuggestions` (`EXPORT_HOLDS_AGENT_SUGGESTIONS`, formats/serviceRoutes.ts;
 work-docs.md "Agent suggestions stay private"). OpenDocument and RTF are that Word file through
-LibreOffice (RTF keeps no comment replies). HTML is made in the window
+LibreOffice. The measured losses are in work-docs.md under Preview. HTML is made in the window
 (`htmlDocument`, from the editor's blocks); PDF is the same page laid out for
 paper (A4, or Letter in a US-style locale) and printed by
 `work.formats.print` (`operate`) in a hidden Electron window with no script
 and no network (`print.ts`; a test hands in its own printer). A LifeOS
 document another host serves is asked of that host.
 
-**Preview renders** (`work.formats.preview`, `operate`, → `PreviewAnswer`;
-`work.formats.previewRead`, `read`; `formats/preview.ts`): the host side of a
-document's Preview (work-editors.md "Preview: the contract"). Both hold the
-caller to the document as Export does (`targetOf`: a file must be within the
-caller's reach; a LifeOS document is held to the caller's sectors by the Work
-service when it is read, as it always was, not by a path).
+**Preview renders** (`formats/preview.ts`) are the host side of a
+document's Preview. `work.formats.preview` takes `operate` and answers a
+`PreviewResult`. `work.formats.previewRead` and `work.formats.previewOffice`
+take `read` (work-editors.md "Preview: the contract"). The methods use
+Export's target checks. A file must be within the caller's reach, and the
+Work service checks reach for a LifeOS document it reads.
 - Only the picture is kept, a PDF. The file itself is Export's to write
   (`work.formats.export`), which needs no renderer for Word: a host that
   cannot draw Word still exports it.
@@ -332,6 +332,16 @@ service when it is read, as it always was, not by a path).
   LibreOffice draws the PDF from the exported file itself, never from the Word
   file (`drawnBy: 'libreoffice'`). Every job carries `shared` from
   `madeFromShared`. Warnings are Export's dropped words and each job's, once.
+- `work.formats.previewOffice { source, itemId? }` asks the runner whether
+  `docx → pdf+word` can draw and answers `{ app: 'word', state }`. It reads
+  readiness without waking anything. A sleeping linked host cannot wake
+  from a forwarded press. Only `format: 'docx'` takes `by: 'word'` in
+  `work.formats.preview`. It needs the owner's `pressOf` and draws through
+  `pdf+word`. The render has its own key, `docx+word`, with
+  `drawnBy: 'word'`. A refused converter answers `{ notInReach: state }`
+  for the window's `NotInReach`. A file others can open is never
+  handed to Word: `previewOffice` answers `none` for it and a draw answers
+  `notInReach`, before any converter is asked.
 - A render is kept by `rev`, the first 32 hex of a sha256 over the format, a
   zero byte and what it was made from: the page and the paper, or what the
   Word file holds (`wordContent`: each zip entry by name, without the zip's
@@ -358,6 +368,18 @@ service when it is read, as it always was, not by a path).
 - A deleted thread takes `<thread>/` (`sessionsRemoved`), a deleted item its
   folder (`itemsRemoved`); the pillar's `start` sweeps `_/` folders untouched
   for a day, then hourly.
+
+**A page picture for Files.** The formats pillar registers the document
+previewer at start. A `.tcdoc` uses the same Word export and LibreOffice
+PDF. A private document can use the PDF already kept for its rev. A
+`.docx` goes straight to PDF, and Markdown goes through a temporary Word
+file. The PDF pillar's `pdf → png` takes the page number and width. Both
+jobs run here. A file others can open uses scratch files only, cleared
+before the call returns. The answer carries the PDF's page count, so Quick
+Look can page. The last four Word or Markdown files' PDFs wait in memory
+(16 MB each at most, keyed by the file's size and time), so paging through
+one draws its Word file once; nothing of them is on disk. When a page
+cannot be drawn here, the previewer answers null.
 
 **The window.** The document kind's ⋯ has Export…, which opens Preview on
 the format he last used (work-docs.md "Preview"; the frame is

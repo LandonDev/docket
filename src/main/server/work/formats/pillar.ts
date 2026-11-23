@@ -1,9 +1,11 @@
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkModule } from '../modules'
+import { registerFilePreviewer } from '../files/hooks'
+import { documentFilePreviewer } from './filePreview'
 import { exportDoc, printPage } from './exporter'
 import { importFile, type ImportParams } from './importer'
 import { pdfToMarkdown } from './pdfIn'
-import { dropPreviews, previewDoc, readPreview, sweepPreviews } from './preview'
+import { dropPreviews, previewDoc, previewOffice, readPreview, sweepPreviews } from './preview'
 
 /**
  * The formats pillar's own parts: milestone 21's file (import and export),
@@ -23,6 +25,7 @@ export const formatsPillar: Pick<WorkModule, 'handle' | 'tools' | 'convert' | 's
     if (req.method === 'work.formats.export') return handled(await exportDoc(ctx, by, req.params as Parameters<typeof exportDoc>[2]))
     if (req.method === 'work.formats.print') return handled(await printPage(ctx, req.params as Parameters<typeof printPage>[1]))
     if (req.method === 'work.formats.preview') return handled(await previewDoc(ctx, by, req.params as Parameters<typeof previewDoc>[2]))
+    if (req.method === 'work.formats.previewOffice') return handled(await previewOffice(ctx, by, req.params as Parameters<typeof previewOffice>[2]))
     if (req.method === 'work.formats.previewRead') return handled(await readPreview(ctx, by, req.params as Parameters<typeof readPreview>[2]))
     return NOT_HANDLED
   },
@@ -34,9 +37,13 @@ export const formatsPillar: Pick<WorkModule, 'handle' | 'tools' | 'convert' | 's
   },
   start(ctx) {
     // Renders of no item: swept at start and hourly after.
+    const offPreview = registerFilePreviewer('document', documentFilePreviewer(ctx))
     sweepPreviews(ctx.dataDir)
     const timer = setInterval(() => sweepPreviews(ctx.dataDir), 60 * 60_000)
     timer.unref()
-    return () => clearInterval(timer)
+    return () => {
+      offPreview()
+      clearInterval(timer)
+    }
   }
 }

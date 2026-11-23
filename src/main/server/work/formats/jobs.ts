@@ -114,7 +114,7 @@ export interface Converter {
    * started unseen); `none` (not on this host at all). Asked when a job
    * comes, with the job, and for `work.formats.tools`, with null.
    */
-  ready?(job: ConvertJob | null): Readiness | Promise<Readiness>
+  ready?(job: ConvertJob | null, shared?: boolean): Readiness | Promise<Readiness>
   /** writes `job.output`; returns what it could not carry over */
   run(job: ConvertJob & { output: string }, run: ConvertRun): Promise<{ warnings?: string[] }>
 }
@@ -228,14 +228,14 @@ export class JobRunner {
   }
 
   /** Whether a converter can run here now: its tool on disk, then its own word. A converter that throws is not here. */
-  private async stateHere(c: Converter, job: ConvertJob | null): Promise<Readiness> {
+  private async stateHere(c: Converter, job: ConvertJob | null, shared = job?.shared ?? false): Promise<Readiness> {
     if (c.needs && !this.tools.has(c.needs)) return 'none'
     if (!c.ready) return 'ready'
     let timer: NodeJS.Timeout | undefined
     try {
       // Bounded: a helper that hangs must not hang every job of its pair, nor this host's whole report to its peers.
       return await Promise.race([
-        Promise.resolve(c.ready(job)),
+        Promise.resolve(c.ready(job, shared)),
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => reject(new Error('it did not answer')), this.o.readyTimeoutMs ?? READY_TIMEOUT_MS)
         })
@@ -257,6 +257,17 @@ export class JobRunner {
       const state = states[i]!
       return state === 'none' ? [] : [{ from: fmt(c.from), to: fmt(c.to), ...(state !== 'ready' ? { state } : {}) }]
     })
+  }
+
+  /** Readiness for a press here. A linked converter can draw only if it is already ready. */
+  async readiness(from: string, to: string, shared: boolean): Promise<Readiness> {
+    const c = this.converter(from, to)
+    if (!c) return 'none'
+    const here = await this.stateHere(c, null, shared)
+    if (shared || here === 'ready' || here === 'asleep') return here
+    const far = await this.hostFor(from, to)
+    if (far && 'request' in far) return 'ready'
+    return here === 'not open' || far?.state === 'not open' ? 'not open' : 'none'
   }
 
   /** The queue now: the caps, what runs and what waits. */

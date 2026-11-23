@@ -407,6 +407,19 @@ describe("the real app's own picture", () => {
     expect(column()).toBeNull();
   });
 
+  it("asks whether the selected format can be checked in Office", async () => {
+    const ask = vi.fn(async (format?: string) => format === "docx" ? { app: "Word" as const, state: "ready" as const } : null);
+    const f = fake({ office: ask, formats: [...FORMATS, { id: "odt", label: "OpenDocument", ext: "odt", paged: true, verb: "Export" }] });
+    await show(f);
+    await f.answer({ picture: paged("r1"), drops: [] });
+    expect(await screen.findByRole("button", { name: "Check in Word" })).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("tab", { name: "OpenDocument" })));
+    await waitFor(() => expect(f.asked.at(-1)?.format).toBe("odt"));
+    await f.answer({ picture: paged("r2"), drops: [] });
+    expect(ask.mock.calls).toEqual([["docx"], ["odt"]]);
+    expect(screen.queryByRole("button", { name: "Check in Word" })).toBeNull();
+  });
+
   it("Word's picture that lands after he moved to another format is dropped: it is not that format's", async () => {
     const f = fake({ office: office("ready") });
     await show(f);

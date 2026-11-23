@@ -151,7 +151,7 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
     setOffice(null);
     if (!source.office || !paged) return;
     let live = true;
-    source.office().then(
+    source.office(formatId).then(
       (got) => live && setOffice(got),
       () => undefined,
     );
