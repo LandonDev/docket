@@ -102,14 +102,14 @@ const EDITS = [
   edit(
     5,
     "google.edit",
-    'Make the change in Travel plan: "Bring IDs." to "Bring your student ID and a photo ID."',
+    'Make the change in Travel plan: "7 AM" to "6:45 AM"',
     "Make the change",
     {
       app: "doc",
       account: "landon@purdue.edu",
       fileId: "1DoC",
       name: "Travel plan",
-      edits: [{ find: "Bring IDs.", replace: "Bring your student ID and a photo ID.", within: "The bus leaves the CoRec at 7 AM. Bring IDs. Lunch is on the team card." }],
+      edits: [{ find: "at 7 AM", replace: "at 6:45 AM", within: "Lunch is on the team card. The bus leaves the CoRec at 7 AM from the north doors. Bring IDs." }],
       revisionId: "r2",
     },
     at(20, 9, 10),
