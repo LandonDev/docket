@@ -116,7 +116,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
   const root = { at: 'file' as const, host: ctx.host, path: join(ws.path, 'Money') }
   const books = booksHere(ctx, ws.id)
   if (!books) {
-    return { made: false, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(null, year), problems: [] }
+    return { made: false, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(booksOf(ctx, ws.id), year), problems: [] }
   }
   const [ledger, trips] = await Promise.all([ledgerOf(ctx, books), mileageRows(ctx, books)])
   const rows = ledger.rows

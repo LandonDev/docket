@@ -313,8 +313,8 @@ export interface ToConfirm {
 
 export interface MoneyReceived {
   id: string
-  /** `partial`: more parts are expected; `filed`: it is in the ledger already */
-  state: 'partial' | 'reading' | 'ready' | 'filed'
+  /** `partial`: more parts are expected; `filed`: it is in the ledger already; `dropped`: he discarded it, and a retry does not bring it back */
+  state: 'partial' | 'reading' | 'ready' | 'filed' | 'dropped'
 }
 
 export interface MoneyPicture {

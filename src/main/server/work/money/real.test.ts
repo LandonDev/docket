@@ -35,6 +35,8 @@ const ctx = {
   host: 'env_box',
   log: () => {},
   reaches: () => true,
+  lifeos: { connected: () => false },
+  push: () => {},
   service: { internal: (route: string, body: unknown) => routes.get(route)!.run(body as Record<string, unknown>, routeCtx) }
 } as unknown as WorkCtx
 const call = async <T>(method: string, params: unknown): Promise<T> => ((await money.handle!(req(method, params), ctx, LOCAL)) as { result: T }).result

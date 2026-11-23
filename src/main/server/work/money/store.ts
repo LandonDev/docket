@@ -116,3 +116,47 @@ export function putBooks(ctx: Db, b: { workspaceId: string; ledger: string; mile
 export function dropWorkspace(ctx: Db, workspaceId: string): void {
   for (const table of ['work_money_books', 'work_money_inbox', 'work_money_events']) ctx.db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).run(workspaceId)
 }
+
+/** His own mileage rate for a year, in dollars a mile. */
+export function setRate(ctx: Db, workspaceId: string, year: number, rate: number): void {
+  const books = booksOf(ctx, workspaceId)
+  if (!books) return
+  ctx.db.prepare('UPDATE work_money_books SET rates = ? WHERE workspace_id = ?').run(JSON.stringify({ ...books.rates, [year]: rate }), workspaceId)
+}
+
+export function setInvoice(ctx: Db, workspaceId: string, invoice: unknown): void {
+  ctx.db.prepare('UPDATE work_money_books SET invoice = ? WHERE workspace_id = ?').run(JSON.stringify(invoice), workspaceId)
+}
+
+/** A venue as the places table keys it: its words, in lower case, with single spaces. */
+export const placeKey = (place: string): string => place.trim().toLowerCase().replace(/\s+/g, ' ')
+
+/** The miles there and back he gave a place, or null. */
+export function milesTo(ctx: Db, place: string): number | null {
+  const row = ctx.db.prepare('SELECT miles FROM work_money_places WHERE place = ?').get(placeKey(place)) as { miles: number } | undefined
+  return row ? row.miles : null
+}
+export function keepMiles(ctx: Db, place: string, miles: number, now = Date.now()): void {
+  if (!placeKey(place) || !(miles > 0)) return
+  ctx.db.prepare('INSERT INTO work_money_places (place, miles, updated_at) VALUES (?, ?, ?) ON CONFLICT(place) DO UPDATE SET miles = excluded.miles, updated_at = excluded.updated_at').run(placeKey(place), miles, now)
+}
+
+export interface EventMark {
+  state: 'added' | 'skipped'
+  role: string | null
+  fee: number | null
+}
+export function eventMarks(ctx: Db, workspaceId: string): Map<string, EventMark> {
+  const rows = ctx.db.prepare('SELECT event_id, state, role, fee FROM work_money_events WHERE workspace_id = ?').all(workspaceId) as { event_id: string; state: 'added' | 'skipped'; role: string | null; fee: number | null }[]
+  return new Map(rows.map((r) => [r.event_id, { state: r.state, role: r.role, fee: r.fee }]))
+}
+export function markEvent(ctx: Db, workspaceId: string, eventId: string, mark: EventMark, now = Date.now()): void {
+  ctx.db
+    .prepare('INSERT INTO work_money_events (workspace_id, event_id, state, role, fee, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, event_id) DO UPDATE SET state = excluded.state, role = excluded.role, fee = excluded.fee, at = excluded.at')
+    .run(workspaceId, eventId, mark.state, mark.role, mark.fee, now)
+}
+/** The last fee he gave an event with this role, in this job. */
+export function lastFee(ctx: Db, workspaceId: string, role: string): number | null {
+  const row = ctx.db.prepare("SELECT fee FROM work_money_events WHERE workspace_id = ? AND role = ? AND state = 'added' AND fee IS NOT NULL ORDER BY at DESC LIMIT 1").get(workspaceId, role) as { fee: number } | undefined
+  return row ? row.fee : null
+}

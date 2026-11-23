@@ -39,6 +39,9 @@ export const CATEGORIES: Record<string, readonly string[]> = {
 }
 const ANY_JOB: readonly string[] = ['Income', 'Travel', 'Meals', 'Software', 'Equipment', 'Other']
 
+/** The category pay from the calendar is filed under: the job's own word for what he is paid. */
+export const payCategory = (sector: string | null): string => ({ ref: 'Game fees', unify: 'Sales', cosmic: 'Pay', hypixel: 'Pay' })[sector ?? ''] ?? 'Income'
+
 /** A job's categories: its starting list, then every word the ledger already uses, each once. */
 export function categoriesFor(sector: string | null, used: readonly string[] = []): string[] {
   const out = [...(CATEGORIES[sector ?? ''] ?? ANY_JOB)]
@@ -444,7 +447,8 @@ export function mileageOf(header: readonly Cell[], body: readonly (readonly Cell
       place: textOf(at(line, 'Place')),
       miles,
       rate,
-      value: value === undefined || value === null || value === '' ? Math.round(miles * rate * 100) : centsOf(value)
+      // No value yet, or a formula the sheet has not worked out: the miles at their rate.
+      value: value === undefined || value === null || value === '' || (typeof value === 'string' && value.startsWith('=')) ? Math.round(miles * rate * 100) : centsOf(value)
     })
   })
   return rows

@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { ClientRequest } from '@shared/contract'
-import { columnLetter, type Cell } from '@shared/work/money'
+import { columnLetter, type Cell, type ReceiptLine } from '@shared/work/money'
+import type { ConvertJob, ConvertResult } from '../formats/jobs'
 import type { Caller, WorkCtx } from '../modules'
 import { ensureMoneyTables } from './store'
 
@@ -133,6 +134,16 @@ export interface Bench {
   sheets: StandIn
   ctx: WorkCtx
   pushed: unknown[]
+  /** every conversion asked, in order */
+  converted: ConvertJob[]
+  /** what the reader gives back for a picture, by the file's name; a name not here reads as nothing */
+  lines: Map<string, ReceiptLine[]>
+  /** a PDF's text blocks, by the file's name; a name not here is a scan (no text layer) */
+  blocks: Map<string, { page: number; bbox: [number, number, number, number]; text: string }[]>
+  /** set to make every conversion fail */
+  readerDown: boolean
+  /** the calendar LifeOS answers with, for any sector; `lifeos.down` makes it refuse, `lifeos.asked` counts the reads */
+  lifeos: { events: unknown[]; down: boolean; connected: boolean; asked: { fn: string; args: Record<string, unknown> }[] }
   /** the two jobs' folders */
   ref: string
   purdue: string
@@ -156,6 +167,30 @@ export function bench(): Bench {
   ensureMoneyTables(db)
   const sheets = standInSheets()
   const pushed: unknown[] = []
+  const converted: ConvertJob[] = []
+  const lines = new Map<string, ReceiptLine[]>()
+  const blocks = new Map<string, { page: number; bbox: [number, number, number, number]; text: string }[]>()
+  const out = { readerDown: false }
+  let jobs = 0
+  // The conversion runner, standing in: a picture's lines from `lines`, a PDF's text from `blocks`, a page or a JPEG as a copy of the input.
+  const convert = async (job: ConvertJob): Promise<ConvertResult> => {
+    converted.push(job)
+    if (out.readerDown) throw new Error('No host in reach has the reader.')
+    const dir = join(root, 'data', 'jobs', String(++jobs))
+    mkdirSync(dir, { recursive: true })
+    const output = join(dir, `out.${job.to === 'lines' || job.to === 'extract' ? 'json' : job.to}`)
+    // A page drawn from a PDF keeps its name, so the stand-in reader finds its lines by it.
+    const name = basename(job.input) === 'out.png' || basename(job.input) === 'out.jpg' ? (drawnFrom.get(job.input) ?? basename(job.input)) : basename(job.input)
+    if (job.to === 'lines') writeFileSync(output, JSON.stringify(lines.get(name) ?? []))
+    else if (job.to === 'extract') writeFileSync(output, JSON.stringify({ pages: 1, sizes: [], blocks: blocks.get(name) ?? [], tables: [], warnings: [] }))
+    else {
+      copyFileSync(job.input, output)
+      drawnFrom.set(output, name)
+    }
+    return { output, ranOn: 'env_box', warnings: [] }
+  }
+  const drawnFrom = new Map<string, string>()
+  const lifeos: Bench['lifeos'] = { events: [], down: false, connected: true, asked: [] }
   const ctx = {
     db,
     host: 'env_box',
@@ -165,9 +200,42 @@ export function bench(): Bench {
     push: (p: unknown) => void pushed.push(p),
     reaches: (by: Caller, path: string) => by.kind !== 'remote' || path.startsWith(join(root, 'managed')),
     scopeOf: (sessionId: string) => (sessionId === 't-ref' ? { sessionId, workspaceId: 'ws-ref', sector: 'ref' } : sessionId === 't-purdue' ? { sessionId, workspaceId: 'ws-purdue', sector: 'purdue' } : null),
-    service: { internal: sheets.internal }
+    service: { internal: sheets.internal },
+    convert,
+    lifeos: {
+      connected: () => lifeos.connected,
+      owner: () => ({
+        query: async (fn: string, args: Record<string, unknown>) => {
+          lifeos.asked.push({ fn, args })
+          if (lifeos.down) throw new Error('LifeOS did not answer')
+          return lifeos.events
+        },
+        mutation: async (fn: string) => {
+          throw new Error(`Money writes nothing to LifeOS (${fn})`)
+        }
+      })
+    },
+    canvas: { get: () => null, paneOf: (id: string) => id }
   } as unknown as WorkCtx
-  return { db, root, sheets, ctx, pushed, ref, purdue }
+  return {
+    db,
+    root,
+    sheets,
+    ctx,
+    pushed,
+    converted,
+    lines,
+    blocks,
+    lifeos,
+    get readerDown() {
+      return out.readerDown
+    },
+    set readerDown(v: boolean) {
+      out.readerDown = v
+    },
+    ref,
+    purdue
+  }
 }
 
 export const req = (method: string, params: unknown): ClientRequest => ({ id: '1', method, params }) as ClientRequest

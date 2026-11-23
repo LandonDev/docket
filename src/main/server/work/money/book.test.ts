@@ -313,9 +313,9 @@ describe('the tool', () => {
     moneyTools[0].run(args, { ...b.ctx, sessionId, scope: b.ctx.scopeOf(sessionId)!, signal: new AbortController().signal } as never).then((r) => ({ text: (r.content[0] as { text: string }).text, isError: r.isError }))
 
   it('is read only, and offered to a job’s thread alone', () => {
-    expect(moneyTools.map((t) => [t.name, t.readOnly])).toEqual([['money_read', true]])
+    expect(moneyTools[0]).toMatchObject({ name: 'money_read', readOnly: true })
     expect(money.tools!({ workspaceId: null } as never)).toEqual([])
-    expect(money.tools!({ workspaceId: 'ws-ref' } as never)).toHaveLength(1)
+    expect(money.tools!({ workspaceId: 'ws-ref' } as never)).toBe(moneyTools)
   })
 
   it('reads the thread’s own job: sums, then each entry', async () => {

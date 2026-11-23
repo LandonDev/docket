@@ -38,7 +38,7 @@ const BY = 'money'
 const COLUMNS_CHANGED = "The ledger's columns changed. Restore them, then try again."
 
 const sheet = (path: string): { tcsheet: string } => ({ tcsheet: path })
-type A1 = { at: string; v?: string | number | boolean | null; f?: string }
+export type A1 = { at: string; v?: string | number | boolean | null; f?: string }
 
 /** One at a time for each workspace: an append reads the first empty row and writes it with nothing between. */
 const tails = new Map<string, Promise<unknown>>()
@@ -53,7 +53,7 @@ export function locked<T>(workspaceId: string, fn: () => Promise<T>): Promise<T>
 /** A row's own id: short, and never one that reads as a number or a word. */
 export const newRef = (): string => `m${randomBytes(4).toString('hex').slice(0, 5)}`
 
-async function write(ctx: Ctx, path: string, cells: A1[], shared: boolean): Promise<{ suggested: boolean }> {
+export async function write(ctx: Ctx, path: string, cells: A1[], shared: boolean): Promise<{ suggested: boolean }> {
   if (!cells.length) return { suggested: false }
   // A sheet others can open takes a suggestion he accepts in the sheet, never a write.
   await ctx.service.internal('/internal/sheet/cells', { sheet: sheet(path), cells, by: BY, suggest: shared, ...(shared ? { reason: 'Money' } : {}) })
