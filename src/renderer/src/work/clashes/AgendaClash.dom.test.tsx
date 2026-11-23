@@ -1,0 +1,142 @@
+// @vitest-environment jsdom
+/** A clash on its event's Agenda row: the line in that event's words, its press, Show clash, and Leave from the rule. */
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { LifeosRange } from "@shared/work/clashes";
+
+const HOUR = 3_600_000;
+const now = Date.now();
+const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], range: null as unknown, ready: true }));
+vi.mock("../shell/lifeos", async (original) => ({
+  ...(await original<object>()),
+  useLifeosSession: (environmentId: string, sector: string | null) => ({ environmentId, sector, client: {}, state: "connected" }),
+  useLifeosQuery: (session: { sector: string | null }, name: string, args: unknown) => {
+    lifeos.asked.push({ name, args });
+    if (name !== "clashes:range") return { status: "loading" };
+    // A clash is read as him, never through the view's own job.
+    if (session.sector !== null) throw new Error("clashes read through a job's session");
+    return lifeos.ready ? { status: "ready", value: lifeos.range } : { status: "loading" };
+  },
+}));
+vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexProvider: ({ children }: { children: unknown }) => children }));
+const events = vi.hoisted(() => ({ rows: [] as unknown[] }));
+vi.mock("../tasks/client", async (original) => ({ ...(await original<object>()), viewsClients: () => ({ agenda: { useEvents: () => events.rows } }) }));
+
+const drawn = vi.hoisted(() => ({ marked: [] as string[][] }));
+vi.mock("work-kit/views", async (original) => ({
+  ...(await original<object>()),
+  AgendaWeek: ({ marked }: { marked?: ReadonlySet<string> }) => (drawn.marked.push([...(marked ?? [])]), (<div data-week="" />)),
+  AgendaMonth: ({ marked }: { marked?: ReadonlySet<string> }) => (drawn.marked.push([...(marked ?? [])]), (<div data-month="" />)),
+}));
+
+const { Head, View } = await import("../agenda/AgendaView");
+const { clashAsk } = await import("./open");
+const { clockOf } = await import("@shared/work/clashes");
+
+afterEach(() => {
+  cleanup();
+  clashAsk.set(null);
+  lifeos.asked.length = 0;
+  lifeos.ready = true;
+});
+
+const props = { env: "box", workspace: { id: "ws", environmentId: "box" }, sector: "purdue", lifeos: { client: {}, state: "connected" }, startThread: () => {} } as never;
+const meeting = { _id: "ev_meeting", title: "Staff meeting", sector: "purdue", startsAt: now + 2 * HOUR, endsAt: now + 4 * HOUR, allDay: false, location: "Cedar Hall" };
+const side = (eventId: string, sector: string, title: string, startsAt: number, endsAt: number) => ({ eventId, sector, title, startsAt, endsAt, can: [] });
+const game = side("ev_game", "ref", "Varsity Basketball", now + 3 * HOUR, now + 5 * HOUR);
+const overlap: LifeosRange = {
+  clashes: [{ id: "ev_meeting-ev_game", kind: "overlap", a: side("ev_meeting", "purdue", "Staff meeting", meeting.startsAt, meeting.endsAt) as never, b: game as never }],
+  leaves: [],
+};
+
+describe("a clash on the Agenda row", () => {
+  it("says the clash under the place in the event's own words, in the colour that says he is needed", async () => {
+    events.rows = [meeting];
+    lifeos.range = overlap;
+    render(<View {...props} />);
+    await act(async () => {});
+    const line = screen.getByRole("button", { name: `Overlaps Varsity Basketball (Ref), ${clockOf(game.startsAt)}` });
+    expect(line.className).toContain("text-warning");
+    expect(line.className).toContain("text-xs");
+    // Under the place, in the row's own column.
+    expect(line.previousElementSibling?.textContent).toBe("Cedar Hall");
+    // The same span the list shows, every job's.
+    const asked = lifeos.asked.find((a) => a.name === "clashes:range")!.args as { from: number; to: number };
+    expect(asked.to - asked.from).toBe(14 * 24 * HOUR);
+  });
+
+  it("opens the Clash dialog on a press, and from the row's menu", async () => {
+    events.rows = [meeting];
+    lifeos.range = overlap;
+    render(<View {...props} />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: /^Overlaps/ }));
+    expect(clashAsk.get()).toMatchObject({ id: "ev_meeting-ev_game", environmentId: "box", clash: { kind: "overlap" } });
+    clashAsk.set(null);
+    fireEvent.contextMenu(screen.getByRole("listitem"));
+    await act(async () => {});
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Show clash" }));
+    expect(clashAsk.get()?.id).toBe("ev_meeting-ev_game");
+  });
+
+  it("says the first of several and how many more", async () => {
+    events.rows = [meeting];
+    lifeos.range = {
+      clashes: [...overlap.clashes, { ...overlap.clashes[0]!, id: "ev_meeting-ev_other", b: side("ev_other", "life", "Dentist", now + 3 * HOUR, now + 4 * HOUR) as never }],
+      leaves: [],
+    };
+    render(<View {...props} />);
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: /^Overlaps Varsity Basketball \(Ref\), .*, and 1 more$/ })).toBeTruthy();
+  });
+
+  it("draws no line and no menu row for an event with no clash, or one that is over", async () => {
+    const over = { ...meeting, _id: "ev_over", startsAt: now - 3 * HOUR, endsAt: now - HOUR };
+    events.rows = [over, { ...meeting, _id: "ev_free" }];
+    lifeos.range = { clashes: [{ ...overlap.clashes[0]!, id: "ev_over-ev_game", a: { ...overlap.clashes[0]!.a, eventId: "ev_over" } }], leaves: [] };
+    render(<View {...props} />);
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: /^Overlaps/ })).toBeNull();
+    fireEvent.contextMenu(screen.getAllByRole("listitem")[1]!);
+    await act(async () => {});
+    expect(screen.queryByRole("menuitem", { name: "Show clash" })).toBeNull();
+  });
+
+  it("hands the Week and the Month the events that clash, for their dot", async () => {
+    events.rows = [meeting];
+    lifeos.range = overlap;
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await act(async () => {});
+    for (const view of ["Week", "Month"]) {
+      drawn.marked.length = 0;
+      fireEvent.click(screen.getByRole("button", { name: view }));
+      await act(async () => {});
+      expect(drawn.marked.at(-1)?.sort()).toEqual(["ev_game", "ev_meeting"]);
+    }
+  });
+
+  it("takes Leave from the rule once it has answered, and LifeOS's own until then", async () => {
+    const leaveAt = meeting.startsAt - 50 * 60_000;
+    events.rows = [{ ...meeting, leaveAt: meeting.startsAt - 20 * 60_000 }];
+    lifeos.ready = false;
+    const view = render(<View {...props} />);
+    await act(async () => {});
+    const first = screen.getByText(/^Leave /).textContent;
+    lifeos.ready = true;
+    lifeos.range = { clashes: [], leaves: [{ eventId: "ev_meeting", leaveAt, minutes: 20, measured: true, from: "event", fromTitle: "Lunch" }] };
+    view.rerender(<View {...props} />);
+    await act(async () => {});
+    const second = screen.getByText(/^Leave /).textContent;
+    expect(second).not.toBe(first);
+    // No leave in the rule's answer: nothing is drawn, whatever the event row held.
+    lifeos.range = { clashes: [], leaves: [] };
+    view.rerender(<View {...props} />);
+    await act(async () => {});
+    expect(screen.queryByText(/^Leave /)).toBeNull();
+  });
+});

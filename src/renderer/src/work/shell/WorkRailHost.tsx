@@ -19,6 +19,7 @@ import { LapseNotices } from "../connections/lapseNotice";
 import { openConnections, openWorkSettings } from "./open";
 import { PlaysHost } from "../routines/plays/PlaysHost";
 import { TemplatesHost } from "../templates/TemplatesHost";
+import { ClashHost } from "../clashes/ClashHost";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
 import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
@@ -156,6 +157,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       <PlaysHost />
       {/* New from a template and Save as template, for every screen of Work (work/templates/TemplatesHost.tsx). */}
       <TemplatesHost />
+      {/* The Clash dialog, from an Agenda row or a Today row (work/clashes/ClashHost.tsx). */}
+      <ClashHost />
       {/* What Work leans on that ends soon, said once (work/connections/lapseNotice.tsx). */}
       <LapseNotices />
       {naming && home ? (

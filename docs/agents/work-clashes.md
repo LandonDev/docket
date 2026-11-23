@@ -5,8 +5,7 @@ event in another and nothing says so. LifeOS finds a clash across all six
 jobs: two events at once, or two he cannot drive between in time. TempCode's
 `clashes` pillar watches them, tells the digest, answers the wire and gives a
 thread its own job's clashes. The plan is `.temp-code/plan-7BzZxxMKA7yn.md`;
-this file is its host side (CL3). The Agenda line and the Clash dialog (CL4)
-and Start places (CL5) are the renderer's and are not built here.
+the look of each surface is docs/DESIGN.md "Clashes".
 
 ## What lives where
 
@@ -102,6 +101,32 @@ The module lists `tells: [{kind: 'clashes.new', group: 'clashes', name:
 'Clashes'}]`. Until the digest puts `tell` on `WorkCtx`, this build has none:
 the pillar tells nothing and records nothing, so every clash is told once the
 digest lands. `clashes/tell.ts` holds the digest's shapes until then.
+
+## On screen (`src/renderer/src/work/clashes/`)
+
+The pillar has no view of its own and no row in the column.
+
+- `mark.tsx`: `useClashes(env, from, to)` reads `clashes:range` live on the
+  owner session (`useLifeosSession(env, null)`), since a clash is across jobs
+  and a view's own session reads one. It answers each event's clashes, its
+  leave-by and the set of events that clash, each side with this host's Work
+  workspace for its job. `ClashLine` is the line on an Agenda row.
+- `open.ts`: `openClash({id, environmentId?, clash?})`, a small file any
+  screen may import. `ClashHost.tsx`, mounted by the Work shell beside
+  `PlaysHost` (`work/shell/WorkRailHost.tsx`), loads the dialog's chunk
+  `work-clash` on the first ask.
+- `ClashDialog.tsx`: the two events and the drive, the ways out each allows,
+  each way's one step. Decline, a proposed time and a move go through
+  `work.clashes.answer`; "This is fine" through `work.clashes.waive`, with
+  Undo on its toast. Running late reads the event's people (`events:get`)
+  and opens Mail's composer in that job's workspace (`mail/mailto.ts`), so it
+  is offered only where this host has that workspace. The dialog reads the
+  clash's own day or two; a clash that is gone says so.
+- `model.ts` holds the pure parts: the marks, the time a move starts filled
+  with (the first quarter hour after the other event that the drive allows),
+  how late he is, the words.
+- `Clash.preview.tsx` draws the dialog's states and a day of rows for
+  `bun run ui:preview`.
 
 ## For another pillar: `milesBetween`
 

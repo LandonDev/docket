@@ -1446,6 +1446,45 @@ Around the canvas:
   line, a time at the end. A section with nothing is not drawn, and no
   row repeats what its heading says. An Agenda row names the people at
   an event as one muted comma line ("With …"), each name a link on hover.
+- **Clashes** (work/clashes/; docs/agents/work-clashes.md). A clash is a
+  fact about an event, so it sits on the event, in words, where he already
+  reads it: no page, no count on the rail, no badge.
+  On an Agenda row it is one more 12px line under the place, in `warning`
+  (he is needed), in the words of that event's side: "Overlaps Varsity
+  Basketball (Ref), 6:00 PM", "15 min short after Staff meeting (Purdue)",
+  "About 15 min short…" for a drive worked out without the map; with
+  several, the first and ", and 2 more". The line is a button that takes
+  an underline on hover, as a With name does, and opens the Clash dialog;
+  the row's menu has Show clash. An event that is over carries none. The
+  line arrives with its read and nothing pulses for it. "Leave 4:35 PM"
+  under the time is from where he will be: the event before when that
+  ends within three hours, else the day's start.
+  The Clash dialog is the `sm` Modal. Its title is the fact ("Two things
+  at once", "15 minutes short", "About 15 minutes short"), the later
+  event's day the 12px line under it. The body holds the two events in
+  time order, 12px apart: each its title (14/22 medium), then one 12px
+  muted line of its time span (tabular) and, 8px after, its job (the
+  sector dot and name), then where it is (the place as the map names it;
+  his calendar's own words when the point is a town's centre or a start
+  standing in), each cut line whole on hover. Between the two is a
+  hairline, which carries the drive in 12px muted at its middle when both
+  have a point ("38 min drive, 24 mi", "About 40 min, 25 mi"). Under each
+  event, 8px down, are the ways out it allows and no others, as outline
+  `sm` buttons: Decline, Propose new time…, Move…, Running late…. The foot
+  has "This is fine" (ghost) at its start and Close at its end.
+  A way out swaps the body for its one step: the event, one 13px muted
+  sentence of what goes and to whom, then Day, From and To (New event's
+  fields, filled with the first quarter hour after the other event that
+  the drive allows) for a proposal or a move, and a Note for a decline or
+  a proposal; the foot is Back and Send (Move for a move). Send holds its
+  width and spins; a toast answers the press and the dialog closes; a
+  refusal stays in the step in LifeOS's words, in `destructive`. Back puts
+  focus on the way it came from. Running late… opens Mail's composer in
+  that job's workspace with the people on the event and one line; "This
+  is fine" closes with a toast that carries Undo.
+  In the Week and the Month a clashing event's block carries a 6px
+  `warning` dot before its title, named "Clashes with another event";
+  pressing the event opens its day's list, where the line is.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way

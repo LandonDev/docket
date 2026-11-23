@@ -20,6 +20,9 @@ import { playRunner } from "../routines/plays/runOn";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { sessionWaits, useLifeosQuery } from "../shell/lifeos";
 import { knownAttendees, type DirectoryPerson } from "../people/model";
+import type { Clash } from "@shared/work/clashes";
+import { ClashLine, useClashes } from "../clashes/mark";
+import { openClash } from "../clashes/open";
 import "./agenda.css";
 import type { WorkViewProps } from "../views/registry";
 
@@ -29,7 +32,9 @@ import type { WorkViewProps } from "../views/registry";
  * its time with where it is and when to leave), a Week or a Month, the
  * latter two LifeOS's own (work-kit's views). Prepare opens the meeting's
  * page (work/prep), which reads its facts and starts nothing; once the event
- * is over the same verb reads Follow up. New event is a calendar act LifeOS holds until he presses Add.
+ * is over the same verb reads Follow up. New event is a calendar act LifeOS holds until he presses Add. An
+ * event that clashes with another, in any job, says so on its own row
+ * (work/clashes), and its Leave is from where he will be.
  */
 
 const DAYS = 14;
@@ -121,7 +126,7 @@ export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
     <ConvexProvider client={lifeos.client}>
       {event ? <OpenEvent workspaceId={workspace.id} id={event} lifeos={lifeos} /> : null}
       {/* While the event is read, its bones: today's list never paints before the event's week. */}
-      {event ? <AgendaSkeleton /> : <Agenda client={clients.agenda} people={people} workspaceId={workspace.id} />}
+      {event ? <AgendaSkeleton /> : <Agenda client={clients.agenda} people={people} workspaceId={workspace.id} environmentId={env} />}
       {adding !== null ? <NewEventDialog sector={sector} startsAt={adding === "now" ? null : adding} onClose={() => go({ adding: null })} /> : null}
     </ConvexProvider>
   );
@@ -136,12 +141,19 @@ const kit: ViewsKit = {
 
 const NO_PEOPLE: DirectoryPerson[] = [];
 
-function Agenda({ client, people = NO_PEOPLE, workspaceId }: { client: AgendaClient; people?: readonly DirectoryPerson[]; workspaceId?: string }) {
+function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { client: AgendaClient; people?: readonly DirectoryPerson[]; workspaceId?: string; environmentId: string }) {
   const { view, day } = useShared(state);
   const now = useMinute();
   const range = view === "list" ? { from: day, to: addDays(day, DAYS) } : viewRange(view, day, weekStart);
   const { from, to } = range;
   const events = client.useEvents(from, to);
+  // Every job's clashes over the same span, read as him: this view's own session reads one job.
+  const marks = useClashes(environmentId, from, to);
+  // When to leave is the rule's once it has answered (from the event before, when that is where he will be); LifeOS's own until then.
+  const leaveOf = (event: AgendaEvent) => {
+    if (!marks.ready) return leaveAt(event, now);
+    return !event.allDay && event.startsAt > now ? marks.leaves.get(event._id)?.leaveAt : undefined;
+  };
   // The meeting's page (work/prep): before the event it prepares, after it follows up. Opening it starts nothing.
   const prepare = useMemo(() => (event: AgendaEvent) => void (workspaceId && openWorkView({ workspaceId, view: "prep", event: event._id })), [workspaceId]);
   const days = useMemo(() => (events && view === "list" ? groupByDay(events, from, to) : null), [events, view, from, to]);
@@ -153,9 +165,9 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId }: { client: AgendaCli
       <ViewsKitProvider kit={kit}>
         <div className="wk-calendar h-full px-6 pt-2 pb-6">
           {view === "week" ? (
-            <AgendaWeek events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onCreate={(at) => go({ adding: at ?? "now" })} />
+            <AgendaWeek events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onCreate={(at) => go({ adding: at ?? "now" })} marked={marks.marked} />
           ) : (
-            <AgendaMonth events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onPickDay={toDay} />
+            <AgendaMonth events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onPickDay={toDay} marked={marks.marked} />
           )}
         </div>
       </ViewsKitProvider>
@@ -167,7 +179,7 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId }: { client: AgendaCli
         <section key={day} aria-label={formatDayHeading(day, now)} className="flex flex-col">
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{formatDayHeading(day, now)}</h2>
           {rows.map((event) => (
-            <EventRow key={event._id} event={event} past={endOf(event) < now} leave={leaveAt(event, now)} onPrepare={prepare} people={people} workspaceId={workspaceId} />
+            <EventRow key={event._id} event={event} past={endOf(event) < now} leave={leaveOf(event)} clashes={marks.clashes.get(event._id)} onPrepare={prepare} people={people} workspaceId={workspaceId} environmentId={environmentId} />
           ))}
         </section>
       ))}
@@ -177,8 +189,28 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId }: { client: AgendaCli
 
 const eventChip = (event: AgendaEvent): ContextChip => ({ kind: "event", label: event.title, ref: { at: "lifeos", table: "events", id: event._id } });
 
-/** One event: its time (with when to leave under it while that is ahead), its title over where it is, and on hover the verb that opens its page (Prepare, or Follow up once it is over); its right-click, the same verb and Run a play…. */
-const EventRow = memo(function EventRow({ event, past, leave, onPrepare, people, workspaceId }: { event: AgendaEvent; past: boolean; leave: number | undefined; onPrepare: (event: AgendaEvent) => void; people: readonly DirectoryPerson[]; workspaceId: string | undefined }) {
+/** One event: its time (with when to leave under it while that is ahead), its title over where it is and what it clashes with, and on hover the verb that opens its page (Prepare, or Follow up once it is over); its right-click, the same verb, Show clash and Run a play…. Exported for the clash line's preview. */
+export const EventRow = memo(function EventRow({
+  event,
+  past,
+  leave,
+  clashes,
+  onPrepare,
+  people,
+  workspaceId,
+  environmentId,
+}: {
+  event: AgendaEvent;
+  past: boolean;
+  leave: number | undefined;
+  clashes: readonly Clash[] | undefined;
+  onPrepare: (event: AgendaEvent) => void;
+  people: readonly DirectoryPerson[];
+  workspaceId: string | undefined;
+  environmentId: string;
+}) {
+  // A clash with something that is over is no longer his to settle.
+  const clash = past ? undefined : clashes;
   // LifeOS's event carries its attendees; the shared type does not name them.
   const met = knownAttendees((event as AgendaEvent & { attendees?: { address: string }[] }).attendees, people);
   return (
@@ -193,6 +225,7 @@ const EventRow = memo(function EventRow({ event, past, leave, onPrepare, people,
         <span className="flex min-w-0 flex-col pr-24">
           <span className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
           {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
+          {clash?.length ? <ClashLine clashes={clash} eventId={event._id} environmentId={environmentId} /> : null}
           {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}
         </span>
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>
@@ -201,16 +234,17 @@ const EventRow = memo(function EventRow({ event, past, leave, onPrepare, people,
           </Button>
         </span>
       </ContextMenuTrigger>
-      <EventMenu event={event} past={past} onPrepare={onPrepare} />
+      <EventMenu event={event} past={past} onPrepare={onPrepare} clash={clash?.[0]} environmentId={environmentId} />
     </ContextMenu>
   );
 });
 
-function EventMenu({ event, past, onPrepare }: { event: AgendaEvent; past: boolean; onPrepare: (event: AgendaEvent) => void }) {
+function EventMenu({ event, past, onPrepare, clash, environmentId }: { event: AgendaEvent; past: boolean; onPrepare: (event: AgendaEvent) => void; clash: Clash | undefined; environmentId: string }) {
   const runPlay = playRunner();
   return (
     <ContextMenuContent>
       <ContextMenuItem onClick={() => onPrepare(event)}>{past ? "Follow up" : "Prepare"}</ContextMenuItem>
+      {clash ? <ContextMenuItem onClick={() => openClash({ id: clash.id, environmentId, clash })}>Show clash</ContextMenuItem> : null}
       {runPlay ? <ContextMenuItem onClick={() => runPlay(eventChip(event))}>Run a play…</ContextMenuItem> : null}
     </ContextMenuContent>
   );

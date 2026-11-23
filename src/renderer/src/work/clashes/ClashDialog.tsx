@@ -1,0 +1,333 @@
+import { makeFunctionReference } from "convex/server";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { clashTitle, driveLine, type Clash, type ClashSide, type ClashWay } from "@shared/work/clashes";
+import { startOfDay } from "work-kit/views/lib/agenda";
+import { formatDayHeading, formatTime } from "work-kit/views/lib/format";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { Field } from "../../chrome/DialogField";
+import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
+import { SectorDot } from "../../chrome/WorkspaceGlyph";
+import { TruncateTip } from "../../components/tip";
+import { BusyLabel, Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Textarea } from "../../components/ui/textarea";
+import { loadToast } from "../../components/ui/toaster";
+import { registry } from "../../lib/connection";
+import { refusalWords } from "../../lib/settingsHome";
+import { openWorkView } from "../../lib/workSwitch";
+import { writeMail } from "../mail/mailto";
+import { sectorName } from "../shell/actions";
+import { useLifeosSession } from "../shell/lifeos";
+import { useClashes } from "./mark";
+import { doneWords, formOf, freeAfter, lateDraft, spanOf, WAY_LABEL, wayWords, type TimeForm } from "./model";
+import type { ClashAsk } from "./open";
+
+/**
+ * The Clash dialog (docs/DESIGN.md "Clashes"): the two events in time order
+ * with the drive between them, and under each the ways out it allows. A way
+ * out swaps the body for its one step, which shows what goes before Send.
+ * Decline, a proposed time and a move go as his own press through
+ * `work.clashes.answer`; Running late opens Mail's composer, which holds its
+ * own send; "This is fine" quiets the clash until a time or a place moves.
+ */
+
+const DAY = 86_400_000;
+type Side = "a" | "b";
+type Step = { side: Side; way: Exclude<ClashWay, "late"> };
+const eventGet = makeFunctionReference<"query">("events:get");
+
+export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => void }) {
+  // The clash's own day or two when the opener handed it over, else the fortnight every opener reads.
+  const [from, to] = ask.clash ? [startOfDay(ask.clash.a.startsAt), startOfDay(ask.clash.b.startsAt) + DAY] : [startOfDay(Date.now()), startOfDay(Date.now()) + 14 * DAY];
+  const marks = useClashes(ask.environmentId, from, to);
+  const live = [...marks.clashes.values()].flat().find((c) => c.id === ask.id);
+  const clash = live ?? (marks.ready ? undefined : ask.clash);
+  const [pending, setPending] = useState(false);
+  const day = clash ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
+  return (
+    <Modal onClose={onClose} title={clash ? clashTitle(clash) : marks.ready ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
+      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} /> : <Empty gone={marks.ready} onClose={onClose} />}
+    </Modal>
+  );
+}
+
+/** Bones while the clash is read; one line once it is known to be gone. */
+export function Empty({ gone, onClose }: { gone: boolean; onClose: () => void }) {
+  return (
+    <>
+      <ModalBody>
+        {gone ? (
+          <p className="text-[13px] leading-5 text-muted-foreground">These two events no longer clash.</p>
+        ) : (
+          <div aria-hidden className="flex flex-col gap-3">
+            <Skeleton className="h-3.5 w-1/2" />
+            <Skeleton className="h-3 w-2/3" />
+            <Skeleton className="h-3.5 w-2/5" />
+          </div>
+        )}
+      </ModalBody>
+      <Foot onClose={onClose} />
+    </>
+  );
+}
+
+const span = (side: ClashSide) => `${formatTime(side.startsAt)} – ${formatTime(side.endsAt)}`;
+/** His calendar's own words for a place the map only has roughly; else the place as the map names it. */
+const placeOf = (side: ClashSide) => (side.rough ? side.location : side.place) ?? side.location;
+
+/** One event: its title, then its time and job on one muted line, then where it is. */
+function EventBlock({ side, children }: { side: ClashSide; children?: React.ReactNode }) {
+  const place = placeOf(side);
+  return (
+    <div className="flex min-w-0 flex-col">
+      <TruncateTip text={side.title}>
+        <span className="truncate font-medium text-foreground">{side.title}</span>
+      </TruncateTip>
+      <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs leading-5 text-muted-foreground">
+        <span className="shrink-0 tabular-nums">{span(side)}</span>
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <SectorDot sector={side.sector} className="size-3" />
+          <span className="truncate">{sectorName(side.sector)}</span>
+        </span>
+      </span>
+      {place ? (
+        <TruncateTip text={place}>
+          <span className="truncate text-xs leading-5 text-muted-foreground">{place}</span>
+        </TruncateTip>
+      ) : null}
+      {children}
+    </div>
+  );
+}
+
+function Foot({ onClose, start, busy }: { onClose: () => void; start?: React.ReactNode; busy?: boolean }) {
+  const close = useModalClose();
+  return (
+    <DialogFooter start={start}>
+      <Button data-dialog-cancel variant="secondary" disabled={busy} onClick={() => (close ? close(onClose) : onClose())}>
+        Close
+      </Button>
+    </DialogFooter>
+  );
+}
+
+function Body({ clash, environmentId, onClose, pending, setPending }: { clash: Clash; environmentId: string; onClose: () => void; pending: boolean; setPending: (p: boolean) => void }) {
+  const close = useModalClose();
+  const session = useLifeosSession(environmentId, null);
+  const [step, setStep] = useState<Step | null>(null);
+  // What LifeOS said of the last Send, shown in the step until he sends again or goes back.
+  const [refused, setRefused] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"fine" | "late" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const link = registry.linkOf(environmentId);
+  const done = (words: string, undo?: () => void) => {
+    void loadToast().then((toast) => toast(words, undo ? { action: { label: "Undo", onClick: undo } } : undefined));
+    close ? close(onClose) : onClose();
+  };
+  const failed = (err: unknown, fallback: string) => {
+    setPending(false);
+    setBusy(null);
+    setError(refusalWords(err) || fallback);
+  };
+  // Back puts focus where the step was opened from, so the keyboard never loses its place.
+  const from = useRef<string | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (step || !from.current) return;
+    body.current?.querySelector<HTMLElement>(`[data-way="${from.current}"]`)?.focus();
+    from.current = null;
+  }, [step]);
+
+  const fine = () => {
+    setError(null);
+    setPending(true);
+    setBusy("fine");
+    link.request("work.clashes.waive", { id: clash.id, on: true }, { lane: "ui" }).then(
+      () => {
+        setPending(false);
+        done("Marked as fine", () => void link.request("work.clashes.waive", { id: clash.id, on: false }, { lane: "ui" }).catch(() => void loadToast().then((toast) => toast.error("Undo did not go through"))));
+      },
+      (err: unknown) => failed(err, "The host did not answer"),
+    );
+  };
+
+  /** The people on the later event, then Mail's composer in that job's workspace with one line to them. */
+  const late = () => {
+    const workspaceId = clash.b.workspaceId;
+    if (!session.client || !workspaceId) return;
+    setError(null);
+    setPending(true);
+    setBusy("late");
+    session.client.query(eventGet, { id: clash.b.eventId }).then(
+      (event: { attendees?: { address: string }[] } | null) => {
+        setPending(false);
+        const to = (event?.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
+        if (!to.length) return failed(null, "Nobody on this event has an address");
+        openWorkView({ workspaceId, view: "mail" });
+        writeMail(lateDraft(clash, to));
+        close ? close(onClose) : onClose();
+      },
+      (err: unknown) => failed(err, "LifeOS did not answer"),
+    );
+  };
+
+  if (step) {
+    return (
+      <StepForm
+        clash={clash}
+        step={step}
+        pending={pending}
+        refused={refused}
+        onBack={() => {
+          from.current = `${step.side}:${step.way}`;
+          setRefused(null);
+          setStep(null);
+        }}
+        onSend={(params) => {
+          setRefused(null);
+          setPending(true);
+          link.request("work.clashes.answer", { eventId: clash[step.side].eventId, way: step.way, ...params }, { lane: "ui" }).then(
+            () => {
+              setPending(false);
+              done(doneWords(step.way, clash[step.side].title));
+            },
+            (err: unknown) => {
+              setPending(false);
+              setRefused(refusalWords(err) || "LifeOS refused it");
+            },
+          );
+        }}
+      />
+    );
+  }
+
+  return <Events clash={clash} pending={pending} busy={busy} error={error} onClose={onClose} onFine={fine} onWay={(side, way) => (setError(null), way === "late" ? late() : setStep({ side, way }))} bodyRef={body} />;
+}
+
+/** The two events in time order with the drive between them, the ways out under each, and the foot. */
+export function Events({
+  clash,
+  pending,
+  busy,
+  error,
+  onClose,
+  onFine,
+  onWay,
+  bodyRef,
+}: {
+  clash: Clash;
+  pending: boolean;
+  busy: "fine" | "late" | null;
+  error: string | null;
+  onClose: () => void;
+  onFine: () => void;
+  onWay: (side: Side, way: ClashWay) => void;
+  bodyRef?: React.Ref<HTMLDivElement>;
+}) {
+  const drive = driveLine(clash);
+  const ways = (side: Side) => {
+    const event = clash[side];
+    // Running late needs Mail in that job's workspace on this host.
+    const can = event.can.filter((way) => way !== "late" || (side === "b" && Boolean(event.workspaceId)));
+    if (!can.length) return null;
+    return (
+      <span className="mt-2 flex flex-wrap gap-2">
+        {can.map((way) => (
+          <Button key={way} data-way={`${side}:${way}`} variant="outline" size="sm" disabled={pending} onClick={() => onWay(side, way)}>
+            {way === "late" ? <BusyLabel busy={busy === "late"} label={WAY_LABEL.late} /> : WAY_LABEL[way]}
+          </Button>
+        ))}
+      </span>
+    );
+  };
+  return (
+    <>
+      <ModalBody ref={bodyRef} className="gap-3">
+        <EventBlock side={clash.a}>{ways("a")}</EventBlock>
+        {/* The hairline between the two is where the drive is, when there is one to say. */}
+        <div data-clash-drive className="flex items-center gap-3">
+          <span className="h-px flex-1 bg-border" />
+          {drive ? <span className="text-xs leading-5 text-muted-foreground tabular-nums">{drive}</span> : null}
+          {drive ? <span className="h-px flex-1 bg-border" /> : null}
+        </div>
+        <EventBlock side={clash.b}>{ways("b")}</EventBlock>
+        <ErrorLine error={error} />
+      </ModalBody>
+      <Foot
+        onClose={onClose}
+        busy={pending}
+        start={
+          <Button data-clash-fine variant="ghost" disabled={pending} onClick={onFine}>
+            <BusyLabel busy={busy === "fine"} label="This is fine" />
+          </Button>
+        }
+      />
+    </>
+  );
+}
+
+/** One way out, whole, before it goes: the event, what goes and to whom, and what he may add or set. */
+export function StepForm({
+  clash,
+  step,
+  pending,
+  refused = null,
+  onBack,
+  onSend,
+}: {
+  clash: Clash;
+  step: Step;
+  pending: boolean;
+  /** what LifeOS said of the last Send, in its own words */
+  refused?: string | null;
+  onBack: () => void;
+  onSend: (params: { comment?: string; start?: number; end?: number }) => void;
+}) {
+  const event = clash[step.side];
+  const [form, setForm] = useState<TimeForm>(() => formOf(freeAfter(clash, event.eventId)));
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const patch = (p: Partial<TimeForm>) => setForm((f) => ({ ...f, ...p }));
+  const timed = step.way !== "decline";
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (pending) return;
+    const when = timed ? spanOf(form) : null;
+    if (typeof when === "string") return setError(when);
+    setError(null);
+    onSend({ ...(note.trim() && step.way !== "move" ? { comment: note.trim() } : {}), ...(when ?? {}) });
+  };
+  return (
+    <form onSubmit={submit} data-clash-step={`${step.side}:${step.way}`}>
+      <ModalBody>
+        <EventBlock side={event} />
+        <p className="text-[13px] leading-5 text-muted-foreground">{wayWords(step.way, event.title)}</p>
+        {timed ? (
+          <div className="grid grid-cols-[minmax(0,1fr)_112px_112px] gap-2">
+            <Field label="Day">
+              <Input autoFocus type="date" value={form.day} onChange={(e) => patch({ day: e.target.value })} />
+            </Field>
+            <Field label="From">
+              <Input type="time" value={form.from} onChange={(e) => patch({ from: e.target.value })} />
+            </Field>
+            <Field label="To">
+              <Input type="time" value={form.to} onChange={(e) => patch({ to: e.target.value })} />
+            </Field>
+          </div>
+        ) : null}
+        {step.way !== "move" ? (
+          <Field label="Note">
+            <Textarea autoFocus={!timed} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+        ) : null}
+        <ErrorLine error={error ?? refused} />
+      </ModalBody>
+      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending}>
+        <Button data-clash-back variant="secondary" disabled={pending} onClick={onBack}>
+          Back
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
