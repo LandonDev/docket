@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { runInNewContext } from 'node:vm'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FormatsRequestSchemas } from '@shared/contract-work-formats'
 import { formats } from '../formats'
 import { convertersOf, JobRunner, NoConverterError, NotReadyError, pressOf, type LinkedHost } from '../formats/jobs'
 import { statePath } from '../formats/tools'
 import type { Caller } from '../modules'
-import { OfficeError, type OfficeCarrier, type RenderAsk, type RenderDone } from './carrier'
+import { isPasswordLocked, OfficeError, type OfficeCarrier, type RenderAsk, type RenderDone } from './carrier'
 import { RENDER_CHUNK, comCarrier, type HelperProcess } from './com/carrier'
 import { TC_OFFICE_CS } from './com/source'
 import { FakeOffice } from './fake'
@@ -17,6 +17,9 @@ import { office } from './index'
 import { macCarrier, renderFolder, SCRIPTS } from './mac'
 import type { Osa } from './osa'
 import { officeConverters, pairName, RENDER_PAIRS, RENDER_PROVEN, RENDER_WORDS, renderOptions, type RenderDeps, type RenderPlace } from './render'
+
+/** A file as a password-locked .docx, .xlsx or .pptx is: an OLE compound file, not a zip. */
+const LOCKED_HEAD = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
 
 /**
  * Office as a renderer: the five converters over a fake carrier (an Office in memory that draws a stand-in file),
@@ -65,6 +68,7 @@ interface Vm {
   installed?: boolean
   licensed?: boolean | null
   woken: number
+  touched?: number
 }
 
 function deps(place: RenderPlace | null, carrier: OfficeCarrier | null, vm: Vm = { state: 'awake', woken: 0 }, proven = PROVEN_EVERYWHERE): RenderDeps {
@@ -77,9 +81,11 @@ function deps(place: RenderPlace | null, carrier: OfficeCarrier | null, vm: Vm =
       wake: async () => {
         vm.woken++
         vm.state = 'awake'
-      }
+      },
+      touch: () => void (vm.touched = (vm.touched ?? 0) + 1)
     },
-    proven
+    proven,
+    touchMs: 10
   }
 }
 
@@ -145,6 +151,7 @@ describe('a render', () => {
     const fake = new DrawingOffice()
     const runner = runnerOf('box', deps('vm', fake))
     const ins = { docx: file('Report.docx', 'words'), xlsx: file('Budget.xlsx', 'cells'), pptx: file('Deck.pptx', 'slides') }
+    const beside = readdirSync(root).sort()
     for (const p of RENDER_PAIRS) {
       const done = await runner.convert({ from: p.from, to: p.to, input: ins[p.from as keyof typeof ins] })
       expect(done.output.endsWith(`.${p.out}`)).toBe(true)
@@ -157,6 +164,8 @@ describe('a render', () => {
       // the VM may start an app there, hidden; it is nobody's desktop
       expect(r.start).toBe(true)
     }
+    // nothing new beside his files
+    expect(readdirSync(root).sort()).toEqual(beside)
     // the copies went with their jobs
     for (const r of fake.renders) expect(existsSync(r.input)).toBe(false)
     expect(readFileSync(ins.docx, 'utf8')).toBe('words')
@@ -235,8 +244,59 @@ describe('each refusal, in words', () => {
     const runner = runnerOf('box', deps('vm', fake))
     fake.failRender = new OfficeError('Office is busy with a dialog: try again once it is closed.', 'busy')
     await expect(runner.convert({ from: 'docx', to: 'pdf+word', input: file('a.docx') })).rejects.toMatchObject({ code: 'busy', message: 'Word is busy with a dialog: try again once it is closed.' })
+    // nobody can close a dialog in the VM's hidden app: a stall there says to try again
     fake.failRender = new OfficeError('Office did not answer render.run within 1200 s: a dialog may be open in it.')
-    await expect(runner.convert({ from: 'xlsx', to: 'pdf+excel', input: file('a.xlsx') })).rejects.toMatchObject({ code: 'busy', message: 'Excel is busy with a dialog: try again once it is closed.' })
+    await expect(runner.convert({ from: 'xlsx', to: 'pdf+excel', input: file('a.xlsx') })).rejects.toMatchObject({ code: 'busy', message: 'Excel in the Windows VM stopped answering: try again in a minute.' })
+    // the VM never says "not open": an app there that cannot be reached is busy
+    fake.failRender = new OfficeError('PowerPoint is open but not reachable: it may be starting.', 'not-running')
+    const err = await runner.convert({ from: 'pptx', to: 'pdf+powerpoint', input: file('a.pptx') }).catch((e: unknown) => e)
+    expect(err).not.toBeInstanceOf(NotReadyError)
+    expect(err).toMatchObject({ code: 'busy', message: 'PowerPoint is busy with a dialog: try again once it is closed.' })
+    // on his Mac a stall is a dialog he can close
+    const mac = new DrawingOffice()
+    mac.failRender = new OfficeError('Microsoft Word did not answer within 100 s: a dialog may be open in it on this Mac.', 'busy')
+    await expect(runnerOf('mac', deps('mac', mac)).convert({ from: 'docx', to: 'pdf+word', input: file('a.docx') })).rejects.toMatchObject({ message: 'Word is busy with a dialog: try again once it is closed.' })
+  })
+
+  it('a password-locked file is refused before any app, on every carrier, before the VM wakes or the copy is sent', async () => {
+    const locked = join(root, 'Locked.pptx')
+    writeFileSync(locked, Buffer.concat([LOCKED_HEAD, Buffer.alloc(504)]))
+    expect(isPasswordLocked(locked)).toBe(true)
+    expect(isPasswordLocked(file('plain.pptx', 'PK\u0003\u0004 a zip'))).toBe(false)
+    expect(isPasswordLocked(file('short.pptx', 'x'))).toBe(false)
+    const words = 'This file is locked with a password; open it in PowerPoint to check it.'
+    for (const place of ['vm', 'mac', 'windows'] as const) {
+      const fake = new DrawingOffice()
+      const vm: Vm = { state: 'asleep', woken: 0 }
+      const t0 = Date.now()
+      await expect(runnerOf(place, deps(place, fake, vm)).convert({ from: 'pptx', to: 'mp4+powerpoint', input: locked, pressed: pressOf(owner) })).rejects.toMatchObject({ code: 'refused', message: words })
+      expect(Date.now() - t0).toBeLessThan(2000)
+      expect(fake.renders).toEqual([])
+      expect(vm.woken).toBe(0)
+    }
+    expect(RENDER_WORDS.locked('word')).toBe('This file is locked with a password; open it in Word to check it.')
+  })
+
+  it('a render counts as use of the VM for as long as it runs, so its idle sleep cannot cut it short', async () => {
+    let finish!: () => void
+    const fake = new DrawingOffice()
+    const slow = fake.render.bind(fake)
+    fake.render = async (ask) => {
+      await new Promise<void>((resolve) => (finish = resolve))
+      return slow(ask)
+    }
+    const vm: Vm = { state: 'awake', woken: 0 }
+    const job = runnerOf('box', deps('vm', fake, vm)).convert({ from: 'pptx', to: 'mp4+powerpoint', input: file('Deck.pptx') })
+    await vi.waitFor(() => expect(vm.touched ?? 0).toBeGreaterThanOrEqual(4))
+    finish()
+    await job
+    const after = vm.touched
+    await new Promise((r) => setTimeout(r, 50))
+    expect(vm.touched).toBe(after)
+    // his Mac has no idle sleep to hold off
+    const mac: Vm = { state: 'awake', woken: 0 }
+    await runnerOf('mac', deps('mac', new DrawingOffice(), mac)).convert({ from: 'docx', to: 'pdf+word', input: file('a.docx') })
+    expect(mac.touched).toBeUndefined()
   })
 
   it('"none": no VM, no Office in it, an Office with no licence, Work off, or no app on the PC', async () => {
@@ -252,7 +312,9 @@ describe('each refusal, in words', () => {
     bare.failRender = new OfficeError('No Word is in reach: it is not installed on this PC.', 'not-installed')
     const err = await runnerOf('pc', deps('windows', bare)).convert({ from: 'docx', to: 'pdf+word', input: file('a.docx') }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(NoConverterError)
-    expect((err as Error).message).toBe('No Word is in reach. No Word is in reach: it is not installed on this PC.')
+    expect((err as Error).message).toBe('No Word is in reach: it is not installed on this PC.')
+    bare.failRender = new OfficeError('Class not registered.', 'not-installed')
+    await expect(runnerOf('pc', deps('windows', bare)).convert({ from: 'docx', to: 'pdf+word', input: file('a.docx') })).rejects.toThrow(/^No Word is in reach\.$/)
     expect(RENDER_WORDS.none('powerpoint')).toBe('No PowerPoint is in reach.')
   })
 })
@@ -297,11 +359,15 @@ describe('between hosts', () => {
     const box = runnerOf('box', deps('vm', fake), [], 1024)
     const mac = runnerOf('mac', deps('mac', new DrawingOffice(), undefined, RENDER_PROVEN), [validated('box', box)], 1024)
     await expect(mac.convert({ from: 'pptx', to: 'mp4+powerpoint', input: file('Deck.pptx') })).rejects.toThrow('the mp4 is 0 MB; a job carried back to another host takes at most 0 MB')
+    // none of it kept on either side
+    const files = (dir: string): string[] => (existsSync(dir) ? readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name) : [])
+    expect(files(join(root, 'box', 'work-tools', 'jobs'))).toEqual([])
+    expect(files(join(root, 'mac', 'work-tools', 'jobs'))).toEqual([])
   })
 })
 
 /** A stand-in tc-office: the render verbs over one pipe pair, a job folder of its own in memory. */
-function helper(opts: { draw?: (args: Record<string, unknown>) => { ok: true; value: unknown } | { ok: false; error: Record<string, string> } } = {}) {
+function helper(opts: { draw?: (args: Record<string, unknown>) => { ok: true; value: unknown } | { ok: false; error: Record<string, string> }; delay?: (verb: string) => number; failGetAt?: number } = {}) {
   const seen: { verb: string; args: Record<string, unknown> }[] = []
   let input = Buffer.alloc(0)
   let output = Buffer.alloc(0)
@@ -328,9 +394,13 @@ function helper(opts: { draw?: (args: Record<string, unknown>) => { ok: true; va
         }
         if (req.verb === 'render.get') {
           const at = Number(req.args.offset)
-          answer = { ok: true, value: { data: output.subarray(at, at + Number(req.args.length)).toString('base64'), size: output.length } }
+          answer = opts.failGetAt !== undefined && at >= opts.failGetAt ? { ok: false, error: { code: 'failed', message: 'the link dropped' } } : { ok: true, value: { data: output.subarray(at, at + Number(req.args.length)).toString('base64'), size: output.length } }
         }
-        stdout.write(`${JSON.stringify({ id: req.id, ...answer })}\n`)
+        if (req.verb === 'readRange') answer = { ok: true, value: { values: [], formulas: [], formats: [] } }
+        const line = `${JSON.stringify({ id: req.id, ...answer })}\n`
+        const wait = opts.delay?.(req.verb) ?? 0
+        if (wait) setTimeout(() => stdout.write(line), wait)
+        else stdout.write(line)
       }
     })
     setImmediate(() => stdout.write(`${JSON.stringify({ event: 'ready', version: 1 })}\n`))
@@ -340,6 +410,64 @@ function helper(opts: { draw?: (args: Record<string, unknown>) => { ok: true; va
 }
 
 describe('the Windows carrier’s render (tc-office.exe’s render verbs)', () => {
+  it('never sends a password-locked file: refused before render.begin', async () => {
+    const h = helper()
+    const carrier = comCarrier({ start: h.start, log: () => {} })
+    const input = join(root, 'input.pptx')
+    writeFileSync(input, Buffer.concat([LOCKED_HEAD, Buffer.alloc(100)]))
+    await expect(carrier.render({ app: 'powerpoint', to: 'pdf', input, output: join(root, 'o.pdf'), start: true })).rejects.toMatchObject({ code: 'refused', message: 'This file is locked with a password; open it in PowerPoint to check it.' })
+    expect(h.seen).toEqual([])
+    carrier.stop()
+  })
+
+  it('leaves no part of a result where it was asked when a read fails midway', async () => {
+    const h = helper({ failGetAt: RENDER_CHUNK })
+    const carrier = comCarrier({ start: h.start, log: () => {} })
+    const input = join(root, 'input.pptx')
+    writeFileSync(input, Buffer.alloc(RENDER_CHUNK + 10, 1))
+    const output = join(root, 'video.mp4')
+    await expect(carrier.render({ app: 'powerpoint', to: 'mp4', input, output, start: true })).rejects.toThrow('the link dropped')
+    expect(existsSync(output)).toBe(false)
+    expect(existsSync(`${output}.part`)).toBe(false)
+    expect(h.seen.at(-1)!.verb).toBe('render.end')
+    carrier.stop()
+  })
+
+  it('gives render.run its own 20 minutes while every other call keeps the 120 s; after a stall it sends no render.end', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    // the stand-in's frames go on real turns of the loop: wait for a verb to reach it before moving the clock
+    const reached = async (h: { seen: { verb: string }[] }, verb: string): Promise<void> => {
+      for (let i = 0; i < 200 && !h.seen.some((x) => x.verb === verb); i++) await new Promise((r) => setImmediate(r))
+    }
+    try {
+      const h = helper({ delay: (verb) => (verb === 'render.run' || verb === 'readRange' ? 180_000 : 0) })
+      const carrier = comCarrier({ start: h.start, log: () => {} })
+      const input = join(root, 'input.pptx')
+      writeFileSync(input, 'deck')
+      const video = carrier.render({ app: 'powerpoint', to: 'mp4', input, output: join(root, 'v.mp4'), start: true })
+      await reached(h, 'render.run')
+      await vi.advanceTimersByTimeAsync(181_000)
+      await reached(h, 'render.end')
+      await expect(video).resolves.toEqual({ pages: 3 })
+      const read = carrier.readRange('C:\\b.xlsx', 'Sheet1', 'A1').catch((e: unknown) => e)
+      await reached(h, 'readRange')
+      await vi.advanceTimersByTimeAsync(121_000)
+      expect(await read).toMatchObject({ message: expect.stringContaining('did not answer readRange within 120 s') })
+      // a render that stalls past its 20 minutes: the helper is dropped, and no render.end waits behind it
+      const h2 = helper({ delay: (verb) => (verb === 'render.run' ? 30 * 60_000 : 0) })
+      const c2 = comCarrier({ start: h2.start, log: () => {} })
+      const stuck = c2.render({ app: 'powerpoint', to: 'mp4', input, output: join(root, 'w.mp4'), start: true }).catch((e: unknown) => e)
+      await reached(h2, 'render.run')
+      await vi.advanceTimersByTimeAsync(20 * 60_000 + 1000)
+      expect(await stuck).toMatchObject({ message: expect.stringContaining('did not answer render.run within 1200 s') })
+      expect(h2.seen.map((x) => x.verb)).not.toContain('render.end')
+      carrier.stop()
+      c2.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('sends the copy in chunks into the helper’s own job folder, draws it, reads the result back and ends the job', async () => {
     const h = helper()
     const carrier = comCarrier({ start: h.start, log: () => {} })
@@ -391,6 +519,17 @@ describe('the helper’s render region (TcOffice.cs, built only in Windows)', ()
     // a dialog is busy, in the app's name; an app not open is refused unless the host may start one
     expect(TC_OFFICE_CS).toContain('" is busy with a dialog: try again once it is closed."')
     expect(TC_OFFICE_CS).toContain('if (!start) throw new Refusal("not-running", Short(app) + " is not open on this PC.")')
+    // a password-locked file refused before any app; alerts off on every app it starts; Word and Excel its own with start
+    expect(TC_OFFICE_CS).toContain('if (Locked(input)) throw new Refusal("refused", LockedWords(j.App));')
+    expect(TC_OFFICE_CS).toContain('com.Set(made, "DisplayAlerts", app == "word" ? (object)0 : app == "excel" ? (object)false : 1)')
+    expect(TC_OFFICE_CS).toContain('if (running && !(start && app != "powerpoint")) {')
+    // what it started is kept by pid, ended when Quit does not end it, and at the next render.begin
+    expect(TC_OFFICE_CS).toContain('if (mine) End(j.App, app, pid);')
+    expect(TC_OFFICE_CS).toContain('com.Kill(pid);')
+    expect(TC_OFFICE_CS).toContain('    EndOrphans();')
+    // a video's length is bounded and counts its shown slides
+    expect(TC_OFFICE_CS).toContain('public const int VideoMaxSeconds = 30 * 60;')
+    expect(TC_OFFICE_CS).toContain('return Obj("seconds", shown * seconds, "height", tall);')
   })
 })
 

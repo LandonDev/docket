@@ -379,11 +379,22 @@ Today:
 | Mac, PC | the app runs | never | the app is installed and shut | unproven, or the app is not installed |
 | VM | the VM is awake, Office installed and not unlicensed | the VM sleeps, or is waking or going to sleep | never | unproven, no VM, setting up, Office not read, not installed, or with no licence |
 
+**A password-locked file never reaches an app.** Such a .docx, .xlsx or .pptx is an OLE compound file (its first 8
+bytes `D0 CF 11 E0 A1 B1 1A E1`) where the format is a zip, and its app would ask for the password in a dialog inside
+Open, holding every Office call in the VM behind it. `isPasswordLocked` (carrier.ts) refuses it in the converter,
+before the VM wakes or the copy is sent, and again in the Windows carrier, the Mac's render and the helper's
+`render.run`: `OfficeError` code `refused`, "This file is locked with a password; open it in PowerPoint to check it."
+
+**A render is use of the VM** for as long as it runs: the converter calls the keeper's `touch()` at its start and every
+minute until it ends (`TOUCH_MS`), so the VM's idle sleep (15 minutes at the shortest) cannot cut a long video short.
+
 **The VM is never woken for a render nobody pressed for.** The runner runs an `asleep` pair only for a job
 carrying his press (`pressOf`, formats/jobs.ts); the converter checks again at run time, and only then calls
 `vmAwake`. A thread can make no press, a forwarded job carries none, and a JSON `pressed` is not one. The VM may
-start Word, Excel or PowerPoint there hidden (`start: true`): it is nobody's desktop. Excel there is always an
-instance of the helper's own, so a workbook never opens in a window someone looks at. On a Mac or a PC the app
+start Word, Excel or PowerPoint there hidden (`start: true`): it is nobody's desktop. Excel and Word there are always
+instances of the helper's own (each runs one process per instance), so a workbook never opens in a window someone looks
+at and no Word with its alerts on opens the copy; PowerPoint is one app per session, so a running one is used, with its
+alerts off for the job and put back after. On a Mac or a PC the app
 must already be open: the pillar never starts an app unseen.
 
 **The helper's render verbs** (`TcOffice.cs`, `#region Render`). The host never names a path on that PC:
@@ -391,12 +402,20 @@ must already be open: the pillar never starts an app unseen.
 `render.put` takes the copy in base64 chunks of 2 MiB (4 MiB at most, 512 MB in all); `render.run` opens the
 copy read only with no window (Word `Visible` false and out of recent files; Excel read only, its window hidden
 in his own Excel; PowerPoint `WithWindow` false), draws it, closes it unsaved and quits an app it started;
-`render.get` reads the result back; `render.end` removes the folder (folders a stopped helper left go after a
-day). A password the copy cannot have is passed, so an encrypted Word or Excel file fails at once instead of
+`render.get` reads the result back (into `<output>.part`, renamed whole); `render.end` removes the folder (folders a
+stopped helper left go after a day; after a stall the host sends no `render.end`, which would only wait behind it).
+**An app the helper starts never outlives its job**: its process id (by the ids before and after `Create`) is kept in
+`%LOCALAPPDATA%\TempCode\render\started.txt` with its start time; at the job's end it is quit and, if it has not
+ended ten seconds later or Quit was refused (a dialog, a video still exporting), its process is ended. At each
+`render.begin`, an app in that file that is still the same process (a helper stopped mid-job) is ended. An app the
+helper did not start is never ended: with `start`, one left hidden with no file open is only asked to quit. Every app it
+starts has its alerts off (`DisplayAlerts`: Word's none, Excel's false, PowerPoint's `ppAlertsNone`) and macros off. A password the copy cannot have is passed, so an encrypted Word or Excel file fails at once instead of
 asking in a dialog; Excel refuses a write password for a workbook that has none, so it gets only the open
 password. With `start`, an app left hidden with no file open is quit after each job, whoever started it, so no
 hidden app outlives the renders (PowerPoint's process takes a few seconds to end after its Quit). An app of the helper's own runs with macros off (`AutomationSecurity` 3). `render.run` may
-take 20 minutes (`RENDER_TIMEOUT_MS`): a video is polled through `CreateVideoStatus` up to 15. The page counts
+take 20 minutes (`RENDER_TIMEOUT_MS`): a video is polled through `CreateVideoStatus` up to 15, and one longer than 30
+minutes (shown slides × `secondsPerSlide`; a hidden slide is left out of the video and of its length) is refused before
+it starts. A deck still exporting is not closed (Close would ask in a dialog); its app is ended with the job. The page counts
 are the apps' own: Word's `ComputeStatistics(wdStatisticPages)`, the sum of each visible sheet's
 `PageSetup.Pages.Count`, PowerPoint's slide count.
 
@@ -412,9 +431,11 @@ to `NotInReach` as DOC1.1 says:
 
 | What | Error | Words |
 |---|---|---|
-| the app is shut on his Mac or PC | `NotReadyError('not open')` | "PowerPoint is not open on this Mac." / "Word is not open on this PC." |
+| the app is shut on his Mac or PC (the VM never says it: an app there it cannot reach is busy) | `NotReadyError('not open')` | "PowerPoint is not open on this Mac." / "Word is not open on this PC." |
 | the VM sleeps and nobody pressed | `NotReadyError('asleep')` | "Windows is asleep, and only his own press wakes it." |
 | a dialog is open in the app, or it stopped answering | `OfficeError` code `busy` | "Word is busy with a dialog: try again once it is closed." |
+| the VM's app stopped answering (its helper is ended and starts again) | `OfficeError` code `busy` | "Word in the Windows VM stopped answering: try again in a minute." |
+| a password-locked file, on any carrier | `OfficeError` code `refused` | "This file is locked with a password; open it in Word to check it." |
 | no such app here, or the pair unproven | `NoConverterError` | "No Word is in reach." |
 
 The runner's own refusals before a run (DOC1.1) keep its words: "the machine that converts docx to pdf+word is
@@ -739,8 +760,12 @@ waiting on it holds every write back. Node gives the helper two pipes.
 … as 'save as PNG'` and `'save as MP4'` follow the dictionaries, unrun; and whether a file in the app's own
 container opens with no prompt); on a Windows PC, none; in the VM, `ctx.convert` through the box's own service (the proof drove this branch's
 converters and carrier through a job runner of its own, since the box runs its deployed build), a dialog's
-`busy` against a real dialog, and an encrypted file. A password-protected deck may raise PowerPoint's password dialog (Open takes no password), which holds
-the helper until the call's time runs out and the helper is ended.
+and `busy` against a real dialog. One long render holds the VM's helper link and its one Office thread for its length,
+so an `office_*` call there waits behind it with no word, and a cancel is seen only between chunks. Before the Mac's
+proof: PowerPoint for Mac's `save as MP4` may export in the background, so the script may close the deck before the
+file is done (poll the file as Windows polls `CreateVideoStatus`); osascript's 100 s limit ends a long save, and the
+folder is then removed under a copy still open in his app; `open` shows the copy in a window in front of him; and the
+PNG is sized up by `sips` from PowerPoint's own export size, so a 1920 picture may be soft.
 
 **Windows**: nothing has run against real Office on Windows (the rig has
 none, by the owner's choice). The recorded surface follows Microsoft's

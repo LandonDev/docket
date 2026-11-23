@@ -55,6 +55,11 @@ public interface ICom {
   void Release(object o);
   // A new instance of the app, hidden (Render, with `start`: the box's Windows VM only).
   object Create(string progId);
+  // The ids of the processes of that name; one process's identity (its name and start time) or null once it has
+  // ended; and ending one (Render ends only an app it started itself, when Quit did not end it).
+  List<int> Pids(string processName);
+  string Identity(int pid);
+  void Kill(int pid);
 }
 
 public class RealCom : ICom {
@@ -159,6 +164,12 @@ public class RealCom : ICom {
   [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
   public void Release(object o) { if (o != null && Marshal.IsComObject(o)) Marshal.FinalReleaseComObject(o); }
   public object Create(string progId) { return Activator.CreateInstance(Type.GetTypeFromProgID(progId, true)); }
+  public List<int> Pids(string processName) { var l = new List<int>(); foreach (var p in Process.GetProcessesByName(processName)) l.Add(p.Id); return l; }
+  public string Identity(int pid) {
+    try { var p = Process.GetProcessById(pid); if (p.HasExited) return null; return p.ProcessName + "|" + p.StartTime.ToUniversalTime().Ticks; }
+    catch (Exception) { return null; }
+  }
+  public void Kill(int pid) { try { Process.GetProcessById(pid).Kill(); } catch (Exception) { } }
   public void Foreground(int hwnd) {
     var h = new IntPtr(hwnd);
     if (IsIconic(h)) ShowWindow(h, 9);
@@ -1023,6 +1034,8 @@ public class Render {
   public const int ChunkMax = 4 * 1024 * 1024;
   public const long InputMax = 512L * 1024 * 1024;
   const int VideoMaxMs = 15 * 60 * 1000;
+  // The longest video drawn: past it the encode would outrun VideoMaxMs on the VM.
+  public const int VideoMaxSeconds = 30 * 60;
   static readonly Dictionary<string, string> EXT_OF = new Dictionary<string, string> { { "word", "docx" }, { "excel", "xlsx" }, { "powerpoint", "pptx" } };
 
   public static string Short(string app) { return app == "word" ? "Word" : app == "excel" ? "Excel" : "PowerPoint"; }
@@ -1062,6 +1075,7 @@ public class Render {
     string want;
     if (app == null || !EXT_OF.TryGetValue(app, out want) || ext != want) throw new Refusal("failed", "Office renders a .docx in Word, a .xlsx in Excel and a .pptx in PowerPoint.");
     Sweep();
+    EndOrphans();
     var id = Guid.NewGuid().ToString("N");
     var dir = Path.Combine(Root(), id);
     Directory.CreateDirectory(dir);
@@ -1126,8 +1140,15 @@ public class Render {
     var old = OutputOf(j);
     if (old != null) File.Delete(old);
     var output = Path.Combine(j.Dir, "output." + to);
+    // A password-locked file is an OLE compound file where a .docx, .xlsx or .pptx is a zip: its app would ask for the
+    // password in a dialog, inside Open, and every Office call here would wait behind it. Refused before any app.
+    if (Locked(input)) throw new Refusal("refused", LockedWords(j.App));
     bool mine;
-    var app = Attach(j.App, start, out mine);
+    int pid;
+    object alerts = null;
+    var app = Attach(j.App, start, out mine, out pid);
+    // A PowerPoint someone else started takes no alert from this job either, while it runs (the VM only).
+    if (start && !mine && j.App == "powerpoint") { try { alerts = com.Get(app, "DisplayAlerts"); com.Set(app, "DisplayAlerts", 1); } catch (COMException) { alerts = null; } }
     try {
       Dictionary<string, object> done;
       if (j.App == "word") done = Word(app, input, output, mine);
@@ -1140,11 +1161,67 @@ public class Render {
       if (Office.Busy(e)) throw new Refusal("busy", Short(j.App) + " is busy with a dialog: try again once it is closed.");
       throw new Refusal("failed", Short(j.App) + " could not render the copy: " + e.Message);
     } finally {
-      // With `start` (the VM), an app left hidden with no file open is nobody's, whoever started it: one that a job
-      // before this one started and was still quitting is quit here too, so no hidden app outlives the renders.
-      if (mine || (start && Unseen(j.App, app))) Quit(j.App, app);
-      com.Release(app);
+      if (alerts != null) { try { com.Set(app, "DisplayAlerts", alerts); } catch (Exception) { } }
+      // An app this job started is ended whatever happened: quit, and its process ended if Quit did not end it (a
+      // dialog, a video still exporting). With `start` (the VM), an app left hidden with no file open is nobody's,
+      // whoever started it, and is quit (never ended).
+      if (mine) End(j.App, app, pid);
+      else { if (start && Unseen(j.App, app)) Quit(j.App, app); com.Release(app); }
     }
+  }
+
+  public static string LockedWords(string app) { return "This file is locked with a password; open it in " + Short(app) + " to check it."; }
+  static readonly byte[] CFB = { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 };
+  public static bool Locked(string path) {
+    var head = new byte[8];
+    using (var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) { if (f.Read(head, 0, 8) < 8) return false; }
+    for (var i = 0; i < 8; i++) if (head[i] != CFB[i]) return false;
+    return true;
+  }
+
+  // ---- what this helper started: kept by process id in a file, so a helper stopped mid-job (a stall, the
+  // box's restart of it) leaves nothing the next helper cannot end.
+  static string StartedFile() { return Path.Combine(Root(), "started.txt"); }
+  public static void Remember(int pid, string identity) {
+    Directory.CreateDirectory(Root());
+    File.AppendAllText(StartedFile(), pid + "\t" + identity + "\r\n");
+  }
+  static void Forget(int pid) {
+    try {
+      if (!File.Exists(StartedFile())) return;
+      var keep = new List<string>();
+      foreach (var line in File.ReadAllLines(StartedFile())) if (!line.StartsWith(pid + "\t")) keep.Add(line);
+      if (keep.Count == 0) File.Delete(StartedFile()); else File.WriteAllLines(StartedFile(), keep.ToArray());
+    } catch (Exception) { }
+  }
+  // Each app still running that a stopped helper started (the same process: its name and start time) is ended.
+  void EndOrphans() {
+    try {
+      if (!File.Exists(StartedFile())) return;
+      foreach (var line in File.ReadAllLines(StartedFile())) {
+        var parts = line.Split('\t');
+        int pid;
+        if (parts.Length != 2 || !int.TryParse(parts[0], out pid)) continue;
+        if (com.Identity(pid) == parts[1]) { Console.Error.WriteLine("tc-office: ending an app a stopped render left: " + parts[1]); com.Kill(pid); }
+      }
+      File.Delete(StartedFile());
+    } catch (Exception x) { Console.Error.WriteLine("tc-office: the apps a stopped render left: " + x.Message); }
+  }
+
+  // Quits the app, lets go of it, and ends its process if it has not ended within ten seconds (or Quit was refused).
+  void End(string app, object a, int pid) {
+    var quit = Quit(app, a);
+    // No reference of ours may keep it alive while it quits: the app, and whatever of it the collector still holds.
+    com.Release(a);
+    GC.Collect();
+    GC.WaitForPendingFinalizers();
+    GC.Collect();
+    if (pid == 0) return;
+    var identity = com.Identity(pid);
+    // Quit asked: give the process ten seconds to end by itself (PowerPoint takes a few).
+    for (var waited = 0; quit && identity != null && waited < 10000; waited += 200) { Thread.Sleep(200); identity = com.Identity(pid); }
+    if (identity != null) { Console.Error.WriteLine("tc-office: " + Short(app) + " did not quit: ending it"); com.Kill(pid); }
+    Forget(pid);
   }
 
   bool Unseen(string app, object a) {
@@ -1154,13 +1231,15 @@ public class Render {
     } catch (Exception) { return false; }
   }
 
-  // The running app, or with `start` one of our own, hidden. Excel with `start` is always one of our own: a
-  // workbook opened in his Excel would take a window in front of him.
-  object Attach(string app, bool start, out bool mine) {
+  // The running app, or with `start` one of our own, hidden. Excel and Word with `start` are always our own (both run
+  // one process per instance): a workbook opened in his Excel would take a window in front of him, and a Word someone
+  // else runs has its alerts on. PowerPoint is one app per session, so with `start` a running one is used.
+  object Attach(string app, bool start, out bool mine, out int pid) {
     mine = false;
+    pid = 0;
     if (!com.Registered(ProgId(app))) throw new Refusal("not-installed", "No " + Short(app) + " is in reach: it is not installed on this PC.");
     var running = com.Running(Proc(app));
-    if (running && !(start && app == "excel")) {
+    if (running && !(start && app != "powerpoint")) {
       try { return com.Active(ProgId(app)); }
       catch (COMException e) {
         if (Office.Busy(e)) throw new Refusal("busy", Short(app) + " is busy with a dialog: try again once it is closed.");
@@ -1168,23 +1247,28 @@ public class Render {
       }
     }
     if (!start) throw new Refusal("not-running", Short(app) + " is not open on this PC.");
+    var before = com.Pids(Proc(app));
     var made = com.Create(ProgId(app));
+    // The process it started, by the ids before and after: kept, so it is ended whatever happens to the job.
+    foreach (var id in com.Pids(Proc(app))) if (!before.Contains(id)) { pid = id; break; }
+    if (pid != 0) { var identity = com.Identity(pid); if (identity != null) Remember(pid, identity); else pid = 0; }
     // PowerPoint is one app per session: a create while it runs is the running one, not ours to quit.
     mine = !(app == "powerpoint" && running);
-    if (mine && app != "powerpoint") {
-      try { com.Set(made, "DisplayAlerts", app == "word" ? (object)0 : false); } catch (COMException) { }
-    }
+    // No alert of any app of our own raises a dialog (wdAlertsNone, false, ppAlertsNone).
+    if (mine) { try { com.Set(made, "DisplayAlerts", app == "word" ? (object)0 : app == "excel" ? (object)false : 1); } catch (COMException) { } }
     // No macro of the copy runs: msoAutomationSecurityForceDisable, on an app of our own only.
     if (mine) { try { com.Set(made, "AutomationSecurity", 3); } catch (COMException) { } }
     return made;
   }
 
-  void Quit(string app, object a) {
+  // True when Quit was asked and taken; a PowerPoint still holding a deck is not asked.
+  bool Quit(string app, object a) {
     try {
-      if (app == "powerpoint") { if (Convert.ToInt32(com.Get(com.Get(a, "Presentations"), "Count")) == 0) com.Call(a, "Quit"); }
+      if (app == "powerpoint") { if (Convert.ToInt32(com.Get(com.Get(a, "Presentations"), "Count")) != 0) return false; com.Call(a, "Quit"); }
       else if (app == "word") com.Call(a, "Quit", 0);
       else com.Call(a, "Quit");
-    } catch (Exception x) { Console.Error.WriteLine("tc-office: quitting " + app + ": " + x.Message); }
+      return true;
+    } catch (Exception x) { Console.Error.WriteLine("tc-office: quitting " + app + ": " + x.Message); return false; }
   }
 
   // A password the copy cannot have: an encrypted file then fails at once instead of asking in a dialog.
@@ -1234,6 +1318,9 @@ public class Render {
   Dictionary<string, object> PowerPoint(object pp, string input, string output, string to, Dictionary<string, object> a) {
     // Open(FileName, ReadOnly = msoTrue, Untitled = msoFalse, WithWindow = msoFalse)
     var p = com.Call(com.Get(pp, "Presentations"), "Open", input, -1, 0, 0);
+    // A deck still exporting is not closed (Close would ask whether to stop the export, in a dialog): an app of the
+    // job's own is ended with it instead (Draw's End).
+    var exporting = false;
     try {
       var slides = com.Get(p, "Slides");
       var count = Convert.ToInt32(com.Get(slides, "Count"));
@@ -1255,22 +1342,29 @@ public class Render {
       }
       var seconds = Int(a, "seconds", 5, 1, 600);
       var tall = Int(a, "height", 720, 240, 2160);
+      // A hidden slide is left out of the video, and so out of its length.
+      var shown = 0;
+      for (var i = 1; i <= count; i++) { if (Convert.ToInt32(com.Get(com.Get(com.Call(slides, "Item", i), "SlideShowTransition"), "Hidden")) != -1) shown++; }
+      if (shown == 0) throw new Refusal("failed", "Every slide of the deck is hidden: the video would show nothing.");
+      if (shown * seconds > VideoMaxSeconds) throw new Refusal("failed", "That video would run " + Math.Ceiling(shown * seconds / 60.0) + " minutes: Office draws one of at most " + (VideoMaxSeconds / 60) + " minutes here.");
       // CreateVideo(FileName, UseTimingsAndNarrations, DefaultSlideDuration, VertResolution, FramesPerSecond, Quality)
       com.Call(p, "CreateVideo", output, false, seconds, tall, 30, 85);
+      exporting = true;
       // PpMediaTaskStatus: 1 in progress, 2 queued, 3 done, 4 failed
       var waited = 0;
       for (;;) {
         var status = Convert.ToInt32(com.Get(p, "CreateVideoStatus"));
-        if (status == 3) break;
-        if (status == 4) throw new Refusal("failed", "PowerPoint could not make the video.");
+        if (status == 3) { exporting = false; break; }
+        if (status == 4) { exporting = false; throw new Refusal("failed", "PowerPoint could not make the video."); }
         if (status != 1 && status != 2) throw new Refusal("failed", "PowerPoint did not start the video.");
         if (waited >= VideoMaxMs) throw new Refusal("failed", "PowerPoint did not finish the video within 15 minutes.");
         Thread.Sleep(250);
         waited += 250;
       }
-      return Obj("seconds", count * seconds, "height", tall);
+      return Obj("seconds", shown * seconds, "height", tall);
     } finally {
-      try { com.Call(p, "Close"); } catch (Exception x) { Console.Error.WriteLine("tc-office: closing the copy: " + x.Message); }
+      if (exporting) Console.Error.WriteLine("tc-office: the video was still exporting: the copy is left open for its app's end");
+      else { try { com.Call(p, "Close"); } catch (Exception x) { Console.Error.WriteLine("tc-office: closing the copy: " + x.Message); } }
       com.Release(p);
     }
   }

@@ -1,3 +1,4 @@
+import { closeSync, openSync, readSync } from 'node:fs'
 import type { OfficeApp, OfficeAppState, OfficeCell } from '@shared/contract-work-office'
 
 /**
@@ -139,6 +140,25 @@ export interface RenderAsk {
   /** may start the app, hidden, when none runs: the box's Windows VM, which is nobody's desktop. Never on his Mac or PC. */
   start?: boolean
   signal?: AbortSignal
+}
+
+const RENDER_APP_NAME: Record<RenderApp, string> = { word: 'Word', excel: 'Excel', powerpoint: 'PowerPoint' }
+/** What a render of a password-locked file answers, on every carrier, before any app opens it. */
+export const lockedWords = (app: RenderApp): string => `This file is locked with a password; open it in ${RENDER_APP_NAME[app]} to check it.`
+const CFB = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
+/**
+ * Whether a .docx, .xlsx or .pptx is locked with a password: such a file is an OLE compound file (its first 8 bytes
+ * D0 CF 11 E0 A1 B1 1A E1) where the format is a zip. Its app would ask for the password in a dialog inside Open,
+ * and in the Windows VM every Office call would wait behind it.
+ */
+export function isPasswordLocked(path: string): boolean {
+  const fd = openSync(path, 'r')
+  try {
+    const head = Buffer.alloc(8)
+    return readSync(fd, head, 0, 8, 0) === 8 && head.equals(CFB)
+  } finally {
+    closeSync(fd)
+  }
 }
 
 /** What the app said of what it drew: a PDF's pages as the app counts them, a picture's size, a video's length. */

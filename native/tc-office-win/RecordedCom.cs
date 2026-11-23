@@ -8,7 +8,7 @@
 // DateTime in local time; an unknown member as DISP_E_UNKNOWNNAME; a missing sheet as DISP_E_BADINDEX;
 // a closed app as MK_E_UNAVAILABLE; a busy app as RPC_E_CALL_REJECTED; Outlook's object model guard as
 // E_ABORT; Excel's SheetChange event, raised for writes made through it as well as for typing.
-// Test verbs (`_seed`, `_type`, `_busy`, `_state`) set it up and read what reached it.
+// Test verbs (`_seed`, `_type`, `_busy`, `_fail`, `_orphan`, `_state`) set it up and read what reached it.
 
 using System;
 using System.Collections;
@@ -521,6 +521,7 @@ public class RecordedCom : ICom {
     powerpoint = new Obj("PowerPoint.Application").Prop("Version", () => "16.0").Prop("Visible", () => visible["powerpoint"] ? -1 : 0)
       .Prop("Presentations", () => Collection<PDeck>("Presentations", () => decks, DeckObj, (p, n) => p.Key == n || p.Name == n).Fn("Open", RenderDeck))
       .Put("AutomationSecurity", v => renders.Add(Office.Obj("set", "powerpoint.AutomationSecurity", "value", v)))
+      .Prop("DisplayAlerts", () => 2).Put("DisplayAlerts", v => renders.Add(Office.Obj("set", "powerpoint.DisplayAlerts", "value", v)))
       .Fn("Quit", a => { Quit("powerpoint"); return null; });
     outlook = new Obj("Outlook.Application").Prop("Version", () => "16.0.0.0")
       .Prop("Explorers", () => new Obj("Explorers").Prop("Count", () => visible["outlook"] ? 1 : 0)).Prop("Inspectors", () => new Obj("Inspectors").Prop("Count", () => 0))
@@ -535,7 +536,27 @@ public class RecordedCom : ICom {
   // What the render verbs reach: a copy opened from the helper's own job folder, its app's own export, the copy
   // closed, and an app of the helper's own quit. An export writes a small file that says what was asked
   // ("recorded pdf word pages=3 input=1234"), so a test reads what reached Office from the file that came back.
-  int renderPages = 3, renderSlides = 12;
+  int renderPages = 3, renderSlides = 12, renderHidden = 0;
+  // A process per running app: its id, and a generation that a new start changes (its identity, as a start time is).
+  readonly Dictionary<string, int> pidOf = new Dictionary<string, int>(), generation = new Dictionary<string, int>();
+  int nextPid = 7000;
+  int PidOf(string app) { if (!pidOf.ContainsKey(app)) { pidOf[app] = nextPid++; generation[app] = 1; } return pidOf[app]; }
+  void NewProcess(string app) { pidOf[app] = nextPid++; generation[app] = generation.ContainsKey(app) ? generation[app] + 1 : 1; }
+  static string ProcOf(string app) { return app == "excel" ? "EXCEL" : app == "word" ? "WINWORD" : app == "powerpoint" ? "POWERPNT" : "OUTLOOK"; }
+
+  public List<int> Pids(string proc) {
+    var app = AppOfProc(proc);
+    return installed[app] && running[app] ? new List<int> { PidOf(app) } : new List<int>();
+  }
+  public string Identity(int pid) {
+    foreach (var app in new[] { "excel", "word", "powerpoint", "outlook" })
+      if (installed[app] && running[app] && PidOf(app) == pid) return ProcOf(app) + "|" + generation[app];
+    return null;
+  }
+  public void Kill(int pid) {
+    foreach (var app in new[] { "excel", "word", "powerpoint", "outlook" })
+      if (running[app] && PidOf(app) == pid) { renders.Add(Office.Obj("killed", app)); running[app] = false; visible[app] = true; createdHidden.Remove(app); }
+  }
   double slideWidth = 960, slideHeight = 540;
   List<object[]> renderSheets = new List<object[]>();
   string renderVideo = "done";
@@ -547,6 +568,7 @@ public class RecordedCom : ICom {
     var r = s.ContainsKey("render") ? (Dictionary<string, object>)s["render"] : new Dictionary<string, object>();
     renderPages = r.ContainsKey("pages") ? Convert.ToInt32(r["pages"]) : 3;
     renderSlides = r.ContainsKey("slides") ? Convert.ToInt32(r["slides"]) : 12;
+    renderHidden = r.ContainsKey("hidden") ? Convert.ToInt32(r["hidden"]) : 0;
     slideWidth = r.ContainsKey("slideWidth") ? Convert.ToDouble(r["slideWidth"]) : 960;
     slideHeight = r.ContainsKey("slideHeight") ? Convert.ToDouble(r["slideHeight"]) : 540;
     renderVideo = r.ContainsKey("video") ? (string)r["video"] : "done";
@@ -561,7 +583,7 @@ public class RecordedCom : ICom {
     calls.Add("create " + app);
     if (!installed[app]) throw Err(unchecked((int)0x80040154), "Class not registered (Exception from HRESULT: 0x80040154 (REGDB_E_CLASSNOTREG))");
     renders.Add(Office.Obj("created", app));
-    if (!running[app]) { running[app] = true; visible[app] = false; createdHidden[app] = true; }
+    if (!running[app]) { running[app] = true; visible[app] = false; createdHidden[app] = true; NewProcess(app); }
     return Active2(app);
   }
 
@@ -611,7 +633,7 @@ public class RecordedCom : ICom {
     renders.Add(me);
     var statuses = new Queue<int>(renderVideo == "fail" ? new[] { 1, 4 } : new[] { 2, 1, 1, 3 });
     object videoAt = null; string video = null;
-    Func<int, Obj> slide = n => new Obj("Slide").Fn("Export", x => {
+    Func<int, Obj> slide = n => new Obj("Slide").Prop("SlideShowTransition", () => new Obj("SlideShowTransition").Prop("Hidden", () => n <= renderHidden ? -1 : 0)).Fn("Export", x => {
       if ((string)x[1] != "PNG") throw Err(E_UNKNOWN, "only PNG here");
       Wrote(x[0], "recorded png slide=" + n + " " + Convert.ToInt32(x[2]) + "x" + Convert.ToInt32(x[3]) + " input=" + input);
       return null;
@@ -646,6 +668,13 @@ public class RecordedCom : ICom {
     switch (verb) {
       case "_seed": Seed(a); return null;
       case "_busy": busy = Convert.ToInt32(a["calls"]); return null;
+      case "_orphan": {
+        // A render's app left by a helper that was stopped mid-job: started hidden, and in the file of what was started.
+        var app = (string)a["app"];
+        running[app] = true; visible[app] = false; createdHidden[app] = true; NewProcess(app);
+        Render.Remember(PidOf(app), Identity(PidOf(app)));
+        return null;
+      }
       case "_fail": failMember = (string)a["member"]; failCode = (int)Convert.ToUInt32((string)a["hresult"], 16); return null;
       case "_type": {
         // Someone typed in Excel: the cell changes and SheetChange fires, as it would for him.

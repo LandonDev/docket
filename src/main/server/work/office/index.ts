@@ -18,7 +18,7 @@ import { officeTool, runHere, type Env } from './tools'
 import { dropCopies, dropItemCopies, filesHandle, type FilesDeps } from './files/handle'
 import { missingLibraries, readVmBehind, storedStatus } from './vm/files'
 import { stopVmOffice, vmAllowed, vmAwake, vmHasOffice, vmHereOf, vmState } from './vm/office'
-import { onWinvmState } from '../winvm'
+import { onWinvmState, winvmKeeper } from '../winvm'
 import { ensureFilesTables, librariesOf, libraryOf, setCopyAllowed } from './files/library'
 import { teamsTools } from './files/tools'
 import { officeProbe, officeRows } from './health'
@@ -98,7 +98,8 @@ const renderDeps: RenderDeps = {
   vm: {
     state: vmState,
     office: () => (started ? (storedStatus(started.db)?.status.office ?? null) : null),
-    wake: vmAwake
+    wake: vmAwake,
+    touch: () => winvmKeeper()?.touch()
   },
   log: (line) => started?.log(line)
 }

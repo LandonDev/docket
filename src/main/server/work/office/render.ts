@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import type { Readiness } from '@shared/contract-work-formats'
 import { NoConverterError, NotReadyError, pressed, type Converter } from '../formats/jobs'
-import { OfficeError, type OfficeCarrier, type RenderApp, type RenderAsk, type RenderDone } from './carrier'
+import { isPasswordLocked, lockedWords, OfficeError, type OfficeCarrier, type RenderApp, type RenderAsk, type RenderDone } from './carrier'
 
 /**
  * Office as a renderer (docs/agents/work-office.md "Office as a renderer"): five converters the office pillar
@@ -57,7 +57,10 @@ export const RENDER_WORDS = {
   notOpen: (app: RenderApp, place: RenderPlace) => `${SHORT[app]} is not open on ${WHERE[place]}.`,
   asleep: () => 'Windows is asleep, and only his own press wakes it.',
   busy: (app: RenderApp) => `${SHORT[app]} is busy with a dialog: try again once it is closed.`,
-  none: (app: RenderApp) => `No ${SHORT[app]} is in reach.`
+  /** the VM's app is hidden, so nobody can close its dialog: the helper there has been ended, and a new one starts */
+  stalled: (app: RenderApp) => `${SHORT[app]} in the Windows VM stopped answering: try again in a minute.`,
+  none: (app: RenderApp) => `No ${SHORT[app]} is in reach.`,
+  locked: lockedWords
 }
 
 /** The switches each pair takes; anything else is ignored, and a wrong value is refused in words. */
@@ -89,7 +92,11 @@ export interface RenderDeps {
     office(): { installed: boolean; licensed: boolean | null } | null
     /** wakes it and makes the helper ready: only for a job he pressed for */
     wake(): Promise<void>
+    /** marks the VM in use now (the keeper's idle clock); never wakes it */
+    touch?(): void
   }
+  /** how often a running render marks the VM in use (TOUCH_MS) */
+  touchMs?: number
   proven?: Record<RenderPlace, ReadonlySet<string>>
   log?: (line: string) => void
 }
@@ -117,12 +124,21 @@ export async function renderReadiness(pair: RenderPair, deps: RenderDeps): Promi
   return app.running ? 'ready' : 'not open'
 }
 
-/** A carrier's refusal as the runner's kinds, in a person's words: shut is `not open`, missing is `none`, a dialog is busy. */
+/** A running render marks the VM in use this often: the keeper's shortest sleep is 15 minutes. */
+export const TOUCH_MS = 60_000
+
+/**
+ * A carrier's refusal as the runner's kinds, in a person's words: shut is `not open`, missing is `none`, a dialog is
+ * busy. The VM never says `not open` (a render may start its app there): an app there that does not answer is busy.
+ */
 function refusal(err: unknown, pair: RenderPair, place: RenderPlace): unknown {
   if (!(err instanceof OfficeError)) return err
+  const stalled = /did not answer .* within|tc-office (was )?stopped/.test(err.message)
+  if (place === 'vm' && (stalled || err.code === 'busy' || err.code === 'not-running')) return new OfficeError(stalled ? RENDER_WORDS.stalled(pair.app) : RENDER_WORDS.busy(pair.app), 'busy')
   if (err.code === 'not-running') return new NotReadyError('not open', RENDER_WORDS.notOpen(pair.app, place))
-  if (err.code === 'not-installed') return new NoConverterError(`${RENDER_WORDS.none(pair.app)} ${err.message}`)
-  if (err.code === 'busy' || /did not answer .* within/.test(err.message)) return new OfficeError(RENDER_WORDS.busy(pair.app), 'busy')
+  // The carrier's own reason when it already says it in these words, else the short line: never the line twice.
+  if (err.code === 'not-installed') return new NoConverterError(err.message.startsWith(RENDER_WORDS.none(pair.app).slice(0, -1)) ? err.message : RENDER_WORDS.none(pair.app))
+  if (err.code === 'busy' || stalled) return new OfficeError(RENDER_WORDS.busy(pair.app), 'busy')
   return err
 }
 
@@ -136,6 +152,8 @@ export function renderConverter(pair: RenderPair, deps: RenderDeps): Converter {
       const place = deps.place()
       if (!place || !(deps.proven ?? RENDER_PROVEN)[place].has(pairName(pair))) throw new NoConverterError(RENDER_WORDS.none(pair.app))
       const options = renderOptions(pair, job.options)
+      // A password-locked file never reaches an app, on any carrier: refused before the VM wakes or the copy is sent.
+      if (isPasswordLocked(job.input)) throw new OfficeError(lockedWords(pair.app), 'refused')
       if (place === 'vm') {
         const state = vmReadiness(deps)
         if (state === 'none') throw new NoConverterError(RENDER_WORDS.none(pair.app))
@@ -151,10 +169,16 @@ export function renderConverter(pair: RenderPair, deps: RenderDeps): Converter {
       const input = join(run.tmp, `input.${pair.from}`)
       copyFileSync(job.input, input)
       let done: RenderDone
+      // A render is use of the VM for as long as it runs, so its idle sleep cannot cut a long video short.
+      const touch = place === 'vm' ? deps.vm?.touch : undefined
+      touch?.()
+      const timer = touch ? setInterval(touch, deps.touchMs ?? TOUCH_MS) : null
       try {
         done = await carrier.render({ app: pair.app, to: pair.out, input, output: job.output, start: place === 'vm', signal: run.signal, ...options })
       } catch (err) {
         throw refusal(err, pair, place)
+      } finally {
+        if (timer) clearInterval(timer)
       }
       deps.log?.(`office rendered ${pairName(pair)} on ${WHERE[place]}: ${JSON.stringify(done)}`)
       return {}

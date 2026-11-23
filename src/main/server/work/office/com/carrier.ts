@@ -1,9 +1,9 @@
-import { closeSync, openSync, readSync, writeSync } from 'node:fs'
+import { closeSync, openSync, readSync, renameSync, rmSync, writeSync } from 'node:fs'
 import { extname } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { OFFICE_APPS, type OfficeAllowed, type OfficeApp, type OfficeAppState, type OfficeCell } from '@shared/contract-work-office'
 import { errorText } from '@shared/work/ids'
-import { OfficeError, type OfficeCarrier, type RenderAsk, type RenderDone } from '../carrier'
+import { isPasswordLocked, lockedWords, OfficeError, type OfficeCarrier, type RenderAsk, type RenderDone } from '../carrier'
 import { spawnHelper } from './helper'
 
 /**
@@ -12,7 +12,8 @@ import { spawnHelper } from './helper'
  * PowerPoint and classic Outlook by COM in his own session (helper.ts,
  * native/tc-office-win/TcOffice.cs). One JSON object per line each way; one
  * helper for the app's life, started on the first call and again after it
- * stops. Like the Mac's, it drives only the apps he started, save `open`.
+ * stops. Like the Mac's, it drives only the apps he started, save `open` and a render in the Windows VM (which
+ * may start one hidden, render.ts).
  *
  * Excel tells the helper of every change he makes in a sheet (SheetChange,
  * with its range) and of a co-author's edits merged into a workbook
@@ -271,7 +272,11 @@ export function comCarrier(deps: ComDeps = {}): ComCarrier {
       if (ask.signal?.aborted) throw new OfficeError('cancelled')
     }
     stopped()
+    // Never sent: its app would ask for the password in a dialog, and every Office call there would wait behind it.
+    if (isPasswordLocked(ask.input)) throw new OfficeError(lockedWords(ask.app), 'refused')
     const { job } = await call<{ job: string }>('render.begin', { app: ask.app, ext: extname(ask.input).slice(1).toLowerCase() }, ask.app)
+    // After a stall the helper is gone or stuck: a render.end would only wait behind it, and a new helper knows no job.
+    let stalled = false
     try {
       const fd = openSync(ask.input, 'r')
       try {
@@ -293,22 +298,33 @@ export function comCarrier(deps: ComDeps = {}): ComCarrier {
         { timeoutMs: RENDER_TIMEOUT_MS }
       )
       allowedSeen.set(ask.app, 'yes')
-      const out = openSync(ask.output, 'w')
+      // Written beside the output and renamed whole: a read that fails midway leaves no part of a file where it was asked.
+      const part = `${ask.output}.part`
+      const out = openSync(part, 'w')
       try {
-        for (let offset = 0; offset < bytes; ) {
-          stopped()
-          const got = await link.call<{ data: string; size: number }>('render.get', { job, offset, length: RENDER_CHUNK })
-          const chunk = Buffer.from(got.data, 'base64')
-          if (!chunk.length) throw new OfficeError(`tc-office sent ${offset} of the ${bytes} bytes it rendered.`)
-          writeSync(out, chunk)
-          offset += chunk.length
+        try {
+          for (let offset = 0; offset < bytes; ) {
+            stopped()
+            const got = await link.call<{ data: string; size: number }>('render.get', { job, offset, length: RENDER_CHUNK })
+            const chunk = Buffer.from(got.data, 'base64')
+            if (!chunk.length) throw new OfficeError(`tc-office sent ${offset} of the ${bytes} bytes it rendered.`)
+            writeSync(out, chunk)
+            offset += chunk.length
+          }
+        } finally {
+          closeSync(out)
         }
-      } finally {
-        closeSync(out)
+        renameSync(part, ask.output)
+      } catch (err) {
+        rmSync(part, { force: true })
+        throw err
       }
       return done
+    } catch (err) {
+      stalled = err instanceof OfficeError && /did not answer|tc-office (was )?stopped/.test(err.message)
+      throw err
     } finally {
-      await link.call('render.end', { job }).catch(() => undefined)
+      if (!stalled) await link.call('render.end', { job }).catch(() => undefined)
     }
   }
   return {

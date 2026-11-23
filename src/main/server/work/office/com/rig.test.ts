@@ -499,6 +499,58 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect((await state()).renders.some((r) => r.quit)).toBe(false)
     }, 60_000)
 
+    it('the helper refuses a password-locked copy itself, before any app, whoever sent it', async () => {
+      await seed({ apps: { word: { running: false } } })
+      const { job } = await carrier.call<{ job: string }>('render.begin', { app: 'word', ext: 'docx' })
+      await carrier.call('render.put', { job, offset: 0, data: Buffer.concat([Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), Buffer.alloc(64)]).toString('base64') })
+      await expect(carrier.call('render.run', { job, to: 'pdf', start: true })).rejects.toMatchObject({ code: 'refused', message: 'This file is locked with a password; open it in Word to check it.' })
+      await carrier.call('render.end', { job })
+      const { renders, running } = await state()
+      expect(renders).toEqual([])
+      expect(running).not.toContain('word')
+    }, 60_000)
+
+    it('an app it started is ended when Quit does not end it, and nothing of a job outlives it', async () => {
+      await seed({ apps: { word: { running: false } } })
+      await carrier.call('_fail', { member: 'Quit', hresult: '80010001' })
+      await carrier.render({ app: 'word', to: 'pdf', input: copy('input.docx'), output: out('o.pdf'), start: true })
+      const { renders, running } = await state()
+      expect(renders[0]).toEqual({ created: 'word' })
+      expect(renders).toContainEqual({ set: 'word.DisplayAlerts', value: 0 })
+      expect(renders.at(-1)).toEqual({ killed: 'word' })
+      expect(running).not.toContain('word')
+    }, 60_000)
+
+    it('an app a stopped helper left is ended at the next render.begin; one it did not start never is', async () => {
+      await seed({ apps: { excel: { running: false } } })
+      await carrier.call('_orphan', { app: 'excel' })
+      expect((await state()).running).toContain('excel')
+      await carrier.render({ app: 'word', to: 'pdf', input: copy('input.docx'), output: out('o.pdf') })
+      const { renders, running } = await state()
+      expect(renders[0]).toEqual({ killed: 'excel' })
+      expect(running).not.toContain('excel')
+      // his Word, which the job used, is still running
+      expect(running).toContain('word')
+    }, 60_000)
+
+    it('with start, Word is an instance of its own with alerts off; a PowerPoint it starts gets ppAlertsNone too', async () => {
+      await seed({ apps: { powerpoint: { running: false } } })
+      await carrier.render({ app: 'word', to: 'pdf', input: copy('input.docx'), output: out('o.pdf'), start: true })
+      await carrier.render({ app: 'powerpoint', to: 'pdf', input: copy('input.pptx'), output: out('p.pdf'), start: true })
+      const { renders } = await state()
+      expect(renders.filter((r) => r.created)).toEqual([{ created: 'word' }, { created: 'powerpoint' }])
+      expect(renders).toContainEqual({ set: 'word.DisplayAlerts', value: 0 })
+      expect(renders).toContainEqual({ set: 'powerpoint.DisplayAlerts', value: 1 })
+    }, 60_000)
+
+    it('a video counts only the slides it shows, and refuses one past 30 minutes before it starts', async () => {
+      await seed({ render: { slides: 12, hidden: 2 } })
+      expect(await carrier.render({ app: 'powerpoint', to: 'mp4', input: copy('input.pptx'), output: out('v.mp4'), seconds: 3 })).toEqual({ seconds: 30, height: 720 })
+      await seed({ render: { slides: 40 } })
+      await expect(carrier.render({ app: 'powerpoint', to: 'mp4', input: copy('input.pptx'), output: out('w.mp4'), seconds: 60 })).rejects.toMatchObject({ message: 'That video would run 40 minutes: Office draws one of at most 30 minutes here.' })
+      expect((await state()).renders.some((r) => r.video)).toBe(false)
+    }, 60_000)
+
     it('a dialog in the app is busy, in its name; no Word at all is "No Word is in reach"', async () => {
       await seed()
       await carrier.call('_busy', { calls: 1 })

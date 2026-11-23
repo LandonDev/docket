@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:f
 import { homedir } from 'node:os'
 import { extname, join } from 'node:path'
 import { OFFICE_APPS, type OfficeAllowed, type OfficeApp, type OfficeCell } from '@shared/contract-work-office'
-import { APP_NAMES, OfficeError, type OfficeCarrier, type RenderApp, type RenderAsk, type RenderDone } from './carrier'
+import { APP_NAMES, isPasswordLocked, lockedWords, OfficeError, type OfficeCarrier, type RenderApp, type RenderAsk, type RenderDone } from './carrier'
 import { OSA_TIMEOUT_MS, OsaTimeout, runOsa, type Osa } from './osa'
 
 /**
@@ -331,6 +331,7 @@ export function macCarrier(deps: MacDeps = {}): OfficeCarrier {
   const render = async (ask: RenderAsk): Promise<RenderDone> => {
     if (!installed(ask.app)) throw new OfficeError(`No ${APP_NAMES[ask.app]} is in reach: it is not installed on this Mac.`, 'not-installed')
     if (!(await running(ask.app))) throw new OfficeError(`${APP_NAMES[ask.app].replace('Microsoft ', '')} is not open on this Mac.`, 'not-running')
+    if (isPasswordLocked(ask.input)) throw new OfficeError(lockedWords(ask.app), 'refused')
     const dir = join(renderFolder(deps.home ?? homedir(), ask.app), randomBytes(8).toString('hex'))
     mkdirSync(dir, { recursive: true })
     try {
