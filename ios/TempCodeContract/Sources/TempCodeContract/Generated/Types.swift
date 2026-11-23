@@ -619,6 +619,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case routines
             case rules
             case mail
+            case messages
             case tasks
             case agenda
             case docs
@@ -658,6 +659,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case "routines": self = .routines
                 case "rules": self = .rules
                 case "mail": self = .mail
+                case "messages": self = .messages
                 case "tasks": self = .tasks
                 case "agenda": self = .agenda
                 case "docs": self = .docs
@@ -698,6 +700,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case .routines: "routines"
                 case .rules: "rules"
                 case .mail: "mail"
+                case .messages: "messages"
                 case .tasks: "tasks"
                 case .agenda: "agenda"
                 case .docs: "docs"
@@ -753,7 +756,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             let container = try decoder.singleValueContainer()
             if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events", "projects", "people", "chats"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }
             if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "item", let value = try? container.decode(RefCase2.self) { self = .object2(value); return }
-            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "work", ["outbox", "canvas", "lifeos", "routines", "rules", "mail", "tasks", "agenda", "docs", "history", "formats", "sheets", "office", "google", "guests", "pdf", "slides", "media", "frameio", "meetings", "forms", "dashboards", "browser", "projects", "winvm", "capture", "files", "prep", "money", "search", "review", "clashes", "templates", "digest"].contains(probe["pillar"]?.stringValue ?? ""), let value = try? container.decode(RefCase3.self) { self = .object3(value); return }
+            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "work", ["outbox", "canvas", "lifeos", "routines", "rules", "mail", "messages", "tasks", "agenda", "docs", "history", "formats", "sheets", "office", "google", "guests", "pdf", "slides", "media", "frameio", "meetings", "forms", "dashboards", "browser", "projects", "winvm", "capture", "files", "prep", "money", "search", "review", "clashes", "templates", "digest"].contains(probe["pillar"]?.stringValue ?? ""), let value = try? container.decode(RefCase3.self) { self = .object3(value); return }
             if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
             self = .unknown(try container.decode(JSONValue.self))
         }
@@ -5029,6 +5032,7 @@ public struct WorkResult: Codable, Hashable, Sendable {
             case routines
             case rules
             case mail
+            case messages
             case tasks
             case agenda
             case docs
@@ -5068,6 +5072,7 @@ public struct WorkResult: Codable, Hashable, Sendable {
                 case "routines": self = .routines
                 case "rules": self = .rules
                 case "mail": self = .mail
+                case "messages": self = .messages
                 case "tasks": self = .tasks
                 case "agenda": self = .agenda
                 case "docs": self = .docs
@@ -5108,6 +5113,7 @@ public struct WorkResult: Codable, Hashable, Sendable {
                 case .routines: "routines"
                 case .rules: "rules"
                 case .mail: "mail"
+                case .messages: "messages"
                 case .tasks: "tasks"
                 case .agenda: "agenda"
                 case .docs: "docs"
