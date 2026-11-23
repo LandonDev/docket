@@ -214,6 +214,11 @@ try {
       await sleep(2500)
       // The file opens ready to type in: its own words are on screen in the Files tab, not an empty page.
       if (tile === 'Game report') run.check('the made document shows its words in the Files tab', await run.until('the document draws', 45_000, () => run.has('Unusual situations')), await run.page<string>(`(document.querySelector('[data-canvas-body], main')?.textContent ?? document.body.textContent).slice(0, 300)`))
+      // And they stay: a page that draws its words and then loses them has emptied the document it was made into.
+      if (tile === 'Game report') {
+        await sleep(10_000)
+        run.check('and still shows them ten seconds on', await run.has('Unusual situations'))
+      }
       const tabs = await run.call<{ tabs: { kind: string; name: string }[] }>('work.files.tabs', { workspaceId: ws.id })
       run.check('the made file is open in a Files tab of the workspace', tabs.tabs.some((t) => t.kind === 'file' && t.name.includes('Window 1')), tabs.tabs.map((t) => `${t.kind}:${t.name}`).join(', '))
       await run.shot('08-made')

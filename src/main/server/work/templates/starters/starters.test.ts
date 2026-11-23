@@ -219,17 +219,13 @@ describe('the starter sheets', () => {
 })
 
 describe('the starters, round two of the council', () => {
-  it.each(docxFiles)('%s: the page header prints from page two on, the footer on every page', (file) => {
+  it.each(docxFiles)('%s: the page header and footer print from page two on, with nothing our reader cannot keep', (file) => {
     const doc = partOf(file, 'word/document.xml')
-    if (!doc.includes('<w:headerReference w:type="default"')) return
+    expect(doc).toMatch(/<w:(header|footer)Reference w:type="default"/)
     expect(doc).toContain('<w:titlePg/>')
-    const rels = partOf(file, 'word/_rels/document.xml.rels')
-    const target = (id: string): string => new RegExp(`Id="${id}"[^>]*Target="([^"]+)"`).exec(rels)![1]!
-    const ref = (type: string, kind: 'header' | 'footer'): string | undefined => new RegExp(`<w:${kind}Reference w:type="${type}" r:id="([^"]+)"/>`).exec(doc)?.[1]
-    const first = partOf(file, `word/${target(ref('first', 'header')!)}`)
-    expect(first.replace(/<[^>]+>/g, '')).toBe('')
-    const footer = ref('default', 'footer')
-    if (footer) expect(partOf(file, `word/${target(ref('first', 'footer')!)}`)).toBe(partOf(file, `word/${target(footer)}`))
+    // No header or footer of the first page's own: Word leaves that page's blank, and the app's reader counts one as lost.
+    expect(doc).not.toMatch(/<w:(header|footer)Reference w:type="(first|even)"/)
+    expect(readDocx(bytesOf(file)).sidecar.dropped).toEqual({})
   })
 
   it.each(docxFiles)('%s: a quoted word wears typographic quotes', (file) => {

@@ -246,42 +246,18 @@ export function themeDocx(bytes: Uint8Array): Uint8Array {
   return makeZip(headerFromPageTwo(files))
 }
 
-const HEADER_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml'
-const FOOTER_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml'
-const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-
 /**
- * The page header prints from page two on, as the sheets' does: page one's
- * title says it already, and a one-page document has none. Word's way is a
- * first page of its own (`w:titlePg`) with an empty header of its own; the
- * footer (the page's number) is copied to that first page, so it still
- * prints on every page.
+ * The page header and footer print from page two on, as the sheets' header
+ * does: page one's title says it already, and a one-page document has
+ * neither. Word's way is a first page of its own (`w:titlePg`); with no
+ * header or footer named for it, that page's are blank. None is named
+ * because our own reader keeps the setting and counts a first page's own
+ * header as something it could not keep.
  */
 export function headerFromPageTwo(files: Record<string, Uint8Array | string>): Record<string, Uint8Array | string> {
-  const text = (name: string): string | null => {
-    const part = files[name]
-    return part === undefined ? null : typeof part === 'string' ? part : new TextDecoder().decode(part)
-  }
-  const doc = text('word/document.xml')
-  const header = text('word/header1.xml')
-  const footer = text('word/footer1.xml')
-  const rels = text('word/_rels/document.xml.rels')
-  const types = text('[Content_Types].xml')
-  if (!doc || !header || !rels || !types || !doc.includes('<w:headerReference w:type="default"')) return files
-  const out = { ...files }
-  out['word/header2.xml'] = header.replace(/(<w:hdr\b[^>]*>)[\s\S]*(<\/w:hdr>)/, '$1<w:p/>$2')
-  let firstRefs = '<w:headerReference w:type="first" r:id="rIdFirstHeader"/>'
-  let newRels = `<Relationship Id="rIdFirstHeader" Type="${REL}/header" Target="header2.xml"/>`
-  let newTypes = `<Override PartName="/word/header2.xml" ContentType="${HEADER_TYPE}"/>`
-  if (footer) {
-    out['word/footer2.xml'] = footer
-    firstRefs += '<w:footerReference w:type="first" r:id="rIdFirstFooter"/>'
-    newRels += `<Relationship Id="rIdFirstFooter" Type="${REL}/footer" Target="footer2.xml"/>`
-    newTypes += `<Override PartName="/word/footer2.xml" ContentType="${FOOTER_TYPE}"/>`
-  }
-  out['word/_rels/document.xml.rels'] = rels.replace('</Relationships>', `${newRels}</Relationships>`)
-  out['[Content_Types].xml'] = types.replace('</Types>', `${newTypes}</Types>`)
-  // References come first in a section's properties; `w:titlePg` stands before `w:docGrid`.
-  out['word/document.xml'] = doc.replace(/<w:sectPr>/, `<w:sectPr>${firstRefs}`).replace(/(<w:docGrid\b)/, '<w:titlePg/>$1')
-  return out
+  const part = files['word/document.xml']
+  const doc = part === undefined ? null : typeof part === 'string' ? part : new TextDecoder().decode(part)
+  if (!doc || !/<w:(header|footer)Reference w:type="default"/.test(doc)) return files
+  // `w:titlePg` stands before `w:docGrid` in a section's properties.
+  return { ...files, 'word/document.xml': doc.replace(/(<w:docGrid\b)/, '<w:titlePg/>$1') }
 }
