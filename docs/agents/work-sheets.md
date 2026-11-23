@@ -49,6 +49,46 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   `fullCalcOnLoad`, so Excel recalculates on open. A package whose
   `styles.xml` has no `<fonts>` is saved without IronCalc (0.9.1 panics on
   it). A 1904 file gets date-formatted numbers moved back by 1,462 days.
+- **The format writer** (`patch/format.ts` and its parts, `patchFormat`):
+  formatting as part-local edits. A cell's style is a new or reused record in
+  `styles.xml` (font, fill, border, number format, alignment) and the cell's
+  `s`, its value and type untouched; a column's width, a row's height he
+  set, a merge made or parted are edits to the sheet part alone. A named
+  cell style is named to the file by Excel's `builtinId` (`namedOnly`: the
+  cell's `xfId`), with the look the grid drew written as the cell's own. A
+  family or a size given back takes the workbook's default font's. A row
+  told to fit what it holds loses its own height in the file, and Excel
+  fits it on open. A style the grid names by its own id is sent by the
+  canvas as the style itself (the file's ids are not the grid's).
+  `formats.ts` turns the grid's mutations into these edits in the worker:
+  each key of a style change is the one field that says the same thing, a
+  theme colour its slot and tint, cells with the same change gathered into
+  rectangles.
+- **How a save is made** (`jobs.ts` `savePackage`; the report's `path`),
+  the lightest way that is safe:
+  - `format`: formatting alone reads no cell's value: the format writer, no
+    workbook model, no engine. In a workbook that calls `CELL` anywhere (it
+    reads a number format, an alignment, a column's width), any format edit
+    asks Excel to calculate again on load.
+  - `independent`: typed values no formula reads are patched in with no
+    engine and no word to Excel to recalculate. `patch/depends.ts` shows it
+    from the formulas' own text: every reference with its sheet, whole rows
+    and columns, a shared formula's followers (its master's references
+    grown by the shared range), defined names through the names they use,
+    and a structured reference as its whole table. What the text cannot
+    show answers a reason and the save takes the engine: a formula edit;
+    INDIRECT, OFFSET, CELL, INFO, GETPIVOTDATA, RTD, PY and the CUBE
+    functions anywhere in the workbook; SUMIF, AVERAGEIF and LOOKUP (they
+    read past the range they are given); a call to anything that is not one
+    of Excel's own functions (`patch/functions.ts`; a LAMBDA name is read
+    through to the cells it names); a range built with `:` from anything
+    but two plain references; a span of sheets; a what-if table; an edit
+    anywhere in an array's range; a cleared cell on a sheet with a blocked
+    spill; a name with a relative reference, or one the proof cannot find;
+    a workbook with macros, a macro sheet or a dialog sheet.
+  - `engine`: everything else, as before: IronCalc recalculates the
+    dependents and the audit compares it with what the file stores.
+    `plain` is the same on a host with no IronCalc.
 - **Revisions**: each saved edit is a row of `work_sheets_ops` (the
   mutations, who, when, a label) and a copy of the package under
   `<userData>/sheets/files/<hash of the path>/<rev>.xlsx`; the copy as first
@@ -56,10 +96,53 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   not make is a revision of its own (`by: 'file'`), and the grids reload.
   Restore puts a kept copy back byte for byte as a new revision.
 - **What a package saves**: cell contents (the patch writer, fills
-  included: the canvas sends each filled cell's formula text) and
-  structural edits (below). Formatting, moved cells and rich text are not
-  saved: the canvas keeps them out and says so once (`forPackage`,
-  sync.ts); the host refuses them with a sentence (`NotSaved`).
+  included: the canvas sends each filled cell's formula text), formatting
+  (the format writer: everything the format row sets, a column's width, a
+  row's height he set, a merge) and structural edits (below). One edit may
+  carry all three; it is one revision, labelled "Formatting" when no cell's
+  contents changed. A cell that only takes a style keeps what it held, so a
+  suggestion waiting on it still stands.
+- **What it cannot keep yet is stopped as he makes it** (`forPackage` and
+  `stop`, sync.ts): moved cells (a drag of a range, a row or a column),
+  text with more than one style in a cell, a cell given only a type, and any
+  change with no saved form (a hidden row, a frozen pane). What he does in
+  one turn is taken together (the grid's commands counted, their mutations
+  gathered): when a part of it cannot be kept, none of it is sent, the grid
+  takes it back with its own undo, and a toast says why in a few words
+  ("Moving cells is not saved in an Excel file yet. Cut and paste them
+  instead"). One command is one undo; a turn that ran several, or
+  mutations that came with no command of their own, is undone and the book
+  then read again from the file, so the grid is the file whatever the undo
+  left. No line stands over the grid about it. The host refuses the same
+  kinds in the same words (`UNSAVED`, mutations.ts), for a caller that is
+  not the canvas. A workbook Excel or Google holds keeps cell contents
+  only: a pasted cell's style is left out, and a width or a merge is
+  stopped in that store's words.
+- **What only the host can know is still said after the press**: a cell
+  locked on a protected sheet, a merge over a table or part of an array, a
+  row inserted where no host of his can run LibreOffice. The save is
+  refused whole, the grid says "Couldn't save" with the host's sentence and
+  Reload, and Reload makes the grid the file again. Nothing is lost
+  silently, but he made the change before he was told.
+- **What a save writes beside the file**: one `.<uuid>.tcsave` temporary,
+  the new package, renamed over the file (or removed when the save fails).
+  Every format press is a save, so it appears and goes with each. In a
+  OneDrive or Teams library that temporary is seen by the sync client for
+  that moment. Files' `saveFile` door (files/save.ts) takes a file's bytes
+  and writes them where the place wants; the package store does not hand
+  its bytes to it yet.
+- **A renamed file** takes what is kept by its path with it (`moved.ts`,
+  Files' `registerFileMoved`, inside the rename's own savepoint): the
+  revision row and op log, the kept copies' folder, the suggestions, mode,
+  written line and charts keyed `file:<path>` or `tcsheet:<path>`, a
+  `.tcsheet`'s waiting suggestions in the service's folder, and the sheet a
+  `.csv` opens as.
+- **The saved line** (`shell.saved`, `savedLine` in model.ts) is said for
+  every sheet: "saving" while his edits wait or are on their way, "saved"
+  with the time of his last edit, a refusal in the host's words with its
+  press (Reload on an opened Excel file, whose grid no longer matches it;
+  Retry elsewhere, where the edits wait), and why a file cannot be changed
+  here. Edits are sent as he makes them and flushed when the body goes.
 
 ## Structural edits
 
@@ -217,12 +300,12 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   bars over a range, made from a selection through More.
 - The format row (docs/DESIGN.md "Work editors: The format row"; work-kit's
   `SheetToolbar` on `src/format`) is the Body's first row, above the formula
-  bar, on a sheet the service holds: a LifeOS sheet and a `.tcsheet`. A
+  bar, on a LifeOS sheet, a `.tcsheet` and an opened Excel file. A
   control ships only where its change survives, and the host says which:
   `SheetView.row` is `SHEET_ROW[store]` (contract-work-sheets.ts), every
-  control for `lifeos` and `tcsheet`, none for `package` and `csv`, and the
-  Body draws exactly that list (no row when it is empty or the sheet is
-  read only). The controls: undo and redo, cell style (with Clear
+  control for `lifeos`, `tcsheet` and an opened Excel file (`package`), none
+  for `csv` nor for a workbook Excel or Google holds, and the Body draws
+  exactly that list (no row when it is empty or the sheet is read only). The controls: undo and redo, cell style (with Clear
   formatting), font, size, bold, italic, underline, text colour, fill,
   align with wrap and merge, borders, and the number format with the
   decimals steps and a format code of his own.
@@ -232,7 +315,10 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   his own) the mutation the grid emits goes through a real `SheetHost`, a
   cold host loads it back, and `writeXlsx` then `importXlsx` still carries
   it. The `.tcsheet` leg is the real backend on a real file; the LifeOS leg
-  is a stand-in store that keeps a snapshot and ops as LifeOS does.
+  is a stand-in store that keeps a snapshot and ops as LifeOS does. On an
+  opened Excel file the same presses go through the package store and the
+  format writer into a real .xlsx, and the file read again must look as the
+  grid drew it, wear the same named style and hold every value it held.
 - Every press is one grid command per selected range (`handle.format`,
   work-kit `sheet/grid/format.ts`): the grid emits
   `sheet.mutation.set-range-values` with a partial style (a merge, a column
@@ -269,13 +355,20 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   grid from any handler on the Body itself; Univer's own binding for the
   size steps stands down while the row is drawn, so a press is one step. A
   text field (the formula bar, a dialog) keeps its keys.
-- A cell with no family of its own reads "Default" in the row: it is in the
-  sheet's default face, the app's own on a sheet made here, which is no
-  font a file could name and is not offered in the list. The size it shows
-  is the one the grid draws (9.75 points, 13px). The Excel export gives
-  such cells the workbook's default font: the file's own where the snapshot
-  names one, else Calibri at the same 9.75 points, so the text is the size
-  the screen showed, in Excel's face.
+- Fonts. An opened file's plain cells are drawn in the file's default font
+  (the importer's `custom.defaults`, which the canvas makes the default
+  style of a sheet that names none, set at the foot of the row as Excel
+  sets it), and the row names it. A sheet made here is in the app's own
+  face, which is no font a file could name: the row reads "Default" there
+  and offers no such font, at the size the grid draws (9.75 points, 13px);
+  its Excel export gives such cells Calibri at the same 9.75 points. Univer
+  draws a cell on a canvas in the family its style names, by that name
+  alone, so each Office font a workbook names is registered under its own
+  name, drawn with its metric twin's files where the machine lacks it
+  (`sheets/fonts.ts` on `formats/fonts.ts`: Calibri as Carlito). The
+  workbook's fonts are read before the grid first draws (at most 2.5 s),
+  and a font picked in the row before it is laid: a canvas does not draw
+  again when a face arrives late.
 
 ## The full editor
 
@@ -413,8 +506,31 @@ file (800,002 formulas) gets the first two, three runs. On the box, 2026-11-23, 
 
 The 10,000-row figures spread past a quarter of their median: read them as
 about that much. The dense file ran at a load near 7 (the plan's lab
-measured 9,954 ms for its `worker`, one run, on a quieter box). Today every save takes the `worker`
-path; nothing yet saves at a floor.
+measured 9,954 ms for its `worker`, one run, on a quieter box).
+
+Since SHT2 a save takes the lightest path that is safe ("How a save is
+made"), and the bench times two more things, both his press to the
+committed revision: `bold` (formatting alone) and `lone` (a value typed
+where no formula reads it; the row's name says which path the proof chose).
+On the box, 2026-11-23 07:20, cores 2 and 3, while twelve other builds ran
+(load 26: every figure is about twice what a quiet box gives, as the two
+floors show against the table above):
+
+| Rows | `commit` (the engine) | `bold` | `lone` | `floor-skip` | `floor-style` |
+|---|---|---|---|---|---|
+| 100,000 | 1,325 ms | 439 ms | 375 ms | 204 ms | 173 ms |
+| 500,000 | 6,732 ms | 1,811 ms | 1,543 ms | 1,035 ms | 818 ms |
+| the dense file (100,000 rows, 800,002 formulas) | 22,369 ms | 2,604 ms | 6,486 ms | | |
+
+So a bold cell in a 100,000-row file commits in under half a second even on
+a loaded box, a third of what the engine path costs; on the dense file it is
+a ninth. The dense file's two light figures spread past a quarter of their
+median (three runs under load): read them as about that much. Proving that
+nothing reads a cell there means reading 800,002 formulas' text, about four
+seconds of the 6.5: still under a third of the engine's time, with no model
+kept between saves. No model is kept: the plan asked for one only if the
+numbers earned it, and the proof costs less than a model's memory and its
+rules for dropping it would.
 
 The harness corpus also keeps the workbooks the editors plan measured with
 (`harness/fixtures.test.ts` runs everywhere, with no LibreOffice):
@@ -436,8 +552,8 @@ The harness corpus also keeps the workbooks the editors plan measured with
 
 ## Not built
 
-- Formatting saved into a package (so an opened Excel file has no format
-  row yet), and moving cells (drag a range, move rows or columns) in one.
+- Moving cells (drag a range, move rows or columns) and rich text in an
+  opened Excel file: stopped as he tries, until they are saved.
 - The model writer leaves out conditional formats, validations, defined
   names, notes and our charts.
 - Presence on the canvas.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellText, chartBars, chartFrom, chartTicks, holds, sheetChanges, tickText } from "./model";
+import { cellText, chartBars, chartFrom, chartTicks, holds, sheetChanges, tickText, savedLine } from "./model";
 import { suggestion } from "./testkit";
 
 describe("the sheet canvas's model", () => {
@@ -61,5 +61,26 @@ describe("the sheet canvas's model", () => {
   it("names a new chart for its value column and sets it right of the selection", () => {
     const chart = chartFrom({ sheet: "s", reference: "A3:B8", range: { startRow: 2, endRow: 7, startColumn: 0, endColumn: 1 } }, [["Item", "Total"]], "c1");
     expect(chart).toEqual({ id: "c1", sheet: "s", range: "A3:B8", title: "Total", row: 2, col: 3 });
+  });
+});
+
+describe("the saved line", () => {
+  const view = { name: "Budget.xlsx", store: "package" as const };
+
+  it("says saved, with the time of his last edit once he has made one, and saving while one is on its way", () => {
+    expect(savedLine(view, null, false, null)).toEqual({ state: "saved" });
+    expect(savedLine(view, null, false, 1_700_000_000_000)).toEqual({ state: "saved", at: 1_700_000_000_000 });
+    expect(savedLine(view, null, true, 1_700_000_000_000)).toEqual({ state: "saving" });
+  });
+
+  it("says a refused save in the host's words, with the press that makes it right: Reload on an Excel file, Retry elsewhere", () => {
+    expect(savedLine(view, "That cell is locked", true, null)).toEqual({ state: "conflict", detail: "That cell is locked", again: "Reload" });
+    expect(savedLine({ ...view, saveError: "The disk is full" }, null, false, null)).toEqual({ state: "conflict", detail: "The disk is full", again: "Reload" });
+    expect(savedLine({ name: "Plan", store: "tcsheet" }, "The host did not answer", false, null)).toEqual({ state: "offline", detail: "The host did not answer", again: "Retry" });
+  });
+
+  it("says why a file cannot be changed here, before anything else", () => {
+    expect(savedLine({ ...view, readOnly: "Saved as .xlsb, which opens here only to read" }, "x", true, 5)).toEqual({ state: "readonly", detail: "Saved as .xlsb, which opens here only to read" });
+    expect(savedLine({ ...view, missing: true }, null, false, null)).toEqual({ state: "readonly", detail: "Budget.xlsx moved" });
   });
 });

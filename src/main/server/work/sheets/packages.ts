@@ -175,9 +175,9 @@ export class PackageStore {
 
   /**
    * Saves edits into the package as one revision. `baseRev` is the revision the editor stood on.
-   * Edits that came between were cell writes (a package takes nothing else), so the cells are
-   * where the editor saw them and the edit lands; a change from outside or a restore between
-   * answers a conflict and writes nothing, and the editor reloads.
+   * Edits that came between were cell writes and formatting (rows and columns moved answer a
+   * reload), so the cells are where the editor saw them and the edit lands; a change from outside
+   * or a restore between answers a conflict and writes nothing, and the editor reloads.
    */
   edit(
     path: string,
@@ -214,7 +214,7 @@ export class PackageStore {
   /** Writes the edit's steps from `target` into `out`: the patch writer for cells, LibreOffice and the graft for structure. */
   private async write(target: string, out: string, steps: Step[]): Promise<void> {
     if (steps.length === 1 && steps[0].kind === 'cells') {
-      await this.jobs.save(target, out, steps[0].edits, this.ironcalcDir())
+      await this.jobs.save(target, out, steps[0].edits, this.ironcalcDir(), steps[0].formats)
       return
     }
     if (!this.structural) throw new NotSaved('Rows, columns and sheets cannot be changed in an opened Excel file on this host.')
@@ -225,7 +225,7 @@ export class PackageStore {
       let at = target
       for (const [i, step] of steps.entries()) {
         const next = join(work, `${i}.${kind}`)
-        if (step.kind === 'cells') await this.jobs.save(at, next, step.edits, this.ironcalcDir())
+        if (step.kind === 'cells') await this.jobs.save(at, next, step.edits, this.ironcalcDir(), step.formats)
         else {
           const written = await this.structural(at, step.ops, kind)
           try {
@@ -418,17 +418,22 @@ function labelOfOps(ops: readonly StructuralOp[]): string {
   }
 }
 
-/** "12 cells", "B4" */
+/** "12 cells", "B4"; "Formatting" for an edit that changed no cell's contents */
 function labelOf(edits: readonly EditSpec[]): string {
-  return edits.length === 1 ? `${edits[0].cell}` : `${edits.length} cells`
+  return edits.length === 0 ? 'Formatting' : edits.length === 1 ? `${edits[0].cell}` : `${edits.length} cells`
 }
 
-/** `sheet:row:col` of every cell a list of set-range-values mutations writes. */
+/**
+ * `sheet:row:col` of every cell whose contents a list of set-range-values mutations writes. A cell
+ * that only takes a style keeps what it held, so a suggestion waiting on it still stands and a
+ * write to it can still be taken back.
+ */
 export function cellsOfMutations(mutations: readonly SheetMutationJson[]): Set<string> {
   const out = new Set<string>()
   for (const m of mutations) {
-    const p = m.params as { subUnitId?: string; cellValue?: Record<string, Record<string, unknown>> }
-    for (const [r, cols] of Object.entries(p.cellValue ?? {})) for (const c of Object.keys(cols ?? {})) out.add(`${p.subUnitId}:${r}:${c}`)
+    const p = m.params as { subUnitId?: string; cellValue?: Record<string, Record<string, Record<string, unknown> | null>> }
+    for (const [r, cols] of Object.entries(p.cellValue ?? {}))
+      for (const [c, cell] of Object.entries(cols ?? {})) if (cell === null || 'v' in cell || 'f' in cell || 'p' in cell || 'si' in cell) out.add(`${p.subUnitId}:${r}:${c}`)
   }
   return out
 }

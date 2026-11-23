@@ -1,4 +1,4 @@
-import type { SheetCellJson, SheetChart, SheetSuggestion } from "@shared/contract-work-sheets";
+import type { SheetCellJson, SheetChart, SheetSuggestion, SheetView } from "@shared/contract-work-sheets";
 import type { Principal } from "@shared/work";
 import { changeRuns, type ChangeRun, type SuggestionCell } from "work-kit/sheet/suggest";
 
@@ -122,4 +122,27 @@ export function chartFrom(
   const head = values[0]?.[1];
   const title = typeof head === "string" && head.trim() ? head.trim() : "Chart";
   return { id, sheet: selection.sheet, range: selection.reference, title, row: selection.range.startRow, col: selection.range.endColumn + 2 };
+}
+
+/** What saved means for a sheet now, as plain facts: the state, when, why, and the word of the one press it offers. */
+export interface SavedFacts {
+  state: "saved" | "saving" | "offline" | "conflict" | "readonly";
+  at?: number;
+  detail?: string;
+  /** the press that makes it right: Reload (the grid no longer matches the file) or Retry (the edits wait and go again) */
+  again?: "Reload" | "Retry";
+}
+
+/**
+ * The line under a file's name for a sheet. A file he cannot change says why; a save that failed says so, with its
+ * press (an opened Excel file refuses for good, so its grid is loaded again; elsewhere the edits wait and are sent
+ * again); edits on their way are "saving"; else everything is in the file, since his last edit when he has made one.
+ */
+export function savedLine(view: Pick<SheetView, "name" | "store" | "missing" | "readOnly" | "saveError">, sendError: string | null, saving: boolean, savedAt: number | null): SavedFacts {
+  if (view.missing) return { state: "readonly", detail: `${view.name} moved` };
+  if (view.readOnly !== undefined) return { state: "readonly", detail: view.readOnly };
+  const failed = sendError ?? view.saveError;
+  if (failed) return view.store === "package" ? { state: "conflict", detail: failed, again: "Reload" } : { state: "offline", detail: failed, again: "Retry" };
+  if (saving) return { state: "saving" };
+  return savedAt ? { state: "saved", at: savedAt } : { state: "saved" };
 }

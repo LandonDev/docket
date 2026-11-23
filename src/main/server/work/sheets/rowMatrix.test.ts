@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { IUniverInstanceService, type IStyleData, type IWorkbookData } from '@univerjs/core'
@@ -11,6 +12,8 @@ import { SHEET_ROW, type SheetMutationJson, type SheetRowControl, type SheetStor
 import { blankWorkbook, TcsheetBackend, type Op, type SheetBackend, type StoredSuggestion } from './host/backends'
 import { SheetHost } from './host/host'
 import type { SheetRef } from './host/wire'
+import { ensurePackageTables, PackageStore } from './packages'
+import { localJobs } from './workerClient'
 import { writeXlsx } from './writer'
 
 /**
@@ -281,9 +284,93 @@ describe.each(['tcsheet', 'lifeos'] as const)('the format row on a %s', (kind) =
   })
 })
 
+/**
+ * An opened Excel file: the grid is the file as the importer reads it, the press goes to the
+ * package store, which saves it into the file with the patch writer, and the file read again is
+ * both the cold load and what Excel opens.
+ */
+describe('the format row on an opened Excel file', () => {
+  const CORPUS = join(import.meta.dirname, 'harness/corpus')
+  let n = 0
+  async function opened() {
+    const dir = join(scratch, `pkg${++n}`)
+    mkdirSync(dir, { recursive: true })
+    const path = join(dir, 'Budget.xlsx')
+    copyFileSync(join(CORPUS, 'patch/base.xlsx'), path)
+    const db = new DatabaseSync(':memory:')
+    ensurePackageTables(db)
+    const store = new PackageStore(db, await localJobs(), join(dir, 'copies'), () => null)
+    await store.open(path)
+    const read = () => importXlsx(new Uint8Array(readFileSync(path))).workbook
+    const grid = headlessSheet('work', read())
+    const emitted: SheetMutationJson[] = []
+    grid.api.addEvent(grid.api.Event.CommandExecuted, (event) => {
+      if (event.type === 2 && !event.options?.fromCollab && !event.options?.onlyLocal && event.id.startsWith('sheet.mutation.')) emitted.push({ id: event.id, params: event.params })
+    })
+    // cells of the file that hold values and no formatting of their own
+    grid.workbook.getActiveSheet().getRange('A30:B31').activate()
+    return { path, store, grid, emitted, read }
+  }
+  const AT = [[29, 0], [29, 1], [30, 0], [30, 1]] as const
+
+  it('lists every control: the patch writer saves each press into the file', () => {
+    expect([...SHEET_ROW.package].sort()).toEqual([...SHEET_ROW.tcsheet].sort())
+  })
+
+  for (const control of SHEET_ROW.package.filter((c): c is Exclude<SheetRowControl, 'undo'> => c !== 'undo')) {
+    it.each(PRESSES[control])(`${control}, $what: the grid emits it, the file takes it, and the file read again shows it`, async (press) => {
+      const { path, store, grid, emitted, read } = await opened()
+      try {
+        const theme = (read().custom as { theme: Parameters<typeof applyFormat>[2] }).theme
+        const lookAt = (wb: IWorkbookData, row: number, col: number) => {
+          const style = styleAt(wb, row, col)
+          const bd = (style.bd ?? {}) as Record<string, { s?: number } | null | undefined>
+          return { ...readFormat(style, theme!), borders: ['t', 'b', 'l', 'r'].filter((k) => bd[k]?.s).map((k) => `${k}${bd[k]!.s}`).join(' ') }
+        }
+        const before = read()
+        for (const step of press.steps) expect(applyFormat(grid.api, step, theme)).toBe(true)
+        expect(emitted.length).toBeGreaterThan(0)
+        const made = grid.workbook.save()
+        const want = AT.map(([r, c]) => lookAt(made, r, c))
+        const got = await store.edit(path, 0, emitted, 'owner')
+        expect(got).toEqual({ rev: 1 })
+        const after = read()
+        // the file read again: each cell looks as the grid drew it, and wears the same named style
+        expect(AT.map(([r, c]) => lookAt(after, r, c))).toEqual(want)
+        const mergesOf = (wb: IWorkbookData) => merges(wb).filter((m) => m.startsWith('29,') || m.startsWith('30,'))
+        expect(mergesOf(after)).toEqual(press.merges ? press.merges.map(() => '29,0,30,1') : [])
+        // nothing but formatting changed: every value the file held, it holds
+        const first = before.sheetOrder[0]!
+        // (a cell that now holds only a style is no value)
+        const values = (wb: IWorkbookData) =>
+          JSON.stringify(
+            Object.entries(wb.sheets[first]!.cellData ?? {})
+              .map(([r, cols]) => [r, Object.entries((cols ?? {}) as Record<string, { v?: unknown; f?: string | null } | null>).filter(([, cell]) => (cell?.v ?? null) !== null || !!cell?.f).map(([c, cell]) => [c, cell?.v ?? null, cell?.f ?? null])] as const)
+              .filter(([, cols]) => cols.length > 0)
+          )
+        if (!press.merges?.length) expect(values(after)).toBe(values(before))
+      } finally {
+        grid.dispose()
+      }
+    })
+  }
+
+  it('undo: what it takes back is taken back in the file too', async () => {
+    const { path, store, grid, emitted, read } = await opened()
+    try {
+      grid.univer.__getInjector().get(IUniverInstanceService).focusUnit(read().id)
+      applyFormat(grid.api, { bold: true, fill: { hex: '#FFDD66' } }, TEMPCODE_THEME)
+      expect(await grid.api.undo()).toBe(true)
+      await store.edit(path, 0, emitted, 'owner')
+      expect(readFormat(styleAt(read(), 29, 0), TEMPCODE_THEME)).toMatchObject({ bold: false, fill: null })
+    } finally {
+      grid.dispose()
+    }
+  })
+})
+
 describe('where a change would not be kept', () => {
-  it('an opened Excel file and a sheet read from a .csv draw no row: neither list has a control', () => {
-    expect(SHEET_ROW.package).toEqual([])
+  it('a sheet read from a .csv draws no row: its list has no control', () => {
     expect(SHEET_ROW.csv).toEqual([])
   })
 

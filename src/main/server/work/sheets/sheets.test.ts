@@ -248,7 +248,7 @@ describe('a .csv in the canvas, and the model writer', () => {
     }
   }
 
-  it('says which format controls a sheet keeps: every one for a .tcsheet, none for an opened Excel file', async () => {
+  it('says which format controls a sheet keeps: every one for a .tcsheet and for an opened Excel file', async () => {
     await serve()
     const { TcsheetBackend } = await import('./host/backends')
     const path = join(dir, 'Plan.tcsheet')
@@ -260,7 +260,8 @@ describe('a .csv in the canvas, and the model writer', () => {
     expect(view.row).toContain('fill')
     const pkg = await call<SheetView>('work.sheets.open', { itemId })
     expect(pkg.store).toBe('package')
-    expect(pkg.row).toBeUndefined()
+    expect(pkg.row).toEqual([...SHEET_ROW.package])
+    expect(pkg.row).toContain('borders')
   })
 
   it('opens a .csv as a sheet of its own, and saves it back as .csv and out as .xlsx', async () => {

@@ -26,6 +26,12 @@ const host = vi.hoisted(() => ({
   pushes: new Set<(push: never) => void>(),
   opens: new Set<() => void>(),
 }));
+/** What the body said in a toast (sonner rides its own chunk; the body speaks through `loadToast`). */
+const toasts = vi.hoisted(() => ({ said: [] as string[] }));
+vi.mock("../../components/ui/toaster", async (original) => {
+  const say = (text: string) => void toasts.said.push(text);
+  return { ...(await original<typeof import("../../components/ui/toaster")>()), loadToast: async () => Object.assign(say, { message: say, success: say, error: say }) };
+});
 vi.mock("../../lib/connection", async (original) => {
   const link = {
     environmentId: "local",
@@ -57,6 +63,8 @@ const BOOK = workbookOf([
   },
   { id: "quotes", name: "Quotes", rows: [] },
 ]);
+/** What a host sends for a sheet whose store keeps formatting. */
+const ROW_ALL: NonNullable<SheetView["row"]> = ["undo", "style", "font", "size", "bold", "italic", "underline", "colour", "fill", "align", "vertical", "wrap", "merge", "borders", "number"];
 const set = (row: number, col: number, v: number | string): SheetMutationJson => ({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { [row]: { [col]: { v } } } } });
 
 let sheetHost: FakeSheetHost;
@@ -72,7 +80,7 @@ function kinds(): Record<string, CanvasKindDef> {
   return { ...CANVAS, sheet: { ...CANVAS.sheet, chunk: defineChunk("test-sheet", () => module) } };
 }
 
-function open(view: SheetView, options: { selection?: string; item?: CanvasItem } = {}) {
+function open(view: SheetView, options: { selection?: string; item?: CanvasItem; commands?: boolean } = {}) {
   sheetHost = fakeSheetHost(view, BOOK);
   grid = fakeGrid(options);
   host.current = fakeHost([options.item ?? ITEM], host as never);
@@ -102,6 +110,7 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  toasts.said.length = 0;
 });
 
 describe("the sheet kind", () => {
@@ -231,31 +240,37 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(screen.queryByText("Couldn't save")).toBeNull());
   });
 
-  it("sends an opened Excel file what it saves (cells, rows, a fill with its formulas), says once that formatting stays out, and never resends a refused batch", async () => {
-    open(sheetView({ store: "package", rev: 3 }));
+  it("sends an opened Excel file what it saves (cells, a cell's style, a width, a merge, rows, a fill with its formulas), with no line about it, and never resends a refused batch", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
     await gridUp();
     grid.formulas.set("budget!2:4", "=SUM(B3:D3)");
     const bold: SheetMutationJson = { id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 1: { s: { bl: 1 } } } } } };
     const fill: SheetMutationJson = { id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 2: { 4: { si: "f1" } } } } };
     const row: SheetMutationJson = { id: "sheet.mutation.insert-row", params: { unitId: "book", subUnitId: "budget" } };
+    const widen: SheetMutationJson = { id: "sheet.mutation.set-worksheet-col-width", params: { unitId: "book", subUnitId: "budget", ranges: [{ startRow: 0, endRow: 0, startColumn: 1, endColumn: 1 }], colWidth: 160 } };
+    const merge: SheetMutationJson = { id: "sheet.mutation.add-worksheet-merge", params: { unitId: "book", subUnitId: "budget", ranges: [{ startRow: 6, endRow: 6, startColumn: 0, endColumn: 2 }] } };
     const autoHeight: SheetMutationJson = { id: "sheet.mutation.set-worksheet-row-auto-height", params: {} };
     act(() => {
       grid.edit(bold);
       grid.edit(row);
       grid.edit(fill);
+      grid.edit(widen);
+      grid.edit(merge);
       grid.edit(autoHeight);
       grid.edit(set(1, 1, 15));
     });
     await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
     const filled = { ...fill, params: { ...(fill.params as object), cellValue: { 2: { 4: { si: "f1", f: "=SUM(B3:D3)" } } } } };
-    expect(edits()[0]).toEqual({ baseRev: 3, mutations: [row, filled, set(1, 1, 15)] });
-    expect(await screen.findByText("Not saved")).toBeTruthy();
-    expect(screen.getAllByText("Not saved")).toHaveLength(1);
+    expect(edits()[0]).toEqual({ baseRev: 3, mutations: [bold, row, filled, widen, merge, set(1, 1, 15)] });
+    // an Excel file is the full editor: nothing of it is said to stay out, and nothing was taken back
+    expect(screen.queryByText("Not saved")).toBeNull();
+    expect(grid.undone).toBe(0);
+    expect(toasts.said).toEqual([]);
 
     // A refused batch is said with Reload and dropped: the next edit goes alone.
     const edit = sheetHost.edit;
     sheetHost.edit = async () => {
-      throw new Error("That edit is not cell contents");
+      throw new Error("That cell is locked");
     };
     act(() => grid.edit(set(2, 1, 9)));
     expect(await screen.findByText("Couldn't save")).toBeTruthy();
@@ -267,6 +282,123 @@ describe("the sheet kind", () => {
     act(() => grid.edit(set(3, 1, 4)));
     await waitFor(() => expect(edits().length).toBeGreaterThan(before), { timeout: EDIT_WAIT * 10 });
     expect(edits().at(-1)!.mutations).toEqual([set(3, 1, 4)]);
+  });
+
+  it("stops a change an Excel file cannot keep as he makes it: the grid takes it back, nothing of it is sent, and he is told why in a few words", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    const move: SheetMutationJson = { id: "sheet.mutation.move-range", params: { unitId: "book", subUnitId: "budget", from: {}, to: {} } };
+    // one drag is one command: the cells it cleared and wrote come with the move, and all of it is stopped
+    act(() => {
+      grid.edit(set(5, 1, 7));
+      grid.edit(move);
+    });
+    await waitFor(() => expect(grid.undone).toBe(1));
+    await waitFor(() => expect(toasts.said).toEqual(["Moving cells is not saved in an Excel file yet. Cut and paste them instead"]));
+    // rich text in a cell, and a change with no name here (a hidden row), are stopped the same way
+    act(() => grid.edit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 1: { v: "a", p: { body: {} } } } } } }));
+    await waitFor(() => expect(grid.undone).toBe(2));
+    act(() => grid.edit({ id: "sheet.mutation.set-row-hidden", params: { unitId: "book", subUnitId: "budget" } }));
+    await waitFor(() => expect(grid.undone).toBe(3));
+    expect(toasts.said.slice(1)).toEqual(["Text with more than one style in a cell is not saved in an Excel file yet", "That change is not saved in an Excel file yet. Make it in Excel"]);
+    // his own styled cells and the book's fonts were asked for before the grid drew
+    expect(grid.fontsAsked).toHaveLength(1);
+    // nothing reached the host, and no line stands over the grid
+    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, EDIT_WAIT * 2))));
+    expect(edits()).toEqual([]);
+    expect(screen.queryByText("Couldn't save")).toBeNull();
+    expect(screen.queryByText("Not saved")).toBeNull();
+    // the next edit he makes is his own, and goes
+    act(() => grid.edit(set(3, 1, 4)));
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[0].mutations).toEqual([set(3, 1, 4)]);
+  });
+
+  it("a workbook Excel or Google holds keeps cell contents: a pasted style is left out, a width is stopped, in that store's words", async () => {
+    open(sheetView({ store: "package", rev: 3, reach: { parts: ["formatting"], to: "google" } }));
+    await gridUp();
+    const pasted: SheetMutationJson = { id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 1: { v: 9, s: { bl: 1 } }, 2: { s: { bl: 1 } } } } } };
+    act(() => grid.edit(pasted));
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect((edits()[0].mutations[0].params as { cellValue: unknown }).cellValue).toEqual({ 1: { 1: { v: 9 } } });
+    act(() => grid.edit({ id: "sheet.mutation.set-worksheet-col-width", params: { unitId: "book", subUnitId: "budget", ranges: [], colWidth: 160 } }));
+    await waitFor(() => expect(grid.undone).toBe(1));
+    await waitFor(() => expect(toasts.said).toEqual(["That change is not saved in a Google sheet yet. Make it in Google Sheets"]));
+  });
+
+  it("a press that ran several commands, or the tail of an earlier one, is undone and the book read again from the file", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }), { commands: true });
+    await gridUp();
+    const loads = () => sheetHost.calls.filter((c) => c[0] === "load").length;
+    const before = loads();
+    const move: SheetMutationJson = { id: "sheet.mutation.move-range", params: { unitId: "book", subUnitId: "budget", from: {}, to: {} } };
+    // one command, one undo, no reload
+    act(() => {
+      grid.edit(move);
+      grid.command("sheet.command.move-range");
+    });
+    await waitFor(() => expect(grid.undone).toBe(1));
+    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 30))));
+    expect(loads()).toBe(before);
+    // two commands in one turn: both are taken back, and the grid is made the file again to be sure
+    act(() => {
+      grid.edit(set(5, 1, 7));
+      grid.command("sheet.command.set-range-values");
+      grid.edit(move);
+      grid.command("sheet.command.move-range");
+    });
+    await waitFor(() => expect(grid.undone).toBe(3));
+    await waitFor(() => expect(loads()).toBeGreaterThan(before));
+    // the grid took no edit from the stop until the book was drawn again, and takes them again now
+    expect(grid.lockedOnce).toBe(true);
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+    expect(edits()).toEqual([]);
+  });
+
+  it("sends a style the grid names by its own id as the style itself; an id it cannot name is stopped", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    grid.styles.set("k9", { bl: 1, bg: { rgb: "#FFDD66" } });
+    act(() => grid.edit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 1: { v: 4, s: "k9" } } } } }));
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[0].mutations.map((m) => (m.params as { cellValue: unknown }).cellValue)).toEqual([{ 1: { 1: { v: 4, s: { bl: 1, bg: { rgb: "#FFDD66" } } } } }]);
+    act(() => grid.edit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 2: { 1: { s: "gone" } } } } }));
+    await waitFor(() => expect(grid.undone).toBe(1));
+    // a cell with neither contents nor a style has no saved form either
+    act(() => grid.edit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 2: { 1: { t: 2 } } } } }));
+    await waitFor(() => expect(grid.undone).toBe(2));
+    expect(edits()).toHaveLength(1);
+  });
+
+  it("a row told to fit is sent to an Excel file that keeps formatting", async () => {
+    const fit: SheetMutationJson = { id: "sheet.mutation.set-worksheet-row-is-auto-height", params: { unitId: "book", subUnitId: "budget", ranges: [{ startRow: 2, endRow: 2, startColumn: 0, endColumn: 0 }], autoHeightInfo: 1 } };
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    act(() => grid.edit(fit));
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[0].mutations).toEqual([fit]);
+  });
+
+  it("a row told to fit on a sheet the service holds is left to the grid: nothing is sent or stopped for it", async () => {
+    const fit: SheetMutationJson = { id: "sheet.mutation.set-worksheet-row-is-auto-height", params: { unitId: "book", subUnitId: "budget", ranges: [{ startRow: 2, endRow: 2, startColumn: 0, endColumn: 0 }], autoHeightInfo: 1 } };
+    open(sheetView({ store: "tcsheet", rev: 3, row: ROW_ALL }));
+    await gridUp();
+    act(() => {
+      grid.edit(fit);
+      grid.edit(set(1, 1, 2));
+    });
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[0].mutations).toEqual([set(1, 1, 2)]);
+    expect(grid.undone).toBe(0);
+  });
+
+  it("stops nothing on a sheet the service holds: every change is its op", async () => {
+    open(sheetView({ store: "tcsheet", rev: 3 }));
+    await gridUp();
+    const move: SheetMutationJson = { id: "sheet.mutation.move-range", params: { unitId: "book", subUnitId: "budget", from: {}, to: {} } };
+    act(() => grid.edit(move));
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect(grid.undone).toBe(0);
   });
 
   it("sends what waits before a reload loads the file again", async () => {
@@ -610,7 +742,15 @@ describe("the format row", () => {
     expect(body.firstElementChild).toBe(bar);
   });
 
-  it.each(["package", "csv"] as const)("is not drawn over a %s, whose host lists no control: it keeps cell contents only, and no key formats it", async (store) => {
+  it("is drawn over an opened Excel file, whose host keeps formatting now", async () => {
+    open(sheetView({ store: "package", row: ROW }), { selection: "B2" });
+    await gridUp();
+    expect(await screen.findByRole("toolbar", { name: "Formatting" })).toBeTruthy();
+    expect(document.querySelector("[data-sheet-item]")!.getAttribute("data-editor-keys")).toBe("sheet");
+    expect(grid.styleKeys).toBe(true);
+  });
+
+  it.each(["package", "csv"] as const)("is not drawn over a %s whose host lists no control (a workbook Excel or Google holds, a .csv): it keeps cell contents only, and no key formats it", async (store) => {
     open(sheetView({ store }), { selection: "B2" });
     await gridUp();
     expect(row()).toBeNull();

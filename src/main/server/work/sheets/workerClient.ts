@@ -1,4 +1,4 @@
-import type { SheetCellDiff } from '@shared/contract-work-sheets'
+import type { SheetCellDiff, SheetMutationJson } from '@shared/contract-work-sheets'
 import type { A1Range } from './a1'
 import type { Inspected, ReadCell, SaveAnswer } from './jobs'
 import type { EditSpec } from './patch/patch'
@@ -13,7 +13,7 @@ import type { StructuralOp } from './structural'
 export type WorkerAsk = { id: number } & (
   | { op: 'inspect'; path: string }
   | { op: 'read'; path: string; range: A1Range }
-  | { op: 'save'; path: string; output: string; edits: EditSpec[]; ironcalcDir: string | null }
+  | { op: 'save'; path: string; output: string; edits: EditSpec[]; ironcalcDir: string | null; formats?: SheetMutationJson[] }
   | { op: 'compare'; from: string; to: string; max: number }
   | { op: 'graft'; original: string; written: string; output: string; ops: StructuralOp[] }
   | { op: 'csv'; path: string; sheet?: string }
@@ -23,8 +23,8 @@ export type WorkerAnswer = { id: number; ok: true; value: unknown } | { id: numb
 export interface SheetJobs {
   inspect(path: string): Promise<Inspected>
   read(path: string, range: A1Range): Promise<{ sheet: string; cells: ReadCell[][] }>
-  /** writes the patched package to `output`; the caller moves it into place */
-  save(path: string, output: string, edits: EditSpec[], ironcalcDir: string | null): Promise<SaveAnswer>
+  /** writes the patched package to `output`; the caller moves it into place. `formats` are the grid's formatting mutations, each named by its tab. */
+  save(path: string, output: string, edits: EditSpec[], ironcalcDir: string | null, formats?: SheetMutationJson[]): Promise<SaveAnswer>
   compare(from: string, to: string, max: number): Promise<{ cells: SheetCellDiff[]; truncated: boolean }>
   /** writes LibreOffice's package with what it drops put back; answers what was put back */
   graft(original: string, written: string, output: string, ops: StructuralOp[]): Promise<string[]>
@@ -85,7 +85,7 @@ export function workerJobs(fork: () => Child): SheetJobs {
   return {
     inspect: (path) => call({ op: 'inspect', path }),
     read: (path, range) => call({ op: 'read', path, range }),
-    save: (path, output, edits, ironcalcDir) => call({ op: 'save', path, output, edits, ironcalcDir }),
+    save: (path, output, edits, ironcalcDir, formats) => call({ op: 'save', path, output, edits, ironcalcDir, ...(formats?.length ? { formats } : {}) }),
     compare: (from, to, max) => call({ op: 'compare', from, to, max }),
     graft: (original, written, output, ops) => call({ op: 'graft', original, written, output, ops }),
     csv: (path, sheet) => call({ op: 'csv', path, ...(sheet === undefined ? {} : { sheet }) }),
@@ -104,8 +104,8 @@ export async function localJobs(): Promise<SheetJobs> {
   return {
     inspect: async (path) => inspect(path),
     read: async (path, range) => readWorkbookRange(importPackage(path).workbook, range, colName),
-    async save(path, output, edits, ironcalcDir) {
-      const { bytes, report } = await savePackage(path, edits, ironcalcDir)
+    async save(path, output, edits, ironcalcDir, formats) {
+      const { bytes, report } = await savePackage(path, edits, ironcalcDir, formats)
       writeFileSync(output, bytes)
       return { report }
     },

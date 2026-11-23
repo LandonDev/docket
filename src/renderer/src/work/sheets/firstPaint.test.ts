@@ -15,11 +15,19 @@ const DIR = import.meta.dirname;
 const VALUE_IMPORT = /^import\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/gm;
 const shipped = readdirSync(DIR).filter((f) => /\.tsx?$/.test(f) && !/\.(test|dom\.test|preview|preview\.fixtures)\.tsx?$/.test(f) && f !== "testkit.tsx");
 const read = (file: string): string => readFileSync(join(DIR, file), "utf8");
+/** The one shared module the canvas takes values from: plain words, no zod, no imports (held below). */
+const WORDS = "@shared/work/sheets";
 
 describe("the sheet canvas and the first paint", () => {
   it("imports no value from a module with zod schemas", () => {
     expect(shipped).toContain("SheetBody.tsx");
-    for (const file of shipped) for (const [, from] of read(file).matchAll(VALUE_IMPORT)) expect(from.startsWith("@shared") || from === "zod", `${file} imports a value from ${from}`).toBe(false);
+    for (const file of shipped) for (const [, from] of read(file).matchAll(VALUE_IMPORT)) expect((from.startsWith("@shared") && from !== WORDS) || from === "zod", `${file} imports a value from ${from}`).toBe(false);
+  });
+
+  it("takes the words the host says too from a shared file that imports nothing", () => {
+    const words = readFileSync(join(DIR, "../../../../shared/work/sheets.ts"), "utf8");
+    expect(/^\s*import\b/m.test(words)).toBe(false);
+    expect(read("sync.ts")).toContain(`from "${WORDS}"`);
   });
 
   it("keeps the kind's file free of the grid: only a type and the chunk's import()", () => {

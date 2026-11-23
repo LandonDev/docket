@@ -195,8 +195,20 @@ export interface FakeGrid extends SheetGrid {
   applied: SheetMutationJson[][];
   /** every change the format row asked of the grid */
   formats: SheetFormat[];
+  /** The person runs a command in the grid (a grid made with `commands: true` says each one, as Univer's does). */
+  command(id: string): void;
+  /** styles the grid knows by its own ids, for a cell that names one */
+  styles: Map<string, Record<string, unknown>>;
+  /** each workbook whose fonts the body asked for before it drew */
+  fontsAsked: unknown[];
+  /** how many times the body took the grid's last change back (a change its store cannot keep) */
+  undone: number;
   /** how many cells a merge of the selection would empty; a test sets it */
   drops: number;
+  /** whether the canvas was last told to take no edit (`readOnly`) */
+  readOnly: boolean;
+  /** whether it was ever told so */
+  lockedOnce: boolean;
   /** whether the canvas was told the grid's own style keys act (`styleKeys`) */
   styleKeys: boolean | undefined;
   /** formula text the grid holds, by `sheet!row:col`, for a fill's cells */
@@ -215,7 +227,8 @@ interface Live {
   sheet: string;
 }
 
-export function fakeGrid(options: { selection?: string; rows?: number; columns?: number } = {}): FakeGrid {
+export function fakeGrid(options: { selection?: string; rows?: number; columns?: number; commands?: boolean } = {}): FakeGrid {
+  const commandListeners = new Set<(id: string) => void>();
   let live: Live | null = null;
   const listeners = new Set<(m: SheetMutationJson) => void>();
   const write = (cells: Cells, mutation: SheetMutationJson): void => {
@@ -260,8 +273,10 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     };
   };
 
-  function FakeCanvas({ snapshot, marks, was, styleKeys, onReady, onSelection }: SheetCanvasProps) {
+  function FakeCanvas({ snapshot, marks, was, styleKeys, readOnly, onReady, onSelection }: SheetCanvasProps) {
     grid.styleKeys = styleKeys;
+    grid.readOnly = !!readOnly;
+    if (readOnly) grid.lockedOnce = true;
     const book = snapshot as unknown as Workbook & { sheets: Record<string, { name: string; cellData?: Record<string, Record<string, SheetCellJson>>; columnData?: Record<string, { w?: number }> }> };
     const sheetId = book.sheetOrder?.[0] ?? "sheet";
     const [, redraw] = useReducer((n: number) => n + 1, 0);
@@ -296,6 +311,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
         api: null,
         store,
         readOnly: false,
+    lockedOnce: false,
         theme: TEMPCODE_THEME,
         defaults: { family: "Calibri", size: 11 },
         undo: () => undefined,
@@ -420,10 +436,20 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     handle: null,
     applied: [],
     formats: [],
+    command: (id) => {
+      for (const listener of commandListeners) listener(id);
+    },
+    styles: new Map(),
+    fontsAsked: [],
+    undone: 0,
     drops: 0,
     styleKeys: undefined,
+    readOnly: false,
+    lockedOnce: false,
     formulas: new Map(),
     Canvas: FakeCanvas,
+    fonts: async (workbook) => void grid.fontsAsked.push(workbook),
+    font: async () => undefined,
     prepare: async () => undefined,
     link: () => ({
       unitId: "book",
@@ -431,6 +457,9 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       onMutation: (listener) => grid.handle!.onMutation(listener),
       read: (sheet, row, col) => live?.cells.get(at(sheet, row, col)) ?? null,
       formula: (sheet, row, col) => grid.formulas.get(at(sheet, row, col)) ?? null,
+      undo: () => void grid.undone++,
+      ...(options.commands ? { onCommand: (listener: (id: string) => void) => (commandListeners.add(listener), () => commandListeners.delete(listener)) } : {}),
+      style: (id) => grid.styles.get(id) ?? null,
     }),
     values(_handle, sheet, a1) {
       const r = parseA1(a1);

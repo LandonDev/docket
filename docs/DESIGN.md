@@ -2168,7 +2168,10 @@ set by hand.
   to act on stays a stop.
 - **What is absent.** A file he cannot edit draws no row, never a greyed
   one. A control whose change could not be saved where the file lives is
-  not drawn there.
+  not drawn there. A change made another way that the file cannot keep (a
+  range dragged to move it in an Excel file) is taken back as he makes it,
+  and one toast says why in a few words; no line stands over the canvas
+  about it, and nothing stays on screen that the file does not have.
 - **In the sheet** the row sits over the formula bar. Its groups: Undo and
   Redo; the cell style (Normal, the headings, Total, Input, Note, then
   Good, Bad and Neutral in the app's own inks, then Currency, Percent and

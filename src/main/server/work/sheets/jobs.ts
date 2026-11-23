@@ -1,9 +1,14 @@
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import type { ICellData, IWorkbookData } from '@univerjs/core'
 import { importXlsx, type ImportReport } from 'work-kit/sheet/xlsx'
-import type { SheetCellDiff, SheetReach } from '@shared/contract-work-sheets'
+import type { SheetCellDiff, SheetMutationJson, SheetReach } from '@shared/contract-work-sheets'
 import { rangeCells, READ_MAX_CELLS, type A1Range } from './a1'
-import { patchXlsx, type EditSpec, type Report } from './patch/patch'
+import { readThemeXml } from 'work-kit/format/theme'
+import { independent } from './patch/depends'
+import { patchFormat, type FormatReport } from './patch/format'
+import { dependsInput } from './patch/package'
+import { patchXlsx, workbookMap, type EditSpec, type Report } from './patch/patch'
+import { formatEditsOf } from './formats'
 import { diffWorkbooks } from './diff'
 import { graft } from './graft'
 import { writeCsv } from './writer'
@@ -42,7 +47,17 @@ export interface ReadCell {
 }
 
 export interface SaveAnswer {
-  report: Pick<Report, 'edits' | 'partsChanged' | 'warnings'> & { recalc: { ok: boolean; error?: string; pathA: number; pathB: number; fullCalcOnLoad: boolean } }
+  report: Pick<Report, 'edits' | 'partsChanged' | 'warnings'> & {
+    recalc: { ok: boolean; error?: string; pathA: number; pathB: number; fullCalcOnLoad: boolean }
+    /**
+     * How the save was made: `engine` (IronCalc recalculated the dependents: the audited path), `independent` (no
+     * formula reads an edited cell, shown from the formulas' text, so no engine was loaded), `format` (formatting
+     * alone), `plain` (no engine on this host). `why` is the proof's reason when it sent the save to the engine.
+     */
+    path: 'engine' | 'independent' | 'format' | 'plain'
+    why?: string
+    format?: FormatReport['styles']
+  }
 }
 
 /** What the importer counts, said as a person reads it, for the things only Excel does (the sheet research §8). */
@@ -125,39 +140,90 @@ export function readWorkbookRange(workbook: IWorkbookData, range: A1Range, colNa
 /** A date format, read the way Excel reads a pattern: d, m, y or h outside quotes and brackets. */
 const isDatePattern = (pattern: string | undefined): boolean => !!pattern && /[dmyh]/i.test(pattern.replace(/"[^"]*"|\[[^\]]*\]|\\./g, ''))
 
-/**
- * Saves `edits` into the package at `input`, written to a new file the caller moves into place.
- * A 1904 file gets its date-formatted numbers back in its own system (the importer moved them by
- * 1,462 days). IronCalc recalculates the dependents when `ironcalcDir` is given and the file is
- * one it can load.
- */
-export async function savePackage(input: string, edits: EditSpec[], ironcalcDir: string | null): Promise<{ bytes: Uint8Array } & SaveAnswer> {
-  const bytes = new Uint8Array(readFileSync(input))
-  const { workbook, report: imported } = importPackage(input)
-  if (imported.date1904) {
-    const styles = workbook.styles ?? {}
-    edits = edits.map((e) => {
-      if (typeof e.value !== 'number') return e
-      const sheet = sheetOf(workbook, e.sheet)
-      const m = /^([A-Z]+)(\d+)$/.exec(e.cell)
-      if (!m) return e
-      const col = [...m[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1
-      const s = workbook.sheets[sheet.id]?.cellData?.[Number(m[2]) - 1]?.[col]?.s
-      const style = typeof s === 'string' ? styles[s] : s
-      return isDatePattern(style?.n?.pattern) ? { ...e, value: e.value - 1462 } : e
-    })
+/** The file's own theme, read from its part alone: a named cell style is told by it (formats.ts). */
+function themeOf(z: ReturnType<typeof readZip>) {
+  try {
+    const rel = workbookMap(z).wbRels.rels.find((r) => !r.external && r.type.endsWith('/theme'))
+    return readThemeXml(rel && z.byName.has(rel.target) ? readText(z, rel.target) : undefined)
+  } catch {
+    return readThemeXml(undefined)
   }
-  const engine = ironcalcDir && loadable(bytes) ? ironcalcDir : null
-  const { bytes: out, report } = await patchXlsx(bytes, edits, engine ? { inputPath: input, recalc: (path, e, keys) => ironcalc(engine, path, e, keys) } : {})
-  return {
-    bytes: out,
-    report: {
-      edits: report.edits,
-      partsChanged: report.partsChanged,
-      warnings: report.warnings,
-      recalc: { ok: report.recalc.ok, error: report.recalc.error, pathA: report.recalc.pathA.length, pathB: report.recalc.pathB.length, fullCalcOnLoad: report.recalc.fullCalcOnLoad }
+}
+
+/** Whether any formula of the package calls CELL, which can read a cell's number format. */
+function readsFormats(z: ReturnType<typeof readZip>): boolean {
+  try {
+    const wb = workbookMap(z)
+    return /CELL\s*\(/i.test(wb.wbXml) || wb.sheets.some((s) => s.kind !== 'chartsheet' && z.byName.has(s.part) && /CELL\s*\(/i.test(readText(z, s.part)))
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Saves `edits` and `formats` into the package at `input`, written to a new file the caller moves
+ * into place. Three ways, the lightest that is safe (the editors plan, decision 3):
+ *
+ *  - formatting alone never reads a cell's value: the part-local format writer, no workbook
+ *    model, no engine;
+ *  - typed values no formula reads (depends.ts shows it from the formulas' text) are patched in
+ *    with no engine, and Excel is not asked to calculate again;
+ *  - everything else takes the audited path: IronCalc recalculates the dependents when
+ *    `ironcalcDir` is given and the file is one it can load.
+ *
+ * A 1904 file gets its date-formatted numbers back in its own system (the importer moved them by
+ * 1,462 days). `formats` are the grid's formatting mutations, each named by its tab (mutations.ts).
+ */
+export async function savePackage(input: string, edits: EditSpec[], ironcalcDir: string | null, formats: readonly SheetMutationJson[] = []): Promise<{ bytes: Uint8Array } & SaveAnswer> {
+  let bytes: Uint8Array = new Uint8Array(readFileSync(input))
+  const zip = readZip(bytes)
+  const report: SaveAnswer['report'] = { edits: edits.length, partsChanged: [], warnings: [], recalc: { ok: true, pathA: 0, pathB: 0, fullCalcOnLoad: false }, path: 'format' }
+  if (edits.length) {
+    const date1904 = /<(?:[\w.-]+:)?workbookPr(?=[\s>/])[^>]*\bdate1904\s*=\s*["'](?:1|true)["']/.test(workbookMap(zip).wbXml)
+    if (date1904) {
+      const { workbook } = importPackage(input)
+      const styles = workbook.styles ?? {}
+      edits = edits.map((e) => {
+        if (typeof e.value !== 'number') return e
+        const sheet = sheetOf(workbook, e.sheet)
+        const m = /^([A-Z]+)(\d+)$/.exec(e.cell)
+        if (!m) return e
+        const col = [...m[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1
+        const s = workbook.sheets[sheet.id]?.cellData?.[Number(m[2]) - 1]?.[col]?.s
+        const style = typeof s === 'string' ? styles[s] : s
+        return isDatePattern(style?.n?.pattern) ? { ...e, value: e.value - 1462 } : e
+      })
+    }
+    const proof = independent(dependsInput(bytes, zip), edits)
+    const engine = !proof.independent && ironcalcDir && loadable(bytes) ? ironcalcDir : null
+    const done = await patchXlsx(bytes, edits, proof.independent ? { independent: true } : engine ? { inputPath: input, recalc: (path, e, keys) => ironcalc(engine, path, e, keys) } : {})
+    bytes = done.bytes
+    report.partsChanged = done.report.partsChanged
+    report.warnings = done.report.warnings
+    report.recalc = { ok: proof.independent || done.report.recalc.ok, error: done.report.recalc.error, pathA: done.report.recalc.pathA.length, pathB: done.report.recalc.pathB.length, fullCalcOnLoad: done.report.recalc.fullCalcOnLoad }
+    report.path = proof.independent ? 'independent' : engine ? 'engine' : 'plain'
+    if (!proof.independent) report.why = proof.why
+  }
+  if (formats.length) {
+    const made = formatEditsOf(formats, (tab) => tab, themeOf(zip))
+    if (made.length) {
+      const done = patchFormat(bytes, made)
+      bytes = done.bytes
+      report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged])]
+      report.warnings = [...report.warnings, ...done.report.warnings]
+      report.format = done.report.styles
+      // CELL reads a cell's formatting (its number format, its alignment as "prefix", its column's width): where a
+      // workbook calls CELL anywhere, a name included, any format edit asks Excel to calculate again on load, since
+      // no engine here knows what that formula now answers.
+      if (!report.recalc.fullCalcOnLoad && readsFormats(zip)) {
+        const again = await patchXlsx(bytes, [], {})
+        bytes = again.bytes
+        report.partsChanged = [...new Set([...report.partsChanged, ...again.report.partsChanged])]
+        report.recalc.fullCalcOnLoad = again.report.recalc.fullCalcOnLoad
+      }
     }
   }
+  return { bytes, report }
 }
 
 /**

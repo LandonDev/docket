@@ -5,13 +5,14 @@ import type { IWorkbookData } from '@univerjs/core'
 import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
-import { registerFileWaiting } from '../files/hooks'
 import { workspaceHere } from '../files/policy'
+import { registerFileMoved, registerFileWaiting } from '../files/hooks'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
 import type { SheetRef } from './host/wire'
 import { writeCsv, writeXlsx } from './writer'
 import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Sheets } from './held'
+import { sheetFileMoved } from './moved'
 import { ensurePackageTables, type Moved } from './packages'
 import { mapCell, STRUCTURAL_CONVERTERS } from './structural'
 import { ensureSuggestionTables, type Which } from './suggestions'
@@ -200,10 +201,15 @@ export const sheets: WorkModule = {
     }
     return NOT_HANDLED
   },
-  // The full editor's docservice stops with Work (fullEditor/).
+  // A sheet's file renamed or moved takes what is kept by its path with it (moved.ts); the full editor's docservice stops with Work (fullEditor/).
   start(ctx) {
     // Files reads the suggestions waiting in a workbook from here: a count in its row, and Home's Waiting on you.
-    const off = registerFileWaiting(sheetWaiting)
+    const offWaiting = registerFileWaiting(sheetWaiting)
+    const offMoved = registerFileMoved(sheetFileMoved)
+    const off = (): void => {
+      offWaiting()
+      offMoved()
+    }
     return () => {
       off()
       void fullEditorOf(ctx).stop('Work is off')

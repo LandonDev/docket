@@ -45,14 +45,16 @@ const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size',
  * control is listed only where its change survives: the grid emits a mutation, the service's own
  * engine replays it, a cold load shows it and the Excel export holds it
  * (`sheets/rowMatrix.test.ts` holds every cell of this table). A store with none draws no row at
- * all. An opened Excel file and a sheet read from a .csv keep cell contents only, so they have
- * none yet. The host says it, not the canvas, so a canvas a release ahead of its host draws no
- * control that host could lose.
+ * all. For an opened Excel file the same holds through the patch writer: the press is saved into
+ * the file and read back from it. A sheet read from a .csv keeps cell contents only, so it has
+ * none; a workbook Excel or Google holds is a `package` in the view with no `row`. The host says
+ * it, not the canvas, so a canvas a release ahead of its host draws no control that host could
+ * lose.
  */
 export const SHEET_ROW: Record<SheetStoreKind, readonly SheetRowControl[]> = {
   lifeos: KEPT_WHOLE,
   tcsheet: KEPT_WHOLE,
-  package: [],
+  package: KEPT_WHOLE,
   csv: []
 }
 

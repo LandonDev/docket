@@ -34,10 +34,10 @@ describe('planning a structural edit', () => {
     const steps = planOf(
       [
         { id: 'sheet.mutation.insert-row', params: { subUnitId: 'sheet1', range: range(3, 4) } },
-        { id: 'sheet.mutation.set-worksheet-row-height', params: { subUnitId: 'sheet1' } },
+        { id: 'sheet.mutation.set-worksheet-row-height', params: { subUnitId: 'sheet1', ranges: [range(3, 4)], rowHeight: 28 } },
         {
           id: SET_RANGE_VALUES,
-          params: { subUnitId: 'sheet1', cellValue: { 3: { 0: { v: 1 }, 1: { s: 'bold' } } } }
+          params: { subUnitId: 'sheet1', cellValue: { 3: { 0: { v: 1 }, 1: { s: { bl: 1 } } } } }
         },
         {
           id: 'sheet.mutation.set-worksheet-name',
@@ -59,7 +59,15 @@ describe('planning a structural edit', () => {
     )
     expect(steps).toEqual([
       { kind: 'structural', ops: [{ op: 'insertRows', sheet: 'Data', at: 3, count: 2 }] },
-      { kind: 'cells', edits: [{ sheet: 'Data', cell: 'A4', value: 1 }] },
+      // the height the grid gave the new rows and the style it laid ride with the cells, each named by its tab: nothing he made in the batch is left out
+      {
+        kind: 'cells',
+        edits: [{ sheet: 'Data', cell: 'A4', value: 1 }],
+        formats: [
+          { id: 'sheet.mutation.set-worksheet-row-height', params: { subUnitId: 'Data', ranges: [range(3, 4)], rowHeight: 28 } },
+          { id: SET_RANGE_VALUES, params: { subUnitId: 'Data', cellValue: { 3: { 1: { s: { bl: 1 } } } } } }
+        ]
+      },
       {
         kind: 'structural',
         ops: [
@@ -67,7 +75,7 @@ describe('planning a structural edit', () => {
           { op: 'addSheet', name: 'Notes', at: 2 }
         ]
       },
-      { kind: 'cells', edits: [{ sheet: 'Notes', cell: 'A1', value: 'hi' }] },
+      { kind: 'cells', edits: [{ sheet: 'Notes', cell: 'A1', value: 'hi' }], formats: [] },
       {
         kind: 'structural',
         ops: [

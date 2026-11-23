@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import type { SheetMutationJson } from '@shared/contract-work-sheets'
 import type { Converter } from '../formats/jobs'
-import { editsOf, NotSaved, SET_RANGE_VALUES } from './mutations'
+import { editsOf, FORMATTING, formatsOf, NotSaved, SET_RANGE_VALUES, UNSAVED } from './mutations'
 import type { EditSpec } from './patch/patch'
 import { STRUCTURAL_PY } from './structuralScript'
 
@@ -62,9 +62,13 @@ export const StructuralOpSchema = z.discriminatedUnion('op', [
 ])
 const OpsSchema = z.array(StructuralOpSchema).min(1).max(500)
 
-/** One step of an edit: LibreOffice's structural ops, or the patch writer's cell writes. */
+/**
+ * One step of an edit: LibreOffice's structural ops, or the patch writer's cell writes with the
+ * formatting mutations that came with them (`formats`, each named by its tab: mutations.ts
+ * `formatsOf`).
+ */
 export type Step =
-  { kind: 'structural'; ops: StructuralOp[] } | { kind: 'cells'; edits: EditSpec[] }
+  { kind: 'structural'; ops: StructuralOp[] } | { kind: 'cells'; edits: EditSpec[]; formats: SheetMutationJson[] }
 
 /** The Univer mutations a package saves through LibreOffice. */
 export const STRUCTURAL_IDS = new Set([
@@ -77,13 +81,8 @@ export const STRUCTURAL_IDS = new Set([
   'sheet.mutation.remove-sheet',
   'sheet.mutation.set-worksheet-name'
 ])
-/** What the grid works out again from content, and what a row or column insert brings along: nothing to save. */
-const FOLLOWERS = new Set([
-  'sheet.mutation.set-worksheet-row-auto-height',
-  'sheet.mutation.set-worksheet-row-is-auto-height',
-  'sheet.mutation.set-worksheet-row-height',
-  'sheet.mutation.set-worksheet-col-width'
-])
+/** What the grid works out again from content: nothing to save. */
+const DERIVED = new Set(['sheet.mutation.set-worksheet-row-auto-height'])
 
 interface Range {
   startRow: number
@@ -101,9 +100,6 @@ export function planOf(
   names: Map<string, string>
 ): Step[] {
   const steps: Step[] = []
-  // The grid formats a row or column it inserts like its neighbour, as LibreOffice does itself: a cell
-  // that carries only a style in a structural edit has nothing more for the file.
-  const structural = isStructural(mutations)
   const nameOf = (id: string): string => {
     const got = names.get(id)
     if (!got) throw new NotSaved('That sheet is not in the file.')
@@ -114,8 +110,22 @@ export function planOf(
     if (last?.kind === 'structural') last.ops.push(op)
     else steps.push({ kind: 'structural', ops: [op] })
   }
+  /** The cells step being gathered: the last step when it is one, else a new one. */
+  const cells = (): Extract<Step, { kind: 'cells' }> => {
+    const last = steps.at(-1)
+    if (last?.kind === 'cells') return last
+    const made = { kind: 'cells' as const, edits: [], formats: [] }
+    steps.push(made)
+    return made
+  }
   for (const m of mutations) {
-    if (FOLLOWERS.has(m.id)) continue
+    if (DERIVED.has(m.id)) continue
+    if (FORMATTING.has(m.id)) {
+      // A merge made or parted, a width or a height he set: the format edits carry it, in the order it came.
+      const formats = formatsOf([m], (id) => names.get(id))
+      if (formats.length) cells().formats.push(...formats)
+      continue
+    }
     const p = m.params as {
       subUnitId: string
       range?: Range
@@ -125,17 +135,17 @@ export function planOf(
       name?: string
     }
     if (m.id === SET_RANGE_VALUES) {
-      const edits = editsOf([structural ? withoutStyleOnly(m) : m], (id) => names.get(id))
-      if (!edits.length) continue
-      const last = steps.at(-1)
-      if (last?.kind === 'cells') last.edits.push(...edits)
-      else steps.push({ kind: 'cells', edits })
+      const edits = editsOf([m], (id) => names.get(id))
+      // Every style is kept, in the order it came: a press made while an insert was saving rides the same batch, and the
+      // style the grid gave a row it inserted is written over LibreOffice's own choice, so the file is what the grid shows.
+      const formats = formatsOf([m], (id) => names.get(id))
+      if (!edits.length && !formats.length) continue
+      const step = cells()
+      step.edits.push(...edits)
+      step.formats.push(...formats)
       continue
     }
-    if (!STRUCTURAL_IDS.has(m.id))
-      throw new NotSaved(
-        'Moving cells, merging and formatting are not saved into an opened Excel file yet.'
-      )
+    if (!STRUCTURAL_IDS.has(m.id)) throw new NotSaved(m.id.includes('.move-') ? UNSAVED.moved : UNSAVED.other)
     const r = p.range
     switch (m.id) {
       case 'sheet.mutation.insert-row':
@@ -194,7 +204,7 @@ export function planOf(
             [{ id: SET_RANGE_VALUES, params: { subUnitId: sheet.id, cellValue: cells } }],
             (id) => names.get(id)
           )
-          if (edits.length) steps.push({ kind: 'cells', edits })
+          if (edits.length) steps.push({ kind: 'cells', edits, formats: [] })
         }
         break
       }
@@ -211,18 +221,6 @@ export function planOf(
     }
   }
   return steps
-}
-
-function withoutStyleOnly(m: SheetMutationJson): SheetMutationJson {
-  const p = m.params as {
-    cellValue?: Record<string, Record<string, Record<string, unknown> | null>>
-  }
-  const cellValue: Record<string, Record<string, Record<string, unknown> | null>> = {}
-  for (const [r, cols] of Object.entries(p.cellValue ?? {}))
-    for (const [c, cell] of Object.entries(cols ?? {}))
-      if (cell === null || 'v' in cell || 'f' in cell || 'p' in cell || 'si' in cell)
-        (cellValue[r] ??= {})[c] = cell
-  return { id: m.id, params: { ...p, cellValue } }
 }
 
 /** Whether an edit needs LibreOffice. */

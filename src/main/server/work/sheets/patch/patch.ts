@@ -47,6 +47,11 @@ export interface Options {
   strings?: 'inline' | 'shared'
   /** absent: no engine, and every dependent is left to the application that opens the file (path b) */
   recalc?: Recalc
+  /**
+   * The caller has shown that no formula reads an edited cell (depends.ts): with no engine given, the file is then
+   * written as it stands, with no word to Excel to calculate everything again on load.
+   */
+  independent?: boolean
   audit?: boolean // compare the engine with every stored formula value, not only the dependents
   level?: number // deflate level for the parts that change
   /** the engine loads from a path: the package's bytes on disk, as `bytes` holds them */
@@ -405,7 +410,7 @@ export async function patchXlsx(
       )
     )
     lap('engineMs')
-  } else why.push('no engine: recalculation left to the application that opens the file')
+  } else if (!opts.independent) why.push('no engine: recalculation left to the application that opens the file')
 
   // cached values for edited formula cells
   for (const [name, g] of bySheet)

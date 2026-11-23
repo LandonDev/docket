@@ -15,6 +15,9 @@
  *   commit      his edit to the committed revision (`PackageStore.edit`): the plan, the job, the
  *               rename over the file, the kept copy, the rows. Each run saves on the last, so the
  *               import is fresh every time, as it is in the app.
+ *   bold        his press to the committed revision for formatting alone (SHT2: the format writer)
+ *   lone        the same for a value typed where no formula reads it (SHT2: the proof, no engine);
+ *               the name says which path the proof chose
  *   floor-skip  the patch writer with no engine and no audit, on a cell nothing reads: what a save
  *               costs once the engine is skipped.
  *   floor-style a bold font appended and A1 pointed at it, both parts zipped: the least a style-only
@@ -156,6 +159,42 @@ async function variantsFor(input: string, label: string, dense: boolean): Promis
       }
     }
   ]
+  // SHT2's two light paths, timed as he meets them: his press to the committed revision.
+  // bold: formatting alone (the format writer; no workbook model, no engine).
+  // lone: a value typed where no formula reads it (the proof reads every formula's text; no engine).
+  const far = dense ? { row: 5, col: 700 } : { row: 0, col: 1 }
+  const tab = sheet.name
+  const farAt = `${colLetters(far.col)}${far.row + 1}`
+  const path = async (edits: { sheet: string; cell: string; value: number }[], formats: unknown[]): Promise<string> => (await jobs.save(live, join(dir, 'probe.xlsx'), edits, IRONCALC, formats as never)).report.path
+  const bold = { id: SET_RANGE_VALUES, params: { subUnitId: tab, cellValue: { [row]: { [col]: { s: { bl: 1 } } } } } }
+  if ((await path([], [bold])) !== 'format') throw new Error('a bold cell did not take the format path')
+  const lonePath = await path([{ sheet: tab, cell: farAt, value: 1 }], [])
+  if (!dense && lonePath !== 'independent') throw new Error(`a value nothing reads took the ${lonePath} path`)
+  variants.push(
+    {
+      name: 'bold',
+      async run(i) {
+        const t = performance.now()
+        const got = await store.edit(live, rev, [{ id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: sheet.id, cellValue: { [row]: { [col]: { s: { bl: i % 2 ? null : 1 } } } } } }], 'owner')
+        const ms = performance.now() - t
+        if ('conflict' in got) throw new Error('the bench met a conflict')
+        rev = got.rev
+        return ms
+      }
+    },
+    {
+      // On the dense file this says which path the proof chose: its 800,002 formulas are all read first.
+      name: `lone(${lonePath})`,
+      async run(i) {
+        const t = performance.now()
+        const got = await store.edit(live, rev, [{ id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: sheet.id, cellValue: { [far.row]: { [far.col]: { v: 200 + i } } } } }], 'owner')
+        const ms = performance.now() - t
+        if ('conflict' in got) throw new Error('the bench met a conflict')
+        rev = got.rev
+        return ms
+      }
+    }
+  )
   if (dense) return variants
   return [
     ...variants,
@@ -190,6 +229,12 @@ async function variantsFor(input: string, label: string, dense: boolean): Promis
       }
     }
   ]
+}
+
+function colLetters(col: number): string {
+  let name = ''
+  for (let n = col + 1; n > 0; n = Math.floor((n - 1) / 26)) name = String.fromCharCode(65 + ((n - 1) % 26)) + name
+  return name
 }
 
 const median = (xs: number[]): number => {

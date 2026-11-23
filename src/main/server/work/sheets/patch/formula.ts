@@ -325,7 +325,7 @@ export const SPILLING = new Set([
 ])
 
 /** LET/LAMBDA parameter names: odd LET arguments before the body, every LAMBDA argument before the body. */
-function lambdaParams(toks: Token[]): Set<string> {
+export function lambdaParams(toks: Token[]): Set<string> {
   const names = new Set<string>()
   for (let i = 0; i < toks.length; i++) {
     const t = toks[i]

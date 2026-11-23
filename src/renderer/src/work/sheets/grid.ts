@@ -1,7 +1,8 @@
 import { createElement, type ComponentType } from "react";
 import type { SheetCellJson, SheetChart } from "@shared/contract-work-sheets";
-import { SheetCanvas, type SheetCanvasProps, type SheetHandle } from "work-kit/sheet";
-import type { Decode, GridLink } from "./sync";
+import { fontsOfSnapshot, SheetCanvas, type SheetCanvasProps, type SheetHandle } from "work-kit/sheet";
+import { ensureSheetFonts } from "./fonts";
+import type { Decode, GridLink, Workbook } from "./sync";
 
 /**
  * The grid the sheet canvas draws: work-kit's `SheetCanvas` on Univer, and
@@ -14,6 +15,10 @@ export interface SheetGrid {
   prepare(): Promise<void>;
   /** Makes the formula worker; there once `prepare` has settled. */
   worker?: () => Worker;
+  /** Reads the faces a workbook's fonts are drawn with, before the grid draws it: a canvas does not draw again when a face arrives late. Never rejects. */
+  fonts(workbook: Workbook): Promise<void>;
+  /** Reads one font's faces, before the row lays it on a cell. */
+  font(name: string): Promise<void>;
   link(handle: SheetHandle): GridLink;
   /** A range's values, A1 on that sheet, row by row. */
   values(handle: SheetHandle, sheet: string, a1: string): unknown[][];
@@ -39,12 +44,17 @@ export const univerGrid: SheetGrid = {
     SheetWorker ??= (await import("work-kit/sheet/worker?worker")).default;
   },
   worker: () => new SheetWorker!(),
+  fonts: (workbook) => ensureSheetFonts(fontsOfSnapshot(workbook as never)),
+  font: (name) => ensureSheetFonts([name]),
   link: (handle) => ({
     unitId: handle.api.getActiveWorkbook()?.getId() ?? "",
     apply: (mutations) => handle.apply(mutations),
     onMutation: (listener) => handle.onMutation(listener),
     read: (sheet, row, col) => (sheetOf(handle, sheet)?.getRange(row, col).getCellData() ?? null) as SheetCellJson | null,
     formula: (sheet, row, col) => sheetOf(handle, sheet)?.getRange(row, col).getFormula() || null,
+    undo: () => handle.api.undo(),
+    onCommand: (listener) => handle.onCommand(listener),
+    style: (id) => (handle.api.getActiveWorkbook()?.getWorkbook().getStyles().get(id) as Record<string, unknown> | null | undefined) ?? null,
   }),
   values: (handle, sheet, a1) => (sheetOf(handle, sheet)?.getRange(a1).getValues() ?? []) as unknown[][],
   place(handle, chart, size, onSlot) {

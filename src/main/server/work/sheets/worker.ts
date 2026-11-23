@@ -24,7 +24,7 @@ async function run(ask: WorkerAsk): Promise<unknown> {
     case 'read':
       return readWorkbookRange(importPackage(ask.path).workbook, ask.range as A1Range, colName)
     case 'save': {
-      const { bytes, report } = await savePackage(ask.path, ask.edits, ask.ironcalcDir)
+      const { bytes, report } = await savePackage(ask.path, ask.edits, ask.ironcalcDir, ask.formats)
       writeFileSync(ask.output, bytes)
       return { report }
     }

@@ -21,7 +21,7 @@ import { Export, Share } from "../icons";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
-import { chartBars, chartFrom, chartTicks, sheetChanges, tickText, type ChartBar as Bars } from "./model";
+import { chartBars, chartFrom, chartTicks, savedLine, sheetChanges, tickText, type ChartBar as Bars } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
 import { guestSource } from "../guests/api";
 import { ShareButton } from "../guests/Share";
@@ -81,6 +81,16 @@ export function Body(props: Props) {
     };
   }, [grid, tries]);
   useEffect(() => (handle ? sync.attach(grid.link(handle)) : undefined), [sync, grid, handle]);
+  // The book's fonts are read before the grid draws it: `faces` is the book they were read for.
+  const [faces, setFaces] = useState<number | null>(null);
+  useEffect(() => {
+    if (!book) return;
+    let live = true;
+    void grid.fonts(book.workbook).then(() => live && setFaces(book.key));
+    return () => {
+      live = false;
+    };
+  }, [grid, book]);
 
   const changes = useMemo(() => sheetChanges(view?.suggestions ?? [], book?.workbook.sheetOrder), [view?.suggestions, book]);
   const current = Math.max(0, Math.min(state.current, changes.changes.length - 1));
@@ -103,7 +113,8 @@ export function Body(props: Props) {
   useLayoutEffect(() => {
     shell.ready?.(ready);
   }, [shell, ready]);
-  useFeeds(shell, sync, failed ? null : view, state.sendError, state.dropped && !failed, changes, current, handle, locked, act, ready);
+  useFeeds(shell, sync, failed ? null : view, state.sendError, changes, current, handle, locked, act, ready);
+  useSavedLine(shell, sync, failed ? null : view, state.sendError, state.saving, state.savedAt);
   useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, act);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const width = useWidth(box);
@@ -111,6 +122,12 @@ export function Body(props: Props) {
     frame.current = node;
     setBox(node);
   }, []);
+
+  // A change this sheet's store cannot keep was taken back as he made it: said once, in a few words.
+  const stopped = state.stopped;
+  useEffect(() => {
+    if (stopped) void loadToast().then((toast) => toast.message(stopped.why));
+  }, [stopped]);
 
   // The format row: only the controls whose changes this sheet's store keeps, as its host says (`view.row`); none on a sheet he cannot edit.
   const controls = view && !locked ? (view.row ?? []) : [];
@@ -126,7 +143,7 @@ export function Body(props: Props) {
     if (state.failed) void sync.open();
   };
   if (failed) return <EmptyState title="Couldn't open this sheet" line={failed} action={{ label: "Retry", onClick: retry }} />;
-  if (!view || !book || prepared !== true) return <SheetSkeleton />;
+  if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton />;
   const Canvas = grid.Canvas;
   return (
     <div
@@ -141,14 +158,15 @@ export function Body(props: Props) {
       }}
     >
       {handle && controls.length > 0 ? (
-        <SheetToolbar sheet={handle} controls={controls} boundary={box} mac={IS_MAC} editorKeys tip={rowTip} onCustomFormat={(current) => setCustomFormat(current)} confirmMerge={confirmMerge} />
+        <SheetToolbar sheet={handle} controls={controls} boundary={box} mac={IS_MAC} editorKeys tip={rowTip} loadFont={grid.font} onCustomFormat={(current) => setCustomFormat(current)} confirmMerge={confirmMerge} />
       ) : null}
       {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
       <Canvas
         key={book.key}
         snapshot={book.workbook as never}
         worker={grid.worker}
-        readOnly={locked}
+        // Locked too while the book is read again after a stop: an edit made then would be in neither the grid nor the file.
+        readOnly={locked || state.reloading}
         styleKeys={controls.length > 0}
         marks={marks}
         was={was}
@@ -214,13 +232,31 @@ function CustomFormatBody({ current, onClose, onApply }: { current: string; onCl
   );
 }
 
+/**
+ * What saved means for this sheet now, for the line under a file's name (docs/agents/work-files.md "The seam with the
+ * editor builds"). There is no save press: an edit is sent as he makes it, and the line says where that stands. A
+ * refusal an opened Excel file gave is a file the grid no longer matches, so its press is Reload; elsewhere the edits
+ * wait and the press sends them again.
+ */
+function useSavedLine(shell: CanvasShell, sync: SheetSync, view: SheetView | null, sendError: string | null, saving: boolean, savedAt: number | null): void {
+  const line = view ? savedLine(view, sendError, saving, savedAt) : null;
+  const key = line ? JSON.stringify(line) : "";
+  useEffect(() => {
+    if (!shell.saved || !line) return;
+    const { again, ...rest } = line;
+    shell.saved({ ...rest, ...(again ? { actions: [{ id: "again", label: again, run: () => sync.retry() }] } : {}) });
+    return () => shell.saved?.(null);
+    // `key` is the line by value: a view pushed again with the same facts says nothing new.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shell, sync, key]);
+}
+
 /** What the body tells the pane: the mode, the one state line, the line after a direct write, the stepper, More's Chart. */
 function useFeeds(
   shell: CanvasShell,
   sync: SheetSync,
   view: SheetView | null,
   sendError: string | null,
-  dropped: boolean,
   changes: ReturnType<typeof sheetChanges>,
   current: number,
   handle: SheetHandle | null,
@@ -248,10 +284,9 @@ function useFeeds(
     if (missing) shell.statusLine({ tone: "needs", word: `${name} moved`, detail: "Read only" });
     else if (readOnly !== undefined) shell.statusLine({ tone: "needs", word: "Read only", detail: readOnly });
     else if (saveError) shell.statusLine({ tone: "failed", word: "Couldn't save", detail: saveError, action: { label: store === "package" ? "Reload" : "Retry", run: () => sync.retry() } });
-    else if (dropped) shell.statusLine({ tone: "failed", word: "Not saved", detail: "Formatting and moved cells stay out of an opened Excel file", action: { label: "Reload", run: () => sync.retry() } });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
-  }, [shell, sync, name, missing, readOnly, saveError, dropped, store]);
+  }, [shell, sync, name, missing, readOnly, saveError, store]);
 
   const written = view?.written;
   const count = changes.changes.length;

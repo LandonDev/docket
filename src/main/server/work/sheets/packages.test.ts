@@ -96,11 +96,61 @@ describe('an opened package', () => {
     expect(outside).toEqual([path])
   })
 
-  it('refuses formatting and row inserts in words, and saves nothing', async () => {
+  it('refuses moved cells and row inserts in words, and saves nothing', async () => {
     const data = (await store.open(path)).inspected.sheets[0].id
-    await expect(store.edit(path, 0, [set(data, 1, 0, { s: { bl: 1 } })], 'owner')).rejects.toThrow(/formatting/)
-    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: PACKAGE_UNIT, subUnitId: data, range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 4 } } }], 'owner')).rejects.toThrow(/Rows, columns and sheets cannot be changed/)
+    const range = { startRow: 1, endRow: 1, startColumn: 0, endColumn: 4 }
+    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.move-range', params: { unitId: PACKAGE_UNIT, subUnitId: data, from: {}, to: {} } }], 'owner')).rejects.toThrow('Moving cells is not saved in an Excel file yet')
+    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.set-frozen', params: { unitId: PACKAGE_UNIT, subUnitId: data } }], 'owner')).rejects.toThrow('That change is not saved in an Excel file yet')
+    await expect(store.edit(path, 0, [set(data, 1, 0, { p: { body: {} } })], 'owner')).rejects.toThrow('more than one style in a cell')
+    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: PACKAGE_UNIT, subUnitId: data, range } }], 'owner')).rejects.toThrow(/Rows, columns and sheets cannot be changed/)
     expect((await store.open(path)).rev).toBe(0)
+  })
+
+  it('saves formatting into the file: a style, a width, a height and a merge, each as its own revision, the values untouched', async () => {
+    const data = (await store.open(path)).inspected.sheets[0].id
+    const before = valueAt(path, 'Data', 1, 0)
+    const cell = (row: number, col: number) => {
+      const { workbook } = importXlsx(new Uint8Array(readFileSync(path)))
+      const sheet = workbook.sheets[workbook.sheetOrder.find((s) => workbook.sheets[s]?.name === 'Data')!]!
+      const s = sheet.cellData?.[row]?.[col]?.s
+      return { sheet, style: (typeof s === 'string' ? workbook.styles?.[s] : s) ?? {} }
+    }
+    // bold and a fill on A2:B2, as the row sends them: one mutation, each cell the keys that changed
+    const bold = { id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: data, cellValue: { 1: { 0: { s: { bl: 1, bg: { rgb: '#FFDD66' } } }, 1: { s: { bl: 1, bg: { rgb: '#FFDD66' } } } } } } }
+    expect(await store.edit(path, 0, [bold], 'owner')).toEqual({ rev: 1 })
+    expect(cell(1, 0).style).toMatchObject({ bl: 1, bg: { rgb: '#FFDD66' } })
+    expect(cell(1, 1).style).toMatchObject({ bl: 1 })
+    expect(valueAt(path, 'Data', 1, 0)).toBe(before)
+    expect(store.history(path)[0]).toMatchObject({ rev: 1, by: 'owner', label: 'Formatting' })
+    // a column's width, a row's height and a merge, in one edit
+    const ranges = (r: object) => [{ startRow: 0, endRow: 0, startColumn: 0, endColumn: 0, ...r }]
+    const more = [
+      { id: 'sheet.mutation.set-worksheet-col-width', params: { unitId: PACKAGE_UNIT, subUnitId: data, ranges: ranges({ startColumn: 2, endColumn: 2 }), colWidth: 160 } },
+      { id: 'sheet.mutation.set-worksheet-row-height', params: { unitId: PACKAGE_UNIT, subUnitId: data, ranges: ranges({ startRow: 4, endRow: 4 }), rowHeight: 40 } },
+      { id: 'sheet.mutation.add-worksheet-merge', params: { unitId: PACKAGE_UNIT, subUnitId: data, ranges: [{ startRow: 20, endRow: 21, startColumn: 5, endColumn: 6 }] } }
+    ]
+    expect(await store.edit(path, 1, more, 'owner')).toEqual({ rev: 2 })
+    const { sheet } = cell(0, 0)
+    expect(sheet.columnData?.[2]?.w).toBe(160)
+    expect(sheet.rowData?.[4]?.h).toBe(40)
+    expect(sheet.mergeData).toContainEqual(expect.objectContaining({ startRow: 20, endRow: 21, startColumn: 5, endColumn: 6 }))
+    // clearing takes the formatting off again and leaves the value
+    const clear = { id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: data, cellValue: { 1: { 0: { s: null } } } } }
+    expect(await store.edit(path, 2, [clear], 'owner')).toEqual({ rev: 3 })
+    expect(cell(1, 0).style.bl).toBeUndefined()
+    expect(valueAt(path, 'Data', 1, 0)).toBe(before)
+    // the grids catch up through since, the formatting among the ops
+    const since = store.since(path, 0)
+    expect('ops' in since && since.ops.map((o) => o.rev)).toEqual([1, 2, 3])
+  })
+
+  it('a value typed with a style lands as both, in one revision', async () => {
+    const data = (await store.open(path)).inspected.sheets[0].id
+    expect(await store.edit(path, 0, [set(data, 30, 7, { v: 12.5, s: { n: { pattern: '0.00%' }, it: 1 } })], 'owner')).toEqual({ rev: 1 })
+    const { workbook } = importXlsx(new Uint8Array(readFileSync(path)))
+    const got = workbook.sheets[workbook.sheetOrder[0]!]!.cellData?.[30]?.[7]
+    expect(got?.v).toBe(12.5)
+    expect((typeof got?.s === 'string' ? workbook.styles?.[got.s] : got?.s)).toMatchObject({ it: 1, n: { pattern: '0.00%' } })
   })
 
   it('takes a change made outside as its own revision, and tells the grids to reload', async () => {
