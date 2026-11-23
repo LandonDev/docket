@@ -163,10 +163,18 @@ from the machine's own keyboard (the keeper's `key`, QEMU's), then the walk
 presses "Sign in another way" and "Approve a request on my Microsoft
 Authenticator app" by the words on them (UI Automation, the helper's `ui.seen`
 and `ui.press`, compiled only into the guest's build). A number is then on the
-VM's screen for his phone. The answer names the computer (`vm:windows`) and
-says where the walk stopped; the window opens the Computers page there. Once
-OneDrive is signed in, a second press opens Word and presses Sign in in its
-title bar for Office's own sign-in.
+VM's screen for his phone, and the helper reads it off Microsoft's page
+(`ui.number`: an element of the account broker's whose name is two or three
+digits): the answer carries it (`number`) and its line says it, "Enter 42 in
+Microsoft Authenticator on your phone.", so the row needs no Take over. The
+answer names the computer (`vm:windows`) and says where the walk stopped; the
+window opens the Computers page there. Once OneDrive is signed in, a second
+press opens Word for Office's own sign-in (`walkOfficeSignIn`): its "Your
+privacy option" page is closed, then whichever shows is pressed, the title
+bar's Sign in, or for an account Word holds with an error File, Account,
+"Fix me" (seen 2026-11-23); Microsoft's window then goes the way OneDrive's
+does (the security-key prompt sent away, "Sign in another way", the
+Authenticator choice, the number).
 
 While he answers on his phone the host follows the sign-in for six minutes
 (`followSignIn`), so that his one approval is enough: Microsoft's "Sign in
@@ -177,7 +185,14 @@ wasn't sent" (Microsoft sends no new request while an older one waits
 unanswered on his phone, about four minutes) has its Next pressed every ten
 seconds, and the walk then says `pending`, "deny it on your phone"; and Next
 in OneDrive's own setup pages. A request that timed out unanswered is not
-sent again by itself.
+sent again by itself. OneDrive's watch goes on past its account: its tutorial
+gets "Not now" ("Get the mobile app") and Next, and at its end "Open my
+OneDrive folder"; then (or a minute after the account showed) the wanted
+libraries are asked again at once (`resetSyncAsks`, then a read): OneDrive
+ignored the sync link it was sent while the tutorial was open (2026-11-23:
+RecWell arrived only when it was sent by hand seven minutes later). Office's
+watch ends on Office's own state, licensed, not on OneDrive's account, which
+is there from the start.
 
 Found live 2026-11-22: the walk reaches the number in about ten seconds; he
 approved one; the device question then waited about two minutes for an

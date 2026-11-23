@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ANOTHER_WAY, APPROVE, followSignIn, NOT_SENT, OFFICE_SIGN_IN_LINES, SIGN_IN_LINES, THIS_APP_ONLY, walkOfficeSignIn, walkSignIn } from './signin'
+import { ACCOUNT, ANOTHER_WAY, APPROVE, FILE_TAB, FIX_ME, followSignIn, NOT_NOW, NOT_SENT, OFFICE_WORD_LINE, OPEN_FOLDER, PRIVACY, readNumber, SIGN_IN_LINES, THIS_APP_ONLY, walkOfficeSignIn, walkSignIn } from './signin'
 
 /** The walk to his phone's number over a fake screen: what is on it after each press, and what is pressed. */
 
@@ -70,16 +70,69 @@ describe("OneDrive's sign-in, walked to his phone", () => {
 })
 
 describe("Office's sign-in, after OneDrive's", () => {
-  it("starts Word and presses its title bar's Sign in, which opens Microsoft's window", async () => {
+  /** Word's screen: what each press shows next, and the presses with the app they were kept to. */
+  function word(start: string[], after: Record<string, string[]>) {
+    let on = [...start]
+    const pressed: string[] = []
+    const keys: string[] = []
     const calls: string[] = []
-    let tries = 0
-    const reached = await walkOfficeSignIn({ call: async (verb) => (calls.push(verb), verb === 'ui.press' && ++tries === 3 ? 'Sign in' : null), sleep: async () => {}, waits: { first: 3, page: 1, list: 1 } })
-    expect(reached).toBe('window')
-    expect(calls).toEqual(['office.start', 'ui.press', 'ui.press', 'ui.press'])
-    expect(OFFICE_SIGN_IN_LINES.window).toMatch(/approve it there/)
+    const deps = {
+      call: async (verb: string, args?: Record<string, unknown>) => {
+        calls.push(verb)
+        if (verb === 'office.start') return null
+        const hit = ((args?.names as string[] | undefined) ?? []).find((n) => on.includes(n)) ?? null
+        if (verb === 'ui.press' && hit) {
+          pressed.push(args?.in ? `${args.in}:${hit}` : hit)
+          on = after[hit] ?? on.filter((n) => n !== hit)
+        }
+        return hit
+      },
+      key: async (...k: string[]) => void keys.push(...k),
+      sleep: async () => {},
+      waits: { first: 6, page: 12, list: 3 }
+    }
+    return { deps, pressed, keys, calls }
+  }
+
+  it("starts Word, presses its title bar's Sign in, and goes on through Microsoft's window to the number", async () => {
+    const w = word(['Sign in'], { 'Sign in': [ANOTHER_WAY], [ANOTHER_WAY]: [APPROVE], [APPROVE]: [] })
+    expect(await walkOfficeSignIn(w.deps)).toBe('number')
+    expect(w.calls[0]).toBe('office.start')
+    expect(w.pressed).toEqual(['WINWORD:Sign in', ANOTHER_WAY, APPROVE])
   })
-  it('leaves Word open and says what to press when the button never shows', async () => {
-    expect(await walkOfficeSignIn({ call: async () => null, sleep: async () => {}, waits: { first: 1, page: 1, list: 1 } })).toBe('word')
+  it('closes Word\'s privacy page first', async () => {
+    const w = word([PRIVACY, 'Close', 'Sign in'], { Close: ['Sign in'], 'Sign in': [APPROVE], [APPROVE]: [] })
+    expect(await walkOfficeSignIn(w.deps)).toBe('number')
+    expect(w.pressed.slice(0, 2)).toEqual(['WINWORD:Close', 'WINWORD:Sign in'])
+  })
+  it('an account Word holds with an error is fixed from File, Account, Fix me', async () => {
+    const w = word([FILE_TAB], { [FILE_TAB]: [ACCOUNT], [ACCOUNT]: [FIX_ME], [FIX_ME]: [ANOTHER_WAY], [ANOTHER_WAY]: [APPROVE], [APPROVE]: [] })
+    expect(await walkOfficeSignIn(w.deps)).toBe('number')
+    expect(w.pressed).toEqual([`WINWORD:${FILE_TAB}`, `WINWORD:${ACCOUNT}`, `WINWORD:${FIX_ME}`, ANOTHER_WAY, APPROVE])
+  })
+  it("Windows' security-key prompt over Microsoft's window is sent away with Escape", async () => {
+    const w = word(['Sign in'], { 'Sign in': [] })
+    w.deps.key = async (...k: string[]) => {
+      w.keys.push(...k)
+      w.deps.call = ((call) => async (verb: string, args?: Record<string, unknown>) => (verb === 'ui.seen' && ((args?.names as string[]) ?? []).includes(ANOTHER_WAY) ? ANOTHER_WAY : call(verb, args)))(w.deps.call)
+    }
+    await walkOfficeSignIn(w.deps)
+    expect(w.keys).toContain('esc')
+  })
+  it('leaves Word open and says what to press when nothing it knows shows', async () => {
+    const w = word([], {})
+    expect(await walkOfficeSignIn(w.deps)).toBe('word')
+    expect(OFFICE_WORD_LINE).toMatch(/press Sign in at the top of its window, or File, Account, Fix me/)
+  })
+})
+
+describe('the number for his phone', () => {
+  it('is read from the page when it names two or three digits, and only then', async () => {
+    expect(await readNumber({ call: async () => '42' })).toBe('42')
+    expect(await readNumber({ call: async () => '107' })).toBe('107')
+    expect(await readNumber({ call: async () => 'Approve sign in' })).toBeNull()
+    expect(await readNumber({ call: async () => null })).toBeNull()
+    expect(await readNumber({ call: async () => Promise.reject(new Error('down')) })).toBeNull()
   })
 })
 
@@ -131,6 +184,31 @@ describe('while he answers on his phone', () => {
     expect(page.map((p) => p.t)).toEqual([0, 10_000, 20_000])
     expect(w.pressed.filter((p) => p.within === 'OneDrive').length).toBeGreaterThan(0)
     expect(w.pressed.every((p) => p.name === 'Next')).toBe(true)
+  })
+
+  it("OneDrive's tutorial is pressed to its end once the account shows, then the wanted libraries are asked", async () => {
+    const w = world((t) => (t < 14_000 ? [] : t < 18_000 ? ['Next'] : t < 22_000 ? [NOT_NOW] : [OPEN_FOLDER]))
+    w.signInAt(12_000, 'him@purdue.edu')
+    let after = 0
+    expect(await followSignIn({ ...w.deps, afterSignIn: async () => void after++ })).toBe('signed-in')
+    expect(w.pressed.filter((p) => p.within === 'OneDrive').map((p) => p.name)).toEqual(expect.arrayContaining(['Next', NOT_NOW, OPEN_FOLDER]))
+    expect(w.pressed.at(-1)).toMatchObject({ name: OPEN_FOLDER, within: 'OneDrive' })
+    expect(after).toBe(1)
+  })
+
+  it('a tutorial that never ends still asks for the libraries after a minute', async () => {
+    const w = world(() => [])
+    w.signInAt(5_000, 'him@purdue.edu')
+    let after = 0
+    expect(await followSignIn({ ...w.deps, forMs: 120_000, afterSignIn: async () => void after++ })).toBe('signed-in')
+    expect(after).toBe(1)
+  })
+
+  it("watching Office, ends on Office's own state and nothing else", async () => {
+    const w = world(() => [])
+    w.signInAt(30_000, 'licensed')
+    expect(await followSignIn(w.deps)).toBe('signed-in')
+    expect(w.pressed).toEqual([])
   })
 
   it('gives up after its time, having typed nothing', async () => {

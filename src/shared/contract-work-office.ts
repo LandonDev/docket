@@ -118,6 +118,8 @@ export interface VmSignInAnswer {
   account: string | null
   /** what is on the VM's screen now, in words for the row */
   line: string
+  /** the number for his phone, when the walk reached it and the page names it (the line says it too) */
+  number?: string
 }
 
 /**

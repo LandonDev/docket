@@ -183,6 +183,8 @@ export function missingLibraries(db: DatabaseSync, stored: Stored | null = store
 /** When each library was last asked of OneDrive: asked again only after ten minutes, since a first sync takes a while to show its folder. */
 const asked = new Map<string, number>()
 const ASK_AGAIN_MS = 10 * 60_000
+/** Forgets when each library was asked: OneDrive ignores a sync link while its tutorial is open, so the end of that tutorial asks again. */
+export const resetSyncAsks = (): void => asked.clear()
 
 /** Asks OneDrive in the guest to sync each wanted library it lacks, as that library's own Sync button would. */
 async function syncWanted(db: DatabaseSync, stored: Stored, signal?: AbortSignal, now = Date.now()): Promise<number> {

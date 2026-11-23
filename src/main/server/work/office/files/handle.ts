@@ -11,10 +11,10 @@ import type { Caller, WorkCtx } from '../../modules'
 import type { OfficeCarrier } from '../carrier'
 import { BYTES_MAX, copyAllowed, entryOf, fetchFile, foldersPlace, librariesOf, libraryOf, listFolder, offFolders, readText, rootsOf, searchLibraries, SEARCH_MAX, setCopyAllowed, setRoots } from './library'
 import { NOT_SET_UP } from '../../winvm/keeper'
-import { isGuestPath, missingLibraries, refreshVm, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
+import { isGuestPath, missingLibraries, refreshVm, resetSyncAsks, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
 import { vmAllowed, vmKey, vmState } from '../vm/office'
 import { vmCall } from '../vm/link'
-import { followSignIn, OFFICE_SIGN_IN_LINES, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn } from '../vm/signin'
+import { followSignIn, numberLine, OFFICE_WORD_LINE, readNumber, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn, type SignInReached } from '../vm/signin'
 import type { TeamsLibrariesAnswer, TeamsPlace, VmSignInAnswer, VmSyncLibrary } from '@shared/contract-work-office'
 
 /**
@@ -43,13 +43,19 @@ export const setSignInPace = (waits: { first: number; page: number; list: number
 
 /** One watch of a sign-in at a time (vm/signin.ts `followSignIn`); none under a test's pace. */
 let following = false
-function follow(ctx: WorkCtx, account: () => Promise<string | null>, what: string): void {
+function follow(ctx: WorkCtx, account: () => Promise<string | null>, what: string, afterSignIn?: () => Promise<void>): void {
   if (following || pace) return
   following = true
-  void followSignIn({ call: vmCall, account })
+  void followSignIn({ call: vmCall, account, afterSignIn })
     .then((end) => ctx.log(`office: the Windows VM's ${what} sign-in ${end === 'signed-in' ? 'went through' : 'was not finished in six minutes'}`))
     .catch((err) => ctx.log(`office: following the sign-in failed: ${err instanceof Error ? err.message : String(err)}`))
     .finally(() => (following = false))
+}
+
+/** Where a sign-in walk stopped, in words; at the number, the number itself when the page names it. */
+async function signInLine(reached: SignInReached): Promise<{ line: string; number?: string }> {
+  const number = reached === 'number' ? await readNumber({ call: vmCall }) : null
+  return number ? { line: numberLine(number), number } : { line: SIGN_IN_LINES[reached] }
 }
 
 /** How fresh the VM's kept status must be for a list to use it without asking an awake machine again. */
@@ -239,9 +245,10 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
         // OneDrive is done; a fresh Office asks for its own sign-in in the first app he opens, so Word is opened for it.
         const office = stored!.status.office
         if (office.installed && office.licensed !== true) {
-          const reached = await walkOfficeSignIn({ call: vmCall, ...(pace ? { waits: pace, sleep: async () => {} } : {}) })
-          follow(ctx, async () => (await refreshVm(ctx.db, { wake: false }))?.status.office.account ?? null, 'Office')
-          return handled({ computer: 'vm:windows', account: signedIn, line: OFFICE_SIGN_IN_LINES[reached] } satisfies VmSignInAnswer)
+          const reached = await walkOfficeSignIn({ call: vmCall, key: vmKey, ...(pace ? { waits: pace, sleep: async () => {} } : {}) })
+          // Office's own state ends the watch: OneDrive's account is there from the start
+          follow(ctx, async () => ((await refreshVm(ctx.db, { wake: false }))?.status.office.licensed === true ? signedIn : null), 'Office')
+          return handled({ computer: 'vm:windows', account: signedIn, ...(reached === 'word' ? { line: OFFICE_WORD_LINE } : await signInLine(reached)) } satisfies VmSignInAnswer)
         }
         return handled({ computer: 'vm:windows', account: signedIn, line: `The Windows VM is signed in as ${signedIn}.` } satisfies VmSignInAnswer)
       }
@@ -249,8 +256,15 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       // Walked to the one step that is his: the number for his phone. Nothing here types a password or a code.
       const reached = await walkSignIn(account, { call: vmCall, key: vmKey, ...(pace ? { waits: pace, sleep: async () => {} } : {}) })
       // While he answers on his phone the host answers what Microsoft asks next, so his one approval is enough.
-      if (reached === 'number' || reached === 'pending') follow(ctx, async () => (await refreshVm(ctx.db, { wake: false }))?.status.onedrive.account ?? null, 'OneDrive')
-      return handled({ computer: 'vm:windows', account, line: SIGN_IN_LINES[reached] } satisfies VmSignInAnswer)
+      if (reached === 'number' || reached === 'pending') {
+        // once its tutorial is through, the wanted libraries are asked of OneDrive again (it ignored a sync link while the tutorial was open)
+        const afterSignIn = async () => {
+          resetSyncAsks()
+          await refreshVm(ctx.db, { wake: false })
+        }
+        follow(ctx, async () => (await refreshVm(ctx.db, { wake: false }))?.status.onedrive.account ?? null, 'OneDrive', afterSignIn)
+      }
+      return handled({ computer: 'vm:windows', account, ...(await signInLine(reached)) } satisfies VmSignInAnswer)
     }
     case 'work.office.vmSync': {
       if (by.kind === 'model') throw new Error(ONLY_OWNER)

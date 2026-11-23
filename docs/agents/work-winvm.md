@@ -139,13 +139,34 @@ Office helper (native/tc-office-win/TcOffice.cs), as tcuser on its desktop,
 ([work-office.md](work-office.md) "The Windows VM").
 
 - **No program ships for it.** The box carries the helper's C# source
-  (`TC_OFFICE_CS`); at the first use after each start of the box's service the
-  admin's script (`helperScript`) compares the guest's copy by a sha256 kept
-  beside it and compiles it with the guest's own `csc.exe` when it differs
-  (`/target:winexe`, so no console; `/define:UIA` for the sign-in walk), into
+  (`TC_OFFICE_CS`). At each new awake spell the door runs a small check as the
+  admin (`helperCheckScript`, a few KB, 15 s and one more run, then an error
+  that names the step): the machine policies; `stale` when the guest's copy
+  differs from this build's by a sha256 kept beside it; else the logon task
+  `\TempCode\office` registered with these arguments and the helper started
+  unless it runs. Only on `stale` does the source cross, as a file over scp
+  into the admin's profile (`upload`, on the forward's connection), and
+  `helperCompileScript` builds it with the guest's own `csc.exe`
+  (`/target:winexe`, so no console; `/define:UIA` for the sign-in walk) into
   `C:\Program Files\TempCode\tc-office.exe`, which tcuser runs and cannot
-  replace. The logon task `\TempCode\office` starts it at each logon; the
-  script starts it when it is not running.
+  replace; the check runs again after it. A wake with a current helper takes
+  about half a second (measured 2026-11-23); a compile about 3.5 s.
+- **Nothing large on stdin.** Until 2026-11-23 the source rode inside the
+  script, 111 KB fed on ssh's stdin, and this guest's sshd now and then lost
+  that feed's end-of-file: the read to the end never returned and the door
+  waited two minutes twice. Every byte arrives; only the end is lost, above
+  about 64 KB (a reader to the end hung at 100 KB three of three, never at
+  64 KB; a reader that stops at a length answered at 150 KB three of three).
+  So `psStdin` sends the base64 behind its length and the boot reads to that
+  length, and it refuses a script over 64 KB (`PS_STDIN_MAX`;
+  stdinBound.test.ts holds every script the host sends to half of it).
+- **Its sockets are its own.** .NET Framework makes sockets inheritable, and
+  the programs the helper starts (OneDrive, Word, a file's app) kept its
+  listening socket, so a helper put in its place exited with 3 ("port taken")
+  until they closed (2026-11-23). The helper now marks its sockets not
+  inheritable and starts programs through the shell; the check, finding no
+  helper and the port held, names the programs that hold it ("Close them in
+  the VM").
 - **The forward** is a second `-L` on the door's own SSH connection
   (`KeeperDeps.forwards`, `run/office.sock`), so it opens and closes with the
   door. `HelperDoor.open()` wakes the machine (the keeper's `door()`), makes

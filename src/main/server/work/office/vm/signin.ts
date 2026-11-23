@@ -43,27 +43,43 @@ export const SIGN_IN_LINES: Record<SignInReached, string> = {
 export async function walkSignIn(email: string | null, d: SignInDeps): Promise<SignInReached> {
   const sleep = d.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
   const waits = d.waits ?? { first: 12, page: 24, list: 10 }
-  const seen = async (...names: string[]): Promise<string | null> => ((await d.call('ui.seen', { names }, { timeoutMs: 20_000 }).catch(() => null)) as string | null) ?? null
-  const press = async (...names: string[]): Promise<string | null> => ((await d.call('ui.press', { names }, { timeoutMs: 20_000 }).catch(() => null)) as string | null) ?? null
+  const { press } = ui(d)
 
   // A sign-in left open from before is taken up where it stands.
-  let at = await seen(APPROVE, ANOTHER_WAY)
-  if (!at) {
-    await d.call('onedrive.signin', { email: email ?? '' }, { timeoutMs: 30_000 })
-    let pressed = false
-    for (let i = 0; i < waits.first && !pressed; i++) {
-      pressed = (await press(SIGN_IN)) !== null
-      if (!pressed) await sleep(1000)
-    }
-    if (!pressed) return 'first'
-    // Purdue's page, and over it Windows' prompt for a security key: Escape sends it away.
-    for (let i = 0; i < waits.page && !at; i++) {
-      await sleep(1000)
-      at = await seen(APPROVE, ANOTHER_WAY)
-      if (!at && i >= 5 && i % 4 === 1) await d.key('esc').catch(() => undefined)
-    }
-    if (!at) return 'page'
+  if (await ui(d).seen(APPROVE, ANOTHER_WAY)) return toNumber(d)
+  await d.call('onedrive.signin', { email: email ?? '' }, { timeoutMs: 30_000 })
+  let pressed = false
+  for (let i = 0; i < waits.first && !pressed; i++) {
+    pressed = (await press(SIGN_IN)) !== null
+    if (!pressed) await sleep(1000)
   }
+  if (!pressed) return 'first'
+  return toNumber(d)
+}
+
+/** The helper's two looks at the screen, by the words on it; `only` keeps them to one app's own window. */
+function ui(d: Pick<SignInDeps, 'call'>) {
+  const ask = (verb: string) => async (...names: string[]): Promise<string | null> => ((await d.call(verb, { names }, { timeoutMs: 20_000 }).catch(() => null)) as string | null) ?? null
+  const askIn = (verb: string) => async (only: string, ...names: string[]): Promise<string | null> => ((await d.call(verb, { names, in: only }, { timeoutMs: 20_000 }).catch(() => null)) as string | null) ?? null
+  return { seen: ask('ui.seen'), press: ask('ui.press'), seenIn: askIn('ui.seen'), pressIn: askIn('ui.press') }
+}
+
+/**
+ * From a sign-in window just opened (OneDrive's, or one Office opened) to the number for his phone: Purdue's
+ * page, and over it Windows' prompt for a security key, which Escape sends away; "Sign in another way"; then
+ * "Approve a request on my Microsoft Authenticator app".
+ */
+async function toNumber(d: SignInDeps): Promise<SignInReached> {
+  const sleep = d.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const waits = d.waits ?? { first: 12, page: 24, list: 10 }
+  const { seen, press } = ui(d)
+  let at = await seen(APPROVE, ANOTHER_WAY)
+  for (let i = 0; i < waits.page && !at; i++) {
+    await sleep(1000)
+    at = await seen(APPROVE, ANOTHER_WAY)
+    if (!at && i >= 5 && i % 4 === 1) await d.key('esc').catch(() => undefined)
+  }
+  if (!at) return 'page'
   if (at === ANOTHER_WAY) {
     await press(ANOTHER_WAY)
     at = null
@@ -82,14 +98,32 @@ export async function walkSignIn(email: string | null, d: SignInDeps): Promise<S
   return 'number'
 }
 
+/** The number on Microsoft's "Approve sign in" page, as its own element names it (two or three digits); null when none shows. */
+export async function readNumber(d: Pick<SignInDeps, 'call'>): Promise<string | null> {
+  const n = (await d.call('ui.number', {}, { timeoutMs: 20_000 }).catch(() => null)) as string | null
+  return typeof n === 'string' && /^\d{2,3}$/.test(n) ? n : null
+}
+
+/** The row's line once the number is read: the number itself, so he needs no Take over to see it. */
+export const numberLine = (n: string): string => `Enter ${n} in Microsoft Authenticator on your phone.`
+
 export interface FollowDeps extends Pick<SignInDeps, 'call' | 'sleep'> {
-  /** who OneDrive in the guest is signed in as now; null while it is not */
+  /** whether the sign-in it watches is done: OneDrive's account there, or Office licensed */
   account(): Promise<string | null>
+  /**
+   * OneDrive's: once its account shows, its tutorial is pressed to its end, then this runs (the wanted libraries
+   * asked of OneDrive, which ignores a sync link while its tutorial is open). Office's has none.
+   */
+  afterSignIn?: () => Promise<void>
   /** how long it watches, and how often it looks; a test shortens them */
   forMs?: number
   everyMs?: number
   now?: () => number
 }
+
+/** OneDrive's tutorial after its sign-in: "Not now" on "Get the mobile app", and its last page's "Open my OneDrive folder". */
+export const NOT_NOW = 'Not now'
+export const OPEN_FOLDER = 'Open my OneDrive folder'
 
 /**
  * What the host does while he answers on his phone, so that his one approval is enough (found live
@@ -99,8 +133,10 @@ export interface FollowDeps extends Pick<SignInDeps, 'call' | 'sleep'> {
  *  - "Request wasn't sent" (an older request still waits on his phone) has its Next pressed every ten seconds
  *    until Microsoft sends the new one. A request that timed out unanswered is not sent again: his next
  *    press does that;
- *  - OneDrive's own setup pages after the sign-in have their Next pressed (its folder where OneDrive puts it).
- * It ends once OneDrive is signed in, or after six minutes. It types nothing.
+ *  - OneDrive's own setup pages after the sign-in have their Next pressed (its folder where OneDrive puts it),
+ *    and its tutorial "Not now" and, at its end, "Open my OneDrive folder"; then `afterSignIn`.
+ * It ends once the sign-in it watches is done (OneDrive's tutorial through, or a minute past the account), or
+ * after six minutes. It types nothing.
  */
 export async function followSignIn(d: FollowDeps): Promise<'signed-in' | 'gave-up'> {
   const sleep = d.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
@@ -111,11 +147,24 @@ export async function followSignIn(d: FollowDeps): Promise<'signed-in' | 'gave-u
   const seen = async (names: string[]): Promise<boolean> => !!(await d.call('ui.seen', { names }, { wake: false, timeoutMs: 15_000 }).catch(() => null))
   let nextAt = 0
   let lookAt = 0
+  let signedAt: number | null = null
   while (now() < end) {
     await press([THIS_APP_ONLY])
-    if (now() >= lookAt) {
+    if (signedAt !== null) {
+      // the tutorial, to its last page or a minute; then what waited on it
+      const last = await press([OPEN_FOLDER], 'OneDrive')
+      if (!last) await press([NOT_NOW, 'Next'], 'OneDrive')
+      if (last || now() - signedAt >= 60 * every) {
+        await d.afterSignIn?.().catch(() => undefined)
+        return 'signed-in'
+      }
+    } else if (now() >= lookAt) {
       lookAt = now() + 5 * every
-      if (await d.account().catch(() => null)) return 'signed-in'
+      if (await d.account().catch(() => null)) {
+        if (!d.afterSignIn) return 'signed-in'
+        signedAt = now()
+        continue
+      }
       // OneDrive's own window only: Purdue's pages have a Next too.
       await press(['Next'], 'OneDrive')
       if (now() >= nextAt && (await seen(NOT_SENT))) {
@@ -128,21 +177,34 @@ export async function followSignIn(d: FollowDeps): Promise<'signed-in' | 'gave-u
   return 'gave-up'
 }
 
+/** Word's words on the way to its sign-in: its first-run privacy page, and an account it holds but cannot use. */
+export const PRIVACY = 'Your privacy option'
+export const FIX_ME = 'Fix me'
+export const FILE_TAB = 'File Tab'
+export const ACCOUNT = 'Account'
+
+export type OfficeReached = SignInReached | 'word'
+
 /**
- * Office's own sign-in, once OneDrive is done: Word is started as he would start it and its title bar's
- * Sign in pressed, which opens Microsoft's sign-in window. What that window asks is his.
+ * Office's own sign-in, once OneDrive is done: Word is started as he would start it, its privacy page closed,
+ * and its sign-in opened by whichever shows: the title bar's Sign in, or for an account it holds with an error,
+ * File, Account, "Fix me". Microsoft's window then goes the way OneDrive's does, to the number for his phone.
  */
-export async function walkOfficeSignIn(d: Pick<SignInDeps, 'call' | 'sleep' | 'waits'>): Promise<'window' | 'word'> {
+export async function walkOfficeSignIn(d: SignInDeps): Promise<OfficeReached> {
   const sleep = d.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const { seenIn, pressIn } = ui(d)
   await d.call('office.start', {}, { timeoutMs: 30_000 })
   for (let i = 0; i < (d.waits?.first ?? 12) + 8; i++) {
     await sleep(1000)
-    if (await d.call('ui.press', { names: [SIGN_IN] }, { timeoutMs: 20_000 }).catch(() => null)) return 'window'
+    if (await seenIn('WINWORD', PRIVACY)) await pressIn('WINWORD', 'Close')
+    if (await pressIn('WINWORD', SIGN_IN, FIX_ME)) return toNumber(d)
+    // no Sign in after a few seconds: an account with an error says so on File, Account
+    if (i >= 3 && i % 3 === 0 && (await pressIn('WINWORD', FILE_TAB))) {
+      await sleep(1000)
+      await pressIn('WINWORD', ACCOUNT)
+    }
   }
   return 'word'
 }
 
-export const OFFICE_SIGN_IN_LINES = {
-  window: "Office's sign-in is open on the Windows VM: enter your address and approve it there.",
-  word: 'Word is open on the Windows VM: press Sign in at the top of its window.'
-} as const
+export const OFFICE_WORD_LINE = 'Word is open on the Windows VM: press Sign in at the top of its window, or File, Account, Fix me.'

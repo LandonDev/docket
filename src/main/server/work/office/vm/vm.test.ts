@@ -464,14 +464,40 @@ describe('his sign-in', () => {
     expect(asked.filter((a) => a.verb === 'ui.press').at(-1)).toEqual({ verb: 'ui.press', args: { names: ['Approve a request on my Microsoft Authenticator app'] } })
   })
 
+  it('answers the number itself when the page names it, and nothing when it names something else', async () => {
+    guest.account = null
+    const base = guest.call
+    let number: unknown = '07'
+    const on = 'Approve a request on my Microsoft Authenticator app'
+    setVmCall(async (verb, args, opts) => {
+      if (verb === 'ui.number') return number
+      if (verb.startsWith('ui.') || verb === 'onedrive.signin') return ((args as { names?: string[] }).names ?? []).includes(on) ? on : null
+      return base(verb, args, opts)
+    })
+    expect(await call('work.office.vmSignIn', {}, person)).toMatchObject({ line: 'Enter 07 in Microsoft Authenticator on your phone.', number: '07' })
+    number = 'Approve sign in'
+    const plain = (await call('work.office.vmSignIn', {}, person)) as { line: string; number?: string }
+    expect(plain.number).toBeUndefined()
+    expect(plain.line).toMatch(/A number is on the Windows VM's screen/)
+  })
+
   it('with OneDrive signed in and Office not licensed, opens Word for its sign-in; with both done, says who', async () => {
     const asked: string[] = []
     const base = guest.call
-    setVmCall(async (verb, args, opts) => (verb === 'office.start' || verb.startsWith('ui.') ? (asked.push(verb), verb === 'ui.press' ? 'Sign in' : null) : base(verb, args, opts)))
+    const approve = 'Approve a request on my Microsoft Authenticator app'
+    setVmCall(async (verb, args, opts) => {
+      if (verb !== 'office.start' && !verb.startsWith('ui.')) return base(verb, args, opts)
+      asked.push(verb)
+      const names = (args as { names?: string[] }).names ?? []
+      if (verb === 'ui.number') return '42'
+      if (verb === 'ui.press') return names.find((n) => n === 'Sign in' || n === approve) ?? null
+      return verb === 'ui.seen' && names.includes(approve) ? approve : null
+    })
     module.handle!({ id: '1', method: 'work.office.filesLibraries', params: {} } as unknown as ClientRequest, box, person)
-    const first = (await call('work.office.vmSignIn', {}, person)) as { line: string }
+    const first = (await call('work.office.vmSignIn', {}, person)) as { line: string; number?: string }
     expect(asked[0]).toBe('office.start')
-    expect(first.line).toMatch(/Office's sign-in is open/)
+    // Microsoft's window goes the way OneDrive's does, to the number, which the answer names
+    expect(first).toMatchObject({ line: 'Enter 42 in Microsoft Authenticator on your phone.', number: '42' })
     guest.office = { ...guest.office, licensed: true, account: 'him@purdue.edu' }
     const done = (await call('work.office.vmSignIn', {}, person)) as { line: string }
     expect(done.line).toBe('The Windows VM is signed in as him@purdue.edu.')

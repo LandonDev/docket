@@ -1364,6 +1364,7 @@ public static class Guest {
 #if UIA
       case "ui.seen": return Ui.Seen((ArrayList)a["names"], a.ContainsKey("in") ? a["in"] as string : null);
       case "ui.press": return Ui.Press((ArrayList)a["names"], a.ContainsKey("in") ? a["in"] as string : null);
+      case "ui.number": return Ui.Number();
 #endif
       case "onedrive.sync":
         // The link a library's own Sync button opens, for a library named by its ids.
@@ -1431,6 +1432,28 @@ public static class Ui {
     }
     return null;
   }
+  // The number on Microsoft's "Approve sign in" page: an element of the account broker's (or its web view's) whose
+  // name is two or three digits alone. Only the broker's windows and the shell frames it draws in are walked.
+  public static object Number() {
+    var pids = new HashSet<int>();
+    foreach (var n in new[] { "Microsoft.AAD.BrokerPlugin", "msedgewebview2", "OneDrive" })
+      foreach (var p in Process.GetProcessesByName(n)) { pids.Add(p.Id); p.Dispose(); }
+    var root = System.Windows.Automation.AutomationElement.RootElement;
+    foreach (System.Windows.Automation.AutomationElement w in root.FindAll(System.Windows.Automation.TreeScope.Children, System.Windows.Automation.Condition.TrueCondition)) {
+      try {
+        if (!pids.Contains(w.Current.ProcessId) && w.Current.ClassName != "ApplicationFrameWindow") continue;
+        foreach (System.Windows.Automation.AutomationElement e in w.FindAll(System.Windows.Automation.TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition)) {
+          if (!pids.Contains(e.Current.ProcessId)) continue;
+          var name = (e.Current.Name ?? "").Trim();
+          if (name.Length >= 2 && name.Length <= 3 && Digits(name)) return name;
+        }
+      } catch (Exception) { }
+    }
+    return null;
+  }
+
+  static bool Digits(string s) { foreach (var c in s) if (c < '0' || c > '9') return false; return true; }
+
   [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 }

@@ -48,7 +48,6 @@ function setup(over: Partial<Over> = {}) {
   const door = new HelperDoor({ keeper: () => keeper, socket: '/run/office.sock', source: 'class X {}', log: (l) => log.push(l), knock, knockMs: 50, knockEvery: 1 })
   return { door, k, knock, log }
 }
-const compiles = (k: { scripts: string[] }) => k.scripts.filter((s) => s.includes('csc.exe')).length
 
 describe("the helper's scripts", () => {
   const check = helperCheckScript(want)
