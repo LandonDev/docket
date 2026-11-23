@@ -34,7 +34,7 @@ describe("Messages on Today", () => {
     expect(rows.map((r) => [r.key, r.title, r.detail, r.when, r.sector])).toEqual([
       ["chat:c2", "Omar Reyes in #builds", "Second pad still drops", "2:59 PM", "cosmic"],
       ["chat:c1", "Dana Lee", "Can you look at the cut?", "2:00 PM", "cosmic"],
-      ["chat:c3", "Marcus Bell in Ref crew", "Can you look at the cut?", "Saturday", "hypixel"],
+      ["chat:c3", "Marcus Bell in Ref crew", "Can you look at the cut?", "Sat", "hypixel"],
     ]);
     // The section orders by `at` ascending: the newest carries the least.
     expect(rows.map((r) => r.at)).toEqual([...rows.map((r) => r.at)].sort((a, b) => (a ?? 0) - (b ?? 0)));
