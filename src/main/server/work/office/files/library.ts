@@ -8,7 +8,7 @@ import { teamsKindOf, type TeamsEntry, type TeamsFileKind, type TeamsLibrary, ty
 import { zipEntries } from './zip'
 
 /**
- * Teams files (docs/agents/work-files.md): the Teams and SharePoint libraries the OneDrive app
+ * Teams files (docs/agents/work-teams-files.md): the Teams and SharePoint libraries the OneDrive app
  * syncs on this host, read where they lie. Nothing here copies a file anywhere; a file OneDrive
  * keeps in the cloud is downloaded only by `fetch` (or by reading it), when he or a thread opens it.
  *
@@ -94,7 +94,7 @@ export function tenantOfSynced(name: string, tenants: readonly string[]): string
 /** Every team has a General channel, and its folder sits at the top of the team's library: the one sign on disk that the top folders are channels. */
 const hasChannels = (dirs: readonly string[]): boolean => dirs.some((d) => d.toLowerCase() === 'general')
 
-/** What OneDrive syncs here, as it lies on disk, in either of the two layouts docs/agents/work-files.md describes. */
+/** What OneDrive syncs here, as it lies on disk, in either of the two layouts docs/agents/work-teams-files.md describes. */
 function found(host: string): TeamsLibrary[] {
   const base = cloudDir(host)
   const out: TeamsLibrary[] = []

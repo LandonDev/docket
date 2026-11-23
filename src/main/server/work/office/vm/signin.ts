@@ -1,7 +1,7 @@
 import type { VmCall } from './link'
 
 /**
- * His sign-in to OneDrive in the Windows VM, walked to the one step that is his (docs/agents/work-files.md
+ * His sign-in to OneDrive in the Windows VM, walked to the one step that is his (docs/agents/work-teams-files.md
  * "Signing in"). Purdue's page asks first for a passkey, which the VM has none of; behind "Sign in another
  * way" is "Approve a request on my Microsoft Authenticator app", which shows a number for his phone. The
  * walk presses those by the words on them, through the helper, and nothing else: it types no address (OneDrive

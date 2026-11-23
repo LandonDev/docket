@@ -14,7 +14,7 @@ import { useHostRead } from "../../lib/connection/hostRead";
 
 /**
  * Settings → Work, "Where it runs": which folders on one host count as Teams files
- * (docs/agents/work-files.md "Settings"). Each library OneDrive syncs there is found and on by
+ * (docs/agents/work-teams-files.md "Settings"). Each library OneDrive syncs there is found and on by
  * default; he turns one off, adds a folder it missed, or gives one its web address (a channel's
  * Files → Copy link) for Open on the web. Only this computer's own window edits its list.
  */

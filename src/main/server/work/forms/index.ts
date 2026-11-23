@@ -2,10 +2,18 @@ import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { FormPublishSchema, FormsRequestSchemas, type FormPublish } from '@shared/contract-work-forms'
 import { handled, NOT_HANDLED } from '@shared/work'
-import type { ActKindDef, WorkModule } from '../modules'
+import type { ActKindDef, WorkCtx, WorkModule } from '../modules'
 import { announce, dropCopy, formItem, hold, publish, responses, review, rowOf, save, setOpen, settled, viewOf, writeCopy } from './forms'
-import { ensureFormsTables, FormsStore } from './store'
+import { ensureFormsTables, FormsStore, type FormRow } from './store'
 import { formsTools } from './tools'
+
+/** What a removed form leaves: its public page's copy and its own folder of answers. */
+function dropForms(ctx: WorkCtx, rows: FormRow[]): void {
+  for (const row of rows) {
+    if (row.publicId) dropCopy(ctx, row.publicId)
+    rmSync(join(ctx.dataDir, 'work-forms', row.itemId), { recursive: true, force: true })
+  }
+}
 
 /**
  * The forms pillar's server module (docs/agents/work-forms.md): a form in
@@ -73,10 +81,10 @@ export const forms: WorkModule = {
     return ctx.held.onDecided((item) => settled(ctx, item))
   },
   sessionsRemoved(ids, ctx) {
-    for (const row of new FormsStore(ctx.db).removeSessions(ids)) {
-      if (row.publicId) dropCopy(ctx, row.publicId)
-      rmSync(join(ctx.dataDir, 'work-forms', row.itemId), { recursive: true, force: true })
-    }
+    dropForms(ctx, new FormsStore(ctx.db).removeSessions(ids))
+  },
+  itemsRemoved(items, ctx) {
+    dropForms(ctx, new FormsStore(ctx.db).removeItems(items.map((i) => i.id)))
   },
   // Nothing: a deleted workspace's threads are removed too, and `sessionsRemoved` clears their rows.
   workspaceRemoved() {}

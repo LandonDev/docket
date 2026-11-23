@@ -79,7 +79,7 @@ export interface TeamsLibrary {
   web: string | null
   /** found under ~/Library/CloudStorage, not added by him */
   found: boolean
-  /** it lies in the Windows VM this host keeps (docs/agents/work-files.md "The Windows VM"): its path is the guest's, and a read wakes the VM */
+  /** it lies in the Windows VM this host keeps (docs/agents/work-teams-files.md "The Windows VM"): its path is the guest's, and a read wakes the VM */
   vm?: true
 }
 
@@ -217,7 +217,7 @@ export const OfficeRequestSchemas = [
   request('work.office.addin.list', z.object({})),
   /** forgets an add-in's key and closes it */
   request('work.office.addin.remove', z.object({ id: z.string().max(64) })),
-  /** the Teams and SharePoint libraries synced on this host, and his edits to that list (Teams files, docs/agents/work-files.md) */
+  /** the Teams and SharePoint libraries synced on this host, and his edits to that list (Teams files, docs/agents/work-teams-files.md) */
   request('work.office.filesLibraries', z.object({})),
   /** one folder of a library: `source` is `{at: 'file'}` on this host */
   request('work.office.filesList', z.object({ source: CanvasSourceSchema })),

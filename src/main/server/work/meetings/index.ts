@@ -68,5 +68,8 @@ export const meetings: WorkModule = {
   },
   sessionsRemoved(ids, ctx) {
     meetingsOf(ctx).removeSessions(ids)
+  },
+  itemsRemoved(items, ctx) {
+    meetingsOf(ctx).removeItems(items.map((i) => i.id))
   }
 }

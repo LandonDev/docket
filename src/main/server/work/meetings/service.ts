@@ -479,6 +479,25 @@ export class Meetings {
     this.voices.removeMeetings(rows.map((r) => r.itemId))
     this.store.removeSessions(ids)
   }
+
+  /**
+   * A closed Files tab's meeting: its job stops, and its rows and its playback copy go. The copy sits in its owner's
+   * attachment directory, which a pane keeps for as long as the workspace, so it is removed here.
+   */
+  removeItems(itemIds: readonly string[]): void {
+    for (const id of itemIds) {
+      const job = this.jobs.get(id)
+      if (job) {
+        job.why = 'The tab was closed.'
+        job.abort.abort()
+      }
+      const row = this.store.get(id)
+      const audio = row ? audioPathOf(row) : null
+      if (audio) rmSync(audio, { force: true })
+    }
+    this.voices.removeMeetings(itemIds)
+    this.store.removeItems(itemIds)
+  }
 }
 
 /** Each speaker's voice by the meeting's ids, for the speakers that have turns in the transcript. */

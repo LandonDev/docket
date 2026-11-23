@@ -129,6 +129,35 @@ its rows and folders. `CanvasSeat` takes `onAsk` for such a pane (Ask goes
 where the view says; Open from Google… is not offered) and `chatToggle`
 for the word and glyph of the toggle that folds what sits beside the items.
 
+The Files place owns the item behind every file open in one of its tabs,
+under `filesPaneOf(workspaceId)` ([work-files.md](work-files.md) "A tab").
+`paneWorkspace(owner)` answers the workspace of either pane, null for a
+thread. A pane owner is no session: `ctx.scopeOf(owner)` is null, and
+whoever acts on its items is his own window, so a kind asks
+`sharedOf(ctx, source)` (work/files/policy.ts), never the owner's scope,
+whether others can open a file. Four things the store does for panes:
+
+- `forWorkspace` lists the items of a workspace's **threads**: pane owners
+  are left out in the query, before its limit, and listed only with
+  `panes: true`. A tab is never taken for a thread.
+- A Files pane's item is **deleted** when it closes (`close` calls `remove`
+  for it): its row, its folder, and what every pillar kept for it. Each
+  pillar hears `WorkModule.itemsRemoved(items, ctx)` with the items as they
+  were, as it hears `sessionsRemoved` for a deleted thread; a deleted
+  workspace's panes are said the same way (`removePanes`). The 33rd open
+  there is refused as "32 files are open. Close one to open another."
+- `inside(fn)` holds every push back until `fn` has returned, for a caller
+  that changes items inside a savepoint of its own (a Files tab and its
+  item are one transaction); a throw sends none.
+- `replace(owner, oldItemId, open)` (`ctx.canvas.replace`) opens one item in
+  the place of another of the same owner as one step, and
+  `onItemReplaced` tells whoever keeps a seat by the old item first: a
+  Files tab follows a Word file to the document made of it.
+
+A remote key sees a thread's item it could not name cut to its file's name
+(`fencedItem`); a Files pane's item is cut to nothing, since its tab was
+opened by browsing a folder the key may not list.
+
 `ACT_VIEWS` (work/acts/registry.ts) holds one `ActKindView` per held act
 kind, in `work/<pillar>/act.ts` for the pillar `ACT_PILLAR` names.
 `chunk: null` means the Outbox's generic view (the summary and the payload

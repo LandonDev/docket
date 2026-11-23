@@ -101,3 +101,8 @@ export function saveItem(db: DatabaseSync, row: FrameioItemRow): void {
 export function removeSessionItems(db: DatabaseSync, ids: readonly string[]): void {
   for (const id of ids) db.prepare(`DELETE FROM work_frameio_items WHERE session_id = ?`).run(id)
 }
+
+/** A closed Files tab's rows. */
+export function removeItems(db: DatabaseSync, itemIds: readonly string[]): void {
+  for (const id of itemIds) db.prepare(`DELETE FROM work_frameio_items WHERE item_id = ?`).run(id)
+}

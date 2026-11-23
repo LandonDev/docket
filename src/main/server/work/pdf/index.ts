@@ -113,6 +113,9 @@ export const pdf: WorkModule = {
   sessionsRemoved(ids, ctx) {
     new PdfStore(ctx.db).removeSessions(ids)
   },
+  itemsRemoved(items, ctx) {
+    new PdfStore(ctx.db).removeItems(items.map((i) => i.id))
+  },
   // Nothing: a deleted workspace's threads are removed too, and `sessionsRemoved` clears their rows.
   workspaceRemoved() {}
 }

@@ -474,6 +474,14 @@ export class PdfStore {
       for (const id of ids) st.run(id)
     }
   }
+
+  /** A closed Files tab's rows: the item is gone, its owner is not. Its own folder went with the canvas item. */
+  removeItems(itemIds: readonly string[]): void {
+    for (const table of ['work_pdf_items', 'work_pdf_fields', 'work_pdf_marks']) {
+      const st = this.db.prepare(`DELETE FROM ${table} WHERE item_id = ?`)
+      for (const id of itemIds) st.run(id)
+    }
+  }
 }
 
 /** The prefix of a box's key: our own ids, apart from every key a form can have. */

@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { mailPaneWorkspace, type CanvasItem } from '@shared/work'
+import { paneWorkspace, type CanvasItem } from '@shared/work'
 import type { CanvasFetcher } from '../canvas/fetch'
 import type { WorkCtx } from '../modules'
 
@@ -45,7 +45,8 @@ const sleep = (ms: number, signal: AbortSignal): Promise<void> =>
 /** The attachment as LifeOS holds it now, read only within the owner's reach. */
 async function readPart(ctx: WorkCtx, item: CanvasItem): Promise<ThreadView['messages'][number]['attachments'][number]> {
   if (item.source.at !== 'mail') throw new Error(`${item.title} is not a mail's file.`)
-  const pane = mailPaneWorkspace(item.sessionId)
+  // A pane owner (the Mail view's, or a Files tab's) reaches by its workspace.
+  const pane = paneWorkspace(item.sessionId)
   const reach = ctx.mentionReach(item.sessionId, pane ? { workspaceId: pane } : undefined)
   if (!reach || (reach.sectors !== 'all' && reach.sectors.length === 0)) throw new Error(NO_MAIL)
   const view = await ctx.lifeos.owner().query<ThreadView | null>('mail:thread', { id: item.source.threadId })

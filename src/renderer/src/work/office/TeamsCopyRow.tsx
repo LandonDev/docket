@@ -9,7 +9,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
 /**
  * A Work workspace's page, "Where it runs": whether a Teams file on a desktop it may use is copied
- * to the workspace's own host to open in a thread's canvas there (docs/agents/work-files.md "Where
+ * to the workspace's own host to open in a thread's canvas there (docs/agents/work-teams-files.md "Where
  * the files live"). Off by default: Purdue's rule keeps university files where they are, and a file
  * on another host then opens in its app there.
  */

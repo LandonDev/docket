@@ -118,4 +118,11 @@ export class SlidesStore {
       for (const id of ids) st.run(id)
     }
   }
+
+  removeItems(itemIds: readonly string[]): void {
+    for (const table of ['work_slides_items', 'work_slides_ops']) {
+      const st = this.db.prepare(`DELETE FROM ${table} WHERE item_id = ?`)
+      for (const id of itemIds) st.run(id)
+    }
+  }
 }

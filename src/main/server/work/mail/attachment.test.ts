@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mailPaneOf, type CanvasItem, type MentionReach } from '@shared/work'
+import { filesPaneOf, mailPaneOf, type CanvasItem, type MentionReach } from '@shared/work'
 import type { WorkCtx } from '../modules'
 import { fetchAttachment, GONE, NO_MAIL, NOT_FETCHED, OUT_OF_REACH, type AttachmentDeps } from './attachment'
 
@@ -121,6 +121,11 @@ describe("a mail's attachment for a canvas", () => {
   it("reads a Mail view's pane by its workspace", async () => {
     await fetchAttachment(item(mailPaneOf('w1')), ctx(), to(), deps())
     expect(reached).toEqual([{ id: mailPaneOf('w1'), draft: { workspaceId: 'w1' } }])
+  })
+
+  it("reads a Files tab's pane by its workspace", async () => {
+    await fetchAttachment(item(filesPaneOf('w1')), ctx(), to(), deps())
+    expect(reached).toEqual([{ id: filesPaneOf('w1'), draft: { workspaceId: 'w1' } }])
   })
 
   it('says a file gone from the mail is gone', async () => {

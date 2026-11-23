@@ -102,7 +102,13 @@ async function rig() {
       paneOf: (id: string) => id,
       get: (id: string) => (id === 'i0' ? { id: 'i0', sessionId: 't1' } : id === 'other' ? { id: 'other', sessionId: 't2' } : null),
       open: (pane: string, _kind: string, source: CanvasSource, title: string) => (opened.push({ pane, source, title }), { id: `i${opened.length + 1}` }),
-      close: (id: string) => void closed.push(id)
+      close: (id: string) => void closed.push(id),
+      // As the store does: open the new item, close the old one only when it is the same pane's.
+      replace(pane: string, oldId: string | undefined, kind: string, source: CanvasSource, title: string) {
+        const item = this.open(pane, kind, source, title)
+        if (oldId && this.get(oldId)?.sessionId === pane) this.close(oldId)
+        return item
+      }
     },
     lifeos: { connected: () => false, owner: () => ({ query: async () => null, mutation: async () => null }) },
     service: { internal: (route: string, body: unknown) => post(config.socketPath, route, body) },

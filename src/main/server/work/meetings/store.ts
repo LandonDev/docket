@@ -193,6 +193,11 @@ export class MeetingStore {
     const st = this.db.prepare(`DELETE FROM work_meetings WHERE session_id = ?`)
     for (const id of ids) st.run(id)
   }
+
+  removeItems(itemIds: readonly string[]): void {
+    const st = this.db.prepare(`DELETE FROM work_meetings WHERE item_id = ?`)
+    for (const id of itemIds) st.run(id)
+  }
 }
 
 /** Where a meeting's playback copy sits: the thread's own attachment directory, which a move carries and the path fence admits. */

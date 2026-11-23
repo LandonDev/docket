@@ -20,7 +20,7 @@ import type { WorkCtx } from '../../modules'
 import { vmCall, VmAsleep } from './link'
 
 /**
- * Teams files in the Windows VM this host keeps (docs/agents/work-files.md "The Windows VM"):
+ * Teams files in the Windows VM this host keeps (docs/agents/work-teams-files.md "The Windows VM"):
  * Microsoft's own OneDrive in the guest, signed in as him, files on demand, read through the helper
  * that runs as tcuser (link.ts). A library there is a library of this host with `vm: true` and the
  * guest's path; every `work.office.files*` verb takes it as it takes a folder of the host's own disk.

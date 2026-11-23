@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import type { SessionMeta } from '@shared/events'
+import { paneWorkspace } from '@shared/work'
 
 /**
  * Where a thread's attachments land on the host that runs it (docs/box.md
@@ -73,13 +74,15 @@ export function attachmentDir(session: AttachmentSession | string, ctx: Attachme
 }
 
 /** The folder of the workspace a thread hangs off, where a file kept for the
- *  person lands (`attachment.begin` with `into: 'workspace'`); null for a
+ *  person lands (`attachment.begin` with `into: 'workspace'`); for a pane
+ *  owner (the Mail view's, a Files tab's), its workspace's folder; null for a
  *  thread with no workspace, or one the server has not seen. */
 export function workspaceFolderOf(session: AttachmentSession | string, ctx: AttachmentDirContext | null = current): string | null {
   const c = needContext(ctx)
   const s = resolveSession(session, c)
   assertSessionId(s.id)
-  return (s.workspaceId ? c.workspacePath(s.workspaceId) : null) || null
+  const workspaceId = paneWorkspace(s.id) ?? s.workspaceId
+  return (workspaceId ? c.workspacePath(workspaceId) : null) || null
 }
 
 /** Every directory a thread's attachments may sit in: where they land now,

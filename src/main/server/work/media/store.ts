@@ -261,6 +261,16 @@ export class MediaStore {
     }
     return versions
   }
+
+  /** A closed Files tab's rows; answers its versions, whose prepared copies the caller forgets. */
+  removeItems(itemIds: readonly string[]): string[] {
+    const versions: string[] = []
+    for (const id of itemIds) {
+      versions.push(...(this.db.prepare(`SELECT id FROM work_media_versions WHERE item_id = ?`).all(id) as Row[]).map((r) => String(r.id)))
+      for (const t of ['work_media_items', 'work_media_versions', 'work_media_notes']) this.db.prepare(`DELETE FROM ${t} WHERE item_id = ?`).run(id)
+    }
+    return versions
+  }
 }
 
 /** A version as the wire shows it before the host has looked at the file. */

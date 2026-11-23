@@ -34,7 +34,7 @@ the sheet canvas.
 | `office/addin/web.ts` | Office on the web in a window of our own, for the switch |
 | `office/addin/index.ts` | the link's start, `work.office.addin.*`, and which tool calls run here |
 | `office/addin/fakeOfficeJs.ts` | `FakeExcelHost`: a stub Office.js for the proofs |
-| `office/files/` | Teams files: the libraries OneDrive syncs, their wire (`work.office.files*`) and the `teams_*` tools ([work-files.md](work-files.md)) |
+| `office/files/` | Teams files: the libraries OneDrive syncs, their wire (`work.office.files*`) and the `teams_*` tools ([work-teams-files.md](work-teams-files.md)) |
 | `service/routes/office.ts` | the relay, `wss …/w/office`, and the add-in's files at `GET …/w/addin/*` |
 
 Tables: `work_office_undo` (the helper's undo log), `work_office_addin_keys`

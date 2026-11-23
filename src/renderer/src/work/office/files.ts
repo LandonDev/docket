@@ -1,7 +1,7 @@
 import { teamsAppOf, teamsCanvasOf, teamsPlaceKey, type TeamsEntry, type TeamsLibrariesAnswer, type TeamsLibrary, type TeamsPlace } from "@shared/contract-work-office";
 
 /**
- * The Files view's own rules (docs/agents/work-files.md "The Files view"), kept apart from the
+ * The Files view's own rules (docs/agents/work-teams-files.md "The Files view"), kept apart from the
  * screen so they are tested alone: how the libraries read as teams and channels, the crumbs over a
  * folder, a file's place in a search, and where a file opens.
  */
@@ -180,7 +180,7 @@ const vmPlace = (read: HostRead | undefined): TeamsPlace | undefined => read?.an
 const VM = "the Windows VM";
 
 /**
- * Why nothing (or less than he expects) is listed, in the order the causes are checked (docs/agents/work-files.md
+ * Why nothing (or less than he expects) is listed, in the order the causes are checked (docs/agents/work-teams-files.md
  * "When nothing is listed"). With libraries listed it names only a place that needs him; null: nothing to say.
  */
 export function filesNote({ workspaceEnv, reads, windowsVm, notAllowed, listed }: NoteInput): FilesNote | null {

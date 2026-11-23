@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname, join } from 'node:path'
 import type { IWorkbookData } from '@univerjs/core'
 import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
-import { handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
+import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
+import { workspaceHere } from '../files/policy'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
 import type { SheetRef } from './host/wire'
@@ -278,13 +279,22 @@ export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 
 }
 
 /** A new sheet in a thread's canvas: a LifeOS sheet when its workspace has a sector, else a `.tcsheet` among this host's files. */
+/** The sector a sheet is made in: a thread's, or a Files pane's workspace's on this host; undefined for any other owner. */
+export function sectorOf(ctx: WorkCtx, owner: string): string | null | undefined {
+  const scope = ctx.scopeOf(owner)
+  if (scope) return scope.sector
+  const ws = filesPaneWorkspace(owner)
+  const row = ws ? workspaceHere(ctx.db, ws) : null
+  return row ? row.sector : undefined
+}
+
 export async function createSheet(s: Sheets, sessionId: string, title: string): Promise<CanvasItem> {
   const ctx = s.ctx
   const pane = ctx.canvas.paneOf(sessionId)
-  const scope = ctx.scopeOf(pane)
-  if (!scope) throw new Error('Sheets are made in Work threads.')
-  if (scope.sector && ctx.lifeos.connected()) {
-    const got = await host(ctx, 'create', { title, at: { lifeos: { sector: scope.sector } } })
+  const sector = sectorOf(ctx, pane)
+  if (sector === undefined) throw new Error('Sheets are made in Work threads or the Files place.')
+  if (sector && ctx.lifeos.connected()) {
+    const got = await host(ctx, 'create', { title, at: { lifeos: { sector } } })
     if (!('lifeos' in got.sheet)) throw new Error('LifeOS did not make the sheet.')
     return ctx.canvas.open(pane, 'sheet', { at: 'lifeos', table: 'sheets', id: got.sheet.lifeos }, title)
   }

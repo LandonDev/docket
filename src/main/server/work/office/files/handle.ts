@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
-import { canvasSourcePath, handled, NOT_HANDLED, type CanvasSource, type Handled } from '@shared/work'
+import { canvasSourcePath, filesPaneOf, filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type CanvasSource, type Handled } from '@shared/work'
 import type { ClientRequest } from '@shared/contract'
 import { FenceError } from '../../../remote/fence'
 import { macBridgeLandingRoot } from '../../../macBridgeLanding'
 import type { Caller, WorkCtx } from '../../modules'
+import { importFolderOf } from '../../files/imports'
+import { workspaceHere } from '../../files/policy'
 import type { OfficeCarrier } from '../carrier'
 import { BYTES_MAX, copyAllowed, entryOf, fetchFile, foldersPlace, librariesOf, libraryOf, listFolder, offFolders, readText, rootsOf, searchLibraries, SEARCH_MAX, setCopyAllowed, setRoots } from './library'
 import { NOT_SET_UP } from '../../winvm/keeper'
@@ -18,7 +20,7 @@ import { followSignIn, numberLine, OFFICE_WORD_LINE, oneWatchAtATime, readNumber
 import type { TeamsLibrariesAnswer, TeamsPlace, VmSignInAnswer, VmSyncLibrary } from '@shared/contract-work-office'
 
 /**
- * The Teams files' wire (`work.office.files*`, docs/agents/work-files.md). Every method that names a
+ * The Teams files' wire (`work.office.files*`, docs/agents/work-teams-files.md). Every method that names a
  * file takes it as a `{at: 'file'}` source on this host, and every one passes the same fence: the
  * file's real path lies in a library this host lists (`libraryOf`). A remote key must also be able to
  * name it itself (the listener's fence); a call from another host of his, over the host link, is held
@@ -134,20 +136,35 @@ export async function openInApp(carrier: OfficeCarrier | null, entry: Pick<Teams
   return opener(entry.path)
 }
 
-/** Where a copy he allowed lands: the thread's own corner of this host's attachments (a root a remote key reaches). */
+/** Where a copy he allowed lands: the owner's own corner of this host's attachments (a root a remote key reaches), a thread's or a Files pane's. */
 const copiesRoot = (dataDir: string): string => join(macBridgeLandingRoot(dataDir), 'teams-files')
 const safe = (id: string): string => id.replace(/[^A-Za-z0-9_-]/g, '_')
 export const copyDirOf = (dataDir: string, sessionId: string): string => join(copiesRoot(dataDir), safe(sessionId))
 
-/** Drops the copies of the threads given, or of every thread whose workspace `inWorkspace` names. */
+/** Drops the copies of the owners given, or of every thread of a workspace and its Files pane. */
 export function dropCopies(ctx: Pick<WorkCtx, 'dataDir' | 'scopeOf'>, which: { sessions: string[] } | { workspaceId: string }): void {
   const root = copiesRoot(ctx.dataDir)
   if (!existsSync(root)) return
-  const dirs = 'sessions' in which ? which.sessions.map(safe) : readdirSync(root).filter((dir) => ctx.scopeOf(dir)?.workspaceId === which.workspaceId)
+  const dirs = 'sessions' in which ? which.sessions.map(safe) : readdirSync(root).filter((dir) => dir === safe(filesPaneOf(which.workspaceId)) || ctx.scopeOf(dir)?.workspaceId === which.workspaceId)
   for (const dir of dirs) rmSync(join(root, dir), { recursive: true, force: true })
 }
 
-/** The folder in a thread's copies that holds the copy of one source file. */
+/**
+ * Drops the copy behind each closed Files tab: the per-source folder in its pane's copies that holds the item's file.
+ * A folder another open tab still shows stays: the document an import made of the copy lies beside it, and its tab
+ * took the copy's place.
+ */
+export function dropItemCopies(ctx: Pick<WorkCtx, 'dataDir' | 'canvas'>, items: readonly CanvasItem[]): void {
+  for (const item of items) {
+    if (filesPaneWorkspace(item.sessionId) === null || item.source.at !== 'file') continue
+    const dir = dirname(item.source.path)
+    if (dirname(dir) !== copyDirOf(ctx.dataDir, item.sessionId)) continue
+    const shown = ctx.canvas.forSession(item.sessionId).some((open) => open.id !== item.id && open.source.at === 'file' && dirname(open.source.path) === dir)
+    if (!shown) rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/** The folder in an owner's copies that holds the copy of one source file. */
 export const copyFolderOf = (dataDir: string, sessionId: string, source: { host: string; path: string }): string =>
   join(copyDirOf(dataDir, sessionId), createHash('sha1').update(`${source.host}\u0000${source.path}`).digest('hex').slice(0, 12))
 
@@ -168,9 +185,22 @@ const realFolder = (path: string): string => {
   }
 }
 
-/** `Name.tcdoc` or `Name 2.tcdoc` in the folder of `Name.docx`: the document an import made of it (formats/importer.ts `freePath`). */
-const madeOf = (path: string, file: string): boolean => {
-  if (extname(path) !== '.tcdoc' || !IMPORTED.test(file) || realFolder(path) !== realFolder(file)) return false
+const realOr = (path: string): string => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
+/**
+ * `Name.tcdoc` or `Name 2.tcdoc` in the folder of `Name.docx`, or in the folder under this host's data the importer
+ * keeps for a file others can open (files/imports.ts): the document an import made of it (formats/importer.ts `freePath`).
+ */
+const madeOf = (ctx: Pick<WorkCtx, 'dataDir' | 'host'>, path: string, file: string): boolean => {
+  if (extname(path) !== '.tcdoc' || !IMPORTED.test(file)) return false
+  const imports = importFolderOf(ctx.dataDir, { host: ctx.host, path: realOr(file) })
+  if (realFolder(path) !== realFolder(file) && dirname(path) !== imports) return false
   const stem = importName(basename(file, extname(file)))
   const name = basename(path, '.tcdoc')
   return name === stem || (name.startsWith(`${stem} `) && /^ \d+$/.test(name.slice(stem.length)))
@@ -189,32 +219,44 @@ export function threadsHolding(ctx: Pick<WorkCtx, 'canvas' | 'dataDir' | 'host'>
     const s = item.source
     const path = canvasSourcePath(s)
     if (path === null || (s.at !== 'file' && s.at !== 'microsoft')) continue
-    const here = s.host === file.host && (path === file.path || (s.host === ctx.host && madeOf(path, file.path)))
+    const here = s.host === file.host && (path === file.path || (s.host === ctx.host && madeOf(ctx, path, file.path)))
     const copy = s.host === ctx.host && s.at === 'file' && dirname(path) === copyFolderOf(ctx.dataDir, item.sessionId, file)
     if (here || copy) out.set(item.sessionId, { itemId: item.id, source: s })
   }
   return [...out].map(([sessionId, held]) => ({ sessionId, ...held }))
 }
 
-/** Copies a file from another host into the thread's attachments here, when its workspace allows it. */
+/** Whether this host's Windows VM is set up: a Files pane is his own window, which needs nothing more of it. */
+const vmSetUp = (): boolean => {
+  const s = vmState()
+  return !!s && !s.cannot && s.state !== 'none'
+}
+
+/**
+ * Copies a file from another host, or out of this host's Windows VM, into the owner's attachments here, when its
+ * workspace allows it. The owner is a Work thread, or the Files pane of a Work workspace here (a file opened in a tab).
+ */
 export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal): Promise<{ source: CanvasSource; entry: TeamsEntry }> {
-  const scope = ctx.scopeOf(sessionId)
-  if (!scope) throw new Error(`thread ${sessionId} is not a Work thread here`)
-  if (!scope.workspaceId || !copyAllowed(ctx.db, scope.workspaceId)) throw new Error('This workspace keeps Teams files where they are: turn on Copy Teams files in its settings to open one here.')
+  const pane = filesPaneWorkspace(sessionId)
+  const scope = pane === null ? ctx.scopeOf(sessionId) : null
+  if (pane === null && !scope) throw new Error(`thread ${sessionId} is not a Work thread here`)
+  if (pane !== null && !workspaceHere(ctx.db, pane)) throw new Error('No such Work workspace on this host.')
+  const workspaceId = pane ?? scope!.workspaceId
+  if (!workspaceId || !copyAllowed(ctx.db, workspaceId)) throw new Error('This workspace keeps Teams files where they are: turn on Copy Teams files in its settings to open one here.')
   if (source.at !== 'file') throw new Error('A copy comes from a file on another host.')
   let got: { name: string; bytes: Buffer }
   if (source.host === ctx.host) {
     // A file in this host's Windows VM comes out of the guest the same way: a snapshot in the thread's own folder.
     if (!isGuestPath(source.path)) throw new Error('A copy comes from a file on another host.')
-    if (!vmAllowed(ctx, scope)) throw new Error(NOT_VM)
+    if (scope ? !vmAllowed(ctx, scope) : !vmSetUp()) throw new Error(NOT_VM)
     const inVm = vmLibraryOf(vmLibraries(ctx.db, ctx.host), source.path)
     if (!inVm) throw new Error(NOT_TEAMS)
     got = { name: inVm.path.slice(inVm.path.lastIndexOf('\\') + 1), bytes: await vmBytes(inVm.path, BYTES_MAX, signal) }
   } else {
-    const far = (await ctx.peer.call({ scope, signal }, source.host).call('office', 'filesRead', { source, as: 'bytes' })) as { name: string; data: string }
+    const far = (await ctx.peer.call({ scope: scope ?? { sessionId, workspaceId }, signal }, source.host).call('office', 'filesRead', { source, as: 'bytes' })) as { name: string; data: string }
     got = { name: far.name, bytes: Buffer.from(far.data, 'base64') }
   }
-  // One folder per source file, so two files of one name in a thread never share a copy.
+  // One folder per source file, so two files of one name in one owner's copies never share a folder.
   const dir = copyFolderOf(ctx.dataDir, sessionId, source)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const path = join(dir, basename(got.name))
@@ -333,7 +375,10 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     case 'work.office.filesThreads':
       return handled({ threads: threadsHolding(ctx, p.workspaceId as string, p.source as CanvasSource) })
     case 'work.office.filesCopy': {
-      const scope = ctx.scopeOf(p.sessionId as string)
+      const owner = p.sessionId as string
+      // His own window copies into a Files pane as well; a thread copies only into itself.
+      if (filesPaneWorkspace(owner) !== null && by.kind !== 'model') return handled(await copyIn(ctx, owner, p.source as CanvasSource, signal))
+      const scope = ctx.scopeOf(owner)
       if (!scope || (by.kind === 'model' && by.sessionId !== scope.sessionId)) throw new Error('No such Work thread here.')
       return handled(await copyIn(ctx, scope.sessionId, p.source as CanvasSource, signal))
     }

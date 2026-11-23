@@ -33,7 +33,7 @@ import { playRunner } from "../routines/plays/runOn";
 import { appVerb, byDeadline, crumbsOf, deadlineError, filesNote, HOST_DEADLINE_MS, openWay, pathIn, placeGroups, placeOf, READING_AGAIN_MS, rowOf, SEARCH_DEADLINE_MS, showsHeading, unreachable, vmReading, type FilesNote, type HostRead, type PlaceCopy, type PlaceGroup, type PlaceRow, type ShownLibrary } from "./files";
 
 /**
- * The Files view of a Work workspace (docs/agents/work-files.md "The Files view"): the Teams and
+ * The Files view of a Work workspace (docs/agents/work-teams-files.md "The Files view"): the Teams and
  * SharePoint libraries OneDrive syncs on the hosts the workspace may use, as teams and their
  * channels. A folder lists its files with who last saved them and when; the header's field
  * searches every library by name. A file opens in a new thread's canvas when it lies on the

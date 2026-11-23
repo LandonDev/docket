@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { FilePage, FilesTabs, FileTab } from '@shared/contract-work-files'
 import { filesPaneOf, filesPaneWorkspace, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
-import type { CanvasStore } from '../canvas/store'
+import type { WorkCtx } from '../modules'
 
 /**
  * The open tabs of a workspace's Files place (docs/agents/work-files.md "A tab"): one ordered list of page tabs
@@ -33,7 +33,7 @@ const SAVEPOINT = 'work_files_tab'
 export class TabStore {
   constructor(
     private readonly db: DatabaseSync,
-    private readonly canvas: CanvasStore,
+    private readonly canvas: WorkCtx['canvas'],
     /** said once a change has landed, with the workspace's new revision */
     private readonly changed: (workspaceId: string, rev: number) => void = () => {}
   ) {}
@@ -185,7 +185,7 @@ export class TabStore {
     return this.change(workspaceId, () => {
       // A tab whose item went missing is replaced, not left dangling beside the new one.
       if (held) this.db.prepare(`DELETE FROM work_files_tabs WHERE workspace_id = ? AND id = ?`).run(workspaceId, held.id)
-      const made = this.canvas.open(filesPaneOf(workspaceId), { kind: file.kind, source: file.source, title: file.name })
+      const made = this.canvas.open(filesPaneOf(workspaceId), file.kind, file.source, file.name)
       const page: FilePageJson = { name: file.name, key: file.key }
       return { tabId: this.insert(workspaceId, { kind: 'file', page, itemId: made.id, opener: opener ?? null }, opener), item: made }
     })

@@ -73,6 +73,10 @@ export class DashStore {
   removeSessions(ids: string[]): void {
     for (const id of ids) this.db.prepare('DELETE FROM work_dashboards WHERE session_id = ?').run(id)
   }
+
+  removeItems(itemIds: readonly string[]): void {
+    for (const id of itemIds) this.db.prepare('DELETE FROM work_dashboards WHERE item_id = ?').run(id)
+  }
 }
 
 type Ctx = Pick<WorkCtx, 'db' | 'host' | 'canvas' | 'service' | 'push' | 'log'>

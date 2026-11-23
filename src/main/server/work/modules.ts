@@ -196,6 +196,12 @@ export interface WorkCtx {
     close(itemId: string): void
     /** opens an item in `sessionId`'s pane in the place of `oldItemId` (closed when it is that pane's own): a Files tab that showed the old one follows to the new */
     replace(sessionId: string, oldItemId: string | null | undefined, kind: CanvasKind, source: CanvasSource, title: string): CanvasItem
+    /** deletes items outright, with what every pillar kept for them (`itemsRemoved`): what closing a Files tab does to its item */
+    remove(itemIds: readonly string[]): void
+    /** runs `fn` with the canvas's pushes held back until it has returned, for a caller that changes items inside a savepoint of its own; a throw sends none */
+    inside<T>(fn: () => T): T
+    /** hears each replacement (`replace`) before the old item closes; returns its off */
+    onReplaced(fn: (old: CanvasItem, next: CanvasItem) => void): () => void
     forSession(sessionId: string): CanvasItem[]
     /** the items of a workspace's threads, open and closed (`open`: open alone), newest change first; a pane owner's (the Mail view's, the Files place's tabs) only with `panes` */
     forWorkspace(workspaceId: string, opts?: { open?: boolean; panes?: boolean }): CanvasItem[]

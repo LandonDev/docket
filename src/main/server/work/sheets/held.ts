@@ -6,6 +6,7 @@ import type { SheetChart, SheetMutationJson, SheetView } from '@shared/contract-
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import { fetchedFile } from '../canvas/fetch'
+import { sharedOf } from '../files/policy'
 import { Toolchain } from '../formats/tools'
 import { fullEditorHere } from './fullEditor'
 import type { Caller, WorkCtx } from '../modules'
@@ -158,7 +159,9 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   const held = heldOf(item, s.ctx.dataDir)
   ensureCsvSheet(held)
   const key = storeKey(held)
-  const shared = s.ctx.scopeOf(item.sessionId)?.shared(item.source) ?? false
+  // A Files tab's owner is no thread and has no scope: what others can open is read from the source itself.
+  const scope = s.ctx.scopeOf(item.sessionId)
+  const shared = sharedOf(s.ctx, item.source) || (scope?.shared(item.source) ?? false)
   const base = { itemId: item.id, sessionId: item.sessionId, mode: s.suggestions.mode(key), charts: chartsOf(s.ctx, key) }
   const written = s.suggestions.written(key)
   if (held.at === 'package') {

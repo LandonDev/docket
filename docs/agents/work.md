@@ -107,7 +107,7 @@ Settings → Work.
   workspace offers no New project and no Orchestration; a linked one shows
   `WorkColumnHead` (work/shell/WorkColumn.tsx): Mail, Tasks, Projects
   (the project screens, [work-projects.md](work-projects.md)), Agenda,
-  People ([work-people.md](work-people.md)), Docs and Files (Teams files, [work-files.md](work-files.md)) from
+  People ([work-people.md](work-people.md)), Docs and Files (Teams files, [work-teams-files.md](work-teams-files.md)) from
   `WORK_VIEWS`, then the project cards. Those are LifeOS's,
   live: the head keeps `projects:list {sector}` (backlog, active, paused)
   in `setLifeosProjects`, and `withLifeosCards` (lib/workspaceSessions.ts)
@@ -343,6 +343,7 @@ edits none of these.
 | The relay to another host | `...WORK_RELAY` in `RELAY_METHODS` and `...WORK_NOT_CARRIED` in `RELAY_NOT_CARRIED` (src/shared/contract-relay.ts) | the `<PILLAR>_RELAY` in the same contract file |
 | Router | `work.handle(req, principal)` in the handler chain, `work.pushes.onPush(sendFrame, principal)` and its off, `startWork(deps)` (src/main/server/index.ts) | `handle`, `onPush`, `start` of its module |
 | Deleted threads and workspaces | the registry's `onRemoved` and `onWorkspaceDeleted`, heard in `startWork` | `sessionsRemoved`, `workspaceRemoved` of its module |
+| Deleted canvas items (a Files tab closed) | the canvas store's `remove` and `removePanes` (work/canvas/ctx.ts) | `itemsRemoved` of its module, for rows and files it keeps by item |
 | Database | `ensureWorkTables(db)` | `ensure` of its module |
 | Modules | `PILLAR_LOADERS` and `WORK_MODULES` (work/modules.ts) | `src/main/server/work/<pillar>/index.ts` |
 | Tools | `withWorkTools(options, session)` beside `withMacTools` for Claude; `app.workTools`, `app.workCall` and `app.workCancel` on the bridge for Codex and Muse | `tools` of its module |
@@ -356,8 +357,8 @@ edits none of these.
 Pillar ids, in mount order: `outbox, canvas, lifeos, routines, rules, mail,
 tasks, agenda, docs, history, formats, sheets, office, google, guests, pdf,
 slides, media, frameio, meetings, forms, dashboards, browser, projects,
-winvm, capture` (the Windows VM's keeper: [work-winvm.md](work-winvm.md); capture from anywhere,
-[work-capture.md](work-capture.md)).
+winvm, capture, files` (the Windows VM's keeper: [work-winvm.md](work-winvm.md); capture from anywhere,
+[work-capture.md](work-capture.md); the Files place, [work-files.md](work-files.md)).
 `PILLAR_MILESTONE` names the plan milestone that builds each. Canvas kinds
 map to pillars once (`CANVAS_PILLAR`), act kinds too (`ACT_PILLAR`).
 

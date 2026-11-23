@@ -991,7 +991,7 @@ public class Office {
 }
 
 // ---- OneDrive's folders and what is signed in, for a host that reaches this PC through the helper's
-// door (the box's Windows VM: docs/agents/work-files.md "The Windows VM"). No COM here: each verb runs
+// door (the box's Windows VM: docs/agents/work-teams-files.md "The Windows VM"). No COM here: each verb runs
 // on its connection's own thread, so a long download never holds an Office call. Reads run as the user
 // whose desktop this is, the one caller OneDrive's Files On-Demand surely downloads for.
 public static class Guest {

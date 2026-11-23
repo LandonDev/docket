@@ -10,7 +10,7 @@ import { copyIn, filesHandle, type FilesDeps } from './handle'
 import { copyAllowed } from './library'
 
 /**
- * The Teams files tools (docs/agents/work-files.md "The tools"). A thread reaches the libraries on
+ * The Teams files tools (docs/agents/work-teams-files.md "The tools"). A thread reaches the libraries on
  * its own host and on each host its workspace may use ("Computer use on <Mac>"); a library's id
  * names its host, and every call runs there, inside that host's libraries. A library in the Windows
  * VM this host keeps is this host's (`vm`), read through the guest. Where a desktop and the VM hold

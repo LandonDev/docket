@@ -3,20 +3,23 @@ import { basename, dirname, extname, join } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
 import type { Block, Imported } from 'work-kit/formats'
 import type { ExportAnswer, ImportAnswer } from '@shared/contract-work-formats'
-import { canvasSourcePath, type CanvasSource } from '@shared/work'
+import { canvasSourcePath, paneWorkspace, type CanvasSource } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { ensureThreadTables } from '../docs/threads'
 import { canonicalPath } from '../service/ctx'
 import { ensureFetched, fetchedPath } from '../canvas/fetch'
 import { attachmentDocPathOf } from '../docs/target'
+import { importFolderOf } from '../files/imports'
+import { sharedOf, workspaceHere } from '../files/policy'
 
 /**
  * A file in as a document (docs/agents/work-formats.md "Import and export"):
  * Word with its comments and tracked changes, OpenDocument and RTF through
  * LibreOffice to Word and then the same reader, markdown, a PDF through
  * pymupdf4llm, and HTML the window already read. The document is a `.tcdoc`
- * beside the original, which stays as it was; Word's comment threads go to
+ * beside the original, which stays as it was, or under this host's data when
+ * others can open the original's place (files/imports.ts); Word's comment threads go to
  * the docs pillar's thread store and each author's tracked changes wait in a
  * branch of their own (work-kit/formats/tcdoc).
  */
@@ -66,10 +69,18 @@ export function freePath(dir: string, stem: string, ext: string): string {
   }
 }
 
-/** Where a dropped file and its document go: the thread's Work workspace folder, or Work's own imports folder for a Work Chat. */
+/** The Work workspace an owner imports into: a thread's, or a pane's (the Files place's or the Mail view's) when that is a Work workspace here; undefined for an owner that is neither. */
+function workspaceOfOwner(ctx: WorkCtx, sessionId: string): string | null | undefined {
+  const scope = ctx.scopeOf(sessionId)
+  if (scope) return scope.workspaceId
+  const pane = paneWorkspace(sessionId)
+  return pane && workspaceHere(ctx.db, pane) ? pane : undefined
+}
+
+/** Where a dropped file and its document go: the owner's Work workspace folder, or Work's own imports folder for a Work Chat. */
 function folderFor(ctx: WorkCtx, sessionId: string | undefined): string {
-  const scope = sessionId ? ctx.scopeOf(sessionId) : null
-  const row = scope?.workspaceId ? (ctx.db.prepare('SELECT path FROM workspaces WHERE id = ?').get(scope.workspaceId) as { path?: string } | undefined) : undefined
+  const workspaceId = sessionId ? workspaceOfOwner(ctx, sessionId) : null
+  const row = workspaceId ? (ctx.db.prepare('SELECT path FROM workspaces WHERE id = ?').get(workspaceId) as { path?: string } | undefined) : undefined
   const dir = row?.path && existsSync(row.path) ? row.path : join(ctx.dataDir, 'attachments', 'work-imports')
   mkdirSync(dir, { recursive: true })
   // The path a document is opened by (and its threads are kept under) is the real one, links resolved.
@@ -121,10 +132,14 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
     if (!ctx.reaches(by, path)) throw new FenceError(METHOD)
     if (!existsSync(path)) throw new Error('that file is not there any more')
     original = canonicalPath(path)
-    folder = dirname(original)
+    // Never beside a file others can open: the document would sync to them. It goes under this host's data instead.
+    if (sharedOf(ctx, { at: 'file', host: ctx.host, path: original })) {
+      folder = importFolderOf(ctx.dataDir, { host: ctx.host, path: original })
+      mkdirSync(folder, { recursive: true, mode: 0o700 })
+    } else folder = dirname(original)
     name = basename(original)
   } else {
-    if (params.sessionId && !ctx.scopeOf(params.sessionId)) throw new Error('import into a Work thread')
+    if (params.sessionId && workspaceOfOwner(ctx, params.sessionId) === undefined) throw new Error('import into a Work thread or the Files place')
     folder = folderFor(ctx, params.sessionId)
     name = safeName(from.name)
     if (from.at === 'bytes') {
@@ -147,13 +162,9 @@ export async function importFile(ctx: WorkCtx, by: Caller, params: ImportParams)
   const warnings = [...read.warnings, ...droppedWords(read.imported.sidecar.dropped)]
   if (made.unplaced) warnings.push(`${made.unplaced} ${made.unplaced === 1 ? 'comment is' : 'comments are'} on suggested words, so ${made.unplaced === 1 ? 'it has' : 'they have'} no place in the text`)
   let itemId: string | undefined
-  if (params.sessionId) {
-    const pane = ctx.canvas.paneOf(params.sessionId)
-    itemId = ctx.canvas.open(pane, 'document', source, stem).id
-    // The item it replaces, only when it is in the same pane: a caller cannot close another thread's items.
-    const old = params.itemId && params.itemId !== itemId ? ctx.canvas.get(params.itemId) : null
-    if (old && ctx.canvas.paneOf(old.sessionId) === pane) ctx.canvas.close(old.id)
-  }
+  // The document takes the place of the item it was made of, only in the same pane: a caller cannot close another
+  // thread's items. A Files tab showing the old item follows to the new one.
+  if (params.sessionId) itemId = ctx.canvas.replace(ctx.canvas.paneOf(params.sessionId), params.itemId, 'document', source, stem).id
   ctx.log(`formats: imported ${name} as ${basename(target)} (${made.threads.length} threads, ${made.branches.length} authors of changes)`)
   return { source, title: stem, ...(itemId ? { itemId } : {}), warnings, outsiders: made.outsiders }
 }

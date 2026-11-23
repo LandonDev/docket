@@ -209,7 +209,7 @@ Step "Office viewer mode"
 }
 
 /**
- * OneDrive in the guest, by Microsoft's own policies (docs/agents/work-files.md "The Windows VM"): files on
+ * OneDrive in the guest, by Microsoft's own policies (docs/agents/work-teams-files.md "The Windows VM"): files on
  * demand always (a library of a terabyte is names only until a file is opened), no folder backup offered, no
  * tutorial; and Storage Sense sends a downloaded file back to the cloud once it has gone a day unopened, so
  * the disk does not fill. Machine policies: tcuser cannot change them. Safe to run again.

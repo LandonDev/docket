@@ -6,7 +6,7 @@ import type { FileCrumb, FilePage, FileRef, FilesListing, FilesOpened, FilesPlac
 import { teamsCanvasOf, teamsKindOf } from '@shared/contract-work-office'
 import { canvasSourcePath, handled, NOT_HANDLED, type CanvasKind, type CanvasSource, type Handled } from '@shared/work'
 import { DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef } from '@shared/work/files'
-import { canvasStoreOf, fencedItem } from '../canvas/store'
+import { fencedItem } from '../canvas/store'
 import type { Caller, WorkCtx } from '../modules'
 import { threadsHolding } from '../office/files/handle'
 import { fetchFile, whoOf } from '../office/files/library'
@@ -34,11 +34,10 @@ export interface FilesState {
 }
 const states = new WeakMap<DatabaseSync, FilesState>()
 
-export function filesState(ctx: Pick<WorkCtx, 'db' | 'push' | 'log'>): FilesState {
+export function filesState(ctx: Pick<WorkCtx, 'db' | 'push' | 'log' | 'canvas'>): FilesState {
   let state = states.get(ctx.db)
   if (state) return state
-  const canvas = canvasStoreOf(ctx.db)
-  const tabs = new TabStore(ctx.db, canvas, (workspaceId, rev) => {
+  const tabs = new TabStore(ctx.db, ctx.canvas, (workspaceId, rev) => {
     try {
       // Tabs hold names only; a client asks for the list again, and gets what it may see.
       ctx.push({ push: 'work.files', workspaceId, tabs: rev }, { need: 'read' })
@@ -46,7 +45,7 @@ export function filesState(ctx: Pick<WorkCtx, 'db' | 'push' | 'log'>): FilesStat
       ctx.log(`files: the tabs push failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   })
-  state = { lister: new DiskLister(), tabs, marks: new MarkStore(ctx.db), off: [canvas.onItemReplaced((old, next) => tabs.follow(old, next))] }
+  state = { lister: new DiskLister(), tabs, marks: new MarkStore(ctx.db), off: [ctx.canvas.onReplaced((old, next) => tabs.follow(old, next))] }
   states.set(ctx.db, state)
   return state
 }
@@ -276,13 +275,12 @@ function tabsFor(ctx: WorkCtx, by: Caller, workspaceId: string): FilesTabs {
   const state = filesState(ctx)
   const all = state.tabs.list(workspaceId)
   if (by.kind !== 'remote' || by.peer) return all
-  const canvas = canvasStoreOf(ctx.db)
   const tabs = all.tabs.filter((tab: FileTab) => {
     if (tab.kind === 'page') {
       const at = tab.page!.at
       return !(at.at === 'file' && at.host === ctx.host && !reaches(ctx, by, at.path))
     }
-    const item = tab.itemId ? canvas.get(tab.itemId) : null
+    const item = tab.itemId ? ctx.canvas.get(tab.itemId) : null
     const path = item ? canvasSourcePath(item.source) : null
     return path === null || reaches(ctx, by, path)
   })
@@ -453,7 +451,7 @@ function sameSource(ctx: Pick<WorkCtx, 'canvas'>, workspaceId: string, ref: Canv
 }
 
 /** Items of a Files pane went by another way than their tab's close (the pane's own Close): their tabs go too. */
-export function itemsGone(ctx: Pick<WorkCtx, 'db' | 'push' | 'log'>, itemIds: readonly string[]): void {
+export function itemsGone(ctx: Pick<WorkCtx, 'db' | 'push' | 'log' | 'canvas'>, itemIds: readonly string[]): void {
   const state = filesState(ctx)
   const find = ctx.db.prepare(`SELECT workspace_id, id FROM work_files_tabs WHERE item_id = ?`)
   for (const itemId of itemIds) {
@@ -463,7 +461,7 @@ export function itemsGone(ctx: Pick<WorkCtx, 'db' | 'push' | 'log'>, itemIds: re
 }
 
 /** A deleted workspace: its tabs, its marks and what Trash, the journal and Go to kept of it go. */
-export function removeWorkspace(ctx: Pick<WorkCtx, 'db' | 'push' | 'log'>, workspaceId: string): void {
+export function removeWorkspace(ctx: Pick<WorkCtx, 'db' | 'push' | 'log' | 'canvas'>, workspaceId: string): void {
   const state = filesState(ctx)
   state.tabs.removeWorkspace(workspaceId)
   state.marks.removeWorkspace(workspaceId)

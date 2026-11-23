@@ -135,6 +135,16 @@ export class FormsStore {
     }
     return gone
   }
+
+  /** A closed Files tab's forms, answered as they were so the caller drops their pages and folders. */
+  removeItems(itemIds: readonly string[]): FormRow[] {
+    const gone: FormRow[] = []
+    for (const id of itemIds) {
+      gone.push(...(this.db.prepare('SELECT * FROM work_forms WHERE item_id = ?').all(id) as Raw[]).map(rowOf))
+      this.db.prepare('DELETE FROM work_forms WHERE item_id = ?').run(id)
+    }
+    return gone
+  }
 }
 
 export const newPublicId = (): string => randomBytes(12).toString('base64url')

@@ -43,6 +43,9 @@ export const dashboards: WorkModule = {
   sessionsRemoved(ids, ctx) {
     new DashStore(ctx.db).removeSessions(ids)
   },
+  itemsRemoved(items, ctx) {
+    new DashStore(ctx.db).removeItems(items.map((i) => i.id))
+  },
   // Nothing: a deleted workspace's threads are removed too, and `sessionsRemoved` clears their rows.
   workspaceRemoved() {}
 }

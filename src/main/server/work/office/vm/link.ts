@@ -4,7 +4,7 @@ import { VM_ASLEEP } from '../../winvm/helperDoor'
 import { OfficeError } from '../carrier'
 
 /**
- * One call to the helper in the Windows VM (docs/agents/work-files.md "The Windows VM"): a
+ * One call to the helper in the Windows VM (docs/agents/work-teams-files.md "The Windows VM"): a
  * connection of its own through the keeper's forward, the token, the helper's `ready`, one request
  * and its answer. A connection per call, so a long download never holds a list, and nothing is kept
  * open across the machine's sleep.

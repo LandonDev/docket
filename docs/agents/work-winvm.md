@@ -135,7 +135,7 @@ A second door in the guest, for what is not computer use: `tc-office.exe`, the
 Office helper (native/tc-office-win/TcOffice.cs), as tcuser on its desktop,
 `serve --listen 127.0.0.1:47801 --token-file C:\ProgramData\TempCode\token`
 (helperDoor.ts). It reads OneDrive's folders for the Teams files
-([work-files.md](work-files.md) "The Windows VM") and drives Office by COM
+([work-teams-files.md](work-teams-files.md) "The Windows VM") and drives Office by COM
 ([work-office.md](work-office.md) "The Windows VM").
 
 - **No program ships for it.** The box carries the helper's C# source

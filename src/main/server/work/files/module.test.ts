@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { PILLAR_IDS, PILLAR_MILESTONE } from '@shared/work'
 import { WORK_PILLAR_CONTRACTS } from '@shared/contract-work'
 import { FILES_CAPS, FILES_RELAY } from '@shared/contract-work-files'
-import { CanvasStore, ensureCanvasTables, setCanvasStore } from '../canvas/store'
+import { CanvasStore, ensureCanvasTables } from '../canvas/store'
 import { PILLAR_LOADERS, type WorkCtx } from '../modules'
 import { fileMakerFor, fileMovedHooks, filePreviewerFor, registerFileMaker, registerFileMoved, registerFilePreviewer } from './hooks'
 import { files } from './index'
@@ -14,8 +14,8 @@ const startCtx = (): WorkCtx => {
   const db = new DatabaseSync(':memory:')
   files.ensure(db)
   ensureCanvasTables(db)
-  setCanvasStore(db, new CanvasStore({ db, dataDir: '/nowhere', session: () => null, push: () => {}, log: () => {} }))
-  return { db, push: () => {}, log: () => {} } as unknown as WorkCtx
+  const store = new CanvasStore({ db, dataDir: '/nowhere', session: () => null, push: () => {}, log: () => {} })
+  return { db, push: () => {}, log: () => {}, canvas: { remove: (ids: string[]) => store.remove(ids), onReplaced: (fn: never) => store.onItemReplaced(fn) } } as unknown as WorkCtx
 }
 
 /** The files pillar as the one mount sees it: its id, its tables, its contract rows, and the registries its start leaves alone. */

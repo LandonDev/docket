@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ATTACHMENT_CHUNK_BYTES, DEFAULT_ATTACHMENT_MAX_BYTES } from '@shared/contract-attachments'
-import { attachmentDir, attachmentDirsOf, workspaceFolderOf, type AttachmentDirContext } from './attachmentDir'
+import { filesPaneOf, mailPaneOf } from '@shared/work'
+import { assertSessionId, attachmentDir, attachmentDirsOf, workspaceFolderOf, type AttachmentDirContext } from './attachmentDir'
 import {
   AttachmentUploads,
   UploadError,
@@ -299,6 +300,12 @@ describe('attachmentDir', () => {
     expect(workspaceFolderOf('w1', ctx())).toBe(join(dir, 'ws'))
     expect(workspaceFolderOf('p1', ctx())).toBeNull()
     expect(workspaceFolderOf('draft', ctx())).toBeNull()
+  })
+  it("names a pane owner's workspace folder: a Files tab's or the Mail view's upload lands there", () => {
+    expect(() => assertSessionId(filesPaneOf('ws'))).not.toThrow()
+    expect(workspaceFolderOf(filesPaneOf('ws'), ctx())).toBe(join(dir, 'ws'))
+    expect(workspaceFolderOf(mailPaneOf('ws'), ctx())).toBe(join(dir, 'ws'))
+    expect(workspaceFolderOf(filesPaneOf('gone'), ctx())).toBeNull()
   })
   it('lists the landing dir and the userData fallback for the sweep', () => {
     expect(attachmentDirsOf('p1', ctx())).toEqual([

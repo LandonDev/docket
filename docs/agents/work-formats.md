@@ -231,7 +231,16 @@ remote key to its roots), a dropped file's bytes (`{at: 'bytes'}`: kept in the
 thread's Work workspace folder, or `<userData>/attachments/work-imports` for
 a Work Chat), or HTML the window read into blocks (`{at: 'blocks'}`). The
 document is `<name>.tcdoc` beside the original (`<name> 2.tcdoc` and on when
-taken); the original is never touched.
+taken); the original is never touched. **An original that lies where others
+can open it** (a Teams or OneDrive library, any cloud folder; `sharedOf`,
+work/files/policy.ts) gets no file beside it: OneDrive would sync the copy to
+the team. Its `.tcdoc` goes under `<userData>/work-files/imports/<hash>/`
+instead, one folder per source file (work/files/imports.ts `importFolderOf`),
+for every imported type and every opener, a thread's `canvas_open` included.
+The opener may be a pane owner as well as a thread (the Files place's tab):
+a dropped file's bytes are then kept in that pane's workspace folder, and
+the item it replaces is swapped through `ctx.canvas.replace`, so a Files tab
+follows to the document.
 - `.docx`: `readDocx`. `.odt`, `.rtf`, `.doc`: LibreOffice to `.docx`
   (`ctx.convert`, the toolchain's pairs), then the same reader. `.md`:
   `readMarkdown`. `.pdf`: pymupdf4llm to markdown (`pdf → md`, `pdfIn.ts`);

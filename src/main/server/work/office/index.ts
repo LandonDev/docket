@@ -15,7 +15,7 @@ import { macCarrier } from './mac'
 import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
-import { dropCopies, filesHandle, type FilesDeps } from './files/handle'
+import { dropCopies, dropItemCopies, filesHandle, type FilesDeps } from './files/handle'
 import { missingLibraries, readVmBehind, storedStatus } from './vm/files'
 import { stopVmOffice, vmAllowed, vmAwake, vmHasOffice, vmHereOf, vmState } from './vm/office'
 import { onWinvmState } from '../winvm'
@@ -178,6 +178,14 @@ export const office: WorkModule = {
   // A deleted thread's copies of Teams files go with it.
   sessionsRemoved(ids, ctx) {
     dropCopies(ctx, { sessions: ids })
+  },
+  // A closed Files tab's copy goes with it.
+  itemsRemoved(items, ctx) {
+    dropItemCopies(ctx, items)
+  },
+  // A removed workspace's copies go: its threads' and its Files pane's.
+  workspaceRemoved(id, ctx) {
+    dropCopies(ctx, { workspaceId: id })
   },
   tools: () => [
     ...addinTools(hereOf, { offered: (ctx) => vmAllowed(ctx, ctx.scope) && vmHasOffice(ctx), awake: vmAwake, here: vmHereOf }),

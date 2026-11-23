@@ -168,8 +168,8 @@ describe('the router, as the stubs ship', () => {
   it('with Work on, a pillar method no module answers says "not built" and the milestone, for every pillar', async () => {
     expect(await work.handle(req('work.set', { enabled: true }), LOCAL_PRINCIPAL)).toEqual({ handled: true, result: { enabled: true } })
     for (const id of PILLAR_IDS) {
-      // The canvas answers its own `work.canvas.list` (milestone 9), the outbox its `work.outbox.list` (milestone 10), routines theirs (milestone 32), house rules theirs (milestone 39), guests theirs (milestone 31).
-      if (id !== 'canvas' && id !== 'outbox' && id !== 'routines' && id !== 'rules' && id !== 'guests') await expect(work.handle(req(`work.${id}.list`, {}), LOCAL_PRINCIPAL)).rejects.toThrow(`not built: work.${id}.list (milestone ${PILLAR_MILESTONE[id]})`)
+      // The canvas answers its own `work.canvas.list` (milestone 9), the outbox its `work.outbox.list` (milestone 10), routines theirs (milestone 32), house rules theirs (milestone 39), guests theirs (milestone 31), files theirs (milestone 54).
+      if (id !== 'canvas' && id !== 'outbox' && id !== 'routines' && id !== 'rules' && id !== 'guests' && id !== 'files') await expect(work.handle(req(`work.${id}.list`, {}), LOCAL_PRINCIPAL)).rejects.toThrow(`not built: work.${id}.list (milestone ${PILLAR_MILESTONE[id]})`)
       const bridge = `app.work${id[0].toUpperCase()}${id.slice(1)}List`
       await expect(work.handle(req(bridge, { sessionId: 't1', token: work.tools.tokenFor('t1') }), LOCAL_PRINCIPAL)).rejects.toThrow(`not built: ${bridge} (milestone ${PILLAR_MILESTONE[id]})`)
       // a pillar's bridge method is a thread's own call: without that thread's token it is refused before any module is asked

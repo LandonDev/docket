@@ -234,7 +234,7 @@ export function admitsPath(path: string, roots: readonly string[], denied: reado
 const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy|Threads)$|^work\.files\.(list|stat|fetch|open|threads|tabOpen|tabSet|star|seen)$/
 
 /**
- * A file in the Windows VM a host keeps (docs/agents/work-files.md "The Windows VM"), named by the guest's own
+ * A file in the Windows VM a host keeps (docs/agents/work-teams-files.md "The Windows VM"), named by the guest's own
  * path (`C:\Users\…`): no path of this host's disk, so the roots have nothing to say of it. Only the verbs
  * `GUEST_METHODS` lists may carry one, and they hold it to the libraries OneDrive syncs in the guest
  * (work/office/files/handle.ts `admitted`, work/files/policy.ts `locate`). Each path is judged alone: in one

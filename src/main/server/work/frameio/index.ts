@@ -2,7 +2,7 @@ import { handled, NOT_HANDLED, type TriggerSource } from '@shared/work'
 import { registerMediaSource } from '../media/sources'
 import type { WorkModule } from '../modules'
 import { dropHooks, frameioTrigger, rearmHooks, startHooks } from './hooks'
-import { ensureFrameioTables, frameioOf, removeSessionItems, setSetting, statusOf, stopFrameio } from './live'
+import { ensureFrameioTables, frameioOf, removeItems, removeSessionItems, setSetting, statusOf, stopFrameio } from './live'
 import { frameioHealth } from './health'
 import { frameioMedia, openFile } from './media'
 import { frameioPostKind, onPostDecided } from './post'
@@ -68,6 +68,9 @@ export const frameio: WorkModule = {
   tools: () => frameioTools,
   sessionsRemoved(ids, ctx) {
     removeSessionItems(ctx.db, ids)
+  },
+  itemsRemoved(items, ctx) {
+    removeItems(ctx.db, items.map((i) => i.id))
   },
   workspaceRemoved() {}
 }

@@ -113,6 +113,12 @@ export const media: WorkModule = {
       .then((p) => p.forget(versions))
       .catch(() => undefined)
   },
+  itemsRemoved(items, ctx) {
+    const versions = liveOf(ctx).store.removeItems(items.map((i) => i.id))
+    void preparerOf(ctx)
+      .then((p) => p.forget(versions))
+      .catch(() => undefined)
+  },
   // Nothing: a deleted workspace's threads are removed too, and `sessionsRemoved` clears their rows.
   workspaceRemoved() {}
 }

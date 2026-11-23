@@ -88,7 +88,7 @@ export interface CanvasShell {
 }
 
 /**
- * What saved means now (docs/agents/work-files.md "The save line"). There is no save press: a kind saves as he
+ * What saved means now (docs/agents/work-files.md "The seam with the editor builds"). There is no save press: a kind saves as he
  * works and says where that stands.
  *  - `saved`: everything is in the file; `at` is when, `where` the folder it is kept in.
  *  - `saving`: a change is on its way.
