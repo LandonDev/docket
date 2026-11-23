@@ -30,7 +30,7 @@ export function unansweredLine(names: readonly string[]): string {
 
 const ROW = "-mx-2 w-[calc(100%+1rem)] flex-nowrap items-start gap-2 rounded-md px-2 py-1.5";
 
-function RowBody({ row, now }: { row: TellRow; now: number }) {
+function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) {
   return (
     <>
       {/* On the title's line: a 16px box on a 20px line. */}
@@ -42,7 +42,7 @@ function RowBody({ row, now }: { row: TellRow; now: number }) {
         </TruncateTip>
         {row.detail ? <span className="truncate text-xs leading-4 text-muted-foreground">{row.detail}</span> : null}
       </span>
-      <span className="shrink-0 ps-2 text-xs leading-5 text-muted-foreground tabular-nums">{rowWhen(row, now)}</span>
+      <span className="shrink-0 ps-2 text-xs leading-5 text-muted-foreground tabular-nums">{rowWhen(row, now, undefined, day)}</span>
     </>
   );
 }
@@ -131,11 +131,11 @@ export function DigestList({
               <li key={`${row.host}:${row.id}`}>
                 {routeOf(row).to === "none" ? (
                   <Item className={ROW}>
-                    <RowBody row={row} now={now} />
+                    <RowBody row={row} now={now} day={section.day} />
                   </Item>
                 ) : (
                   <ItemButton className={cn(ROW, ROW_PRESS)} onClick={() => onOpenRow(row)}>
-                    <RowBody row={row} now={now} />
+                    <RowBody row={row} now={now} day={section.day} />
                   </ItemButton>
                 )}
               </li>

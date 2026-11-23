@@ -86,6 +86,8 @@ export function systemNotices(digest: DigestNotice | null, toasts: readonly NowT
 export interface ListSection {
   id: string;
   title: string;
+  /** the day its heading names: today for what waits */
+  day: string;
   rows: TellRow[];
 }
 
@@ -121,31 +123,34 @@ function byJob(rows: readonly TellRow[]): TellRow[] {
 export function listSections(view: Pick<DigestView, "days" | "rows">, now: number, locale?: string): ListSection[] {
   const out: ListSection[] = [];
   const since = view.rows.filter((r) => r.day === null);
-  if (since.length) out.push({ id: "since", title: "Since the digest", rows: byJob(since) });
   const today = localDay(now);
+  if (since.length) out.push({ id: "since", title: "Since the digest", day: today, rows: byJob(since) });
   const yesterday = localDay(now - 24 * 3_600_000);
   const madeAt = new Map(view.days.map((d) => [d.day, d.madeAt]));
   const days = [...new Set(view.rows.flatMap((r) => (r.day ? [r.day] : [])))].sort().reverse();
   for (const day of days) {
     const made = madeAt.get(day);
     const title = day === today ? (made ? `Today, ${clockTime(made, locale)}` : "Today") : day === yesterday ? "Yesterday" : dateWords(day, locale);
-    out.push({ id: day, title, rows: byJob(view.rows.filter((r) => r.day === day)) });
+    out.push({ id: day, title, day, rows: byJob(view.rows.filter((r) => r.day === day)) });
   }
   return out;
 }
 
 /**
- * A row's trailing fact: its clock in words when it has one ("by Thu 2:00
- * PM"), else when it was told, naming the day when that was not today. A
- * clock its own words already say ("Budget review starts at 2:00 PM") is not
- * said twice, and a clock already past when it was told is no deadline:
- * those rows end with when they were told.
+ * A row's trailing fact: its clock in words when it has one ("by Nov 26,
+ * 2:00 PM"), else when it was told. A clock its own words already say
+ * ("Budget review starts at 2:00 PM") is not said twice, and a clock already
+ * past when it was told is no deadline: those rows end with when they were
+ * told. The told time names its day only when that is not the day of the
+ * heading the row sits under (`day`; today for what waits), so a heading's
+ * day is never said again on its rows.
  */
-export function rowWhen(row: Pick<TellRow, "by" | "at" | "title" | "detail">, now: number, locale?: string): string {
-  // A clock that had already passed when it was told (a send that failed) is no deadline: that row ends with when it was told.
+export function rowWhen(row: Pick<TellRow, "by" | "at" | "title" | "detail">, now: number, locale?: string, day: string = localDay(now)): string {
   const ahead = row.by !== undefined && row.by > row.at;
-  if (ahead && !`${row.title} ${row.detail ?? ""}`.includes(clockTime(row.by!, locale))) return `by ${dayTime(row.by!, now, locale)}`;
-  return dayTime(row.at, now, locale);
+  // Spaces compare as spaces: a formatter may write a narrow no-break space before AM and PM where the host's words have a plain one.
+  const plain = (text: string): string => text.replace(/[\u202f\u00a0]/g, " ");
+  if (ahead && !plain(`${row.title} ${row.detail ?? ""}`).includes(plain(clockTime(row.by!, locale)))) return `by ${dayTime(row.by!, now, locale)}`;
+  return localDay(row.at) === day ? clockTime(row.at, locale) : dayTime(row.at, now, locale);
 }
 
 /** The list's one empty line: since when Work has had nothing to tell him (the ledger keeps 30 days). */

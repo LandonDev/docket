@@ -123,6 +123,17 @@ describe("the list", () => {
     expect(rowWhen({ ...held, at: at(24, 9), by: at(24, 14) }, now, "en-US")).toBe("by 2:00 PM");
     expect(rowWhen({ ...held, at: at(23, 9), by: at(26, 14) }, now, "en-US")).toBe("by Nov 26, 2:00 PM");
   });
+  it("under a day's heading the told time names its day only when it is another day's: the heading is not said again on its rows", () => {
+    const told = { title: "Morning summary" };
+    // yesterday's digest: a row told that morning, and one told the evening before
+    expect(rowWhen({ ...told, at: at(23, 7, 1) }, now, "en-US", "2026-11-23")).toBe("7:01 AM");
+    expect(rowWhen({ ...told, at: at(22, 21, 14) }, now, "en-US", "2026-11-23")).toBe("Sun 9:14 PM");
+    // today's digest holds what was told yesterday afternoon
+    expect(rowWhen({ ...told, at: at(23, 16, 20) }, now, "en-US", "2026-11-24")).toBe("Mon 4:20 PM");
+    const view = { days: [day("2026-11-23")], rows: [row({ day: "2026-11-23", how: "digest" })] };
+    expect(listSections(view, now, "en-US").map((s) => s.day)).toEqual(["2026-11-23"]);
+    expect(listSections({ days: [], rows: [row()] }, now, "en-US")[0]!.day).toBe("2026-11-24");
+  });
   it("a clock already past when it was told is no deadline: a failed send ends with when it failed", () => {
     expect(rowWhen({ title: "Not sent: Send to Rivera Dental", at: at(24, 5, 17), by: at(24, 5, 17) }, now, "en-US")).toBe("5:17 AM");
     expect(rowWhen({ title: "Not sent: Send to Rivera Dental", at: at(24, 5, 18), by: at(24, 5, 17) }, now, "en-US")).toBe("5:18 AM");
@@ -130,6 +141,8 @@ describe("the list", () => {
   it("never says a clock twice: a row whose words carry its time ends with when it was told", () => {
     expect(rowWhen({ title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", at: at(24, 13, 50), by: at(24, 14) }, at(24, 13, 55), "en-US")).toBe("1:50 PM");
     expect(rowWhen({ title: "Prep is ready for Budget review", detail: "2:00 PM, with Dana Reyes", at: at(24, 8), by: at(24, 14) }, now, "en-US")).toBe("8:00 AM");
+    // whichever space the host's formatter put before PM
+    expect(rowWhen({ title: "Budget review starts at 2:00\u202fPM", at: at(24, 13, 50), by: at(24, 14) }, at(24, 13, 55), "en-US")).toBe("1:50 PM");
   });
   it("says since when Work has had nothing to tell: the thirty days the ledger keeps", () => {
     expect(emptyLine(at(24, 10), "en-US")).toBe("Work has had nothing to tell you since Oct 25.");
