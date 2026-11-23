@@ -2159,7 +2159,7 @@ own selected fill is a card's fill at rest in light.
   row is 32px, a two-line row 48px, rows 2px apart, 6px radius; hover is
   `foreground/5`, a press `foreground/12`, at once. In a column under 480px
   (the window at its least, beside the rail and the Chats column) the page's
-  inset is 12px, the gaps 8px and the two trailing columns 64px each, so the
+  inset is 12px, the gaps 8px, the job column 56px and the fact's 72px, so the
   title keeps the room (`@container/today`).
 - **The lead** is the row's own control or its kind: a round `Checkbox` on a
   task, the Outbox's kind glyph on a held item, the file's kind on a file,

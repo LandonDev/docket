@@ -14,10 +14,11 @@ import type { TodayAct, TodayRow } from "./types";
  * over an optional second line, the job (its dot and its name), then the
  * trailing fact. Every title on the page starts at one left edge. In a
  * column under 480px (the window at its least beside the rail and the Chats
- * column) the gaps and the two trailing tracks narrow together, so the
- * title keeps the room: `TODAY_COLUMN` names the container they measure.
+ * column) the gaps and the two trailing tracks narrow together (the job to
+ * 56px, the fact to 72px, which still holds "Sun 9:14 PM"), so the title
+ * keeps the room: `TODAY_COLUMN` names the container they measure.
  */
-export const ROW_GRID = "grid grid-cols-[16px_minmax(0,1fr)_112px_80px] gap-x-3 @max-[30rem]/today:grid-cols-[16px_minmax(0,1fr)_64px_64px] @max-[30rem]/today:gap-x-2";
+export const ROW_GRID = "grid grid-cols-[16px_minmax(0,1fr)_112px_80px] gap-x-3 @max-[30rem]/today:grid-cols-[16px_minmax(0,1fr)_56px_72px] @max-[30rem]/today:gap-x-2";
 /** Where a title starts, for a line that is not a row (a fold, an empty line): the row's inset, the lead and the gap. */
 export const TITLE_EDGE = "ps-10 @max-[30rem]/today:ps-9";
 /** The page's column: the container the grid measures, and the inset that narrows with it. */
