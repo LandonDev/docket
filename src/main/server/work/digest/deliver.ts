@@ -57,6 +57,9 @@ export function mergeByKey(lists: readonly (readonly TellRow[])[]): TellRow[] {
   return out
 }
 
+/** A held item a thread made: its interrupt goes out on that thread (`Notifier.held`), not as a notice of Work's. */
+const onItsThread = (row: Pick<TellRow, 'open'>): boolean => !!row.open && 'held' in row.open && !!row.open.thread
+
 const within = <T>(wait: Promise<T>, ms: number, otherwise: T): Promise<T> =>
   new Promise((resolve) => {
     const timer = setTimeout(() => resolve(otherwise), ms)
@@ -81,13 +84,14 @@ export function makeDeliverer(deps: DeliverDeps): Deliverer & { digestSent(day: 
     now(row, open) {
       const notifier = deps.notifier()
       if (!notifier) return false
-      const held = row.open && 'held' in row.open ? row.open : null
-      if (held?.thread) {
-        notifier.held(held.thread, row.title, held.held)
+      if (onItsThread(row) && row.open && 'held' in row.open) {
+        notifier.held(row.open.thread!, row.title, row.open.held)
         return true
       }
-      const work: NoticeWork = { key: NOW_KEY, tell: nameOf(row), ...(row.by != null ? { by: row.by } : {}), ...(open.length === 1 && row.open ? { open: row.open } : {}) }
-      notifier.work({ ...nowWords(open, jobOf), urgent: true, work })
+      // One a thread's own notice carried has its own banner there: this one names only the rest.
+      const here = open.filter((r) => r.id === row.id || !onItsThread(r))
+      const work: NoticeWork = { key: NOW_KEY, tell: nameOf(row), ...(row.by != null ? { by: row.by } : {}), ...(here.length === 1 && row.open ? { open: row.open } : {}) }
+      notifier.work({ ...nowWords(here, jobOf), urgent: true, work })
       return true
     },
     gone() {

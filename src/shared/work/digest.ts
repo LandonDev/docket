@@ -31,9 +31,9 @@ export const DEFAULT_AT = '08:00'
 
 const things = (n: number): string => `${n} ${n === 1 ? 'thing' : 'things'}`
 
-/** "Cosmic, Purdue and Ref"; past three names, "4 jobs". */
+/** "Cosmic, Purdue and Ref", in one order whoever counts; past three names, "4 jobs". */
 export function jobsLine(jobs: readonly string[]): string {
-  const names = [...new Set(jobs.filter(Boolean))]
+  const names = [...new Set(jobs.filter(Boolean))].sort((a, b) => a.localeCompare(b))
   if (names.length === 0) return ''
   if (names.length === 1) return names[0]!
   if (names.length > 3) return `${names.length} jobs`

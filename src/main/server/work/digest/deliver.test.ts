@@ -49,6 +49,13 @@ describe('an interrupt', () => {
     deliverer.now(b, [a, b])
     expect(work).toEqual([{ title: 'Work', body: '2 things need you: Budget review starts at 2:00 PM; Sign-in to Frame.io ends today', urgent: true, work: { key: NOW_KEY, tell: 'lapse:frameio:1' } }])
   })
+  it("leaves out of the fold one that went out on its own thread: that banner is its own", () => {
+    const { deliverer, work } = rig()
+    const invite = row({ kind: 'outbox.held', group: 'held', title: 'Held: Invite Dana Reyes to Budget review', toldAt: 100, open: { held: { at: 'lifeos', table: 'calendarOps', id: 'op1' }, thread: 'thread-1' } })
+    const lapse = row({ key: 'lapse:frameio:1', kind: 'connections.ending', sector: null, workspaceId: null, title: 'Sign-in to Frame.io ends Nov 23 at 6:30 PM', open: { settings: 'connections' } })
+    deliverer.now(lapse, [invite, lapse])
+    expect(work).toEqual([{ title: 'Work', body: 'Sign-in to Frame.io ends Nov 23 at 6:30 PM', urgent: true, work: { key: NOW_KEY, tell: 'lapse:frameio:1', open: { settings: 'connections' } } }])
+  })
   it('of a row with no key is named by its id, and one about no job is titled Work', () => {
     const { deliverer, work } = rig()
     const r = row({ sector: null, workspaceId: null })
@@ -95,7 +102,7 @@ describe("the day's digest", () => {
     ]
     const { deliverer, work } = rig({ peers: () => [Promise.resolve(mac)] })
     await deliverer.digestSent(DAY, [row({ sector: 'cosmic' }), row({ sector: 'ref', key: 'clash:1', title: 'A clash' })])
-    expect(work[0]!.body).toBe('Digest: 3 things in Cosmic, Ref and Hypixel')
+    expect(work[0]!.body).toBe('Digest: 3 things in Cosmic, Hypixel and Ref')
   })
   it('a linked host that does not answer in five seconds, or refuses, adds nothing and holds nothing up', async () => {
     vi.useFakeTimers()
