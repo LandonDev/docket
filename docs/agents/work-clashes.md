@@ -154,8 +154,8 @@ The pillar has no view of its own and no row in the column.
   given ten seconds by `answered` in `clashes/wait.ts`: Convex's own call
   has no end, and the dialog is locked while it is out; a Start place Save
   is given the same; if the two change or stop clashing while it reads, or
-  the later event ends, nothing is drafted and the press is his again on
-  the pair as it is)
+  the later event ends or changes job (Mail would open under the old one),
+  nothing is drafted and the press is his again on the pair as it is)
   and opens Mail's composer in that job's workspace (`mail/mailto.ts`), so it
   is offered only where this host has that workspace. The dialog reads the
   fortnight from the earlier event's day (whole local days; not the pair's

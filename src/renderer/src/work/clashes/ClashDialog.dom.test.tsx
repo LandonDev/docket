@@ -667,6 +667,26 @@ describe("the Clash dialog", () => {
     expect(document.activeElement).toBe(document.querySelector("[data-dialog-cancel]"));
   });
 
+  it("drafts nothing when the later event changes job while Running late reads the people: Mail would open under the old job", async () => {
+    let answer: (value: { attendees: { address: string }[] }) => void = () => {};
+    lifeos.held = new Promise((resolve) => (answer = resolve));
+    const view = (clash: Clash) => {
+      marks.now = marksOf({ clashes: [clash], leaves: [] });
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(overlap()));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    // The game is filed under Life while the people load; its times and drive are as they were.
+    rerender(view(overlap(meeting(["decline", "propose"]), game(["move", "late"], { sector: "life", workspaceId: "ws_life" }))));
+    await act(async () => answer({ attendees: [{ address: "dana@example.com" }] }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    expect(workViewNow()).toBeNull();
+    expect((screen.getByRole("button", { name: "Running late…" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("drafts nothing when the later event ends while Running late reads the people", async () => {
     let answer: (value: { attendees: { address: string }[] }) => void = () => {};
     lifeos.held = new Promise((resolve) => (answer = resolve));

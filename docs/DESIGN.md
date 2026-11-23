@@ -1952,8 +1952,8 @@ Around the canvas:
   that job's workspace with the people on the event and one line, and
   lets go with LifeOS's words when the read of those people gets no
   answer in ten seconds; if the two change or stop clashing while it
-  reads, or the later event ends, nothing is drafted and the press is
-  his again on the pair as it is; once the time he would have been there by is
+  reads, or the later event ends or changes job, nothing is drafted and
+  the press is his again on the pair as it is; once the time he would have been there by is
   behind him, its line says "I'm running late." and leaves how late to
   him; "This
   is fine" closes with a toast that carries Undo; it goes with the pair

@@ -28,6 +28,18 @@ describe("TruncateTip", () => {
     expect(trigger()).toBeNull();
   });
 
+  it("breaks a long word inside the tip, so a link never runs out of it", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(900);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    const link = "https://meet.example.com/a-very-long-room-name-with-no-space-to-break-at-anywhere-in-it";
+    const { container } = render(<TruncateTip text={link}><span className="truncate" tabIndex={0}>{link}</span></TruncateTip>);
+    const trigger = container.querySelector<HTMLElement>('[data-slot="tooltip-trigger"]')!;
+    await act(async () => { trigger.focus(); await new Promise((r) => setTimeout(r, 50)); });
+    const tip = document.querySelector('[data-slot="tooltip-content"]');
+    expect(tip?.textContent).toBe(link);
+    expect(tip?.querySelector("span")?.className).toContain("break-words");
+  });
+
   it("checks a status line's truncated child even when the flex wrapper fits", () => {
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) { return this.classList.contains("truncate") ? 200 : 100; });
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);

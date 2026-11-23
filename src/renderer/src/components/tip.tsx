@@ -78,7 +78,10 @@ export function TruncateTip({
   return (
     <Tooltip>
       <TooltipTrigger render={cloneElement(children, { ref })} />
-      <TooltipContent side={side}>{text}</TooltipContent>
+      {/* The whole text may hold a word longer than the tip is wide (a link): it breaks inside the tip, never out of it. */}
+      <TooltipContent side={side}>
+        <span className="min-w-0 break-words">{text}</span>
+      </TooltipContent>
     </Tooltip>
   );
 }
