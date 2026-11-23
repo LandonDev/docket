@@ -68,8 +68,8 @@ const EDITS = [
   edit(
     8,
     "office.edit",
-    'Make change in Spring LAN budget.docx: "$4,180" to "$4,320"',
-    "Make change",
+    'Make the change in Spring LAN budget.docx: "$4,180" to "$4,320"',
+    "Make the change",
     { host: "local", app: "word", key: "/Users/landon/Library/CloudStorage/OneDrive-Purdue/Spring LAN budget.docx", name: "Spring LAN budget.docx", edit: { find: "The Spring LAN comes to $4,180", replace: "The Spring LAN comes to $4,320, with $140 more for prizes" }, places: 1, base: "x" },
     at(20, 10, 12),
   ),
@@ -94,8 +94,8 @@ const EDITS = [
   edit(
     6,
     "office.edit",
-    "Make change in Jersey order.docx: add to its end",
-    "Make change",
+    'Make the change in Jersey order.docx: add "Sizes still to confirm: two players." at its end',
+    "Make the change",
     { host: "local", app: "word", key: "https://purdue0.sharepoint.com/sites/esports/Jersey order.docx", name: "Jersey order.docx", edit: { insert: "Sizes still to confirm: two players.", at: "end" }, places: 0, base: "x" },
     at(20, 9, 30),
   ),

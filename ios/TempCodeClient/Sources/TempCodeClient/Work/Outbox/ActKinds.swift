@@ -55,20 +55,20 @@ public extension OutboxModel {
             if case .object(let args)? = o["args"] { rows += stepRows(args: args, targets: o["targets"]) }
         case .officeEdit:
             // An agent's change to a shared file: a Word insert's text is the body, a find and replace are rows,
-            // each in full (the desktop's `kindRows`).
-            if let app = editApp[word(o["app"]) ?? ""] { rows.append(("In", app)) }
+            // each in full (the desktop's `kindRows`). Held through the Windows VM, the In row says so.
+            if let app = editApp[word(o["app"]) ?? ""] { rows.append(("In", o["vm"] == .bool(true) ? "\(app) in the Windows VM" : app)) }
             if case .object(let e)? = o["edit"] {
                 if case .string(let insert)? = e["insert"] {
                     rows.append(("Adds at", word(e["at"]) == "start" ? "The start" : "The end"))
                     body = insert
                 } else {
-                    rows += editRows([.object(e)])
+                    rows += editRows([.object(e)], places: o["places"])
                 }
             }
         case .googleEdit:
             if let app = editApp[word(o["app"]) ?? ""] { rows.append(("In", app)) }
-            if case .array(let edits)? = o["edits"] { rows += editRows(edits) }
             if let account = word(o["account"]) { rows.append(("Account", account)) }
+            if case .array(let edits)? = o["edits"] { rows += editRows(edits) }
         default:
             return nil
         }
@@ -128,7 +128,7 @@ public extension OutboxModel {
     nonisolated static func rowWords(_ item: OutboxItem) -> (title: String, line: String?) {
         // An agent's change to a shared file leads with the file, so a long verb never cuts its name off (the desktop's `rowWords`).
         let changed = item.kind == .officeEdit || item.kind == .googleEdit ? kindHeading(kind: item.kind, payload: item.payload, sent: item.state == .sent) : nil
-        let (act, about) = changed.map { ($0, splitSummary(item.summary).about) } ?? shareWords(item) ?? splitSummary(item.summary)
+        let (act, about) = changed.map { ($0, changeLine(item)) } ?? shareWords(item) ?? splitSummary(item.summary)
         if item.state == .failed { return (act, checkFirst(item) ?? item.error ?? "Didn’t send") }
         if let when = calendarWhen(kind: item.kind, payload: item.payload) { return (act, when) }
         switch item.kind {
@@ -416,21 +416,38 @@ public extension OutboxModel {
     }
 
     private nonisolated static let access = ["reader": "Can view", "commenter": "Can comment", "writer": "Can edit"]
+    /// A held change's line (the desktop's `rowWords`): the summary after the file's own name, which may hold ": "
+    /// itself, its count first when there are several.
+    nonisolated static func changeLine(_ item: OutboxItem) -> String? {
+        guard case .object(let o)? = item.payload, case .string(let name)? = o["name"], let at = item.summary.range(of: " in \(name): ") else { return splitSummary(item.summary).about }
+        let about = String(item.summary[at.upperBound...])
+        guard case .array(let edits)? = o["edits"], edits.count > 1 else { return about }
+        return "\(edits.count) changes: \(about.replacingOccurrences(of: #" and \d+ more$"#, with: "", options: .regularExpression))"
+    }
+
     private nonisolated static let editApp = ["word": "Word", "powerpoint": "PowerPoint", "doc": "Google Docs", "slides": "Google Slides"]
 
-    /// Each change as he approves it, in full (the desktop's `editRows`): the words it replaces and what takes
-    /// their place, or a box's words before and after, by its slide.
-    nonisolated static func editRows(_ edits: [JSONValue]) -> [(String, String)] {
+    /// Each change as he approves it, in full and in one grammar (the desktop's `editRows`): where, when it is
+    /// not the whole file once (a box's slide, or how many places or boxes the words stand in), then Replace and
+    /// With, or Take out. Words of spaces alone are quoted with their escapes, so they never read as nothing.
+    nonisolated static func editRows(_ edits: [JSONValue], places: JSONValue? = nil) -> [(String, String)] {
         var rows: [(String, String)] = []
+        let shown = { (v: String) in v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? exactQuote(v) : v }
         for case .object(let e) in edits {
+            let from: String
+            var to: String?
             if case .string(let find)? = e["find"] {
-                if word(e["replace"]) != nil, case .string(let replace)? = e["replace"] { rows += [("Replace", find), ("With", replace)] } else { rows.append(("Take out", find)) }
+                from = find
+                if case .string(let r)? = e["replace"] { to = r }
+                let boxes: Double? = if case .number(let n)? = e["boxes"] { n } else { nil }
+                let count: Double? = if case .number(let n)? = places { n } else { nil }
+                if let many = boxes ?? count, many > 1 { rows.append(("Where", "\(Int(many)) \(boxes != nil ? "boxes" : "places")")) }
             } else if case .string? = e["shape"] {
-                let slide: String = if case .number(let n)? = e["slide"] { "Slide \(Int(n))" } else { "A box" }
-                let was: String = if case .string(let w)? = e["was"] { w } else { "" }
-                let text: String = if case .string(let t)? = e["text"] { t } else { "" }
-                rows += [(slide, was), ("Becomes", text)]
-            }
+                from = if case .string(let w)? = e["was"] { w } else { "" }
+                if case .string(let t)? = e["text"] { to = t }
+                if case .number(let n)? = e["slide"] { rows.append(("Where", "Slide \(Int(n))")) }
+            } else { continue }
+            if let to, !to.isEmpty { rows += [("Replace", shown(from)), ("With", shown(to))] } else { rows.append(("Take out", shown(from))) }
         }
         return rows
     }

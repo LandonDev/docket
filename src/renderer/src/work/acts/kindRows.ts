@@ -185,17 +185,26 @@ export function stepRows(args: Rec, targets: unknown): { label: string; value: s
 
 const EDIT_APP: Record<string, string> = { word: "Word", powerpoint: "PowerPoint", doc: "Google Docs", slides: "Google Slides" };
 
-/** Each change as he approves it, in full: the words it replaces and what takes their place, a box's words before and after, or what it adds. */
-export function editRows(edits: unknown): { label: string; value: string }[] {
+/** Words as they go: a value that is only spaces or breaks is quoted with its escapes, so it never reads as nothing. */
+const shown = (v: string): string => (v.trim() ? v : exactQuote(v));
+
+/**
+ * Each change as he approves it, in full and in one grammar: where, when it is not the whole file once (`Where`: a
+ * box's slide, or how many places the words stand in), then the words it replaces and what takes their place
+ * (`Replace`, `With`), or the words it removes (`Take out`).
+ */
+export function editRows(edits: unknown, places?: unknown): { label: string; value: string }[] {
   const rows: { label: string; value: string }[] = [];
   for (const raw of Array.isArray(edits) ? edits : []) {
     const e = (raw ?? {}) as Rec;
-    if (typeof e.find === "string") {
-      if (str(e.replace) === null) rows.push({ label: "Take out", value: e.find });
-      else rows.push({ label: "Replace", value: e.find }, { label: "With", value: e.replace as string });
-    } else if (typeof e.shape === "string") {
-      rows.push({ label: num(e.slide) === null ? "A box" : `Slide ${e.slide}`, value: str(e.was) ?? "" }, { label: "Becomes", value: typeof e.text === "string" ? e.text : "" });
-    }
+    const many = num(e.boxes) ?? num(places);
+    const from = typeof e.find === "string" ? e.find : typeof e.shape === "string" ? (typeof e.was === "string" ? e.was : "") : null;
+    const to = typeof e.find === "string" ? e.replace : e.text;
+    if (from === null) continue;
+    if (typeof e.shape === "string") rows.push(...row("Where", num(e.slide) === null ? null : `Slide ${e.slide}`));
+    else if (many !== null && many > 1) rows.push({ label: "Where", value: `${many} ${typeof e.boxes === "number" ? "boxes" : "places"}` });
+    if (typeof to !== "string" || to === "") rows.push({ label: "Take out", value: shown(from) });
+    else rows.push({ label: "Replace", value: shown(from) }, { label: "With", value: shown(to) });
   }
   return rows;
 }
@@ -340,13 +349,15 @@ export function kindRows(kind: string, payload: unknown): KindRows | null {
       // A Word insert's text is the body; a find and replace are rows, each in full.
       const e = (p.edit && typeof p.edit === "object" ? p.edit : {}) as Rec;
       const insert = typeof e.insert === "string" ? e.insert : null;
+      const app = EDIT_APP[str(p.app) ?? ""] ?? null;
       return {
-        fields: [...row("In", EDIT_APP[str(p.app) ?? ""] ?? null), ...(insert === null ? editRows([e]) : row("Adds at", e.at === "start" ? "The start" : "The end"))],
+        // Held through Office in the Windows VM: his press goes there, so the row says so.
+        fields: [...row("In", app && p.vm === true ? `${app} in the Windows VM` : app), ...(insert === null ? editRows([e], p.places) : row("Adds at", e.at === "start" ? "The start" : "The end"))],
         body: insert,
       };
     }
     case "google.edit":
-      return { fields: [...row("In", EDIT_APP[str(p.app) ?? ""] ?? null), ...editRows(p.edits), ...row("Account", str(p.account))], body: null };
+      return { fields: [...row("In", EDIT_APP[str(p.app) ?? ""] ?? null), ...row("Account", str(p.account)), ...editRows(p.edits)], body: null };
     default:
       return null;
   }

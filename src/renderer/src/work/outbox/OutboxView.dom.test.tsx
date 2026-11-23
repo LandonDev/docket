@@ -491,9 +491,12 @@ describe("the Outbox", () => {
   });
 
   it("leads an agent's change to a shared file with the file, in the past once made", () => {
-    const change = { kind: "office.edit", verb: "Make change", state: "held", summary: 'Make change in Spring LAN budget.docx: "$4,180" to "$4,320"', payload: { name: "Spring LAN budget.docx" } } as never;
+    const change = { kind: "office.edit", verb: "Make the change", state: "held", summary: 'Make the change in Spring LAN budget.docx: "$4,180" to "$4,320"', payload: { name: "Spring LAN budget.docx" } } as never;
     expect(rowWords(change)).toEqual({ act: "Change Spring LAN budget.docx", about: '"$4,180" to "$4,320"' });
     expect(rowWords({ ...(change as object), kind: "google.edit", state: "sent" } as never).act).toBe("Changed Spring LAN budget.docx");
+    // A file named with ": " keeps the change whole, and several changes lead with their count.
+    const deck = { kind: "google.edit", verb: "Make 2 changes", state: "held", summary: 'Make 2 changes in Nationals: travel: "7 AM" to "6:30 AM" and 1 more', payload: { name: "Nationals: travel", edits: [{}, {}] } } as never;
+    expect(rowWords(deck)).toEqual({ act: "Change Nationals: travel", about: '2 changes: "7 AM" to "6:30 AM"' });
   });
 
   it("says an empty list once at either width: in the list when narrow, in the detail when wide", async () => {

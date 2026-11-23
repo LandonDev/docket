@@ -94,7 +94,7 @@ export type GoogleEdit = z.infer<typeof GoogleEditSchema>
 
 const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const editWords = (e: GoogleEdit['edits'][number]): string =>
-  'find' in e ? (e.replace ? `"${clip(e.find)}" to "${clip(e.replace)}"` : `take out "${clip(e.find)}"`) : `slide ${e.slide}'s "${clip(e.was)}" to "${clip(e.text)}"`
+  'find' in e ? (e.replace ? `"${clip(e.find)}" to "${clip(e.replace)}"` : `take out "${clip(e.find)}"`) : e.text ? `slide ${e.slide}'s "${clip(e.was)}" to "${clip(e.text)}"` : `take out slide ${e.slide}'s "${clip(e.was)}"`
 
 /** No matcher: no grant covers an agent's change to a file others can open, and no Away releases it. */
 export const googleEdit: ActKindDef<GoogleEdit> = {
@@ -103,7 +103,7 @@ export const googleEdit: ActKindDef<GoogleEdit> = {
   payload: GoogleEditSchema,
   words(p) {
     const n = p.edits.length
-    const verb = n === 1 ? 'Make change' : `Make ${n} changes`
+    const verb = n === 1 ? 'Make the change' : `Make ${n} changes`
     return { summary: `${verb} in ${p.name}: ${editWords(p.edits[0]!)}${n > 1 ? ` and ${n - 1} more` : ''}`, verb }
   },
   async execute(p, ctx) {

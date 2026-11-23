@@ -277,7 +277,7 @@ struct OutboxItemScreen: View {
     /// hold opens the split Send's menu: "Send and stop holding" › the grant's name (the desktop's).
     @ViewBuilder
     private func sendButton(_ item: OutboxItem, client: EnvironmentClient) -> some View {
-        let title = item.state == .failed ? "Send Again" : item.verb
+        let title = OutboxModel.pressWord(item, fallback: item.verb)
         if client.work.canAdmin, item.state == .held, let grant = OutboxModel.grantFor(item.kind, payload: item.payload) {
             Menu {
                 Section("Send and stop holding") {

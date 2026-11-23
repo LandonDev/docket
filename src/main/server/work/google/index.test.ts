@@ -206,7 +206,7 @@ describe('the google tools', () => {
     expect(fake.docSuggestions('doc2')).toEqual([])
     expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'doc', fileId: 'doc2', edits: [{ find: 'March', replace: 'May', within: 'We ship in March.' }] }) })])
     const payload = googleEdit.payload.parse(held[0].payload)
-    expect(googleEdit.words(payload)).toEqual({ summary: 'Make change in Brief: "March" to "May"', verb: 'Make change' })
+    expect(googleEdit.words(payload)).toEqual({ summary: 'Make the change in Brief: "March" to "May"', verb: 'Make the change' })
     await expect(googleEdit.execute(payload, { ...ctx, item: { sessionId: 's1' } } as never)).resolves.toMatchObject({ summary: 'Made the change in Brief' })
     expect(fake.docText('doc2')).toContain('We ship in May.')
     expect(fake.docSuggestions('doc2')).toEqual([])

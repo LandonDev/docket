@@ -25,7 +25,7 @@ import { Facts } from "../../surfaces/settings/hosts/Facts";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ActView } from "../acts/ActView";
 import { kindHeading } from "../acts/kindRows";
-import { Calendar, Mail } from "../icons";
+import { Calendar, File, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
 import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
@@ -80,9 +80,16 @@ const checkWords = (item: HostItem): string => (item.kind === "mail.send" || ite
  * its second line. The detail keeps its own heading.
  */
 export function rowWords(item: Pick<HostItem, "kind" | "summary" | "verb" | "payload"> & { state?: HostItem["state"] }): { act: string; about: string | null } {
-  // An agent's change to a shared file: the file leads ("Change Brief.docx"), so a long verb never cuts its name off.
+  // An agent's change to a shared file: the file leads ("Change Brief.docx"), so a long verb never cuts its name off,
+  // and the line is the change, read after the file's own name (which may hold ": " itself), its count first.
   const changed = item.kind === "office.edit" || item.kind === "google.edit" ? kindHeading(item.kind, item.payload, item.state === "sent") : null;
-  if (changed) return { act: changed, about: splitSummary(item.summary).about };
+  if (changed) {
+    const p = (item.payload ?? {}) as { name?: unknown; edits?: unknown };
+    const lead = typeof p.name === "string" ? item.summary.indexOf(` in ${p.name}: `) : -1;
+    const about = lead >= 0 ? item.summary.slice(lead + ` in ${p.name}: `.length) : splitSummary(item.summary).about;
+    const n = Array.isArray(p.edits) ? p.edits.length : 1;
+    return { act: changed, about: about && n > 1 ? `${n} changes: ${about.replace(/ and \d+ more$/, "")}` : about };
+  }
   if (item.kind === "share.google") {
     const p = (item.payload ?? {}) as { email?: unknown; name?: unknown };
     const role = /\(([^)]*)\)\s*$/.exec(item.summary)?.[1];
@@ -101,6 +108,8 @@ const KIND_GLYPH: Partial<Record<ActKind, ComponentType<{ className?: string }>>
   "office.mail.send": Mail,
   "calendar.op": Calendar,
   "office.calendar.op": Calendar,
+  "office.edit": File,
+  "google.edit": File,
   "addon.call": Plug,
   "computer.act": SquareMousePointer,
   "portal.submit": Globe,

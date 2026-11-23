@@ -33,6 +33,14 @@ public enum OutboxModel {
         kind == .mailSend || kind == .officeMailSend || kind == .computerAct
     }
 
+    /// The press's word: an agent's change to a shared file sends nothing, so it says its own verb ("Make the
+    /// change") and "Try Again" once failed; every other act keeps `fallback` ("Send") and "Send Again".
+    public nonisolated static func pressWord(_ item: OutboxItem, fallback: String) -> String {
+        let change = item.kind == .officeEdit || item.kind == .googleEdit
+        if item.state == .failed { return change ? "Try Again" : "Send Again" }
+        return change ? item.verb : fallback
+    }
+
     /// A computer act's kept picture in a whole read: none was kept, kept with its bytes, or
     /// kept but the bytes did not come (a failure, never "none").
     public enum KeptPicture: Sendable, Hashable {

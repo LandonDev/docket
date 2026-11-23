@@ -232,7 +232,7 @@ private struct OutboxRow: View {
     /// Send, or for what only its detail shows (a LifeOS reply's quote, a computer act's picture)
     /// "Send…", which opens the detail: a list never sends what he has not seen whole.
     private var sendButton: some View {
-        let title = failed ? "Send Again" : "Send"
+        let title = OutboxModel.pressWord(item, fallback: "Send")
         return Group {
             if OutboxModel.sendsFromDetailOnly(item.kind) {
                 Button("\(title)…", systemImage: "paperplane") { navigator.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) }

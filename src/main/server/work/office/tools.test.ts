@@ -460,9 +460,9 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
 
   it('reads its words as he approves them', () => {
     const words = (edit: OfficeEdit['edit']) => editAct().words({ host: 'h', app: 'word', key: '/x/Brief.docx', name: 'Brief.docx', edit, places: 1, base: 'b' })
-    expect(words({ find: 'one', replace: 'two' })).toEqual({ summary: 'Make change in Brief.docx: "one" to "two"', verb: 'Make change' })
-    expect(words({ find: 'one', replace: '' }).summary).toBe('Make change in Brief.docx: take out "one"')
-    expect(words({ insert: 'x', at: 'end' }).summary).toBe('Make change in Brief.docx: add to its end')
+    expect(words({ find: 'one', replace: 'two' })).toEqual({ summary: 'Make the change in Brief.docx: "one" to "two"', verb: 'Make the change' })
+    expect(words({ find: 'one', replace: '' }).summary).toBe('Make the change in Brief.docx: take out "one"')
+    expect(words({ insert: 'x', at: 'end' }).summary).toBe('Make the change in Brief.docx: add "x" at its end')
   })
 
   it('names a file by its key', () => {

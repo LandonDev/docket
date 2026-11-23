@@ -221,7 +221,7 @@ struct AwayReviewSheet: View {
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 // The verb says what the item does, muted: the row opens the item, it does not send.
-                Text(entry.item.state == .failed ? "Send Again" : entry.item.verb)
+                Text(OutboxModel.pressWord(entry.item, fallback: entry.item.verb))
                     .textStep(.meta)
             }
             .frame(minHeight: Layout.rowHeight)

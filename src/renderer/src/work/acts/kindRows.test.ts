@@ -280,17 +280,31 @@ describe("an agent's change to a shared file, as he approves it", () => {
     expect(kindRows("office.edit", { app: "word", name: "Brief.docx", edit: { insert: "A last line.", at: "end" } })).toEqual({ fields: [{ label: "In", value: "Word" }, { label: "Adds at", value: "The end" }], body: "A last line." });
   });
 
-  it("reads each of a deck's changes, a box by its slide with its words before and after, and the account", () => {
-    const p = { app: "slides", account: "landon@purdue.edu", fileId: "1AbC", name: "Pitch", revisionId: "r9", edits: [{ find: "2025", replace: "2026" }, { shape: "t4", text: "Hi", slide: 3, was: "Hello" }] };
+  it("reads each of a deck's changes in one grammar, a box by its slide, a replace-all by its boxes, the account after the app", () => {
+    const p = { app: "slides", account: "landon@purdue.edu", fileId: "1AbC", name: "Pitch", revisionId: "r9", edits: [{ find: "2025", replace: "2026", boxes: 3 }, { shape: "t4", text: "Hi", slide: 3, was: "Hello" }, { shape: "t5", text: "", slide: 4, was: "Old" }] };
     expect(kindRows("google.edit", p)!.fields).toEqual([
       { label: "In", value: "Google Slides" },
+      { label: "Account", value: "landon@purdue.edu" },
+      { label: "Where", value: "3 boxes" },
       { label: "Replace", value: "2025" },
       { label: "With", value: "2026" },
-      { label: "Slide 3", value: "Hello" },
-      { label: "Becomes", value: "Hi" },
-      { label: "Account", value: "landon@purdue.edu" },
+      { label: "Where", value: "Slide 3" },
+      { label: "Replace", value: "Hello" },
+      { label: "With", value: "Hi" },
+      { label: "Where", value: "Slide 4" },
+      { label: "Take out", value: "Old" },
     ]);
     expect(noise(kindRows("google.edit", p))).not.toMatch(/1AbC|r9|t4/);
+  });
+
+  it("says how many places a Word replace reaches, the VM when it goes there, and spaces as spaces", () => {
+    const p = { app: "word", vm: true, name: "Brief.docx", places: 4, edit: { find: "Q1", replace: " " } };
+    expect(kindRows("office.edit", p)!.fields).toEqual([
+      { label: "In", value: "Word in the Windows VM" },
+      { label: "Where", value: "4 places" },
+      { label: "Replace", value: "Q1" },
+      { label: "With", value: '" "' },
+    ]);
   });
 
   it("heads the detail with the file, in the past once made", () => {

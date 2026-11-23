@@ -224,8 +224,8 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
     payload: OfficeEditSchema,
     words(p) {
       const e = p.edit
-      const what = 'find' in e ? (e.replace ? `"${clip(e.find)}" to "${clip(e.replace)}"` : `take out "${clip(e.find)}"`) : `add to its ${e.at}`
-      return { summary: `Make change in ${p.name}: ${what}`, verb: 'Make change' }
+      const what = 'find' in e ? (e.replace ? `"${clip(e.find)}" to "${clip(e.replace)}"` : `take out "${clip(e.find)}"`) : `add "${clip(e.insert)}" at its ${e.at}`
+      return { summary: `Make the change in ${p.name}: ${what}`, verb: 'Make the change' }
     },
     async execute(p, ctx) {
       if (p.host !== ctx.host) throw new OfficeError('This act was held for another host: it goes from there.')
