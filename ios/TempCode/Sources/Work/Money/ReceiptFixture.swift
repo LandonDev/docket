@@ -31,7 +31,10 @@ enum ReceiptFixture {
     /// what the host answered. scripts/ios-sim-proof-local.ts reads the host back.
     static func saveForProof(_ receipt: Receipt, hosts: [any MoneyHost], saved: () -> Void) async {
         guard let action = TestHooks.action, action == "receipt-save" || action.hasPrefix("receipt-save:"), TestHooks.once("receipt-save") else { return }
-        if let want = action.split(separator: ":").dropFirst().first.map(String.init), receipt.sectors.contains(want) { receipt.pick(sector: want) }
+        if let want = action.split(separator: ":").dropFirst().first.map(String.init), receipt.sectors.contains(want) {
+            receipt.pick(sector: want)
+            await receipt.read(hosts)
+        }
         var report: [String: String] = ["amount": receipt.amount, "date": receipt.date ?? "", "seller": receipt.seller, "category": receipt.category ?? "", "sector": receipt.sector ?? "", "key": receipt.current?.key ?? ""]
         let answer = await receipt.save(hosts)
         report["state"] = answer?.state.rawValue ?? ""

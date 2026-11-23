@@ -39,13 +39,21 @@ public struct ReceiptDraft: Codable, Hashable, Sendable, Identifiable {
     public var sent = false
     /// He discarded it on the desktop: its key is spent, and only Discard Receipt is left.
     public var discarded = false
-    /// The host's parser has answered for this scan.
-    public var parsed = false
+    /// The job the host's parser last answered for (`ReceiptJob.id`; `sector:<key>`
+    /// when no job was held yet). Another job picked after it asks the parser again.
+    public var parsedFor: String?
+
+    /// The job the draft holds, as `ReceiptJob.id`.
+    var jobId: String? { hostId.flatMap { host in workspaceId.map { "\(host)/\($0)" } } }
+    /// What the parser is asked for: the held job, else the sector (or none yet).
+    var parseFor: String { jobId ?? "sector:\(sector ?? "")" }
+    /// A host's parser answered for the job shown: `seen` goes with the Save.
+    public var parsed: Bool { parsedFor != nil && parsedFor == jobId }
 
     public var id: String { key }
 
     private enum CodingKeys: String, CodingKey {
-        case key, file, name, mime, lines, amount, date, seller, category, sector, typed, hostId, workspaceId, job, sent, discarded, parsed
+        case key, file, name, mime, lines, amount, date, seller, category, sector, typed, hostId, workspaceId, job, sent, discarded, parsedFor
     }
 
     public init(from decoder: any Decoder) throws {
@@ -67,7 +75,8 @@ public struct ReceiptDraft: Codable, Hashable, Sendable, Identifiable {
         // A draft kept before `sent` existed held a host only once a part had gone to it.
         sent = try c.decodeIfPresent(Bool.self, forKey: .sent) ?? (hostId != nil)
         discarded = try c.decodeIfPresent(Bool.self, forKey: .discarded) ?? false
-        parsed = try c.decodeIfPresent(Bool.self, forKey: .parsed) ?? false
+        // A draft kept before `parsedFor` existed is asked again for its job.
+        parsedFor = try c.decodeIfPresent(String.self, forKey: .parsedFor)
     }
 
     init(key: String, file: String, name: String, mime: String) {
@@ -307,6 +316,12 @@ public final class Receipt {
         update(key) { Self.hold(job, in: &$0) }
     }
 
+    /// He picked a job: the parser is asked again for it, and the fields he has not touched follow its answer.
+    public func choose(_ job: ReceiptJob, hosts: [any MoneyHost]) async {
+        pick(job)
+        await read(hosts)
+    }
+
     /// The first job in a sector (the proof's hook names a sector).
     public func pick(sector: String) {
         if let job = jobs.first(where: { $0.sector == sector }) { pick(job) }
@@ -342,9 +357,13 @@ public final class Receipt {
         if jobs.isEmpty, chosen == nil { error = Self.noHost }
     }
 
-    /// Reads the scan on the phone (once), then asks the first host to answer
-    /// `work.money.parse` for the fields, filling only those he has not typed
-    /// in. With no answer in time the fields stay and `error` says so.
+    /// Reads the scan on the phone (once), then asks a host's parser for the
+    /// fields. With a job held, its own host is asked, for its own workspace
+    /// (the category is what he last gave that seller in that job's ledger);
+    /// with none yet, the first host to answer for the sector. The answer
+    /// fills only the fields he has not touched, and lands only while the
+    /// draft still holds the job it was asked for. Asked again when he picks
+    /// another job. With no answer in time the fields stay and `error` says so.
     public func read(_ hosts: [any MoneyHost]) async {
         guard let draft = current else { return }
         let key = draft.key
@@ -358,15 +377,24 @@ public final class Receipt {
                 update(key) { $0.lines = lines }
             }
         }
-        guard let now = drafts.first(where: { $0.key == key }), let lines = now.lines, !lines.isEmpty, !now.parsed else { return }
+        guard let now = drafts.first(where: { $0.key == key }), let lines = now.lines, !lines.isEmpty,
+              now.parsedFor != now.parseFor else { return }
+        let asked = now.parseFor
         let sector = now.sector
-        let holding = sector.map { want in hosts.filter { host in answers.contains { $0.host.hostId == host.hostId && $0.jobs.contains { $0.sector == want } } } } ?? []
-        guard case let (_, fields)? = await first(holding.isEmpty ? hosts : holding, { try await $0.parse(lines: lines, sector: sector) }) else {
-            if error == nil { error = Self.noReader }
+        let workspaceId = now.workspaceId
+        let ask: [any MoneyHost]
+        if let hostId = now.hostId {
+            ask = hosts.filter { $0.hostId == hostId }
+        } else {
+            let holding = sector.map { want in hosts.filter { host in answers.contains { $0.host.hostId == host.hostId && $0.jobs.contains { $0.sector == want } } } } ?? []
+            ask = holding.isEmpty ? hosts : holding
+        }
+        guard case let (_, fields)? = await first(ask, { try await $0.parse(lines: lines, sector: sector, workspaceId: workspaceId) }) else {
+            if error == nil, drafts.first(where: { $0.key == key })?.parseFor == asked { error = Self.noReader }
             return
         }
         if error == Self.noReader { error = nil }
-        fill(key, fields)
+        fill(key, fields, for: asked)
     }
 
     /// Sends the scan in parts, in order, to the job the picker shows, awaiting
@@ -465,14 +493,18 @@ public final class Receipt {
         if currentKey == key { currentKey = drafts.first?.key }
     }
 
-    /// The parser's answer into the fields he has not typed in.
-    private func fill(_ key: String, _ fields: MoneyReceiptFields) {
+    /// The parser's answer into the fields he has not touched: each takes what
+    /// this answer says, so a job picked later replaces the last job's category,
+    /// and what he typed or chose stays. An answer for a job the draft no longer
+    /// holds is dropped (he picked again while it was asked).
+    private func fill(_ key: String, _ fields: MoneyReceiptFields, for asked: String) {
         update(key) { draft in
-            draft.parsed = true
-            if !draft.typed.contains(.amount), let amount = fields.amount, amount >= 1 { draft.amount = ReceiptAmount.text(Int(amount.rounded())) }
-            if !draft.typed.contains(.date), let date = fields.date { draft.date = date }
-            if !draft.typed.contains(.seller), let who = fields.who, !who.isEmpty { draft.seller = who }
-            if !draft.typed.contains(.category), let category = fields.category, !category.isEmpty { draft.category = category }
+            guard draft.parseFor == asked else { return }
+            draft.parsedFor = asked
+            if !draft.typed.contains(.amount) { draft.amount = fields.amount.flatMap { $0 >= 1 ? ReceiptAmount.text(Int($0.rounded())) : nil } ?? "" }
+            if !draft.typed.contains(.date) { draft.date = fields.date }
+            if !draft.typed.contains(.seller) { draft.seller = fields.who ?? "" }
+            if !draft.typed.contains(.category) { draft.category = fields.category.flatMap { $0.isEmpty ? nil : $0 } }
         }
     }
 

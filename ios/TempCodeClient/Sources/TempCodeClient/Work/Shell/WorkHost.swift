@@ -387,8 +387,8 @@ extension WorkHost: MoneyHost {
     }
 
     /// The host's one parser on the phone's own lines.
-    public func parse(lines: [ReceiptTextLine], sector: String?) async throws -> MoneyReceiptFields {
-        try await socket.request(Methods.WorkMoneyParse.self, .init(lines: ReceiptPart.parseLines(lines), sector: sector.map { .set($0) }))
+    public func parse(lines: [ReceiptTextLine], sector: String?, workspaceId: String?) async throws -> MoneyReceiptFields {
+        try await socket.request(Methods.WorkMoneyParse.self, .init(lines: ReceiptPart.parseLines(lines), workspaceId: workspaceId, sector: sector.map { .set($0) }))
     }
 
     /// One part of a receipt, under its one key.

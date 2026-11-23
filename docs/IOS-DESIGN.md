@@ -2569,7 +2569,7 @@ The receipt (Money, docs/agents/work-money.md):
   the fill step, beside Amount (a quiet "$" in the
   secondary tint before it, as the desktop draws every amount; the decimal
   pad; a word turns it destructive and holds Save off), then Date (a date picker,
-  never after today; Add Date until one is read or picked) and Seller; then
+  from January 1, 1990, never after today; Add Date until one is read or picked) and Seller; then
   Category (the job's own list, what was read chosen, and None) and Job (every
   job a host keeps, each with its sector's dot and its name, the host's name
   after it when two hosts keep a job of one name, the last sector used
@@ -2578,7 +2578,9 @@ The receipt (Money, docs/agents/work-money.md):
   desktop.", as that section's footer in destructive text; last, Scan Another and Discard Receipt (one
   colour, the glyph destructive with its words; it asks first). The fields fill when a host's
   parser answers, with no spinner or mark in them; what he typed first
-  stands. Cancel keeps the draft; Save is the one confirm, a spinner while
+  stands. The parser is the held job's own host, asked for its workspace, so
+  the category is what that job's ledger last gave the seller; another job
+  picked asks again, and the fields he has not touched follow its answer. Cancel keeps the draft; Save is the one confirm, a spinner while
   the parts go, then a light impact and the app's toast line saying where
   it went: "Filed in Unify", "Suggested in Unify's ledger" when the ledger is
   a sheet others can open and the row only waits there, or "Waiting in Money
@@ -2591,7 +2593,7 @@ The receipt (Money, docs/agents/work-money.md):
   the sector beside the id; another job in the sector is never chosen for
   him, and with no job (no host answered) Save stays off. It goes with the lines and the fields, and `seen` when
   the parse had answered (then what he left empty stays empty on the
-  desktop). With an amount and a date the host files it in the job's ledger
+  desktop; `seen` only when that parse was for the job shown). With an amount and a date the host files it in the job's ledger
   at once; without, it waits in the desktop's To confirm list. Either answer
   removes the draft; while another waits, the sheet goes on to it. Discarded
   on the desktop (`dropped`), the draft stays with its key spent: Save is off

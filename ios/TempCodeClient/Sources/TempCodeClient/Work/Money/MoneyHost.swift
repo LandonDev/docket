@@ -6,8 +6,9 @@ import TempCodeContract
     var hostId: String { get }
     /// The jobs this host keeps, each with its sector and starting categories.
     func moneyState() async throws -> MoneyState
-    /// The host's one parser on the phone's own lines.
-    func parse(lines: [ReceiptTextLine], sector: String?) async throws -> MoneyReceiptFields
+    /// The host's one parser on the phone's own lines; with `workspaceId` the
+    /// category is what that job's ledger last gave the seller.
+    func parse(lines: [ReceiptTextLine], sector: String?, workspaceId: String?) async throws -> MoneyReceiptFields
     /// One part of a receipt's bytes; the last part's answer says where it went.
     func receive(_ part: ReceiptPart) async throws -> MoneyReceived
 }

@@ -374,7 +374,7 @@ has Work on: Receipt (`doc.viewfinder`). It opens VisionKit's document
 camera; the scan lands in `ReceiptSheet` (docs/IOS-DESIGN.md "The
 receipt"). `OnDeviceText` reads the scan on the phone (Vision, accurate,
 never a network recogniser); the phone asks a host's `work.money.parse` for
-the fields (one parser, the host's) and never parses itself. Save sends the
+the fields (one parser, the host's, asked of the held job's own host with its `workspaceId`, so the category is that job's; asked again when he picks another job) and never parses itself. Save sends the
 scan in parts with its lines and the fields as they stood at his press
 (`work.money.receive`, `source: 'phone'`, the job he saw named by its
 `workspaceId` on its own host with the sector beside it, `seen` when the

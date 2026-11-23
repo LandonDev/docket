@@ -117,7 +117,7 @@ struct ReceiptSheet: View {
     @ViewBuilder
     private var date: some View {
         if let day = receipt.date.flatMap(ReceiptDay.date) {
-            DatePicker("Date", selection: Binding(get: { day }, set: { receipt.date = ReceiptDay.string($0) }), in: ...Date.now, displayedComponents: .date)
+            DatePicker("Date", selection: Binding(get: { day }, set: { receipt.date = ReceiptDay.string($0) }), in: ReceiptDay.first...Date.now, displayedComponents: .date)
                 .accessibilityIdentifier("receipt-date")
         } else {
             Button("Add Date") { receipt.date = ReceiptDay.string(.now) }
@@ -135,7 +135,10 @@ struct ReceiptSheet: View {
             }
         } else {
             Picker("Job", selection: Binding(get: { receipt.chosen?.id ?? "" }, set: { id in
-                if let job = choices.first(where: { $0.id == id }) { receipt.pick(job) }
+                guard let job = choices.first(where: { $0.id == id }) else { return }
+                receipt.pick(job)
+                // The parser again, for this job: the category he did not choose follows it.
+                Task { await receipt.read(hosts) }
             })) {
                 ForEach(choices) { job in
                     Label { Text(name(of: job, among: choices)) } icon: { SectorDot(sector: job.sector) }
@@ -237,6 +240,9 @@ enum ReceiptDay {
         format.dateFormat = "yyyy-MM-dd"
         return format
     }()
+
+    /// The first day the ledger reads (the host refuses a date before 1990).
+    static let first: Date = format.date(from: "1990-01-01")!
 
     static func date(_ day: String) -> Date? { format.date(from: day) }
     static func string(_ date: Date) -> String { format.string(from: date) }
