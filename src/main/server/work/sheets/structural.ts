@@ -486,13 +486,14 @@ export const STRUCTURAL_CONVERTERS: Converter[] = (['xlsx', 'xlsm'] as const).ma
   needs: 'libreoffice',
   threads: 1,
   async run(job, run) {
-    // Options may come from another host's key: the ops are checked, never passed through as they came.
-    const ops = OpsSchema.parse(job.options?.ops)
-    refuseMove(job.input, ops)
     const soffice = run.tools.bin('libreoffice')
     if (!soffice) throw new Error('libreoffice is not installed here')
     const python = officePython(soffice)
     if (!python) throw new Error("LibreOffice's Python is not installed here")
+    // Options may come from another host's key: the ops are checked, never passed through as they came. A move
+    // the file cannot keep is refused here, before anything is written or LibreOffice starts.
+    const ops = OpsSchema.parse(job.options?.ops)
+    refuseMove(job.input, ops)
     const script = join(run.tmp, 'structural.py')
     const opsFile = join(run.tmp, 'ops.json')
     const out = join(run.tmp, `out.${kind}`)
