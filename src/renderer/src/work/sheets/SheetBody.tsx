@@ -12,6 +12,7 @@ import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { Tip } from "../../components/tip";
 import { Input } from "../../components/ui/input";
+import { chordKey, ctrlOnly } from "../../lib/keys";
 import { IS_MAC } from "../../lib/platform";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
@@ -330,8 +331,9 @@ function useObjectKeys(handle: SheetHandle | null, on: boolean, frame: { current
     const onKey = (event: KeyboardEvent): void => {
       const inHand = handle.objects.state().selected !== null;
       const here = !!frame.current && frame.current.contains(document.activeElement);
-      const enter = event.ctrlKey && event.altKey && !event.metaKey && event.code === "Digit5";
-      const next = event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && inHand;
+      // Control itself with Alt on every platform, as Excel has it; Tab with no command key down (Shift goes back).
+      const enter = ctrlOnly(event) && event.altKey && event.code === "Digit5";
+      const next = event.key === "Tab" && !chordKey(event) && inHand;
       if ((!enter || !(here || inHand)) && !next) return;
       if (handle.objects.selectNext(next && event.shiftKey ? -1 : 1) === null) return;
       event.preventDefault();
