@@ -16,12 +16,16 @@ import { useWorkspaces, workspaceByPath } from "../../lib/tcserver/workspaces";
 import { workRailPort, useWorkHosts } from "../../lib/workSwitch";
 import { FileDrops } from "../canvas/fileDrop";
 import { LapseNotices } from "../connections/lapseNotice";
+import { workDigestChunk } from "../../surfaces/chunks";
 import { openConnections, openWorkSettings } from "./open";
 import { PlaysHost } from "../routines/plays/PlaysHost";
 import { TemplatesHost } from "../templates/TemplatesHost";
 import { ClashHost } from "../clashes/ClashHost";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
 import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
+
+/** The digest's toasts and its list (work/digest), in a chunk of their own: nothing of it loads until Work is on. */
+const DigestHost = workDigestChunk.surface("DigestHost");
 
 /** A sector's dot as a menu row's glyph, one stable component per sector. */
 const DOT_ICONS = new Map<string, MenuIcon>();
@@ -161,6 +165,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       <ClashHost />
       {/* What Work leans on that ends soon, said once (work/connections/lapseNotice.tsx). */}
       <LapseNotices />
+      {/* The day's digest and what cannot wait, told once across hosts (work/digest). */}
+      <DigestHost onOpenWorkspace={onOpenWorkspace} />
       {naming && home ? (
         <NameWorkspaceDialog
           environmentId={home}

@@ -142,7 +142,8 @@ describe('menu tree', () => {
       '—',
       ['Inbox'],
       ['Computers', 'Shift+Cmd+L'],
-      ['Notes']
+      ['Notes'],
+      ['Digest']
     ])
     expect(section('Threads')).toEqual([
       ['Switch Model…', 'Cmd+.'],

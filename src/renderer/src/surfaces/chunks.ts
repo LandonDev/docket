@@ -109,6 +109,9 @@ export const workShellChunk = defineChunk("work-shell", () => import("../work/sh
 /** Work's Outbox page, a Work thread's Results section and the return from Away (work/outbox). Asked for only by the
  *  rail's Outbox row, a Work thread's panel, or Away turning off while a host has Work on. */
 export const workOutboxChunk = defineChunk("work-outbox", () => import("../work/outbox"));
+/** The digest (work/digest): its two toasts, the list's sheet and the Settings section. Asked for only while a host has
+ *  Work on, by the rail host's mount and by Settings → Work. */
+export const workDigestChunk = defineChunk("work-digest", () => import("../work/digest"));
 
 /** The frame of a page above the Work workspaces (work/places): Today, the weekly review. Asked for by the rail's place
  *  rows and the Go menu, and warmed at idle while a host has Work on; each place's body is a chunk of its own. */
@@ -155,6 +158,7 @@ export const allChunks = {
   workOutboxChunk,
   workPlacesChunk,
   workSearchChunk,
+  workDigestChunk,
   computersChunk,
   fullWindowChunk,
   popOutChunk,

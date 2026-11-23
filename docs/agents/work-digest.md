@@ -154,6 +154,46 @@ or `{key, tell, by?, open?}`.
 - A banner on a phone cannot be taken back: `done` withdraws the desktop's
   notice, and the next interrupt's body names only what is still open.
 
+## Telling him on the desktop
+
+`src/renderer/src/work/digest/` is one lazy chunk, `work-digest`
+(`workDigestChunk` in surfaces/chunks.ts), mounted by `WorkRailHost`
+(`DigestHost`) and by Settings → Work (`SettingsSection`). Nothing of it
+is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
+
+| File | Holds |
+|---|---|
+| `store.ts` | each Work host's ledger and settings, asked when its link opens and kept by the `work.digest` push; `mergeRows` (one row a key across hosts, the one told at once winning), `mergeDays` (hosts' days of one date are one, seen once any is); `markSeen`, `setDigest` (written to every Work host); `openDigestSheet`; sends `work.digest.here` |
+| `notice.ts` | pure: `digestNotice` (the unseen days and their line), `openInterrupts` (told, a day old at most, not closed here), `nowToasts` (one a row, a fold past three), `systemNotices`, `listSections`, `rowWhen` |
+| `open.ts` | pure: `routeOf` turns a `TellOpen` into a route (`thread`, `view` with `at` in that view's own field, `place`, `outbox` with the page's item key, `settings`), `go` runs it |
+| `DigestHost.tsx` | the two toasts through `useToastSync`, their system notifications, the routes, the sheet's mount |
+| `DigestSheet.tsx` | the list (`DigestList`) in a 480px `Sheet` |
+| `SettingsSection.tsx` | Settings → Work → Digest |
+
+- The digest's toast opens `digestOpensPort.get()` when one is registered
+  (Today), else the sheet. Opening or closing it marks every unseen day
+  seen on every host that holds it, so each window's toast goes with the
+  push.
+- An interrupt he closed or opened is kept in localStorage
+  (`work.digest.dismissed`, the newest 200) and shared across windows by
+  the storage event, so a reload does not bring it back.
+- A view of a workspace the window is not in: the window moves there
+  first (`onOpenWorkspace`), and the view opens once it has.
+- A held item opens the Outbox on that item: `wantOutboxItem(key)` in
+  work/outbox/store.ts, which the Outbox page takes once its list holds it.
+- A `{place}` target opens through `shell.openWorkPlace` once Today's frame
+  is on master; until then it opens the list.
+- **The system notification.** `src/main/notice.ts`: `app:notice {key,
+  title, body, silent?}` and `app:notice-close {key}`; main shows an
+  Electron `Notification` only while no app window is focused, once per key
+  across windows (`shouldNotify`); a click brings the asking window forward
+  and sends `app:notice-open {key}`. The renderer reaches it through
+  `systemNotice` in lib/native.ts; a browser at /ui raises none. macOS asks
+  once to allow notifications. On Windows the app's AppUserModelID is set
+  (src/main/index.ts); the notice there is not proven on the rig.
+- The command `open_digest` (Go → Digest, no key) opens the sheet; it is
+  greyed while no host has Work on (`MenuFacts.digest`).
+
 ## The swap for Today
 
 `digestOpensPort` in `src/renderer/src/lib/workSwitch.ts` is the whole
@@ -163,5 +203,6 @@ own list.
 ## Built so far
 
 D0: the seam, the rule, the ledger, the day, the wire. D1: the notices to
-the phone. Nothing calls `ctx.tell` but tests yet, so nothing he sees has
-changed.
+the phone. D2: the desktop's toasts, list, settings and system
+notification. Nothing calls `ctx.tell` but tests yet, so the only things
+he sees are the Digest section in Settings → Work and Go → Digest.

@@ -31,7 +31,7 @@ import { GrantsSheet } from "./GrantsSheet";
 import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
 import { loadResults, undoResult, useResults } from "./results";
 import { OfferLine } from "./OfferLine";
-import { discardItem, fetchItem, grantAndSend, loadHost, loadOutbox, notSentWords, offerAfterPress, offerFrom, sendItem, sendMany, useOutbox, wentOut, type HostItem, type HostOffer } from "./store";
+import { discardItem, fetchItem, grantAndSend, loadHost, loadOutbox, notSentWords, offerAfterPress, offerFrom, sendItem, sendMany, useOutbox, useWantedOutboxItem, wantOutboxItem, wentOut, type HostItem, type HostOffer } from "./store";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
@@ -206,6 +206,19 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
   useEffect(() => {
     if (selected === null && first !== null) setSelected(first);
   }, [selected, first]);
+  // An item a notice asked for (the digest's press): picked once a list holds it, in the tab that holds it.
+  const wanted = useWantedOutboxItem();
+  useEffect(() => {
+    if (!wanted) return;
+    const held = outbox.waiting.some((item) => keyOf(item) === wanted) ? "waiting" : outbox.sent.some((item) => keyOf(item) === wanted) ? "sent" : null;
+    if (held) {
+      setTab(held);
+      setSelected(wanted);
+      setOpened(true);
+    }
+    // Decided and gone, or never here: the page is as it opens.
+    if (held || outbox.loaded) wantOutboxItem(null);
+  }, [wanted, outbox]);
   // Ticks hold only items still waiting.
   const tickedItems = outbox.waiting.filter((item) => ticked.has(keyOf(item)) && batchable(item));
   const tick = (item: HostItem, on: boolean) =>

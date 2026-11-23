@@ -219,6 +219,16 @@ const api = {
     /** Writes bytes the window holds into Downloads under a safe, free name; answers the path. */
     saveDownload: (name: string, bytes: Uint8Array): Promise<string> => ipcRenderer.invoke('files:save-download', name, bytes),
     dockBadge: (count: number): Promise<void> => ipcRenderer.invoke('app:dock-badge', count),
+    /** A system notification while no window is in front, once per key (src/main/notice.ts); `onOpen` hears the key of the one he clicked. */
+    notice: {
+      show: (ask: { key: string; title: string; body: string; silent?: boolean }): Promise<void> => ipcRenderer.invoke('app:notice', ask),
+      close: (key: string): Promise<void> => ipcRenderer.invoke('app:notice-close', key),
+      onOpen: (cb: (key: string) => void): (() => void) => {
+        const listener = (_e: unknown, key: string): void => cb(key)
+        ipcRenderer.on('app:notice-open', listener)
+        return () => void ipcRenderer.removeListener('app:notice-open', listener)
+      }
+    },
     confirmQuit: (): Promise<void> => ipcRenderer.invoke('app:confirm-quit'),
     /** The user said no to the quit dialog; a restart armed behind it is dropped. */
     declineQuit: (): void => ipcRenderer.send('app:quit-declined'),

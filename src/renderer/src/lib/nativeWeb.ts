@@ -169,6 +169,8 @@ export const webApi: Api = {
         .catch(() => "")),
     homeDir: () => Promise.resolve(""),
     defaultCwd: () => Promise.resolve(""),
+    // A browser tab raises no system notification of ours: the toast in the page says it.
+    notice: { show: () => Promise.resolve(), close: () => Promise.resolve(), onOpen: () => () => {} },
     // In a browser the save is the browser's own download, which lands in its Downloads.
     saveDownload: async (name, bytes) => {
       const url = URL.createObjectURL(new Blob([bytes as BlobPart]));

@@ -69,6 +69,11 @@ describe("menuStateOf", () => {
     // Search Work… has nothing to search while no host has Work on
     expect(menuStateOf(facts({ workOn: false })).disabled).toEqual(["search_work"]);
   });
+
+  it("greys Digest while no host has Work on", () => {
+    expect(menuStateOf(facts({ workOn: false })).disabled).toContain("open_digest");
+    expect(menuStateOf(facts({ workOn: true })).disabled).not.toContain("open_digest");
+  });
 });
 
 describe("first paint", () => {

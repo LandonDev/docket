@@ -9,6 +9,7 @@ import icon from '../../resources/icon.png?asset'
 import { appIndexUrl } from './appScheme'
 import { isCaptureWindow } from './captureWindow'
 import { badgeText, shouldBounce } from './dockBadge'
+import { registerNotices } from './notice'
 import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
 import { soakWindow } from './soakWindow'
@@ -530,6 +531,8 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
     badges.set(e.sender.id, n)
     applyBadge(true)
   })
+  // Work's system notifications: the day's digest, and a thing that cannot wait while no window is in front (notice.ts).
+  registerNotices()
 }
 
 /** The donor's dock menu has one item. */

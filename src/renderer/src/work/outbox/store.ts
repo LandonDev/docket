@@ -295,8 +295,30 @@ export async function sendMany(items: readonly HostItem[]): Promise<{ sent: numb
   return { sent: pressed.length - (failed.length - unread.size), failed, waiting: [...waiting] };
 }
 
+// ── an item asked for from outside ───────────────────────────────────────
+
+let wanted: string | null = null;
+const wantedListeners = new Set<() => void>();
+/** A notice's press asks the Outbox page for one item, by the page's own key (`<host>:<ref.at>:<ref.id>`); the page picks it once it holds it, then clears this. */
+export function wantOutboxItem(key: string | null): void {
+  if (wanted === key) return;
+  wanted = key;
+  for (const listener of wantedListeners) listener();
+}
+export function useWantedOutboxItem(): string | null {
+  return useSyncExternalStore(
+    (listener) => {
+      wantedListeners.add(listener);
+      return () => void wantedListeners.delete(listener);
+    },
+    () => wanted,
+    () => wanted,
+  );
+}
+
 /** Test seam. */
 export function resetOutboxStore(): void {
+  wanted = null;
   hosts.clear();
   loading.clear();
   again.clear();

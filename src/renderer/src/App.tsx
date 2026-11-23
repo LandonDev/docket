@@ -301,7 +301,7 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
+import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
 import { openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from "./lib/workSearchPort";
@@ -3281,6 +3281,8 @@ export default function App() {
         case "archive_done_threads": return go(() => void requestThreadBatch("archiveDone", EVERYWHERE, () => selectionFor(EVERYWHERE)));
         case "toggle_away": return go(toggleAway);
         case "open_notes": return go(a.onOpenNotes);
+        // Work's digest, the list of all it told him (work/digest): with Work off there is none.
+        case "open_digest": return go(() => void (workSwitch.anyOn() ? workDigestChunk.load().then((m) => m.openDigestSheet()) : null));
         case "open_settings": return go(() => a.openSettings());
         case "check_for_updates": return go(() => void updateStore.check(true));
         // The running build's notes, as Settings → General's Updates row opens them.

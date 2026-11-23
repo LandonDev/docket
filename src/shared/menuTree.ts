@@ -179,7 +179,8 @@ export const MENU_TREE: MenuSection[] = [
       sep,
       cmd('open_inbox', 'Inbox'),
       cmd('open_computers', 'Computers', 'CmdOrCtrl+Shift+L'),
-      cmd('open_notes', 'Notes')
+      cmd('open_notes', 'Notes'),
+      cmd('open_digest', 'Digest')
     ]
   },
   {

@@ -83,6 +83,7 @@ export const APP_COMMANDS = [
   "open_inbox",
   "open_computers",
   "open_notes",
+  "open_digest",
   "open_settings",
   "check_for_updates",
   "whats_new",

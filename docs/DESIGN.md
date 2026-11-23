@@ -1457,6 +1457,40 @@ Around the canvas:
     missing touches every section, so it is said once, over them, and no
     section then claims an empty list ("Not known while LifeOS does not
     answer").
+- **The digest** (work/digest; docs/agents/work-digest.md). Work tells him
+  in two toasts and one list, and nothing of Work raises a toast for news
+  besides. The day's digest is one plain toast, "Digest: 9 things in
+  Cosmic, Purdue and Ref", with Open and a close; it stays until he opens
+  or closes it on any device. A thing that cannot wait is one toast a
+  thing in the waiting voice (the amber mark), its title the tell's own
+  sentence and its detail the second line, with Open and a close; it goes
+  when the thing is done, opened or closed, and past three at once they
+  fold into one ("4 things need you now") that opens the list. Both are
+  also system notifications while no window of the app is in front, and
+  only then: the title is the job's name ("Work" for the digest and for a
+  thing about no one job), the body the same words; the digest's is
+  silent. The list is a `Sheet` from the right, 480px, titled "Digest": no
+  page, no rail row and no count, since Today owns the day's page.
+  Sections by time, newest first, under 12px muted headings in 28px lines,
+  16px apart: "Since the digest", "Today, 8:00 AM", "Yesterday", then
+  dates. A row is the job's `SectorDot` on the title's line (a muted ring
+  for a thing about no one job), the title at 13/20 medium, the detail
+  12/16 muted under it, and at the row's end, 12px muted tabular, its clock
+  in words when it has one ("by 2:00 PM") else when it was told. The dot is
+  the only colour; a row he was told of at once reads as the rest. Rows of
+  a section go by job, then newest. The whole row is the press (`ROW_PRESS`
+  on a box 8px past the words each side): it opens its target and the sheet
+  closes; a row with nowhere to go is not a button. Loading is skeleton
+  rows in the rows' shape; nothing at all is one `Empty`, "Nothing waited";
+  a host that did not answer is one muted line at the foot with Retry, and
+  with no host answering the empty state says so instead of "Nothing
+  waited". Settings → Work → Digest is one section after Capture: Time (a
+  time field), then Held items, Routine results and Messages and mail,
+  each a select of three levels in his words ("In the digest", "When it
+  can't wait", "Right away"), all starting at the middle one; Open the
+  digest is the section's own verb on its heading line. No line explains a
+  row. A host that refused a change is that row's red line. The Go menu
+  has Digest, greyed while no host has Work on.
 - **Settings for Work.** The settings list gains a Work heading after
   Threads: the Work page, then each Work workspace led by its sector's
   dot. A grant row is the dot (on mixed lists only), the grant's name and
