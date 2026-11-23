@@ -303,8 +303,10 @@ with no target where the pointer was left; a menu path naming one; Return or
 a typed line break in a chat's message box, in a composer, in a field beside
 a submit, or in a sheet whose default may send; Command or Control with
 Return where that sends; Space or Return on such a control; and any call the
-model flagged. The host reads the window afresh, with frames, when a step
-lands by position, goes to the focus, acts on an element by its number
+model flagged. It also holds edits in a live co-authoring editor as
+`Edit`, with the text or keys and the app or page host. The host reads
+the window afresh, with frames, when a step lands by position, goes to the
+focus, acts on an element by its number
 (the number may name another control by now: a Next become a Send), clicks
 where the pointer was left, clicks, types, pastes, sets a value, selects
 text or presses a key by a name (the Mac finds the name on the live window),
@@ -334,11 +336,28 @@ whole by itself (`state.get` with `element`) at the hold and at the press,
 and bound by its digest; a field that cannot be read whole refuses the hold
 (`HELD_PARTIAL`) and makes the press stale. A restart, a deleted thread and a closed workspace make it stale.
 
+**Edits other people can see live.** `coauthorRead` holds typing, paste,
+setting a field's value, and keys or held keys that write, erase, format or
+undo. These include printable keys, Return, Tab, Backspace, Delete, and
+Command or Control with V, X, Z, Y, Enter, D, B, I or U. Looks, waits,
+scrolls, pointer moves, clicks that place the caret or select, arrow keys,
+Page Up and Page Down, Home and End, Copy, Find and Escape can run.
+The host reads the browser's address afresh before an edit. The list
+covers Google Docs, Sheets and Slides, SharePoint, OneDrive and the
+Office web hosts (`COAUTHOR_HOSTS`). Word, Excel and PowerPoint on Mac
+and Windows all count, since the screen cannot tell which files other
+people can open. Each edit waits for the owner's press, and no grant
+covers it. For Office files, use the Office tools such as
+`office_doc_edit`, which check sharing and hold shared changes.
+
 **What this cannot catch**, in the same class as the shell: a click by
 position on a control the screen reader gives no name (a canvas app, a
 remote desktop, a picture of a button); a control named off the list; an
 act split so that no single call reads as outward; a web address whose page
-acts on being fetched. A wrong match costs one press.
+acts on being fetched. The editor rule needs a listed app or a readable
+address on a listed host. It judges the page before the call, so a batch
+that switches pages before an edit can escape the check. It checks the
+listed key chords and input steps. A wrong match costs one press.
 
 **A command line in Windows** (the Windows VM, and a Work thread on any
 Windows host). A Windows desktop has more ways to a command line than a

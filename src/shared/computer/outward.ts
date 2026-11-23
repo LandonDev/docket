@@ -19,6 +19,8 @@
  *  - Command or Control with Return wherever that sends or submits, a mail
  *    app or page included, and ⇧⌘D in a mail app;
  *  - Space or Return with the focus on such a control.
+ *  - a step that writes in a co-authoring editor: another person can see
+ *    each change as it is made.
  *
  * What this cannot catch, in the same class as the unfenced shell: a click
  * by position on a control the screen reader gives no name (a canvas app,
@@ -237,6 +239,12 @@ export const CHAT_HOSTS: readonly string[] = [
   'facebook.com'
 ]
 
+/** Pages that can show an edit to other people as it is made. */
+export const COAUTHOR_HOSTS: readonly string[] = ['docs.google.com', '*.sharepoint.com', '*.officeapps.live.com', 'onedrive.live.com', '*.office.com', 'office.com', '*.cloud.microsoft', '*.officeonline.com']
+/** Desktop Office files can live in OneDrive or be co-authored; the screen cannot tell. */
+export const COAUTHOR_APP_BUNDLES: readonly string[] = ['com.microsoft.Word', 'com.microsoft.Excel', 'com.microsoft.Powerpoint']
+export const COAUTHOR_EXES: readonly string[] = ['winword.exe', 'excel.exe', 'powerpnt.exe']
+
 export interface ScreenElement {
   index: number
   role: string
@@ -263,12 +271,12 @@ export interface Screen {
 export interface OutwardRead {
   /** the step, 0-based */
   step: number
-  why: 'control' | 'position' | 'menu' | 'key' | 'chord' | 'typed' | 'console'
+  why: 'control' | 'position' | 'menu' | 'key' | 'chord' | 'typed' | 'console' | 'coauthor'
   /** the act's own word, as the button says it: "Send" */
   label: string
   /** what the step lands on, for the card: `button "Send"`, `Return in text area "Message"` */
   on: string
-  /** no grant may be made from it: an act in a command line runs whatever it says (`consoleRead`) */
+  /** no grant may be made from it: commands run as written and co-authors see edits live */
   grantable?: false
 }
 
@@ -637,6 +645,36 @@ const isMailApp = (app: Screen['app']): boolean => MAIL_APP.test(app.bundleId ??
 
 const hostIn = (host: string | null, list: readonly string[]): boolean => !!host && list.some((h) => host === h || host.endsWith(`.${h}`))
 
+/** A key that can write, erase, format or undo: copy, find and navigation keys do none of these. */
+function editsDocument(a: ComputerAction): boolean {
+  if (a.action === 'type' || a.action === 'paste' || a.action === 'set_value') return true
+  if (a.action !== 'key' && a.action !== 'hold_key') return false
+  try {
+    const { key, modifiers } = parseKeyCombo(a.text ?? '')
+    if (['Return', 'BackSpace', 'Delete'].includes(key)) return true
+    if (modifiers.includes('super') || modifiers.includes('ctrl')) return /^[vxzydbiu]$/i.test(key)
+    if (key === 'Tab') return !modifiers.includes('alt')
+    return /^[^\p{C}]$/u.test(key) || ['space', 'minus', 'plus', 'equal', 'comma', 'period', 'slash', 'backslash', 'semicolon', 'apostrophe', 'grave', 'bracketleft', 'bracketright'].includes(key)
+  } catch {
+    return false
+  }
+}
+
+/** The first edit in a window whose changes can reach co-authors before a Save. */
+export function coauthorRead(steps: readonly ComputerAction[], screen: Screen | null): OutwardRead | null {
+  if (!screen) return null
+  const id = screen.app.bundleId?.toLowerCase() ?? ''
+  const host = isBrowser(screen.app) ? pageHost(screen) : null
+  const desktop = COAUTHOR_APP_BUNDLES.some((b) => b.toLowerCase() === id) || COAUTHOR_EXES.includes(id)
+  if (!desktop && !(host && COAUTHOR_HOSTS.some((h) => h.startsWith('*.') ? host.endsWith(h.slice(1)) : host === h))) return null
+  const step = steps.findIndex(editsDocument)
+  if (step < 0) return null
+  const a = steps[step]!
+  const kind = a.action === 'key' || a.action === 'hold_key' ? 'keys' : 'text'
+  const text = (a.action === 'set_value' ? a.value : a.text) ?? ''
+  return { step, why: 'coauthor', label: 'Edit', on: `${kind} ${JSON.stringify(text)} in ${desktop ? screen.app.name : host}`, grantable: false }
+}
+
 /** A mail app or a mail page: a message is written over many lines there, and only the chords send it. */
 function mailPlace(screen: Screen): boolean {
   if (isMailApp(screen.app)) return true
@@ -774,6 +812,8 @@ export function readOutward(steps: readonly ComputerAction[], screen: Screen | n
   // a command line runs whatever is written or clicked in it: held before anything else is read
   const console = consoleRead(steps, screen)
   if (console) return console
+  const coauthor = coauthorRead(steps, screen)
+  if (coauthor) return coauthor
   const at = (p: PointerAt): number | null => (!p || 'named' in p ? null : 'element' in p ? p.element : screen ? elementAt(screen, p.coordinate) : null)
   /** where the pointer is now, by element and by a name it was moved to: a button press with no target lands there */
   let pointerOn: number | null = at(pointer)
@@ -916,13 +956,15 @@ const PASSIVE = ['mouse_move', 'scroll', 'zoom', 'screenshot', 'cursor_position'
  * Whether the host needs the window read afresh, with frames, to judge a
  * call: a step lands by position, acts on an element by its number or by a
  * name, clicks where the pointer was left, or sends a key, a typed line
- * break or a `confirm` to wherever the focus is now. The thread's book says
+ * break or a `confirm` to wherever the focus is now. A browser edit needs
+ * the address bar as it is now. The thread's book says
  * what each number named, where the focus was and what bore a name at its
  * last read; a person or the app may have changed all three (a Next become a
  * Send under the same number), and the service acts on the window as it is.
  */
-export function needsFreshRead(steps: readonly ComputerAction[], pointer: PointerAt = null): boolean {
+export function needsFreshRead(steps: readonly ComputerAction[], pointer: PointerAt = null, app?: Screen['app']): boolean {
   if (landsByPosition(steps, pointer)) return true
+  if (app && isBrowser(app) && steps.some(editsDocument)) return true
   return steps.some((a, step) => {
     if (namedClick(a) || namedKeys(a)) return true
     // A click where the pointer was left lands on whatever lies under it now.

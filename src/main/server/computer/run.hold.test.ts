@@ -46,6 +46,8 @@ interface Showing {
   menuSend?: boolean
   /** TextEdit reads as Slack, a chat app (outward.ts CHAT_APP_BUNDLES) */
   chat?: boolean
+  /** TextEdit reads as Chrome, with this address */
+  address?: string
   /** the text area's value as every read says it */
   value?: string
   /** the host's own fresh read (geometry, no picture: the press's read and the judge's) numbers every element this much higher */
@@ -81,6 +83,7 @@ const showing = (h: ComputerHarness, show: Showing): Showing => {
     if (show.send) out = out.replace(/button "close"/g, 'button "Send"')
     if (show.menuSend) out = out.replace(/menu button "list style"/g, 'menu button "Send"')
     if (show.chat) out = out.replace(/^app "TextEdit"/, 'app "Slack"')
+    if (show.address !== undefined && /^\[1\] window/m.test(out)) out = `${out.replace(/^app "TextEdit"/, 'app "Chrome"').trimEnd()}\n  [48] input "Address and search bar" = ${JSON.stringify(show.address)}`
     if (show.value !== undefined) out = out.replace(/(\[3\] text area = )"(?:[^"\\]|\\.)*"/, `$1${JSON.stringify(show.value)}`)
     return out
   }
@@ -90,6 +93,7 @@ const showing = (h: ComputerHarness, show: Showing): Showing => {
     if (!v || typeof v !== 'object') return v
     const o = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, own, sub)]))
     if (show.chat && o.pid === 16800 && o.name === 'TextEdit') Object.assign(o, { name: 'Slack', bundleId: 'com.tinyspeck.slackmacgap' })
+    if (show.address !== undefined && o.pid === 16800 && o.name === 'TextEdit') Object.assign(o, { name: 'Chrome', bundleId: 'com.google.Chrome' })
     return o
   }
   service.request = async (m, p, o) => {
@@ -120,7 +124,7 @@ const thread = async (
   const h = make(opts)
   h.set('t1', { permission, ...(scope === 'work' ? { scope: 'work' as const } : {}) })
   const shown = showing(h, show)
-  const app = show.chat ? 'Slack' : 'TextEdit'
+  const app = show.chat ? 'Slack' : show.address !== undefined ? 'Chrome' : 'TextEdit'
   if (read) await h.run('computer_observe', { app })
   return { h, shown, app }
 }
@@ -150,6 +154,27 @@ describe('a Work thread under full access', () => {
     expect(acts(h)).toBe(1)
     expect(held).toHaveLength(0)
     expect(h.cards).toHaveLength(0)
+  })
+
+  it('holds a browser edit on the current tab even when the thread last read another site', async () => {
+    useHold()
+    const { h, shown, app } = await thread('work', 'auto', { address: 'example.com/notes' })
+    shown.address = 'docs.google.com/document/d/1/edit'
+    const o = await h.run('computer_act', { app, action: 'type', text: 'Draft' })
+    expect(o).toMatchObject({ isError: false, body: 'Held as item 1', steps: [] })
+    expect(held[0].read).toEqual({ step: 0, why: 'coauthor', label: 'Edit', on: 'text "Draft" in docs.google.com', grantable: false })
+    expect(acts(h)).toBe(0)
+    expect((await held[0].carryOut()).isError).toBe(false)
+    expect(acts(h)).toBe(1)
+  })
+
+  it('makes a held browser edit stale when the owner presses after the document changed', async () => {
+    useHold()
+    const { h, shown, app } = await thread('work', 'auto', { address: 'docs.google.com/document/d/1/edit' })
+    await h.run('computer_act', { app, action: 'key', text: 'x' })
+    shown.address = 'docs.google.com/document/d/2/edit'
+    expect(await held[0].carryOut()).toMatchObject({ stale: true, body: HELD_STALE })
+    expect(acts(h)).toBe(0)
   })
 
   it('holds an act the model flagged on a plain element, as a flag, with no card', async () => {

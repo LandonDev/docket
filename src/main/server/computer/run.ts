@@ -851,7 +851,7 @@ async function runChecked(
         const unread = !!screen && steps.some((s) => actionElements(s).some((i) => !screen!.elements.has(i)))
         // Explorer and Task Manager own the boxes that run what is typed: their window's title is read now, never the book's
         const runBoxApp = RUN_BOX_EXES.includes(identity.bundleId?.toLowerCase() ?? '')
-        if (acting && (!screen || unread || runBoxApp || needsFreshRead(steps, pointer))) {
+        if (acting && (!screen || unread || runBoxApp || needsFreshRead(steps, pointer, identity))) {
           const obs = await fresh(false)
           const now = obs ? screenOfObservation(obs.text, identity) : null
           // Never judged against a stale book or an empty screen: a read that failed holds nothing back, so nothing runs.

@@ -173,9 +173,16 @@ why and the measured headline.
   in a Work thread", [work-outbox.md](work-outbox.md)). The host classes
   each call from the screen, whatever the model flagged
   (src/shared/computer/outward.ts `readOutward`): a click on a control
-  named Send and its kin, Return in a chat's message box, a send chord, or
-  any flagged call is kept for the owner's press (`configureComputerHold`
-  in run.ts) and none of it runs. The model reads `Held as item N …`. The
+  named Send and its kin, Return in a chat's message box, a send chord, an
+  edit in a live co-authoring editor, or any flagged call is kept for the
+  owner's press (`configureComputerHold` in run.ts) and none of it runs.
+  Typing, paste, setting a field's value and editing keys are held in
+  Google Docs, Sheets and Slides, SharePoint, OneDrive and the listed
+  Office web hosts, as well as Word, Excel and PowerPoint on Mac and
+  Windows. The host reads the browser's address again before an edit.
+  Reads, caret clicks, selection, navigation keys, Copy and Find can run.
+  No grant covers an edit. The Office tools check each file's sharing and
+  hold changes to shared files. The model reads `Held as item N …`. The
   press runs the call through the thread's own queue (`ctx.rerun`,
   `ctx.pressed`) once a fresh read shows the window as he was shown it,
   else it is stale. A code thread is untouched. A box thread's act is

@@ -8,6 +8,7 @@ import {
   CHAT_APP_NAMES,
   OUTWARD_VERBS,
   clicksBlind,
+  coauthorRead,
   cutFields,
   heldTargets,
   landsByPosition,
@@ -868,14 +869,16 @@ describe('readOutward: what the second round closed', () => {
     expect(readOutward(steps({ action: 'key', text: 'super+Return' }), chatBox({ bundleId: 'org.mozilla.thunderbird', name: 'Thunderbird' }))).toMatchObject({ why: 'chord', label: 'Send' })
   })
 
-  it('holds Return on teams.cloud.microsoft and ⌘Return on outlook.cloud.microsoft', () => {
+  it('holds Return on Teams and ⌘Return on Outlook, including on co-authoring hosts', () => {
     const at = (url: string): Screen =>
       screen(
         `app "Google Chrome" · window "Chat" · 1280×800 · focused [5]\n[1] window "Chat"\n  [2] toolbar\n    [3] input "Address and search bar" = ${JSON.stringify(url)}\n  [4] web area "Chat"\n    [5] text area "Message" = "hi" focused caret 2`,
         CHROME
       )
-    expect(readOutward(steps({ action: 'key', text: 'Return' }), at('teams.cloud.microsoft/'))).toMatchObject({ label: 'Send' })
-    expect(readOutward(steps({ action: 'key', text: 'super+Return' }), at('outlook.cloud.microsoft/mail/'))).toMatchObject({ why: 'chord', label: 'Send' })
+    expect(readOutward(steps({ action: 'key', text: 'Return' }), at('teams.microsoft.com/'))).toMatchObject({ label: 'Send' })
+    expect(readOutward(steps({ action: 'key', text: 'super+Return' }), at('outlook.office365.com/mail/'))).toMatchObject({ why: 'chord', label: 'Send' })
+    expect(readOutward(steps({ action: 'key', text: 'Return' }), at('teams.cloud.microsoft/'))).toMatchObject({ why: 'coauthor', label: 'Edit', grantable: false })
+    expect(readOutward(steps({ action: 'key', text: 'super+Return' }), at('outlook.cloud.microsoft/mail/'))).toMatchObject({ why: 'coauthor', label: 'Edit', grantable: false })
   })
 
   it('holds Return in a chat page installed as an app of its own, and ⌘Return in a mail one', () => {
@@ -1408,6 +1411,102 @@ describe('a command line in Windows (the VM)', () => {
   it('is what readOutward answers first, before any button is read', () => {
     expect(readOutward(steps({ action: 'type', text: 'dir' }), terminal)).toMatchObject({ why: 'console', grantable: false })
     expect(readOutward(steps({ action: 'type', text: 'dir' }), null)).toBeNull()
+  })
+})
+
+describe('a live co-authoring editor', () => {
+  const page = (url: string, app = CHROME) =>
+    screen(
+      `app "${app.name}" · window "Notes" · 1280×800 · focused [4]
+[1] window "Notes"
+  [2] input "Address and search bar" = ${JSON.stringify(url)}
+  [3] web area "Notes"
+    [4] text area "Body" focused`,
+      app
+    )
+  const doc = page('docs.google.com/document/d/1/edit')
+  const type = steps({ action: 'type', text: 'Draft' })
+
+  it.each([
+    ['docs.google.com/document/d/1/edit', 'docs.google.com'],
+    ['https://docs.google.com/spreadsheets/d/1/edit', 'docs.google.com'],
+    ['https://docs.google.com/presentation/d/1/edit', 'docs.google.com'],
+    ['https://team.sharepoint.com/sites/Office', 'team.sharepoint.com'],
+    ['https://word-edit.officeapps.live.com/we/WordEditorFrame.aspx', 'word-edit.officeapps.live.com'],
+    ['https://onedrive.live.com/edit', 'onedrive.live.com'],
+    ['https://www.office.com/launch/word', 'www.office.com'],
+    ['https://office.com/launch/excel', 'office.com'],
+    ['https://word.cloud.microsoft/edit', 'word.cloud.microsoft'],
+    ['https://word.officeonline.com/edit', 'word.officeonline.com']
+  ])('holds an edit on %s, with the host and no grant', (url, host) => {
+    expect(readOutward(type, page(url, EDGE_WIN))).toEqual({ step: 0, why: 'coauthor', label: 'Edit', on: `text "Draft" in ${host}`, grantable: false })
+  })
+
+  it.each([
+    ['com.microsoft.Word', 'Microsoft Word'],
+    ['com.microsoft.Excel', 'Microsoft Excel'],
+    ['com.microsoft.Powerpoint', 'Microsoft PowerPoint'],
+    ['WINWORD.EXE', 'Word'],
+    ['EXCEL.EXE', 'Excel'],
+    ['POWERPNT.EXE', 'PowerPoint']
+  ])('holds an edit in %s, with the app and no grant', (bundleId, name) => {
+    const desktop = screen(`app "${name}" · window "Notes" · 1280×800\n[1] window "Notes"`, { bundleId, name })
+    expect(readOutward(type, desktop)).toEqual({ step: 0, why: 'coauthor', label: 'Edit', on: `text "Draft" in ${name}`, grantable: false })
+  })
+
+  it.each([
+    [{ action: 'type', text: 'Draft' }, 'text "Draft"'],
+    [{ action: 'paste', text: 'Paste' }, 'text "Paste"'],
+    [{ action: 'set_value', value: 'New value', element: 4 }, 'text "New value"'],
+    [{ action: 'set_value', value: '', element: 4 }, 'text ""']
+  ])('holds %j and names the first edit in the call', (edit, words) => {
+    expect(coauthorRead(steps({ action: 'left_click', element: 4 }, edit, ...type), doc)).toEqual({ step: 1, why: 'coauthor', label: 'Edit', on: `${words} in docs.google.com`, grantable: false })
+  })
+
+  describe.each(['key', 'hold_key'])('%s', (action) => {
+    it.each([
+      'a', 'é', '💡', '+', 'minus', 'space', 'shift+A', 'alt+e', 'Return', 'Shift+Return', 'Tab', 'Shift+Tab', 'Backspace', 'Delete',
+      ...['cmd', 'ctrl'].flatMap((mod) => ['V', 'X', 'Z', 'Y', 'Enter', 'D', 'B', 'I', 'U', 'Shift+Z', 'Shift+V'].map((key) => `${mod}+${key}`))
+    ])('holds %s', (text) => {
+      expect(readOutward(steps({ action, text, ...(action === 'hold_key' ? { duration: 1 } : {}) }), doc)).toMatchObject({ why: 'coauthor', on: `keys "${text}" in docs.google.com` })
+    })
+
+    it.each([
+      'Up', 'Down', 'Left', 'Right', 'Page_Up', 'Page_Down', 'Home', 'End', 'Escape', 'Shift+Left', 'Ctrl+Right', 'Cmd+C', 'Ctrl+C',
+      'Cmd+F', 'Ctrl+F', 'Cmd+L', 'Ctrl+Tab', 'Alt+Tab', 'shift'
+    ])('leaves %s alone', (text) => {
+      expect(readOutward(steps({ action, text, ...(action === 'hold_key' ? { duration: 1 } : {}) }), doc)).toBeNull()
+    })
+  })
+
+  it.each([
+    { action: 'screenshot' },
+    { action: 'zoom', region: [0, 0, 100, 100] },
+    { action: 'cursor_position' },
+    { action: 'scroll', scroll_direction: 'down', scroll_amount: 1 },
+    { action: 'wait', duration: 1 },
+    { action: 'mouse_move', coordinate: [10, 10] },
+    { action: 'left_click', element: 4 },
+    { action: 'select_text', element: 4, range: [0, 1] }
+  ])('leaves %j alone', (a) => {
+    expect(readOutward(steps(a), doc)).toBeNull()
+  })
+
+  it('leaves TextEdit and a Notes page on another host alone', () => {
+    expect(readOutward(type, page('docs.google.com/document/d/1/edit', TEXTEDIT))).toBeNull()
+    expect(readOutward(type, page('https://example.com/notes'))).toBeNull()
+    expect(readOutward(type, page('https://docs.google.com.example.com/notes'))).toBeNull()
+    expect(readOutward(type, page('https://notsharepoint.com/notes'))).toBeNull()
+    expect(coauthorRead(type, null)).toBeNull()
+  })
+
+  it('needs the browser address afresh even for a key, a paste or a word sent to the focus', () => {
+    for (const edit of [type, steps({ action: 'key', text: 'x' }), steps({ action: 'paste', text: 'Draft' })]) {
+      expect(needsFreshRead(edit, null, CHROME)).toBe(true)
+      expect(needsFreshRead(edit, null, EDGE_WIN)).toBe(true)
+      expect(needsFreshRead(edit, null, TEXTEDIT)).toBe(false)
+    }
+    expect(needsFreshRead(steps({ action: 'key', text: 'Right' }), null, CHROME)).toBe(false)
   })
 })
 
