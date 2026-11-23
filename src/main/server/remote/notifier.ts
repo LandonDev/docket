@@ -75,10 +75,11 @@ export const isThreadNotice = (n: Notice): n is ThreadNotice => typeof n.threadI
 
 /**
  * Asked before a thread's notice goes out (work/digest/gate.ts): true keeps
- * it back, and the one who said so has taken it. Absent, or throwing, every
- * notice goes as it always did.
+ * it back, and the one who said so has taken it. It may answer later (a
+ * promise): the notice then goes, or not, when it has. Absent, throwing or
+ * rejecting, every notice goes as it always did.
  */
-export type NoticeGate = (notice: ThreadNotice, session: SessionMeta) => boolean
+export type NoticeGate = (notice: ThreadNotice, session: SessionMeta) => boolean | Promise<boolean>
 
 export type NoticeSink = (notice: Notice) => void | Promise<void>
 
@@ -621,17 +622,24 @@ export class Notifier {
       ...(this.options.onScreen?.(id) ? { onScreen: true as const } : {}),
       ...(held ? { held } : {})
     }
-    if (this.gate) {
-      let kept = false
-      try {
-        kept = this.gate(notice as ThreadNotice, meta)
-      } catch (err) {
-        this.log(`gate failed: ${err instanceof Error ? err.message : String(err)}`)
-      }
-      if (kept) return void this.log(`${event} ${id} "${notice.title}": ${body} (waits for the digest)`)
+    const go = (): void => {
+      this.log(`${event} ${id} "${notice.title}": ${body}${notice.onScreen ? ' (on screen)' : ''}`)
+      this.send(notice)
     }
-    this.log(`${event} ${id} "${notice.title}": ${body}${notice.onScreen ? ' (on screen)' : ''}`)
-    this.send(notice)
+    const keep = (): void => this.log(`${event} ${id} "${notice.title}": ${body} (waits for the digest)`)
+    const failed = (err: unknown): void => this.log(`gate failed: ${err instanceof Error ? err.message : String(err)}`)
+    if (!this.gate) return go()
+    let kept: boolean | Promise<boolean> = false
+    try {
+      kept = this.gate(notice as ThreadNotice, meta)
+    } catch (err) {
+      failed(err)
+    }
+    if (typeof kept === 'boolean') return kept ? keep() : go()
+    void kept.then(
+      (answer) => (answer ? keep() : go()),
+      (err: unknown) => (failed(err), go())
+    )
   }
 
   private send(notice: Notice): void {

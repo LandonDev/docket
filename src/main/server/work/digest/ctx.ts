@@ -7,9 +7,13 @@ import { DETAIL_MAX, TELL_GROUPS, TELL_LEVELS, TITLE_MAX, tellLine, TellOpenSche
 import type { CtxPart } from '../ctx'
 import { WORK_MODULES, type WorkCtx } from '../modules'
 import { dayOf, knownZone, lastDigest, nextDigest, zoneOr } from './clock'
+import type { Notifier } from '../../remote/notifier'
 import { makeDeliverer, ofDay } from './deliver'
+import { makeGate, runPressed } from './gate'
 import { makeDay } from './make'
 import { decide, groupsByKind, groupsListed, LATE_MS, retold } from './rule'
+import { Sources } from './sources'
+import { SOURCES } from './sources/list'
 import { DigestStore, type LedgerRow } from './store'
 
 /**
@@ -53,6 +57,12 @@ const levelsOf = (text: string | null): Partial<Record<TellGroup, TellLevel>> =>
 export class Digest {
   readonly store: DigestStore
   deliverer: Deliverer | null = null
+  /** Run at the start of each look: the gate's attach, the sources' beats. One that throws stops nothing. */
+  readonly beats: ((now: number) => void)[] = []
+  /** Awaited before a day is made: the sources that tell at the digest's time. */
+  beforeDay: ((now: number) => Promise<void>) | null = null
+  /** The day being made, for a test to wait on. */
+  making: Promise<void> = Promise.resolve()
   private readonly unknown = new Set<string>()
   private readonly clock: () => number
 
@@ -224,6 +234,13 @@ export class Digest {
    */
   tick(now = this.clock()): void {
     if (!this.o.enabled()) return
+    for (const beat of this.beats) {
+      try {
+        beat(now)
+      } catch (err) {
+        this.o.log(`digest: a beat failed: ${errorText(err)}`)
+      }
+    }
     if (this.deliverer) {
       for (const row of this.store.due()) {
         // Too late to be of use: it waits for the digest like the rest.
@@ -247,14 +264,23 @@ export class Digest {
     if (!Number.isFinite(handled)) return void this.store.setSetting('handled', String(at))
     if (at <= handled) return
     this.store.setSetting('handled', String(at))
-    const made = makeDay(this.store, dayOf(this.zone(), at), now)
-    if (!made) return
-    this.o.push({ push: 'work.digest', day: made.day })
-    try {
-      this.deliverer?.digest(made.day, made.rows)
-    } catch (err) {
-      this.o.log(`digest: the day's notice was not sent: ${errorText(err)}`)
+    const day = dayOf(this.zone(), at)
+    const make = (): void => {
+      const made = makeDay(this.store, day, this.clock())
+      if (!made) return
+      this.o.push({ push: 'work.digest', day: made.day })
+      try {
+        this.deliverer?.digest(made.day, made.rows)
+      } catch (err) {
+        this.o.log(`digest: the day's notice was not sent: ${errorText(err)}`)
+      }
     }
+    if (!this.beforeDay) return make()
+    // What is told only at the digest's time is read first; a source that fails holds nothing up.
+    this.making = this.beforeDay(now)
+      .catch((err: unknown) => this.o.log(`digest: what is read at the digest's time failed: ${errorText(err)}`))
+      .then(make)
+      .catch((err: unknown) => this.o.log(`digest: the day was not made: ${errorText(err)}`))
   }
   private pushRow(row: LedgerRow): void {
     this.o.push({ push: 'work.digest', row: wireRow(row) })
@@ -329,6 +355,38 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
       log: (line) => ctx.log(line)
     })
     hosts.set(ctx, digest)
+    const made = digest
+    // Sources: the news of a pillar that hands a read, not a tell (sources/).
+    const sources = new Sources({
+      ctx,
+      modules: () => WORK_MODULES,
+      sources: SOURCES,
+      day: (now) => dayOf(made.zone(), lastDigest(made.at(), made.zone(), now)),
+      since: () => made.store.days()[0]?.madeAt ?? 0
+    })
+    made.beats.push((now) => sources.beat(now))
+    made.beforeDay = (now) => sources.beforeDay(now)
+    // The gate for threads that started on their own (gate.ts). The notifier is built late in boot, so it is
+    // handed the gate at the first look that finds it; with Work off it has none.
+    const gate = makeGate({
+      enabled: () => ctx.enabled(),
+      isQuiet: (sessionId) => made.store.isQuiet(sessionId),
+      workspaceOf: (sessionId) => ctx.scopeOf(sessionId)?.workspaceId ?? null,
+      pressed: runPressed(ctx, () => WORK_MODULES),
+      tell: (t) => void made.tell(t),
+      log: (line) => ctx.log(line)
+    })
+    let gated: Notifier | null = null
+    made.beats.push(() => {
+      const notifier = deps.notifier?.() ?? null
+      if (!notifier || notifier === gated) return
+      notifier.setGate(gate)
+      gated = notifier
+    })
+    deps.whileOn(() => () => {
+      gated?.setGate(null)
+      gated = null
+    })
   } catch (err) {
     fault('ctx.tell did not start', err)
   }

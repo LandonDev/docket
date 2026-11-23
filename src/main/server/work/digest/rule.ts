@@ -39,6 +39,7 @@ export const DIGEST_TELLS: TellKind[] = [
   { kind: 'routines.done', group: 'results', name: 'A routine finished' },
   { kind: 'routines.failed', group: 'results', name: 'A routine failed' },
   { kind: 'routines.stuck', group: 'results', name: 'A routine went quiet' },
+  { kind: 'routines.asks', group: 'results', name: 'A routine asks' },
   { kind: 'connections.ending', group: 'ending', name: 'A sign-in or licence is about to end' },
   { kind: 'mail.waiting', group: 'people', name: 'Sent mail with no answer' },
   { kind: 'docs.guest', group: 'people', name: 'A guest edited a document' },
