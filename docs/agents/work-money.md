@@ -212,6 +212,66 @@ box. About 4 seconds a file.
 - Money declares no act kind. An invoice leaves from Mail's composer, by his
   own Send; an agent's draft is the held `mail.send`.
 
+## The view (`src/renderer/src/work/money/`)
+
+The row after People in a Work workspace's column (`view.ts`, order 2.75,
+`readsLifeos: false`, its own lazy chunk; its look is docs/DESIGN.md "The
+Money view"). One read paints it (`api.ts` `useMoney`), asked again when the
+view shows, when the window comes forward, after each act of its own and on
+the `work.money` push.
+
+- `MoneyView.tsx`: the header's Month or Year, the stepper, Add (Receipt…,
+  Entry…, Trip…, Invoice…, and Purchase request… in a Purdue job) and More
+  (Open ledger, Open mileage log, Export…, Mileage rate…); then To confirm,
+  the figures, the year's chart, By category, Owed, Entries and the mileage
+  line. `model.ts` is its pure half.
+- Open ledger and a row's paperclip open the file in a Files tab
+  (`work.money.open` or `receiptSource`, then `work.files.open` and the
+  Files view): no thread is made for a file.
+- `EntryDialog.tsx` is one form for a new entry, a row and a receipt to
+  confirm (the picture at its left). A write that answers `{changed: true}`
+  toasts "The ledger changed. Showing it as it is now." and reads again.
+- `receive.ts` sends a dropped, pasted or picked file in parts under one
+  key, or by its path when the window is on the workspace's own host. The
+  view takes the drop itself (`preventDefault`), so the frame's drop never
+  starts a thread. `ToConfirm.tsx` and `ConfirmFlow.tsx` are the list and
+  the dialog that goes on to the next waiting receipt on Save.
+- `TripDialog.tsx`, `RateDialog.tsx`, `ExportDialog.tsx`,
+  `InvoiceDialog.tsx`: the forms. `print.ts` prints a page the host
+  answered (`work.formats.print`) and hands it back (`work.money.keep`).
+- `send.ts`: Send… on an invoice or a request fills Mail's composer (no
+  address, the subject, two plain lines) and opens the PDF in Files to
+  attach. Mail's composer takes no file from outside (`writeMail` takes
+  work-kit's `MailtoDraft`: to, cc, bcc, subject, body), so the PDF is not
+  attached for him. Nothing leaves until his own Send.
+
+### File as receipt on a canvas item
+
+`src/renderer/src/work/canvas/itemVerbs.ts` is a seam in the canvas frame
+that Money added (SEAMS.md says so): `registerItemVerb({id, label, icon,
+when(item, kind), run(item, {environmentId})})`, read once by
+`CanvasSeat`'s More after the pane's own rows and before Close. Money's
+`itemVerb.ts` registers File as receipt for a PDF or a picture (never a
+video), from `view.ts`, so it is in no first paint; the press loads
+`fileItem.ts`. A file's item goes by its place (`receive {file}`); a mail's
+attachment is fetched (`work.canvas.fetch`), read back by range
+(`work.canvas.read`) and sent in parts with `source: 'mail'`.
+
+## The phone (`ios/TempCodeClient/…/Work/Money/`, `ios/TempCode/Sources/Work/Money/`)
+
+Home's toolbar has a second glyph beside the voice note's while any host
+has Work on: Receipt (`doc.viewfinder`). It opens VisionKit's document
+camera; the scan lands in `ReceiptSheet` (docs/IOS-DESIGN.md "The
+receipt"). `OnDeviceText` reads the scan on the phone (Vision, accurate,
+never a network recogniser); the phone asks a host's `work.money.parse` for
+the fields (one parser, the host's) and never parses itself. Save sends the
+scan in parts with its lines and the fields he accepted
+(`work.money.receive`, `source: 'phone'`, the job named by sector): with an
+amount and a date it is filed at once, else it waits in the desktop's To
+confirm. `Receipt` (the client package) keeps each draft on the phone under
+one key until a host answers: nothing is lost on Cancel, a failed Save or a
+quit, and a retry goes to the same host first. The phone has no Money page.
+
 ## For others
 
 - **Weekly review**: `work.money.sums {from, to, workspaceId?}` → `{rows:
@@ -248,3 +308,6 @@ reaches. A code workspace has no money.
 - A receipt in a form the reader cannot open (WebP, GIF, BMP) is filed by
   hand: the fields open empty beside its picture.
 - A cell cannot open a file: the receipt opens from the Money view.
+- Send… cannot attach the PDF to the mail (above).
+- The view's row says no fact: the count that waits is not drawn in the
+  column.

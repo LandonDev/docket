@@ -334,6 +334,11 @@ What a kind should know:
   another tab is shown; null takes the entries back. It is optional on
   `CanvasShell` only so a stand-in shell written before it still types;
   the pane always gives it.
+- A pillar that is not the item's kind adds a verb to an item's More through
+  `registerItemVerb` (`src/renderer/src/work/canvas/itemVerbs.ts`): `{id, label, icon,
+  when(item, kind), run(item, {environmentId})}`. The pane's More lists the verbs whose
+  `when` holds after its own rows and before Close. Money's File as receipt is the first
+  (docs/agents/work-money.md).
 - `state` is undefined until the kind keeps something; it is one value for
   `Body`, `Bar` and `TabEnd`, held in memory while the window lives.
 - `ReviewAdapter.index` counts across all groups, from 0. With more than
