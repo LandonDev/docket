@@ -223,6 +223,12 @@ export interface PrepUpcoming {
   state: PrepState
 }
 
+export interface PrepAhead {
+  on: boolean
+  offered: boolean
+  routineId?: string
+}
+
 const workspaceId = z.string().min(1).max(64)
 const eventId = z.string().min(1).max(200)
 const page = { workspaceId, eventId }
@@ -236,7 +242,17 @@ export const PrepRequestSchemas = [
    */
   request('work.prep.upcoming', z.object({ from: z.number(), to: z.number() })),
   /** Sets the people added to the page, kept for the series. → { page } */
-  request('work.prep.people', z.object({ ...page, people: z.array(PrepAddedPersonSchema).max(PREP_PEOPLE_MAX) }))
+  request('work.prep.people', z.object({ ...page, people: z.array(PrepAddedPersonSchema).max(PREP_PEOPLE_MAX) })),
+  /** Starts the brief thread, or answers the one still working. → { sessionId } */
+  request('work.prep.brief', z.object(page)),
+  /** Keeps his notes (empty text takes them back). → { page } */
+  request('work.prep.notes', z.object({ ...page, text: z.string().max(PREP_NOTES_MAX) })),
+  /** Starts the follow-up thread from the notes, or answers the one still working. → { sessionId } */
+  request('work.prep.followUp', z.object(page)),
+  /** Accept files suggested tasks in the workspace’s sector. Reject drops them. → { page, failed: { id, error }[] } */
+  request('work.prep.decide', z.object({ ...page, taskIds: z.array(z.string().max(32)).min(1).max(PREP_TASKS_MAX), decision: z.enum(['accept', 'reject']) })),
+  /** The workspace’s Prepare-ahead routine. A person with admin may set it. → PrepAhead */
+  request('work.prep.ahead', z.object({ workspaceId, on: z.boolean().optional(), tz: z.string().min(1).max(64).optional() }))
 ] as const
 
 /** A page changed: a screen reads it again when `rev` is past what it holds. */
@@ -245,7 +261,12 @@ export type PrepPush = { push: 'work.prep'; workspaceId: string; eventId: string
 export const PREP_CAPS = {
   'work.prep.page': 'read',
   'work.prep.upcoming': 'read',
-  'work.prep.people': 'operate'
+  'work.prep.people': 'operate',
+  'work.prep.brief': 'operate',
+  'work.prep.notes': 'operate',
+  'work.prep.followUp': 'operate',
+  'work.prep.decide': 'approve',
+  'work.prep.ahead': 'read'
 } satisfies CapsOf<typeof PrepRequestSchemas>
 /** Every method is carried to the workspace's host, so the phone and a Mac window reach a page on the box. */
 export const PREP_RELAY = {} satisfies RelayOf<typeof PrepRequestSchemas>

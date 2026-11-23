@@ -31,7 +31,7 @@ export class FakeLifeos implements LifeosClient {
   people = new Map<string, FakePerson>()
   tasks = new Map<string, FakeTask>()
   /** `outbox` rows by the thread that made them (`compose:byOrigin`) */
-  outbox: { _id: string; status: string; origin: { threadId: string }; message: { subject: string; to: { address: string; name?: string }[] } }[] = []
+  outbox: { _id: string; status: string; sector?: string; origin: { threadId: string }; message: { subject: string; to: { address: string; name?: string }[] } }[] = []
   calls: { fn: string; args: Record<string, unknown> }[] = []
   /** fail every call of this function with this message */
   failing = new Map<string, string>()

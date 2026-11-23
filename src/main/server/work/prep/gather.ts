@@ -5,6 +5,7 @@ import {
   prepStateOf,
   type PrepAddedPerson,
   type PrepDoc,
+  type PrepDraft,
   type PrepFileRef,
   type PrepLast,
   type PrepPage,
@@ -16,8 +17,10 @@ import {
 import { errorText, type SectorKey } from '@shared/work'
 import type { LifeosClient } from '../lifeos/ctx'
 import type { WorkCtx } from '../modules'
+import { aheadOf } from './ahead'
 import { lastOf, linksIn, personKey, seriesOf, subjectWords, type SeriesPage } from './series'
 import { PrepStore, type PageEvent, type PageRow } from './store'
+import { linkedWorkspaces, sectorWord, workspaceSector } from './workspace'
 
 /**
  * A meeting's facts, read from LifeOS with no model (docs/agents/work-prep.md
@@ -53,6 +56,13 @@ interface PersonPage {
   tasks: { _id: string; title: string; status: string; dueAt?: number; relation: 'asked' | 'waiting' }[]
 }
 
+interface DraftRow {
+  _id: string
+  status: string
+  sector?: string
+  message: { subject: string; to: { name?: string; address: string }[] }
+}
+
 interface TaskDoc {
   _id: string
   sector: string
@@ -65,23 +75,6 @@ const OPEN = new Set(['todo', 'doing', 'waiting'])
 const TASKS_PER_PERSON = 4
 const SUBJECT_TASKS = 5
 const LAST_TASKS = 10
-
-export const sectorWord = (sector: SectorKey): string => sector.charAt(0).toUpperCase() + sector.slice(1)
-
-/** A Work workspace and its sector, from the frame's own row. */
-export function workspaceSector(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): SectorKey {
-  const row = ctx.db.prepare('SELECT kind, sector FROM workspaces WHERE id = ?').get(workspaceId) as { kind: string | null; sector: string | null } | undefined
-  if (!row || row.kind !== 'work' || !row.sector) throw new Error('A meeting’s page is for a Work workspace linked to a LifeOS sector.')
-  return row.sector as SectorKey
-}
-
-/** This host's Work workspaces that are linked to a sector: one per sector (the first made wins if there are ever two). */
-export function linkedWorkspaces(ctx: Pick<WorkCtx, 'db'>): Map<SectorKey, string> {
-  const rows = ctx.db.prepare("SELECT id, sector FROM workspaces WHERE kind = 'work' AND sector IS NOT NULL ORDER BY created_at, id").all() as { id: string; sector: string }[]
-  const bySector = new Map<SectorKey, string>()
-  for (const row of rows) if (!bySector.has(row.sector)) bySector.set(row.sector, row.id)
-  return bySector
-}
 
 function owner(ctx: WorkCtx): LifeosClient {
   if (!ctx.lifeos.connected()) throw new Error('LifeOS is not connected on this computer.')
@@ -185,6 +178,13 @@ async function lastFacts(client: LifeosClient, sector: SectorKey, last: PageRow)
   return { eventId: last.eventId, title: last.title, startsAt: last.startsAt, decided, open, tasks }
 }
 
+async function draftsOf(client: LifeosClient, sector: SectorKey, threadId: string): Promise<PrepDraft[]> {
+  const rows = await client.query<DraftRow[]>('compose:byOrigin', { threadId })
+  return rows
+    .filter((r) => r.status === 'draft' && (r.sector === undefined || r.sector === sector))
+    .map((r) => ({ outboxId: r._id, subject: r.message.subject, to: r.message.to.map((p) => p.name?.trim() || p.address) }))
+}
+
 export interface Gathered {
   page: PrepPage
   event: LifeEvent
@@ -209,7 +209,7 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
   const problems: PrepProblem[] = []
   const words = subjectWords(event.title)
 
-  const [people, subject, before] = await Promise.all([
+  const [people, subject, before, drafts, ahead] = await Promise.all([
     Promise.all(
       drawn.map((p) =>
         personFacts(client, sector, p).catch(() => {
@@ -230,7 +230,14 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
           problems.push('last')
           return null
         })
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    row?.followSessionId
+      ? draftsOf(client, sector, row.followSessionId).catch(() => {
+          problems.push('drafts')
+          return []
+        })
+      : Promise.resolve([]),
+    aheadOf(ctx, workspaceId)
   ])
 
   const tasks: PrepTask[] = []
@@ -260,9 +267,9 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
     state: row ? prepStateOf(row, now) : 'none',
     briefSessionId: row?.briefSessionId ?? null,
     followSessionId: row?.followSessionId ?? null,
-    drafts: [],
-    aheadOn: false,
-    aheadOffered: true,
+    drafts,
+    aheadOn: ahead.on,
+    aheadOffered: ahead.offered,
     problems
   }
   return { page, event, row, last }
@@ -274,10 +281,10 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
  * LifeOS and one of the pages: no query per person, so Today and the digest
  * may ask often.
  */
-export async function upcoming(ctx: WorkCtx, from: number, to: number, now = Date.now()): Promise<PrepUpcoming[]> {
-  const workspaces = linkedWorkspaces(ctx)
+export async function upcoming(ctx: WorkCtx, from: number, to: number, now = Date.now(), scope?: { workspaceId: string; sector: SectorKey }): Promise<PrepUpcoming[]> {
+  const workspaces = scope ? new Map([[scope.sector, scope.workspaceId]]) : linkedWorkspaces(ctx)
   if (!workspaces.size || to <= from) return []
-  const events = await owner(ctx).query<LifeEvent[]>('events:range', { from, to })
+  const events = await owner(ctx).query<LifeEvent[]>('events:range', { from, to, ...(scope ? { sector: scope.sector } : {}) })
   const store = new PrepStore(ctx.db)
   const pages = store.until([...workspaces.values()], to)
   const meetings: PrepUpcoming[] = []

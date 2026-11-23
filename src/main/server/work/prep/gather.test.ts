@@ -255,3 +255,52 @@ describe('what is coming', () => {
     expect(lifeos.calls.map((c) => c.fn)).toEqual(['events:range'])
   })
 })
+
+describe('follow-up drafts', () => {
+  it('shows waiting drafts of this follow-up thread in its sector, including drafts with no sector set', async () => {
+    const { ctx, lifeos, store } = world()
+    store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW, { follow: 'follow-1' })
+    const draft = {
+      status: 'draft',
+      origin: { threadId: 'follow-1' },
+      message: { subject: 'Staff sync follow-up', to: [{ name: 'Maya Chen', address: 'maya@x.test' }, { address: 'tom@x.test' }] }
+    }
+    lifeos.outbox.push(
+      { ...draft, _id: 'draft-ok', sector: 'purdue' },
+      { ...draft, _id: 'draft-no-sector' },
+      { ...draft, _id: 'draft-other-sector', sector: 'cosmic' },
+      { ...draft, _id: 'draft-other-thread', origin: { threadId: 'follow-2' } },
+      { ...draft, _id: 'draft-sent', status: 'sent' }
+    )
+    expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page.drafts).toEqual([
+      { outboxId: 'draft-ok', subject: 'Staff sync follow-up', to: ['Maya Chen', 'tom@x.test'] },
+      { outboxId: 'draft-no-sector', subject: 'Staff sync follow-up', to: ['Maya Chen', 'tom@x.test'] }
+    ])
+    expect(lifeos.called('compose:byOrigin')).toEqual([{ threadId: 'follow-1' }])
+    expect(lifeos.called('compose:send')).toEqual([])
+  })
+
+  it('names drafts in problems if LifeOS cannot read them and still shows the page', async () => {
+    const { ctx, lifeos, store } = world()
+    store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW, { follow: 'follow-1' })
+    lifeos.failing.set('compose:byOrigin', 'drafts are down')
+    expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page).toMatchObject({
+      event: { title: 'Staff sync' }, followSessionId: 'follow-1', drafts: [], problems: ['drafts']
+    })
+  })
+})
+
+describe('a page saved before suggestion numbering', () => {
+  it('adds the sequence column without changing an old page', () => {
+    const { db, store } = world()
+    store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => ({
+      ...doc,
+      notes: { text: 'Maya has the roster.', at: NOW }
+    }), NOW)
+    db.exec('ALTER TABLE work_prep_pages DROP COLUMN suggestion_seq')
+    ensurePrepTables(db)
+    ensurePrepTables(db)
+    expect(store.get('ws-purdue', 'ev1')).toMatchObject({ rev: 1, suggestionSeq: 0, doc: { notes: { text: 'Maya has the roster.', at: NOW } } })
+    db.close()
+  })
+})

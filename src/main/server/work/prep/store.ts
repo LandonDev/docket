@@ -27,8 +27,12 @@ export function ensurePrepTables(db: DatabaseSync): void {
     follow_at INTEGER,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
+    suggestion_seq INTEGER NOT NULL DEFAULT 0,
     UNIQUE (workspace_id, event_id)
   )`)
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('work_prep_pages') WHERE name = 'suggestion_seq'").get()) {
+    db.exec('ALTER TABLE work_prep_pages ADD COLUMN suggestion_seq INTEGER NOT NULL DEFAULT 0')
+  }
   db.exec('CREATE INDEX IF NOT EXISTS work_prep_pages_by_series ON work_prep_pages (workspace_id, series, starts_at)')
   // The Prepare-ahead routine a workspace's switch made, so the switch reads it again (and finds it gone).
   db.exec(`CREATE TABLE IF NOT EXISTS work_prep_ahead (
@@ -49,6 +53,7 @@ export interface PageRow {
   peopleKeys: string[]
   doc: PrepDoc
   rev: number
+  suggestionSeq: number
   briefSessionId: string | null
   briefAt: number | null
   followSessionId: string | null
@@ -67,6 +72,12 @@ export interface PageEvent {
   peopleKeys: string[]
 }
 
+export interface PageWriteOptions {
+  brief?: string | null
+  follow?: string | null
+  suggestionSeq?: number
+}
+
 type Raw = {
   id: string
   workspace_id: string
@@ -78,6 +89,7 @@ type Raw = {
   people_keys: string
   doc: string
   rev: number
+  suggestion_seq: number
   brief_session_id: string | null
   brief_at: number | null
   follow_session_id: string | null
@@ -111,6 +123,7 @@ const rowOf = (r: Raw): PageRow => ({
   peopleKeys: json<string[]>(r.people_keys, []),
   doc: docOf(r.doc),
   rev: r.rev,
+  suggestionSeq: r.suggestion_seq,
   briefSessionId: r.brief_session_id,
   briefAt: r.brief_at,
   followSessionId: r.follow_session_id,
@@ -147,25 +160,26 @@ export class PrepStore {
    * event's own facts are written each time, so a meeting that moved is
    * listed where it is now. Bumps `rev`.
    */
-  write(workspaceId: string, event: PageEvent, start: () => PrepDoc, change: (doc: PrepDoc) => PrepDoc, now: number, threads: { brief?: string | null; follow?: string | null } = {}): PageRow {
+  write(workspaceId: string, event: PageEvent, start: () => PrepDoc, change: (doc: PrepDoc) => PrepDoc, now: number, options: PageWriteOptions = {}): PageRow {
     const before = this.get(workspaceId, event.id)
     const doc = PrepDocSchema.parse(change(before ? before.doc : start())) as PrepDoc
-    const brief = threads.brief !== undefined ? { id: threads.brief, at: threads.brief ? now : null } : { id: before?.briefSessionId ?? null, at: before?.briefAt ?? null }
-    const follow = threads.follow !== undefined ? { id: threads.follow, at: threads.follow ? now : null } : { id: before?.followSessionId ?? null, at: before?.followAt ?? null }
+    const brief = options.brief !== undefined ? { id: options.brief, at: options.brief ? now : null } : { id: before?.briefSessionId ?? null, at: before?.briefAt ?? null }
+    const follow = options.follow !== undefined ? { id: options.follow, at: options.follow ? now : null } : { id: before?.followSessionId ?? null, at: before?.followAt ?? null }
+    const sequence = options.suggestionSeq ?? before?.suggestionSeq ?? 0
     if (before) {
       this.db
         .prepare(
           `UPDATE work_prep_pages SET series = ?, title = ?, starts_at = ?, ends_at = ?, people_keys = ?, doc = ?, rev = rev + 1,
-           brief_session_id = ?, brief_at = ?, follow_session_id = ?, follow_at = ?, updated_at = ? WHERE id = ?`
+           brief_session_id = ?, brief_at = ?, follow_session_id = ?, follow_at = ?, updated_at = ?, suggestion_seq = ? WHERE id = ?`
         )
-        .run(event.series, event.title, event.startsAt, event.endsAt, JSON.stringify(event.peopleKeys), JSON.stringify(doc), brief.id, brief.at, follow.id, follow.at, now, before.id)
+        .run(event.series, event.title, event.startsAt, event.endsAt, JSON.stringify(event.peopleKeys), JSON.stringify(doc), brief.id, brief.at, follow.id, follow.at, now, sequence, before.id)
     } else {
       this.db
         .prepare(
-          `INSERT INTO work_prep_pages (id, workspace_id, event_id, series, title, starts_at, ends_at, people_keys, doc, rev, brief_session_id, brief_at, follow_session_id, follow_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO work_prep_pages (id, workspace_id, event_id, series, title, starts_at, ends_at, people_keys, doc, rev, brief_session_id, brief_at, follow_session_id, follow_at, created_at, updated_at, suggestion_seq)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`
         )
-        .run(`prep_${randomUUID()}`, workspaceId, event.id, event.series, event.title, event.startsAt, event.endsAt, JSON.stringify(event.peopleKeys), JSON.stringify(doc), brief.id, brief.at, follow.id, follow.at, now, now)
+        .run(`prep_${randomUUID()}`, workspaceId, event.id, event.series, event.title, event.startsAt, event.endsAt, JSON.stringify(event.peopleKeys), JSON.stringify(doc), brief.id, brief.at, follow.id, follow.at, now, now, sequence)
     }
     return this.get(workspaceId, event.id)!
   }
