@@ -9,6 +9,7 @@ export const SHOW_PROGRESS_FROM = 1024 * 1024;
 
 /** The kind as the failure names it: "Couldn't open this PDF". */
 const NOUN: Partial<Record<CanvasKind, string>> = { pdf: "PDF", sheet: "sheet", document: "document", slides: "deck", meeting: "recording" };
+export const kindNoun = (kind: CanvasKind): string => NOUN[kind] ?? "file";
 
 const mb = (bytes: number): string => (bytes / (1024 * 1024)).toFixed(1);
 
@@ -21,7 +22,7 @@ export const progressWords = (received: number, total: number): string => `${mb(
  * a fetch that failed says so with Retry, never bones.
  */
 export function FetchState({ fetch, kind, name, onRetry }: { fetch: Exclude<Fetch, { phase: "ready" }>; kind: CanvasKind; name: string; onRetry(): void }) {
-  if (fetch.phase === "failed") return <EmptyState title={`Couldn't open this ${NOUN[kind] ?? "file"}`} line={fetch.message} action={{ label: "Retry", onClick: onRetry }} />;
+  if (fetch.phase === "failed") return <EmptyState title={`Couldn't open this ${kindNoun(kind)}`} line={fetch.message} action={{ label: "Retry", onClick: onRetry }} />;
   const total = fetch.total;
   const big = total !== null && total >= SHOW_PROGRESS_FROM;
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { DUR } from "../../lib/ease";
 import type { PanelMotion, RightPanelProps } from "../RightPanel";
 import type { OpenFileFn } from "../../lib/search";
@@ -28,7 +28,8 @@ import { useSessionById } from "../../lib/threads/agents";
 import { useSessionMetaValue } from "../../lib/tcserver/store";
 import type { SessionMeta } from "../../lib/tcserver/types";
 
-const isWork = (meta: SessionMeta): boolean => meta.scope === "work";
+/** A row stamped Work: its view sits in the canvas seat. */
+export const isWorkThread = (meta: SessionMeta): boolean => meta.scope === "work";
 
 export type { ChatOpts } from "./chatSlots";
 
@@ -44,6 +45,9 @@ export type ThreadViewProps = ChatSource & {
   /** The view alone: a thread shown inside another pane (a master's open
    *  child), whose pane's panel follows it (`rightPanel.showThread`). */
   bare?: boolean;
+  /** The pane's word in the chat's place while its host holds no rows or they are coming (SessionPane): a Work thread's
+   *  items still show beside it. */
+  quiet?: ReactNode;
 };
 
 /** The switch on a session's thread type; null and chat fall through to
@@ -73,9 +77,9 @@ export function ThreadView(props: ThreadViewProps) {
   }, [fit, root, session.id]);
   useEffect(() => (root ? () => rightPanel.setRoom(session.id, true) : undefined), [root, session.id]);
   const pane = usePaneMotion(session.id, panel.open, fit);
-  const own = master ? <MasterView {...props} /> : typeView(props);
+  const own = props.quiet ? <div className="flex min-h-0 min-w-0 flex-1 flex-col">{props.quiet}</div> : master ? <MasterView {...props} /> : typeView(props);
   // The row decides, never the Work switch: a thread stamped Work shows its canvas beside it.
-  const work = useSessionMetaValue(session.id, isWork) === true;
+  const work = useSessionMetaValue(session.id, isWorkThread) === true;
   const view = work ? (
     <CanvasSeat session={session} held={heldRowOf(props, session)}>
       {own}

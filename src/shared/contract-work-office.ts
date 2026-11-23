@@ -244,6 +244,8 @@ export const OfficeRequestSchemas = [
   request('work.office.filesCopySet', z.object({ workspaceId: z.string().max(200), on: z.boolean() })),
   /** copies a file from the host `source` names into this thread's attachments here, when its workspace allows it; answers the copy's source */
   request('work.office.filesCopy', z.object({ sessionId: z.string().max(200), source: CanvasSourceSchema })),
+  /** → { threads: {sessionId, itemId}[] }: the threads of a Work workspace here whose open items show this file, newest first */
+  request('work.office.filesThreads', z.object({ workspaceId: z.string().max(200), source: CanvasSourceSchema })),
   /**
    * Brings OneDrive's sign-in up on the Windows VM's screen with his address filled in, so that only his
    * approval is missing; answers `VmSignInAnswer`. He finishes it in a Take over of `vm:windows`. No agent
@@ -296,6 +298,7 @@ export const OFFICE_CAPS = {
   'work.office.filesCopyGet': 'read',
   'work.office.filesCopySet': 'admin',
   'work.office.filesCopy': 'operate',
+  'work.office.filesThreads': 'read',
   'work.office.vmSignIn': 'operate',
   'work.office.vmStatus': 'read',
   'work.office.vmSync': 'admin'

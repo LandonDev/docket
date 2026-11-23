@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, dirname, extname, join } from 'node:path'
 import { teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
-import { handled, NOT_HANDLED, type CanvasSource, type Handled } from '@shared/work'
+import { canvasSourcePath, handled, NOT_HANDLED, type CanvasSource, type Handled } from '@shared/work'
 import type { ClientRequest } from '@shared/contract'
 import { FenceError } from '../../../remote/fence'
 import { macBridgeLandingRoot } from '../../../macBridgeLanding'
@@ -147,6 +147,38 @@ export function dropCopies(ctx: Pick<WorkCtx, 'dataDir' | 'scopeOf'>, which: { s
   for (const dir of dirs) rmSync(join(root, dir), { recursive: true, force: true })
 }
 
+/** The folder in a thread's copies that holds the copy of one source file. */
+const copyFolderOf = (dataDir: string, sessionId: string, source: { host: string; path: string }): string =>
+  join(copyDirOf(dataDir, sessionId), createHash('sha1').update(`${source.host}\u0000${source.path}`).digest('hex').slice(0, 12))
+
+/** `Name.tcdoc` or `Name (2).tcdoc` beside `Name.docx`: the document an import made of it (formats/importer.ts `freePath`). */
+const madeOf = (path: string, file: string): boolean => {
+  if (dirname(path) !== dirname(file) || extname(path) !== '.tcdoc') return false
+  const stem = basename(file, extname(file))
+  const name = basename(path, '.tcdoc')
+  return name === stem || (name.startsWith(`${stem} (`) && /^ \(\d+\)$/.test(name.slice(stem.length)))
+}
+
+/**
+ * The threads of a Work workspace here whose open items show a Teams file, newest first, each with its item: the file
+ * itself (in place, or its Office app's), the copy he allowed in the thread's own folder, or the `.tcdoc` a Word file
+ * became beside either. The Files view reopens the first of them that is not archived instead of making another.
+ */
+export function threadsHolding(ctx: Pick<WorkCtx, 'canvas' | 'dataDir' | 'host'>, workspaceId: string, file: CanvasSource): { sessionId: string; itemId: string }[] {
+  if (file.at !== 'file') return []
+  const out = new Map<string, string>()
+  for (const item of ctx.canvas.forWorkspace(workspaceId)) {
+    if (item.state !== 'open' || out.has(item.sessionId)) continue
+    const s = item.source
+    const path = canvasSourcePath(s)
+    if (path === null || (s.at !== 'file' && s.at !== 'microsoft')) continue
+    const here = s.host === file.host && (path === file.path || madeOf(path, file.path))
+    const copy = s.host === ctx.host && s.at === 'file' && dirname(path) === copyFolderOf(ctx.dataDir, item.sessionId, file)
+    if (here || copy) out.set(item.sessionId, item.id)
+  }
+  return [...out].map(([sessionId, itemId]) => ({ sessionId, itemId }))
+}
+
 /** Copies a file from another host into the thread's attachments here, when its workspace allows it. */
 export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal): Promise<{ source: CanvasSource; entry: TeamsEntry }> {
   const scope = ctx.scopeOf(sessionId)
@@ -166,7 +198,7 @@ export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSour
     got = { name: far.name, bytes: Buffer.from(far.data, 'base64') }
   }
   // One folder per source file, so two files of one name in a thread never share a copy.
-  const dir = join(copyDirOf(ctx.dataDir, sessionId), createHash('sha1').update(`${source.host}\u0000${source.path}`).digest('hex').slice(0, 12))
+  const dir = copyFolderOf(ctx.dataDir, sessionId, source)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const path = join(dir, basename(got.name))
   writeFileSync(path, got.bytes, { mode: 0o600 })
@@ -281,6 +313,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       // Turned off, the copies its threads hold go too.
       if (!p.on) dropCopies(ctx, { workspaceId: p.workspaceId as string })
       return handled({ on: copyAllowed(ctx.db, p.workspaceId as string) })
+    case 'work.office.filesThreads':
+      return handled({ threads: threadsHolding(ctx, p.workspaceId as string, p.source as CanvasSource) })
     case 'work.office.filesCopy': {
       const scope = ctx.scopeOf(p.sessionId as string)
       if (!scope || (by.kind === 'model' && by.sessionId !== scope.sessionId)) throw new Error('No such Work thread here.')

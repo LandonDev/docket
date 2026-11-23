@@ -57,7 +57,7 @@ export interface Chunk<M extends object> {
   /** Handlers for a trigger: hover or focus warms the chunk. */
   readonly intent: IntentProps;
   /** The component `name` of the module behind React.lazy and a Suspense boundary. */
-  surface<K extends ComponentKeys<M>>(name: K, fallback?: ReactNode): ComponentType<PropsOf<M[K]>>;
+  surface<K extends ComponentKeys<M>>(name: K, fallback?: ReactNode, failed?: BoundaryProps["failed"]): ComponentType<PropsOf<M[K]>>;
 }
 
 /** A thenable that is already settled and calls `then` back synchronously. */
@@ -101,7 +101,8 @@ export function defineChunk<M extends object>(name: string, load: () => Promise<
     loaded: () => module,
     started: () => promise !== null,
     intent: { onPointerEnter: preload, onFocus: preload },
-    surface(key, fallback = null) {
+    // `failed` is the first caller's, as the fallback is: one surface per name.
+    surface(key, fallback = null, failed) {
       const cached = surfaces.get(key);
       if (cached) return cached as ComponentType<PropsOf<M[typeof key]>>;
       const pick = (m: M) => ({ default: m[key] as unknown as ComponentType<AnyProps> });
@@ -125,6 +126,7 @@ export function defineChunk<M extends object>(name: string, load: () => Promise<
           <ChunkBoundary
             name={`${name}.${String(key)}`}
             fallback={fallback}
+            failed={failed}
             onRetry={() => {
               if (Rendered === Current) retry();
               setAttempt((n) => n + 1);
@@ -151,8 +153,9 @@ interface BoundaryProps {
   onRetry: () => void;
   /** The error held, as React hands it to componentDidCatch (a board row tags it with its place). */
   onError?: (error: unknown) => void;
-  /** Drawn in the fallback's place, overlay and all, when the surface has its own (the master view's board). */
-  failed?: (retry: () => void) => ReactNode;
+  /** Drawn in the fallback's place, overlay and all, when the surface has its own (the master view's board; a canvas
+   *  item's state line, which says why). */
+  failed?: (retry: () => void, error: unknown) => ReactNode;
   children: ReactNode;
 }
 
@@ -162,11 +165,11 @@ interface BoundaryProps {
  * what `failed` draws. Retry asks the owner to replace the lazy, then
  * remounts the children.
  */
-export class ChunkBoundary extends Component<BoundaryProps, { failed: boolean; attempt: number }> {
-  state = { failed: false, attempt: 0 };
+export class ChunkBoundary extends Component<BoundaryProps, { failed: boolean; attempt: number; error: unknown }> {
+  state = { failed: false, attempt: 0, error: null as unknown };
 
-  static getDerivedStateFromError(): Partial<{ failed: boolean }> {
-    return { failed: true };
+  static getDerivedStateFromError(error: unknown): Partial<{ failed: boolean; error: unknown }> {
+    return { failed: true, error };
   }
 
   componentDidCatch(error: unknown): void {
@@ -180,7 +183,7 @@ export class ChunkBoundary extends Component<BoundaryProps, { failed: boolean; a
 
   render(): ReactNode {
     if (!this.state.failed) return <ChunkAttempt key={this.state.attempt}>{this.props.children}</ChunkAttempt>;
-    if (this.props.failed) return this.props.failed(this.retry);
+    if (this.props.failed) return this.props.failed(this.retry, this.state.error);
     return (
       <div
         data-chunk-failed={this.props.name}

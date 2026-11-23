@@ -15,7 +15,7 @@ import { noteActiveSession } from "../lib/appshots";
 import { useFirstPaintReport } from "../lib/firstPaint";
 import { motion, useReducedMotion } from "motion/react";
 import { DUR, EASE_OUT } from "../lib/ease";
-import { sessionStore } from "../lib/tcserver/store";
+import { sessionStore, useSessionMetaValue } from "../lib/tcserver/store";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
 import { sessionDisplayTitle, type LoadState, type Session } from "../lib/session";
 import { rightPanel } from "../lib/rightPanel";
@@ -27,7 +27,7 @@ import { EmptySession } from "./EmptySession";
 import { NoRowsLine } from "./NoRowsLine";
 import { PaneHeader } from "./paneChrome";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
-import { ThreadView } from "./threads/ThreadView";
+import { isWorkThread, ThreadView } from "./threads/ThreadView";
 import { ChatFooter, COLUMN_GUTTER_CLASS, columnClass } from "./threads/chatSlots";
 import { isMasterThread } from "../lib/masterThread";
 import { useSessionActions, useThreadChat } from "./threadChat";
@@ -122,6 +122,8 @@ export const SessionPane = memo(function SessionPane({
   const isEmpty = noRows && draft;
   const hostEmpty = noRows && !draft;
   const waiting = !master && session.blocks.length === 0 && loadPhase !== "loaded";
+  // A Work thread's canvas never waits on its rows: an item opened before the first message shows beside them.
+  const work = useSessionMetaValue(session.id, isWorkThread) === true;
   // First rows later than half a second after the pane opened: one stall
   // line. A draft is not timed: its rows arrive when the person sends.
   useFirstPaintReport(session.id, session.environmentId, session.blocks.length > 0, !sessionStore.isDraft(session.id));
@@ -190,6 +192,29 @@ export const SessionPane = memo(function SessionPane({
     return () => window.removeEventListener(ADD_TO_CHAT_EVENT, onAdd);
   }, [addSelectionToChat, focused]);
 
+  // The pane's word while the host holds no rows, or they are still coming.
+  const quiet = hostEmpty ? (
+    <>
+      <div className="relative flex min-h-0 flex-1 flex-col" data-transcript-empty>
+        <NoRowsLine summary={session.failure?.summary} />
+      </div>
+      <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
+    </>
+  ) : waiting ? (
+    <>
+      <div className="relative flex min-h-0 flex-1 flex-col" data-transcript-loading={loadPhase}>
+        {/* A host that is down already says so above the composer. */}
+        {session.load && !block.degraded ? (
+          <LoadLine name={block.name} load={session.load} onRetry={retryLoad} />
+        ) : null}
+        <div className="min-h-0 flex-1">
+          <SurfaceSkeleton kind="transcript" label="Loading thread" />
+        </div>
+      </div>
+      <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
+    </>
+  ) : null;
+
   // Keyed remount per session; a --dur-fast fade bridges the swap without
   // delaying it: no rise (a switch is navigation) and no exit animation. A
   // switch by the keyboard (⌃Tab, ⌘1–9) shows the pane at once.
@@ -223,28 +248,11 @@ export const SessionPane = memo(function SessionPane({
             <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
           ) : null}
         </>
-      ) : hostEmpty ? (
-        <>
-          <div className="relative flex min-h-0 flex-1 flex-col" data-transcript-empty>
-            <NoRowsLine summary={session.failure?.summary} />
-          </div>
-          <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
-        </>
-      ) : waiting ? (
-        <>
-          <div className="relative flex min-h-0 flex-1 flex-col" data-transcript-loading={loadPhase}>
-            {/* A host that is down already says so above the composer. */}
-            {session.load && !block.degraded ? (
-              <LoadLine name={block.name} load={session.load} onRetry={retryLoad} />
-            ) : null}
-            <div className="min-h-0 flex-1">
-              <SurfaceSkeleton kind="transcript" label="Loading thread" />
-            </div>
-          </div>
-          <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
-        </>
+      ) : quiet && !work ? (
+        quiet
       ) : (
         <ThreadView
+          quiet={quiet ?? undefined}
           session={session}
           renderChat={renderChat}
           renderSlots={renderSlots}

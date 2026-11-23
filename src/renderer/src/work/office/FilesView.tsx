@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { TeamsEntry, TeamsFileKind, TeamsLibrariesAnswer } from "@shared/contract-work-office";
 import { teamsCanvasOf, teamsWebOf } from "@shared/contract-work-office";
-import type { CanvasItem, ContextChip } from "@shared/work";
+import type { CanvasSource, ContextChip } from "@shared/work";
 import { ChevronRight, Folder, MoreHorizontal, Search, X } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
@@ -25,6 +25,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { Cloud, Doc, File, Media, Pdf, Slides, Table, Video, Volume } from "../icons";
 import { allowComputers, linkIdOfHost, localHostId, windowDesktops, workspaceSettings } from "../shell/actions";
 import { openVm, signInOnVm } from "../winvm/signIn";
+import { openItem, setFolded } from "../canvas/store";
 import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
 import { ViewStateLine } from "../views/ViewStateLine";
@@ -566,6 +567,26 @@ async function newThread(workspace: WorkspaceMeta, title: string): Promise<strin
   return wire.id;
 }
 
+/**
+ * The open thread of the workspace whose canvas holds this file already (`work.office.filesThreads`, newest first): in
+ * place, as its Office app's file, as the copy he allowed or as the document a Word file became. Archived threads and
+ * threads this window does not know are passed over; a host from before the method answers none.
+ */
+export async function heldBy(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, file: CanvasSource): Promise<{ sessionId: string; itemId: string } | null> {
+  const answer = await registry
+    .linkOf(workspace.environmentId)
+    .request<{ threads: { sessionId: string; itemId: string }[] }>("work.office.filesThreads", { workspaceId: workspace.id, source: file })
+    .catch(() => null);
+  return answer?.threads.find((t) => sessionStore.metaOf(t.sessionId)?.archived === false) ?? null;
+}
+
+/** The file takes the pane: its item opened and shown, the thread folded away one press beside it, then the thread on screen. */
+export async function showFile(environmentId: string, sessionId: string, what: Parameters<typeof openItem>[2]): Promise<void> {
+  await openItem(environmentId, sessionId, what);
+  setFolded(sessionId, true);
+  workOpenPort.get()?.(sessionId);
+}
+
 function useOpener({ workspace, reach }: ViewProps, setBusy: (busy: Busy) => void) {
   /** The file as it is once its bytes are here: OneDrive downloads one it keeps in the cloud. */
   const fetched = async (entry: TeamsEntry, library: ShownLibrary): Promise<TeamsEntry> => {
@@ -590,6 +611,9 @@ function useOpener({ workspace, reach }: ViewProps, setBusy: (busy: Busy) => voi
     let sessionId: string | null = null;
     const ws = registry.linkOf(workspace.environmentId);
     try {
+      // The thread that already holds the file shows it again: one file, one thread.
+      const held = await heldBy(workspace, source(library, entry));
+      if (held) return await showFile(workspace.environmentId, held.sessionId, { itemId: held.itemId });
       let at: NonNullable<ReturnType<typeof teamsCanvasOf>>;
       if (way === "canvas") {
         // Everything that can fail runs before the thread is made, so a failed open leaves no thread behind.
@@ -606,8 +630,7 @@ function useOpener({ workspace, reach }: ViewProps, setBusy: (busy: Busy) => voi
         const copy = await ws.request<{ source: { at: "file"; host: string; path: string } }>("work.office.filesCopy", { sessionId, source: source(library, entry) });
         at = teamsCanvasOf({ ...entry, path: copy.source.path }, copy.source.host, true)!;
       }
-      await ws.request<{ item: CanvasItem }>("work.canvas.open", { sessionId, kind: at.kind, source: at.source, title: entry.name });
-      workOpenPort.get()?.(sessionId);
+      await showFile(workspace.environmentId, sessionId, { kind: at.kind, source: at.source, title: entry.name });
     } catch (err) {
       if (sessionId && way === "copy") void ws.request("session.delete", { sessionId }).catch(() => {});
       failed(`${entry.name} did not open`, err);

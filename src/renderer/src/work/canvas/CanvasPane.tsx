@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { useTruncated } from "../../components/tip";
@@ -13,7 +13,7 @@ import { KindBar } from "./KindBar";
 import type { CanvasBodyProps, CanvasKindDef, CanvasKindModule, CanvasSelection, CanvasShell, StatusLine } from "./kind";
 import { CANVAS } from "./registry";
 import { SelectionBar } from "./SelectionBar";
-import { FetchState } from "./FetchState";
+import { FetchState, kindNoun } from "./FetchState";
 import { downloadItem, keepItem, useItemFetch } from "./fetched";
 import { useKeptState } from "./store";
 
@@ -91,6 +91,20 @@ function StateLine({ line }: { line: StatusLine }) {
   );
 }
 
+/** Why a kind's code or body failed, in his words: a viewer whose code did not arrive is said so, not as a module URL. */
+export function bodyFailureWords(error: unknown): string {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  if (/dynamically imported module|importing a module script failed|loading chunk|failed to fetch/i.test(message)) return "Its viewer did not load";
+  return message.trim() || "It could not be shown";
+}
+
+/** A kind's body that threw, or whose code did not load: the state line says why, with Retry, never a blank pane. */
+const bodyFailed =
+  (kind: CanvasKind) =>
+  (retry: () => void, error: unknown): ReactNode => (
+    <StateLine line={{ tone: "failed", word: `Couldn't open this ${kindNoun(kind)}`, detail: bodyFailureWords(error), action: { label: "Retry", run: retry } }} />
+  );
+
 /**
  * The shown item under the tab row: the kind's bar, the one state line, the
  * kind's body and the bar over a selection. The body is the kind's lazy
@@ -118,7 +132,7 @@ export function CanvasPane({
   const def = kinds[item.kind];
   const module = useKindModule(def.chunk);
   const [state, setState] = useKeptState(item.id);
-  const Body = def.chunk.surface("Body", <ItemSkeleton />);
+  const Body = def.chunk.surface("Body", <ItemSkeleton />, bodyFailed(def.kind));
   const props: CanvasBodyProps = { item, source: item.source, env: environmentId, state, setState, shell };
   const Bar = module?.Bar;
   // A mail's attachment comes to the host first: the kind mounts once its bytes are there (fetched.ts).
