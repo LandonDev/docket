@@ -15,9 +15,9 @@ describe('what waits in Excel, from the importer', () => {
     expect(of('pivot.xlsx')).toEqual(['2 pivot tables'])
   })
 
-  it('counts charts across sheets and chart sheets once each', () => {
+  it('counts a chart sheet, and no chart on a sheet: those are drawn and changed on the grid', () => {
     // charts.xlsx: eleven charts on Data and a chart sheet holding one.
-    expect(of('charts.xlsx')).toEqual(['12 charts'])
+    expect(of('charts.xlsx')).toEqual(['a chart sheet'])
   })
 
   it('names macros without a count, and counts the form control beside them', () => {
@@ -44,20 +44,21 @@ describe('the words', () => {
         { kind: 'formControls', count: 5 },
         { kind: 'slicers', count: 1 },
         { kind: 'vbaProject', count: 1 },
-        { kind: 'charts', count: 1 },
+        { kind: 'chartsheets', count: 1 },
         { kind: 'pivotTables', count: 1 }
       )
-    ).toEqual(['a pivot table', 'a chart', 'macros', 'a slicer', '5 form controls', 'Power Query', '2 data connections', 'links to 3 other workbooks', 'a what-if table'])
+    ).toEqual(['a pivot table', 'a chart sheet', 'macros', 'a slicer', '5 form controls', 'Power Query', '2 data connections', 'links to 3 other workbooks', 'a what-if table'])
     expect(said({ kind: 'slicers', count: 2 }, { kind: 'dataConnections', count: 1 }, { kind: 'dataTables', count: 12 }, { kind: 'externalLinks', count: 1 })).toEqual(['2 slicers', 'a data connection', 'a link to another workbook', '12 what-if tables'])
   })
 
   it('counts a pivot cache where no table is left on a sheet, and a chart sheet with nothing drawn on it', () => {
     expect(said({ kind: 'pivotCaches', count: 2 })).toEqual(['2 pivot tables'])
-    expect(said({ kind: 'chartsheets', count: 1, where: 'Chart1' })).toEqual(['a chart'])
+    expect(said({ kind: 'chartsheets', count: 1, where: 'Chart1' })).toEqual(['a chart sheet'])
   })
 
   it('groups a large count as a person reads it', () => {
-    expect(said({ kind: 'charts', count: 1200, where: 'Data' })).toEqual(['1,200 charts'])
+    expect(said({ kind: 'chartsheets', count: 1200, where: 'Data' })).toEqual(['1,200 chart sheets'])
+    expect(said({ kind: 'charts', count: 1200, where: 'Data' })).toEqual([])
   })
 
   it('leaves out what the importer flags but Excel is not needed for', () => {

@@ -2,7 +2,7 @@ import type { ImportReport } from 'work-kit/sheet/xlsx'
 
 /**
  * What waits in Excel (docs/agents/work-sheets.md "The switch"): the things a workbook holds that only Excel
- * does, counted from the importer's report and said as a person reads them ("2 pivot tables", "a chart",
+ * does, counted from the importer's report and said as a person reads them ("2 pivot tables", "a chart sheet",
  * "macros"). `reachOf` (jobs.ts) answers these as `SheetReach.parts`; the canvas says them on the kind's bar
  * beside the switch ("2 pivot tables and macros open in Excel"), and `sheet_read` says them to an agent, so a
  * thread knows what it cannot change before it says it has.
