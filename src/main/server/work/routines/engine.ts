@@ -6,6 +6,7 @@ import {
   parseSchedule,
   scheduleWords,
   type LifeosTriggerKind,
+  type RoutineJobOpen,
   type RoutineRow,
   type RoutineRun
 } from '@shared/contract-work-routines'
@@ -38,7 +39,8 @@ import { RoutineStore, type Cursor, type Routine } from './store'
  *
  * A firing starts a new root Work thread (`ctx.threads.start`, so the
  * queue and the running cap apply) carrying the run's id, or, for a watch an
- * agent set, wakes that thread with what changed. When the run's thread
+ * agent set, wakes that thread with what changed, or, for a routine with a
+ * `job`, runs a pillar's host job with no thread and no model. When the run's thread
  * settles with nothing held, nothing asked and no failure it is marked read;
  * otherwise unread, so a quiet morning leaves nothing to look at.
  */
@@ -62,6 +64,12 @@ export interface LifeosEvent {
   at: number
 }
 
+/** A registered job as the engine runs it: its pillar's `RoutineJob` with the context bound. */
+export interface HostJob {
+  name: string
+  run(at: { workspaceId: string; firedAt: number }): Promise<{ words: string; open?: RoutineJobOpen }>
+}
+
 export interface EngineDeps {
   ctx: Pick<WorkCtx, 'db' | 'host' | 'log' | 'push' | 'threads' | 'lifeos'>
   host: RoutinesHost
@@ -72,6 +80,8 @@ export interface EngineDeps {
   files?: { stat(path: string): { mtimeMs: number; size: number } | null; read(path: string): Buffer | null }
   /** The Outbox's live list of LifeOS's held items, null while it is not watching LifeOS: a run's drafts are counted from it. */
   lifeosHeld?(): Pick<LifeosHeld, 'items' | 'loaded'> | null
+  /** A job a loaded pillar registered (`WorkModule.jobs`), by id; null when none on this host has it. */
+  job?(id: string): HostJob | null
 }
 
 const disk = {
@@ -241,6 +251,11 @@ export class RoutinesEngine {
    */
   recover(): void {
     for (const run of this.store.unsettled()) {
+      // A job runs in this process: a stop cut it off, and no thread may finish it.
+      if (!run.sessionId && this.store.get(run.routineId)?.job) {
+        this.store.settle(run.id, 'failed', 'Failed: the host stopped before the job finished')
+        continue
+      }
       const sessionId = run.sessionId ?? this.deps.host.threadOfRun(run.id)
       if (!sessionId) {
         this.store.settle(run.id, 'failed', 'Failed: the host stopped before its thread started')
@@ -329,6 +344,7 @@ export class RoutinesEngine {
       return null
     }
     if (r.resumeSessionId) return this.wake(r, cause, o)
+    if (r.job) return this.runJob(r, r.job, cause, folded, o)
     const run = this.store.newRun(r.id, now, cause, folded, 'starting', { ...(o.nextAt !== undefined ? { nextAt: o.nextAt } : {}) })
     if (r.once) this.store.end(r.id, 'Ran once')
     this.changed(r)
@@ -377,6 +393,38 @@ export class RoutinesEngine {
       this.store.settle(run.id, 'failed', `Failed: ${errorText(err)}`)
       this.changed(r)
     }
+    return this.store.run(run.id)
+  }
+
+  /**
+   * A routine that runs a host job: its run row and next due time are written
+   * in one step, as any firing's, then the job runs on its own (`track`), so a
+   * pass or Run now never waits on it. No thread: nothing is marked read or
+   * unread and nothing held is counted. A job no loaded pillar has fails the run.
+   */
+  private runJob(r: Routine, id: string, cause: string, folded: number, o: { nextAt?: number | null }): RoutineRun | null {
+    const firedAt = this.now()
+    const run = this.store.newRun(r.id, firedAt, cause, folded, 'running', { ...(o.nextAt !== undefined ? { nextAt: o.nextAt } : {}) })
+    if (r.once) this.store.end(r.id, 'Ran once')
+    this.changed(r)
+    const job = this.deps.job?.(id) ?? null
+    if (!job) {
+      this.store.settle(run.id, 'failed', 'Failed: its job is not on this host')
+      this.changed(r)
+      return this.store.run(run.id)
+    }
+    this.track(
+      (async () => {
+        try {
+          const done = await job.run({ workspaceId: r.workspaceId, firedAt })
+          this.store.settle(run.id, 'quiet', done.words, done.open)
+        } catch (err) {
+          this.store.settle(run.id, 'failed', `Failed: ${errorText(err)}`)
+          this.ctx.log(`routine ${r.id}: job ${id} failed: ${errorText(err)}`)
+        }
+        this.changed(r)
+      })()
+    )
     return this.store.run(run.id)
   }
 
@@ -622,6 +670,11 @@ export class RoutinesEngine {
 
   // ── rows for a screen ─────────────────────────────────────────────────
 
+  private jobName(id: string): { jobName?: string } {
+    const name = this.deps.job?.(id)?.name
+    return name ? { jobName: name } : {}
+  }
+
   row(r: Routine): RoutineRow {
     const sources = this.deps.sources?.() ?? []
     return {
@@ -632,6 +685,7 @@ export class RoutinesEngine {
       name: r.name,
       prompt: r.prompt,
       playId: r.playId,
+      ...(r.job ? { job: r.job, ...this.jobName(r.job) } : {}),
       model: r.model,
       reasoning: r.reasoning,
       trigger: r.trigger,

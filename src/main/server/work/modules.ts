@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { Capability } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import type { AddonRow } from '@shared/contract-addons'
+import type { RoutineJobOpen } from '@shared/contract-work-routines'
 import type { WorkPush } from '@shared/contract-work'
 import type {
   ActKind,
@@ -81,6 +82,8 @@ export interface WorkModule {
   /** The pillar's say on an add-on's tool; null: no say. */
   outward?(addon: AddonRow, tool: string, args: unknown): Verdict | null
   triggers?: TriggerSource[]
+  /** Host jobs a routine may run in place of a model thread (docs/agents/work-routines.md "A routine that runs a job"). */
+  jobs?: RoutineJob[]
   convert?: Converter[]
   /** The kinds of thing the composer's `@` finds in this pillar (work-canvas.md "Mentions"): each searches only within `reach`. */
   mentions?: MentionSource[]
@@ -104,6 +107,16 @@ export interface WorkModule {
   workspaceRemoved?(workspaceId: string, ctx: WorkCtx): void
   /** The pillar's own connections on this host, for Connections (docs/agents/work-connections.md). */
   health?: HealthSource
+}
+
+/** A host job a routine may run in place of a model thread: no thread, no model. */
+export type RoutineJob = {
+  /** '<pillar>.<what>', e.g. 'review.make' */
+  id: string
+  /** what the Routines view says it does, in plain words: 'Makes the week\'s review' */
+  name: string
+  /** `words`: the run's one-line outcome. `open`: what the run's row opens when pressed. A throw fails the run with its message. */
+  run(ctx: WorkCtx, at: { workspaceId: string; firedAt: number }): Promise<{ words: string; open?: RoutineJobOpen }>
 }
 
 /**
@@ -303,7 +316,8 @@ export const PILLAR_LOADERS: PillarLoaders = {
   files: () => import('./files').then((m) => m.files),
   prep: () => import('./prep').then((m) => m.prep),
   money: () => import('./money').then((m) => m.money),
-  search: () => import('./search').then((m) => m.search)
+  search: () => import('./search').then((m) => m.search),
+  review: () => import('./review').then((m) => m.review)
 }
 
 let loaded: Promise<Map<PillarId, string>> | null = null

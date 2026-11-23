@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { nanoid } from 'nanoid'
-import type { RoutineEnds, RoutineKind, RoutineRun, RoutineRunState } from '@shared/contract-work-routines'
+import { RoutineJobOpenSchema, type RoutineEnds, type RoutineJobOpen, type RoutineKind, type RoutineRun, type RoutineRunState } from '@shared/contract-work-routines'
 import { TriggerSchema, type Trigger } from '@shared/work'
 import { ensurePlayTable } from './plays'
 
@@ -61,6 +61,10 @@ export function ensureRoutineTables(db: DatabaseSync): void {
   // Added with plays: the play a routine runs. A column added, never a table remade, so the build before still reads it.
   const columns = (db.prepare(`PRAGMA table_info(${ROUTINES_TABLE})`).all() as { name: string }[]).map((c) => c.name)
   if (!columns.includes('play_id')) db.exec(`ALTER TABLE ${ROUTINES_TABLE} ADD COLUMN play_id TEXT`)
+  // Added with jobs: the host job a routine runs in place of a thread, and what a job run's row opens.
+  if (!columns.includes('job')) db.exec(`ALTER TABLE ${ROUTINES_TABLE} ADD COLUMN job TEXT`)
+  const runColumns = (db.prepare(`PRAGMA table_info(${RUNS_TABLE})`).all() as { name: string }[]).map((c) => c.name)
+  if (!runColumns.includes('open')) db.exec(`ALTER TABLE ${RUNS_TABLE} ADD COLUMN open TEXT`)
   ensurePlayTable(db)
 }
 
@@ -74,6 +78,8 @@ export interface Routine {
   prompt: string
   /** the play each run starts, or null */
   playId: string | null
+  /** the host job each run runs in place of a thread, or null */
+  job: string | null
   model: string | null
   reasoning: string | null
   trigger: Trigger
@@ -128,6 +134,7 @@ const routineOf = (r: Row): Routine | null => {
     name: String(r.name),
     prompt: String(r.prompt),
     playId: (r.play_id as string | null) ?? null,
+    job: (r.job as string | null) ?? null,
     model: (r.model as string | null) ?? null,
     reasoning: (r.reasoning as string | null) ?? null,
     trigger: trigger.data as Trigger,
@@ -149,16 +156,20 @@ const routineOf = (r: Row): Routine | null => {
   }
 }
 
-const runOf = (r: Row): RoutineRun => ({
-  id: String(r.id),
-  routineId: String(r.routine_id),
-  sessionId: (r.session_id as string | null) ?? null,
-  firedAt: Number(r.fired_at),
-  cause: String(r.cause),
-  folded: Number(r.folded),
-  state: r.state as RoutineRunState,
-  summary: String(r.summary ?? '')
-})
+const runOf = (r: Row): RoutineRun => {
+  const open = RoutineJobOpenSchema.safeParse(parseJson(r.open, null))
+  return {
+    id: String(r.id),
+    routineId: String(r.routine_id),
+    sessionId: (r.session_id as string | null) ?? null,
+    firedAt: Number(r.fired_at),
+    cause: String(r.cause),
+    folded: Number(r.folded),
+    state: r.state as RoutineRunState,
+    summary: String(r.summary ?? ''),
+    ...(open.success ? { open: open.data } : {})
+  }
+}
 
 /** What a new routine is made of. */
 export interface NewRoutine {
@@ -168,6 +179,7 @@ export interface NewRoutine {
   name: string
   prompt: string
   playId?: string | null
+  job?: string | null
   model?: string | null
   reasoning?: string | null
   trigger: Trigger
@@ -204,8 +216,8 @@ export class RoutineStore {
     const id = nanoid(12)
     this.db
       .prepare(
-        `INSERT INTO ${ROUTINES_TABLE} (id, workspace_id, project_id, kind, name, prompt, play_id, model, reasoning, trigger_spec, enabled, until_at, once,
-          resume_session_id, next_at, cursor, proposed, made_in, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO ${ROUTINES_TABLE} (id, workspace_id, project_id, kind, name, prompt, play_id, job, model, reasoning, trigger_spec, enabled, until_at, once,
+          resume_session_id, next_at, cursor, proposed, made_in, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -215,6 +227,7 @@ export class RoutineStore {
         n.name,
         n.prompt,
         n.playId ?? null,
+        n.job ?? null,
         n.model ?? null,
         n.reasoning ?? null,
         JSON.stringify(n.trigger),
@@ -236,7 +249,7 @@ export class RoutineStore {
   update(id: string, n: Omit<NewRoutine, 'createdBy' | 'madeIn' | 'resumeSessionId'>): Routine | null {
     this.db
       .prepare(
-        `UPDATE ${ROUTINES_TABLE} SET workspace_id = ?, project_id = ?, kind = ?, name = ?, prompt = ?, play_id = ?, model = ?, reasoning = ?, trigger_spec = ?,
+        `UPDATE ${ROUTINES_TABLE} SET workspace_id = ?, project_id = ?, kind = ?, name = ?, prompt = ?, play_id = ?, job = ?, model = ?, reasoning = ?, trigger_spec = ?,
           until_at = ?, once = ?, next_at = ?, cursor = ?, proposed = 0, enabled = 1, ended = 0 WHERE id = ?`
       )
       .run(
@@ -246,6 +259,7 @@ export class RoutineStore {
         n.name,
         n.prompt,
         n.playId ?? null,
+        n.job ?? null,
         n.model ?? null,
         n.reasoning ?? null,
         JSON.stringify(n.trigger),
@@ -371,11 +385,11 @@ export class RoutineStore {
     if (run) this.db.prepare(`UPDATE ${ROUTINES_TABLE} SET last_session_id = ?, last_state = 'running' WHERE id = ?`).run(sessionId, run.routineId)
   }
 
-  /** A run's end, and its routine's last state, together. */
-  settle(runId: string, state: RoutineRunState, summary: string): RoutineRun | null {
+  /** A run's end, and its routine's last state, together. `open`: what a job run's row opens. */
+  settle(runId: string, state: RoutineRunState, summary: string, open?: RoutineJobOpen): RoutineRun | null {
     const run = this.run(runId)
     if (!run) return null
-    this.db.prepare(`UPDATE ${RUNS_TABLE} SET state = ?, summary = ? WHERE id = ?`).run(state, summary, runId)
+    this.db.prepare(`UPDATE ${RUNS_TABLE} SET state = ?, summary = ?, open = COALESCE(?, open) WHERE id = ?`).run(state, summary, open ? JSON.stringify(open) : null, runId)
     // Only the newest run speaks for the routine.
     this.db
       .prepare(`UPDATE ${ROUTINES_TABLE} SET last_state = ?, last_words = ? WHERE id = ? AND (last_at IS NULL OR last_at <= ?)`)

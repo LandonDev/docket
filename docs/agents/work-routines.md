@@ -22,11 +22,13 @@ routines pillar as built.
 ## The rows
 
 `work_routines` is architecture §3.1's table plus `proposed`, `ended`,
-`made_in` and `last_words`. `kind` is `watch` when the routine has an end
+`made_in`, `last_words`, `play_id` and `job` (the last two added behind a
+`pragma_table_info` check). `kind` is `watch` when the routine has an end
 (`until_at`, or `once`), else `routine`. `cursor` (JSON) holds a LifeOS
 feed's `after`, or a read's or a file's last hash and when it was looked at.
 `work_routine_runs(id, routine_id, session_id, fired_at, cause, folded,
-state, summary)`: the outbox reads `routine_id` by run id (`routineOf`,
+state, summary, open)` (`open`, added the same way, is a job run's page as
+JSON): the outbox reads `routine_id` by run id (`routineOf`,
 work/outbox/ctx.ts), so a routine's grant fits only its own runs.
 
 Every change is written when it happens: a firing's run row and the
@@ -99,6 +101,52 @@ A routine may run a play (`play_id`, [work-plays.md](work-plays.md)): one
 of its workspace's plays that takes nothing, read afresh at each firing, its
 steps first and the routine's own words, if any, after them; its prompt may
 then be empty. A play a routine runs cannot be deleted.
+
+## A routine that runs a job
+
+A routine may run a host job in place of a model thread (`work_routines.job`):
+a plain function a pillar registers on its module, `WorkModule.jobs`
+(modules.ts):
+
+```ts
+export type RoutineJob = {
+  id: string   // '<pillar>.<what>', e.g. 'review.make'
+  name: string // what the Routines view says it does: 'Makes the week\'s review'
+  run(ctx: WorkCtx, at: { workspaceId: string; firedAt: number }): Promise<{ words: string; open?: RoutineJobOpen }>
+}
+```
+
+`words` is the run's one-line outcome (its summary and the routine's last
+words). `open` (`RoutineJobOpen`, `{place, at?}` in
+contract-work-routines.ts) is the page above the workspaces a run's row opens
+in place of a thread, stored in `work_routine_runs.open`.
+
+The engine finds a job through `deps.job(id)` (index.ts binds it to
+`WORK_MODULES.flatMap(m => m.jobs ?? [])` and the context; a test hands its
+own). A firing writes the run row (`running`, no thread) and the next due time
+in one savepoint, as any firing does, then runs the job on its own (`track`):
+a pass and Run now never wait on it. Success settles the run `quiet` with the
+job's words and `open`; a throw settles it `failed` with "Failed: <the
+message>". With no thread, nothing is marked read or unread and nothing held is
+counted. Missed due times fold, a paused one does not fire, Run now fires it
+paused or not, and a firing while its last run still works folds into that run.
+A job no loaded pillar has fails the run: "Failed: its job is not on this
+host". At boot a job run left `starting` or `running` reads "Failed: the host
+stopped before the job finished".
+
+Who may make one: only the owner, through `work.routines.save` (`admin`,
+refused for a thread's own call) with `job: '<id>'`, which must be a job some
+loaded pillar registers ("No such job: review.make"); its prompt may be empty,
+and it runs no play. A save that leaves `job` out keeps the one the routine
+has; `job: null` drops it. `routine_propose` never sets one. The list carries
+`job` and `jobName` (absent when the job is not loaded on this host).
+
+On screen it is listed like any routine. Its detail's first line is the job's
+name (muted "Its job is not on this host" without it) and draws no Model; its
+form is Name, Starts and Ends only. A run's row opens its thread, else its
+`open` through `routineJobOpenPort` (src/renderer/src/work/routines/jobOpen.ts:
+`set(fn)` returns its off, `has()`, `open(o)`), which the pillar owning that
+page sets; with no port set, or nothing to open, the row is plain text.
 
 A firing starts a root Work thread through `ctx.threads.start({workspaceId,
 projectId, text, model, routineRunId})` (registry `startWith`: the queue
@@ -184,4 +232,15 @@ proposal shown as a card in the thread.
   nothing for a week of ticks and every method refuses a thread's own call;
   a routine's held act goes only on its own grant.
 - `src/renderer/src/work/routines/model.test.ts`: the row's words and marks
-  and the form both ways.
+  and the form both ways; a job routine's row, and its Save with no words
+  that keeps the job.
+- `routines/engine.test.ts`, "a routine that runs a host job": fires with no
+  thread, quiet with the job's words and `open`; three missed times fold; a
+  throw fails with its reason and the schedule goes on; paused does not fire,
+  Run now does; an unknown job fails in words; a second firing folds; boot
+  closes a job run cut off. `routines.rig.test.ts`: save refuses an unknown
+  job and a thread's call, an edit keeps the job, the list carries `job` and
+  `jobName`, and `routine_propose` cannot set one.
+- `RoutinesView.dom.test.tsx`: a job routine's detail draws no Model, its
+  form no "What to do"; a run with `open` calls the port, and is plain text
+  without one.

@@ -39,6 +39,14 @@ export const RoutineEndsSchema = z.discriminatedUnion('kind', [
 ])
 export type RoutineEnds = z.infer<typeof RoutineEndsSchema>
 
+/**
+ * What a job run's row opens when pressed, in place of a thread: a page above
+ * the workspaces (`place`, the pillar's own name for it, as `'review'`) and,
+ * when the page has more than one, which (`at`, as a week's first ms).
+ */
+export const RoutineJobOpenSchema = z.object({ place: z.string().min(1), at: z.number().optional() })
+export type RoutineJobOpen = z.infer<typeof RoutineJobOpenSchema>
+
 /** A routine as a screen lists it. */
 export interface RoutineRow {
   id: string
@@ -50,6 +58,10 @@ export interface RoutineRow {
   prompt: string
   /** the play each run starts, which takes nothing (`PlayRow`); null: the prompt alone */
   playId: string | null
+  /** the host job each run runs in place of a thread (`RoutineJob.id`, '<pillar>.<what>'); absent: a thread */
+  job?: string
+  /** that job's name in plain words, as its pillar registered it; absent when no pillar on this host has it */
+  jobName?: string
   model: string | null
   reasoning: string | null
   trigger: Trigger
@@ -96,15 +108,19 @@ export interface RoutineRun {
   state: RoutineRunState
   /** the outcome in words: "Held 3", "Nothing to do", "Failed: …" */
   summary: string
+  /** a job run's page to open, in place of a thread; absent for a thread's run */
+  open?: RoutineJobOpen
 }
 
 const RoutineFieldsSchema = z.object({
   workspaceId: z.string(),
   projectId: z.string().nullable().optional(),
   name: z.string().trim().min(1).max(120),
-  /** may be empty only when it runs a play */
+  /** may be empty only when it runs a play or a job */
   prompt: z.string().trim().max(8000),
   playId: z.string().nullable().optional(),
+  /** a host job to run in place of a thread (`RoutineJob.id`); left out, an edit keeps the one it has; null drops it */
+  job: z.string().min(1).nullable().optional(),
   trigger: TriggerSchema,
   ends: RoutineEndsSchema,
   model: z.string().nullable().optional(),

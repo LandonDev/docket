@@ -18,6 +18,7 @@ vi.mock("../../lib/connection", async (original) => ({
       onPush: () => () => {},
       request: (method: string) => {
         host.asked.push(method);
+        if (method === "work.outbox.rules") return Promise.resolve({ addons: [] });
         return method === "work.routines.list" ? host.list() : method === "work.routines.plays" ? host.plays() : host.runs();
       },
     }),
@@ -25,6 +26,7 @@ vi.mock("../../lib/connection", async (original) => ({
 }));
 
 const { View } = await import("./RoutinesView");
+const { routineJobOpenPort } = await import("./jobOpen");
 
 const row = (over: Partial<RoutineRow> = {}): RoutineRow => ({
   id: "r1",
@@ -128,5 +130,48 @@ describe("the Routines view", () => {
     expect(detail.querySelector("dt")?.textContent).toBe("Runs");
     expect(detail.querySelector("dd")?.textContent).toBe("Weekly pay check");
     expect(detail.querySelector("p.whitespace-pre-wrap")).toBeNull();
+  });
+
+  describe("a routine that runs a host job", () => {
+    const job = () => row({ name: "Week review", prompt: "", job: "review.make", jobName: "Makes the week's review", model: "opus", words: "Fridays at 4:00 PM", trigger: { on: "schedule", rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0", tz: "UTC" } });
+
+    it("says what its job does, draws no Model, and its form asks only when", async () => {
+      host.list = async () => ({ routines: [job()] });
+      render(<View {...props} />);
+      await settle();
+      const detail = document.querySelector("[data-routine-detail]") as HTMLElement;
+      expect(detail.textContent).toContain("Makes the week's review");
+      expect([...detail.querySelectorAll("dt")].map((d) => d.textContent)).toEqual(["Starts", "Runs on"]);
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      await settle();
+      expect(screen.getByLabelText("Name")).toBeTruthy();
+      expect(screen.queryByText("What to do")).toBeNull();
+      expect(screen.queryByText("Model")).toBeNull();
+      expect(screen.getAllByText("Starts").length).toBeGreaterThan(0);
+    });
+
+    it("a run with a page to open calls the port; with no port set, or nothing to open, it is plain text", async () => {
+      host.list = async () => ({ routines: [job()] });
+      host.runs = async () => ({
+        runs: [
+          { id: "x1", routineId: "r1", sessionId: null, firedAt: 2, cause: "Run now", folded: 0, state: "quiet", summary: "Review made", open: { place: "review", at: 5 } },
+          { id: "x2", routineId: "r1", sessionId: null, firedAt: 1, cause: "Run now", folded: 0, state: "failed", summary: "Failed: its job is not on this host" },
+        ],
+      });
+      const opened: unknown[] = [];
+      const off = routineJobOpenPort.set((o) => void opened.push(o));
+      render(<View {...props} />);
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: /Review made/ }));
+      expect(opened).toEqual([{ place: "review", at: 5 }]);
+      expect(screen.queryByRole("button", { name: /its job is not on this host/ })).toBeNull();
+      expect(screen.getByText("Failed: its job is not on this host")).toBeTruthy();
+      off();
+      cleanup();
+      render(<View {...props} />);
+      await settle();
+      expect(screen.queryByRole("button", { name: /Review made/ })).toBeNull();
+      expect(screen.getByText("Review made")).toBeTruthy();
+    });
   });
 });

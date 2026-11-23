@@ -4,7 +4,7 @@ import { parseSchedule, scheduleRrule, scheduleWords, type RoutineRun } from '@s
 import type { SessionMeta } from '@shared/events'
 import type { WorkPush } from '@shared/contract-work'
 import type { Trigger, TriggerSource } from '@shared/work'
-import { RoutinesEngine, LIFEOS_SINCE, noteOwnWrite, type EngineDeps, type LifeosEvent } from './engine'
+import { RoutinesEngine, LIFEOS_SINCE, noteOwnWrite, type EngineDeps, type HostJob, type LifeosEvent } from './engine'
 import type { RoutinesHost } from './host'
 import { dueCount, nextAt } from './schedule'
 import { ensureRoutineTables, type NewRoutine } from './store'
@@ -49,6 +49,8 @@ interface Rig {
   stop(): void
   /** the other pillars' trigger sources, as `WorkModule.triggers` gives them */
   sources: TriggerSource[]
+  /** the host jobs loaded pillars registered, by id */
+  jobs: Map<string, HostJob>
   add(n: Partial<NewRoutine> & { trigger: Trigger }): string
   /** a new engine on the same database: a restart */
   restart(): void
@@ -77,7 +79,8 @@ function makeRig(): Rig {
     lifeosUp: { value: true },
     readAnswer: { text: 'no reply yet', runs: true },
     files: new Map(),
-    sources: []
+    sources: [],
+    jobs: new Map()
   } as unknown as Rig
   let n = 0
   const host: RoutinesHost = {
@@ -131,6 +134,7 @@ function makeRig(): Rig {
       host,
       lifeosHeld: () => (rig.lifeos ? { items: () => rig.lifeos as never, loaded: () => rig.lifeosLoaded } : null),
       sources: () => rig.sources,
+      job: (id) => rig.jobs.get(id) ?? null,
       now: () => clock.now,
       files: {
         stat: (p) => (rig.files.has(p) ? { mtimeMs: rig.files.get(p)!.length * 1000 + rig.files.get(p)!.charCodeAt(0), size: rig.files.get(p)!.length } : null),
@@ -560,5 +564,110 @@ describe('a file another pillar watches', () => {
     rig.add({ name: 'Cut', trigger: { on: 'file', source: { at: 'frameio', account: 'a', fileId: 'v1' }, by: 'someone-else' } })
     await tickAt(at(16, '09:00'))
     expect(armed).toEqual([])
+  })
+})
+
+describe('a routine that runs a host job', () => {
+  const FRIDAYS_4PM: Trigger = { on: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0', tz: TZ }
+  const job = (run: HostJob['run']): HostJob => ({ name: "Makes the week's review", run })
+  const calls: { workspaceId: string; firedAt: number }[] = []
+  beforeEach(() => {
+    calls.length = 0
+    rig.jobs.set(
+      'review.make',
+      job(async (o) => {
+        calls.push(o)
+        return { words: 'Review made', open: { place: 'review', at: at(16, '00:00') } }
+      })
+    )
+  })
+  const addJob = (over: Partial<NewRoutine> = {}) => rig.add({ trigger: FRIDAYS_4PM, name: 'Week review', prompt: '', job: 'review.make', ...over })
+
+  it('fires with no thread and no model, and writes a quiet run with its words and what it opens', async () => {
+    const id = addJob()
+    await tickAt(at(20, '15:59'))
+    expect(calls).toHaveLength(0)
+    await tickAt(at(20, '16:00'))
+    expect(calls).toEqual([{ workspaceId: 'ws-purdue', firedAt: at(20, '16:00') }])
+    expect(rig.started).toEqual([])
+    expect(runs(id)).toEqual([expect.objectContaining({ state: 'quiet', summary: 'Review made', sessionId: null, open: { place: 'review', at: at(16, '00:00') } })])
+    expect(rig.engine.store.get(id)).toMatchObject({ lastState: 'quiet', lastWords: 'Review made', nextAt: at(27, '16:00') })
+    // no thread: nothing is marked read or unread
+    expect(rig.marks).toEqual({ read: [], unread: [] })
+    expect(rig.engine.row(rig.engine.store.get(id)!)).toMatchObject({ job: 'review.make', jobName: "Makes the week's review", words: 'Fridays at 4:00 PM' })
+  })
+
+  it('folds three missed due times into one run', async () => {
+    const id = addJob()
+    rig.restart()
+    // down from before Friday Nov 20 to Saturday Dec 5: Nov 20, Nov 27 and Dec 4 are missed
+    await tickAt(Date.parse('2026-12-05T09:00:00-05:00'))
+    expect(calls).toHaveLength(1)
+    expect(runs(id)).toEqual([expect.objectContaining({ folded: 2, state: 'quiet' })])
+  })
+
+  it('a job that throws leaves a failed run with its reason, and the schedule goes on', async () => {
+    rig.jobs.set(
+      'review.make',
+      job(async () => {
+        throw new Error('the week has no work')
+      })
+    )
+    const id = addJob()
+    await tickAt(at(20, '16:00'))
+    expect(runs(id)[0]).toMatchObject({ state: 'failed', summary: 'Failed: the week has no work' })
+    expect(rig.engine.store.get(id)!.nextAt).toBe(at(27, '16:00'))
+    expect(rig.marks).toEqual({ read: [], unread: [] })
+  })
+
+  it('a paused one does not fire, and Run now runs it, paused or not', async () => {
+    const id = addJob()
+    rig.engine.store.setEnabled(id, false)
+    await tickAt(at(20, '16:00'))
+    expect(calls).toHaveLength(0)
+    const run = await rig.engine.runNow(rig.engine.store.get(id)!)
+    // Run now answers at once: the job runs on its own
+    expect(run).toMatchObject({ cause: 'Run now', state: 'running' })
+    await rig.engine.drain()
+    expect(calls).toHaveLength(1)
+    expect(runs(id)[0]).toMatchObject({ state: 'quiet', summary: 'Review made' })
+  })
+
+  it('a job no loaded pillar has fails its run in words', async () => {
+    const id = addJob({ job: 'review.gone' })
+    await tickAt(at(20, '16:00'))
+    expect(runs(id)[0]).toMatchObject({ state: 'failed', summary: 'Failed: its job is not on this host' })
+    expect(rig.engine.row(rig.engine.store.get(id)!).jobName).toBeUndefined()
+  })
+
+  it('a firing while its last run still works folds into it, and never starts a second', async () => {
+    let finish = () => {}
+    rig.jobs.set(
+      'review.make',
+      job(async (o) => {
+        calls.push(o)
+        await new Promise<void>((resolve) => (finish = resolve))
+        return { words: 'Review made' }
+      })
+    )
+    const id = addJob({ trigger: { on: 'schedule', rrule: 'FREQ=MINUTELY;INTERVAL=15', tz: TZ } })
+    rig.engine.store.setNext(id, at(16, '07:00'))
+    for (const t of ['07:00', '07:15', '07:30']) {
+      rig.clock.now = at(16, t)
+      await rig.engine.tick()
+    }
+    expect(calls).toHaveLength(1)
+    expect(runs(id)).toEqual([expect.objectContaining({ state: 'running', folded: 2 })])
+    finish()
+    await rig.engine.drain()
+    expect(runs(id)[0]).toMatchObject({ state: 'quiet', folded: 2 })
+  })
+
+  it('at boot, a job run the stop cut off reads failed', async () => {
+    const id = addJob()
+    rig.engine.store.newRun(id, at(20, '16:00'), 'Fridays at 4:00 PM', 0, 'running', { nextAt: at(27, '16:00') })
+    rig.restart()
+    expect(runs(id)[0]).toMatchObject({ state: 'failed', summary: 'Failed: the host stopped before the job finished' })
+    expect(calls).toHaveLength(0)
   })
 })

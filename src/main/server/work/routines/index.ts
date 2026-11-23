@@ -9,7 +9,7 @@ import {
 } from '@shared/contract-work-routines'
 import type { ClientRequest } from '@shared/contract'
 import { handled, NOT_HANDLED, WORK_HOME, workText, type Trigger, type WorkScope } from '@shared/work'
-import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule, type WorkTool } from '../modules'
+import { WORK_MODULES, type Caller, type RoutineJob, type WorkCtx, type WorkModule, type WorkTool } from '../modules'
 import { outboxHostOf } from '../outbox/ctx'
 import { RoutinesEngine, triggerWords, type EngineDeps } from './engine'
 import { routinesHost, type RoutinesHost } from './host'
@@ -39,6 +39,9 @@ export const routinesSeams: { current: { host: RoutinesHost; now?: () => number;
 let engine: RoutinesEngine | null = null
 let engineCtx: WorkCtx | null = null
 
+/** A host job a loaded pillar registered (`WorkModule.jobs`), by id. */
+export const registeredJob = (id: string): RoutineJob | null => WORK_MODULES.flatMap((m) => m.jobs ?? []).find((j) => j.id === id) ?? null
+
 /** The engine for this context, made once. */
 export function routinesEngine(ctx: WorkCtx): RoutinesEngine {
   if (engine && engineCtx === ctx) return engine
@@ -49,7 +52,11 @@ export function routinesEngine(ctx: WorkCtx): RoutinesEngine {
     host,
     now: routinesSeams.current?.now ?? Date.now,
     sources: () => WORK_MODULES.filter((m) => m.id !== 'routines').flatMap((m) => m.triggers ?? []),
-    lifeosHeld: () => outboxHostOf(ctx)?.outbox.lifeos ?? null
+    lifeosHeld: () => outboxHostOf(ctx)?.outbox.lifeos ?? null,
+    job: (id) => {
+      const job = registeredJob(id)
+      return job ? { name: job.name, run: (at) => job.run(ctx, at) } : null
+    }
   }
   engine = new RoutinesEngine(deps)
   engineCtx = ctx
@@ -114,12 +121,18 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Ret
       const host = routinesSeams.current?.host ?? routinesHost()!
       if (q.workspaceId !== WORK_HOME && !host.workspace(q.workspaceId)) refuse(`no workspace ${q.workspaceId}`)
       const t = checked(q.trigger, q.workspaceId, host, now)
-      if (q.playId) {
+      // Left out, an edit keeps the job it has (a form that does not show it saves it untouched); null drops it.
+      const job = q.job === undefined ? (q.id ? (mine(q.id).job ?? null) : null) : q.job
+      if (job) {
+        // A job needs no words; it runs on its own, never with a play.
+        if (!registeredJob(job)) refuse(`No such job: ${job}`)
+        if (q.playId) refuse('a routine runs a job or a play, not both')
+      } else if (q.playId) {
         const play = new PlayStore(ctx.db).get(q.playId)
         if (!play || play.proposed || play.workspaceId !== q.workspaceId) refuse(`no play ${q.playId} in this workspace`)
         if (play!.takes.length) refuse(`“${play!.name}” takes ${play!.takes.join(', ')}: a routine runs only a play that takes nothing`)
       } else if (!q.prompt) refuse('say what it does, or pick a play for it to run')
-      const fields = { workspaceId: q.workspaceId, projectId: q.projectId ?? null, kind: kindOf(q.ends), name: q.name, prompt: q.prompt, playId: q.playId ?? null, model: q.model ?? null, reasoning: q.reasoning ?? null, trigger: t.trigger, ends: q.ends, nextAt: t.nextAt, cursor: t.cursor }
+      const fields = { workspaceId: q.workspaceId, projectId: q.projectId ?? null, kind: kindOf(q.ends), name: q.name, prompt: q.prompt, playId: q.playId ?? null, job, model: q.model ?? null, reasoning: q.reasoning ?? null, trigger: t.trigger, ends: q.ends, nextAt: t.nextAt, cursor: t.cursor }
       const saved = q.id ? (mine(q.id), store.update(q.id, fields)!) : store.create({ ...fields, createdBy: 'owner' }, now)
       ctx.push({ push: 'work.routines', workspaceId: saved.workspaceId, id: saved.id })
       return handled(e.row(saved))

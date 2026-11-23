@@ -654,6 +654,12 @@ capability its row names (and relayed to a Mac that hosts the workspace), a
 push to every client, and a tool listed to Claude, Codex and Muse threads of
 Work scope. work/mount.test.ts proves each of these with a fake module.
 
+A pillar with work a routine should run with no model (making a week's
+review, say) registers it as a host job, `jobs: [{ id: 'review.make', name:
+'Makes the week\'s review', run: async (ctx, { workspaceId, firedAt }) =>
+({ words, open }) }]`; the owner's routine names it (`work.routines.save`
+with `job`). [work-routines.md](work-routines.md) "A routine that runs a job".
+
 A pillar that needs a shared file changed does not edit it: it writes the
 need in its landing note and a foundation follow-up makes the change.
 

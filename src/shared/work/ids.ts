@@ -49,7 +49,8 @@ export const PILLAR_IDS = [
   'files',
   'prep',
   'money',
-  'search'
+  'search',
+  'review'
 ] as const
 export type PillarId = (typeof PILLAR_IDS)[number]
 export const PillarIdSchema = z.enum(PILLAR_IDS)
@@ -93,7 +94,9 @@ export const PILLAR_MILESTONE: Record<PillarId, number> = {
   /** money, receipts to a ledger by job (plan-VWTDbboLt6UA), round 3's row 6 */
   money: 60,
   /** one search for everything in Work (plan-3lajhR4Inx-d), a feature of the third round */
-  search: 62
+  search: 62,
+  /** the weekly review (plan-toGPPKaX6Q1P), numbered past the pillars that landed before it */
+  review: 63
 }
 
 /**

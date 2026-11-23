@@ -33,6 +33,7 @@ import { FILES_CAPS, FILES_RELAY, FilesRequestSchemas, type FilesPush } from './
 import { PREP_CAPS, PREP_RELAY, PrepRequestSchemas, type PrepPush } from './contract-work-prep'
 import { MONEY_CAPS, MONEY_RELAY, MoneyRequestSchemas, type MoneyPush } from './contract-work-money'
 import { SEARCH_CAPS, SEARCH_RELAY, SearchRequestSchemas, type SearchPush } from './contract-work-search'
+import { REVIEW_CAPS, REVIEW_RELAY, ReviewRequestSchemas, type ReviewPush } from './contract-work-review'
 
 /**
  * Work over the wire (docs/agents/work.md): the core's own methods, then
@@ -123,7 +124,8 @@ export const WorkRequestSchemas = [
   ...FilesRequestSchemas,
   ...PrepRequestSchemas,
   ...MoneyRequestSchemas,
-  ...SearchRequestSchemas
+  ...SearchRequestSchemas,
+  ...ReviewRequestSchemas
 ] as const
 
 export type WorkPush =
@@ -158,6 +160,7 @@ export type WorkPush =
   | PrepPush
   | MoneyPush
   | SearchPush
+  | ReviewPush
 
 export const WORK_CAPS = {
   ...WORK_CORE_CAPS,
@@ -190,7 +193,8 @@ export const WORK_CAPS = {
   ...FILES_CAPS,
   ...PREP_CAPS,
   ...MONEY_CAPS,
-  ...SEARCH_CAPS
+  ...SEARCH_CAPS,
+  ...REVIEW_CAPS
 }
 
 /** Each pillar's own requests, capability rows and relay rows, for the guards (contract-work.test.ts) and the router. */
@@ -224,7 +228,8 @@ export const WORK_PILLAR_CONTRACTS: Record<PillarId, { requests: readonly z.ZodT
   files: { requests: FilesRequestSchemas, caps: FILES_CAPS, relay: FILES_RELAY },
   prep: { requests: PrepRequestSchemas, caps: PREP_CAPS, relay: PREP_RELAY },
   money: { requests: MoneyRequestSchemas, caps: MONEY_CAPS, relay: MONEY_RELAY },
-  search: { requests: SearchRequestSchemas, caps: SEARCH_CAPS, relay: SEARCH_RELAY }
+  search: { requests: SearchRequestSchemas, caps: SEARCH_CAPS, relay: SEARCH_RELAY },
+  review: { requests: ReviewRequestSchemas, caps: REVIEW_CAPS, relay: REVIEW_RELAY }
 }
 
 /**

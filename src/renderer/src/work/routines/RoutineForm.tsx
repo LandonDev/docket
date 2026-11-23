@@ -12,7 +12,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
-import { blankForm, DAY_CHOICES, endsOf, EVENT_CHOICES, EVERY_CHOICES, formOf, triggerOf, type EndsOn, type RoutineForm, type StartsOn } from "./model";
+import { blankForm, DAY_CHOICES, EVENT_CHOICES, EVERY_CHOICES, formOf, saveParamsOf, type EndsOn, type RoutineForm, type StartsOn } from "./model";
 
 type Props = {
   env: string;
@@ -109,19 +109,16 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
   };
   const tools = useRunsTools(env, workspaceId);
   const plays = useRunnablePlays(env, workspaceId, row?.playId ?? null);
+  // A routine that runs a host job has no words and no model to write: its form is when it runs.
+  const job = Boolean(row?.job);
   const repeat = form.days.startsWith("m");
   const finish = (then: () => void) => (close ? close(then) : then());
 
   const save = () => {
-    const name = form.name.trim();
-    if (!name || (!form.play && !form.prompt.trim())) return setError(name ? "Say what it does" : "Give it a name");
-    const trigger = row && !touched ? row.trigger : triggerOf(form, env, Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
-    if (typeof trigger === "string") return setError(trigger);
-    const ends = endsOf(form);
-    if (typeof ends === "string") return setError(ends);
+    const params = saveParamsOf(form, row, { workspaceId, host: env, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", touched });
+    if (typeof params === "string") return setError(params);
     setError(null);
     setPending(true);
-    const params = { ...(row ? { id: row.id } : {}), workspaceId, projectId: row?.projectId ?? null, name, prompt: form.prompt.trim(), playId: form.play || null, trigger, ends, model: row?.model ?? null, reasoning: row?.reasoning ?? null };
     registry
       .linkOf(env)
       .request<RoutineRow>("work.routines.save", params)
@@ -164,14 +161,16 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
         <Field label="Name">
           <Input autoFocus value={form.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Morning sweep" autoComplete="off" />
         </Field>
-        {plays.length ? (
+        {plays.length && !job ? (
           <Field label="Runs">
             <ChoiceSelect label="Runs" value={form.play} options={[{ value: "", label: "What you write here" }, ...plays]} onChange={(play) => patch({ play })} />
           </Field>
         ) : null}
-        <Field label={form.play ? "Also" : "What to do"}>
-          <Textarea rows={3} value={form.prompt} onChange={(e) => patch({ prompt: e.target.value })} placeholder={form.play ? "Anything this routine adds to the play" : "In your words"} />
-        </Field>
+        {job ? null : (
+          <Field label={form.play ? "Also" : "What to do"}>
+            <Textarea rows={3} value={form.prompt} onChange={(e) => patch({ prompt: e.target.value })} placeholder={form.play ? "Anything this routine adds to the play" : "In your words"} />
+          </Field>
+        )}
         <div className="flex flex-col gap-3">
           <FieldRow label="Starts">
             <ChoiceToggle label="Starts" value={form.starts} options={STARTS} onChange={(starts) => patchTrigger({ starts })} />

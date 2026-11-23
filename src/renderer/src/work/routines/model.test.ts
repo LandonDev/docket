@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RoutineRow } from "@shared/contract-work-routines";
-import { blankForm, endsOf, formOf, rowLine, rowMark, runWords, triggerOf } from "./model";
+import { blankForm, endsOf, formOf, rowLine, rowMark, runWords, saveParamsOf, triggerOf } from "./model";
 
 const NOW = new Date(2026, 10, 16, 9, 0).getTime(); // Monday
 
@@ -79,5 +79,29 @@ describe("the form", () => {
     });
     expect(triggerOf({ ...f, starts: "read", tool: "a1\nx", args: "{bad" }, "h", "UTC")).toBe("With is not JSON");
     expect(triggerOf({ ...f, starts: "file", path: " /w/budget.xlsx " }, "env_box", "UTC")).toEqual({ on: "file", source: { at: "file", host: "env_box", path: "/w/budget.xlsx" }, by: "someone-else" });
+  });
+});
+
+describe("a routine that runs a host job", () => {
+  const FRIDAYS = { on: "schedule", rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0", tz: "America/New_York" } as const;
+  const job = row({ name: "Week review", prompt: "", job: "review.make", jobName: "Makes the week's review", model: "opus", trigger: FRIDAYS, words: "Fridays at 4:00 PM", nextAt: new Date(2026, 10, 20, 16, 0).getTime() });
+  const o = { workspaceId: "ws", host: "env_box", tz: "America/New_York", touched: false };
+
+  it("is listed like any routine", () => {
+    expect(rowLine(job, NOW)).toBe("Fridays at 4:00 PM, next Fri");
+    expect(rowMark(job)).toBeNull();
+  });
+
+  it("saves with no words, and an edit keeps its job", () => {
+    const f = { ...formOf(job, NOW), name: "The week" };
+    expect(saveParamsOf(f, job, o)).toMatchObject({ id: "r1", name: "The week", prompt: "", job: "review.make", trigger: FRIDAYS, ends: { kind: "never" } });
+    expect(saveParamsOf({ ...f, days: "1" }, job, { ...o, touched: true })).toMatchObject({ job: "review.make", trigger: { rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=16;BYMINUTE=0" } });
+  });
+
+  it("a routine without one still needs its words, and sends no job", () => {
+    const plain = row();
+    expect(saveParamsOf({ ...formOf(plain, NOW), prompt: " " }, plain, o)).toBe("Say what it does");
+    expect(saveParamsOf(formOf(plain, NOW), plain, o)).not.toHaveProperty("job");
+    expect(saveParamsOf({ ...blankForm(NOW), prompt: "x" }, null, o)).toBe("Give it a name");
   });
 });

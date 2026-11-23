@@ -5,6 +5,7 @@ import type { SessionMeta } from '@shared/events'
 import type { WorkToolResult } from '@shared/work'
 import { outbox as outboxModule } from '../outbox/index'
 import { cast, makeRig, type Rig } from '../outbox/rig'
+import { WORK_MODULES, type WorkModule } from '../modules'
 import { routinesHost, type RoutinesHost } from './host'
 import { routines, routinesEngine, routinesSeams } from './index'
 
@@ -166,5 +167,28 @@ describe('a routine', () => {
     expect(text(await rig.claudeCall('t-r2', slack.id, 'echo', { text: 'standup 2' }))).toBe('standup 2')
     // and only this routine's runs
     expect(text(await rig.claudeCall('t-b', slack.id, 'echo', { text: 'other' }))).toMatch(/^Held as item/)
+  })
+})
+
+describe('a routine that runs a host job', () => {
+  const review: WorkModule = { id: 'docs', ensure: () => {}, jobs: [{ id: 'review.make', name: "Makes the week's review", run: async () => ({ words: 'Review made' }) }] }
+  const FRIDAYS = { on: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0', tz: 'America/New_York' } as const
+  beforeEach(() => void WORK_MODULES.push(review))
+  afterEach(() => void WORK_MODULES.splice(WORK_MODULES.indexOf(review), 1))
+
+  it('is saved only by the owner with a job some pillar has, needs no words, and lists the job by name', async () => {
+    await expect(rig.rpc('work.routines.save', { workspaceId: 'ws-purdue', name: 'Week review', prompt: '', job: 'review.gone', trigger: FRIDAYS, ends: { kind: 'never' } })).rejects.toThrow('No such job: review.gone')
+    const asModel = { kind: 'model' as const, caps: ['read', 'operate', 'approve', 'admin'], sessionId: 't-work' }
+    const params = { workspaceId: 'ws-purdue', name: 'Week review', prompt: '', job: 'review.make', trigger: FRIDAYS, ends: { kind: 'never' } }
+    await expect(routines.handle!({ id: '1', method: 'work.routines.save', params } as never, rig.work.ctx, asModel)).rejects.toThrow('only the owner makes or changes a routine')
+    const made = await rig.rpc<RoutineRow>('work.routines.save', params)
+    expect(made).toMatchObject({ job: 'review.make', jobName: "Makes the week's review", prompt: '', words: 'Fridays at 4:00 PM' })
+    // an edit that leaves the job out keeps it
+    const renamed = await rig.rpc<RoutineRow>('work.routines.save', { id: made.id, workspaceId: 'ws-purdue', name: 'The week', prompt: '', trigger: FRIDAYS, ends: { kind: 'never' } })
+    expect(renamed).toMatchObject({ name: 'The week', job: 'review.make' })
+    expect((await list()).find((r) => r.id === made.id)).toMatchObject({ job: 'review.make', jobName: "Makes the week's review" })
+    // a thread's proposal can never carry one
+    await call('t-work', 'routine_propose', { name: 'Sneaky', prompt: 'x', everyMinutes: 30, job: 'review.make' })
+    expect((await list()).find((r) => r.name === 'Sneaky')!.job).toBeUndefined()
   })
 })

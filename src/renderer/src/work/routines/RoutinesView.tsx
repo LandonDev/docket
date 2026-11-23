@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
 import { ChevronLeft, Plus } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { ItemButton } from "../../components/ui/item";
+import { Item, ItemButton } from "../../components/ui/item";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments } from "../../lib/connection";
@@ -14,6 +14,7 @@ import { workOpenPort } from "../../lib/workSwitch";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
+import { routineJobOpenPort } from "./jobOpen";
 import { RoutineDialog } from "./RoutineForm";
 import { usePlays } from "./plays/data";
 import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
@@ -204,6 +205,12 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
   const open = (sessionId: string | null) => {
     if (sessionId) workOpenPort.get()?.(sessionId);
   };
+  // A run opens its thread, or a job run the page its job named; with neither, its row is plain text.
+  const openRun = (run: RoutineRun): (() => void) | null => {
+    if (run.sessionId) return () => open(run.sessionId);
+    const page = run.open;
+    return page && routineJobOpenPort.has() ? () => routineJobOpenPort.open(page) : null;
+  };
   const starts = row.waiting ? `${row.words}, ${row.waiting.charAt(0).toLowerCase()}${row.waiting.slice(1)}` : row.nextAt ? `${row.words}, next ${dayTime(row.nextAt)}` : row.words;
   const ends = row.ends.kind === "day" ? dayTime(row.ends.at) : row.ends.kind === "once" ? "After the first run" : null;
 
@@ -245,7 +252,11 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
             )}
           </div>
         </div>
-        {row.prompt ? <p className="text-sm leading-[22px] whitespace-pre-wrap text-foreground">{row.prompt}</p> : null}
+        {row.job ? (
+          <p className={cn("text-sm leading-[22px]", row.jobName ? "text-foreground" : "text-muted-foreground")}>{row.jobName ?? "Its job is not on this host"}</p>
+        ) : row.prompt ? (
+          <p className="text-sm leading-[22px] whitespace-pre-wrap text-foreground">{row.prompt}</p>
+        ) : null}
         <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]">
           {play ? (
             <>
@@ -261,7 +272,7 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
               <dd className="text-foreground">{ends}</dd>
             </>
           ) : null}
-          {row.model ? (
+          {row.model && !row.job ? (
             <>
               <dt className="text-muted-foreground">Model</dt>
               <dd className="text-foreground">{row.model}</dd>
@@ -296,13 +307,25 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
               <p className="text-xs text-muted-foreground">{noRunsLine(row)}</p>
             ) : (
               <div className="flex flex-col">
-                {runs.map((run) => (
-                  <ItemButton key={run.id} disabled={!run.sessionId} onClick={() => open(run.sessionId)} className="h-8 items-center gap-3 px-2 text-[13px]">
-                    <time className="w-36 shrink-0 text-muted-foreground tabular-nums">{dayTime(run.firedAt)}</time>
-                    <StatusMark state={runMark(run)} word={false} className="shrink-0" />
-                    <span className={run.state === "failed" ? "min-w-0 flex-1 truncate text-destructive" : run.state === "held" ? "min-w-0 flex-1 truncate text-foreground" : "min-w-0 flex-1 truncate text-muted-foreground"}>{runWords(run)}</span>
-                  </ItemButton>
-                ))}
+                {runs.map((run) => {
+                  const press = openRun(run);
+                  const cells = (
+                    <>
+                      <time className="w-36 shrink-0 text-muted-foreground tabular-nums">{dayTime(run.firedAt)}</time>
+                      <StatusMark state={runMark(run)} word={false} className="shrink-0" />
+                      <span className={run.state === "failed" ? "min-w-0 flex-1 truncate text-destructive" : run.state === "held" ? "min-w-0 flex-1 truncate text-foreground" : "min-w-0 flex-1 truncate text-muted-foreground"}>{runWords(run)}</span>
+                    </>
+                  );
+                  return press ? (
+                    <ItemButton key={run.id} onClick={press} className="h-8 items-center gap-3 px-2 text-[13px]">
+                      {cells}
+                    </ItemButton>
+                  ) : (
+                    <Item key={run.id} className="h-8 items-center gap-3 px-2 text-[13px]">
+                      {cells}
+                    </Item>
+                  );
+                })}
               </div>
             )}
           </section>

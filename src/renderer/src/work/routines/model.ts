@@ -149,6 +149,49 @@ export function endsOf(f: RoutineForm): RoutineEnds | string {
   return Number.isFinite(at) ? { kind: "day", at } : "Pick the day it ends";
 }
 
+/** What Save sends to `work.routines.save`. */
+export interface SaveParams {
+  id?: string;
+  workspaceId: string;
+  projectId: string | null;
+  name: string;
+  prompt: string;
+  playId: string | null;
+  job?: string;
+  trigger: Trigger;
+  ends: RoutineEnds;
+  model: string | null;
+  reasoning: string | null;
+}
+
+/**
+ * The form as Save sends it, or the one thing wrong with it. A routine that
+ * runs a job needs no words and keeps its job; a trigger he did not touch is
+ * sent as it was, whatever the form can show of it.
+ */
+export function saveParamsOf(f: RoutineForm, row: RoutineRow | null, o: { workspaceId: string; host: string; tz: string; touched: boolean }): SaveParams | string {
+  const name = f.name.trim();
+  if (!name) return "Give it a name";
+  if (!row?.job && !f.play && !f.prompt.trim()) return "Say what it does";
+  const trigger = row && !o.touched ? row.trigger : triggerOf(f, o.host, o.tz);
+  if (typeof trigger === "string") return trigger;
+  const ends = endsOf(f);
+  if (typeof ends === "string") return ends;
+  return {
+    ...(row ? { id: row.id } : {}),
+    workspaceId: o.workspaceId,
+    projectId: row?.projectId ?? null,
+    name,
+    prompt: f.prompt.trim(),
+    playId: f.play || null,
+    ...(row?.job ? { job: row.job } : {}),
+    trigger,
+    ends,
+    model: row?.model ?? null,
+    reasoning: row?.reasoning ?? null,
+  };
+}
+
 const shortDay = (ms: number, now: number): string => {
   const days = Math.round((new Date(ms).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / 86_400_000);
   if (days === 0) return "today";
