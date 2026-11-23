@@ -25,6 +25,15 @@ reads the thread's open items (`useCanvas`, store.ts: `work.canvas.list`
 once, then the `work.canvas` push) and seats them in `SplitShell`, the
 frame a plan and a report already use:
 
+- The seat is there before the thread has a message: a thread its host
+  holds with no rows, or whose rows are still coming, is drawn by
+  `SessionPane` as one muted line (or the skeleton) over the composer, and
+  for a Work thread that word goes to `ThreadView` as `quiet`, in the
+  chat's place inside the same seat, so an item opened before the first
+  message (a file from the Files view) shows beside it at once, and the
+  first rows replace the word without remounting the item. Before
+  2026-11-23 such a thread skipped `ThreadView`, and a file opened from
+  Files showed as a new chat with no viewer.
 - With no item open the thread fills the pane as it always did. It sits in
   the same place in the tree with and without items, so an item arriving
   never remounts the transcript.
@@ -39,7 +48,11 @@ frame a plan and a report already use:
 - Under the row, `CanvasPane` draws the kind's bar (`KindBar`), the one
   state line, the kind's body and the selection bar. Only the shown item's
   body is mounted; a kind keeps what it needs across a tab switch with
-  `state` and `setState`.
+  `state` and `setState`. A kind says its own failures on the state line
+  with Retry; a body that throws, or whose code never arrives, is caught by
+  its chunk's boundary and said the same way (`bodyFailed`,
+  CanvasPane.tsx: "Couldn't open this document", the error's words or
+  "Its viewer did not load", Retry), never a blank pane or a bare chip.
 - Which tab is shown and whether the thread is folded are this window's,
   kept per thread in localStorage (`work.canvas.view.v1`). The items are
   the host's, so they are there after a restart and on every client.

@@ -289,6 +289,7 @@ written, a folder he added himself included (`office/tools.ts` `judged`).
 | `filesSetRoots {roots}` | local | his edits: only this computer's own window |
 | `filesCopyGet`, `filesCopySet {workspaceId, on}` | read, admin | the copy switch |
 | `filesCopy {sessionId, source}` | operate | the copy, on the workspace's host, pulled from the file's host over the link, or out of this host's VM |
+| `filesThreads {workspaceId, source}` | read | `{threads: {sessionId, itemId}[]}`: the threads of a Work workspace here whose open items show that file, newest first (`threadsHolding`) |
 | `vmStatus {}` | read | Office and OneDrive in the VM as last read (`VmOfficeStatus`); never wakes it |
 | `vmSignIn {account?}` | operate | his sign-in walked to his phone's number ("Signing in"); a person's |
 | `vmSync {libraries}` | admin | the libraries OneDrive in the VM should sync; a person's |
@@ -402,7 +403,18 @@ come, with bones under them for the rest, under a 20 s deadline
 when no host answered.
 
 Opening a file (`openWay`): a cloud-only file shows Downloading… in its row
-first, then Opening…. On the workspace's own host it opens in a new thread of
+first, then Opening…. **The file takes the pane**: it opens through the
+canvas store's `openItem`, shown and selected at once, with the thread
+folded away beside it (`setFolded`), its conversation toggle one press away;
+never a new chat's empty composer first (`showFile`, FilesView.tsx). **One
+file, one thread**: the workspace's host first answers
+`work.office.filesThreads {workspaceId, source}` (`threadsHolding`,
+files/handle.ts), the threads whose open items show that file, newest first:
+the file in place, its Office app's file, the copy he allowed (by its
+folder, the hash of the source), or the `.tcdoc` a Word file became beside
+either. The first of them this window knows and that is not archived is
+shown again with that item, and nothing is copied or made; a host from
+before the method answers none. Otherwise, on the workspace's own host it opens in a new thread of
 the workspace, titled for the file, in that thread's canvas (and an Office
 file in its app, which stands behind the item), the thread made only once
 everything else worked; with the copy he allowed, from the copy, and a thread

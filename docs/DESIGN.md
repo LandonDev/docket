@@ -1139,6 +1139,13 @@ thread; nothing answers inside the canvas.
   pane, else a 36px row at the canvas's foot under the item; nothing else says
   it. A file no kind shows is one toast, "No viewer for <name>", whose one
   action is Add to the thread as a file.
+- **A file opened from the Files view** is the item, not a chat: it opens
+  in its viewer with the thread folded away, the conversation toggle one
+  press away, and no empty composer first; opened again, it shows in the
+  thread that already holds it. Before its first message the thread's half
+  is its one muted line over the composer, as any thread with no rows.
+  An item whose viewer fails says so on the state line with Retry
+  ("Couldn't open this document", why), never a blank pane.
 - **The tab row** is 36px on `sidebar`, as the title bar's strip: tabs
   28px on the strip's chip shape (6px radius, 2px apart, 6px from the
   row's ends), the kind's 14px glyph, the name, no dirty dot; the selected
@@ -1566,7 +1573,8 @@ new thread (a draft) shows the composer and nothing else, and so does a
 project with no thread on screen: its draft, the composer alone, with no
 chip, badge or heading for it; a thread its host holds with no rows shows
 the composer under one muted line (the host's failure summary, else "No
-messages yet"), never the new-thread screen. Inside a picker
+messages yet"), never the new-thread screen; a Work thread's sits beside its
+open items. Inside a picker
 or menu, no match is one muted row, never `Empty`. A lazy surface falls back
 to a `SurfaceSkeleton` kind, and a small section's wait is `LoadingLine`
 (both in surfaces/SurfaceSkeleton.tsx, beside `EmptyState`). Text that is
