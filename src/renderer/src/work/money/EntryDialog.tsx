@@ -151,7 +151,8 @@ function EntryBody({
 
   const categories = categoryChoices(read.categories, form.category);
   const statuses = statusChoices(form);
-  const showStatus = !(form.way === "out" && form.reimburse);
+  // Read only, the row's stored status is always shown as text: To reimburse too, which the form would fold into its box.
+  const showStatus = locked || !(form.way === "out" && form.reimburse);
   const showJob = mode === "confirm" && (jobs?.length ?? 0) > 1;
 
   const fields = (
@@ -204,7 +205,7 @@ function EntryBody({
       <div className={cn("grid gap-3", showStatus ? "grid-cols-2" : "grid-cols-1")}>
         {showStatus ? (
           <Field label="Status">
-            <ChoiceSelect label="Status" className="w-full" value={form.status} options={statuses.map((s) => ({ value: s, label: s }))} onChange={(status: Status) => patch({ status })} />
+            {locked ? <Input value={row!.status} readOnly /> : <ChoiceSelect label="Status" className="w-full" value={form.status} options={statuses.map((s) => ({ value: s, label: s }))} onChange={(status: Status) => patch({ status })} />}
           </Field>
         ) : null}
         <Field label="For">

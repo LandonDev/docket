@@ -78,11 +78,12 @@ describe("trips and pay from the calendar", () => {
     expect(asked("work.money.trip")).toEqual([{ workspaceId: "ws", eventId: "e1", date: "2026-11-21", title: "Varsity at Harrison", place: "Harrison HS", miles: 24, fee: 7500 }]);
   });
 
-  it("adds every whole offer with Add all", async () => {
+  it("adds every whole offer with Add 2 when one needs Review", async () => {
     host.read = (p) => readOf(p, undefined, { calendar: [offer("e1"), offer("e2", { title: "JV at Millbrook" }), offer("e3", { fee: null, title: "Scrimmage" })] });
     mount();
     await settle();
-    fireEvent.click(screen.getByRole("button", { name: "Add all" }));
+    // Two of three can be added: the label says its reach.
+    fireEvent.click(screen.getByRole("button", { name: "Add 2" }));
     await settle();
     await settle();
     expect(asked("work.money.trip").map((p) => p.eventId)).toEqual(["e1", "e2"]);

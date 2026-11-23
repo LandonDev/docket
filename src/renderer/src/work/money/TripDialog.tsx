@@ -62,6 +62,7 @@ export const offerWhole = (offer: CalendarOffer): boolean => offer.fee !== null 
 export const addOffer = (env: string, workspaceId: string, offer: CalendarOffer): Promise<MoneyTripped> => request<MoneyTripped>(env, "work.money.trip", tripParams(workspaceId, tripFormOf(offer, offer.date))!);
 
 const NONE = "";
+export const ALREADY_WORDS = "That event was already added.";
 
 export function TripDialog({ env, workspaceId, offer, day, onClose, onSaved }: { env: string; workspaceId: string; offer: CalendarOffer | null; day: string; onClose: () => void; onSaved: () => void }) {
   const [pending, setPending] = useState(false);
@@ -100,6 +101,11 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
     request<MoneyTripped>(env, "work.money.trip", params).then(
       (tripped) => {
         setPending(false);
+        // The event was added before: nothing was written, so the form stays, saying so.
+        if (tripped?.already) {
+          setError(ALREADY_WORDS);
+          return;
+        }
         // Its pay row or its log row may only wait as a suggestion: said, never shown as saved.
         heardTrip(env, workspaceId, tripped);
         onSaved();

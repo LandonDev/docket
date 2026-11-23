@@ -75,7 +75,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("a write that only waits as a suggestion", () => {
-  it("says an invoice is kept and its row waits, before the created toast", async () => {
+  it("says an invoice's row waits, as the one created toast's second line", async () => {
     host.answer = (method) => {
       if (method === "work.money.invoiceNext") return { number: "1042", from: { name: "Ridgeline Officiating", address: "", pay: "" }, dueDays: 14 };
       if (method === "work.money.invoice") return { name: "Invoice 1042 Harlan.pdf", html: "<p/>" };
@@ -96,9 +96,9 @@ describe("a write that only waits as a suggestion", () => {
     await settle();
     await settle();
     await settle();
-    const said = toast.mock.calls.map((c) => c[0]);
-    expect(said).toContain("Invoice 1042 is kept. Its row waits in the ledger for you to accept.");
-    expect(said.indexOf("Invoice 1042 is kept. Its row waits in the ledger for you to accept.")).toBeLessThan(said.indexOf("Invoice 1042 created"));
+    // One press, one toast: the created toast carries the row's wait as its second line.
+    expect(toast.mock.calls.map((c) => c[0])).toEqual(["Invoice 1042 created"]);
+    expect(toast).toHaveBeenCalledWith("Invoice 1042 created", expect.objectContaining({ description: "Its row waits in the ledger for you to accept.", action: expect.objectContaining({ label: "Send…" }) }));
   });
 
   it("says a trip's pay or log row waits, from Add → Trip…, once", async () => {
@@ -121,15 +121,23 @@ describe("a write that only waits as a suggestion", () => {
     expect(toast.mock.calls.filter((c) => c[0] === SUGGESTED_WORDS)).toHaveLength(1);
   });
 
-  it("says restored columns wait in the ledger, and offers Open ledger in place of Restore again", async () => {
-    host.read = (p) => readOf(p, [], { problems: [{ kind: "columns", missing: ["In", "Out"] }] });
+  it("says restored columns wait on the line itself, which offers Open ledger in place of Restore, also after a visit elsewhere", async () => {
+    host.read = (p) => readOf(p, [], { problems: [{ kind: "columns", missing: ["In", "Out"], renamed: [] }] });
     host.answer = (method) => (method === "work.money.open" ? { ledger: {}, mileage: {}, suggested: true } : null);
     mount();
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Restore columns" }));
     await settle();
     await settle();
-    expect(toast).toHaveBeenCalledWith("The columns wait in the ledger for you to accept.", expect.objectContaining({ action: expect.objectContaining({ label: "Open ledger" }) }));
+    // The line says it and holds Open ledger; no toast says it twice.
+    expect(toast).not.toHaveBeenCalled();
+    expect(screen.getByText("Restored as a suggestion: accept it in the ledger")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Restore columns" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open ledger" })).toBeTruthy();
+    // Remembered for the job: back again, Restore is still not offered.
+    cleanup();
+    mount();
+    await settle();
     expect(screen.queryByRole("button", { name: "Restore columns" })).toBeNull();
     expect(screen.getByRole("button", { name: "Open ledger" })).toBeTruthy();
   });
@@ -171,12 +179,13 @@ describe("a drop on its way", () => {
 });
 
 describe("a row with money both ways", () => {
-  it("shows both figures, the In first, and opens read only with Open ledger", async () => {
+  it("shows both sides in one form, the In first, and opens read only with Open ledger", async () => {
     mount();
     await settle();
     const row = document.querySelector(`[data-money-row="${BOTH_WAYS.row}"]`) as HTMLElement;
     const cells = row.querySelectorAll("td");
-    expect(cells[3].textContent).toBe("+$30.00$20.00");
+    // One form, the dialog's.
+    expect(cells[3].textContent).toBe("+$30.00 and $20.00");
     fireEvent.click(within(row).getByRole("button", { name: /\+\$30\.00 and \$20\.00/ }));
     const dialog = await screen.findByRole("dialog", { name: "Entry" });
     expect(within(dialog).getByText("This row has money in and money out. Edit it in the ledger.")).toBeTruthy();

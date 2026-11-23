@@ -8,7 +8,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
-import { heardTrip, request, withToast } from "./api";
+import { heardTrip, heardTrips, request, withToast } from "./api";
 import { Facts } from "../../surfaces/settings/hosts/Facts";
 import { TO_CONFIRM_GRID } from "./layout";
 import { offerDay } from "./model";
@@ -62,10 +62,21 @@ async function addOne(env: string, workspaceId: string, offer: CalendarOffer): P
   heardTrip(env, workspaceId, tripped);
 }
 
-/** Add all: every whole offer, one after another. */
+/** Add all: every whole offer, one after another, and what waits as a suggestion said once after the last. */
 export async function addAll(env: string, workspaceId: string, offers: readonly CalendarOffer[]): Promise<void> {
-  for (const offer of offers.filter(offerWhole)) await addOne(env, workspaceId, offer);
+  const answers: (MoneyTripped | null)[] = [];
+  try {
+    for (const offer of offers.filter(offerWhole)) answers.push(await addOffer(env, workspaceId, offer));
+  } finally {
+    heardTrips(env, workspaceId, answers);
+  }
 }
+
+/** Add all's label says its reach: "Add all" when every offer can be added, "Add 2" when some need Review. */
+export const addAllLabel = (offers: readonly CalendarOffer[]): string => {
+  const whole = offers.filter(offerWhole).length;
+  return whole === offers.length ? "Add all" : `Add ${whole}`;
+};
 
 export function ToConfirmSection({ env, workspaceId, read, reload, onReview, onReviewOffer }: { env: string; workspaceId: string; read: MoneyRead; reload: () => Promise<void>; onReview: (id: string) => void; onReviewOffer: (offer: CalendarOffer) => void }) {
   const [adding, setAdding] = useState(false);
@@ -101,7 +112,7 @@ export function ToConfirmSection({ env, workspaceId, read, reload, onReview, onR
                   );
                 }}
               >
-                <BusyLabel busy={adding} label="Add all" />
+                <BusyLabel busy={adding} label={addAllLabel(read.calendar)} />
               </Button>
             ) : null}
           </div>

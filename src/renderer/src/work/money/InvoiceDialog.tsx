@@ -53,7 +53,8 @@ function lineOf(l: LineForm): InvoiceLine | null {
 /** What Create sends; null while it is not whole. */
 export function invoiceOf(kind: InvoiceKind, form: InvoiceForm): Invoice | null {
   const lines = form.lines.filter((l) => l.what.trim() || l.rate.trim()).map(lineOf);
-  if (!form.to.trim() || !form.number.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(form.date) || !lines.length || lines.some((l) => l === null)) return null;
+  // Who it is from is needed: the one who gets the page must know (the host refuses it too).
+  if (!form.to.trim() || !form.number.trim() || !form.from.name.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(form.date) || !lines.length || lines.some((l) => l === null)) return null;
   return {
     kind,
     number: form.number.trim(),

@@ -20,11 +20,11 @@ import { Facts, splitFacts } from "../../surfaces/settings/hosts/Facts";
 import { shared, useShared } from "../tasks/store";
 import { ViewStateLine } from "../views/ViewStateLine";
 import type { WorkViewProps } from "../views/registry";
-import { atOf, heard, markPaid, openBook, openBooks, openReceipt, saySuggested, useMoney, withToast } from "./api";
+import { atOf, heard, markPaid, openBook, openBooks, openReceipt, useMoney, withToast } from "./api";
 import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
 import { CATEGORY_GRID, ENTRIES_TAIL, OWED_GRID } from "./layout";
-import { filingToast, receiveFiles, sortFiles, takesFile } from "./receive";
+import { filingToast, receiveFiles, sortFiles } from "./receive";
 import { ExportDialog } from "./ExportDialog";
 import { InvoiceDialog, invoiceTitle, type InvoiceKind } from "./InvoiceDialog";
 import { sendInvoice, sentAs } from "./send";
@@ -49,7 +49,13 @@ const SPANS = [
 export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string } | { kind: "trip"; offer: CalendarOffer | null } | { kind: "rate" } | { kind: "export" } | { kind: "invoice"; as: InvoiceKind };
 
 /** What the header and the body share: the period, and the dialog open. */
-const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null; bare: Record<string, boolean> }>({ period: periodNow(), dialog: null, bare: {} });
+/**
+ * What the header and the body share: the period, the dialog open, and per job what it is known to be.
+ * `bare`: true while the job has no money and nothing waits, or its ledger cannot be read as money; false once
+ * it is known to have some; absent until the first read lands. `restoring`: its columns were restored as a
+ * suggestion, so the line holds Open ledger and Restore is not offered again, also after a visit elsewhere.
+ */
+const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null; bare: Record<string, boolean>; restoring: Record<string, boolean> }>({ period: periodNow(), dialog: null, bare: {}, restoring: {} });
 const set = (patch: Partial<ReturnType<typeof ui.get>>) => ui.set({ ...ui.get(), ...patch });
 /** Each visit opens on this month. */
 export const resetMoneyView = () => ui.set({ ...ui.get(), period: periodNow(), dialog: null });
@@ -59,9 +65,9 @@ export const openMoneyDialog = (dialog: MoneyDialog) => set({ dialog });
 export const setMoneyPeriod = (period: PeriodState) => set({ period });
 
 export function Head({ env, workspace, sector }: WorkViewProps) {
-  // Whether this job was bare when last read: a job known to have no money opens with no period to step through, never flashing one.
+  // The period is drawn only once the job is KNOWN to have money or something waiting: never before the first read lands, never on a job with none, never in a columns fault.
   const { period, bare: bareOf } = useShared(ui);
-  const bare = bareOf[workspace.id] === true;
+  const bare = bareOf[workspace.id] !== false;
   const unit = period.span;
   const addRows: MenuRow[] = [
     { kind: "item", id: "receipt", label: "Receipt…" },
@@ -143,15 +149,19 @@ export function View({ env, workspace }: WorkViewProps) {
   const picker = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const columns = read?.problems.find((p) => p.kind === "columns") ?? null;
-  const [restoreWaits, setRestoreWaits] = useState(false);
+  const { restoring } = useShared(ui);
+  const restoreWaits = restoring[workspace.id] === true;
+  const setRestoreWaits = (on: boolean) => set({ restoring: { ...ui.get().restoring, [workspace.id]: on } });
   // Once the headers are back (he accepted them), a later fault starts afresh.
   useEffect(() => {
-    if (read && !columns && restoreWaits) setRestoreWaits(false);
-  }, [read, columns, restoreWaits]);
+    if (read && !columns && ui.get().restoring[workspace.id]) set({ restoring: { ...ui.get().restoring, [workspace.id]: false } });
+  }, [read, columns, workspace.id]);
   const bare = read !== null && !columns && isEmpty(read);
+  // What the header may draw: known bare (no money, or a columns fault) or known to have money.
+  const headBare = read !== null && (bare || columns !== null);
   useEffect(() => {
-    if (read !== null && ui.get().bare[workspace.id] !== bare) set({ bare: { ...ui.get().bare, [workspace.id]: bare } });
-  }, [bare, read, workspace.id]);
+    if (read !== null && ui.get().bare[workspace.id] !== headBare) set({ bare: { ...ui.get().bare, [workspace.id]: headBare } });
+  }, [headBare, read, workspace.id]);
 
   // Add → Receipt…: the system's picker, for several at once.
   useEffect(() => {
@@ -178,7 +188,8 @@ export function View({ env, workspace }: WorkViewProps) {
       const target = event.target as Node | null;
       const mine = target === document.body || (target !== null && root.current?.contains(target));
       if (!mine || (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false]), [role=dialog]"))) return;
-      const files = Array.from(event.clipboardData?.files ?? []).filter(takesFile);
+      // The paste's whole list goes to the one intake, so a file Money leaves out is said, as for a drop or a pick.
+      const files = Array.from(event.clipboardData?.files ?? []);
       if (!files.length) return;
       event.preventDefault();
       receiveRef.current(files);
@@ -230,7 +241,10 @@ export function View({ env, workspace }: WorkViewProps) {
     <div ref={root} data-money-view className="flex h-full min-h-0 flex-col">
       {load.error ? <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} /> : null}
       {columns ? (
-        restoreWaits ? (
+        columns.renamed.length ? (
+          // His figures may sit under a header Money does not know: the fix is his, naming it back; Restore would add an empty column beside them.
+          <ProblemLine word="The ledger's columns changed" detail={renamedWords(columns.missing, columns.renamed)} action="Open ledger" onPress={() => openBook(env, workspace.id, "ledger")} />
+        ) : restoreWaits ? (
           // The headers wait as a suggestion in the sheet: the press is where he accepts them, not Restore again.
           <ProblemLine word="The ledger's columns changed" detail="Restored as a suggestion: accept it in the ledger" action="Open ledger" onPress={() => openBook(env, workspace.id, "ledger")} />
         ) : (
@@ -240,10 +254,8 @@ export function View({ env, workspace }: WorkViewProps) {
             action="Restore columns"
             onPress={() =>
               openBooks(env, workspace.id, true).then((books) => {
-                if (books.suggested) {
-                  setRestoreWaits(true);
-                  saySuggested(env, workspace.id, RESTORE_WORDS);
-                }
+                // Answered as a suggestion: the line says so and holds Open ledger; no toast says it twice.
+                if (books.suggested) setRestoreWaits(true);
                 return reload();
               })
             }
@@ -299,12 +311,16 @@ export function View({ env, workspace }: WorkViewProps) {
           onCreated={(kept, invoice) => {
             void reload();
             const title = invoiceTitle(invoice.kind, invoice.number);
-            // The PDF is kept either way; on a ledger others can open, its row waits there for his accept.
-            heard(env, workspace.id, kept.acted, `${title} is kept. Its row waits in the ledger for you to accept.`);
+            // One press, one toast: on a ledger others can open, the created toast carries the row's wait as its second line.
+            const waits = !!kept.acted && "suggested" in kept.acted && !!kept.acted.suggested;
+            if (kept.acted && "changed" in kept.acted) heard(env, workspace.id, kept.acted);
             const file = kept.source;
             const receipt = kept.receipt ?? `${title}.pdf`;
             void loadToast().then((toast) =>
-              toast(`${title} created`, file ? { action: { label: "Send…", onClick: () => sendInvoice(env, workspace.id, file, receipt, invoice.kind, invoice.number, formatMoney(invoiceTotal(invoice.lines))) } } : undefined),
+              toast(`${title} created`, {
+                ...(waits ? { description: INVOICE_WAITS } : {}),
+                ...(file ? { action: { label: "Send…", onClick: () => sendInvoice(env, workspace.id, file, receipt, invoice.kind, invoice.number, formatMoney(invoiceTotal(invoice.lines))) } } : {}),
+              }),
             );
           }}
         />
@@ -315,7 +331,14 @@ export function View({ env, workspace }: WorkViewProps) {
   );
 }
 
-const RESTORE_WORDS = "The columns wait in the ledger for you to accept.";
+/** The created toast's second line when the invoice's row waits as a suggestion. */
+export const INVOICE_WAITS = "Its row waits in the ledger for you to accept.";
+
+/** "No Out column. Spent may be it: name it back in the ledger.": what is gone, and where his figures likely are. */
+export function renamedWords(missing: readonly string[], renamed: readonly string[]): string {
+  const where = renamed.length === 1 ? renamed[0] : `${renamed.slice(0, -1).join(", ")} or ${renamed[renamed.length - 1]}`;
+  return `${missingWords(missing)}. ${where} may be it: name it back in the ledger.`;
+}
 
 /** The picker offers what Money files: the one list, as extensions. */
 const RECEIPT_ACCEPT = ["image/*", "application/pdf", ...RECEIPT_EXTS.map((e) => `.${e}`)].join(",");
@@ -539,9 +562,16 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
                   </span>
                   <span className="text-end text-xs text-muted-foreground tabular-nums">{sinceWords(r.since)}</span>
                   <span className="text-end tabular-nums">{formatMoney(r.amount)}</span>
-                  <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${words.lead}`}>
-                    <BusyLabel busy={paying === key} label="Paid" />
-                  </Button>
+                  {r.both ? (
+                    // One status covers both sides of this row: Paid here would settle the other too, so it is settled in the sheet.
+                    <Button variant="ghost" size="sm" className="justify-self-end" onClick={() => withToast(() => openBook(env, workspaceId, "ledger"))} aria-label={`Open ledger: ${words.lead}`}>
+                      Open ledger
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${words.lead}`}>
+                      <BusyLabel busy={paying === key} label="Paid" />
+                    </Button>
+                  )}
                 </li>
               );
             })}
@@ -585,15 +615,8 @@ function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: s
             <TableCell className="max-w-0 truncate">{row.who}</TableCell>
             <TableCell className="max-w-0 truncate text-muted-foreground">{row.category}</TableCell>
             <TableCell className="text-end">
-              {row.in && row.out ? (
-                // Money both ways: both figures, the In first.
-                <span className="inline-flex gap-2">
-                  <span>{`+${formatMoney(row.in)}`}</span>
-                  <span>{formatMoney(row.out)}</span>
-                </span>
-              ) : (
-                rowMoney(row)
-              )}
+              {/* One form for every row, the dialog's: a row with money both ways reads "+$30.00 and $20.00". */}
+              {rowMoney(row)}
             </TableCell>
             <TableCell className="last:pr-2 text-end">
               {row.receipt ? (

@@ -107,10 +107,22 @@ export function saySuggested(env: string, workspaceId: string, words: string = S
 
 /** A trip's answer: its pay row in the ledger and its row in the mileage log; one toast when either only waits as a suggestion. */
 export function heardTrip(env: string, workspaceId: string, tripped: MoneyTripped | null | undefined): void {
-  if (!tripped) return;
-  if (tripped.pay && "changed" in tripped.pay) return sayChanged();
-  const pay = !!tripped.pay && "suggested" in tripped.pay && !!tripped.pay.suggested;
-  if (pay || tripped.trip?.suggested) saySuggested(env, workspaceId, SUGGESTED_WORDS, pay ? "ledger" : "mileage");
+  heardTrips(env, workspaceId, [tripped]);
+}
+
+/** Several trips' answers (Add all), said once: the ledger changed, or one suggestion toast, the ledger winning over the mileage log. */
+export function heardTrips(env: string, workspaceId: string, answers: readonly (MoneyTripped | null | undefined)[]): void {
+  let changed = false;
+  let ledger = false;
+  let mileage = false;
+  for (const t of answers) {
+    if (!t) continue;
+    if (t.pay && "changed" in t.pay) changed = true;
+    else if (t.pay?.suggested) ledger = true;
+    if (t.trip?.suggested) mileage = true;
+  }
+  if (changed) return sayChanged();
+  if (ledger || mileage) saySuggested(env, workspaceId, SUGGESTED_WORDS, ledger ? "ledger" : "mileage");
 }
 
 /** Adds a row, or with `at` changes that one. True when it was written (or suggested); false when the ledger changed (the toast is said). */

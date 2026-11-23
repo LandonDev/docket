@@ -25,11 +25,12 @@ import { ALL_ROWS, BOTH_WAYS, EMPTY_READ, NOVEMBER, RECEIPT_SVG, readOf } from "
  * calendar's offers waiting (`confirm`), offers alone (`confirm-offers`), a file held
  * over the view (`drop`), each dialog (`dialog-*`, `picture-failed`), the header's
  * menus (`menu-add`, `menu-more`), a canvas item's More (`item-verb`) and a row
- * with money both ways, read only (`dialog-both-ways`).
+ * with money both ways, read only (`dialog-both-ways`); `columns` is a renamed
+ * header (Open ledger) and `columns-restore` headers simply gone (Restore columns).
  * Made-up data; rendered by nothing in the app.
  */
 
-type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb" | "picture-failed" | "confirm-offers" | "dialog-both-ways";
+type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb" | "picture-failed" | "confirm-offers" | "dialog-both-ways" | "columns-restore";
 let state: State = "month";
 let reads = 0;
 
@@ -62,8 +63,11 @@ function answer(period: Period): Promise<MoneyRead> {
     case "failed":
       return reads > 1 ? Promise.reject(new Error("The box did not answer in 10 seconds")) : Promise.resolve(readOf(period, paid));
     case "columns":
-      // The host reads no rows from a ledger missing a needed header: the line, and To confirm under it.
-      return Promise.resolve(readOf(period, [], { made: true, problems: [{ kind: "columns", missing: ["In", "Out"] }], toConfirm: [TO_CONFIRM[0]] }));
+      // The host reads no rows from a ledger missing a needed header. Here he renamed Out to Spent: the line names both, and the press is Open ledger.
+      return Promise.resolve(readOf(period, [], { made: true, problems: [{ kind: "columns", missing: ["Out"], renamed: ["Spent"] }], toConfirm: [TO_CONFIRM[0]] }));
+    case "columns-restore":
+      // The headers are simply gone, no cells stranded: Restore columns.
+      return Promise.resolve(readOf(period, [], { made: true, problems: [{ kind: "columns", missing: ["In", "Out"], renamed: [] }], toConfirm: [TO_CONFIRM[0]] }));
     case "confirm-offers":
       return Promise.resolve(readOf(period, paid, { calendar: CALENDAR }));
     case "picture-failed":
@@ -73,6 +77,8 @@ function answer(period: Period): Promise<MoneyRead> {
     case "dialog-trip":
       return Promise.resolve(readOf(period, paid, { toConfirm: TO_CONFIRM, calendar: CALENDAR }));
     case "owed":
+      // The row with money both ways, unpaid: on both sides of Owed, each with Open ledger in Paid's place.
+      return Promise.resolve(readOf(period, ALL_ROWS.map((r) => (r === BOTH_WAYS ? { ...r, status: "Unpaid" as const } : r))));
     case "dialog":
       return Promise.resolve(readOf(period));
     default:

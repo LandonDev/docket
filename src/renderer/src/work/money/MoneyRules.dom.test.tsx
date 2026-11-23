@@ -166,7 +166,7 @@ describe("a read belongs to its period", () => {
 
 describe("a ledger missing a header", () => {
   it("is the line over To confirm and nothing else", async () => {
-    host.read = (p) => readOf(p, [], { problems: [{ kind: "columns", missing: ["Date"] }], toConfirm: [waiting("a")] });
+    host.read = (p) => readOf(p, [], { problems: [{ kind: "columns", missing: ["Date"], renamed: [] }], toConfirm: [waiting("a")] });
     mount();
     await settle();
     expect(screen.getByText("No Date column")).toBeTruthy();

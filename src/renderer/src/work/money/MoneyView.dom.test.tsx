@@ -195,7 +195,7 @@ describe("the Money view", () => {
   });
 
   it("restores the ledger's columns on the problem's one press", async () => {
-    host.read = (p) => readOf(p, ALL_ROWS, { problems: [{ kind: "columns", missing: ["In", "Out"] }] });
+    host.read = (p) => readOf(p, ALL_ROWS, { problems: [{ kind: "columns", missing: ["In", "Out"], renamed: [] }] });
     host.answer = (method) => (method === "work.money.open" ? { ledger: {}, mileage: {} } : null);
     mount();
     await settle();
