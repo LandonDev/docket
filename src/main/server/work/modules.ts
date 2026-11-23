@@ -275,6 +275,8 @@ export interface WorkCtx {
     (t: Tell): void
     /** it is no longer true: the row goes, and a notice of it is withdrawn */
     done(key: string): void
+    /** of the rows whose key starts with `prefix`, only `keys` are still true: every other is done. For a caller that tells a set (the held items, the clashes) and may have missed one leaving. */
+    only(prefix: string, keys: readonly string[]): void
     /** this thread started on its own, not on his press: its done, failed and stuck wait for the digest */
     quiet(sessionId: string): void
   }

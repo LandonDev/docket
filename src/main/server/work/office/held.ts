@@ -201,6 +201,11 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       const verb = p.answer === 'accept' ? 'Accept' : 'Decline'
       return { summary: `${verb} ${p.subject}`, verb }
     },
+    // Too late once the event has begun.
+    by(p) {
+      const start = Date.parse((p.op === 'create' ? p.event.start : p.start) ?? '')
+      return Number.isFinite(start) ? start : null
+    },
     async execute(p, ctx) {
       const c = carrierHere(deps, p.host, ctx.host)
       if (p.op === 'create') {

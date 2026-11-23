@@ -206,6 +206,26 @@ describe('the same key', () => {
   })
 })
 
+describe('a set told by its keys', () => {
+  it('only: of the rows under a prefix, those no longer named are done, and no other row is touched', () => {
+    rig.digest.deliverer = rig.deliverer
+    const a = held({ key: 'held:host:a' })!
+    held({ key: 'held:host:b' })
+    held({ key: 'held:lifeos:outbox:c' })
+    held({ key: 'unsent:host:a' })
+    held()
+    rig.pushes.length = 0
+    rig.digest.only('held:host:', ['held:host:b', 'held:host:never-told'])
+    expect(rig.pushes).toEqual([{ push: 'work.digest', gone: a.id }])
+    expect(rig.digest.list().rows.map((r) => r.key ?? null).sort()).toEqual([null, 'held:host:b', 'held:lifeos:outbox:c', 'unsent:host:a'].sort())
+    // an empty prefix names no set: nothing goes
+    rig.digest.only('', [])
+    expect(rig.digest.list().rows).toHaveLength(4)
+    rig.digest.only('held:', [])
+    expect(rig.digest.list().rows.map((r) => r.key ?? null).sort()).toEqual([null, 'unsent:host:a'].sort())
+  })
+})
+
 describe('the day', () => {
   beforeEach(() => {
     rig.digest.deliverer = rig.deliverer
@@ -386,6 +406,7 @@ describe('ctx.tell is total', () => {
     const { tell } = tellPart(c, { db: broken, environmentId: 'env_box' } as unknown as WorkPartDeps)
     expect(() => tell({ kind: 'outbox.held', workspaceId: 'w', title: 'Held', key: 'k' })).not.toThrow()
     expect(() => tell.done('k')).not.toThrow()
+    expect(() => tell.only('held:', ['k'])).not.toThrow()
     expect(() => tell.quiet('s')).not.toThrow()
     expect(() => tell(null as never)).not.toThrow()
     expect(logs.filter((l) => l.startsWith('digest:')).length).toBeGreaterThan(0)
@@ -397,6 +418,7 @@ describe('ctx.tell is total', () => {
     const { tell } = tellPart(c, deps)
     expect(() => tell({ kind: 'x.y', workspaceId: null, title: 'T' })).not.toThrow()
     expect(() => tell.done('k')).not.toThrow()
+    expect(() => tell.only('held:', [])).not.toThrow()
     expect(() => tell.quiet('s')).not.toThrow()
     expect(digestOf(c)).toBeUndefined()
   })

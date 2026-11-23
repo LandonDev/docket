@@ -292,6 +292,9 @@ export class LifeosHeldItems implements LifeosHeld {
   loaded(): boolean {
     return !this.first.mail
   }
+  loadedTables(): { outbox: boolean; calendarOps: boolean } {
+    return { outbox: !this.first.mail, calendarOps: !this.first.calendar }
+  }
 
   async read(ref: LifeosRef): Promise<OutboxItem | null> {
     if (ref.table === 'calendarOps') {
@@ -579,6 +582,8 @@ export const calendarOpKind: ActKindDef<CalendarOpPayload, CalendarOpMatcher> = 
   matcher: CalendarOpMatcherSchema,
   words: calendarWords,
   matches: calendarGrantFits,
+  // Too late once the event has begun: the one it answers, or the one it makes.
+  by: (p) => p.eventStartsAt ?? p.payload?.startsAt ?? null,
   async execute(p, ctx) {
     const owner = ctx.lifeos.owner()
     const cause = ctx.decidedBy === 'owner' ? 'press' : 'grant'

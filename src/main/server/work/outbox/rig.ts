@@ -21,6 +21,7 @@ import type { AwayService } from '../../away'
 import { configureComputerHold } from '../../computer/run'
 import { openDb, Store } from '../../db'
 import type { Notifier } from '../../remote/notifier'
+import type { Tell } from '@shared/work/tell'
 import type { SessionRegistry } from '../../sessions'
 import { startWork, type Work } from '../ctx'
 import { lifeosSeamsFor } from '../lifeos/ctx'
@@ -230,6 +231,9 @@ export interface Rig {
   whispers: { sessionId: string; text: string }[]
   woke: { sessionId: string; text: string }[]
   notices: { sessionId: string; body: string; ref: unknown }[]
+  /** what the Outbox told through `ctx.tell`, and the keys it said are done */
+  tells: Tell[]
+  told: { done: string[] }
   logs: string[]
   away: { enabled: boolean }
   sessions: Map<string, SessionMeta>
@@ -284,6 +288,8 @@ export async function makeRig(opts: { modules?: WorkModule[]; reuse?: { dir: str
   const whispers: Rig['whispers'] = []
   const woke: Rig['woke'] = []
   const notices: Rig['notices'] = []
+  const tells: Tell[] = []
+  const told: Rig['told'] = { done: [] }
   const logs: string[] = []
   const pushes: WorkPush[] = []
   const cards: Rig['cards'] = []
@@ -340,6 +346,12 @@ export async function makeRig(opts: { modules?: WorkModule[]; reuse?: { dir: str
       lifeos.completed.push({ sessionId, reason })
     }
   }
+  // What the Outbox tells, in the context's place: the digest's ledger has its own tests.
+  work.ctx.tell = Object.assign((t: Tell) => void tells.push(t), {
+    done: (key: string) => void told.done.push(key),
+    only: () => {},
+    quiet: () => {}
+  })
   work.pushes.onPush((p) => void pushes.push(p))
   await addonHost.start()
   if (opts.enabled !== false) work.settings.set({ enabled: true })
@@ -365,6 +377,8 @@ export async function makeRig(opts: { modules?: WorkModule[]; reuse?: { dir: str
     whispers,
     woke,
     notices,
+    tells,
+    told,
     logs,
     away,
     sessions,

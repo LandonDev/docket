@@ -133,6 +133,10 @@ export class DigestStore {
   byKey(key: string): LedgerRow | null {
     return this.all('WHERE key = ?', key)[0] ?? null
   }
+  /** Every row whose key starts with `prefix`. */
+  byKeyPrefix(prefix: string): LedgerRow[] {
+    return this.all('WHERE key IS NOT NULL AND substr(key, 1, ?) = ?', prefix.length, prefix)
+  }
   byId(id: string): LedgerRow | null {
     return this.all('WHERE id = ?', id)[0] ?? null
   }

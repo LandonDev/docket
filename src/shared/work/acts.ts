@@ -132,4 +132,11 @@ export interface ActKindDefOf<P, M, C> {
   execute(p: P, ctx: C): Promise<ActResult>
   /** null: "Sent mail cannot be taken back" */
   wayBack?: (r: ActResult) => UndoSpec | null
+  /**
+   * The moment after which a press is too late (ms); null: it keeps. A held
+   * item whose `by` falls before the next digest interrupts, every other
+   * waits for it (docs/agents/work-digest.md). An invite or an answer says
+   * its event's start; no other kind has a clock.
+   */
+  by?(p: P): number | null
 }

@@ -36,6 +36,8 @@ export interface LifeosHeld {
   items(): OutboxItem[]
   /** Whether LifeOS has answered the watch of its held mail since the watch began: until then `items()` knows nothing. */
   loaded(): boolean
+  /** The same, a list each: its held mail and its calendar acts are watched apart. */
+  loadedTables?(): { outbox: boolean; calendarOps: boolean }
   /** One item read now from LifeOS; null when LifeOS no longer holds it. */
   read(ref: LifeosRef): Promise<OutboxItem | null>
   /** Delete the draft in LifeOS. */

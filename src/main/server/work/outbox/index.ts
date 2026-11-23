@@ -4,6 +4,7 @@ import type { OutboxItem, ToolRulesCard } from '@shared/contract-work-outbox'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { outboxHostOf, type OutboxHost } from './ctx'
+import { OUTBOX_TELLS } from './tells'
 import { ensureResults, resultsOf } from './results'
 import { rulesCard, setRules } from './rules'
 import { ensureEarnedTables } from './earned'
@@ -83,6 +84,7 @@ function hostOf(ctx: WorkCtx): OutboxHost {
 export const outbox: WorkModule = {
   id: 'outbox',
   mentions: outboxMentions,
+  tells: OUTBOX_TELLS,
   ensure(db) {
     ensureOutboxTables(db)
     // Offers are a shortcut: a fault in their tables never takes the Outbox down with it.

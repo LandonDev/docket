@@ -60,11 +60,13 @@ describe('a draft a Work thread made in LifeOS', () => {
     expect((mail.payload as MailSendPayload).message).toMatchObject({ subject: 'Re: budget', text: 'Attached.' })
     // the watcher asked LifeOS only for this host's drafts
     expect(rig.lifeos.watchers.find((w) => w.fn === 'outboxHeld:held')?.args).toEqual({ host: 'env_box' })
-    expect(rig.notices.filter((n) => (n.ref as { at: string }).at === 'lifeos')).toEqual([{ sessionId: 't-work', body: 'Held: Send to dana@purdue.edu: Re: budget', ref: mail.ref }])
+    const lifeosTells = () => rig.tells.filter((t) => t.key?.startsWith('held:lifeos:'))
+    expect(lifeosTells()).toEqual([{ kind: 'outbox.held', workspaceId: 'ws-purdue', title: 'Held: Send to dana@purdue.edu: Re: budget', key: `held:lifeos:outbox:${id}`, open: { held: mail.ref, thread: 't-work' } }])
+    expect(rig.notices).toEqual([])
     // firing again tells nobody twice
     rig.lifeos.fire()
     await settled()
-    expect(rig.notices.filter((n) => (n.ref as { at: string }).at === 'lifeos')).toHaveLength(1)
+    expect(lifeosTells()).toHaveLength(1)
     // nothing was sent by listing it
     expect(sends()).toEqual([])
   })

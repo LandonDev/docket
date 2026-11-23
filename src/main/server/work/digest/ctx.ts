@@ -205,6 +205,13 @@ export class Digest {
     this.o.push({ push: 'work.digest', gone: row.id })
   }
 
+  /** Of the rows whose key starts with `prefix`, only `keys` are still true: every other is done. */
+  only(prefix: string, keys: readonly string[]): void {
+    if (typeof prefix !== 'string' || !prefix) return
+    const keep = new Set(keys)
+    for (const row of this.store.byKeyPrefix(prefix)) if (row.key && !keep.has(row.key)) this.done(row.key)
+  }
+
   quiet(sessionId: string): void {
     if (typeof sessionId === 'string' && sessionId) this.store.quiet(sessionId, this.clock())
   }
@@ -338,6 +345,7 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
     quietly<Tell>('a tell was not kept', (d, t) => void d.tell(t)),
     {
       done: quietly<string>('a tell was not withdrawn', (d, key) => d.done(key)),
+      only: (prefix: string, keys: readonly string[]): void => quietly<readonly string[]>('tells were not withdrawn', (d, k) => d.only(prefix, k))(keys),
       quiet: quietly<string>('a quiet thread was not kept', (d, id) => d.quiet(id))
     }
   )

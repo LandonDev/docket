@@ -42,8 +42,10 @@ describe("a Work thread's add-on call", () => {
     const [item] = await rig.waiting()
     expect(item).toMatchObject({ kind: 'addon.call', state: 'held', why: 'unreviewed', workspaceId: 'ws-purdue', sessionId: 't-work', sector: 'purdue', n: 1, summary: 'Echo with Slack: “to the whole team”' })
     expect(item!.payload).toMatchObject({ addonId: slack.id, tool: 'echo', arguments: { text: 'to the whole team' } })
-    // the held notice says it in his words, never a raw tool name
-    expect(rig.notices).toEqual([{ sessionId: 't-work', body: 'Held: Echo with Slack: “to the whole team”', ref: item!.ref }])
+    // it is told in his words, never a raw tool name, through the one seam: no clock, so it waits for the digest
+    expect(rig.tells).toEqual([{ kind: 'outbox.held', workspaceId: 'ws-purdue', title: 'Held: Echo with Slack: “to the whole team”', key: `held:host:${(item!.ref as { id: string }).id}`, open: { held: item!.ref, thread: 't-work' } }])
+    // and the thread's notifier is no longer called for it
+    expect(rig.notices).toEqual([])
   })
 
   it('from the bridge (Codex, Muse) is held the same way, with no card first, in every permission mode', async () => {
@@ -128,8 +130,8 @@ describe("a Work thread's add-on call", () => {
     await new Promise((r) => setTimeout(r, 50))
     expect(rig.downstream).toEqual([])
     expect((await rig.waiting()).map((i) => i.state)).toEqual(['held', 'held'])
-    // the notice still goes: only he can press, wherever he is
-    expect(rig.notices).toHaveLength(2)
+    // each is still told: only he can press, wherever he is
+    expect(rig.tells).toHaveLength(2)
   })
 
   it('is still held with the Work switch off: the row decides, never the switch', async () => {
@@ -634,7 +636,7 @@ describe('a code thread, and the host with Work off', () => {
     expect(rig.downstream.map((d) => d.tool)).toEqual(['echo', 'echo', 'echo', 'read', 'echo'])
     expect(await rig.waiting()).toEqual([])
     expect(rig.host.store.list({ show: 'all' })).toEqual([])
-    expect(rig.notices).toEqual([])
+    expect(rig.tells).toEqual([])
     expect(rig.addonHost.verdict(tool.id, 'echo', { sessionId: 't-code' })).toBe('run')
   })
 

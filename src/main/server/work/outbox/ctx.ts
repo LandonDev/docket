@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { OutboxItem } from '@shared/contract-work-outbox'
-import { errorText, WORK_HOME, workspaceKindOf, type HeldItem, type LifeosOrigin } from '@shared/work'
+import { errorText, WORK_HOME, workspaceKindOf, type ActKind, type HeldItem, type LifeosOrigin } from '@shared/work'
 import { configureLifeosRow } from '../../addonStore'
 import { configureComputerHold, HELD_STALE, type HeldComputerCall } from '../../computer/run'
 import type { ComputerToolOutcome } from '../../computer/result'
@@ -15,7 +15,8 @@ import { EarnedStore } from './earned'
 import { Outbox } from './outbox'
 import { isLifeosSpec, type RuleAddons } from './rules'
 import { HeldStore, HELD_TABLE, LIVE_LOST } from './store'
-import { heldLine, heldNotice } from './words'
+import { heldKey, syncTells, tellHeld, type TellsDeps } from './tells'
+import { heldLine } from './words'
 
 /**
  * `ctx.held`, and the hold's wiring into the host (docs/agents/work-outbox.md).
@@ -62,6 +63,9 @@ export interface OutboxHost {
 }
 const hosts = new WeakMap<WorkCtx, OutboxHost>()
 export const outboxHostOf = (ctx: WorkCtx): OutboxHost | undefined => hosts.get(ctx)
+
+/** A burst of Outbox changes brings what it tells up to date once. */
+export const TELL_SYNC_MS = 250
 
 /** The run a thread acts for when this host cannot follow its line to the end: no routine has it, so no grant fits it. */
 export const ROUTINE_UNKNOWN = 'unknown-run'
@@ -111,12 +115,14 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
     ctx.log(`outbox: could not put right what a stop left: ${errorText(err)}`)
   }
 
+  // What the Outbox tells him goes through `ctx.tell` (tells.ts): the digest's rule decides whether a held item
+  // interrupts (it has a clock) or waits. The thread's notifier is no longer called from here.
+  const tells: TellsDeps = { ctx, kindOf: (kind) => kinds.get(kind as ActKind) ?? undefined, workspaces: () => facts.workspaces() }
   const notify = (item: OutboxItem): void => {
-    if (!item.sessionId || item.state !== 'held' && item.state !== 'live') return
     try {
-      deps.notifier?.()?.held(item.sessionId, heldNotice(item.summary), item.ref)
+      tellHeld(tells, item)
     } catch (err) {
-      ctx.log(`outbox: the held notice was not sent: ${errorText(err)}`)
+      ctx.log(`outbox: the held item was not told: ${errorText(err)}`)
     }
   }
   const outbox = new Outbox({
@@ -144,6 +150,24 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
     earned
   })
   outbox.seals.set('addon.call', sealAddonMatcher as never)
+  // An item that reached its end is no longer waiting: its row goes at once. Whatever else moved (a failed send, an
+  // offer, an item decided on another device) is brought up to date a moment later, once for a burst of changes.
+  outbox.onDecided((item) => {
+    if (item.state !== 'failed') ctx.tell.done(heldKey(item.ref))
+  })
+  let syncing: ReturnType<typeof setTimeout> | null = null
+  outbox.onChange(() => {
+    if (syncing) return
+    syncing = setTimeout(() => {
+      syncing = null
+      syncTells(tells, {
+        waiting: () => outbox.list({ show: 'waiting', limit: 500 }).items,
+        offers: () => outbox.offers(),
+        lifeosLoaded: () => outbox.lifeos?.loadedTables?.() ?? null
+      })
+    }, TELL_SYNC_MS)
+    syncing.unref?.()
+  })
 
   // ── the catch on every add-on call ──────────────────────────────────
   const addons: RuleAddons | null = deps.addons ?? null
