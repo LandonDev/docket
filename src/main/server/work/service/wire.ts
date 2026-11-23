@@ -37,7 +37,7 @@ export interface ServiceConfig {
   /** the internal routes' Unix socket (0660) and the secret every call carries */
   socketPath: string
   secret: string
-  /** the service's own folder: its journal and nothing else */
+  /** the service's own folder: its journal, and what agents propose over a .tcsheet (sheets/suggestions, kept out of the file) */
   dataDir: string
   /** out/hosted, served at /w/hosted/ */
   hostedDir: string

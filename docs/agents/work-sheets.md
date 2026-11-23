@@ -178,7 +178,7 @@ proposes:
 |---|---|---|
 | an opened .xlsx or .xlsm | `work_sheets_suggestions` under `file:<path>`, the mode and written line in `work_sheets_prefs` | no: the file and its folder stay byte for byte |
 | a workbook held by Excel, a Google sheet | `work_sheets_suggestions` under `excel:<key>`, `google:<fileId>` | no: nothing is sent to Excel or Google before his accept |
-| a `.tcsheet`, and the sheet a .csv opens as | one JSON file per path under `<dataDir>/sheets/suggestions/` on the host that serves it (`TcsheetBackend`'s `side`) | no: `suggestions.json` in the file is always empty, and one a file from before the rule carries is taken out the first time it is read |
+| a `.tcsheet`, and the sheet a .csv opens as | one JSON file per path in the Work service's own folder, `<userData>/work-service/sheets/suggestions/`, on the host that serves it (`TcsheetBackend`'s `side`) | no: `suggestions.json` in the file is always empty, and one a file from before the rule carries is taken out the first time it is read |
 | a LifeOS sheet | LifeOS's `sheetSuggestionCells` rows | not the live sheet: a suggestion is no op, so the live socket sends a guest nothing and the workbook a guest loads has none of it. The rows are in his LifeOS, the store that holds the sheet itself |
 
 `work.sheets.review` and `work.sheets.mode` are his press: a thread's call
