@@ -278,6 +278,15 @@ export const workOpenPort = {
   },
 };
 
+/** How a page of Work's moves the window to a workspace as its rail row does (App registers it): Today's rows open their thing in its own job. */
+let enterPort: ((path: string) => void) | null = null;
+export const workEnterPort = {
+  get: () => enterPort,
+  set(next: ((path: string) => void) | null): void {
+    enterPort = next;
+  },
+};
+
 /** What the day's digest notice opens (work/digest): Today registers its page here; unset, the notice opens the digest's own list. */
 let digestOpens: (() => void) | null = null;
 export const digestOpensPort = {

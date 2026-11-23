@@ -291,6 +291,16 @@ describe('the JWT for a screen', () => {
     expect(fake.jwts.at(-1)?.sectors).toEqual(['purdue'])
     expect(await work.ctx.lifeos.jwt()).not.toBe(a.ok ? a.jwt : '')
   })
+
+  it('with no sector answers a JWT of the whole device session, asked of LifeOS with no sectors named (Today reads every job through it)', async () => {
+    await signedIn()
+    const whole = await call<LifeosJwtAnswer>('work.lifeos.jwt', {}, approveKey)
+    expect(whole.ok).toBe(true)
+    // LifeOS narrows a JWT only to sectors named in the trade (auth:token): none named, it carries the session's own, which is every sector unless the session was made narrower.
+    expect(fake.jwts.find((j) => whole.ok && j.jwt === whole.jwt)).toEqual({ jwt: whole.ok ? whole.jwt : '' })
+    const narrow = await call<LifeosJwtAnswer>('work.lifeos.jwt', { sector: 'ref' }, approveKey)
+    expect(narrow.ok && whole.ok && narrow.jwt !== whole.jwt).toBe(true)
+  })
 })
 
 describe('sector keys', () => {

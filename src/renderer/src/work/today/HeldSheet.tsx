@@ -11,7 +11,7 @@ import { WORK_CHATS_KEY } from "../outbox/model";
 import { HeldDetail, rememberOutboxTab } from "../outbox/OutboxView";
 import { outboxNow, useOutbox, type HostItem } from "../outbox/store";
 import { heldKey } from "./held";
-import { openHeld, todayNow, useTodayState } from "./store";
+import { leave, openHeld, todayNow, useTodayState } from "./store";
 
 /**
  * A held item whole, over Today (docs/DESIGN.md "Today"): a sheet from the
@@ -100,6 +100,8 @@ export function HeldSheetBody({ item, at, count, workspace, host, close }: { ite
  */
 function afterPress(item: HostItem): void {
   const key = heldKey(item);
+  // The row leaves by his own act: it fades and the rows under it glide up, whenever the host's list drops it.
+  leave(key);
   if (todayNow().held !== key) return;
   const waiting = outboxNow().waiting;
   const at = waiting.findIndex((x) => heldKey(x) === key);

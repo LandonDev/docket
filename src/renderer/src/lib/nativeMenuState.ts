@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 // From the state's own module: a value import of the menu tree would put every row of it in the first paint.
-import { EMPTY_MENU_STATE, sameMenuState, type MenuState } from "@shared/menuState";
+import { EMPTY_MENU_STATE, sameMenuState, WORK_ONLY_IDS, type MenuState } from "@shared/menuState";
 import { shellStore } from "../stores/shell";
 import { editorHeld, workCommands } from "./appCommands";
 import { awayEnabled, awayStore } from "./away";
@@ -41,7 +41,7 @@ export type MenuFacts = {
   /** This machine's Away is on (lib/away.ts). */
   away: boolean;
   workFile: boolean;
-  /** Some host has Work on: Search Work… has somewhere to look, and the digest a list to open. */
+  /** Some host has Work on: Search Work… has somewhere to look, the digest a list to open, and Work's own rows (Go → Today) are drawn. */
   workOn?: boolean;
   /** A Work editor on screen answers Print… and Export… (lib/appCommands.ts `workCommands`). */
   print?: boolean;
@@ -75,7 +75,8 @@ export function menuStateOf(f: MenuFacts): MenuState {
   for (const action of Object.keys(FLEET_IDS) as BatchAction[]) {
     if (f.counts[action] === 0) disabled.push(FLEET_IDS[action]);
   }
-  return { open, disabled, checked: { toggle_away: f.away }, ...(f.editing?.length ? { editing: f.editing } : {}) };
+  // Work's own rows (Go → Today) are drawn only while some host has Work on.
+  return { open, disabled, checked: { toggle_away: f.away }, ...(f.editing?.length ? { editing: f.editing } : {}), ...(f.workOn ? {} : { hidden: [...WORK_ONLY_IDS] }) };
 }
 
 const EVERYWHERE = { kind: "all" } as const;

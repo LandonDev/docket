@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { DUR } from "../../lib/ease";
 import { NO_FOLDS, type Fed, type Folds } from "./model";
 import { TODAY_SOURCES } from "./sources";
 import type { TodayAnswer, TodaySource } from "./types";
@@ -20,9 +21,16 @@ export type TodayState = {
   folds: Folds;
   /** The key of the held row whose sheet is open. */
   held: string | null;
+  /** Rows on their way out by his own act (a tick, Tomorrow, Dismiss, a Send from the sheet): still drawn, fading. */
+  leaving: ReadonlySet<string>;
+  /** Rows that have faded: their place closes, so the rows under them glide up. */
+  closing: ReadonlySet<string>;
+  /** Rows his act took off the page, until the source that made them stops giving them. */
+  gone: ReadonlySet<string>;
 };
 
-let state: TodayState = { sources: [], answers: new Map(), folds: NO_FOLDS, held: null };
+const NONE: ReadonlySet<string> = new Set();
+let state: TodayState = { sources: [], answers: new Map(), folds: NO_FOLDS, held: null, leaving: NONE, closing: NONE, gone: NONE };
 let scrollTop = 0;
 const listeners = new Set<() => void>();
 
@@ -88,10 +96,66 @@ export function dropSource(id: string, error: unknown): void {
   set({ sources: state.sources.filter((s) => s.id !== id), answers });
 }
 
-/** What a source answers now. The same answer again wakes no one. */
+/** What each source last handed over, as it handed it: the same answer again wakes no one. */
+const handed = new Map<string, TodayAnswer>();
+
+/**
+ * What a source answers now. One that is still to answer (`loading`, no
+ * rows) keeps the rows, marks and note it had, so a reopen paints what was
+ * there and the live read corrects it. A row his act took off is forgotten
+ * once no source gives it, so the same thing may show again another day.
+ */
 export function putAnswer(id: string, answer: TodayAnswer): void {
-  if (state.answers.get(id) === answer) return;
-  set({ answers: new Map(state.answers).set(id, answer) });
+  if (handed.get(id) === answer) return;
+  handed.set(id, answer);
+  const had = state.answers.get(id);
+  const kept: TodayAnswer = answer.loading && answer.rows === undefined && had?.rows ? { ...answer, rows: had.rows, ...(had.marks ? { marks: had.marks } : {}), ...(had.note ? { note: had.note } : {}) } : answer;
+  const answers = new Map(state.answers).set(id, kept);
+  set({ answers, ...(state.gone.size ? { gone: stillGiven(state.gone, answers) } : {}) });
+}
+
+function stillGiven(gone: ReadonlySet<string>, answers: ReadonlyMap<string, TodayAnswer>): ReadonlySet<string> {
+  const given = new Set<string>();
+  for (const answer of answers.values()) for (const row of answer.rows ?? []) given.add(row.key);
+  const still = [...gone].filter((key) => given.has(key));
+  return still.length === gone.size ? gone : new Set(still);
+}
+
+// ── a row that leaves by his own act ───────────────────────────────────────
+
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+const without = (set: ReadonlySet<string>, key: string): ReadonlySet<string> => {
+  if (!set.has(key)) return set;
+  const next = new Set(set);
+  next.delete(key);
+  return next;
+};
+
+/**
+ * His act took a row off the page (docs/DESIGN.md "Today", a row that
+ * leaves): it fades over `--dur-fast` where it stands, then its place
+ * closes over `--dur-base` as the rows under it glide up, then it is gone.
+ * The source need not wait for LifeOS or the host to drop it.
+ */
+export function leave(key: string): void {
+  if (state.leaving.has(key) || state.closing.has(key) || state.gone.has(key)) return;
+  set({ leaving: new Set(state.leaving).add(key) });
+  const step = (after: number, run: () => void): void => void timers.set(key, setTimeout(run, after));
+  step(DUR.fast * 1000, () => {
+    set({ leaving: without(state.leaving, key), closing: new Set(state.closing).add(key) });
+    step(DUR.base * 1000, () => {
+      timers.delete(key);
+      set({ closing: without(state.closing, key), gone: new Set(state.gone).add(key) });
+    });
+  });
+}
+
+/** The act failed or he undid it: the row is back as it was. */
+export function comeBack(key: string): void {
+  clearTimeout(timers.get(key));
+  timers.delete(key);
+  if (!state.leaving.has(key) && !state.closing.has(key) && !state.gone.has(key)) return;
+  set({ leaving: without(state.leaving, key), closing: without(state.closing, key), gone: without(state.gone, key) });
 }
 
 // ── what he did to the page ────────────────────────────────────────────────
@@ -112,9 +176,16 @@ export function keepScroll(top: number): void {
   scrollTop = top;
 }
 
+/** What else a reset stops (the root that keeps the sources warm: warm.tsx registers it, since it imports this file). */
+export const resetHooks = new Set<() => void>();
+
 /** Test and preview seam: the page with these sources in place of the registry's, or as the window first has it. */
 export function resetToday(sources?: readonly TodaySource[]): void {
+  for (const hook of resetHooks) hook();
   loading = sources ? Promise.resolve() : null;
   scrollTop = 0;
-  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), answers: new Map(), folds: NO_FOLDS, held: null });
+  handed.clear();
+  for (const timer of timers.values()) clearTimeout(timer);
+  timers.clear();
+  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), answers: new Map(), folds: NO_FOLDS, held: null, leaving: NONE, closing: NONE, gone: NONE });
 }

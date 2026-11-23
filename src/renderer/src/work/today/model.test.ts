@@ -62,6 +62,17 @@ describe("merge", () => {
     expect(sections[1]!.rows.map((r) => r.key)).toEqual(["review:w47"]);
   });
 
+  it("a section with no empty line is drawn only while it has a row or a host that did not answer: no bones, no bare heading", () => {
+    const OWED: TodaySection = { id: "money", title: "Owed", order: 60, empty: "" };
+    const ids = (answer: TodayAnswer) => merge([fed("held", HELD, {}), fed("money", OWED, answer)]).map((s) => s.def.id);
+    expect(ids({})).toEqual(["held"]);
+    expect(ids({ loading: true })).toEqual(["held"]);
+    expect(ids({ rows: [row("money:1", "money")] })).toEqual(["held", "money"]);
+    expect(ids({ failed: [{ environmentId: "mac", error: "timed out" }] })).toEqual(["held", "money"]);
+    // With nothing owed and nothing else anywhere, the page is still all clear.
+    expect(page([fed("held", HELD, {}), fed("money", OWED, {})], { jobs: [job("box", "purdue")], lifeos: "ok" })).toEqual({ kind: "clear" });
+  });
+
   it("a section is loading, failed and noted by the source that owns it, never by one that only adds rows", () => {
     const retry = vi.fn();
     const [held, meetings] = merge([

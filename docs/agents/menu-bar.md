@@ -5,7 +5,9 @@ the in-app bar and the tests: TempCode, File, Edit, View (Show/Hide
 Message List, ⌘⇧M, folds the transcript's message list in every thread of
 the window, lib/messageListFold.ts; Force Reload,
 keyless, reloads the focused window past its cache from main), Go
-(navigation), Threads (Switch Model, Mark All Read, the fleet switches),
+(navigation; Today, ⇧⌘T, is Work's own row: `workOnly`, drawn only while
+some host has Work on, since a window with none names it in
+`MenuState.hidden` and `resolveMenu` then leaves the row and its key out), Threads (Switch Model, Mark All Read, the fleet switches),
 Window and Help (What's New opens the running build's notes, Show Logs opens
 `<userData>/logs`, the host profile, Developer Tools). Ids
 are command ids of lib/appCommands.ts; `MAIN_MENU_IDS` act in main. Each

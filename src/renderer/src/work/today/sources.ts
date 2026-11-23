@@ -10,6 +10,9 @@ import type { TodaySource } from "./types";
  */
 export const TODAY_SOURCES: { id: string; load: () => Promise<{ source: TodaySource }> }[] = [
   { id: "held", load: () => import("./held") },
+  { id: "meetings", load: () => import("./meetings") },
+  { id: "due", load: () => import("./due") },
+  { id: "waiting", load: () => import("./waiting") },
   { id: "messages", load: () => import("../messages/today") },
   { id: "clashes", load: () => import("../clashes/today") },
   { id: "money", load: () => import("../money/today") },
@@ -17,5 +20,5 @@ export const TODAY_SOURCES: { id: string; load: () => Promise<{ source: TodaySou
   { id: "prep", load: () => import("../prep/today") },
   // What only the digest is told (a routine's result, a sign-in about to end, a guest's edit): rows in `also`.
   { id: "digest", load: () => import("../digest/today") },
-  // one line per pillar that adds to Today: { id: 'clashes', load: () => import('../clashes/today') }
+  // one line per pillar that adds to Today, after Today's own
 ];

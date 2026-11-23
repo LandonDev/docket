@@ -5,4 +5,8 @@
  * chunk of its own (registry.ts). Nothing here is in the first paint.
  */
 export { WorkPlacePage } from "./WorkPlacePage";
-export { warmPlace, WORK_PLACES, type WorkPlaceModule, type WorkPlaceProps } from "./registry";
+import { watchDayStart } from "./registry";
+
+export { placeForDayStart, warmPlace, WORK_PLACES, type WorkPlaceModule, type WorkPlaceProps } from "./registry";
+
+watchDayStart();

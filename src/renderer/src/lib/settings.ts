@@ -294,6 +294,7 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
     // Work search (work/search), then the canvas pane's selection bar (work/canvas/SelectionBar.tsx): Ask puts the selection in the thread's composer.
     title: "Work",
     bindings: [
+      { name: "Today", keys: [[CMD, SHF, "T"]] },
       { name: "Search Work", keys: [[CMD, SHF, "K"]] },
       { name: "This Job or All Jobs", keys: [[CMD, SHF, "K"]], scope: "work-search" },
       { name: "Open Result", keys: [[RET]], scope: "work-search" },

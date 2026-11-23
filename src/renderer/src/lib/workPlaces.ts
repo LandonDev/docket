@@ -1,6 +1,8 @@
-import { Layers, type IconComponent } from "../chrome/icons";
+import { Layers, Sun, type IconComponent } from "../chrome/icons";
 import { workPlacesChunk } from "../surfaces/chunks";
+import { shell } from "../stores/shell";
 import { whenIdle } from "./hoverPrefetch";
+import { digestOpensPort } from "./workSwitch";
 
 /**
  * The pages above the Work workspaces (docs/agents/work-today.md "The place
@@ -21,7 +23,14 @@ export type WorkPlaceRow = {
   key?: string;
 };
 
-export const WORK_PLACE_ROWS: WorkPlaceRow[] = [{ id: "review", label: "Review", order: 20, icon: Layers }];
+export const WORK_PLACE_ROWS: WorkPlaceRow[] = [
+  // Today: one page across every job (work/today). No count on its row: the Outbox's is beside it.
+  { id: "today", label: "Today", order: 10, icon: Sun, key: "mod+shift+T" },
+  { id: "review", label: "Review", order: 20, icon: Layers },
+];
+
+// The day's digest notice opens Today (work/digest reads the port); set here, so it holds before Today's chunk has loaded.
+digestOpensPort.set(() => shell.openWorkPlace("today"));
 
 /** The rows in the rail's order. */
 export const workPlaceRows = (): WorkPlaceRow[] => [...WORK_PLACE_ROWS].sort((a, b) => a.order - b.order);
@@ -43,9 +52,12 @@ export function warmWorkPlace(id: string, why: "intent" | "idle"): void {
   );
 }
 
-/** Once Work is on: each listed place warmed in an idle slot, so its first open paints rows. A window with no row asks for nothing. */
+/**
+ * Once Work is on: the places' chunk loaded and each listed place warmed in
+ * an idle slot, so its first open paints rows. The chunk brings the rest of
+ * what a place does by itself (a place set to open at the day's start).
+ */
 export function warmWorkPlacesAtIdle(): void {
-  if (WORK_PLACE_ROWS.length === 0) return;
   whenIdle(() => {
     for (const row of WORK_PLACE_ROWS) warmWorkPlace(row.id, "idle");
   });

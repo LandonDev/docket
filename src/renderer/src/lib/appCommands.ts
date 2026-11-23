@@ -51,6 +51,7 @@ import { chordKey, ctrlOnly, macCommand, modOrCtrl } from "./keys";
 import { insideMonaco, isEditorChord } from "./editorKeys";
 import { tabCommand, type TabCommand } from "./tabKeys";
 import { filesPort, type FilesCommand } from "./filesKeys";
+import { workSwitch } from "./workSwitch";
 
 export const APP_COMMANDS = [
   "new_tab",
@@ -82,6 +83,7 @@ export const APP_COMMANDS = [
   "search_work",
   "open_inbox",
   "open_computers",
+  "open_today",
   "open_notes",
   "open_digest",
   "open_settings",
@@ -390,6 +392,8 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
       if (key === "m") return { id: "toggle_message_list" };
       // Work search (lib/workSearchPort.ts). In a code editor the key stays the editor's delete-line.
       if (key === "k") return within(target, CODEMIRROR) || insideMonaco(target) ? null : { id: "search_work" };
+      // Today, the page above the Work workspaces: the key is Work's, and does nothing while Work is off.
+      if (key === "t" && workSwitch.anyOn()) return { id: "open_today" };
       if (key === "e" && workCommands.has("export")) return { id: "export" };
       return null;
     }

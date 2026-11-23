@@ -1,23 +1,24 @@
-import { Component, memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
+import { useRovingList } from "../../hooks/useRovingList";
 import { useEnvironments } from "../../lib/connection";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkPlaceProps } from "../places/registry";
 import { sectorName } from "../shell/actions";
-import { reopenLifeos } from "../shell/lifeos";
 import { openConnections } from "../shell/open";
 import { useMinute } from "../tasks/minute";
 import { useTodayEnv } from "./env";
 import { HeldSheet } from "./HeldSheet";
 import { page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";
-import { dropSource, fedOf, keepScroll, putAnswer, scrollOfToday, unfold, useTodayState } from "./store";
-import { ROW_GRID, TITLE_EDGE, TodayRowView } from "./TodayRow";
-import type { TodayEnv, TodayFailure, TodaySource } from "./types";
+import { fedOf, keepScroll, scrollOfToday, unfold, useTodayState } from "./store";
+import { ROW_GRID, ROW_SLOT, TITLE_EDGE, TodayRowSlot, type RowPhase } from "./TodayRow";
+import type { TodayFailure } from "./types";
+import { noteOpened, pageOpen, SourceRuns } from "./warm";
 
 /**
  * Today (docs/DESIGN.md "Today", docs/agents/work-today.md): one column
@@ -37,72 +38,112 @@ export function Head(_props: WorkPlaceProps) {
 }
 
 export function View(_props: WorkPlaceProps) {
-  const { env, reach, lifeosHost } = useTodayEnv();
+  const { env, reach, retryLifeos } = useTodayEnv();
   const state = useTodayState();
   const environments = useEnvironments();
-  const model = useMemo(() => page(fedOf(state), { jobs: env.workspaces, lifeos: reach, folds: state.folds }), [state, env.workspaces, reach]);
+  const model = useMemo(() => page(fedOf(state), { jobs: env.workspaces, lifeos: reach, folds: state.folds, gone: state.gone }), [state, env.workspaces, reach]);
   const hostName = (id: string): string => environments.find((e) => e.id === id)?.name ?? "A host";
-  // He comes back to where he was: the scroll is kept with the folds.
+  // He comes back to where he was: the scroll is kept with the folds. The scroller keeps its strip, so the column
+  // does not move when the list first overflows or a sheet takes the pointer.
   const scroller = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollTop = scrollOfToday();
   }, []);
+  // While it is open the page runs its sources itself; closed, they run on for ten minutes (warm.tsx).
+  useLayoutEffect(() => {
+    pageOpen(true);
+    noteOpened();
+    return () => pageOpen(false);
+  }, []);
   return (
-    <div ref={scroller} data-today onScroll={(event) => keepScroll(event.currentTarget.scrollTop)} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-      {state.sources.map(({ id, source }) => (
-        <SourceBoundary key={id} id={id}>
-          <SourceRun source={source} env={env} />
-        </SourceBoundary>
-      ))}
-      <TodayPageView model={model} hostName={hostName} hasFiles={state.sources.some((s) => s.source.section?.id === "files")} onRetryLifeos={lifeosHost ? () => reopenLifeos(lifeosHost, null) : undefined} />
+    <div ref={scroller} data-today onScroll={(event) => keepScroll(event.currentTarget.scrollTop)} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
+      <SourceRuns env={env} />
+      <TodayPageView
+        model={model}
+        hostName={hostName}
+        hasFiles={state.sources.some((s) => s.source.section?.id === "files")}
+        onRetryLifeos={retryLifeos}
+        leaving={state.leaving}
+        closing={state.closing}
+        landsOnOpen
+      />
       <HeldSheet />
     </div>
   );
 }
 
-/** One source, run as a hook of its own component, so one that throws takes only itself out. */
-const SourceRun = memo(function SourceRun({ source, env }: { source: TodaySource; env: TodayEnv }) {
-  // `use` is a hook under a method's name: the compiler must not cache the call as a plain one.
-  "use no memo";
-  const answer = source.use(env);
-  // Before paint: the rows a source has at mount are in the first frame.
-  useLayoutEffect(() => putAnswer(source.id, answer), [source.id, answer]);
-  return null;
-});
+const NO_KEYS: ReadonlySet<string> = new Set();
 
-class SourceBoundary extends Component<{ id: string; children: ReactNode }, { failed: boolean }> {
-  override state = { failed: false };
-  static getDerivedStateFromError(): { failed: boolean } {
-    return { failed: true };
-  }
-  override componentDidCatch(error: unknown): void {
-    dropSource(this.props.id, error);
-  }
-  override render(): ReactNode {
-    return this.state.failed ? null : this.props.children;
-  }
-}
-
-/** The page drawn from its model: the preview and the tests hand it one. */
+/**
+ * The page drawn from its model: the preview and the tests hand it one.
+ * Every row on it is one list to the keyboard, in page order: one tab stop,
+ * ↑ ↓ Home End move, Enter opens the row, Space ticks a task. When the page
+ * opens, focus lands on its first row.
+ */
 export function TodayPageView({
   model,
   hostName,
   hasFiles = false,
   onRetryLifeos,
+  leaving = NO_KEYS,
+  closing = NO_KEYS,
+  landsOnOpen = false,
 }: {
   model: TodayPage;
   hostName: (environmentId: string) => string;
   /** The Files section is on the page, so an offline host's line names its files too. */
   hasFiles?: boolean;
-  onRetryLifeos?: () => void | Promise<void>;
+  onRetryLifeos?: (() => void | Promise<void>) | undefined;
+  /** Rows on their way out by his own act: fading, then their place closing. */
+  leaving?: ReadonlySet<string>;
+  closing?: ReadonlySet<string>;
+  /** Focus lands on the first row when the page first has one. */
+  landsOnOpen?: boolean;
 }) {
+  const shown = model.kind === "day" ? model.keys : NONE;
+  // A row on its way out is no longer one the arrows stop on.
+  const keys = useMemo(() => (leaving.size || closing.size ? shown.filter((key) => !leaving.has(key) && !closing.has(key)) : shown), [shown, leaving, closing]);
+  const [focused, setFocused] = useState<string | null>(null);
+  const roving = useRovingList<HTMLDivElement>({ keys, selected: focused, onSelect: setFocused });
+  const stop = focused !== null && keys.includes(focused) ? focused : (keys[0] ?? null);
+  const focusRow = (key: string): void => roving.listRef.current?.querySelector<HTMLElement>(`[data-roving-key="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
+  // The page opened: focus lands on the first row, once, unless he is already somewhere in it.
+  const landed = useRef(!landsOnOpen);
+  const first = keys[0];
+  useEffect(() => {
+    if (landed.current || first === undefined) return;
+    landed.current = true;
+    const at = document.activeElement;
+    if (!at || at === document.body || !roving.listRef.current?.contains(at)) focusRow(first);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the first row is there
+  }, [first]);
+  // The row the arrows were on left by his own act: the row that takes its place takes the focus it dropped.
+  const order = useRef(shown);
+  useEffect(() => {
+    const before = order.current;
+    order.current = shown;
+    if (focused === null || keys.includes(focused)) return;
+    const next = [...before.slice(before.indexOf(focused) + 1), ...before.slice(0, Math.max(0, before.indexOf(focused))).reverse()].find((key) => keys.includes(key)) ?? keys[0] ?? null;
+    setFocused(next);
+    const at = document.activeElement;
+    if (next && (!at || at === document.body)) focusRow(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- when the rows change under the focus
+  }, [keys]);
   if (model.kind === "no-jobs") return <EmptyState title="No jobs yet" line="Add a Work workspace to see its day here." action={{ label: "Add workspace", onClick: openAddWorkspace }} />;
   if (model.kind === "clear") return <EmptyState title="All clear" line="Nothing needs you today." />;
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if ((event.target as HTMLElement).hasAttribute("data-row-open")) roving.onRowKeyDown(event);
+  };
+  const onFocus = (event: FocusEvent<HTMLDivElement>): void => {
+    const key = (event.target as HTMLElement).closest("[data-today-row]")?.getAttribute("data-today-row");
+    if (key && key !== focused) setFocused(key);
+  };
+  const phaseOf = (key: string): RowPhase => (closing.has(key) ? "closing" : leaving.has(key) ? "leaving" : undefined);
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
+    <div ref={roving.listRef} onKeyDown={onKeyDown} onFocus={onFocus} className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
       {model.blocks.map((block) =>
         block.kind === "section" ? (
-          <Section key={block.section.id} section={block.section} hostName={hostName} />
+          <Section key={block.section.id} section={block.section} hostName={hostName} phaseOf={phaseOf} stop={stop} />
         ) : (
           <div key="lifeos" data-today-lifeos={block.reach} className="mt-6 first:mt-0">
             {block.reach === "signed-out" ? (
@@ -126,7 +167,18 @@ export function TodayPageView({
   );
 }
 
-function Section({ section, hostName }: { section: ShownSection; hostName: (environmentId: string) => string }) {
+const NONE: string[] = [];
+
+function Section({ section, hostName, phaseOf, stop }: { section: ShownSection; hostName: (environmentId: string) => string; phaseOf: (key: string) => RowPhase; stop: string | null }) {
+  // The rows the list began with, and those his own unfold showed, stand at once; one that arrives while he looks lands.
+  // A box of the section's own, read and written while it renders.
+  "use no memo";
+  const [known] = useState<{ keys: Set<string> | null; folded: number }>(() => ({ keys: null, folded: 0 }));
+  const folded = section.more + section.earlier;
+  if (section.state !== "rows") known.keys = null;
+  else if (known.keys === null || folded < known.folded) known.keys = new Set(section.rows.map((row) => row.key));
+  known.folded = folded;
+  const lands = (key: string): boolean => known.keys !== null && !known.keys.has(key);
   // A host that did not answer is said, and the section never says "nothing" beside it.
   const unknown = section.failed.length > 0 && section.state !== "rows";
   return (
@@ -140,10 +192,11 @@ function Section({ section, hostName }: { section: ShownSection; hostName: (envi
       ) : section.state === "empty" ? (
         unknown || !section.empty ? null : <p className={cn("flex h-8 items-center pe-3 text-[13px] text-muted-foreground", TITLE_EDGE)}>{section.empty}</p>
       ) : (
-        <div role="list" className="flex flex-col gap-0.5">
+        // Each row carries the 2px under it, and the list gives the last one's back.
+        <div role="list" className="-mb-0.5 flex flex-col">
           {section.earlier > 0 ? <FoldLine label={`${section.earlier} earlier`} onOpen={() => unfold("earlier", section.id)} /> : null}
           {section.rows.map((row) => (
-            <TodayRowView key={row.key} row={row} job={row.sector ? sectorName(row.sector) : null} />
+            <TodayRowSlot key={row.key} row={row} job={row.sector ? sectorName(row.sector) : null} phase={phaseOf(row.key)} lands={lands(row.key)} current={row.key === stop} />
           ))}
           {section.more > 0 ? <FoldLine label={`${section.more} more`} onOpen={() => unfold("more", section.id)} /> : null}
         </div>
@@ -156,18 +209,20 @@ function Section({ section, hostName }: { section: ShownSection; hostName: (envi
 /** "4 more", "2 earlier": one muted line on the titles' edge that unfolds its rows in place. */
 function FoldLine({ label, onOpen }: { label: string; onOpen: () => void }) {
   return (
-    <ItemButton size="xs" aria-expanded={false} onClick={onOpen} className={cn("h-7 rounded-md border-0 py-0 pe-3 text-xs text-muted-foreground transition-none hover:bg-foreground/5 hover:text-foreground", TITLE_EDGE)}>
-      {label}
-    </ItemButton>
+    <div className={ROW_SLOT}>
+      <ItemButton size="xs" aria-expanded={false} onClick={onOpen} className={cn("h-7 rounded-md border-0 py-0 pe-3 text-xs text-muted-foreground transition-none hover:bg-foreground/5 hover:text-foreground", TITLE_EDGE)}>
+        {label}
+      </ItemButton>
+    </div>
   );
 }
 
 /** A section that has never answered: three rows in the shape of what is coming. */
 function Bones({ label }: { label: string }) {
   return (
-    <div role="status" aria-label={`Loading ${label}`} aria-busy className="flex flex-col gap-0.5">
+    <div role="status" aria-label={`Loading ${label}`} aria-busy className="-mb-0.5 flex flex-col">
       {["w-1/2", "w-2/5", "w-3/5"].map((width) => (
-        <div key={width} className={cn("min-h-8 items-center px-3 py-1.5", ROW_GRID)}>
+        <div key={width} className={cn("mb-0.5 min-h-8 items-center px-3 py-1.5", ROW_GRID)}>
           <span />
           <Skeleton className={cn("h-3.5", width)} />
           <Skeleton className="h-3 w-14" />

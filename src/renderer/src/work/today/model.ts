@@ -47,6 +47,8 @@ export function offlineHosts(jobs: readonly TodayWorkspace[]): string[] {
   return [...new Set(jobs.filter((w) => !w.open).map((w) => w.environmentId))];
 }
 
+const NO_KEYS: ReadonlySet<string> = new Set();
+
 /** One source and what it last answered. */
 export type Fed = { source: Pick<TodaySource, "id" | "section">; answer: TodayAnswer };
 
@@ -86,7 +88,7 @@ export type MergedSection = {
  * of its key and draws nothing when there is none. A row whose section no
  * source declares is left out (the Files section before Files lands).
  */
-export function merge(fed: readonly Fed[]): MergedSection[] {
+export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS): MergedSection[] {
   const sections = new Map<string, MergedSection>();
   const add = (def: TodaySection): void => {
     if (!sections.has(def.id)) sections.set(def.id, { def, rows: [], loading: false, failed: [] });
@@ -99,7 +101,8 @@ export function merge(fed: readonly Fed[]): MergedSection[] {
   for (const { source, answer } of fed) {
     for (const row of answer.rows ?? []) {
       const section = sections.get(row.section);
-      if (!section || seen.has(row.key)) continue;
+      // A row his own act took off the page is gone before its source drops it.
+      if (!section || seen.has(row.key) || gone.has(row.key)) continue;
       seen.add(row.key);
       section.rows.push(lay(row, marks.get(row.key) ?? []));
     }
@@ -110,11 +113,14 @@ export function merge(fed: readonly Fed[]): MergedSection[] {
     if (answer.note) own.note = answer.note;
   }
   const ordered = [...sections.values()].sort((a, b) => a.def.order - b.def.order);
+  // A section with no empty line (Also, a pillar's "Owed") is drawn only while it has something to show:
+  // a row, or a host that did not answer. It never draws bones or a bare heading.
+  const shows = (s: MergedSection): boolean => !!s.def.empty || s.rows.length > 0 || s.failed.length > 0;
   for (const section of ordered) {
     // Stable: rows with no `at` keep their source's order after those with one.
     section.rows = section.rows.map((row, i) => ({ row, i })).sort((a, b) => (a.row.at ?? Infinity) - (b.row.at ?? Infinity) || a.i - b.i).map((x) => x.row);
   }
-  return ordered.filter((s) => s.def.id !== ALSO.id || s.rows.length > 0);
+  return ordered.filter(shows);
 }
 
 /** What he has unfolded, by section id: its "N more", and its "N earlier". */
@@ -177,12 +183,12 @@ export type TodayPage =
  * when every section answered, none failed, no host is offline and nothing
  * is anywhere.
  */
-export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[]; lifeos: LifeosReach; folds?: Folds }): TodayPage {
+export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[]; lifeos: LifeosReach; folds?: Folds; gone?: ReadonlySet<string> }): TodayPage {
   if (opts.jobs.length === 0) return { kind: "no-jobs" };
   const down = opts.lifeos === "unreachable" || opts.lifeos === "signed-out" ? opts.lifeos : null;
   const blocks: Block[] = [];
   let said = false;
-  for (const section of merge(fed)) {
+  for (const section of merge(fed, opts.gone)) {
     if (down && section.def.lifeos) {
       if (!said) blocks.push({ kind: "lifeos", reach: down });
       said = true;

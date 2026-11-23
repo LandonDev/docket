@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { setWorkOn, workSwitch } from "./workSwitch";
 
 // These keys are a Mac's (⌘): the suite runs on any machine, so it says which platform it means (lib/keys.ts).
 vi.mock("./platform", () => ({ IS_MAC: true }));
@@ -69,6 +70,18 @@ describe("command map: chords", () => {
     expect(resolve(key("k", { meta: true, shift: true }), ctx)).toEqual({ id: "search_work" });
     expect(resolve(key("k", { ctrl: true, shift: true }), ctx)).toEqual({ id: "search_work" });
     expect(resolve(key("1", { meta: true }), ctx)).toEqual({ id: "activate_tab", index: 0 });
+  });
+
+  it("⇧⌘T opens Today while some host has Work on, and is no one's key while none has", () => {
+    expect(resolve(key("t", { meta: true, shift: true }), ctx)).toBeNull();
+    setWorkOn("box", true);
+    try {
+      expect(resolve(key("t", { meta: true, shift: true }), ctx)).toEqual({ id: "open_today" });
+      // ⌘T alone keeps its own command.
+      expect(resolve(key("t", { meta: true }), ctx)).toEqual({ id: "show_hierarchy" });
+    } finally {
+      workSwitch.reset();
+    }
   });
 
   it("⌘T no longer opens a tab and plain letters do nothing", () => {

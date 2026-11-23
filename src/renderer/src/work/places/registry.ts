@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 import { defineChunk, type Chunk } from "../../lib/lazyChunk";
+import { workPlaceRows } from "../../lib/workPlaces";
+import { workSwitch } from "../../lib/workSwitch";
+import { shell } from "../../stores/shell";
 
 /**
  * The pages above the Work workspaces (Today, the weekly review): one closed
@@ -47,4 +50,48 @@ export function warmPlace(id: string, why: "intent" | "idle"): void {
       (m) => m.warm?.(why),
       () => {},
     );
+}
+
+const DAY_START_KEY = "work.places.dayStart.v1";
+const dayOf = (at: number): string => {
+  const d = new Date(at);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+
+/**
+ * The place to open at the first focus of the day, if he asked for one:
+ * `localStorage["work.<id>.opensAtDayStart"] = "true"` (no switch is drawn;
+ * it is off unless set by hand). Answers it once a day, the first listed
+ * place that has it set, and null every other time.
+ */
+export function placeForDayStart(now = Date.now()): string | null {
+  try {
+    const store = globalThis.localStorage;
+    const place = workPlaceRows().find((row) => store?.getItem(`work.${row.id}.opensAtDayStart`) === "true");
+    if (!place || store?.getItem(DAY_START_KEY) === dayOf(now)) return null;
+    store?.setItem(DAY_START_KEY, dayOf(now));
+    return place.id;
+  } catch {
+    return null;
+  }
+}
+
+let watching = false;
+
+/**
+ * From the chunk's load on: a place set to open at the day's start opens at
+ * the window's first focus of each day, while some host has Work on. The
+ * chunk loads at idle once Work is on (lib/workPlaces.ts), so nothing of
+ * this is in the first paint.
+ */
+export function watchDayStart(): void {
+  if (watching || typeof window === "undefined") return;
+  watching = true;
+  const atFocus = (): void => {
+    if (!workSwitch.anyOn()) return;
+    const place = placeForDayStart();
+    if (place) shell.openWorkPlace(place);
+  };
+  window.addEventListener("focus", atFocus);
+  atFocus();
 }

@@ -82,7 +82,7 @@ export type TodaySection = {
   id: string;
   title: string;
   order: number;
-  /** The one line when it has no row. */
+  /** The one line when it has no row. Empty (`""`): the section is drawn only while it has a row, with no bones and no bare heading. */
   empty: string;
   /** How many rows show before "N more"; none shows all. */
   fold?: number;

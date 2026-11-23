@@ -105,7 +105,7 @@ import { registry } from "../../lib/connection";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { loadOutbox, resetOutboxStore } from "../outbox/store";
 import { source as held } from "./held";
-import { resetToday, todayNow } from "./store";
+import { comeBack, leave, putAnswer, resetToday, todayNow } from "./store";
 import { TITLE_EDGE } from "./TodayRow";
 import { View } from "./TodayView";
 import type { TodaySource } from "./types";
@@ -383,5 +383,146 @@ describe("a source", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the keyboard", () => {
+  const SECTION = { id: "money", title: "Money", order: 60, empty: "Nothing owed" };
+  const done = vi.fn(async () => {});
+  const answer = {
+    rows: [
+      { key: "owed:1", section: "money", sector: "unify" as const, title: "First owed", lead: { kind: "tick" as const, label: "Mark first paid", run: done }, open: () => {}, acts: [{ label: "Remind", run: () => {} }] },
+      { key: "owed:2", section: "money", sector: "unify" as const, title: "Second owed", open: () => {} },
+    ],
+  };
+  const money: TodaySource = { id: "money", section: SECTION, use: () => answer };
+  const open = (title: string) => screen.getByRole("button", { name: new RegExp(`^${title}`) });
+
+  async function mount() {
+    world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
+    await loadOutbox();
+    resetToday([held, money]);
+    render(<View onClose={() => {}} />);
+  }
+
+  it("focus lands on the first row when the page opens, and the list is one tab stop", async () => {
+    await mount();
+    await waitFor(() => expect(document.activeElement).toBe(open("Send to Marcus Bell")));
+    const stops = [...document.querySelectorAll<HTMLElement>("[data-today] [tabindex]")].filter((el) => el.tabIndex === 0);
+    expect(stops).toEqual([open("Send to Marcus Bell")]);
+    // The other rows, their ticks and their verbs wait for the arrows.
+    expect(open("First owed").tabIndex).toBe(-1);
+    expect(screen.getByRole("checkbox", { name: "Mark first paid" }).tabIndex).toBe(-1);
+    expect(screen.getByRole("button", { name: "Remind" }).tabIndex).toBe(-1);
+  });
+
+  it("↓ ↑ Home and End move through every row in page order, across sections, and the ends hold", async () => {
+    await mount();
+    await waitFor(() => expect(document.activeElement).toBe(open("Send to Marcus Bell")));
+    const press = (key: string) => fireEvent.keyDown(document.activeElement!, { key });
+    press("ArrowDown");
+    await waitFor(() => expect(document.activeElement).toBe(open("First owed")));
+    // The row the arrows are on takes Tab, and its own controls with it.
+    expect(screen.getByRole("checkbox", { name: "Mark first paid" }).tabIndex).toBe(0);
+    expect(screen.getByRole("button", { name: "Remind" }).tabIndex).toBe(0);
+    expect(open("Send to Marcus Bell").tabIndex).toBe(-1);
+    press("ArrowDown");
+    await waitFor(() => expect(document.activeElement).toBe(open("Second owed")));
+    press("ArrowDown");
+    expect(document.activeElement).toBe(open("Second owed"));
+    press("Home");
+    await waitFor(() => expect(document.activeElement).toBe(open("Send to Marcus Bell")));
+    press("ArrowUp");
+    expect(document.activeElement).toBe(open("Send to Marcus Bell"));
+    press("End");
+    await waitFor(() => expect(document.activeElement).toBe(open("Second owed")));
+  });
+
+  it("Space ticks a task from its row and does not open it; Enter is the row's press", async () => {
+    await mount();
+    await waitFor(() => expect(document.activeElement).toBe(open("Send to Marcus Bell")));
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    await waitFor(() => expect(document.activeElement).toBe(open("First owed")));
+    const row = open("First owed");
+    const down = fireEvent.keyDown(row, { key: " " });
+    // The key is taken: the button's own click on Space never runs.
+    expect(down).toBe(false);
+    expect(fireEvent.keyUp(row, { key: " " })).toBe(false);
+    expect(document.querySelector('[data-today-row="owed:1"] [data-row-title]')!.className).toContain("line-through");
+    await waitFor(() => expect(done).toHaveBeenCalledTimes(1), { timeout: 2_000 });
+    // A row with no tick leaves Space to the button, which presses it.
+    expect(fireEvent.keyDown(open("Second owed"), { key: " " })).toBe(true);
+  });
+});
+
+describe("a row that leaves", () => {
+  const SECTION = { id: "money", title: "Money", order: 60, empty: "Nothing owed" };
+  const rows = ["First", "Second", "Third"].map((title, i) => ({ key: `owed:${i + 1}`, section: "money", sector: "unify" as const, title: `${title} owed`, open: () => {} }));
+  const answer = { rows };
+  const money: TodaySource = { id: "money", section: SECTION, use: () => answer };
+  const slot = (key: string) => document.querySelector<HTMLElement>(`[data-today-row="${key}"]`)?.parentElement ?? null;
+  const slots = () => [...section("money").querySelectorAll("[data-today-slot]")].map((el) => el.getAttribute("data-today-slot"));
+
+  beforeEach(async () => {
+    await loadOutbox();
+    resetToday([money]);
+  });
+
+  it("by his own act fades where it stands, inert; then its place closes; then it is gone and focus is on the row that took its place", async () => {
+    render(<View onClose={() => {}} />);
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-roving-key")).toBe("owed:1"));
+    vi.useFakeTimers();
+    try {
+      act(() => leave("owed:1"));
+      const first = slot("owed:1")!;
+      expect(first.getAttribute("data-today-slot")).toBe("leaving");
+      expect(first.hasAttribute("inert")).toBe(true);
+      expect(first.querySelector("[data-today-row]")!.className).toContain("opacity-0");
+      // The fade is a token's, and stays under reduced motion.
+      expect(first.querySelector("[data-today-row]")!.className).toContain("duration-(--dur-fast)");
+      expect(first.querySelector("[data-today-row]")!.className).toContain("motion-reduce:transition-opacity");
+      // The arrows no longer stop on it: the next row is the tab stop.
+      expect((document.querySelector('[data-roving-key="owed:2"]') as HTMLElement).tabIndex).toBe(0);
+      act(() => void vi.advanceTimersByTime(120));
+      // Its place closes: the slot stays, with nothing in it, while the rows under it glide up.
+      expect(slots()).toEqual(["closing", "in", "in"]);
+      expect(document.querySelector('[data-today-row="owed:1"]')).toBeNull();
+      act(() => void vi.advanceTimersByTime(180));
+      expect(slots()).toEqual(["in", "in"]);
+      expect(rowTitles()).toEqual(["Second owed", "Third owed"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("comes back as it was when the act fails", () => {
+    render(<View onClose={() => {}} />);
+    act(() => leave("owed:2"));
+    expect(slot("owed:2")!.getAttribute("data-today-slot")).toBe("leaving");
+    act(() => comeBack("owed:2"));
+    expect(slot("owed:2")!.getAttribute("data-today-slot")).toBe("in");
+    expect(slot("owed:2")!.hasAttribute("inert")).toBe(false);
+    expect(rowTitles()).toEqual(["First owed", "Second owed", "Third owed"]);
+  });
+
+  it("because the world changed just goes: no fade, no closing place", () => {
+    render(<View onClose={() => {}} />);
+    act(() => putAnswer("money", { rows: rows.slice(1) }));
+    expect(slots()).toEqual(["in", "in"]);
+  });
+
+  it("a row that arrives while he is looking lands; the rows it opened with, and those his unfold shows, do not", async () => {
+    const many = Array.from({ length: 7 }, (_, i) => ({ key: `owed:${i + 1}`, section: "money", sector: "unify" as const, title: `Owed ${i + 1}`, open: () => {} }));
+    const folded: TodaySource = { id: "money", section: { ...SECTION, fold: 5 }, use: () => answerOf };
+    const answerOf = { rows: many };
+    resetToday([folded]);
+    render(<View onClose={() => {}} />);
+    const landed = () => [...section("money").querySelectorAll(".step-land [data-today-row]")].map((el) => el.getAttribute("data-today-row"));
+    expect(landed()).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "2 more" }));
+    expect(rowTitles()).toHaveLength(7);
+    expect(landed()).toEqual([]);
+    act(() => putAnswer("money", { rows: [...many, { key: "owed:new", section: "money", sector: "unify" as const, title: "Just arrived", open: () => {} }] }));
+    expect(landed()).toEqual(["owed:new"]);
   });
 });

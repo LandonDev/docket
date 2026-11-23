@@ -302,7 +302,7 @@ import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
-import { openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
+import { openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workEnterPort, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from "./lib/workSearchPort";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
@@ -2151,6 +2151,11 @@ export default function App() {
     });
     return () => workStartPort.set(null);
   }, [openProjectDraft]);
+  // A page of Work's enters a workspace here, as a press on its rail row does (work/today/open.ts `goTo`).
+  useEffect(() => {
+    workEnterPort.set(onSelectProject);
+    return () => workEnterPort.set(null);
+  }, [onSelectProject]);
   // Work's views open a thread here: a routine's run, the thread that set a watch (work/routines).
   useEffect(() => {
     workOpenPort.set((sessionId) => {
@@ -3274,6 +3279,8 @@ export default function App() {
         case "search_work": return go(() => (workSwitch.anyOn() ? openWorkSearch() : undefined));
         case "open_inbox": return go(a.onOpenInbox);
         case "open_computers": return go(shell.openComputers);
+        // Today (work/today): Work's page, so the key and the menu row do nothing while Work is off.
+        case "open_today": return go(() => void (workSwitch.anyOn() && shell.toggleWorkPlace("today")));
         case "mark_all_read": return go(() => markAllSeen(sessionStore.metas().map((m) => m.id)));
         case "pause_all_threads": return go(() => void requestThreadBatch("pause", EVERYWHERE, () => selectionFor(EVERYWHERE)));
         case "resume_all_threads": return go(() => void requestThreadBatch("resume", EVERYWHERE, () => selectionFor(EVERYWHERE)));

@@ -49,8 +49,8 @@ agenda lists (LifeOS's, shared), the Messages view (TempCode's own, on
 Mail's frame), the project screens (the tracker's,
 shared), the PDF page, the slide stage, the media
 viewer, the meeting view, the live browser, the form canvas, the dashboard
-page, the compare and History views, the Outbox, the routines' week
-grid, and a show's two windows (the slideshow and the presenter's view:
+page, the compare and History views, the Outbox, Today's page, the
+routines' week grid, and a show's two windows (the slideshow and the presenter's view:
 the one surface where the content, not the chrome, fills the screen).
 They are built from the components above wherever they have a
 button, a menu, a field or a status.
@@ -2122,6 +2122,77 @@ Around the canvas:
   no Can row: a project's guest views, and a choice of one is not drawn.
   The project's settings sheet lists the same links under Sharing.
 
+#### Today
+
+One page above the Work workspaces: what waits on his press, today's
+meetings, what is due, the mail no one answered and the files others
+changed, for every job (work/today/, docs/agents/work-today.md). It is the
+first row under the rail's Work heading (a sun, "Today", no count: the
+Outbox's is beside it) and Go → Today, ⇧⌘T, which also closes it.
+
+- **The frame** is the Outbox page's: a 40px header with the place's 14px
+  glyph, its name in 13px medium and, at its end, the date in 12px muted
+  tabular ("Mon, Nov 23"). No title in the body, no counts, no filters, no
+  cards. The page opens and closes with no motion: it is opened by a key
+  many times a day.
+- **One column**, 720px at most, 24px in. Sections are a 12px medium muted
+  heading (28px) over their rows, 24px apart, in a fixed order: Waiting on
+  you, Meetings, Due, Waiting on others, Changed by others. What is blocked
+  on his press comes first; the page is grouped by need, never by job.
+- **One row grid for the whole page**: a 16px lead, the title with an
+  optional 12px second line, the job (its sector's dot and its name, 12px
+  muted, a 96px column), then the trailing fact (12px tabular, at the end of
+  an 80px column), 12px between columns. Every title on the page starts at
+  one left edge, and a fold or an empty line starts there too. A one-line
+  row is 32px, a two-line row 48px, rows 2px apart, 6px radius; hover is
+  `foreground/5`, a press `foreground/12`, at once.
+- **The lead** is the row's own control or its kind: a round `Checkbox` on a
+  task, the Outbox's kind glyph on a held item, the file's kind on a file,
+  nothing on a meeting or a waiting mail.
+- **The job is on every row**, dot and name: the dot is never the only cue,
+  and the column is one the eye can run down to find a job.
+- **Verbs show on hover and on focus**, in place of the job and the fact
+  (`reveal`, `yields`): at most two ghost `xs` buttons. None is drawn at
+  rest, and Send is never one of them: a held row opens the item whole in a
+  sheet from the right (520px) whose body is the Outbox's own detail, with
+  its Send and its rule. The sheet's 40px head says where he is in the run
+  ("2 of 5", 12px muted tabular) beside Close; after a press it shows the
+  next held item, and closes after the last.
+- **Long sections fold**: Waiting on you shows 5, Due 7, Waiting on others
+  5, Changed by others 5, then one muted 12px line ("4 more") that unfolds
+  in place and stays unfolded. Meetings that have ended fold into "2
+  earlier" at the section's head.
+- **One live line**: under a meeting's time, 12px medium `foreground`,
+  "Leave 5:10 PM" while that is ahead, then "in 25 min" within the hour,
+  then "Now". Nothing else on the page moves by itself.
+- **Late is the only colour**: an overdue task's fact and a clash's note are
+  `destructive`. No amber: held is not Needs you, and a page of asks must
+  not read as a page of alarms.
+- **States.** A section that has never answered draws its heading over
+  three bones in its rows' shape; nothing else waits for it. An empty
+  section is its heading and one 13px muted line ("Nothing waits on your
+  press", "No meetings today", "Nothing due today", "No one owes you a
+  reply", "No one changed your files"). With nothing anywhere the page is
+  one `EmptyState`: "All clear", "Nothing needs you today.", and no
+  headings. A host that did not answer is a state line in the section it
+  feeds, with Retry, and that section never says "nothing" beside it; an
+  offline host is one 12px muted line at the page's foot. While no host can
+  reach LifeOS its sections give way to one line: "LifeOS did not answer"
+  with Retry, or the plain muted "Not signed in to LifeOS" with Sign in.
+- **Keys.** Every row is one list and one tab stop: ↑ ↓ Home End move,
+  Enter opens the row, Space ticks a task; the row the arrows are on shows
+  its verbs. Focus lands on the first row when the page opens.
+- **A row that leaves a list by his own act** (a tick, Tomorrow, Dismiss, a
+  Send from the sheet) fades where it stands over `--dur-fast`, inert; then
+  its place closes over `--dur-base` on `--ease-out` (`glideHeight`), so
+  the rows under it glide up by its height; then it is gone, whether or not
+  its source has dropped it yet. Under reduced motion it fades and the list
+  steps. A task's tick holds 350ms first, its title struck through, as in
+  Tasks. A row that leaves because the world changed just goes. A row that
+  arrives while he is looking lands (`.step-land`); the rows a list opened
+  with, and those his own unfold shows, do not move. This is the rule for a
+  row leaving any list by his act.
+
 #### Work editors
 
 What the document, the sheet and the deck share on screen. Who hears a key,
@@ -2665,6 +2736,8 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Released drag (every sash let go past its bound, the reorder drop, an Escape glide-back) | settles on `SPRING_GLIDE` from where it is drawn, carrying the pointer's speed at release | — | at once |
 | A theme change (a move between a code place and a Work one whose themes differ, a choice in Settings, the system turning over; `changeScheme`, lib/placeScheme.ts) | the place changes at once; the window's picture dissolves into the new theme, opacity only, `--dur-fast` `--ease-out` (a view transition round the class change), with every element's own transition off while it runs (`html.theme-switching`); it takes no input; a second change skips the first | — | the class at once, no dissolve; the same in a hidden window and where the window has no view transitions |
 | Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
+| A row leaving Today by his own act (work/today/TodayRow.tsx; "Today" above) | — | the row fades where it stands, inert, `--dur-fast` `--ease-out`; then its place closes as the rows under it glide up by its height, `--dur-base` `--ease-out` (`glideHeight`); a row the world took just goes | the fade; the list steps |
+| A row arriving on Today while he looks | `.step-land` (fade and rise 4px, `--dur-base`); never the rows a list opened with, nor those his unfold shows | — | none |
 | List rows (rail, tabs, fleet, attachments, the transcript's message list, the composer's queue, dragged by its grip; every reorder is `hooks/useSortable`) | none; a row being reordered follows the pointer on the list's axis from where it was grabbed while the others hold still with the insertion line, then glides into its slot (or back to its own, on Escape or a drop that changes nothing) on `SPRING_GLIDE` | none | the line alone; the drop at once |
 | The transcript's message list folding to its chevron (its chevron, View → Hide Message List, ⌘⇧M) | the rows fade in and slide 4px from the chevron, `--dur-base` `--ease-out` (opacity and translate; nothing else moves) | they fade and slide 4px toward it, `--dur-fast`, then leave the tab order | fade only, `--dur-fast` |
 | A queued message arriving above the composer (chrome/MessageQueue.tsx) | fade + rise 4px, `--dur-base` `--ease-out`, on a full `transform` string so the compositor runs it (motion's `y` is main-thread) | fade, `--dur-fast` | fade, `--dur-fast` |

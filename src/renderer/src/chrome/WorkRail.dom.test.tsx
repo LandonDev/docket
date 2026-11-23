@@ -238,9 +238,31 @@ describe("the rail's rows for the pages above the Work workspaces", () => {
     setWorkOn("local", true);
     WORK_PLACE_ROWS.push(PLACE);
     const names = labels(await mountRail([CODE]));
-    // Every page's row leads, in its order; the last of them sits right over Add workspace….
-    expect(names.indexOf("Probe place")).toBeLessThan(names.indexOf("Add workspace…"));
-    expect(WORK_PLACE_ROWS.map((row) => row.label)).toContain(names[names.indexOf("Add workspace…") - 1]);
+    // Every page's row leads, in its order (the probe 5, Today 10, Review 20); the last sits right over Add workspace….
+    expect(names.slice(names.indexOf("Probe place"), names.indexOf("Add workspace…") + 1)).toEqual(["Probe place", "Today", "Review", "Add workspace…"]);
+  });
+});
+
+describe("Today's row in the rail", () => {
+  afterEach(() => shellStore.setState({ workPlace: null }));
+
+  it("leads the Work list while Work is on, with no count beside it, and opens Today", async () => {
+    setWorkOn("local", true);
+    const root = await mountRail([CODE, WORK], { onOpenOutbox: () => {} });
+    const names = labels(root);
+    // First of the pages above the workspaces, which come before the workspaces themselves.
+    expect(names.slice(names.indexOf("Today"), names.indexOf("Purdue Esports") + 1)).toEqual(["Today", "Review", "Purdue Esports"]);
+    const row = [...root.querySelectorAll("nav button")].find((b) => b.textContent?.trim() === "Today") as HTMLButtonElement;
+    await probe!.act(async () => setOutboxWaiting(4));
+    // The Outbox's count is beside it already: Today's row carries none.
+    expect(row.textContent?.trim()).toBe("Today");
+    await probe!.act(async () => row.click());
+    expect(shellStore.getState().workPlace).toBe("today");
+    await probe!.act(async () => setOutboxWaiting(0));
+  });
+
+  it("is not drawn while Work is off", async () => {
+    expect(labels(await mountRail([CODE, WORK]))).not.toContain("Today");
   });
 });
 

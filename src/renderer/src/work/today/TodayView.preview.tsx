@@ -58,7 +58,7 @@ const job = (environmentId: string, sector: TodayWorkspace["sector"], open = tru
 const JOBS = (["cosmic", "hypixel", "purdue", "ref", "unify", "life"] as const).map((sector) => job("box", sector));
 const fed = (section: TodaySection, answer: TodayAnswer): Fed => ({ source: { id: section.id, section }, answer });
 
-type State = "day" | "unfolded" | "built" | "bones" | "empty" | "hosts" | "lifeos-down" | "signed-out" | "clear" | "no-jobs" | "sheet";
+type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "lifeos-down" | "signed-out" | "clear" | "no-jobs" | "sheet";
 
 const FULL = [fed(HELD, { rows: HELD_ROWS }), fed(MEETINGS, { rows: MEETING_ROWS }), fed(DUE, { rows: DUE_ROWS }), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, { rows: FILE_ROWS })];
 const ALL_FOLDS: Folds = { more: new Set(["due"]), earlier: new Set(["meetings"]) };
@@ -70,9 +70,6 @@ function modelOf(state: State) {
       return page(FULL, opts());
     case "unfolded":
       return page(FULL, opts("ok", JOBS, ALL_FOLDS));
-    // What this build lists: the Outbox's held items alone.
-    case "built":
-      return page([fed(HELD, { rows: HELD_ROWS })], opts());
     case "bones":
       return page([fed(HELD, { rows: HELD_ROWS }), fed(MEETINGS, { loading: true }), fed(DUE, { loading: true }), fed(WAITING, { loading: true }), fed(FILES, { loading: true })], opts("waiting"));
     case "empty":

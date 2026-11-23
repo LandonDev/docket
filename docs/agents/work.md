@@ -107,6 +107,13 @@ Settings → Work.
   the host's `workspaces` push tells every client. **Work Chats** sits
   after Chats, **Outbox** after Inbox whenever Work is on, with the waiting
   count from `setOutboxWaiting(n)` (the Outbox, milestone 14, owns its page).
+- **The pages above the workspaces**: under the Work heading, before the
+  workspaces, one row for each page that spans every job: Today
+  ([work-today.md](work-today.md)), the first. A row is `WORK_PLACE_ROWS`
+  (lib/workPlaces.ts, first paint, plain data); its page is `WORK_PLACES`
+  (work/places/registry.ts), drawn by `WorkPlacePage` on the Outbox page's
+  frame and opened with `shell.openWorkPlace(id)`. With Work off there is
+  no such row.
 - **Work Chats**: `WORK_CHATS` (`"~work"`, lib/tcserver/workspaces.ts) is
   their key as `"~"` is the code chats': `workspaceIdOf` and
   `workspacePathOfSession` answer it for a row with `scope: "work"` and no

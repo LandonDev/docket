@@ -272,6 +272,8 @@ export const shell = {
     update(openComputers);
   },
   closeComputers: () => update((s) => patch(s, { computersViewOpen: false })),
+  /** A place's key: opens it, or closes it when it is the page on screen. */
+  toggleWorkPlace: (id: string) => shell.openWorkPlace(shellStore.getState().workPlace === id ? null : id),
   /** Opens the page above the Work workspaces with this id (lib/workPlaces.ts), or closes the one open. */
   openWorkPlace: (id: string | null) => {
     if (id) perfMark("page-switch", id);

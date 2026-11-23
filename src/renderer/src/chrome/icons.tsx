@@ -129,6 +129,7 @@ import WholeWordIcon from "@hugeicons/core-free-icons/WholeWordIcon";
 import HammerIcon from "@hugeicons/core-free-icons/HammerIcon";
 import Wrench01Icon from "@hugeicons/core-free-icons/Wrench01Icon";
 import Moon02Icon from "@hugeicons/core-free-icons/Moon02Icon";
+import Sun03Icon from "@hugeicons/core-free-icons/Sun03Icon";
 import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
 import { forwardRef, type Ref } from "react";
 
@@ -293,6 +294,7 @@ export const MessageSquare = wrap(Comment01Icon, "MessageSquare");
 export const MessageSquarePlus = wrap(CommentAdd01Icon, "MessageSquarePlus");
 export const Minus = wrap(MinusSignIcon, "Minus");
 export const Moon = wrap(Moon02Icon, "Moon");
+export const Sun = wrap(Sun03Icon, "Sun");
 export const MoreHorizontal = wrap(MoreHorizontalIcon, "MoreHorizontal");
 export const Palette = wrap(PaintBoardIcon, "Palette");
 export const PanelBottomClose = wrap(PanelBottomCloseIcon, "PanelBottomClose");

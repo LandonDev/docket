@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { APP_NAME, MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, EMPTY_MENU_STATE, RENDERER_MENU_IDS, inAppMenus, resolveMenu, sameMenuState, type MenuNode, EDITOR_KEY_IDS } from './menuTree'
+import { APP_NAME, MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, EMPTY_MENU_STATE, RENDERER_MENU_IDS, inAppMenus, resolveMenu, sameMenuState, type MenuNode, type MenuState, EDITOR_KEY_IDS, WORK_ONLY_IDS } from './menuTree'
 
 /** What Electron gives a role when the tree names none (macOS). */
 const ROLE_DEFAULTS: Record<string, [string, string?]> = {
@@ -140,6 +140,7 @@ describe('menu tree', () => {
       ['Previous Host', 'Alt+Cmd+['],
       ['Next Host', 'Alt+Cmd+]'],
       '—',
+      ['Today', 'Shift+Cmd+T'],
       ['Inbox'],
       ['Computers', 'Shift+Cmd+L'],
       ['Notes'],
@@ -177,6 +178,20 @@ describe('menu tree', () => {
   it('leaves New Terminal to the page', () => {
     const item = MENU_COMMANDS.find((c) => c.id === 'new_terminal')!
     expect(item.pageKey).toBe(true)
+  })
+
+  it("draws Work's own rows only while some host has Work on: hidden, a row is gone from the menu and its key with it", () => {
+    // The state's own list (the first paint reads it without the tree) is the tree's workOnly rows.
+    expect(MENU_COMMANDS.filter((c) => c.workOnly).map((c) => c.id)).toEqual([...WORK_ONLY_IDS])
+    const go = (state: MenuState) => resolveMenu(MENU_TREE, state).find((s) => s.label === 'Go')!.items
+    const ids = (items: MenuNode[]) => items.flatMap((i) => (i.kind === 'command' ? [i.id] : []))
+    expect(ids(go(EMPTY_MENU_STATE))).toContain('open_today')
+    const off = go({ ...EMPTY_MENU_STATE, hidden: [...WORK_ONLY_IDS] })
+    expect(ids(off)).not.toContain('open_today')
+    // The rows beside it are untouched.
+    expect(ids(off).slice(-3)).toEqual(['open_inbox', 'open_computers', 'open_notes'])
+    expect(sameMenuState(EMPTY_MENU_STATE, { ...EMPTY_MENU_STATE, hidden: ['open_today'] })).toBe(false)
+    expect(sameMenuState({ ...EMPTY_MENU_STATE, hidden: [] }, EMPTY_MENU_STATE)).toBe(true)
   })
 
   it('has no duplicate ids', () => {

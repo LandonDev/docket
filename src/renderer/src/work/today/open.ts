@@ -1,5 +1,5 @@
 import { normalizeProjectPath } from "../../lib/recents";
-import { openWorkView, type OpenWorkView } from "../../lib/workSwitch";
+import { openWorkView, workEnterPort, type OpenWorkView } from "../../lib/workSwitch";
 import { project } from "../../stores/project";
 import { shell, shellStore } from "../../stores/shell";
 import type { TodayWorkspace } from "./types";
@@ -14,7 +14,7 @@ export function openToday(): void {
 
 /** ⇧⌘T: open Today, or close it when it is the page on screen. */
 export function toggleToday(): void {
-  shell.openWorkPlace(shellStore.getState().workPlace === TODAY ? null : TODAY);
+  shell.toggleWorkPlace(TODAY);
 }
 
 /**
@@ -25,7 +25,11 @@ export function toggleToday(): void {
  */
 export function goTo(workspace: Pick<TodayWorkspace, "path" | "workspaceId">, target: Omit<OpenWorkView, "workspaceId">): void {
   shell.closeViews();
-  project.enterWorkspace(normalizeProjectPath(workspace.path));
+  // As a press on the job's rail row: the window's workspace, its column and its landing thread. With no window
+  // to ask (a test, a preview) the workspace alone is entered.
+  const enter = workEnterPort.get();
+  if (enter) enter(workspace.path);
+  else project.enterWorkspace(normalizeProjectPath(workspace.path));
   openWorkView({ ...target, workspaceId: workspace.workspaceId });
 }
 

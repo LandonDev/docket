@@ -33,6 +33,8 @@ export interface MenuCommand {
   toggle?: { show: string; hide: string }
   /** A checkbox row, ticked while the window names the id true in `MenuState.checked`. */
   checkbox?: true
+  /** A row of Work's: drawn only while some host has Work on (the window names it in `MenuState.hidden` otherwise). */
+  workOnly?: true
   /** The key this row shows while the window is editing and has taken it from the row `from` (`MenuState.editing`); the page owns it. */
   whileEditing?: { accelerator: string; from: string }
   /** Set by `resolveMenu` only. */
@@ -73,7 +75,7 @@ const cmd = (
   id: string,
   label: string,
   accelerator?: string,
-  extra: Pick<MenuCommand, 'pageKey' | 'desktopOnly' | 'checkbox'> = {}
+  extra: Pick<MenuCommand, 'pageKey' | 'desktopOnly' | 'checkbox' | 'workOnly'> = {}
 ): MenuCommand => ({ kind: 'command', id, label, ...(accelerator ? { accelerator } : {}), ...extra })
 const toggle = (id: string, what: string, accelerator: string, extra: Pick<MenuCommand, 'desktopOnly'> = {}): MenuCommand => ({
   ...cmd(id, `Show ${what}`, accelerator, extra),
@@ -177,6 +179,8 @@ export const MENU_TREE: MenuSection[] = [
       cmd('prev_environment', 'Previous Host', 'CmdOrCtrl+Alt+['),
       cmd('next_environment', 'Next Host', 'CmdOrCtrl+Alt+]'),
       sep,
+      // Today, the page above the Work workspaces (docs/agents/work-today.md): the key opens it, and closes it when it is on screen.
+      cmd('open_today', 'Today', 'CmdOrCtrl+Shift+T', { workOnly: true }),
       cmd('open_inbox', 'Inbox'),
       cmd('open_computers', 'Computers', 'CmdOrCtrl+Shift+L'),
       cmd('open_notes', 'Notes'),
@@ -231,11 +235,12 @@ export const RENDERER_MENU_IDS: string[] = MENU_COMMANDS.map((c) => c.id).filter
   (id) => !(MAIN_MENU_IDS as readonly string[]).includes(id)
 )
 
-export { EDITOR_KEY_IDS, EMPTY_MENU_STATE, sameMenuState, type MenuState } from './menuState'
+export { EDITOR_KEY_IDS, EMPTY_MENU_STATE, sameMenuState, WORK_ONLY_IDS, type MenuState } from './menuState'
 
 function resolveNodes(items: MenuNode[], state: MenuState): MenuNode[] {
   const held = state.editing ?? []
-  return items.map((node) => {
+  const hidden = state.hidden ?? []
+  return items.filter((node) => node.kind !== 'command' || !hidden.includes(node.id)).map((node) => {
     if (node.kind === 'submenu') return { ...node, items: resolveNodes(node.items, state) }
     if (node.kind !== 'command') return node
     let item = node
