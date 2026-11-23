@@ -43,7 +43,11 @@
   switch confirm among them), the failure card's account list (`accountsChunk`),
   the transcript's message list rows under their chevron (`messageListChunk`),
   a workspace's threads beside the rail (`workspaceThreadsChunk`), the
-  file and symbol pickers (`pickersChunk`, mounted while open), the
+  file and symbol pickers (`pickersChunk`, mounted while open), a
+  thread's per-run options (`threadTuneChunk`: the New thread chooser's
+  tune view, warmed as it opens, and the thread menu's Options… dialog,
+  with components/page.tsx under them; the skeleton reads a page's frame
+  from components/pageLayout.ts), the
   composer's slash and @ menu (`commandMenuChunk`, mounted from a
   composer's first `/` or `@` on), a box
   thread's waiting Mac bridge card (`macBridgeChunk`), the return from Away

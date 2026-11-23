@@ -5,15 +5,7 @@ import { Item, ItemActions, ItemButton, ItemContent, ItemDescription, ItemMedia,
 import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "./ui/press";
 import { Skeleton } from "./ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-
-/** The scroller a page sits in (Settings, Accounts, Stats, and their
- *  skeletons): the stable gutter keeps the column still when the page
- *  gains a scrollbar, so a skeleton and its page land in one place. */
-const PAGE_SCROLLER = "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]";
-
-/** The column's cap: 672px for a page of settings, 1,152px for a page that
- *  is a table (Accounts), which reads across the pane's width. */
-const PAGE_WIDTH = { column: "max-w-2xl", table: "max-w-6xl" } as const;
+import { PAGE_SCROLLER, PAGE_WIDTH } from "./pageLayout";
 
 /** The title line's slot, for `PageActions` to fill from inside the page. */
 const PageActionsContext = createContext<HTMLElement | null>(null);

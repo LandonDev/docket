@@ -105,7 +105,11 @@ export const NEVER_IN_ENTRY = [
   // The message list's rows ride messageListChunk; the first paint carries its chevron alone.
   'src/renderer/src/surfaces/TranscriptOutlineList.tsx',
   'src/renderer/src/chrome/JumpList.tsx',
-  'src/renderer/src/aliax/pages.tsx'
+  'src/renderer/src/aliax/pages.tsx',
+  // A page's components ride the pages that draw them; the skeleton reads its frame from components/pageLayout.ts.
+  // A thread's options ride threadTuneChunk (the chooser's tune view, the thread menu's Options… dialog).
+  'src/renderer/src/components/page.tsx',
+  'src/renderer/src/chrome/ThreadTune.tsx'
 ]
 
 /**

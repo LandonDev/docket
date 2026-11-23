@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registry, type Link } from "../lib/connection";
 import { NewThreadChooser } from "./NewThreadChooser";
+import { threadTuneChunk } from "../surfaces/chunks";
 
 // The tune view's rules come from the host; with none loaded it shows the instructions field alone.
 vi.mock("../lib/tcserver/rules", () => ({ useRulesScope: () => ({ scope: undefined, catalog: null }) }));
@@ -68,13 +69,24 @@ describe("NewThreadChooser", () => {
 
     expect(screen.getByText("Research options")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Chat/ })).toBeNull();
+    // The tune view is threadTuneChunk's: it lands a tick after the header.
+    const field = await screen.findByPlaceholderText("Custom instructions for this run…");
     await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText("Custom instructions for this run…"), {
+      fireEvent.change(field, {
         target: { value: "  cite every claim  " },
       });
     });
     await click(screen.getByRole("button", { name: "Start research" }));
     expect(onStart).toHaveBeenCalledWith("research", { instructions: "cite every claim" });
+  });
+
+  it("warms the tune view's chunk as it opens, not before", async () => {
+    const preload = vi.spyOn(threadTuneChunk, "preload");
+    render(<NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />);
+    expect(preload).not.toHaveBeenCalled();
+    await click(screen.getByRole("button", { name: "New thread" }));
+    expect(preload).toHaveBeenCalledTimes(1);
+    preload.mockRestore();
   });
 
   it("goes back from the options to the list", async () => {

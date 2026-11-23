@@ -49,6 +49,10 @@ export const selectChunk = defineChunk("select", () => import("../components/sel
 /** The accounts a failure card's Pick another account lists (chrome/AccountsList.tsx). */
 export const accountsChunk = defineChunk("accounts", () => import("../chrome/AccountsList"));
 
+/** A thread's per-run options (chrome/ThreadTune.tsx, with the page rows it draws): the New thread chooser's tune
+ *  view, warmed as the chooser opens, and the thread menu's Options… dialog. */
+export const threadTuneChunk = defineChunk("threadTune", () => import("../chrome/ThreadTune"));
+
 /** A workspace's threads beside the rail, opened from its row's mark (chrome/WorkspaceThreadsPopover.tsx). */
 export const workspaceThreadsChunk = defineChunk("workspaceThreads", () => import("../chrome/WorkspaceThreadsPopover"));
 

@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { PAGE_SCROLLER, PAGE_WIDTH } from "../components/page";
+import { PAGE_SCROLLER, PAGE_WIDTH } from "../components/pageLayout";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { Skeleton } from "../components/ui/skeleton";

@@ -8,6 +8,9 @@ import { PageRow } from "../components/page";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import { useRulesScope, type OrchestrationRules } from "../lib/tcserver/rules";
+import { normalizeTune } from "./threadTuneRules";
+
+export { isEmptyTune, normalizeTune } from "./threadTuneRules";
 
 /**
  * Per-thread rules on top of the workspace's orchestration settings.
@@ -35,19 +38,6 @@ const CAPS: { key: "maxParallel" | "maxAgents"; label: string; steps: number[] }
   { key: "maxParallel", label: "Parallel agents", steps: [1, 2, 4, 8, 16, 32, 64, 128, 0] },
   { key: "maxAgents", label: "Total per thread", steps: [10, 25, 50, 100, 0] },
 ];
-
-export function isEmptyTune(tune: ThreadRules): boolean {
-  return !tune.instructions?.trim() && Object.keys(tune.conduct ?? {}).length === 0;
-}
-
-/** `null` when nothing is overridden, so the server clears the thread's rules. */
-export function normalizeTune(tune: ThreadRules): ThreadRules | null {
-  if (isEmptyTune(tune)) return null;
-  const out: ThreadRules = {};
-  if (tune.instructions?.trim()) out.instructions = tune.instructions.trim();
-  if (tune.conduct && Object.keys(tune.conduct).length > 0) out.conduct = tune.conduct;
-  return out;
-}
 
 export function setConduct<K extends keyof ConductOverride>(
   tune: ThreadRules,

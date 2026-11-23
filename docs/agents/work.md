@@ -54,6 +54,13 @@ from one list (`WORK_NEVER_IN_ENTRY`, scripts/check-bundle-size.ts):
   hears of it, with the import chain that let it in. `bun
   scripts/entry-graph.ts <part of a path>` prints a chain by hand.
 
+What the first paint may keep of Work is its registry rows: the switch and
+the ports a key or a menu row opens a pillar through (`lib/workSwitch.ts`,
+`lib/workPlaces.ts`, `lib/workSearchPort.ts`, `chrome/useWorkMentions.ts`).
+The same test names them and caps their source at 26 kB (21.8 kB on
+2026-11-23, when fourteen builds that each passed `check:bundle` alone took
+the closure 2.5 kB over together); a new row joins that list on purpose.
+
 So a module the first paint loads (the rail, the transcript, the composer,
 the thread header, and everything they import) takes Work's types with
 `import type`, reads a row by its own field (`workspace.kind === 'work'`,

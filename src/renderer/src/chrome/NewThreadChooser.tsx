@@ -10,11 +10,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-m
 import { reveal } from "../components/ui/reveal";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
-import { ThreadTune, normalizeTune } from "./ThreadTune";
+import { normalizeTune } from "./threadTuneRules";
+import { threadTuneChunk } from "../surfaces/chunks";
 import { THREAD_HINTS, THREAD_LABELS, THREAD_START_LABELS, THREAD_TYPES } from "../surfaces/threads/threadTypes";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 
 const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
+const ThreadTune = threadTuneChunk.surface("ThreadTune");
 
 /**
  * The strip's Plus: a popover naming every thread type, and for the two
@@ -77,7 +79,11 @@ export function NewThreadChooser({
   return (
     <Popover
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(next) => {
+        // The tune view is a lazy chunk: it loads as the chooser opens, before a type's options are asked for.
+        if (next) threadTuneChunk.preload();
+        setOpen(next);
+      }}
       onOpenChangeComplete={(isOpen) => {
         // Reset only once the exit has played, so the popover leaves as it was.
         if (isOpen) return;

@@ -19,12 +19,11 @@ import { headerStore } from "../stores/header";
 import { planCloseFocused } from "../lib/workspaceTabGroups";
 import { workspaceActions } from "../stores/workspaceActions";
 import { SessionActionsContext } from "../surfaces/threadChat";
-import { dialogsChunk } from "../surfaces/chunks";
+import { dialogsChunk, threadTuneChunk } from "../surfaces/chunks";
 import { THREAD_LABELS } from "../surfaces/threads/threadTypes";
 import { goalDialog } from "./GoalDialog";
 import type { MenuRow } from "./menuRows";
 import { useThreadHost } from "./ThreadHostChip";
-import { TuneDialog } from "./ThreadTune";
 
 /**
  * The one place a thread menu's picks happen and its dialogs mount
@@ -72,6 +71,7 @@ const ArchiveThreadDialog = dialogsChunk.surface("ArchiveThreadDialog");
 const MacBridgeRulesDialog = dialogsChunk.surface("MacBridgeRulesDialog");
 const RenameThreadDialog = dialogsChunk.surface("RenameThreadDialog");
 const DeleteThreadDialog = dialogsChunk.surface("DeleteThreadDialog");
+const TuneDialog = threadTuneChunk.surface("TuneDialog");
 
 /** The focused pane of the tab on screen, when it is not this thread's own. */
 function sidePane(id: string): string | null {
