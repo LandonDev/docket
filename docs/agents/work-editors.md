@@ -91,15 +91,17 @@ return <div ref={root} data-editor-keys="document">…</div>;
   (`scripts/entryGraph.test.ts`); nothing of Work is imported by the menu, the
   resolver or App.tsx.
 
-Today the document answers `export` (its Export dialog). `print`, `find` and
-the sheet's and the deck's answers come with their milestones.
+Today the document answers `export` by opening Preview on the format he last
+used. `print`, `find` and the sheet's and the deck's answers come with their
+milestones.
 
 ## Preview: the contract
 
 One surface shows "this is the file you will get" for all three kinds: a state
-of the item, with the format's picture and what the format drops. The frame is
-`src/renderer/src/work/formats/Preview.tsx` (built at DOC1.2); a kind hands it a
-`PreviewSource` (`src/renderer/src/work/formats/preview.ts`):
+of the item, with the format's picture and what the format drops (its look is
+docs/DESIGN.md "Work editors: Preview"). The frame is
+`src/renderer/src/work/formats/PreviewFrame.tsx`; a kind hands it a `PreviewSource`
+(`src/renderer/src/work/formats/preview.ts`):
 
 ```ts
 interface PreviewSource {
@@ -135,6 +137,49 @@ interface PreviewSource {
   `NotInReach(app, why)`: never a picture when `office()` said `not open` or
   `none`, never a refusal when it said `ready` or `asleep`.
 - A draw whose signal is already aborted answers no picture.
+
+### Mounting the frame
+
+The frame's file is `PreviewFrame.tsx`, not `Preview.tsx` as the plan named
+it: `preview.ts` is the contract beside it, and two files whose names differ
+only by case resolve to one on the Mac's disk, where the release is built.
+
+```tsx
+<Preview source={source} title={item.title} kind="sheet" onClose={close} pageRows={<MyRows />} />
+```
+
+- **`source` must be one object for as long as the file is the same.** The
+  frame draws when the source, the format or a Retry changes: a source made
+  anew on every render draws for ever. Memoise it on what names the file and
+  read what moves (the editor, the counts) through refs, as
+  `work/docs/DocumentCanvas.tsx` does.
+- `kind` is one word per kind (`document`, `sheet`, `deck`): the format he
+  last exported is remembered under it and is the one opened next. `initial`
+  opens a named format instead (Print… opens on `print`).
+- Mount it over your editor, not in place of it: keep the editor mounted,
+  `inert` and unseen, so its caret, its scroll and its connection are kept
+  (the document draws the frame through a portal into a slot of its Body).
+- A format's `unit: 'slide'` makes the count read "Slide 1 of 12" and the
+  loading shape 16:9.
+- `export` may answer `where` when it saved the file somewhere itself; the
+  frame then toasts "Saved <name> to <where>". Without it the system's own
+  dialog was the answer. **`export` writes the file as it stands when he
+  presses**: the primary button is live while a picture is still being drawn,
+  and he may have edited since the last one, so never save bytes kept from an
+  earlier draw unless the host confirms they are still the file.
+- The Page section draws `setup.common` itself (Paper, Orientation, Margins,
+  Headers and footers) and then `pageRows`, your own rows, built from
+  `PageMenuRow` and `PageSwitchRow` (exported by `PreviewFrame.tsx`). After
+  `setup.set(…)` resolves the frame draws the file again.
+- Pages are drawn by `PagedView` (`work/formats/PagedView.tsx`) over the PDF
+  kind's engine, by range reads of `PreviewBytes`. A `rev` the host no longer
+  has must reject the read: the frame then shows its failure with Retry.
+- The other pictures: `text` (a mono box), `html` (a sealed frame: no script,
+  nothing fetched), `table` (rows of plain values, with `sheets` to pick
+  from: the frame asks `draw(format, { sheet })`), `files` (a grid of
+  `{ name, thumb }`), `video` (a poster; its bytes are read on Play).
+
+### The check
 
 `previewProblems(source, opts?)` (`previewContract.ts`) checks all of that and
 answers each broken rule in words. Each build runs it on its own source in its

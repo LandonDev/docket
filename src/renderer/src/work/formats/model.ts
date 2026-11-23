@@ -2,31 +2,9 @@ import type { ExportFormat } from "@shared/contract-work-formats";
 import type { CanvasSource } from "@shared/work";
 
 /**
- * The Export dialog's and the import's words and rules (docs/agents/work-formats.md
+ * The export's and the import's words and rules (docs/agents/work-formats.md
  * "Import and export"), apart from React so a test reads them.
  */
-
-/** The formats, in the dialog's order: what Word and mail read first. */
-export const FORMAT_CHOICES: { value: ExportFormat; label: string }[] = [
-  { value: "docx", label: "Word (.docx)" },
-  { value: "pdf", label: "PDF" },
-  { value: "md", label: "Markdown" },
-  { value: "html", label: "Web page (.html)" },
-  { value: "odt", label: "OpenDocument (.odt)" },
-  { value: "rtf", label: "Rich Text (.rtf)" },
-];
-
-/** What a format takes of the document beyond its words: one line, under the choice. */
-export function formatNote(format: ExportFormat, review: { comments: number; suggestions: number }): string | null {
-  const extra = review.comments + review.suggestions > 0;
-  if (!extra) return null;
-  if (format === "docx" || format === "odt") return "Comments and suggestions go with it.";
-  if (format === "rtf") return "Suggestions go with it; comments lose their replies.";
-  return "Comments and suggestions stay here.";
-}
-
-/** Which way a format is made: on the host from the live text, or here from the editor's blocks. */
-export const madeOnHost = (format: ExportFormat): format is "docx" | "odt" | "rtf" | "md" => format !== "pdf" && format !== "html";
 
 /** The paper a print page asks for: US Letter where the locale's paper is, A4 elsewhere. */
 export function paperFor(locale: string): "A4" | "Letter" {
@@ -54,6 +32,16 @@ export function toBase64(bytes: Uint8Array): string {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
+}
+
+/** Saves a file where the person keeps downloads: the system's own save dialog is the answer. */
+export function saveFile(name: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /** A title as a file's name: nothing a path could make of it. */

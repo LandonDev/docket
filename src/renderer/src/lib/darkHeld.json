@@ -67,6 +67,8 @@
     "--chart-neutral-stale": "color-mix(in srgb, var(--foreground) 40%, transparent)",
     "--paper": "#ffffff",
     "--paper-ink": "#1f2430",
+    "--paper-ink-2": "#5b6270",
+    "--paper-rule": "#c3c8cf",
     "--add-bg-paper": "color-mix(in srgb, #047857 16%, transparent)",
     "--del-bg-paper": "color-mix(in srgb, #c81e1e 13%, transparent)",
     "--sel-bg-paper": "color-mix(in srgb, hsl(211 92% 48%) 22%, transparent)",

@@ -147,6 +147,9 @@
      theme's. Literals on purpose: they never follow the app's theme. */
   --paper: #ffffff;
   --paper-ink: #1f2430;
+  /* On paper, what supports the words (a header, a footer, a caption, a page that could not be drawn) and a rule. */
+  --paper-ink-2: #5b6270;
+  --paper-rule: #c3c8cf;
   --add-bg-paper: color-mix(in srgb, #047857 16%, transparent);
   --del-bg-paper: color-mix(in srgb, #c81e1e 13%, transparent);
   --sel-bg-paper: color-mix(in srgb, hsl(211 92% 48%) 22%, transparent);

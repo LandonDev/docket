@@ -236,8 +236,8 @@ headers and columns, and every `@blocknote/xl-*` package is GPL), markdown
 with front matter kept, HTML through DOMPurify and an Office clean-up, the
 `.tcdoc` an import makes, and the export of a live document. The pillar's
 files: `formats/pillar.ts` (the methods), `importer.ts`, `exporter.ts`,
-`print.ts`, `pdfIn.ts`, `serviceRoutes.ts`; the window's in
-`src/renderer/src/work/formats/` (`ExportDialog.tsx`, `Import.tsx`, `model.ts`).
+`print.ts`, `pdfIn.ts`, `preview.ts`, `serviceRoutes.ts`; the window's in
+`src/renderer/src/work/formats/` (`PreviewFrame.tsx`, `PagedView.tsx`, `preview.ts`, `previewContract.ts`, `command.ts`, `Import.tsx`, `model.ts`).
 
 **In** (`work.formats.import`, `operate`, → `ImportAnswer`): from a file on
 this host (`{at: 'source'}`: the canvas opened it; the path fence holds a
@@ -293,10 +293,54 @@ paper (A4, or Letter in a US-style locale) and printed by
 and no network (`print.ts`; a test hands in its own printer). A LifeOS
 document another host serves is asked of that host.
 
-**The window.** The document kind's ⋯ has Export…, a form dialog with one
-choice (Format: Word, PDF, Markdown, Web page, OpenDocument, Rich Text; the
-last one chosen comes first) and one line under it only when comments or
-suggestions stay behind or go with it. A file dropped on an open document
+**Preview renders** (`work.formats.preview`, `operate`, → `PreviewAnswer`;
+`work.formats.previewRead`, `read`; `formats/preview.ts`): the host side of a
+document's Preview (work-editors.md "Preview: the contract"). Both hold the
+caller to the document as Export does (`targetOf`: a file must be within the
+caller's reach; a LifeOS document is held to the caller's sectors by the Work
+service when it is read, as it always was, not by a path).
+- Only the picture is kept, a PDF. The file itself is Export's to write
+  (`work.formats.export`), which needs no renderer for Word: a host that
+  cannot draw Word still exports it.
+- `pdf` prints the window's print page as `work.formats.print` does
+  (`drawnBy: 'tempcode'`); the picture is the file. `docx`, `odt` and `rtf`
+  take Word from the Work service as Export does (`serviceExport`, shared
+  with `exportDoc`); OpenDocument and RTF are converted from it, and
+  LibreOffice draws the PDF from the exported file itself, never from the Word
+  file (`drawnBy: 'libreoffice'`). Every job carries `shared` from
+  `madeFromShared`. Warnings are Export's dropped words and each job's, once.
+- A render is kept by `rev`, the first 32 hex of a sha256 over the format, a
+  zero byte and what it was made from: the page and the paper, or what the
+  Word file holds (`wordContent`: each zip entry by name, without the zip's
+  times and core.xml's `dcterms:created` and `modified`, which change on every
+  export). A render kept under that rev answers again without printing or
+  converting.
+- Kept under `<userData>/formats/.cache/preview/<thread>/<item>/<source>/`
+  for a canvas item (an item not open is refused, and so is one that does
+  not show this document: `NOT_THIS_ITEM`; a mail's attachment and the
+  document read from it are one item), or `_/<source>/` with none, `<source>` being a hash of the source the caller was let through to
+  (`sourceKey`): naming an item reads nothing made from another source. A
+  file others can open (`madeFromShared`) has no render without an item
+  (`NEEDS_ITEM`): nothing made from it may outlive its tab. Folders 0700, each
+  part a plain name. The box's backup leaves
+  out every `**/.cache`, so no render rides it. Per format:
+  `<format>.<rev>.pdf` (the picture) and `.json` (the answer, written
+  last), each through a temp name and a rename;
+  a new render deletes that format's older ones, and a read of a rev that went
+  is refused with "that preview is gone: draw it again".
+- `previewRead` reads at most `PREVIEW_READ_MAX` (the schema refuses more)
+  from an offset, without loading the whole file; past the end it answers
+  empty. Pages are counted by pdf-lib, or by `/Type /Page` objects when it
+  cannot read the PDF, never fewer than one.
+- A deleted thread takes `<thread>/` (`sessionsRemoved`), a deleted item its
+  folder (`itemsRemoved`); the pillar's `start` sweeps `_/` folders untouched
+  for a day, then hourly.
+
+**The window.** The document kind's ⋯ has Export…, which opens Preview on
+the format he last used (work-docs.md "Preview"; the frame is
+work-editors.md's): Word, PDF, Markdown, Web page, OpenDocument, Rich Text,
+each drawn as the file it will be, with what it drops beside it and Export as
+the one verb. A file dropped on an open document
 opens beside it as a document (a muted wash says so while it is over). A copy
 from a document is written for mail and sheets (`mailSafeCopy`): email-safe
 `text/html` (styles inline, tables with borders, colours and widths as

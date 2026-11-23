@@ -18,6 +18,13 @@ export const FORMAT_NAME = /^[a-z0-9]{1,10}(\+[a-z0-9]{1,12})?$/
 /** Whether a converter can run now: `asleep` runs only for his own press on that host, `not open` is an app he has shut, `none` is not there. */
 export type Readiness = 'ready' | 'asleep' | 'not open' | 'none'
 
+/** The most one `work.formats.previewRead` answers: a render is read by range, a frame at a time. */
+export const PREVIEW_READ_MAX = 4 * 1024 * 1024
+
+/** The formats a document's Preview draws as pages on the host: the PDF itself, and the file as LibreOffice draws it. */
+export const PREVIEW_FORMATS = ['pdf', 'docx', 'odt', 'rtf'] as const
+export type PreviewFormatId = (typeof PREVIEW_FORMATS)[number]
+
 export const FormatsRequestSchemas = [
   /** → ToolsReport */
   request('work.formats.tools', z.object({}).optional()),
@@ -61,8 +68,57 @@ export const FormatsRequestSchemas = [
   request(
     'work.formats.print',
     z.object({ name: z.string().min(1).max(255), html: z.string().max(60 * 1024 * 1024), paper: z.enum(['A4', 'Letter']).optional() })
+  ),
+  /**
+   * A document drawn as the file a format makes of it (→ PreviewAnswer),
+   * for the Preview frame (docs/agents/work-editors.md "Preview"). `pdf` is
+   * the window's print page printed here, and its bytes are the file;
+   * `docx`, `odt` and `rtf` are the exported file, converted on this host and
+   * drawn by LibreOffice (the file itself is `work.formats.export`'s, which
+   * needs no renderer). The render is kept on this host by the hash of what
+   * it was made from, under the item it is for, and read by range.
+   */
+  request(
+    'work.formats.preview',
+    z.object({
+      source: CanvasSourceSchema,
+      /** the canvas item it is drawn for: its renders are kept under it and go when it goes */
+      itemId: z.string().min(1).max(80).optional(),
+      format: z.enum(PREVIEW_FORMATS),
+      /** `pdf` alone: the window's print page, as `work.formats.print` takes it */
+      html: z.string().max(60 * 1024 * 1024).optional(),
+      paper: z.enum(['A4', 'Letter']).optional()
+    })
+  ),
+  /**
+   * Bytes of one render's picture, a PDF (→ { data } as base64), at most
+   * PREVIEW_READ_MAX a call. `rev` names the render; one that is gone (the
+   * document was drawn again) is refused, never answered from another.
+   */
+  request(
+    'work.formats.previewRead',
+    z.object({
+      source: CanvasSourceSchema,
+      itemId: z.string().min(1).max(80).optional(),
+      rev: z.string().regex(/^[a-f0-9]{32}$/),
+      offset: z.number().int().min(0),
+      length: z.number().int().min(1).max(PREVIEW_READ_MAX)
+    })
   )
 ] as const
+
+/** What `work.formats.preview` answers: one finished render, named by `rev`. */
+export interface PreviewAnswer {
+  rev: string
+  /** the picture's size in bytes: a PDF */
+  size: number
+  pages: number
+  drawnBy: 'tempcode' | 'libreoffice'
+  /** the name the file goes out under: "Run of show.docx" */
+  name: string
+  /** what the file could not carry, one line each, a person's words */
+  warnings: string[]
+}
 
 /** What `work.formats.import` answers: the document it made, and what the file held that the document could not. */
 export interface ImportAnswer {
@@ -105,7 +161,9 @@ export const FORMATS_CAPS = {
   'work.formats.convert': 'operate',
   'work.formats.import': 'operate',
   'work.formats.export': 'read',
-  'work.formats.print': 'operate'
+  'work.formats.print': 'operate',
+  'work.formats.preview': 'operate',
+  'work.formats.previewRead': 'read'
 } satisfies CapsOf<typeof FormatsRequestSchemas>
 /** A forwarded job is between two linked hosts, never carried on a relayed lane. */
 export const FORMATS_RELAY = { 'work.formats.convert': 'never' } satisfies RelayOf<typeof FormatsRequestSchemas>

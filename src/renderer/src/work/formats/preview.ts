@@ -1,6 +1,6 @@
 /**
  * The Preview contract (docs/agents/work-editors.md "Preview"): what a kind's
- * `Body` hands the one Preview frame (`Preview.tsx`), so a document, a sheet
+ * `Body` hands the one Preview frame (`PreviewFrame.tsx`), so a document, a sheet
  * and a deck show "this is the file you will get" on one surface. The frame
  * knows nothing of a kind: it lists the source's formats, asks it to draw one,
  * shows the picture with what the format drops, and asks it to export.
@@ -22,6 +22,8 @@ export interface PreviewFormat {
   paged: boolean;
   /** the one primary button's word */
   verb: "Export" | "Print…" | (string & {});
+  /** what a page of it is called in the bar's count: "Page 2 of 5", or "Slide 1 of 12" for a deck's own formats */
+  unit?: "page" | "slide";
 }
 
 /** Bytes of one finished render, read by range; `rev` names it, so every read is of the same render. */
@@ -187,6 +189,10 @@ export interface PreviewSource {
   office?(): Promise<{ app: OfficeApp; state: "ready" | "asleep" | "not open" | "none" }>;
   /** Draws the format. `by: 'office'` is his press on "Check in …": the app's own picture, or a rejection with NotInReach. */
   draw(format: string, opts: DrawOptions): Promise<Drawn>;
-  /** Writes the file out; answers the name he sees in the toast. */
-  export(format: string): Promise<{ name: string }>;
+  /**
+   * Writes the file out, or prints it. `where` is the place it was saved, when the source put it somewhere itself
+   * ("Spring LAN"): the frame then says "Saved <name> to <where>". Without it the system's own save or print dialog
+   * was the answer, and the frame says nothing more.
+   */
+  export(format: string): Promise<{ name: string; where?: string }>;
 }

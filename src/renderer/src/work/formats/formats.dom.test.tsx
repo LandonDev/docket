@@ -21,9 +21,8 @@ vi.mock("../../components/ui/toaster", () => ({
   loadToast: async () => Object.assign((m: string) => void toasts.push(m), { error: (m: string) => void toasts.push(`error: ${m}`) }),
 }));
 
-import { ExportDialog } from "./ExportDialog";
 import { DropImport, ImportBody } from "./Import";
-import { fileStem, formatNote, fromBase64, importable, importsFirst, paperFor, toBase64, warningsLine } from "./model";
+import { fileStem, fromBase64, importable, importsFirst, paperFor, saveFile, toBase64, warningsLine } from "./model";
 
 const SOURCE = { at: "file", host: "env_box", path: "/w/Plan.tcdoc" } as const;
 const saved: { name: string; size: number }[] = [];
@@ -42,13 +41,6 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the words and rules", () => {
-  it("says what a format leaves behind only when there is something to leave", () => {
-    expect(formatNote("pdf", { comments: 0, suggestions: 0 })).toBeNull();
-    expect(formatNote("pdf", { comments: 2, suggestions: 0 })).toBe("Comments and suggestions stay here.");
-    expect(formatNote("docx", { comments: 0, suggestions: 3 })).toBe("Comments and suggestions go with it.");
-    expect(formatNote("rtf", { comments: 1, suggestions: 0 })).toBe("Suggestions go with it; comments lose their replies.");
-  });
-
   it("paper, names, sources and bytes", () => {
     expect(paperFor("en-US")).toBe("Letter");
     expect(paperFor("en-GB")).toBe("A4");
@@ -64,30 +56,10 @@ describe("the words and rules", () => {
   });
 });
 
-describe("Export", () => {
-  it("one choice, then Export: Word is made on the host and saved where downloads go", async () => {
-    answer = async () => ({ name: "Plan.docx", data: toBase64(new Uint8Array([1, 2, 3])), warnings: ["1 move written in its new place"] });
-    const closed = vi.fn();
-    render(<ExportDialog target={{ env: "env_box", source: SOURCE, title: "Plan", editor: null, suggestions: 0 }} onClose={closed} />);
-    expect(await screen.findByRole("dialog", { name: "Export" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Format" }).textContent).toContain("Word (.docx)");
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
-    await waitFor(() => expect(saved).toEqual([{ name: "Plan.docx", size: 3 }]));
-    expect(requests).toEqual([{ env: "env_box", method: "work.formats.export", params: { source: SOURCE, format: "docx" } }]);
-    await waitFor(() => expect(toasts).toEqual(["1 move written in its new place."]));
-    expect(localStorage.getItem("work.formats.export.format")).toBe("docx");
-  });
-
-  it("a document another host serves is asked of that host; a refusal stays in the dialog", async () => {
-    answer = async (env) => {
-      if (env === "env_box") throw new Error("served elsewhere: env_mac");
-      throw new Error("LibreOffice is not installed on any linked host");
-    };
-    render(<ExportDialog target={{ env: "env_box", source: SOURCE, title: "Plan", editor: null, suggestions: 0 }} onClose={() => {}} />);
-    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Export" })));
-    expect(await screen.findByText("LibreOffice is not installed on any linked host")).toBeTruthy();
-    expect(requests.map((r) => r.env)).toEqual(["env_box", "env_mac"]);
-    expect(saved).toEqual([]);
+describe("a file saved", () => {
+  it("goes where downloads go, under its own name", () => {
+    saveFile("Plan.docx", new Blob([new Uint8Array([1, 2, 3])]));
+    expect(saved).toEqual([{ name: "Plan.docx", size: 3 }]);
   });
 });
 

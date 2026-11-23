@@ -1766,6 +1766,124 @@ the room sees, and the presenter's view. One state moves both.
   when a slide has one, is in the presenter's view only: the slideshow has
   no chrome but the bar the pointer calls.
 
+#### Work editors: Preview
+
+One surface for the document, the sheet and the deck (`work/formats/PreviewFrame.tsx`
+over a kind's `PreviewSource`; docs/agents/work-editors.md has the contract):
+"this is the file you will get", drawn by the program that will read it. It
+is a state of the item, not a kind and not a dialog: its bar takes the format
+row's place, the stage takes the body, and the tab row, the kind's bar and
+the review stepper stay as they are. Export… in an item's ⋯, File → Export…
+and ⇧⌘E open it on the format he last used for that kind; Edit, or Back on a
+file he cannot edit, or Escape, puts him where he was. The editor stays
+mounted under it, out of the tab order, so his caret and his place are kept;
+opening puts the focus on Edit.
+
+- **The bar** is the format row's: 36px on `background`, a hairline under
+  it, a 12px inset, 28px controls at the 6px radius 2px apart, a 1 by 16px
+  `border` rule with 6px either side. In order: Edit (ghost, the 16px left
+  chevron and the word in 13px medium muted; its glyph alone under 440px of
+  canvas); the rule; the format; the zoom; the count; and at the end the
+  Page button and, 6px after it, the one primary button (small), which says
+  the format's own verb: Export, Print…, Save to Google Sheets.
+- **The format** is a segmented control (28px, 12px labels, the gliding
+  pill) while it fits and a quiet menu button when it does not: its name, a
+  12px muted chevron, and a menu whose rows are the name with the extension
+  as the row's muted end fact and a tick on the one in hand. "Fits" is
+  measured, the bar's room against the control's own width, never a
+  breakpoint: the labels differ by kind and the type by machine.
+- **The zoom** is a quiet menu in muted 13px: Fit width, Fit page, 100%,
+  125%, 150%. Only for a picture with pages; gone under 440px of canvas. Fit
+  width runs from 0.3 to 1.25 on the room the paper has, as the PDF kind's
+  does; his place holds across a zoom.
+- **The count** is 12px muted tabular, 8px either side: "Page 2 of 5", or
+  "Slide 1 of 12" for a deck's own formats. It follows the scroll. None for a
+  file with no pages, while it is drawn, or on a failure.
+- **Paper** is the PDF kind's: `paper` on `stage` on `image-outline`, 12px
+  between sheets, 16px over the first and 24px under the last, a 24px side
+  inset (12px with the column folded). White in both themes: a preview shows
+  the file, and the file's paper is white. The file's words can be selected
+  on it. A page that could not be drawn says so on the paper in `paper-ink-2`
+  with a ghost Retry. From 20 pages a thumbnail rail stands at the start:
+  76px (60px under a 640px canvas), thumbnails 44 wide (52 for a slide), the
+  number under each in 12px tabular muted, the page being read on `muted`; a
+  press goes to that page.
+- **Who drew it** is one line over the first sheet, as wide as the paper, at
+  least 24px tall and 8px above it, 12/16 muted: "As LibreOffice draws it",
+  "As Word draws it" (or Excel, or PowerPoint) only when that app drew it,
+  "The file itself" for a PDF, "As it will print" for Print. A file that is
+  its own text or files has no such line. Where the real app is in reach the
+  line ends in a ghost extra-small button, "Check in Word": his press draws
+  it there, the line reading the spinner and "Drawing in Word" ("Waking
+  Windows" when the machine was asleep) while the paper stays and dims to 55%
+  over `--dur-base`; then "As Word draws it" and no button. If the app could
+  not, LibreOffice's picture stays and one toast says why ("Word is not in
+  reach").
+- **The column** is the PDF kind's margin column: 232px, 16px off the paper,
+  in view as the pages scroll. A section's name is 12/16 medium muted with
+  4px above and below, 20px after the section before it. **Page** comes
+  first, for a format with pages: rows of at least 28px, the name in 13/20
+  and its value as a quiet extra-small menu button at the row's end (12px, a
+  12px chevron, at most 156px, hung 8px into the edge so values meet it), or
+  a switch. Every kind has Paper, Orientation, Margins (Word's Normal,
+  Narrow, Moderate and Wide; anything else reads Custom) and Headers and
+  footers; a kind's own rows follow. A change draws the file again. **In
+  this format** comes after: what the format cannot hold, one line each in
+  13/20 foreground, 4px apart, counted from the item and saying what happens
+  to the thing ("2 comments stay behind", "3 suggestions go as tracked
+  changes", "1 footnote moves to the end"), never "not supported". With
+  nothing lost there is no heading and no line, and with neither section no
+  column: the paper takes the room.
+- **Under 600px of canvas the column folds.** The losses become 12/16 muted
+  lines under the who-drew line, over the paper. The Page rows move into a
+  264px popover (8px top, 12px sides and bottom) from a 28px quiet icon
+  button in the bar (the sliders glyph, named Page), shown only when the
+  format has Page rows.
+- **A file with no pages.** Markdown is on `background`, not `stage`: the
+  text in 13/20 mono on a `card` box at the 12px radius with the hairline,
+  16 by 20px inside, in a measure of at most 624px. A web page is on `stage`
+  in a frame at the 8px radius on `image-outline`, at a phone's (390px), a
+  tablet's (768px) or a desktop's (1280px) width from a 24px segmented switch
+  where the who-drew line would be, zoomed down to fit and never up; no
+  script runs in it and nothing it names is fetched. A table of plain values
+  (CSV) is rows of 32px with hairlines, tabular, under a Sheet row when the
+  file has more than one. Pictures are a grid, two columns and three from
+  640px, 16 by 12px apart, each 16:9 at the 3px radius on `image-outline`
+  with its file name in 12/16 muted. A video is its first frame at the 8px
+  radius on the black matte, at most 640px, over a 32px row: Play, the time
+  in 13px tabular, and its length and size in 12px muted at the end.
+- **While it is drawn** the who-drew line is the spinner and "Drawing 5
+  pages" (the count it had when last drawn; "Drawing the pages" the first
+  time, "Drawing the file" with no pages), over two skeletons in the paper's
+  shape on `card` with the hairline (16:9 for a deck). No count and no
+  losses; the Page rows stay; the primary button stays live.
+- **When it cannot be drawn**: one `Empty` in a 440px box at least 360px
+  tall on `stage`, "Can't draw this format here", the reason and "Exporting
+  still works." as its line, and Retry. The primary button stays live and
+  the Page rows stay beside it; no losses are listed. A render the host no
+  longer has is drawn once more with nothing said.
+- **A long file** draws its first pages: the who-drew slot reads "The first
+  50 pages" with a ghost extra-small "Draw all 2,084" at its end, and the
+  count is of the whole ("Page 1 of 2,084").
+- **After Export** the system's own save dialog is the answer and nothing
+  more is said. When a kind saved the file somewhere itself, one toast says
+  where: "Saved Budget.xlsx to Spring LAN".
+- **Motion.** The menus, the popover and the toast are the app's. The
+  format's pill glides on the layout spring. The paper dims over `--dur-base`
+  on `--ease-out` while the real app draws, and not under reduced motion. A
+  new picture replaces the old at once: nothing fades in.
+- **Against the prototype** (`.temp-code/prototypes/work-editors/`,
+  `preview.html`): the zoom gains Fit page; the rail's numbers are 12px,
+  since the scale keeps 11px for key caps and menu labels; the format's fit
+  is measured from the bar's room, not from its scroll width; Print has no
+  printer rows, which are the system dialog's.
+- **Tokens.** `paper-ink-2` (`#5b6270`: on paper, what supports the words)
+  and `paper-rule` (`#c3c8cf`: a rule on paper), one value in both themes as
+  `paper` and `paper-ink` have, held to 4.5:1 and to the edge floor on
+  `paper` by `lib/tokenContrast.test.ts`. Nothing inside the paper, a slide
+  or the web frame is ours.
+
+
 ## Scrolling
 
 Every scroller is a native element with `overflow-*-auto`, and one rule in

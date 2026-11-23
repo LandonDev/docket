@@ -7,7 +7,7 @@ import { canvasSourcePath } from '@shared/work'
 import { namesFor } from '../docs'
 import { importsRoot } from '../files/imports'
 import { sharedOf } from '../files/policy'
-import { lifeosRow, serviceTarget, targetOf, titleOf } from '../docs/target'
+import { lifeosRow, serviceTarget, targetOf, titleOf, type DocTarget } from '../docs/target'
 import { readThreads } from '../docs/threads'
 import type { Caller, WorkCtx } from '../modules'
 import { ServedElsewhere } from '../service/ctx'
@@ -39,19 +39,33 @@ export function madeFromShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, so
   return !!inside && !inside.startsWith('..') && !isAbsolute(inside)
 }
 
-export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: CanvasSource; format: 'docx' | 'odt' | 'rtf' | 'md' }): Promise<ExportAnswer> {
-  const t = await targetOf(ctx, by, METHOD, params.source)
+/** A document as the Work service writes it (Word as base64, or markdown), with its title and what it could not carry. */
+export async function serviceExport(
+  ctx: WorkCtx,
+  t: DocTarget,
+  kind: 'docx' | 'md'
+): Promise<{ title: string; data?: string; text?: string; dropped?: Record<string, number> }> {
   const title = titleOf(t, await lifeosRow(ctx, t))
   const threads = await readThreads(ctx, t)
   const names = namesFor(ctx, threads.flatMap((r) => r.comments.map((c) => c.authorMemberId)))
-  const kind = params.format === 'md' ? 'md' : 'docx'
-  let got: { data?: string; text?: string; dropped?: Record<string, number> }
   try {
-    got = (await ctx.service.internal('/internal/formats/export', { ...serviceTarget(t, false, 'all'), format: kind, threads, names, title })) as typeof got
+    const got = (await ctx.service.internal('/internal/formats/export', { ...serviceTarget(t, false, 'all'), format: kind, threads, names, title })) as {
+      data?: string
+      text?: string
+      dropped?: Record<string, number>
+    }
+    return { ...got, title }
   } catch (err) {
     if (err instanceof ServedElsewhere) throw new Error(`served elsewhere: ${err.host}`)
     throw err
   }
+}
+
+export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: CanvasSource; format: 'docx' | 'odt' | 'rtf' | 'md' }): Promise<ExportAnswer> {
+  const t = await targetOf(ctx, by, METHOD, params.source)
+  const kind = params.format === 'md' ? 'md' : 'docx'
+  const got = await serviceExport(ctx, t, kind)
+  const title = got.title
   const warnings = droppedWords(got.dropped ?? {})
   const name = `${safeName(title)}.${params.format}`
   if (kind === 'md') return { name, data: Buffer.from(got.text ?? '', 'utf8').toString('base64'), warnings }

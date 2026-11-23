@@ -99,10 +99,60 @@ place for a LifeOS document). What it tells the pane:
   may edit and `read` when he may not, so ⌘B is bold and ⌘K a link there
   and not Sidebar and Search ([work-editors.md](work-editors.md) "Who hears
   a key"). The Docs view draws the same frame, so the rule holds there too.
-- **Export…** in the pane's More, File → Export… and ⇧⌘E open the Export
-  dialog: the body answers the `export` command (`useWorkCommands`). It
-  answers no `print` or `find` yet, so File → Print… is greyed and ⌘P and
-  ⌘F stay the app's.
+- **Export…** in the pane's More, File → Export… and ⇧⌘E open Preview on
+  the format he last used: the body answers the `export` command
+  (`useWorkCommands`). It answers no `print` or `find` yet, so File → Print…
+  is greyed and ⌘P and ⌘F stay the app's.
+
+## Preview
+
+Preview is a state of the document (the frame is the formats pillar's,
+`work/formats/PreviewFrame.tsx`; its look is docs/DESIGN.md "Work editors:
+Preview", its contract work-editors.md). The body draws it through a portal
+into a slot over the editor, which stays mounted, unseen and `inert`, so the
+caret, the scroll and the collab connection are kept; Edit puts him back in
+the words.
+
+`work/docs/previewSource.ts` is the document's `PreviewSource`, one object
+for as long as the document is the same one:
+
+| Format | Drawn | By |
+|---|---|---|
+| Word, OpenDocument, Rich Text | the exported file itself, converted on the host (`work.formats.preview`) | LibreOffice |
+| PDF | the document's print page, written here from the editor's blocks and printed on the host | TempCode |
+| Markdown | the host's text (`work.formats.export`) | the file's own text |
+| Web page | the page written here, in a frame where no script runs and nothing is fetched | the file's own page |
+
+- **Export writes the document as it stands when he presses**, never a
+  picture kept from an earlier look (he may have gone back to the words
+  since). Word, OpenDocument, Rich Text and Markdown go through
+  `work.formats.export`, which needs no renderer for Word, so Word still
+  goes out on a host that cannot draw it. A PDF is the same print the
+  preview makes, read from the render the host keeps: an unchanged document
+  saves the bytes he saw. The system's save dialog is the answer.
+- A LifeOS document another host serves is drawn, read and exported on that
+  host (`servedBy`), as it is opened there; that host is told the source and
+  never this host's item, and keeps the render with no item (swept after a
+  day).
+- **In this format** (`docDrops`) is counted from the document: comment
+  threads and waiting suggestions as the canvas counts them, and footnotes,
+  colours and underlines from the editor's blocks (`blockFacts`), then what
+  the host's own writer said it dropped. Only what is true of today's writers
+  is said:
+
+  | Format | Lines |
+  |---|---|
+  | Word, OpenDocument | "3 suggestions go as tracked changes" (comments go whole) |
+  | Rich Text | the same, and "2 comments lose their replies" (counted from the threads someone answered) |
+  | PDF, Web page | "2 comments stay behind", "3 suggestions stay out until you accept them", "1 footnote moves to the end" (every colour is kept: the page writes it inline) |
+  | Markdown | comments and suggestions as a PDF's, "Colours stay behind", "Underlines stay behind" |
+
+- **Not yet.** There is no Print format (Print… lands with the print path);
+  the document has no page set-up, so Preview's Page section is absent and a
+  PDF is printed on the locale's paper with the print page's own margins;
+  fonts are the print page's system stack; "Check in Word" is not offered (no
+  Office renderer is registered); headers, footers and columns a Word file
+  carried are not counted in the lines.
 
 ## The Docs view
 

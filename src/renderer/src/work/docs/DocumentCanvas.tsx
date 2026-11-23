@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { DocMode, DocOpen, DocWritten } from "@shared/contract-work-docs";
 import type { CanvasSource, ContextChip, Principal } from "@shared/work";
 import {
@@ -22,13 +23,14 @@ import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { useWorkCommands } from "../formats/command";
-import { ExportDialog } from "../formats/ExportDialog";
+import { Preview } from "../formats/PreviewFrame";
 import { DropImport, ImportBody, keepAsDocument, readAttachment } from "../formats/Import";
 import { importsFirst } from "../formats/model";
 import { Doc, Export } from "../icons";
 import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { useGoogleDoc } from "../google/docMore";
 import { docHost, servedBy, type DocHost } from "./host";
+import { docPreviewSource } from "./previewSource";
 import { decided, reviewOf } from "./review";
 import { docThreads, type DocThreads } from "./threads";
 import { ShareButton } from "../guests/Share";
@@ -266,18 +268,37 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
     shell.ready?.(now === "open");
   }, [item.id, opened, shell]);
   useEffect(() => () => markOpen(item.id, null), [item.id]);
+  // Preview is a state of the item: it takes the body, and the editor stays mounted under it, out of reach, with its place kept.
+  const root = useRef<HTMLDivElement | null>(null);
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   // A failed open is said once, on the state line with Retry; the body under it stays empty rather than pulse.
   return (
     <DropImport env={env} sessionId={item.sessionId} editor={null}>
-      <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
-        {(width) =>
-          opened === null ? (
-            <ItemBones title={<Title text={item.title} />} />
-          ) : "open" in opened ? (
-            <Opened key={`${opened.host.env}|${opened.open.doc}`} host={opened.host} open={opened.open} shell={shell} width={width} more={google} />
-          ) : null
-        }
-      </Scroller>
+      <div ref={root} className="relative h-full">
+        <div ref={setSlot} data-doc-preview={previewing || undefined} className={previewing ? "absolute inset-0 z-10" : "hidden"} />
+        <div className={previewing ? "invisible h-full" : "h-full"} inert={previewing || undefined}>
+          <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
+            {(width) =>
+              opened === null ? (
+                <ItemBones title={<Title text={item.title} />} />
+              ) : "open" in opened ? (
+                <Opened
+                  key={`${opened.host.env}|${opened.open.doc}`}
+                  host={opened.host}
+                  open={opened.open}
+                  shell={shell}
+                  width={width}
+                  more={google}
+                  itemId={item.id}
+                  root={root}
+                  preview={{ slot, on: previewing, set: setPreviewing }}
+                />
+              ) : null
+            }
+          </Scroller>
+        </div>
+      </div>
     </DropImport>
   );
 }
@@ -344,8 +365,33 @@ export function Scroller({
 
 const NO_MORE: MoreEntry[] = [];
 
+/** Where the body draws Preview, and whether it is up. */
+interface PreviewSlot {
+  slot: HTMLElement | null;
+  on: boolean;
+  set(on: boolean): void;
+}
+
 /** The open document: the editor and everything it tells the pane. */
-function Opened({ host, open, shell, width, more = NO_MORE }: { host: DocHost; open: DocOpen; shell: CanvasShell; width: number; more?: MoreEntry[] }) {
+function Opened({
+  host,
+  open,
+  shell,
+  width,
+  more = NO_MORE,
+  itemId,
+  root,
+  preview,
+}: {
+  host: DocHost;
+  open: DocOpen;
+  shell: CanvasShell;
+  width: number;
+  more?: MoreEntry[];
+  itemId: string;
+  root: React.RefObject<HTMLDivElement | null>;
+  preview: PreviewSlot;
+}) {
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
 
@@ -380,23 +426,48 @@ function Opened({ host, open, shell, width, more = NO_MORE }: { host: DocHost; o
   const [editor, setEditor] = useState<AnyEditor | null>(null);
   const review = useDocReview(host, open, shell, editor);
 
-  // The document's own verb in the pane's More: Export, a dialog with one choice (work/formats).
-  const [exporting, setExporting] = useState(false);
+  // Export… in the pane's More, File → Export… and ⇧⌘E all open Preview on the format he last used (work/formats/PreviewFrame.tsx).
+  const showPreview = preview.set;
   useEffect(() => {
-    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => setExporting(true) }]);
+    shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => showPreview(true) }]);
     return () => shell.more?.(null);
-  }, [shell, more]);
+  }, [shell, more, showPreview]);
+  useWorkCommands(root, { export: () => showPreview(true) });
+  // The document went (a tab closed, another opened in its place): its Preview goes with it.
+  useEffect(() => () => showPreview(false), [showPreview]);
 
-  // File → Export… and ⇧⌘E open the same dialog (lib/appCommands.ts `workCommands`).
-  const root = useRef<HTMLDivElement | null>(null);
-  useWorkCommands(root, { export: () => setExporting(true) });
+  // What Preview draws: one source for as long as this document is open, reading the editor and the counts as they stand.
+  const live = useRef({ editor, suggestions: review.hooks?.count ?? 0, threads: doc.threads });
+  live.current = { editor, suggestions: review.hooks?.count ?? 0, threads: doc.threads };
+  const source = useMemo(
+    () =>
+      docPreviewSource({
+        env: host.env,
+        source: open.source,
+        itemId,
+        title: open.title,
+        editor: () => live.current.editor,
+        // Threads, not marks: a thread over three lines is one comment. One with a second comment has a reply.
+        review: () => ({
+          comments: new Set(Array.from(live.current.editor?.domElement?.querySelectorAll(".bn-thread-mark") ?? [], (m) => m.getAttribute("data-bn-thread-id") ?? m.textContent)).size,
+          replied: (live.current.threads.adapter.rows(open.doc) ?? []).filter((row) => row.comments.length > 1).length,
+          suggestions: live.current.suggestions,
+        }),
+      }),
+    [host.env, open.source, open.title, open.doc, itemId],
+  );
+  const closePreview = (): void => {
+    showPreview(false);
+    // Back to the words, where the caret was.
+    requestAnimationFrame(() => editor?.focus());
+  };
 
   // Through the frame, as the pane's own Ask: the chip goes in, a folded thread unfolds and its composer takes the caret.
   const onAsk = (selection: DocumentSelection): void => shell.ask?.(selectionChip(selection.text, open));
 
   return (
     // A copy is written as mail clients and sheets read it, after the editor wrote its own (work-kit/formats/clipboard).
-    <div ref={root} onCopy={(e) => mailSafeCopy(e.nativeEvent)} onCut={(e) => mailSafeCopy(e.nativeEvent)}>
+    <div onCopy={(e) => mailSafeCopy(e.nativeEvent)} onCut={(e) => mailSafeCopy(e.nativeEvent)}>
       <DocumentFrame
         doc={doc}
         open={open}
@@ -408,9 +479,7 @@ function Opened({ host, open, shell, width, more = NO_MORE }: { host: DocHost; o
         onReviewPick={review.pick}
         onEditor={setEditor}
       />
-      {exporting ? (
-        <ExportDialog target={{ env: host.env, source: open.source, title: open.title, editor, suggestions: review.hooks?.count ?? 0 }} onClose={() => setExporting(false)} />
-      ) : null}
+      {preview.on && preview.slot ? createPortal(<Preview source={source} title={open.title} kind="document" readOnly={open.role !== "edit"} onClose={closePreview} />, preview.slot) : null}
     </div>
   );
 }
