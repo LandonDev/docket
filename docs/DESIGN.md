@@ -1485,6 +1485,22 @@ Around the canvas:
   In the Week and the Month a clashing event's block carries a 6px
   `warning` dot before its title, named "Clashes with another event";
   pressing the event opens its day's list, where the line is.
+  Start places is a section of Settings → Work on the Work home host,
+  after Where it runs (`StartPlacesSection`): Home, then the six jobs in
+  LifeOS's order, each job's title its sector dot and name. A row's line
+  is the place as the map named it; "Home" in muted text where a job has
+  no start of its own; "Not set" for Home with none; "Looking up…" until
+  LifeOS has placed a new address, turning by itself; the typed address
+  with "Not found" as the row's red line when the map did not find it.
+  Nothing on the row says whether a job's places go to the map: that
+  lives in the dialog. The row opens a small dialog named for Home or the
+  job: one Address field, and for a job the switch "Look up places on
+  Apple Maps" with its one line, "Off, this job's event places never
+  leave your machines.", and Use home at the foot's start while the job
+  has a start of its own. Save stays off until something changed, spins,
+  and closes; a refusal stays in the dialog. No toast: the row is the
+  answer. Signed out of LifeOS the section is absent; while it reads,
+  seven row bones.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way
