@@ -13,7 +13,7 @@ import { useMessagesData, type Paged } from "./data";
 import { Composer } from "./Composer";
 import { MessageBlock } from "./Message";
 import { blocksOf, chatFact, estimateOf, menuKey, newSince, wantsRead, type Block } from "./model";
-import { dropWanted, heldUnread, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, useWanted, visitPlaceOf, visitSince } from "./page";
+import { dropWanted, heldUnread, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, settleFile, useFileWants, useWanted, visitPlaceOf, visitSince } from "./page";
 import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 
 /**
@@ -76,12 +76,26 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
     return () => window.removeEventListener("focus", onFocus);
   }, [wants, chatId, markRead]);
 
+  // A file he pressed before its bytes came opens as they come, or the ask goes if the file fails: settled here, where
+  // every loaded message is seen, not in its chip, which the column may no longer draw.
+  const fileWants = useFileWants(workspaceId, chatId);
+  useEffect(() => {
+    if (messages.status !== "ready") return;
+    for (const want of fileWants) {
+      const message = messages.value.rows.find((m) => m._id === want.messageId);
+      const file = message?.files.find((f) => f._id === want.fileId);
+      if (!message || !file || (file.status !== "stored" && file.status !== "failed")) continue;
+      settleFile(workspaceId, chatId, want);
+      if (file.status === "stored") data.openFile(chatId, message, file);
+    }
+  }, [fileWants, messages, data, workspaceId, chatId]);
+
   const failed = detail.status === "failed" || messages.status === "failed";
   const gone = detail.status === "ready" && !detail.value;
   return (
     <div data-conversation className="flex h-full min-h-0 flex-col">
       {/* The toolbar stays whatever came back, so under 640px the way back is always there. */}
-      <Toolbar workspaceId={workspaceId} detail={detail.status === "ready" ? detail.value : undefined} loading={detail.status === "loading"} name={rowName} narrow={narrow} onBack={onBack} />
+      <Toolbar workspaceId={workspaceId} chatId={chatId} detail={detail.status === "ready" ? detail.value : undefined} loading={detail.status === "loading"} name={rowName} narrow={narrow} onBack={onBack} />
       {failed ? (
         <EmptyState title={detail.status === "failed" ? "This conversation did not load" : "The messages did not load"} action={{ label: "Retry", onClick: retry }} />
       ) : gone ? (
@@ -98,7 +112,23 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
 
 // ── The toolbar ──
 
-function Toolbar({ workspaceId, detail, loading, name, narrow, onBack }: { workspaceId: string; detail: ChatDetail | null | undefined; loading: boolean; name: string | undefined; narrow: boolean; onBack: () => void }) {
+function Toolbar({
+  workspaceId,
+  chatId,
+  detail,
+  loading,
+  name,
+  narrow,
+  onBack,
+}: {
+  workspaceId: string;
+  chatId: string;
+  detail: ChatDetail | null | undefined;
+  loading: boolean;
+  name: string | undefined;
+  narrow: boolean;
+  onBack: () => void;
+}) {
   const data = useMessagesData();
   const now = data.useNow();
   const start = useStartThread();
@@ -120,9 +150,15 @@ function Toolbar({ workspaceId, detail, loading, name, narrow, onBack }: { works
       const fell = document.activeElement === null || document.activeElement === document.body;
       if (!backHeld.current || !fell) return;
       backHeld.current = false;
-      const open = chat ? document.getElementById(`chat-row-${chat._id}`)?.closest<HTMLElement>("[role=listbox]") : null;
-      const field = toolbar.current?.closest("[data-conversation]")?.querySelector<HTMLElement>("[data-composer] textarea");
-      (open ?? field)?.focus({ preventScroll: true });
+      // The keys go, in turn, to: the list holding this conversation's row (found by its id, which is known whatever the
+      // detail is doing), the composer's field, the pane's recovery control (Retry on a failure), else the search field.
+      const pane = toolbar.current?.closest("[data-conversation]");
+      const target =
+        document.getElementById(`chat-row-${chatId}`)?.closest<HTMLElement>("[role=listbox]") ??
+        pane?.querySelector<HTMLElement>("[data-composer] textarea") ??
+        pane?.querySelector<HTMLElement>("[data-slot=empty] button") ??
+        document.querySelector<HTMLElement>("[data-messages-list] input[type=search]");
+      target?.focus({ preventScroll: true });
       return;
     }
     const pane = back.current?.closest("[data-conversation]");
@@ -532,7 +568,7 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
           </div>
         </RowsContextMenu>
       </div>
-      <p role="status" aria-live="polite" className="sr-only">
+      <p role="status" aria-live="polite" data-arrivals className="sr-only">
         {said}
       </p>
       {unseen > 0 ? (

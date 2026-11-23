@@ -97,7 +97,9 @@ describe("the failed line", () => {
   it("names its thread in ink after the word, then the reason, and is a status", () => {
     mount({ drafts: { c_dana: [{ ...HELD_DRAFT, failed: "Slack said the thread is archived" }] } }, "c_dana");
     const line = failedLine()!;
-    expect(line.getAttribute("role")).toBe("status");
+    // The composer's own status region, always mounted, speaks it (round 6: a region that arrives filled is not spoken).
+    expect(document.querySelector("[data-press-status]")!.getAttribute("role")).toBe("status");
+    expect(document.querySelector("[data-press-status]")!.textContent).toBe(`Not sent. ${HELD_DRAFT.thread}`);
     const name = within(line).getByText(HELD_DRAFT.thread!);
     expect(name.className).toContain("text-foreground");
     expect(line.textContent!.indexOf("Not sent.")).toBeLessThan(line.textContent!.indexOf(HELD_DRAFT.thread!));

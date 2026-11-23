@@ -178,7 +178,7 @@ describe("the conversation", () => {
     expect(screen.getByRole("log").getAttribute("aria-live")).toBe("off");
     act(() => data.deliver("c_dana", "Dana Lee", "Any update on the key art?"));
     await flush();
-    expect(screen.getByRole("status").textContent).toBe("Dana Lee: Any update on the key art?");
+    expect(document.querySelector("[data-arrivals]")!.textContent).toBe("Dana Lee: Any update on the key art?");
     expect(block("c_dana_in1").className).toContain("tc-message-arrives");
   });
 

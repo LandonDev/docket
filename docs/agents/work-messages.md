@@ -252,11 +252,20 @@ The look is docs/DESIGN.md "The Messages view".
   says "Not sent." when the outcome is known, or "May have gone." with the
   Outbox's own "Check whether it went first" when it is not (`outcomeUnknown`,
   carried on the draft and on the rejected press as `unknown`), then the
-  thread's name in ink, the reason muted, the route's reason while the button
-  is Copy, and Open in Outbox, which opens that very item
-  (`wantOutboxItem(<host>:<ref.at>:<ref.id>)`) in whichever tab holds it. Its
-  words never come into the field, and the row wears no "a draft waits" mark
-  for it. Whose words the field holds is answered once, against every draft
+  thread's name in ink, the reason muted 10px after it, the route's reason
+  while the button is Copy, and Open in Outbox, which opens that very item
+  (`wantOutboxItem(<host>:<ref.at>:<ref.id>)`) in whichever tab holds it, its
+  tip the whole line. The line wraps rather than cutting its reasons. A
+  status region always mounted in the composer (`data-press-status`) speaks
+  the word and the thread as they appear. The last press from this composer
+  that failed or may have gone owns the line over any other draft waiting
+  (`keepFailedPress`), until he opens it in the Outbox or the Outbox's list
+  no longer holds it failed. Its words never come into the field, and the
+  row wears no "a draft waits" mark for it. A held press refused with the
+  item still held (a revision conflict) leaves its words with the item,
+  offered by Use draft; whatever the field holds then (a reply his Undo put
+  back, words typed since) stays his own, untouched, and the refusal shows
+  above the draft's line rather than in its place. Whose words the field holds is answered once, against every draft
   still waiting (`fieldOrigin`, drafts.ts: held, copy-only, failed, or his
   own), for the line, Send and the cleanup alike: a failure from elsewhere
   empties the field only if it still holds the item's own words, and an edit
@@ -295,12 +304,18 @@ The look is docs/DESIGN.md "The Messages view".
   list wears the focus ring. When the row the keys stand on leaves the list
   (read, under Unread), the row now at its index becomes the active row,
   marked and named (`aria-activedescendant`), so Enter and the menu key act
-  on a row he sees; when the last one leaves, the keys go to Clear filter.
+  on a row he sees. Beside the conversation, Down from there opens that row
+  itself (the active row that is not the open one), so going down an Unread
+  list with the arrows reads every conversation in turn; Up steps as ever;
+  under 640px Down moves from it. When the last one leaves, the keys go to
+  Clear filter.
   Clear filter leaves the keys on the whole list's first row; Clear search
   hands them to the search field. No control that goes by its own action or
   a change of layout drops the keys to the page: widening past 640px with
-  Back focused hands them to the open row in the list (else the composer's
-  field), and "2 new" hands them to the column as it goes. Search hits are one list the same way; a search
+  Back focused hands them to the list holding the conversation's row, found
+  by its id whatever the detail is doing (else the composer's field, else
+  the pane's Retry, else the search field), and "2 new" hands them to the
+  column as it goes. Search hits are one list the same way; a search
   keeps its last hits on screen while the next words are asked (bones only
   before the first answer), and a hit's line is measured so the word it
   found always shows: measured in its own font on a canvas
@@ -309,7 +324,8 @@ The look is docs/DESIGN.md "The Messages view".
   about two thirds of the line, so words follow it, starting at a word where
   one starts there, else mid-run (a URL's match shows too), and "…" stands
   only where words were cut, never before a match at the very start; where nothing can measure text it
-  counts characters (`aroundMatch`). New words drop the way back. Back under
+  counts characters (`aroundMatch`). New words, ×, Escape and Clear search
+  drop the way back (one clear for them all). Back under
   640px is taken by the first answer that shows, once: hits put the keys on the hit he left (or the one
   now in its place), brought into view; no hits on Clear search; a failure
   on its Retry, the way back kept for the search Retry brings. Later answers,
@@ -334,8 +350,12 @@ The look is docs/DESIGN.md "The Messages view".
   did not come or do not draw says so in a file's failure line, with Try
   again and Open in the app. A file LifeOS lists but has not stored yet
   (`listed`, `wanted`) is its own chip, pending: a spinner in its tile, the
-  name muted, `aria-busy`; a press then waits for the address and opens it
-  as it comes, with no toast for a file that is merely on its way. A file a canvas kind shows opens in the view's own pane
+  name muted, `aria-busy`, and a picture in the same state is its skeleton,
+  `aria-busy`; a press asks the conversation to open it (`wantFile`, by
+  message and file id in page.ts), which settles once, wherever the message
+  has scrolled: it opens the file when it is stored, or lets the ask go when
+  the file fails. Leaving the conversation drops the asks. No toast for a
+  file that is merely on its way. A file a canvas kind shows opens in the view's own pane
   (`openItem(env, messagesPaneOf(ws), {kind, source: chatFileSource(…)})`,
   the host fetching it as the owner); any other is saved to Downloads once
   stored. `fileMarkers` takes the folded names out of the words once the
@@ -347,8 +367,9 @@ The look is docs/DESIGN.md "The Messages view".
   longer here" only when LifeOS answers that it is absent, "could not be
   read" with Retry when that read failed, or at once, whatever the page is
   doing, when the conversation's own read failed and the reply names no
-  message. A parent with no
-  words says "A picture or file". The quote is "Writer: words", cut where its
+  message. Retry keeps the keys: the quote's slot (`data-quote-slot`) holds
+  its place through every state and takes them when Retry held them. A
+  parent with no words says "A picture or file". The quote is "Writer: words", cut where its
   line ends; in a direct chat the writer is left out only when it is the
   recipient, so his own words still say "You:".
 - **Not yet.** One-press answers (`QUICK_ANSWERS` is empty).

@@ -138,7 +138,7 @@ describe("the conversation's read mark and its newest row", () => {
     await flush();
     act(() => data.deliver("c_dana", "Dana Lee", "Did you see the banner?"));
     await flush();
-    expect(screen.getByRole("status").textContent).toBe("Dana Lee: Did you see the banner?");
+    expect(document.querySelector("[data-arrivals]")!.textContent).toBe("Dana Lee: Did you see the banner?");
     expect(block("c_dana_in1").className).toContain("tc-message-arrives");
   });
 

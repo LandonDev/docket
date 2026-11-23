@@ -194,6 +194,7 @@ export function markUnreadHeld(markUnread: (chatId: string, onFailed?: () => voi
 }
 export function endVisit(workspaceId: string, chatId: string): void {
   visits.delete(key(workspaceId, chatId));
+  if (fileWants.delete(key(workspaceId, chatId))) tellWants();
   visitPlaces.delete(key(workspaceId, chatId));
   unreadHeld.delete(key(workspaceId, chatId));
 }
@@ -256,6 +257,67 @@ export function useDraftMarks(workspaceId: string, chatId: string): ReadonlyMap<
   );
 }
 
+/**
+ * The held reply whose press from this composer failed last (or may have gone): it owns the composer's line over any
+ * other draft waiting, with its Open in Outbox, until he opens it there or the Outbox's state for it changes.
+ */
+const failedPresses = new Map<string, string>();
+const failedListeners = new Set<() => void>();
+export function keepFailedPress(workspaceId: string, chatId: string, draftId: string | null): void {
+  if (draftId) failedPresses.set(key(workspaceId, chatId), draftId);
+  else if (!failedPresses.delete(key(workspaceId, chatId))) return;
+  for (const listener of failedListeners) listener();
+}
+export function useFailedPress(workspaceId: string, chatId: string): string | null {
+  return useSyncExternalStore(
+    (fn) => {
+      failedListeners.add(fn);
+      return () => void failedListeners.delete(fn);
+    },
+    () => failedPresses.get(key(workspaceId, chatId)) ?? null,
+    () => failedPresses.get(key(workspaceId, chatId)) ?? null,
+  );
+}
+
+/**
+ * Files he asked to open before their bytes came, by message and file, kept with the conversation's visit rather
+ * than in a chip, so the ask settles once (opened when the file is stored, dropped when it fails) even when its
+ * message has scrolled out of the column's window. Leaving the conversation lets them go.
+ */
+export interface FileWant {
+  messageId: string;
+  fileId: string;
+}
+const fileWants = new Map<string, readonly FileWant[]>();
+const NO_WANTS: readonly FileWant[] = [];
+const wantListeners = new Set<() => void>();
+const tellWants = (): void => {
+  for (const listener of wantListeners) listener();
+};
+export const fileWantsOf = (workspaceId: string, chatId: string): readonly FileWant[] => fileWants.get(key(workspaceId, chatId)) ?? NO_WANTS;
+export function wantFile(workspaceId: string, chatId: string, want: FileWant): void {
+  const now = fileWantsOf(workspaceId, chatId);
+  if (now.some((w) => w.messageId === want.messageId && w.fileId === want.fileId)) return;
+  fileWants.set(key(workspaceId, chatId), [...now, want]);
+  tellWants();
+}
+export function settleFile(workspaceId: string, chatId: string, want: FileWant): void {
+  const left = fileWantsOf(workspaceId, chatId).filter((w) => !(w.messageId === want.messageId && w.fileId === want.fileId));
+  if (left.length) fileWants.set(key(workspaceId, chatId), left);
+  else fileWants.delete(key(workspaceId, chatId));
+  tellWants();
+}
+export function useFileWants(workspaceId: string, chatId: string): readonly FileWant[] {
+  return useSyncExternalStore(
+    (fn) => {
+      wantListeners.add(fn);
+      return () => void wantListeners.delete(fn);
+    },
+    () => fileWantsOf(workspaceId, chatId),
+    () => fileWantsOf(workspaceId, chatId),
+  );
+}
+
 // ── A message to bring into view ──
 
 /** A message asked for from elsewhere (a search hit, a sent chip, a tell): held until the conversation has shown it once. */
@@ -299,6 +361,8 @@ export function resetPages(): void {
   typedRevs.clear();
   draftMarks.clear();
   visits.clear();
+  fileWants.clear();
+  failedPresses.clear();
   visitPlaces.clear();
   unreadHeld.clear();
   presses.clear();

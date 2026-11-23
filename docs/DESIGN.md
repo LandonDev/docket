@@ -1937,11 +1937,12 @@ Around the canvas:
   the line's far end, apart from the name: Use draft while the field holds
   his own words, Open thread; Discard beside the primary), a thread's held
   reply whose press failed (the red mark and "Not sent.", or, its outcome
-  unknown, the amber mark and "May have gone." with "Check whether it went
-  first"; then the thread's name in ink, LifeOS's reason muted, the route's
-  reason while the button is Copy, and Open in Outbox at the far end; no
-  Discard, its words never in the field, no amber mark on its row), or a
-  refusal in red. His reply shows as his own message with one 12px line under it:
+  unknown, the amber mark and "May have gone."; then the thread's name in
+  ink; then 10px on, muted, LifeOS's reason or, unknown, "Check whether it
+  went first"; the route's reason while the button is Copy; and Open in
+  Outbox at the far end, its tip the whole line; the line wraps rather than
+  cutting; no Discard, its words never in the field, no amber mark on its
+  row). A refusal in red stands above that line, never in its place. His reply shows as his own message with one 12px line under it:
   "Sending" and Undo (in ink, as Retry), or the red mark, "Not sent.", LifeOS's reason and
   Retry. The field empties at Send's press, the button turning busy until
   LifeOS answers. A message that arrives at the foot rises 4px and fades in over

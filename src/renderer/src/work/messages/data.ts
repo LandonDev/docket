@@ -78,7 +78,7 @@ export interface MessagesData {
   sendDraft(draft: ThreadDraft, text: string): Promise<void>;
   /** Saves his edit to a held draft's words, the Outbox's edit, without pressing it. */
   saveDraft(draft: ThreadDraft, text: string): Promise<void>;
-  /** Opens the Outbox on this held reply (whichever tab was open last), where it is sent again or checked. */
+  /** Opens the Outbox on this very held reply, in the tab that holds it, where it is sent again or checked. */
   openOutbox(draft: ThreadDraft): void;
   /** Discards a held draft, or drops a copy-only one. */
   dropDraft(draft: ThreadDraft): Promise<void>;

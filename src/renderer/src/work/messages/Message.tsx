@@ -19,7 +19,7 @@ import { useMessagesData, type FileVerb } from "./data";
 import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
 import { fieldOrigin, useWaitingDrafts } from "./drafts";
-import { fieldAsPressed, keepTyped, stillPressed, typedIn } from "./page";
+import { fieldAsPressed, keepTyped, stillPressed, typedIn, wantFile } from "./page";
 
 /**
  * One message in the conversation's column (docs/agents/work-messages.md):
@@ -75,7 +75,7 @@ export const MessageBlock = memo(function MessageBlock({
           <div className="col-start-2 min-w-0">
             {/* Once its files are listed beside it, the names LifeOS's readers folded into its words go. */}
             <Words text={message.files.length ? fileMarkers(message.text, message.files) : message.text} />
-            {message.files.length ? <Files message={message} chatId={chatId} chat={chat} /> : null}
+            {message.files.length ? <Files workspaceId={workspaceId} message={message} chatId={chatId} chat={chat} /> : null}
             {message.reply && message.reply.status !== "sent" ? <ReplyState reply={message.reply} workspaceId={workspaceId} chatId={chatId} /> : null}
           </div>
         </div>
@@ -106,7 +106,7 @@ const asked = new Set<string>();
  * the message comes into view, once the ask goes through; an ask that fails
  * says so on each of them and may be made again.
  */
-function Files({ message, chatId, chat }: { message: ChatMessage; chatId: string; chat: Pick<ChatRow, "source" | "link"> }) {
+function Files({ workspaceId, message, chatId, chat }: { workspaceId: string; message: ChatMessage; chatId: string; chat: Pick<ChatRow, "source" | "link"> }) {
   const data = useMessagesData();
   const wants = message.files.some((file) => file.status === "listed");
   const [refused, setRefused] = useState<string | null>(null);
@@ -122,7 +122,12 @@ function Files({ message, chatId, chat }: { message: ChatMessage; chatId: string
     if (wants && !asked.has(message._id)) ask();
   }, [wants, message._id, ask]);
   const link = message.permalink ?? chat.link;
-  const open = useCallback((file: ChatFile) => () => data.openFile(chatId, message, file), [data, chatId, message]);
+  // A file whose bytes have not come is asked for by the conversation, which opens it once they do (or lets the ask go if
+  // the file fails), wherever its message has scrolled by then.
+  const open = useCallback(
+    (file: ChatFile) => () => (file.status === "stored" ? data.openFile(chatId, message, file) : wantFile(workspaceId, chatId, { messageId: message._id, fileId: file._id })),
+    [data, workspaceId, chatId, message],
+  );
   // An ask LifeOS did not take leaves its files unfetched: each says so.
   const cannot = (file: ChatFile): boolean => file.status === "failed" || (refused !== null && (file.status === "listed" || file.status === "wanted"));
   // Pictures each on their own line; the other files side by side, as Mail lays out a mail's; the ones that could not come last.
@@ -232,7 +237,7 @@ function Picture({ file, source, link, onOpen }: { file: ChatFile; source: ChatR
   // Its own shape, at most 360 by 270, and never wider than the message: the height follows the width.
   const shape = { width: box.width, aspectRatio: `${box.width} / ${box.height}` };
   return (
-    <Button variant="ghost" aria-label={`View ${file.name}`} onClick={onOpen} style={shape} className="h-auto max-w-full self-start overflow-hidden rounded-lg p-0 hover:bg-transparent active:bg-transparent">
+    <Button variant="ghost" aria-label={`View ${file.name}`} aria-busy={url ? undefined : true} onClick={onOpen} style={shape} className="h-auto max-w-full self-start overflow-hidden rounded-lg p-0 hover:bg-transparent active:bg-transparent">
       {src ? (
         <img src={src} alt={file.name} width={box.width} height={box.height} draggable={false} onError={() => setBroken(src)} className="block size-full rounded-lg object-cover outline-1 -outline-offset-1 outline-(--image-outline)" />
       ) : (
@@ -245,23 +250,17 @@ function Picture({ file, source, link, onOpen }: { file: ChatFile; source: ChatR
 /** A file's glyph, by the canvas kind that shows it. */
 const GLYPH: Partial<Record<CanvasKind, IconComponent>> = { pdf: Pdf, sheet: Table, slides: Slides, media: Media, document: Doc };
 
-/** Mail's 40px chip: a 28px tile with the file's glyph, its name, its size; the press views or downloads it. */
 /**
- * A file's chip, named by its press. Until LifeOS holds its bytes (listed or wanted, its address not come yet) the chip
- * is the same chip, pending: a spinner in its tile and the name muted; a press then waits for the address and opens it
- * by itself as it comes, rather than failing with a toast for a file that is merely on its way.
+ * Mail's 40px chip, named by its press: a 28px tile with the file's glyph, its name, its size; the press views or
+ * downloads it. Until LifeOS holds its bytes (listed or wanted, its address not come yet) the chip is the same chip,
+ * pending: a spinner in its tile and the name muted; a press then asks for it to open as it comes (`wantFile`, kept by
+ * the conversation, so a row scrolled away still opens it), rather than failing with a toast for a file on its way.
  */
 function FileChip({ file, verb, onOpen }: { file: ChatFile; verb: FileVerb; onOpen: () => void }) {
   const kind = viewKind(file);
   const Glyph = (kind && GLYPH[kind]) || FileGlyph;
   const pending = file.status !== "stored";
   const said = `${verb === "view" ? "View" : "Download"} ${file.name}`;
-  const [waiting, setWaiting] = useState(false);
-  useEffect(() => {
-    if (!waiting || pending) return;
-    setWaiting(false);
-    onOpen();
-  }, [waiting, pending, onOpen]);
   return (
     <Tip label={pending ? `${file.name} is on its way from LifeOS` : said}>
       <Button
@@ -269,7 +268,7 @@ function FileChip({ file, verb, onOpen }: { file: ChatFile; verb: FileVerb; onOp
         aria-label={pending ? `${said}, on its way` : said}
         aria-busy={pending || undefined}
         data-pending={pending || undefined}
-        onClick={pending ? () => setWaiting(true) : onOpen}
+        onClick={onOpen}
         className="h-10 max-w-72 min-w-0 shrink justify-start gap-2 self-start rounded-lg border border-border ps-1.5 pe-3 font-normal"
       >
         <ChipTile glyph={Glyph} pending={pending} />

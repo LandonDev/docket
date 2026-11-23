@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { CHAT_ROUTES, SOURCE_APP, SOURCE_NAME, type ChatDetail } from "@shared/work/messages";
 import { CircleDot } from "../../chrome/icons";
 import { COMPOSER_SURFACE } from "../../chrome/ComposerBar";
+import { Tip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { StatusMark } from "../../components/ui/status";
 import { loadToast } from "../../components/ui/toaster";
@@ -11,7 +12,7 @@ import { workOpenPort } from "../../lib/workSwitch";
 import { useMessagesData, type ThreadDraft } from "./data";
 import { firstName } from "./model";
 import { fieldOrigin, useWaitingDrafts } from "./drafts";
-import { fieldAsPressed, keepPress, keepRefusal, keepTyped, markDraft, pendingPress, stillPressed, typedIn, usePendingPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
+import { fieldAsPressed, keepFailedPress, keepPress, keepRefusal, keepTyped, markDraft, pendingPress, stillPressed, typedIn, usePendingPress, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
 import { QUICK_ANSWERS } from "./quick";
 
 /**
@@ -43,9 +44,17 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   // against every draft still waiting (`fieldOrigin`), so a second draft waiting never hides what the field holds.
   const fromDraft = useTypedFrom(workspaceId, chatId);
   const origin = fieldOrigin(fromDraft, drafts);
-  // The line's draft: the one the field holds; else a held reply (his press can send it), then one whose press failed,
-  // then a copy-only draft.
-  const draft = origin.kind !== "own" ? origin.draft : (drafts.find((d) => d.held && d.failed === undefined) ?? drafts.find((d) => d.failed !== undefined) ?? drafts[0] ?? null);
+  // A press from this composer that failed (or may have gone) owns the line, with its Open in Outbox on that item, over
+  // any other draft waiting: until he opens it there, or the Outbox's state for it changes (it leaves the failed list).
+  const failedPress = useFailedPress(workspaceId, chatId);
+  const pressFailed = failedPress ? drafts.find((d) => d.id === failedPress && d.failed !== undefined) : undefined;
+  useEffect(() => {
+    if (failedPress && !pressFailed) keepFailedPress(workspaceId, chatId, null);
+  }, [failedPress, pressFailed, workspaceId, chatId]);
+  // The line's draft: that failed press; else the one the field holds; else a held reply (his press can send it), then
+  // one whose press failed, then a copy-only draft.
+  const draft =
+    pressFailed ?? (origin.kind !== "own" ? origin.draft : (drafts.find((d) => d.held && d.failed === undefined) ?? drafts.find((d) => d.failed !== undefined) ?? drafts[0] ?? null));
   // A held reply whose press failed is the Outbox's to send again or check: its words never come into the field.
   const failed = draft?.failed !== undefined;
   const [dropping, setDropping] = useState(false);
@@ -140,9 +149,14 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
         // The item failed and stays in the Outbox with these words, for Send again or Check Sent first there. Its line
         // says so; the words are its own, so they do not come back into the field.
         markDraft(workspaceId, chatId, pressing.id, { failed: refusalOf(err), ...((err as { unknown?: boolean }).unknown ? { unknown: true } : {}) });
+        keepFailedPress(workspaceId, chatId, pressing.id);
+      } else if (pressing) {
+        // Refused, the item stays held with its words: they come back only through Use draft. Whatever the field holds
+        // now (a reply his Undo put back, words typed since) stays his own, untouched.
+        keepRefusal(workspaceId, chatId, refusalOf(err));
       } else {
         const now = typedIn(workspaceId, chatId);
-        keepTyped(workspaceId, chatId, now.trim() ? `${sent}\n${now}` : sent, pressing?.id ?? null);
+        keepTyped(workspaceId, chatId, now.trim() ? `${sent}\n${now}` : sent, null);
         keepRefusal(workspaceId, chatId, refusalOf(err));
       }
     } finally {
@@ -186,12 +200,21 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     if (mode === "send" && words && !pending && !dropping) void send();
   };
 
-  const note = refused ? (
+  // A refusal says itself above the line, never in its place: a draft he may want back stays offered under it.
+  const alert = refused ? (
     <p role="alert" className="text-xs text-destructive">
       {refused}
     </p>
-  ) : draft && failed ? (
-    <FailedLine draft={draft} why={mode === "copy" ? why : undefined} onOpen={() => data.openOutbox(draft)} />
+  ) : null;
+  const note = draft && failed ? (
+    <FailedLine
+      draft={draft}
+      why={mode === "copy" ? why : undefined}
+      onOpen={() => {
+        keepFailedPress(workspaceId, chatId, null);
+        data.openOutbox(draft);
+      }}
+    />
   ) : draft ? (
     // A draft's line ends with why its button is Copy, while it is; a draft he is not using offers itself.
     <DraftLine draft={draft} why={draft.held && sends ? undefined : why} onUse={drafting ? undefined : () => takeDraft(draft)} />
@@ -203,6 +226,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     // The column above keeps its scrollbar's strip; the composer keeps the same, so the two share one measure.
     <div className="shrink-0 overflow-hidden [scrollbar-gutter:stable]">
       <div data-composer className="mx-auto w-full max-w-[728px] px-6 pb-4">
+        {alert ? <div className="flex min-h-6 items-center px-3 pb-1">{alert}</div> : null}
         {note ? <div className="flex min-h-6 items-center px-3 pb-1">{note}</div> : null}
         <div className={cn("rounded-xl transition-[border-color] duration-(--dur-fast) ease-(--ease-out) has-focus:border-input motion-reduce:transition-none", COMPOSER_SURFACE)}>
           <textarea
@@ -252,6 +276,10 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
             )}
           </div>
         </div>
+        {/* One status region, always mounted, so a screen reader speaks what became of his press as it changes. */}
+        <span role="status" data-press-status className="sr-only">
+          {draft && failed ? failedWords(draft) : ""}
+        </span>
       </div>
     </div>
   );
@@ -286,23 +314,30 @@ function DraftLine({ draft, why, onUse }: { draft: ThreadDraft; why?: string; on
   );
 }
 
+/** What became of a failed press, in one breath: the word and the thread's name. */
+const failedWords = (draft: ThreadDraft): string => [draft.unknown ? "May have gone." : "Not sent.", draft.thread].filter(Boolean).join(" ");
+
 /**
  * A thread's held reply whose press failed: the word ("Not sent.", or "May have gone." when the Outbox cannot know
- * whether it went), the thread's name in ink as the draft line names it, LifeOS's reason muted (or the Outbox's own
- * "Check whether it went first"), the route's reason while the button is Copy, and the one way on: Open in Outbox, on
- * that very item. A status, so a screen reader hears what became of his press.
+ * whether it went), the thread's name in ink as the draft line names it, LifeOS's reason muted 10px after it (or the
+ * Outbox's own "Check whether it went first"), the route's reason while the button is Copy, and the one way on: Open in
+ * Outbox, on that very item. The line wraps rather than cutting its reasons; the whole of it is also the control's tip.
+ * The composer's status region speaks it.
  */
 function FailedLine({ draft, why, onOpen }: { draft: ThreadDraft; why?: string; onOpen: () => void }) {
   const unknown = draft.unknown === true;
+  const reason = unknown ? "Check whether it went first" : draft.failed;
   return (
-    <span role="status" data-draft-failed={unknown ? "unknown" : "failed"} className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
+    <span data-draft-failed={unknown ? "unknown" : "failed"} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
       <StatusMark state={unknown ? "waiting" : "failed"} word={unknown ? "May have gone." : "Not sent."} className="shrink-0" />
-      {draft.thread ? <span className="min-w-0 truncate font-medium text-foreground">{draft.thread}</span> : null}
-      <span className="min-w-0 truncate text-muted-foreground">{unknown ? "Check whether it went first" : draft.failed}</span>
-      {why ? <span className="ms-1 min-w-0 truncate text-muted-foreground">{why}</span> : null}
-      <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" onClick={onOpen}>
-        Open in Outbox
-      </Button>
+      {draft.thread ? <span className="min-w-0 max-w-full truncate font-medium text-foreground">{draft.thread}</span> : null}
+      <span className="ms-1 min-w-0 text-muted-foreground">{reason}</span>
+      {why ? <span className="ms-1 min-w-0 text-muted-foreground">{why}</span> : null}
+      <Tip label={[failedWords(draft), reason, why].filter(Boolean).join(". ")}>
+        <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" onClick={onOpen}>
+          Open in Outbox
+        </Button>
+      </Tip>
     </span>
   );
 }

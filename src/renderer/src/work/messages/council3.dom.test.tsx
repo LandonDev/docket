@@ -122,7 +122,8 @@ describe("Send empties the field at the press and goes once", () => {
     expect(typedFromDraft(WS, "c_dana")).toBeNull();
   });
 
-  it("puts a refused held draft back as the draft, its id with it", async () => {
+  // Round 6 (Sol 2): a refused held press leaves its words with the item, offered by Use draft; the field stays his.
+  it("leaves a refused held draft's words with the item, offered by Use draft, the field untouched", async () => {
     const { data } = mount({ slow: true, refuse: "The Outbox did not send it", drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
     enter();
     expect(field().value).toBe("");
@@ -130,8 +131,9 @@ describe("Send empties the field at the press and goes once", () => {
     expect(composer().textContent).not.toContain("Drafted in");
     await act(async () => data.release());
     await flush();
-    expect(field().value).toBe(HELD_DRAFT.text);
-    expect(typedFromDraft(WS, "c_dana")).toBe(HELD_DRAFT.id);
+    expect(field().value).toBe("");
+    expect(typedFromDraft(WS, "c_dana")).toBeNull();
+    expect(within(composer()).getByRole("button", { name: "Use draft" })).toBeTruthy();
     expect(data.log.pressed).toEqual([]);
   });
 });

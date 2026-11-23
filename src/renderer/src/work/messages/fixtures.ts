@@ -265,6 +265,10 @@ export interface FixtureOptions {
   pressUnknown?: boolean;
   /** Saving an edit to a held draft waits for `release`. */
   slowSave?: boolean;
+  /** A held draft's press waits for `release` (his own sends do not). */
+  slowDraft?: boolean;
+  /** A held draft's press is refused with these words and the item stays held (a revision conflict, say). */
+  refuseDraft?: string;
   /** Undo waits for `release`. */
   slowUndo?: boolean;
   /** Mark unread reaches the list only at `catchUp`, as LifeOS's answer comes after the command. */
@@ -540,8 +544,9 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       return chatId ? (drafts[chatId] ?? NO_DRAFTS) : NO_DRAFTS;
     },
     async sendDraft(draft, text) {
-      if (options.slow) await new Promise<void>((go) => (letGo = go));
+      if (options.slow || options.slowDraft) await new Promise<void>((go) => (letGo = go));
       if (options.refuse) throw new Error(options.refuse);
+      if (options.refuseDraft) throw new Error(options.refuseDraft);
       log.pressed.push({ id: draft.id, text });
       const chatId = chatOfDraft(draft.id);
       if (!chatId) return;

@@ -65,6 +65,7 @@ function ListBody({ workspaceId, job, narrow, shown, onOpen, retry }: { workspac
   // Clear search hands the keys to the search field, so the next keys type there.
   const searchField = useRef<HTMLInputElement>(null);
   const clearSearch = useCallback(() => {
+    takeReturn(workspaceId);
     patchPage(workspaceId, { query: "" });
     searchField.current?.focus();
   }, [workspaceId]);
@@ -120,7 +121,11 @@ function ListHead({ filter, searching, onFilter }: { filter: ChatFilter; searchi
 }
 
 function SearchField({ workspaceId, query, field }: { workspaceId: string; query: string; field: RefObject<HTMLInputElement | null> }) {
-  const clear = (): void => patchPage(workspaceId, { query: "" });
+  // One way to clear the words, for × and Escape alike: the way back belonged to them, so it goes first.
+  const clear = (): void => {
+    takeReturn(workspaceId);
+    patchPage(workspaceId, { query: "" });
+  };
   return (
     <div className="shrink-0 px-3 pb-2">
       <InputGroup
@@ -336,7 +341,11 @@ function RowsWindow({
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!step) return;
     event.preventDefault();
-    const next = rows[Math.max(0, Math.min(rows.length - 1, found + step))];
+    // Beside the conversation the arrows open rows. When the active row is not the open one (the open row left the list,
+    // read under Unread, and the row now at its index took the keys; or the open conversation is not in this list),
+    // Down opens that row itself rather than stepping past it; Up steps as ever. Under 640px Down moves from it.
+    const inPlace = !narrow && step > 0 && active !== null && active !== openId && found >= 0;
+    const next = inPlace ? rows[found] : rows[Math.max(0, Math.min(rows.length - 1, found + step))];
     if (!next) return;
     setActive(next._id);
     if (!narrow) open(next._id);

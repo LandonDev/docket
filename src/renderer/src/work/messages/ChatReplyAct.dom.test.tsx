@@ -129,6 +129,18 @@ describe("the held reply's view", () => {
     expect(within(line).getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
+  it("keeps the keys in the quote's slot when its Retry, holding them, reads afresh", () => {
+    lifeos.rawFails = true;
+    render(<View env="box" item={item({ chatId: "c_dana", replyTo: "far_4", source: "slack", chat: "Dana Lee", text: "Yes." })} />);
+    const retry = screen.getByRole("button", { name: "Retry" });
+    retry.focus();
+    lifeos.rawFails = false;
+    lifeos.raw = undefined;
+    fireEvent.click(retry);
+    expect(document.activeElement).toBe(document.querySelector("[data-quote-slot]"));
+    expect(document.querySelector("[data-answers]")!.getAttribute("data-answers")).toBe("loading");
+  });
+
   it("says at once that it could not be read when the conversation failed, the page still loading", () => {
     lifeos.detailFails = true;
     lifeos.pageLoading = true;
