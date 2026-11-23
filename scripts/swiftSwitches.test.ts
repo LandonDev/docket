@@ -68,13 +68,15 @@ describe('the phone switches over the contract stay whole', () => {
       for (const sw of switchesOf(source)) {
         if (sw.defaulted) continue
         const named = sw.cases.filter((c) => c !== 'unknown')
+        // two builds adding the same case each: the second is dead code that Swift only warns about
+        for (const c of new Set(named.filter((x, i) => named.indexOf(x) !== i))) missing.push(`${relative(ROOT, file)}:${sw.line} names .${c} twice`)
         for (const set of SETS) {
           if (named.length < Math.max(3, Math.ceil(set.cases.length / 2)) || !named.every((c) => set.cases.includes(c))) continue
           for (const c of set.cases) if (!named.includes(c)) missing.push(`${relative(ROOT, file)}:${sw.line} lacks .${c} of the ${set.name}`)
         }
       }
     }
-    expect(missing, `Add each case to its switch:\n${missing.join('\n')}`).toEqual([])
+    expect(missing, `Add each case to its switch, once:\n${missing.join('\n')}`).toEqual([])
   })
 
   it('reads a switch at its own level, and its default', () => {
