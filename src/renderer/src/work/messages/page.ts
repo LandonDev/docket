@@ -88,6 +88,25 @@ export function useTyped(workspaceId: string, chatId: string): string {
   );
 }
 
+/** A send LifeOS refused, in its words, kept with the conversation until he types or sends again. */
+const refusals = new Map<string, string>();
+const refusalListeners = new Set<() => void>();
+export function keepRefusal(workspaceId: string, chatId: string, words: string | null): void {
+  if (words) refusals.set(key(workspaceId, chatId), words);
+  else if (!refusals.delete(key(workspaceId, chatId))) return;
+  for (const listener of refusalListeners) listener();
+}
+export function useRefusal(workspaceId: string, chatId: string): string | null {
+  return useSyncExternalStore(
+    (fn) => {
+      refusalListeners.add(fn);
+      return () => void refusalListeners.delete(fn);
+    },
+    () => refusals.get(key(workspaceId, chatId)) ?? null,
+    () => refusals.get(key(workspaceId, chatId)) ?? null,
+  );
+}
+
 // ── A message to bring into view ──
 
 /** A message asked for from elsewhere (a search hit, a sent chip, a tell): held until the conversation has shown it once. */
@@ -129,5 +148,6 @@ export function resetPages(): void {
   typed.clear();
   wanted.clear();
   returns.clear();
+  refusals.clear();
   for (const listener of listeners) listener();
 }

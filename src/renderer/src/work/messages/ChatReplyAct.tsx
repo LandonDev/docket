@@ -1,5 +1,6 @@
 import { firstWords, SOURCE_NAME, type ChatDetail, type ChatMessage, type ChatRow, type ChatSource } from "@shared/work/messages";
 import { CornerDownRight } from "../../chrome/icons";
+import { Skeleton } from "../../components/ui/skeleton";
 import type { ActViewProps } from "../acts/registry";
 import { useLifeosQuery, useLifeosSession, type LifeosQuery } from "../shell/lifeos";
 import { chatFact } from "./model";
@@ -34,23 +35,52 @@ export function answeredOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Cha
   return null;
 }
 
+/** What `rawMessages:get` answers for one message. */
+type RawMessage = { message: { author?: { name?: string }; fromMe?: boolean; text?: string } | null } | null;
+
+/** What the quote's place holds: the message it answers, a line on its way, the word that it is gone, or nothing. */
+export type Answered = { who: string; text: string } | "loading" | "gone" | null;
+
+/**
+ * The message a held reply answers, as the quote's place shows it: from the
+ * newest page when it is there; else read by its id on the item's own sector;
+ * "loading" until LifeOS has answered both, so the words never jump; "gone"
+ * when it can no longer be read.
+ */
+export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: LifeosQuery<ChatDetail | null>, page: LifeosQuery<{ page: ChatMessage[] }>, byId: LifeosQuery<RawMessage> | null): Answered {
+  if (detail.status === "loading" || page.status === "loading") return "loading";
+  const inPage = answeredOf(reply, ready(detail), ready(page)?.page);
+  if (inPage) return inPage;
+  const id = reply.replyTo ?? ready(detail)?.chat?.lastInId;
+  if (!id) return null;
+  if (!byId || byId.status === "loading") return "loading";
+  const message = byId.status === "ready" ? byId.value?.message : null;
+  if (!message?.text) return "gone";
+  return { who: message.fromMe ? "You" : (message.author?.name ?? "Someone"), text: message.text };
+}
+
 /**
  * A thread's held reply in the Outbox (`chat.reply`): to whom and where it
  * goes ("Slack, Starboard Games"), the message it answers as one quoted line,
  * then its words exactly as they go. The conversation is read from LifeOS on
- * the item's own sector; until it answers, the payload's own words stand.
+ * the item's own sector; until it answers, the payload's own words stand and a
+ * line of bones holds the quote's place.
  */
 export function View({ item, env }: ActViewProps) {
   const reply = replyOf(item.payload);
   const session = useLifeosSession(env, item.sector);
   const detail = useLifeosQuery<ChatDetail | null>(session, "chats:get", { id: reply?.chatId ?? "" });
   const page = useLifeosQuery<{ page: ChatMessage[] }>(session, "chats:messages", { chatId: reply?.chatId ?? "", paginationOpts: { numItems: 50, cursor: null } });
+  // The answered message by its id, asked only when the newest page does not hold it.
+  const target = reply?.replyTo ?? ready(detail)?.chat?.lastInId;
+  const missing = Boolean(target) && page.status === "ready" && !page.value.page.some((m) => m._id === target);
+  const byId = useLifeosQuery<RawMessage>(missing ? session : { ...session, client: null, state: "connecting" }, "rawMessages:get", { id: target ?? "" });
   if (!reply) return <div data-slot="act-payload" className="text-sm text-muted-foreground">This reply could not be read</div>;
-  return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answeredOf(reply, ready(detail), ready(page)?.page)} />;
+  return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answerOf(reply, detail, page, missing ? byId : null)} />;
 }
 
 /** The held reply as he reads it before his press: to whom, where, what it answers, its words. */
-export function ReplyBody({ reply, chat, answered }: { reply: ChatReplyPayload; chat?: Pick<ChatRow, "source" | "accountName">; answered: { who: string; text: string } | null }) {
+export function ReplyBody({ reply, chat, answered }: { reply: ChatReplyPayload; chat?: Pick<ChatRow, "source" | "accountName">; answered: Answered }) {
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-4">
       <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
@@ -60,11 +90,21 @@ export function ReplyBody({ reply, chat, answered }: { reply: ChatReplyPayload; 
         <dd className="min-w-0 break-words text-foreground">{chat ? chatFact(chat) : SOURCE_NAME[reply.source]}</dd>
       </dl>
       <div className="flex flex-col gap-2 border-t border-border pt-4">
-        {answered ? (
-          <p data-answers className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        {answered === "loading" ? (
+          <div data-answers="loading" aria-hidden className="flex h-5 items-center gap-1.5">
+            <Skeleton className="size-3 rounded-sm" />
+            <Skeleton className="h-2.5 w-[60%]" />
+          </div>
+        ) : answered === "gone" ? (
+          <p data-answers="gone" className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <CornerDownRight aria-hidden className="size-3 shrink-0" />
+            The message it answers is no longer here
+          </p>
+        ) : answered ? (
+          <p data-answers className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <CornerDownRight aria-hidden className="size-3 shrink-0" />
             <span className="min-w-0 truncate">
-              <span className="font-medium">{answered.who}</span> <span className="text-faint-foreground">{firstWords(answered.text, 80)}</span>
+              <span className="font-medium">{answered.who}</span> {firstWords(answered.text, 80)}
             </span>
           </p>
         ) : null}

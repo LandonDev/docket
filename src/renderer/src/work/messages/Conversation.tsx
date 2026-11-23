@@ -43,15 +43,14 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   const since = first ? newSince(first) : null;
 
   // His Mark unread holds: nothing marks the conversation read again until a newer message from someone else comes.
+  // An unread mark that comes with no newer message is his: noted as it is drawn, before any effect could mark it read.
   const lastIn = chat?.lastInAt ?? 0;
   const [held, setHeld] = useState<number | null>(null);
-  const before = useRef<{ unread: boolean; lastIn: number } | null>(null);
-  useEffect(() => {
-    if (!chat) return;
-    const was = before.current;
-    before.current = { unread: chat.unread, lastIn };
-    if (was && !was.unread && chat.unread && lastIn <= was.lastIn) setHeld(lastIn);
-  }, [chat, lastIn]);
+  const [seen, setSeen] = useState<{ unread: boolean; lastIn: number } | null>(null);
+  if (chat && (!seen || seen.unread !== chat.unread || seen.lastIn !== lastIn)) {
+    if (seen && !seen.unread && chat.unread && lastIn <= seen.lastIn) setHeld(lastIn);
+    setSeen({ unread: chat.unread, lastIn });
+  }
   const holding = held !== null && lastIn <= held;
 
   // Opening marks it read; so does a newer message while it is open and the window is in front, or his coming back to

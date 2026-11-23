@@ -520,7 +520,7 @@ function SearchHits({ workspaceId, query, narrow, onOpen, retry }: { workspaceId
     const next = list[Math.max(0, Math.min(list.length - 1, at + step))]!;
     if (narrow) setActive(next.messageId);
     else open(next);
-    document.getElementById(hitId(next.messageId))?.scrollIntoView({ block: "nearest" });
+    document.getElementById(hitId(next.messageId))?.scrollIntoView?.({ block: "nearest" });
   };
   const standing = active !== null && list.some((hit) => hit.messageId === active);
   return (

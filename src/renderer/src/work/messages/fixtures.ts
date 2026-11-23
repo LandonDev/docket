@@ -168,6 +168,11 @@ const FILES = thread("c_lucas", [
   [LUCAS, nov(19, 11, 2), "The build, as promised.\n[file: starboard-0.9.5-linux.zip]", { files: [{ _id: "f_zip", name: "starboard-0.9.5-linux.zip", contentType: "application/zip", size: 412_000_000, status: "listed" }] }],
 ]);
 
+/** A picture LifeOS could not fetch, as its line. */
+export const PICTURE_FAILED: ChatMessage[] = ART.map((m) =>
+  m.files.some((f) => f._id === "f_banner") ? { ...m, files: m.files.map((f) => ({ ...f, status: "failed" as const, error: "This picture could not be read" })) } : m,
+);
+
 /** A file LifeOS could not fetch, which says why. */
 export const FILE_FAILED: ChatMessage[] = FILES.map((m) =>
   m.files.some((f) => f._id === "f_zip") ? { ...m, files: m.files.map((f) => ({ ...f, status: "failed" as const, error: "Slack didn't let LifeOS read this file" })) } : m,
@@ -244,6 +249,8 @@ export interface FixtureOptions {
   fail?: Partial<Record<"chats" | "sources" | "search" | "chat" | "messages", number>>;
   /** Asks for a message's files that fail, the first N. */
   requestFails?: number;
+  /** His Send waits until the test lets it go (`release`), so he can type while it goes. */
+  slow?: boolean;
   /** Messages that are still loading, for a conversation's bones. */
   messagesLoading?: boolean;
   now?: number;
@@ -279,7 +286,16 @@ const copyWhy = (row: ChatRow): string => `LifeOS can't reply in ${SOURCE_NAME[r
  * clears its dot, a reply lands as his own message inside its undo time, an
  * undone one leaves, a pressed draft goes.
  */
-export function fixtureData(options: FixtureOptions = {}): MessagesData & { log: FixtureLog } {
+/** What a test may do to the fixtures besides what the view does: a message arriving, a slow Send let go. */
+export interface FixtureControls {
+  log: FixtureLog;
+  /** A message from someone else arrives at the foot of a conversation, as LifeOS would answer it. */
+  deliver(chatId: string, who: string, text: string): void;
+  /** Lets a slow Send go. */
+  release(): void;
+}
+
+export function fixtureData(options: FixtureOptions = {}): MessagesData & FixtureControls {
   const now = options.now ?? NOW;
   const log: FixtureLog = { read: [], unread: [], chats: [], searched: [], sent: [], undone: [], retried: [], pressed: [], dropped: [], requested: [], opened: [] };
   let rows = options.empty || options.noSource ? [] : (options.chats ?? CHATS);
@@ -349,8 +365,22 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
     changed();
   };
   const chatOfDraft = (id: string): string | undefined => Object.keys(drafts).find((chatId) => drafts[chatId]!.some((d) => d.id === id));
+  let letGo: (() => void) | null = null;
+  let delivered = 0;
   return {
     log,
+    deliver(chatId, who, text) {
+      delivered++;
+      const sentAt = now + delivered * MIN;
+      const message: ChatMessage = { _id: `${chatId}_in${delivered}`, who: person(who), text, sentAt, files: [] };
+      threads.set(chatId, [message, ...messagesOf(chatId)]);
+      rows = rows.map((row) => (row._id === chatId ? { ...row, lastAt: sentAt, lastText: text, lastWho: who, lastFromMe: false, lastInAt: sentAt, lastForMeAt: sentAt, unread: true } : row));
+      changed();
+    },
+    release() {
+      letGo?.();
+      letGo = null;
+    },
     useChats(filter) {
       log.chats.push(filter);
       const all = useRows();
@@ -424,6 +454,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
       mark(id, true);
     },
     async send(chatId, text) {
+      if (options.slow) await new Promise<void>((go) => (letGo = go));
       if (options.refuse) throw new Error(options.refuse);
       log.sent.push({ chatId, text });
       reply(chatId, text);

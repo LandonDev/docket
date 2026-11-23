@@ -195,20 +195,30 @@ The look is docs/DESIGN.md "The Messages view".
 - **Unread.** LifeOS's mark (`ChatRow.unread`). Opening a conversation marks
   it read when it is unread or someone wrote since he last saw it
   (`wantsRead`); so does a message that arrives while it is open and the
-  window is in front, or his coming back to the window. "New" is fixed as it
-  opens (`newSince`): over the first message from someone else since his
-  mark, the service's own or his own last word, and only for one he has
-  opened before or that is unread.
+  window is in front, or his coming back to the window. His own Mark unread
+  holds: nothing marks the conversation read again until he opens it anew or
+  a newer message from someone else comes. "New" is read from the first
+  answer, before any read mark is written, and kept for the visit
+  (`newSince`): over the first message from someone else since his mark, the
+  service's own or his own last word, and only for one he has opened before
+  or that is unread. When it lies above the first page the column reads older
+  pages until it holds it (at most twenty) and opens there.
 - **The composer.** Send when the source is LifeOS's (`CHAT_ROUTES`) and the
   route says yes; else Copy, Open in the app beside it, LifeOS's `route.why`
   above (for a Copy source whose route says yes, "LifeOS can't reply in
   Discord yet"). A thread's held reply wins over a copy-only draft; either
-  fills an empty field once and never writes over his words. Send on a held
-  draft saves an edit to it first (`work.outbox.edit`), then presses it with
-  the `rev` it now has; anything but sent or sending is refused in the
-  Outbox's words. His own reply shows from LifeOS's row: `queued` is
-  "Sending" with Undo, `sending` "Sending", `failed` "Not sent." with the
-  reason and Retry.
+  fills an empty field once and never writes over his words. Send acts on
+  whose words the field holds: the draft's (or his edit of them) press the
+  held item, saving an edit to it first (`work.outbox.edit`) and pressing
+  with the `rev` it now has, anything but sent or sending refused in the
+  Outbox's words; his own go as his own reply (`send`, never the draft's
+  `replyTo`) and the draft keeps waiting, its line offering Use draft, which
+  puts the draft's words before his. A Send clears only the words it took;
+  what he typed meanwhile stays. A refusal is kept with the conversation
+  (`page.ts`) until he types or sends again. His own reply shows from
+  LifeOS's row: `queued` is "Sending" with Undo (the words back into an
+  empty field, else before what is there, a line between), `sending`
+  "Sending", `failed` "Not sent." with the reason and Retry.
 - **Threads.** Start thread is the toolbar's 28px button and a row on the
   row's and a message's menus; a message's chip carries its words as
   `quote`. Mention in a thread puts the chip in the thread open in the window
@@ -217,21 +227,44 @@ The look is docs/DESIGN.md "The Messages view".
   `message`, the column reads older pages until it holds it (at most twenty),
   brings it into view with 96px of air over it, and marks it with the muted
   fill for 1.2 seconds, which then fades over `--dur-slow` (at once under
-  reduced motion). A hit in the view's own search opens its message so.
-- **Pictures and files.** A message's `listed` files are asked for once a
-  window's life as it mounts (the column draws only what is near the
-  window). A stored picture's bytes are read with `loadBytes` into a blob
-  address, never put in the page as a web address; a picture that cannot load
-  becomes its chip. A file a canvas kind shows opens in the view's own pane
+  reduced motion). A hit in the view's own search opens its message so; the
+  count of older pages starts afresh for each message asked for.
+- **Keys.** The list is one tab stop: the arrows move its active row (beside
+  the conversation they open it; under 640px Enter does, and opening puts the
+  keys on Back, which gives them back to the row he left); Shift+F10 or the
+  menu key opens the active row's menu; until a row is active the list wears
+  the focus ring. Search hits are one list the same way. In the column the
+  arrows move from message to message and the menu key opens one's menu; a
+  message's ⋯ is no tab stop. The log says nothing of itself (`aria-live
+  off`), so an older page drawn on the way up is not read out; what arrives
+  at the foot is said once in a polite status.
+- **Failures.** Each failure line (the list, a search, a conversation, its
+  messages) has Retry, which mounts the failing reads again, so LifeOS is
+  asked afresh; the seam needs no verb for it. Sources that did not load make
+  an empty list say it did not load. A conversation that fails keeps its
+  toolbar, so the way back stays under 640px.
+- **Pictures and files.** A message's `listed` files are asked for as it
+  mounts (the column draws only what is near the window), once a window's
+  life while the ask is on its way or taken; an ask LifeOS did not take says
+  so on each file with Try again. A stored picture's bytes are read with
+  `loadBytes` into a blob address, never put in the page as a web address,
+  at most 120 held (the oldest released); a picture never grows wider than
+  its message, its height from its proportions; one that cannot load says so
+  in a file's failure line. A file a canvas kind shows opens in the view's own pane
   (`openItem(env, messagesPaneOf(ws), {kind, source: chatFileSource(…)})`,
   the host fetching it as the owner); any other is saved to Downloads once
   stored. `fileMarkers` takes the folded names out of the words once the
   files are listed.
+- **The Outbox.** A held reply's quote is read from the newest page, else by
+  its id (`rawMessages:get {id}`) on the item's own sector; a line of bones
+  holds its place until LifeOS answers; one it cannot read says "The message
+  it answers is no longer here".
 - **Not yet.** One-press answers (`QUICK_ANSWERS` is empty).
 
 Proof: `bun run ui:preview src/renderer/src/work/messages/MessagesView.preview.tsx#MessagesPreview --props '{"scene":"open-direct","width":1280}'`
 (scenes are listed in the file); tests `model.test.ts`, `MessagesView.dom.test.tsx`, `Composer.dom.test.tsx`,
-`ChatReplyAct.dom.test.tsx`, `ways.dom.test.tsx`, `files.dom.test.tsx`, `open.dom.test.tsx`.
+`ChatReplyAct.dom.test.tsx`, `ways.dom.test.tsx`, `files.dom.test.tsx`, `open.dom.test.tsx`, `cold.dom.test.tsx`,
+`council.dom.test.tsx`.
 
 ## Proving it
 

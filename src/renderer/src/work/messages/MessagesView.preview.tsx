@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { MessagesDataProvider } from "./data";
 import { ReplyBody } from "./ChatReplyAct";
-import { CHATS, COPY_DRAFT, FILE_FAILED, fixtureData, HELD_DRAFT, JOB, manyChats, manyMessages, MESSAGES, withReply, type FixtureOptions } from "./fixtures";
+import { CHATS, COPY_DRAFT, FILE_FAILED, fixtureData, PICTURE_FAILED, HELD_DRAFT, JOB, manyChats, manyMessages, MESSAGES, withReply, type FixtureOptions } from "./fixtures";
 import { MessagesScreen } from "./MessagesView";
-import { patchPage, type MessagesPage } from "./page";
+import { keepRefusal, keepTyped, patchPage, type MessagesPage } from "./page";
 import { StartThreadProvider } from "./threads";
 
 /** Start thread in the preview: drawn, and goes nowhere. */
@@ -16,13 +16,14 @@ const startNothing = (): void => {};
  * `open-direct`, `open-channel`, `open-thread-reply`, `search`, `narrow-list`, `narrow-open`, the
  * composer's `sending`, `not-sent`, `no-route`, `mac-offline`, `held-draft`, `copy-draft`, the
  * Outbox's `outbox-reply` (a held reply's body as the Outbox shows it), `open-pictures`,
- * `open-files`, `open-file-failed`, and
+ * `open-files`, `open-file-failed`, the council's `open-group`, `open-loading`, `open-failed`,
+ * `list-failed`, `list-unread-empty`, `refused`, `picture-failed`, and
  * `heavy-list` (2,000 conversations) and `heavy-open` (5,000 messages) for the speed proof. `width`
  * is the view's (1280 or 640; at and under 640 the list and the conversation take turns). Rendered
  * by nothing in the app.
  */
 
-type Scene = { data?: FixtureOptions; page?: Partial<MessagesPage>; narrow?: boolean };
+type Scene = { data?: FixtureOptions; page?: Partial<MessagesPage>; narrow?: boolean; typed?: string; refused?: string };
 
 const HEAVY_CHATS = 2_000;
 const HEAVY_MESSAGES = 5_000;
@@ -49,6 +50,13 @@ const SCENES: Record<string, () => Scene> = {
   "open-pictures": () => ({ page: { chatId: "c_art" } }),
   "open-files": () => ({ page: { chatId: "c_lucas" } }),
   "open-file-failed": () => ({ data: { messages: { ...MESSAGES, c_lucas: FILE_FAILED } }, page: { chatId: "c_lucas" } }),
+  "open-group": () => ({ page: { chatId: "c_trio" } }),
+  "open-loading": () => ({ data: { messagesLoading: true }, page: { chatId: "c_dana" } }),
+  "open-failed": () => ({ data: { fail: { chat: 1 } }, page: { chatId: "c_dana" } }),
+  "list-failed": () => ({ data: { fail: { chats: 1 } } }),
+  "list-unread-empty": () => ({ data: { chats: CHATS.map((c) => ({ ...c, unread: false })) }, page: { filter: "unread" } }),
+  refused: () => ({ page: { chatId: "c_dana" }, typed: "Thursday is tight, but yes.", refused: "LifeOS can't reply to a conversation you left" }),
+  "picture-failed": () => ({ data: { messages: { ...MESSAGES, c_art: PICTURE_FAILED } }, page: { chatId: "c_art" } }),
   "heavy-list": () => ({ data: { chats: manyChats(HEAVY_CHATS) } }),
   "heavy-open": () => {
     const chats = manyChats(HEAVY_CHATS);
@@ -63,7 +71,14 @@ export function MessagesPreview({ scene = "list", width = 1280, height = 760 }: 
   const workspaceId = `preview-messages-${scene}-${width}`;
   const setup = useMemo(() => (SCENES[scene] ?? SCENES.list!)(), [scene]);
   const data = useMemo(() => fixtureData(setup.data), [setup]);
-  useMemo(() => patchPage(workspaceId, { chatId: null, filter: "all", query: "", ...setup.page }), [workspaceId, setup]);
+  useMemo(() => {
+    patchPage(workspaceId, { chatId: null, filter: "all", query: "", ...setup.page });
+    const chatId = setup.page?.chatId;
+    if (chatId) {
+      keepTyped(workspaceId, chatId, setup.typed ?? "");
+      keepRefusal(workspaceId, chatId, setup.refused ?? null);
+    }
+  }, [workspaceId, setup]);
   const narrow = setup.narrow || width <= 640;
   return (
     // The view's region, as the Work frame lays it: the page's own background, a hairline round it for the shot.
