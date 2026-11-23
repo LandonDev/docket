@@ -7,7 +7,7 @@ import { askPillar } from '../ask'
 import { runSearch } from '../run'
 import { COSMIC, everywhere, makeRig, onlyPurdue, phone, PURDUE, thread, window } from '../testkit'
 import { fileSources, filesHoldLifeos } from './files'
-import { doc } from './lifeos'
+import { doc, docAsFile } from './lifeos'
 
 /**
  * What is another pillar's to find, asked through that pillar's own wire
@@ -127,10 +127,30 @@ describe('documents, where Files lists LifeOS', () => {
     const hits = await doc.search(ask('budget'), rig.ctx)
     expect(hits.map((h) => h.workspaceId)).toEqual([COSMIC])
   })
+  it('are files there: under Files by the key Files gives a document, so one that both find is listed once', async () => {
+    const rig = makeRig()
+    lifeos(rig)
+    const ref = { at: 'lifeos', table: 'docs', id: 'd-purdue' }
+    const files = standIn('files', {
+      'work.files.names': (p) => ({ entries: p.workspaceId === PURDUE ? [{ key: 'lifeos:docs:d-purdue', ref, name: 'Budget notes' }] : [] }),
+      'work.files.places': (p) => ({ places: p.workspaceId === PURDUE ? [{ kind: 'lifeos' }] : [{ kind: 'folder' }] })
+    })
+    await filesHoldLifeos(rig.ctx, PURDUE, window, [files])
+    await filesHoldLifeos(rig.ctx, COSMIC, window, [files])
+    const found = await docAsFile.search(ask('budget'), rig.ctx)
+    expect(found.map((h) => [h.key, h.kind, h.workspaceId])).toEqual([['file:lifeos:docs:d-purdue', 'file', PURDUE]])
+    expect(found[0].open).toEqual({ to: 'file', ref, name: 'Budget notes' })
+    // Files' own list as he types names the same document by the same key
+    const named = await fileSources([files])[0].search(ask('budget'), rig.ctx)
+    expect(named.map((h) => h.key)).toEqual([found[0].key])
+    // and the job where Files holds no LifeOS keeps its Documents
+    expect((await doc.search(ask('budget'), rig.ctx)).map((h) => [h.key, h.workspaceId])).toEqual([['lifeos:docs:d-cosmic', COSMIC]])
+  })
   it('stay everywhere while Files does not answer names', async () => {
     const rig = makeRig()
     lifeos(rig)
     expect(await filesHoldLifeos(rig.ctx, PURDUE, window, [standIn('files', { 'work.files.places': () => ({ places: [{ kind: 'lifeos' }] }) })])).toBe(false)
     expect((await doc.search(ask('budget'), rig.ctx)).map((h) => h.workspaceId)).toEqual([PURDUE, COSMIC])
+    expect(await docAsFile.search(ask('budget'), rig.ctx)).toEqual([])
   })
 })

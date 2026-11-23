@@ -6,6 +6,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 // The opener's own doors are the app's stores and ports: each test hands in its own.
 vi.mock("../canvas/held", () => ({ openHeld: vi.fn() }));
 vi.mock("../shell/WorkColumn", () => ({ startThreadAbout: vi.fn() }));
+vi.mock("../files/openFrom", () => ({ openInFiles: vi.fn() }));
 const { canStartAbout, openHit, startAbout } = await import("./open");
 type OpenDeps = import("./open").OpenDeps;
 
@@ -23,7 +24,7 @@ function rig(selected: string[] = ["purdue"], over: Partial<OpenDeps> = {}) {
     enter: (w) => void did.push(["enter", w.path]),
     view: (next) => void did.push(["view", next]),
     thread: (sessionId, seq) => void did.push(["thread", sessionId, seq]),
-    request: async (hostId, method, params) => void did.push(["request", hostId, method, params]),
+    file: async (w, file) => void did.push(["file", w.id, file]),
     held: (id, hostId) => void did.push(["held", id, hostId]),
     startThread: (chip, w) => void did.push(["startThread", chip.label, w.id]),
     opened: (hostId, h) => void did.push(["opened", hostId, h.key]),
@@ -76,13 +77,13 @@ describe("opening a hit", () => {
     const r = rig(["purdue"]);
     expect(await openHit(file, "box", r.deps)).toBe("opened");
     expect(r.did).toEqual([
-      ["request", "box", "work.files.open", { workspaceId: "cosmic", ref, name: "Budget.xlsx" }],
+      ["file", "cosmic", { ref, name: "Budget.xlsx" }],
       ["clear"],
       ["enter", "/w/cosmic"],
       ["view", { workspaceId: "cosmic", view: "files" }],
       ["opened", "box", "file:k1"],
     ]);
-    const refused = rig(["purdue"], { request: async () => Promise.reject(new Error("refused")) });
+    const refused = rig(["purdue"], { file: async () => Promise.reject(new Error("refused")) });
     expect(await openHit(file, "box", refused.deps)).toBe("failed");
     expect(refused.did).toEqual([]);
   });
@@ -91,7 +92,7 @@ describe("opening a hit", () => {
     for (const open of [{ to: "chip", chip: { kind: "doc", label: "Plan", ref } }, { to: "view", view: "docs", with: { doc: { id: "d1", title: "Plan" } } }] as SearchHit["open"][]) {
       const r = rig(["purdue"]);
       expect(await openHit(hit({ key: "lifeos:docs:d1", open }), "box", r.deps)).toBe("opened");
-      expect(r.did).toEqual([["request", "box", "work.files.open", { workspaceId: "purdue", ref, name: "Plan" }], ["clear"], ["view", { workspaceId: "purdue", view: "files" }], ["opened", "box", "lifeos:docs:d1"]]);
+      expect(r.did).toEqual([["file", "purdue", { ref, name: "Plan" }], ["clear"], ["view", { workspaceId: "purdue", view: "files" }], ["opened", "box", "lifeos:docs:d1"]]);
     }
   });
   it("a hit that came through a mention source opens as its chip does: a task in Tasks on that task, a card in Projects, a held act in the Outbox, a routine in Routines", async () => {

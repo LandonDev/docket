@@ -92,7 +92,14 @@ try {
   await run.start({ env: { TEMP_CODE_WORK_SEARCH_STANDIN: standIn } })
   await sleep(3000)
 
-  const cosmic = (await run.call<{ id: string }>('workspace.create', { kind: 'work', sector: 'cosmic', name: 'Cosmic' })).id
+  const cosmicAt = await run.call<{ id: string; path: string }>('workspace.create', { kind: 'work', sector: 'cosmic', name: 'Cosmic' })
+  const cosmic = cosmicAt.id
+  // Two made-up files in the job's own folder, listed once: Files answers names from what it has listed, never a walk.
+  writeFileSync(join(cosmicAt.path, 'Budget lines.csv'), 'item,cost\nBooth,400\nShirts,250\n')
+  writeFileSync(join(cosmicAt.path, 'Budget notes.md'), '# Budget notes\n\nMade up for the proof.\n')
+  const listed = await run.call<{ entries: { name: string }[] }>('work.files.list', { workspaceId: cosmic, at: { at: 'place', id: 'folder' } })
+  run.check('Files lists the two made-up files of the job', ['Budget lines.csv', 'Budget notes.md'].every((name) => listed.entries.some((e) => e.name === name)), listed.entries.map((e) => e.name).join(','))
+  await sleep(500)
   const unify = (await run.call<{ id: string }>('workspace.create', { kind: 'work', sector: 'unify', name: 'Unify' })).id
   run.later('delete the Unify workspace', () => run.call('workspace.delete', { workspaceId: unify }))
   run.later('delete the Cosmic workspace', () => run.call('workspace.delete', { workspaceId: cosmic }))
@@ -117,7 +124,7 @@ try {
   }
   const first = await timed({ text: 'budget', tier: 'instant' })
   run.note(`work.search.query, instant tier: ${first.ms.toFixed(1)} ms median of 5; ${first.answer.groups.map((g) => `${g.source} ${g.hits.length}`).join(', ')}; pending ${first.answer.pending.map((p) => p.source).join(', ')}`)
-  run.check('the instant tier answers people, open tasks, events and thread titles with nothing left out of reach', first.answer.groups.map((g) => g.kind).join(',') === 'person,task,event,thread', first.answer.groups.map((g) => g.kind).join(','))
+  run.check('the instant tier answers people, open tasks, events, the files Files has listed and thread titles, with nothing left out of reach', first.answer.groups.map((g) => g.kind).join(',') === 'person,task,event,file,thread', first.answer.groups.map((g) => g.kind).join(','))
   run.check('no hit of a sector with no job on this host, and no code thread', !JSON.stringify(first.answer).includes('whistles') && !JSON.stringify(first.answer).includes('Budget meeting') && !JSON.stringify(first.answer).includes(code.id))
   for (const p of first.answer.pending) {
     const one = await timed({ text: 'budget', sources: [p.source] })
@@ -141,7 +148,10 @@ try {
   await run.until('every source answered', 15_000, settled)
   const rowsNow = await list()
   const headings = rowsNow.filter((r) => r.startsWith('# ')).map((r) => r.slice(2))
-  run.check('groups fill under their headings in the fixed order, Messages (its own pillar\'s source) among them', headings.join(',') === 'People,Mail,Messages,Tasks,Agenda,Documents,Projects,Threads', headings.join(','))
+  run.check('groups fill under their headings in the fixed order, Messages (its own pillar\'s source) among them', headings.join(',') === 'People,Mail,Messages,Tasks,Agenda,Files,Projects,Threads', headings.join(','))
+  // Files lists LifeOS as a place of each job, so a document is a file there: it stands under Files, and Documents is gone.
+  const fileTitles = await run.page<string[]>(`[...document.querySelectorAll('[data-work-search-list] [data-kind="file"]')].map((el) => el.textContent)`)
+  run.check('the files of the job and the LifeOS document stand under Files, each once, and no Documents group', ['Budget lines.csv', 'Budget notes.md', 'Budget FY27'].every((name) => fileTitles.filter((t) => t.includes(name)).length === 1) && !headings.includes('Documents'), fileTitles.join(' | '))
   run.check('four mails and the row that opens all of them', rowsNow.filter((r) => r.includes('hit:lifeos:mailThreads')).length === 4 && rowsNow.some((r) => r.includes('all:mail')), rowsNow.join(' | '))
   run.check('the highlight is on the first row', rowsNow.find((r) => r.startsWith('> ')) === '> hit:lifeos:people:p1')
   run.check('each row names its job while jobs mix', (await run.page<number>(`document.querySelectorAll('[data-work-search-list] [data-job]').length`)) >= 8)
@@ -187,6 +197,18 @@ try {
   await sleep(1500)
   run.check('Return on it opens the Messages view in its job', (await windowJob()) === 'Cosmic' && (await run.page<boolean>(`[...document.querySelectorAll('span, h1, h2, h3, div')].some((e) => e.children.length === 0 && e.textContent.trim() === 'Messages' && e.getBoundingClientRect().left > 460 && e.getBoundingClientRect().top < 90)`)))
   await run.shot('05b-message-in-its-job')
+  // A file of that job: Return opens it in a Files tab, through Files' own door.
+  await openSearch()
+  await type('lines')
+  await run.until('every source answered', 15_000, settled)
+  const fileRow = await run.page<string | null>(`[...document.querySelectorAll('[data-work-search-list] [role="option"]')].find((el) => el.textContent.includes('Budget lines.csv'))?.getAttribute('data-row') ?? null`)
+  run.check('a file is found by its name', !!fileRow && (await moveTo(fileRow)), (await list()).join(' | '))
+  await key('Enter')
+  await run.until('the picker closed', 5_000, async () => !(await open()))
+  await run.until('the file has a tab', 10_000, async () => JSON.stringify(await run.call('work.files.tabs', { workspaceId: cosmic })).includes('Budget lines.csv'))
+  await sleep(1500)
+  run.check('Return on it opens the file in a Files tab of its job, the Files place shown', (await windowJob()) === 'Cosmic' && JSON.stringify(await run.call('work.files.tabs', { workspaceId: cosmic })).includes('Budget lines.csv') && (await run.page<boolean>(`!!document.querySelector('[data-files-seat], [data-files-row], [data-files-details]') || document.body.textContent.includes('Budget lines.csv')`)))
+  await run.shot('05c-file-in-files')
   // Back to Unify by the mail again, so what follows stands where it did.
   await openSearch()
   await type('Q4')
@@ -199,7 +221,7 @@ try {
   // Recent: what he just opened.
   await openSearch()
   await run.until('Recent', 8_000, async () => (await list()).some((r) => r.includes('hit:lifeos:mailThreads:m3')))
-  run.check('nothing typed shows Recent: what he opened, the newest first', (await list()).join(' | ') === '# Recent | > hit:lifeos:mailThreads:m3 |   hit:lifeos:rawMessages:r1', (await list()).join(' | '))
+  run.check('nothing typed shows Recent: what he opened, the newest first', (await list()).join(' | ') === `# Recent | > hit:lifeos:mailThreads:m3 |   ${fileRow} |   hit:lifeos:rawMessages:r1`, (await list()).join(' | '))
   await run.shot('06-recent')
 
   // The key again narrows to the window's job, and again widens.
@@ -226,6 +248,8 @@ try {
   await key('Escape')
   await sleep(400)
   run.check('Escape steps back out of the kind', (await open()) && !(await run.page<boolean>(`!!document.querySelector('[data-picker-leading]')`)))
+  await run.until('every source answered', 15_000, settled)
+  run.check('onto the row he came in by', (await selected()) === 'all:mail', String(await selected()))
   await key('Escape')
   await run.until('closed', 5_000, async () => !(await open()))
   run.check('a second Escape closes', !(await open()))

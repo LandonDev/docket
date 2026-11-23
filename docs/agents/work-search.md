@@ -178,7 +178,7 @@ takes eight; a deleted job takes its rows with it
 | doc | network | a sector at a time: the newest page of `docs:list` by title, then `catalog:search { sector, text }` with its line (a title outside that page read with `docs:get`) | `{ to: 'file', ref: { at: 'lifeos', table: 'docs', id }, name }`: a Files tab (a hit kept from before, `{ view: 'docs' }`, opens there too) |
 | project | network | `projects:list { sector? }` by name and description | `{ view: 'projects', with: { project } }` |
 | thread | instant by title, network by its words | the host's rows for titles; `Store.searchEvents { query, scope: 'work' }` for words, with the index's own snippet (thread notes among them) | `{ to: 'thread', sessionId, seq? }` |
-| file | instant; a second source `when: 'alone'` | `work.files.names { workspaceId, text }` a job in reach; for "All files", `work.files.search { workspaceId, query }` | `{ to: 'file', ref, name }` |
+| file | instant; network for LifeOS's documents where they are files; a third source `when: 'alone'` | `work.files.names { workspaceId, text }` a job in reach (the names Files has listed, from its database); the documents of a job where Files holds LifeOS, as the doc row reads them, by the key Files gives a document; for "All files", `work.files.search { workspaceId, query }` | `{ to: 'file', ref, name }`, through Files' own door `openInFiles` (work/files/openFrom.ts) |
 | message, chat | network | Messages' own sources (`messages/search.ts`, on its module's `search`): messages that hold the words, and conversations by name | `{ view: 'messages', with: { chat, message? } }` |
 | money | instant | Money's own source (`money/borders.ts`): a ledger's rows | `{ view: 'money', with: { row } }` |
 | item, held, routine, card, any later kind | as its mention source | every module's `mentions` with no `search` source of its kind | `{ to: 'chip', chip }` |
@@ -212,7 +212,13 @@ built, not known, or whose pillar did not load is absent: the source says
 nothing. Search reads no file, walks no folder, downloads nothing and keeps
 no file index. The Documents source stands down for a job once Files
 answers `work.files.names` and lists a LifeOS place for it
-(`filesHoldLifeos`), since a document is then a file there.
+(`filesHoldLifeos`), since a document is then a file there. Files' list as
+he types holds only the names it has listed, so in those jobs the same
+LifeOS read stands under Files instead (`docAsFile`, sources/lifeos.ts):
+titles and the documents whose text holds his words, each by the key Files
+gives it (`refKey`), so one both find is listed once and none is lost.
+Since Files landed, that is every job of a host on this release: the
+Documents heading is seen only for a host a release behind.
 
 **Messages and Money** list their own sources on their modules, so this
 pillar asks nothing of them by method: their hits come through the frame

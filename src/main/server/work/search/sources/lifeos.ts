@@ -1,5 +1,6 @@
 import { mentionExcerpt, mentionMatches, type ContextChip } from '@shared/work'
-import { lifeosKey, reachSectors, workspaceOfSector, type SearchHit, type SearchReach } from '@shared/work/search'
+import { refKey } from '@shared/work/files'
+import { fileKey, lifeosKey, reachSectors, workspaceOfSector, type SearchHit, type SearchReach } from '@shared/work/search'
 import type { WorkCtx } from '../../modules'
 import { mirror } from '../mirror'
 import type { SearchAsk, SearchSource } from '../source'
@@ -201,48 +202,73 @@ export const event = source<Event>({
 /** How many documents' titles a sector is asked for: LifeOS's own page. */
 const DOCS_PAGE = 25
 
-export const doc = source<Doc & { snippet?: string }>({
+type FoundDoc = Doc & { snippet?: string }
+
+/**
+ * The documents of the sectors in reach that hold the words, a sector at a
+ * time, as LifeOS's catalog asks: a title that holds them first, then the
+ * documents whose text does. `asFiles` picks the jobs: those where Files
+ * lists LifeOS's documents (a document is a file there), or the rest.
+ */
+async function readDocs(ctx: WorkCtx, ask: SearchAsk, all: string[], asFiles: boolean): Promise<FoundDoc[]> {
+  const held = await Promise.all(all.map((sector) => filesHoldLifeos(ctx, workspaceOfSector(ask.reach, sector)!, ask.by)))
+  const sectors = all.filter((_, i) => held[i] === asFiles)
+  const each = await Promise.all(
+    sectors.map(async (sector) => {
+      const [listed, found] = await Promise.all([
+        q<{ page: Doc[] }>(ctx, 'docs:list', { sector, paginationOpts: { numItems: DOCS_PAGE, cursor: null } }),
+        q<{ table: string; id: string; snippet: string }[]>(ctx, 'catalog:search', { sector, text: ask.text })
+      ])
+      const byId = new Map((listed?.page ?? []).map((d) => [d._id, d]))
+      const titled = (listed?.page ?? []).filter((d) => mentionMatches(ask.text, d.title)).map((d) => ({ ...d, sector }))
+      const inText = (found ?? []).filter((f) => f.table === 'docs' && !titled.some((d) => d._id === f.id)).map((f) => ({ _id: f.id, sector, title: byId.get(f.id)?.title ?? '', editedAt: byId.get(f.id)?.editedAt, snippet: f.snippet }))
+      return { titled, inText }
+    })
+  )
+  const rows: FoundDoc[] = [...each.flatMap((s) => s.titled), ...each.flatMap((s) => s.inText)].slice(0, ask.limit + 1)
+  // A document found by its text alone, outside the newest page: its title is read, for the few rows shown.
+  await Promise.all(
+    rows.map(async (row) => {
+      if (row.title) return
+      row.title = (await q<{ title?: string } | null>(ctx, 'docs:get', { id: row._id }).catch(() => null))?.title || 'Untitled'
+    })
+  )
+  return rows
+}
+
+const docRef = (d: FoundDoc) => ({ at: 'lifeos' as const, table: 'docs' as const, id: d._id })
+const docHit = (d: FoundDoc, workspaceId: string): Omit<SearchHit, 'key' | 'kind'> => ({
+  title: d.title || 'Untitled',
+  ...(d.snippet ? { snippet: d.snippet } : {}),
+  ...(d.editedAt !== undefined ? { at: d.editedAt } : {}),
+  workspaceId,
+  // A document opens as a Files tab of its job (the Docs view folded into Files).
+  open: { to: 'file', ref: docRef(d), name: d.title || 'Untitled' },
+  chip: { kind: 'doc', label: d.title || 'Untitled', ref: docRef(d) }
+})
+
+/** Documents, under their own heading: in the jobs where Files does not list LifeOS's (a host a release behind, a job Files is off for). */
+export const doc = source<FoundDoc>({
   kind: 'doc',
   label: 'Documents',
-  // A sector at a time, as LifeOS's catalog asks: a title that holds the words first, then the documents whose text does.
-  async read(ctx, ask, all) {
-    // Where Files lists LifeOS's documents for a job, a document is a file there: it is not listed twice.
-    const stands = await Promise.all(all.map(async (sector) => !(await filesHoldLifeos(ctx, workspaceOfSector(ask.reach, sector)!, ask.by))))
-    const sectors = all.filter((_, i) => stands[i])
-    const each = await Promise.all(
-      sectors.map(async (sector) => {
-        const [listed, found] = await Promise.all([
-          q<{ page: Doc[] }>(ctx, 'docs:list', { sector, paginationOpts: { numItems: DOCS_PAGE, cursor: null } }),
-          q<{ table: string; id: string; snippet: string }[]>(ctx, 'catalog:search', { sector, text: ask.text })
-        ])
-        const byId = new Map((listed?.page ?? []).map((d) => [d._id, d]))
-        const titled = (listed?.page ?? []).filter((d) => mentionMatches(ask.text, d.title)).map((d) => ({ ...d, sector }))
-        const inText = (found ?? []).filter((f) => f.table === 'docs' && !titled.some((d) => d._id === f.id)).map((f) => ({ _id: f.id, sector, title: byId.get(f.id)?.title ?? '', editedAt: byId.get(f.id)?.editedAt, snippet: f.snippet }))
-        return { titled, inText }
-      })
-    )
-    const rows = [...each.flatMap((s) => s.titled), ...each.flatMap((s) => s.inText)].slice(0, ask.limit + 1)
-    // A document found by its text alone, outside the newest page: its title is read, for the few rows shown.
-    await Promise.all(
-      rows.map(async (row) => {
-        if (row.title) return
-        row.title = (await q<{ title?: string } | null>(ctx, 'docs:get', { id: row._id }).catch(() => null))?.title || 'Untitled'
-      })
-    )
-    return rows
-  },
+  read: (ctx, ask, all) => readDocs(ctx, ask, all, false),
   sectors: (d) => [d.sector],
-  hit: (d, workspaceId) => ({
-    key: lifeosKey('docs', d._id),
-    kind: 'doc',
-    title: d.title || 'Untitled',
-    ...(d.snippet ? { snippet: d.snippet } : {}),
-    ...(d.editedAt !== undefined ? { at: d.editedAt } : {}),
-    workspaceId,
-    // A document opens as a Files tab of its job (the Docs view folded into Files).
-    open: { to: 'file', ref: { at: 'lifeos', table: 'docs', id: d._id }, name: d.title || 'Untitled' },
-    chip: { kind: 'doc', label: d.title || 'Untitled', ref: { at: 'lifeos', table: 'docs', id: d._id } }
-  })
+  hit: (d, workspaceId) => ({ key: lifeosKey('docs', d._id), kind: 'doc', ...docHit(d, workspaceId) })
+})
+
+/**
+ * The same documents as files, in the jobs where Files lists LifeOS's: a
+ * document is a file there, so it stands under Files and nowhere else. Files'
+ * own list as he types holds only the names it has seen; this finds the
+ * rest, and the ones whose text holds the words. The key is the one Files
+ * gives the document, so a document both find is listed once.
+ */
+export const docAsFile = source<FoundDoc>({
+  kind: 'file',
+  label: 'Files',
+  read: (ctx, ask, all) => readDocs(ctx, ask, all, true),
+  sectors: (d) => [d.sector],
+  hit: (d, workspaceId) => ({ key: fileKey(refKey(docRef(d))), kind: 'file', ...docHit(d, workspaceId) })
 })
 
 export const project = source<Project>({
@@ -264,3 +290,5 @@ export const project = source<Project>({
 })
 
 export const lifeosSources: SearchSource[] = [person, mail, openTask, task, event, doc, project]
+/** With the Files sources: a document where it is a file (search/index.ts orders the three of the kind). */
+export const lifeosFileSources: SearchSource[] = [docAsFile]

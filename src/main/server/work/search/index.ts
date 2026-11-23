@@ -7,7 +7,7 @@ import { dropWorkspace, ensureRecents, openedAt, recentGroup, recordOpened } fro
 import { namesOnlyReachable, runSearch } from './run'
 import type { SearchSource } from './source'
 import { fileSources } from './sources/files'
-import { lifeosSources } from './sources/lifeos'
+import { lifeosFileSources, lifeosSources } from './sources/lifeos'
 import { threadSources } from './sources/threads'
 import { standInOf, withStandIn } from './standIn'
 import { searchPreamble, searchTools } from './tools'
@@ -22,7 +22,8 @@ import { searchPreamble, searchTools } from './tools'
  */
 
 /** This pillar's own sources. One stands down for a kind a module lists a `search` source of. Messages and Money list their own (messages/search.ts, money/borders.ts). */
-export const OWN_SOURCES: SearchSource[] = [...lifeosSources, ...fileSources(), ...threadSources]
+// Files' own names first, then LifeOS's documents where they are files: a document both find stands where Files put it.
+export const OWN_SOURCES: SearchSource[] = [...lifeosSources, ...fileSources(), ...lifeosFileSources, ...threadSources]
 
 /** A proof's made-up LifeOS, on an isolated instance alone (search/standIn.ts); null everywhere else. */
 const STAND_IN = standInOf()

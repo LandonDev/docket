@@ -1,6 +1,5 @@
-import type { ContextChip } from "@shared/work";
+import type { CanvasSource, ContextChip } from "@shared/work";
 import type { SearchHit } from "@shared/work/search";
-import { registry } from "../../lib/connection";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { requestTranscriptJump } from "../../lib/transcriptJump";
@@ -10,6 +9,7 @@ import { project, projectStore } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { workspaceByPath } from "../../lib/tcserver/workspaces";
 import { openHeld } from "../canvas/held";
+import { openInFiles } from "../files/openFrom";
 import { startThreadAbout } from "../shell/WorkColumn";
 import { tellOpened } from "./hosts";
 
@@ -28,7 +28,8 @@ export interface OpenDeps {
   enter(workspace: WorkspaceMeta): void;
   view(next: OpenWorkView): void;
   thread(sessionId: string, seq?: number): void;
-  request(hostId: string, method: string, params: Record<string, unknown>): Promise<unknown>;
+  /** Files' own door (work/files/openFrom.ts): the file in a tab of the job, shown; a refusal is thrown */
+  file(workspace: WorkspaceMeta, file: { ref: CanvasSource; name: string }): Promise<void>;
   held(id: string, hostId: string): void;
   startThread(chip: ContextChip, workspace: WorkspaceMeta): void;
   opened(hostId: string, hit: SearchHit): void;
@@ -49,7 +50,7 @@ const live: OpenDeps = {
     if (seq !== undefined) requestTranscriptJump(sessionId, seq);
     workOpenPort.get()?.(sessionId);
   },
-  request: (hostId, method, params) => registry.linkOf(hostId).request(method as never, params as never),
+  file: (workspace, file) => openInFiles(workspace, file),
   held: (id, hostId) => openHeld({ at: "host", id }, hostId),
   startThread: (chip, workspace) => startThreadAbout(chip, null, workspace.path),
   opened: tellOpened,
@@ -108,9 +109,9 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
   const file = open.to === "file" ? { ref: open.ref, name: open.name } : docOf(open);
   let view: OpenWorkView | null;
   if (file) {
-    // The file opens as a Files tab of the job, then the Files view shows it.
+    // The file opens as a Files tab of the job on the job's host, the tab shown; the window then moves there as for any view.
     try {
-      await d.request(hostId, "work.files.open", { workspaceId: workspace.id, ref: file.ref as never, name: file.name });
+      await d.file(workspace, { ref: file.ref as CanvasSource, name: file.name });
     } catch {
       return "failed";
     }
