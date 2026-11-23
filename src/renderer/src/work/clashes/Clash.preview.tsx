@@ -78,7 +78,7 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
   if (state === "loading" || state === "gone") {
     return (
       <Box title={state === "gone" ? "No longer a clash" : "Clash"}>
-        <Empty gone={state === "gone"} onClose={noop} />
+        <Empty state={state === "gone" ? "gone" : "loading"} onClose={noop} />
       </Box>
     );
   }

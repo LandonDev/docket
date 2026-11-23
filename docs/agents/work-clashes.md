@@ -109,7 +109,9 @@ The pillar has no view of its own and no row in the column.
   owner session (`useLifeosSession(env, null)`), since a clash is across jobs
   and a view's own session reads one. It answers each event's clashes, its
   leave-by and the set of events that clash, each side with this host's Work
-  workspace for its job. `ClashLine` is the line on an Agenda row.
+  workspace for its job, and why the read failed when it did. `ClashLines`
+  draws an Agenda row's lines, one a clash, each opening its own dialog; the
+  row's menu names each by the other event.
 - `open.ts`: `openClash({id, environmentId?, clash?})`, a small file any
   screen may import. `ClashHost.tsx`, mounted by the Work shell beside
   `PlaysHost` (`work/shell/WorkRailHost.tsx`), loads the dialog's chunk
@@ -120,10 +122,13 @@ The pillar has no view of its own and no row in the column.
   Undo on its toast. Running late reads the event's people (`events:get`)
   and opens Mail's composer in that job's workspace (`mail/mailto.ts`), so it
   is offered only where this host has that workspace. The dialog reads the
-  clash's own day or two; a clash that is gone says so.
-- `model.ts` holds the pure parts: the marks, the time a move starts filled
-  with (the first quarter hour after the other event that the drive allows),
-  how late he is, the words.
+  clash's own day or two; a clash that is gone says so in its title, and a
+  read that failed with nothing handed over says why.
+- `model.ts` holds the pure parts: the marks, the time a move or a proposal
+  starts filled with (the earlier event: the latest quarter hour that ends a
+  drive before the later one, while that is ahead and on its day; else the
+  first quarter hour after the other event that the drive allows), a To
+  that runs past midnight, how late he is, the words.
 - `today.ts` is the pillar's `TodaySource`, one line in `TODAY_SOURCES`: no
   row of its own, a mark on each event's `event:<id>` row (the clash in that
   event's words, drawn as a fault, with Resolve), and the leave-by as the
@@ -158,23 +163,26 @@ while it reads, the read's error in a red line if it fails.
   each job with its sector dot and the name the LifeOS section uses
   (`sectors:list`). Under the title: the place as the map named it; "Home"
   where a job has no start of its own (it starts from home); "Not set" for
-  Home with no address; "Looking up…" until LifeOS's worker has placed a new
-  address (about twenty seconds; the query is live, so the row turns by
-  itself); the address he typed with "Not found" in red under it when the map
+  Home with no address; a small spinner and "Looking up…" until LifeOS's
+  worker has placed a new address (about twenty seconds; the query is live,
+  so the row turns by itself); the address he typed with "Not found" in red under it when the map
   did not find it. The words are `placeWords` in `clashes/places.ts`.
-- **The dialog.** The whole row opens it (named "Change Home", "Change
-  Purdue"). One Address field filled with the current address; for a job, the
-  switch "Look up places on Apple Maps" with the one line "Off, this job's
-  event places never leave your machines.", and "Use home" at the footer's
-  start while the job has a start of its own. Save stays off until something
-  changed, spins while LifeOS answers, then closes; a refusal stays in the
-  dialog in LifeOS's words. No toast: the row changes.
+- **The dialog.** The whole row opens it; its button is named for what the
+  row says ("Change Purdue: Cedar Hall, 4 Elm Street", `rowLabel`). One
+  Address field filled with the current address; for a job, the switch "Look
+  up event places on Apple Maps" with the one line "When off, this job's
+  event places never leave your machines." (the switch is described by it),
+  and "Use home" at the footer's start while the field holds an address: it
+  empties the field, and Save sends that with whatever else he changed, so a
+  flipped switch is never dropped. Save stays off until something changed,
+  spins while LifeOS answers, then closes; a refusal stays in the dialog in
+  LifeOS's words, as an alert. No toast: the row changes.
 - **LifeOS.** Queries `settings:startPlaces {}` (the rows: `{home, jobs}`,
   each `{address?, label?, state: none | looking | found | failed}`, a job
   with `sector` and its `lookups`) and `settings:get {}` (the maps a Save
   sends). The one write is `settings:update`: `homeAddress` (null clears it),
   or for a job `starts` and `placeLookups`, each sent whole, changed at its one
-  key (`savePatch`, `homePatch`). A job left out of `starts`, or given an empty
+  key (`savePatch`). A job left out of `starts`, or given an empty
   address, starts from home.
 - **Lookups are his alone.** Only this switch, pressed by him, changes
   `placeLookups`; no tool or thread does. A job with no entry takes LifeOS's

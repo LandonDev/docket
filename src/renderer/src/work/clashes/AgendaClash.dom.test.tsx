@@ -79,7 +79,7 @@ describe("a clash on the Agenda row", () => {
     expect(clashAsk.get()?.id).toBe("ev_meeting-ev_game");
   });
 
-  it("says the first of several and how many more", async () => {
+  it("says each of several on a line of its own, and names each in the menu by the other event, so every one can be opened", async () => {
     events.rows = [meeting];
     lifeos.range = {
       clashes: [...overlap.clashes, { ...overlap.clashes[0]!, id: "ev_meeting-ev_other", b: side("ev_other", "life", "Dentist", now + 3 * HOUR, now + 4 * HOUR) as never }],
@@ -87,7 +87,15 @@ describe("a clash on the Agenda row", () => {
     };
     render(<View {...props} />);
     await act(async () => {});
-    expect(screen.getByRole("button", { name: /^Overlaps Varsity Basketball \(Ref\), .*, and 1 more$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: `Overlaps Varsity Basketball (Ref), ${clockOf(game.startsAt)}` })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Overlaps Dentist \(Life\)/ }));
+    expect(clashAsk.get()?.id).toBe("ev_meeting-ev_other");
+    fireEvent.contextMenu(screen.getByRole("listitem"));
+    await act(async () => {});
+    expect(screen.queryByRole("menuitem", { name: "Show clash" })).toBeNull();
+    expect(await screen.findByRole("menuitem", { name: "Show clash with Dentist" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Show clash with Varsity Basketball" }));
+    expect(clashAsk.get()?.id).toBe("ev_meeting-ev_game");
   });
 
   it("draws no line and no menu row for an event with no clash, or one that is over", async () => {
@@ -116,8 +124,24 @@ describe("a clash on the Agenda row", () => {
       drawn.marked.length = 0;
       fireEvent.click(screen.getByRole("button", { name: view }));
       await act(async () => {});
-      expect(drawn.marked.at(-1)?.sort()).toEqual(["ev_game", "ev_meeting"]);
+      // Only this view's own events, by their ids: the game is another job's.
+      expect(drawn.marked.at(-1)).toEqual(["ev_meeting"]);
     }
+  });
+
+  it("marks no event that is over in the Week or the Month, as the list drops its line", async () => {
+    events.rows = [{ ...meeting, startsAt: now - 3 * HOUR, endsAt: now - HOUR }];
+    lifeos.range = overlap;
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    await act(async () => {});
+    expect(drawn.marked.at(-1)).toEqual([]);
   });
 
   it("takes Leave from the rule once it has answered, and LifeOS's own until then", async () => {

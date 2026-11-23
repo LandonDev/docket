@@ -20,7 +20,7 @@ import { writeMail } from "../mail/mailto";
 import { sectorName } from "../shell/actions";
 import { useLifeosSession } from "../shell/lifeos";
 import { useClashes } from "./mark";
-import { doneWords, formOf, freeAfter, lateDraft, spanOf, WAY_LABEL, wayWords, type TimeForm } from "./model";
+import { doneWords, endsNextDay, formOf, freeAfter, lateDraft, spanOf, WAY_LABEL, wayWords, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
 
 /**
@@ -45,47 +45,69 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   const clash = live ?? (marks.ready ? undefined : ask.clash);
   const [pending, setPending] = useState(false);
   const day = clash ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
+  const state = marks.ready ? "gone" : marks.failed !== undefined ? "failed" : "loading";
   return (
-    <Modal onClose={onClose} title={clash ? clashTitle(clash) : marks.ready ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
-      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} /> : <Empty gone={marks.ready} onClose={onClose} />}
+    <Modal onClose={onClose} title={clash ? clashTitle(clash) : state === "gone" ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
+      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} /> : <Empty state={state} error={marks.failed} onClose={onClose} />}
     </Modal>
   );
 }
 
-/** Bones while the clash is read; one line once it is known to be gone. */
-export function Empty({ gone, onClose }: { gone: boolean; onClose: () => void }) {
+/** One event's bones: its title, then its two lines. */
+function EventBones() {
+  return (
+    <div className="flex flex-col gap-2 py-1">
+      <Skeleton className="h-3.5 w-2/5" />
+      <Skeleton className="h-3 w-3/5" />
+      <Skeleton className="h-3 w-1/2" />
+    </div>
+  );
+}
+
+/**
+ * The dialog with no clash to show: the two events' bones with the hairline
+ * between them while it is read; why, in words, when the read failed; and
+ * nothing under the title once the two no longer clash, since the title says so.
+ */
+export function Empty({ state, error, onClose }: { state: "loading" | "failed" | "gone"; error?: string | undefined; onClose: () => void }) {
   return (
     <>
-      <ModalBody>
-        {gone ? (
-          <p className="text-[13px] leading-5 text-muted-foreground">These two events no longer clash.</p>
-        ) : (
-          <div aria-hidden className="flex flex-col gap-3">
-            <Skeleton className="h-3.5 w-1/2" />
-            <Skeleton className="h-3 w-2/3" />
-            <Skeleton className="h-3.5 w-2/5" />
+      {state === "loading" ? (
+        <ModalBody aria-hidden className="gap-3">
+          <EventBones />
+          <span className="h-px bg-border" />
+          <EventBones />
+        </ModalBody>
+      ) : null}
+      {state === "failed" ? (
+        <ModalBody>
+          <div role="alert">
+            <ErrorLine error={error || "LifeOS did not answer"} />
           </div>
-        )}
-      </ModalBody>
+        </ModalBody>
+      ) : null}
       <Foot onClose={onClose} />
     </>
   );
 }
 
-const span = (side: ClashSide) => `${formatTime(side.startsAt)} – ${formatTime(side.endsAt)}`;
-/** His calendar's own words for a place the map only has roughly; else the place as the map names it. */
-const placeOf = (side: ClashSide) => (side.rough ? side.location : side.place) ?? side.location;
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
+/** A time, with its weekday when it is not on the day the dialog names: a pair across midnight reads in order. */
+const timeOn = (ms: number, day: number) => (startOfDay(ms) === day ? formatTime(ms) : `${weekday.format(ms)} ${formatTime(ms)}`);
+const span = (side: ClashSide, day: number) => `${timeOn(side.startsAt, day)} – ${timeOn(side.endsAt, day)}`;
+/** His calendar's own words for a place the map only has roughly; else the place as the map names it, less the country every one of them ends in. */
+const placeOf = (side: ClashSide) => ((side.rough ? side.location : side.place) ?? side.location)?.replace(/, United States$/, "");
 
-/** One event: its title, then its time and job on one muted line, then where it is. */
-function EventBlock({ side, children }: { side: ClashSide; children?: React.ReactNode }) {
+/** One event: its title, then its time and job on one muted line, then where it is. A group named for the event, so "Decline" under it says whose. */
+function EventBlock({ side, day, children }: { side: ClashSide; day: number; children?: React.ReactNode }) {
   const place = placeOf(side);
   return (
-    <div className="flex min-w-0 flex-col">
+    <div role="group" aria-label={side.title} className="flex min-w-0 flex-col">
       <TruncateTip text={side.title}>
         <span className="truncate font-medium text-foreground">{side.title}</span>
       </TruncateTip>
       <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs leading-5 text-muted-foreground">
-        <span className="shrink-0 tabular-nums">{span(side)}</span>
+        <span className="shrink-0 tabular-nums">{span(side, day)}</span>
         <span className="inline-flex min-w-0 items-center gap-1">
           <SectorDot sector={side.sector} className="size-3" />
           <span className="truncate">{sectorName(side.sector)}</span>
@@ -226,6 +248,7 @@ export function Events({
   bodyRef?: React.Ref<HTMLDivElement>;
 }) {
   const drive = driveLine(clash);
+  const day = startOfDay(clash.b.startsAt);
   const ways = (side: Side) => {
     const event = clash[side];
     // Running late needs Mail in that job's workspace on this host.
@@ -244,15 +267,21 @@ export function Events({
   return (
     <>
       <ModalBody ref={bodyRef} className="gap-3">
-        <EventBlock side={clash.a}>{ways("a")}</EventBlock>
+        <EventBlock side={clash.a} day={day}>
+          {ways("a")}
+        </EventBlock>
         {/* The hairline between the two is where the drive is, when there is one to say. */}
         <div data-clash-drive className="flex items-center gap-3">
           <span className="h-px flex-1 bg-border" />
           {drive ? <span className="text-xs leading-5 text-muted-foreground tabular-nums">{drive}</span> : null}
           {drive ? <span className="h-px flex-1 bg-border" /> : null}
         </div>
-        <EventBlock side={clash.b}>{ways("b")}</EventBlock>
-        <ErrorLine error={error} />
+        <EventBlock side={clash.b} day={day}>
+          {ways("b")}
+        </EventBlock>
+        <div role="alert" className="empty:hidden">
+          <ErrorLine error={error} />
+        </div>
       </ModalBody>
       <Foot
         onClose={onClose}
@@ -301,8 +330,8 @@ export function StepForm({
   return (
     <form onSubmit={submit} data-clash-step={`${step.side}:${step.way}`}>
       <ModalBody>
-        <EventBlock side={event} />
-        <p className="text-[13px] leading-5 text-muted-foreground">{wayWords(step.way, event.title)}</p>
+        <EventBlock side={event} day={startOfDay(clash.b.startsAt)} />
+        <p className="text-[13px] leading-5 text-muted-foreground">{wayWords(step.way)}</p>
         {timed ? (
           <div className="grid grid-cols-[minmax(0,1fr)_112px_112px] gap-2">
             <Field label="Day">
@@ -311,7 +340,7 @@ export function StepForm({
             <Field label="From">
               <Input type="time" value={form.from} onChange={(e) => patch({ from: e.target.value })} />
             </Field>
-            <Field label="To">
+            <Field label="To" hint={endsNextDay(form) ? "Next day" : undefined}>
               <Input type="time" value={form.to} onChange={(e) => patch({ to: e.target.value })} />
             </Field>
           </div>
@@ -321,7 +350,9 @@ export function StepForm({
             <Textarea autoFocus={!timed} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
           </Field>
         ) : null}
-        <ErrorLine error={error ?? refused} />
+        <div role="alert" className="empty:hidden">
+          <ErrorLine error={error ?? refused} />
+        </div>
       </ModalBody>
       <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending}>
         <Button data-clash-back variant="secondary" disabled={pending} onClick={onBack}>

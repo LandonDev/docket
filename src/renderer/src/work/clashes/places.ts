@@ -28,6 +28,12 @@ export type StartPatch = {
 /** Home, or one job. */
 export type StartTarget = "home" | SectorKey;
 
+/** What a row's button is called: its verb, whose place, and what the row says of it, so the row reads whole on focus. */
+export function rowLabel(name: string, words: { description?: string; error?: string }): string {
+  const said = [words.description, words.error].filter(Boolean).join(", ");
+  return said ? `Change ${name}: ${said}` : `Change ${name}`;
+}
+
 /** A row's lines: its muted description and, when the map did not find it, its red line. */
 export function placeWords(place: StartPlace, target: StartTarget): { description?: string; error?: string } {
   switch (place.state) {
@@ -60,11 +66,6 @@ export function savePatch(target: StartTarget, saved: StartForm, form: StartForm
   if (address !== saved.address.trim()) patch.starts = address ? { ...settings.starts, [target]: address } : withoutStart(target, settings);
   if (form.lookups !== saved.lookups) patch.placeLookups = { ...settings.placeLookups, [target]: form.lookups };
   return patch;
-}
-
-/** "Use home": the whole `starts` map with this job left out, so it starts from home. */
-export function homePatch(sector: SectorKey, settings: StartSettings): StartPatch {
-  return { starts: withoutStart(sector, settings) };
 }
 
 function withoutStart(sector: SectorKey, settings: StartSettings): Partial<Record<SectorKey, string>> {

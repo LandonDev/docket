@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Clash, ClashSide } from "@shared/work/clashes";
-import { doneWords, formOf, freeAfter, lateDraft, lateMinutes, marksOf, sideOf, spanOf, wayWords } from "./model";
+import { doneWords, endsNextDay, formOf, freeAfter, lateDraft, lateMinutes, marksOf, sideOf, spanOf, wayWords } from "./model";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -33,14 +33,25 @@ describe("marksOf", () => {
 });
 
 describe("the time a move starts filled with", () => {
-  it("is the first quarter hour after the other event that the drive allows, for as long as the event runs", () => {
-    // The game ends at 3:00 and the drive is 38 minutes: 3:38 is offered as 3:45.
-    const clash = overlap({ minutes: 38 });
-    expect(freeAfter(clash, "a")).toEqual({ start: T0 + 3 * HOUR + 45 * MINUTE, end: T0 + 5 * HOUR + 45 * MINUTE });
+  const morning = T0 - 4 * HOUR;
+
+  it("offers the later event the first quarter hour after the earlier one that the drive allows", () => {
+    // The meeting ends at 2:00 and the drive is 38 minutes: 2:38 is offered as 2:45, for the game's two hours.
+    expect(freeAfter(overlap({ minutes: 38 }), "b", morning)).toEqual({ start: T0 + 2 * HOUR + 45 * MINUTE, end: T0 + 4 * HOUR + 45 * MINUTE });
+    expect(freeAfter(overlap(), "b", morning)).toEqual({ start: T0 + 2 * HOUR, end: T0 + 4 * HOUR });
   });
 
-  it("moves the later event past the earlier one's end", () => {
-    expect(freeAfter(overlap(), "b")).toEqual({ start: T0 + 2 * HOUR, end: T0 + 4 * HOUR });
+  it("offers the earlier event the latest quarter hour that ends a drive before the later one starts", () => {
+    // The game starts at 1:00 and the drive is 38 minutes: the two-hour meeting must end by 12:22, so 10:15 to 12:15.
+    expect(freeAfter(overlap({ minutes: 38 }), "a", morning)).toEqual({ start: T0 - 105 * MINUTE, end: T0 + 15 * MINUTE });
+  });
+
+  it("moves the earlier event after the later one when no time before it is left today", () => {
+    // It is already noon: nothing before the game is ahead of now.
+    expect(freeAfter(overlap({ minutes: 38 }), "a", T0)).toEqual({ start: T0 + 3 * HOUR + 45 * MINUTE, end: T0 + 5 * HOUR + 45 * MINUTE });
+    // A slot before it would fall on the day before: after it instead.
+    const early = overlap({ a: side("a", -11.5, 2), b: side("b", -11, 2) });
+    expect(freeAfter(early, "a", T0 - 24 * HOUR).start).toBe(T0 - 9 * HOUR);
   });
 
   it("names which side is which", () => {
@@ -72,10 +83,10 @@ describe("running late", () => {
 });
 
 describe("the step's words", () => {
-  it("says what goes and to whom", () => {
-    expect(wayWords("decline", "Staff meeting")).toBe("Declines Staff meeting. Its organizer is told.");
-    expect(wayWords("propose", "Staff meeting")).toBe("Asks the organizer of Staff meeting for this time. Nothing moves until they agree.");
-    expect(wayWords("move", "Dinner")).toBe("Moves Dinner on your calendar.");
+  it("says what goes and to whom, without naming the event it stands under", () => {
+    expect(wayWords("decline")).toBe("Its organizer is told you declined.");
+    expect(wayWords("propose")).toBe("Its organizer is asked for this time. Nothing moves until they agree.");
+    expect(wayWords("move")).toBe("It moves on your calendar.");
   });
 
   it("answers the press", () => {
@@ -95,5 +106,14 @@ describe("the time fields", () => {
   it("say what is wrong in words", () => {
     expect(spanOf({ day: "", from: "12:00", to: "13:00" })).toBe("Pick a day and its times");
     expect(spanOf({ day: "2026-11-26", from: "13:00", to: "13:00" })).toBe("It must end after it starts");
+  });
+
+  it("take a To earlier on the clock than From as the next day's, so a span past midnight is one it can offer and accept", () => {
+    const late = { start: new Date(2026, 10, 26, 23, 45).getTime(), end: new Date(2026, 10, 27, 1, 15).getTime() };
+    const form = formOf(late);
+    expect(form).toEqual({ day: "2026-11-26", from: "23:45", to: "01:15" });
+    expect(endsNextDay(form)).toBe(true);
+    expect(spanOf(form)).toEqual(late);
+    expect(endsNextDay({ day: "2026-11-26", from: "13:00", to: "14:00" })).toBe(false);
   });
 });

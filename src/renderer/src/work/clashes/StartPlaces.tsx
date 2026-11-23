@@ -1,18 +1,19 @@
 import { makeFunctionReference } from "convex/server";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import type { SectorKey } from "@shared/work";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field, FieldRow } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Spinner } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import { refusalWords } from "../../lib/settingsHome";
 import { sectorName } from "../shell/actions";
 import { sessionFailure, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
-import { formChanged, homePatch, placeWords, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartSettings, type StartTarget } from "./places";
+import { formChanged, placeWords, rowLabel, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartSettings, type StartTarget } from "./places";
 
 /**
  * Settings → Work, "Start places" (docs/agents/work-clashes.md): where each
@@ -86,7 +87,17 @@ export function StartPlacesSection({ environmentId }: { environmentId: string })
 
 function PlaceRow({ title, label = "Home", place, target, onOpen }: { title: ReactNode; label?: string; place: StartPlace; target: StartTarget; onOpen: () => void }) {
   const words = placeWords(place, target);
-  return <PageRow data-start={target} title={title} description={words.description} error={words.error} onOpen={onOpen} openLabel={`Change ${label}`} />;
+  // The wait turns: LifeOS's worker places a new address within about twenty seconds, and the row changes by itself.
+  const description =
+    place.state === "looking" ? (
+      <span className="inline-flex items-center gap-1.5">
+        <Spinner className="size-3" />
+        {words.description}
+      </span>
+    ) : (
+      words.description
+    );
+  return <PageRow data-start={target} title={title} description={description} error={words.error} onOpen={onOpen} openLabel={rowLabel(label, words)} />;
 }
 
 function StartPlaceDialog({
@@ -115,9 +126,9 @@ function StartPlaceDialog({
   );
 }
 
-type Pending = "save" | "home" | null;
+type Pending = "save" | null;
 
-/** The dialog's body and footer: one address, and for a job its lookups switch and "Use home". */
+/** The dialog's body and footer: one address, and for a job its lookups switch and "Use home", which empties the address for Save to send with whatever else changed. */
 export function StartPlaceForm({
   target,
   place,
@@ -146,8 +157,12 @@ export function StartPlaceForm({
   const [error, setError] = useState<string | null>(shownError);
   const job: SectorKey | null = target === "home" ? null : target;
 
-  const run = (which: Exclude<Pending, null>, patch: StartPatch): void => {
-    setPending(which);
+  const linesId = useId();
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    const patch = savePatch(target, saved, form, settings);
+    if (!patch || pending) return;
+    setPending("save");
     setError(null);
     send(patch).then(
       () => {
@@ -160,37 +175,34 @@ export function StartPlaceForm({
       },
     );
   };
-  const submit = (event: FormEvent): void => {
-    event.preventDefault();
-    const patch = savePatch(target, saved, form, settings);
-    if (patch && !pending) run("save", patch);
-  };
 
   return (
     <form onSubmit={submit}>
       <ModalBody>
         <Field label="Address">
-          <Input autoFocus value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} autoComplete="off" spellCheck={false} />
+          <Input autoFocus value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} placeholder={job ? "Home" : undefined} autoComplete="off" spellCheck={false} />
         </Field>
         {job ? (
-          <FieldRow label="Look up places on Apple Maps" description="Off, this job's event places never leave your machines.">
-            <Switch checked={form.lookups} onCheckedChange={(on) => setForm((f) => ({ ...f, lookups: on }))} />
+          <FieldRow label="Look up event places on Apple Maps" description={<span id={linesId}>When off, this job's event places never leave your machines.</span>}>
+            <Switch checked={form.lookups} aria-describedby={linesId} onCheckedChange={(on) => setForm((f) => ({ ...f, lookups: on }))} />
           </FieldRow>
         ) : null}
-        <ErrorLine error={error} />
+        <div role="alert" className="empty:hidden">
+          <ErrorLine error={error} />
+        </div>
       </ModalBody>
       <DialogFooter
         start={
-          job && place.state !== "none" ? (
-            <Button type="button" variant="ghost" disabled={pending !== null} onClick={() => run("home", homePatch(job, settings))}>
-              <BusyLabel busy={pending === "home"} label="Use home" />
+          // Empties the field, as typing would: Save sends it with whatever else he changed here.
+          job && form.address.trim() ? (
+            <Button type="button" variant="ghost" disabled={pending !== null} onClick={() => setForm((f) => ({ ...f, address: "" }))}>
+              Use home
             </Button>
           ) : undefined
         }
         onCancel={onClose}
         confirmLabel="Save"
         pending={pending === "save"}
-        busy={pending === "home"}
         disabled={!formChanged(saved, form)}
       />
     </form>

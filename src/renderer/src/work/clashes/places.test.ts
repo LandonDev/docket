@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formChanged, homePatch, placeWords, savePatch, type StartSettings } from "./places";
+import { formChanged, placeWords, rowLabel, savePatch, type StartSettings } from "./places";
 
 const settings: StartSettings = { homeAddress: "9 Office Rd", starts: { ref: "Cedar Hall, 4 Elm St, Cedar Falls, IN", unify: "1 Mill St" }, placeLookups: { purdue: false } };
 
@@ -48,8 +48,13 @@ describe("what a Save sends", () => {
     expect(savePatch("home", { address: "9 Office Rd", lookups: false }, { address: "", lookups: false }, settings)).toEqual({ homeAddress: null });
   });
 
-  it("Use home sends starts without the job", () => {
-    expect(homePatch("ref", settings)).toEqual({ starts: { unify: "1 Mill St" } });
-    expect(homePatch("ref", {})).toEqual({ starts: {} });
+  it("sends an emptied address and a flipped switch in one patch, so Use home never drops the switch", () => {
+    expect(savePatch("ref", { address: "4 Gym Way", lookups: true }, { address: "", lookups: false }, settings)).toEqual({ starts: { unify: "1 Mill St" }, placeLookups: { ...settings.placeLookups, ref: false } });
+  });
+
+  it("names a row's button by its verb, whose place and what the row says", () => {
+    expect(rowLabel("Purdue", { description: "Cedar Hall, 4 Elm Street" })).toBe("Change Purdue: Cedar Hall, 4 Elm Street");
+    expect(rowLabel("Ref", { description: "2 Gym Ln", error: "Not found" })).toBe("Change Ref: 2 Gym Ln, Not found");
+    expect(rowLabel("Home", {})).toBe("Change Home");
   });
 });

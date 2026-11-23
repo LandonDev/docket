@@ -6,7 +6,8 @@ import type { Clash, ClashSide } from "@shared/work/clashes";
 import { marksOf, NO_MARKS, type ClashMarks } from "./model";
 
 const HOUR = 3_600_000;
-const T0 = new Date(2026, 10, 26, 13, 0).getTime();
+/** A day far ahead of any clock this runs on, 1:00 PM. */
+const T0 = new Date(2031, 10, 26, 13, 0).getTime();
 
 const wire = vi.hoisted(() => ({ calls: [] as { method: string; params: unknown }[], fail: null as string | null, hold: null as (() => void) | null }));
 vi.mock("../../lib/connection", async (original) => ({
@@ -110,6 +111,9 @@ describe("the Clash dialog", () => {
     await settle();
     const ways = [...document.querySelectorAll("[data-way]")].map((b) => `${b.getAttribute("data-way")} ${b.textContent}`);
     expect(ways).toEqual(["a:decline Decline", "a:propose Propose new time…", "b:move Move…", "b:late Running late…"]);
+    // Each event is a group by its name, so a verb under it says whose it is.
+    expect(within(screen.getByRole("group", { name: "Staff meeting" })).getByRole("button", { name: "Decline" })).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "Varsity Basketball" })).queryByRole("button", { name: "Decline" })).toBeNull();
   });
 
   it("offers Running late only on the later event, and only where Mail can open for its job", async () => {
@@ -124,7 +128,7 @@ describe("the Clash dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     // The step shows the event and what goes before Send.
     const step = document.querySelector("[data-clash-step='a:decline']")!;
-    expect(step.textContent).toContain("Declines Staff meeting. Its organizer is told.");
+    expect(step.textContent).toContain("Its organizer is told you declined.");
     expect(step.textContent).not.toContain("Varsity Basketball");
     expect(step.querySelector("input[type=time]")).toBeNull();
     fireEvent.change(screen.getByLabelText("Note"), { target: { value: " At a game then " } });
@@ -136,18 +140,34 @@ describe("the Clash dialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("proposes the first quarter hour after the other event that the drive allows", async () => {
+  it("fills a proposal for the earlier event with the latest time that still ends a drive before the later one", async () => {
     show(overlap());
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Propose new time…" }));
-    // The game ends at 4:00 and the drive is 38 minutes: 4:45 for the meeting's two hours.
-    expect((screen.getByLabelText("Day") as HTMLInputElement).value).toBe("2026-11-26");
-    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("16:45");
-    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("18:45");
+    // The game starts at 2:00 and the drive is 38 minutes: the two-hour meeting is offered 11:15 to 1:15.
+    expect((screen.getByLabelText("Day") as HTMLInputElement).value).toBe("2031-11-26");
+    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("11:15");
+    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("13:15");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await settle();
-    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "propose", start: T0 + 3 * HOUR + 45 * 60_000, end: T0 + 5 * HOUR + 45 * 60_000 } });
+    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "propose", start: T0 - 105 * 60_000, end: T0 + 15 * 60_000 } });
     expect(toasts.said[0]?.words).toBe("New time proposed for Staff meeting");
+  });
+
+  it("fills a move of the later event with the first quarter hour after the earlier one that the drive allows, and takes a span past midnight", async () => {
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Move…" }));
+    // The meeting ends at 3:00 and the drive is 38 minutes: 3:45 for the game's two hours.
+    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("15:45");
+    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("17:45");
+    expect(screen.queryByText("Next day")).toBeNull();
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "23:30" } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "01:00" } });
+    expect(screen.getByText("Next day")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await settle();
+    expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 10.5 * HOUR, end: T0 + 12 * HOUR } });
   });
 
   it("moves his own event to the time he sets, with no note to send", async () => {
@@ -166,10 +186,10 @@ describe("the Clash dialog", () => {
     show(overlap());
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Move…" }));
-    fireEvent.change(screen.getByLabelText("To"), { target: { value: "09:00" } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: (screen.getByLabelText("From") as HTMLInputElement).value } });
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
-    expect(screen.getByText("It must end after it starts")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe("It must end after it starts");
     expect(wire.calls).toEqual([]);
   });
 
@@ -180,7 +200,8 @@ describe("the Clash dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await settle();
-    expect(screen.getByText("This calendar's Google account must be connected again")).toBeTruthy();
+    // Said aloud too: the refusal is an alert.
+    expect(screen.getByRole("alert").textContent).toBe("This calendar's Google account must be connected again");
     expect(onClose).not.toHaveBeenCalled();
     expect(toasts.said).toEqual([]);
     // Send is his to press again.
@@ -248,12 +269,37 @@ describe("the Clash dialog", () => {
     expect(screen.getByRole("dialog", { name: "Two things at once" })).toBeTruthy();
   });
 
-  it("says so once the two no longer clash", async () => {
+  it("says so once the two no longer clash, in its title alone", async () => {
     show(overlap(), marksOf({ clashes: [], leaves: [] }));
     await settle();
     const dialog = screen.getByRole("dialog", { name: "No longer a clash" });
-    expect(within(dialog).getByText("These two events no longer clash.")).toBeTruthy();
+    expect(dialog.textContent).not.toContain("no longer clash.");
     expect(document.querySelectorAll("[data-way]")).toHaveLength(0);
     expect(within(dialog).queryByRole("button", { name: "This is fine" })).toBeNull();
+    expect(dialog.querySelector("[data-dialog-cancel]")?.textContent).toBe("Close");
+  });
+
+  it("says why when the read failed and the opener handed nothing over, with no bones left waiting", async () => {
+    show(null, { ...NO_MARKS, failed: "LifeOS did not answer" });
+    await settle();
+    const dialog = screen.getByRole("dialog", { name: "Clash" });
+    expect(within(dialog).getByRole("alert").textContent).toBe("LifeOS did not answer");
+    expect(dialog.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
+  it("names the weekday of a time that is not on the day the dialog names", async () => {
+    const night = side("ev_a", "Late game", -3, 2, { sector: "ref" });
+    const morning = side("ev_b", "Breakfast", 20, 1, { sector: "life" });
+    show({ id: "ev_a-ev_b", kind: "drive", a: night, b: morning, minutes: 30, measured: true, shortBy: 5 });
+    await settle();
+    const day = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(night.startsAt);
+    expect(screen.getByRole("group", { name: "Late game" }).textContent).toContain(`${day} `);
+    expect(screen.getByRole("group", { name: "Breakfast" }).textContent).not.toContain(new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(morning.startsAt));
+  });
+
+  it("drops the country every map name ends in", async () => {
+    show(overlap(meeting([]), game([], { place: "Maple Ridge High School, 12 Oak St, Riverton, IN 47906, United States" })));
+    await settle();
+    expect(screen.getByText("Maple Ridge High School, 12 Oak St, Riverton, IN 47906")).toBeTruthy();
   });
 });

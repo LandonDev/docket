@@ -79,8 +79,9 @@ afterEach(cleanup);
 
 const rows = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>("[data-start]")];
 const row = (container: HTMLElement, target: string) => container.querySelector<HTMLElement>(`[data-start="${target}"]`)!;
+/** A row's button is named "Change <whose>: <what the row says>": found here by whose. */
 const open = async (name: string) => {
-  fireEvent.click(screen.getByRole("button", { name }));
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${name}(:|$)`) }));
   await act(async () => {});
   return screen.getByRole("dialog");
 };
@@ -155,7 +156,9 @@ describe("Start places", () => {
   it("turning the switch sends the whole placeLookups map", async () => {
     render(<StartPlacesSection environmentId="box" />);
     const dialog = await open("Change Purdue");
-    expect(within(dialog).getByText("Off, this job's event places never leave your machines.")).toBeTruthy();
+    const line = within(dialog).getByText("When off, this job's event places never leave your machines.");
+    // The switch is described by the one sentence, so it is read on focus.
+    expect(within(dialog).getByRole("switch", { name: "Look up event places on Apple Maps" }).getAttribute("aria-describedby")).toBe(line.id);
     const toggle = within(dialog).getByRole("switch");
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(toggle);
@@ -163,17 +166,32 @@ describe("Start places", () => {
     expect(lifeos.sent).toEqual([{ name: "settings:update", args: { placeLookups: { purdue: true } } }]);
   });
 
-  it("Use home sends starts without that job, and shows only where the job has a start", async () => {
+  it("Use home empties the address for Save to send, with a switch he flipped beside it, and shows only while there is an address", async () => {
     render(<StartPlacesSection environmentId="box" />);
     let dialog = await open("Change Cosmic");
     expect(within(dialog).queryByRole("button", { name: "Use home" })).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await act(async () => void (await new Promise((r) => setTimeout(r, 400))));
     dialog = await open("Change Hypixel");
+    fireEvent.click(within(dialog).getByRole("switch"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Use home" }));
-    await act(async () => {});
+    // Nothing is sent yet: the field is empty, the verb is gone, and Save holds both changes.
+    expect(lifeos.sent).toEqual([]);
+    expect((within(dialog).getByLabelText("Address") as HTMLInputElement).value).toBe("");
+    expect(within(dialog).queryByRole("button", { name: "Use home" })).toBeNull();
+    await save(dialog);
     const { hypixel: _gone, ...rest } = SETTINGS.starts!;
-    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { starts: rest } }]);
+    expect(lifeos.sent).toHaveLength(1);
+    expect(lifeos.sent[0]).toMatchObject({ name: "settings:update", args: { starts: rest } });
+    expect(Object.keys((lifeos.sent[0] as { args: { placeLookups?: object } }).args.placeLookups ?? {})).toContain("hypixel");
+  });
+
+  it("names each row's button by what the row says, and turns a spinner while a place is looked up", () => {
+    const { container } = render(<StartPlacesSection environmentId="box" />);
+    expect(screen.getByRole("button", { name: "Change Cosmic: Home" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Change Ref: 2 Gym Ln.*, Not found$/ })).toBeTruthy();
+    expect(row(container, "hypixel").querySelector("[data-slot=spinner]")).not.toBeNull();
+    expect(row(container, "cosmic").querySelector("[data-slot=spinner]")).toBeNull();
   });
 
   it("the Home row's Save sends homeAddress, with no switch and no Use home", async () => {
@@ -192,6 +210,6 @@ describe("Start places", () => {
     const dialog = await open("Change Home");
     fireEvent.change(within(dialog).getByLabelText("Address"), { target: { value: "12 Oak Ct" } });
     await save(dialog);
-    expect(within(screen.getByRole("dialog")).getByText("That address is too long")).toBeTruthy();
+    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("That address is too long");
   });
 });

@@ -1,5 +1,7 @@
 import { getFunctionName } from "convex/server";
+import { X } from "../../chrome/icons";
 import { Page } from "../../components/page";
+import { Button } from "../../components/ui/button";
 import { setLifeosSession, setLifeosStatus } from "../shell/lifeos";
 import { StartPlaceForm, StartPlacesSection } from "./StartPlaces";
 import type { StartPlaces, StartSettings } from "./places";
@@ -45,8 +47,11 @@ export function StartPlacesPreview({ state = "section" }: { state?: "section" | 
     return (
       <div className="p-6">
         <div className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl bg-popover text-sm leading-[22px] text-popover-foreground shadow-overlay ring-1 ring-border">
-          <header className="px-5 pt-5">
-            <h2 className="text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">Purdue</h2>
+          <header className="flex items-start gap-2 px-5 pt-5">
+            <h2 className="min-w-0 flex-1 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">Purdue</h2>
+            <Button variant="ghost" size="icon-sm" aria-label="Close" className="-me-1 -mt-0.5 text-muted-foreground">
+              <X />
+            </Button>
           </header>
           <StartPlaceForm target="purdue" place={purdue} lookups={purdue.lookups} settings={SETTINGS} send={async () => null} onClose={none} pending={null} setPending={none} />
         </div>

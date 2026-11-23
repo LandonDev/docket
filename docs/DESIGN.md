@@ -1494,53 +1494,69 @@ Around the canvas:
   On an Agenda row it is one more 12px line under the place, in `warning`
   (he is needed), in the words of that event's side: "Overlaps Varsity
   Basketball (Ref), 6:00 PM", "15 min short after Staff meeting (Purdue)",
-  "About 15 min short…" for a drive worked out without the map; with
-  several, the first and ", and 2 more". The line is a button that takes
-  an underline on hover, as a With name does, and opens the Clash dialog;
-  the row's menu has Show clash. An event that is over carries none. The
-  line arrives with its read and nothing pulses for it. "Leave 4:35 PM"
-  under the time is from where he will be: the event before when that
-  ends within three hours, else the day's start.
+  "About 15 min short…" for a drive worked out without the map; an event
+  with several clashes has a line for each, so every one named can be
+  opened. A line is a link `Button` at the line's own height that takes an
+  underline on hover and opens that clash's dialog; the row's menu has
+  Show clash, or with several "Show clash with Varsity Basketball" for
+  each. An event that is over carries none. The line arrives with its
+  read and nothing pulses for it. "Leave 4:35" under the time is from
+  where he will be: the event before when that ends within three hours,
+  else the day's start.
   The Clash dialog is the `sm` Modal. Its title is the fact ("Two things
   at once", "15 minutes short", "About 15 minutes short"), the later
   event's day the 12px line under it. The body holds the two events in
   time order, 12px apart: each its title (14/22 medium), then one 12px
-  muted line of its time span (tabular) and, 8px after, its job (the
-  sector dot and name), then where it is (the place as the map names it;
-  his calendar's own words when the point is a town's centre or a start
-  standing in), each cut line whole on hover. Between the two is a
+  muted line of its time span (tabular; a time on another day than the
+  title's line names takes its weekday, "Wed 11:00 PM") and, 8px after,
+  its job (the sector dot and name), then where it is (the place as the
+  map names it, less the country; his calendar's own words when the point
+  is a town's centre or a start standing in), each cut line whole on
+  hover. Each event is a group named for it, so a verb under it says
+  whose it is. Between the two is a
   hairline, which carries the drive in 12px muted at its middle when both
   have a point ("38 min drive, 24 mi", "About 40 min, 25 mi"). Under each
   event, 8px down, are the ways out it allows and no others, as outline
   `sm` buttons: Decline, Propose new time…, Move…, Running late…. The foot
   has "This is fine" (ghost) at its start and Close at its end.
   A way out swaps the body for its one step: the event, one 13px muted
-  sentence of what goes and to whom, then Day, From and To (New event's
-  fields, filled with the first quarter hour after the other event that
-  the drive allows) for a proposal or a move, and a Note for a decline or
-  a proposal; the foot is Back and Send (Move for a move). Send holds its
-  width and spins; a toast answers the press and the dialog closes; a
-  refusal stays in the step in LifeOS's words, in `destructive`. Back puts
-  focus on the way it came from. Running late… opens Mail's composer in
+  sentence of what goes and to whom (the event stands above it and is not
+  named again), then Day, From and To (New event's fields) for a proposal
+  or a move, and a Note for a decline or a proposal; the foot is Back and
+  Send (Move for a move). The times start filled: the earlier event with
+  the latest quarter hour that still ends a drive before the later one,
+  the later with the first after the earlier ends. A To earlier on the
+  clock than From is the next day's, and says "Next day" under it. Send
+  holds its width and spins; a toast answers the press and the dialog
+  closes; a refusal stays in the step in LifeOS's words, in `destructive`,
+  as an alert. Back puts focus on the way it came from. While the dialog
+  reads a clash it was not handed, it draws the two events' bones with the
+  hairline between them; a read that failed says why in the body; two
+  events that no longer clash are the title "No longer a clash" over the
+  foot, with nothing between. Running late… opens Mail's composer in
   that job's workspace with the people on the event and one line; "This
   is fine" closes with a toast that carries Undo.
   In the Week and the Month a clashing event's block carries a 6px
   `warning` dot before its title, named "Clashes with another event";
-  pressing the event opens its day's list, where the line is.
+  pressing the event opens its day's list, where the line is. An event
+  that is over wears none, as its row carries no line.
   Start places is a section of Settings → Work on the Work home host,
   after Where it runs (`StartPlacesSection`): Home, then the six jobs in
   LifeOS's order, each job's title its sector dot and name. A row's line
   is the place as the map named it; "Home" in muted text where a job has
-  no start of its own; "Not set" for Home with none; "Looking up…" until
-  LifeOS has placed a new address, turning by itself; the typed address
-  with "Not found" as the row's red line when the map did not find it.
-  Nothing on the row says whether a job's places go to the map: that
-  lives in the dialog. The row opens a small dialog named for Home or the
-  job: one Address field, and for a job the switch "Look up places on
-  Apple Maps" with its one line, "Off, this job's event places never
-  leave your machines.", and Use home at the foot's start while the job
-  has a start of its own. Save stays off until something changed, spins,
-  and closes; a refusal stays in the dialog. No toast: the row is the
+  no start of its own; "Not set" for Home with none; a 12px spinner and
+  "Looking up…" until LifeOS has placed a new address, turning by itself;
+  the typed address with "Not found" as the row's red line when the map
+  did not find it. Nothing on the row says whether a job's places go to
+  the map: that lives in the dialog. The row opens a small dialog named
+  for Home or the job, and its button is named for what the row says
+  ("Change Purdue: Cedar Hall, 4 Elm Street"): one Address field, and for
+  a job the switch "Look up event places on Apple Maps" with its one
+  line, "When off, this job's event places never leave your machines.",
+  and Use home at the foot's start while the field holds an address: it
+  empties the field, and Save sends that with whatever else changed.
+  Save stays off until something changed, spins, and closes; a refusal
+  stays in the dialog, as an alert. No toast: the row is the
   answer. Signed out of LifeOS the section is absent; while it reads,
   seven row bones.
 - **Project screens** (the Projects view; the tracker's projects screens,

@@ -21,7 +21,7 @@ import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { sessionWaits, useLifeosQuery } from "../shell/lifeos";
 import { knownAttendees, type DirectoryPerson } from "../people/model";
 import type { Clash } from "@shared/work/clashes";
-import { ClashLine, useClashes } from "../clashes/mark";
+import { ClashLines, useClashes } from "../clashes/mark";
 import { openClash } from "../clashes/open";
 import "./agenda.css";
 import type { WorkViewProps } from "../views/registry";
@@ -140,6 +140,7 @@ const kit: ViewsKit = {
 };
 
 const NO_PEOPLE: DirectoryPerson[] = [];
+const NO_CLASHES: readonly Clash[] = [];
 
 function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { client: AgendaClient; people?: readonly DirectoryPerson[]; workspaceId?: string; environmentId: string }) {
   const { view, day } = useShared(state);
@@ -150,6 +151,8 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   // Every job's clashes over the same span, read as him: this view's own session reads one job.
   const marks = useClashes(environmentId, from, to);
   // When to leave is the rule's once it has answered (from the event before, when that is where he will be); LifeOS's own until then.
+  // The dot in the Week and the Month is for what is still his to settle, as the list's line is: an event that is over wears none.
+  const marked = useMemo(() => new Set((events ?? []).filter((e) => marks.marked.has(e._id) && endOf(e) >= now).map((e) => e._id)), [events, marks.marked, now]);
   const leaveOf = (event: AgendaEvent) => {
     if (!marks.ready) return leaveAt(event, now);
     return !event.allDay && event.startsAt > now ? marks.leaves.get(event._id)?.leaveAt : undefined;
@@ -165,9 +168,9 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
       <ViewsKitProvider kit={kit}>
         <div className="wk-calendar h-full px-6 pt-2 pb-6">
           {view === "week" ? (
-            <AgendaWeek events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onCreate={(at) => go({ adding: at ?? "now" })} marked={marks.marked} />
+            <AgendaWeek events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onCreate={(at) => go({ adding: at ?? "now" })} marked={marked} />
           ) : (
-            <AgendaMonth events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onPickDay={toDay} marked={marks.marked} />
+            <AgendaMonth events={events} day={day} weekStart={weekStart} onOpen={(e) => toDay(e.startsAt)} onPickDay={toDay} marked={marked} />
           )}
         </div>
       </ViewsKitProvider>
@@ -225,7 +228,7 @@ export const EventRow = memo(function EventRow({
         <span className="flex min-w-0 flex-col pr-24">
           <span className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
           {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
-          {clash?.length ? <ClashLine clashes={clash} eventId={event._id} environmentId={environmentId} /> : null}
+          {clash?.length ? <ClashLines clashes={clash} eventId={event._id} environmentId={environmentId} /> : null}
           {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}
         </span>
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>
@@ -234,17 +237,22 @@ export const EventRow = memo(function EventRow({
           </Button>
         </span>
       </ContextMenuTrigger>
-      <EventMenu event={event} past={past} onPrepare={onPrepare} clash={clash?.[0]} environmentId={environmentId} />
+      <EventMenu event={event} past={past} onPrepare={onPrepare} clashes={clash} environmentId={environmentId} />
     </ContextMenu>
   );
 });
 
-function EventMenu({ event, past, onPrepare, clash, environmentId }: { event: AgendaEvent; past: boolean; onPrepare: (event: AgendaEvent) => void; clash: Clash | undefined; environmentId: string }) {
+function EventMenu({ event, past, onPrepare, clashes = NO_CLASHES, environmentId }: { event: AgendaEvent; past: boolean; onPrepare: (event: AgendaEvent) => void; clashes: readonly Clash[] | undefined; environmentId: string }) {
   const runPlay = playRunner();
   return (
     <ContextMenuContent>
       <ContextMenuItem onClick={() => onPrepare(event)}>{past ? "Follow up" : "Prepare"}</ContextMenuItem>
-      {clash ? <ContextMenuItem onClick={() => openClash({ id: clash.id, environmentId, clash })}>Show clash</ContextMenuItem> : null}
+      {/* One clash is "Show clash"; several are each named by the other event, so every one can be opened from here. */}
+      {clashes.map((clash) => (
+        <ContextMenuItem key={clash.id} onClick={() => openClash({ id: clash.id, environmentId, clash })}>
+          {clashes.length === 1 ? "Show clash" : `Show clash with ${(clash.a.eventId === event._id ? clash.b : clash.a).title}`}
+        </ContextMenuItem>
+      ))}
       {runPlay ? <ContextMenuItem onClick={() => runPlay(eventChip(event))}>Run a play…</ContextMenuItem> : null}
     </ContextMenuContent>
   );
