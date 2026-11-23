@@ -223,11 +223,28 @@ What a kind should know:
   the pane draws for a `history: true` def, waits for the kind's chunk and
   is held back while the kind says false, so a loading or failed item is
   never a bar holding History alone; a kind that never says is drawn as
-  opened. The document says it; a Word file being imported says false).
+  opened. The document says it; a Word file being imported says false),
+  `saved({ state, at?, where?, pending?, detail?, actions? })` (what saved
+  means for the item now: `saved`, `saving`, `offline`, `conflict`,
+  `readonly`, `copy`, `downloading` or `asleep`, kind.ts `SavedLine`. The
+  frame keeps it in `feeds.saved` and draws it nowhere beside a thread; a
+  file's header in the Files place reads it. Call it as `shell.saved?.(…)`:
+  a kind saves as he works, says `conflict` with Reload and Keep mine as a
+  copy when the file changed under it, and flushes when its body unmounts,
+  since a tab can close under it from another window).
   The calls: `openHistory()` opens a `history` item on the
   same source; `ask(chip)` puts a chip in the thread's composer, unfolding
   the thread first, as the selection bar's Ask does; `held(ref)` opens a held act where held acts are shown
   (`onOpenHeld` in work/canvas/held.ts, which the Outbox registers).
+- A kind's own pillar tells Files three more things on the host, through
+  registries that are empty until something registers and are kept whenever
+  it does (src/main/server/work/files/hooks.ts, which imports only types):
+  `registerFileMaker(kind, { forms, blank(target) })` writes a blank file of
+  a form its editor then edits in place (`FileForm`,
+  src/shared/work/fileForms.ts), at a path Files hands it and moves into
+  place itself; `registerFilePreviewer(kind, (source, { page, width }) =>
+  PNG)` draws one page; `registerFileMoved((from, to, { db }) => …)` re-keys
+  what the pillar keeps by a file's path, inside the rename's own savepoint.
 - A kind's loading view uses `ItemBones` / `ItemSkeleton`
   (work/canvas/ItemBones.tsx), the pane's own fallback shape, so nothing
   moves when the chunk lands; a failed load shows its failure, never bones.

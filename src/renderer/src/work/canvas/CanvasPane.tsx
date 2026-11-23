@@ -117,6 +117,7 @@ function BodyFailed({ kind, error, retry }: { kind: CanvasKind; error: unknown; 
     shell.mode(null);
     shell.written(null);
     shell.more?.(null);
+    shell.saved?.(null);
     shell.ready?.(false);
   }, [shell]);
   return <StateLine line={{ tone: "failed", word: `Couldn't open this ${kindNoun(kind)}`, detail: bodyFailureWords(error), action: { label: "Retry", run: retry } }} />;

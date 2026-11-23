@@ -539,6 +539,17 @@ describe("the frame a kind drives through its shell", () => {
     expect(contextChipsOf("t1")).toEqual([chip]);
   });
 
+  it("takes what a kind says of saving and draws it nowhere: beside a thread there is no save line", async () => {
+    const { shell, container } = await driven();
+    const before = container.querySelector("[data-canvas-pane]")!.innerHTML;
+    act(() => shell.saved?.({ state: "saved", at: 1_700_000_000_000, where: "Events" }));
+    act(() => shell.saved?.({ state: "conflict", detail: "Dana changed this at 2:04 PM", actions: [{ id: "reload", label: "Reload", run: () => undefined }] }));
+    expect(container.querySelector("[data-canvas-pane]")!.innerHTML).toBe(before);
+    expect(container.textContent).not.toContain("Reload");
+    act(() => shell.saved?.(null));
+    expect(container.querySelector("[data-canvas-pane]")!.innerHTML).toBe(before);
+  });
+
   it("starts another item from nothing: what one kind fed does not show on the next tab", async () => {
     const { shell, container } = await driven();
     act(() => shell.review(review()));

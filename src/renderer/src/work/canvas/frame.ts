@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { CanvasItem, ContextChip } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
-import type { CanvasMode, CanvasSelection, CanvasShell, MoreEntry, Presence, ReviewAdapter, StatusLine, WrittenLine } from "./kind";
+import type { CanvasMode, CanvasSelection, CanvasShell, MoreEntry, Presence, ReviewAdapter, SavedLine, StatusLine, WrittenLine } from "./kind";
 import { openHeld } from "./held";
 import { openItem } from "./store";
 
@@ -17,10 +17,12 @@ export interface Feeds {
   more: readonly MoreEntry[] | null;
   /** The kind said whether the item has opened; null while it has not said. */
   ready: boolean | null;
+  /** What the kind said of saving; null while it has not said. Read by a file's header in the Files place. */
+  saved: SavedLine | null;
 }
 
 const NO_PEOPLE: readonly Presence[] = [];
-export const NO_FEEDS: Feeds = { review: null, selection: null, presence: NO_PEOPLE, mode: null, status: null, written: null, detail: null, more: null, ready: null };
+export const NO_FEEDS: Feeds = { review: null, selection: null, presence: NO_PEOPLE, mode: null, status: null, written: null, detail: null, more: null, ready: null, saved: null };
 
 /** An error a person should see once, in the thread's toast stack. */
 export function sayError(error: unknown, fallback: string): void {
@@ -63,6 +65,7 @@ export function useFrame(environmentId: string, sessionId: string, item: CanvasI
       detail: feed("detail"),
       ready: feed("ready"),
       more: (entries) => feed("more")(entries && entries.length > 0 ? entries : null),
+      saved: feed("saved"),
       openHistory: () => {
         if (!source || !title || kind === "history") return;
         openItem(environmentId, sessionId, { kind: "history", source, title }).catch((error: unknown) => sayError(error, "Couldn't open the history"));

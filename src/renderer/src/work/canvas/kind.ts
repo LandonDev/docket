@@ -83,6 +83,39 @@ export interface CanvasShell {
   held(ref: HeldRef): void;
   /** The kind's own verbs in the pane's More (Export transcript, Download recording), first, above the frame's own. The pane always gives it; it is optional only so a stand-in shell written before it (a proof page's) still types. */
   more?(entries: MoreEntry[] | null): void;
+  /** What saved means for this item now: feeds the one line under a file's name where the item is open as a file (the Files place). A kind that never says is drawn by the frame's own rule. The pane always gives it; it is optional only so a stand-in shell written before it still types. */
+  saved?(line: SavedLine | null): void;
+}
+
+/**
+ * What saved means now (docs/agents/work-files.md "The save line"). There is no save press: a kind saves as he
+ * works and says where that stands.
+ *  - `saved`: everything is in the file; `at` is when, `where` the folder it is kept in.
+ *  - `saving`: a change is on its way.
+ *  - `offline`: the file cannot be reached; `pending` changes wait here.
+ *  - `conflict`: the file changed under the item; `detail` says who and when, `actions` are Reload and Keep mine as a copy.
+ *  - `readonly`: it cannot be changed here; `detail` says why.
+ *  - `copy`: this is a copy and its changes stay here; `detail` names the computer the file is on.
+ *  - `downloading`: its bytes are coming; `detail` says how far.
+ *  - `asleep`: its machine sleeps and this is what was kept; `at` is when.
+ */
+export type SavedState = "saved" | "saving" | "offline" | "conflict" | "readonly" | "copy" | "downloading" | "asleep";
+export interface SavedLine {
+  state: SavedState;
+  /** epoch ms */
+  at?: number;
+  /** the folder's name, as the trail says it */
+  where?: string;
+  pending?: number;
+  detail?: string;
+  /** at most two presses, in order */
+  actions?: SavedAction[];
+}
+export interface SavedAction {
+  /** unique among the line's actions */
+  id: string;
+  label: string;
+  run(): void | Promise<void>;
 }
 
 /** One of a kind's own rows in the pane's More: a 14px glyph and a verb, as every menu row is. */
