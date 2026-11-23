@@ -177,12 +177,23 @@ describe('the google tools', () => {
     expect(text(got)).toMatch(/^Held for the owner/)
     expect(JSON.stringify([...fake.files])).toBe(before)
     expect(fake.calls.filter((c) => c.startsWith('POST') && !c.includes('/google/token'))).toEqual([])
-    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026' }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2025' }] }) })])
+    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026', boxes: 1 }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2025' }] }) })])
     expect(results).toEqual([])
     const done = await googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)
     expect(done.summary).toBe('Made 2 changes in Pitch')
     expect(fake.files.get('deck1')!.deck!.slides[0].texts[0].text).toBe('Hi')
     expect([...fake.files.values()].map((f) => f.name)).not.toContain('Pitch (revised)')
+  })
+
+  it('leaves a deck stale, writing nothing, when the words it replaces everywhere now stand in more boxes than he was shown', async () => {
+    fake.addDeck(ME, 'deck2', 'Plan', [{ objectId: 's1', texts: [{ objectId: 't1', text: 'Q1 goals' }, { objectId: 't2', text: 'Budget' }] }])
+    const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck2' })
+    await run('google_slides_revise', { item: itemId, edits: [{ find: 'Q1', replace: 'Q2' }] })
+    expect(held[0]).toMatchObject({ payload: { edits: [{ find: 'Q1', replace: 'Q2', boxes: 1 }] } })
+    fake.files.get('deck2')!.deck!.slides[0].texts[1].text = 'Q1 budget'
+    fake.files.get('deck2')!.deck!.rev++
+    await expect(googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('stands in 2 boxes now, not the 1')
+    expect(fake.files.get('deck2')!.deck!.slides[0].texts.map((t) => t.text)).toEqual(['Q1 goals', 'Q1 budget'])
   })
 
   it("holds a Doc's edits on this host: nothing goes to Google, and his press writes them plainly", async () => {
@@ -193,7 +204,7 @@ describe('the google tools', () => {
     expect(text(got)).toMatch(/^Held for the owner: .*Nothing went to Google and nobody else sees it/)
     expect(JSON.stringify([...fake.files])).toBe(before)
     expect(fake.docSuggestions('doc2')).toEqual([])
-    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'doc', fileId: 'doc2', edits: [{ find: 'March', replace: 'May' }] }) })])
+    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'doc', fileId: 'doc2', edits: [{ find: 'March', replace: 'May', within: 'We ship in March.' }] }) })])
     const payload = googleEdit.payload.parse(held[0].payload)
     expect(googleEdit.words(payload)).toEqual({ summary: 'Make change in Brief: "March" to "May"', verb: 'Make change' })
     await expect(googleEdit.execute(payload, { ...ctx, item: { sessionId: 's1' } } as never)).resolves.toMatchObject({ summary: 'Made the change in Brief' })

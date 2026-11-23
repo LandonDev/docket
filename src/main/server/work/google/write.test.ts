@@ -3,7 +3,7 @@ import { plain, type Block } from 'work-kit/formats'
 import { GoogleApi, GoogleTokens } from './client'
 import { FakeGoogle, FAKE_TOKEN_URL } from './fake'
 import { mapGoogleDoc } from './mapper'
-import { baseOf, planWrite, rebase, unsentCount } from './write'
+import { baseOf, planSuggest, planWrite, rebase, unsentCount } from './write'
 
 /** The planner's hard cases, each written to the fake Doc and read back. */
 const ME = 'me@example.com'
@@ -127,5 +127,15 @@ describe('writing his edits to a Google Doc', () => {
     served[0].props = { textColor: 'default' }
     const base = baseOf(m.imported.blocks, m.paragraphs, served)
     expect(unsentCount(base, served)).toBe(0)
+  })
+})
+
+describe("planSuggest: an agent's edits as one batchUpdate", () => {
+  const para = (tabId: string, text: string, start: number) => ({ blockId: `${tabId}${start}`, tabId, start, end: start + text.length + 1, text, exact: true, style: 'NORMAL_TEXT' })
+  it('takes the same indexes in two tabs as two places, and refuses two edits on one range in one tab', () => {
+    const fresh = [para('t.1', 'Ship in March.', 1), para('t.2', 'Pay in April.', 1)]
+    const plan = planSuggest(fresh, [{ find: 'March', replace: 'May' }, { find: 'April', replace: 'June' }])
+    expect('requests' in plan && plan.requests).toHaveLength(4)
+    expect(planSuggest([para('t.1', 'Ship in March.', 1)], [{ find: 'in March', replace: 'x' }, { find: 'March.', replace: 'y' }])).toEqual({ error: 'Two edits touch "March.".' })
   })
 })

@@ -68,6 +68,10 @@ export const googleShare: ActKindDef<GoogleShare, GoogleShareMatcher> = {
 
 const FileId = z.string().regex(/^[A-Za-z0-9_-]{1,200}$/)
 const Replace = z.object({ find: z.string().min(1).max(5_000), replace: z.string().max(20_000) })
+/** A Doc's replace, with the paragraph that held the words when it was suggested. */
+const DocReplace = Replace.extend({ within: z.string().max(200_000).optional() })
+/** A deck's replace-all, with how many boxes held the words then. */
+const DeckReplace = Replace.extend({ boxes: z.number().int().min(1).optional() })
 
 /**
  * An agent's change to a Google file, kept on his host until he approves it (the owner's ruling of 2026-11-23):
@@ -76,13 +80,13 @@ const Replace = z.object({ find: z.string().min(1).max(5_000), replace: z.string
  * it says of itself. With the revision it was judged on, so the press can say the file moved.
  */
 export const GoogleEditSchema = z.discriminatedUnion('app', [
-  z.object({ app: z.literal('doc'), account: z.string().min(3).max(320), fileId: FileId, name: z.string().max(500), edits: z.array(Replace).min(1).max(50), revisionId: z.string().max(500) }),
+  z.object({ app: z.literal('doc'), account: z.string().min(3).max(320), fileId: FileId, name: z.string().max(500), edits: z.array(DocReplace).min(1).max(50), revisionId: z.string().max(500) }),
   z.object({
     app: z.literal('slides'),
     account: z.string().min(3).max(320),
     fileId: FileId,
     name: z.string().max(500),
-    edits: z.array(z.union([Replace, z.object({ shape: z.string().max(200), text: z.string().max(20_000), slide: z.number().int().min(1), was: z.string().max(20_000) })])).min(1).max(100),
+    edits: z.array(z.union([DeckReplace, z.object({ shape: z.string().max(200), text: z.string().max(20_000), slide: z.number().int().min(1), was: z.string().max(20_000) })])).min(1).max(100),
     revisionId: z.string().max(500)
   })
 ])
@@ -108,7 +112,7 @@ export const googleEdit: ActKindDef<GoogleEdit> = {
     try {
       got =
         p.app === 'doc'
-          ? await writeEdits(g, { at: 'google', account: p.account, fileId: p.fileId, mime: GOOGLE_MIME.doc }, p.edits as { find: string; replace: string }[], p.revisionId)
+          ? await writeEdits(g, { at: 'google', account: p.account, fileId: p.fileId, mime: GOOGLE_MIME.doc }, p.edits, p.revisionId)
           : await writeDeckEdits(g, p.account, p.fileId, p.edits, p.revisionId)
     } catch (err) {
       // A refusal, a file gone, or someone's write between the read and this one: Google wrote nothing.

@@ -1457,6 +1457,16 @@ describe('a live co-authoring editor', () => {
     expect(readOutward(type, desktop)).toEqual({ step: 0, why: 'coauthor', label: 'Edit', on: `text "Draft" in ${name}`, grantable: false })
   })
 
+  it('holds Paste, Cut and Undo picked from a menu, by name or by element in Word, and lets a menu that only opens or copies run', () => {
+    const word = screen(`app "Microsoft Word" · window "Brief" · 1280×800\n[1] window "Brief"\n  [2] menu item "Paste"\n  [3] menu item "Copy"`, { bundleId: 'com.microsoft.Word', name: 'Microsoft Word' })
+    expect(coauthorRead(steps({ action: 'left_click', menu: 'Edit > Paste' }), word)).toEqual({ step: 0, why: 'coauthor', label: 'Edit', on: '"Edit > Paste" in Microsoft Word', grantable: false })
+    expect(coauthorRead(steps({ action: 'perform', named: 'Undo Typing' } as never), word)).toMatchObject({ why: 'coauthor', on: '"Undo Typing" in Microsoft Word' })
+    expect(coauthorRead(steps({ action: 'left_click', element: 2 }), word)).toMatchObject({ why: 'coauthor', on: '"Paste" in Microsoft Word' })
+    expect(coauthorRead(steps({ action: 'left_click', element: 3 }), word)).toBeNull()
+    expect(coauthorRead(steps({ action: 'left_click', menu: 'Edit > Copy' }), word)).toBeNull()
+    expect(coauthorRead(steps({ action: 'left_click', menu: 'Edit' }), word)).toBeNull()
+  })
+
   it.each([
     [{ action: 'type', text: 'Draft' }, 'text "Draft"'],
     [{ action: 'paste', text: 'Paste' }, 'text "Paste"'],

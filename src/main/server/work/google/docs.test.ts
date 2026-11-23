@@ -104,7 +104,7 @@ describe('a Google Doc in the document canvas', () => {
     expect(writes()).toEqual([])
     expect(JSON.stringify([...fake.files])).toBe(before)
     // his press: a plain edit, no suggestion left in the Doc for anyone
-    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged)).resolves.toEqual({ moved: false })
+    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged.revisionId)).resolves.toEqual({ moved: false })
     expect(fake.docText('doc1')).toContain('Budget is fine.')
     expect(fake.docSuggestions('doc1')).toEqual([])
   })
@@ -114,9 +114,19 @@ describe('a Google Doc in the document canvas', () => {
     await expect(checkEdits(googleOf(ctx), src, [{ find: 'a', replace: 'o' }])).rejects.toThrow(/stands \d+ times/)
     await expect(checkEdits(googleOf(ctx), src, [{ find: 'June', replace: 'May' }])).rejects.toThrow('not in the Doc')
     fake.editDoc('doc1', 1, 'Note: ')
-    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged)).resolves.toEqual({ moved: true })
+    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged.revisionId)).resolves.toEqual({ moved: true })
     const now = fake.docText('doc1')
-    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged)).resolves.toEqual({ stale: expect.stringContaining('not in the Doc') })
+    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged.revisionId)).resolves.toEqual({ stale: expect.stringContaining('not in the Doc') })
+    expect(fake.docText('doc1')).toBe(now)
+  })
+
+  it('goes stale, writing nothing, when the words now stand in another passage than the one he was shown', async () => {
+    const edits = [{ find: 'tight', replace: 'fine' }]
+    const judged = await checkEdits(googleOf(ctx), src, edits)
+    expect(judged.within).toEqual(['Budget is tight.'])
+    fake.editDoc('doc1', 35, 'very ')
+    const now = fake.docText('doc1')
+    await expect(writeEdits(googleOf(ctx), src, edits.map((e, i) => ({ ...e, within: judged.within[i] })), judged.revisionId)).resolves.toEqual({ stale: expect.stringContaining('other than the one it was suggested in') })
     expect(fake.docText('doc1')).toBe(now)
   })
 

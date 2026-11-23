@@ -167,7 +167,7 @@ const NO_DESKTOP = /may use no desktop/
 export function addinTools(here: (ctx: WorkCtx) => Here, vm?: VmOffice): WorkTool[] {
   const local = workTools({ here })
   const away = workTools({ here: () => null })
-  const inVm = vm ? workTools({ here: (ctx) => vm.here(ctx) }) : null
+  const inVm = vm ? workTools({ here: (ctx) => vm.here(ctx), vm: true }) : null
   return local.map((t, i) => ({
     ...t,
     async run(args, ctx: ToolCtx) {

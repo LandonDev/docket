@@ -183,12 +183,13 @@ async function settle(g: Google, source: GoogleSource, current: Block[], kept: R
  * Google: the edits wait on his host as a held `google.edit` (the owner's ruling of 2026-11-23), so no suggestion
  * of the agent's is ever in the Doc for others to see. Answers the revision it was judged on.
  */
-export async function checkEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string }[]): Promise<string> {
+export async function checkEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string }[]): Promise<{ revisionId: string; within: string[] }> {
   const fresh = await g.api(source.account).doc(source.fileId)
   if (!fresh.revisionId) throw new GoogleError('Google lets this account read the Doc but not change it.', 'refused')
-  const plan = planSuggest(mapGoogleDoc(fresh).paragraphs, edits)
+  const paragraphs = mapGoogleDoc(fresh).paragraphs
+  const plan = planSuggest(paragraphs, edits)
   if ('error' in plan) throw new Error(plan.error)
-  return fresh.revisionId
+  return { revisionId: fresh.revisionId, within: edits.map((e) => paragraphs.find((p) => p.text.includes(e.find))!.text) }
 }
 
 /**
@@ -196,13 +197,17 @@ export async function checkEdits(g: Google, source: GoogleSource, edits: readonl
  * one `batchUpdate` bound to the revision just read. `stale` when a `find` no longer stands once; `moved` when
  * the Doc changed since the edits were judged, though each still stood once.
  */
-export function writeEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string }[], judgedOn: string): Promise<{ stale: string } | { moved: boolean }> {
+export function writeEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string; within?: string }[], judgedOn: string): Promise<{ stale: string } | { moved: boolean }> {
   return locked(source, async () => {
     const api = g.api(source.account)
     const fresh = await api.doc(source.fileId)
     if (!fresh.revisionId) throw new GoogleError('Google lets this account read the Doc but not change it.', 'refused')
-    const plan = planSuggest(mapGoogleDoc(fresh).paragraphs, edits)
+    const paragraphs = mapGoogleDoc(fresh).paragraphs
+    const plan = planSuggest(paragraphs, edits)
     if ('error' in plan) return { stale: plan.error }
+    // The words he was shown, in the paragraph he was shown: moved to another passage, they are not what he approved.
+    const strayed = fresh.revisionId === judgedOn ? undefined : edits.find((e) => e.within !== undefined && paragraphs.find((p) => p.text.includes(e.find))?.text !== e.within)
+    if (strayed) return { stale: `"${strayed.find}" now stands in a passage other than the one it was suggested in.` }
     await api.docUpdate(source.fileId, plan.requests, { requiredRevisionId: fresh.revisionId })
     return { moved: fresh.revisionId !== judgedOn }
   })

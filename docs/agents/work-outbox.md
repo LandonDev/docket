@@ -339,7 +339,9 @@ and bound by its digest; a field that cannot be read whole refuses the hold
 **Edits other people can see live.** `coauthorRead` holds typing, paste,
 setting a field's value, and keys or held keys that write, erase, format or
 undo. These include printable keys, Return, Tab, Backspace, Delete, and
-Command or Control with V, X, Z, Y, Enter, D, B, I or U. Looks, waits,
+Command or Control with V, X, Z, Y, Enter, D, B, I or U, and a menu item
+or button picked by path, name or element whose name starts Paste, Cut,
+Undo, Redo, Delete, Clear or Replace (`picksEdit`). Looks, waits,
 scrolls, pointer moves, clicks that place the caret or select, arrow keys,
 Page Up and Page Down, Home and End, Copy, Find and Escape can run.
 The host reads the browser's address afresh before an edit. The list

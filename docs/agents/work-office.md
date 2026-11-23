@@ -449,10 +449,11 @@ One set for Claude, Codex and Muse (architecture §10):
 
 **The rule for a file others can open.** One function decides it,
 `fileShared` (office/shared.ts): Files' `sharedOf` first, then the office
-rules it does not hold yet: a file named by a URL, a network share, one in a
-folder synced from OneDrive or SharePoint (`~/Library/CloudStorage/`, a
-`OneDrive` folder, with either slash, so a Windows path in the VM counts),
-and a Teams folder he added. The name a write gives is first found among the
+rules it does not hold yet: a file named by a URL, a network share, a
+mounted volume (`/Volumes/…`, `/mnt/…`, `/media/…`, `/net/…`) or a Windows
+drive other than C: (a mapped share), one in a folder synced from OneDrive
+or SharePoint (`~/Library/CloudStorage/`, a `OneDrive` folder, with either
+slash, so a Windows path in the VM counts), and a Teams folder he added. The name a write gives is first found among the
 open files as the carrier keys them (by key, else the one open file of that
 name, since a carrier takes a bare name too), and the write goes to that
 key; a name no open file answers to, or two do, counts as shared (`fileKey`,
@@ -468,8 +469,14 @@ folder, and his press in the Outbox makes it as a plain edit (Track Changes
 off), on the host that holds it, in the file while it is open there. The
 press reads the file first: words that stand where they did are written
 (the result says when the file moved under it), words gone or standing in
-another number of places leave the act stale with nothing written. On his
-own files every write is direct.
+another number of places leave the act stale with nothing written, and a
+count the app reports short of what he was shown is said. A change held
+through Office in the Windows VM says so (`vm: true`), and its press wakes
+the VM and goes there, never to this host's desktop Office. The add-in turns
+Track Changes off for an untracked write where Word has WordApi 1.4, and
+puts it back after. Taking a write back (`office_range_undo`) on a shared
+workbook is a new change its co-authors see: it is refused unless he asked
+for it in so many words. On his own files every write is direct.
 
 **Where a tool runs.** On the host that has a carrier, the tool runs there.
 Elsewhere (the box), it goes to the first host in the workspace's

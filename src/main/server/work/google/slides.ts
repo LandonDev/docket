@@ -34,8 +34,8 @@ export function deckText(d: { title: string; slides: TextShape[][] }): string {
 }
 
 export type DeckEdit = { find: string; replace: string } | { shape: string; text: string }
-/** An edit as it waits: a shape's with its slide and the words it held, so the press can tell it moved. */
-export type HeldDeckEdit = { find: string; replace: string } | { shape: string; text: string; slide: number; was: string }
+/** An edit as it waits: a replace with how many boxes held the words, a shape's with its slide and the words it held, so the press can tell it moved. */
+export type HeldDeckEdit = { find: string; replace: string; boxes?: number } | { shape: string; text: string; slide: number; was: string }
 
 /**
  * Where a deck stands for these edits: each `find` on some slide, each shape there with what it holds now. An
@@ -45,8 +45,9 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
   const held: HeldDeckEdit[] = []
   for (const e of edits) {
     if ('find' in e) {
-      if (!d.slides.some((s) => s.some((x) => x.text.includes(e.find)))) return { error: `"${e.find}" is on no slide.` }
-      held.push(e)
+      const boxes = d.slides.flat().filter((x) => x.text.includes(e.find)).length
+      if (!boxes) return { error: `"${e.find}" is on no slide.` }
+      held.push({ find: e.find, replace: e.replace, boxes })
       continue
     }
     const slide = d.slides.findIndex((s) => s.some((x) => x.objectId === e.shape))
@@ -56,7 +57,7 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
   return { held }
 }
 
-const requestsOf = (edits: readonly DeckEdit[]): Record<string, unknown>[] =>
+const requestsOf = (edits: readonly HeldDeckEdit[]): Record<string, unknown>[] =>
   edits.flatMap((e): Record<string, unknown>[] =>
     'find' in e
       ? [{ replaceAllText: { containsText: { text: e.find, matchCase: true }, replaceText: e.replace } }]
@@ -86,6 +87,12 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
   if ('error' in now) return { stale: now.error }
   const edited = edits.find((e, i) => 'was' in e && (now.held[i] as { was?: string }).was !== e.was)
   if (edited) return { stale: `A shape on slide ${'slide' in edited ? edited.slide : '?'} holds other words than it did.` }
+  // Replace-all reaches every box with the words: more or fewer than he was shown is not what he approved.
+  const spread = edits.findIndex((e, i) => 'find' in e && e.boxes !== undefined && (now.held[i] as { boxes?: number }).boxes !== e.boxes)
+  if (spread >= 0) {
+    const e = edits[spread] as { find: string; boxes: number }
+    return { stale: `"${e.find}" stands in ${(now.held[spread] as { boxes: number }).boxes} boxes now, not the ${e.boxes} it was suggested for.` }
+  }
   await api.deckUpdate(fileId, requestsOf(edits), { requiredRevisionId: d.revisionId })
   return { moved: d.revisionId !== judgedOn }
 }

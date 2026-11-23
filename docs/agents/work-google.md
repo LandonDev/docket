@@ -92,8 +92,10 @@ ruling of 2026-11-23; work-outbox.md "An agent's suggestion stays his"):
 them as a `google.edit` with the revision it read. Nothing goes to Google:
 no suggestion, no comment. His press in the Outbox reads the Doc again and
 writes them as plain edits in one `batchUpdate` bound to the revision just
-read (`writeEdits`); a `find` no longer standing once leaves the act stale,
-and a Doc that moved while every `find` still stands is written and said.
+read (`writeEdits`); a `find` no longer standing once, or standing in a
+paragraph other than the one it was suggested in (`within`, kept with the
+hold), leaves the act stale, and a Doc that moved while every `find` still
+stands where it did is written and said.
 The docs tools refuse a Google item and name the google tools.
 
 The screen: a Google Doc's ⋯ holds **Write to Google**, **Read again from
@@ -129,7 +131,9 @@ everywhere, or set one shape's words) against the deck and holds them as a
 made: Drive puts a copy in the deck's own folders, where everyone who shares
 them would see it. His press makes the edits in the deck itself, in one
 `batchUpdate` bound to the revision just read (`writeDeckEdits`); words gone,
-or a shape holding other words than it did, leave the act stale. A deck is
+words replaced everywhere now standing in more or fewer boxes than he was
+shown (`boxes`), or a shape holding other words than it did, leave the act
+stale. A deck is
 not drawn in our slides canvas: it says it lives in Google.
 
 ## Changes

@@ -660,6 +660,19 @@ function editsDocument(a: ComputerAction): boolean {
   }
 }
 
+/** A menu item or button that writes in the document: Edit's Paste, Cut, Undo, Redo, Delete and Clear, and Replace. */
+const EDIT_CONTROL = /^(paste|cut|undo|redo|delete|clear|replace)\b/i
+const PRESSES = ['left_click', 'double_click', 'triple_click', 'perform']
+
+/** A step that picks such an item: by its menu path, its name, or its element on the screen read. */
+function picksEdit(a: ComputerAction, screen: Screen): boolean {
+  if (!PRESSES.includes(a.action)) return false
+  if (a.menu !== undefined) return EDIT_CONTROL.test(menuPathSegments(a.menu).at(-1)?.trim() ?? '')
+  if (a.named !== undefined) return EDIT_CONTROL.test(a.named.trim())
+  const e = a.element !== undefined ? screen.elements.get(a.element) : undefined
+  return !!e && ['menu item', 'button'].includes(e.role) && EDIT_CONTROL.test((e.name ?? '').trim())
+}
+
 /** The first edit in a window whose changes can reach co-authors before a Save. */
 export function coauthorRead(steps: readonly ComputerAction[], screen: Screen | null): OutwardRead | null {
   if (!screen) return null
@@ -669,9 +682,14 @@ export function coauthorRead(steps: readonly ComputerAction[], screen: Screen | 
   // Outlook and Teams on the web share these domains: a draft there is his own until a send, which the rest of this file holds.
   const editor = !!host && !hostIn(host, MAIL_HOSTS) && !hostIn(host, CHAT_HOSTS) && COAUTHOR_HOSTS.some((h) => (h.startsWith('*.') ? host.endsWith(h.slice(1)) : host === h))
   if (!desktop && !editor) return null
-  const step = steps.findIndex(editsDocument)
+  const step = steps.findIndex((a) => editsDocument(a) || picksEdit(a, screen))
   if (step < 0) return null
   const a = steps[step]!
+  const where = desktop ? screen.app.name : host
+  if (picksEdit(a, screen)) {
+    const name = a.menu !== undefined ? menuPathSegments(a.menu).join(' > ') : (a.named ?? screen.elements.get(a.element!)?.name ?? '')
+    return { step, why: 'coauthor', label: 'Edit', on: `${JSON.stringify(name)} in ${where}`, grantable: false }
+  }
   const kind = a.action === 'key' || a.action === 'hold_key' ? 'keys' : 'text'
   const text = (a.action === 'set_value' ? a.value : a.text) ?? ''
   return { step, why: 'coauthor', label: 'Edit', on: `${kind} ${JSON.stringify(text)} in ${desktop ? screen.app.name : host}`, grantable: false }

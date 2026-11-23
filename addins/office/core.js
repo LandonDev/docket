@@ -143,15 +143,18 @@
       'word.edit': function (a) {
         return env.Word.run(function (context) {
           var doc = context.document
-          // Track Changes needs WordApi 1.4: an untracked edit never asks for it.
-          if (a.tracked) doc.load('changeTrackingMode')
+          // Track Changes needs WordApi 1.4. Where Word has it, an untracked edit turns tracking off for its own
+          // write and back after, so a change he approved never lands as a tracked revision for co-authors to see.
+          var req = Office.context.requirements
+          var mode = !!a.tracked || !!(req && req.isSetSupported && req.isSetSupported('WordApi', '1.4'))
+          if (mode) doc.load('changeTrackingMode')
           return context.sync().then(function () {
-            var was = a.tracked ? doc.changeTrackingMode : null
-            if (a.tracked) doc.changeTrackingMode = env.Word.ChangeTrackingMode.trackAll
+            var was = mode ? doc.changeTrackingMode : null
+            if (mode) doc.changeTrackingMode = a.tracked ? env.Word.ChangeTrackingMode.trackAll : env.Word.ChangeTrackingMode.off
             var body = doc.body
             if ('insert' in a.edit) {
               body.insertText(a.edit.insert, a.edit.at === 'start' ? 'Start' : 'End')
-              if (a.tracked) doc.changeTrackingMode = was
+              if (mode) doc.changeTrackingMode = was
               return context.sync().then(function () {
                 return 1
               })
@@ -162,7 +165,7 @@
               found.items.forEach(function (r) {
                 r.insertText(a.edit.replace, 'Replace')
               })
-              if (a.tracked) doc.changeTrackingMode = was
+              if (mode) doc.changeTrackingMode = was
               return context.sync().then(function () {
                 return found.items.length
               })
@@ -374,6 +377,10 @@
       },
       state: function () {
         return state
+      },
+      /** One verb run here, as the relay runs it (tests). */
+      run: function (verb, a) {
+        return ops[verb](a)
       }
     }
   }

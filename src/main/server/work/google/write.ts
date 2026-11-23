@@ -275,7 +275,7 @@ export function planWrite(base: DocBase, current: readonly Block[], fresh: reado
 /** An agent's edits as one `batchUpdate`, made on his press: each `find` must stand once, inside one paragraph Google holds as plain words. */
 export function planSuggest(fresh: readonly DocParagraph[], edits: readonly { find: string; replace: string }[]): { requests: Record<string, unknown>[] } | { error: string } {
   const ops: { at: number; rank: number; request: Record<string, unknown> }[] = []
-  const taken: [number, number][] = []
+  const taken: [number, number, string][] = []
   for (const e of edits) {
     if (!e.find) return { error: 'Each edit names the words it replaces in `find`.' }
     const hits: { p: DocParagraph; at: number }[] = []
@@ -287,8 +287,10 @@ export function planSuggest(fresh: readonly DocParagraph[], edits: readonly { fi
     if (!p.exact) return { error: `"${e.find}" is in a paragraph holding a chip or a waiting suggestion: leave a comment instead.` }
     const from = p.start + at
     const to = from + e.find.length
-    if (taken.some(([a, b]) => from < b && to > a)) return { error: `Two edits touch "${e.find}".` }
-    taken.push([from, to])
+    // Indexes count within a tab: the same numbers in two tabs are two places.
+    const tabId = p.tabId ?? ''
+    if (taken.some(([a, b, t]) => t === tabId && from < b && to > a)) return { error: `Two edits touch "${e.find}".` }
+    taken.push([from, to, tabId])
     const tab = p.tabId ? { tabId: p.tabId } : {}
     ops.push({ at: from, rank: 0, request: { deleteContentRange: { range: { startIndex: from, endIndex: to, ...tab } } } })
     // After the struck words, as a person suggesting a replacement types it.

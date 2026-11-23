@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import type { ActKindDef } from '../modules'
+import type { ActKindDef, WorkCtx } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
 import { eventById, OfficeError, type OfficeCarrier } from './carrier'
 import { fileKey } from './shared'
@@ -98,7 +98,9 @@ export const OfficeEditSchema = z.object({
   /** how many places held `find` then; 0 for an insert */
   places: z.number().int().min(0),
   /** `textHash` of the file's text then */
-  base: z.string().max(100)
+  base: z.string().max(100),
+  /** held through Office in the Windows VM: his press goes there, never to this host's desktop Office */
+  vm: z.literal(true).optional()
 })
 export type OfficeEdit = z.infer<typeof OfficeEditSchema>
 
@@ -146,6 +148,8 @@ export function cleanMailHtml(html: string): string {
 /** The carrier on this host; tests and the module set it. */
 export interface HeldDeps {
   carrier(): OfficeCarrier | null
+  /** Office in this host's Windows VM, woken for the press */
+  vm?(ctx: WorkCtx): Promise<OfficeCarrier>
 }
 
 const carrierHere = (deps: HeldDeps, host: string, here: string): OfficeCarrier => {
@@ -224,7 +228,10 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       return { summary: `Make change in ${p.name}: ${what}`, verb: 'Make change' }
     },
     async execute(p, ctx) {
-      const c = carrierHere(deps, p.host, ctx.host)
+      if (p.host !== ctx.host) throw new OfficeError('This act was held for another host: it goes from there.')
+      // The Office it was judged on: the Windows VM's, else this host's own.
+      const c = p.vm ? (deps.vm ? await deps.vm(ctx) : null) : carrierHere(deps, p.host, ctx.host)
+      if (!c) throw new ActNotSent('Office in the Windows VM is not set up on this host. Nothing was changed.')
       const app = p.app === 'word' ? 'Word' : 'PowerPoint'
       const key = await fileKey({ carrier: c }, p.app === 'word' ? 'document' : 'deck', p.key)
       if (key === null) throw new ActNotSent(`${p.name} is not open in ${app} on this computer: open it, then press again. Nothing was changed.`)
@@ -235,10 +242,13 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
         if (now === 0) throw new ActStale(`${p.name} changed since: the words this replaces are no longer in it. Nothing was changed`)
         if (now !== p.places) throw new ActStale(`${p.name} changed since: the words stand in ${now} places now, not the ${p.places} this was suggested for. Nothing was changed`)
       }
-      if (p.app === 'word') await c.editDocument(key, p.edit, false)
-      else if ('find' in p.edit) await c.replaceSlideText(key, p.edit.find, p.edit.replace)
+      let n: number
+      if (p.app === 'word') n = await c.editDocument(key, p.edit, false)
+      else if ('find' in p.edit) n = await c.replaceSlideText(key, p.edit.find, p.edit.replace)
       else throw new ActStale('PowerPoint takes only a find and replace')
-      return { summary: `Changed ${p.name}${moved ? '. It had changed since the suggestion; the words still stood as they did' : ''}` }
+      // What the app says it changed, when that is not what he was shown.
+      const short = 'find' in p.edit && p.app === 'word' && n !== p.places ? `. ${app} changed ${n} of the ${p.places} places` : ''
+      return { summary: `Changed ${p.name}${short}${moved ? '. It had changed since the suggestion; the words still stood as they did' : ''}` }
     },
     wayBack: () => null
   }

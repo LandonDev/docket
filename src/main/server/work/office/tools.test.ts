@@ -151,6 +151,16 @@ describe('writes, by the rule for files others can open', () => {
     expect((await office.readRange(MINE, 'Sheet1', 'A1')).values).toEqual([[3]])
   })
 
+  it("takes back a write to a shared workbook only on his words: an undo there is a change its co-authors see", async () => {
+    said = ['set Q1 to 120 please']
+    const w = JSON.parse(text(await run('office_range_write', { workbook: SHARED, range: 'Sheet1!B1', values: [[120]], because: 'asked', quote: 'set Q1 to 120' }))) as { writeId: string }
+    expect(await run('office_range_undo', { workbook: SHARED, writeId: w.writeId })).toMatchObject({ isError: true })
+    expect((await office.readRange(SHARED, 'Sheet1', 'B1')).values).toEqual([[120]])
+    said.push('undo that please')
+    expect(text(await run('office_range_undo', { workbook: SHARED, writeId: w.writeId, because: 'asked', quote: 'undo that' }))).toBe('Taken back.')
+    expect((await office.readRange(SHARED, 'Sheet1', 'B1')).values).toEqual([[100]])
+  })
+
   it('refuses a range with no sheet and a block of the wrong size, in words', async () => {
     expect(text(await run('office_range_read', { workbook: MINE, range: 'A1' }))).toContain("Name the sheet")
     expect(await run('office_range_write', { workbook: MINE, range: 'Sheet1!A1:B1', values: [[1]], because: 'own' })).toMatchObject({ isError: true })
@@ -425,6 +435,29 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     expect(office.docs.get(DOC)!.paragraphs).toEqual(['Draft one.'])
   })
 
+  it('a change held through the Windows VM is pressed there, never in this host\'s own Office', async () => {
+    const vmOffice = new FakeOffice()
+    vmOffice.docs.set(DOC, { paragraphs: ['Draft one.'], tracked: [] })
+    const tools = workTools({ here: () => ({ carrier: vmOffice, excel: new ExcelHelper(vmOffice, db, suggestions), suggestions }), vm: true })
+    await tools.find((t) => t.name === 'office_doc_edit')!.run({ document: DOC, find: 'one', replace: 'two', because: 'own' }, ctx())
+    expect(held[0]).toMatchObject({ kind: 'office.edit', payload: { vm: true } })
+    const def = officeActs({ carrier: () => office, vm: async () => vmOffice }).find((a) => a.kind === 'office.edit')!
+    await def.execute(OfficeEditSchema.parse(held[0]!.payload), { host: 'env_mac' } as ActCtx)
+    expect(vmOffice.docs.get(DOC)!.paragraphs).toEqual(['Draft two.'])
+    expect(office.docs.get(DOC)!.paragraphs).toEqual(['Draft one.'])
+    // a host with no VM Office refuses it, with nothing written anywhere
+    await expect(officeActs({ carrier: () => office }).find((a) => a.kind === 'office.edit')!.execute(OfficeEditSchema.parse(held[0]!.payload), { host: 'env_mac' } as ActCtx)).rejects.toThrow(ActNotSent)
+  })
+
+  it('says when the app changed fewer places than he was shown', async () => {
+    await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
+    const p = { ...(held[0]!.payload as OfficeEdit), places: 1 }
+    office.failNext = null
+    const real = office.editDocument.bind(office)
+    office.editDocument = async (d, e, t) => (await real(d, e, t), 0)
+    await expect(press(p)).resolves.toMatchObject({ summary: expect.stringContaining('Word changed 0 of the 1 places') })
+  })
+
   it('reads its words as he approves them', () => {
     const words = (edit: OfficeEdit['edit']) => editAct().words({ host: 'h', app: 'word', key: '/x/Brief.docx', name: 'Brief.docx', edit, places: 1, base: 'b' })
     expect(words({ find: 'one', replace: 'two' })).toEqual({ summary: 'Make change in Brief.docx: "one" to "two"', verb: 'Make change' })
@@ -445,6 +478,12 @@ describe('fileShared: the one test of whether others can open an Office file', (
     for (const key of ['https://contoso.sharepoint.com/x.docx', '/Users/o/Library/CloudStorage/OneDrive-Contoso/x.docx', 'C:\\Users\\o\\OneDrive - Contoso\\x.xlsx', '\\\\server\\team\\x.pptx', '//server/team/x.pptx'])
       expect(fileShared(c(), key, 'word')).toBe(true)
     expect(fileShared(c(), null, 'word')).toBe(true)
+  })
+  it('counts a mounted volume and a mapped Windows drive as shared: such a disk is others\' as often as not', () => {
+    for (const key of ['/Volumes/Finance/Budget.xlsx', '/mnt/team/Plan.docx', 'S:\\Finance\\Budget.xlsx', 'z:/x.pptx']) expect(fileShared(c(), key, 'excel')).toBe(true)
+    // C: is this computer's own disk; on a host that is not Windows, Files counts a path in the VM as shared all the same
+    expect(sharedKey('C:\\Users\\tcuser\\Documents\\Mine.xlsx')).toBe(false)
+    expect(fileShared(c(), 'C:\\Users\\tcuser\\Documents\\Mine.xlsx', 'excel')).toBe(process.platform !== 'win32')
   })
   it('counts his own file, and what the app keeps for him, as his', () => {
     expect(fileShared(c(), '/Users/owner/Documents/Mine.docx', 'word')).toBe(false)

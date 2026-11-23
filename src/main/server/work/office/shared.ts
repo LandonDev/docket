@@ -19,11 +19,17 @@ export function fileShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, key: s
   return libraryOf(librariesOf(ctx.db, ctx.host), key) !== null
 }
 
-/** Others can open it: it lives in OneDrive, SharePoint or Teams, by URL or in a folder synced from there, on a Mac or under Windows. */
+/**
+ * Others can open it: it lives in OneDrive, SharePoint or Teams, by URL or in a folder synced from there, on a Mac or
+ * under Windows, or on a disk that is not this computer's own: a network share, a mounted volume (`/Volumes/…`, `/mnt/…`,
+ * `/media/…`, `/net/…`) or a Windows drive other than C:, which is how a mapped share reads. A file of his on such a
+ * disk waits for him too: what cannot be told apart is treated as shared.
+ */
 export const sharedKey = (key: string): boolean => {
   const k = key.replace(/\\/g, '/')
   // A network share (\\server\share\…) is others' to open as surely as OneDrive (milestone 50's hold review).
-  return /^https?:\/\//i.test(k) || k.startsWith('//') || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(k)
+  if (/^https?:\/\//i.test(k) || k.startsWith('//') || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(k)) return true
+  return /^\/(Volumes|mnt|media|net)\//i.test(k) || /^[a-bd-z]:\//i.test(k)
 }
 
 /**

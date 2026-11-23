@@ -41,6 +41,8 @@ export interface Env {
   sessionId: string | null
   /** the calling host found the owner's own words for this change (`ctx.threads.ownerSaid`) */
   asked: boolean
+  /** the carrier is Office in this host's Windows VM */
+  vm?: true
 }
 
 export interface OfficeTool {
@@ -173,10 +175,13 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   }),
   tool({
     name: 'office_range_undo',
-    description: 'Takes back one of your writes to a workbook (its `writeId`), while its cells still hold what you wrote. Excel\'s own Undo does not cover scripted writes.',
-    input: { workbook: z.string(), writeId: z.string() },
+    description:
+      'Takes back one of your writes to a workbook (its `writeId`), while its cells still hold what you wrote. Excel\'s own Undo does not cover scripted writes. On a workbook others can open, taking a write back is a new change they see: only with `because: "asked"` and his words as `quote`.',
+    input: { workbook: z.string(), writeId: z.string(), because: Reason.because.optional(), quote: Reason.quote },
     readOnly: false,
     async run(a, env) {
+      const { verdict } = await judged({ because: a.because ?? 'own', quote: a.quote }, 'workbook', a.workbook, env)
+      if (verdict === 'suggest') return fail('Others can open this workbook, so taking the write back would show them a change he has not asked for: nothing was taken back. Say it in your reply; he can ask for it in so many words.')
       const res = await env.excel.undo(a.workbook, a.writeId)
       return 'conflict' in res ? fail('Those cells changed since your write: nothing was taken back.') : workText('Taken back.')
     }
@@ -343,7 +348,7 @@ async function held(env: Env, app: OfficeEdit['app'], key: string, asked: string
   const places = 'find' in edit ? placesOf(texts, edit.find) : 0
   if ('find' in edit && places === 0) return workText('Nothing matched.')
   const name = fileName(key) || asked
-  const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts) } satisfies OfficeEdit })
+  const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts), ...(env.vm ? { vm: true as const } : {}) } satisfies OfficeEdit })
   return workText(`Others can open ${name}, so nothing in it changed: "${item.summary}" waits for the owner, and nobody else sees it. It is written only when he approves it.`)
 }
 
@@ -395,6 +400,8 @@ export function askedIn(ctx: ToolCtx, args: unknown): boolean {
 export interface ToolDeps {
   /** this host's carrier and helper, or null where no Office runs */
   here(ctx: WorkCtx): { carrier: OfficeCarrier; excel: ExcelHelper; suggestions: SuggestionStore } | null
+  /** `here` is Office in this host's Windows VM: a held change says so, and its press goes there */
+  vm?: true
 }
 
 /** The tools as the frame mounts them: here when this host has Office, else on the workspace's desktop host. */
@@ -407,7 +414,7 @@ export function workTools(deps: ToolDeps): WorkTool[] {
     async run(args, ctx: ToolCtx) {
       const asked = !t.readOnly && askedIn(ctx, args)
       const here = deps.here(ctx)
-      if (here) return runHere(t, args, { ctx, ...here, by: `agent:${ctx.host}:${ctx.sessionId}`, sessionId: ctx.sessionId, asked })
+      if (here) return runHere(t, args, { ctx, ...here, by: `agent:${ctx.host}:${ctx.sessionId}`, sessionId: ctx.sessionId, asked, ...(deps.vm ? { vm: true as const } : {}) })
       const host = ctx.scope.workspaceId ? ctx.settings.workspace(ctx.scope.workspaceId).mayUseDesktop[0] : undefined
       if (!host) return fail('No Office on this host, and this workspace may use no desktop that has it (Work settings → May use this Mac).')
       try {

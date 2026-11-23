@@ -195,7 +195,11 @@ export const office: WorkModule = {
       vmOpenOffice: (app, path) => (started ? filesDeps(started).vmOpenOffice!(app, path) : Promise.reject(new Error(NO_OFFICE)))
     })
   ],
-  acts: officeActs({ carrier: () => (started ? (hereOf(started)?.carrier ?? null) : null) }),
+  acts: officeActs({
+    carrier: () => (started ? (hereOf(started)?.carrier ?? null) : null),
+    // his press on a change held in the VM's Office goes back there, woken first
+    vm: async (ctx) => (await vmAwake(), vmHereOf(ctx).carrier)
+  }),
   triggers: [excelChanges(() => started)],
   preamble: () =>
     'Office files open on the Mac, a Windows PC or this host\'s Windows VM are reached with the `office_*` tools (`office_files` lists them, each with the computer it is on). A workbook range is read with `office_range_read` and written with `office_range_write`, passing the hash you read as `base`. Mail sends, replies, forwards, invitations and answers to invitations are held for the owner\'s press; say so plainly when you make one. ' +
