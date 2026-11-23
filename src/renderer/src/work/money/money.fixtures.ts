@@ -73,3 +73,6 @@ export function readOf(period: Period, rows: readonly LedgerRow[] = ALL_ROWS, ov
 }
 
 export const EMPTY_READ = (period: Period): MoneyRead => readOf(period, [], { made: false });
+
+/** A made-up fuel receipt, drawn: what a phone's photo of one would show. */
+export const RECEIPT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="420" viewBox="0 0 300 420"><rect width="300" height="420" fill="#f7f5ef"/><g font-family="monospace" fill="#2b2b2b"><text x="150" y="48" font-size="18" text-anchor="middle" font-weight="bold">CORNER FUEL</text><text x="150" y="70" font-size="11" text-anchor="middle">412 Route 9, Harlan</text><text x="24" y="112" font-size="12">11/20/2026  07:42</text><text x="24" y="150" font-size="12">UNLEADED  11.84 GAL</text><text x="276" y="150" font-size="12" text-anchor="end">39.66</text><text x="24" y="172" font-size="12">COFFEE</text><text x="276" y="172" font-size="12" text-anchor="end">2.44</text><line x1="24" y1="192" x2="276" y2="192" stroke="#2b2b2b" stroke-dasharray="4 3"/><text x="24" y="218" font-size="14" font-weight="bold">TOTAL</text><text x="276" y="218" font-size="14" text-anchor="end" font-weight="bold">42.10</text><text x="24" y="250" font-size="11">VISA ****1180</text><text x="150" y="380" font-size="11" text-anchor="middle">THANK YOU</text></g></svg>`;

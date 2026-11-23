@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import type { MoneyRead } from "@shared/contract-work-money";
+import { loadToast } from "../../components/ui/toaster";
 import { formatDay, formatMoney, milesLine, sigOf, type LedgerRow, type OwedRow } from "@shared/work/money";
 import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID } from "@aliax/charts/chart";
 import { ChartLegend } from "@aliax/charts/legend";
@@ -20,7 +21,10 @@ import { shared, useShared } from "../tasks/store";
 import { ViewStateLine } from "../views/ViewStateLine";
 import type { WorkViewProps } from "../views/registry";
 import { atOf, markPaid, openBook, openBooks, openReceipt, useMoney, withToast } from "./api";
+import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
+import { receiveFiles, takesFile } from "./receive";
+import { ReceiptPicture, ReceiptRows, ToConfirmSection } from "./ToConfirm";
 import { periodLabel, periodNow, periodOf, rowMoney, shortMoney, signedMoney, sinceWords, stepPeriod, type PeriodState, type Span } from "./model";
 
 /**
@@ -36,7 +40,7 @@ const SPANS = [
 ] as const;
 
 /** A dialog the header or the body opened. */
-export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow };
+export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string };
 
 /** What the header and the body share: the period, and the dialog open. */
 const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null }>({ period: periodNow(), dialog: null });
@@ -51,7 +55,10 @@ export const setMoneyPeriod = (period: PeriodState) => set({ period });
 export function Head({ env, workspace }: WorkViewProps) {
   const { period } = useShared(ui);
   const unit = period.span;
-  const addRows: MenuRow[] = [{ kind: "item", id: "entry", label: "Entry…" }];
+  const addRows: MenuRow[] = [
+    { kind: "item", id: "receipt", label: "Receipt…" },
+    { kind: "item", id: "entry", label: "Entry…" },
+  ];
   const moreRows: MenuRow[] = [
     { kind: "item", id: "ledger", label: "Open ledger" },
     { kind: "item", id: "mileage", label: "Open mileage log" },
@@ -76,6 +83,7 @@ export function Head({ env, workspace }: WorkViewProps) {
         rows={addRows}
         onPick={(id) => {
           if (id === "entry") set({ dialog: { kind: "entry" } });
+          else if (id === "receipt") set({ dialog: { kind: "pick" } });
         }}
         trigger={
           <Button variant="ghost" size="sm">
@@ -108,6 +116,60 @@ export function View({ env, workspace }: WorkViewProps) {
   useEffect(() => resetMoneyView, []);
   const read = load.read;
   const close = () => set({ dialog: null });
+  const picker = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
+  const quiet = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Add → Receipt…: the system's picker, for several at once.
+  useEffect(() => {
+    if (dialog?.kind !== "pick") return;
+    set({ dialog: null });
+    picker.current?.click();
+  }, [dialog]);
+
+  const receive = (files: File[]) => {
+    const taken = files.filter(takesFile);
+    if (!taken.length) return;
+    void receiveFiles({ env, workspaceId: workspace.id, host: read?.root.host ?? null }, taken).then((refused) => {
+      void reload();
+      if (refused.length) void loadToast().then((toast) => toast.error(refused.join("\n")));
+    });
+  };
+  const receiveRef = useRef(receive);
+  receiveRef.current = receive;
+
+  // A picture pasted anywhere in the view, but into a field or a dialog, is a receipt.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.("input, textarea, [contenteditable=true], [role=dialog]")) return;
+      const files = Array.from(event.clipboardData?.files ?? []).filter((f) => /^image\//.test(f.type));
+      if (!files.length) return;
+      event.preventDefault();
+      receiveRef.current(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+  useEffect(() => () => void (quiet.current && clearTimeout(quiet.current)), []);
+
+  // The view takes a dropped file itself, so the frame's drop never starts a thread with it.
+  const carries = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files");
+  const onDragOver = (event: DragEvent) => {
+    if (!carries(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setOver(true);
+    // A drag that leaves the window says nothing more: a quiet spell ends the wash.
+    if (quiet.current) clearTimeout(quiet.current);
+    quiet.current = setTimeout(() => setOver(false), 350);
+  };
+  const onDrop = (event: DragEvent) => {
+    if (!carries(event)) return;
+    event.preventDefault();
+    setOver(false);
+    receive(Array.from(event.dataTransfer.files));
+  };
 
   let body: ReactNode;
   if (!read) body = load.error ? null : <MoneySkeleton />;
@@ -115,7 +177,7 @@ export function View({ env, workspace }: WorkViewProps) {
   else body = <Ledger env={env} workspaceId={workspace.id} read={read} label={periodLabel(period)} year={period.span === "year"} reload={reload} />;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div data-money-view className="flex h-full min-h-0 flex-col" onDragOver={onDragOver} onDrop={onDrop}>
       {load.error ? <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} /> : null}
       {read?.problems.map((p) =>
         p.kind === "columns" ? (
@@ -128,9 +190,41 @@ export function View({ env, workspace }: WorkViewProps) {
           />
         ) : null,
       )}
-      <div className="flex min-h-0 flex-1 flex-col">{body}</div>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {body}
+        {over ? (
+          <div data-money-wash className="absolute inset-0 z-20 grid place-items-center bg-background/80 text-[13px] text-muted-foreground">
+            File as receipt
+          </div>
+        ) : null}
+      </div>
+      <input
+        ref={picker}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        hidden
+        aria-label="Receipts"
+        onChange={(e) => {
+          receive(Array.from(e.target.files ?? []));
+          e.target.value = "";
+        }}
+      />
       {read && dialog?.kind === "entry" ? <EntryDialog key="new" env={env} workspaceId={workspace.id} read={read} mode="new" onClose={close} onSaved={() => void reload()} /> : null}
-      {read && dialog?.kind === "row" ? <EntryDialog key={`row-${dialog.row.row}`} env={env} workspaceId={workspace.id} read={read} mode="edit" row={dialog.row} onClose={close} onSaved={() => void reload()} /> : null}
+      {read && dialog?.kind === "row" ? (
+        <EntryDialog
+          key={`row-${dialog.row.row}`}
+          env={env}
+          workspaceId={workspace.id}
+          read={read}
+          mode="edit"
+          row={dialog.row}
+          picture={dialog.row.receipt && /\.(pdf|jpe?g|png|heic|webp|gif)$/i.test(dialog.row.receipt) ? <ReceiptPicture env={env} of={{ workspaceId: workspace.id, receipt: dialog.row.receipt }} name={dialog.row.receipt} /> : undefined}
+          onClose={close}
+          onSaved={() => void reload()}
+        />
+      ) : null}
+      {read && dialog?.kind === "confirm" ? <ConfirmFlow env={env} workspaceId={workspace.id} read={read} first={dialog.id} onClose={close} reload={reload} /> : null}
     </div>
   );
 }
@@ -146,6 +240,11 @@ function Ledger({ env, workspaceId, read, label, year, reload }: { env: string; 
   return (
     <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-4 py-4">
+        {read.toConfirm.length || read.calendar.length ? (
+          <ToConfirmSection title="To confirm">
+            <ReceiptRows env={env} read={read} onReview={(id) => set({ dialog: { kind: "confirm", id } })} reload={reload} />
+          </ToConfirmSection>
+        ) : null}
         <Figures read={read} />
         {year ? <ByMonth read={read} /> : null}
         {read.byCategory.length ? (

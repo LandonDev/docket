@@ -1593,7 +1593,18 @@ Around the canvas:
   list, then New…), Spent or Received with To be paid back beside it for
   money spent (ticked, Status is not drawn: the two never disagree),
   Status beside For. Return in any field saves; Save waits for an amount
-  and a date.
+  and a date. To confirm leads the column while anything waits: a row
+  each, a 32px picture (6px corners on the image outline, the receipt
+  glyph where there is none), who or the file's name, the date, the
+  amount and Review; a receipt still being read shows the spinner and
+  "Reading" and nothing to press; Discard is in the row's menu and is said
+  back in a toast, never asked about. Review opens the entry dialog wide,
+  the picture in a 320px column at the left and what was read in the
+  fields, empty where nothing was, with no mark of how sure the reading
+  was; Discard sits at the footer's start, and Save shows the next waiting
+  receipt in the same dialog, Amount selected again. A file held over the
+  view lays a quiet wash over the body with the words "File as receipt";
+  the view takes the drop itself, so it never starts a thread.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way
