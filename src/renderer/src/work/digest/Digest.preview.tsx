@@ -51,7 +51,7 @@ type SheetState = "full" | "empty" | "hostDown" | "loading";
 
 export function DigestSheetPreview({ state = "full" }: { state?: SheetState }) {
   const has = state === "full" || state === "hostDown";
-  const view = { days: has ? mergeDays([{ environmentId: "box", days: DAYS }]) : [], rows: has ? mergeRows([ROWS]) : [], loaded: state !== "loading" };
+  const view = { days: has ? mergeDays([{ environmentId: "box", days: DAYS }]) : [], rows: has ? mergeRows([ROWS.map((r) => ({ ...r, environmentId: "box" }))]) : [], loaded: state !== "loading" };
   return (
     <div className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl bg-popover text-sm text-popover-foreground shadow-overlay ring-1 ring-border" style={{ width: DIGEST_WIDTH }}>
       <div className="flex flex-col gap-1 p-5 pe-12">
