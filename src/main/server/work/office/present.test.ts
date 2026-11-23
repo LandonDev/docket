@@ -38,11 +38,15 @@ const deps = (carrier: OfficeCarrier | null, place: RenderPlace | null = 'mac', 
 })
 
 describe('presenting in PowerPoint', () => {
-  it('is offered nowhere until a place is proven: the list is empty', async () => {
-    expect(PRESENT_PROVEN.size).toBe(0)
-    const { carrier } = powerpoint()
-    expect(await canPresent(ctx, OWNER, FILE, { place: () => 'mac', carrier: () => carrier })).toBe(false)
-    await expect(presentDeck(ctx, OWNER, FILE, { place: () => 'mac', carrier: () => carrier })).rejects.toThrow(PRESENT_WORDS.none)
+  it('is offered on his Mac alone, the one place whose live proof passed', async () => {
+    expect([...PRESENT_PROVEN]).toEqual(['mac'])
+    const { carrier, presented } = powerpoint()
+    expect(await canPresent(ctx, OWNER, FILE, { place: () => 'mac', carrier: () => carrier })).toBe(true)
+    for (const place of ['windows', 'vm'] as const) {
+      expect(await canPresent(ctx, OWNER, FILE, { place: () => place, carrier: () => carrier, vmOffice: () => true })).toBe(false)
+      await expect(presentDeck(ctx, OWNER, FILE, { place: () => place, carrier: () => carrier, vmOffice: () => true })).rejects.toThrow(PRESENT_WORDS.none)
+    }
+    expect(presented).toEqual([])
   })
 
   it('opens a plain deck file and runs its slideshow where PowerPoint is, and is absent where it is not', async () => {

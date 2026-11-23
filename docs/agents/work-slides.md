@@ -1656,10 +1656,11 @@ key a clicker sends.
   included, where it has no link to that computer. Proven in the
   box's Windows VM (`.temp-code/plans/landed/SLD679-powerpoint-proof.md`:
   the show comes to the front, hears his keys and leaves his deck saved),
-  and on his Mac (`landed/SLD9-mac/sld9-mac/results.md`), and still offered
-  nowhere (`PRESENT_PROVEN` is empty): a show in the VM runs on a screen he
-  is not at, and on his Mac PowerPoint quit by itself in four of five runs
-  while other jobs ran there, so it waits for one clean run.
+  and on his Mac (`landed/slides-mac-powerpoint-report.md`), and offered on
+  his Mac alone (`PRESENT_PROVEN`): a show in the VM runs on a screen he is
+  not at. The quits of the first Mac run were TempCode's own process guard
+  ending a PowerPoint a proof's shell had started; the app's own start
+  carries no thread's mark.
 - A menu in a child window cannot use the app's popover or
   menu components, which mount in the main window's page: the slideshow's
   picker and the presenter's target menu are panels of their own.

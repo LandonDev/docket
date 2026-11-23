@@ -17,8 +17,9 @@ import { OSA_TIMEOUT_MS, OsaTimeout, runOsa, type Osa } from './osa'
  * a worksheet's `used range` with `first row index`; a workbook's `full
  * name`; Outlook's `outgoing message`, `reply to`, `forward`, `send`,
  * `calendar event`, `send meeting`, `accept meeting`. Word and PowerPoint
- * were not on the Mac to check: their scripts follow their published
- * dictionaries and are unproven until run.
+ * were not on the Mac to check then: their scripts follow their published
+ * dictionaries and are unproven until run. Run since (16.115, 2026-11-23):
+ * the slideshow and Excel's PDF pass; PowerPoint's renders fail (see each).
  *
  * It drives the apps he started: a verb on an app that is not running
  * answers "not open" rather than starting it unseen, save `open` (the switch).
@@ -159,8 +160,8 @@ export const SCRIPTS = {
     for (var i = 0; i < ids.length; i++) if (String(ics[i] || '').replace(/\\r?\\n[ \\t]/g, '').split(/\\r?\\n/).indexOf('UID:' + a.uid) >= 0) return JSON.stringify(String(ids[i]));
     return 'null'`),
   // Office as a renderer (docs/agents/work-office.md "Office as a renderer"): a copy in the app's own container,
-  // opened in the app he has open, saved as by the app itself, closed unsaved. Unproven on a Mac: not offered
-  // until each pair's own live proof passes (render.ts RENDER_PROVEN).
+  // opened in the app he has open, saved as by the app itself, closed unsaved. A pair is offered only once its own
+  // live proof passed (render.ts RENDER_PROVEN). Run on his Mac 2026-11-23 (16.115): Excel's PDF passed; Word's unrun.
   renderWord: js(`var w = app('Microsoft Word'); w.open(Path(a.input)); var d = byKey(w.documents, a.input), pages = null;
     try { try { pages = Number(w.computeStatistics(d, { statistic: 'statistic pages' })) } catch (e) {}
       w.saveAs(d, { fileName: a.output, fileFormat: 'format PDF' }); return JSON.stringify({ pages: pages }) }
@@ -169,12 +170,16 @@ export const SCRIPTS = {
     try { xl.saveWorkbookAs(b, { filename: a.output, fileFormat: 'PDF file format' }); return JSON.stringify({}) }
     finally { try { xl.close(b, { saving: 'no' }) } catch (e) {} }`),
   // PNG saves every slide into a folder (Slide1.png, …): the host keeps the one asked for. A video is PowerPoint's MP4.
+  // FAILS live (PowerPoint 16.115.1): JXA hands `as` to the standard save as text, PowerPoint ignores it and writes a
+  // .pptx at the output's path, and the dictionary has no 'save as MP4' ('save as movie'). The same save as AppleScript
+  // made a true PDF by hand; that fix has not run through here (landed/SLD9-mac/mac3/out/fix.diff). Offered nowhere.
   renderPowerPoint: js(`var pp = app('Microsoft PowerPoint'); pp.open(Path(a.input)); var p = byKey(pp.presentations, a.input), n = p.slides.length;
     try { pp.save(p, { in: Path(a.output), as: a.to === 'pdf' ? 'save as PDF' : a.to === 'png' ? 'save as PNG' : 'save as MP4' }); return JSON.stringify({ pages: n }) }
     finally { try { pp.close(p, { saving: 'no' }) } catch (e) {} }`),
   // Presenting in PowerPoint (docs/agents/work-office.md "Presenting in PowerPoint"): the deck `open` just handed the
-  // app, waited for while it opens, then PowerPoint's own slideshow of every slide from the first. Unproven on a Mac:
-  // not offered until its live proof passes (present.ts PRESENT_PROVEN).
+  // app, waited for while it opens, then PowerPoint's own slideshow of every slide from the first. Run live on his Mac
+  // 2026-11-23 (PowerPoint 16.115.1): from shut, slide 1 full screen in front, the deck still saved, PowerPoint still up
+  // three minutes on. Offered where present.ts PRESENT_PROVEN says.
   presentPowerPoint: js(`var pp = app('Microsoft PowerPoint'), p = null;
     for (var i = 0; i < 60 && !p; i++) { try { p = byKey(pp.presentations, a.key) } catch (e) { if (i === 59) throw e; if (typeof delay === 'function') delay(0.25) } }
     // The settings' writes mark the deck changed (found live, PowerPoint 16.115): a deck that was saved is marked saved again, so presenting never asks him to save.

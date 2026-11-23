@@ -426,7 +426,7 @@ container (`~/Library/Containers/com.microsoft.Word/Data/Library/Caches/TempCode
 opens and saves it with no Grant File Access prompt; Word saves as `format PDF`, Excel as `PDF file format`,
 PowerPoint as `save as PDF`, `save as PNG` (a folder of slides: the one asked is kept and sized by `sips`) or
 `save as MP4` (its own length per slide: `secondsPerSlide` and `height` do not reach it). The copy is closed
-unsaved and the folder removed.
+unsaved and the folder removed. Live, only Excel's does what this says: "Not proven" has what PowerPoint's did.
 
 **The refusals, in words** (`RENDER_WORDS`). A refusal from the run is the runner's kinds, so a pillar maps them
 to `NotInReach` as DOC1.1 says:
@@ -474,12 +474,12 @@ first, so every effect plays as authored.
   to show."; no file: "There is no such deck on this PC."; no PowerPoint: "PowerPoint is not installed on this PC."
   **The box's Windows VM**: the same helper, for a deck in its OneDrive (a guest path), woken by his press first.
   The add-in carries no slideshow: the host takes the desktop carrier itself, as a render does.
-- **Who offers it**: `PRESENT_PROVEN` in `present.ts`, one set of places (`mac`, `windows`, `vm`), **empty**: a place
-  offers it once its own live proof passes and the show would run where he is ("Not proven" below says where each
-  stands). Turning a place on is that one line.
+- **Who offers it**: `PRESENT_PROVEN` in `present.ts`, one set of places (`mac`, `windows`, `vm`), **his Mac
+  alone**: a place offers it once its own live proof passes and the show would run where he is ("Not proven" below
+  says where the others stand). Turning a place on is that one line.
 - **Recorded**: `RecordedCom.cs` `#region Present (SLD9)`: a deck's `SlideShowSettings` as set and each `Run` with
   the deck's saved mark then, read back as `shows` by `_state`, and the window found and brought forward in `started`
-  (`com/rig.test.ts`, opt-in). Tests: `present.test.ts` (offered nowhere until proven;
+  (`com/rig.test.ts`, opt-in). Tests: `present.test.ts` (offered on his Mac alone;
   a plain file and a web address; a thread, not a deck, another host and the fence refused; the VM woken only by the
   press; the module's `check`; the helper's region), `mac.test.ts` (the open then the script; the script over a
   stand-in PowerPoint), `com/carrier.test.ts` (`present.run` and its refusals).
@@ -797,22 +797,30 @@ waiting on it holds every write back. Node gives the helper two pipes.
 
 ## Not proven
 
-**Presenting in PowerPoint**: run live in two places on 2026-11-23, and still offered in none (`PRESENT_PROVEN`
-empty). **The box's Windows VM** (`.temp-code/plans/landed/SLD679-powerpoint-proof.md`, part D): eight steps pass
-after two fixes found there (the show is brought forward by joining the input of the window in front, since
-`SlideShowWindow.HWND` does not exist through IDispatch; a saved deck is marked saved again after the settings'
-writes); not offered there because the show runs on the VM's screen, which he is not at. **His Mac**
-(`.temp-code/plans/landed/SLD9-mac/sld9-mac/results.md`, PowerPoint 16.115.1): `present` starts PowerPoint, shows
-slide 1 full screen in front, a key moves it on, a second press reuses the open deck, a missing file is said
-plainly, and with the fix found there (the range type's name is 'slide show range show all'; the saved mark is put
-back) the deck stays saved. Not offered yet: in four of five runs PowerPoint quit by itself 13 to 67 s into the show
-with nobody at the Mac (a clean `terminate:`, no crash, no sender seen), while other jobs ran on that Mac. It needs
-one more run on a quiet Mac (present from shut, watch the process three minutes) before `mac` joins the set. A
-Windows PC: unrun.
+**Presenting in PowerPoint**: offered on his Mac alone. **His Mac** (PowerPoint 16.115.1, the Mac App Store
+build; `.temp-code/plans/landed/slides-mac-powerpoint-report.md`): from shut, `present` starts PowerPoint and shows
+slide 1 full screen in front in 8 to 10 s, a key moves it on, a second press reuses the open deck, a missing file is
+said plainly, the deck stays saved, and the same PowerPoint was still running three minutes on. The first run's
+"PowerPoint quit by itself 13 to 67 s into the show" was TempCode's own process guard (processGuard.ts): an app
+that `open` starts from an agent's shell inherits that thread's marks, has no parent, and is ended as the thread's
+orphan at the call's end or 60 s later. The installed app's own `open` carries no thread's mark, so his PowerPoint
+is nobody's orphan; **a TempCode started from an agent's shell (a dev or preview instance in a proof) still has its
+Office apps swept this way**. Not shown: a show left untouched for three minutes (his own key ended the proof's
+show 70 s in), and a deck in his OneDrive rather than a local folder. **The box's Windows VM**
+(`.temp-code/plans/landed/SLD679-powerpoint-proof.md`, part D): eight steps pass after two fixes found there (the
+show is brought forward by joining the input of the window in front, since `SlideShowWindow.HWND` does not exist
+through IDispatch; a saved deck is marked saved again after the settings' writes); not offered there because the
+show runs on the VM's screen, which he is not at. A Windows PC: unrun.
 
-**Office as a renderer**: on his Mac, none of the five pairs (the JXA names `saveAs`, `saveWorkbookAs`, `save
-… as 'save as PNG'` and `'save as MP4'` follow the dictionaries, unrun; and whether a file in the app's own
-container opens with no prompt); on a Windows PC, none; in the VM, `ctx.convert` through the box's own service (the proof drove this branch's
+**Office as a renderer**: on his Mac (run 2026-11-23, Office 16.115, the report above): Excel's PDF passes (a
+5-row sheet came back as a 1-page PDF in 1.6 s, no prompt, the container's copy gone after); **PowerPoint's three
+fail**: JXA hands the standard `save` its `as` format as text, PowerPoint ignores it and writes a .pptx at the
+output's path (the carrier then answers as if it had worked), PNG makes no folder, and the dictionary has no `save
+as MP4` (it is `save as movie`; a video's size is the deck's `save as movie settings`, its length each slide's
+`advance time`). The same save written as AppleScript made a true 3-page PDF by hand; that fix
+(`landed/SLD9-mac/mac3/out/fix.diff`) has not run through the carrier. Word's PDF: unrun (Word was another job's).
+A render opens the copy in a window of his app for its length, and may leave `input.xlsx` in the app's recent
+files; on a Windows PC, none; in the VM, `ctx.convert` through the box's own service (the proof drove this branch's
 converters and carrier through a job runner of its own, since the box runs its deployed build), a dialog's
 and `busy` against a real dialog. One long render holds the VM's helper link and its one Office thread for its length,
 so an `office_*` call there waits behind it with no word, and a cancel is seen only between chunks. Before the Mac's

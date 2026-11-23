@@ -15,11 +15,12 @@ import type { RenderPlace } from './render'
  */
 
 /**
- * The places that offer it: a place joins once its own live proof passed and the show would run where he is. Run
- * live in the box's VM and on his Mac on 2026-11-23 (docs/agents/work-office.md "Not proven" says where each
- * stands and what one more run must show); neither is offered yet. Turning a place on is this one line.
+ * The places that offer it: a place joins once its own live proof passed and the show would run where he is. His
+ * Mac: proven 2026-11-23 (PowerPoint 16.115.1; .temp-code/plans/landed/slides-mac-powerpoint-report.md). The box's
+ * VM runs it too, on a screen he is not at, so it is not offered there (docs/agents/work-office.md "Not proven").
+ * Turning a place on is this one line.
  */
-export const PRESENT_PROVEN: ReadonlySet<RenderPlace> = new Set<RenderPlace>([])
+export const PRESENT_PROVEN: ReadonlySet<RenderPlace> = new Set<RenderPlace>(['mac'])
 
 export const PRESENT_WORDS = {
   thread: 'A thread never presents.',
