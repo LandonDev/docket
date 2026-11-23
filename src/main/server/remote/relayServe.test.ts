@@ -364,6 +364,27 @@ describe('RelayServer', () => {
     expect(RelayNoticeSchema.parse((outbox[0].params as { notice: unknown }).notice)).toMatchObject({ held: { at: 'host', id: 'h9' } })
   })
 
+  it("a notice of Work's has no thread and goes through whole: a Mac's interrupt and a Mac's digest both pass the box's schema with what a tap opens", async () => {
+    const relayed = make({ links: ['env_box'] })
+    relayed.server.linkUp('env_box')
+    const open = { view: 'agenda', workspaceId: 'w1', at: 'ev1' }
+    relayed.server.onNotice({ event: 'needs_you', kind: 'waiting', title: 'Purdue', body: 'Budget review starts at 2:00 PM', ts: 5, seq: 0, hostName: 'Studio', work: { key: 'now', tell: 'prep:ev1', by: 99, open } })
+    relayed.server.onNotice({ event: 'finished', kind: 'finished', title: 'Work', body: 'Digest: 2 things in Cosmic', ts: 6, seq: 0, work: { key: 'digest:2026-11-24', digest: '2026-11-24' } })
+    await tick()
+    const sent = relayed.requests.filter((r) => r.method === 'relay.notice').map((r) => r.params as { from: string; notice: Record<string, unknown> })
+    expect(sent.map((p) => p.notice)).toEqual([
+      { event: 'needs_you', kind: 'waiting', title: 'Purdue', body: 'Budget review starts at 2:00 PM', ts: 5, seq: 0, hostName: 'Studio', work: { key: 'now', tell: 'prep:ev1', by: 99, open } },
+      { event: 'finished', kind: 'finished', title: 'Work', body: 'Digest: 2 things in Cosmic', ts: 6, seq: 0, work: { key: 'digest:2026-11-24', digest: '2026-11-24' } }
+    ])
+    for (const p of sent) {
+      expect(p.notice).not.toHaveProperty('threadId')
+      expect(RelayNoticeSchema.parse(p.notice)).toEqual(p.notice)
+    }
+    // the schema refuses a target it does not know rather than carry it
+    expect(RelayNoticeSchema.safeParse({ ...sent[0]!.notice, work: { key: 'now', tell: 'x', open: { nowhere: true } } }).success).toBe(false)
+    expect(RelayNoticeSchema.safeParse({ ...sent[0]!.notice, work: { digest: '2026-11-24' } }).success).toBe(false)
+  })
+
   it('onPeerPush serves relay.* pushes and leaves every other push alone', async () => {
     const { server, principal, requests } = make()
     expect(server.onPeerPush('env_box', { push: 'sessions', sessions: [] })).toBe(false)

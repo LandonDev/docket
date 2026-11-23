@@ -73,6 +73,25 @@ describe('the rules the fixtures rest on', () => {
     expect(category({ kind: 'waiting', choices: 'run-skip' })).toBe('tc.thread')
     expect((notificationPayload({ ...base, threadId: 't', kind: 'approval', choices: 'run-skip' }) as { tc: Record<string, unknown> }).tc).not.toHaveProperty('choices')
   })
+  it("a notice of Work's with no thread: the digest is a banner with no sound, an interrupt is time sensitive with sound, both grouped under tc.work and carrying what a tap opens", () => {
+    const digest = notificationPayload({ event: 'finished', kind: 'finished', hostId: 'box', environmentId: 'env_box', seq: 0, title: 'Work', body: 'Digest: 9 things in Cosmic, Purdue and Ref', hostName: 'The box', work: { key: 'digest:2026-11-24', digest: '2026-11-24' }, ts: 1_000 })
+    expect(digest).toEqual({
+      aps: { alert: { title: 'Work', body: 'Digest: 9 things in Cosmic, Purdue and Ref' }, 'thread-id': 'tc.work', 'summary-arg': 'Work', 'interruption-level': 'active', 'relevance-score': 0.4, 'mutable-content': 1 },
+      tc: { event: 'finished', hostId: 'box', environmentId: 'env_box', seq: 0, kind: 'finished', host: 'The box', work: { key: 'digest:2026-11-24', digest: '2026-11-24' }, ts: 1_000 }
+    })
+    const open = { view: 'agenda', workspaceId: 'w1', at: 'ev1' }
+    const now = notificationPayload({ event: 'needs_you', kind: 'waiting', hostId: 'box', seq: 0, title: 'Purdue', body: 'Budget review starts at 2:00 PM', work: { key: 'now', tell: 'prep:ev1', by: 9_000, open }, ts: 2_000 })
+    expect(now).toEqual({
+      aps: { alert: { title: 'Purdue', body: 'Budget review starts at 2:00 PM' }, sound: 'default', 'thread-id': 'tc.work', 'summary-arg': 'Purdue', 'interruption-level': 'time-sensitive', 'relevance-score': 1, 'mutable-content': 1 },
+      tc: { event: 'needs_you', hostId: 'box', seq: 0, kind: 'waiting', work: { key: 'now', tell: 'prep:ev1', by: 9_000, open }, ts: 2_000 }
+    })
+    // no thread, so no category: nothing is decided from the lock screen
+    expect((now as { aps: Record<string, unknown> }).aps).not.toHaveProperty('category')
+    // a thread's notice is as it was: no tc.work, grouped under its thread
+    const thread = notificationPayload({ ...base, threadId: 't' }) as { aps: Record<string, unknown>; tc: Record<string, unknown> }
+    expect(thread.tc).not.toHaveProperty('work')
+    expect(thread.aps['thread-id']).toBe('t')
+  })
   it('a held act carries its item as tc.held and keeps the Open category: no Send from the lock screen', () => {
     const held = { at: 'lifeos' as const, table: 'outbox' as const, id: 'ob_1' }
     const payload = notificationPayload({ ...base, event: 'needs_you', threadId: 't', kind: 'waiting', held }) as { aps: Record<string, unknown>; tc: Record<string, unknown> }

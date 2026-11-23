@@ -331,6 +331,11 @@ describe('a host with its own APNs sender', () => {
     // a computer step held for the Mac, relayed through this box: the phone's Run now and Skip, on the Mac's thread
     await push.deliver({ event: 'needs_you', threadId: 'm1', seq: 22, title: 'Save', body: 'Use your pointer?', kind: 'approval', requestId: 'h1', choices: 'run-skip', ts: 8000, environmentId: 'env_mac' })
     expect(sent[3].payload).toMatchObject({ aps: { category: 'tc.run-skip' }, tc: { environmentId: 'env_mac', requestId: 'h1' } })
+    // a notice of Work's has no thread: every interrupt replaces the last under one id, a day's digest under its own
+    await push.deliver({ event: 'needs_you', seq: 0, kind: 'waiting', title: 'Purdue', body: 'Budget review starts at 2:00 PM', work: { key: 'now', tell: 'prep:ev1' }, ts: 9000 })
+    expect(sent[4]).toMatchObject({ collapseId: 'work:now', payload: { aps: { 'thread-id': 'tc.work' }, tc: { work: { key: 'now', tell: 'prep:ev1' } } } })
+    await push.deliver({ event: 'finished', seq: 0, kind: 'finished', title: 'Work', body: 'Digest: 2 things in Cosmic', work: { key: 'digest:2026-11-24', digest: '2026-11-24' }, ts: 9500 })
+    expect(sent[5]).toMatchObject({ collapseId: 'work:digest:2026-11-24', token: 'cd'.repeat(32) })
   })
   it('drops a phone Apple calls gone, records other failures on the row, and pushes activity states to the thread tokens', async () => {
     const { apns, sent } = fakeApns((token) => (token.startsWith('ab') ? { ok: false, error: 'APNs 410 Unregistered', gone: true } : { ok: false, error: 'APNs 500', gone: false }))

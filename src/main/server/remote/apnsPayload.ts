@@ -1,5 +1,6 @@
 import type { HubActivityState, HubNoticeKind } from '../hub'
 import type { HeldRef } from '../../../shared/work/acts'
+import type { NoticeWork } from '../../../shared/work/tell'
 
 /**
  * The APNs payloads, as infra/hub/src/delivery.ts builds them: one shape
@@ -33,6 +34,8 @@ export interface ApnsNotice {
   hostName?: string
   /** An act held for the owner's press: `tc.held`, the item the phone's tap opens. Its category stays Open alone: nothing sends from the lock screen. */
   held?: HeldRef
+  /** A notice of Work's with no thread: `tc.work`, what the phone's tap opens (the digest, or a tell's target). */
+  work?: NoticeWork
   ts: number
 }
 
@@ -53,6 +56,8 @@ export const APPROVAL_CATEGORY = 'tc.approval'
 export const RUN_SKIP_CATEGORY = 'tc.run-skip'
 /** Every other thread notice: the phone's Open action. */
 export const THREAD_CATEGORY = 'tc.thread'
+/** Every notice of Work's groups under this on the phone, whichever host sent it. */
+export const WORK_THREAD_ID = 'tc.work'
 
 /** The phone's actions for a thread's notice: Approve and Deny, Run now and Skip, else Open. */
 function categoryOf(notice: Pick<ApnsNotice, 'kind' | 'choices'>): string {
@@ -78,7 +83,7 @@ export function notificationPayload(notice: ApnsNotice): unknown {
         body: notice.body
       },
       ...(SOUNDED.has(notice.event) ? { sound: 'default' } : {}),
-      'thread-id': notice.threadId ?? notice.hostId,
+      'thread-id': notice.work ? WORK_THREAD_ID : (notice.threadId ?? notice.hostId),
       'summary-arg': notice.subtitle ?? notice.title,
       'interruption-level': notice.event === 'needs_you' ? 'time-sensitive' : 'active',
       'relevance-score': RELEVANCE[notice.event],
@@ -96,6 +101,7 @@ export function notificationPayload(notice: ApnsNotice): unknown {
       ...(notice.requestId === undefined ? {} : { requestId: notice.requestId }),
       ...(notice.hostName === undefined ? {} : { host: notice.hostName }),
       ...(notice.held === undefined ? {} : { held: notice.held }),
+      ...(notice.work === undefined ? {} : { work: notice.work }),
       ts: notice.ts
     }
   }

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { HeldRefSchema } from './work/acts'
+import { NoticeWorkSchema } from './work/tell'
 import type { ClientRequest } from './contract'
 import { WORK_NOT_CARRIED, WORK_RELAY } from './contract-work'
 import type { BuildFacts } from './deployDrift'
@@ -349,7 +350,8 @@ export const RelayNoticeSchema = z.object({
   event: z.enum(['needs_you', 'finished', 'failed', 'stuck']),
   /** The phone's category and actions (notifier.ts NoticeKind); an older host leaves it out and the box reads it off `event`. */
   kind: z.enum(['approval', 'question', 'plan', 'waiting', 'finished', 'failed', 'stuck', 'batch', 'stopped']).optional(),
-  threadId: z.string().min(1).max(200),
+  /** Absent only on a notice of Work's (`work`). */
+  threadId: z.string().min(1).max(200).optional(),
   title: z.string().max(300),
   /** The project or workspace the thread is in. */
   subtitle: z.string().max(300).optional(),
@@ -365,7 +367,9 @@ export const RelayNoticeSchema = z.object({
   /** A window on the host shows the thread to its person now: the box tells its webhooks, not the phone. */
   onScreen: z.literal(true).optional(),
   /** An act held for the owner's press: the phone's tap opens this item in the Outbox (never a Send of its own). */
-  held: HeldRefSchema.optional()
+  held: HeldRefSchema.optional(),
+  /** A notice of Work's with no thread (the day's digest, or a tell that cannot wait): what the phone's tap opens. */
+  work: NoticeWorkSchema.optional()
 })
 export type RelayNotice = z.infer<typeof RelayNoticeSchema>
 export const RelayRequestSchemas = [

@@ -7,6 +7,7 @@ import { DETAIL_MAX, TELL_GROUPS, TELL_LEVELS, TITLE_MAX, tellLine, TellOpenSche
 import type { CtxPart } from '../ctx'
 import { WORK_MODULES, type WorkCtx } from '../modules'
 import { dayOf, knownZone, lastDigest, nextDigest, zoneOr } from './clock'
+import { makeDeliverer, ofDay } from './deliver'
 import { makeDay } from './make'
 import { decide, groupsByKind, groupsListed, LATE_MS, retold } from './rule'
 import { DigestStore, type LedgerRow } from './store'
@@ -219,13 +220,19 @@ export class Digest {
     if (this.deliverer) {
       for (const row of this.store.due()) {
         // Too late to be of use: it waits for the digest like the rest.
-        if (row.by != null && row.by < now - LATE_MS) this.store.put({ ...row, due: false })
-        else this.pushRow(this.tellNow(row, now))
+        if (row.by != null && row.by < now - LATE_MS) {
+          this.store.put({ ...row, due: false })
+          continue
+        }
+        const next = this.tellNow(row, now)
+        if (!next.due) this.pushRow(next)
       }
     }
     const next = this.nextAt(now)
     for (const row of this.store.clocked(now)) {
-      if (decide(row, this.levelOf(row.group), next) === 'now') this.pushRow(this.tellNow(row, now))
+      if (decide(row, this.levelOf(row.group), next) !== 'now') continue
+      const told = this.tellNow(row, now)
+      if (!told.due) this.pushRow(told)
     }
     const at = lastDigest(this.at(), this.zone(), now)
     const handled = Number(this.store.setting('handled') ?? NaN)
@@ -306,6 +313,14 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
   let digest: Digest | null = null
   try {
     digest = new Digest({ db: deps.db, host: deps.environmentId, enabled: () => ctx.enabled(), log: (line) => ctx.log(line), push: (p) => ctx.push(p, { need: 'read' }), modules: () => WORK_MODULES })
+    // The notifier is built late in boot: until then nothing takes a row, and it is kept as due.
+    digest.deliverer = makeDeliverer({
+      notifier: () => deps.notifier?.() ?? null,
+      sendsDigest: () => deps.sendsDigest?.() ?? true,
+      // Each linked Work host's own ledger, over the host link, as Connections asks each for its health.
+      peers: (day) => (deps.peers?.all() ?? []).filter((link) => link.connected).map((link) => link.request<DigestList>('work.digest.list', {}, { timeoutMs: 5_000 }).then((list) => ofDay(list, day))),
+      log: (line) => ctx.log(line)
+    })
     hosts.set(ctx, digest)
   } catch (err) {
     fault('ctx.tell did not start', err)

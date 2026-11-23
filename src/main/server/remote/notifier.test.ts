@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
-import { approvalLine, batchBody, Notifier, type Notice, type NotifierRegistry } from './notifier'
+import { approvalLine, batchBody, isThreadNotice, Notifier, WORK_TOLD_MS, type Notice, type NoticeGate, type NotifierRegistry } from './notifier'
 
 /** A registry of metas and rows the test drives by hand. */
 class FakeRegistry implements NotifierRegistry {
@@ -681,5 +681,144 @@ describe('a thread on screen', () => {
       ['r', 'Read y.ts?', undefined],
       ['k', 'Run ls?', undefined]
     ])
+  })
+})
+
+describe("a notice of Work's with no thread", () => {
+  const digest = { title: 'Work', body: 'Digest: 9 things in Cosmic, Purdue and Ref', urgent: false, work: { key: 'digest:2026-11-24', digest: '2026-11-24' } }
+  const meeting = { title: 'Purdue', body: 'Budget review starts at 2:00 PM', urgent: true, work: { key: 'now', tell: 'prep:ev1', by: 1_000, open: { view: 'agenda', workspaceId: 'w1', at: 'ev1' } } }
+
+  it('the digest goes out as finished with no thread, and never waits on who is at a desktop', () => {
+    let present = true
+    notifier.stop()
+    notifier = new Notifier({ registry: reg, stuckMinutes: () => 10, hostName: () => 'The box', present: () => present, now: () => Date.now(), log: () => {} })
+    notifier.onNotice((n) => void notices.push(n))
+    notifier.work(digest)
+    expect(notices).toEqual([{ event: 'finished', kind: 'finished', title: 'Work', body: 'Digest: 9 things in Cosmic, Purdue and Ref', ts: Date.now(), seq: 0, hostName: 'The box', work: { key: 'digest:2026-11-24', digest: '2026-11-24' } }])
+    expect(isThreadNotice(notices[0]!)).toBe(false)
+    // a second digest of the same day is the host's to prevent, not the notifier's: it is not held back here
+    present = false
+    notifier.work(digest)
+    expect(notices).toHaveLength(2)
+  })
+  it('an interrupt goes out as needs_you with kind waiting, which no client turns into buttons', () => {
+    notifier.work(meeting)
+    expect(notices).toEqual([{ event: 'needs_you', kind: 'waiting', title: 'Purdue', body: 'Budget review starts at 2:00 PM', ts: Date.now(), seq: 0, work: meeting.work }])
+    expect(notices[0]).not.toHaveProperty('threadId')
+    expect(notices[0]).not.toHaveProperty('requestId')
+    expect(notices[0]).not.toHaveProperty('onScreen')
+  })
+  it('an interrupt is stamped on screen while a person is at a desktop of this host; unknown, it is sent', () => {
+    let present: boolean | 'throws' = true
+    notifier.stop()
+    notifier = new Notifier({
+      registry: reg,
+      stuckMinutes: () => 10,
+      present: () => {
+        if (present === 'throws') throw new Error('no focus signal')
+        return present
+      },
+      now: () => Date.now(),
+      log: () => {}
+    })
+    notifier.onNotice((n) => void notices.push(n))
+    notifier.work({ ...meeting, work: { ...meeting.work, tell: 'a' } })
+    present = false
+    notifier.work({ ...meeting, work: { ...meeting.work, tell: 'b' } })
+    present = 'throws'
+    notifier.work({ ...meeting, work: { ...meeting.work, tell: 'c' } })
+    expect(notices.map((n) => n.onScreen)).toEqual([true, undefined, undefined])
+  })
+  it('one thing told under one key is sent once in an hour, whichever host said it first; a clock that moved is news', () => {
+    notifier.work(meeting)
+    notifier.work(meeting)
+    expect(notices).toHaveLength(1)
+    // the same key carried for a host this one relays: already told
+    expect(notifier.toldWork(meeting.work)).toBe(true)
+    // its clock moved: told again
+    notifier.work({ ...meeting, work: { ...meeting.work, by: 500 } })
+    expect(notices).toHaveLength(2)
+    // a relayed interrupt this host has not told is recorded, and the host's own tell of it then is not sent
+    expect(notifier.toldWork({ key: 'now', tell: 'clash:7' })).toBe(false)
+    notifier.work({ ...meeting, work: { key: 'now', tell: 'clash:7' } })
+    expect(notices).toHaveLength(2)
+    vi.advanceTimersByTime(WORK_TOLD_MS + 1)
+    notifier.work(meeting)
+    expect(notices).toHaveLength(3)
+    // a digest is never held back
+    expect(notifier.toldWork(digest.work)).toBe(false)
+    expect(notifier.toldWork(digest.work)).toBe(false)
+  })
+  it('is cut to one line as every notice is', () => {
+    notifier.work({ title: '', body: `Line one\nline two ${'x'.repeat(300)}`, urgent: false, work: digest.work })
+    expect(notices[0]!.title).toBe('Work')
+    expect(notices[0]!.body).toHaveLength(200)
+    expect(notices[0]!.body.startsWith('Line one line two')).toBe(true)
+  })
+})
+
+describe('the gate', () => {
+  /** One morning of threads: a prompt, an answer, a finish, a failure, a held act, a stall. */
+  function morning(n: Notifier, r: FakeRegistry): void {
+    r.add('a', { status: 'running', title: 'Morning summary' })
+    r.add('b', { status: 'running', title: 'Reply to Dana' })
+    n.start()
+    r.row('a', { type: 'approval-request', requestId: 'q1', toolName: 'Bash', input: { command: 'bun test' } })
+    r.status('a', 'waiting')
+    vi.advanceTimersByTime(1500)
+    r.row('a', { type: 'approval-resolved', requestId: 'q1', allow: true })
+    r.status('a', 'running')
+    r.row('a', { type: 'assistant-text', id: 'm1', text: 'done' } as never)
+    r.status('a', 'idle')
+    vi.advanceTimersByTime(1500)
+    r.row('b', { type: 'error', message: 'The model refused' })
+    r.status('b', 'error')
+    vi.advanceTimersByTime(1500)
+    n.held('a', 'Held: Send to Dana Reyes: Re: budget', { at: 'host', id: 'h1' })
+    r.status('b', 'running')
+    vi.advanceTimersByTime(12 * 60_000)
+  }
+  function run(gate?: NoticeGate | 'none'): { notices: Notice[]; lines: string[] } {
+    vi.setSystemTime(new Date('2026-10-19T12:00:00Z'))
+    const r = new FakeRegistry()
+    const out: Notice[] = []
+    const log: string[] = []
+    const n = new Notifier({ registry: r, stuckMinutes: () => 10, origin: () => 'https://tc.example', now: () => Date.now(), log: (l) => log.push(l) })
+    n.onNotice((x) => void out.push(x))
+    if (gate && gate !== 'none') n.setGate(gate)
+    morning(n, r)
+    n.stop()
+    return { notices: out, lines: log }
+  }
+
+  it("with no gate, with one that keeps nothing, and with one that throws, every notice is today's, field for field", () => {
+    const plain = run('none')
+    expect(plain.notices.map((n) => `${n.event}:${n.threadId}:${n.body}`)).toEqual([
+      'needs_you:a:Run bun test?',
+      'finished:a:Done in 2s',
+      'failed:b:Failed: The model refused',
+      'needs_you:a:Held: Send to Dana Reyes: Re: budget',
+      'stuck:b:No output for 10m'
+    ])
+    for (const n of plain.notices) expect(n).not.toHaveProperty('work')
+    expect(JSON.stringify(run(() => false).notices)).toBe(JSON.stringify(plain.notices))
+    const thrown = run(() => {
+      throw new Error('the ledger is gone')
+    })
+    expect(JSON.stringify(thrown.notices)).toBe(JSON.stringify(plain.notices))
+    expect(thrown.lines.some((l) => l.includes('gate failed: the ledger is gone'))).toBe(true)
+    // taken away again, the notifier is today's
+    const cleared = run('none')
+    expect(JSON.stringify(cleared.notices)).toBe(JSON.stringify(plain.notices))
+  })
+  it('keeps back what the gate takes, hands it the notice and the thread, and sends the rest', () => {
+    const asked: string[] = []
+    const kept = run((notice, session) => {
+      asked.push(`${notice.event}:${session.title}`)
+      return session.title === 'Morning summary' && notice.event !== 'needs_you'
+    })
+    expect(asked).toEqual(['needs_you:Morning summary', 'finished:Morning summary', 'failed:Reply to Dana', 'needs_you:Morning summary', 'stuck:Reply to Dana'])
+    expect(kept.notices.map((n) => `${n.event}:${n.threadId}`)).toEqual(['needs_you:a', 'failed:b', 'needs_you:a', 'stuck:b'])
+    expect(kept.lines.some((l) => l.includes('(waits for the digest)'))).toBe(true)
   })
 })

@@ -100,6 +100,11 @@ export interface WorkDeps {
   away?: AwayService
   /** the notices a phone gets; null until the host has built it, late in boot */
   notifier?: () => Notifier | null
+  /**
+   * Whether this host sends the phone the day's digest (docs/agents/work-digest.md): one host does, a headless
+   * host always and a desktop only when it has no saved headless host. Absent (a test): it does.
+   */
+  sendsDigest?: () => boolean
   log?(line: string): void
 }
 

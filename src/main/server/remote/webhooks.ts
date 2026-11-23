@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { guardedLookup, resolveGuarded, type GuardOptions } from './addressGuard'
-import type { Notice } from './notifier'
+import type { Notice, ThreadNotice } from './notifier'
 
 /**
  * Per-key webhooks: a bot that gave its key a URL gets every notice it
@@ -50,7 +50,7 @@ export const loopbackWebhooksAllowed = (): boolean => process.env.TEMP_CODE_WEBH
 export const signPayload = (body: string, secret: string): string =>
   `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
 
-export function webhookPayload(notice: Omit<Notice, 'url'> & { url?: string }, hostId: string, environmentId?: string): WebhookPayload {
+export function webhookPayload(notice: Omit<ThreadNotice, 'url'> & { url?: string }, hostId: string, environmentId?: string): WebhookPayload {
   return {
     event: notice.event,
     hostId,

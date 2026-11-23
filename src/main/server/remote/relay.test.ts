@@ -511,6 +511,19 @@ describe('HostRelay lanes', () => {
     await tick()
     expect(delivered).toEqual([{ from: 'env_mac', notice }])
   })
+
+  it("a notice of Work's from a host reaches the sinks with no thread and its work part whole", async () => {
+    const { relay, delivered } = lane()
+    const interrupt = { event: 'needs_you' as const, kind: 'waiting' as const, title: 'Purdue', body: 'Budget review starts at 2:00 PM', ts: 5, seq: 0, work: { key: 'now', tell: 'prep:ev1', open: { thread: 't9' } } }
+    const digest = { event: 'finished' as const, kind: 'finished' as const, title: 'Work', body: 'Digest: 2 things in Cosmic', ts: 6, seq: 0, work: { key: 'digest:2026-11-24', digest: '2026-11-24' } }
+    relay.onNotice('env_mac', interrupt)
+    relay.onNotice('env_mac', digest)
+    await tick()
+    expect(delivered).toEqual([
+      { from: 'env_mac', notice: interrupt },
+      { from: 'env_mac', notice: digest }
+    ])
+  })
 })
 
 describe('HostRelay.facadeHosts', () => {

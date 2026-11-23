@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import type { Notice } from './notifier'
+import type { ThreadNotice } from './notifier'
 import {
   WEBHOOK_ATTEMPTS,
   checkWebhookUrl,
@@ -14,7 +14,7 @@ import {
 /** A stub lookup: every name is one public address. */
 const publicHost = { resolve: async () => [{ address: '93.184.216.34', family: 4 }] }
 
-const notice: Notice = {
+const notice: ThreadNotice = {
   event: 'finished',
   kind: 'finished',
   threadId: 't1',

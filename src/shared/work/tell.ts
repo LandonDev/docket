@@ -30,14 +30,15 @@ export type TellOpen =
   | { view: string; workspaceId: string; at?: string }
   /** a page above the workspaces (`shell.openWorkPlace`) */
   | { place: string; at?: string }
-  | { held: HeldRef }
+  /** a held item in the Outbox; `thread`: the thread that made it, when one did */
+  | { held: HeldRef; thread?: string }
   /** a Settings section: 'connections', 'work' */
   | { settings: string }
 export const TellOpenSchema: z.ZodType<TellOpen> = z.union([
   z.object({ thread: z.string().min(1) }).strict(),
   z.object({ view: z.string().min(1), workspaceId: z.string().min(1), at: z.string().optional() }).strict(),
   z.object({ place: z.string().min(1), at: z.string().optional() }).strict(),
-  z.object({ held: HeldRefSchema }).strict(),
+  z.object({ held: HeldRefSchema, thread: z.string().min(1).optional() }).strict(),
   z.object({ settings: z.string().min(1) }).strict()
 ])
 
@@ -87,3 +88,15 @@ export const tellLine = (text: string, max: number): string => {
   const line = text.replace(/\s+/g, ' ').trim()
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
+
+/**
+ * What a notice with no thread is about (remote/notifier.ts `work`): the
+ * day's digest, or a tell that cannot wait. `key` is what a newer notice of
+ * the same thing replaces on the phone. `tell` is the row's key (its id
+ * when it has none), the same on every host that tells the same thing.
+ */
+export type NoticeWork = { key: string; digest: string } | { key: string; tell: string; by?: number; open?: TellOpen }
+export const NoticeWorkSchema: z.ZodType<NoticeWork> = z.union([
+  z.object({ key: z.string().min(1).max(200), digest: z.string().min(1).max(40) }).strict(),
+  z.object({ key: z.string().min(1).max(200), tell: z.string().min(1).max(400), by: z.number().optional(), open: TellOpenSchema.optional() }).strict()
+])

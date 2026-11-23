@@ -135,7 +135,7 @@ import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { fenceDenied, fenceRequest, requestBases } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
-import { Notifier } from './remote/notifier'
+import { isThreadNotice, Notifier } from './remote/notifier'
 import { MacPresenceWatcher, type PresenceSource } from '../presence'
 import type { PersonIdleSource } from '../personIdle'
 import { HostRelay, PeerRelayTransport } from './remote/relay'
@@ -1129,12 +1129,15 @@ export async function startServer(
       const hostId = process.env.TEMP_CODE_HUB_HOST_ID || environmentId
       // An older host sends no kind: read it off the event.
       const n = { ...relayed, kind: relayed.kind ?? (relayed.event === 'needs_you' ? ('waiting' as const) : relayed.event) }
+      // One thing told on two hosts under one key reaches the phone once: a Work interrupt this host already sent is dropped.
+      if (n.work && n.event === 'needs_you' && workNotifier?.toldWork(n.work)) return
       const jobs: Promise<unknown>[] = []
       // A thread its person is looking at on that host: the phones hear nothing, the webhooks everything.
       if (hub && !n.onScreen) jobs.push(hub.notify({ ...n, environmentId: from }))
       if (apns && !n.onScreen) jobs.push(pushRegistry.deliver({ ...n, environmentId: from }))
-      const targets = remoteAuth.webhookTargets(n.event)
-      if (targets.length > 0) jobs.push(deliverWebhooks(targets, webhookPayload(n, hostId, from)))
+      // A webhook is told of threads: a notice of Work's has none.
+      const targets = isThreadNotice(n) ? remoteAuth.webhookTargets(n.event) : []
+      if (isThreadNotice(n) && targets.length > 0) jobs.push(deliverWebhooks(targets, webhookPayload(n, hostId, from)))
       await Promise.all(jobs)
     },
     contract: CONTRACT_VERSION
@@ -1947,7 +1950,9 @@ export async function startServer(
     addonHost,
     addonGrants,
     away,
-    notifier: () => workNotifier
+    notifier: () => workNotifier,
+    // One host sends the phone's digest: a headless host always, a desktop only when it has no saved headless host at all.
+    sendsDigest: () => isHeadless() || !listEnvironments(store).some((e) => e.platform === 'linux')
   })
   setAppWork({ tools: work.tools })
   void runDoctor() // warm the cache so the new-session modal opens ready
@@ -3843,20 +3848,22 @@ export async function startServer(
     // The payload's tc.host: the phone adds it to the subtitle when several hosts are paired.
     hostName: () => hostLabel(),
     // A thread a window shows its person right now: the phone hears nothing of it (attention.ts, FocusSignal).
-    onScreen: (id) => focus.isNamed(id)
+    onScreen: (id) => focus.isNamed(id),
+    // A person is at a window of this host with a thread in front: a Work interrupt shows there.
+    present: () => focus.focused().length > 0
   })
   workNotifier = notifier
   // The person-facing sinks (the hub, local APNs) skip an onScreen notice; webhooks, the relay (its carrier's webhooks) and the Live Activity take every one.
   if (hub) {
     notifier.onNotice(
       (n) =>
-        n.onScreen ? undefined : void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, subtitle: n.subtitle, body: n.body, url: n.url, ts: n.ts, seq: n.seq, kind: n.kind, requestId: n.requestId, choices: n.choices, hostName: n.hostName, held: n.held })
+        n.onScreen ? undefined : void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, subtitle: n.subtitle, body: n.body, url: n.url, ts: n.ts, seq: n.seq, kind: n.kind, requestId: n.requestId, choices: n.choices, hostName: n.hostName, held: n.held, work: n.work })
     )
   }
   // A host with the key posts every notice to its phones itself.
   if (apns)
     notifier.onNotice((n) =>
-      n.onScreen ? undefined : pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, subtitle: n.subtitle, body: n.body, kind: n.kind, requestId: n.requestId, choices: n.choices, hostName: n.hostName, held: n.held, ts: n.ts }).then(() => undefined)
+      n.onScreen ? undefined : pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, subtitle: n.subtitle, body: n.body, kind: n.kind, requestId: n.requestId, choices: n.choices, hostName: n.hostName, held: n.held, work: n.work, ts: n.ts }).then(() => undefined)
     )
   // Threads with a Live Activity on a phone: every change of what the card
   // shows goes out as a liveactivity push (coalesced for the task line), and
@@ -3882,10 +3889,12 @@ export async function startServer(
   batchRuns.onChange((state) => activityFeed.poke(state.masterId))
   // The waiting kind gives no reason: the card would read "Needs you  Needs you".
   notifier.onNotice((n) => {
-    if (n.event === 'needs_you' && n.kind !== 'waiting') activityFeed.needsYou(n.threadId, n.body)
+    if (isThreadNotice(n) && n.event === 'needs_you' && n.kind !== 'waiting') activityFeed.needsYou(n.threadId, n.body)
   })
   void pushRegistry.resync()
   notifier.onNotice((n) => {
+    // A webhook is told of threads: a notice of Work's has none.
+    if (!isThreadNotice(n)) return
     const targets = remoteAuth.webhookTargets(n.event)
     if (targets.length === 0) return
     return deliverWebhooks(targets, webhookPayload(n, process.env.TEMP_CODE_HUB_HOST_ID || environmentId)).then(() => undefined)

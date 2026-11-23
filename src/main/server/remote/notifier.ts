@@ -1,5 +1,6 @@
 import type { EventRow, Failure, SessionMeta } from '@shared/events'
 import { approvalLine } from '@shared/approvalLine'
+import type { NoticeWork } from '@shared/work/tell'
 
 /**
  * Thread state → one notice per transition, for the hub, per-key webhooks
@@ -35,7 +36,8 @@ export type NoticeKind = 'approval' | 'question' | 'plan' | 'waiting' | 'finishe
 export interface Notice {
   event: NoticeEvent
   kind: NoticeKind
-  threadId: string
+  /** The thread the notice is of; absent only on a Work notice (`work`). */
+  threadId?: string
   title: string
   /** The project or workspace the thread is in, when known. */
   subtitle?: string
@@ -59,7 +61,24 @@ export interface Notice {
    * client offers Send from a lock screen; it opens the item.
    */
   held?: { at: 'host'; id: string } | { at: 'lifeos'; table: 'outbox' | 'calendarOps'; id: string }
+  /**
+   * A notice of Work's with no thread (docs/agents/work-digest.md): the
+   * day's digest, or a tell that cannot wait. The Live Activity and the
+   * webhooks skip it; the phone opens what it names.
+   */
+  work?: NoticeWork
 }
+
+/** A thread's notice as its sinks have always had it: the thread named. */
+export type ThreadNotice = Notice & { threadId: string }
+export const isThreadNotice = (n: Notice): n is ThreadNotice => typeof n.threadId === 'string' && !n.work
+
+/**
+ * Asked before a thread's notice goes out (work/digest/gate.ts): true keeps
+ * it back, and the one who said so has taken it. Absent, or throwing, every
+ * notice goes as it always did.
+ */
+export type NoticeGate = (notice: ThreadNotice, session: SessionMeta) => boolean
 
 export type NoticeSink = (notice: Notice) => void | Promise<void>
 
@@ -85,6 +104,8 @@ export interface NotifierOptions {
   hostName?: () => string
   /** A desktop window shows this root to its person now (FocusSet.isNamed): the notice is stamped `onScreen`. */
   onScreen?: (rootId: string) => boolean
+  /** A person is at a desktop window of this host now: a Work interrupt is shown there, and the phone is skipped. Absent or false: it is sent. */
+  present?: () => boolean
   now?: () => number
   /** Signals inside this window settle into one decision. */
   debounceMs?: number
@@ -95,6 +116,8 @@ export interface NotifierOptions {
 export const STUCK_MINUTES_DEFAULT = 10
 export const NOTIFY_DEBOUNCE_MS = 1_500
 export const NOTIFY_SWEEP_MS = 30_000
+/** A Work interrupt of one key is told once in this long, whichever host said it first. */
+export const WORK_TOLD_MS = 3_600_000
 const BODY_CHARS = 200
 
 const WORKING = new Set<SessionMeta['status']>(['starting', 'running', 'watching'])
@@ -192,6 +215,9 @@ export class Notifier {
   private readonly log: (line: string) => void
   private unsubscribe: (() => void)[] = []
   private sweeper: ReturnType<typeof setInterval> | null = null
+  private gate: NoticeGate | null = null
+  /** The Work interrupts told through this host (its own, and the ones it carried for a host it relays), by key and clock. */
+  private readonly workTold = new Map<string, number>()
 
   constructor(private readonly options: NotifierOptions) {
     this.now = options.now ?? Date.now
@@ -509,6 +535,60 @@ export class Notifier {
     this.emit(root, 'needs_you', 'waiting', cut(oneLine(body), BODY_CHARS), seq, {}, ref)
   }
 
+  /** Work's gate for threads that started on their own; null takes it away. */
+  setGate(gate: NoticeGate | null): void {
+    this.gate = gate
+  }
+
+  /**
+   * Whether a Work interrupt of this key and clock was told in the last
+   * hour, by this host or by one whose notices it carries; a first ask
+   * records it. One thing told on two hosts under one key reaches the phone
+   * once. A digest is never held back here.
+   */
+  toldWork(work: NoticeWork): boolean {
+    if (!('tell' in work)) return false
+    const now = this.now()
+    for (const [key, at] of this.workTold) if (now - at > WORK_TOLD_MS) this.workTold.delete(key)
+    const key = `${work.tell}\u0000${work.by ?? ''}`
+    if (this.workTold.has(key)) return true
+    this.workTold.set(key, now)
+    return false
+  }
+
+  /**
+   * A notice of Work's with no thread: the day's digest, or a tell that
+   * cannot wait. No new event: an interrupt goes out as `needs_you` (time
+   * sensitive, sound) with kind `waiting`, which no client turns into
+   * buttons; the digest as `finished` (a banner, no sound). An interrupt is
+   * stamped `onScreen` while a person is at a desktop window of this host,
+   * which shows it: the phone is skipped. The digest always goes to both.
+   */
+  work(n: { title: string; subtitle?: string; body: string; urgent: boolean; work: NoticeWork }): void {
+    if (n.urgent && this.toldWork(n.work)) return void this.log(`work ${n.work.key}: told already, not sent again`)
+    const hostName = this.options.hostName?.() ?? null
+    let present = false
+    try {
+      present = n.urgent && this.options.present?.() === true
+    } catch {
+      /* unknown: it is sent */
+    }
+    const notice: Notice = {
+      event: n.urgent ? 'needs_you' : 'finished',
+      kind: n.urgent ? 'waiting' : 'finished',
+      title: cut(oneLine(n.title) || 'Work', 120),
+      ...(n.subtitle ? { subtitle: cut(oneLine(n.subtitle), 80) } : {}),
+      body: cut(oneLine(n.body), BODY_CHARS),
+      ts: this.now(),
+      seq: 0,
+      ...(hostName ? { hostName: cut(oneLine(hostName), 80) } : {}),
+      ...(present ? { onScreen: true as const } : {}),
+      work: n.work
+    }
+    this.log(`${notice.event} work ${n.work.key}: ${notice.body}${notice.onScreen ? ' (at a desktop)' : ''}`)
+    this.send(notice)
+  }
+
   private emit(
     id: string,
     event: NoticeEvent,
@@ -541,7 +621,20 @@ export class Notifier {
       ...(this.options.onScreen?.(id) ? { onScreen: true as const } : {}),
       ...(held ? { held } : {})
     }
+    if (this.gate) {
+      let kept = false
+      try {
+        kept = this.gate(notice as ThreadNotice, meta)
+      } catch (err) {
+        this.log(`gate failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      if (kept) return void this.log(`${event} ${id} "${notice.title}": ${body} (waits for the digest)`)
+    }
     this.log(`${event} ${id} "${notice.title}": ${body}${notice.onScreen ? ' (on screen)' : ''}`)
+    this.send(notice)
+  }
+
+  private send(notice: Notice): void {
     for (const sink of this.sinks) {
       try {
         const out = sink(notice)

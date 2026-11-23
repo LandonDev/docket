@@ -346,7 +346,7 @@ export class RelayServer {
     const body = {
       event: notice.event,
       kind: notice.kind,
-      threadId: notice.threadId,
+      ...(notice.threadId ? { threadId: notice.threadId } : {}),
       title: notice.title,
       ...(notice.subtitle ? { subtitle: notice.subtitle } : {}),
       body: notice.body,
@@ -357,7 +357,8 @@ export class RelayServer {
       ...(notice.hostName ? { hostName: notice.hostName } : {}),
       // A thread its person is looking at on this Mac: the box's webhooks still hear, its phones do not.
       ...(notice.onScreen ? { onScreen: true as const } : {}),
-      ...(notice.held ? { held: notice.held } : {})
+      ...(notice.held ? { held: notice.held } : {}),
+      ...(notice.work ? { work: notice.work } : {})
     }
     for (const envId of this.heartbeats.keys()) {
       const request = this.deps.link(envId)

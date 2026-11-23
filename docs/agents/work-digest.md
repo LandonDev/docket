@@ -101,6 +101,59 @@ said, the host's own zone.
 Push `{push: 'work.digest', day?, row?, gone?, settings?}` to sockets that
 hold `read`. The relay carries every method.
 
+## Telling the phone
+
+`Notifier.work(n)` (src/main/server/remote/notifier.ts) emits a notice
+with no thread. No new push event and no hub deploy: an interrupt goes out
+as `needs_you` with kind `waiting` (time sensitive, sound; no client turns
+it into buttons), the digest as `finished` (a banner, no sound). Each
+carries `work` (`NoticeWork` in src/shared/work/tell.ts): `{key, digest}`
+or `{key, tell, by?, open?}`.
+
+- **Every sink names its fields, so each was changed by name.**
+  `Notice.threadId` is optional and `work` is added; `RelayNoticeSchema`
+  (contract-relay.ts) takes an absent `threadId` and carries `work`;
+  `relayServe.ts` `onNotice` and the box's `deliverNotice` (index.ts)
+  forward it, so a Mac's notice reaches the phone through the box; the hub
+  sink and the local APNs sink pass `work`; the Live Activity sink and the
+  webhook sinks skip a notice that is not a thread's (`isThreadNotice`);
+  `apnsPayload.ts` writes `tc.work` and groups every Work notice under
+  `thread-id` `tc.work`; `push.ts` collapses on `work:<key>`.
+- **One banner for what cannot wait.** Every interrupt of a host shares the
+  key `now` (`deliver.ts` `NOW_KEY`), the same as the hub's own collapse id
+  for a notice with no thread (`<host>:needs_you`). So while more than one
+  interrupt is open (told, its `by` not passed), the body names them all:
+  "2 things need you: Budget review starts at 2:00 PM; Sign-in to Frame.io
+  ends today". One open: the title is the job, the body the row, and
+  `work.open` is the row's own target. More: the tap opens the list.
+- **The hub is not changed.** It rebuilds a notice field by field, so `work`
+  is lost there and a tap through the hub opens the app, not the target.
+  The box's own APNs carries `tc.work`. The host's hub client already sends
+  `work`, so a hub that learns the field needs no host change.
+- **A held item a thread made** (`open: {held, thread}`) goes out through
+  `Notifier.held` on that thread, as it always did: the phone app of today
+  opens the Outbox item from it.
+- **Present at a desktop.** An interrupt is stamped `onScreen` while a
+  window of this host has a thread in front of a present person
+  (`NotifierOptions.present`, the focus set): the phone is skipped, the
+  desktop shows it. If the notifier cannot tell, it sends. The digest
+  always goes.
+- **One thing told once across hosts.** `Notifier.toldWork` keeps the key
+  and clock of each interrupt this host sent or carried for a host it
+  relays, for an hour: a second one is dropped, whichever came first. A
+  clock that moved is news.
+- **One host sends the digest** (`WorkDeps.sendsDigest`, built in index.ts):
+  a headless host always, a desktop only when it has no saved Linux host.
+  Before it sends, it asks each linked host `work.digest.list` over the
+  host link with a five second limit (`PEER_WAIT_MS`) and adds the rows
+  that waited there, a key two hosts hold counted once. A Mac that was
+  asleep makes its day when it wakes and sends no phone digest.
+- **The gate.** `Notifier.setGate(gate)`: asked before a thread's notice
+  goes out; true keeps it back. With none set, or one that throws, every
+  notice is today's (a test compares them field for field).
+- A banner on a phone cannot be taken back: `done` withdraws the desktop's
+  notice, and the next interrupt's body names only what is still open.
+
 ## The swap for Today
 
 `digestOpensPort` in `src/renderer/src/lib/workSwitch.ts` is the whole
@@ -109,6 +162,6 @@ own list.
 
 ## Built so far
 
-D0: the seam, the rule, the ledger, the day, the wire. No notice is sent
-yet and nothing he sees has changed: a tell the rule calls "now" is kept
-as due until the notices land.
+D0: the seam, the rule, the ledger, the day, the wire. D1: the notices to
+the phone. Nothing calls `ctx.tell` but tests yet, so nothing he sees has
+changed.
