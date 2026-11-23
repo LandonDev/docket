@@ -132,10 +132,15 @@ describe('the ledger', () => {
     expect(got.rows[0]).toMatchObject({ date: '2026-11-03', who: 'Granger', out: 1200, in: 0, category: '', ref: null })
   })
 
-  it('reads nothing and names the headers when a needed one is gone', () => {
+  it('reads nothing and names the headers when a needed one is gone, and the columns that may hold it under another name', () => {
     const got = rowsOf(['Date', 'Who', 'Amount'], [['2026-11-03', 'Granger', 12]])
     expect(got.rows).toEqual([])
     expect(got.missing).toEqual(['In', 'Out'])
+    expect(got.renamed).toEqual(['Amount'])
+    // Cells under no header at all count too; a ledger with no rows has nothing to lose.
+    expect(rowsOf(['Date', 'Who', 'In', ''], [['2026-11-03', 'Granger', '', 12]]).renamed).toEqual(['column D'])
+    expect(rowsOf(['Date', 'Who', 'In'], []).renamed).toEqual([])
+    expect(rowsOf(HEADER, []).renamed).toEqual([])
   })
 
   it('reads a row he typed with no Ref, and skips a blank line without losing count of the rows', () => {
@@ -207,10 +212,12 @@ describe('the ledger', () => {
 
   it('reads a row he typed with money both ways as unpaid money owed, not as a cost to be paid back', () => {
     const both = read(line('2026-11-01', 'Mixed', 30, 20, 'Unpaid'))
-    expect(owedOf(both).map((o) => [o.way, o.amount, o.reimburse])).toEqual([
-      ['toHim', 3000, false],
-      ['byHim', 2000, false]
+    // Both sides say the row has two: Paid on one would settle the other.
+    expect(owedOf(both).map((o) => [o.way, o.amount, o.reimburse, o.both])).toEqual([
+      ['toHim', 3000, false, true],
+      ['byHim', 2000, false, true]
     ])
+    expect(owedOf(year).every((o) => !o.both)).toBe(true)
   })
 
   it('knows the category he last gave a seller', () => {
@@ -358,6 +365,10 @@ describe('out', () => {
     expect(html).toContain('30 mi · $21.00 at $0.70')
     expect(html).toContain('2026-04-02 Host Co 20.00.pdf')
     expect(html).not.toContain('Last year')
+    // A row with money both ways prints both, as the totals count both.
+    const both = taxSummaryHtml(read(line('2026-06-01', 'Mixed', 30, 20, 'Paid')), [], { year: 2026, job: 'Ref' })
+    expect(both).toContain('<td class="n">+$30.00 and $20.00</td>')
+    expect(both).toContain('<tr><td>In</td><td class="n">$30.00</td></tr>')
   })
 
   it('numbers an invoice after the highest used, and totals its lines', () => {

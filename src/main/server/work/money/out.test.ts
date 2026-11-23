@@ -179,6 +179,12 @@ describe('an invoice', () => {
     expect(now.owed).toEqual([])
   })
 
+  it('needs to know who it is from', async () => {
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ from: { name: '  ', address: '', pay: '' } }) })).rejects.toThrow()
+    await expect(keep({ key: 'no-from-key1', what: 'invoice', invoice: invoice({ from: { name: '', address: '', pay: '' } }) })).rejects.toThrow()
+    expect((await view()).rows).toEqual([])
+  })
+
   it('refuses one with no amount, and one due before its date', async () => {
     await expect(call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ lines: [{ what: 'Nothing', quantity: 0, rate: 100 }] }) })).rejects.toThrow('needs a line with an amount')
     await expect(call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ due: '2026-11-01' }) })).rejects.toThrow('due before its date')

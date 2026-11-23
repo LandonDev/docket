@@ -126,8 +126,11 @@ export async function ledgerOf(ctx: Svc, books: Books): Promise<Ledger> {
   return { grid, ...rowsOf(grid.header, grid.body) }
 }
 
-export async function mileageRows(ctx: Svc, books: Books): Promise<MileageRow[]> {
+export async function mileageRows(ctx: Svc & Pick<WorkCtx, 'db'>, books: Books): Promise<MileageRow[]> {
   if (!existsSync(books.mileage)) return []
+  // A log that is a link out of the job's folder is not this job's: its miles are not read, shown or exported.
+  const ws = workspaces(ctx).find((w) => w.id === books.workspaceId)
+  if (!ws || !insideFolder(ws.path, books.mileage)) return []
   const grid = await gridOf(ctx, books.mileage)
   return mileageOf(grid.header, grid.body)
 }
@@ -138,13 +141,15 @@ export function booksHere(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Books 
   if (!books || !existsSync(books.ledger)) return null
   // A ledger that is a link out of the job's folder is not this job's: it is neither read nor written.
   const ws = workspaces(ctx).find((w) => w.id === workspaceId)
-  if (!ws) return null
+  return ws && insideFolder(ws.path, books.ledger) ? books : null
+}
+
+/** Whether a file that exists lies, by its real spelling, inside a folder. */
+function insideFolder(folder: string, path: string): boolean {
   try {
-    const root = realpathSync(ws.path)
-    const real = realpathSync(books.ledger)
-    return real.startsWith(root + sep) ? books : null
+    return realpathSync(path).startsWith(realpathSync(folder) + sep)
   } catch {
-    return null
+    return false
   }
 }
 
@@ -190,7 +195,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
     toConfirm: [],
     calendar: [],
     rate: rateOf(books, year),
-    problems: ledger.missing.length ? [{ kind: 'columns', missing: ledger.missing }] : []
+    problems: ledger.missing.length ? [{ kind: 'columns', missing: ledger.missing, renamed: ledger.renamed }] : []
   }
 }
 
@@ -220,7 +225,7 @@ export async function owedFor(ctx: Pick<WorkCtx, 'db' | 'service'>, workspaceId?
   const rows: MoneyOwed['rows'] = []
   for (const { ws, books } of jobsFor(ctx, workspaceId)) {
     const ledger = await ledgerOf(ctx, books)
-    for (const o of owedOf(ledger.rows)) rows.push({ workspaceId: ws.id, sector: ws.sector, row: o.row, who: o.who, what: o.what, amount: o.amount, since: o.since, way: o.way, reimburse: o.reimburse })
+    for (const o of owedOf(ledger.rows)) rows.push({ workspaceId: ws.id, sector: ws.sector, row: o.row, who: o.who, what: o.what, amount: o.amount, since: o.since, way: o.way, reimburse: o.reimburse, both: o.both })
   }
   rows.sort((a, b) => (a.since ?? '9999').localeCompare(b.since ?? '9999'))
   return { rows, toConfirm: waiting(ctx, workspaceId) }

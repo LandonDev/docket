@@ -1,7 +1,7 @@
 import type { MoneyActed, MoneyRate, MoneyTripped, TripParams } from '@shared/contract-work-money'
 import { columnLetter, columnsOf, MILEAGE_COLUMNS, payCategory, rateFor, type Cell, type MileageColumn } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
-import { appendRow, locked, newRef, openBooks, suggestedOne, suggestedRows, write, type A1 } from './book'
+import { appendRow, locked, newRef, openBooks, othersCanOpen, suggestedOne, suggestedRows, write, type A1 } from './book'
 import { roleOf } from './calendar'
 import { gridOf, MoneyError } from './read'
 import { booksOf, eventMarks, keepMiles, markEvent, setRate, type Books, type Workspace } from './store'
@@ -14,7 +14,7 @@ import { booksOf, eventMarks, keepMiles, markEvent, setRate, type Books, type Wo
  * ledger, unpaid until he marks it paid.
  */
 
-type Ctx = Pick<WorkCtx, 'db' | 'service' | 'log'>
+type Ctx = Pick<WorkCtx, 'db' | 'service' | 'log' | 'host' | 'dataDir'>
 
 /** Appends a trip to the mileage log, under the workspace's lock. */
 async function appendTrip(ctx: Ctx, ws: Workspace, books: Books, t: { date: string; title: string; place: string; miles: number; rate: number }): Promise<NonNullable<MoneyTripped['trip']>> {
@@ -22,14 +22,15 @@ async function appendTrip(ctx: Ctx, ws: Workspace, books: Books, t: { date: stri
     const grid = await gridOf(ctx, books.mileage)
     const at = columnsOf(grid.header, MILEAGE_COLUMNS)
     if (at.Date === undefined || at.Miles === undefined) throw new MoneyError("The mileage log's columns changed: it needs Date and Miles.")
+    const shared = await othersCanOpen(ctx, books.mileage, grid.shared)
     // A log others can open takes the trip as a suggestion: each one waiting takes the next row down, as in the ledger.
-    const row = grid.last + 1 + (grid.shared ? suggestedRows(books.mileage, grid.rev) : 0)
+    const row = grid.last + 1 + (shared ? suggestedRows(books.mileage, grid.rev) : 0)
     const ref = at.Ref === undefined ? null : newRef()
     const cell = (name: MileageColumn, v: Cell): A1[] => (at[name] === undefined ? [] : [{ at: `${columnLetter(at[name]!)}${row}`, v }])
     const cells: A1[] = [...cell('Date', t.date), ...cell('Trip', t.title), ...cell('Place', t.place || null), ...cell('Miles', t.miles), ...cell('Rate', t.rate), ...(ref ? cell('Ref', ref) : [])]
     // The value is the sheet's own sum, so a rate he corrects in the row corrects the value.
     if (at.Value !== undefined && at.Rate !== undefined) cells.push({ at: `${columnLetter(at.Value)}${row}`, f: `${columnLetter(at.Miles)}${row}*${columnLetter(at.Rate)}${row}` })
-    const { suggested } = await write(ctx, books.mileage, cells, grid.shared)
+    const { suggested } = await write(ctx, books.mileage, cells, shared)
     if (suggested) suggestedOne(books.mileage, grid.rev)
     return { row, ref, value: Math.round(t.miles * t.rate * 100), ...(suggested ? { suggested: true as const } : {}) }
   })
@@ -56,7 +57,8 @@ const adding = new Map<string, Promise<MoneyTripped>>()
 
 async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams): Promise<MoneyTripped> {
   const mark = p.eventId ? eventMarks(ctx, ws.id).get(p.eventId) : undefined
-  if (mark?.state === 'added') return { pay: null, trip: null }
+  // Already added (a second press, or a list that went stale): nothing is written twice, and the answer says nothing was.
+  if (mark?.state === 'added') return { pay: null, trip: null, already: true }
   const miles = p.miles ?? 0
   const fee = p.fee ?? 0
   if (!(miles > 0) && !(fee > 0)) throw new MoneyError('A trip has miles, pay, or both.')

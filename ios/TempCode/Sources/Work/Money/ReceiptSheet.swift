@@ -152,7 +152,7 @@ struct ReceiptSheet: View {
     private func name(of job: ReceiptJob, among choices: [ReceiptJob]) -> String {
         guard choices.contains(where: { $0.name == job.name && $0.id != job.id }),
               let host = model.registry.ordered.first(where: { $0.environment.id == job.hostId }) else { return job.name }
-        return "\(job.name) · \(host.environment.name)"
+        return "\(job.name) (\(host.environment.name))"
     }
 
     private func add(_ scan: ReceiptScan) {

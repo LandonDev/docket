@@ -7,7 +7,7 @@ import { MONEY_CAPS, MoneyRequestSchemas } from '@shared/contract-work-money'
 import { LEDGER_COLUMNS, sigOf, type LedgerRow } from '@shared/work/money'
 import type { Caller } from '../modules'
 import { money } from '.'
-import { newRef } from './book'
+import { newRef, setSharedProbe } from './book'
 import { bench, LOCAL, REMOTE, req, type Bench } from './testing'
 import { moneyTools } from './tools'
 
@@ -112,6 +112,19 @@ describe('adding', () => {
     expect(b.sheets.sheets.get(ledger())!.suggested).toHaveLength(2)
   })
 
+  it('suggests where the job’s folder is a place others can open, though the sheet’s own file says nothing of it', async () => {
+    // Files' rule for where a file lies, standing in: this job's folder is in a shared library.
+    setSharedProbe((path) => path.startsWith(b.ref))
+    try {
+      expect(await entry({})).toMatchObject({ ok: true, suggested: true, row: 2 })
+      expect(b.sheets.grid(ledger())).toHaveLength(1)
+      // The other job's folder is his own: written at once.
+      expect(await entry({}, undefined, 'ws-purdue')).toEqual({ ok: true, ref: expect.any(String), row: 2 })
+    } finally {
+      setSharedProbe(null)
+    }
+  })
+
   it('appends one at a time: two at once take two rows', async () => {
     const [x, y] = await Promise.all([entry({ who: 'A' }), entry({ who: 'B' })])
     expect([(x as { row: number }).row, (y as { row: number }).row].sort()).toEqual([2, 3])
@@ -207,6 +220,26 @@ describe('acting on a row', () => {
     ])
     expect((await read()).owed).toEqual([])
   })
+
+  it('refuses Paid on a row with money both ways: its one status would settle the side he did not press', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    for (const [at, v] of [
+      ['A2', '2026-11-20'],
+      ['B2', 'Mixed'],
+      ['E2', 30],
+      ['F2', 20],
+      ['G2', 'Unpaid']
+    ] as const)
+      b.sheets.type(ledger(), at, v)
+    const got = await read()
+    expect(got.owed.map((o) => [o.way, o.both])).toEqual([
+      ['toHim', true],
+      ['byHim', true]
+    ])
+    const rev = b.sheets.sheets.get(ledger())!.rev
+    await expect(call('work.money.paid', { workspaceId: 'ws-ref', at: atOf(got.rows[0]) })).rejects.toThrow('money in and money out')
+    expect(b.sheets.sheets.get(ledger())!.rev).toBe(rev)
+  })
 })
 
 describe('reading', () => {
@@ -242,15 +275,29 @@ describe('reading', () => {
   })
 
   it('says the columns changed when a needed header is gone, refuses to write, and restores them at the end on his press', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    // The header went with nothing under it: there is nothing of his to misread, so it is put back at the end.
+    b.sheets.type(ledger(), 'F1', '')
+    const got = await read()
+    expect(got.problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: [] }])
+    await expect(entry({})).rejects.toThrow("The ledger's columns changed.")
+    await call('work.money.open', { workspaceId: 'ws-ref', restore: true })
+    expect(b.sheets.grid(ledger())[0]).toEqual(['Date', 'Who', 'For', 'Category', 'In', '', 'Status', 'Paid on', 'Receipt', 'Ref', 'Out'])
+    expect((await read()).problems).toEqual([])
+  })
+
+  it('never restores over a column he renamed: his figures are under it, so naming it back is his', async () => {
     await entry({})
     b.sheets.type(ledger(), 'F1', 'Spent')
     const got = await read()
-    expect(got.problems).toEqual([{ kind: 'columns', missing: ['Out'] }])
+    expect(got.problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: ['Spent'] }])
     expect(got.rows).toEqual([])
-    await expect(entry({})).rejects.toThrow("The ledger's columns changed.")
-    await call('work.money.open', { workspaceId: 'ws-ref', restore: true })
-    expect(b.sheets.grid(ledger())[0]).toEqual(['Date', 'Who', 'For', 'Category', 'In', 'Spent', 'Status', 'Paid on', 'Receipt', 'Ref', 'Out'])
-    expect((await read()).problems).toEqual([])
+    const rev = b.sheets.sheets.get(ledger())!.rev
+    await expect(call('work.money.open', { workspaceId: 'ws-ref', restore: true })).rejects.toThrow('Spent may be it. Name it back in the ledger.')
+    expect(b.sheets.sheets.get(ledger())!.rev).toBe(rev)
+    // He names it back: his expense is read again, never as nothing.
+    b.sheets.type(ledger(), 'F1', 'Out')
+    expect((await read()).rows[0].out).toBe(1043)
   })
 
   it('reads past a long stretch of blank rows he left, and appends under the last row that holds anything', async () => {
@@ -297,11 +344,11 @@ describe('reading', () => {
   })
 
   it('says so when restored columns only wait as a suggestion on a sheet others can open', async () => {
-    await entry({})
-    b.sheets.type(ledger(), 'F1', 'Spent')
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    b.sheets.type(ledger(), 'F1', '')
     b.sheets.sheets.get(ledger())!.shared = true
     expect((await call<{ suggested?: true }>('work.money.open', { workspaceId: 'ws-ref', restore: true })).suggested).toBe(true)
-    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'] }])
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: [] }])
     b.sheets.sheets.get(ledger())!.shared = false
     expect((await call<{ suggested?: true }>('work.money.open', { workspaceId: 'ws-ref', restore: true })).suggested).toBeUndefined()
   })

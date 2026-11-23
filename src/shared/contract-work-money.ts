@@ -113,7 +113,8 @@ export const TripParamsSchema = z.object({
 export type TripParams = z.infer<typeof TripParamsSchema>
 
 const InvoiceLineSchema = z.object({ what: z.string().trim().min(1).max(300), quantity: z.number().min(0).max(1_000_000), rate: z.number().int().min(0).max(100_000_000_000) })
-export const InvoiceFromSchema = z.object({ name: z.string().trim().max(200), address: z.string().trim().max(600), pay: z.string().trim().max(600) })
+/** His own details on what he sends. A name is needed: the one who gets the page must know who it is from. */
+export const InvoiceFromSchema = z.object({ name: z.string().trim().min(1).max(200), address: z.string().trim().max(600), pay: z.string().trim().max(600) })
 /** An invoice (it asks to be paid) or a purchase request (it asks leave to buy): `Invoice` in work/money.ts. */
 export const InvoiceSchema = z.object({
   kind: z.enum(['invoice', 'request']),
@@ -207,8 +208,14 @@ export interface MoneyBooks {
   suggested?: true
 }
 
-/** What keeps the view from reading the ledger as money. */
-export type MoneyProblem = { kind: 'columns'; missing: string[] }
+/**
+ * What keeps the view from reading the ledger as money: needed headers are
+ * gone. `renamed` names the headers Money does not know that hold cells:
+ * with any, a missing column is likely there under another name, so
+ * `restore` (which adds empty columns) is refused and the fix is his, in
+ * the sheet: name the column back.
+ */
+export type MoneyProblem = { kind: 'columns'; missing: string[]; renamed: string[] }
 
 export interface MoneyRead {
   /** false: this job has no ledger yet, and everything below is empty */
@@ -258,6 +265,8 @@ export interface MoneyEvents {
   events: CalendarOffer[]
 }
 export interface MoneyTripped {
+  /** the event it named was added before: nothing was written this time */
+  already?: true
   /** the ledger's row for the pay, when there was a fee */
   pay: MoneyActed | null
   /** the mileage log's row, when there were miles; `suggested`: the log is a sheet others can open, and the row waits there as a suggestion */
@@ -349,7 +358,7 @@ export interface MoneySums {
   rows: { workspaceId: string; sector: SectorKey | null; in: number; out: number; owedToHim: number; heOwes: number; miles: number; currency: 'USD' }[]
 }
 export interface MoneyOwed {
-  rows: { workspaceId: string; sector: SectorKey | null; row: number; who: string; what: string; amount: number; since: string | null; way: 'toHim' | 'byHim'; reimburse: boolean }[]
+  rows: { workspaceId: string; sector: SectorKey | null; row: number; who: string; what: string; amount: number; since: string | null; way: 'toHim' | 'byHim'; reimburse: boolean; both: boolean }[]
   toConfirm: number
 }
 export interface MoneyHits {

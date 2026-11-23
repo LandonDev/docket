@@ -39,8 +39,8 @@ describe('Today', () => {
     const got = await call<MoneyOwed>('work.money.owed', {})
     expect(got).toEqual({
       rows: [
-        { workspaceId: 'ws-ref', sector: 'ref', row: 2, who: 'West Side HS', what: '', amount: 8000, since: '2026-11-07', way: 'toHim', reimburse: false },
-        { workspaceId: 'ws-purdue', sector: 'purdue', row: 2, who: 'Purdue Catering', what: '', amount: 2000, since: '2026-11-15', way: 'byHim', reimburse: false }
+        { workspaceId: 'ws-ref', sector: 'ref', row: 2, who: 'West Side HS', what: '', amount: 8000, since: '2026-11-07', way: 'toHim', reimburse: false, both: false },
+        { workspaceId: 'ws-purdue', sector: 'purdue', row: 2, who: 'Purdue Catering', what: '', amount: 2000, since: '2026-11-15', way: 'byHim', reimburse: false, both: false }
       ],
       toConfirm: 0
     })

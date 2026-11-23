@@ -273,6 +273,34 @@ describe('his accept', () => {
     expect((await view()).toConfirm).toHaveLength(1)
   })
 
+  it('keeps nothing when the ledger has no Receipt column to name the file in', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    b.sheets.type(ledger(), 'I1', 'Paperwork')
+    const got = await send('coffee.png')
+    await settle()
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('no Receipt column')
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toEqual([])
+    expect(b.sheets.grid(ledger())).toHaveLength(1)
+    expect((await view()).toConfirm).toHaveLength(1)
+    // An entry with no file needs no such column.
+    expect(await call('work.money.entry', { workspaceId: 'ws-ref', fields: fields() })).toMatchObject({ ok: true })
+  })
+
+  it('tries the filing again when a receipt he accepted on the phone could not be filed the first time', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    b.sheets.type(ledger(), 'A1', 'When')
+    const more = { source: 'phone', lines: [], seen: true, fields: { amount: 4817, date: '2026-11-14', who: 'Northside Fuel Stop', category: 'Travel' } }
+    await expect(send('fuel.jpg', { key: 'retry-key-01', more })).rejects.toThrow("The ledger's columns changed.")
+    // It waits here meanwhile, and the phone keeps its draft (the call failed).
+    expect((await view()).toConfirm).toHaveLength(1)
+    // He fixes the ledger and presses Save on the phone again: the same key files it now, and says so.
+    b.sheets.type(ledger(), 'A1', 'Date')
+    expect(await send('fuel.jpg', { key: 'retry-key-01', more })).toEqual({ id: expect.any(String), state: 'filed' })
+    const now = await view()
+    expect(now.toConfirm).toEqual([])
+    expect(now.rows).toMatchObject([{ who: 'Northside Fuel Stop', out: 4817 }])
+  })
+
   it('drops a waiting one; a dropped one cannot be accepted, a retry does not bring it back, and Undo does, as it was', async () => {
     const got = await send('coffee.png', { key: 'to-drop-01' })
     await settle()

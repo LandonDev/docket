@@ -1,3 +1,4 @@
+import { rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { CalendarOffer, MoneyRead, MoneyTripped } from '@shared/contract-work-money'
@@ -89,10 +90,30 @@ describe('what the calendar offers', () => {
     expect(await offered()).toEqual([])
   })
 
-  it('lists the job’s ended events that name a place for Add → Trip…, the latest first, added or not', async () => {
+  it('lists the job’s ended events that name a place for Add → Trip…, the latest first, leaving out what is already added', async () => {
     b.lifeos.events = [game('Harrison', 2), { _id: 'dentist', sector: 'ref', title: 'Dentist', startsAt: at(3), allDay: false, location: 'Main St' }, { _id: 'dues', sector: 'ref', title: 'Dues', startsAt: at(5), allDay: true }]
-    const got = await call<{ events: CalendarOffer[] }>('work.money.events', { workspaceId: 'ws-ref' })
-    expect(got.events.map((e) => e.eventId)).toEqual(['Harrison', 'dentist'])
+    const events = () => call<{ events: CalendarOffer[] }>('work.money.events', { workspaceId: 'ws-ref' }).then((r) => r.events.map((e) => e.eventId))
+    expect(await events()).toEqual(['Harrison', 'dentist'])
+    const [harrison] = await offered()
+    await trip(harrison, { fee: 7500, miles: 24 })
+    expect(await events()).toEqual(['dentist'])
+    // A list that went stale: adding it again writes nothing, and says it was added before.
+    expect(await trip(harrison, { fee: 7500, miles: 24 })).toEqual({ pay: null, trip: null, already: true })
+    // A skipped one may still be added by hand.
+    await call('work.money.skip', { workspaceId: 'ws-ref', eventId: 'dentist' })
+    expect(await events()).toEqual(['dentist'])
+  })
+
+  it('reads no miles from a mileage log that is a link out of the job’s folder', async () => {
+    await call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-11-20', title: 'Clinic', miles: 10 })
+    expect((await view()).miles.miles).toBe(10)
+    // The log is swapped for a link to a sheet outside the job.
+    const outside = join(b.root, 'elsewhere', 'Other.tcsheet')
+    b.sheets.sheets.set(outside, b.sheets.sheets.get(mileage())!)
+    writeFileSync(outside, '')
+    rmSync(mileage())
+    symlinkSync(outside, mileage())
+    expect((await view()).miles.miles).toBe(0)
   })
 })
 
@@ -116,7 +137,7 @@ describe('adding a trip', () => {
     b.lifeos.events = [game('Harrison', 2, { amount: { cents: 7500, currency: 'USD' } })]
     const [offer] = await offered()
     await trip(offer, { miles: 24 })
-    expect(await trip(offer, { miles: 24 })).toEqual({ pay: null, trip: null })
+    expect(await trip(offer, { miles: 24 })).toEqual({ pay: null, trip: null, already: true })
     expect(b.sheets.grid(ledger())).toHaveLength(2)
     expect(b.sheets.grid(mileage())).toHaveLength(2)
     expect(await offered()).toEqual([])

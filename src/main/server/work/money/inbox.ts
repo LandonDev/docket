@@ -205,7 +205,15 @@ export async function receive(ctx: Ctx, p: ReceiveParams, by: Caller, admit: (wo
   p = { ...p, name: filed }
   const ws = admit(jobOf(ctx, p).id)
   const before = byKey(ctx, p.key)
-  if (before && before.state !== 'partial') return answer(before)
+  if (before && before.state !== 'partial') {
+    // He accepted it where he sent it from (an amount and a date) and it still waits here: its filing failed the
+    // first time (the ledger's columns, say). The same Save again tries the filing again, and answers what came of it.
+    if ((before.state === 'ready' || before.state === 'reading') && p.fields?.amount && p.fields.date) {
+      const acted = await accept(ctx, before.id, { date: p.fields.date, who: p.fields.who ?? '', what: '', category: p.fields.category ?? '', way: 'out', amount: p.fields.amount, status: 'Paid' }, workspaceOf(ctx, before.workspace_id) ?? ws)
+      return { id: before.id, state: 'filed', ...('ok' in acted && acted.suggested ? { suggested: true } : {}) }
+    }
+    return answer(before)
+  }
   const id = before?.id ?? insert(ctx, { key: p.key, workspaceId: ws.id, state: 'partial', source: p.source, name: basename(p.name.replace(/\\/g, '/')).slice(0, 255), mime: p.mime })
   const dir = folderOf(ctx, id)
   const name = safeName(p.name)

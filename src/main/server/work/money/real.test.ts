@@ -85,3 +85,22 @@ describe('the ledger on the real sheet host', () => {
     expect(sheet).toMatch(/<c r="F2"[^>]*><v>10\.43<\/v>/)
   })
 })
+
+describe('a job whose folder is a place others can open', () => {
+  it('takes a row as a suggestion in the real sheet file, where he accepts it; nothing is written until then', async () => {
+    const { setSharedProbe } = await import('./book')
+    setSharedProbe(() => true)
+    try {
+      const before = (await call<MoneyRead>('work.money.read', { workspaceId: 'ws-ref', from: '2026-11-01', to: '2026-12-01' })).rows.length
+      const acted = await call<MoneyActed>('work.money.entry', { workspaceId: 'ws-ref', fields: { date: '2026-11-22', who: 'Shared place', way: 'out', amount: 500 } })
+      expect(acted).toMatchObject({ ok: true, suggested: true })
+      // The sheet's own host holds it as one change set of suggestions, and the ledger reads as it did.
+      const open = (await ctx.service.internal('/internal/sheet/open', { sheet: { tcsheet: ledger } })) as { suggestions: { state: string }[] }
+      expect(open.suggestions.length).toBeGreaterThan(0)
+      expect(open.suggestions.every((s) => s.state === 'pending')).toBe(true)
+      expect((await call<MoneyRead>('work.money.read', { workspaceId: 'ws-ref', from: '2026-11-01', to: '2026-12-01' })).rows).toHaveLength(before)
+    } finally {
+      setSharedProbe(null)
+    }
+  })
+})

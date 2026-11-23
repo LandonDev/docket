@@ -5,6 +5,7 @@ import type { EntryFields, MoneyActed } from '@shared/contract-work-money'
 import {
   columnLetter,
   columnsOf,
+  rowsOf,
   countOf,
   dollarsOf,
   findRow,
@@ -30,7 +31,7 @@ import { booksOf, putBooks, type Books, type Workspace } from './store'
  * asked to; it never reorders or deletes his cells.
  */
 
-type Ctx = Pick<WorkCtx, 'db' | 'service' | 'log'>
+type Ctx = Pick<WorkCtx, 'db' | 'service' | 'log' | 'host' | 'dataDir'>
 
 export const MONEY_FOLDER = 'Money'
 /** Who a write is credited to in the sheet's history. */
@@ -68,6 +69,28 @@ export function moneyFolder(ws: Pick<Workspace, 'path'>, ...sub: string[]): stri
 
 const sheet = (path: string): { tcsheet: string } => ({ tcsheet: path })
 export type A1 = { at: string; v?: string | number | boolean | null; f?: string }
+
+/**
+ * Whether others can open a sheet of Money's: the sheet's own word (a guest
+ * link), or where its file lies. A job whose folder is inside a Teams or
+ * OneDrive library or a cloud folder is a place others can open, by Files'
+ * own rule (`sharedOf`), though the sheet's file knows nothing of it: a
+ * write there waits as a suggestion, as on any shared sheet.
+ */
+export async function othersCanOpen(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, path: string, sheetSays: boolean): Promise<boolean> {
+  if (sheetSays) return true
+  if (probe) return probe(path)
+  try {
+    const { sharedOf } = await import('../files/policy')
+    return sharedOf(ctx, { at: 'file', host: ctx.host, path })
+  } catch {
+    // Files' rule could not be asked (its pillar did not load): the sheet's own word stands.
+    return false
+  }
+}
+let probe: ((path: string) => boolean) | null = null
+/** A test hands in its own answer for where a file lies. */
+export const setSharedProbe = (p: ((path: string) => boolean) | null): void => void (probe = p)
 
 /** One at a time for each workspace: an append reads the first empty row and writes it with nothing between. */
 const tails = new Map<string, Promise<unknown>>()
@@ -153,11 +176,14 @@ export function restoreColumns(ctx: Ctx, ws: Workspace, books: Books): Promise<{
     const grid = await gridOf(ctx, books.ledger)
     const have = columnsOf(grid.header, LEDGER_COLUMNS)
     const missing = LEDGER_COLUMNS.filter((c) => have[c] === undefined)
+    // A column he renamed still holds his figures: an empty column of the old name beside it would read them as nothing.
+    const read = rowsOf(grid.header, grid.body)
+    if (read.renamed.length) throw new MoneyError(`The ledger has no ${read.missing.join(' or ')} column, and ${read.renamed.join(', ')} may be it. Name it back in the ledger.`)
     return write(
       ctx,
       books.ledger,
       missing.map((v, i) => ({ at: `${columnLetter(grid.header.length + i)}1`, v })),
-      grid.shared
+      await othersCanOpen(ctx, books.ledger, grid.shared)
     )
   })
 }
@@ -196,11 +222,14 @@ export function appendRow(ctx: Ctx, ws: Workspace, books: Books, values: Values)
   return locked(ws.id, async () => {
     const ledger = await ledgerOf(ctx, books)
     if (ledger.missing.length) throw new MoneyError(COLUMNS_CHANGED)
+    // A row that keeps a file must be able to name it: with no Receipt column the file would be kept and its row would not lead to it.
+    if (values.Receipt && ledger.columns.Receipt === undefined) throw new MoneyError('The ledger has no Receipt column, so this row could not name its file. Add a Receipt column in the ledger, then save again.')
+    const shared = await othersCanOpen(ctx, books.ledger, ledger.grid.shared)
     // On a sheet others can open the row waits as a suggestion and the sheet's last row does not move: each one waiting takes the next row down.
-    const waits = ledger.grid.shared ? suggestedRows(books.ledger, ledger.grid.rev) : 0
+    const waits = shared ? suggestedRows(books.ledger, ledger.grid.rev) : 0
     const row = ledger.grid.last + 1 + waits
     const ref = ledger.columns.Ref === undefined ? null : newRef()
-    const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row, { ...values, ...(ref ? { Ref: ref } : {}) }), ledger.grid.shared)
+    const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row, { ...values, ...(ref ? { Ref: ref } : {}) }), shared)
     if (suggested) suggestedOne(books.ledger, ledger.grid.rev)
     return { ref, row, suggested }
   })
@@ -233,7 +262,7 @@ function act(ctx: Ctx, ws: Workspace, books: Books, at: RowAt, values: (row: Led
     if (ledger.missing.length) throw new MoneyError(COLUMNS_CHANGED)
     const row = findRow(ledger.rows, at)
     if (!row) return { changed: true as const }
-    const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row.row, values(row)), ledger.grid.shared)
+    const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row.row, values(row)), await othersCanOpen(ctx, books.ledger, ledger.grid.shared))
     return { ok: true as const, ref: row.ref, row: row.row, ...(suggested ? { suggested: true as const } : {}) }
   })
 }
@@ -249,6 +278,8 @@ export const editRow = (ctx: Ctx, ws: Workspace, books: Books, at: RowAt, fields
 /** An open row is settled: an unpaid one is Paid, a cost waiting to be paid back is Reimbursed, on that day. A row that is not open is left as it is. */
 export const payRow = (ctx: Ctx, ws: Workspace, books: Books, at: RowAt, on: string = today()): Promise<MoneyActed> =>
   act(ctx, ws, books, at, (row) => {
+    // One status covers both sides of a row with money in and out: Paid on one would settle the other, which he did not press.
+    if (row.in && row.out) throw new MoneyError(BOTH_WAYS)
     const c = countOf(row)
     return c.owedToHim || c.heOwes ? { Status: paidStatus(row.status), 'Paid on': on } : {}
   })

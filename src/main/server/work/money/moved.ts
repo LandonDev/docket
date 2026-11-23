@@ -3,7 +3,7 @@ import { join, relative, sep } from 'node:path'
 import { columnLetter } from '@shared/work/money'
 import type { FileMoved } from '../files/hooks'
 import type { WorkCtx } from '../modules'
-import { locked, MONEY_FOLDER } from './book'
+import { locked, MONEY_FOLDER, othersCanOpen } from './book'
 import { forgetGrid, ledgerOf } from './read'
 import { booksOf, putBooks, workspaces } from './store'
 
@@ -16,7 +16,7 @@ import { booksOf, putBooks, workspaces } from './store'
  * written after it, and only once the file is truly at its new place.
  */
 
-type Ctx = Pick<WorkCtx, 'db' | 'service' | 'log' | 'host'>
+type Ctx = Pick<WorkCtx, 'db' | 'service' | 'log' | 'host' | 'dataDir'>
 
 const under = (root: string, path: string): string | null => {
   const rel = relative(root, path)
@@ -33,7 +33,8 @@ export async function relink(ctx: Ctx, workspaceId: string, from: string, to: st
     const col = ledger.columns.Receipt
     if (col === undefined) return 0
     const cells = ledger.rows.filter((r) => r.receipt === from).map((r) => ({ at: `${columnLetter(col)}${r.row}`, v: to }))
-    if (cells.length) await ctx.service.internal('/internal/sheet/cells', { sheet: { tcsheet: books.ledger }, cells, by: 'money', suggest: ledger.grid.shared, ...(ledger.grid.shared ? { reason: 'Money' } : {}) })
+    const shared = cells.length > 0 && (await othersCanOpen(ctx, books.ledger, ledger.grid.shared))
+    if (cells.length) await ctx.service.internal('/internal/sheet/cells', { sheet: { tcsheet: books.ledger }, cells, by: 'money', suggest: shared, ...(shared ? { reason: 'Money' } : {}) })
     return cells.length
   })
 }

@@ -193,6 +193,13 @@ export interface LedgerRead {
   columns: Columns<LedgerColumn>
   /** the needed headers the sheet lacks: with any, no row is read */
   missing: LedgerColumn[]
+  /**
+   * With a needed header missing: the headers Money does not know that
+   * have cells under them. One of them is likely the missing column under
+   * another name (he renamed Out to Spent), so adding an empty column
+   * would read his figures as nothing: the fix is his, in the sheet.
+   */
+  renamed: string[]
 }
 
 const textOf = (cell: Cell): string => (cell === null || cell === undefined ? '' : String(cell).trim())
@@ -205,7 +212,18 @@ const textOf = (cell: Cell): string => (cell === null || cell === undefined ? ''
 export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])[], firstRow = 2): LedgerRead {
   const columns = columnsOf(header, LEDGER_COLUMNS)
   const missing = LEDGER_NEEDED.filter((c) => columns[c] === undefined)
-  if (missing.length) return { rows: [], columns, missing }
+  if (missing.length) {
+    const known = new Set(LEDGER_COLUMNS.map((c) => c.toLowerCase()))
+    const width = Math.max(header.length, ...body.map((line) => line.length))
+    const renamed: string[] = []
+    for (let i = 0; i < width; i++) {
+      const name = String(header[i] ?? '').trim()
+      if (known.has(name.toLowerCase())) continue
+      // A column with cells under a header Money does not know, or under none: his figures may be there.
+      if (body.some((line) => line[i] !== undefined && line[i] !== null && line[i] !== '')) renamed.push(name || `column ${columnLetter(i)}`)
+    }
+    return { rows: [], columns, missing, renamed }
+  }
   const at = (line: readonly Cell[], c: LedgerColumn): Cell => (columns[c] === undefined ? undefined : line[columns[c]!])
   const rows: LedgerRow[] = []
   body.forEach((line, i) => {
@@ -228,7 +246,7 @@ export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])
       receipt: textOf(at(line, 'Receipt'))
     })
   })
-  return { rows, columns, missing: [] }
+  return { rows, columns, missing: [], renamed: [] }
 }
 
 /** What a row was when the window last saw it: every cell Money reads of it. A row that no longer reads so has changed, whichever cell he changed. */
@@ -381,6 +399,8 @@ export interface OwedRow {
   way: 'toHim' | 'byHim'
   /** a cost he paid that is to be paid back: `who` is who he paid, not who owes him */
   reimburse: boolean
+  /** the row has money both in and out (he typed it so): one status covers both sides, so Paid on one would settle the other; it is his to settle in the sheet */
+  both: boolean
 }
 
 /** Every open row, the oldest first: what is owed to him, and what he owes. */
@@ -388,7 +408,7 @@ export function owedOf(rows: readonly LedgerRow[]): OwedRow[] {
   const out: OwedRow[] = []
   for (const row of rows) {
     const c = countOf(row)
-    const base = { row: row.row, ref: row.ref, sig: sigOf(row), who: row.who, what: row.what, since: row.date }
+    const base = { row: row.row, ref: row.ref, sig: sigOf(row), who: row.who, what: row.what, since: row.date, both: row.in > 0 && row.out > 0 }
     // To be paid back by its status alone: a row he typed with money both ways is no reimbursement.
     if (c.owedToHim) out.push({ ...base, amount: c.owedToHim, way: 'toHim', reimburse: row.status === 'To reimburse' })
     if (c.heOwes) out.push({ ...base, amount: c.heOwes, way: 'byHim', reimburse: false })
@@ -739,7 +759,8 @@ export function taxSummaryHtml(rows: readonly LedgerRow[], mileage: readonly Mil
   const catRows = cats.map((c) => `<tr><td>${esc(c.category)}</td><td class="n">${c.amount > 0 ? '+' : ''}${formatMoney(Math.abs(c.amount))}</td></tr>`).join('')
   const rowLines = inside
     .map((r) => {
-      const amount = r.in ? `+${formatMoney(r.in)}` : formatMoney(r.out)
+      // A row with money both ways prints both, as the totals and the CSV count both.
+      const amount = r.in && r.out ? `+${formatMoney(r.in)} and ${formatMoney(r.out)}` : r.in ? `+${formatMoney(r.in)}` : formatMoney(r.out)
       const receipt = r.receipt ? esc(r.receipt.split('/').pop() ?? r.receipt) : ''
       return `<tr><td>${esc(r.date ?? '')}</td><td>${esc(r.who)}</td><td>${esc(r.category)}</td><td>${esc(r.status)}</td><td class="n">${amount}</td><td>${receipt}</td></tr>`
     })

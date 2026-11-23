@@ -148,13 +148,15 @@ export async function offers(ctx: Ctx, ws: Workspace, books: Books | null, now =
   return withDrives(ctx, ws, list)
 }
 
-/** The job's ended events that name a place, the latest first: what Add → Trip… lists. */
+/** The job's ended events that name a place and are not yet added, the latest first: what Add → Trip… lists. */
 export async function placed(ctx: Ctx, ws: Workspace, now = Date.now()): Promise<CalendarOffer[]> {
+  const marks = eventMarks(ctx, ws.id)
   return withDrives(
     ctx,
     ws,
     (await endedEvents(ctx, ws, now))
-      .filter((e) => e.location?.trim())
+      // One already added is in the ledger and the log: offering it again would add nothing.
+      .filter((e) => e.location?.trim() && marks.get(e._id)?.state !== 'added')
       .reverse()
       .map((e) => offerOf(ctx, ws, e))
   )

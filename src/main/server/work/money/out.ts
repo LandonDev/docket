@@ -145,6 +145,7 @@ export async function invoiceNext(ctx: Ctx, ws: Workspace, kind: Invoice['kind']
 export async function invoicePage(ctx: Ctx, ws: Workspace, inv: Invoice): Promise<MoneyInvoicePage> {
   if (invoiceTotal(inv.lines) <= 0) throw new MoneyError(`${TITLE[inv.kind] === 'Invoice' ? 'An invoice' : 'A purchase request'} needs a line with an amount.`)
   if (inv.due && inv.due < inv.date) throw new MoneyError('It is due before its date.')
+  if (!inv.from.name.trim()) throw new MoneyError('Say who it is from.')
   await openBooks(ctx, ws)
   const kept = keptOf(ctx, ws.id)
   setInvoice(ctx, ws.id, {
