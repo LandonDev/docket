@@ -76,14 +76,22 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   workspace (`locked`) the ledger is read for its last row that holds
   anything and the new row's cells are written at once with
   `/internal/sheet/cells` (`by: 'money'`). A sheet others can open
-  (`open().shared`) takes the row as a suggestion, and the answer says
-  `suggested`.
+  (`open().shared`) takes the row as a suggestion, each waiting one on a
+  row of its own, and the answer says `suggested`; the window then says
+  "Suggested in the ledger. Accept it there."
+- **Inside the job's folder** (`moneyFolder`, `insideJob`): every folder
+  Money writes into is made one level at a time and checked by its real
+  spelling. A `Money` folder, or a ledger, that is a link out of the job's
+  folder is refused: nothing is read or written through it.
 - **Acting on a row** (`editRow`, `payRow`): the window names the row as
-  `{ref, row, sig}`, where `sig` is its date, name and amounts as it last
-  read them (`sigOf`). The host reads the sheet again and finds the row by
-  `Ref`, else by its number while it still reads the same (`findRow`). No
-  match answers `{changed: true}` and writes nothing. Only the cells whose
-  reading differs are written. A row he typed is never given a `Ref`.
+  `{ref, row, sig}`, where `sig` is its date, name, amounts and status as
+  it last read them (`sigOf`). The host reads the sheet again and finds the
+  row by `Ref` wherever it now stands, else by its number; either way only
+  while it still reads the same (`findRow`). A row he changed since the
+  window read it answers `{changed: true}` and nothing is written, so an
+  edit of one field never puts an old amount back and Paid never settles a
+  figure he did not see. Only the cells whose reading differs are written.
+  A row he typed is never given a `Ref`.
 - **The look** (`dress`): a bold first row that stays in view, set once at
   create through `/internal/sheet/apply` (raw sheet mutations).
   `real.test.ts` holds that both reach an exported Excel file. Currency
@@ -112,15 +120,23 @@ nothing twice. Only his accept writes the ledger.
   here in that sector.
 - **The sender's own reading**: with `lines` (the phone's reader) the host
   does not read the file again. With `fields` holding an amount and a date
-  it is filed at once, as his accept; else it waits.
+  it is filed at once, as his accept; else it waits. With `seen` (the
+  sender had shown him what the parser read) a field he left empty stays
+  empty; without it, the host's own parse fills what is empty.
 - **Accept** (`work.money.accept {id, fields, workspaceId?}`): the file is
   copied to `Money/Receipts/<year>/` under `receiptName` with an exclusive
   create, never over another file ("… (2).png"), the row is appended with
   the path in Receipt, and the waiting one is filed. `workspaceId` sends it
   to another job. If the row cannot be written the kept copy is removed and
-  the receipt still waits. A second accept answers the first.
-- **Drop** (`work.money.drop`) removes the waiting file. A retry of a
-  dropped key answers `dropped` and brings nothing back.
+  the receipt still waits. One accept a receipt at a time: a second press
+  while the first is being filed answers the first, and a later one
+  answers what was filed.
+- **Drop** (`work.money.drop {id, undo?}`) takes the receipt out of the
+  list and keeps its file a week (a phone's scan is the only copy once the
+  phone has let go of its draft), so `undo` puts it back as it was. A
+  retry of a dropped key answers `dropped` and brings nothing back; a
+  reading that ends after the drop does not either; a receipt being filed
+  right now is not dropped.
 - **A restart** (`resume`, in the module's `start`): rows left `reading` are
   read again, parts nobody finished in a day go, filed and dropped rows are
   kept 30 days.
@@ -141,8 +157,10 @@ Offered to a job's thread alone (a Work Chat gets none):
   mileage line, then each entry.
 - `money_add {date, who, amount, way, category?, for?, file?}` and
   `money_receipt {file | item}` land in To confirm with the thread named.
-  A file must be in the job's own folder or among the files the app keeps
-  (a mail's attachment a canvas item fetched). No tool writes the ledger.
+  A file must be in the job's own folder or among the files the canvas
+  keeps for that thread's own pane (a mail's attachment one of its items
+  fetched): not another thread's, not another job's waiting receipts. No
+  tool writes the ledger.
 
 Every wire method that changes something (`MONEY_OWNER_ONLY`) is refused for
 a thread's own call before its params are read.
@@ -188,7 +206,10 @@ box. About 4 seconds a file.
 - `work.money.trip` writes the pay to the ledger (money in, Unpaid, under
   `payCategory(sector)`) and the trip to the mileage log (`Date | Trip |
   Place | Miles | Rate | Value | Ref`, Value a formula), keeps the miles by
-  place, and marks the event added. `work.money.skip` marks it skipped.
+  place, and marks the event added. One add an event at a time; when the
+  pay was written and the trip then failed, the event stays offered
+  (`adding`) and the next add writes the trip alone. `work.money.skip`
+  marks it skipped.
 - The rate is `rateFor(year, his own)`: his for that year, else
   `MILEAGE_RATES` ($0.70 for 2025), else the newest year before it.
   `work.money.rate` sets a year's.
@@ -199,16 +220,19 @@ box. About 4 seconds a file.
   `Ledger <year>.csv` (`csvOf`, RFC 4180: the year's rows, then the mileage
   rows) and `Ledger <year>.xlsx` (`ctx.convert({from: 'csv', to: 'xlsx'})`),
   and answers the summary's page (`taxSummaryHtml`). A second export
-  replaces the first's files.
+  replaces the first's files and says so (`replaced`).
 - `work.money.invoiceNext` and `work.money.invoice` number an invoice (from
   1001, one past the highest in the ledger or the books), keep his details
   and terms, and answer its page (`invoiceHtml`). A purchase request is the
-  same page under its name and counts by itself.
+  same page under its name; it counts by itself and keeps its own details
+  and dates, so it never overwrites how he is paid or when an invoice is
+  due.
 - A page is printed by the formats pillar from the window
   (`work.formats.print`) and handed back in parts with `work.money.keep`: a
   summary goes to the year's folder; an invoice goes to `Money/Invoices/`
   and is filed as its row (money in, Unpaid; a request: money out,
-  `Requested`).
+  `Requested`). The window sends one key for every try of one Create, and
+  the host files a key once.
 - Money declares no act kind. An invoice leaves from Mail's composer, by his
   own Send; an agent's draft is the held `mail.send`.
 
