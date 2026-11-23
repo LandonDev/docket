@@ -106,6 +106,10 @@ export const workShellChunk = defineChunk("work-shell", () => import("../work/sh
  *  rail's Outbox row, a Work thread's panel, or Away turning off while a host has Work on. */
 export const workOutboxChunk = defineChunk("work-outbox", () => import("../work/outbox"));
 
+/** The frame of a page above the Work workspaces (work/places): Today, the weekly review. Asked for by the rail's place
+ *  rows and the Go menu, and warmed at idle while a host has Work on; each place's body is a chunk of its own. */
+export const workPlacesChunk = defineChunk("work-places", () => import("../work/places"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -141,6 +145,7 @@ export const allChunks = {
   failureCardChunk,
   workShellChunk,
   workOutboxChunk,
+  workPlacesChunk,
   computersChunk,
   fullWindowChunk,
   popOutChunk,

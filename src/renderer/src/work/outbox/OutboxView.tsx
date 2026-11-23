@@ -105,7 +105,8 @@ const KIND_GLYPH: Partial<Record<ActKind, ComponentType<{ className?: string }>>
   "computer.act": SquareMousePointer,
   "portal.submit": Globe,
 };
-function KindGlyph({ kind, className }: { kind: ActKind; className?: string }) {
+/** A held act's glyph by its kind (Today's held rows lead with it too). */
+export function KindGlyph({ kind, className }: { kind: ActKind; className?: string }) {
   const Glyph = KIND_GLYPH[kind] ?? Outbox;
   return <Glyph className={cn("size-3.5 text-muted-foreground", className)} />;
 }
@@ -595,10 +596,16 @@ function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: bo
   return { shown: mine?.item ?? item, ready: !!mine?.item, failed: !!mine && !mine.item, retry: () => setAttempt((n) => n + 1) };
 }
 
-function HeldDetail({
+/**
+ * A held item whole, with its verbs: what the Outbox shows beside its list, and what Today shows in a sheet over its
+ * page (work/today/HeldSheet.tsx), so there is one Send and one rule for it. It fills a flex column: the payload
+ * scrolls, the verb bar stays at the foot.
+ */
+export function HeldDetail({
   item: listed,
   workspace,
   host,
+  alone = false,
   onOpenSession,
   onPressed,
   onReview,
@@ -606,6 +613,8 @@ function HeldDetail({
   item: HostItem;
   workspace: string;
   host: string;
+  /** No list beside it names the workspace (Today's sheet): the head's facts say it at every width. */
+  alone?: boolean;
   onOpenSession?: Props["onOpenSession"];
   onPressed: (item: HostItem) => void;
   onReview: (item: HostItem) => void;
@@ -643,7 +652,7 @@ function HeldDetail({
     <>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-8 py-8">
-          <DetailHead item={item} narrowOnly={[workspace]} facts={[threadWords(item) ?? "", timeOf(item.createdAt)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
+          <DetailHead item={item} narrowOnly={alone ? [] : [workspace]} facts={[...(alone ? [workspace] : []), threadWords(item) ?? "", timeOf(item.createdAt)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
           {item.state === "failed" ? (
             <div role="alert" className="flex items-start gap-2 text-[13px] leading-5">
               <StatusMark state="failed" word={false} />

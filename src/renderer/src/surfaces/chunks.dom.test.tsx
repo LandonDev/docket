@@ -28,6 +28,7 @@ const EXPECTED: Record<keyof typeof allChunks, string[]> = {
   messageListChunk: ["TranscriptOutlineList"],
   failureCardChunk: ["FailureCard"],
   messageQueueChunk: ["MessageQueue"],
+  workPlacesChunk: ["WorkPlacePage", "warmPlace"],
   workCanvasChunk: ["CanvasSeat", "ComposerChips", "addContextChip", "CANVAS", "kindFor", "onOpenHeld", "openItem"],
   dialogsChunk: ["ThreadBatchDialog", "WhatsNewDialog", "NewProjectDialog", "NewWorkspaceDialog", "ProjectSettingsDialog", "ProjectTeardownDialog", "RemoteFolderDialog", "ThreadDefaultsDialog", "PreambleDialog"],
 };

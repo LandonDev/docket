@@ -5,6 +5,9 @@ import type { ServerPush, WorkspaceMeta } from "../lib/tcserver/types";
 import { sessionStore } from "../lib/tcserver/store";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import { setOutboxFailed, setOutboxWaiting, setWorkOn, workSwitch } from "../lib/workSwitch";
+import { WORK_PLACE_ROWS } from "../lib/workPlaces";
+import { shellStore } from "../stores/shell";
+import { Clock } from "./icons";
 import { mountProbe } from "../test/renderProbe";
 import { ProjectRail } from "./ProjectRail";
 import { SettingsNav } from "./SettingsRail";
@@ -153,6 +156,51 @@ describe("the rail's Outbox row", () => {
       setOutboxFailed(0);
       setOutboxWaiting(0);
     });
+  });
+});
+
+describe("the rail's rows for the pages above the Work workspaces", () => {
+  // A row of the test's own, so the rule holds whichever pages master lists.
+  const PLACE = { id: "probe-place", label: "Probe place", order: 5, icon: Clock };
+  const listed = [...WORK_PLACE_ROWS];
+  afterEach(() => {
+    WORK_PLACE_ROWS.splice(0, WORK_PLACE_ROWS.length, ...listed);
+    shellStore.setState({ workPlace: null });
+  });
+
+  it("draws none while Work is off: the rail is the one it was", async () => {
+    const before = labels(await mountRail([CODE, WORK]));
+    probe?.unmount();
+    workspaceStore.reset();
+    sessionStore.reset();
+    WORK_PLACE_ROWS.push(PLACE);
+    const after = labels(await mountRail([CODE, WORK]));
+    expect(after).toEqual(before);
+    expect(after).not.toContain("Probe place");
+  });
+
+  it("with Work on, a page's row leads the Work list, opens its page and is the selected row while it is open", async () => {
+    setWorkOn("local", true);
+    WORK_PLACE_ROWS.push(PLACE);
+    const root = await mountRail([CODE, WORK]);
+    const names = labels(root);
+    // Under the Work heading, before the workspaces.
+    expect(names.indexOf("Probe place")).toBeGreaterThan(names.indexOf("temp-code"));
+    expect(names.indexOf("Probe place")).toBeLessThan(names.indexOf("Purdue Esports"));
+    const row = () => [...root.querySelectorAll("nav button")].find((b) => b.textContent?.trim() === "Probe place") as HTMLButtonElement;
+    expect(row().getAttribute("aria-current")).toBeNull();
+    await probe!.act(async () => row().click());
+    expect(shellStore.getState().workPlace).toBe("probe-place");
+    expect(row().getAttribute("aria-current")).toBeTruthy();
+    // The page covers the board: no workspace row reads as selected under it.
+    expect(root.querySelector(`[data-rail-path="${WORK.path}"] [aria-current]`)).toBeNull();
+  });
+
+  it("with no Work workspace yet, the page's row sits over Add workspace…", async () => {
+    setWorkOn("local", true);
+    WORK_PLACE_ROWS.push(PLACE);
+    const names = labels(await mountRail([CODE]));
+    expect(names.indexOf("Probe place")).toBe(names.indexOf("Add workspace…") - 1);
   });
 });
 

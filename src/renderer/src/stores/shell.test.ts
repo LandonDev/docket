@@ -6,6 +6,7 @@ import {
   closeViews,
   initialShellState,
   leaveTopOverlay,
+  anyViewOpen,
   openComputers,
   openFilesSearch,
   openInbox,
@@ -13,6 +14,7 @@ import {
   openSearchView,
   openSettings,
   openSymbolPicker,
+  openWorkPlace,
   patch,
   shell,
   shellStore,
@@ -78,6 +80,23 @@ describe("shell reducers", () => {
     expect(search.searchViewFocusToken).toBe(2);
     expect(search.searchViewOpen).toBe(true);
     expect(search.searchSeed).toBeNull();
+  });
+
+  it("a page above the Work workspaces is one of the views: it closes them and they close it", () => {
+    const state = { ...base(), inboxViewOpen: true, outboxViewOpen: true, filePickerOpen: true, settingsOpen: true };
+    const today = openWorkPlace(state, "today");
+    expect(today).toMatchObject({ workPlace: "today", inboxViewOpen: false, outboxViewOpen: false, filePickerOpen: false, settingsOpen: false });
+    expect(anyViewOpen(today)).toBe(true);
+    // Open already: the same state, so a second press of the row wakes no subscriber.
+    expect(openWorkPlace(today, "today")).toBe(today);
+    // Another place takes its seat.
+    expect(openWorkPlace(today, "review").workPlace).toBe("review");
+    for (const open of [openInbox, openNotes, openSearchView, openComputers, openSettings, closeViews, closeOverlays]) expect(open(today).workPlace, open.name).toBeNull();
+    // null closes it and nothing else.
+    expect(openWorkPlace({ ...today, filePickerOpen: true }, null)).toMatchObject({ workPlace: null, filePickerOpen: true });
+    expect(openWorkPlace(base(), null)).toEqual(base());
+    // Back leaves the page before it walks tab history.
+    expect(leaveTopOverlay(today).workPlace).toBeNull();
   });
 
   it("the symbol picker replaces the file picker", () => {

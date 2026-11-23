@@ -45,6 +45,8 @@ describe("windowTitle", () => {
     expect(windowTitle({ page: "notes", pane: null, project: null })).toBe("Notes");
     expect(windowTitle({ page: "accounts", pane: null, project: null })).toBe("Accounts");
     expect(windowTitle({ page: "stats", pane: null, project: null })).toBe("Stats");
+    // A page above the Work workspaces reads by its label, over whatever pane is under it.
+    expect(windowTitle({ page: null, place: "Today", pane: { kind: "thread", title: "Fix the badge" }, project: "temp-code" })).toBe("Today");
   });
 
   it("lets a page open over a thread win", () => {

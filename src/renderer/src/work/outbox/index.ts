@@ -5,5 +5,7 @@
  * first paint (docs/agents/work-outbox.md, "The screens").
  */
 export { OutboxView } from "./OutboxView";
+// Today's sheet shows a held item whole with the Outbox's own Send (work/today/HeldSheet.tsx).
+export { HeldDetail, KindGlyph, HostRetry, rowWords, rememberOutboxTab } from "./OutboxView";
 export { ResultsSection } from "./ResultsSection";
 export { AwayReturnWork, gatherAway } from "./AwayList";

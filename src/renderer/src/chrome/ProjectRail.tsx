@@ -89,6 +89,7 @@ import {
 import { RailHeading, RailRow } from "./RailRow";
 import { SectorDot, WorkspaceGlyph, workspaceLook } from "./WorkspaceGlyph";
 import { isWorkMenuAction, useOutboxFailed, useOutboxWaiting, useWorkOn, WORK_ADD_MENU, workRailPort } from "../lib/workSwitch";
+import { warmWorkPlace, workPlaceRows } from "../lib/workPlaces";
 import { diffWords, useWorkspaceMarks, WorkspaceMarkTrigger } from "./WorkspaceRowMarks";
 import type { WorkspaceMark } from "../lib/sidebarRows";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
@@ -216,12 +217,14 @@ export function ProjectRail({
   const inboxActive = useShell((s) => s.inboxViewOpen);
   const outboxActive = useShell((s) => s.outboxViewOpen);
   const computersActive = useShell((s) => s.computersViewOpen);
+  /** The page above the Work workspaces that is open (lib/workPlaces.ts): its row is the selected one. */
+  const workPlace = useShell((s) => s.workPlace);
   const notesActive = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
   const settingsOpen = useShell((s) => s.settingsOpen);
   const settingsSection = useShell((s) => s.settingsSection);
   /** A full-window view covers the list: no workspace row is selected. */
-  const overlayOpen = searchActive || inboxActive || outboxActive || computersActive || notesActive || !!accountsPage;
+  const overlayOpen = searchActive || inboxActive || outboxActive || computersActive || !!workPlace || notesActive || !!accountsPage;
   const resize = useDragResize({
     min: PROJECT_RAIL_WIDTH_MIN,
     max: () =>
@@ -722,6 +725,21 @@ export function ProjectRail({
                 statusKey={statusKey}
                 onAdd={workRows.length === 0 ? undefined : openWorkAdd}
                 addExpanded={menuPath === WORK_ADD_MENU}
+                // The pages above the workspaces (Today): each a row before them, selected while its page is open.
+                lead={workPlaceRows().map((place) => {
+                  const warm = () => warmWorkPlace(place.id, "intent");
+                  return (
+                    <RailRow
+                      key={place.id}
+                      icon={place.icon}
+                      label={place.label}
+                      selected={workPlace === place.id}
+                      onClick={() => shell.openWorkPlace(place.id)}
+                      intent={{ onPointerEnter: warm, onFocus: warm }}
+                      tooltip={place.key ? <Kbd>{keyHint(place.key)}</Kbd> : undefined}
+                    />
+                  );
+                })}
                 emptyRow={
                   workRows.length === 0 ? (
                     <RailRow icon={Plus} label="Add workspace…" ariaLabel="Add Work workspace…" onClick={(event) => openWorkAdd(event)} />
@@ -810,6 +828,7 @@ function ProjectSection({
   items,
   statusKey,
   indexOf,
+  lead,
   emptyRow,
   onAdd,
   cwd,
@@ -840,6 +859,8 @@ function ProjectSection({
   statusKey: (path: string) => string;
   /** The row's place in the sortable's whole list; defaults to its place in `items`. */
   indexOf?: (item: RailItem) => number;
+  /** Rows over the list that are not workspaces (Work's pages above them: Today). */
+  lead?: ReactNode;
   /** The row that stands in for an empty list (Add workspace…). */
   emptyRow?: ReactNode;
   onAdd?: (event: { currentTarget: HTMLElement }) => void;
@@ -867,6 +888,7 @@ function ProjectSection({
         {label}
       </RailHeading>
       <div className="flex flex-col gap-1">
+        {lead}
         {emptyRow}
         {items.map((item, index) => (
           <WorkspaceRow

@@ -205,13 +205,14 @@ function SidebarComponent({
   const inboxActive = useShell((s) => s.inboxViewOpen);
   const outboxActive = useShell((s) => s.outboxViewOpen);
   const computersActive = useShell((s) => s.computersViewOpen);
+  const workPlaceActive = useShell((s) => s.workPlace !== null);
   const notesActive = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
   const projectRailOpen = useShell((s) => s.projectRailOpen);
   const settingsOpen = useShell((s) => s.settingsOpen);
   // Back leaves an overlay before it walks tab history.
   const canGoBack =
-    canVisitBack || searchActive || settingsOpen || inboxActive || outboxActive || computersActive || notesActive || !!accountsPage;
+    canVisitBack || searchActive || settingsOpen || inboxActive || outboxActive || computersActive || workPlaceActive || notesActive || !!accountsPage;
   const showProjectRail = Boolean(onSelectProject && onOpenProject);
   // Settings live in the rail slot, so they keep it visible even when the
   // project rail itself is collapsed.

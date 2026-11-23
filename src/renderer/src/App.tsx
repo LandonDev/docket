@@ -298,8 +298,9 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workShellChunk } from "./surfaces/chunks";
+import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
 import { openWorkView, useWorkOn, useWorkView, workHome, workFilePort, workOpenPort, workStartPort } from "./lib/workSwitch";
+import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -319,6 +320,7 @@ const RemoteFolderDialog = dialogsChunk.surface("RemoteFolderDialog");
 const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" label="Loading inbox" />);
 const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" lines={3} label="Loading notes" />);
 const OutboxView = workOutboxChunk.surface("OutboxView", <SurfaceSkeleton kind="page" label="Loading the Outbox" />);
+const WorkPlacePage = workPlacesChunk.surface("WorkPlacePage", <SurfaceSkeleton kind="column" label="Loading the page" />);
 const ComputersView = computersChunk.surface("ComputersView", <SurfaceSkeleton kind="page" label="Loading Computers" />);
 const FullWindow = fullWindowChunk.surface("FullWindow");
 const PopOut = popOutChunk.surface("PopOut");
@@ -471,6 +473,15 @@ export default function App() {
   useEffect(() => {
     if (!workOn && outboxViewOpen) shell.closeOutbox();
   }, [workOn, outboxViewOpen]);
+  // A page above the Work workspaces (Today: work/places) goes with it too; while Work is on its chunks warm at idle.
+  const workPlace = useShell((s) => s.workPlace);
+  useEffect(() => {
+    if (!workOn && workPlace) shell.openWorkPlace(null);
+  }, [workOn, workPlace]);
+  useEffect(() => {
+    if (workOn) warmWorkPlacesAtIdle();
+  }, [workOn]);
+  const closeWorkPlace = useCallback(() => shell.openWorkPlace(null), []);
   const notesViewOpen = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
   const settingsOpen = useShell((s) => s.settingsOpen);
@@ -545,6 +556,7 @@ export default function App() {
   const titleProject = (titleProjectId && projects.find((project) => project.id === titleProjectId)?.name) || null;
   const titleText = windowTitle({
     page: settingsOpen ? "settings" : accountsPage ?? (notesViewOpen ? "notes" : inboxViewOpen ? "inbox" : outboxViewOpen ? "outbox" : computersViewOpen ? "computers" : searchViewOpen ? "search" : null),
+    place: workPlace && workOn ? workPlaceLabel(workPlace) : null,
     pane:
       titleDock || titleFile?.terminal
         ? { kind: "terminal" }
@@ -3465,9 +3477,9 @@ export default function App() {
 
       <div className="body-glass relative flex min-h-0 min-w-0 flex-1 flex-col">
         <div
-          className={boardClass(searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || computersViewOpen || notesViewOpen || !!accountsPage)}
-          aria-hidden={searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || computersViewOpen || notesViewOpen || !!accountsPage}
-          inert={searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || computersViewOpen || notesViewOpen || !!accountsPage || undefined}
+          className={boardClass(searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || computersViewOpen || !!workPlace || notesViewOpen || !!accountsPage)}
+          aria-hidden={searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || computersViewOpen || !!workPlace || notesViewOpen || !!accountsPage}
+          inert={searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || computersViewOpen || !!workPlace || notesViewOpen || !!accountsPage || undefined}
         >
         {isWebMode() && !IS_MAC ? (
           <MenuBar
@@ -3622,6 +3634,9 @@ export default function App() {
         ) : null}
         {outboxViewOpen && workOn ? (
           <OutboxView besideRail={projectRailOpen} onClose={shell.closeOutbox} onToggleSidebar={onToggleSidebar} onOpenSession={onOpenApprovalSession} />
+        ) : null}
+        {workPlace && workOn ? (
+          <WorkPlacePage place={workPlace} besideRail={projectRailOpen} onClose={closeWorkPlace} onToggleSidebar={onToggleSidebar} />
         ) : null}
         {computersViewOpen ? (
           <ComputersView besideRail={projectRailOpen} onClose={shell.closeComputers} onToggleSidebar={onToggleSidebar} onOpenSession={onOpenApprovalSession} />

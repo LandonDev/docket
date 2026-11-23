@@ -15,6 +15,8 @@ export type TitlePane =
 
 export type TitleFacts = {
   page: TitlePage | null;
+  /** The page above the Work workspaces that covers the window (lib/workPlaces.ts), by its label. */
+  place?: string | null;
   pane: TitlePane | null;
   project: string | null;
 };
@@ -57,8 +59,9 @@ export function titleThread<S extends TitleThread>(
   return focused ?? sessions.find((session) => leaves.includes(session.id));
 }
 
-export function windowTitle({ page, pane, project }: TitleFacts): string {
+export function windowTitle({ page, place, pane, project }: TitleFacts): string {
   if (page) return PAGE_TITLES[page];
+  if (place) return place;
   if (!pane) return "TempCode";
   const name =
     pane.kind === "thread"
