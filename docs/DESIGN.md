@@ -1956,8 +1956,9 @@ Around the canvas:
   start, "Tue 11:00 PM – Wed 3:00 PM") and, 8px after,
   its job (the sector's 8px dot and, 8px on, its name), then where it is (the place as the
   map names it, less the country; his calendar's own words when the point
-  is a town's centre or a start standing in), each cut line whole on
-  hover. Each event is a group named for it, so a verb under it says
+  is a town's centre or a start standing in); a long title or place
+  wraps, whole, since a tip on a cut line is out of the keyboard's reach.
+  Each event is a group named for it, so a verb under it says
   whose it is. Between the two is a
   hairline, which carries the drive in 12px muted at its middle when both
   have a point ("38 min drive, 24 mi", "About 40 min, 25 mi"). Under each
@@ -2020,8 +2021,9 @@ Around the canvas:
   that job's workspace with the people on the event and one line, and
   lets go with LifeOS's words when the read of those people gets no
   answer in ten seconds; if the two change or stop clashing while it
-  reads, or the later event ends or changes job, nothing is drafted and
-  the press is his again on the pair as it is; once the time he would have been there by is
+  reads, or the later event ends or changes job (as the screen or the
+  read's own reply says), nothing is drafted and the press is his again
+  on the pair as it is; once the time he would have been there by is
   behind him, its line says "I'm running late." and leaves how late to
   him; "This
   is fine" closes with a toast that carries Undo; it goes with the pair

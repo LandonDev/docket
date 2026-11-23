@@ -36,10 +36,10 @@ const mocked = (real: object) => ({
 });
 const marks = vi.hoisted(() => ({ now: null as unknown, asked: [] as unknown[] }));
 vi.mock("./mark", () => ({ useClashes: (...asked: unknown[]) => ((marks.asked = asked), marks.now) }));
-const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false, held: null as Promise<unknown> | null }));
+const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false, held: null as Promise<unknown> | null, sector: undefined as string | undefined }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: () => lifeos.held ?? (lifeos.silent ? new Promise<never>(() => {}) : Promise.resolve({ attendees: lifeos.attendees })) } }),
+  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: () => lifeos.held ?? (lifeos.silent ? new Promise<never>(() => {}) : Promise.resolve({ attendees: lifeos.attendees, ...(lifeos.sector ? { sector: lifeos.sector } : {}) })) } }),
 }));
 const toasts = vi.hoisted(() => ({ said: [] as { words: string; action?: { label: string; onClick: () => void } }[] }));
 vi.mock("../../components/ui/toaster", () => ({
@@ -85,6 +85,7 @@ beforeEach(() => {
   lifeos.connecting = false;
   lifeos.silent = false;
   lifeos.held = null;
+  lifeos.sector = undefined;
 });
 afterEach(() => {
   cleanup();
@@ -110,6 +111,26 @@ describe("the Clash dialog", () => {
     await settle();
     const from = startOfDay(T0);
     expect(marks.asked).toEqual(["box", from, addDays(from, 14)]);
+    cleanup();
+    // A block of three weeks and a meeting in its third: the read runs through the meeting's day, past the fortnight, so the pair the row showed is in it.
+    const block = side("ev_a", "Training", -18 * 24, 20 * 24, { sector: "purdue" });
+    show(overlap(block, game([])));
+    await settle();
+    expect(marks.asked).toEqual(["box", startOfDay(block.startsAt), addDays(startOfDay(T0), 1)]);
+  });
+
+  it("shows a long title and a long place whole, wrapped, with no tip a keyboard could not reach", async () => {
+    const title = "Quarterly planning and budget review with every department head and the visiting auditors";
+    const place = "https://meet.example.com/a-very-long-room-name-with-no-space-to-break-at-anywhere-in-it";
+    show(overlap(side("ev_a", title, 0, 2, { sector: "purdue", location: place }), game([])));
+    await settle();
+    const block = screen.getByRole("group", { name: title });
+    for (const text of [title, place]) {
+      const line = within(block).getByText(text);
+      expect(line.className).toContain("break-words");
+      expect(line.className).not.toContain("truncate");
+    }
+    expect(block.querySelector("[data-slot=tooltip-trigger]")).toBeNull();
   });
 
   it("offers no way out under an event that is over, and keeps Running late under the later one", async () => {
@@ -685,6 +706,24 @@ describe("the Clash dialog", () => {
     expect(mail.drafts).toEqual([]);
     expect(workViewNow()).toBeNull();
     expect((screen.getByRole("button", { name: "Running late…" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("reads the event's job from the people's reply too, which may be ahead of the screen: a job that changed drafts nothing", async () => {
+    lifeos.attendees = [{ address: "dana@example.com" }];
+    // The reply already says Life; the dialog still shows the game under Ref.
+    lifeos.sector = "life";
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    expect(workViewNow()).toBeNull();
+    // The same job in the reply drafts as before.
+    lifeos.sector = "ref";
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toHaveLength(1);
+    expect(workViewNow()).toEqual({ workspaceId: "ws_ref", view: "mail" });
   });
 
   it("drafts nothing when the later event ends while Running late reads the people", async () => {

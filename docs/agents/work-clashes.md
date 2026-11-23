@@ -158,9 +158,10 @@ The pillar has no view of its own and no row in the column.
   nothing is drafted and the press is his again on the pair as it is)
   and opens Mail's composer in that job's workspace (`mail/mailto.ts`), so it
   is offered only where this host has that workspace. The dialog reads the
-  fortnight from the earlier event's day (whole local days; not the pair's
-  own day or two, so an event that moves to another day and still clashes
-  stays in the read); an event that is over gets no way out; a clash that is gone says so in
+  fortnight from the earlier event's day, and through the later event's
+  own day when that lies past it (whole local days; not the pair's own day
+  or two, so an event that moves to another day and still clashes stays in
+  the read); an event that is over gets no way out; a clash that is gone says so in
   its title, and a read that failed with nothing handed over says why. It
   keeps the clash it showed while his own press is out and while it closes,
   and keeps an open step with what he typed when the calendar settles the

@@ -7,7 +7,6 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
-import { TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -46,7 +45,8 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   // The fortnight from the earlier event's day when the opener handed the clash over, else from today, as every opener reads.
   // Whole local days (a day is 23 or 25 hours when the clocks change). A fortnight, not the pair's own day or two: an event of the pair that moves to another day and still clashes must stay in the read, or the dialog would call the clash gone.
   const first = startOfDay(ask.clash ? ask.clash.a.startsAt : Date.now());
-  const [from, to] = [first, addDays(first, 14)];
+  // And through the later event's own day when that lies past the fortnight (a block of weeks, and something in its third): the read must hold the pair the opener showed.
+  const [from, to] = [first, Math.max(addDays(first, 14), ask.clash ? addDays(startOfDay(ask.clash.b.startsAt), 1) : 0)];
   const marks = useClashes(ask.environmentId, from, to);
   // The pair in either order: when one of the two moves to start first and they still clash, it is the same clash under a flipped id.
   const live = [...marks.clashes.values()].flat().find((c) => c.id === ask.id || c.id === flipped(ask.id));
@@ -129,9 +129,8 @@ function EventBlock({ side, day, children }: { side: ClashSide; day: number; chi
   const place = placeOf(side);
   return (
     <div role="group" aria-label={side.title} className="flex min-w-0 flex-col">
-      <TruncateTip text={side.title}>
-        <span className="truncate font-medium text-foreground">{side.title}</span>
-      </TruncateTip>
+      {/* A long title or place wraps, whole: a tip on a cut line is out of the keyboard's reach. */}
+      <span className="break-words font-medium text-foreground">{side.title}</span>
       <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs leading-5 text-muted-foreground">
         <span className="shrink-0 tabular-nums">{span(side, day)}</span>
         {/* The dot's box is the dot, so it sits 8px from the time and 8px from its job's name. */}
@@ -140,11 +139,7 @@ function EventBlock({ side, day, children }: { side: ClashSide; day: number; chi
           <span className="truncate">{sectorName(side.sector)}</span>
         </span>
       </span>
-      {place ? (
-        <TruncateTip text={place}>
-          <span className="truncate text-xs leading-5 text-muted-foreground">{place}</span>
-        </TruncateTip>
-      ) : null}
+      {place ? <span className="break-words text-xs leading-5 text-muted-foreground">{place}</span> : null}
       {children}
     </div>
   );
@@ -261,8 +256,10 @@ function Body({
     const stampOf = (c: Clash) => `${pairStamp(c)}|${c.b.eventId}|${c.b.sector}|${c.b.workspaceId ?? ""}`;
     const pressed = stampOf(clash);
     answered(session.client.query(eventGet, { id: clash.b.eventId })).then(
-      (event: { attendees?: { address: string }[] } | null) => {
+      (event: { sector?: string; attendees?: { address: string }[] } | null) => {
         setPending(false);
+        // The reply may know of a change the screen has not drawn yet: the event's job is read from it too.
+        if (event?.sector !== undefined && event.sector !== clash.b.sector) return setBusy(null);
         // The pair changed while the people were read (its times, its drive, or the later event's job), or stopped being a clash: the minutes he pressed for are no longer the minutes, or the Mail no longer the job's. The dialog shows the pair as it is, or that it is gone, and the press is his again.
         // Nor is a line drafted for an event that ended in the wait: its Running late is gone from the dialog by then.
         if (left.current || latest.current.b.endsAt <= Date.now() || stampOf(latest.current) !== pressed) return setBusy(null);
