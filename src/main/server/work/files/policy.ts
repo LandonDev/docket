@@ -14,6 +14,7 @@ import { isGuestPath, vmLibraryOf } from '../office/vm/files'
 import { vmAllowed, vmState } from '../office/vm/office'
 import { librariesHere, vmLibrariesHere } from './places/libraries'
 import { accountsHeld } from './places/drive'
+import { isSavingCopy } from './copyKept'
 
 /**
  * The one door of the Files place (docs/agents/work-files.md "One door for every change"). Every method that
@@ -180,7 +181,8 @@ export function locateLifeos(ctx: Pick<WorkCtx, 'db' | 'scopeOf'>, by: Caller, w
  * tell), and a file in any cloud folder of this computer that is not a listed library (it cannot tell either).
  * A file anywhere else on this disk is his own: the workspace's folder, a copy he allowed, an import, an item's
  * own folder. A LifeOS row is shared while LifeOS says so, which its own pillar reads from the row; by its
- * source alone it is his own.
+ * source alone it is his own. A Files tab's copy that saves back to a file others can open (copies.ts), and what
+ * lies beside it in its folder, is as shared as that file: an editor's own hold for a shared file holds there too.
  */
 export function sharedOf(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, source: CanvasSource): boolean {
   if (source.at === 'google') return true
@@ -192,7 +194,7 @@ export function sharedOf(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, source: 
   const at = real(path) ?? path
   // What the app keeps for him is his own, wherever the data folder lies.
   const data = real(ctx.dataDir) ?? ctx.dataDir
-  if (within(at, data)) return false
+  if (within(at, data)) return isSavingCopy(ctx.db, at)
   if (libraryOf(librariesHere(ctx), at)) return true
   const cloud = real(cloudDirOf(ctx.host))
   return !!cloud && within(at, cloud)

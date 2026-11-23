@@ -1,6 +1,8 @@
 import { filesPaneWorkspace } from '@shared/work'
 import type { ActKindDef, WorkModule } from '../modules'
+import { copySaved, retryWaiting, settleCopies } from './copies'
 import { closeFilesState, filesHandle, filesState, itemsGone, removeWorkspace } from './handle'
+import { onFileSaved } from './save'
 import { registerFileMoved } from './hooks'
 import { repointLinks } from './places/lifeos'
 import { setThreadsMayWrite } from './policy'
@@ -85,9 +87,27 @@ export const files: WorkModule = {
         }
       })
     })
+    // A copy saves back (copies.ts): a save through the door of a copy's path sends it; one that waited for its computer
+    // is sent once that computer answers, looked at every 30 s while any waits.
+    try {
+      settleCopies(ctx)
+    } catch (err) {
+      ctx.log(`files: the copies could not be settled: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    const offSaved = onFileSaved((path) => copySaved(ctx, path))
+    const waiting = setInterval(() => {
+      try {
+        retryWaiting(ctx)
+      } catch (err) {
+        ctx.log(`files: the copies that wait were not sent: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }, 30_000)
+    waiting.unref?.()
     return () => {
       offMoved()
+      offSaved()
       clearInterval(daily)
+      clearInterval(waiting)
       closeFilesState(ctx.db)
     }
   },

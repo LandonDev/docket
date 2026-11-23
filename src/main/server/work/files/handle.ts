@@ -1,5 +1,6 @@
-import { randomUUID } from 'node:crypto'
-import { statSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, statSync } from 'node:fs'
+import { readFile as readBytes } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ClientRequest } from '@shared/contract'
@@ -7,11 +8,12 @@ import { isFileForm } from '@shared/work/fileForms'
 import type { FileBytes, FileCrumb, FileDone, FilePage, FileRef, FileSaved, FilesListing, FilesOpened, FilesPlaces, FilesTabs, FileTab } from '@shared/contract-work-files'
 import { teamsCanvasOf, teamsKindOf } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, handled, NOT_HANDLED, type CanvasItem, type CanvasKind, type CanvasSource, type Handled } from '@shared/work'
-import { DEFAULT_SORT, extOf, freeName, kindOfEntry, PLACE, refKey, refusal, seatOf, splitName, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef } from '@shared/work/files'
+import { copySavesBack, DEFAULT_SORT, extOf, freeName, kindOfEntry, PLACE, refKey, refusal, seatOf, splitName, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef } from '@shared/work/files'
 import { fencedItem } from '../canvas/store'
 import type { Caller, WorkCtx } from '../modules'
 import { copyIn, threadsHolding } from '../office/files/handle'
-import { fetchFile, whoOf } from '../office/files/library'
+import { copyAllowed, fetchFile, whoOf } from '../office/files/library'
+import { admitOwner, backsOf, copyAt, copyBack, copyClosing, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
 import { fileMakerFor } from './hooks'
 import { MarkStore, type Mark, type Marked } from './marks'
@@ -316,9 +318,24 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
   if (was && shown) return { ...tabsFor(ctx, by, workspace.id), tabId: was.id, item: cut(shown) }
   // A copy is the file it is, with no app behind it; a copy of a library's sound is played, not transcribed.
   const kind = p.as ?? (kindOfEntry(name).kind === 'audio' ? 'file' : seatOf(name))
-  // A copy is a file of its own: its marks are its own, so a thread that holds the original never takes its open.
-  const copy = await copyIn(ctx, filesPaneOf(workspace.id), { at: 'file', ...file }, signal)
-  const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, kind, source: copy.source, copyOf: { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) } }, p.opener)
+  const back = copySavesBack(kind, name)
+  // A copy whose changes have not reached its file (its tab closed, or the file's computer did not answer) is opened
+  // again as it is: it is never read over from the file while they wait.
+  const kept = back ? copyRecord(ctx, workspace.id, file.host, file.path) : null
+  let source: CanvasSource
+  if (kept && (kept.closed || kept.state !== 'ok') && existsSync(kept.copy) && copyAllowed(ctx.db, workspace.id)) {
+    source = { at: 'file', host: ctx.host, path: kept.copy }
+    reopened(ctx, kept)
+  } else {
+    // A copy is a file of its own: its marks are its own, so a thread that holds the original never takes its open.
+    const copy = await copyIn(ctx, filesPaneOf(workspace.id), { at: 'file', ...file }, signal)
+    source = copy.source
+    // A kind that edits the copy's own bytes saves back to the file: the record holds where it lies and what it held.
+    const path = (copy.source as { path: string }).path
+    if (back && copy.version) recordCopy(ctx, { workspaceId: workspace.id, host: file.host, path: file.path, vm, copy: path, name, kind, version: copy.version, sha256: createHash('sha256').update(await readBytes(path)).digest('hex') })
+    else if (kept) ctx.db.prepare(`DELETE FROM work_files_copies WHERE id = ?`).run(kept.id)
+  }
+  const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, kind, source, copyOf: { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) } }, p.opener)
   state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
   return { ...tabsFor(ctx, by, workspace.id), tabId, item: cut(item) }
 }
@@ -390,7 +407,10 @@ async function openGoogle(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, at:
 /** The tabs as a caller may see them: a remote key hears of none that stands on, or holds, a file of this host it could not name. */
 function tabsFor(ctx: WorkCtx, by: Caller, workspaceId: string): FilesTabs {
   const state = filesState(ctx)
-  const all = state.tabs.list(workspaceId)
+  const listed = state.tabs.list(workspaceId)
+  // A copy that saves back says how that stands on its tab.
+  const backs = backsOf(ctx, workspaceId)
+  const all = backs.size ? { rev: listed.rev, tabs: listed.tabs.map((t) => (t.copyOf && backs.has(`${t.copyOf.host}\0${t.copyOf.path}`) ? { ...t, back: backs.get(`${t.copyOf.host}\0${t.copyOf.path}`)! } : t)) } : listed
   if (by.kind !== 'remote' || by.peer) return all
   const tabs = all.tabs.filter((tab: FileTab) => {
     if (tab.kind === 'page') {
@@ -496,13 +516,25 @@ async function readCopy(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref:
   const item = ctx.canvas.get(p.itemId)
   const path = item ? canvasSourcePath(item.source) : null
   if (!item || item.sessionId !== filesPaneOf(p.workspaceId) || path === null || refKey(item.source) !== refKey(p.ref)) throw new Error('That tab holds no copy to read.')
-  return { ...(await readFile({ roots: [dirname(path)] }, path, p.offset, p.length, p.version)), locked: COPY_LOCKED }
+  // A copy that saves back is edited here, and its saves go to the file (copies.ts); any other stays as it was read.
+  const saving = copyAt(ctx, p.workspaceId, path)
+  return { ...(await readFile({ roots: [dirname(path)] }, path, p.offset, p.length, p.version)), ...(saving ? {} : { locked: COPY_LOCKED }) }
 }
 const COPY_LOCKED = 'This is a copy. Changes are made where the file is kept.'
+const COPY_KEEP_THERE = 'This copy changed here. Reload it, then make your change again.'
 
 /** An editor's save of a text file (`work.files.write`): through the door as `edit`, then by version. */
 async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; text: string; version: string; copy?: boolean; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string, signal?: AbortSignal): Promise<FileSaved> {
   const data = Buffer.from(p.text, 'utf8')
+  // A Files tab's copy that saves back: written through the door by version, and the save sends it on (copies.ts).
+  const own = canvasSourcePath(p.ref)
+  const saving = own !== null && (p.ref as { host: string }).host === ctx.host && !by.peer && workspaceHere(ctx.db, p.workspaceId) ? copyAt(ctx, p.workspaceId, own) : null
+  if (saving) {
+    admitCaller(ctx, by, p.workspaceId)
+    admitOwner(by, saving)
+    if (p.copy) throw new Error(COPY_KEEP_THERE)
+    return saveFile({ roots: [saving.dir] }, refKey({ at: 'file', host: ctx.host, path: saving.copy }), saving.copy, data, p.version)
+  }
   if (p.copy) {
     // His text kept beside the file is asked of the folder: the file itself may be gone, which is why he keeps a copy.
     const named = canvasSourcePath(p.ref)
@@ -544,7 +576,7 @@ async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: Ca
 }
 
 /** A located thing in the VM, as vmVerbs.ts takes it. */
-function vmWhere(ctx: WorkCtx, by: Caller, at: Located & { in: 'library' }): VmWhere {
+export function vmWhere(ctx: WorkCtx, by: Caller, at: Located & { in: 'library' }): VmWhere {
   const { place, library } = doorPlace(ctx, by, at)
   return { path: at.path, place, library: library!, key: libraryKey(library!, at.path) }
 }
@@ -569,7 +601,7 @@ const held = (verdict: 'run' | 'hold'): void => {
 const MAY_NOT = (what: string): string => `This key may not ${what}.`
 /** A thread changes files only through the `files_*` tools (files/tools.ts), which give a run its Result and Undo and hold a shared change: never by the wire. */
 export const THREADS_BY_TOOLS = 'A thread changes files with the files_* tools.'
-const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project'].map((v) => `work.files.${v}`))
+const CHANGES: ReadonlySet<string> = new Set(['make', 'rename', 'move', 'copy', 'trash', 'upload', 'write', 'restore', 'purge', 'project', 'copyBack', 'copyReload', 'copyKeep', 'writeBack'].map((v) => `work.files.${v}`))
 /** Whether an operation id is in the journal already (`runOp` then answers it, and checks it is the same change). */
 const journalled = (db: DatabaseSync, op: string, workspaceId: string, verb: FileVerb): boolean => !!db.prepare(`SELECT 1 FROM work_files_ops WHERE id = ? AND workspace_id = ? AND verb = ?`).get(op, workspaceId, verb)
 /** How many rows each of Home's lists shows. */
@@ -822,6 +854,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     }
     case 'work.files.tabClose': {
       const workspace = ownRows(ctx, by, p.workspaceId)
+      // A copy whose changes have not reached its file is kept, and sent, until they have; Discard drops them.
+      if (p.side !== true) copyClosing(ctx, p.workspaceId, filesState(ctx).tabs.list(p.workspaceId).tabs.find((t) => t.id === p.tabId), p.discard === true)
       // The last tab closed becomes the workspace's folder: the place is never left with none.
       filesState(ctx).tabs.tabClose(p.workspaceId, p.tabId as string, { at: { at: 'place', id: PLACE.folder }, name: folderName(workspace, workspace.path, workspace.path) }, p.side === true)
       return handled(tabsFor(ctx, by, p.workspaceId))
@@ -835,6 +869,20 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       admitPage(ctx, by, p.workspaceId, p.page as FilePage, m)
       filesState(ctx).tabs.tabSet(p.workspaceId, p.tabId as string, p.page as FilePage)
       return handled(tabsFor(ctx, by, p.workspaceId))
+    // A copy saves back (copies.ts): his window's three presses, and the file's own host's verb.
+    case 'work.files.copyBack':
+      ownRows(ctx, by, p.workspaceId)
+      return handled(await copyBack(ctx, by, p as never))
+    case 'work.files.copyReload':
+      ownRows(ctx, by, p.workspaceId)
+      await copyReload(ctx, by, p as never, signal)
+      return handled(tabsFor(ctx, by, p.workspaceId))
+    case 'work.files.copyKeep':
+      ownRows(ctx, by, p.workspaceId)
+      await copyKeep(ctx, by, p as never)
+      return handled(tabsFor(ctx, by, p.workspaceId))
+    case 'work.files.writeBack':
+      return handled(await writeBack(ctx, by, p as never, m))
     case 'work.files.star': {
       ownRows(ctx, by, p.workspaceId)
       const { key, at } = markedOf(ctx, by, p.workspaceId, p.ref as FileRef, m)
@@ -942,5 +990,5 @@ export function removeWorkspace(ctx: Pick<WorkCtx, 'db' | 'push' | 'log' | 'canv
   const state = filesState(ctx)
   state.tabs.removeWorkspace(workspaceId)
   state.marks.removeWorkspace(workspaceId)
-  for (const table of ['work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept']) ctx.db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).run(workspaceId)
+  for (const table of ['work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies']) ctx.db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).run(workspaceId)
 }

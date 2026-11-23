@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { besideSeatId, type FilePage, type FilesTabs, type FileTab } from '@shared/contract-work-files'
 import { filesPaneOf, filesPaneWorkspace, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
+import { refKey } from '@shared/work/files'
 import type { WorkCtx } from '../modules'
 
 /**
@@ -196,6 +197,20 @@ export class TabStore {
       if (row.kind !== 'seat' && last && !this.rows(workspaceId).length) this.insert(workspaceId, { kind: 'page', page: last })
     })
     return this.list(workspaceId)
+  }
+
+  /** Something a tab says changed outside the tabs (how a copy's send stands, files/copies.ts): the revision moves, so every window asks for the list again. */
+  touch(workspaceId: string): void {
+    this.changed(workspaceId, this.bump(workspaceId))
+  }
+
+  /** A copy's tab shows another file of the same computer now (Keep Both made it): its name, its key and where that file lies. */
+  repoint(workspaceId: string, tabId: string, file: { name: string; copyOf: { host: string; path: string; vm?: boolean } }): void {
+    const row = this.db.prepare(`SELECT page FROM work_files_tabs WHERE workspace_id = ? AND id = ? AND kind = 'file'`).get(workspaceId, tabId) as { page: string } | undefined
+    const page = row ? pageOf(row.page) : undefined
+    if (!page) return
+    const next: FilePageJson = { ...page, name: file.name, key: refKey({ at: 'file', host: file.copyOf.host, path: file.copyOf.path }), copyOf: file.copyOf }
+    this.change(workspaceId, () => void this.db.prepare(`UPDATE work_files_tabs SET page = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`).run(JSON.stringify(next), Date.now(), workspaceId, tabId))
   }
 
   /** The tab that holds a file, by its key. */

@@ -17,6 +17,10 @@ import type { DatabaseSync } from 'node:sqlite'
  *  - `work_files_names`: names this host has listed or found, for Go to.
  *  - `work_files_kept`: a mail's file he kept (`mail:<message>:<part>`), and where the copy went, so From mail
  *    and Home's Waiting on you leave it out.
+ *  - `work_files_copies`: a Files tab's copy of a file on another computer (or in the Windows VM) whose kind
+ *    saves, and where the file itself lies: its host and path there, its version and the sha256 of the bytes it
+ *    holds as last read or written (`sent`), the copy's path here and its folder, and how sending it back stands (copies.ts).
+ *    `closed`: its tab closed with changes not yet sent; the copy is kept until they are.
  */
 export function ensureFilesTables(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_tabs (
@@ -49,6 +53,12 @@ export function ensureFilesTables(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_kept (
     workspace_id TEXT NOT NULL, ref_key TEXT NOT NULL, path TEXT NOT NULL, at INTEGER NOT NULL,
     PRIMARY KEY (workspace_id, ref_key))`)
+  db.exec(`CREATE TABLE IF NOT EXISTS work_files_copies (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, host TEXT NOT NULL, path TEXT NOT NULL, vm INTEGER NOT NULL DEFAULT 0,
+    copy TEXT NOT NULL, dir TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL, sent TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'ok', detail TEXT, saved_at INTEGER, changed_at INTEGER, closed INTEGER NOT NULL DEFAULT 0,
+    at INTEGER NOT NULL, UNIQUE (workspace_id, host, path))`)
+  db.exec(`CREATE INDEX IF NOT EXISTS work_files_copies_by_dir ON work_files_copies (dir)`)
 }
 
-export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept'] as const
+export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies'] as const

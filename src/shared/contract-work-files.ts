@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { CanvasKindSchema, CanvasSourceSchema, type CanvasItem, type CanvasSource } from './work/canvas'
-import { ENTRY_KINDS, FILE_SORTS, FILE_TEXT_MAX, MAKE_KINDS, type FileEntry, type FilePlace, type FolderRef } from './work/files'
+import { COPY_ACROSS_MAX, ENTRY_KINDS, FILE_SORTS, FILE_TEXT_MAX, MAKE_KINDS, type FileEntry, type FilePlace, type FolderRef } from './work/files'
 import type { TeamsPlace } from './contract-work-office'
 import { EDITED_WITHIN, type FindSpec } from './work/docFind'
 import { request, type CapsOf, type RelayOf } from './work/wire'
@@ -117,6 +117,9 @@ export const FileActSchema = z.object({
 })
 export type FileAct = z.infer<typeof FileActSchema>
 
+/** The most base64 one copy sent back carries: a copy is made of a file of 48 MB at most (`COPY_ACROSS_MAX`). */
+export const COPY_DATA_MAX = Math.ceil((COPY_ACROSS_MAX * 4) / 3) + 4
+
 /** The edge of a picture a thumbnail is asked at: the grid's three tile sizes, at twice their pixels. */
 export const THUMB_SIZES = [192, 288, 416] as const
 
@@ -185,8 +188,27 @@ export const FilesRequestSchemas = [
   ),
   /** → FilesTabs: a new page tab, after `after` (last when absent). `first`: only while the workspace has no tab at all, so two windows that open an empty place at once make one tab between them. */
   request('work.files.tabOpen', z.object({ workspaceId: Workspace, page: FilePageSchema, after: z.string().max(100).optional(), first: z.boolean().optional() })),
-  /** → FilesTabs: closes a tab; a file tab's item goes with it, in the same transaction. */
-  request('work.files.tabClose', z.object({ workspaceId: Workspace, tabId: z.string().max(100), /** only the file at the tab's side goes; the tab stays */ side: z.boolean().optional() })),
+  /**
+   * → FilesTabs: closes a tab; a file tab's item goes with it, in the same transaction. A copy whose changes have
+   * not reached its file is kept, and sent, until they have; `discard` drops them with the tab.
+   */
+  request('work.files.tabClose', z.object({ workspaceId: Workspace, tabId: z.string().max(100), /** only the file at the tab's side goes; the tab stays */ side: z.boolean().optional(), discard: z.boolean().optional() })),
+  /**
+   * → CopyBack: a copy tab's kind saved: the host reads the copy as it lies and sends it to the file it is a copy
+   * of when its bytes differ from what that file holds (docs/agents/work-files.md "A copy saves back"). His own
+   * edit of that file: his window, or a key that may approve. Answers how sending stands once this send is done.
+   */
+  request('work.files.copyBack', z.object({ workspaceId: Workspace, tabId: z.string().max(100) })),
+  /** → FilesTabs: the file as it is on its computer now, in the copy's place; what was not sent is dropped. */
+  request('work.files.copyReload', z.object({ workspaceId: Workspace, tabId: z.string().max(100) })),
+  /** → FilesTabs: his copy saved beside the file that changed, under the keep-both name, and the tab shows that file now. */
+  request('work.files.copyKeep', z.object({ workspaceId: Workspace, tabId: z.string().max(100) })),
+  /**
+   * → WrittenBack: a copy's bytes, sent by the workspace's host to the file's own host (its peer verb, never a
+   * window's or a key's): written over the file by `version` alone, through the same door as his own save there,
+   * or with `copy` beside it under the keep-both name. `origin` is his window's press on the workspace's host.
+   */
+  request('work.files.writeBack', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, data: z.string().max(COPY_DATA_MAX), version: z.string().max(200), copy: z.boolean().optional(), origin: FileOriginSchema })),
   /** → FilesTabs: moves a tab before `before` (last when null). */
   request('work.files.tabMove', z.object({ workspaceId: Workspace, tabId: z.string().max(100), before: z.string().max(100).nullable() })),
   /** → FilesTabs: where a page tab stands now. */
@@ -278,11 +300,30 @@ export interface FileTab {
   key?: string
   /** the tab it was opened from: closing it returns there */
   opener?: string
-  /** a file tab that shows a copy made on this host: the host the file itself is on (`vm`: in that host's Windows VM) and its path there. Changes stay in the copy. */
+  /** a file tab that shows a copy made on this host: the host the file itself is on (`vm`: in that host's Windows VM) and its path there. Changes stay in the copy unless `back` is set. */
   copyOf?: { host: string; path: string; vm?: boolean }
+  /** a copy whose kind saves: its changes go back to the file (`copyOf`), and this is how that stands */
+  back?: CopyBack
   /** a file tab with a second file at its side (Open to the Side): that file's item, key and name. It is in no tab of its own. */
   side?: { itemId: string; key: string; name: string }
 }
+/**
+ * How sending a copy back stands (docs/agents/work-files.md "A copy saves back"):
+ *  - `ok`: the file holds what the copy holds; `at`: when a send last landed (absent: nothing was sent yet)
+ *  - `sending`: a send is on its way
+ *  - `changed`: the file changed on its computer since the copy was read or last sent; `at`: when it changed
+ *  - `gone`: the file was moved or deleted there
+ *  - `away`: its computer did not answer; the changes wait here and are sent when it does
+ *  - `refused`: its computer refused the save; `detail` is its sentence
+ */
+export interface CopyBack {
+  is: 'ok' | 'sending' | 'changed' | 'gone' | 'away' | 'refused'
+  at?: number
+  detail?: string
+}
+/** What a copy's own host answers a send back: the file's version after it, the conflict, or the keep-both file it made. */
+export type WrittenBack = { version: string; changed: number } | { conflict: { version: string; changed: number } | { gone: true } } | { copy: { path: string; name: string; version: string; changed: number } }
+
 export interface FilesTabs {
   rev: number
   tabs: FileTab[]
@@ -384,6 +425,12 @@ export const FILES_CAPS = {
   'work.files.open': 'operate',
   'work.files.tabOpen': 'operate',
   'work.files.tabClose': 'operate',
+  // His own edit of the file the copy is of: `approve` too, since others can open it (files/copies.ts).
+  'work.files.copyBack': 'operate',
+  'work.files.copyReload': 'operate',
+  'work.files.copyKeep': 'operate',
+  // Another host of his only: the workspace's host sending a copy back (its origin says his window's press).
+  'work.files.writeBack': 'operate',
   'work.files.tabMove': 'operate',
   'work.files.tabSet': 'operate',
   'work.files.star': 'operate',
@@ -418,6 +465,10 @@ export const FILES_RELAY = {
   'work.files.restore': 'screen',
   'work.files.upload': 'screen',
   'work.files.write': 'screen',
+  'work.files.copyBack': 'screen',
+  'work.files.copyReload': 'screen',
+  'work.files.copyKeep': 'screen',
+  'work.files.writeBack': 'screen',
   'work.files.project': 'screen',
   'work.files.purge': 'never'
 } satisfies RelayOf<typeof FilesRequestSchemas>

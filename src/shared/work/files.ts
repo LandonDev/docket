@@ -89,6 +89,20 @@ export function kindOfEntry(name: string, mime?: string): { kind: EntryKind; can
 export const seatOf = (name: string, mime?: string): CanvasKind => kindOfEntry(name, mime).canvas ?? 'file'
 
 /**
+ * Whether a Files tab's copy of another computer's file, open in this kind, saves back to the file
+ * (docs/agents/work-files.md "A copy saves back"): the kind edits the copy's own bytes and says when it saved. The
+ * sheet edits an .xlsx or .xlsm in place and the deck a .pptx; the `file` kind writes a text file's bytes. A
+ * document edits a `.tcdoc` made of the file, not the file, and a .csv opens as a sheet of our own: those keep
+ * "A copy from MacBook. Changes stay here".
+ */
+export function copySavesBack(kind: CanvasKind, name: string): boolean {
+  const ext = extOf(name)
+  if (kind === 'sheet') return ext === 'xlsx' || ext === 'xlsm'
+  if (kind === 'slides') return ext === 'pptx'
+  return kind === 'file'
+}
+
+/**
  * What a thread's canvas opens a file as. Only the Files pane makes `file` items until a thread has the tools
  * for them (F5): till then text a person writes opens beside a thread as a document, as it always has, and
  * nothing else the `file` kind shows opens there.

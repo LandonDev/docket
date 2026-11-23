@@ -1,5 +1,5 @@
-import { randomBytes } from 'node:crypto'
-import { chmod, lstat, open, readdir, rename, unlink } from 'node:fs/promises'
+import { createHash, randomBytes } from 'node:crypto'
+import { chmod, lstat, open, readdir, readFile as readBytes, rename, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { freeName, splitName } from '@shared/work/files'
 import { bytesHere } from './places/disk'
@@ -12,6 +12,36 @@ import { admitPath, FileRefused, makeFile, versionOf, withFileLocks, type WriteF
  * is, and one that is gone is never made again under its old name. The new bytes are written beside the file
  * under a hidden name, synced, and renamed over it, so a reader sees the old file or the new one, never half.
  */
+
+/**
+ * Whoever hears that `saveFile` replaced a file, by its real path (a Files tab's copy that saves back, copies.ts).
+ * Told after the file holds the new bytes; a listener's fault never fails the save.
+ */
+const savedListeners = new Set<(path: string) => void>()
+export function onFileSaved(fn: (path: string) => void): () => void {
+  savedListeners.add(fn)
+  return () => void savedListeners.delete(fn)
+}
+
+/**
+ * A whole file's bytes and its version from one look: its size and change time before and after the read must
+ * agree with each other and with what was read, and the version's hash is of those very bytes, so the version a
+ * save later names is the version of exactly these bytes. A file that changed while it was read is read once more.
+ */
+export async function readWhole(path: string, max: number): Promise<{ data: Buffer; version: string; sha256: string }> {
+  for (let tries = 0; ; tries++) {
+    const before = await stat(path)
+    if (!before.isFile()) throw new FileRefused('gone', NOT_A_FILE)
+    if (before.size > max) throw new FileRefused('too-big', `${basename(path)} is over ${Math.round(max / 1024 / 1024)} MB.`)
+    const data = await readBytes(path)
+    const after = await stat(path)
+    if (data.length === after.size && after.size === before.size && after.mtimeMs === before.mtimeMs && after.ino === before.ino) {
+      const sha256 = createHash('sha256').update(data).digest('hex')
+      return { data, sha256, version: versionWord({ size: after.size, mtimeMs: after.mtimeMs, sha256 }) }
+    }
+    if (tries) throw new Error(`${basename(path)} changed while it was read. Try again.`)
+  }
+}
 
 /** The most one read answers. */
 export const READ_MAX = 4 * 1024 * 1024
@@ -112,6 +142,13 @@ export async function saveFile(fence: WriteFence, key: string, path: string, dat
     await dir?.sync().catch(() => {})
     await dir?.close()
     const after = await versionOf(real)
+    for (const fn of savedListeners) {
+      try {
+        fn(real)
+      } catch {
+        // a listener's fault is its own
+      }
+    }
     return { version: versionWord(after), changed: Math.round(after.mtimeMs) }
   })
 }

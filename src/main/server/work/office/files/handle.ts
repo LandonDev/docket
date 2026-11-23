@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type CanvasSource, type Handled } from '@shared/work'
@@ -8,8 +8,10 @@ import type { ClientRequest } from '@shared/contract'
 import { FenceError } from '../../../remote/fence'
 import { macBridgeLandingRoot } from '../../../macBridgeLanding'
 import type { Caller, WorkCtx } from '../../modules'
+import { copyKeptIn, dropCopyRecords } from '../../files/copyKept'
 import { importFolderOf } from '../../files/imports'
 import { workspaceHere } from '../../files/policy'
+import { readWhole } from '../../files/save'
 import type { OfficeCarrier } from '../carrier'
 import { BYTES_MAX, copyAllowed, entryOf, fetchFile, foldersPlace, librariesOf, libraryOf, listFolder, offFolders, readText, rootsOf, searchLibraries, SEARCH_MAX, setCopyAllowed, setRoots } from './library'
 import { NOT_SET_UP } from '../../winvm/keeper'
@@ -154,11 +156,13 @@ export function dropCopies(ctx: Pick<WorkCtx, 'dataDir' | 'scopeOf'>, which: { s
  * A folder another open tab still shows stays: the document an import made of the copy lies beside it, and its tab
  * took the copy's place.
  */
-export function dropItemCopies(ctx: Pick<WorkCtx, 'dataDir' | 'canvas'>, items: readonly CanvasItem[]): void {
+export function dropItemCopies(ctx: Pick<WorkCtx, 'dataDir' | 'canvas' | 'db'>, items: readonly CanvasItem[]): void {
   for (const item of items) {
     if (filesPaneWorkspace(item.sessionId) === null || item.source.at !== 'file') continue
     const dir = dirname(item.source.path)
     if (dirname(dir) !== copyDirOf(ctx.dataDir, item.sessionId)) continue
+    // A copy whose changes have not reached its file yet stays until they do (files/copies.ts drops it then).
+    if (copyKeptIn(ctx.db, dir)) continue
     const shown = ctx.canvas.forSession(item.sessionId).some((open) => open.id !== item.id && open.source.at === 'file' && dirname(open.source.path) === dir)
     if (!shown) rmSync(dir, { recursive: true, force: true })
   }
@@ -259,7 +263,7 @@ function writeCopy(dataDir: string, sessionId: string, dir: string, path: string
  * Copies a file from another host, or out of this host's Windows VM, into the owner's attachments here, when its
  * workspace allows it. The owner is a Work thread, or the Files pane of a Work workspace here (a file opened in a tab).
  */
-export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal): Promise<{ source: CanvasSource; entry: TeamsEntry }> {
+export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSource, signal?: AbortSignal): Promise<{ source: CanvasSource; entry: TeamsEntry; version?: string }> {
   const pane = filesPaneWorkspace(sessionId)
   const scope = pane === null ? ctx.scopeOf(sessionId) : null
   if (pane === null && !scope) throw new Error(`thread ${sessionId} is not a Work thread here`)
@@ -267,24 +271,61 @@ export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSour
   const workspaceId = pane ?? scope!.workspaceId
   if (!workspaceId || !copyAllowed(ctx.db, workspaceId)) throw new Error('This workspace keeps Teams files where they are: turn on Copy Teams files in its settings to open one here.')
   if (source.at !== 'file') throw new Error('A copy comes from a file on another host.')
-  let got: { name: string; bytes: Buffer }
+  // The file's version comes from the same look as its bytes, so a copy that saves back names exactly what it read.
+  let got: { name: string; bytes: Buffer; version?: string }
   if (source.host === ctx.host) {
     // A file in this host's Windows VM comes out of the guest the same way: a snapshot in the thread's own folder.
     if (!isGuestPath(source.path)) throw new Error('A copy comes from a file on another host.')
     if (scope ? !vmAllowed(ctx, scope) : !vmSetUp()) throw new Error(NOT_VM)
     const inVm = vmLibraryOf(vmLibraries(ctx.db, ctx.host), source.path)
     if (!inVm) throw new Error(NOT_TEAMS)
-    got = { name: inVm.path.slice(inVm.path.lastIndexOf('\\') + 1), bytes: await vmBytes(inVm.path, BYTES_MAX, signal) }
+    const name = inVm.path.slice(inVm.path.lastIndexOf('\\') + 1)
+    got = pane === null ? { name, bytes: await vmBytes(inVm.path, BYTES_MAX, signal) } : { name, ...(await vmVersioned(inVm.path, signal)) }
   } else {
-    const far = (await ctx.peer.call({ scope: scope ?? { sessionId, workspaceId }, signal }, source.host).call('office', 'filesRead', { source, as: 'bytes' })) as { name: string; data: string }
-    got = { name: far.name, bytes: Buffer.from(far.data, 'base64') }
+    const far = (await ctx.peer.call({ scope: scope ?? { sessionId, workspaceId }, signal }, source.host).call('office', 'filesRead', { source, as: 'bytes' })) as { name: string; data: string; version?: string }
+    got = { name: far.name, bytes: Buffer.from(far.data, 'base64'), ...(typeof far.version === 'string' ? { version: far.version } : {}) }
   }
   // One folder per source file, so two files of one name in one owner's copies never share a folder.
   const dir = copyFolderOf(ctx.dataDir, sessionId, source)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const path = join(dir, basename(got.name))
   writeCopy(ctx.dataDir, sessionId, dir, path, got.bytes)
-  return { source: { at: 'file', host: ctx.host, path }, entry: entryOf('', path) }
+  return { source: { at: 'file', host: ctx.host, path }, entry: entryOf('', path), ...(got.version ? { version: got.version } : {}) }
+}
+
+/** One read of the guest's piece of a file, with the version the helper reads (`size:mtime:sha256`). */
+type GuestPiece = { data: string; size: number; eof: boolean; version: string }
+const PIECE = 4 * 1024 * 1024
+
+/**
+ * A file in the VM read whole for a Files tab's copy, with its version: every piece is read with the helper's
+ * version, and a piece of another version means the file changed while it was read (read once more, then refused).
+ */
+async function vmVersioned(path: string, signal?: AbortSignal): Promise<{ bytes: Buffer; version: string }> {
+  for (let tries = 0; ; tries++) {
+    const entry = (await vmCall('files.stat', { path }, { signal })) as { dir?: boolean; size: number; name: string }
+    if (entry.dir) throw new Error('That is a folder.')
+    if (entry.size > BYTES_MAX) throw new Error(`${entry.name} is over ${Math.round(BYTES_MAX / 1024 / 1024)} MB: open it in its app.`)
+    const parts: Buffer[] = []
+    let version: string | null = null
+    let offset = 0
+    let same = true
+    for (;;) {
+      const got = (await vmCall('files.read', { path, offset, length: PIECE, version: true }, { signal })) as GuestPiece
+      if (version !== null && got.version !== version) {
+        same = false
+        break
+      }
+      version = got.version
+      const buf = Buffer.from(got.data, 'base64')
+      parts.push(buf)
+      offset += buf.length
+      if (got.eof || !buf.length) break
+      if (offset > BYTES_MAX) throw new Error(`${entry.name} grew past ${Math.round(BYTES_MAX / 1024 / 1024)} MB while it was read.`)
+    }
+    if (same && version !== null) return { bytes: Buffer.concat(parts), version }
+    if (tries) throw new Error(`${entry.name} changed while it was read. Try again.`)
+  }
 }
 
 export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, deps: FilesDeps | (() => OfficeCarrier | null), signal?: AbortSignal): Promise<Handled> {
@@ -331,7 +372,9 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
         // The size is known before the download: a file too big to copy is never fetched for it.
         if (statSync(path).size > BYTES_MAX) throw new Error(`${basename(path)} is over ${BYTES_MAX / 1024 / 1024} MB: open it in its app.`)
         await fetchFile('', path, signal)
-        return handled({ name: basename(path), data: readFileSync(path).toString('base64') })
+        // Its bytes and its version from one look: a copy that saves back names this version (files/copies.ts).
+        const whole = await readWhole(path, BYTES_MAX)
+        return handled({ name: basename(path), data: whole.data.toString('base64'), version: whole.version })
       }
       return handled({ name: basename(path), ...(await readText(path)) })
     }
@@ -392,8 +435,11 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       return handled({ on: copyAllowed(ctx.db, p.workspaceId as string) })
     case 'work.office.filesCopySet':
       setCopyAllowed(ctx.db, p.workspaceId as string, p.on as boolean)
-      // Turned off, the copies its threads hold go too.
-      if (!p.on) dropCopies(ctx, { workspaceId: p.workspaceId as string })
+      // Turned off, the copies its threads hold go too, and with the Files tabs' copies what Files kept of them.
+      if (!p.on) {
+        dropCopies(ctx, { workspaceId: p.workspaceId as string })
+        dropCopyRecords(ctx.db, p.workspaceId as string)
+      }
       return handled({ on: copyAllowed(ctx.db, p.workspaceId as string) })
     case 'work.office.filesThreads':
       return handled({ threads: threadsHolding(ctx, p.workspaceId as string, p.source as CanvasSource, (path) => by.kind !== 'remote' || !!by.peer || ctx.reaches(by, path)) })
