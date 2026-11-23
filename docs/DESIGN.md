@@ -1972,7 +1972,8 @@ Around the canvas:
   the typed address with "Not found" as the row's red line when the map
   did not find it (a pasted link, which the map is never asked, says so
   at once and wraps inside the row); the typed address and ", using the
-  town centre" when the map found no more than its town. Nothing on the row says whether a job's places go to
+  town centre" while only its town's centre is known (said at once; the
+  row turns by itself if the map then finds the place). Nothing on the row says whether a job's places go to
   the map: that lives in the dialog. The row opens a small dialog named
   for Home or the job, and its button is named for what the row says
   ("Change Purdue: Cedar Hall, 4 Elm Street"): one Address field, and for

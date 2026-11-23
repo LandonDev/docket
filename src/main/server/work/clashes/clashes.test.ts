@@ -93,6 +93,10 @@ const call = async (method: string, params: unknown, by: Caller = LOCAL): Promis
 describe('the wire', () => {
   it('reads with read, quiets with operate and answers with approve', () => {
     expect(ClashesRequestSchemas.map((s) => s.shape.method.value)).toEqual(['work.clashes.list', 'work.clashes.leave', 'work.clashes.miles', 'work.clashes.waive', 'work.clashes.answer'])
+    // A place a calendar made very long still goes with "This is fine": the pair he can see is never refused for its length.
+    const waive = ClashesRequestSchemas.find((s) => s.shape.method.value === 'work.clashes.waive')!
+    const long = { eventId: 'e_staff', startsAt: at(16), endsAt: at(18), location: 'Room '.repeat(500) }
+    expect(waive.safeParse({ id: '1', method: 'work.clashes.waive', params: { id: 'e_staff-e_game', on: true, seen: [long] } }).success).toBe(true)
     expect(CLASHES_CAPS).toEqual({ 'work.clashes.list': 'read', 'work.clashes.leave': 'read', 'work.clashes.miles': 'read', 'work.clashes.waive': 'operate', 'work.clashes.answer': 'approve' })
     expect(requiredCapability({ method: 'work.clashes.answer' })).toBe('approve')
   })

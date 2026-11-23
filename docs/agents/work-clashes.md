@@ -58,7 +58,8 @@ Every call runs on the owner session, so it reads every job.
   `clashes:unwaive`. A quiet clash stays quiet until either event's time or
   place changes. `seen` is the two events as the dialog showed them at his
   press (each id, start, end and calendar's place words); LifeOS refuses the
-  waive in words when they are no longer so.
+  waive in words when they are no longer so. A place's words go whole,
+  with no cap: the list that showed the pair never capped them.
 - `work.clashes.answer {eventId, way, comment?, start?, end?}` (approve): his
   own press, sent at once, as New event sends (agenda/NewEventDialog.tsx):
   `calendarOps:save` with no origin, then `calendarOps:send {id, cause:
@@ -232,9 +233,10 @@ while it reads, the read's error in a red line if it fails.
   so the row turns by itself); the address he typed with "Not found" in red under it when the map
   did not find it, or at once when the text is a link or a call, which no
   pass ever places (LifeOS's `isVenue`; a long link wraps inside the row);
-  the typed address and ", using the town centre" when the map found no
-  more than its town (`rough`: drives start at the town's centre, and a
-  typed start that has only a town's centre is asked of the map). The words are `placeWords` in `clashes/places.ts`.
+  the typed address and ", using the town centre" while only its town's
+  centre is known (`rough`, said at once: drives start at the town's
+  centre, a typed start that has only that is asked of the map, and the
+  row turns by itself if the map finds the place). The words are `placeWords` in `clashes/places.ts`.
 - **The dialog.** The whole row opens it; its button is named for what the
   row says ("Change Purdue: Cedar Hall, 4 Elm Street", `rowLabel`). One
   Address field filled with the current address; for a job, the switch "Look
