@@ -61,7 +61,23 @@ go through `diffBlocks`:
   it goes to the one writer between the two sides when there is only one.
   A side kept as blocks (after a compaction) has no items: no `by`.
 
+A styled document's formatting is compared with its words. A row that
+changed beside its words says how, under its block, in a 12px muted line
+(work-kit `changeWords`: "Heading 1 becomes Title", "11 pt becomes 14 pt",
+"Line spacing set to 2"). The page beside the text (the named styles, the
+theme, the page set-up, the header and footer) is compared where both sides
+can still be read whole, and said as one last step, "Page formatting"
+(`BlockDiff.page`, work-kit `pageWords`: "Style Title: 22 pt becomes 30 pt",
+"Paper US Letter becomes A4").
+
 ## Restore
+
+A version holds the document's page as it was, and a restore puts it back
+with the text: its styles, theme and set-up as that version had them, and
+the keys made since gone. A version from before the document was styled
+puts its words back and leaves the page. The document's schema number never
+falls (work-docs.md "The schema gate").
+
 
 A forward edit: the older blocks written over the live ones by
 `writeBlocks` (ids kept; a block whose own content is unchanged keeps its

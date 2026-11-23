@@ -16,6 +16,7 @@ import { TypeGlyph } from "../../surfaces/threads/TypeGlyph";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, MoreEntry } from "../canvas/kind";
 import { History } from "../icons";
+import { PAGE_CHANGE_ID } from "../docs/review";
 import { CompareDoc, CompareSkeleton, type Layout } from "./Compare";
 import { historyActions, useBranches, useCompare, useVersions } from "./store";
 
@@ -166,7 +167,7 @@ function VersionRow({ v, all, names, now, shared, picked, picking, onPick, onCom
 
 function BranchRow({ b, names, onOpen }: { b: HistoryBranch; names: Record<string, string>; onOpen(): void }) {
   const who = whoWords(b.authors, names);
-  const n = b.diff.rows.length;
+  const n = b.diff.rows.length + Number(!!b.diff.page?.length);
   return (
     <ItemButton onClick={onOpen} className="min-h-[52px] flex-nowrap p-2 text-[13px] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]">
       <span className="w-4 shrink-0" />
@@ -339,7 +340,7 @@ function CompareView({ env, source, item, state, setState, shell }: CanvasBodyPr
         compare.error ? null : (
           <CompareSkeleton layout={layout} />
         )
-      ) : diff.rows.length === 0 ? (
+      ) : diff.rows.length === 0 && !diff.page?.length ? (
         <Empty className="min-h-[240px]">
           <EmptyHeader>
             <EmptyTitle>No differences</EmptyTitle>
@@ -358,7 +359,8 @@ function ReviewView({ env, source, item, state, setState, shell }: CanvasBodyPro
   const branch = branches.value?.branches.find((b) => b.id === state?.branchId) ?? null;
   const layout = layoutOf(state, width);
   const set = (patch: Partial<HistoryState>) => setState({ ...state, ...patch });
-  const current = Math.min(state?.current ?? 0, Math.max(0, (branch?.diff.rows.length ?? 1) - 1));
+  const count = (branch?.diff.rows.length ?? 0) + Number(!!branch?.diff.page?.length);
+  const current = Math.min(state?.current ?? 0, Math.max(0, count - 1));
   const actions = useMemo(() => historyActions(env, source), [env, source]);
   useLayoutEntry(shell, layout, set, [], width);
   useEffect(() => {
@@ -370,9 +372,10 @@ function ReviewView({ env, source, item, state, setState, shell }: CanvasBodyPro
   }, [branches.value, branch, state, setState]);
   useEffect(() => {
     if (!branch) return shell.review(null);
-    const rows = branch.diff.rows;
+    const rows = branch.diff.rows.map((row) => row.id);
+    if (branch.diff.page?.length) rows.push(PAGE_CHANGE_ID);
     const decide = async (which: number | { group: string } | "all", accept: boolean) => {
-      const ids = typeof which === "number" ? [rows[which]!.id] : "all";
+      const ids = typeof which === "number" ? [rows[which]!] : "all";
       await actions.decide(branch.id, ids, accept);
     };
     shell.review({
@@ -477,7 +480,8 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
   const v = versions.value;
   const names = { ...v?.names, ...compare.value?.names };
   const rows = compare.value?.diff.rows ?? [];
-  const current = Math.min(state?.current ?? 0, Math.max(0, rows.length - 1));
+  const count = rows.length + Number(!!compare.value?.diff.page?.length);
+  const current = Math.min(state?.current ?? 0, Math.max(0, count - 1));
   const by = rows[current]?.by;
   return (
     <>
@@ -489,16 +493,16 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
           <Picker label="Newer" value={state?.to ?? "live"} versions={v.versions} names={names} onPick={(id) => set({ to: id, current: 0 })} />
         </span>
       ) : null}
-      {rows.length > 0 ? (
+      {count > 0 ? (
         <div role="toolbar" aria-label="Step through the changes" className="ms-auto flex min-w-0 items-center gap-1">
           {by?.length ? <span className="min-w-0 truncate pe-1">{whoWords(by, names)}</span> : null}
           <Step label="Previous change" disabled={current <= 0} onClick={() => set({ current: current - 1 })}>
             <ChevronLeft />
           </Step>
           <span className="min-w-6 text-center text-foreground tabular-nums select-none">
-            {current + 1}/{rows.length}
+            {current + 1}/{count}
           </span>
-          <Step label="Next change" disabled={current >= rows.length - 1} onClick={() => set({ current: current + 1 })}>
+          <Step label="Next change" disabled={current >= count - 1} onClick={() => set({ current: current + 1 })}>
             <ChevronRight />
           </Step>
         </div>

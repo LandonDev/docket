@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { createCollabVerifier, type VerifiedClaims } from 'work-kit/collab-server'
+import { knownSchema, SCHEMA_PARAM } from 'work-kit/collab'
 import { projectionLists } from '../../../../../shared/work/guestProjection'
 import type { GuestServiceLink } from '../../guests/wire'
 import { HOSTED_CSP } from './hosted'
@@ -400,7 +401,10 @@ function upgrade(req: IncomingMessage, socket: import('node:stream').Duplex, hea
   ctx.wss.handleUpgrade(req, socket, head, (ws) => {
     const headers = new Headers()
     for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v)
-    const accepted = ctx.collab.accept(ws, new Request(`http://localhost/w/doc/${encodeURIComponent(doc)}`, { headers }), { doc })
+    // The guest's editor says the document schema it knows in its socket's address: carried through, and nothing
+    // else of the address (work-kit's schema gate; a guest that says none knows 0 and is refused a styled document).
+    const known = knownSchema(new URL(req.url ?? '/', 'http://localhost').searchParams.get(SCHEMA_PARAM))
+    const accepted = ctx.collab.accept(ws, new Request(`http://localhost/w/doc/${encodeURIComponent(doc)}${known > 0 ? `?${SCHEMA_PARAM}=${known}` : ''}`, { headers }), { doc })
     ws.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
       const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data)
       accepted.message(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength))

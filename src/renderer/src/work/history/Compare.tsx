@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { inlineSegments, type InlineSegment } from "work-kit/formats/diff";
+import { changeWords, inlineSegments, type InlineSegment } from "work-kit/formats/diff";
 import type { BlockDiff, DiffBlock, DiffLine, DiffRow, DiffRun } from "@shared/contract-work-history";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
@@ -188,11 +188,32 @@ function OneLine({ line, rows, current, number }: { line: DiffLine; rows: readon
   return (
     <div data-row={line.row ?? undefined}>
       <Block block={block} other={line.right && line.left ? line.left : null} row={row} mark={mark} side="both" compact={false} number={number} cur={line.row !== null && line.row === current} />
+      {line.right ? <FormatWords row={row} /> : null}
     </div>
   );
 }
 
+/** What a change did beside the words, under its block: "Heading 1 becomes Normal text", "11 pt becomes 14 pt". */
+function FormatWords({ row }: { row: DiffRow | null }) {
+  const words = row ? changeWords(row) : [];
+  if (words.length === 0) return null;
+  return <div data-format-words className="-mt-0.5 mb-1 text-xs leading-4 text-muted-foreground">{words.join(" · ")}</div>;
+}
+
 const Gap = () => <div aria-hidden className="mt-1 h-[calc(100%-4px)] min-h-[22px] rounded-[4px] bg-(--diff-gap)" />;
+
+export function PageChangeSummary({ words, current, row }: { words: readonly string[]; current: boolean; row?: number }) {
+  return (
+    <div data-row={row} data-page-change={current || undefined} className="my-4 text-[13px] leading-5 [overflow-wrap:anywhere]">
+      <div className={cn("rounded-[2px] px-2 py-1", current && CUR)}>
+        <div className="font-semibold">Page formatting</div>
+        <ul className="mt-0.5 space-y-0.5 text-muted-foreground">
+          {words.map((line, index) => <li key={index}>{line}</li>)}
+        </ul>
+      </div>
+    </div>
+  );
+}
 
 export function CompareDoc({ diff, layout, current, title }: { diff: BlockDiff; layout: Layout; current: number; title: string }) {
   const { lines, rows } = diff;
@@ -207,6 +228,7 @@ export function CompareDoc({ diff, layout, current, title }: { diff: BlockDiff; 
               <OneLine key={`${line.id}:${i}`} line={line} rows={rows} current={current} number={numbers[i]!} />
             ))}
           </div>
+          {diff.page?.length ? <PageChangeSummary words={diff.page} current={current === rows.length} row={rows.length} /> : null}
         </div>
       </div>
     );
@@ -219,7 +241,12 @@ export function CompareDoc({ diff, layout, current, title }: { diff: BlockDiff; 
     if (!block) return <Gap />;
     const row = line.row === null ? null : rows[line.row]!;
     const mark = other ? null : line.row === null ? null : side === "left" ? "del" : "add";
-    return <Block block={block} other={other} row={row} mark={mark} side={side} compact number={(side === "left" ? left : right)[i]!} cur={line.row !== null && line.row === current} />;
+    return (
+      <>
+        <Block block={block} other={other} row={row} mark={mark} side={side} compact number={(side === "left" ? left : right)[i]!} cur={line.row !== null && line.row === current} />
+        {side === "right" ? <FormatWords row={row} /> : null}
+      </>
+    );
   };
   return (
     // The rule between the columns runs the body's whole height, however short a side is.
@@ -236,6 +263,7 @@ export function CompareDoc({ diff, layout, current, title }: { diff: BlockDiff; 
           </div>
         </div>
       ))}
+      {diff.page?.length ? <div className="relative col-span-2 bg-background px-4"><PageChangeSummary words={diff.page} current={current === rows.length} row={rows.length} /></div> : null}
     </div>
   );
 }

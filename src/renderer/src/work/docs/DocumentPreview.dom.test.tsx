@@ -12,12 +12,12 @@ import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, MoreEntry } from "../canvas/kind";
 
 const FILE = { at: "file", host: "box", path: "/w/Run of show.tcdoc" } as const;
-const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", focused: 0, editors: 0 }));
+const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", focused: 0, editors: 0, schema: 1 as number | undefined, props: [] as Record<string, unknown>[] }));
 
 vi.mock("./host", () => ({
   docHost: (env: string) => ({
     env,
-    open: async () => ({ doc: "file:abc", source: { at: "file", host: "box", path: "/w/Run of show.tcdoc" }, title: "Run of show", role: opened.role, shared: false, mode: "writes", written: null, me: "owner", names: { owner: "You" } }),
+    open: async () => ({ doc: "file:abc", source: { at: "file", host: "box", path: "/w/Run of show.tcdoc" }, title: "Run of show", role: opened.role, shared: false, mode: "writes", written: null, me: "owner", names: { owner: "You" }, ...(opened.schema === undefined ? {} : { schema: opened.schema }) }),
     token: async () => ({ token: "t", expiresAt: 0 }),
     threads: async () => ({ rows: [], names: {} }),
     onPush: () => () => undefined,
@@ -34,7 +34,9 @@ vi.mock("work-kit/editor", async (original) => {
   return {
     ...(await original<typeof import("work-kit/editor")>()),
     // The shared editor, standing in: it hands the body an editor as the real one does.
-    DocumentEditor: ({ onEditor, editable }: { onEditor?(editor: unknown): void; editable?: boolean }) => {
+    DocumentEditor: (props: { onEditor?(editor: unknown): void; editable?: boolean } & Record<string, unknown>) => {
+      const { onEditor, editable } = props;
+      opened.props.push(props);
       useEffect(() => {
         opened.editors++;
         onEditor?.({ document: [], domElement: document.createElement("div"), focus: () => void opened.focused++, onChange: () => () => undefined });
@@ -65,6 +67,8 @@ afterEach(() => {
   cleanup();
   previews.length = 0;
   opened.role = "edit";
+  opened.schema = 1;
+  opened.props.length = 0;
   opened.focused = 0;
   opened.editors = 0;
 });
@@ -154,11 +158,36 @@ describe("Preview, a state of the document", () => {
     expect(document.querySelectorAll("[data-fake-preview]")).toHaveLength(1);
   });
 
-  it("a document he can only read previews the same way, with the way out reading Back", async () => {
+  it("the format row is the body's first, unscrolled row on a document he may edit: the editor draws it into the body's own place, and its Preview is this one", async () => {
+    await mount();
+    const row = document.querySelector<HTMLElement>("[data-doc-row]")!;
+    // Above the scroller, inside the body, with the editor's own keys while focus is in it.
+    expect(row.nextElementSibling!.contains(document.querySelector("[data-doc-scroller]"))).toBe(true);
+    expect(row.getAttribute("data-editor-keys")).toBe("document");
+    await waitFor(() => expect(opened.props.at(-1)!.formatRowInto).toBe(row));
+    expect(opened.props.at(-1)!.formatRow).toBe(true);
+    expect(opened.props.at(-1)!.hostSchema).toBe(1);
+    expect(["Letter", "A4"]).toContain(opened.props.at(-1)!.paper);
+    // The row's way out opens Preview on the format he last used.
+    await act(async () => (opened.props.at(-1)!.onPreview as () => void)());
+    expect(slot()).not.toBeNull();
+    expect(previews.at(-1)!.initial).toBeUndefined();
+    // Under Preview the row is out of sight and reach with the editor.
+    expect(row.hasAttribute("inert")).toBe(true);
+  });
+
+  it("a host from before the schema gate says no schema: the editor is told 0 and offers nothing newer", async () => {
+    opened.schema = undefined;
+    await mount();
+    await waitFor(() => expect(opened.props.at(-1)?.hostSchema).toBe(0));
+  });
+
+  it("a document he can only read has no format row, and previews the same way, with the way out reading Back", async () => {
     opened.role = "view";
     const view = await mount();
     await act(async () => view.more().find((row) => row.id === "export")!.run());
     expect(previews.at(-1)).toMatchObject({ readOnly: true });
+    expect(opened.props.at(-1)).not.toHaveProperty("formatRow");
   });
 
   it("hands the frame one source for as long as the document is the same, so a redraw of the body draws nothing again", async () => {

@@ -2,9 +2,12 @@ import type { ExportAnswer, PreviewAnswer, PreviewFormatId } from "@shared/contr
 import { PREVIEW_READ_MAX } from "@shared/contract-work-formats";
 import type { CanvasSource } from "@shared/work";
 import type { AnyEditor } from "work-kit/editor";
+import type { DocumentPage } from "work-kit/editor/page";
+import { paraOf } from "work-kit/editor/para";
 import { registry } from "../../lib/connection";
 import { fileStem, fromBase64, mimeOf, paperFor, saveFile } from "../formats/model";
 import type { Drawn, PreviewBytes, PreviewFormat, PreviewSource } from "../formats/preview";
+import { docFonts } from "./fonts";
 import { servedBy } from "./host";
 
 /**
@@ -58,15 +61,21 @@ export interface DocFacts {
   /** runs and blocks with any colour, text or background */
   colours: number;
   underlines: number;
+  /** runs that name a font or a size */
+  fonts?: number;
+  /** paragraphs with spacing, indents or page rules of their own */
+  spacing?: number;
+  /** paragraphs that wear a named style (Title, Caption, a file's own) */
+  styles?: number;
 }
 
 type Loose = { type?: unknown; props?: Record<string, unknown>; content?: unknown; children?: unknown; styles?: Record<string, unknown> };
 
 const coloured = (value: unknown): boolean => typeof value === "string" && value !== "" && value !== "default";
 
-/** What the editor's blocks hold that a format may drop: colours, underlines, footnotes. */
-export function blockFacts(blocks: readonly unknown[]): Pick<DocFacts, "footnotes" | "colours" | "underlines"> {
-  const facts = { footnotes: 0, colours: 0, underlines: 0 };
+/** What the editor's blocks hold that a format may drop: colours, underlines, footnotes, fonts and sizes, a paragraph's own formatting. */
+export function blockFacts(blocks: readonly unknown[]): Required<Pick<DocFacts, "footnotes" | "colours" | "underlines" | "fonts" | "spacing" | "styles">> {
+  const facts = { footnotes: 0, colours: 0, underlines: 0, fonts: 0, spacing: 0, styles: 0 };
   const inline = (content: unknown): void => {
     if (!Array.isArray(content)) {
       // A table's content: rows of cells, each holding inline content.
@@ -77,7 +86,8 @@ export function blockFacts(blocks: readonly unknown[]): Pick<DocFacts, "footnote
     for (const piece of content as Loose[]) {
       if (piece.type === "footnote") facts.footnotes++;
       const styles = piece.styles ?? {};
-      if (coloured(styles.textColor) || coloured(styles.backgroundColor)) facts.colours++;
+      if (coloured(styles.textColor) || coloured(styles.backgroundColor) || coloured(styles.color) || coloured(styles.highlight)) facts.colours++;
+      if (coloured(styles.fontFamily) || coloured(styles.fontSize)) facts.fonts++;
       if (styles.underline === true) facts.underlines++;
       // A link holds its own runs.
       if (Array.isArray(piece.content)) inline(piece.content);
@@ -86,12 +96,29 @@ export function blockFacts(blocks: readonly unknown[]): Pick<DocFacts, "footnote
   const walk = (list: readonly unknown[]): void => {
     for (const block of list as Loose[]) {
       if (coloured(block.props?.textColor) || coloured(block.props?.backgroundColor)) facts.colours++;
+      const { style, ...rest } = paraOf(block as { props?: object });
+      if (style) facts.styles++;
+      if (Object.keys(rest).length > 0) facts.spacing++;
       inline(block.content);
       if (Array.isArray(block.children)) walk(block.children);
     }
   };
   walk(blocks);
   return facts;
+}
+
+/**
+ * The styling a format cannot hold, said once each. Markdown holds none of it (its colours are said
+ * in a line of their own). Word keeps all of it (work-kit's writer: fonts by their Office names,
+ * sizes, colours, the named styles, spacing, the page), and OpenDocument and Rich Text are made
+ * from that Word file.
+ */
+function styling(facts: DocFacts): string[] {
+  const lines: string[] = [];
+  if ((facts.fonts ?? 0) > 0) lines.push("Fonts and sizes stay behind");
+  if ((facts.styles ?? 0) > 0) lines.push("Named styles stay behind");
+  if ((facts.spacing ?? 0) > 0) lines.push("Paragraph spacing stays behind");
+  return lines;
 }
 
 const some = (n: number, one: string, many: string): string | null => (n > 0 ? (n === 1 ? one : many.replace("{n}", n.toLocaleString("en-US"))) : null);
@@ -121,6 +148,7 @@ export function docDrops(format: DocFormat, facts: DocFacts): string[] {
   if (format === "md") {
     if (facts.colours > 0) lines.push("Colours stay behind");
     if (facts.underlines > 0) lines.push("Underlines stay behind");
+    lines.push(...styling(facts));
   }
   return lines.filter((line): line is string => line !== null);
 }
@@ -139,7 +167,9 @@ export interface DocPreviewDeps {
   review(): Pick<DocFacts, "comments" | "replied" | "suggestions">;
   /** A test hands in its own wire, page writer and save. */
   request?: Request;
-  page?(editor: AnyEditor, title: string, print: { paper: "A4" | "Letter" } | null): Promise<string>;
+  /** the document's styles, theme and page set-up as they stand; null for a classic document */
+  styled?(): DocumentPage | null;
+  page?(editor: AnyEditor, title: string, print: { paper: "A4" | "Letter" } | null, styled: DocumentPage | null): Promise<string>;
   save?(name: string, blob: Blob): void;
   /** hands a PDF to this computer to print, which says where it went (work/formats/printOut.ts) */
   print?(name: string, bytes: Uint8Array): Promise<void>;
@@ -151,12 +181,18 @@ const linkRequest: Request = (env, method, params, opts) => registry.linkOf(env)
 /** The font a document's text is in on paper when nothing names one: Office's own default, drawn with its twin. */
 export const DOC_PAPER_FONT = "Calibri";
 
-async function writePage(editor: AnyEditor, title: string, print: { paper: "A4" | "Letter" } | null): Promise<string> {
+async function writePage(editor: AnyEditor, title: string, print: { paper: "A4" | "Letter" } | null, styled: DocumentPage | null): Promise<string> {
   const { htmlDocument } = await import("work-kit/formats/html");
-  if (!print) return htmlDocument(editor, editor.document as never, { title });
+  const blocks = editor.document as never;
+  // A styled document's page wears its own styles, theme and sheet; a classic one keeps the page's own look.
+  const own = styled ? { page: styled } : {};
+  if (!print) return htmlDocument(editor, blocks, { title, ...own });
   // The print window loads no file, so the page carries its faces: the same ones LibreOffice draws Word's file with.
   const { printFonts } = await import("../formats/fonts");
-  return htmlDocument(editor, editor.document as never, { title, print, fonts: await printFonts([], DOC_PAPER_FONT) });
+  const { resolveStyle, pageFonts, NORMAL } = await import("work-kit/editor/page");
+  const body = styled ? (resolveStyle(styled.styles, NORMAL).fontFamily ?? DOC_PAPER_FONT) : DOC_PAPER_FONT;
+  const named = styled ? [...pageFonts(styled), ...docFonts(editor.document as readonly unknown[])] : [];
+  return htmlDocument(editor, blocks, { title, print, ...own, fonts: await printFonts(named, body) });
 }
 
 const cancelled = (): DOMException => new DOMException("The draw was cancelled", "AbortError");
@@ -210,7 +246,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
   /** The format as pages on the host: a render it already keeps for this very text is answered as it is. */
   const render = async (format: PreviewFormatId, signal: AbortSignal): Promise<{ env: string; home: boolean; answer: PreviewAnswer }> => {
     const paper = paperFor(deps.locale ?? globalThis.navigator?.language ?? "en-US");
-    const html = format === "pdf" ? await page(mustHaveEditor(), deps.title, { paper }) : undefined;
+    const html = format === "pdf" ? await page(mustHaveEditor(), deps.title, { paper }, deps.styled?.() ?? null) : undefined;
     if (signal.aborted) throw cancelled();
     const made = await onHost(async (env, home) => ({
       env,
@@ -256,7 +292,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
         return { picture: { kind: "text", text }, drops: unique([...docDrops("md", facts()), ...made.warnings.map(asLine)]) };
       }
       if (format === "html") {
-        const html = await page(mustHaveEditor(), deps.title, null);
+        const html = await page(mustHaveEditor(), deps.title, null, deps.styled?.() ?? null);
         if (opts.signal.aborted) throw cancelled();
         return { picture: { kind: "html", html }, drops: docDrops("html", facts()) };
       }
@@ -270,7 +306,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
       // The document as it stands now: never a picture kept from an earlier look.
       if (id === "html") {
         const name = `${stem()}.html`;
-        save(name, new Blob([await page(mustHaveEditor(), deps.title, null)], { type: mimeOf(id) }));
+        save(name, new Blob([await page(mustHaveEditor(), deps.title, null, deps.styled?.() ?? null)], { type: mimeOf(id) }));
         return { name };
       }
       if (id === "md" || id === "docx" || id === "odt" || id === "rtf") {

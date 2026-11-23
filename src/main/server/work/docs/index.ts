@@ -3,6 +3,7 @@ import { handled, NOT_HANDLED } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { ServedElsewhere, TOKEN_SECONDS } from '../service/ctx'
+import { DOCUMENT_SCHEMA, SCHEMA_PARAM } from 'work-kit/collab-server'
 import { dismissWritten, docsOf, ensureModeTable, modeOf, setMode, stopDocs } from './state'
 import { lifeosRow, othersOpen, pathOf, targetOf, titleOf, type DocTarget } from './target'
 import { changeThread, ensureThreadTables, readThreads } from './threads'
@@ -17,7 +18,7 @@ import { fetchedItemOfPath } from '../canvas/fetch'
  * (M18); its history and branches are history's (M19). This module opens a
  * document for a screen (a token, a socket relayed over the host's own link,
  * its threads, its mode) and gives agents `doc_read`, `doc_write`,
- * `doc_suggest` and `doc_comment` (tools.ts), and finds what a workspace
+ * `doc_format`, `doc_suggest` and `doc_comment` (tools.ts), and finds what a workspace
  * holds for `doc_find` and a project's link picker (find.ts). The saved
  * views it keeps are the Files place's saved searches (files/search.ts); the
  * `work.docs.find` and view methods stay for a window a release behind.
@@ -68,7 +69,8 @@ async function opened(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocOpen> 
     mode: shared ? 'suggests' : modeOf(ctx, t.doc),
     written: docsOf(ctx).written.get(t.doc) ?? null,
     me: 'owner',
-    names: namesFor(ctx, [])
+    names: namesFor(ctx, []),
+    schema: DOCUMENT_SCHEMA
   }
 }
 
@@ -102,7 +104,10 @@ export const docs: WorkModule = {
         const t = await targetOf(ctx, by, req.method, req.params.source)
         // Asked first, so a document another host serves says so before a socket is made.
         await tokenFor(ctx, by, t)
-        return handled({ socket: s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}`), t.doc) })
+        // The window's editor says what schema it knows; this socket says it for it (work-kit's schema gate).
+        const said: unknown = req.params.schema
+        const known = typeof said === 'number' && Number.isInteger(said) && said > 0 && said <= 1000 ? `?${SCHEMA_PARAM}=${said}` : ''
+        return handled({ socket: s.relay.connect(ctx.service.url(`/w/doc/${encodeURIComponent(t.doc)}${known}`), t.doc) })
       }
       case 'work.docs.send':
         s.relay.send(req.params.socket, req.params.frames)
@@ -165,7 +170,7 @@ export const docs: WorkModule = {
   },
   tools: () => docTools,
   preamble: () =>
-    'Find a document, sheet or file of this workspace with `doc_find`. A document in the canvas is read with `doc_read` and changed with `doc_write` (its whole new text as markdown), `doc_suggest` or `doc_comment`. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a document others share, or one he set to suggest, your own idea waits as suggestions he steps through in the text.',
+    'Find a document, sheet or file of this workspace with `doc_find`. A document in the canvas is read with `doc_read` and changed with `doc_write` (its whole new text as markdown), `doc_format` (formatting and page setup), `doc_suggest` or `doc_comment`. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a document others share, or one he set to suggest, your own idea waits as suggestions he steps through in the text.',
   start(ctx) {
     return () => stopDocs(ctx)
   },

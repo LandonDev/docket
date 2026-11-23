@@ -62,6 +62,98 @@ While a LifeOS document has a socket open here, main watches its threads
 in LifeOS and pushes `work.docs {threads: true}` when they change, so a
 comment made in LifeOS desktop shows at once.
 
+## The schema gate
+
+A document may now hold things an older editor cannot read: a run's font,
+size, colour and highlight, a paragraph's own formatting, and the page map
+(its named styles, theme and page set-up). An older editor would delete
+what it cannot read, for everyone (y-prosemirror removes an attribute it has
+no name for, and drops text whose marks it cannot make). So a document says
+its **schema** (a number in its `page` map: 0 for every document before
+2026-11-23, 1 once anything of the new kind is first put in), and the Work
+service holds one line, in work-kit's collab server (`schemaGate: true`,
+`service/serve.ts`; work-kit `src/collab-server/README.md` "The schema
+gate"):
+
+- **An older window, a newer host.** A client says the highest schema it
+  knows in its socket's address (`?schema=n`; one that says nothing knows
+  0). The service refuses a document whose number is higher, before any of it
+  is sent, and the editor shows its refused line: "Update TempCode to open
+  this document." No editor is mounted on it. When a document's number
+  rises, every client on it that knows less is closed first.
+- **The number rises only by the service's hand**, on an editor's ask
+  (`ensureSchema`), before that editor writes the new thing; a host-side
+  writer calls `raiseSchema` on the collab server. A window that knows the
+  schema and writes something newer without asking (a styled paste into a
+  classic document) is not refused: the service does the rise by that write,
+  before the write goes to anyone. A window that knows less is refused
+  anything newer. Nothing lowers the number.
+- **A paste.** The editor's own HTML carries a font and a paragraph's
+  spacing, so a copy out of a styled document could write them into a classic
+  one. On a host that keeps schema 1 it goes in whole and the document is
+  raised as it arrives; on an older host it comes in as its words and their
+  bold and italics alone (work-kit `classicPaste`).
+- **A newer window, an older host** (the Mac updated before the box).
+  `work.docs.open` answers `schema`: the highest the serving host reads and
+  writes. A host from before the gate answers none, which is 0, and the
+  window's editor then offers nothing of a newer schema: the format row's new
+  controls are absent, with no line, and what he has is what that host can
+  keep.
+- The socket is relayed (above), so the window's number rides in
+  `work.docs.connect {schema}` and the host's own socket says it for the
+  window. A whole number and nothing else is ever written into that
+  address.
+- The hosted pages (a guest's link, the phone) are built with the service
+  they are served by, so they know what it knows, and say so: the guest
+  socket (`/g/ws/<link>`) carries the page's `?schema=` through to the
+  document's own socket (`service/routes/guests.ts`), and the guest's editor
+  is told the service's number (`hostSchema`).
+
+## Styling: the format row
+
+On a document he may edit, the body's first, unscrolled row is the format
+row (work-kit `src/format`'s `FormatRow`, the same row the sheet and the deck
+draw; its look is docs/DESIGN.md "Work editors"). The editor makes it
+(work-kit `src/editor/format-row.tsx`, `DocumentEditor`'s `formatRow`) and
+draws it into a place of the body's own (`[data-doc-row]`, `formatRowInto`),
+above the scroller, so the text scrolls under it and Preview covers it. Its
+layers are held inside the body. The slot is marked `data-editor-keys`, so
+⌘B in the size field is bold and not the sidebar.
+
+- **What it sets.** Undo and Redo; the paragraph's style (Normal text,
+  Title, Subtitle, Heading 1 to 3, Quote, Caption, and a file's own); the
+  font and its size in points; Bold, Italic, Underline; text colour and
+  highlight (the theme's colours with their tints, ten standard ones,
+  Automatic, a hex); alignment; line spacing and the space before and after;
+  the three lists; indent less and more; Insert (Table, Picture, Link, Page
+  break); Preview. When the row runs out of width its controls fold into ⋯ in
+  the order every editor uses. The keys are shared.md's table
+  (`work-kit/format/keys`): ⌘\ clears formatting, ⇧⌘. and ⇧⌘, step the size,
+  ⌥⌘0 to ⌥⌘3 set Normal text and Heading 1 to 3, ⇧⌘7 to ⇧⌘9 the lists.
+- **How it is stored** (work-kit `src/editor/README.md` "Styling"): a run's
+  `fontFamily`, `fontSize`, `color` and `highlight` styles; a paragraph's
+  formatting as one block prop, `para`; the document's named styles, theme
+  and page set-up in its `page` map. A font is named as Office names it and
+  drawn with its twin (work-editors.md "Fonts"): the editor asks the window
+  for the faces through the kit's `fonts` (`DOC_FONTS`, `work/docs/fonts.ts`).
+- **A classic document stays classic until he styles it.** A document made
+  before the row has no page and is drawn as it always was (the house ladder,
+  the system's font). The first thing of the new kind he sets (a font, a
+  size, a colour, a named style, spacing) asks the service to raise the
+  document (the schema gate, above); the document is then given its page (the
+  built-in styles, the TempCode theme, Letter or A4 by his locale) and is
+  drawn in its own styles from then on: Calibri 11 pt at 1.4 lines, in its
+  twin. On a host that cannot keep the new things the row shows only what a
+  classic document holds.
+- **Read only.** No row and no format keys on a document he cannot edit; the
+  text is still drawn in the document's own styles. The Docs view and a
+  mail's attachment have no row.
+- **Undo.** ⌘Z and the row's Undo take back what he did on a live document.
+  They did not before this landed: the shared undo went deaf when the editor
+  mounted (work-kit `src/editor/README.md`, rule 0).
+- **On a guest's page** an Edit link gets the row in the page itself; Comment
+  and View get none.
+
 ## The canvas
 
 The shared editor in a 672px measure with a 52px gutter for the block
@@ -124,7 +216,7 @@ for as long as the document is the same one:
 | Format | Drawn | By |
 |---|---|---|
 | Word, OpenDocument, Rich Text | the exported file itself, converted on the host (`work.formats.preview`) | LibreOffice |
-| PDF | the document's print page, written here from the editor's blocks and printed on the host, in Calibri's twin (the page carries its faces: work-editors.md "Fonts") | TempCode |
+| PDF | the document's print page, written here from the editor's blocks and printed on the host: a styled document's with its own styles, theme, paper and margins (`htmlDocument`'s `page`) and the faces it names; a classic one's in Calibri's twin (work-editors.md "Fonts") | TempCode |
 | Print | the same PDF: the pages that go to paper | TempCode ("As it will print") |
 | Markdown | the host's text (`work.formats.export`) | the file's own text |
 | Web page | the page written here, in a frame where no script runs and nothing is fetched | the file's own page |
@@ -148,20 +240,28 @@ for as long as the document is the same one:
 
   | Format | Lines |
   |---|---|
-  | Word, OpenDocument | "3 suggestions go as tracked changes" for people's, "2 suggestions stay out until you accept them" for an agent's (the host's `heldSuggestions`); comments go whole |
+  | Word, OpenDocument | "3 suggestions go as tracked changes" (a person's; comments go whole); an agent's "stay out until you accept them" |
   | Rich Text | the same, and "2 comments lose their replies" (counted from the threads someone answered) |
-  | PDF, Web page | "2 comments stay behind", "3 suggestions stay out until you accept them", "1 footnote moves to the end" (every colour is kept: the page writes it inline) |
-  | Markdown | comments and suggestions as a PDF's, "Colours stay behind", "Underlines stay behind" |
+  | PDF, Print, Web page | "2 comments stay behind", "3 suggestions stay out until you accept them", "1 footnote moves to the end" (every colour, font, size and style is kept: the page writes them) |
+  | Markdown | comments and suggestions as a PDF's, "Colours stay behind", "Underlines stay behind", and the styling lines below |
 
+  **Styling a format cannot hold** is said once each, only of a document that
+  has it (`blockFacts` counts runs that name a font or a size, paragraphs with
+  spacing of their own, paragraphs that wear a named style): "Fonts and sizes
+  stay behind", "Named styles stay behind", "Paragraph spacing stays behind".
+  Only Markdown says them. Word keeps all of it (work-kit's writer writes
+  fonts by their Office names, sizes, colours, the named styles by Word's own
+  ids, spacing, the theme and the page; work-formats.md), and OpenDocument and
+  Rich Text are made from that Word file.
 - **Print…** hands the PDF to this computer's own PDF viewer, which prints
   it (`work/formats/printOut.ts`, work-editors.md "Print"): the same render a
   PDF export saves, so an unchanged document prints the pages he saw. In
   `/ui` the PDF opens in a tab on his press. Print's lines are a PDF's, the
   host's own among them.
-- **Not yet.** The document has no page set-up, so Preview's Page section is absent and a
-  PDF is printed on the locale's paper with the print page's own margins;
-  the editor still draws in the system's font, since no text can name one
-  until the format row lands; "Check in Word" is not offered (no
+- **Not yet.** There is no Page set-up yet, so Preview's Page section is
+  absent: a styled document prints on the paper it was given when it was
+  first styled, with inch margins, and a classic one on the locale's paper
+  with the print page's own margins; "Check in Word" is not offered (no
   Office renderer is registered); headers, footers and columns a Word file
   carried are not counted in the lines.
 
@@ -242,10 +342,19 @@ searches every Work workspace on the host; a thread with no Work home
 thread with no Work home, or of a workspace with no sector, reaches no
 LifeOS document.
 
-`doc_read`, `doc_write`, `doc_suggest` and `doc_comment`, each taking
+`doc_read`, `doc_write`, `doc_format`, `doc_suggest` and `doc_comment`, each taking
 `item` (a document in the thread's canvas), `doc` (a LifeOS document id) or
 `file` (a `.tcdoc` path). `doc_write` takes the whole new text as markdown;
-blocks left as they were keep their ids and comments.
+blocks left as they were keep their ids and comments. `doc_read` with
+`with: "styles"` adds the named styles, theme, page setup and the blocks
+with formatting of their own after the text.
+
+`doc_format` takes `on` with a quote, block ids, a named style or `all`,
+plus the run or paragraph changes. Its `style`, `theme`, `setup`,
+`header` and `footer` set the document's own formatting. Leave out
+`on` when setting those alone. It follows the same rule as `doc_write`.
+The page part of a suggestion is one step in the review. Taking it
+keeps other page settings he has changed since the suggestion.
 
 The rule (architecture §6.7, §8.4): `because: "asked"` writes at once only
 when its `quote` is in one of the owner's own messages in the thread

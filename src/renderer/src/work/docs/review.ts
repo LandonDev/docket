@@ -13,6 +13,7 @@ import type { ReviewChange, ReviewGroup, ReviewMark } from "work-kit/editor";
  */
 
 /** A change's id: `<branch>|<what work.history.decide takes>`. */
+export const PAGE_CHANGE_ID = "@page";
 export const changeId = (branchId: string, which: string): string => `${branchId}|${which}`;
 export function decided(change: ReviewChange): { branchId: string; which: string } {
   const at = change.id.indexOf("|");
@@ -88,6 +89,7 @@ export function reviewOf(branches: readonly HistoryBranch[], names: Record<strin
         else each.forEach((marks, n) => changes.push({ id: changeId(branch.id, `${row.id}#${n}`), group: branch.id, marks }));
       } else whole([{ tone: "add", block: row.id }]);
     }
+    if (branch.diff.page?.length) changes.push({ id: changeId(branch.id, PAGE_CHANGE_ID), group: branch.id, marks: [] });
   }
   return { changes, groups };
 }

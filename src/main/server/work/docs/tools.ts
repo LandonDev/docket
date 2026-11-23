@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import type { DocFormatResult } from 'work-kit/collab-server'
+import { docFormatFields } from './formatToolInput'
 import { agentPrincipal, workText, type CanvasSource, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
@@ -102,16 +104,14 @@ export function changedParts(before: string, after: string): { count: number; un
 
 const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
 
-async function write(ctx: ToolCtx, a: TargetArgs & { markdown: string; because: 'asked' | 'routine' | 'own'; quote?: string; suggest?: boolean }): Promise<WorkToolResult> {
-  const { t, shared, fence } = await resolve(ctx, a, true)
+type WhyWrite = { because: 'asked' | 'routine' | 'own'; quote?: string; suggest?: boolean }
+
+function writeRule(ctx: ToolCtx, a: WhyWrite, t: DocTarget, shared: boolean) {
   const asked = a.because === 'asked' && ownerSaid(ctx, a.quote)
   // A routine's run writes directly only where nobody else reads: on a shared document no grant covers it, so it suggests (milestone 50's hold review, finding 6).
   const routine = a.because === 'routine' && !!ctx.scope.routineRunId && !shared
   const verdict = asked ? 'asked' : routine ? 'routine' : 'own'
   const suggest = a.suggest === true || (verdict === 'own' && (shared || modeOf(ctx, t.doc) === 'suggests'))
-  const before = ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown
-  const principal = agentPrincipal(ctx.host, ctx.sessionId)
-  const done = (await ctx.service.internal('/internal/docs/write', { ...serviceTarget(t, shared, fence), markdown: a.markdown, because: verdict, suggest, principal })) as ServiceWrite
   const note =
     a.because === 'asked' && !asked
       ? " The quote was not found among the owner's words in this thread, so this counts as your own idea."
@@ -120,6 +120,15 @@ async function write(ctx: ToolCtx, a: TargetArgs & { markdown: string; because: 
           ? ' A routine writes to what others share only under a grant he made for it, and none does, so this counts as your own idea.'
           : ' This thread runs no routine, so this counts as your own idea.'
         : ''
+  return { verdict, suggest, note } as const
+}
+
+async function write(ctx: ToolCtx, a: TargetArgs & WhyWrite & { markdown: string }): Promise<WorkToolResult> {
+  const { t, shared, fence } = await resolve(ctx, a, true)
+  const { verdict, suggest, note } = writeRule(ctx, a, t, shared)
+  const before = ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown
+  const principal = agentPrincipal(ctx.host, ctx.sessionId)
+  const done = (await ctx.service.internal('/internal/docs/write', { ...serviceTarget(t, shared, fence), markdown: a.markdown, because: verdict, suggest, principal })) as ServiceWrite
   const parts = changedParts(before, a.markdown)
   if (done.mode === 'branch') {
     docsOf(ctx).push({ push: 'work.docs', doc: t.doc, branches: true }, pathOf(t))
@@ -130,6 +139,37 @@ async function write(ctx: ToolCtx, a: TargetArgs & { markdown: string; because: 
   // His own document, on the agent's own idea: the bar says what was written, with Undo.
   if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId }, pathOf(t))
   return workText(`${text}.${note}`)
+}
+
+const formatInput = z.strictObject({ ...target, ...docFormatFields })
+  .refine((a) => !!a.on === !!(a.run || a.paragraph), 'Use on with run or paragraph.')
+  .refine((a) => !!(a.on || a.style || a.theme || a.setup || a.header || a.footer), 'Pass a format change.')
+
+type FormatArgs = z.infer<typeof formatInput>
+
+async function format(ctx: ToolCtx, a: FormatArgs): Promise<WorkToolResult> {
+  const { t, shared, fence } = await resolve(ctx, a, true)
+  const { verdict, suggest, note } = writeRule(ctx, a, t, shared)
+  const { on, run, paragraph, style, theme, setup, header, footer } = a
+  const change = {
+    ...(on ? { text: { target: on, ...(run ? { run } : {}), ...(paragraph ? { paragraph } : {}) } } : {}),
+    ...(style ? { style } : {}), ...(theme ? { theme } : {}), ...(setup ? { setup } : {}),
+    ...(header ? { header } : {}), ...(footer ? { footer } : {})
+  }
+  const done = await ctx.service.internal('/internal/docs/format', {
+    ...serviceTarget(t, shared, fence), change, because: verdict, suggest, principal: agentPrincipal(ctx.host, ctx.sessionId)
+  }) as DocFormatResult
+  if (done.missing) return workText(`Nothing in the document matches that.${note}`)
+  if (!done.changed) return workText(`The document already has that formatting.${note}`)
+  const page = style || theme || setup || header || footer
+  const amount = plural(done.changed, on && !page ? 'paragraph' : 'formatting change')
+  if (done.mode === 'branch') {
+    docsOf(ctx).push({ push: 'work.docs', doc: t.doc, branches: true }, pathOf(t))
+    return workText(`Suggested formatting on ${amount}: he accepts or rejects it in the document.${note}`)
+  }
+  const text = `${on && !page ? 'Formatted' : 'Applied'} ${amount}`
+  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId }, pathOf(t))
+  return workText(`${text}${done.words.length ? ': ' + done.words.join(', ') : ''}.${note}`)
 }
 
 /** A date the model wrote, as ms; a bare date is the start of that day here. */
@@ -237,17 +277,18 @@ export const docTools: WorkTool[] = [
   {
     name: 'doc_read',
     description:
-      'Reads a document as markdown, with its open comment threads after it. Pass `item` for a document open in the canvas, `doc` for a LifeOS document id, or `file` for a .tcdoc path.',
-    input: z.object(target),
+      'Reads a document as markdown, with its open comment threads after it. Use `with: "styles"` for styles and page setup. Pass `item` for a document open in the canvas, `doc` for a LifeOS document id, or `file` for a .tcdoc path.',
+    input: z.object({ ...target, with: z.literal('styles').optional() }),
     readOnly: true,
     run: async (args, ctx) => {
       try {
-        const { t, shared, fence } = await resolve(ctx, args as TargetArgs)
-        const got = (await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }
+        const a = args as TargetArgs & { with?: 'styles' }
+        const { t, shared, fence } = await resolve(ctx, a)
+        const got = (await ctx.service.internal('/internal/docs/read', { ...serviceTarget(t, shared, fence), ...(a.with ? { with: a.with } : {}) })) as { markdown: string; styles?: string[] }
         const { readThreads } = await import('./threads')
         const open = (await readThreads(ctx, t)).filter((r) => !r.thread.resolved && r.thread.deletedAt === null)
         const threads = open.map((r) => `- on “${r.thread.quote ?? ''}”: ${r.comments.filter((c) => c.deletedAt === null).map((c) => plainBody(c.body)).join(' / ')}`)
-        return workText(`${shared ? 'Others share this document.\n\n' : ''}${got.markdown}${threads.length ? `\n\n---\nOpen comments:\n${threads.join('\n')}` : ''}`)
+        return workText(`${shared ? 'Others share this document.\n\n' : ''}${got.markdown}${got.styles ? '\n\n' + got.styles.join('\n') : ''}${threads.length ? `\n\n---\nOpen comments:\n${threads.join('\n')}` : ''}`)
       } catch (err) {
         return fail(errorText(err))
       }
@@ -268,6 +309,19 @@ export const docTools: WorkTool[] = [
     run: async (args, ctx) => {
       try {
         return await write(ctx, args as TargetArgs & { markdown: string; because: 'asked' | 'routine' | 'own'; quote?: string })
+      } catch (err) {
+        return fail(errorText(err))
+      }
+    }
+  },
+  {
+    name: 'doc_format',
+    description: 'Formats text by quote, block IDs, style or all. Can set a named style, theme, page setup, header or footer. Pass item, doc or file. Give because and, when asked, quote the owner’s words. Your own changes on a shared document wait as suggestions.',
+    input: formatInput,
+    readOnly: false,
+    run: async (args, ctx) => {
+      try {
+        return await format(ctx, args as FormatArgs)
       } catch (err) {
         return fail(errorText(err))
       }

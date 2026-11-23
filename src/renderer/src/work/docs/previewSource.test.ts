@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../../lib/connection", () => ({ registry: { linkOf: () => ({ request: () => Promise.reject(new Error("no link in a test")) }) } }));
 
 import type { AnyEditor } from "work-kit/editor";
+import type { DocumentPage } from "work-kit/editor/page";
+import { paraText } from "work-kit/editor/para";
 import { previewProblems } from "../formats/previewContract";
 import { blockFacts, DOC_FORMATS, docDrops, docPreviewSource, type DocFacts, type DocPreviewDeps } from "./previewSource";
 
@@ -31,8 +33,26 @@ describe("what a document holds that a format may drop", () => {
       },
       { type: "table", props: {}, content: { type: "tableContent", rows: [{ cells: [[{ type: "text", text: "a", styles: { textColor: "purple" } }], { content: [{ type: "text", text: "b", styles: { underline: true } }] }] }] } },
     ];
-    expect(blockFacts(blocks)).toEqual({ footnotes: 2, colours: 5, underlines: 3 });
-    expect(blockFacts([])).toEqual({ footnotes: 0, colours: 0, underlines: 0 });
+    expect(blockFacts(blocks)).toEqual({ footnotes: 2, colours: 5, underlines: 3, fonts: 0, spacing: 0, styles: 0 });
+    expect(blockFacts([])).toEqual({ footnotes: 0, colours: 0, underlines: 0, fonts: 0, spacing: 0, styles: 0 });
+  });
+
+  it("counts the styling a format may not hold: runs that name a font or a size, a run's own colours, a paragraph's spacing, a named style", () => {
+    const blocks = [
+      { type: "paragraph", props: { para: paraText({ style: "Title" }) }, content: [{ type: "text", text: "Plan", styles: {} }] },
+      { type: "paragraph", props: { para: paraText({ style: "Caption", spaceAfter: 12 }) }, content: [{ type: "text", text: "Fig", styles: { fontSize: "9" } }] },
+      {
+        type: "paragraph",
+        props: { para: paraText({ lineSpacing: 1.5 }) },
+        content: [
+          { type: "text", text: "a", styles: { fontFamily: "Cambria", fontSize: "14" } },
+          { type: "text", text: "b", styles: { color: "theme:accent1", bold: true } },
+          { type: "link", href: "https://example.com", content: [{ type: "text", text: "c", styles: { highlight: "#FFFF00", fontFamily: "Arial" } }] },
+        ],
+      },
+      { type: "heading", props: { level: 2 }, content: [{ type: "text", text: "plain", styles: { bold: true } }] },
+    ];
+    expect(blockFacts(blocks)).toEqual({ footnotes: 0, colours: 2, underlines: 0, fonts: 3, spacing: 2, styles: 2 });
   });
 });
 
@@ -77,6 +97,14 @@ describe("In this format", () => {
   it("Markdown has no colour and no underline", () => {
     expect(docDrops("md", full)).toEqual(["2 comments stay behind", "3 suggestions stay out until you accept them", "Colours stay behind", "Underlines stay behind"]);
     expect(docDrops("md", { ...NONE, footnotes: 4 })).toEqual([]);
+  });
+
+  it("Markdown says the styling it cannot hold; Word, OpenDocument, Rich Text, a PDF and a web page keep it all", () => {
+    const styled: DocFacts = { ...NONE, colours: 2, fonts: 3, spacing: 1, styles: 2 };
+    expect(docDrops("md", styled)).toEqual(["Colours stay behind", "Fonts and sizes stay behind", "Named styles stay behind", "Paragraph spacing stays behind"]);
+    for (const format of ["docx", "odt", "rtf", "pdf", "print", "html"] as const) expect(docDrops(format, styled), format).toEqual([]);
+    // Each is said only of a document that has it.
+    expect(docDrops("md", { ...NONE, fonts: 1 })).toEqual(["Fonts and sizes stay behind"]);
   });
 
   it("every line says what happens to the thing, in one line", () => {
@@ -130,6 +158,7 @@ function source(h: ReturnType<typeof host>, over: Partial<DocPreviewDeps> = {}) 
   const saved: { name: string; bytes: Uint8Array; type: string }[] = [];
   const printed: { name: string; bytes: Uint8Array }[] = [];
   const pages: (string | null)[] = [];
+  const pageOf: (DocumentPage | null)[] = [];
   const made = docPreviewSource({
     env: "env_box",
     source: SOURCE,
@@ -138,13 +167,13 @@ function source(h: ReturnType<typeof host>, over: Partial<DocPreviewDeps> = {}) 
     editor: () => editor,
     review: () => ({ comments: 2, replied: 1, suggestions: 1 }),
     request: h.request,
-    page: async (_editor, title, print) => (pages.push(print?.paper ?? null), `<!doctype html><html><head><title>${title}</title></head><body>page</body></html>`),
+    page: async (_editor, title, print, styled) => (pages.push(print?.paper ?? null), pageOf.push(styled), `<!doctype html><html><head><title>${title}</title></head><body>page</body></html>`),
     save: (name, blob) => void blob.arrayBuffer().then((buffer) => saved.push({ name, bytes: new Uint8Array(buffer), type: blob.type })),
     print: async (name, bytes) => void printed.push({ name, bytes }),
     locale: "en-US",
     ...over,
   });
-  return { source: made, saved, printed, pages };
+  return { source: made, saved, printed, pages, pageOf };
 }
 const signal = (): AbortSignal => new AbortController().signal;
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -203,6 +232,18 @@ describe("the document's Preview source", () => {
     const a4 = source(h, { locale: "en-GB" });
     await a4.source.draw("pdf", { signal: signal() });
     expect(a4.pages).toEqual(["A4"]);
+  });
+
+  it("a styled document's page is written with its own styles, theme and sheet, for a PDF and for a web page; a classic one with none", async () => {
+    const h = host();
+    const page = { schema: 1 } as DocumentPage;
+    const styled = source(h, { styled: () => page });
+    await styled.source.draw("pdf", { signal: signal() });
+    await styled.source.draw("html", { signal: signal() });
+    expect(styled.pageOf).toEqual([page, page]);
+    const classic = source(h);
+    await classic.source.draw("pdf", { signal: signal() });
+    expect(classic.pageOf).toEqual([null]);
   });
 
   it("Markdown is the host's text and a web page the page written here, with no print rules", async () => {

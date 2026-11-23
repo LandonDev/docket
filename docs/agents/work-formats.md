@@ -276,6 +276,21 @@ follows to the document.
 - What could not be kept comes back as `warnings`, a person's words (a picture
   in a table cell, a nested table, a paragraph-format change); the window
   shows them in one toast.
+- **A Word file keeps its look** (work-kit `src/formats/docx/read-page.ts`):
+  its fonts (theme fonts and the document defaults resolved), sizes, true
+  colours and theme colours with their tints, highlights, each paragraph's
+  spacing, indents, keep-with-next and page-break-before, its style
+  definitions by their Word names (Heading 1 to 6 become headings, Quote a
+  quote, any other a paragraph that names the style), its theme, the last
+  section's page (paper, orientation, margins, columns, different first
+  page) and its default header and footer with `PAGE` and `NUMPAGES`. They go
+  into the document's `page` map and onto its text, so an imported file is a
+  styled document (schema 1, work-docs.md "The schema gate") in its own
+  styles and theme, never TempCode's. A plain file (markdown, a text with no
+  formatting) still makes a classic document. Counted when approximated:
+  fixed line heights (`exactLineSpacing`), a paper size that has no name
+  (`customPaper`), header distances other than half an inch, first-page and
+  even-page headers.
 
 - A mail's attachment (`{at: 'source'}` naming `{at: 'mail'}` and its `itemId`) is read from the copy the host fetched into the item's folder into `<name>.tcdoc` beside it, once (asked again, the answer is the same document), and nothing opens or closes: the docs pillar holds it read only (work-mail.md "Attachments").
 
@@ -285,7 +300,11 @@ base64): main reads the thread rows and names and asks the Work service's
 (`history.branches`) and the threads' marks and writes Word
 (`documentForExport`, `writeDocx`: people's branches as `w:ins`/`w:del`
 with their authors, threads as Word comments, a `.tcdoc`'s stored sidecar for
-notes and the page) or markdown. An agent's pending branch (`agent:`,
+notes; a styled document's live page: `styles.xml` with Word's own built-in
+ids, fonts by their Office names, sizes, colours as theme colours where they
+are, each paragraph's formatting, `theme1.xml`, the section, and the header
+and footer with live page fields; a classic document's parts are byte for
+byte what they were) or markdown. An agent's pending branch (`agent:`,
 `lifeos:bot:`) never goes into an exported file, on any document: it is left
 out and counted, and `ExportAnswer` and `PreviewAnswer` carry the count as
 `heldSuggestions` (`EXPORT_HOLDS_AGENT_SUGGESTIONS`, formats/serviceRoutes.ts;

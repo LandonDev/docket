@@ -1,8 +1,10 @@
 import { isAbsolute } from 'node:path'
 import { DOCUMENT_FRAGMENT, findQuote, setThreadMark } from 'work-kit/collab'
-import { fileDocName, type CollabFile } from 'work-kit/collab-server'
+import { fileDocName, readDocument, type CollabContext, type CollabFile } from 'work-kit/collab-server'
 import { docIn, fenceOf, servingHere, str } from '../service/routes/internal'
 import { RouteError, type InternalRoute, type RouteCtx } from '../service/routes/route'
+import { documentStyleLines } from './formatDescription'
+import { formatRouteFields } from './formatInput'
 
 /**
  * The docs pillar's internal routes on the Work service
@@ -57,6 +59,17 @@ export const docsRoutes: InternalRoute[] = [
     milestone: 20,
     async run(body, ctx) {
       const t = await targetOf(body, ctx)
+      if (body.with === 'styles') {
+        const context: CollabContext = { principal: 'owner', role: 'edit', exp: Infinity, by: 'internal', ...(t.file ? { file: t.file } : {}) }
+        const direct = await ctx.collab.hocuspocus.openDirectConnection(t.name, context)
+        try {
+          const doc = direct.document!
+          return { ...readDocument(doc.getXmlFragment(DOCUMENT_FRAGMENT)), shared: t.shared, styles: documentStyleLines(doc) }
+        } finally {
+          await direct.disconnect({ unloadImmediately: false })
+        }
+      }
+      if (body.with !== undefined) throw new RouteError(400, 'with is styles')
       const live = await ctx.collab.read(t.name, t.file)
       return { markdown: live.markdown, plain: live.plain, shared: t.shared }
     }
@@ -84,6 +97,22 @@ export const docsRoutes: InternalRoute[] = [
       const before = verdict === 'own' && shared ? null : await ctx.history.cut(t.name, 'before-agent', file)
       const done = await ctx.history.write(t.name, principalOf(body), markdown, { because: verdict, shared, ...file })
       return { ...done, shared: t.shared, ...(before && done.mode === 'direct' ? { beforeVersionId: before.id } : {}) }
+    }
+  },
+  {
+    path: '/internal/docs/format',
+    milestone: 20,
+    async run(body, ctx) {
+      const { change, because, paper } = formatRouteFields(body)
+      const principal = principalOf(body)
+      const t = await targetOf(body, ctx)
+      const suggest = body.suggest === true
+      return { ...await ctx.history.format(t.name, principal, change, {
+        because: suggest ? 'own' : because,
+        shared: suggest || t.shared,
+        ...(t.file ? { file: t.file } : {}),
+        ...(paper ? { paper } : {})
+      }), shared: t.shared }
     }
   },
   {

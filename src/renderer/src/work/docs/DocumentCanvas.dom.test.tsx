@@ -231,3 +231,21 @@ describe("a document he may only view", () => {
     expect(fed.view.every((r) => r === null)).toBe(true);
   });
 });
+
+it("the document stepper exposes a page-only suggestion and sends its id on Reject", async () => {
+  const branch = { id: "page-branch", baseVersionId: "v1", authors: ["agent:box:t1"], label: "Suggestions", at: 1, editedAt: 1,
+    diff: { rows: [], lines: [], page: ["Header changed"] } };
+  conn.answer = (method) => Promise.resolve(method === "work.history.branches" ? { branches: [branch], names: {} } : { left: 0 });
+  let hooks: Parameters<CanvasShell["review"]>[0] | undefined;
+  function Probe() {
+    const source = { at: "file", host: "box", path: "/data/page-review.tcdoc" } as const;
+    const review = useDocReview({ env: "box" } as never, { doc: "page", source, role: "edit" } as never,
+      { review: (value) => { hooks = value; } } as CanvasShell, null);
+    return <div>{review.pageWords?.join(", ")}</div>;
+  }
+  render(<Probe />);
+  expect(await screen.findByText("Header changed")).toBeTruthy();
+  expect(hooks?.count).toBe(1);
+  await act(async () => { await hooks?.reject(0); });
+  expect(conn.asked.find((req) => req.method === "work.history.decide")?.params).toMatchObject({ branchId: "page-branch", which: ["@page"], accept: false });
+});

@@ -2551,6 +2551,47 @@ opening puts the focus on Edit.
   `paper` by `lib/tokenContrast.test.ts`. Nothing inside the paper, a slide
   or the web frame is ours.
 
+#### Work editors: The document
+
+What the document adds to the format row above (work-kit
+`src/editor/format-row.tsx`; docs/agents/work-docs.md "Styling: the format
+row"). The row is the body's first, unscrolled row; the text scrolls under
+it and Preview covers it.
+
+- **A classic document keeps today's look.** One made before the row is
+  drawn on the house ladder in the system's font, and its row holds only what
+  such a document can keep: Undo, Redo, Style (Normal text, Heading 1 to 3,
+  Quote), Bold, Italic, Underline, Align, the lists, Insert, Preview. The
+  rest is absent, never greyed. The first font, size, colour, named style or
+  spacing he sets makes it a styled document.
+- **A styled document is drawn in its own styles**, in points: the file's,
+  or for one made here the default theme "TempCode": Calibri (drawn as
+  Carlito), Normal text 11 pt at 1.4 lines with 6 pt after, Title 22 pt,
+  Subtitle 13 pt muted, Heading 1 16 pt, Heading 2 13 pt, Heading 3 11 pt,
+  all three semibold, Quote italic and muted with an 18 pt indent, Caption
+  9 pt muted. Nothing inside the text is on our type scale: it is the file's,
+  as a PDF's page is. The column stays 672px in Flow.
+- **Colours the file names, on a dark ground.** A colour a style or a run
+  names is drawn `oklch(from C max(l, calc(1 - l * 0.4)) c h)` in dark, so a
+  dark ink rises and a light one stays; in light, on paper and in every
+  export it is itself. Words on a highlight take the ground's own ink in
+  dark, so a file's yellow is read. A picture is never lifted.
+- **The Style menu** draws each style in its own face, weight and slant at
+  12 to 18px, never in its colour (a file's ink may be unreadable on a menu).
+  The font list draws each family in its face; a font with no twin here
+  carries one 12px muted second line, "Drawn as Carlito".
+- **Line spacing** lists 1.0, 1.15, 1.5 and 2.0, then Add or Remove space
+  before and after the paragraph, by what the paragraph has; a value that is
+  none of the four (the default theme's 1.4) is listed in its place, checked.
+- **A layer waits on the first styled change.** The first change that styles
+  a classic document asks the host first; its menu or picker stays open until
+  the change is made, with no spinner: the wait is a few hundred
+  milliseconds. If the host refuses, nothing is written and those controls
+  leave the row.
+- **In a compare**, what a change did beside the words is one 12px muted
+  line under its block ("Heading 1 becomes Title · 11 pt becomes 14 pt"), and
+  the page's own changes are one last step, "Page formatting".
+
 #### Work search
 
 One field over everything in Work (`work/search/Picker.tsx`; the account is

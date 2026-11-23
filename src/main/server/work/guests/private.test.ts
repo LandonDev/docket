@@ -111,8 +111,8 @@ async function rig() {
   })
   await service.collab.writeMarkdown(DOC, 'owner', md('# Run of show', 'Doors open at 6:00 PM', 'Shadow the front desk'))
   const base = `http://127.0.0.1:${service.port}`
-  const connect = (url: string, token: string) => {
-    const client = createCollaborationClient({ documentName: DOC, token, url, offline: false })
+  const connect = (url: string, token: string, more: { schema?: number | null } = {}) => {
+    const client = createCollaborationClient({ documentName: DOC, token, url, offline: false, ...more })
     open.clients.push(client)
     return client
   }
@@ -122,6 +122,34 @@ async function rig() {
 
 const stateText = (c: CollaborationClient) => Buffer.from(Y.encodeStateAsUpdate(c.document)).toString('latin1')
 const post = (url: string, body: unknown, headers: Record<string, string> = {}) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) })
+
+describe('a styled document over a guest link', () => {
+  it("opens for a guest whose page knows the schema, and is refused one whose socket says none; styling a classic one puts the second off it", async () => {
+    const r = await rig()
+    const socket = `ws://127.0.0.1:${r.service.port}/g/ws/L1`
+    // A classic document: both guests are on it.
+    const knows = r.connect(socket, r.guestToken)
+    const old = r.connect(socket, r.guestToken, { schema: null })
+    await until('both synced', () => knows.provider.isSynced && old.provider.isSynced)
+    let closed = ''
+    old.provider.configuration.websocketProvider.on('close', ({ event }: { event: { reason?: string } }) => (closed ||= String(event.reason ?? 'closed')))
+    // He styles it: the service raises it, and the guest that knows less is off it before anything newer is written.
+    expect(await r.service.collab.raiseSchema(DOC, 1)).toBe(true)
+    await r.service.collab.edit(DOC, 'owner', (doc) => void doc.getMap('page').set('style:Title', { name: 'Title', fontSize: 30 }))
+    await until('the old guest closed', () => closed !== '')
+    await until('the guest that knows has the style', () => knows.document.getMap('page').has('style:Title'))
+    expect(old.document.getMap('page').has('style:Title')).toBe(false)
+    // A guest that opens it now, knowing the schema, gets it whole; one that says none gets nothing.
+    const late = r.connect(socket, r.guestToken)
+    await until('a new guest synced', () => late.provider.isSynced)
+    expect(late.document.getMap('page').get('schema')).toBe(1)
+    const refused = r.connect(socket, r.guestToken, { schema: null })
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(refused.provider.isSynced).toBe(false)
+    expect(refused.document.getMap('page').size).toBe(0)
+    expect(stateText(refused)).not.toContain('Doors open')
+  })
+})
 
 describe('a LifeOS document a guest link shares', () => {
   it('shows a guest nothing of a pending agent suggestion on any route, and another window none in its live state, until he accepts it', async () => {

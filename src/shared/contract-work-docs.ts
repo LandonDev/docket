@@ -43,6 +43,12 @@ export interface DocOpen {
   me: string
   /** words for each principal the document's rows name, as history's answers carry */
   names: Record<string, string>
+  /**
+   * The highest document schema the serving host reads and writes (work-kit `DOCUMENT_SCHEMA`); a
+   * host from before the schema gate says nothing, which is 0. The editor offers nothing of a schema
+   * above it (docs/agents/work-docs.md "The schema gate").
+   */
+  schema?: number
 }
 
 export interface DocToken {
@@ -133,7 +139,8 @@ export const DocsRequestSchemas = [
   /** → DocToken: a collaboration token for the document, as this caller (edit, or view for a read-only key) */
   request('work.docs.token', z.object({ source: CanvasSourceSchema })),
   /** → { socket }: a socket to the document on the host that serves it, relayed over this link */
-  request('work.docs.connect', z.object({ source: CanvasSourceSchema })),
+  /** `schema`: the highest document schema the window's editor knows; the host says it to the service for it */
+  request('work.docs.connect', z.object({ source: CanvasSourceSchema, schema: z.number().int().min(0).max(1000).optional() })),
   /** → { ok: true }: frames for the relayed socket, in order */
   request('work.docs.send', z.object({ socket: socketId, frames })),
   /** → { frames, closed? }: what the socket received since the last ask; waits up to 20 s for something */

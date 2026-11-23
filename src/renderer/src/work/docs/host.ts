@@ -94,7 +94,9 @@ export function relaySocket(env: string, source: CanvasSource): new (url: string
 
     private async start(): Promise<void> {
       try {
-        const { socket } = await link().request<{ socket: string }>("work.docs.connect", { source });
+        // The provider says the schema it knows in its socket's address; the relay carries it to the host's own socket.
+        const schema = Number(new URL(this.url, "ws://relay").searchParams.get("schema")) || 0;
+        const { socket } = await link().request<{ socket: string }>("work.docs.connect", { source, ...(schema > 0 ? { schema } : {}) });
         if (this.readyState !== READY.CONNECTING) return void link().request("work.docs.close", { socket }).catch(() => undefined);
         this.id = socket;
         this.readyState = READY.OPEN;

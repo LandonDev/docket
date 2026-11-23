@@ -5,7 +5,9 @@ import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
-import { fileDocName } from 'work-kit/collab-server'
+import * as Y from 'yjs'
+import { readPage } from 'work-kit/editor/page'
+import { DOCUMENT_SCHEMA, fileDocName } from 'work-kit/collab-server'
 import type { ClientRequest } from '@shared/contract'
 import type { DocOpen, DocsPush, DocThreadRow } from '@shared/contract-work-docs'
 import type { CanvasItem } from '@shared/work'
@@ -18,7 +20,7 @@ import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
 import { docs } from './index'
 import { createRelay, SOCKETS_MAX } from './relay'
-import { stopDocs } from './state'
+import { docsOf, stopDocs } from './state'
 import { fromLifeos } from './threads'
 import { changedParts, docTools, SHARED_COMMENT } from './tools'
 
@@ -45,7 +47,7 @@ function post(socketPath: string, path: string, body: unknown): Promise<unknown>
       res.on('data', (c: Buffer) => chunks.push(c))
       res.on('end', () => {
         const parsed = JSON.parse(Buffer.concat(chunks).toString() || '{}') as { error?: string }
-        if ((res.statusCode ?? 500) >= 400) reject(new Error(parsed.error ?? `HTTP ${res.statusCode}`))
+        if ((res.statusCode ?? 500) >= 400) reject(Object.assign(new Error(parsed.error ?? `HTTP ${res.statusCode}`), { status: res.statusCode }))
         else resolve(parsed)
       })
     })
@@ -222,6 +224,125 @@ describe('the fence', () => {
   })
 })
 
+describe('an agent formatting a document', () => {
+  const blue = { on: { styled: 'Heading 1' }, run: { color: '#0F4761' } }
+  const margins = { setup: { margins: { left: 36, right: 36 } } }
+  const snapshot = async (r: Awaited<ReturnType<typeof rig>>) => {
+    const direct = await r.service.collab.hocuspocus.openDirectConnection(r.name, { principal: 'owner', role: 'edit', file: { path: r.path } })
+    try {
+      return { bytes: Y.encodeStateAsUpdate(direct.document!), page: readPage(direct.document!) }
+    } finally {
+      await direct.disconnect({ unloadImmediately: false })
+    }
+  }
+
+  it('formats his own document with an Undo version, which restores the text formatting and margins', async () => {
+    const r = await rig()
+    expect(await r.tool('doc_format', { item: 'i1', ...blue, ...margins, because: 'own' })).toMatchObject({
+      error: false, text: expect.stringMatching(/^Applied 3 formatting changes:.*Text colour set to #0F4761.*Margins become/)
+    })
+    const written = docsPushes(r.pushes).find((p) => p.written)?.written
+    expect(written?.versionId).toBeTruthy()
+    expect((await snapshot(r)).page?.setup.margins).toMatchObject({ left: 36, right: 36 })
+    await r.post('/internal/history/restore', { file: r.path, versionId: written!.versionId, fence: { sectors: 'all' } })
+    expect((await snapshot(r)).page?.setup.margins).toMatchObject({ left: 72, right: 72 })
+    expect((await r.tool('doc_read', { item: 'i1', with: 'styles' })).text).not.toContain('#0F4761')
+  })
+
+  it('a shared document keeps its bytes when asked has no owner quote, and writes with a verified quote', async () => {
+    const r = await rig({ shared: true, ownerSaid: ['Make both headings blue'] })
+    const before = await snapshot(r)
+    const no = await r.tool('doc_format', { file: r.path, ...blue, because: 'asked', quote: 'words he never typed' })
+    expect(no.text).toMatch(/^Suggested formatting on 2 paragraphs: .*quote was not found/)
+    expect((await snapshot(r)).bytes).toEqual(before.bytes)
+    expect((await snapshot(r)).page).toBeNull()
+    expect(await r.branches()).toHaveLength(1)
+    const asked = await r.tool('doc_format', { file: r.path, ...blue, because: 'asked', quote: 'both headings blue' })
+    expect(asked).toEqual({ error: false, text: 'Formatted 2 paragraphs: Text colour set to #0F4761.' })
+    expect((await snapshot(r)).page?.schema).toBe(1)
+    expect(docsPushes(r.pushes).some((p) => p.written)).toBe(false)
+  })
+
+  it('a routine can write only in a run on his own document', async () => {
+    const noRun = await rig({ shared: true })
+    expect((await noRun.tool('doc_format', { item: 'i1', ...margins, because: 'routine' })).text).toMatch(/This thread runs no routine/)
+    expect((await snapshot(noRun)).page).toBeNull()
+    const sharedRun = await rig({ shared: true, routineRunId: 'run1' })
+    expect((await sharedRun.tool('doc_format', { item: 'i1', ...margins, because: 'routine' })).text).toMatch(/^Suggested.*none does, so this counts as your own idea/)
+    expect((await snapshot(sharedRun)).page).toBeNull()
+    const privateRun = await rig({ routineRunId: 'run1' })
+    expect((await privateRun.tool('doc_format', { item: 'i1', ...margins, because: 'routine' })).text).toMatch(/^Applied 1 formatting change/)
+    expect((await snapshot(privateRun)).page?.setup.margins.left).toBe(36)
+  })
+
+  it('own ideas stay private on a shared document or in Suggests mode, and the page can be taken alone', async () => {
+    const r = await rig({ shared: true })
+    const before = await snapshot(r)
+    const result = await r.tool('doc_format', { item: 'i1', ...blue, ...margins, because: 'own' })
+    expect(result.text).toMatch(/^Suggested formatting on 3 formatting changes/)
+    expect((await snapshot(r)).bytes).toEqual(before.bytes)
+    expect(docsPushes(r.pushes).some((p) => p.branches)).toBe(true)
+    const [branch] = await r.branches() as { id: string; diff: { page: string[]; rows: unknown[] } }[]
+    expect(branch!.diff.page).toContainEqual(expect.stringMatching(/^Margins become/))
+    expect(await r.post('/internal/history/decide', { file: r.path, branchId: branch!.id, which: ['@page'], accept: true, fence: { sectors: 'all' } })).toMatchObject({ left: 2 })
+    expect((await snapshot(r)).page?.setup.margins.left).toBe(36)
+    expect((await r.tool('doc_read', { item: 'i1', with: 'styles' })).text).not.toContain('#0F4761')
+
+    const mine = await rig()
+    await mine.ask('work.docs.mode', { source: mine.source, mode: 'suggests' })
+    expect((await mine.tool('doc_format', { item: 'i1', ...margins, because: 'own' })).text).toMatch(/^Suggested formatting/)
+    expect((await snapshot(mine)).page).toBeNull()
+  })
+
+  it('missing does not raise the schema, and the socket refuses malformed formatting with 400', async () => {
+    const r = await rig()
+    const before = await snapshot(r)
+    expect(await r.tool('doc_format', { item: 'i1', on: { quote: 'no such words' }, run: { size: 17 }, ...margins, because: 'own' }))
+      .toEqual({ error: false, text: 'Nothing in the document matches that.' })
+    for (const change of [
+      { setup: { columns: 5 } }, { setup: { margins: { left: -1 } } },
+      { style: { name: 'Title', fontSize: 900 } }, { theme: { name: 'Incomplete' } },
+      { header: { start: [{ field: 'unsupported' }], center: [], end: [] } },
+      { text: { target: { all: true, styled: 'Title' }, run: { bold: true } } },
+      { text: { target: { all: true }, run: { color: '#QQQQQQ' } } }
+    ]) {
+      await expect(r.post('/internal/docs/format', { file: r.path, principal: 'agent:env_box:t1', because: 'own', fence: { sectors: 'all' }, change }))
+        .rejects.toMatchObject({ status: 400 })
+    }
+    await expect(r.post('/internal/docs/format', {
+      file: r.path, principal: 'agent:env_box:t1', because: 'own', fence: { sectors: 'all', draftOnly: 0 }, change: margins
+    })).rejects.toMatchObject({ status: 400 })
+    expect((await snapshot(r)).bytes).toEqual(before.bytes)
+    expect(await r.branches()).toEqual([])
+  })
+
+  it('doc_read describes a classic document and reports resolved style, theme, page and block formatting when styled', async () => {
+    const r = await rig()
+    const classic = await r.tool('doc_read', { file: r.path, with: 'styles' })
+    expect(classic.text).toContain('This document has no styles of its own yet.')
+    expect((await r.tool('doc_format', { file: r.path, ...blue, ...margins, style: { name: 'Heading 1', fontFamily: 'Arial', color: 'theme:accent1' }, because: 'own' })).error).toBe(false)
+    const styled = await r.tool('doc_read', { file: r.path, with: 'styles' })
+    expect(styled.text).toMatch(/^# Week 1/)
+    expect(styled.text).toContain('Theme TempCode. Heading font')
+    expect(styled.text).toContain('36 pt left')
+    expect(styled.text).toContain('Heading 1: Arial, 16 pt, bold, #2A78D6 (theme:accent1)')
+    expect(styled.text).toContain('Week 1: Heading 1, Text colour set to #0F4761.')
+  })
+
+  it('the fence refuses doc_format on a document outside the thread sector', async () => {
+    const r = await rig({ sector: 'purdue' })
+    r.convex.docs.set('kdc', { _id: 'kdc', sector: 'cosmic', seq: 0, title: 'kdc', shared: false, markdown: '', plain: '' })
+    await r.post('/internal/doc/write', { docId: 'kdc', markdown: 'Words of cosmic', because: 'own', botId: 'k', fence: { sectors: 'all' } })
+    expect(await r.tool('doc_format', { doc: 'kdc', ...margins, because: 'own' })).toEqual({ text: 'LifeOS has no such document', error: true })
+    expect((await r.post('/internal/docs/read', { docId: 'kdc', with: 'styles', fence: { sectors: 'all' } }) as { styles: string[] }).styles)
+      .toEqual(['This document has no styles of its own yet.'])
+  })
+
+  it('the doc_format description fits 400 UTF-8 bytes', () => {
+    expect(Buffer.byteLength(docTools.find((tool) => tool.name === 'doc_format')!.description, 'utf8')).toBeLessThanOrEqual(400)
+  })
+})
+
 describe('comments', () => {
   it('an agent comments on words, a table cell included; the thread is listed and named for its thread', async () => {
     const r = await rig()
@@ -282,6 +403,9 @@ describe('opening a document', () => {
     const r = await rig()
     const opened = await r.ask<DocOpen>('work.docs.open', { source: r.source })
     expect(opened).toMatchObject({ doc: r.name, title: 'Onboarding plan', role: 'edit', shared: false, mode: 'writes', me: 'owner' })
+    // The host says the highest document schema it reads and writes, so a window offers nothing newer.
+    expect(opened.schema).toBe(DOCUMENT_SCHEMA)
+    expect(DOCUMENT_SCHEMA).toBeGreaterThanOrEqual(1)
     await expect(r.ask('work.docs.open', { source: r.source }, { kind: 'remote', caps: ['read'] })).rejects.toBeInstanceOf(FenceError)
   })
 
@@ -295,6 +419,27 @@ describe('opening a document', () => {
     expect(got.frames.length + (got.closed ? 1 : 0)).toBeGreaterThan(0)
     await r.ask('work.docs.close', { socket })
     await expect(r.ask('work.docs.recv', { socket })).rejects.toThrow(/closed/)
+  })
+})
+
+describe('the schema a window knows', () => {
+  it("is said to the service in the socket's address, for the window whose socket this host opens; a window that says none says nothing", async () => {
+    const r = await rig()
+    ;(r.ctx as unknown as { service: Record<string, unknown> }).service.token = async () => 'tok'
+    const asked: string[] = []
+    const relay = docsOf(r.ctx).relay
+    const connect = relay.connect.bind(relay)
+    relay.connect = (url: string, doc: string) => (asked.push(url), connect(url, doc))
+    const a = await r.ask<{ socket: string }>('work.docs.connect', { source: r.source, schema: 1 })
+    const b = await r.ask<{ socket: string }>('work.docs.connect', { source: r.source })
+    expect(asked[0]).toMatch(/\/w\/doc\/[^?]+\?schema=1$/)
+    expect(asked[1]).toMatch(/\/w\/doc\/[^?]+$/)
+    await r.ask('work.docs.close', { socket: a.socket })
+    await r.ask('work.docs.close', { socket: b.socket })
+    // Only a whole number is ever written into the address: nothing a socket could be steered with.
+    const c = await r.ask<{ socket: string }>('work.docs.connect', { source: r.source, schema: '1&x=y' })
+    expect(asked[2]).toMatch(/\/w\/doc\/[^?&]+$/)
+    await r.ask('work.docs.close', { socket: c.socket })
   })
 })
 

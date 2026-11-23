@@ -142,6 +142,8 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   }
   const verifier = createCollabVerifier(() => trusted)
   const collab = createCollabServer({
+    // No client is given a document newer than it knows, and a document's schema rises only by this service's hand.
+    schemaGate: true,
     verify: {
       ...verifier,
       async verify(token) {

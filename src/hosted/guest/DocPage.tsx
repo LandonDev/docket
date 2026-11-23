@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DOCUMENT_SCHEMA } from "work-kit/collab";
 import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type DocumentStatus, type EditorAdapters } from "work-kit/editor";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
-import { useDocFonts } from "@renderer/work/docs/fonts";
+import { DOC_FONTS } from "@renderer/work/docs/fonts";
 import { Comment } from "@renderer/work/icons";
 import { commentLeft } from "./place";
 import { OpenFailed, type Opened, type Session } from "./session";
@@ -52,9 +53,6 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
   );
   const wide = useWide(MEASURE + MARGIN + 64);
   const frame = useRef<HTMLDivElement>(null);
-  // The fonts the document names, from this service's own files (`font-src 'self'`).
-  const [editor, setEditor] = useState<Parameters<typeof useDocFonts>[0]>(null);
-  useDocFonts(editor);
   // Anything wrong with the socket may be a link that went: the page asks once, and shows the end if it is gone.
   const [status, setStatus] = useState<DocumentStatus | null>(null);
   const onStatus = (next: DocumentStatus | null): void => {
@@ -62,7 +60,7 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
     if (next) void session.refresh().catch((err: unknown) => err instanceof OpenFailed && err.why === "gone" && goneRef.current());
   };
   return (
-    <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER }}>
+    <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER, fonts: DOC_FONTS }}>
       <EditorAdaptersProvider adapters={adapters}>
         <div ref={frame} className="relative mx-auto px-4 pt-6 pb-10 sm:px-8" style={{ maxWidth: MEASURE + (wide && threads ? MARGIN : 0) + 64 }}>
           {status ? (
@@ -86,7 +84,10 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
               threadMargin={threads ? (wide ? "side" : "under") : undefined}
               threadList={!!threads}
               onStatus={onStatus}
-              onEditor={setEditor}
+              // An Edit link gets the format row; Comment and View get none. The page is built with the service it is
+              // served by, so the schema it knows is the service's: it says so, and asks the service to raise a document.
+              formatRow={opened.role === "edit"}
+              hostSchema={DOCUMENT_SCHEMA}
             />
           </div>
           {opened.role === "comment" ? <SelectionComment session={session} frame={frame} onMade={() => threads?.refresh()} /> : null}

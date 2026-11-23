@@ -15,6 +15,7 @@ import {
   type EditorAdapters,
   type ReviewChange,
 } from "work-kit/editor";
+import type { DocumentPage } from "work-kit/editor/page";
 import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { useColorScheme } from "../../hooks/useColorScheme";
@@ -25,14 +26,15 @@ import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { useWorkCommands } from "../formats/command";
 import { Preview } from "../formats/PreviewFrame";
 import { DropImport, ImportBody, keepAsDocument, readAttachment } from "../formats/Import";
-import { importsFirst } from "../formats/model";
+import { importsFirst, paperFor } from "../formats/model";
 import { Doc, Export } from "../icons";
 import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { useGoogleDoc } from "../google/docMore";
-import { useDocFonts } from "./fonts";
+import { DOC_FONTS } from "./fonts";
 import { docHost, servedBy, type DocHost } from "./host";
 import { docPreviewSource } from "./previewSource";
-import { decided, reviewOf } from "./review";
+import { decided, PAGE_CHANGE_ID, reviewOf } from "./review";
+import { PageChangeSummary } from "../history/Compare";
 import { docThreads, type DocThreads } from "./threads";
 import { ShareButton } from "../guests/Share";
 
@@ -272,6 +274,8 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   // Preview is a state of the item: it takes the body, and the editor stays mounted under it, out of reach, with its place kept.
   const root = useRef<HTMLDivElement | null>(null);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  // The format row is the body's first, unscrolled row (docs/DESIGN.md "Work editors"): the editor draws it into this place.
+  const [rowSlot, setRowSlot] = useState<HTMLDivElement | null>(null);
   const [previewing, setPreviewing] = useState<PreviewOn>(false);
   // Each ask is counted: Print… pressed while Preview shows another format, however he got there, opens it on Print anew.
   const [asked, setAsked] = useState(0);
@@ -282,9 +286,11 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   // A failed open is said once, on the state line with Retry; the body under it stays empty rather than pulse.
   return (
     <DropImport env={env} sessionId={item.sessionId} editor={null}>
-      <div ref={root} className="relative h-full">
+      <div ref={root} className="relative flex h-full flex-col">
         <div ref={setSlot} data-doc-preview={previewing || undefined} className={previewing ? "absolute inset-0 z-10" : "hidden"} />
-        <div className={previewing ? "invisible h-full" : "h-full"} inert={previewing ? true : undefined}>
+        {/* Its keys are the editor's own while focus is in it (⌘B in the size field is bold, not the sidebar). */}
+        <div ref={setRowSlot} data-doc-row data-editor-keys="document" className={previewing ? "invisible flex-none" : "flex-none"} inert={previewing ? true : undefined} />
+        <div className={previewing ? "invisible min-h-0 flex-1" : "min-h-0 flex-1"} inert={previewing ? true : undefined}>
           <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
             {(width) =>
               opened === null ? (
@@ -300,6 +306,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                   itemId={item.id}
                   root={root}
                   preview={{ slot, on: previewing, asked, set: showPreview }}
+                  rowSlot={rowSlot}
                 />
               ) : null
             }
@@ -392,6 +399,7 @@ function Opened({
   itemId,
   root,
   preview,
+  rowSlot,
 }: {
   host: DocHost;
   open: DocOpen;
@@ -401,6 +409,7 @@ function Opened({
   itemId: string;
   root: React.RefObject<HTMLDivElement | null>;
   preview: PreviewSlot;
+  rowSlot: HTMLElement | null;
 }) {
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
@@ -448,8 +457,10 @@ function Opened({
   useEffect(() => () => showPreview(false), [showPreview]);
 
   // What Preview draws: one source for as long as this document is open, reading the editor and the counts as they stand.
-  const live = useRef({ editor, suggestions: review.hooks?.count ?? 0, threads: doc.threads });
-  live.current = { editor, suggestions: review.hooks?.count ?? 0, threads: doc.threads };
+  // The document's styles, theme and page set-up as the editor reads them; null for a classic document.
+  const [page, setPage] = useState<DocumentPage | null>(null);
+  const live = useRef({ editor, suggestions: review.hooks?.count ?? 0, threads: doc.threads, page });
+  live.current = { editor, suggestions: review.hooks?.count ?? 0, threads: doc.threads, page };
   const source = useMemo(
     () =>
       docPreviewSource({
@@ -458,6 +469,7 @@ function Opened({
         itemId,
         title: open.title,
         editor: () => live.current.editor,
+        styled: () => live.current.page,
         // Threads, not marks: a thread over three lines is one comment. One with a second comment has a reply.
         review: () => ({
           comments: new Set(Array.from(live.current.editor?.domElement?.querySelectorAll(".bn-thread-mark") ?? [], (m) => m.getAttribute("data-bn-thread-id") ?? m.textContent)).size,
@@ -487,8 +499,10 @@ function Opened({
         onPresence={(people) => shell.presence(presenceOf(people))}
         onAsk={onAsk}
         review={review.state}
+        {...(review.pageWords ? { pageReview: review.pageWords } : {})}
         onReviewPick={review.pick}
         onEditor={setEditor}
+        row={{ into: rowSlot, onPreview: () => showPreview("last"), onPage: setPage }}
       />
       {preview.on && preview.slot
         ? createPortal(
@@ -606,7 +620,7 @@ export function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, e
       step: (to) => {
         latest.current.hooks?.step(to);
         // At once: stepping is done many times in a row.
-        requestAnimationFrame(() => document.querySelector(".te-change-current")?.scrollIntoView({ block: "center", behavior: "instant" }));
+        requestAnimationFrame(() => document.querySelector('[data-page-change="true"], .te-change-current')?.scrollIntoView({ block: "center", behavior: "instant" }));
       },
       accept: (which) => latest.current.hooks?.accept(which) ?? Promise.resolve(),
       reject: (which) => latest.current.hooks?.reject(which) ?? Promise.resolve(),
@@ -615,7 +629,10 @@ export function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, e
   }, [shell, hooks?.index, hooks?.count, groupsKey, open.role]);
   useEffect(() => () => shell.review(null), [shell]);
   useEffect(() => (editor && pending ? editor.onChange(onChange) : undefined), [editor, pending, onChange]);
-  return review;
+  const selected = changes.find((change) => change.id === review.state.current);
+  const selectedId = selected ? decided(selected) : null;
+  const pageWords = selectedId?.which === PAGE_CHANGE_ID ? value?.branches.find((b) => b.id === selectedId.branchId)?.diff.page : undefined;
+  return { ...review, pageWords };
 }
 
 /** The text column: its title, then the editor, with the gutter for the block handle and room for the margin. */
@@ -627,8 +644,10 @@ export function DocumentFrame({
   onPresence,
   onAsk,
   review,
+  pageReview,
   onReviewPick,
   onEditor,
+  row,
 }: {
   doc: DocumentHandle;
   open: DocOpen;
@@ -637,23 +656,19 @@ export function DocumentFrame({
   onPresence?(people: DocumentPresence[]): void;
   onAsk?(selection: DocumentSelection): void;
   review?: ReturnType<typeof useReview>["state"] | null;
+  pageReview?: readonly string[];
   onReviewPick?(id: string): void;
   onEditor?(editor: AnyEditor | null): void;
+  /**
+   * The format row, on a document he may edit: where the body draws it, its way to Preview, and
+   * the document's page for whoever needs it. Left out (the Docs view, a mail's attachment), there
+   * is no row; the text is still drawn in the document's own styles.
+   */
+  row?: { into: HTMLElement | null; onPreview(): void; onPage?(page: DocumentPage | null): void };
 }) {
   const scheme = useColorScheme();
-  // The fonts the document names are loaded as it opens and as it comes to name more (work/docs/fonts.ts).
-  const [editor, setEditor] = useState<AnyEditor | null>(null);
-  useDocFonts(editor);
-  const tell = useRef(onEditor);
-  useEffect(() => {
-    tell.current = onEditor;
-  }, [onEditor]);
-  const heard = useCallback((next: AnyEditor | null) => {
-    setEditor(next);
-    tell.current?.(next);
-  }, []);
   return (
-    <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER }}>
+    <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER, fonts: DOC_FONTS }}>
       <EditorAdaptersProvider adapters={doc.adapters}>
         {/* The editor's keys are its own while the caret is here (docs/agents/work-editors.md "Who hears a key"): ⌘B is bold, ⌘K a link. */}
         <div data-editor-keys={open.role === "edit" ? "document" : "read"} className="mx-auto" style={{ maxWidth: GUTTER + MEASURE + (margin ? MARGIN : 0) }}>
@@ -661,16 +676,21 @@ export function DocumentFrame({
             {open.role === "edit" && open.source.at === "lifeos" ? <TitleField text={open.title} rename={doc.host.rename} /> : <Title text={open.title} />}
           </div>
           <div style={{ paddingLeft: GUTTER, paddingRight: margin ? MARGIN : 0 }}>
+            {pageReview?.length ? <PageChangeSummary words={pageReview} current /> : null}
             <DocumentEditor
               documentName={open.doc}
               editable={open.role === "edit"}
               threadMargin={margin ? "side" : undefined}
+              // What the serving host can keep: the editor offers nothing of a newer schema (work-docs.md "The schema gate").
+              hostSchema={open.schema ?? 0}
+              {...(row && open.role === "edit" ? { formatRow: true, formatRowInto: row.into, onPreview: row.onPreview, paper: paperFor(navigator.language) } : {})}
+              {...(row?.onPage ? { onPage: row.onPage } : {})}
               {...(onStatus ? { onStatus } : {})}
               {...(onPresence ? { onPresence } : {})}
               {...(onAsk ? { onAsk } : {})}
               review={review ?? null}
               {...(onReviewPick ? { onReviewPick } : {})}
-              onEditor={heard}
+              {...(onEditor ? { onEditor } : {})}
             />
           </div>
         </div>

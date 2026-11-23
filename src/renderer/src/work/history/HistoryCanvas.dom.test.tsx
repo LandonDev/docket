@@ -196,6 +196,17 @@ describe("the history canvas", () => {
     expect(screen.queryByText("Waiting for you")).toBeNull();
   });
 
+  it("a page-only suggestion has one step with words and sends the page id", async () => {
+    const diff = { ...diffBlocks(OLD, OLD), page: ["Margins become 0.5 in left and right"] };
+    host.branches = [{ id: "b1", baseVersionId: "v2", authors: [AGENT], label: "Suggestions", at: 1, editedAt: Date.now(), diff }];
+    const { container } = await seat();
+    fireEvent.click(await screen.findByText("1 change"));
+    expect(await screen.findByText("Margins become 0.5 in left and right")).toBeTruthy();
+    const bar = within(container.querySelector("[data-canvas-bar]") as HTMLElement);
+    fireEvent.click(bar.getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(host.calls.find((c) => c.method === "work.history.decide")?.params).toMatchObject({ branchId: "b1", which: ["@page"], accept: true }));
+  });
+
   it("keeps Compare in the bar from the first frame, waiting for two ticks, so a tick never pushes the list", async () => {
     const { container } = await seat();
     await waitFor(() => expect(screen.getByText("Wrote the morning")).toBeTruthy());
