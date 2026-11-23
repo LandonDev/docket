@@ -10,7 +10,7 @@ import { splitName } from '@shared/work/files'
 import { fileStem, parseTemplateId, templateFormOf, type Template, type TemplateForm } from '@shared/work/templates'
 import { sharedOf } from '../files/policy'
 import { WORK_MODULES, type Caller, type WorkCtx } from '../modules'
-import { askFilesVerb, copyNoReplace, OUT_OF_REACH, type Pillars } from './place'
+import { askFilesVerb, copyNoReplace, folderCan, OUT_OF_REACH, type Pillars } from './place'
 import { jobDir, resolveTemplate, sharedDir, shelfOf, tcdocFields, toTemplate, workspaceOf, type ShelfEntry, type WorkspaceRow } from './shelf'
 import { TemplatesStore } from './store'
 
@@ -204,7 +204,7 @@ export async function removeTemplate(ctx: WorkCtx, by: Caller, workspaceId: stri
   ownOf(ctx, by, workspaceId, ref)
   const everyone = entry.where === 'all'
   // Trash is the workspace folder's: a template for all jobs lies in the app's own data, which Files does not list.
-  if (!everyone && by.kind !== 'model') {
+  if (!everyone && by.kind !== 'model' && (await folderCan(ctx, by, workspaceId, 'trash', deps.pillars, deps.signal))) {
     const done = await askFilesVerb<FileDone>(ctx, by, 'trash', { workspaceId, refs: [entry.source] }, deps.pillars, deps.signal)
     if (done) {
       if (done.refused.length && !done.trashed?.length) throw new Error(done.refused[0]!.text)

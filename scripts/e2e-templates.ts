@@ -131,25 +131,86 @@ try {
   await sleep(1500)
   await run.press('Dummy Officials', 'rail')
   await sleep(2000)
+  /** A right press at the middle of a tile, by its name. */
+  const menuOf = async (name: string): Promise<boolean> => {
+    const at = await run.page<{ x: number; y: number } | null>(`(() => { const el = [...document.querySelectorAll('[data-tile] [data-tile-open]')].find((e) => e.getAttribute('aria-label') === ${JSON.stringify(name)}); if (!el) return null; el.scrollIntoView({ block: 'nearest' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`)
+    if (!at) return false
+    await run.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y })
+    for (const type of ['mousePressed', 'mouseReleased']) await run.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'right', clickCount: 1 })
+    return run.until('the menu', 5000, () => run.page<boolean>(`!!document.querySelector('[role=menu]')`))
+  }
+  const key = async (k: string): Promise<void> => {
+    for (const type of ['keyDown', 'keyUp']) await run.send('Input.dispatchKeyEvent', { type, key: k, code: k, windowsVirtualKeyCode: k === 'Escape' ? 27 : 13 })
+    await sleep(500)
+  }
   if (await run.press('Templates')) {
     await run.until('the shelf paints', 20_000, () => run.has('All jobs'))
+    await sleep(800)
     await run.shot('01-shelf')
     const tile = starter?.name ?? 'Crew report'
-    run.check(`the shelf shows "${tile}"`, await run.has(tile))
+    run.check(`the shelf shows "${tile}" and his own "Crew report"`, (await run.has(tile)) && (await run.has('Crew report')))
+
+    // A tile's menu, for one of his own and for a starter.
+    if (run.check('a right press on his own tile opens its menu', await menuOf('Crew report'))) {
+      const rows = await run.page<string[]>(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((e) => e.textContent.trim())`)
+      run.check('his own has New from this, Edit, Rename…, Use in all jobs and Remove', JSON.stringify(rows) === JSON.stringify(['New from this', 'Edit', 'Rename…', 'Use in all jobs', 'Remove']), rows.join(' | '))
+      await run.shot('02-menu-own')
+      await run.press('Rename…')
+      if (await run.until('the rename dialog', 5000, () => run.has('Rename template'))) await run.shot('03-rename')
+      else run.check('Rename… opens its dialog', false)
+      await run.press('Cancel')
+      await sleep(600)
+    }
+    if (starter && run.check('a right press on a starter opens its menu', await menuOf(starter.name))) {
+      const rows = await run.page<string[]>(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((e) => e.textContent.trim())`)
+      run.check('a starter has New from this, Edit a copy and Hide', JSON.stringify(rows) === JSON.stringify(['New from this', 'Edit a copy', 'Hide']), rows.join(' | '))
+      await run.shot('04-menu-starter')
+      await key('Escape')
+    }
+    if (await menuOf('East report')) {
+      await run.press('Remove')
+      if (run.check('Remove of his own asks first', await run.until('the confirm', 5000, () => run.has('Remove East report?')))) {
+        await run.shot('05-remove')
+        await run.press('Cancel')
+        await sleep(600)
+        run.check('and Cancel keeps the file', existsSync(join(folder, 'Templates', 'East report.docx')))
+      }
+    }
+
+    // A tile with fields: the dialog asks, Create makes the file.
     if (await run.press(tile)) {
       await run.until('the fields', 10_000, () => run.has('Create'))
-      await run.shot('02-fields')
+      await sleep(500)
+      await run.shot('06-fields')
       const typed = await run.page<number>(`(() => { const inputs = [...document.querySelectorAll('[role=dialog] input')]; inputs.forEach((el, i) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, 'Window ' + (i + 1)); el.dispatchEvent(new Event('input', { bubbles: true })) }); return inputs.length })()`)
       run.check('the dialog asks for each field', typed === (starter?.fields.length ?? 3), `${typed} inputs`)
+      await sleep(300)
+      await run.shot('07-fields-typed')
       const before = readdirSync(folder).length
       await run.press('Create')
       const there = await run.until('the file is made', 20_000, () => readdirSync(folder).length > before)
       run.check('Create makes the file from the window', there, readdirSync(folder).join(', '))
       await sleep(2500)
-      await run.shot('03-made')
+      const tabs = await run.call<{ tabs: { kind: string; name: string }[] }>('work.files.tabs', { workspaceId: ws.id })
+      run.check('the made file is open in a Files tab of the workspace', tabs.tabs.some((t) => t.kind === 'file' && t.name.includes('Window 1')), tabs.tabs.map((t) => `${t.kind}:${t.name}`).join(', '))
+      await run.shot('08-made')
     } else run.check('a tile can be pressed', false)
+
+    // Hide a starter from the window, then Show hidden.
+    await run.press('Templates')
+    await sleep(1200)
+    if (starter && (await menuOf(starter.name))) {
+      await run.press('Hide')
+      const gone = await run.until('the starter is hidden', 8000, async () => (await list()).hidden === 1)
+      run.check('Hide takes a starter off the shelf', gone)
+      await sleep(800)
+      await run.shot('09-hidden')
+      await run.call('work.templates.unhide', { workspaceId: ws.id })
+    }
   } else run.note('the Templates row is not in the column (it waits for Files\' new view): the window\'s part was not run')
 } catch (err) {
-  await run.finish(err)
+  // A socket's error arrives as an event, which says nothing as a string: say what it holds.
+  const event = err as { message?: string; error?: unknown; type?: string } | null
+  await run.finish(err instanceof Error ? err : new Error(`${event?.type ?? 'error'}: ${event?.message ?? ''} ${event?.error instanceof Error ? (event.error.stack ?? event.error.message) : String(event?.error ?? err)}`))
 }
 await run.finish()

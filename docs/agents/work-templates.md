@@ -87,7 +87,7 @@ One path for the shelf, Files' New, the tools and the other pillars:
 2. Copy its file to `<userData>/work-templates/scratch/<random>/` and fill it there.
 3. `lookOf(ctx, workspaceId)` (below). It answers null today.
 4. Name it: the caller's `title`, else the template's name, then " - " and the first asked field that has a value ("Game report - Central at North"). `fileStem` drops what a disk refuses.
-5. Place it. His own press (a window, a paired device) asks Files first: `work.files.make { workspaceId, at: into ?? the workspace's folder, kind, name, from: scratch, op }`. Files then picks the name and the place's form and asks what it must in a shared place. While Files answers "cannot make a file yet" (before its F2), and always for a thread's or another pillar's call, the file is copied into the workspace's own folder under a free name, never over another file. `into` is then taken only when it is a folder inside the workspace's own folder, made if missing; anywhere else is refused in one sentence.
+5. Place it. His own press (a window, a paired device) asks Files first: `work.files.make { workspaceId, at: into ?? the workspace's folder, kind, name, from: scratch, op }`. Files then picks the name and the place's form and asks what it must in a shared place. Files is asked only once the workspace folder's place lists the verb (`FilePlace.can` in `work.files.places`, read by `folderCan`): until Files builds its changes that list is empty and its door refuses the verb in its own words, which is no refusal of his. While the folder cannot make, and always for a thread's or another pillar's call, the file is copied into the workspace's own folder under a free name, never over another file. `into` is then taken only when it is a folder inside the workspace's own folder, made if missing; anywhere else is refused in one sentence.
 6. Answer `{ source, kind, title, unfilled }`. The scratch folder is removed, also on a failure.
 
 Opening is the caller's: the window opens the file in a Files tab; a tool calls `ctx.canvas.open`.
@@ -110,7 +110,7 @@ A remote key makes, saves and lists only for a workspace whose folder it may rea
 
 - The push `work.templates { workspaceId | null }` follows every change; null means every workspace's shelf (a template for all jobs was saved, moved or removed).
 - Every method is carried to the workspace's host, so a Mac window reaches a shelf on the box. The phone has no rows.
-- **Remove.** A starter is hidden in that workspace. One of the job's own goes to Files' Trash where Files has one, and the answer's `trashed` holds the rows Put back takes. Where Files has none yet, and for a template for all jobs (it lies in the app's own data), the first call answers `{ confirm: true }` and deletes nothing; the window asks him and calls again with `confirmed: true`.
+- **Remove.** A starter is hidden in that workspace. One of the job's own goes to Files' Trash where the folder's place lists `trash`, and the answer's `trashed` holds the rows Put back takes. Where Files has none yet, and for a template for all jobs (it lies in the app's own data), the first call answers `{ confirm: true }` and deletes nothing; the window asks him and calls again with `confirmed: true`.
 - **Save** copies. The source is never moved, renamed or written, whoever can open it. It takes a file on this host (`{ at: 'file' }`, or an Office item's `{ kind: 'path' }`).
 
 ## Tools (`tools.ts`)
@@ -199,6 +199,7 @@ LibreOffice draws a Word run or fill that is `auto` with a theme colour in autom
 ## Proofs
 
 - `bun scripts/proof-bun.ts scripts/proof-templates.ts`: the module as the host loads it, a dummy workspace on a real database, a stand-in thread calling the three tools on the fill's fixtures, each made file read back. With `TEMP_CODE_WORK_TOOLS_DATA` (through `heavy`) the deck is filled by the slides pillar's real edit and LibreOffice opens every filled file.
+- `filesReal.test.ts` runs a make and a remove against the real files module, whatever its folder can do that day: the file ends in the workspace's own folder, and nothing is deleted unasked.
 - `fixtures/make.ts` makes the fixtures: `split.docx`, `fields.xlsx`, `split.pptx`.
 - `deckFill.test.ts` runs the real deck edit behind `TEMP_CODE_WORK_TOOLS_DATA`.
 - `env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-templates.ts --out <dir>` (after `electron-vite build`, through `heavy`): an isolated instance of the built app with a dummy Work workspace and no LifeOS sign-in. It drives the wire through the real router and fence, a thread's tools through the bridge, and the window's part when the Templates row is on.

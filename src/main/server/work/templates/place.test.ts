@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
 import { handled } from '@shared/work'
 import type { WorkModule } from '../modules'
-import { askFilesVerb, copyNoReplace, OUT_OF_REACH, OWN_FOLDER_ONLY, ownTarget, placeFile, type PlaceAsk } from './place'
+import { askFilesVerb, copyNoReplace, folderCan, OUT_OF_REACH, OWN_FOLDER_ONLY, ownTarget, placeFile, type PlaceAsk } from './place'
 import { workspaceOf } from './shelf'
 import { HOST, makeRig, phone, thread, window, WS, type Rig } from './testkit'
 
@@ -18,13 +18,16 @@ afterEach(() => rig.close())
 
 const ask = (over: Partial<PlaceAsk> = {}): PlaceAsk => ({ workspace: workspaceOf(rig.ctx, WS), kind: 'document', form: 'docx', title: 'Game report - Central at North', scratch, ...over })
 
-/** A Files that cannot make a file yet, as master's answers today. */
+/** What `work.files.places` answers for the workspace's folder: the verbs it can do. */
+const places = (can: string[]) => handled({ host: HOST, rev: 0, sources: [], places: [{ id: 'folder', kind: 'folder', name: 'Dummy Officials', can }] })
+/** Files as master's is today: the folder can do nothing, and a make is refused at its door before the verb is reached. */
 const filesNotYet = (seen: ClientRequest[] = []): WorkModule => ({
   id: 'files',
   ensure() {},
   async handle(req) {
     seen.push(req)
-    throw new Error('Files cannot make a file yet: that arrives with its milestone.')
+    if (req.method === 'work.files.places') return places([])
+    throw new Error('Nothing can be made in Dummy Officials from here.')
   }
 })
 /** A Files that makes the file, as F2's will. */
@@ -32,11 +35,14 @@ const filesMakes = (seen: ClientRequest[] = []): WorkModule => ({
   id: 'files',
   ensure() {},
   async handle(req) {
+    if (req.method === 'work.files.places') return places(['make', 'trash'])
     seen.push(req)
     const p = (req as { params: { name: string } }).params
     return handled({ entries: [{ key: 'k', ref: { at: 'file', host: HOST, path: join(rig.folder, 'Reports', `${p.name} 2.tcdoc`) }, folder: null, name: `${p.name} 2.tcdoc`, kind: 'document' }], refused: [], op: 'op' })
   }
 })
+/** A Files whose folder can make a file, and whose make answers this. */
+const filesThat = (make: () => Promise<unknown>): WorkModule => ({ id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? places(['make']) : (make() as never)) })
 
 describe('asking Files first', () => {
   it("hands Files the filled scratch file, the folder, the kind and the name, and answers what Files made", async () => {
@@ -58,8 +64,10 @@ describe('asking Files first', () => {
     expect((seen[0] as { params: { at: unknown } }).params.at).toEqual({ at: 'place', id: 'folder' })
   })
 
-  it('copies the file itself when Files cannot make one yet, or is not loaded', async () => {
-    const a = await placeFile(rig.ctx, window, ask(), () => [filesNotYet()])
+  it("copies the file itself while the folder can make nothing, never asking Files' make, or when Files is not loaded", async () => {
+    const seen: ClientRequest[] = []
+    const a = await placeFile(rig.ctx, window, ask(), () => [filesNotYet(seen)])
+    expect(seen.map((r) => r.method)).toEqual(['work.files.places'])
     expect(a).toEqual({ source: { at: 'file', host: HOST, path: join(rig.folder, 'Game report - Central at North.docx') }, title: 'Game report - Central at North' })
     const b = await placeFile(rig.ctx, window, ask(), () => [])
     expect(b.title).toBe('Game report - Central at North 2')
@@ -67,13 +75,13 @@ describe('asking Files first', () => {
   })
 
   it("throws any other refusal of Files' as it is, and copies nothing", async () => {
-    const refuses: WorkModule = { id: 'files', ensure() {}, handle: async () => Promise.reject(new Error('Others can open that place: the window asks before this change.')) }
+    const refuses = filesThat(() => Promise.reject(new Error('Others can open that place: the window asks before this change.')))
     await expect(placeFile(rig.ctx, window, ask(), () => [refuses])).rejects.toThrow('Others can open that place')
     expect(readdirSync(rig.folder)).toEqual([])
   })
 
   it("says Files' own words when Files made nothing", async () => {
-    const none: WorkModule = { id: 'files', ensure() {}, handle: async () => handled({ entries: [], refused: [{ name: 'x', text: 'That folder is read only.' }], op: 'op' }) }
+    const none = filesThat(async () => handled({ entries: [], refused: [{ name: 'x', text: 'That folder is read only.' }], op: 'op' }))
     await expect(placeFile(rig.ctx, window, ask(), () => [none])).rejects.toThrow('That folder is read only.')
   })
 
@@ -82,6 +90,21 @@ describe('asking Files first', () => {
     const placed = await placeFile(rig.ctx, thread(), ask(), () => [filesMakes(seen)])
     expect(seen).toEqual([])
     expect(placed.source).toEqual({ at: 'file', host: HOST, path: join(rig.folder, 'Game report - Central at North.docx') })
+  })
+
+  it("asks Files' make for a folder outside the workspace's own, and takes a not-yet as no: the copy then refuses it", async () => {
+    const seen: ClientRequest[] = []
+    const notYet: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (seen.push(req), Promise.reject(new Error('Files cannot make a file yet: that arrives with its milestone.'))) }
+    await expect(placeFile(rig.ctx, window, ask({ into: { at: 'place', id: 'env_box~lib' } }), () => [notYet])).rejects.toThrow(OWN_FOLDER_ONLY)
+    expect(seen.map((r) => r.method)).toEqual(['work.files.make'])
+  })
+
+  it('reads the folder\'s verbs from Files\' own places, and a Files that does not answer as none', async () => {
+    expect(await folderCan(rig.ctx, window, WS, 'make', () => [filesMakes()])).toBe(true)
+    expect(await folderCan(rig.ctx, window, WS, 'rename', () => [filesMakes()])).toBe(false)
+    expect(await folderCan(rig.ctx, window, WS, 'make', () => [filesNotYet()])).toBe(false)
+    expect(await folderCan(rig.ctx, window, WS, 'make', () => [])).toBe(false)
+    expect(await folderCan(rig.ctx, window, WS, 'make', () => [{ id: 'files', ensure() {}, handle: async () => Promise.reject(new Error('Work is off')) }])).toBe(false)
   })
 
   it('reads a verb Files has not built as not yet, whatever the verb', async () => {

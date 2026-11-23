@@ -184,7 +184,8 @@ describe('remove', () => {
 
   it('deletes nothing of his own until the window says he was asked, where Files has no Trash yet', async () => {
     rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('a'))
-    const notYet: WorkModule = { id: 'files', ensure() {}, handle: async () => Promise.reject(new Error('Files cannot trash yet: that arrives with its milestone.')) }
+    // Files as master's is today: the folder can do nothing.
+    const notYet: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: [] }] }) : Promise.reject(new Error('Nothing can be deleted in Dummy Officials from here.'))) }
     expect(await removeTemplate(rig.ctx, window, WS, 'job:Letter.docx', false, { pillars: () => [notYet] })).toEqual({ confirm: true })
     expect(shelfFiles()).toEqual(['Letter.docx'])
     expect(rig.pushes).toEqual([])
@@ -196,7 +197,7 @@ describe('remove', () => {
   it("sends one of the job's own to Files' Trash where Files has one, and answers the rows Put back takes", async () => {
     const path = rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('a'))
     const seen: ClientRequest[] = []
-    const files: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (seen.push(req), handled({ entries: [], refused: [], trashed: ['trash_1'], op: 'op' })) }
+    const files: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: ['trash'] }] }) : (seen.push(req), handled({ entries: [], refused: [], trashed: ['trash_1'], op: 'op' }))) }
     expect(await removeTemplate(rig.ctx, window, WS, 'Letter', false, { pillars: () => [files] })).toEqual({ trashed: ['trash_1'] })
     expect(seen[0]!.method).toBe('work.files.trash')
     expect((seen[0] as { params: Record<string, unknown> }).params).toMatchObject({ workspaceId: WS, refs: [file(path)] })
@@ -206,7 +207,7 @@ describe('remove', () => {
 
   it("says Files' own refusal, and deletes nothing", async () => {
     rig.put(join(rig.folder, 'Templates', 'Letter.docx'), docx('a'))
-    const files: WorkModule = { id: 'files', ensure() {}, handle: async () => handled({ entries: [], refused: [{ name: 'Letter.docx', text: 'That file is open in Word.' }], op: 'op' }) }
+    const files: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: ['trash'] }] }) : handled({ entries: [], refused: [{ name: 'Letter.docx', text: 'That file is open in Word.' }], op: 'op' })) }
     await expect(removeTemplate(rig.ctx, window, WS, 'Letter', true, { pillars: () => [files] })).rejects.toThrow('That file is open in Word.')
     expect(shelfFiles()).toEqual(['Letter.docx'])
   })

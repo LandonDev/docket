@@ -412,18 +412,26 @@ export class Run {
   }
 }
 
-/** The window's page over the debug port (the global WebSocket). */
+/**
+ * The window's page over the debug port (the global WebSocket). The app's own window is the page at
+ * `…/index.html`; others come and go while it boots (the capture window, a page that is replaced), and a
+ * socket to one of those fails or drives the wrong page. A socket that fails is tried again until the time is up.
+ */
 async function attach(port: number, ms: number): Promise<Cdp> {
   const end = Date.now() + ms
-  let url: string | undefined
-  while (!url && Date.now() < end) {
+  let found: WebSocket | null = null
+  while (!found && Date.now() < end) {
     const list = (await fetch(`http://127.0.0.1:${port}/json/list`).then((r) => r.json(), () => [])) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
-    url = list.find((t) => t.type === 'page' && !t.url.startsWith('devtools:'))?.webSocketDebuggerUrl
-    if (!url) await sleep(500)
+    const url = list.find((t) => t.type === 'page' && /\/index\.html(\?|#|$)/.test(t.url))?.webSocketDebuggerUrl
+    if (url) {
+      const socket = new WebSocket(url)
+      const open = await new Promise<boolean>((ok) => ((socket.onopen = () => ok(true)), (socket.onerror = () => ok(false))))
+      if (open) found = socket
+    }
+    if (!found) await sleep(500)
   }
-  if (!url) throw new Error('no page on the debug port')
-  const ws = new WebSocket(url)
-  await new Promise((ok, fail) => ((ws.onopen = ok), (ws.onerror = fail)))
+  if (!found) throw new Error('no page on the debug port')
+  const ws = found
   let n = 0
   const waiting = new Map<number, { ok: (v: unknown) => void; fail: (e: Error) => void }>()
   ws.onmessage = (ev) => {

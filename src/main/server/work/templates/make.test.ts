@@ -1,8 +1,9 @@
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { CanvasSource } from '@shared/work'
+import { handled, type CanvasSource } from '@shared/work'
 import type { ConvertJob } from '../formats/jobs'
+import type { WorkModule } from '../modules'
 import type { DeckRead } from './deckFill'
 import type { JobLook } from './look'
 import { GONE, makeFromShelf, type MakeAsk, type MakeDeps } from './make'
@@ -96,7 +97,7 @@ describe('the scratch folder', () => {
   it('is gone after a make that failed, and the template is as it was', async () => {
     const template = join(rig.starters, 'ref', 'Game report.docx')
     const before = readFileSync(template)
-    const refuses = { id: 'files' as const, ensure() {}, handle: async () => Promise.reject(new Error('That folder is read only.')) }
+    const refuses: WorkModule = { id: 'files', ensure() {}, handle: async (req) => (req.method === 'work.files.places' ? handled({ places: [{ id: 'folder', can: ['make'] }] }) : Promise.reject(new Error('That folder is read only.'))) }
     await expect(make({ template: 'Game report', fields: { Home: 'Central' } }, window, { pillars: () => [refuses] })).rejects.toThrow('That folder is read only.')
     expect(scratchLeft()).toEqual([])
     expect(readFileSync(template).equals(before)).toBe(true)

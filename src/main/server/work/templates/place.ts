@@ -3,20 +3,20 @@ import { constants, existsSync, realpathSync } from 'node:fs'
 import { copyFile, link, mkdir, rm } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
-import type { FileDone } from '@shared/contract-work-files'
+import type { FileDone, FilesPlaces } from '@shared/contract-work-files'
 import type { CanvasSource, HostId } from '@shared/work'
-import { freeName, PLACE, splitName, type FolderRef } from '@shared/work/files'
+import { freeName, PLACE, splitName, type FileVerb, type FolderRef } from '@shared/work/files'
 import type { TemplateForm, TemplateKind } from '@shared/work/templates'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
 import type { WorkspaceRow } from './shelf'
 
 /**
  * Where a file made from a template is put (docs/agents/work-templates.md
- * "Making a file"). Files owns New: when its `work.files.make` answers, the
- * filled scratch file is handed to it and Files writes it in the folder he
- * is in, in that place's form, through its one door. Until then the file
- * is copied into the workspace's own folder, never over another, and
- * nowhere else. A thread's make, and another pillar's, always takes the
+ * "Making a file"). Files owns New: once its place can make a file, the
+ * filled scratch file is handed to `work.files.make` and Files writes it in
+ * the folder he is in, in that place's form, through its one door. Until
+ * then the file is copied into the workspace's own folder, never over
+ * another, and nowhere else. A thread's make, and another pillar's, always takes the
  * second way: only his own press goes through Files' door.
  */
 
@@ -69,8 +69,29 @@ export async function askFilesVerb<T>(ctx: WorkCtx, by: Caller, verb: string, pa
   }
 }
 
+/**
+ * Whether Files carries out a verb in the workspace's own folder yet. Its
+ * place lists the verbs it does (`FilePlace.can`; the folder's list is empty
+ * until Files builds its changes), and its door refuses any other in its
+ * own words before the verb is reached: so the place is asked first, and a
+ * verb it does not list is this pillar's to do the plain way.
+ */
+export async function folderCan(ctx: WorkCtx, by: Caller, workspaceId: string, verb: FileVerb, pillars: Pillars = registry, signal?: AbortSignal): Promise<boolean> {
+  const files = pillars().find((m) => m.id === 'files')
+  if (!files?.handle) return false
+  try {
+    const answer = await files.handle({ id: `templates-${randomUUID()}`, method: 'work.files.places', params: { workspaceId } } as unknown as ClientRequest, ctx, by, signal)
+    if (!answer.handled) return false
+    return (answer.result as FilesPlaces).places.find((p) => p.id === PLACE.folder)?.can.includes(verb) ?? false
+  } catch {
+    return false
+  }
+}
+
 /** Asks Files to make the file from the filled scratch copy. Null: Files cannot yet. */
 export async function askFiles(ctx: WorkCtx, by: Caller, ask: PlaceAsk, pillars: Pillars = registry, signal?: AbortSignal): Promise<Placed | null> {
+  // In the workspace's own folder, Files is asked only once that folder can make a file.
+  if (isOwn(ctx, ask.workspace, ask.into) && !(await folderCan(ctx, by, ask.workspace.id, 'make', pillars, signal))) return null
   const done = await askFilesVerb<FileDone>(ctx, by, 'make', { workspaceId: ask.workspace.id, at: ask.into ?? { at: 'place', id: PLACE.folder }, kind: ask.kind, name: ask.title, from: { at: 'file', host: ctx.host, path: ask.scratch } }, pillars, signal)
   if (!done) return null
   const made = done.entries.find((e) => e.ref)
@@ -105,6 +126,16 @@ export function ownTarget(ctx: Pick<WorkCtx, 'host'>, workspace: WorkspaceRow, i
   const dir = real(into.path)
   if (!within(dir, root)) throw new Error(OWN_FOLDER_ONLY)
   return dir
+}
+
+/** Whether a folder is the workspace's own, or inside it. */
+export function isOwn(ctx: Pick<WorkCtx, 'host'>, workspace: WorkspaceRow, into?: FolderRef): boolean {
+  try {
+    ownTarget(ctx, workspace, into)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Copies `from` into `dir` as `wanted`, or the next free name, never over another file. Answers the name it took. */
