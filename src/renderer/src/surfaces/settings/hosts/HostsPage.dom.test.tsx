@@ -63,7 +63,7 @@ vi.mock("../../../chrome/ConfirmDialog", async (original) => ({
 vi.mock("../../../chrome/HostGlyph", () => ({ HostGlyph: () => null }));
 vi.mock("../../../chrome/DeployDrift", () => ({ DeployDriftMark: () => null }));
 vi.mock("../../../stores/environment", () => ({ environment: { forget: () => {} } }));
-vi.mock("./Deploy", () => ({ HostDeploy: () => null, LocalRelease: () => null, useJobPolling: () => {} }));
+vi.mock("./Deploy", () => ({ HostDeploy: () => null, LocalRelease: ({ children }: { children?: unknown }) => children, useJobPolling: () => {} }));
 vi.mock("./Admission", () => ({ HostAdmission: () => null }));
 vi.mock("../../../chrome/MacBridgeRemember", () => ({ MacBridgeRememberedSection: () => null }));
 vi.mock("./Devices", () => ({ DevicesGroup: () => null, useDevicesPolling: () => {} }));
@@ -153,6 +153,31 @@ describe("HostsPage", () => {
     fireEvent.click(screen.getByLabelText("This Mac actions"));
     await flush();
     expect(await screen.findByText("Copy environment id")).toBeTruthy();
+  });
+
+  it("shows Code updates beside the release rows with the chosen host, sends the choice, and draws none where code cannot come", async () => {
+    const box = { id: "env_box", name: "The box" };
+    seed({ "code.settings.get": { host: box.id, hosts: [box], cannot: null }, "code.settings.set": { host: null, hosts: [box], cannot: null } });
+    render(<HostsPage />);
+    await flush();
+    fireEvent.click(await screen.findByLabelText("Take code updates from"));
+    await flush();
+    const off = await screen.findByRole("option", { name: "Off" });
+    await flush();
+    fireEvent.pointerDown(off, { pointerType: "mouse", button: 0 });
+    fireEvent.pointerUp(off, { pointerType: "mouse", button: 0 });
+    fireEvent.mouseUp(off, { button: 0 });
+    fireEvent.click(off);
+    await flush();
+    expect(calls).toContainEqual({ method: "code.settings.set", params: { host: null } });
+    for (const code of [{ host: box.id, hosts: [box], cannot: "a dev build" }, { host: null, hosts: [], cannot: null }]) {
+      cleanup();
+      seed({ "code.settings.get": code });
+      render(<HostsPage />);
+      await flush();
+      expect(screen.getByText("Remote access")).toBeTruthy();
+      expect(screen.queryByText("Code updates")).toBeNull();
+    }
   });
 
   it("says No clients when nothing may reach this host", async () => {

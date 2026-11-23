@@ -9,6 +9,7 @@ import { nanoid } from 'nanoid'
 import type { Attachment } from '@shared/events'
 import type { RunningServer } from './server'
 import { isCaptureWindow } from './captureWindow'
+import { bundleFile } from './server/appRoot'
 import { targetWindow } from './windows'
 
 const exec = promisify(execFile)
@@ -22,7 +23,7 @@ const exec = promisify(execFile)
  * attribute to this app.
  */
 
-const HELPER = join(__dirname, '../../resources/native/appshot-helper')
+const HELPER = bundleFile('resources', 'native', 'appshot-helper')
 const ATTACH_DIR = join(homedir(), '.temp-code', 'attachments')
 const CAPTURE_TIMEOUT_MS = 20_000
 

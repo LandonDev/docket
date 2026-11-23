@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "../../../components/ui/button";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
 import { LOCAL_ENVIRONMENT_ID, useEnvironmentStatus } from "../../../lib/connection";
@@ -101,7 +101,8 @@ export function HostDeploy({ environmentId, name }: { environmentId: string; nam
 }
 
 /** This Mac's Release group: what HEAD is in the release checkout, the checkout itself, Publish, and its log. */
-export function LocalRelease() {
+/** `children`: rows under Mac release (the Code updates switch). */
+export function LocalRelease({ children }: { children?: ReactNode } = {}) {
   const publish = usePublishStatus();
   const [dialog, setDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +114,7 @@ export function LocalRelease() {
           Publish…
         </Button>
       </Row>
+      {children}
       <Row title="Release checkout" error={error}>
         <CommitField
           aria-label="Release checkout"

@@ -1,7 +1,7 @@
 import { resolve } from 'path'
 import { lifeosAddress, withLifeosConnect } from './src/shared/pagePolicy'
 import { execFileSync, spawn } from 'child_process'
-import { mkdirSync, statSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import type { InlineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -9,6 +9,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { directIconImports } from './scripts/lib/iconImports'
 import { buildTcComputer } from './scripts/lib/tcComputerBuild'
 import { BUILD_HEAP_ENV, buildHeapHold } from './scripts/lib/buildHeap'
+import { codeBase } from './scripts/lib/codeBase'
 
 /** Measurement builds (scripts/measure-react-compiler.ts): the profiling
  *  reconciler makes <Profiler> report in production mode and keeps the dev
@@ -113,6 +114,24 @@ function bundleMap(): Plugin {
   }
 }
 
+/** Writes out/code-base.json after the main build: the base stamp of the tree
+ *  the build was made from (scripts/lib/codeBase.ts). The packaged boot.js
+ *  reads it as the bundle's own, and a code-only update is taken only when
+ *  its manifest names the same (docs/agents/code-only-updates.md). A tree
+ *  with no git writes none, and such a build takes no code-only update. */
+function codeBaseStamp(): Plugin {
+  return {
+    name: 'temp-code-code-base',
+    apply: 'build',
+    closeBundle() {
+      const base = codeBase(resolve('.'))
+      mkdirSync(resolve('out'), { recursive: true })
+      if (base) writeFileSync(resolve('out/code-base.json'), JSON.stringify({ v: 1, ...base }, null, 1) + '\n')
+      else rmSync(resolve('out/code-base.json'), { force: true })
+    }
+  }
+}
+
 /** The main bundle's entries (the comment on `main.build` below says what each is). */
 export const MAIN_INPUTS = {
   index: resolve('src/main/index.ts'),
@@ -190,7 +209,7 @@ export function hostedPages(outDir?: string): Plugin {
 /** A build under node's default heap runs again with room for the renderer (scripts/lib/buildHeap.ts). */
 export default buildHeapHold(() => buildHosted()) ?? defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: ['aliax-core', '@muse-code/sdk', 'work-kit'] }), appshotHelper(), tcComputer()],
+    plugins: [externalizeDepsPlugin({ exclude: ['aliax-core', '@muse-code/sdk', 'work-kit'] }), appshotHelper(), tcComputer(), codeBaseStamp()],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')

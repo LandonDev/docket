@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
+import { loadToast } from "../components/ui/toaster";
 import {
   canRetry,
+  firstSaying,
   installPendingUpdate,
   runUpdateFlow,
   watchUpdateStatus,
@@ -14,7 +16,8 @@ import {
  * window regains focus if the last probe is older than five minutes. Main
  * checks on its own too and streams every change (including a build it is
  * running) through the status watch. The "update available" cue fires
- * once per version (see sounds.ts).
+ * once per version (see sounds.ts); main's line about code-only updates (a
+ * fallback, a refusal) is a toast once per line per launch.
  */
 
 export const CHECK_INTERVAL_MS = 30 * 60_000;
@@ -30,6 +33,7 @@ class UpdateStore {
   private onFocus: (() => void) | null = null;
   private unwatch: (() => void) | null = null;
   private inflight: Promise<UpdaterSnapshot> | null = null;
+  private said = new Set<string>();
   /** The probe under way was asked for by the person (the rail says Checking…). */
   manualCheck = false;
 
@@ -72,6 +76,7 @@ class UpdateStore {
     this.lastCheckAt = 0;
     this.inflight = null;
     this.manualCheck = false;
+    this.said.clear();
     this.state = INITIAL;
   }
 
@@ -114,6 +119,10 @@ class UpdateStore {
   }
 
   private set = (next: UpdaterSnapshot): void => {
+    if (firstSaying(this.said, next.notice)) {
+      const line = next.notice;
+      void loadToast().then((toast) => toast(line));
+    }
     this.state = next;
     for (const listener of this.listeners) listener();
   };

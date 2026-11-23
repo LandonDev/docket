@@ -222,6 +222,22 @@ describe("General", () => {
     expect(open).toHaveBeenCalledWith("1.0.301", "Faster.");
   });
 
+  it("names a ready code update and restarts into it, beside the version with its commit", async () => {
+    update.snapshot = { phase: "ready", currentVersion: "1.0.300 + 3f9c2ab", codeSubject: "Fix the rail's spacing", canApply: true };
+    page();
+    await act(async () => {});
+    expect(screen.getByText("Code update: Fix the rail's spacing. Restart to finish.")).toBeTruthy();
+    expect(screen.getByText("1.0.300 + 3f9c2ab")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+    const store = await import("../../lib/updateStore");
+    expect(store.updateStore.install).toHaveBeenCalled();
+    cleanup();
+    update.snapshot = { phase: "ready", currentVersion: "1.0.300", codeSubject: "Pack the built tree of each green commit…", canApply: true };
+    page();
+    await act(async () => {});
+    expect(screen.getByText("Code update: Pack the built tree of each green commit… Restart to finish.")).toBeTruthy();
+  });
+
   it("shows the download's progress", async () => {
     update.snapshot = { phase: "downloading", currentVersion: "1.0.300", availableVersion: "1.0.301", percent: 40, canApply: true };
     page();

@@ -2,8 +2,16 @@
 
 - `package.json` `main` is `out/main/boot.js` (src/main/boot.ts), a second
   main entry that in a packaged app enables Node's compile cache at
-  `$TMPDIR/temp-code/compile-cache` (macOS purges it after three idle days)
-  and then requires `out/main/index.js` through it; index.ts flushes the
+  `$TMPDIR/temp-code/compile-cache` (macOS purges it after three idle days),
+  picks the code this launch runs (src/main/codeChoice.ts: the bundle's
+  `out/`, or a code-only update staged under `<userData>/code/<commit>/`
+  that passes every check, [code-only-updates.md](code-only-updates.md))
+  and then requires that tree's `main/index.js` through the cache, which
+  keys a file by its path and content, so a staged index.js gets its own
+  entry. boot.ts shares no module with index.ts: the app reads what was
+  picked from `globalThis.__tempcodeCode` (src/main/codeBoot.ts). The
+  choice costs one small JSON read when nothing is staged, and the hash of
+  the entry files (4.5 MB) when a tree is. index.ts flushes the
   cache 10 s after boot and in `before-quit`, because Electron's quit never
   reaches Node's exit-time write. `TEMP_CODE_COMPILE_CACHE` points an
   isolated copy elsewhere. The first `[boot]` line of a launch reads

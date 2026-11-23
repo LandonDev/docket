@@ -85,7 +85,89 @@ describe("snapshotFromStatus", () => {
   });
 });
 
+describe("snapshotFromStatus with code-only updates", () => {
+  const commit = "3f9c2ab0e1d2c3b4a5968778695a4b3c2d1e0f9a";
+  const offer = (phase: "downloading" | "ready", percent?: number) => ({
+    offer: { commit, release: 372, subject: "Fix the rail's spacing. Then more words.\n\nBody", phase, percent },
+  });
+
+  it("says the version with the staged code's commit, or alone", async () => {
+    const { snapshotFromStatus } = await import("./updater");
+    expect(snapshotFromStatus(status({ latest: null })).currentVersion).toBe("1.0.198");
+    const running = { running: { commit, release: 371, subject: "s" } };
+    expect(snapshotFromStatus(status({ latest: null, code: running })).currentVersion).toBe("1.0.198 + 3f9c2ab");
+    expect(snapshotFromStatus(status({ code: { ...running, ...offer("ready") } })).currentVersion).toBe("1.0.198 + 3f9c2ab");
+  });
+
+  it("puts a downloaded or downloading release first", async () => {
+    const { snapshotFromStatus } = await import("./updater");
+    const ready = snapshotFromStatus(status({ phase: "ready", code: offer("ready") }));
+    expect(ready).toMatchObject({ phase: "ready", availableVersion: "1.0.199" });
+    expect(ready.codeSubject).toBeUndefined();
+    const downloading = snapshotFromStatus(status({ phase: "downloading", percent: 10, code: offer("ready") }));
+    expect(downloading).toMatchObject({ phase: "downloading", percent: 10, availableVersion: "1.0.199" });
+  });
+
+  it("puts a code offer in hand over a release merely available or a failed install, with no release version", async () => {
+    const { snapshotFromStatus } = await import("./updater");
+    const ready = snapshotFromStatus(status({ code: offer("ready") }));
+    expect(ready).toEqual({ phase: "ready", currentVersion: "1.0.198", codeSubject: "Fix the rail's spacing", canApply: true });
+    const failure = { version: "1.0.199", reason: "The signature did not match." };
+    expect(snapshotFromStatus(status({ installFailure: failure, code: offer("ready") })).phase).toBe("ready");
+    expect(snapshotFromStatus(status({ phase: "error", error: "offline", code: offer("ready") })).phase).toBe("ready");
+    expect(snapshotFromStatus(status({ phase: "checking", code: offer("ready") })).phase).toBe("ready");
+  });
+
+  it("maps a code download onto downloading with its percent", async () => {
+    const { snapshotFromStatus } = await import("./updater");
+    const snapshot = snapshotFromStatus(status({ latest: null, code: offer("downloading", 37) }));
+    expect(snapshot).toMatchObject({ phase: "downloading", percent: 37, codeSubject: "Fix the rail's spacing" });
+    expect(snapshot.availableVersion).toBeUndefined();
+    expect(snapshotFromStatus(status({ latest: null, code: offer("downloading") })).percent).toBe(0);
+  });
+
+  it("names a subjectless offer by its commit", async () => {
+    const { snapshotFromStatus } = await import("./updater");
+    const snapshot = snapshotFromStatus(status({ code: { offer: { commit, release: 372, subject: "", phase: "ready" } } }));
+    expect(snapshot.codeSubject).toBe("3f9c2ab");
+  });
+
+  it("carries main's notice on every phase", async () => {
+    const { snapshotFromStatus } = await import("./updater");
+    const notice = "Code update 3f9c2ab did not start. Running 1.0.198.";
+    expect(snapshotFromStatus(status({ latest: null, code: { notice } })).notice).toBe(notice);
+    expect(snapshotFromStatus(status({ code: { notice, ...offer("ready") } })).notice).toBe(notice);
+    expect(snapshotFromStatus(status({ latest: null, code: { notice: "" } })).notice).toBeUndefined();
+  });
+});
+
+describe("firstSaying", () => {
+  it("is true once per distinct non-empty line", async () => {
+    const { firstSaying } = await import("./updater");
+    const said = new Set<string>();
+    expect(firstSaying(said, undefined)).toBe(false);
+    expect(firstSaying(said, "")).toBe(false);
+    expect(firstSaying(said, "Code update 3f9c2ab did not start. Running 1.0.198.")).toBe(true);
+    expect(firstSaying(said, "Code update 3f9c2ab did not start. Running 1.0.198.")).toBe(false);
+    expect(firstSaying(said, "Code update 4a0b1c2 needs a full release: node_modules changed.")).toBe(true);
+    expect(firstSaying(said, "Code update 3f9c2ab did not start. Running 1.0.198.")).toBe(false);
+  });
+});
+
 describe("installPendingUpdate", () => {
+  it("restarts into a staged code update and records no release for the notice", async () => {
+    const code = { offer: { commit: "3f9c2ab0", release: 372, subject: "Fix it", phase: "ready" } };
+    mocks.get.mockResolvedValue(status({ latest: null, code }));
+    mocks.apply.mockResolvedValue(status({ latest: null, code }));
+    const { installPendingUpdate } = await import("./updater");
+
+    const result = await installPendingUpdate();
+
+    expect(mocks.apply).toHaveBeenCalledOnce();
+    expect(mocks.remember).not.toHaveBeenCalled();
+    expect(result.phase).toBe("ready");
+  });
+
   it("starts the download and reports it", async () => {
     mocks.apply.mockResolvedValue(status({ phase: "downloading", percent: 0 }));
     const { installPendingUpdate } = await import("./updater");
@@ -223,5 +305,17 @@ describe("watchUpdateStatus", () => {
     expect(seen).toEqual(["downloading", "ready", "ready"]);
     expect(mocks.remember).toHaveBeenCalledTimes(1);
     expect(mocks.remember).toHaveBeenCalledWith("1.0.199");
+  });
+
+  it("never records a code-only update as an installed release", async () => {
+    const { watchUpdateStatus } = await import("./updater");
+    const seen: string[] = [];
+    watchUpdateStatus((s) => seen.push(s.phase));
+    const push = mocks.onStatus.mock.calls[0][0] as (s: unknown) => void;
+
+    push(status({ code: { offer: { commit: "3f9c2ab0", release: 372, subject: "Fix it", phase: "ready" } } }));
+
+    expect(seen).toEqual(["ready"]);
+    expect(mocks.remember).not.toHaveBeenCalled();
   });
 });

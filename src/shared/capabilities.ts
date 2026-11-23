@@ -363,6 +363,12 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // Keep awake (contract-power.ts): This Mac's row on Settings → Hosts.
   'power.status': 'read',
   'power.settings.set': 'admin',
+  // Code-only updates (contract-code.ts): the pack script's word and This Mac's switch stay on the loopback socket; a Mac asks a host for the pack as admin.
+  'code.announce': 'local',
+  'code.latest': 'admin',
+  'code.chunk': 'admin',
+  'code.settings.get': 'local',
+  'code.settings.set': 'local',
   // Moving a thread between hosts (contract-session-move.ts): the desktop starts it; peers answer as admin.
   'session.move': 'local',
   'session.import.begin': 'admin',

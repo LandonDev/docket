@@ -101,8 +101,29 @@ describe('aboutPanelOptions', () => {
     expect(options.version).toBe('')
     expect(options.applicationVersion).toBe('1.0.412')
   })
+  it('under a code-only update says the bundle’s version plus the commit that runs, with nothing in brackets', () => {
+    const options = aboutPanelOptions({ release: 414, version: '1.0.414', sha: A }, { bundleVersion: '1.0.412', commit: A })
+    expect(options.applicationVersion).toBe('1.0.412 + aaaaaaa')
+    expect(options.version).toBe('')
+  })
   it("says what electron-builder.yml's copyright says", () => {
     const yml = readFileSync(join(checkoutRootOf(__dirname), 'electron-builder.yml'), 'utf8')
     expect(yml.match(/^copyright:\s*(.+?)\s*$/m)?.[1]).toBe(COPYRIGHT)
+  })
+})
+
+describe('buildInfo under a code-only update', () => {
+  const holder = globalThis as { __tempcodeCode?: unknown }
+  afterEach(() => {
+    delete holder.__tempcodeCode
+  })
+  it('is the staged code’s: the release its commit became and that commit, not the numbers baked into its out/', () => {
+    holder.__tempcodeCode = { running: { commit: A, release: 9001, subject: 's' } }
+    expect(buildInfo('/nowhere')).toEqual({ release: 9001, version: '1.0.9001', sha: A })
+  })
+  it('is the bundle’s own when boot picked the bundle', () => {
+    holder.__tempcodeCode = { running: null }
+    expect(buildInfo().version).toMatch(/^1\.0\.\d+$/)
+    expect(buildInfo().sha).toBeNull()
   })
 })

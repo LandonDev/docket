@@ -14,14 +14,15 @@ export type UpdateRowState =
   | { kind: "updated"; version: string }
   | { kind: "available"; version: string; notes?: string; retry: boolean; error?: string }
   | { kind: "downloading"; percent: number }
-  | { kind: "ready" };
+  /** `subject`: a code-only update's commit, said on hover. */
+  | { kind: "ready"; subject?: string };
 
 /** A download in hand outranks one to start, which outranks the note that
  *  an update just landed; otherwise the row offers a check with the running
  *  version, and says Checking… while a check the person asked for runs
  *  (`manual`; the background probes keep the row still). */
 export function updateRowState(snapshot: UpdaterSnapshot, notice: InstalledUpdate | null, manual = false): UpdateRowState {
-  if (snapshot.phase === "ready") return { kind: "ready" };
+  if (snapshot.phase === "ready") return snapshot.codeSubject ? { kind: "ready", subject: snapshot.codeSubject } : { kind: "ready" };
   if (snapshot.phase === "downloading") return { kind: "downloading", percent: snapshot.percent ?? 0 };
   const retry = canRetry(snapshot);
   if ((snapshot.phase === "available" || retry) && snapshot.availableVersion) {
@@ -43,10 +44,12 @@ export function useUpdateRowState(): UpdateRowState | null {
 
 const versioned = (label: string, version?: string) => (version ? `${label}, ${version}` : label);
 
-/** The running version at the row's end; in a rail under 15rem it yields
- *  to the label, which the row's name still pairs it with. */
+/** The running version at the row's end; in a rail under 15rem (18rem with
+ *  a staged commit's "+ 3f9c2ab") it yields to the label, which the row's
+ *  name still pairs it with. */
 function Version({ version }: { version?: string }) {
-  return version ? <span className="@max-[15rem]/railrow:hidden">{version}</span> : null;
+  if (!version) return null;
+  return <span className={version.includes(" + ") ? "@max-[18rem]/railrow:hidden" : "@max-[15rem]/railrow:hidden"}>{version}</span>;
 }
 
 /**
@@ -55,8 +58,8 @@ function Version({ version }: { version?: string }) {
  * that runs, "Updated to 1.0.N" (opens What's new, ✕ dismisses), "Update
  * to 1.0.N" or "Retry update" (installs; What's new as the hover action
  * when there are notes), "Downloading" with its percentage, "Restart to
- * update". The glyph is the accent while there is something to do; there
- * is no tinted fill.
+ * update" (a code-only update names its commit on hover). The glyph is
+ * the accent while there is something to do; there is no tinted fill.
  */
 export function UpdateRow({
   state,
@@ -124,6 +127,15 @@ export function UpdateRow({
     case "downloading":
       return <RailRow icon={ArrowDownCircle} label="Downloading" trailing={`${state.percent}%`} />;
     case "ready":
-      return <RailRow icon={ArrowDownCircle} glyphClassName="text-accent" label={label("Restart to update")} onClick={onInstall} />;
+      return (
+        <RailRow
+          icon={ArrowDownCircle}
+          glyphClassName="text-accent"
+          label={label("Restart to update")}
+          ariaLabel={state.subject ? versioned("Restart to update", state.subject) : undefined}
+          tooltip={state.subject}
+          onClick={onInstall}
+        />
+      );
   }
 }

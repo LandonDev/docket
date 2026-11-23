@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 /**
@@ -15,5 +15,22 @@ export function appRoot(start: string = typeof __dirname === 'string' ? __dirnam
     if (exists(join(dir, 'package.json'))) return dir
     // nothing above holds one: as before, two up from out/main
     if (dirname(dir) === dir) return resolve(start, '..', '..')
+  }
+}
+
+/**
+ * A file the bundle ships beside `out/`, by its real path. Under a code-only
+ * update (docs/agents/code-only-updates.md) `appRoot()` is the staged tree's
+ * folder and `resources/` there is a link to the bundle's: a program started
+ * from here (tc-computer, the appshot helper) is named by the bundle's own
+ * path, the one its signature and its privacy grants were given under. A
+ * file that is not there yet keeps the plain path.
+ */
+export function bundleFile(...parts: string[]): string {
+  const path = join(appRoot(), ...parts)
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
   }
 }

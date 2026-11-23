@@ -20,9 +20,10 @@ of a 200k window and every thread compacted on every request
   nothing installs without the restart click). Its data
   lives in `~/Library/Application Support/TempCode/` (`dev:prod` still runs
   on the older `temp-code/` dir).
-- Nothing reaches users until `bun run release:publish` runs (see below).
-  Every green commit on master is still tagged locally, so commit only
-  finished, verified slices: the next publish ships everything since.
+- No signed release reaches users until `bun run release:publish` runs (see
+  below). But every `release-N` the box cuts is offered to the owner's own
+  Mac app as a code-only update, run after his restart ("Code-only updates"
+  below): commit only finished, verified slices.
 - `stable` is a pointer the updater no longer reads; it is moved onto
   master at each cutover (`git branch -f stable master`) and otherwise
   left alone. The pre-MonoCode line (v96) lives on in the reflog only.
@@ -104,6 +105,15 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   itself again with an 8 GB heap (scripts/lib/buildHeap.ts, from
   electron.vite.config.ts). No AI attribution
   trailers in commits. [docs/agents/releases.md](docs/agents/releases.md)
+- **Code-only updates** — a green commit's `out/` in the owner's Mac app in minutes, no signed
+  bundle: release.ts packs it after the tag and the push (scripts/code-pack.ts, the base stamp
+  `out/code-base.json`), the box offers it over the peer link (server/codeOffer.ts), the Mac takes it
+  from the one host its setting names, over TLS, checks and stages it under `<userData>/code/`
+  (server/codeUpdates.ts); it runs only after his Restart, on one trial that boot.js itself judges,
+  else the bundle's code (src/main/codeChoice.ts; boot.ts shares no module with index.ts). Paths go
+  through `appRoot()`, never `app.getAppPath()`, and every `app.relaunch` names its arguments
+  (codePaths.test.ts). A base that differs needs a full release.
+  [docs/agents/code-only-updates.md](docs/agents/code-only-updates.md)
 - **Project preambles** — the house rules as markdown on the project row
   (`projects.preamble`), added to a thread's first message on every start
   path by `decidePreamble` (src/main/server/projectPreamble.ts).

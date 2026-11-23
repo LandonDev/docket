@@ -20,7 +20,9 @@ export const HARNESS_KEYS = [
   'TEMP_CODE_UPDATE_FEED',
   /** 'yes' or 'no': what every ask dialog answers, so a driver can get past
    *  the quit-while-busy question. Honored only with an isolated userData. */
-  'TEMP_CODE_DIALOG_ANSWER'
+  'TEMP_CODE_DIALOG_ANSWER',
+  /** 'self': the instance takes code-only updates from its own server (server/codeHarness.ts). Honored only with an isolated userData. */
+  'TEMP_CODE_CODE_HOST'
 ] as const
 
 export type HarnessKey = (typeof HARNESS_KEYS)[number]

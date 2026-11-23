@@ -65,6 +65,8 @@ export class PeerLink {
   lastSyncAt: number | null = null
   /** What the host said it runs in its last hello (release number, version, commit, platform). */
   build: BuildFacts | null = null
+  /** The route the open socket was made on; null while there is none. Code-only updates cross only a secure one (shared/codeUpdate.ts routeIsSecure). */
+  route: { url: string; kind: string } | null = null
 
   /** Of the key the link was made with (keyFingerprint); a new key means a new link. */
   readonly credential: string | null
@@ -99,6 +101,7 @@ export class PeerLink {
         const extensions = await this.open(`${route.url}?ticket=${encodeURIComponent(ticket)}`)
         this.attempts = 0
         this.lastError = null
+        this.route = { url: route.url, kind: route.kind }
         this.log(connectedLine(this.env.name, route.kind, extensions))
         this.events.onOpen?.(this.env.id)
         return
@@ -182,6 +185,7 @@ export class PeerLink {
         if (this.ws !== ws) return
         this.ws = null
         this.connected = false
+        this.route = null
         this.failPending(new Error(`${this.env.name} closed the socket`))
         this.log(`${this.env.name}: closed (${code})`)
         this.events.onClose?.(this.env.id)
@@ -257,6 +261,7 @@ export class PeerLink {
     const ws = this.ws
     this.ws = null
     this.connected = false
+    this.route = null
     ws?.close(1000, 'bye')
     this.failPending(new Error('link closed'))
   }

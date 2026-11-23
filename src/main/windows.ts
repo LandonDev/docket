@@ -440,7 +440,7 @@ export function showAllWindows(): void {
 
 // ── IPC ──────────────────────────────────────────────────────────────────
 
-export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void } = {}): void {
+export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void; onMounted?: () => void } = {}): void {
   if (hooks.dropSnapshot) dropSnapshot = hooks.dropSnapshot
 
   ipcMain.handle('window:minimize', (e) => windowOf(e)?.minimize())
@@ -463,6 +463,8 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
 
   ipcMain.on('window:close-subscribe', (e: IpcMainEvent) => {
     closeSubscribers.add(e.sender.id)
+    // The app shell's own effect sends this: the window mounted (a code-only update's sign of a start, codeUpdates.ts).
+    hooks.onMounted?.()
   })
 
   ipcMain.on('app:quit-subscribe', (e: IpcMainEvent) => {

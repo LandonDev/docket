@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   message: vi.fn(),
   onStatus: vi.fn(),
+  toast: vi.fn(),
 }));
 
 vi.mock("./native", () => ({
@@ -20,6 +21,7 @@ vi.mock("./native", () => ({
   },
 }));
 vi.mock("./sounds", () => ({ announceUpdateAvailable: mocks.announce }));
+vi.mock("../components/ui/toaster", () => ({ loadToast: async () => mocks.toast }));
 
 import {
   CHECK_INTERVAL_MS,
@@ -174,5 +176,20 @@ describe("updateStore", () => {
 
     pushStatus!(status({ latest: "1.0.96", phase: "ready" }));
     expect(updateStore.getSnapshot().phase).toBe("ready");
+  });
+
+  it("says main's line about code updates once per line, from the launch probe or a push", async () => {
+    const fell = "Code update 3f9c2ab did not start. Running 1.0.95.";
+    const refused = "Code update 4a0b1c2 needs a full release: node_modules changed.";
+    mocks.check.mockResolvedValue(status({ code: { notice: fell } }));
+    updateStore.start();
+    await flush();
+    pushStatus!(status({ code: { notice: fell } }));
+    pushStatus!(status());
+    pushStatus!(status({ code: { notice: fell } }));
+    pushStatus!(status({ code: { notice: refused } }));
+    await flush();
+    expect(mocks.toast.mock.calls).toEqual([[fell], [refused]]);
+    expect(updateStore.getSnapshot().notice).toBe(refused);
   });
 });

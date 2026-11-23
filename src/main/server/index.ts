@@ -2,7 +2,6 @@ import { homedir, hostname } from 'node:os'
 import { dropAnswers, failAnswers, FAILED_ANSWER } from './answerSeams'
 import { vault } from 'aliax-core'
 import { configureMuseDirs, configureMuseSkills, migrateMuseDirs } from './museConfigDirs'
-import { version as appVersion } from '../../../package.json'
 import { hubFromEnv, type HubClient } from './hub'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve, basename } from 'node:path'
@@ -252,6 +251,11 @@ import { LocalPublish, MacPublish, macPublishOffers } from './remote/macPublish'
 import { PeerDeploy } from './remote/peerDeploy'
 import { PeerPublish } from './remote/peerPublish'
 import { ReleaseAnnouncer } from './releaseAnnounce'
+import { CodeOffers } from './codeOffer'
+import { CodeUpdates } from './codeUpdates'
+import { HARNESS_HOST, harnessHostWanted, selfLink } from './codeHarness'
+import type { CodeBoot } from '../codeChoice'
+import { routeIsSecure, type CodeUpdateStatus } from '@shared/codeUpdate'
 import { KeepAwake, KEEP_AWAKE_ENV, type AwakeBlocker, type PowerSourceLike } from './keepAwake'
 import { DEFAULT_RULES, withProbedDefaults } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
@@ -376,6 +380,8 @@ function readAllowedFile(registry: SessionRegistry, path: string): string | null
 
 export interface RunningServer {
   port: number
+  /** This app's own window mounted its app shell (windows.ts): one of the two signs a code-only update started (codeUpdates.ts). */
+  codeWindowMounted: () => void
   /** The Work switch, for the main process's capture key (src/main/capture.ts): off, and never on, when Work could not come up. */
   workSwitch: { enabled(): boolean; onChange(fn: () => void): () => void }
   /** This server's stable identity (<userData>/environment.json). */
@@ -491,6 +497,8 @@ export async function startServer(
     spawnExecBroker?: SpawnExecBroker
     /** This app's updater (update.ts selfUpdate): fetch a version just published, by this host's Publisher or on a peer's word. The installed Mac app only. */
     selfUpdate?: (version: string) => Promise<SelfUpdateOutcome>
+    /** Code-only updates (codeUpdates.ts): what boot.ts picked for this launch, and where the update row hears the status. The installed Mac app only; absent, this host takes none. */
+    code?: { boot: CodeBoot | null; onStatus: (status: CodeUpdateStatus) => void }
     /** The local devices gatherer, in place of the `isMacHost()` pick: a proof injects a fake on Linux (scripts/ios-client-test-server.ts); null for none. */
     devices?: MacDevices | null
     /** This host's screen and power state for the relay (src/main/presence.ts); default unknown/awake, never changing. */
@@ -522,6 +530,8 @@ export async function startServer(
   const environmentId = loadEnvironmentId(options.dataDir ?? dirname(dbPath))
   // What this host runs, said in every hello; and master's number, so the
   // renderer can mark a host that is behind (src/shared/deployDrift.ts).
+  // `build.version` is also what this host says of itself everywhere below: under a code-only update it is the
+  // staged code's, where the number baked into its out/ is its parent's (buildInfo.ts).
   const build = buildFacts(options.appPath)
   const localSinks = new Set<(push: ServerPush) => void>()
   const masterRelease = new MasterReleaseWatcher({
@@ -733,6 +743,7 @@ export async function startServer(
         relayServer.linkUp(id)
         void macBridge.linkUp(id)
         peerDeploy.linkUp(id)
+        codeUpdates.linkUp(id)
         accounts.nudge()
       },
       onClose: (id) => {
@@ -760,6 +771,7 @@ export async function startServer(
         if (videoPublisher.onPeerPush(from, push)) return
         if (memorySync.onPeerPush(from, push)) return
         if (releaseAnnouncer.onPeerPush(from, push)) return
+        if (codeUpdates.onPeerPush(from, push)) return
         if (keepAwake.onPeerPush(from, push)) return
         if (peerDeploy.onPeerPush(from, push)) return
         if (!macBridge.onPeerPush(from, push)) accountSync.onPeerPush(from, push)
@@ -813,7 +825,7 @@ export async function startServer(
   harnessSync.start()
   // Deploy and publish from the app (hostJobs.ts): the box's trigger
   // directory and the Mac's release scripts, each a log sockets may tail.
-  const hostJobs: HostJobs = { deploy: new DeployTrigger({ version: appVersion }), publish: new Publisher({ store, selfUpdate: options.selfUpdate }) }
+  const hostJobs: HostJobs = { deploy: new DeployTrigger({ version: build.version }), publish: new Publisher({ store, selfUpdate: options.selfUpdate }) }
   // The harnesses' own notes (Claude Code's per-project memory and plans,
   // Codex's memories; remote/memorySync.ts) cross both ways: this host
   // drives over the links it holds, and nudges the hosts linked to it.
@@ -1653,6 +1665,37 @@ export async function startServer(
     selfUpdate: options.selfUpdate,
     log: (line) => console.log(line)
   })
+  // Code-only updates (docs/agents/code-only-updates.md). A host offers the newest pack of a green commit's out/ to
+  // its registered Macs (codeOffer.ts); a Mac takes one only from the one host its setting names, a saved
+  // environment whose key holds admin, over a TLS link it dialed, and stages it for boot.ts (codeUpdates.ts).
+  const codeOffers = new CodeOffers({
+    environmentId,
+    notify: (frame) => peerCalls.notify(frame),
+    getSetting: (key) => store.getSetting(key),
+    setSetting: (key, value) => store.setSetting(key, value),
+    log: (line) => console.log(line)
+  })
+  // A proof's isolated instance may name itself as a host (codeHarness.ts); never an instance on the real data.
+  const harnessHost = harnessHostWanted() && !options.prodData ? HARNESS_HOST : null
+  let ownPort = 0
+  const codeUpdates = new CodeUpdates({
+    boot: options.code?.boot ?? null,
+    getSetting: (key) => store.getSetting(key),
+    setSetting: (key, value) => store.setSetting(key, value),
+    adminHosts: () => [
+      ...listEnvironments(store).filter((e) => allows(e.caps, 'admin')).map((e) => ({ id: e.id, name: e.name })),
+      ...(harnessHost ? [{ id: harnessHost, name: 'This instance' }] : [])
+    ],
+    link: (id) => {
+      if (harnessHost !== null && id === harnessHost) return selfLink(() => ownPort)
+      const link = peers.get(id)
+      return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
+    },
+    secure: (id) => (harnessHost !== null && id === harnessHost) || routeIsSecure(peers.get(id)?.route?.url),
+    onStatus: options.code?.onStatus,
+    log: (line) => console.log(line)
+  })
+  codeUpdates.start()
   // The Mac's display stays awake while a thread here or on a linked host is live (keepAwake.ts); a host with peers tells them its own word.
   const keepAwake = new KeepAwake({
     environmentId,
@@ -1675,7 +1718,7 @@ export async function startServer(
     deploy: onMac && !hostJobs.deploy.installed() ? peerDeploy : hostJobs.deploy,
     publish: onMac ? localPublish : peerPublish,
     announce: (version) => releaseAnnouncer.announce(version),
-    version: appVersion,
+    version: build.version,
     // The batch's children on other hosts (crossHostAgents.ts): counted, paused, archived over their links.
     remote: {
       children: (masterId) => crossHostAgents.batchChildren(masterId),
@@ -2011,7 +2054,7 @@ export async function startServer(
         auth: remoteAuth,
         store,
         environmentId,
-        version: appVersion,
+        version: build.version,
         build,
         // `host` makes the socket a relayed lane to that host (remote/relay.ts).
         attach: (ws, principal, host) => (host ? hostRelay.attachRelayed(ws, principal, host) : attach(ws, principal)),
@@ -2022,7 +2065,7 @@ export async function startServer(
         mcp: createMcpHandler({
           auth: remoteAuth,
           registry,
-          version: appVersion,
+          version: build.version,
           origin: () => pairingOrigin(readRemoteSettings(store), remote?.port ?? 0),
           environmentId,
           hostName: hostLabel(),
@@ -3131,6 +3174,8 @@ export async function startServer(
               firstListMarked = true
               bootMark('first-session-list', `${sessions.length} sessions`)
             }
+            // This app's own window loaded, connected and was answered: a code-only update on trial is good (codeChoice.ts).
+            if (principal.kind === 'local' && profile !== 'remote') codeUpdates.windowAnswered()
             let result: SessionMeta[] | SessionPage
             if (profile === 'remote') {
               const page = sessionPage(sessions, req.params?.cursor)
@@ -3676,6 +3721,22 @@ export async function startServer(
           case 'power.status':
             sendFrame({ id: req.id, ok: true, result: keepAwake.status() })
             break
+          // Code-only updates (contract-code.ts): the pack script's word, a Mac's asks, This Mac's switch.
+          case 'code.announce':
+            sendFrame({ id: req.id, ok: true, result: codeOffers.announce(req.params.dir) })
+            break
+          case 'code.latest':
+            sendFrame({ id: req.id, ok: true, result: codeOffers.latest() })
+            break
+          case 'code.chunk':
+            sendFrame({ id: req.id, ok: true, result: codeOffers.chunk(req.params.commit, req.params.offset, req.params.length) })
+            break
+          case 'code.settings.get':
+            sendFrame({ id: req.id, ok: true, result: codeUpdates.settings() })
+            break
+          case 'code.settings.set':
+            sendFrame({ id: req.id, ok: true, result: codeUpdates.setHost(req.params.host) })
+            break
           case 'power.settings.set':
             sendFrame({ id: req.id, ok: true, result: keepAwake.setMode(req.params.keepAwake) })
             break
@@ -3821,6 +3882,7 @@ export async function startServer(
   })
   const address = httpServer.address()
   const port = typeof address === 'object' && address ? address.port : 0
+  ownPort = port
   await restartRemote()
   // Servers and gateway up: the threads cut by the last shutdown resume now.
   // Queued threads (scheduler.ts) start only once that resume is done, so a
@@ -3852,7 +3914,7 @@ export async function startServer(
   }
 
   // The hub names this host by its environment id: what a phone's saved host is keyed by (thread L6).
-  const hub = hubFromEnv({ environmentId, name: hostLabel(), version: appVersion })
+  const hub = hubFromEnv({ environmentId, name: hostLabel(), version: build.version })
   // Thread transitions → the hub, each key's own webhook, and in-process
   // listeners (remote/notifier.ts). The hub's host id names this host in
   // both payloads so a receiver sees one id whichever way a notice came.
@@ -3926,6 +3988,7 @@ export async function startServer(
 
   return {
     port,
+    codeWindowMounted: () => codeUpdates.windowMounted(),
     environmentId,
     accountSync,
     projectLinker,

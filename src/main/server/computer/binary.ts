@@ -1,6 +1,5 @@
-import { appRoot } from '../appRoot'
+import { bundleFile } from '../appRoot'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { isHeadless } from '../../headless'
 
 /**
@@ -19,7 +18,7 @@ export const computerBinaryName = (platform: NodeJS.Platform = process.platform)
 /** TEMP_CODE_COMPUTER_BIN, else resources/native/tc-computer (tc-computer.exe on Windows) under the app's root. */
 export function computerBinaryPath(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
   // the app's root by its package.json, whichever chunk of the bundle this code lands in (appRoot)
-  return env.TEMP_CODE_COMPUTER_BIN || join(appRoot(), 'resources', 'native', computerBinaryName(platform))
+  return env.TEMP_CODE_COMPUTER_BIN || bundleFile('resources', 'native', computerBinaryName(platform))
 }
 
 export interface AvailabilityProbe {

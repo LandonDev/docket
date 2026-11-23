@@ -10,8 +10,10 @@
  * when a commit since the last release touched a path it guards (ios/**,
  * the Swift contract generator, wireSchemas.ts, the remote server, the hub:
  * TIER_PATHS in gate.ts). Then bumps release.json to N and package.json to
- * 1.0.N, commits both, and tags `release-N`. That is the whole of the local
- * train: nothing here reaches users. The installed app updates from GitHub
+ * 1.0.N, commits both, and tags `release-N`. Then the gate's `out/` is packed
+ * as a code-only update and offered to the linked Macs by the host on this
+ * machine (scripts/code-pack.ts): the one thing here that reaches the owner's
+ * own app, staged there until he restarts. Nothing else reaches users. The installed app updates from GitHub
  * releases only, which `bun run release:publish` (scripts/release-publish.sh)
  * cuts from a tagged commit after the `publish` tier — never install or swap
  * /Applications/TempCode.app from here. `--push` (a batch's release step on
@@ -76,6 +78,8 @@ execFileSync('bun', ['scripts/gate.ts', '--tier', 'commit', '--since', since ? t
   env
 })
 
+// The commit the gate just built out/ from: the code-only update below packs that build.
+const built = run('git', ['rev-parse', 'HEAD']).trim()
 const n = last.n + 1
 writeFileSync('release.json', JSON.stringify({ n, notes, ts: Date.now() }, null, 2) + '\n')
 // package.json carries the same number as a semver electron-updater can
@@ -94,5 +98,16 @@ if (push) {
   const branch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD']).trim()
   execFileSync('git', ['push', 'origin', branch, `release-${n}`], { stdio: 'inherit', env })
   console.log(`pushed ${branch} and release-${n} to origin`)
+}
+// The gate's out/ of that commit goes to the linked Macs as a code-only update
+// (scripts/code-pack.ts, docs/agents/code-only-updates.md): packed, never built
+// again, and offered by the host that runs on this machine, if one does. After
+// the push, so a Mac never runs a release that did not reach origin. It never
+// fails the release, and its lines come before the last one, which batch.ts
+// reads.
+try {
+  execFileSync('bun', ['scripts/code-pack.ts', '--commit', built, '--release', String(n), '--announce'], { stdio: 'inherit', env })
+} catch {
+  // the script said why in its own line
 }
 console.log(`released v${n} (tag release-${n}, package.json 1.0.${n}) — publish it with: bun run release:publish`)

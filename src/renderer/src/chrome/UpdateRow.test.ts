@@ -47,6 +47,18 @@ describe("updateRowState", () => {
     expect(updateRowState(snap({ phase: "ready" }), { version: "1.0.9" })).toEqual({ kind: "ready" });
   });
 
+  it("carries a code update's subject on its ready row, and the staged commit beside the version", () => {
+    expect(updateRowState(snap({ phase: "ready", codeSubject: "Fix the rail's spacing" }), null)).toEqual({
+      kind: "ready",
+      subject: "Fix the rail's spacing",
+    });
+    expect(updateRowState(snap({ phase: "downloading", percent: 5, codeSubject: "Fix" }), null)).toEqual({ kind: "downloading", percent: 5 });
+    expect(updateRowState(snap({ phase: "current", currentVersion: "1.0.10 + 3f9c2ab" }), null)).toEqual({
+      kind: "check",
+      version: "v1.0.10 + 3f9c2ab",
+    });
+  });
+
   it("says the update that just landed when there is nothing newer", () => {
     expect(updateRowState(snap({ phase: "current" }), { version: "1.0.10" })).toEqual({ kind: "updated", version: "1.0.10" });
   });
@@ -72,6 +84,11 @@ describe("UpdateRow", () => {
     expect(screen.getByText("v1.0.307").className).toContain("@max-[15rem]/railrow:hidden");
     fireEvent.click(row);
     expect(onCheck).toHaveBeenCalledOnce();
+    cleanup();
+    // With a staged commit the longer version yields sooner, so the label is never cut for it.
+    render(createElement(UpdateRow, { state: { kind: "check", version: "v1.0.307 + 3f9c2ab" }, onCheck }));
+    expect(screen.getByRole("button", { name: "Check for updates, v1.0.307 + 3f9c2ab" })).toBeTruthy();
+    expect(screen.getByText("v1.0.307 + 3f9c2ab").className).toContain("@max-[18rem]/railrow:hidden");
   });
 
   it("checking: Checking… with the spinner, disabled", () => {
@@ -109,6 +126,15 @@ describe("UpdateRow", () => {
     cleanup();
     const { onInstall } = mount({ kind: "ready" });
     fireEvent.click(screen.getByRole("button", { name: "Restart to update" }));
+    expect(onInstall).toHaveBeenCalledOnce();
+  });
+
+  it("ready for a code update: the same row, its name carrying the commit's subject", () => {
+    const { onInstall } = mount({ kind: "ready", subject: "Fix the rail's spacing" });
+    const row = screen.getByRole("button", { name: "Restart to update, Fix the rail's spacing" });
+    // The subject is said on hover, never as a second line in the rail.
+    expect(row.textContent).toBe("Restart to update");
+    fireEvent.click(row);
     expect(onInstall).toHaveBeenCalledOnce();
   });
 });

@@ -327,6 +327,9 @@ function ConnectLinearDialog({
   );
 }
 
+/** A line ends on its own stop: a subject cut short already ends on "…". */
+const sentence = (line: string) => (/[.!?…]$/.test(line) ? line : `${line}.`);
+
 function UpdateRow() {
   const snapshot = useUpdateSnapshot();
   const downloading = snapshot.phase === "downloading";
@@ -338,7 +341,9 @@ function UpdateRow() {
   const status = downloading
     ? `Downloading ${snapshot.availableVersion ?? "the update"}…`
     : ready
-      ? `Release ${snapshot.availableVersion} is downloaded. Restart to finish.`
+      ? snapshot.codeSubject
+        ? `Code update: ${sentence(snapshot.codeSubject)} Restart to finish.`
+        : `Release ${snapshot.availableVersion} is downloaded. Restart to finish.`
       : snapshot.phase === "checking"
         ? "Checking…"
         : snapshot.phase === "error"

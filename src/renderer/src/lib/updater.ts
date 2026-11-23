@@ -1,3 +1,4 @@
+import { shortSubject, versionLine } from "@server/shared/codeUpdate";
 import { ask, message, updates, type UpdateStatus } from "./native";
 import { announceUpdateAvailable } from "./sounds";
 import { rememberInstalledUpdate } from "./updateNotice";
@@ -20,8 +21,14 @@ export type UpdaterPhase =
 
 export type UpdaterSnapshot = {
   phase: UpdaterPhase;
+  /** The version as the app says it: "1.0.371", or "1.0.371 + 3f9c2ab" on staged code. */
   currentVersion: string;
+  /** A release's version; never set for a code-only update. */
   availableVersion?: string;
+  /** A code-only update on its way or ready: its commit's subject, cut short. */
+  codeSubject?: string;
+  /** Main's one line about code-only updates (a fallback, a refusal). */
+  notice?: string;
   /** Release notes for the waiting update, shown before installing. */
   notes?: string;
   /** While downloading: whole percent. */
@@ -45,7 +52,26 @@ export function canRetry(snapshot: UpdaterSnapshot): boolean {
 }
 
 export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
-  const currentVersion = status.current;
+  const snapshot = releaseSnapshot(status);
+  const notice = status.code?.notice || undefined;
+  const offer = status.code?.offer;
+  // A release downloaded or downloading goes first; a code offer in hand
+  // outranks the rest (a release merely available, a failed install).
+  if (offer && status.phase !== "ready" && status.phase !== "downloading") {
+    return {
+      phase: offer.phase,
+      currentVersion: snapshot.currentVersion,
+      codeSubject: shortSubject(offer.subject) || offer.commit.slice(0, 7),
+      ...(offer.phase === "downloading" ? { percent: offer.percent ?? 0 } : {}),
+      canApply: status.canApply,
+      notice,
+    };
+  }
+  return notice ? { ...snapshot, notice } : snapshot;
+}
+
+function releaseSnapshot(status: UpdateStatus): UpdaterSnapshot {
+  const currentVersion = versionLine(status.current, status.code?.running?.commit);
   const availableVersion = status.latest ?? undefined;
   const canApply = status.canApply;
   // A release handed to the installer that never landed outranks a quiet
@@ -99,6 +125,14 @@ export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
         canApply,
       };
   }
+}
+
+/** A notice is said once per distinct line per launch: true, and kept in
+ *  `said`, the first time a non-empty line arrives; false for it after. */
+export function firstSaying(said: Set<string>, line: string | undefined): line is string {
+  if (!line || said.has(line)) return false;
+  said.add(line);
+  return true;
 }
 
 const busy = (phase: UpdaterPhase) =>

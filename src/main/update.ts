@@ -33,6 +33,8 @@ import {
   type SelfUpdateOutcome
 } from './updateTrigger'
 import { armQuit, cancelQuit, confirmQuit, hasQuitSubscriber, requestQuit, targetWindow } from './windows'
+import type { CodeUpdateStatus } from '../shared/codeUpdate'
+import { codeBoot } from './codeBoot'
 
 const { autoUpdater } = electronUpdater
 
@@ -71,6 +73,8 @@ export interface UpdateStatus {
   /** A release this app handed to Squirrel's installer that did not land:
    *  found at boot, shown until the user retries (updateInstall.ts). */
   installFailure?: InstallFailure
+  /** Code-only updates (server/codeUpdates.ts): the staged code that runs, one on its way or waiting for the restart, a line to say once. */
+  code?: CodeUpdateStatus
 }
 
 let status: UpdateStatus = {
@@ -207,12 +211,43 @@ function restartToInstall(): void {
         })
         autoUpdater.quitAndInstall()
         // The app's work is already stopped: an installer that never starts must not leave a window with nothing behind it.
-        relaunchIfStillHere({ quitStarted: () => quitStarted, relaunch: () => (app.relaunch(), app.exit(0)) })
+        relaunchIfStillHere({ quitStarted: () => quitStarted, relaunch: () => (app.relaunch({ args: process.argv.slice(1) }), app.exit(0)) })
         return
       }
       autoUpdater.quitAndInstall()
     },
     () => forgetAttempt()
+  )
+  if (hasQuitSubscriber()) requestQuit()
+  else void confirmQuit(-1)
+}
+
+/**
+ * A code-only update is staged (server/codeUpdates.ts): the status carries it
+ * and "Restart to update" starts the app again, where boot.ts runs the
+ * staged tree. Nothing here installs anything.
+ */
+export function setCodeStatus(code: CodeUpdateStatus): void {
+  setStatus({ code })
+}
+
+/**
+ * Restart into the staged code, down the same path as Cmd-Q and a release's
+ * restart: the window in front asks about busy sessions once. Only here is
+ * the tree armed (codeChoice.ts): a quit of any other kind leaves it
+ * waiting. The relaunch names its arguments from process.argv: with none,
+ * Electron copies its own command line, and a launch that boot.ts started
+ * with --tempcode-bundle-code would carry that flag into every restart and
+ * never run staged code again.
+ */
+function restartIntoCode(): void {
+  armQuit(
+    () => {
+      codeBoot()?.arm()
+      app.relaunch({ args: process.argv.slice(1) })
+      app.quit()
+    },
+    () => {}
   )
   if (hasQuitSubscriber()) requestQuit()
   else void confirmQuit(-1)
@@ -236,6 +271,11 @@ async function apply(): Promise<UpdateStatus> {
   if (!app.isPackaged) return status
   if (status.phase === 'ready') {
     restartToInstall()
+    return status
+  }
+  // A downloaded release goes first: boot.ts still picks the staged code over it when that is the newer.
+  if (status.code?.offer?.phase === 'ready') {
+    restartIntoCode()
     return status
   }
   if (status.installFailure || (status.phase === 'error' && status.latest)) {

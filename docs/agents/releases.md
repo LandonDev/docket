@@ -79,7 +79,11 @@ Two separate steps, on purpose, over one gate.
    --since release-N` (the commits since the last release decide whether
    the `publish` tier joins), bumps release.json to N and package.json to
    `1.0.N`, commits both, and tags `release-N`, using your commit subject
-   as the release notes. That is bookkeeping: no user sees it. With nothing
+   as the release notes. That is bookkeeping: no user sees it, with one
+   exception: right after the tag release.ts packs the gate's `out/` as a
+   code-only update (`bun scripts/code-pack.ts`) and the host on that
+   machine offers it to the owner's linked Mac app, staged there until he
+   restarts ([code-only-updates.md](code-only-updates.md)). With nothing
    new since `release-N` (HEAD is the tagged commit, or only release
    bookkeeping follows it; scripts/releaseCheck.ts) it prints "nothing to
    release since release-N" and exits 0 with no bump, commit or tag.
@@ -91,6 +95,10 @@ Two separate steps, on purpose, over one gate.
      Publish button pass theirs that way, since Linux refuses one argv or
      environment string over 128 KiB (a batch of forty landings once failed
      with `spawn E2BIG`).
+   - The pack never fails the release and builds nothing: it refuses an
+     `out/` that is not the gated commit's clean build and says why in one
+     line (`code-only update: not packed: …`). Its lines come before
+     release.ts's last one, which batch.ts reads.
    - Worker log: /tmp/temp-code-auto-release.log, with the per-step times.
    - Never commit with a broken typecheck "to fix later" — that blocks the
      train.

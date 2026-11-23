@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { appRoot } from './appRoot'
+import { appRoot, bundleFile } from './appRoot'
 
 /**
  * The app's root from wherever the bundle put the code: out/main/index.js or a
@@ -53,5 +53,25 @@ describe('appRoot', () => {
     const found = JSON.parse(execFileSync('node', [chunk], { encoding: 'utf8' })) as { vm: string | null; mac: string }
     expect(found.vm).toBe(join(root, 'resources', 'native', 'tc-computer.exe'))
     expect(found.mac).toBe(join(root, 'resources', 'native', 'tc-computer.exe'))
+  })
+})
+
+describe('under a code-only update', () => {
+  it('the root is the staged folder, and what it links is the bundle’s own file', () => {
+    const bundle = build()
+    const staged = mkdtempSync(join(tmpdir(), 'tc-approot-staged-'))
+    dirs.push(staged)
+    mkdirSync(join(staged, 'out', 'main', 'chunks'), { recursive: true })
+    for (const name of ['package.json', 'resources']) symlinkSync(join(bundle, name), join(staged, name))
+    // from the staged index.js and from a staged chunk alike
+    expect(appRoot(join(staged, 'out', 'main'))).toBe(staged)
+    expect(appRoot(join(staged, 'out', 'main', 'chunks'))).toBe(staged)
+    const helper = join(appRoot(join(staged, 'out', 'main')), 'resources', 'native', 'tc-computer.exe')
+    expect(realpathSync(helper)).toBe(realpathSync(join(bundle, 'resources', 'native', 'tc-computer.exe')))
+  })
+
+  it('bundleFile names a shipped file by its real path, and one that is not there by its plain path', () => {
+    expect(bundleFile('package.json')).toBe(realpathSync(join(appRoot(), 'package.json')))
+    expect(bundleFile('resources', 'native', 'not-built-yet')).toBe(join(appRoot(), 'resources', 'native', 'not-built-yet'))
   })
 })

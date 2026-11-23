@@ -206,14 +206,18 @@ export function launchEnv(extra: Record<string, string> = {}): Record<string, st
 export type Target = { type: string; url: string; webSocketDebuggerUrl?: string }
 
 /** The app's window: the only page whose URL is the renderer's index.html
- *  (file:// before the app scheme, tempcode-app://renderer/ after). */
+ *  (file:// before the app scheme, tempcode-app://renderer/ after), with or
+ *  without the `?place=` a window that has shown a place carries (withPlace). */
 export async function pageTarget(port: number, timeoutMs: number): Promise<Target> {
   const until = Date.now() + timeoutMs
   while (Date.now() < until) {
     try {
       const list = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as Target[]
       const page = list.find(
-        (t) => t.type === 'page' && t.webSocketDebuggerUrl && t.url.endsWith('/index.html')
+        (t) =>
+          t.type === 'page' &&
+          t.webSocketDebuggerUrl &&
+          t.url.split(/[?#]/)[0].endsWith('/index.html')
       )
       if (page) return page
     } catch {

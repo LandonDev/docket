@@ -9,6 +9,7 @@ import { HarnessRequestSchemas } from './contract-harness'
 import { MemoryRequestSchemas } from './contract-memory'
 import { AttachmentRequestSchemas } from './contract-attachments'
 import { PowerRequestSchemas } from './contract-power'
+import { CodeRequestSchemas } from './contract-code'
 import { SessionMoveRequestSchemas } from './contract-session-move'
 import { MacBridgeRequestSchemas } from './contract-macbridge'
 import { CrossHostRequestSchemas } from './contract-crosshost'
@@ -162,6 +163,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...MemoryRequestSchemas,
   ...AttachmentRequestSchemas,
   ...PowerRequestSchemas,
+  ...CodeRequestSchemas,
   ...SessionMoveRequestSchemas,
   ...MacBridgeRequestSchemas,
   ...CrossHostRequestSchemas,
@@ -1497,6 +1499,8 @@ export type ServerPush =
   | import('./contract-memory').MemoryNudgePush
   // A release landed (releaseAnnounce.ts): the box, down every Mac's link, after its deploy or a batch's publish; the Mac checks the feed at once.
   | { push: 'release-available'; from: string; version: string }
+  // A host packed a green commit's code (codeOffer.ts): down every Mac's link; the Mac asks for the manifest and the bytes over that link (codeUpdates.ts).
+  | { push: 'code-available'; from: string; commit: string; release: number; subject: string }
   // Keep awake (keepAwake.ts): whether this host has live threads, down every registered link on a change and every minute; the Mac holds its display awake while a peer says live.
   | { push: 'live-work'; from: string; live: boolean }
   // Away from computer (contract-away.ts): the state and the stretch's tally, to every client socket.

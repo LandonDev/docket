@@ -6,8 +6,10 @@ import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { flushCompileCache, getCompileCacheDir } from 'node:module'
 import { bootMark } from './server/boot'
-import { noteInstallOnQuit, registerUpdates, selfUpdate } from './update'
+import { noteInstallOnQuit, registerUpdates, selfUpdate, setCodeStatus } from './update'
 import { applyHarness, bakedHarness } from './harness'
+import { codeBoot } from './codeBoot'
+import { appRoot } from './server/appRoot'
 import { SOAK_SWITCHES, soakWindow } from './soakWindow'
 import { configureAliax, upstream } from './aliax'
 import { loadEnvironmentId } from './server/remote/environment'
@@ -166,7 +168,11 @@ app.whenReady().then(async () => {
   // A sign-in window opens over the app window in front.
   setSignInParent(targetWindow)
   // About: "Version 1.0.N (abc1234)" and the copyright, not Electron's defaults.
-  if (!headless) app.setAboutPanelOptions(aboutPanelOptions(buildInfo(app.getAppPath())))
+  // Under a code-only update: the bundle's version plus the commit that runs (codeChoice.ts).
+  if (!headless) {
+    const boot = codeBoot()
+    app.setAboutPanelOptions(aboutPanelOptions(buildInfo(appRoot()), boot?.running ? { bundleVersion: boot.bundle.version, commit: boot.running.commit } : null))
+  }
   // Agent HTML pages: stored under userData, previewed in the hidden window.
   setHtmlRenderRoot(pagesRoot())
   setHtmlPreviewer(htmlPreviewer)
@@ -218,7 +224,9 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin' && !headless) computerBannerHooks.current = createComputerBanner()
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     prodData: isProdData(app.getPath('userData'), defaultUserData),
-    appPath: app.getAppPath(),
+    // Counted from the code that runs, never app.getAppPath(): under a code-only update that is the
+    // bundle, and its out/ is the older one (docs/agents/code-only-updates.md).
+    appPath: appRoot(),
     claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
     assets: handleAssetRequest,
     watchMaster: !headless,
@@ -236,6 +244,8 @@ app.whenReady().then(async () => {
     preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() }),
     // A release this app published, or the box's word that one landed, is fetched at once (update.ts).
     selfUpdate: headless ? undefined : (version) => selfUpdate(version),
+    // A code-only update from a linked host is staged for boot.ts and offered on the update row (codeUpdates.ts).
+    code: headless ? undefined : { boot: codeBoot(), onStatus: setCodeStatus },
     presence,
     personIdle: personIdle ?? undefined,
     // The display stays awake while threads work (server/keepAwake.ts): a Mac or a Windows PC with a desktop.
@@ -277,7 +287,8 @@ app.whenReady().then(async () => {
   registerAliaxPages(server)
   registerPty()
   const { store } = server
-  registerWindows({ dropSnapshot: (slot) => store.dropWorkspaceSnapshot(slot) })
+  const mountedServer = server
+  registerWindows({ dropSnapshot: (slot) => store.dropWorkspaceSnapshot(slot), onMounted: () => mountedServer.codeWindowMounted() })
   if (!headless) registerPresent()
   registerDialogs()
   registerDownloads()

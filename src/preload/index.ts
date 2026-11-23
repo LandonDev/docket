@@ -7,6 +7,7 @@ import type { LaunchMirrorSnapshot, MirrorWrite } from '../shared/launchMirror'
 import { aliaxApi } from './aliax'
 import type { EditorChoice, EditorConfig, EditorId, EditorTarget } from '../shared/editor'
 import type { ShowAsk, ShowDisplay, ShowFrames } from '../shared/slidesShow'
+import type { CodeUpdateStatus } from '../shared/codeUpdate'
 
 type DialogKind = 'info' | 'warning' | 'error'
 
@@ -55,6 +56,8 @@ interface UpdateStatus {
   error?: string
   /** A release this app handed to Squirrel's installer that did not land. */
   installFailure?: { version: string; reason: string }
+  /** Code-only updates: the staged code that runs, one on its way or waiting for the restart, a line to say once. */
+  code?: CodeUpdateStatus
 }
 
 interface AppshotAttachment {

@@ -3,6 +3,8 @@ import { dirname, isAbsolute, join, resolve } from 'path'
 import release from '../../release.json'
 import { version as appVersion } from '../../package.json'
 import type { BuildFacts } from '../shared/deployDrift'
+import { versionLine } from '../shared/codeUpdate'
+import { codeBoot } from './codeBoot'
 
 /**
  * What this process runs: the release number every green master commit
@@ -100,8 +102,13 @@ export function readBuildSha(appPath: string): string | null {
   return bundledBuildSha(appPath) ?? checkoutSha(appPath)
 }
 
-/** This process's build: the bundled release number and version, the sha from `appPath`. */
+/** This process's build: the bundled release number and version, the sha from `appPath`.
+ *  Under a code-only update (codeChoice.ts) it is the staged code's: the
+ *  release its commit became and that commit. The numbers baked into a
+ *  staged `out/` are its parent's, since the gate builds before the bump. */
 export function buildInfo(appPath?: string): BuildInfo {
+  const staged = codeBoot()?.running
+  if (staged) return { release: staged.release, version: `1.0.${staged.release}`, sha: staged.commit }
   return { release: release.n, version: appVersion, sha: appPath ? readBuildSha(appPath) : null }
 }
 
@@ -131,8 +138,10 @@ export const COPYRIGHT = 'Copyright © 2026 Landon Hale'
 /** The About panel: the version with its commit, the copyright, no credits.
  *  The release number is the N in the version, so it is not repeated. With no
  *  commit `version` is empty, not absent: absent, macOS shows the bundle's
- *  build number, which is the version again. */
-export function aboutPanelOptions(info: BuildInfo): {
+ *  build number, which is the version again. Under a code-only update the
+ *  line is the bundle's version plus the commit that runs ("1.0.371 +
+ *  3f9c2ab", shared/codeUpdate.ts `versionLine`), with nothing in brackets. */
+export function aboutPanelOptions(info: BuildInfo, staged?: { bundleVersion: string; commit: string } | null): {
   applicationName: string
   applicationVersion: string
   version: string
@@ -141,8 +150,8 @@ export function aboutPanelOptions(info: BuildInfo): {
 } {
   return {
     applicationName: 'TempCode',
-    applicationVersion: info.version,
-    version: info.sha ? info.sha.slice(0, 7) : '',
+    applicationVersion: staged ? versionLine(staged.bundleVersion, staged.commit) : info.version,
+    version: staged ? '' : info.sha ? info.sha.slice(0, 7) : '',
     copyright: COPYRIGHT,
     credits: ''
   }
