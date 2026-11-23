@@ -99,6 +99,7 @@ export const PILLAR_MILESTONE: Record<PillarId, number> = {
   /** the weekly review (plan-toGPPKaX6Q1P), numbered past the pillars that landed before it */
   review: 63,
   /** clashes across jobs with the drive time counted (plan-7BzZxxMKA7yn), numbered past Files */
+  /** clashes across jobs with the drive time counted (plan-7BzZxxMKA7yn), round 3's row 8 */
   clashes: 58
 }
 

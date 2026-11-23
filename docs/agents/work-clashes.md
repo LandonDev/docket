@@ -13,7 +13,7 @@ and Start places (CL5) are the renderer's and are not built here.
 - **LifeOS** finds the clashes, places events, measures and keeps drives
   (`clashes:range`, `legs:ask`, tables `legs` and `clashWaived`). Only LifeOS
   asks a map service; no pillar asks one itself.
-- **The host** (`src/main/server/work/clashes/`, pillar 56): the watcher, the
+- **The host** (`src/main/server/work/clashes/`, pillar 58): the watcher, the
   tell, the wire, the tool and `milesBetween`. Its one table is
   `work_clashes_told (key, stamp, told_at)`.
 - **Shared** (`src/shared/work/clashes.ts`, no zod): the shapes (`Clash`,
