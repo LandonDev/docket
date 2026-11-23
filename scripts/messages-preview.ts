@@ -35,12 +35,14 @@ const { values } = parseArgs({
 })
 
 const ROW = '[role=listbox][aria-label=Conversations] [role=option]'
+const NO_MESSAGES = ['search', 'narrow-list', 'outbox-reply', 'open-loading', 'open-failed']
 
 /** The scene has drawn: the view (or the Outbox's body alone), and for an open conversation its messages. */
 async function settled(page: Page, scene: string): Promise<void> {
   await page.until('document.querySelector("#root > div > *")', 'the page')
   const open = await page.eval<boolean>('!!document.querySelector("[data-messages]") && !document.querySelector("[data-messages] [data-slot=skeleton]")')
-  if (open && !scene.startsWith('list') && scene !== 'search' && scene !== 'narrow-list' && scene !== 'outbox-reply') await page.until('document.querySelector("[data-block]")', `${scene}'s messages`).catch(() => {})
+  // A scene with a conversation open waits for its messages; one that shows its bones or its failure has none to wait for.
+  if (open && !scene.startsWith('list') && !NO_MESSAGES.includes(scene)) await page.until('document.querySelector("[data-block]")', `${scene}'s messages`, 5_000).catch(() => {})
   // Faces and pictures land a frame or two after their rows.
   await page.wait(400)
 }
