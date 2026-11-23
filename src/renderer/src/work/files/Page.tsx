@@ -49,7 +49,7 @@ import {
   type PlaceCopy,
 } from "./model";
 import type { Busy } from "./open";
-import { dragging, dragProps, dropVerb, howOf, NameField, onNameOf, ROWS_MIME, RowState, setDragging, setDragLabel, stepHow, type RowDrag, type ShapeProps } from "./rowParts";
+import { dragging, dragProps, dropVerb, howOf, NameField, onNameOf, ROWS_MIME, RowState, setDragging, setDragLabel, stepHow, whenDragEnds, type RowDrag, type ShapeProps } from "./rowParts";
 import type { PictureFrom } from "./previews";
 import { QuickLook } from "./QuickLook";
 import { FileColumns, FileGrid } from "./Shapes";
@@ -1051,10 +1051,12 @@ function useRowDrag(acts: PageActs | null, entries: readonly FileEntry[], picked
       const out = acts.dragOut?.(rows) ?? null;
       if (out) {
         event.preventDefault();
-        void out.finally(() => {
-          setDragging(null);
-          clear();
-        });
+        void out.finally(() =>
+          whenDragEnds(() => {
+            setDragging(null);
+            clear();
+          }),
+        );
         return;
       }
       event.dataTransfer.setData(ROWS_MIME, JSON.stringify(rows.map((e) => e.key)));

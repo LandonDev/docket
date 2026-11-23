@@ -149,6 +149,27 @@ export const dragging = (): DragNow | null => dragNow;
 export const setDragging = (next: DragNow | null): void => void (dragNow = next);
 
 /**
+ * Runs `done` once a drag the system carries is over. The call that starts one answers at its end on Windows and
+ * Linux but at once on a Mac, and the window is told of no end when the drop lands outside it: so the rows stay the
+ * rows being dragged until a drop in this window, or until the pointer is seen here again with no button held.
+ */
+export function whenDragEnds(done: () => void): void {
+  const end = (): void => {
+    window.removeEventListener("drop", end, true);
+    window.removeEventListener("dragend", end, true);
+    window.removeEventListener("mousemove", moved, true);
+    // After the drop's own handlers, which still read what was dragged.
+    setTimeout(done, 0);
+  };
+  const moved = (event: globalThis.MouseEvent): void => {
+    if (event.buttons === 0) end();
+  };
+  window.addEventListener("drop", end, true);
+  window.addEventListener("dragend", end, true);
+  window.addEventListener("mousemove", moved, true);
+}
+
+/**
  * The verb a drop asks: ⌥ copies and ⌘ (Ctrl elsewhere) moves, whatever the target; with neither, a drop inside
  * one place moves and a drop into another place copies, as a desktop does between two disks.
  */

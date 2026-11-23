@@ -17,22 +17,34 @@ import { FetchState, kindNoun } from "./FetchState";
 import { downloadItem, keepItem, useItemFetch } from "./fetched";
 import { useKeptState } from "./store";
 
-/** The kind's module once its chunk has landed, else null: its optional parts (`Bar`, `TabEnd`) are read from it. */
+/**
+ * The kind's module once its chunk has landed, else null: its optional parts (`Bar`, `TabEnd`) are read from it.
+ * The module is kept in state, never read from the chunk while drawing: the React Compiler holds a call's answer
+ * for as long as its argument is the same, so `chunk.loaded()` read in the hook's body stayed null after the chunk
+ * landed, and a kind first opened in a window kept the bar's bone and never drew its tools.
+ */
 export function useKindModule(chunk: Chunk<CanvasKindModule>): CanvasKindModule | null {
-  const [, landed] = useState(0);
-  const module = chunk.loaded();
+  const [held, setHeld] = useState<{ chunk: Chunk<CanvasKindModule>; module: CanvasKindModule | null }>(() => ({ chunk, module: chunk.loaded() }));
+  // Another kind's chunk under the same seat: what that chunk has now, taken in this render, so a kind already
+  // loaded never draws the bone for a frame.
+  let now = held;
+  if (held.chunk !== chunk) {
+    now = { chunk, module: chunk.loaded() };
+    setHeld(now);
+  }
+  const waiting = now.module === null;
   useEffect(() => {
-    if (module) return;
+    if (!waiting) return;
     let live = true;
     chunk.load().then(
-      () => live && landed((n) => n + 1),
+      (module) => live && setHeld((was) => (was.chunk === chunk ? { chunk, module } : was)),
       () => undefined,
     );
     return () => {
       live = false;
     };
-  }, [chunk, module]);
-  return module;
+  }, [chunk, waiting]);
+  return now.module;
 }
 
 /** A transport's own words, said as a person would read them on the state line. */

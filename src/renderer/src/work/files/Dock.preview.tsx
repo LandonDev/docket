@@ -32,7 +32,17 @@ const item: CanvasItem = {
 };
 
 /** The file's body: a stand-in document, so the shot is the frame and the dock, never a kind's bytes. */
-function Body() {
+function Body({ item: shown }: { item?: CanvasItem }) {
+  if (shown?.id === "pi2")
+    return (
+      <div className="min-h-0 flex-1 overflow-auto px-12 py-10 text-[15px] leading-7 text-foreground">
+        <h1 className="mb-4 text-2xl font-semibold">Run of show</h1>
+        <p className="mb-2 max-w-[65ch] tabular-nums">9:00 Doors, check-in at the north desk</p>
+        <p className="mb-2 max-w-[65ch] tabular-nums">10:00 Pools start, stations 1 to 12</p>
+        <p className="mb-2 max-w-[65ch] tabular-nums">13:00 Lunch; the stage resets for brackets</p>
+        <p className="max-w-[65ch] tabular-nums">18:30 Finals on the main stage</p>
+      </div>
+    );
   return (
     <div className="min-h-0 flex-1 overflow-auto px-12 py-10 text-[15px] leading-7 text-foreground">
       <h1 className="mb-4 text-2xl font-semibold">Spring LAN budget request</h1>

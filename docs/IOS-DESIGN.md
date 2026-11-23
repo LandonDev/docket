@@ -2658,7 +2658,9 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   rows' mark slot so the names line up. The section is absent when nothing
   failed.
 - **Quick Look** is the host's preview pages in a paging view (the system
-  page dots past one page); where the host makes no
+  page dots past one page) with the meta line under them ("Text · 52 bytes
+  · Today": a text file's preview is a sketch of its lines, never its
+  words); where the host makes no
   preview (F3) the file's facts stand in the middle: the glyph large, the
   name (title3 semibold), one meta line "PDF · 2.4 MB · Nov 3", and who
   saved it. The foot holds one thing: Open the Original (a prominent wide

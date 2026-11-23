@@ -1795,14 +1795,28 @@ no build thread may or can do.
 - **LifeOS's trash on his rows.** The soft delete, restore, `mail:attachments`
   and the project-link functions are live on his backend and answer; none
   was run on a row of his. Tests cover them.
-- **The phone (F9).** Its store and rules ran on the box against a stand-in
-  connection and its Swift parses; its screens have not run on a simulator
-  or a phone. The proof steps are in the F9 report and run on the Mac under
-  its load gate.
-- **On a Mac.** A drag out to the desktop (`webContents.startDrag`), the
-  Mac's `qlmanage` thumbnails and Electron's decoder for a picture have not
-  run through this code on a Mac; the box's proofs drew previews with
-  pypdfium2, LibreOffice and ffmpeg.
+- **The phone (F9).** Run on the Mac's simulator (iPhone 17 Pro, iOS 27.0,
+  2026-11-23, light and dark): the Files row, Recent, Starred and Places, a
+  folder's list, a PDF seated with no Ask and its file tab on the host, the
+  original in Quick Look with its temp file gone after Done, New folder, New
+  document and Upload on the host's disk, a read-only key with no +, Star,
+  Rename or Delete, a failed list with the host's sentence and Try Again,
+  and the Files home and a folder through the test server's loopback relay;
+  the client's 1,633 tests pass there. Search's row and the Files row were
+  both named `FileRow` and the app did not compile until Search's became
+  `SearchFileRow` (b31609081). Not run: a real phone, and the real relay
+  service.
+- **On a Mac.** Run there (2026-11-23, an isolated copy with dummy files):
+  a row opens in a tab with the rail's thread count unchanged, Ask docks a
+  draft and the host still has no thread, Grid draws the PDF's `qlmanage`
+  thumbnail and the scaled PNG, Space shows the picture, a kind's bar is
+  drawn on its first open, a slow drag of a row to the Desktop copies the
+  file (the same bytes, the row still there) and a row dragged onto a
+  folder moves it with no second copy. The system's drag tells the window
+  of no end when the drop lands in Finder: the rows stay the rows being
+  dragged until a drop in the window or the pointer seen with no button
+  held (`whenDragEnds`, rowParts.tsx). Not run there: a real OneDrive
+  library, and a PC.
 - **In the window, live.** The screens are proven by DOM tests against
   stand-in hosts and by preview pages in both themes; the host by the
   instance proofs (`scripts/e2e-work-files.ts`,

@@ -190,6 +190,10 @@ struct FileQuickLookScreen: View {
 
     @ViewBuilder private var foot: some View {
         VStack(spacing: 8) {
+            // Under a preview the facts are one line: a text file's preview is a sketch, which says nothing of it.
+            if pageCount > 0, player == nil {
+                Text(factLine).textStep(.meta).multilineTextAlignment(.center)
+            }
             if let failure {
                 Text(failure).textStep(.meta, tint: Tint.destructiveText).multilineTextAlignment(.center)
             }

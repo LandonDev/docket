@@ -1063,7 +1063,9 @@
   FilesRules, OriginalFiles, FilesHost and WorkRead with stand-ins for
   `ActionError` and `AttachmentUpload` (the rest of the client needs SQLite,
   Security and `URLSessionWebSocketTask`); the app's files are parse-checked
-  only. `bun run ios:test:client` and the simulator proof are the Mac's.
+  only. On the Mac `bun run ios:test:client` passes (1,633 tests,
+  2026-11-23) and the Files steps ran on the simulator in both themes
+  (docs/agents/work-files.md "Unproven").
 
 ## Files and the editors on the phone (2026-11-23)
 

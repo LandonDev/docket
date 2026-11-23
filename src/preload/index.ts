@@ -127,7 +127,7 @@ const api = {
   pickDirectory: (defaultPath?: string): Promise<string | null> =>
     ipcRenderer.invoke('pick-directory', defaultPath),
   revealInFinder: (path: string): Promise<void> => ipcRenderer.invoke('reveal-in-finder', path),
-  /** Files dragged out to the desktop (src/main/dragOut.ts): true once the system carries them; it answers when the drag ends. */
+  /** Files dragged out to the desktop (src/main/dragOut.ts): true once the system carries them. It answers when the drag ends on Windows and Linux, at once on a Mac. */
   dragFilesOut: (paths: string[]): Promise<boolean> => ipcRenderer.invoke('drag-files-out', paths),
   /** The user's editor (src/main/editorLaunch.ts): IDEA, VS Code or Xcode on this machine. */
   editor: {

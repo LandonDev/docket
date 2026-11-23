@@ -294,6 +294,35 @@ describe("a drag that can leave the window", () => {
     await act(async () => ended());
   });
 
+  it("on a Mac, where the system's drag is under way when the call that starts it answers, a drop on a folder is still a move, and the rows are let go once the pointer is seen with no button held", async () => {
+    const dropped: { verb: string; names: string[]; into: string }[] = [];
+    const uploaded: string[] = [];
+    draw({
+      acts: stub({
+        dragOut: () => Promise.resolve(),
+        drop: (verb: string, rows: FileEntry[], into: FileEntry) => void dropped.push({ verb, names: rows.map((e) => e.name), into: into.name }),
+        upload: (files: File[], into?: FileEntry) => void uploaded.push(`${files.length} into ${into?.name ?? "here"}`),
+      }),
+    });
+    fireEvent(row("Plan.pdf"), createEvent.dragStart(row("Plan.pdf"), { dataTransfer: { setData: () => undefined, types: [] } }));
+    // The call has answered; the drag goes on.
+    await act(async () => undefined);
+    const folder = document.querySelector<HTMLElement>(`[data-files-row="${FOLDER.key}"]`)!;
+    const carried = { types: ["Files"], files: [new File(["x"], "Plan.pdf")], dropEffect: "none" };
+    fireEvent.drop(folder, { dataTransfer: carried });
+    expect(dropped).toEqual([{ verb: "move", names: ["Plan.pdf"], into: "Events" }]);
+    expect(uploaded).toEqual([]);
+    // A second drag, let go on the desktop: nothing tells the window, until the pointer is back with no button held.
+    fireEvent(row("Plan.pdf"), createEvent.dragStart(row("Plan.pdf"), { dataTransfer: { setData: () => undefined, types: [] } }));
+    await act(async () => undefined);
+    fireEvent.mouseMove(document.body, { buttons: 0 });
+    await act(async () => void (await new Promise((done) => setTimeout(done, 5))));
+    // What comes from the desktop after that is an upload again.
+    fireEvent.drop(folder, { dataTransfer: { types: ["Files"], files: [new File(["x"], "a.txt")] } });
+    expect(uploaded).toEqual(["1 into Events"]);
+    expect(dropped).toHaveLength(1);
+  });
+
   it("keeps the drag in the window where a row cannot go out, and reads a desktop's files as an upload when nothing of ours is dragged", () => {
     const uploaded: string[] = [];
     draw({ acts: stub({ dragOut: () => null, upload: (files: File[], into?: FileEntry) => void uploaded.push(`${files.length} into ${into?.name ?? "here"}`) }) });
