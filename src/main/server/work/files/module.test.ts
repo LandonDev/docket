@@ -26,8 +26,9 @@ afterEach(() => {
 })
 
 describe('the mount', () => {
-  it('is the last pillar, milestone 54, loaded by its own import', async () => {
-    expect(PILLAR_IDS.at(-1)).toBe('files')
+  it('is a pillar, milestone 54, loaded by its own import', async () => {
+    // Pillars built after it (prep and the rest of round 3) mount after it.
+    expect(PILLAR_IDS).toContain('files')
     expect(PILLAR_MILESTONE.files).toBe(54)
     expect(await PILLAR_LOADERS.files()).toBe(files)
   })
