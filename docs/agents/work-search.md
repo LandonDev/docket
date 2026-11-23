@@ -330,9 +330,23 @@ for it.
 - People and events by anything but a name, an address, a title or a
   place: LifeOS has no text index for them. Events outside the window.
 - A task's description (LifeOS's index is on titles).
-- A file's contents, anywhere. Files in a place Files has not listed yet.
+- A file's contents as he types (a LifeOS document's text is found; Files'
+  own search of text and of every place runs only for "All files"). A file
+  whose name Files has not listed yet, as he types.
 - Code threads, code files and notes: the app's Search on ⌘K.
 - A subagent's thread by its title (by its words it is found).
+
+## Known faults
+
+Open when the council was ended (2026-11-23), none fixed:
+
+- Return opens the highlighted row even when he has scrolled it out of
+  sight by the trackpad with his words unchanged.
+- A file whose host is slow to make its tab shows the Files place when the
+  call returns, even if he has opened something else in that job since
+  (`open.ts`, and `openInFiles` itself).
+- A project found by a word past the first 160 characters of its
+  description shows no matched word on its row.
 
 ## Proofs
 
@@ -344,10 +358,13 @@ for it.
   (the model, the controller with a clock the test moves, the opener, the
   picker in jsdom).
 - Live: `env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-search.ts` after
-  a build: an isolated instance under xvfb with two jobs, made-up threads
-  and a LifeOS stand-in of made-up rows (`TEMP_CODE_WORK_SEARCH_STANDIN`,
-  `search/standIn.ts`; only an isolated instance takes it). It signs in to
-  nothing and reads no row of his.
+  a build: an isolated instance under xvfb with two jobs, made-up threads,
+  two made-up files in a job's folder found through the real Files module
+  (one opened in a Files tab) and a LifeOS stand-in of made-up rows
+  (`TEMP_CODE_WORK_SEARCH_STANDIN`, `search/standIn.ts`; only an isolated
+  instance takes it). It measures every row at 28px in the dialog and
+  checks that a scrolled list rests. It signs in to nothing and reads no
+  row of his.
 - The design page: `bun run ui:preview
   src/renderer/src/work/search/WorkSearch.preview.tsx#WorkSearchPreview
   --shot`, every state in both themes.
