@@ -263,6 +263,9 @@ describe('a .csv in the canvas, and the model writer', () => {
     expect(pkg.store).toBe('package')
     expect(pkg.row).toEqual([...SHEET_ROW.package])
     expect(pkg.row).toContain('borders')
+    // What a note's pop-over offers, by store: an Excel file rewords a note it has; a sheet of ours makes and removes them too.
+    expect(view.notes).toEqual(['edit', 'add', 'remove'])
+    expect(pkg.notes).toEqual(['edit'])
   })
 
   it('opens a .csv as a sheet of its own, and saves it back as .csv and out as .xlsx', async () => {

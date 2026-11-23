@@ -231,15 +231,44 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   a filter over a table that has its own, a name Excel would not take, an
   icon set of custom icons) is said over the grid after the press, as any
   refusal only the host can know.
+- **Rich text is saved as runs** (`patch/text.ts`, `patchText`): a cell whose text has more than one
+  style becomes a string cell whose shared string item holds one run a change of style. A run is
+  written as a whole font, in Excel's order, with what it does not set taken from the cell's own
+  font, so Excel and LibreOffice draw it alike; an equal item already in the table is taken; a
+  workbook with no shared strings part gains one. A cell sent back as it was read is not touched.
+  A formula cell is refused, and a table's header may be restyled but not reworded. Where a cell's
+  words change and a formula may read them, Excel is asked to calculate again on load.
+  `readText` reads the rich cells back from the parts alone. The grid sends a rich cell as its
+  `set-range-values` with `p` (the cell editor's commit has `v: null`, so mutations.ts tests `p`
+  before `v` and never writes it empty). `editsOf` gives its flat words to the patch writer, so
+  what reads them recalculates, and `formatsOf` its runs (work-kit's `runsOf`) as `SHEET_TEXT`
+  beside the formats; `savePackage` drops the words where the file already holds them
+  (`changedWords`), then calls `patchText` after `patchXlsx`. A style set over a rich cell
+  changes its runs in the grid with no `p` in the mutation, so the canvas adds the cell's `p` as
+  the grid now holds it (`forPackage`'s `doc`). A cell typed back to one font comes with `p: null`
+  and a plain `v`, which `patchXlsx` writes as plain text. A workbook Excel or Google holds keeps
+  no runs: rich text there is stopped as he makes it ("Style part of a cell's text in Excel").
+  Proven end to end by `textNotesMatrix.test.ts`.
+- **A note's words are saved in place** (`patch/notes.ts`, `patchNotes`): the text of a note that is
+  already in the file is rewritten in the note's own font, its author's line kept as Excel wrote
+  it; its box, its author and every other comment keep their bytes. The grid's `update-note`
+  becomes `SHEET_NOTE` beside the formats (`notesOf`, mutations.ts), and `savePackage` calls
+  `patchNotes` after the text. The view lists `notes: ['edit']` for an Excel file
+  (`SHEET_NOTES`), so the pop-over offers no New note and no Delete note there; a removal that
+  reaches the canvas is stopped ("Delete this note in Excel"), and a new note that reaches the
+  host is refused by the writer ("Add a new note in Excel"), as is the note Excel leaves in a
+  thread's place. A note moved beside a row or a column needs nothing of its own: LibreOffice
+  moves it with the cells. `readNotes` gives each note with its author, the author's line out of
+  the text. What either writer refuses (`TextRefused`, `NotesRefused`) is said over the grid
+  after the press, as any writer's refusal is.
 - **What it cannot keep yet is stopped as he makes it** (`forPackage` and
-  `stop`, sync.ts): text with more than one style in a cell, a cell given
-  only a type, a move where the host does not save moves, and any
-  change with no saved form (a hidden row, a frozen pane). What he does in
+  `stop`, sync.ts): a cell given only a type, a move where the host does
+  not save moves, a note removed, and any change with no saved form (a
+  hidden row, a frozen pane). What he does in
   one turn is taken together (the grid's commands counted, their mutations
   gathered): when a part of it cannot be kept, none of it is sent, the grid
   takes it back with its own undo, and a toast says why in a few words
-  ("Text with more than one style in a cell is not saved in an Excel file
-  yet"). One command is one undo; a turn that ran several, or
+  ("That change is not saved in an Excel file yet. Make it in Excel"). One command is one undo; a turn that ran several, or
   mutations that came with no command of their own, is undone and the book
   then read again from the file, so the grid is the file whatever the undo
   left. No line stands over the grid about it. The host refuses the same
@@ -584,7 +613,9 @@ colour as its slot and tint; `fullCalcOnLoad` set), or one sheet as .csv
 conditional formats and validations, the names, a filter: the snapshot's
 `resources`) are then laid into that .xlsx by the rules writer, the one an
 opened Excel file is saved with, so both hold a rule the same way
-(`writeXlsxWhole`, `rulesOf`). A list the file cannot hold is left out
+(`writeXlsxWhole`, `rulesOf`). Text in more than one style is laid the
+same way, as runs, by the text writer (`textOf`, `patchText`); notes are
+not written yet, and `left` says "notes" for each sheet that has one. A list the file cannot hold is left out
 rather than failing the export, and `left` names it. A sheet read from a .csv saves back over
 it and exports beside it; a package gives a .csv of one sheet beside itself
 (it is its own .xlsx); anything else lands in the item's own folder. The
@@ -870,7 +901,16 @@ lands in his own Drive, shared with nobody. Threads have no upload tool.
   formats, validations, filters and defined names of the revision (not
   tables). The mutation ids and payloads are in the editors plan's SHT3
   report, held by `host/rules.test.ts` and work-kit's
-  `src/sheet/engine/rules.test.ts`.
+  `src/sheet/engine/rules.test.ts`;
+- the engines mount Univer's note plugin too (`ENGINE = { rules: true,
+  notes: true }`), so the grid's `update-note`, `remove-note` and
+  `update-note-position` apply, a note and its author stay in the
+  snapshot's `SHEET_NOTE_PLUGIN` resource (a thread in
+  `TEMPCODE_SHEET_COMMENTS`), and a restore puts each note back by its id
+  (`noteMutations`); history labels a note's op "A note" or "Removed a
+  note". A rich cell is the cell's own document (`p`) and needs nothing
+  more. The view lists `notes: ['edit', 'add', 'remove']` for a `.tcsheet`
+  and a LifeOS sheet. Held by `host/notes.test.ts`.
 
 Main reaches it through `ctx.service.internal('/internal/sheet/<op>')` with
 the bodies of `host/wire.ts`. The LifeOS worker's tools reach
@@ -941,7 +981,10 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 read and 1,000 a write. A read of an opened Excel file ends with one line
 when the file holds what only Excel changes ("This workbook also holds 2
 pivot tables: only Excel changes those…", `waitsNote`), so a thread does
-not claim a change it could not make. `sheet_write`, `sheet_format` and `sheet_rule` say
+not claim a change it could not make. `sheet_read` gives a cell's note's words beside its
+value (`note`, read from the import's note resource for a package and from
+the engine's resources for a sheet the service holds; a thread's stand-in is
+no note). `sheet_write`, `sheet_format` and `sheet_rule` say
 why (`because`), under one rule (`ruled`):
 
 - `asked` with `quote`, the owner's own words in the thread
@@ -1391,9 +1434,12 @@ The harness corpus also keeps the workbooks the editors plan measured with
   what a trip through LibreOffice changes in an .xls or .ods beyond what
   `sheetDrops` counts is not listed; real Excel has not opened a file
   saved back.
-- Rich text in an opened Excel file: stopped as he tries, until it is
-  saved. Moves are saved where the file allows ("Structural edits").
+- A new note or a removed note in an opened Excel file: a new note needs
+  Excel's comments and drawing parts, which no writer here makes. Moves are
+  saved where the file allows ("Structural edits").
 - The model writer leaves out notes and our charts.
+- An agent reads a note's words (`sheet_read`) and writes none: no tool
+  changes a note or a cell's runs.
 - An agent adds rules and formats (`sheet_rule`, `sheet_format`); it does
   not change or remove a rule, merge cells or sort. The plan promised
   agents no more than those two tools, and SHT9 added none: a thread has

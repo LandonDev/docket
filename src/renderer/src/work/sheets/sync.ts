@@ -267,6 +267,9 @@ export class SheetSync {
           ...(grid.style ? { style: (id: string) => grid.style!(id) } : {}),
           ...(grid.rules ? { rules: (kind: SheetRuleKind, sheet?: string) => grid.rules!(kind, sheet), kinds: ruleKinds(view.row) } : {}),
           moves: view.moves === true,
+          // A rich cell's document as the grid holds it now (a style set over one changes its runs), and what its notes take.
+          doc: (sheet: string, row: number, col: number) => (grid.read(sheet, row, col) as { p?: unknown } | null)?.p ?? null,
+          ...(view.notes ? { notes: view.notes } : {}),
         });
         if (SHEET_MOVES.has(mutation.id)) {
           if ("stop" in got) moveStop ??= got.stop;

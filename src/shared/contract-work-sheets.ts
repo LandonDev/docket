@@ -72,6 +72,23 @@ export const SHEET_ROW: Record<SheetStoreKind, readonly SheetRowControl[]> = {
   csv: []
 }
 
+/** What a note's pop-over offers (the kit's `NoteControl`): its words changed, a note made, a note removed. */
+export type SheetNoteControl = 'edit' | 'add' | 'remove'
+
+/**
+ * What a sheet's notes take by where it lives, which the host puts in the view (`notes`) as it does
+ * `row`, and for the same reason. An opened Excel file rewords a note it has (patch/notes.ts) and
+ * makes or removes none: a new note needs Excel's drawing part. A sheet the service holds keeps all
+ * three in its engine's snapshot (host/notes.test.ts). A .csv keeps no note; a workbook Excel or
+ * Google holds is a `package` with no `notes`, and none is offered where the view is read only.
+ */
+export const SHEET_NOTES: Record<SheetStoreKind, readonly SheetNoteControl[]> = {
+  lifeos: ['edit', 'add', 'remove'],
+  tcsheet: ['edit', 'add', 'remove'],
+  package: ['edit'],
+  csv: []
+}
+
 /** `pending`: waits for the owner. `conflict`: the cell no longer holds what the agent saw. `orphaned`: its row, column or sheet is gone. */
 export type SheetSuggestionState = 'pending' | 'conflict' | 'orphaned' | 'accepted' | 'rejected'
 
@@ -193,6 +210,8 @@ export interface SheetView {
   charts: SheetChart[]
   /** the format row's controls this sheet keeps (`SHEET_ROW`); absent or empty, the canvas draws no row */
   row?: SheetRowControl[]
+  /** what the notes' pop-over offers here (`SHEET_NOTES`); absent or empty, notes are read only */
+  notes?: SheetNoteControl[]
   /** an opened Excel file whose host saves moved cells, rows and columns (sheets/structural.ts); absent, the canvas stops a move as he makes it */
   moves?: true
   /** Save to Google Sheets is offered: a workbook of his own that this host holds (sheets/toGoogle.ts `canSaveToGoogle`) */

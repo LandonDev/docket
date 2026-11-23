@@ -3,6 +3,9 @@ import { toFileFormula } from './patch/formula'
 import { patchRules, RulesRefused, type DefinedName, type RulesEdit, type SheetFilter } from './patch/rules'
 import { PagesRefused, patchPages, type PagesEdit } from './patch/pages'
 import { patchTables, TablesRefused, type TablesEdit } from './patch/tables'
+import { patchText, TextRefused, type Run, type TextEdit } from './patch/text'
+import { runsOf } from 'work-kit/sheet/xlsx'
+import { NOTES_RESOURCE } from './host/rules'
 import { fileReferences, fold } from './patch/tables-model'
 import { readZip, writeZip } from './patch/zip'
 import { colName, esc, escText } from './patch/xml'
@@ -21,8 +24,9 @@ import { tableModel } from 'work-kit/sheet/tables'
  * changing the theme in Excel recolours it. The workbook's rules (conditional
  * formats, validations, names, a filter) are then written into that file by
  * the patch writer, the one an opened Excel file is saved with, so both hold
- * a rule the same way. An opened package is never written by this: it stays
- * its own truth.
+ * a rule the same way; so are its tables and the runs of text in more than
+ * one style (patch/text.ts). Notes are not written yet (`left` says so). An
+ * opened package is never written by this: it stays its own truth.
  */
 
 const enc = new TextEncoder()
@@ -130,7 +134,8 @@ function xfOf(style: IStyleData | null | undefined, pools: Pools): number {
 
 function cellXml(ref: string, cell: ICellData, s: number, words: (formula: string) => string = (f) => f): string {
   const sAttr = s ? ` s="${s}"` : ''
-  const v = cell.v
+  // A rich cell's words are its document's (one made in the cell editor has no `v`); its runs are laid after (`textOf`).
+  const v = cell.p && !cell.f ? (runsOf(cell, () => null) ?? []).map((r) => r.text).join('') : cell.v
   if (cell.f) {
     const f = `<f>${esc(words(toFileFormula(cell.f)))}</f>`
     if (typeof v === 'number') return `<c r="${ref}"${sAttr}>${f}<v>${v}</v></c>`
@@ -337,6 +342,17 @@ export function writeXlsxWhole(wb: IWorkbookData): { bytes: Uint8Array; left: { 
       if (!(err instanceof PagesRefused)) throw err
       left.push({ what: 'page set-up', sheet: edit.sheet, why: err.message })
     }
+  // Text in more than one style as runs (patch/text.ts): a sheet whose runs the writer refuses keeps the words and loses the styles, said.
+  for (const edit of textOf(wb, (id) => base.names.get(id)))
+    try {
+      bytes = patchText(bytes, [edit]).bytes
+    } catch (err) {
+      if (!(err instanceof TextRefused)) throw err
+      left.push({ what: 'text styles', sheet: edit.sheet, why: err.message })
+    }
+  // A new note needs Excel's comments and drawing parts, which no writer here makes yet: the words stay in TempCode.
+  const notes = notesResource(wb)
+  for (const id of base.ids) if (Object.keys(notes[id] ?? {}).length) left.push({ what: 'notes', sheet: base.names.get(id), why: 'Notes are not written into an Excel file made here yet.' })
   return { bytes, left }
 }
 
@@ -356,6 +372,35 @@ export function pagesOf(wb: IWorkbookData, nameOf: (sheetId: string) => string |
     if (sheet && setup && typeof setup === 'object') out.push({ sheet, setup: setup as PagesEdit['setup'] })
   }
   return out
+}
+
+/** Each sheet's rich cells as runs, named by its tab, as the text writer takes them. */
+export function textOf(wb: IWorkbookData, nameOf: (sheetId: string) => string | undefined): TextEdit[] {
+  const look = lookOf(wb)
+  const out: TextEdit[] = []
+  for (const id of wb.sheetOrder) {
+    const sheet = nameOf(id)
+    const cells: { row: number; column: number; runs: Run[] }[] = []
+    const data = wb.sheets[id]?.cellData ?? {}
+    for (const r of sorted(data))
+      for (const c of sorted(data[r] ?? {})) {
+        const cell = data[r]?.[c]
+        if (!cell?.p || cell.f) continue
+        const runs = runsOf(cell, (s) => wb.styles?.[s] ?? null, look.font)
+        if (runs?.some((x) => x.text)) cells.push({ row: r, column: c, runs })
+      }
+    if (sheet && cells.length) out.push({ kind: 'text', sheet, cells })
+  }
+  return out
+}
+
+/** Univer's notes by sheet id (`NOTES_RESOURCE`), as the engine keeps them. */
+function notesResource(wb: IWorkbookData): Record<string, Record<string, unknown>> {
+  try {
+    return JSON.parse(wb.resources?.find((r) => r.name === NOTES_RESOURCE)?.data || '{}') ?? {}
+  } catch {
+    return {}
+  }
 }
 
 function laidRules(bytes: Uint8Array, edits: RulesEdit[], opts: { sheetIds: string[] }, left: { what: string; sheet?: string; why: string }[]): Uint8Array {

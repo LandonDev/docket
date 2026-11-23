@@ -51,7 +51,7 @@ interface Answers {
   snapshot: { rev: number; data: string; size: number }
   since: { rev: number; ops: { rev: number; by: string; mutations: SheetMutationJson[] }[] } | { rev: number; reload: true }
   apply: { rev: number } | { conflict: true; rev: number }
-  range: { sheet: string; cells: { at: string; v?: string | number | boolean; f?: string }[][] }
+  range: { sheet: string; cells: { at: string; v?: string | number | boolean; f?: string; note?: string }[][] }
   /** `rev` when written, `changeSetId` when suggested */
   cells: { rev?: number; changeSetId?: string; count: number }
   review: { rev?: number; decided: number }

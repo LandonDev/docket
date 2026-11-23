@@ -225,6 +225,8 @@ export interface FakeGrid extends SheetGrid {
   filter: boolean | undefined;
   /** whether the canvas was told to draw work-kit's own Data chrome (`dataChrome`) */
   dataChrome: boolean | undefined;
+  /** what the canvas was last told a note's pop-over offers (`noteControls`) */
+  noteControls: SheetCanvasProps["noteControls"];
   /** formula text the grid holds, by `sheet!row:col`, for a fill's cells */
   formulas: Map<string, string>;
   /** The person selects a range, A1. */
@@ -389,7 +391,8 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     };
   };
 
-  function FakeCanvas({ snapshot, marks, was, styleKeys, filter, dataChrome, readOnly, onReady, onSelection }: SheetCanvasProps) {
+  function FakeCanvas({ snapshot, marks, was, styleKeys, filter, dataChrome, noteControls, readOnly, onReady, onSelection }: SheetCanvasProps) {
+    grid.noteControls = noteControls;
     grid.styleKeys = styleKeys;
     grid.filter = filter;
     grid.dataChrome = dataChrome;
@@ -568,6 +571,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     styleKeys: undefined,
     filter: undefined,
     dataChrome: undefined,
+    noteControls: undefined,
     readOnly: false,
     lockedOnce: false,
     rules: { conditional: {}, validation: {}, names: [], filter: {} },

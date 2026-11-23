@@ -239,6 +239,8 @@ export function Body(props: Props) {
           // A sheet's page set-up is kept by the grid only where the host keeps it (read once, as the grid is made).
           pages={controls.includes("page")}
           pageBreaks={pageView && controls.includes("pageBreaks")}
+          // What a note's pop-over offers: what this store keeps, as its host says (`view.notes`); none on a sheet he cannot edit.
+          {...(view.notes?.length && !locked && !state.reloading ? { noteControls: view.notes } : {})}
           marks={marks}
           was={was}
           onReady={setHandle}

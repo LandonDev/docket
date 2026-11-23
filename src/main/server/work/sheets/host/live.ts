@@ -18,6 +18,8 @@ export const REMOVE_MERGE = 'sheet.mutation.remove-worksheet-merge'
 const IS_AUTO_HEIGHT = 'sheet.mutation.set-worksheet-row-is-auto-height'
 const AUTO_HEIGHT = 'sheet.mutation.set-worksheet-row-auto-height'
 const SET_NUMFMT = 'sheet.mutation.set.numfmt'
+/** The grid's note mutations (work-kit's `NOTE_MUTATIONS`): an editor's to send, never a guest's. */
+const NOTE_IDS: ReadonlySet<string> = new Set(['sheet.mutation.update-note', 'sheet.mutation.remove-note', 'sheet.mutation.update-note-position'])
 const REMOVE_NUMFMT = 'sheet.mutation.remove.numfmt'
 
 /**
@@ -156,6 +158,14 @@ export function refusal(mutations: readonly SheetMutationJson[], role: string, g
       const p = m.params as { id?: unknown; name?: unknown; formulaOrRefString?: unknown; localSheetId?: unknown }
       if (!text(p.id, 200) || !text(p.name, 255) || typeof p.formulaOrRefString !== 'string' || p.formulaOrRefString.length > 8192) return 'a defined name is an id, a name and a formula'
       if (p.localSheetId !== undefined && !text(p.localSheetId, 200)) return 'a defined name\'s sheet is a sheet id'
+      continue
+    }
+    if (NOTE_IDS.has(m.id)) {
+      // A note's mutation names its sheet as `sheetId`. Not in `GUEST_OPS`: a guest reads notes and changes none.
+      if (guest) return 'a guest cannot change a note'
+      const p = m.params as { sheetId?: unknown; row?: unknown; col?: unknown; newPosition?: { row?: unknown; col?: unknown } }
+      const at = m.id === 'sheet.mutation.update-note-position' ? p.newPosition : p
+      if (!text(p.sheetId, 200) || !int(at?.row) || !int(at?.col)) return 'a note names its sheet, row and column'
       continue
     }
     if (typeof (m.params as { subUnitId?: unknown }).subUnitId !== 'string') return 'a mutation names its sheet'

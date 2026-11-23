@@ -3,7 +3,7 @@ import type { ICellData, IWorkbookData } from '@univerjs/core'
 import { importXlsx, type ImportReport } from 'work-kit/sheet/xlsx'
 import type { SheetCellDiff, SheetMutationJson, SheetReach } from '@shared/contract-work-sheets'
 import { RULES_SET, type RulesSetParams } from '@shared/work/sheets'
-import { rangeCells, READ_MAX_CELLS, type A1Range } from './a1'
+import { cellName, rangeCells, READ_MAX_CELLS, type A1Range } from './a1'
 import { readThemeXml } from 'work-kit/format/theme'
 import { defaultPageSetup, type SheetPageSetup } from 'work-kit/sheet/pages'
 import { independent } from './patch/depends'
@@ -13,6 +13,10 @@ import { patchXlsx, workbookMap, type EditSpec, type Report } from './patch/patc
 import { patchRules, readRules, type DefinedNames, type RulesEdit, type SheetFilter } from './patch/rules'
 import { patchPages, type PagesEdit } from './patch/pages'
 import { patchTables, readTables, type TablesEdit } from './patch/tables'
+import { patchText, type TextEdit } from './patch/text'
+import { patchNotes, type NotesEdit } from './patch/notes'
+import { SHEET_NOTE, SHEET_TEXT, type SheetNoteParams, type SheetTextParams } from './mutations'
+import { NOTES_RESOURCE, sheetNotes } from './host/rules'
 import { formatEditsOf } from './formats'
 import { diffWorkbooks } from './diff'
 import { waitsOf } from './excelWaits'
@@ -50,6 +54,8 @@ export interface ReadCell {
   at: string
   v?: string | number | boolean
   f?: string
+  /** its note's words, when it has a note (a thread's stand-in is none) */
+  note?: string
 }
 
 export interface SaveAnswer {
@@ -120,10 +126,15 @@ export function readWorkbookRange(workbook: IWorkbookData, range: A1Range, colNa
   if (rangeCells(range) > READ_MAX_CELLS) throw new Error(`A read is at most ${READ_MAX_CELLS.toLocaleString('en')} cells: ask for a smaller range.`)
   const sheet = sheetOf(workbook, range.sheet)
   const data = workbook.sheets[sheet.id]?.cellData ?? {}
+  const notes = sheetNotes(workbook.resources?.find((x) => x.name === NOTES_RESOURCE)?.data, sheet.id)
   const cells: ReadCell[][] = []
   for (let r = range.startRow; r <= range.endRow; r++) {
     const row: ReadCell[] = []
-    for (let c = range.startColumn; c <= range.endColumn; c++) row.push(cellOut(`${colName(c)}${r + 1}`, data[r]?.[c]))
+    for (let c = range.startColumn; c <= range.endColumn; c++) {
+      const out = cellOut(`${colName(c)}${r + 1}`, data[r]?.[c])
+      const note = notes.get(`${r}:${c}`)
+      row.push(note !== undefined ? { ...out, note } : out)
+    }
     cells.push(row)
   }
   return { sheet: sheet.name, cells }
@@ -194,6 +205,49 @@ export function tablesEditsOf(formats: readonly SheetMutationJson[]): TablesEdit
   return out
 }
 
+/** The rich cells among a save's formatting mutations (`SHEET_TEXT`, each named by its tab), as the text writer takes them; the last word on a cell wins. */
+export function textEditsOf(formats: readonly SheetMutationJson[]): TextEdit[] {
+  const bySheet = new Map<string, Map<string, TextEdit['cells'][number]>>()
+  for (const m of formats) {
+    if (m.id !== SHEET_TEXT) continue
+    const p = m.params as SheetTextParams
+    const cells = bySheet.get(p.subUnitId) ?? new Map()
+    for (const c of p.cells) cells.set(`${c.row}:${c.column}`, c)
+    bySheet.set(p.subUnitId, cells)
+  }
+  return [...bySheet].map(([sheet, cells]) => ({ kind: 'text', sheet, cells: [...cells.values()] }))
+}
+
+/** A note's new words among a save's formatting mutations (`SHEET_NOTE`), as the notes writer takes them. */
+export function notesEditsOf(formats: readonly SheetMutationJson[]): NotesEdit[] {
+  const bySheet = new Map<string, NotesEdit['notes']>()
+  for (const m of formats) {
+    if (m.id !== SHEET_NOTE) continue
+    const p = m.params as SheetNoteParams
+    bySheet.set(p.subUnitId, [...(bySheet.get(p.subUnitId) ?? []), { row: p.row, column: p.column, text: p.text }])
+  }
+  return [...bySheet].map(([sheet, notes]) => ({ kind: 'notes', sheet, notes }))
+}
+
+/**
+ * A rich cell's words go through the patch writer only where they changed: a cell restyled keeps its
+ * words, and a table's header may take a style but no write (the patch writer refuses one).
+ */
+function changedWords(input: string, edits: EditSpec[], text: readonly TextEdit[]): EditSpec[] {
+  const rich = new Set(text.flatMap((t) => t.cells.map((c) => `${t.sheet}\u0000${cellName(c.row, c.column)}`)))
+  if (!edits.some((e) => rich.has(`${e.sheet}\u0000${e.cell}`))) return edits
+  const { workbook } = importPackage(input)
+  return edits.filter((e) => {
+    if (!rich.has(`${e.sheet}\u0000${e.cell}`) || e.formula !== undefined) return true
+    const m = /^([A-Z]+)(\d+)$/.exec(e.cell)
+    const id = workbook.sheetOrder.find((s) => workbook.sheets[s]?.name === e.sheet)
+    if (!m || !id) return true
+    const col = [...m[1]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1
+    const was = workbook.sheets[id]?.cellData?.[Number(m[2]) - 1]?.[col]
+    return !!was?.f || String(was?.v ?? '') !== String(e.value ?? '')
+  })
+}
+
 /**
  * Saves `edits` and `formats` into the package at `input`, written to a new file the caller moves
  * into place. Three ways, the lightest that is safe (the editors plan, decision 3):
@@ -207,11 +261,15 @@ export function tablesEditsOf(formats: readonly SheetMutationJson[]): TablesEdit
  *
  * A 1904 file gets its date-formatted numbers back in its own system (the importer moved them by
  * 1,462 days). `formats` are the grid's formatting mutations, each named by its tab (mutations.ts);
- * a rule's whole list among them is laid by the rules writer (`patch/rules.ts`).
+ * a rule's whole list among them is laid by the rules writer (`patch/rules.ts`), a rich cell's runs by
+ * the text writer (`patch/text.ts`) and a note's words by the notes writer (`patch/notes.ts`), both
+ * after the cells' words, so a cell whose words changed is not marked twice.
  */
 export async function savePackage(input: string, edits: EditSpec[], ironcalcDir: string | null, formats: readonly SheetMutationJson[] = []): Promise<{ bytes: Uint8Array } & SaveAnswer> {
   let bytes: Uint8Array = new Uint8Array(readFileSync(input))
   const zip = readZip(bytes)
+  const text = textEditsOf(formats)
+  if (text.length && edits.length) edits = changedWords(input, edits, text)
   const report: SaveAnswer['report'] = { edits: edits.length, partsChanged: [], warnings: [], recalc: { ok: true, pathA: 0, pathB: 0, fullCalcOnLoad: false }, path: 'format' }
   if (edits.length) {
     const date1904 = /<(?:[\w.-]+:)?workbookPr(?=[\s>/])[^>]*\bdate1904\s*=\s*["'](?:1|true)["']/.test(workbookMap(zip).wbXml)
@@ -269,8 +327,21 @@ export async function savePackage(input: string, edits: EditSpec[], ironcalcDir:
     bytes = done.bytes
     report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged])]
   }
+  if (text.length) {
+    // After the words: a cell whose words changed already holds them, and is not marked to calculate again twice.
+    const done = patchText(bytes, text)
+    bytes = done.bytes
+    report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged, ...done.report.partsAdded, ...done.report.partsRemoved])]
+    report.recalc.fullCalcOnLoad ||= done.report.fullCalcOnLoad
+  }
+  const notes = notesEditsOf(formats)
+  if (notes.length) {
+    const done = patchNotes(bytes, notes)
+    bytes = done.bytes
+    report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged])]
+  }
   if (formats.length) {
-    const made = formatEditsOf(formats.filter((m) => m.id !== RULES_SET), (tab) => tab, themeOf(zip))
+    const made = formatEditsOf(formats.filter((m) => m.id !== RULES_SET && m.id !== SHEET_TEXT && m.id !== SHEET_NOTE), (tab) => tab, themeOf(zip))
     if (made.length) {
       const done = patchFormat(bytes, made)
       bytes = done.bytes

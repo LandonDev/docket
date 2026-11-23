@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, statSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, sep } from 'node:path'
-import { SHEET_ROW, type SheetChart, type SheetMutationJson, type SheetStoreKind, type SheetView } from '@shared/contract-work-sheets'
+import { SHEET_NOTES, SHEET_ROW, type SheetChart, type SheetMutationJson, type SheetStoreKind, type SheetView } from '@shared/contract-work-sheets'
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
 import { refKey } from '@shared/work/files'
 import { FenceError } from '../../remote/fence'
@@ -311,6 +311,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       ...(imported ? { imported } : {}),
       store: 'package',
       ...(SHEET_ROW.package.length ? { row: [...SHEET_ROW.package] } : {}),
+      ...(SHEET_NOTES.package.length ? { notes: [...SHEET_NOTES.package] } : {}),
       // moved cells go through LibreOffice, as an insert does: a host with none forwards the job
       moves: true,
       rev: st.rev,
@@ -362,6 +363,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     store,
     // The format row's controls: the ones this store keeps (rowMatrix.test.ts).
     ...(SHEET_ROW[store].length ? { row: [...SHEET_ROW[store]] } : {}),
+    ...(SHEET_NOTES[store].length ? { notes: [...SHEET_NOTES[store]] } : {}),
     rev: st.rev,
     shared: shared || st.shared,
     suggestions: st.suggestions,

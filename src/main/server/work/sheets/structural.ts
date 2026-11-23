@@ -5,7 +5,7 @@ import type { SheetMutationJson } from '@shared/contract-work-sheets'
 import type { Converter } from '../formats/jobs'
 import { sheetStopWords } from '../../../../shared/work/sheets'
 import { moveFacts, moveRefusal, moveRefusalWords } from './moves'
-import { editsOf, FORMATTING, formatsOf, NotSaved, SET_RANGE_VALUES, UNSAVED } from './mutations'
+import { editsOf, FORMATTING, formatsOf, NOTE_MOVE, NOTE_REMOVE, NOTE_UPDATE, notesOf, NotSaved, SET_RANGE_VALUES, SHEET_TEXT, UNSAVED } from './mutations'
 import { readZip } from './patch/zip'
 import type { EditSpec } from './patch/patch'
 import { STRUCTURAL_PY } from './structuralScript'
@@ -171,8 +171,15 @@ export function planOf(
       sheet?: { id: string; name: string }
       name?: string
     }
+    if (m.id === NOTE_UPDATE || m.id === NOTE_REMOVE || m.id === NOTE_MOVE) {
+      // A note's new words ride with the formats, for the notes writer (jobs.ts).
+      const notes = notesOf(m, (id) => names.get(id))
+      if (notes.length) cells().formats.push(...notes)
+      continue
+    }
     if (m.id === SET_RANGE_VALUES) {
-      const edits = editsOf([m], (id) => names.get(id))
+      // A rich cell: its words here, its runs among the formats (`SHEET_TEXT`).
+      const edits = editsOf([m], (id) => names.get(id), { rich: true })
       // Every style is kept, in the order it came: a press made while an insert was saving rides the same batch, and the
       // style the grid gave a row it inserted is written over LibreOffice's own choice, so the file is what the grid shows.
       const formats = formatsOf([m], (id) => names.get(id))
@@ -260,11 +267,11 @@ export function planOf(
         // A sheet that comes with cells (a copy) gets them through the patch writer, after it exists.
         const cells = (sheet as { cellData?: Record<string, Record<string, unknown>> }).cellData
         if (cells && Object.keys(cells).length) {
-          const edits = editsOf(
-            [{ id: SET_RANGE_VALUES, params: { subUnitId: sheet.id, cellValue: cells } }],
-            (id) => names.get(id)
-          )
-          if (edits.length) steps.push({ kind: 'cells', edits, formats: [] })
+          const copied = [{ id: SET_RANGE_VALUES, params: { subUnitId: sheet.id, cellValue: cells } }]
+          const edits = editsOf(copied, (id) => names.get(id), { rich: true })
+          // (a copied cell's style is the file's id, not one this writer takes; a rich cell's runs are whole fonts and go)
+          const text = formatsOf(copied, (id) => names.get(id)).filter((f) => f.id === SHEET_TEXT)
+          if (edits.length || text.length) steps.push({ kind: 'cells', edits, formats: text })
         }
         break
       }

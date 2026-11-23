@@ -126,3 +126,56 @@ export function ruleMutations(unitId: string, from: IWorkbookData, to: IWorkbook
   }
   return out
 }
+
+/** Univer's note resource: by sheet id, row and column, each note whole (work-kit's README "Notes and comments"). */
+export const NOTES_RESOURCE = 'SHEET_NOTE_PLUGIN'
+interface KeptNote {
+  id: string
+  row: number
+  col: number
+  note: string
+}
+
+/**
+ * The mutations that turn `from`'s notes into `to`'s, for a restore, on the sheets `from` still has:
+ * a note `to` lacks at its cell is removed, and one it has differently is put whole (its id, words,
+ * author and box), as the grid's own note mutations do. A thread's stand-in note is a note like any
+ * other here; the thread's words are never changed, so nothing restores them.
+ */
+export function noteMutations(unitId: string, from: IWorkbookData, to: IWorkbookData): SheetMutationJson[] {
+  const out: SheetMutationJson[] = []
+  const a = resource<Record<string, Record<string, KeptNote>>>(from, NOTES_RESOURCE)
+  const b = resource<Record<string, Record<string, KeptNote>>>(to, NOTES_RESOURCE)
+  const cells = (sheet: Record<string, Record<string, KeptNote>> | undefined): Map<string, KeptNote> => {
+    const m = new Map<string, KeptNote>()
+    for (const [row, cols] of Object.entries(sheet ?? {})) for (const [col, note] of Object.entries(cols ?? {})) if (note) m.set(`${row}:${col}`, note)
+    return m
+  }
+  for (const sheetId of Object.keys(from.sheets ?? {})) {
+    const was = cells(a[sheetId])
+    const then = cells(b[sheetId])
+    for (const [at, note] of was) {
+      const back = then.get(at)
+      if (!back || back.id !== note.id) out.push({ id: 'sheet.mutation.remove-note', params: { unitId, sheetId, noteId: note.id, row: note.row, col: note.col } })
+    }
+    for (const [at, note] of then) {
+      if (same(note, was.get(at))) continue
+      out.push({ id: 'sheet.mutation.update-note', params: { unitId, sheetId, row: note.row, col: note.col, note } })
+    }
+  }
+  return out
+}
+
+/** One sheet's notes from the note resource's JSON, by `row:col`, as an agent reads them: a thread's stand-in is not a note. */
+export function sheetNotes(json: string | undefined, sheetId: string): Map<string, string> {
+  const out = new Map<string, string>()
+  let all: Record<string, Record<string, Record<string, { note?: unknown; thread?: unknown } | null>>> = {}
+  try {
+    all = JSON.parse(json || '{}') ?? {}
+  } catch {
+    return out
+  }
+  for (const [row, cols] of Object.entries(all[sheetId] ?? {}))
+    for (const [col, note] of Object.entries(cols ?? {})) if (note && typeof note.note === 'string' && !note.thread) out.set(`${row}:${col}`, note.note)
+  return out
+}

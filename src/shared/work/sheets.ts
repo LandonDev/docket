@@ -8,10 +8,18 @@ export function sheetStopWords(kind: 'moved' | 'rich' | 'fill' | 'other', google
   const there = google ? 'Google Sheets' : 'Excel'
   const file = google ? 'a Google sheet' : 'an Excel file'
   if (kind === 'moved') return `Move this in ${there}${why ? `: ${MOVE_WHY[why]}` : ''}`
-  if (kind === 'rich') return `Text with more than one style in a cell is not saved in ${file} yet`
+  // (an Excel file we write saves runs; one Excel or Google holds keeps no formatting of ours)
+  if (kind === 'rich') return `Style part of a cell's text in ${there}`
   if (kind === 'fill') return `That fill could not be saved in ${file}`
   return `That change is not saved in ${file} yet. Make it in ${there}`
 }
+
+/** A note an opened Excel file cannot take a change to, in his words: its writer rewords a note it has, and makes or removes none. */
+export const NOTE_STOP = { add: "Add a new note in Excel", remove: "Delete this note in Excel" } as const;
+/** The grid's note mutations (work-kit's `NOTE_MUTATIONS`). */
+const NOTE_UPDATE = "sheet.mutation.update-note";
+const NOTE_REMOVE = "sheet.mutation.remove-note";
+const NOTE_MOVE = "sheet.mutation.update-note-position";
 
 /**
  * Why a move cannot be saved into an opened Excel file, said after "Move this in Excel": the host
@@ -159,16 +167,19 @@ export function latestRules(mutations: SheetMutation[]): SheetMutation[] {
  * fill's cells carry only a shared formula's id: each gets its own formula text from the grid, which
  * the file needs. Where the host keeps formatting (`formats`: it listed controls for the row), a
  * cell's style, a column's width, a row's height and a merge are saved too; where it does not (a
- * workbook Excel or Google holds), a pasted cell's style is left out. What cannot be kept (moved
- * cells, rich text, a hidden row and the like) answers `stop`: the caller takes the change back as
- * he makes it and says why, so nothing he made stays in the grid that the file does not have.
+ * workbook Excel or Google holds), a pasted cell's style is left out. Text in more than one style
+ * is kept where formatting is, as runs (`doc` reads a cell's document from the grid, for a style
+ * set over one); a note's words where the host lists `edit` in `notes`. What cannot be kept (moved
+ * cells, a hidden row, a note made or removed in an Excel file and the like) answers `stop`: the
+ * caller takes the change back as he makes it and says why, so nothing he made stays in the grid
+ * that the file does not have.
  * A rule's change (a conditional format, a validation, a name, the filter) goes as the whole list
  * it left (`RULES_SET`), where the host listed that kind for the row (`kinds`).
  */
 export function forPackage(
   mutation: SheetMutation,
   formula: (sheet: string, row: number, col: number) => string | null,
-  opts: { formats?: boolean; google?: boolean; style?: (id: string) => Record<string, unknown> | null; rules?: (kind: SheetRuleKind, sheet?: string) => unknown; kinds?: ReadonlySet<SheetRuleKind>; moves?: boolean } = {},
+  opts: { formats?: boolean; google?: boolean; style?: (id: string) => Record<string, unknown> | null; rules?: (kind: SheetRuleKind, sheet?: string) => unknown; kinds?: ReadonlySet<SheetRuleKind>; moves?: boolean; doc?: (sheet: string, row: number, col: number) => unknown; notes?: readonly string[] } = {},
 ): { keep: SheetMutation[] } | { stop: string } {
   if (STRUCTURAL_SAVED.has(mutation.id)) return { keep: [mutation] };
   if (SHEET_MOVES.has(mutation.id)) {
@@ -188,6 +199,11 @@ export function forPackage(
     const params: RulesSetParams = { kind, ...(sheet ? { subUnitId: sheet } : {}), list: opts.rules(kind, sheet) ?? null };
     return { keep: [{ id: RULES_SET, params }] };
   }
+  // A note: reworded where the host lists `edit` for it (`view.notes`); made or removed only where it lists those. One moved
+  // with its cell beside a row's or a column's change goes with that change (LibreOffice moves it in the file).
+  if (mutation.id === NOTE_MOVE) return { keep: [] };
+  if (mutation.id === NOTE_UPDATE) return opts.notes?.includes("edit") ? { keep: [mutation] } : { stop: opts.google ? sheetStopWords("other", true) : NOTE_STOP.add };
+  if (mutation.id === NOTE_REMOVE) return opts.notes?.includes("remove") ? { keep: [mutation] } : { stop: opts.google ? sheetStopWords("other", true) : NOTE_STOP.remove };
   if (mutation.id === AUTO_FIT && !opts.formats) return { keep: [] };
   if (FORMAT_SAVED.has(mutation.id)) return opts.formats ? { keep: [mutation] } : { stop: sheetStopWords("other", opts.google) };
   if (mutation.id !== SET_RANGE_VALUES) return { stop: sheetStopWords("other", opts.google) };
@@ -200,7 +216,8 @@ export function forPackage(
       let out = cell;
       if (cell !== null) {
         let next: Record<string, unknown> = cell;
-        if (cell.p != null) return { stop: sheetStopWords("rich", opts.google) };
+        // Text in more than one style is saved as runs where the host keeps formatting; a workbook Excel or Google holds keeps none.
+        if (cell.p != null && !opts.formats) return { stop: sheetStopWords("rich", opts.google) };
         if (cell.si != null && cell.f == null) {
           const f = formula(params.subUnitId ?? "", Number(r), Number(c));
           if (!f) return { stop: sheetStopWords("fill", opts.google) };
@@ -217,6 +234,11 @@ export function forPackage(
           if (!style) return { stop: sheetStopWords("other", opts.google) };
           // (laid over what the cell has, as the grid lays a style it names by id)
           next = { ...next, s: style };
+        }
+        // A style set over a rich cell changes its runs in the grid, and the mutation does not say them: they go as the grid now holds them.
+        if ("s" in next && next.p == null && !("v" in next) && !("f" in next) && opts.formats && opts.doc) {
+          const doc = opts.doc(params.subUnitId ?? "", Number(r), Number(c));
+          if (doc != null) next = { ...next, p: doc };
         }
         // A cell with neither contents nor a style (a type alone, custom data) has no saved form.
         if (!("v" in next) && !("f" in next) && !("s" in next)) return { stop: sheetStopWords("other", opts.google) };

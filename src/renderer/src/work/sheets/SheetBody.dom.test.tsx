@@ -9,7 +9,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
-import { SHEET_EDIT_MAX, SHEET_LOAD_MAX } from "@shared/contract-work-sheets";
+import { SHEET_EDIT_MAX, SHEET_LOAD_MAX, SHEET_NOTES } from "@shared/contract-work-sheets";
 import type { CanvasItem } from "@shared/work";
 import { openMenus } from "../../chrome/menuRows";
 import { defineChunk } from "../../lib/lazyChunk";
@@ -447,12 +447,10 @@ describe("the sheet kind", () => {
     });
     await waitFor(() => expect(grid.undone).toBe(1));
     await waitFor(() => expect(toasts.said).toEqual(["Move this in Excel"]));
-    // rich text in a cell, and a change with no name here (a hidden row), are stopped the same way
-    act(() => grid.edit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 1: { v: "a", p: { body: {} } } } } } }));
-    await waitFor(() => expect(grid.undone).toBe(2));
+    // a change with no name here (a hidden row) is stopped the same way
     act(() => grid.edit({ id: "sheet.mutation.set-row-hidden", params: { unitId: "book", subUnitId: "budget" } }));
-    await waitFor(() => expect(grid.undone).toBe(3));
-    expect(toasts.said.slice(1)).toEqual(["Text with more than one style in a cell is not saved in an Excel file yet", "That change is not saved in an Excel file yet. Make it in Excel"]);
+    await waitFor(() => expect(grid.undone).toBe(2));
+    expect(toasts.said.slice(1)).toEqual(["That change is not saved in an Excel file yet. Make it in Excel"]);
     // his own styled cells and the book's fonts were asked for before the grid drew
     expect(grid.fontsAsked).toHaveLength(1);
     // nothing reached the host, and no line stands over the grid
@@ -490,6 +488,50 @@ describe("the sheet kind", () => {
     act(() => grid.edit({ id: "sheet.mutation.set-worksheet-col-width", params: { unitId: "book", subUnitId: "budget", ranges: [], colWidth: 160 } }));
     await waitFor(() => expect(grid.undone).toBe(1));
     await waitFor(() => expect(toasts.said).toEqual(["That change is not saved in a Google sheet yet. Make it in Google Sheets"]));
+  });
+
+  it("sends an Excel file that keeps formatting a cell's rich text and a note's new words; a removed note is stopped in a few words", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL, notes: ["edit"] }));
+    await gridUp();
+    const rich: SheetMutationJson = { id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 0: { v: null, p: { body: { dataStream: "Air fare\r\n", textRuns: [{ st: 4, ed: 8, ts: { bl: 1 } }] } } } } } } };
+    const worded: SheetMutationJson = { id: "sheet.mutation.update-note", params: { unitId: "book", sheetId: "budget", row: 1, col: 0, note: { id: "n1", row: 1, col: 0, note: "Booked" } } };
+    act(() => {
+      grid.edit(rich);
+      grid.edit(worded);
+    });
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[0].mutations).toEqual([rich, worded]);
+    act(() => grid.edit({ id: "sheet.mutation.remove-note", params: { unitId: "book", sheetId: "budget", noteId: "n1", row: 1, col: 0 } }));
+    await waitFor(() => expect(grid.undone).toBe(1));
+    await waitFor(() => expect(toasts.said).toEqual(["Delete this note in Excel"]));
+  });
+
+  it("a workbook Excel or Google holds stops rich text as he makes it, in that store's words", async () => {
+    open(sheetView({ store: "package", rev: 3, reach: { parts: ["formatting"], to: "excel" } }));
+    await gridUp();
+    act(() => grid.edit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 1: { v: null, p: { body: {} } } } } } }));
+    await waitFor(() => expect(grid.undone).toBe(1));
+    await waitFor(() => expect(toasts.said).toEqual(["Style part of a cell's text in Excel"]));
+  });
+
+  it("offers a note's controls as the host lists them for its store, and none on a sheet he cannot edit", async () => {
+    const shown = async (view: SheetView): Promise<FakeGrid["noteControls"]> => {
+      const made = open(view);
+      await gridUp();
+      const got = grid.noteControls;
+      made.unmount();
+      cleanup();
+      resetCanvasStore();
+      resetSheetSyncs();
+      return got;
+    };
+    expect(await shown(sheetView({ store: "package", row: ROW_ALL, notes: [...SHEET_NOTES.package] }))).toEqual(["edit"]);
+    expect(await shown(sheetView({ store: "tcsheet", name: "Budget", row: ROW_ALL, notes: [...SHEET_NOTES.tcsheet] }))).toEqual(["edit", "add", "remove"]);
+    // a workbook Excel or Google holds lists none; nor does a host a release behind
+    expect(await shown(sheetView({ store: "package" }))).toBeUndefined();
+    expect(await shown(sheetView({ store: "tcsheet", name: "Budget", row: ROW_ALL }))).toBeUndefined();
+    // read only: notes are read, not changed
+    expect(await shown(sheetView({ store: "package", row: ROW_ALL, notes: ["edit"], readOnly: "Open in Excel to edit." }))).toBeUndefined();
   });
 
   it("a press that ran several commands, or the tail of an earlier one, is undone and the book read again from the file", async () => {

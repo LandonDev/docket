@@ -2708,6 +2708,7 @@ set by hand.
   same pill, 4px before it). A read-only sheet shows its pages with nothing
   to take. **Page set-up** is a dialog from the row's Page menu; its
   measures are in work-kit's README.
+- **Notes.** A cell with a note or a thread carries a 6px corner triangle, `muted-foreground` for a note, `accent` for a thread. Its pop-over is the popover's surface, 280px, 12px in, 6px off the cell's right edge: author 13px medium, time 12px muted on its baseline, words 13/20, replies 12px in, "Resolved" and "Reply in Excel" 12px muted. A note's text is a field in place where the store keeps the edit. The host says what a note takes by store (`view.notes`): an Excel file rewords a note it has, a sheet of ours makes and removes them too, and a guest's page, a sheet he cannot edit and a workbook Excel or Google holds read them only.
 - **Rules, the side sheet.** 320px, docked at the grid's right on
   `background` with a 1px `border` left edge and no scrim: the grid stays
   live, and the open rule's range shows on it in `sel-bg`. Under 560px of

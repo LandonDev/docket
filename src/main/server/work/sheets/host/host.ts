@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import type { ICellData, IWorkbookData } from '@univerjs/core'
+import { IResourceManagerService, UniverInstanceType } from '@univerjs/core'
 import { headlessSheet, type HeadlessSheet } from 'work-kit/sheet/engine'
 import { formulaLexer, rebase, type SuggestionCell } from 'work-kit/sheet/suggest'
 import type { SheetCellJson, SheetMutationJson, SheetRevision, SheetSuggestion } from '@shared/contract-work-sheets'
 import type { Principal } from '@shared/work/ids'
 import { colName, parseA1, rangeCells, READ_MAX_CELLS } from '../a1'
 import { diffWorkbooks } from '../diff'
-import { mutationsOf, SET_RANGE_VALUES, STRUCTURAL } from '../mutations'
+import { flatText, mutationsOf, SET_RANGE_VALUES, STRUCTURAL } from '../mutations'
 import { moveThrough } from './live'
-import { ruleMutations } from './rules'
+import { NOTES_RESOURCE, noteMutations, ruleMutations, sheetNotes } from './rules'
 import { SNAPSHOT_EVERY, type Op, type SheetBackend, type StoredSuggestion } from './backends'
 import { createRules } from 'work-kit/sheet/rules'
 import { guestMisfit } from './guest'
@@ -23,12 +24,13 @@ type Box = { startRow: number; endRow: number; startColumn: number; endColumn: n
  * first, compare-and-set on its revision, then into the engine; agents read
  * its computed values; a suggestion is rebased over every op that lands after
  * it; a snapshot is cut every 500 ops. Its engines mount the grid's data
- * plugins (`rules`), so a conditional format, a validation, a filter or a
- * defined name made in the grid is replayed, kept in the snapshot and restored.
+ * plugins (`rules`, `notes`), so a conditional format, a validation, a filter,
+ * a defined name or a note made in the grid is replayed, kept in the snapshot
+ * and restored; so is text in more than one style, a cell's own document.
  */
 
-/** Every engine the host makes: with the rule plugins, or their ops would not apply and their rules would leave the snapshot. */
-const ENGINE = { rules: true, pages: true } as const
+/** Every engine the host makes: with the rule, note and page plugins, or their ops would not apply and their rules, notes and page set-ups would leave the snapshot. */
+const ENGINE = { rules: true, notes: true, pages: true } as const
 
 interface Open {
   key: string
@@ -333,12 +335,18 @@ export class SheetHost {
       if (rangeCells(r) > READ_MAX_CELLS) throw new Error(`A read is at most ${READ_MAX_CELLS.toLocaleString('en')} cells: ask for a smaller range.`)
       await o.engine.settled()
       const sheet = this.sheetByName(o, r.sheet)
+      // The notes as the engine keeps them (its resources, not a whole snapshot of the cells).
+      const kept = o.engine.univer.__getInjector().get(IResourceManagerService).getResourcesByType(o.unitId, UniverInstanceType.UNIVER_SHEET)
+      const notes = sheetNotes(kept.find((x) => x.name === NOTES_RESOURCE)?.data, sheet.id)
       const cells: HostAnswer<'range'>['cells'] = []
       for (let row = r.startRow; row <= r.endRow; row++) {
         const line: HostAnswer<'range'>['cells'][number] = []
         for (let col = r.startColumn; col <= r.endColumn; col++) {
           const c = this.cell(o, sheet.id, row, col)
-          line.push({ at: `${colName(col)}${row + 1}`, ...(c?.v !== undefined && c.v !== null ? { v: c.v as string | number | boolean } : {}), ...(c?.f ? { f: c.f } : {}) })
+          // A cell made rich in the cell editor keeps its words in its document alone.
+          const v = (c?.v === undefined || c.v === null) && c?.p && !c.f ? flatText(c) : c?.v
+          const note = notes.get(`${row}:${col}`)
+          line.push({ at: `${colName(col)}${row + 1}`, ...(v !== undefined && v !== null ? { v: v as string | number | boolean } : {}), ...(c?.f ? { f: c.f } : {}), ...(note !== undefined ? { note } : {}) })
         }
         cells.push(line)
       }
@@ -420,7 +428,7 @@ export class SheetHost {
   /**
    * Writes revision `rev`'s contents back as a new revision; a formula whose value moved is not
    * written, its formula is. Its rules (conditional formats, validations, filters, defined names)
-   * come back too.
+   * and its notes come back too.
    */
   restore(ref: SheetRef, rev: number, by: string): Promise<HostAnswer<'restore'>> {
     return this.with(ref, async (o) => {
@@ -430,7 +438,7 @@ export class SheetHost {
       const writes = diff.cells
         .filter((c) => (c.before?.f || c.after?.f ? c.before?.f !== c.after?.f : true))
         .map((c) => ({ sheet: c.sheet, row: c.row, col: c.col, cell: c.after?.f ? { f: c.after.f } : c.after }))
-      const rules = ruleMutations(o.unitId, now, then)
+      const rules = [...ruleMutations(o.unitId, now, then), ...noteMutations(o.unitId, now, then)]
       if (!writes.length && !rules.length) return { rev: o.rev }
       const got = await this.commit(o, o.rev, [{ by, mutations: [...(writes.length ? mutationsOf(o.unitId, writes) : []), ...rules] }])
       if ('conflict' in got) throw new Error('The sheet changed while restoring: try again.')
@@ -452,6 +460,7 @@ function labelOf(mutations: readonly SheetMutationJson[]): string {
     const id = mutations.find((m) => STRUCTURAL.has(m.id))!.id
     return id.includes('insert-row') ? 'Inserted rows' : id.includes('remove-rows') ? 'Deleted rows' : id.includes('insert-col') ? 'Inserted columns' : id.includes('remove-col') ? 'Deleted columns' : 'Moved cells'
   }
+  if (mutations.length && mutations.every((m) => m.id.endsWith('-note') || m.id === 'sheet.mutation.update-note-position')) return mutations.length === 1 && mutations[0].id.endsWith('remove-note') ? 'Removed a note' : 'A note'
   let n = 0
   for (const m of mutations) if (m.id === SET_RANGE_VALUES) for (const cols of Object.values((m.params as { cellValue?: Record<string, Record<string, unknown>> }).cellValue ?? {})) n += Object.keys(cols ?? {}).length
   return n === 1 ? '1 cell' : n ? `${n} cells` : 'Changed the sheet'

@@ -241,7 +241,12 @@ async function change(ctx: ToolCtx, a: { item?: string; file?: string; because: 
   }
 }
 
-const show = (c: { at: string; v?: unknown; f?: string }): string => (c.f !== undefined ? `${c.at} ${c.f}${c.v !== undefined ? ` = ${JSON.stringify(c.v)}` : ''}` : c.v !== undefined ? `${c.at} ${JSON.stringify(c.v)}` : '')
+const shown = (c: { at: string; v?: unknown; f?: string }): string => (c.f !== undefined ? `${c.at} ${c.f}${c.v !== undefined ? ` = ${JSON.stringify(c.v)}` : ''}` : c.v !== undefined ? `${c.at} ${JSON.stringify(c.v)}` : '')
+/** A cell as `sheet_read` says it: its value or formula, then its note's words. */
+const show = (c: { at: string; v?: unknown; f?: string; note?: string }): string => {
+  const cell = shown(c)
+  return c.note === undefined ? cell : `${cell || c.at} note ${JSON.stringify(c.note)}`
+}
 
 async function announceItem(s: Sheets, item: CanvasItem | null): Promise<void> {
   if (!item) return
@@ -287,7 +292,7 @@ export const sheetTools: WorkTool[] = [
   {
     name: 'sheet_read',
     description:
-      'Reads cells of a sheet: each cell\'s value, and its formula when it has one. `range` is A1 (B4:D9, or \'Q1 Budget\'!A1:F40 for another tab; at most 10,000 cells a call). ' +
+      'Reads cells of a sheet: each cell\'s value, its formula when it has one, and its note\'s words when it has one. `range` is A1 (B4:D9, or \'Q1 Budget\'!A1:F40 for another tab; at most 10,000 cells a call). ' +
       'Pass `item` for a sheet open in the canvas, or `file` for an .xlsx, .xlsm or .tcsheet path. For an Excel file it also says what only Excel changes there (pivot tables, charts, macros).',
     input: z.object({ ...target, range: z.string().min(2).max(300) }),
     readOnly: true,
