@@ -363,7 +363,11 @@ carrier offers a pair only once that pair's own live proof passed on that carrie
 `render.ts`, one list per place. Until then the pair answers `none` there, and the runner asks a linked host.
 Today:
 
-- **The Windows VM**: `RENDER_PROVEN.vm` (see the landing note for each proof's numbers).
+- **The Windows VM**: all five, proven 2026-11-23 on the standing VM (Microsoft 365 Apps 16.0) with this
+  helper's render verbs run as a second door beside the live one: a three-page .docx came back as a 3-page PDF
+  (Word counted 3), a two-sheet .xlsx whose first sheet prints A1:C20 of 200 rows as a 2-page PDF (Excel counted
+  2: rows 1 to 20, then the second sheet), a 12-slide deck as a 12-page PDF, slide 1 as a 1920×1080 PNG, and a
+  two-slide deck at 5 s a slide as a 10.03 s H.264 video at 1280×720. Each took 0.8 to 5.4 s.
 - **His Mac**: none. The JXA path is written and tested over a recorded osascript, but a recording proves
   nothing about the Mac's apps; each pair joins `RENDER_PROVEN.mac` only after a Mac child's live proof.
 - **A Windows PC**: none. A proof in the VM is not a PC's (his PC has his own Word open in front of him).
@@ -389,7 +393,9 @@ copy read only with no window (Word `Visible` false and out of recent files; Exc
 in his own Excel; PowerPoint `WithWindow` false), draws it, closes it unsaved and quits an app it started;
 `render.get` reads the result back; `render.end` removes the folder (folders a stopped helper left go after a
 day). A password the copy cannot have is passed, so an encrypted Word or Excel file fails at once instead of
-asking in a dialog. An app of the helper's own runs with macros off (`AutomationSecurity` 3). `render.run` may
+asking in a dialog; Excel refuses a write password for a workbook that has none, so it gets only the open
+password. With `start`, an app left hidden with no file open is quit after each job, whoever started it, so no
+hidden app outlives the renders (PowerPoint's process takes a few seconds to end after its Quit). An app of the helper's own runs with macros off (`AutomationSecurity` 3). `render.run` may
 take 20 minutes (`RENDER_TIMEOUT_MS`): a video is polled through `CreateVideoStatus` up to 15. The page counts
 are the apps' own: Word's `ComputeStatistics(wdStatisticPages)`, the sum of each visible sheet's
 `PageSetup.Pages.Count`, PowerPoint's slide count.
@@ -731,8 +737,9 @@ waiting on it holds every write back. Node gives the helper two pipes.
 
 **Office as a renderer**: on his Mac, none of the five pairs (the JXA names `saveAs`, `saveWorkbookAs`, `save
 … as 'save as PNG'` and `'save as MP4'` follow the dictionaries, unrun; and whether a file in the app's own
-container opens with no prompt); on a Windows PC, none; in the VM, what the landing note does not list as
-proven. A password-protected deck may raise PowerPoint's password dialog (Open takes no password), which holds
+container opens with no prompt); on a Windows PC, none; in the VM, `ctx.convert` through the box's own service (the proof drove this branch's
+converters and carrier through a job runner of its own, since the box runs its deployed build), a dialog's
+`busy` against a real dialog, and an encrypted file. A password-protected deck may raise PowerPoint's password dialog (Open takes no password), which holds
 the helper until the call's time runs out and the helper is ended.
 
 **Windows**: nothing has run against real Office on Windows (the rig has

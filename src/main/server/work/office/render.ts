@@ -45,7 +45,8 @@ export type RenderPlace = 'mac' | 'windows' | 'vm'
 export const RENDER_PROVEN: Record<RenderPlace, ReadonlySet<string>> = {
   mac: new Set<string>(),
   windows: new Set<string>(),
-  vm: new Set<string>()
+  // proven 2026-11-23 in the standing VM (Microsoft 365 Apps, 16.0): the landing note's numbers
+  vm: new Set<string>(['docx→pdf+word', 'xlsx→pdf+excel', 'pptx→pdf+powerpoint', 'pptx→png+powerpoint', 'pptx→mp4+powerpoint'])
 }
 
 const SHORT: Record<RenderApp, string> = { word: 'Word', excel: 'Excel', powerpoint: 'PowerPoint' }

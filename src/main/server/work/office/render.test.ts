@@ -133,7 +133,8 @@ describe('the five pairs', () => {
     expect(fake.renders).toEqual([])
   })
 
-  it('offers on the VM exactly the pairs its proof passed', async () => {
+  it('offers on the VM exactly the pairs its proof passed: all five, proven there', async () => {
+    expect(RENDER_PROVEN.vm).toEqual(ALL)
     const runner = runnerOf('box', deps('vm', new DrawingOffice(), { state: 'awake', woken: 0 }, RENDER_PROVEN))
     expect((await runner.pairs()).map((p) => `${p.from}→${p.to}`).sort()).toEqual([...RENDER_PROVEN.vm].sort())
   })
@@ -378,7 +379,8 @@ describe('the helper’s render region (TcOffice.cs, built only in Windows)', ()
     expect(TC_OFFICE_CS).toContain('"Open", input, false, true, false, NoPassword, NoPassword, false, NoPassword, NoPassword, Missing, Missing, false, false, Missing, true)')
     expect(TC_OFFICE_CS).toContain('com.Call(d, "ExportAsFixedFormat", output, 17,')
     expect(TC_OFFICE_CS).toContain('com.Call(d, "Close", 0)')
-    // Excel: read only, IgnorePrintAreas false
+    // Excel: read only, an open password but no write password (Excel refuses one for a workbook without), IgnorePrintAreas false
+    expect(TC_OFFICE_CS).toContain('"Open", input, 0, true, Missing, NoPassword, Missing, true, Missing, Missing, false, false, Missing, false)')
     expect(TC_OFFICE_CS).toContain('com.Call(b, "ExportAsFixedFormat", 0, output, 0, true, false,')
     expect(TC_OFFICE_CS).toContain('com.Call(b, "Close", false)')
     // PowerPoint: ReadOnly, WithWindow false; SaveAs PDF, Slide.Export, CreateVideo

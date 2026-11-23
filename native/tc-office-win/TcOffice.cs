@@ -1140,9 +1140,18 @@ public class Render {
       if (Office.Busy(e)) throw new Refusal("busy", Short(j.App) + " is busy with a dialog: try again once it is closed.");
       throw new Refusal("failed", Short(j.App) + " could not render the copy: " + e.Message);
     } finally {
-      if (mine) Quit(j.App, app);
+      // With `start` (the VM), an app left hidden with no file open is nobody's, whoever started it: one that a job
+      // before this one started and was still quitting is quit here too, so no hidden app outlives the renders.
+      if (mine || (start && Unseen(j.App, app))) Quit(j.App, app);
       com.Release(app);
     }
+  }
+
+  bool Unseen(string app, object a) {
+    try {
+      var files = com.Get(a, app == "word" ? "Documents" : app == "excel" ? "Workbooks" : "Presentations");
+      return Convert.ToInt32(com.Get(files, "Count")) == 0 && !Convert.ToBoolean(com.Get(a, "Visible"));
+    } catch (Exception) { return false; }
   }
 
   // The running app, or with `start` one of our own, hidden. Excel with `start` is always one of our own: a
@@ -1201,7 +1210,8 @@ public class Render {
   Dictionary<string, object> Excel(object xl, string input, string output, bool mine) {
     // Open(Filename, UpdateLinks, ReadOnly, Format, Password, WriteResPassword, IgnoreReadOnlyRecommended, Origin, Delimiter,
     //      Editable, Notify, Converter, AddToMru)
-    var b = com.Call(com.Get(xl, "Workbooks"), "Open", input, 0, true, Missing, NoPassword, NoPassword, true, Missing, Missing, false, false, Missing, false);
+    // No WriteResPassword: Excel refuses one for a workbook that has none (found in the VM, 2026-11-23), where Word ignores its own.
+    var b = com.Call(com.Get(xl, "Workbooks"), "Open", input, 0, true, Missing, NoPassword, Missing, true, Missing, Missing, false, false, Missing, false);
     try {
       // In his own Excel, the copy's window is hidden at once.
       if (!mine) { try { com.Set(com.Call(com.Get(b, "Windows"), "Item", 1), "Visible", false); } catch (COMException e) { if (Office.Busy(e)) throw; } }

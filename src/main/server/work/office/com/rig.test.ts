@@ -487,6 +487,18 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       expect(running).not.toContain('word')
     }, 60_000)
 
+    it('with start, a hidden app holding no file is nobody\'s and is quit after, whoever started it; his own, seen or holding files, never', async () => {
+      await seed({ decks: [], apps: { powerpoint: { visible: false } } })
+      await carrier.render({ app: 'powerpoint', to: 'pdf', input: copy('input.pptx'), output: out('o.pdf'), start: true })
+      expect((await state()).renders.at(-1)).toEqual({ quit: 'powerpoint' })
+      await seed({ decks: [] })
+      await carrier.render({ app: 'powerpoint', to: 'pdf', input: copy('input.pptx'), output: out('o.pdf'), start: true })
+      expect((await state()).renders.some((r) => r.quit)).toBe(false)
+      await seed({ apps: { powerpoint: { visible: false } } })
+      await carrier.render({ app: 'powerpoint', to: 'pdf', input: copy('input.pptx'), output: out('o.pdf'), start: true })
+      expect((await state()).renders.some((r) => r.quit)).toBe(false)
+    }, 60_000)
+
     it('a dialog in the app is busy, in its name; no Word at all is "No Word is in reach"', async () => {
       await seed()
       await carrier.call('_busy', { calls: 1 })
