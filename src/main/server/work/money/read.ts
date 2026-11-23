@@ -110,7 +110,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service'>, ws: Worksp
   const year = Number(period.from.slice(0, 4))
   const books = booksHere(ctx, ws.id)
   if (!books) {
-    return { made: false, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], problems: [] }
+    return { made: false, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], problems: [] }
   }
   const [ledger, trips] = await Promise.all([ledgerOf(ctx, books), mileageRows(ctx, books)])
   const rows = ledger.rows
@@ -136,6 +136,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service'>, ws: Worksp
       rows.map((r) => r.category)
     ),
     sellers,
+    toConfirm: [],
     problems: ledger.missing.length ? [{ kind: 'columns', missing: ledger.missing }] : []
   }
 }

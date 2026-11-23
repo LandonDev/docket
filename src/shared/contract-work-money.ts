@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import type { CanvasSource } from './work/canvas'
-import type { SectorKey } from './work/ids'
-import { STATUSES, type CategorySum, type LedgerRow, type MilesSum, type MonthSum, type OwedRow, type Period, type Sums } from './work/money'
+import { CanvasSourceSchema, type CanvasSource } from './work/canvas'
+import { SectorKeySchema, type SectorKey } from './work/ids'
+import { STATUSES, type CategorySum, type LedgerRow, type MilesSum, type MonthSum, type OwedRow, type Period, type ReceiptFields, type Sums } from './work/money'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -39,6 +39,58 @@ export const EntryFieldsSchema = z.object({
 })
 export type EntryFields = z.infer<typeof EntryFieldsSchema>
 
+/** A receipt travels in parts of at most this many bytes, as an attachment's chunks do. */
+export const MONEY_PART_BYTES = 2 * 1024 * 1024
+/** The largest receipt Money takes. */
+export const MONEY_FILE_MAX = 25_000_000
+const PARTS_MAX = Math.ceil(MONEY_FILE_MAX / MONEY_PART_BYTES)
+
+/** One run of text a reader found and where it stands (`ReceiptLine` in work/money.ts). */
+export const ReceiptLineSchema = z.object({
+  text: z.string().max(500),
+  box: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+  score: z.number().optional()
+})
+export const RECEIPT_LINES_MAX = 2000
+
+/** What was read off a receipt, or what he typed over it: each may be missing. */
+export const ReceiptFieldsSchema = z.object({
+  amount: cents.nullable(),
+  date: day.nullable(),
+  who: z.string().trim().max(200).nullable(),
+  category: z.string().trim().max(100).nullable()
+})
+
+/** How a receipt came in: dropped on the desktop, sent from the phone, filed from a mail's or a file's item, or left by a thread. */
+export const MONEY_SOURCES = ['drop', 'phone', 'mail', 'agent'] as const
+export type MoneySource = (typeof MONEY_SOURCES)[number]
+
+/** A receipt names its job (a workspace or a sector) and is bytes or a file, one of the two: the host refuses anything else in words. */
+export const ReceiveParamsSchema = z.object({
+  /** the sender's own id for this receipt: a repeat with the same key answers the first and files nothing twice */
+  key: z.string().min(8).max(100),
+  /** the job: a workspace of this host, or the sector whose workspace here takes it (the phone names the sector) */
+  workspaceId: workspaceId.optional(),
+  sector: SectorKeySchema.optional(),
+  name: z.string().min(1).max(255),
+  mime: z.string().max(100).optional(),
+  /** the bytes, in order: part `part` of `parts`, each at most MONEY_PART_BYTES */
+  part: z.number().int().min(0).max(PARTS_MAX - 1).optional(),
+  parts: z.number().int().min(1).max(PARTS_MAX).optional(),
+  dataBase64: z
+    .string()
+    .max(Math.ceil((MONEY_PART_BYTES * 4) / 3) + 4)
+    .optional(),
+  /** in place of the bytes: a file already on this host, which the host copies */
+  file: CanvasSourceSchema.optional(),
+  /** what the sender already read (the phone's own reader): the host does not read it again */
+  lines: z.array(ReceiptLineSchema).max(RECEIPT_LINES_MAX).optional(),
+  /** what he accepted where he sent it from: with an amount and a date it is filed at once, else it waits in To confirm */
+  fields: ReceiptFieldsSchema.optional(),
+  source: z.enum(['drop', 'phone', 'mail']).default('drop')
+})
+export type ReceiveParams = z.infer<typeof ReceiveParamsSchema>
+
 export const MoneyRequestSchemas = [
   /** → MoneyState: this host's jobs and which have a ledger */
   request('work.money.state', z.object({})),
@@ -55,7 +107,17 @@ export const MoneyRequestSchemas = [
   /** → MoneyOwed: unpaid rows, the oldest first, and how many receipts wait for his accept */
   request('work.money.owed', z.object({ workspaceId: workspaceId.optional() })),
   /** → MoneyHits: the ledger's rows that hold the words, newest first */
-  request('work.money.search', z.object({ workspaceId, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(100).optional() }))
+  request('work.money.search', z.object({ workspaceId, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(100).optional() })),
+  /** → ReceiptFields: the one parser on a reader's lines, with what the job's ledger knows of the seller; the phone asks it for its own reader's lines */
+  request('work.money.parse', z.object({ lines: z.array(ReceiptLineSchema).max(RECEIPT_LINES_MAX), workspaceId: workspaceId.optional(), sector: SectorKeySchema.nullable().optional() })),
+  /** → MoneyReceived: a receipt's bytes (in parts) or a file of this host, into To confirm; filed at once when `fields` holds an amount and a date */
+  request('work.money.receive', ReceiveParamsSchema),
+  /** → MoneyActed: his accept. The file is kept under Money/Receipts/<year>/, the row appended, the waiting one filed; `workspaceId` sends it to another job */
+  request('work.money.accept', z.object({ id: z.string().min(1).max(100), fields: EntryFieldsSchema, workspaceId: workspaceId.optional() })),
+  /** → null: a waiting one is dropped, and its file with it */
+  request('work.money.drop', z.object({ id: z.string().min(1).max(100) })),
+  /** → MoneyPicture: a waiting receipt's picture (`id`) or a filed row's (`workspaceId` and the Receipt cell), a part at a time; a PDF is drawn as its first page */
+  request('work.money.picture', z.object({ id: z.string().min(1).max(100).optional(), workspaceId: workspaceId.optional(), receipt: z.string().min(1).max(600).optional(), part: z.number().int().min(0).max(63).default(0) }))
 ] as const
 
 export interface MoneyJob {
@@ -96,7 +158,39 @@ export interface MoneyRead {
   categories: string[]
   /** every name in the Who column, the latest first */
   sellers: string[]
+  /** what waits for his accept, the oldest first */
+  toConfirm: ToConfirm[]
   problems: MoneyProblem[]
+}
+
+/** One thing that waits for his accept: a receipt being read or read, or an entry a thread left. */
+export interface ToConfirm {
+  id: string
+  /** `reading`: the host is still reading the file; `ready`: the fields are as far as they could be read */
+  state: 'reading' | 'ready'
+  source: MoneySource
+  /** the file's name as it came; null for an entry with no file */
+  name: string | null
+  /** it has a picture to show beside the fields */
+  picture: boolean
+  fields: ReceiptFields & { way?: 'in' | 'out'; what?: string }
+  /** the thread that left it */
+  threadId?: string
+  at: number
+}
+
+export interface MoneyReceived {
+  id: string
+  /** `partial`: more parts are expected; `filed`: it is in the ledger already */
+  state: 'partial' | 'reading' | 'ready' | 'filed'
+}
+
+export interface MoneyPicture {
+  mime: string
+  name: string
+  size: number
+  parts: number
+  dataBase64: string
 }
 
 /** A write's answer: what it wrote, or that the row it named no longer reads as the window saw it (nothing was written; read again). */
@@ -124,9 +218,14 @@ export const MONEY_CAPS = {
   'work.money.paid': 'operate',
   'work.money.sums': 'read',
   'work.money.owed': 'read',
-  'work.money.search': 'read'
+  'work.money.search': 'read',
+  'work.money.parse': 'read',
+  'work.money.receive': 'operate',
+  'work.money.accept': 'operate',
+  'work.money.drop': 'operate',
+  'work.money.picture': 'read'
 } satisfies CapsOf<typeof MoneyRequestSchemas>
 export const MONEY_RELAY = {} satisfies RelayOf<typeof MoneyRequestSchemas>
 
 /** What only the owner does: a thread's own call is refused. */
-export const MONEY_OWNER_ONLY: ReadonlySet<string> = new Set(['work.money.open', 'work.money.entry', 'work.money.paid'])
+export const MONEY_OWNER_ONLY: ReadonlySet<string> = new Set(['work.money.open', 'work.money.entry', 'work.money.paid', 'work.money.receive', 'work.money.accept', 'work.money.drop'])
