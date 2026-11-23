@@ -103,8 +103,8 @@ describe("the Money view", () => {
     await settle();
     const entries = () => within(screen.getByRole("region", { name: /^Entries/ })).getAllByRole("row").length - 1;
     expect(entries()).toBe(NOVEMBER.length);
-    fireEvent.click(within(screen.getByRole("region", { name: "By category" })).getByRole("button", { name: /^Mileage/ }));
-    expect(screen.getByRole("heading", { name: "Entries in Mileage" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("region", { name: "By category" })).getByRole("button", { name: /^Travel/ }));
+    expect(screen.getByRole("heading", { name: "Entries in Travel" })).toBeTruthy();
     expect(entries()).toBe(3);
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(screen.getByRole("heading", { name: "Entries" })).toBeTruthy();
@@ -200,7 +200,10 @@ describe("the Money view", () => {
     mount();
     await settle();
     expect(screen.getByText("The ledger's columns changed")).toBeTruthy();
-    expect(screen.getByText("Missing In, Out")).toBeTruthy();
+    expect(screen.getByText("No In or Out column")).toBeTruthy();
+    // A broken header is not an empty job, and its zeros are not the job's figures.
+    expect(screen.queryByText("No money yet")).toBeNull();
+    expect(document.querySelector("[data-money-figures]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Restore columns" }));
     await settle();
     expect(asked("work.money.open")).toEqual([{ workspaceId: "ws", restore: true }]);

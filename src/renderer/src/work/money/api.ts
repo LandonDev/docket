@@ -18,35 +18,41 @@ import { loadToast } from "../../components/ui/toaster";
 export const CHANGED_WORDS = "The ledger changed. Showing it as it is now.";
 
 export interface MoneyLoad {
-  /** the last read that landed; kept under a failed read */
+  /** the read of the period asked for; null until that period answers (never another period's) */
   read: MoneyRead | null;
-  /** the last read failed, in the host's words */
+  /** the last read of this period failed, in the host's words */
   error: string | null;
   /** a read is on its way */
   loading: boolean;
 }
 
+const periodKey = (p: Period): string => `${p.from}|${p.to}`;
+
 /**
  * The view's read for a period, asked again when the period changes, when
  * the window comes forward, on the `work.money` push and after each act of
- * his (`reload`). Only the newest answer is shown.
+ * his (`reload`). Only the newest answer is shown, and a read belongs to its
+ * period: under a new period's label nothing of the old one is shown, and a
+ * failed read keeps only the same period's last answer.
  */
 export function useMoney(env: string, workspaceId: string, period: Period): [MoneyLoad, () => Promise<void>] {
-  const [state, setState] = useState<MoneyLoad>({ read: null, error: null, loading: true });
+  const key = periodKey(period);
+  const [state, setState] = useState<{ key: string; read: MoneyRead | null; error: string | null; loading: boolean }>({ key, read: null, error: null, loading: true });
   const asked = useRef(0);
   const { from, to } = period;
   const fetch = useCallback(() => {
     const mine = ++asked.current;
-    setState((s) => (s.loading ? s : { ...s, loading: true }));
+    const of = `${from}|${to}`;
+    setState((s) => (s.key === of ? (s.loading ? s : { ...s, loading: true }) : { key: of, read: null, error: null, loading: true }));
     return registry
       .linkOf(env)
       .request<MoneyRead>("work.money.read", { workspaceId, from, to })
       .then(
         (read) => {
-          if (mine === asked.current) setState({ read, error: null, loading: false });
+          if (mine === asked.current) setState({ key: of, read, error: null, loading: false });
         },
         (err: unknown) => {
-          if (mine === asked.current) setState((s) => ({ read: s.read, error: refusalWords(err) || "The host did not answer", loading: false }));
+          if (mine === asked.current) setState((s) => ({ key: of, read: s.key === of ? s.read : null, error: refusalWords(err) || "The host did not answer", loading: false }));
         },
       );
   }, [env, workspaceId, from, to]);
@@ -64,7 +70,9 @@ export function useMoney(env: string, workspaceId: string, period: Period): [Mon
       off();
     };
   }, [env, workspaceId, fetch]);
-  return [state, fetch];
+  // Until the new period's own answer lands, the view has nothing of it to show.
+  const load: MoneyLoad = state.key === key ? { read: state.read, error: state.error, loading: state.loading } : { read: null, error: null, loading: true };
+  return [load, fetch];
 }
 
 /** A row as the window saw it, for a write that names it. */
@@ -75,24 +83,31 @@ export function sayChanged(): void {
   void loadToast().then((toast) => toast(CHANGED_WORDS));
 }
 
-/** Adds a row, or with `at` changes that one. True when it was written; false when the ledger changed (the toast is said). */
-export async function saveEntry(env: string, workspaceId: string, fields: EntryFields, at?: RowAt): Promise<boolean> {
-  const acted = await request<MoneyActed>(env, "work.money.entry", { workspaceId, ...(at ? { at } : {}), fields });
+export const SUGGESTED_WORDS = "Suggested in the ledger. Accept it there.";
+
+/**
+ * What a write's answer says to him: the ledger changed under him (nothing was written; read again), or on a
+ * ledger others can open the write waits as a suggestion, which he accepts in the sheet. Answers false when
+ * nothing was written.
+ */
+export function heard(env: string, workspaceId: string, acted: MoneyActed | null | undefined): boolean {
+  if (!acted) return true;
   if ("changed" in acted) {
     sayChanged();
     return false;
   }
+  if (acted.suggested) void loadToast().then((toast) => toast(SUGGESTED_WORDS, { action: { label: "Open ledger", onClick: () => withToast(() => openBook(env, workspaceId, "ledger")) } }));
   return true;
+}
+
+/** Adds a row, or with `at` changes that one. True when it was written (or suggested); false when the ledger changed (the toast is said). */
+export async function saveEntry(env: string, workspaceId: string, fields: EntryFields, at?: RowAt): Promise<boolean> {
+  return heard(env, workspaceId, await request<MoneyActed>(env, "work.money.entry", { workspaceId, ...(at ? { at } : {}), fields }));
 }
 
 /** An open row is paid, or paid back, today. */
 export async function markPaid(env: string, workspaceId: string, at: RowAt): Promise<boolean> {
-  const acted = await request<MoneyActed>(env, "work.money.paid", { workspaceId, at });
-  if ("changed" in acted) {
-    sayChanged();
-    return false;
-  }
-  return true;
+  return heard(env, workspaceId, await request<MoneyActed>(env, "work.money.paid", { workspaceId, at }));
 }
 
 export const moneyState = (env: string): Promise<MoneyState> => request<MoneyState>(env, "work.money.state", {});

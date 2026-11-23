@@ -3,21 +3,23 @@ import type { MoneyRate } from "@shared/contract-work-money";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
-import { Input } from "../../components/ui/input";
+import { AmountInput } from "./fields";
 import { request } from "./api";
 
 /** The mileage rate (More → Mileage rate…): his own dollars a mile for the period's year. */
 
-/** Dollars a mile as he types them; null when it does not read. */
+/** Dollars a mile as he types them ("0.70", "$0.725"): the "$" and spaces go first, then a number above nothing is needed; null for anything else (a lone "$", an empty field, zero). */
 export function parseRate(text: string): number | null {
-  const n = Number(text.trim().replace(/^\$\s*/, ""));
-  return text.trim() !== "" && Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+  const bare = text.replace(/[$\s]/g, "");
+  if (!/^(\d+\.?\d*|\.\d+)$/.test(bare)) return null;
+  const n = Number(bare);
+  return n > 0 && n <= 100 ? n : null;
 }
 
 export function RateDialog({ env, workspaceId, rate, onClose, onSaved }: { env: string; workspaceId: string; rate: MoneyRate; onClose: () => void; onSaved: () => void }) {
   const [pending, setPending] = useState(false);
   return (
-    <Modal onClose={onClose} title="Mileage rate" description={String(rate.year)} size="sm" busy={pending}>
+    <Modal onClose={onClose} title={`Mileage rate for ${rate.year}`} size="sm" busy={pending}>
       <Body env={env} workspaceId={workspaceId} rate={rate} onClose={onClose} onSaved={onSaved} pending={pending} setPending={setPending} />
     </Modal>
   );
@@ -25,14 +27,16 @@ export function RateDialog({ env, workspaceId, rate, onClose, onSaved }: { env: 
 
 function Body({ env, workspaceId, rate, onClose, onSaved, pending, setPending }: { env: string; workspaceId: string; rate: MoneyRate; onClose: () => void; onSaved: () => void; pending: boolean; setPending: (p: boolean) => void }) {
   const close = useModalClose();
-  const [text, setText] = useState(String(rate.rate));
+  // Bound to the year it opened for: that year's rate seeds it, and that year is what it saves.
+  const [bound] = useState(rate);
+  const [text, setText] = useState(bound.rate.toFixed(bound.rate * 100 === Math.round(bound.rate * 100) ? 2 : 3));
   const [error, setError] = useState<string | null>(null);
   const value = parseRate(text);
   const submit = () => {
     if (value === null || pending) return;
     setError(null);
     setPending(true);
-    request(env, "work.money.rate", { workspaceId, year: rate.year, rate: value }).then(
+    request(env, "work.money.rate", { workspaceId, year: bound.year, rate: value }).then(
       () => {
         setPending(false);
         onSaved();
@@ -53,7 +57,7 @@ function Body({ env, workspaceId, rate, onClose, onSaved, pending, setPending }:
     >
       <ModalBody>
         <Field label="Dollars a mile" hint="Used for every later year until you set that year's.">
-          <Input value={text} inputMode="decimal" autoComplete="off" className="tabular-nums" onChange={(e) => setText(e.target.value)} />
+          <AmountInput value={text} placeholder="0.70" onChange={(e) => setText(e.target.value)} />
         </Field>
         <ErrorLine error={error} />
       </ModalBody>

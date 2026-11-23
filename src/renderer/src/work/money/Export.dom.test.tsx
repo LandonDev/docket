@@ -53,6 +53,40 @@ async function exportWith(uncheck: string[] = []) {
 }
 
 describe("Export", () => {
+  it("starts on the period's year when offered, else the oldest offered, and sends only an offered year", async () => {
+    const { exportYears } = await import("./ExportDialog");
+    expect(exportYears(2025, 2026)).toEqual({ years: [2026, 2025, 2024, 2023, 2022], first: 2025 });
+    expect(exportYears(2019, 2026).first).toBe(2022);
+    expect(exportYears(2031, 2026).first).toBe(2022);
+  });
+
+  it("stays open with the error when nothing landed", async () => {
+    host.answer = (method) => (method === "work.money.export" ? { folder, files: [], summary: null, warnings: ["The spreadsheet could not be made"], replaced: false } : null);
+    await exportWith(["Summary (PDF)"]);
+    expect(screen.getByRole("dialog", { name: "Export" }).textContent).toContain("The spreadsheet could not be made");
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("says it replaced the earlier export, joined with what could not be made, and keeps the summary under the same key on a retry", async () => {
+    const answer = host.answer;
+    let fail = true;
+    host.answer = (method, params) => {
+      if (method === "work.money.export") return { ...(answer(method, params) as object), warnings: ["The CSV could not be made"], replaced: true };
+      if (method === "work.money.keep" && fail) {
+        fail = false;
+        throw new Error("The box did not answer");
+      }
+      return answer(method, params);
+    };
+    render(<ExportDialog env="box" workspaceId="ws" year={year} onClose={() => {}} />);
+    const dialog = await screen.findByRole("dialog", { name: "Export" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Export" }));
+    await settle();
+    await settle();
+    // The keep failed, but the host's files landed: the toast names what did not.
+    expect(toast).toHaveBeenLastCalledWith(`Exported ${year} for tax time`, expect.objectContaining({ description: "Replaced the earlier export, the CSV could not be made, the summary was not made: The box did not answer." }));
+  });
+
   it("asks for the files whose boxes are ticked, prints the summary and hands it back to be kept", async () => {
     await exportWith(["CSV"]);
     expect(asked("work.money.export")).toEqual([{ workspaceId: "ws", year, xlsx: true, csv: false, pdf: true }]);
@@ -75,7 +109,7 @@ describe("Export", () => {
       return answer(method, params);
     };
     await exportWith();
-    expect(toast).toHaveBeenCalledWith(`Exported ${year} for tax time`, expect.objectContaining({ description: "The summary was not made: The printer did not start" }));
+    expect(toast).toHaveBeenCalledWith(`Exported ${year} for tax time`, expect.objectContaining({ description: "The summary was not made: The printer did not start." }));
     expect(asked("work.money.keep")).toEqual([]);
   });
 

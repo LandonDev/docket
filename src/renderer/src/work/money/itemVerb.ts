@@ -1,5 +1,6 @@
 import type { CanvasItem, CanvasKind } from "@shared/work";
-import { kindOfEntry } from "@shared/work/files";
+import { isReceiptName, receiptExt } from "@shared/work/money";
+import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { Receipt } from "../icons";
 import { registerItemVerb } from "../canvas/itemVerbs";
 
@@ -17,12 +18,16 @@ export function itemName(item: Pick<CanvasItem, "source" | "title">): string {
   return item.title;
 }
 
-/** A PDF, or a picture (never a video or a recording). */
+/** The item's pane belongs to a Work job on this window's hosts: there is a ledger to file into. */
+export const inJob = (item: Pick<CanvasItem, "workspaceId">): boolean => !!item.workspaceId && workspaceStore.workspace(item.workspaceId)?.kind === "work";
+
+/** A PDF or a picture by the one list Money files (never a video or a recording), in a job's pane. */
 export function takesItem(item: CanvasItem, kind: CanvasKind): boolean {
-  if (kind === "pdf") return true;
-  if (kind !== "media") return false;
-  const mime = item.source.at === "mail" ? item.source.contentType : undefined;
-  return kindOfEntry(itemName(item), mime).kind === "picture";
+  if ((kind !== "pdf" && kind !== "media") || !inJob(item)) return false;
+  const name = itemName(item);
+  if (receiptExt(name)) return isReceiptName(name);
+  const mime = item.source.at === "mail" ? (item.source.contentType ?? "") : "";
+  return /^image\//.test(mime) || mime === "application/pdf";
 }
 
 registerItemVerb({

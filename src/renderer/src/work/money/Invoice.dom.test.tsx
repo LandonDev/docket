@@ -26,6 +26,10 @@ vi.mock("../../lib/connection", async (original) => ({
 }));
 const written: unknown[] = [];
 vi.mock("../mail/mailto", () => ({ writeMail: (draft: unknown) => written.push(draft) }));
+const toast = Object.assign(vi.fn(), { error: vi.fn() });
+vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original<object>()), loadToast: async () => toast }));
+const opened = vi.fn();
+vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object>()), openWorkView: opened }));
 
 const { InvoiceDialog } = await import("./InvoiceDialog");
 const { sendInvoice, sentAs } = await import("./send");
@@ -122,13 +126,59 @@ describe("an invoice", () => {
   });
 });
 
+describe("an invoice, by the keyboard and on a retry", () => {
+  it("adds the next line on Return in a line's field, and moves to its What", async () => {
+    const { dialog } = await open();
+    fireEvent.change(within(dialog).getByLabelText("What, line 1"), { target: { value: "Varsity games" } });
+    fireEvent.keyDown(within(dialog).getByLabelText("Rate, line 1"), { key: "Enter" });
+    await settle();
+    expect(within(dialog).getByLabelText("What, line 2")).toBe(document.activeElement);
+    expect(host.asked.filter((a) => a.method === "work.money.invoice")).toEqual([]);
+    expect(within(dialog).getByText("Total")).toBeTruthy();
+  });
+
+  it("sends the same key when the same Create is tried again", async () => {
+    let fail = true;
+    const answer = host.answer;
+    host.answer = (method, params) => {
+      if (method === "work.money.keep" && fail) {
+        fail = false;
+        throw new Error("The box did not answer");
+      }
+      return answer(method, params);
+    };
+    const { dialog } = await open();
+    fireEvent.change(within(dialog).getByLabelText("To"), { target: { value: "Harlan Valley Officials" } });
+    fireEvent.change(within(dialog).getByLabelText("What, line 1"), { target: { value: "Varsity games" } });
+    fireEvent.change(within(dialog).getByLabelText("Rate, line 1"), { target: { value: "75" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await settle();
+    await settle();
+    expect(within(dialog).getByText("The box did not answer")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await settle();
+    await settle();
+    const keys = host.asked.filter((a) => a.method === "work.money.keep").map((a) => a.params.key);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBe(keys[1]);
+  });
+});
+
 describe("Send…", () => {
-  it("fills the composer with the invoice's subject and two plain lines, opens the PDF in Files, and sends nothing", async () => {
+  it("opens the job's Mail with the composer filled, one line that claims no attachment, names the PDF to attach, and sends nothing", async () => {
     expect(sentAs("Invoices/Invoice 1042 Harlan Valley.pdf")).toEqual({ kind: "invoice", number: "1042" });
     expect(sentAs("Requests/Purchase request 12 Field Supply.pdf")).toEqual({ kind: "request", number: "12" });
     expect(sentAs("Receipts/2026/fuel.jpg")).toBeNull();
-    await sendInvoice("box", "ws", kept.source as never, "invoice", "1042", "$150.00");
-    expect(written).toEqual([{ to: [], cc: [], bcc: [], subject: "Invoice 1042", body: "Invoice 1042 is attached.\nThe total is $150.00." }]);
+    toast.mockClear();
+    sendInvoice("box", "ws", kept.source as never, kept.receipt, "invoice", "1042", "$150.00");
+    await settle();
+    expect(written).toEqual([{ to: [], cc: [], bcc: [], subject: "Invoice 1042", body: "Invoice 1042, for $150.00." }]);
+    expect(opened).toHaveBeenCalledWith({ workspaceId: "ws", view: "mail" });
+    expect(toast).toHaveBeenCalledWith("Attach Invoice 1042 Harlan Valley.pdf from Money/Invoices.", expect.objectContaining({ action: expect.objectContaining({ label: "Show in Files" }) }));
+    // Nothing went to the host: Files opens only on his press.
+    expect(host.asked).toEqual([]);
+    (toast.mock.calls[0][1] as { action: { onClick: () => void } }).action.onClick();
+    await settle();
     expect(host.asked.map((a) => a.method)).toEqual(["work.files.open"]);
   });
 });

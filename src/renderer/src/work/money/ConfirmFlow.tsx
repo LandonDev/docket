@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { EntryFields, MoneyActed, MoneyRead, ToConfirm } from "@shared/contract-work-money";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { moneyState, request, sayChanged, withToast } from "./api";
+import { heard, moneyState, request, withToast } from "./api";
 import { EntryDialog } from "./EntryDialog";
 import { formOfReceipt, type EntryForm } from "./model";
 import { dropWaiting, ReceiptPicture } from "./ToConfirm";
@@ -45,19 +45,23 @@ export function ConfirmFlow({ env, workspaceId, read, first, onClose, reload }: 
 
   if (!item) return null;
   const name = item.fields.who || item.name || "Receipt";
+  // "1 of 2": this one among those still waiting, the ones already filed here left out.
+  const left = read.toConfirm.filter((t) => t.state === "ready" && !done.current.has(t.id) && t.id !== item.id);
+  const waiting = left.length + 1 + done.current.size;
+  const place = done.current.size + 1;
 
   const save = async (fields: EntryFields, form: EntryForm): Promise<boolean> => {
-    const acted = await request<MoneyActed>(env, "work.money.accept", { id: item.id, fields, ...(form.job && form.job !== workspaceId ? { workspaceId: form.job } : {}) });
-    if ("changed" in acted) sayChanged();
+    const job = form.job && form.job !== workspaceId ? form.job : workspaceId;
+    const acted = await request<MoneyActed>(env, "work.money.accept", { id: item.id, fields, ...(job !== workspaceId ? { workspaceId: job } : {}) });
+    heard(env, job, acted);
     return advance();
   };
 
   const discard = () => {
     setDropping(true);
     withToast(() =>
-      dropWaiting(env, item)
+      dropWaiting(env, item, reload)
         .then(() => {
-          void reload();
           if (advance()) onClose();
         })
         .finally(() => setDropping(false)),
@@ -76,11 +80,13 @@ export function ConfirmFlow({ env, workspaceId, read, first, onClose, reload }: 
       picture={item.picture ? <ReceiptPicture key={item.id} env={env} of={{ id: item.id }} name={name} /> : undefined}
       jobs={jobs}
       busy={dropping}
-      footerStart={
-        <Button variant="ghost" disabled={dropping} onClick={discard}>
+      title={waiting > 1 ? `Confirm receipt ${place} of ${waiting}` : undefined}
+      footerStart={(saving) => (
+        // The word lines up with the picture's edge; it waits while Save is in flight.
+        <Button variant="ghost" className="-ms-2.5" disabled={dropping || saving} onClick={discard}>
           <BusyLabel busy={dropping} label="Discard" />
         </Button>
-      }
+      )}
       onSave={save}
       onClose={onClose}
       onSaved={() => void reload()}

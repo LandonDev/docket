@@ -46,8 +46,10 @@ export interface EntryDialogProps {
   picture?: ReactNode;
   /** the Job field's choices; drawn only in confirm mode with more than one */
   jobs?: readonly { value: string; label: string }[];
-  /** an action of the dialog's own at the footer's start (Discard, Send…) */
-  footerStart?: ReactNode;
+  /** an action of the dialog's own at the footer's start (Discard, Send…); given Save's being in flight, so it can wait for it */
+  footerStart?: ReactNode | ((saving: boolean) => ReactNode);
+  /** in place of the mode's title ("Confirm receipt 1 of 2") */
+  title?: string;
   /** in place of the entry write: confirm mode's accept. Answers whether the dialog closes (false: it stays for the next) */
   onSave?: (fields: EntryFields, form: EntryForm) => Promise<boolean>;
   onClose: () => void;
@@ -60,7 +62,7 @@ export interface EntryDialogProps {
 export function EntryDialog(props: EntryDialogProps) {
   const [pending, setPending] = useState(false);
   return (
-    <Modal onClose={props.onClose} title={TITLES[props.mode]} size={props.picture ? "lg" : "md"} busy={pending || props.busy}>
+    <Modal onClose={props.onClose} title={props.title ?? TITLES[props.mode]} size={props.picture ? "lg" : "md"} busy={pending || props.busy}>
       <EntryBody {...props} pending={pending} setPending={setPending} />
     </Modal>
   );
@@ -226,7 +228,7 @@ function EntryBody({
       ) : (
         <ModalBody>{fields}</ModalBody>
       )}
-      <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} busy={busy} disabled={!ready} start={footerStart} />
+      <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} busy={busy} disabled={!ready} start={typeof footerStart === "function" ? footerStart(pending) : footerStart} />
     </form>
   );
 }

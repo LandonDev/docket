@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { MoneyInvoiceNext, MoneyInvoicePage, MoneyKept } from "@shared/contract-work-money";
 import { addDays, formatMoney, invoiceTotal, lineTotal, today, type Invoice, type InvoiceFrom, type InvoiceLine } from "@shared/work/money";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -12,7 +12,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { request } from "./api";
 import { AmountInput } from "./fields";
 import { parseAmount } from "./model";
-import { keepPrinted, printPage } from "./print";
+import { keepPrinted, newKey, printPage } from "./print";
 
 /**
  * An invoice (Add → Invoice…) or, in a Purdue job, a purchase request (the
@@ -69,10 +69,10 @@ export function invoiceOf(kind: InvoiceKind, form: InvoiceForm): Invoice | null 
 export const invoiceTitle = (kind: InvoiceKind, number: string): string => (kind === "invoice" ? `Invoice ${number}` : `Purchase request ${number}`);
 
 /** Create: the host checks the invoice and answers its page, the page is printed, and the PDF is kept with its row. */
-export async function createInvoice(env: string, workspaceId: string, invoice: Invoice): Promise<MoneyKept> {
+export async function createInvoice(env: string, workspaceId: string, invoice: Invoice, key: string): Promise<MoneyKept> {
   const page = await request<MoneyInvoicePage>(env, "work.money.invoice", { workspaceId, invoice });
   const printed = await printPage(env, page.name.replace(/\.pdf$/i, ""), page.html);
-  return keepPrinted(env, { workspaceId, what: "invoice", invoice }, printed.data);
+  return keepPrinted(env, { workspaceId, what: "invoice", invoice }, printed.data, key);
 }
 
 export function InvoiceDialog({ env, workspaceId, kind, onClose, onCreated }: { env: string; workspaceId: string; kind: InvoiceKind; onClose: () => void; onCreated: (kept: MoneyKept, invoice: Invoice) => void }) {
@@ -91,6 +91,22 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
   const [dueTouched, setDueTouched] = useState(false);
   const [editingFrom, setEditingFrom] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const keys = useRef(new Map<string, string>());
+  const [focusLine, setFocusLine] = useState<number | null>(null);
+  const linesRef = useRef<HTMLDivElement>(null);
+  // A line added from the keyboard takes the caret in its What.
+  useEffect(() => {
+    if (focusLine === null) return;
+    linesRef.current?.querySelector<HTMLInputElement>(`[data-invoice-line="${focusLine}"] input`)?.focus();
+    setFocusLine(null);
+  }, [focusLine]);
+  /** Return in a line's field adds the next line and moves there; Create stays on its button (and Return in To). */
+  const onLineKey = (i: number) => (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    setForm((f) => (f ? { ...f, lines: [...f.lines.slice(0, i + 1), { ...BLANK_LINE }, ...f.lines.slice(i + 1)] } : f));
+    setFocusLine(i + 1);
+  };
 
   useEffect(() => {
     let live = true;
@@ -116,7 +132,11 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
     if (!invoice || pending) return;
     setError(null);
     setPending(true);
-    createInvoice(env, workspaceId, invoice).then(
+    // One key for one invoice: a retry of the same Create files it once on the host.
+    const content = JSON.stringify(invoice);
+    const key = keys.current.get(content) ?? newKey();
+    keys.current.set(content, key);
+    createInvoice(env, workspaceId, invoice, key).then(
       (kept) => {
         setPending(false);
         onCreated(kept, invoice);
@@ -189,7 +209,7 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
               <Textarea value={form.reason} rows={2} onChange={(e) => patch({ reason: e.target.value })} />
             </Field>
           ) : null}
-          <div role="group" aria-label="Lines" className="flex flex-col gap-1">
+          <div ref={linesRef} role="group" aria-label="Lines" className="flex flex-col gap-1">
             <div className="grid grid-cols-[minmax(0,1fr)_72px_112px_96px_28px] gap-2 text-xs font-medium text-muted-foreground">
               <span>What</span>
               <span>Quantity</span>
@@ -201,9 +221,9 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
               const counted = lineOf(l);
               return (
                 <div key={i} data-invoice-line={i} className="grid grid-cols-[minmax(0,1fr)_72px_112px_96px_28px] items-center gap-2">
-                  <Input aria-label={`What, line ${i + 1}`} value={l.what} autoComplete="off" onChange={(e) => setLine(i, { what: e.target.value })} />
-                  <Input aria-label={`Quantity, line ${i + 1}`} value={l.quantity} inputMode="decimal" autoComplete="off" className="tabular-nums" onChange={(e) => setLine(i, { quantity: e.target.value })} />
-                  <AmountInput aria-label={`Rate, line ${i + 1}`} value={l.rate} placeholder="0.00" onChange={(e) => setLine(i, { rate: e.target.value })} />
+                  <Input aria-label={`What, line ${i + 1}`} value={l.what} autoComplete="off" onKeyDown={onLineKey(i)} onChange={(e) => setLine(i, { what: e.target.value })} />
+                  <Input aria-label={`Quantity, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.quantity} inputMode="decimal" autoComplete="off" className="tabular-nums" onChange={(e) => setLine(i, { quantity: e.target.value })} />
+                  <AmountInput aria-label={`Rate, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.rate} placeholder="0.00" onChange={(e) => setLine(i, { rate: e.target.value })} />
                   <span className="text-end text-[13px] tabular-nums">{counted ? formatMoney(lineTotal(counted)) : ""}</span>
                   {i > 0 ? (
                     <Button variant="ghost" size="icon-sm" aria-label={`Remove line ${i + 1}`} className="text-muted-foreground" onClick={() => patch({ lines: form.lines.filter((_, j) => j !== i) })}>
@@ -220,8 +240,11 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
                 <Plus />
                 Add line
               </Button>
-              <span data-invoice-total className="text-[13px] font-semibold tabular-nums">
-                {formatMoney(total)}
+              <span className="flex items-baseline gap-2">
+                <span className="text-xs text-muted-foreground">Total</span>
+                <span data-invoice-total className="text-[13px] font-semibold tabular-nums">
+                  {formatMoney(total)}
+                </span>
               </span>
             </div>
           </div>

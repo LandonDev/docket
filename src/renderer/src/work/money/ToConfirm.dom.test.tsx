@@ -110,7 +110,7 @@ describe("receipts in", () => {
     host.read = (p) =>
       readOf(p, undefined, {
         toConfirm: [
-          waiting("a", { fields: { amount: 4210, date: "2026-11-20", who: "Corner Fuel", category: "Mileage" } }),
+          waiting("a", { fields: { amount: 4210, date: "2026-11-20", who: "Corner Fuel", category: "Travel" } }),
           waiting("b", { fields: { amount: 8995, date: null, who: null, category: null }, name: "scan.pdf" }),
           waiting("c", { state: "reading", name: "late.jpg" }),
         ],
@@ -126,7 +126,7 @@ describe("receipts in", () => {
     expect(list.getAllByRole("button", { name: /^Review/ })).toHaveLength(2);
     expect(list.getByText("Reading")).toBeTruthy();
     fireEvent.click(list.getByRole("button", { name: "Review Corner Fuel" }));
-    const dialog = await screen.findByRole("dialog", { name: "Confirm receipt" });
+    const dialog = await screen.findByRole("dialog", { name: "Confirm receipt 1 of 2" });
     const amount = within(dialog).getByLabelText("Amount") as HTMLInputElement;
     expect(amount.value).toBe("42.10");
     expect((within(dialog).getByLabelText("Date") as HTMLInputElement).value).toBe("2026-11-20");
@@ -139,9 +139,9 @@ describe("receipts in", () => {
     expect(picture.className).toContain("overflow-y-auto");
     fireEvent.keyDown(amount, { key: "Enter" });
     await settle();
-    expect(asked("work.money.accept")).toEqual([{ id: "a", fields: expect.objectContaining({ amount: 4210, date: "2026-11-20", who: "Corner Fuel", category: "Mileage", way: "out" }) }]);
+    expect(asked("work.money.accept")).toEqual([{ id: "a", fields: expect.objectContaining({ amount: 4210, date: "2026-11-20", who: "Corner Fuel", category: "Travel", way: "out" }) }]);
     // The same dialog, the next receipt: what was not read is empty, and no error says so.
-    const still = screen.getByRole("dialog", { name: "Confirm receipt" });
+    const still = await screen.findByRole("dialog", { name: "Confirm receipt 2 of 2" });
     expect(still).toBe(dialog);
     await waitFor(() => expect((within(still).getByLabelText("Amount") as HTMLInputElement).value).toBe("89.95"));
     expect((within(still).getByLabelText("Date") as HTMLInputElement).value).toBe("");
@@ -159,7 +159,13 @@ describe("receipts in", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Discard" }));
     await settle();
     expect(asked("work.money.drop")).toEqual([{ id: "a" }]);
-    expect(toast).toHaveBeenCalledWith("Discarded Corner Fuel");
+    expect(toast).toHaveBeenCalledWith("Discarded Corner Fuel", expect.objectContaining({ action: expect.objectContaining({ label: "Undo" }) }));
+    // Undo puts it back as it was, and the view reads again.
+    const reads = asked("work.money.read").length;
+    (toast.mock.calls.at(-1)![1] as { action: { onClick: () => void } }).action.onClick();
+    await settle();
+    expect(asked("work.money.drop")).toEqual([{ id: "a" }, { id: "a", undo: true }]);
+    expect(asked("work.money.read").length).toBeGreaterThan(reads);
   });
 
   it("offers no Review on a receipt still being read", async () => {

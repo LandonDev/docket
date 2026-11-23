@@ -68,7 +68,7 @@ describe("trips and pay from the calendar", () => {
     await settle();
     const row = document.querySelector("[data-calendar-offer=e1]") as HTMLElement;
     expect(row.textContent).toContain("Sat Nov 21");
-    expect([...row.querySelectorAll("[data-slot=facts] > span")].map((f) => f.textContent)).toEqual(["$75", "24 mi"]);
+    expect([...row.querySelectorAll("[data-slot=facts] > span")].map((f) => f.textContent)).toEqual(["$75.00", "24 mi"]);
     expect(row.textContent).not.toContain("·");
     expect(within(document.querySelector("[data-calendar-offer=e2]") as HTMLElement).getByRole("button", { name: "Review Freshman at Oak Ridge" })).toBeTruthy();
     // One whole offer: no Add all.
@@ -137,16 +137,40 @@ describe("trips and pay from the calendar", () => {
     expect(asked("work.money.trip")).toEqual([{ workspaceId: "ws", eventId: "e9", date: "2026-11-14", title: "JV at Millbrook", place: "Harrison HS", miles: 31, fee: 6000 }]);
   });
 
+  it("adds a miles-only trip with a fee of 0, and keeps Add off with neither miles nor a fee", async () => {
+    mount();
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Trip…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Trip" });
+    await settle();
+    const add = within(dialog).getByRole("button", { name: "Add" }) as HTMLButtonElement;
+    fireEvent.change(within(dialog).getByLabelText("Trip"), { target: { value: "Clinic at Oak Ridge" } });
+    fireEvent.change(within(dialog).getByLabelText("Fee"), { target: { value: "0" } });
+    expect(add.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText("Miles there and back"), { target: { value: "18" } });
+    expect(add.disabled).toBe(false);
+    fireEvent.click(add);
+    await settle();
+    expect(asked("work.money.trip")).toEqual([expect.objectContaining({ title: "Clinic at Oak Ridge", miles: 18 })]);
+    expect(asked("work.money.trip")[0]).not.toHaveProperty("fee");
+  });
+
   it("saves the mileage rate for the period's year", async () => {
     mount();
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Mileage rate…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Mileage rate" });
-    expect(within(dialog).getByText("2026")).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", { name: "Mileage rate for 2026" });
     expect(within(dialog).getByText("Used for every later year until you set that year's.")).toBeTruthy();
     const rate = within(dialog).getByLabelText("Dollars a mile") as HTMLInputElement;
-    expect(rate.value).toBe("0.7");
+    expect(rate.value).toBe("0.70");
+    const save = within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    // A lone "$", an empty field and zero keep Save off.
+    for (const text of ["$", "", "0", "$ 0.00"]) {
+      fireEvent.change(rate, { target: { value: text } });
+      expect(save.disabled).toBe(true);
+    }
     fireEvent.change(rate, { target: { value: "0.725" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await settle();

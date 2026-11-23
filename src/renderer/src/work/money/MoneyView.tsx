@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { receiptSource, type CalendarOffer, type MoneyRead } from "@shared/contract-work-money";
 import { loadToast } from "../../components/ui/toaster";
-import { formatDay, formatMoney, invoiceTotal, milesLine, sigOf, today, type LedgerRow, type OwedRow } from "@shared/work/money";
+import { formatDay, formatMoney, invoiceTotal, isReceiptName, milesLine, RECEIPT_EXTS, sigOf, today, type LedgerRow, type OwedRow } from "@shared/work/money";
 import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID } from "@aliax/charts/chart";
 import { ChartLegend } from "@aliax/charts/legend";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
@@ -23,13 +23,14 @@ import type { WorkViewProps } from "../views/registry";
 import { atOf, markPaid, openBook, openBooks, openReceipt, useMoney, withToast } from "./api";
 import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
-import { receiveFiles, takesFile } from "./receive";
+import { CATEGORY_GRID, ENTRIES_TAIL, OWED_GRID } from "./layout";
+import { receiveFiles, sortFiles } from "./receive";
 import { ExportDialog } from "./ExportDialog";
 import { InvoiceDialog, invoiceTitle, type InvoiceKind } from "./InvoiceDialog";
 import { sendInvoice, sentAs } from "./send";
 import { RateDialog } from "./RateDialog";
-import { addAll, CalendarRows, ReceiptPicture, ReceiptRows, ToConfirmSection } from "./ToConfirm";
-import { offerWhole, TripDialog } from "./TripDialog";
+import { ReceiptPicture, ToConfirmSection } from "./ToConfirm";
+import { TripDialog } from "./TripDialog";
 import { periodLabel, periodNow, periodOf, rowMoney, shortMoney, signedMoney, sinceWords, stepPeriod, type PeriodState, type Span } from "./model";
 
 /**
@@ -48,17 +49,17 @@ const SPANS = [
 export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string } | { kind: "trip"; offer: CalendarOffer | null } | { kind: "rate" } | { kind: "export" } | { kind: "invoice"; as: InvoiceKind };
 
 /** What the header and the body share: the period, and the dialog open. */
-const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null }>({ period: periodNow(), dialog: null });
+const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null; bare: boolean }>({ period: periodNow(), dialog: null, bare: false });
 const set = (patch: Partial<ReturnType<typeof ui.get>>) => ui.set({ ...ui.get(), ...patch });
 /** Each visit opens on this month. */
-export const resetMoneyView = () => ui.set({ period: periodNow(), dialog: null });
+export const resetMoneyView = () => ui.set({ period: periodNow(), dialog: null, bare: false });
 /** Opens a dialog from outside the header (the preview, a later verb). */
 export const openMoneyDialog = (dialog: MoneyDialog) => set({ dialog });
 /** Puts the view on a period (the preview, the tests). */
 export const setMoneyPeriod = (period: PeriodState) => set({ period });
 
 export function Head({ env, workspace, sector }: WorkViewProps) {
-  const { period } = useShared(ui);
+  const { period, bare } = useShared(ui);
   const unit = period.span;
   const addRows: MenuRow[] = [
     { kind: "item", id: "receipt", label: "Receipt…" },
@@ -77,8 +78,10 @@ export function Head({ env, workspace, sector }: WorkViewProps) {
   ];
   return (
     <>
-      <ChoiceToggle label="Show" value={unit} options={SPANS} onChange={(span: Span) => set({ period: { ...period, span } })} />
-      <div className="flex items-center">
+      {/* A job with no money has no period to step through. */}
+      {bare ? null : <ChoiceToggle label="Show" value={unit} options={SPANS} onChange={(span: Span) => set({ period: { ...period, span } })} />}
+      {bare ? null : (
+        <div className="flex items-center">
         <Button variant="ghost" size="icon-sm" aria-label={`Previous ${unit}`} onClick={() => set({ period: stepPeriod(period, -1) })}>
           <ChevronLeft />
         </Button>
@@ -89,6 +92,7 @@ export function Head({ env, workspace, sector }: WorkViewProps) {
           <ChevronRight />
         </Button>
       </div>
+      )}
       <RowsMenu
         label="Add"
         align="end"
@@ -130,11 +134,17 @@ export function View({ env, workspace }: WorkViewProps) {
   const span = useMemo(() => periodOf(period), [period]);
   const [load, reload] = useMoney(env, workspace.id, span);
   useEffect(() => resetMoneyView, []);
+  // `read` is this period's own answer, or null until it lands: never another period's figures under this label.
   const read = load.read;
   const close = () => set({ dialog: null });
+  const root = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
-  const quiet = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const columns = read?.problems.find((p) => p.kind === "columns") ?? null;
+  const bare = read !== null && !columns && isEmpty(read);
+  useEffect(() => {
+    if (ui.get().bare !== bare) set({ bare });
+  }, [bare]);
 
   // Add → Receipt…: the system's picker, for several at once.
   useEffect(() => {
@@ -144,7 +154,9 @@ export function View({ env, workspace }: WorkViewProps) {
   }, [dialog]);
 
   const receive = (files: File[]) => {
-    const taken = files.filter(takesFile);
+    if (!files.length) return;
+    const { taken, left } = sortFiles(files);
+    if (left) void loadToast().then((toast) => toast(left));
     if (!taken.length) return;
     void receiveFiles({ env, workspaceId: workspace.id, host: read?.root.host ?? null }, taken).then((refused) => {
       void reload();
@@ -154,11 +166,12 @@ export function View({ env, workspace }: WorkViewProps) {
   const receiveRef = useRef(receive);
   receiveRef.current = receive;
 
-  // A picture pasted anywhere in the view, but into a field or a dialog, is a receipt.
+  // A picture pasted into the view (or with nothing focused) is a receipt; a paste into a field, a grid or an editor anywhere else keeps its meaning.
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest?.("input, textarea, [contenteditable=true], [role=dialog]")) return;
+      const target = event.target as Node | null;
+      const mine = target === document.body || (target !== null && root.current?.contains(target));
+      if (!mine || (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false]), [role=dialog]"))) return;
       const files = Array.from(event.clipboardData?.files ?? []).filter((f) => /^image\//.test(f.type));
       if (!files.length) return;
       event.preventDefault();
@@ -167,57 +180,62 @@ export function View({ env, workspace }: WorkViewProps) {
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
   }, []);
-  useEffect(() => () => void (quiet.current && clearTimeout(quiet.current)), []);
 
-  // The view takes a dropped file itself, so the frame's drop never starts a thread with it.
-  const carries = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files");
-  const onDragOver = (event: DragEvent) => {
-    if (!carries(event)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    setOver(true);
-    // A drag that leaves the window says nothing more: a quiet spell ends the wash.
-    if (quiet.current) clearTimeout(quiet.current);
-    quiet.current = setTimeout(() => setOver(false), 350);
-  };
-  const onDrop = (event: DragEvent) => {
-    if (!carries(event)) return;
-    event.preventDefault();
-    setOver(false);
-    receive(Array.from(event.dataTransfer.files));
-  };
+  // A file dropped anywhere on the view, its 40px header too, is a receipt: the view's region takes the drop before the frame's
+  // own handler (which would start a thread with it) hears of it. Outside the frame (a preview, a test) the view's own element.
+  useEffect(() => {
+    const zone = root.current?.closest<HTMLElement>("[data-file-opens]") ?? root.current;
+    if (!zone) return;
+    let quiet: ReturnType<typeof setTimeout> | null = null;
+    const carries = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files");
+    const onOver = (event: DragEvent) => {
+      if (!carries(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      setOver(true);
+      // A drag that leaves the window says nothing more: a quiet spell ends the wash.
+      if (quiet) clearTimeout(quiet);
+      quiet = setTimeout(() => setOver(false), 350);
+    };
+    const onDrop = (event: DragEvent) => {
+      if (!carries(event)) return;
+      event.preventDefault();
+      if (quiet) clearTimeout(quiet);
+      setOver(false);
+      receiveRef.current(Array.from(event.dataTransfer?.files ?? []));
+    };
+    zone.addEventListener("dragover", onOver);
+    zone.addEventListener("drop", onDrop);
+    return () => {
+      if (quiet) clearTimeout(quiet);
+      zone.removeEventListener("dragover", onOver);
+      zone.removeEventListener("drop", onDrop);
+    };
+  }, []);
 
+  const toConfirm = read ? <ToConfirmSection env={env} workspaceId={workspace.id} read={read} reload={reload} onReview={(id) => set({ dialog: { kind: "confirm", id } })} onReviewOffer={(offer) => set({ dialog: { kind: "trip", offer } })} /> : null;
   let body: ReactNode;
   if (!read) body = load.error ? null : <MoneySkeleton />;
-  else if (isEmpty(read)) body = <EmptyState title="No money yet" line="Drop a receipt here." action={{ label: "Add entry", onClick: () => set({ dialog: { kind: "entry" } }) }} />;
-  else body = <Ledger env={env} workspaceId={workspace.id} read={read} label={periodLabel(period)} year={period.span === "year"} reload={reload} />;
+  else if (columns) body = waits(read) ? <Column>{toConfirm}</Column> : null;
+  else if (bare) body = <EmptyState title="No money yet" line="Drop a receipt here." action={{ label: "Add entry", onClick: () => set({ dialog: { kind: "entry" } }) }} />;
+  else body = <Ledger env={env} workspaceId={workspace.id} read={read} label={periodLabel(period)} year={period.span === "year"} reload={reload} toConfirm={waits(read) ? toConfirm : null} />;
 
   return (
-    <div data-money-view className="flex h-full min-h-0 flex-col" onDragOver={onDragOver} onDrop={onDrop}>
+    <div ref={root} data-money-view className="flex h-full min-h-0 flex-col">
       {load.error ? <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} /> : null}
-      {read?.problems.map((p) =>
-        p.kind === "columns" ? (
-          <ProblemLine
-            key="columns"
-            word="The ledger's columns changed"
-            detail={`Missing ${p.missing.join(", ")}`}
-            action="Restore columns"
-            onPress={() => openBooks(env, workspace.id, true).then(reload)}
-          />
-        ) : null,
-      )}
+      {columns ? <ProblemLine word="The ledger's columns changed" detail={missingWords(columns.missing)} action="Restore columns" onPress={() => openBooks(env, workspace.id, true).then(reload)} /> : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {body}
         {over ? (
-          <div data-money-wash className="absolute inset-0 z-20 grid place-items-center bg-background/80 text-[13px] text-muted-foreground">
-            File as receipt
+          <div data-money-wash className="absolute inset-0 z-20 grid place-items-center bg-background/80">
+            <span className="rounded-lg bg-background px-3 py-1.5 text-[13px] text-foreground">File as receipt</span>
           </div>
         ) : null}
       </div>
       <input
         ref={picker}
         type="file"
-        accept="image/*,application/pdf"
+        accept={RECEIPT_ACCEPT}
         multiple
         hidden
         aria-label="Receipts"
@@ -235,7 +253,7 @@ export function View({ env, workspace }: WorkViewProps) {
           read={read}
           mode="edit"
           row={dialog.row}
-          picture={dialog.row.receipt && /\.(pdf|jpe?g|png|heic|webp|gif)$/i.test(dialog.row.receipt) ? <ReceiptPicture env={env} of={{ workspaceId: workspace.id, receipt: dialog.row.receipt }} name={dialog.row.receipt} /> : undefined}
+          picture={dialog.row.receipt && isReceiptName(dialog.row.receipt) ? <ReceiptPicture env={env} of={{ workspaceId: workspace.id, receipt: dialog.row.receipt }} name={dialog.row.receipt} /> : undefined}
           footerStart={sentAs(dialog.row.receipt) ? <SendRow env={env} workspaceId={workspace.id} read={read} row={dialog.row} onSent={close} /> : undefined}
           onClose={close}
           onSaved={() => void reload()}
@@ -244,7 +262,8 @@ export function View({ env, workspace }: WorkViewProps) {
       {read && dialog?.kind === "trip" ? (
         <TripDialog env={env} workspaceId={workspace.id} offer={dialog.offer} day={today() >= span.from && today() < span.to ? today() : span.from} onClose={close} onSaved={() => void reload()} />
       ) : null}
-      {read && dialog?.kind === "rate" ? <RateDialog env={env} workspaceId={workspace.id} rate={read.rate} onClose={close} onSaved={() => void reload()} /> : null}
+      {/* Bound to the year it opened for: the read of that period seeds it, and it submits that year. */}
+      {read && dialog?.kind === "rate" ? <RateDialog key={read.rate.year} env={env} workspaceId={workspace.id} rate={read.rate} onClose={close} onSaved={() => void reload()} /> : null}
       {dialog?.kind === "invoice" ? (
         <InvoiceDialog
           env={env}
@@ -255,8 +274,9 @@ export function View({ env, workspace }: WorkViewProps) {
             void reload();
             const title = invoiceTitle(invoice.kind, invoice.number);
             const file = kept.source;
+            const receipt = kept.receipt ?? `${title}.pdf`;
             void loadToast().then((toast) =>
-              toast(`${title} created`, file ? { action: { label: "Send…", onClick: () => withToast(() => sendInvoice(env, workspace.id, file, invoice.kind, invoice.number, formatMoney(invoiceTotal(invoice.lines)))) } } : undefined),
+              toast(`${title} created`, file ? { action: { label: "Send…", onClick: () => sendInvoice(env, workspace.id, file, receipt, invoice.kind, invoice.number, formatMoney(invoiceTotal(invoice.lines))) } } : undefined),
             );
           }}
         />
@@ -267,96 +287,82 @@ export function View({ env, workspace }: WorkViewProps) {
   );
 }
 
-/** Send… in a row's dialog, for a row whose kept file is an invoice or a purchase request: the composer, filled, and the PDF in Files. */
+/** The picker offers what Money files: the one list, as extensions. */
+const RECEIPT_ACCEPT = ["image/*", "application/pdf", ...RECEIPT_EXTS.map((e) => `.${e}`)].join(",");
+
+/** "No In or Out column", "No Date column", "No Date, In or Out column": what the ledger lacks, in its own words. */
+export function missingWords(missing: readonly string[]): string {
+  if (missing.length <= 1) return `No ${missing[0] ?? "needed"} column`;
+  return `No ${missing.slice(0, -1).join(", ")} or ${missing[missing.length - 1]} column`;
+}
+
+/** Send… in a row's dialog, for a row whose kept file is an invoice or a purchase request: the job's Mail composer, filled, the PDF to attach from Files. */
 function SendRow({ env, workspaceId, read, row, onSent }: { env: string; workspaceId: string; read: MoneyRead; row: LedgerRow; onSent: () => void }) {
   const sent = row.receipt ? sentAs(row.receipt) : null;
   if (!sent) return null;
   return (
-    <Button variant="ghost" onClick={() => withToast(() => sendInvoice(env, workspaceId, receiptSource(read.root, row.receipt), sent.kind, sent.number, formatMoney(row.in || row.out)).then(onSent))}>
+    <Button
+      variant="ghost"
+      className="-ms-2.5"
+      onClick={() => {
+        sendInvoice(env, workspaceId, receiptSource(read.root, row.receipt), row.receipt, sent.kind, sent.number, formatMoney(row.in || row.out));
+        onSent();
+      }}
+    >
       Send…
     </Button>
   );
 }
 
-/** A job with no ledger, or a ledger with nothing in it at all. */
-export const isEmpty = (read: MoneyRead): boolean => !read.made || (read.sellers.length === 0 && read.rows.length === 0 && read.owed.length === 0 && read.toConfirm.length === 0 && read.calendar.length === 0);
+/** Something waits for his accept: receipts, or the calendar's offers. */
+const waits = (read: MoneyRead): boolean => read.toConfirm.length > 0 || read.calendar.length > 0;
 
-function Ledger({ env, workspaceId, read, label, year, reload }: { env: string; workspaceId: string; read: MoneyRead; label: string; year: boolean; reload: () => Promise<void> }) {
+/** "No money yet": no ledger, or one with nothing in it at all, and nothing waits either (the first drop on a new job is seen). */
+export const isEmpty = (read: MoneyRead): boolean => !waits(read) && (!read.made || (read.sellers.length === 0 && read.rows.length === 0 && read.owed.length === 0 && read.miles.miles === 0));
+
+/** The view's one column, scrolling. */
+function Column({ children }: { children: ReactNode }) {
+  return (
+    <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-4 py-4">{children}</div>
+    </div>
+  );
+}
+
+function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { env: string; workspaceId: string; read: MoneyRead; label: string; year: boolean; reload: () => Promise<void>; toConfirm: ReactNode }) {
   const [category, setCategory] = useState<string | null>(null);
   // A category of another period does not narrow this one.
   const narrowed = category && read.byCategory.some((c) => c.category.toLowerCase() === category.toLowerCase()) ? category : null;
   const rows = narrowed ? read.rows.filter((r) => (r.category || "Other").toLowerCase() === narrowed.toLowerCase()) : read.rows;
   return (
-    <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-4 py-4">
-        {read.toConfirm.length || read.calendar.length ? (
-          <ToConfirm env={env} workspaceId={workspaceId} read={read} reload={reload} />
-        ) : null}
-        <Figures read={read} />
-        {year ? <ByMonth read={read} /> : null}
-        {read.byCategory.length ? (
-          <Section title="By category">
-            <ByCategory read={read} selected={narrowed} onPick={(c) => setCategory(c === narrowed ? null : c)} />
-          </Section>
-        ) : null}
-        {read.owed.length ? (
-          <Owed env={env} workspaceId={workspaceId} owed={read.owed} reload={reload} />
-        ) : null}
-        <Section
-          title={narrowed ? `Entries in ${narrowed}` : "Entries"}
-          action={
-            narrowed ? (
-              <Button variant="ghost" size="xs" onClick={() => setCategory(null)}>
-                Clear
-              </Button>
-            ) : null
-          }
-        >
-          {rows.length ? (
-            <Entries env={env} workspaceId={workspaceId} read={read} rows={rows} />
-          ) : (
-            <p className="text-[13px] text-muted-foreground">Nothing in {label}</p>
-          )}
+    <Column>
+      {toConfirm}
+      <Figures read={read} />
+      {year ? <ByMonth read={read} /> : null}
+      {read.byCategory.length ? (
+        <Section title="By category">
+          <ByCategory read={read} selected={narrowed} onPick={(c) => setCategory(c === narrowed ? null : c)} />
         </Section>
-        {read.miles.miles > 0 ? (
-          <Section title="Mileage">
-            <Facts parts={splitFacts(milesLine(read.miles))} className="text-[13px] text-muted-foreground" />
-          </Section>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ToConfirm({ env, workspaceId, read, reload }: { env: string; workspaceId: string; read: MoneyRead; reload: () => Promise<void> }) {
-  const [adding, setAdding] = useState(false);
-  const whole = read.calendar.filter(offerWhole).length;
-  return (
-    <ToConfirmSection
-      title="To confirm"
-      action={
-        whole >= 2 ? (
-          <Button
-            variant="ghost"
-            size="xs"
-            disabled={adding}
-            onClick={() => {
-              setAdding(true);
-              withToast(() =>
-                addAll(env, workspaceId, read.calendar)
-                  .then(reload)
-                  .finally(() => setAdding(false)),
-              );
-            }}
-          >
-            <BusyLabel busy={adding} label="Add all" />
-          </Button>
-        ) : null
-      }
-    >
-      <ReceiptRows env={env} read={read} onReview={(id) => set({ dialog: { kind: "confirm", id } })} reload={reload} />
-      <CalendarRows env={env} workspaceId={workspaceId} read={read} adding={adding} onReview={(offer) => set({ dialog: { kind: "trip", offer } })} reload={reload} />
-    </ToConfirmSection>
+      ) : null}
+      {read.owed.length ? <Owed env={env} workspaceId={workspaceId} owed={read.owed} reload={reload} /> : null}
+      <Section
+        title={narrowed ? `Entries in ${narrowed}` : "Entries"}
+        action={
+          narrowed ? (
+            <Button variant="ghost" size="xs" className="-me-2" onClick={() => setCategory(null)}>
+              Clear
+            </Button>
+          ) : null
+        }
+      >
+        {rows.length ? <Entries env={env} workspaceId={workspaceId} read={read} rows={rows} /> : <p className="text-[13px] text-muted-foreground">Nothing in {label}</p>}
+      </Section>
+      {read.miles.miles > 0 ? (
+        <Section title="Mileage">
+          <Facts parts={splitFacts(milesLine(read.miles))} className="text-[13px] text-muted-foreground" />
+        </Section>
+      ) : null}
+    </Column>
   );
 }
 
@@ -446,16 +452,13 @@ function ByCategory({ read, selected, onPick }: { read: MoneyRead; selected: str
         const on = selected?.toLowerCase() === c.category.toLowerCase();
         return (
           <li key={c.category}>
-            <ItemButton
-              aria-pressed={on}
-              onClick={() => onPick(c.category)}
-              className={cn("grid h-8 grid-cols-[minmax(0,12rem)_minmax(0,1fr)_7rem] items-center gap-4 px-2 py-0 text-[13px] hover:bg-muted", on && "bg-muted")}
-            >
+            <ItemButton aria-pressed={on} onClick={() => onPick(c.category)} className={cn("grid h-8 items-center gap-4 px-2 py-0 text-[13px] hover:bg-muted", CATEGORY_GRID, on && "bg-muted")}>
               <span className="truncate">{c.category}</span>
               <span className="flex h-2 items-center">
                 <span className="h-2 rounded-e bg-(--chart-neutral)" style={{ width: `${Math.max(1, Math.round(c.share * 100))}%` }} />
               </span>
               <span className="text-end tabular-nums">{signedMoney(c.amount)}</span>
+              <span />
             </ItemButton>
           </li>
         );
@@ -465,6 +468,15 @@ function ByCategory({ read, selected, onPick }: { read: MoneyRead; selected: str
 }
 
 // ── owed ─────────────────────────────────────────────────────────────
+
+/**
+ * An open row's words. A cost to be paid back leads with what it was for, the seller after it in muted (he paid
+ * the diner; the job owes him), or with no For the seller and "to be paid back"; any other, who then what for.
+ */
+export function owedWords(r: Pick<OwedRow, "who" | "what" | "reimburse">): { lead: string; after: string | null } {
+  if (r.reimburse) return r.what ? { lead: r.what, after: r.who || null } : { lead: r.who || "Entry", after: "to be paid back" };
+  return { lead: r.who || "Entry", after: r.what || null };
+}
 
 function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: string; owed: OwedRow[]; reload: () => Promise<void> }) {
   const [paying, setPaying] = useState<string | null>(null);
@@ -488,15 +500,16 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
           <ul className="flex flex-col">
             {g.rows.map((r) => {
               const key = `${r.row}:${r.way}`;
+              const words = owedWords(r);
               return (
-                <li key={key} className="grid min-h-10 grid-cols-[minmax(0,1fr)_6rem_5rem_4rem] items-center gap-4 border-b border-border text-[13px] last:border-0">
+                <li key={key} data-owed-row={r.row} className={cn("grid min-h-10 items-center gap-4 border-b border-border text-[13px] last:border-0", OWED_GRID)}>
                   <span className="flex min-w-0 items-baseline gap-1">
-                    <span className="shrink-0 truncate">{r.who || "Someone"}</span>
-                    {r.what ? <span className="min-w-0 truncate text-muted-foreground">{r.what}</span> : null}
+                    <span className="shrink-0 truncate text-foreground">{words.lead}</span>
+                    {words.after ? <span className="min-w-0 truncate text-muted-foreground">{words.after}</span> : null}
                   </span>
-                  <span className="text-end tabular-nums">{formatMoney(r.amount)}</span>
                   <span className="text-end text-xs text-muted-foreground tabular-nums">{sinceWords(r.since)}</span>
-                  <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${r.who}`}>
+                  <span className="text-end tabular-nums">{formatMoney(r.amount)}</span>
+                  <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${words.lead}`}>
                     <BusyLabel busy={paying === key} label="Paid" />
                   </Button>
                 </li>
@@ -519,16 +532,16 @@ function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: s
         <TableRow>
           <TableHead className="w-24 first:pl-2">Date</TableHead>
           <TableHead>Who</TableHead>
-          <TableHead className="w-[30%]">Category</TableHead>
+          <TableHead className="w-[26%]">Category</TableHead>
           <TableHead className="w-28 text-end">Amount</TableHead>
-          <TableHead className="w-10 last:pr-2">
+          <TableHead className={cn("last:pr-2", ENTRIES_TAIL)}>
             <span className="sr-only">Receipt</span>
           </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((row) => (
-          <TableRow key={`${row.row}:${sigOf(row)}`} data-money-row={row.row} className="relative hover:bg-muted">
+          <TableRow key={`${row.row}:${sigOf(row)}`} data-money-row={row.row} className="relative focus-within:bg-muted hover:bg-muted">
             <TableCell className="first:pl-2">
               <Button
                 variant="link"
@@ -544,13 +557,7 @@ function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: s
             <TableCell className="text-end">{rowMoney(row)}</TableCell>
             <TableCell className="last:pr-2 text-end">
               {row.receipt ? (
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label="Open receipt"
-                  className="relative z-10 text-muted-foreground"
-                  onClick={() => withToast(() => openReceipt(env, workspaceId, read, row.receipt))}
-                >
+                <Button variant="ghost" size="icon-xs" aria-label="Open receipt" className="relative z-10 text-muted-foreground" onClick={() => withToast(() => openReceipt(env, workspaceId, read, row.receipt))}>
                   <Paperclip />
                 </Button>
               ) : null}
@@ -585,6 +592,7 @@ function ProblemLine({ word, detail, action, onPress }: { word: string; detail: 
   );
 }
 
+/** The figures' shape, then Entries' rows: date, who, category, and the amount ending on money's one edge (layout.ts). */
 function MoneySkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading money" className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-4 py-4">
@@ -599,10 +607,18 @@ function MoneySkeleton() {
       <div className="flex flex-col">
         <Skeleton className="mb-3 h-3.5 w-16" />
         {[72, 56, 64, 48, 60, 52].map((w, i) => (
-          <div key={i} className="flex h-10 items-center gap-6 border-b border-border last:border-0">
+          <div key={i} className="flex h-10 items-center border-b border-border last:border-0">
             <Skeleton className="h-3 w-12" />
-            <Skeleton className="h-3" style={{ width: `${w / 2}%` }} />
-            <Skeleton className="ms-auto h-3 w-16" />
+            <span className="ms-12 min-w-0 flex-1">
+              <Skeleton className="h-3" style={{ width: `${w}%` }} />
+            </span>
+            <span className="w-[26%]">
+              <Skeleton className="h-3" style={{ width: `${w - 12}%` }} />
+            </span>
+            <span className="flex w-28 justify-end">
+              <Skeleton className="h-3 w-16" />
+            </span>
+            <span className="w-[120px]" />
           </div>
         ))}
       </div>

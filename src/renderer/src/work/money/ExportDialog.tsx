@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { MoneyExport } from "@shared/contract-work-money";
 import type { CanvasSource } from "@shared/work/canvas";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -8,7 +8,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { loadToast } from "../../components/ui/toaster";
 import { openWorkView } from "../../lib/workSwitch";
 import { request } from "./api";
-import { keepPrinted, printPage } from "./print";
+import { keepPrinted, newKey, printPage } from "./print";
 
 /**
  * Export… (docs/DESIGN.md "The Money view"): a year's books for tax time in
@@ -23,20 +23,46 @@ export interface ExportChoice {
   pdf: boolean;
 }
 
-/** What Export does: the host's files, then the summary printed and kept. Answers the folder and every line that could not be made. */
-export async function runExport(env: string, workspaceId: string, choice: ExportChoice): Promise<{ folder: CanvasSource; files: string[]; warnings: string[] }> {
+/** What Export made: the folder, every file that landed (the kept summary among them), and in words what did not. */
+export interface ExportMade {
+  folder: CanvasSource;
+  files: string[];
+  warnings: string[];
+  replaced: boolean;
+}
+
+/** What Export does: the host's files, then the summary printed and kept under `key` (the same on a retry). Refuses when nothing landed. */
+export async function runExport(env: string, workspaceId: string, choice: ExportChoice, key: string): Promise<ExportMade> {
   const made = await request<MoneyExport>(env, "work.money.export", { workspaceId, ...choice });
   const warnings = [...made.warnings];
+  const files = [...made.files];
   if (made.summary) {
     try {
       const printed = await printPage(env, made.summary.name, made.summary.html);
       warnings.push(...printed.warnings);
-      await keepPrinted(env, { workspaceId, what: "summary", year: choice.year }, printed.data);
+      const kept = await keepPrinted(env, { workspaceId, what: "summary", year: choice.year }, printed.data, key);
+      files.push(kept.receipt?.split(/[\\/]/).pop() ?? `${made.summary.name}.pdf`);
     } catch (err) {
       warnings.push(`The summary was not made: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  return { folder: made.folder, files: made.files, warnings };
+  if (!files.length) throw new Error(warnings.join(", ") || "Nothing was made");
+  return { folder: made.folder, files, warnings, replaced: made.replaced };
+}
+
+/** The toast's second line: that an earlier export was replaced, and what could not be made, as one comma run. */
+export const exportNote = (made: Pick<ExportMade, "warnings" | "replaced">): string | null => {
+  const parts = [...(made.replaced ? ["Replaced the earlier export."] : []), ...made.warnings].map((p) => p.trim().replace(/\.$/, "")).filter(Boolean);
+  if (!parts.length) return null;
+  // One sentence: later parts start in lower case unless they start with a name in capitals ("CSV", "PDF").
+  const run = parts.map((p, i) => (i > 0 && /^[A-Z][a-z]/.test(p) ? p[0].toLowerCase() + p.slice(1) : p)).join(", ");
+  return `${run}.`;
+};
+
+/** The years offered, this one and the four before, and the one chosen first: the period's when offered, else the oldest offered. */
+export function exportYears(periodYear: number, now: number = new Date().getFullYear()): { years: number[]; first: number } {
+  const years = Array.from({ length: 5 }, (_, i) => now - i);
+  return { years, first: years.includes(periodYear) ? periodYear : years[years.length - 1] };
 }
 
 /** Show in Files: the folder as a page tab of Files, then Files. */
@@ -56,25 +82,29 @@ export function ExportDialog({ env, workspaceId, year, onClose }: { env: string;
 
 function Body({ env, workspaceId, year, onClose, pending, setPending }: { env: string; workspaceId: string; year: number; onClose: () => void; pending: boolean; setPending: (p: boolean) => void }) {
   const close = useModalClose();
-  const this_ = new Date().getFullYear();
-  const years = Array.from({ length: 5 }, (_, i) => String(this_ - i));
-  const [choice, setChoice] = useState<ExportChoice>({ year: Math.min(year, this_), xlsx: true, csv: true, pdf: true });
+  const { years, first } = exportYears(year);
+  const [choice, setChoice] = useState<ExportChoice>({ year: first, xlsx: true, csv: true, pdf: true });
+  // One key per year for this dialog's kept summary: a retry files it once.
+  const keys = useRef(new Map<number, string>());
   const [error, setError] = useState<string | null>(null);
   const patch = (p: Partial<ExportChoice>) => setChoice((c) => ({ ...c, ...p }));
   const any = choice.xlsx || choice.csv || choice.pdf;
 
   const submit = () => {
-    if (!any || pending) return;
+    if (!any || pending || !years.includes(choice.year)) return;
     setError(null);
     setPending(true);
-    runExport(env, workspaceId, choice).then(
-      ({ folder, warnings }) => {
+    const key = keys.current.get(choice.year) ?? newKey();
+    keys.current.set(choice.year, key);
+    runExport(env, workspaceId, choice, key).then(
+      (made) => {
         setPending(false);
         const name = `Tax ${choice.year}`;
+        const note = exportNote(made);
         void loadToast().then((toast) =>
           toast(`Exported ${choice.year} for tax time`, {
-            ...(warnings.length ? { description: warnings.join("\n") } : {}),
-            action: { label: "Show in Files", onClick: () => void showFolder(env, workspaceId, folder, name) },
+            ...(note ? { description: note } : {}),
+            action: { label: "Show in Files", onClick: () => void showFolder(env, workspaceId, made.folder, name) },
           }),
         );
         close ? close(onClose) : onClose();
@@ -95,7 +125,7 @@ function Body({ env, workspaceId, year, onClose, pending, setPending }: { env: s
     >
       <ModalBody>
         <Field label="Year">
-          <ChoiceSelect label="Year" className="w-full" value={String(choice.year)} options={years.map((y) => ({ value: y, label: y }))} onChange={(y) => patch({ year: Number(y) })} />
+          <ChoiceSelect label="Year" className="w-full" value={String(choice.year)} options={years.map((y) => ({ value: String(y), label: String(y) }))} onChange={(y) => patch({ year: Number(y) })} />
         </Field>
         <div className="flex flex-col">
           <CheckRow label="Spreadsheet (Excel)" checked={choice.xlsx} onCheckedChange={(xlsx) => patch({ xlsx })} />

@@ -24,16 +24,16 @@ export const ledgerRow = (date: string, who: string, category: string, amount: n
 
 export const NOVEMBER: LedgerRow[] = [
   ledgerRow("2026-11-21", "Harlan Valley Officials", "Game fees", 7500, { what: "Varsity at Harrison", status: "Unpaid" }),
-  ledgerRow("2026-11-20", "Corner Fuel", "Mileage", -4210, { receipt: "Receipts/2026/2026-11-20 Corner Fuel 42.10.jpg" }),
+  ledgerRow("2026-11-20", "Corner Fuel", "Travel", -4210, { receipt: "Receipts/2026/2026-11-20 Corner Fuel 42.10.jpg" }),
   ledgerRow("2026-11-18", "Ridgeline Conference", "Game fees", 6500, { what: "JV doubleheader" }),
   ledgerRow("2026-11-16", "Stripe & Whistle Supply", "Uniform and gear", -8995, { what: "Winter jacket", receipt: "Receipts/2026/2026-11-16 Stripe Whistle 89.95.pdf" }),
   ledgerRow("2026-11-14", "Harlan Valley Officials", "Game fees", 7500, { what: "Varsity at Millbrook" }),
-  ledgerRow("2026-11-13", "Corner Fuel", "Mileage", -3880),
+  ledgerRow("2026-11-13", "Corner Fuel", "Travel", -3880),
   ledgerRow("2026-11-11", "Ridgeline Conference", "Game fees", 6000),
   ledgerRow("2026-11-09", "Diner on 9th", "Meals", -1625, { what: "Crew meal before the game", status: "To reimburse" }),
   ledgerRow("2026-11-07", "Harlan Valley Officials", "Game fees", 7500),
   ledgerRow("2026-11-05", "State Officials Assn", "Dues and registration", -4500, { status: "Unpaid", what: "Second-half dues" }),
-  ledgerRow("2026-11-03", "Corner Fuel", "Mileage", -4415, { receipt: "Receipts/2026/2026-11-03 Corner Fuel 44.15.jpg" }),
+  ledgerRow("2026-11-03", "Corner Fuel", "Travel", -4415, { receipt: "Receipts/2026/2026-11-03 Corner Fuel 44.15.jpg" }),
   ledgerRow("2026-11-01", "Ridgeline Conference", "Game fees", 6500),
 ];
 
@@ -43,7 +43,7 @@ const EARLIER: LedgerRow[] = [
   ["2026-09", 30500, 6200], ["2026-10", 34000, 7400],
 ].flatMap(([month, fees, fuel]) => [
   ...(fees ? [ledgerRow(`${month}-12`, "Ridgeline Conference", "Game fees", fees as number)] : []),
-  ...(fuel ? [ledgerRow(`${month}-14`, "Corner Fuel", "Mileage", -(fuel as number))] : []),
+  ...(fuel ? [ledgerRow(`${month}-14`, "Corner Fuel", "Travel", -(fuel as number))] : []),
 ]);
 
 export const ALL_ROWS = [...NOVEMBER, ...EARLIER];

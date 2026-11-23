@@ -44,8 +44,12 @@ export const signedMoney = (cents: number): string => (cents > 0 ? `+${formatMon
 /** A row's amount as the table shows it. */
 export const rowMoney = (row: Pick<LedgerRow, "in" | "out">): string => (row.in ? `+${formatMoney(row.in)}` : formatMoney(row.out));
 
-/** "$1.2k": the chart's axis, from cents. */
-export const shortMoney = (cents: number): string => `$${compactTick(Math.round(cents / 100))}`;
+/** "$1.2k" from a thousand up, "$450", or "$2.50" where the dollars are not whole: the chart's axis, from cents, so neighbouring ticks never read the same. */
+export function shortMoney(cents: number): string {
+  const dollars = cents / 100;
+  if (Math.abs(dollars) >= 1000) return `$${compactTick(dollars)}`;
+  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
 
 /** How long something has been open: "Today", "1 day", "32 days". */
 export function sinceWords(since: string | null, now: string = today()): string | null {

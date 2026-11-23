@@ -3,7 +3,7 @@ import type { CanvasItem } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
 import { openWorkView } from "../../lib/workSwitch";
 import { request } from "./api";
-import { itemName } from "./itemVerb";
+import { inJob, itemName } from "./itemVerb";
 import { bytesOfBase64, receiveFile } from "./receive";
 
 /**
@@ -33,17 +33,27 @@ export async function itemBytes(env: string, itemId: string): Promise<Uint8Array
 }
 
 export async function fileItem(item: CanvasItem, env: string): Promise<void> {
+  const toast = await loadToast();
   const workspaceId = item.workspaceId;
-  if (!workspaceId) throw new Error("This item is in no job, so Money has nowhere to file it");
-  const name = itemName(item);
-  if (item.source.at === "file") {
-    await request<MoneyReceived>(env, "work.money.receive", { key: crypto.randomUUID(), workspaceId, name, file: item.source, source: "drop" });
-  } else {
-    const mail = item.source.at === "mail";
-    if (mail) await request(env, "work.canvas.fetch", { itemId: item.id });
-    const bytes = await itemBytes(env, item.id);
-    const type = item.source.at === "mail" ? (item.source.contentType ?? "") : "";
-    await receiveFile({ env, workspaceId, host: null, source: mail ? "mail" : "drop" }, new Blob([bytes], { type }), name);
+  // Checked before any byte moves: a pane with no job has no ledger to file into.
+  if (!workspaceId || !inJob(item)) {
+    toast("Open this in a job to file it as a receipt.");
+    return;
   }
-  void loadToast().then((toast) => toast("Filed to confirm in Money", { action: { label: "Open Money", onClick: () => openWorkView({ workspaceId, view: "money" }) } }));
+  const id = toast.loading("Filing to Money…");
+  try {
+    const name = itemName(item);
+    if (item.source.at === "file") {
+      await request<MoneyReceived>(env, "work.money.receive", { key: crypto.randomUUID(), workspaceId, name, file: item.source, source: "drop" });
+    } else {
+      const mail = item.source.at === "mail";
+      if (mail) await request(env, "work.canvas.fetch", { itemId: item.id });
+      const bytes = await itemBytes(env, item.id);
+      const type = item.source.at === "mail" ? (item.source.contentType ?? "") : "";
+      await receiveFile({ env, workspaceId, host: null, source: mail ? "mail" : "drop" }, new Blob([bytes], { type }), name);
+    }
+    toast("Filed to confirm in Money", { id, action: { label: "Open Money", onClick: () => openWorkView({ workspaceId, view: "money" }) } });
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err), { id });
+  }
 }

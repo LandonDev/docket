@@ -31,12 +31,19 @@ export const tripFormOf = (offer: CalendarOffer | null, day: string): TripForm =
     ? { eventId: offer.eventId, date: offer.date, title: offer.title, place: offer.place ?? "", miles: offer.miles === null ? "" : String(offer.miles), fee: amountText(offer.fee), measured: offer.measured }
     : { eventId: null, date: day, title: "", place: "", miles: "", fee: "", measured: true };
 
-/** What a trip writes; null while it has no date or name, or a number that does not read. */
+/** A fee as he types it: blank, "0" or "$0.00" are no fee (0); null when it does not read. */
+function feeOf(text: string): number | null {
+  const bare = text.replace(/[$\s,]/g, "");
+  if (bare === "" || /^0*\.?0*$/.test(bare)) return 0;
+  return parseAmount(text);
+}
+
+/** What a trip writes; null while it has no date or name, a number does not read, or there is neither miles nor a fee. */
 export function tripParams(workspaceId: string, form: TripForm): Record<string, unknown> | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date) || !form.title.trim()) return null;
   const miles = form.miles.trim() === "" ? 0 : Number(form.miles);
-  const fee = form.fee.trim() === "" ? 0 : parseAmount(form.fee);
-  if (!Number.isFinite(miles) || miles < 0 || fee === null) return null;
+  const fee = feeOf(form.fee);
+  if (!Number.isFinite(miles) || miles < 0 || fee === null || (miles <= 0 && fee <= 0)) return null;
   return {
     workspaceId,
     ...(form.eventId ? { eventId: form.eventId } : {}),

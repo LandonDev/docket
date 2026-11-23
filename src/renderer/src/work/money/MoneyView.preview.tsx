@@ -11,6 +11,7 @@ import { CANVAS } from "../canvas/registry";
 import { applyCanvasPush, resetCanvasStore } from "../canvas/store";
 import "./itemVerb";
 import { registry, type Link } from "../../lib/connection";
+import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { Head, View, openMoneyDialog, setMoneyPeriod } from "./MoneyView";
 import { ALL_ROWS, EMPTY_READ, NOVEMBER, RECEIPT_SVG, readOf } from "./money.fixtures";
 
@@ -20,11 +21,14 @@ import { ALL_ROWS, EMPTY_READ, NOVEMBER, RECEIPT_SVG, readOf } from "./money.fix
  * a referee's November (`month`), his year (`year`), money still open
  * (`owed`), a job with no ledger (`empty`), the read on its way (`loading`),
  * a read that failed over the last one (`failed`), a ledger whose headers he
- * changed (`columns`), and the entry dialog open on a row (`dialog`).
+ * changed (`columns`), the entry dialog open on a row (`dialog`), receipts and the
+ * calendar's offers waiting (`confirm`), offers alone (`confirm-offers`), a file held
+ * over the view (`drop`), each dialog (`dialog-*`, `picture-failed`), the header's
+ * menus (`menu-add`, `menu-more`) and a canvas item's More (`item-verb`).
  * Made-up data; rendered by nothing in the app.
  */
 
-type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb";
+type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb" | "picture-failed" | "confirm-offers";
 let state: State = "month";
 let reads = 0;
 
@@ -34,7 +38,7 @@ if (typeof URL !== "undefined") URL.createObjectURL = () => `data:image/svg+xml;
 
 const waiting = (id: string, over: Partial<ToConfirm>): ToConfirm => ({ id, state: "ready", source: "drop", name: `${id}.jpg`, picture: true, fields: { amount: null, date: null, who: null, category: null }, at: 1, ...over });
 const TO_CONFIRM: ToConfirm[] = [
-  waiting("a", { fields: { amount: 4210, date: "2026-11-20", who: "Corner Fuel", category: "Mileage" } }),
+  waiting("a", { fields: { amount: 4210, date: "2026-11-20", who: "Corner Fuel", category: "Travel" } }),
   waiting("b", { name: "IMG_2231.jpg", fields: { amount: 2875, date: "2026-11-22", who: null, category: null } }),
   waiting("c", { state: "reading", name: "scan-0112.pdf" }),
 ];
@@ -57,7 +61,12 @@ function answer(period: Period): Promise<MoneyRead> {
     case "failed":
       return reads > 1 ? Promise.reject(new Error("The box did not answer in 10 seconds")) : Promise.resolve(readOf(period, paid));
     case "columns":
-      return Promise.resolve(readOf(period, paid, { problems: [{ kind: "columns", missing: ["In", "Out"] }] }));
+      // The host reads no rows from a ledger missing a needed header: the line, and To confirm under it.
+      return Promise.resolve(readOf(period, [], { made: true, problems: [{ kind: "columns", missing: ["In", "Out"] }], toConfirm: [TO_CONFIRM[0]] }));
+    case "confirm-offers":
+      return Promise.resolve(readOf(period, paid, { calendar: CALENDAR }));
+    case "picture-failed":
+      return Promise.resolve(readOf(period, paid, { toConfirm: TO_CONFIRM }));
     case "confirm":
     case "dialog-picture":
     case "dialog-trip":
@@ -79,6 +88,7 @@ const link = {
   onPush: () => () => {},
   request<T>(method: string, params: { from: string; to: string }): Promise<T> {
     if (method === "work.money.read") return answer({ from: params.from, to: params.to }) as Promise<T>;
+    if (method === "work.money.picture" && state === "picture-failed") return Promise.reject(new Error("The file moved"));
     if (method === "work.money.picture") return Promise.resolve({ mime: "image/svg+xml", name: "receipt.svg", size: RECEIPT_SVG.length, parts: 1, dataBase64: RECEIPT_B64 } as T);
     if (method === "work.money.invoiceNext")
       return Promise.resolve(
@@ -120,6 +130,11 @@ function usePortalCopy(host: RefObject<HTMLDivElement | null>, on: boolean, plac
       if (menu && place) menu.setAttribute("style", `position:absolute;top:${place.top}px;${place.left !== undefined ? `left:${place.left}px` : `right:${place.right ?? 0}px`};z-index:50`);
       // Opened by a scripted click, the menu marks its first row as if from the keyboard: a pointer's open marks none.
       for (const row of into.querySelectorAll("[data-highlighted]")) row.removeAttribute("data-highlighted");
+      // jsdom never ends an entrance: a copy caught "starting" would be drawn half see-through.
+      for (const el of into.querySelectorAll("[data-starting-style], [data-ending-style]")) {
+        el.removeAttribute("data-starting-style");
+        el.removeAttribute("data-ending-style");
+      }
     };
     const watch = new MutationObserver((changes) => {
       if (changes.some((c) => !into.contains(c.target))) copy();
@@ -153,7 +168,7 @@ function MoneyFrame({ s, height }: { s: State; height?: number }) {
   reads = 0;
   setMoneyPeriod({ span: s === "year" ? "year" : "month", year: 2026, month: 11 });
   if (s === "dialog") openMoneyDialog({ kind: "row", row: NOVEMBER[0] });
-  if (s === "dialog-picture") openMoneyDialog({ kind: "confirm", id: "a" });
+  if (s === "dialog-picture" || s === "picture-failed") openMoneyDialog({ kind: "confirm", id: "a" });
   if (s === "dialog-trip") openMoneyDialog({ kind: "trip", offer: CALENDAR[2] });
   if (s === "dialog-export") openMoneyDialog({ kind: "export" });
   if (s === "dialog-invoice") openMoneyDialog({ kind: "invoice", as: "invoice" });
@@ -161,7 +176,7 @@ function MoneyFrame({ s, height }: { s: State; height?: number }) {
   if (s === "dialog-rate") openMoneyDialog({ kind: "rate" });
   if (s === "dialog-new") openMoneyDialog({ kind: "entry" });
   usePress(s === "menu-add" ? "[data-money-head] [aria-haspopup=menu]:not([aria-label=More])" : s === "menu-more" ? "[data-money-head] [aria-label=More]" : null);
-  usePortalCopy(portals, s.startsWith("dialog") || s.startsWith("menu"), s === "menu-add" || s === "menu-more" ? MENU_PLACE[s] : undefined);
+  usePortalCopy(portals, s.startsWith("dialog") || s.startsWith("menu") || s === "picture-failed", s === "menu-add" || s === "menu-more" ? MENU_PLACE[s] : undefined);
   useEffect(() => {
     // The failed state: a second read, asked as the window comes forward, fails over the first.
     if (s !== "failed") return;
@@ -210,6 +225,8 @@ const ITEM_MENU_PLACE = { top: 44, left: 232 };
 
 function ItemVerbPreview() {
   const portals = useRef<HTMLDivElement>(null);
+  // The item's pane is a Work job's on the box: File as receipt is offered only there.
+  workspaceStore.hydrate([{ environmentId: "box", workspaces: [{ id: "ws", name: "Refereeing", path: "/home/ref/Refereeing", kind: "work", sector: "ref" }], projects: [] }]);
   resetCanvasStore();
   const sessionId = "preview-money-item";
   const item: CanvasItem = {
@@ -243,7 +260,9 @@ function ItemVerbPreview() {
       <CanvasSeat session={{ id: sessionId, environmentId: "box" }} kinds={kinds}>
         <div className="flex min-h-0 flex-1 flex-col justify-end p-4 text-[13px] text-muted-foreground">The thread</div>
       </CanvasSeat>
-      <div ref={portals} data-money-shot />
+      <style>{"[data-money-shot] *, [data-money-shot] *::before { transition: none !important; }"}</style>
+      {/* Above the pane's own layers, as the real menu's portal is. */}
+      <div ref={portals} data-money-shot style={{ position: "absolute", inset: 0, zIndex: 100, pointerEvents: "none" }} />
     </div>
   );
 }

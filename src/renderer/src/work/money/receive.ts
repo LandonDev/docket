@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { MONEY_PART_BYTES, type MoneyPicture, type MoneyReceived } from "@shared/contract-work-money";
+import { isReceiptName, receiptExt } from "@shared/work/money";
 import { registry } from "../../lib/connection";
 import { getPathForFile } from "../../lib/native";
 import { request } from "./api";
@@ -97,33 +98,49 @@ export async function receiveFiles(target: ReceiveTarget, files: readonly File[]
   return refused;
 }
 
-/** A picture or a PDF: what Money takes. */
-export const takesFile = (file: { type: string; name: string }): boolean => /^image\//.test(file.type) || file.type === "application/pdf" || /\.(pdf|jpe?g|png|heic|webp|gif)$/i.test(file.name);
+/** A picture or a PDF, by the one list Money files (`isReceiptName`); a file with no extension by its type. */
+export const takesFile = (file: { type: string; name: string }): boolean => (receiptExt(file.name) ? isReceiptName(file.name) : /^image\//.test(file.type) || file.type === "application/pdf");
+
+/** What a batch of files leaves for Money: the ones it takes, and in words what it left out (null when nothing was left). */
+export function sortFiles(files: readonly File[]): { taken: File[]; left: string | null } {
+  const taken = files.filter(takesFile);
+  const out = files.length - taken.length;
+  if (!out) return { taken, left: null };
+  if (!taken.length) return { taken, left: LEFT_WORDS };
+  return { taken, left: `${LEFT_WORDS} ${out === 1 ? "1 file was" : `${out} files were`} left out.` };
+}
+export const LEFT_WORDS = "Money files pictures and PDFs.";
 
 export type PictureOf = { id: string } | { workspaceId: string; receipt: string };
 
-/** A waiting receipt's picture, or a filed row's, as a URL; null while it comes or when there is none. The URL goes with the component. */
-export function usePicture(env: string, of: PictureOf | null): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+export type Picture = { state: "none" } | { state: "loading" } | { state: "ready"; url: string } | { state: "failed"; retry: () => void };
+
+/** A waiting receipt's picture, or a filed row's, as a URL: loading, ready, or failed with a way to ask again. The URL goes with the component. */
+export function usePicture(env: string, of: PictureOf | null): Picture {
+  const [picture, setPicture] = useState<Picture>(of ? { state: "loading" } : { state: "none" });
+  const [attempt, setAttempt] = useState(0);
   const key = of ? ("id" in of ? `id:${of.id}` : `r:${of.workspaceId}:${of.receipt}`) : "";
   useEffect(() => {
-    if (!of) return;
+    if (!of) {
+      setPicture({ state: "none" });
+      return;
+    }
     let live = true;
     let made: string | null = null;
+    setPicture({ state: "loading" });
     const ask = (part: number) => request<MoneyPicture>(env, "work.money.picture", { ...of, part });
     void (async () => {
       const first = await ask(0);
       const rest = await Promise.all(Array.from({ length: Math.max(0, first.parts - 1) }, (_, i) => ask(i + 1)));
       if (!live) return;
       made = URL.createObjectURL(new Blob([bytesOfBase64([first, ...rest].map((p) => p.dataBase64))], { type: first.mime }));
-      setUrl(made);
-    })().catch(() => live && setUrl(null));
+      setPicture({ state: "ready", url: made });
+    })().catch(() => live && setPicture({ state: "failed", retry: () => setAttempt((n) => n + 1) }));
     return () => {
       live = false;
       if (made) URL.revokeObjectURL(made);
-      setUrl(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [env, key]);
-  return url;
+  }, [env, key, attempt]);
+  return picture;
 }

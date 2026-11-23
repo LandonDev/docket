@@ -19,12 +19,12 @@ export async function printPage(env: string, name: string, html: string): Promis
   }
 }
 
-const newKey = (): string => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+/** A key for one kept file: made once per Create or Export, and sent again on every retry of it, so the host files it once. */
+export const newKey = (): string => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 /** Hands a printed PDF to Money to keep; answers the last part's word (the kept file, an invoice's row). */
-export async function keepPrinted(env: string, what: { workspaceId: string; what: "summary" | "invoice"; year?: number; invoice?: unknown }, dataBase64: string): Promise<MoneyKept> {
+export async function keepPrinted(env: string, what: { workspaceId: string; what: "summary" | "invoice"; year?: number; invoice?: unknown }, dataBase64: string, key: string): Promise<MoneyKept> {
   const parts = await partsOf(new Blob([bytesOfBase64([dataBase64])], { type: "application/pdf" }));
-  const key = newKey();
   let last: MoneyKept = {};
   for (let part = 0; part < parts.length; part++) last = await request<MoneyKept>(env, "work.money.keep", { ...what, key, part, parts: parts.length, dataBase64: parts[part] });
   return last;

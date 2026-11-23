@@ -26,10 +26,12 @@ vi.mock("../../lib/connection", () => ({
     }),
   },
 }));
-const toast = Object.assign(vi.fn(), { error: vi.fn() });
+const toast = Object.assign(vi.fn(), { error: vi.fn(), loading: vi.fn(() => "t1") });
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => toast }));
 const opened = vi.fn();
 vi.mock("../../lib/workSwitch", () => ({ openWorkView: opened }));
+// "ws" is a Work job on this host; "code" is a code workspace.
+vi.mock("../../lib/tcserver/workspaces", () => ({ workspaceStore: { workspace: (id: string) => (id === "ws" ? { id, kind: "work" } : id === "code" ? { id, kind: "code" } : undefined) } }));
 
 const { itemVerbsFor } = await import("../canvas/itemVerbs");
 await import("./itemVerb");
@@ -46,12 +48,35 @@ beforeEach(() => {
 });
 
 describe("File as receipt", () => {
+  it("says to open it in a job, before any byte moves, when its pane has none", async () => {
+    await fileItem({ ...item("pdf", mail("invoice.pdf")), workspaceId: "code" }, "box");
+    expect(host.asked).toEqual([]);
+    expect(toast).toHaveBeenCalledWith("Open this in a job to file it as a receipt.");
+  });
+
+  it("settles the toast to the host's words when filing fails", async () => {
+    host.file = new Uint8Array(0);
+    const source: CanvasSource = { at: "file", host: "box", path: "/home/ref/scan.png" };
+    const failing = { ...item("media", source) };
+    const ask = host.asked.length;
+    const prev = vi.spyOn(globalThis.crypto, "randomUUID").mockImplementation(() => {
+      throw new Error("No key");
+    });
+    await fileItem(failing, "box");
+    prev.mockRestore();
+    expect(host.asked.length).toBe(ask);
+    expect(toast.error).toHaveBeenCalledWith("No key", { id: "t1" });
+  });
+
   it("is offered on a PDF and a picture, and never on a sheet or a video", () => {
     expect(offered(item("pdf", mail("invoice.pdf")))).toEqual(["File as receipt"]);
     expect(offered(item("media", mail("IMG_2231.jpg", "image/jpeg")))).toEqual(["File as receipt"]);
     expect(offered(item("media", { at: "file", host: "box", path: "/home/ref/scan.png" }))).toEqual(["File as receipt"]);
     expect(offered(item("media", mail("game.mp4", "video/mp4")))).toEqual([]);
     expect(offered(item("sheet", mail("budget.xlsx")))).toEqual([]);
+    // Only in a job's pane: a code workspace's or a jobless pane has no ledger.
+    expect(offered({ ...item("pdf", mail("invoice.pdf")), workspaceId: "code" })).toEqual([]);
+    expect(offered({ ...item("pdf", mail("invoice.pdf")), workspaceId: null })).toEqual([]);
   });
 
   it("fetches a mail's attachment, reads it back by range, and sends it whole under one key, as from a mail", async () => {
@@ -69,7 +94,9 @@ describe("File as receipt", () => {
     expect(sent[0]).toMatchObject({ workspaceId: "ws", name: "statement.pdf", mime: "application/pdf", source: "mail" });
     const arrived = Buffer.concat(sent.map((s) => Buffer.from(s.dataBase64 as string, "base64")));
     expect(arrived.equals(Buffer.from(host.file))).toBe(true);
-    expect(toast).toHaveBeenCalledWith("Filed to confirm in Money", expect.objectContaining({ action: expect.objectContaining({ label: "Open Money" }) }));
+    // Said at once, then settled in the same toast.
+    expect(toast.loading).toHaveBeenCalledWith("Filing to Money…");
+    expect(toast).toHaveBeenCalledWith("Filed to confirm in Money", expect.objectContaining({ id: "t1", action: expect.objectContaining({ label: "Open Money" }) }));
     (toast.mock.calls[0][1] as { action: { onClick: () => void } }).action.onClick();
     expect(opened).toHaveBeenCalledWith({ workspaceId: "ws", view: "money" });
   });
