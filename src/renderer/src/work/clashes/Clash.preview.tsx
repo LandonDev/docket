@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { clashTitle, type Clash, type ClashSide } from "@shared/work/clashes";
+import { AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-kit/views";
 import { X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { EventRow } from "../agenda/AgendaView";
@@ -11,10 +12,14 @@ import { Empty, Events, StepForm } from "./ClashDialog";
  * src/renderer/src/work/clashes/Clash.preview.tsx#ClashDialogPreview --props '{"state":"overlap"}'`
  * (`overlap`, `drive`, `about`, `plain`, `decline`, `propose`, `move`,
  * `sending`, `refused`, `loading`, `gone`) and `#ClashRowsPreview` (a day of
- * the Agenda with a clash on two rows, a leave-by, and a row with none). The
+ * the Agenda with a clash on two rows, a leave-by, and a row with none) and
+ * `#ClashWeekPreview` (the Week with the clash's two events marked). The
  * dialog's own box, head and foot stand around the real parts, since a dialog
  * draws in a portal a static page cannot hold. Rendered by nothing in the app.
  */
+
+// The static page's DOM has no animations to list; the week's scroller asks for them.
+if (typeof Element !== "undefined" && !Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 const noop = (): void => {};
 const HOUR = 3_600_000;
@@ -116,3 +121,21 @@ export function ClashRowsPreview() {
     </div>
   );
 }
+
+/** What the shared week draws with here, as the Agenda gives it: no sector dot, no faces. */
+const kit: ViewsKit = { SectorMark: () => null, Face: () => null, openTask: noop };
+
+/** The Agenda's Week with the two events of a clash marked: work-kit's dot before each title. */
+export function ClashWeekPreview() {
+  // Morning hours, so the still page shows them without a scroll.
+  const at = (s: ClashSide, startH: number, hours: number) => row({ ...s, startsAt: T0 + startH * HOUR, endsAt: T0 + (startH + hours) * HOUR });
+  const events = [at(side("ev_stand", "purdue", "Stand-up", 0, 0), -11.5, 0.75), at(meeting, -6, 2), at(game, -5, 2), at(side("ev_review", "purdue", "Budget review", 0, 0), 19.5, 1.5)];
+  return (
+    <ViewsKitProvider kit={kit}>
+      <div className="wk-calendar h-[560px] w-[820px] bg-background px-6 pt-2 pb-6">
+        <AgendaWeek events={events} day={T0} weekStart={0} onOpen={noop} onCreate={noop} marked={new Set(["ev_meeting", "ev_game"])} />
+      </div>
+    </ViewsKitProvider>
+  );
+}
+
