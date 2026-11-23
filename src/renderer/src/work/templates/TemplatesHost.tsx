@@ -6,7 +6,7 @@ import { defineChunk } from "../../lib/lazyChunk";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { workTemplatePort } from "../../lib/workSwitch";
 
-const dialogs = defineChunk("work-templates", () => import("./dialogs"));
+const dialogs = defineChunk("work-templates", () => import("./TemplatesDialogs"));
 const TemplateDialog = dialogs.surface("TemplateDialog");
 const SaveDialog = dialogs.surface("SaveDialog");
 
