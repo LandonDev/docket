@@ -1,5 +1,5 @@
 {
-  "n": 361,
-  "notes": "Work, night of Nov 23 (interim): opening files one after another from a Mac-held library is no longer refused; an agent's suggestion on a shared file stays private until approved (Word, PowerPoint, Google, decks, documents); the slideshow with presenter view; PDFs and decks draw in the desktop app; meeting prep and follow-up; landed parts of Today, one search, Messages, templates, Money, the weekly review, calendar clashes and the daily digest; the new Files view and the editors follow in the next release.",
-  "ts": 1795443921683
+  "n": 362,
+  "notes": "Work, Nov 23: the new Files place (a finder with tabs on the Files row in place of the Teams files and Docs views; a file opens as itself with a chat dock beside it, a chat kept only once you send; make, move, rename and trash; Go to, search and Home); an opened Excel file, in a Teams or OneDrive library too, is the full sheet editor and saves its formatting into the file; on top of 361: files open one after another, agent suggestions on shared files stay private until approved, meeting prep, the slideshow, and the landed parts of Today, search, Messages, templates, Money, the weekly review, clashes and the digest.",
+  "ts": 1795449633297
 }
