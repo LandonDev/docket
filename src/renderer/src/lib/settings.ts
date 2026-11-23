@@ -297,6 +297,7 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
       { name: "Today", keys: [[CMD, SHF, "T"]] },
       { name: "Search Work", keys: [[CMD, SHF, "K"]] },
       { name: "This Job or All Jobs", keys: [[CMD, SHF, "K"]], scope: "work-search" },
+      { name: "Choose a Job", keys: [[OPT, "↓"]], scope: "work-search" },
       { name: "Open Result", keys: [[RET]], scope: "work-search" },
       { name: "New Thread About Result", keys: [[CMD, RET]], scope: "work-search" },
       { name: "Ask about the selection", keys: [[CMD, "L"]] },

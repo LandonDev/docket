@@ -7,12 +7,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
-import { PickerDialog } from "./PickerDialog";
+import { PickerDialog, pickerRowClass } from "./PickerDialog";
 import { MarkdownModeToggle } from "./MarkdownModeToggle";
 
 afterEach(cleanup);
 
 describe("PickerDialog", () => {
+  it("keeps a row's 20px line through the class merge, so a row is 28px inside the dialog's 22px body", () => {
+    // tailwind-merge drops a line height that stands before a font size; MENU_ROW ends in one
+    for (const highlighted of [false, true]) expect(pickerRowClass(highlighted).split(" ")).toEqual(expect.arrayContaining(["leading-5", "min-h-7", "py-1", "text-[13px]"]));
+    expect(pickerRowClass(true).split(" ")).toContain("bg-muted");
+  });
+
   it("is a dialog whose search field takes the keys, and Escape closes it", async () => {
     const onClose = vi.fn();
     const onQuery = vi.fn();

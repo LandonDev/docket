@@ -2615,13 +2615,16 @@ his hands and leaves no trace on what he was searching from.
 - **The scope** is the field's own end: a quiet button reading "All jobs",
   or a job's dot and name. It opens on All jobs every time. ⌘⇧K again
   narrows to the job the window is in and again widens; a click opens the
-  menu of All jobs and each job. While a source is still out a `Spinner`
-  stands before it, in the field.
+  menu of All jobs and each job, and ⌥↓ in the field opens it by key.
+  While a source is still out a `Spinner` stands before it, in the field:
+  only once the wait has lasted 150ms, and then for at least 300ms, so an
+  answer in a few frames never flickers it.
 - **Groups** stand in one fixed order by kind (People, Mail, Messages,
   Tasks, Agenda, Files, Documents, Projects, Threads, then the rest),
   never by speed or score, under the menu group label (11px medium muted,
   `px-3 pt-2 pb-1`): the `@` list's own headings. Narrowed to one kind
-  the heading is gone: the field already names the kind.
+  the heading is gone: the field already names the kind, and a reader is
+  told on the way in and out ("Mail only", "Every kind").
 - **A row** is the `@` list's own, one line: a 16px glyph of its kind, the
   title (13px, as wide as its words, the matched ones in the foreground's
   weight through `MatchText`), the fact or the matched line right after it
@@ -2639,26 +2642,33 @@ his hands and leaves no trace on what he was searching from.
   column of one width so the names line up; never a chip. It is drawn only
   while the results can mix jobs (All jobs, with more than one job in
   reach). Scoped to one job the column is gone.
-- **Four rows a kind**, then one muted row, "All mail for “budget”":
+- **Four rows a kind**, then one muted row, "All mail for “budget”"
+  (foreground once the highlight is on it, as any row Return will take):
   Return on it narrows the picker to that kind (thirty rows), the kind's
   name standing muted before his words in the field. Escape steps back
   out; a second Escape closes.
 - **The list holds still.** Rows on screen never change order among
-  themselves. Until he moves the highlight it stays on the first row.
+  themselves: within a kind, what lands later goes under the rows already
+  there, into the free places, and the rest is behind "All …". Until he
+  moves the highlight it stays on the first row.
   Once he has moved it, by arrow or pointer, the highlighted row keeps its
   place on screen: what lands above it is taken up by the scroller in the
   same frame, so the row under his eye, and the one Return will take,
   never moves, and a group that fills keeps the row he is on among its
   four. The scroller keeps its 10px strip from the start
   (`scrollbar-gutter: stable`), so the columns do not shift when the list
-  first overflows, and a cut edge fades (`OVERFLOW_FADE_Y`) while more
+  first overflows; the strip lies in the frame's own right inset (`-mr-1`),
+  so a row ends 10px from the frame's edge. A cut edge fades (`OVERFLOW_FADE_Y`) while more
   lies past it.
 - **Nothing typed** shows Recent: the last eight things he opened from
   search, any job. No hint text and no tips.
 - **Nothing found** is one muted row, "Nothing for “q”" (`PickerNote`).
   Scoped to one job it is followed by one row he can take, "Search all
-  jobs", on the note's own inset. When nothing could be asked at all the
-  causes below stand alone.
+  jobs", on the note's own inset. It is said only of a search that ran: at
+  two characters or more, with at least one source answering. When none
+  could search (every host away, or mail alone with LifeOS signed out) the
+  causes below stand alone. His words are echoed on one line, cut at the
+  row's end.
 - **What could not be searched** is one muted line a cause at the list's
   foot, in LifeOS's or the host's own words: "LifeOS is signed out on
   MacBook.", "The box is offline.", "Mail did not answer." (a source),

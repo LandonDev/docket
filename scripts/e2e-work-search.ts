@@ -70,7 +70,8 @@ const list = (): Promise<string[]> =>
   run.page<string[]>(`[...(document.querySelector('[data-work-search-list]')?.children ?? [])].map((el) => (el.getAttribute('role') === 'option' ? (el.getAttribute('aria-selected') === 'true' ? '> ' : '  ') + el.getAttribute('data-row') : '# ' + el.textContent))`)
 const selected = (): Promise<string | null> => run.page<string | null>(`document.querySelector('[data-work-search-list] [aria-selected="true"]')?.getAttribute('data-row') ?? null`)
 const scope = (): Promise<string> => run.page<string>(`document.querySelector('[data-work-search-scope]')?.textContent ?? ''`)
-const settled = (): Promise<boolean> => run.page<boolean>(`!!document.querySelector('[data-work-search]') && !document.querySelector('[data-work-search-busy]')`)
+// Nothing asked is still out. (The spinner is no sign of it: it waits 150 ms before it shows.)
+const settled = (): Promise<boolean> => run.page<boolean>(`!!document.querySelector('[data-work-search]') && !document.querySelector('[data-work-search] [data-out]')`)
 /** The job the window is in, as its column says it. */
 const windowJob = (): Promise<string> => run.page<string>(`[...document.querySelectorAll('h2')].map((h) => h.textContent.trim()).find((t) => ['Cosmic', 'Unify'].includes(t)) ?? ''`)
 const moveTo = async (row: string): Promise<boolean> => {
@@ -145,12 +146,25 @@ try {
   run.check('the highlight is on the first row', rowsNow.find((r) => r.startsWith('> ')) === '> hit:lifeos:people:p1')
   run.check('each row names its job while jobs mix', (await run.page<number>(`document.querySelectorAll('[data-work-search-list] [data-job]').length`)) >= 8)
   run.check('the code thread with the same word is not listed', !(await run.has('Budget parser refactor')) || !(await run.page<boolean>(`document.querySelector('[data-work-search]').textContent.includes('Budget parser refactor')`)))
+  // Measured in the app: a design page draws the frame outside the dialog, whose 22px line once made these 30.
+  const heights = await run.page<number[]>(`[...document.querySelectorAll('[data-work-search-list] [role="option"]')].map((el) => el.getBoundingClientRect().height)`)
+  run.check('every row is 28px tall in the dialog', heights.length > 0 && heights.every((h) => h === 28), [...new Set(heights)].join(','))
   await run.shot('03-results')
 
   await key('ArrowDown')
   await key('ArrowDown')
   run.check('the arrows move the highlight', (await selected()) === 'hit:lifeos:mailThreads:m2', String(await selected()))
   await run.shot('04-moved')
+
+  // Far down a list that scrolls: the hold answers the scroller's own event and then rests; a box let go to be
+  // measured would be pulled back by the browser, each time a new scroll event.
+  for (let i = 0; i < 12; i++) await key('ArrowDown')
+  await run.page(`(() => { const el = document.querySelector('[data-work-search-list]'); window.__ws = { n: 0, top: el.scrollTop }; el.addEventListener('scroll', () => window.__ws.n++); return true })()`)
+  await sleep(600)
+  const rest = await run.page<{ n: number; top: number; now: number }>(`({ ...window.__ws, now: document.querySelector('[data-work-search-list]').scrollTop })`)
+  run.check('scrolled by the arrows, the list rests where it stands', rest.top > 0 && rest.n === 0 && rest.now === rest.top, JSON.stringify(rest))
+  for (let i = 0; i < 12; i++) await key('ArrowUp')
+  run.check('and the arrows bring the highlight back', (await selected()) === 'hit:lifeos:mailThreads:m2', String(await selected()))
 
   // Return on a mail in another job: the window moves there and Mail opens.
   run.check('the highlight reaches the mail in Unify', await moveTo('hit:lifeos:mailThreads:m3'))

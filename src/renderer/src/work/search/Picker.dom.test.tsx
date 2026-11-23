@@ -46,7 +46,7 @@ vi.mock("./open", () => ({
   },
   canStartAbout: (hit: SearchHit) => !!hit.chip,
 }));
-const { WorkSearch } = await import("./Picker");
+const { WorkSearch, SPIN_AFTER_MS, SPIN_FOR_MS } = await import("./Picker");
 const { openWorkSearch } = await import("../../lib/workSearchPort");
 
 const hit = (key: string, kind: string, over: Partial<SearchHit> = {}): SearchHit => ({ key, kind, title: `Budget ${key}`, workspaceId: "w-purdue", open: { to: "view", view: kind }, ...over });
@@ -64,7 +64,30 @@ const top = (el: Element): number => {
 };
 const offsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetTop");
 const scrollHeight = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight");
+const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop");
+const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+/** Every write of the list's scroll offset that moved it: each is a scroll event in a browser. */
+const moves: number[] = [];
+/** The list scrolls as a browser's does: never past what its box leaves below, and a box let go to its rows' height pulls it back for good. */
+const CAP = 380;
+const scrolled = new WeakMap<Element, number>();
+const clamped = (el: Element): number => {
+  const all = el.children.length * ROW;
+  const box = (el as HTMLElement).style.height ? Number.parseFloat((el as HTMLElement).style.height) : Math.min(all, CAP);
+  const at = Math.min(scrolled.get(el) ?? 0, Math.max(0, all - box));
+  scrolled.set(el, at);
+  return at;
+};
 beforeEach(() => {
+  Object.defineProperty(Element.prototype, "scrollTop", {
+    configurable: true,
+    get(this: Element) { return this.hasAttribute("data-work-search-list") ? clamped(this) : (scrolled.get(this) ?? 0); },
+    set(this: Element, to: number) {
+      if (this.hasAttribute("data-work-search-list") && clamped(this) !== Math.max(0, to)) moves.push(to);
+      scrolled.set(this, Math.max(0, to));
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get(this: HTMLElement) { return this.parentElement?.hasAttribute("data-work-search-list") ? ROW : 0; } });
   Object.defineProperty(HTMLElement.prototype, "offsetTop", { configurable: true, get(this: HTMLElement) { return top(this); } });
   Object.defineProperty(Element.prototype, "scrollHeight", { configurable: true, get(this: Element) { return this.hasAttribute("data-work-search-list") ? this.children.length * ROW : 0; } });
   Element.prototype.scrollIntoView = () => {};
@@ -73,6 +96,10 @@ afterEach(() => {
   cleanup();
   if (offsetTop) Object.defineProperty(HTMLElement.prototype, "offsetTop", offsetTop);
   if (scrollHeight) Object.defineProperty(Element.prototype, "scrollHeight", scrollHeight);
+  if (scrollTop) Object.defineProperty(Element.prototype, "scrollTop", scrollTop);
+  if (offsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeight);
+  moves.length = 0;
+  vi.useRealTimers();
   asks.length = 0;
   asked.length = 0;
   opened.hits.length = 0;
@@ -119,8 +146,8 @@ describe("Work search", () => {
     await type("budget");
     const last = asks.length - 1;
     expect(asks[last].params).toEqual({ text: "budget", tier: "instant" });
-    expect(document.querySelector("[data-work-search-busy]")).not.toBeNull();
     await land(last, answer([group("thread", "Threads", [hit("thread:t1", "thread")]), group("mail", "Mail", [hit("m1", "mail", { detail: "Dana Kim" }), hit("m2", "mail", { workspaceId: "w-cosmic" })])]));
+    // an answer in a few frames never shows the spinner
     expect(document.querySelector("[data-work-search-busy]")).toBeNull();
     expect([...list().children].map((el) => (el.getAttribute("role") === "option" ? el.getAttribute("data-row") : `# ${el.textContent}`))).toEqual(["# Mail", "hit:m1", "hit:m2", "# Threads", "hit:thread:t1"]);
     expect([...list().querySelectorAll("[data-job]")].map((el) => el.textContent)).toEqual(["Purdue", "Cosmic", "Purdue"]);
@@ -166,6 +193,15 @@ describe("Work search", () => {
     // the box is no taller than the rows from there down, so the scroller had that much to take
     expect(list().style.height).toBe(`${3 * ROW}px`);
     expect(selected()).toBe("hit:thread:t2");
+    // the browser tells of the scroll the hold itself made: the row stays where it is (every row fits the cap here,
+    // so a box let go before its place was read would be pulled back to the top)
+    expect(moves).toEqual([4 * ROW]);
+    await act(async () => void fireEvent.scroll(list()));
+    expect(list().scrollTop).toBe(4 * ROW);
+    expect(list().style.height).toBe(`${3 * ROW}px`);
+    expect(row().offsetTop - list().scrollTop).toBe(before);
+    // and that answer to the event moved nothing, so no further event comes of it
+    expect(moves).toEqual([4 * ROW]);
     // he scrolls up to see what landed: the box grows back as it comes down, to all its rows at the top
     await act(async () => {
       list().scrollTop = 2 * ROW;
@@ -288,6 +324,67 @@ describe("Work search", () => {
     expect(opened.threads).toEqual(["m1"]);
     expect(opened.hits).toEqual([]);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the spinner only for a wait he would notice, and then long enough to be seen", async () => {
+    vi.useFakeTimers();
+    const spinner = (): Element | null => document.querySelector("[data-work-search-busy]");
+    await mount();
+    await type("budget");
+    expect(spinner()).toBeNull();
+    await act(async () => void vi.advanceTimersByTime(SPIN_AFTER_MS - 1));
+    expect(spinner()).toBeNull();
+    await act(async () => void vi.advanceTimersByTime(1));
+    expect(spinner()).not.toBeNull();
+    // the answer lands at once after: the spinner stays its time, then goes
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail")])]));
+    await act(async () => void vi.advanceTimersByTime(SPIN_FOR_MS - 1));
+    expect(spinner()).not.toBeNull();
+    await act(async () => void vi.advanceTimersByTime(1));
+    expect(spinner()).toBeNull();
+  });
+
+  it("opens the scope's menu from the field with ⌥↓, and the arrows alone still move the highlight", async () => {
+    await mount();
+    await type("budget");
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail"), hit("m2", "mail")])]));
+    await press("ArrowDown", { altKey: true });
+    expect(selected()).toBe("hit:m1");
+    // the menu's body is its own chunk
+    expect(await screen.findByRole("menu")).not.toBeNull();
+    expect(screen.getAllByRole("menuitemcheckbox").map((el) => el.textContent)).toEqual(["All jobs", "Purdue", "Cosmic"]);
+  });
+
+  it("tells a reader of one kind on the way in and out, names the list by it, and the field by what stands in it", async () => {
+    await mount();
+    const status = (): string => document.querySelector('[data-work-search] [role="status"]')!.textContent ?? "";
+    expect(status()).toBe("");
+    await type("budget");
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail")], { more: true })]));
+    expect(list().getAttribute("aria-label")).toBe("Work search results");
+    expect(field().getAttribute("aria-describedby")).toBeNull();
+    await press("ArrowDown");
+    await press("Enter");
+    expect(status()).toBe("Mail only");
+    const leading = document.querySelector("[data-picker-leading]")!;
+    expect(field().getAttribute("aria-describedby")).toBe(leading.id);
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail")])]));
+    expect(list().getAttribute("aria-label")).toBe("Mail results");
+    await press("Escape");
+    expect(status()).toBe("Every kind");
+  });
+
+  it("a quiet row reads as any highlighted row once the highlight is on it, and a long echo of his words stays on one line", async () => {
+    await mount({ workspaceId: "w-purdue" });
+    await type("zebra crossing at the corner of the long road");
+    await land(asks.length - 1, answer([]));
+    const widen = list().querySelector('[data-row="widen"]')!;
+    expect(widen.getAttribute("aria-selected")).toBe("true");
+    expect(widen.className).not.toContain("text-muted-foreground");
+    expect(document.querySelector("[data-picker-note] span")!.className).toContain("truncate");
+    await type("budget");
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail")], { more: true })]));
+    expect(list().querySelector('[data-row="all:mail"]')!.className).toContain("text-muted-foreground");
   });
 
   it("takes the kind away on Backspace at the field's start", async () => {

@@ -76,8 +76,34 @@ describe("the order of the list", () => {
     m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1"]), group("file", ["f1"])], ["search.thread/network"])).model;
     m = landSource(m, m.gen, "box", "search.thread/network", answer([group("thread", ["box-2"], { source: "search.thread/network" })]));
     const after = shape(rowsOf(m)).filter((r) => !r.startsWith("#"));
-    expect(after).toEqual(["f1", "box-1", "box-2", "mac-1", "mac-2"]);
+    // what lands later goes under the rows of its kind already there, though the Work home would stand first had it answered first
+    expect(after).toEqual(["f1", "mac-1", "mac-2", "box-1", "box-2"]);
     expect(after.filter((r) => before.includes(r))).toEqual(before);
+  });
+  it("stands the Work home's rows first, and what a host knew at once before what it fetched, among rows that land together", () => {
+    let m = typed("budget", [box, mac]);
+    m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1"])], ["search.thread/network"])).model;
+    m = landSource(m, m.gen, "mac", "search.thread/network", answer([group("thread", ["mac-2"], { source: "search.thread/network" })]));
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1"])])).model;
+    // with nothing standing yet (as after new words), the fixed order decides
+    expect(shape(rowsOf({ ...m, order: {} }))).toEqual(["# Thread", "box-1", "mac-1", "mac-2"]);
+  });
+  it("keeps the rows he was reading in their places when a fuller answer lands: the free places fill, the rest is behind All", () => {
+    let m = typed("budget", [box, mac]);
+    m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1", "mac-2", "mac-3"])])).model;
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1", "box-2", "box-3"])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "mac-1", "mac-2", "mac-3", "box-1", "[All threads for “budget”]"]);
+    // a row that leaves gives its place to the next; the others do not move
+    m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1", "mac-3"])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "mac-1", "mac-3", "box-1", "box-2", "[All threads for “budget”]"]);
+  });
+  it("starts the order afresh with new words: the rows a new search finds stand as it ranks them", () => {
+    let m = typed("budget", [box, mac]);
+    m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1"])])).model;
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1"])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "mac-1", "box-1"]);
+    m = typed("budget for", [box, mac], m);
+    expect(m.order).toEqual({});
   });
   it("shows a thing once, in the first group that has it, whichever source or host found it", () => {
     let m = typed("budget", [box, mac]);
@@ -255,19 +281,52 @@ describe("nothing could be asked", () => {
     one = failed(landInstant(one, one.gen, "box", answer([])).model, one.gen, "mac", null);
     expect(shape(rowsOf(one))).toEqual(["(Nothing for “budget”)", "(MacBook did not answer.)"]);
   });
+  it("says only why when a host answered but no source of it could search: mail alone, with LifeOS signed out", () => {
+    const signedOut = { ...answer([], [], [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }]), searched: 0 };
+    let m = typed("budget", [box], emptyModel(), "mail");
+    m = landInstant(m, m.gen, "box", signedOut).model;
+    expect(shape(rowsOf(m, { scoped: true }))).toEqual(["(LifeOS is signed out on The box.)"]);
+    // a source that searched and found nothing is worth saying, beside what could not be searched
+    let some = typed("budget");
+    some = landInstant(some, some.gen, "box", { ...signedOut, searched: 2 }).model;
+    expect(shape(rowsOf(some))).toEqual(["(Nothing for “budget”)", "(LifeOS is signed out on The box.)"]);
+    // a network source's own answer counts
+    let later = typed("budget");
+    later = landInstant(later, later.gen, "box", { ...answer([], ["search.mail"]), searched: 0 }).model;
+    later = landSource(later, later.gen, "box", "search.mail", { ...answer([]), searched: 1 });
+    expect(shape(rowsOf(later))).toEqual(["(Nothing for “budget”)"]);
+    // and a new generation has not searched until it answers
+    expect(typed("budgets", [box], later).searched).toBe(false);
+  });
+  it("never says nothing was found under two characters: the network sources were not asked", () => {
+    let m = typed("b");
+    m = landInstant(m, m.gen, "box", { ...answer([], ["search.mail"]), searched: 3 }).model;
+    expect(busy(m)).toBe(false);
+    expect(rowsOf(m)).toEqual([]);
+  });
 });
 
 describe("the row he chose and the cap", () => {
-  it("is never the one the cap cuts when rows that landed since stand before it: it takes the last place", () => {
+  it("keeps its place when more of its kind lands: what lands goes under the rows already there", () => {
     let m = typed("budget", [box, mac]);
     m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1", "mac-2", "mac-3"])])).model;
     m = step(step(m, rowsOf(m), 1), rowsOf(m), 1);
     expect(activeOf(m, rowsOf(m))).toBe("hit:mac-3");
-    // the Work home's rows stand before another host's: three of them land
     m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1", "box-2", "box-3"])])).model;
     const rows = rowsOf(m);
-    expect(shape(rows)).toEqual(["# Thread", "box-1", "box-2", "box-3", "mac-3", "[All threads for “budget”]"]);
+    expect(shape(rows)).toEqual(["# Thread", "mac-1", "mac-2", "mac-3", "box-1", "[All threads for “budget”]"]);
     expect(activeOf(m, rows)).toBe("hit:mac-3");
+  });
+  it("is never the one the cap cuts: in Recent, where newer openings stand first, it takes the last place", () => {
+    const recent = (keys: [string, number][]): SearchGroup => ({ source: "search.recent", kind: "recent", label: "Recent", more: false, hits: keys.map(([key, openedAt]) => hit(key, { openedAt })) });
+    let m = typed("", [box, mac]);
+    m = landInstant(m, m.gen, "box", answer([recent([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`b${n}`, 100 - n]))])).model;
+    for (let i = 0; i < 7; i++) m = step(m, rowsOf(m), 1);
+    expect(activeOf(m, rowsOf(m))).toBe("hit:b8");
+    m = landInstant(m, m.gen, "mac", answer([recent([["m-new", 500]])])).model;
+    const rows = rowsOf(m);
+    expect(shape(rows)).toEqual(["# Recent", "m-new", "b1", "b2", "b3", "b4", "b5", "b6", "b8"]);
+    expect(activeOf(m, rows)).toBe("hit:b8");
   });
 });
 
@@ -278,6 +337,15 @@ describe("Recent across hosts", () => {
     m = landInstant(m, m.gen, "box", answer([recent([["b-old", 10], ["b-older", 5]])])).model;
     m = landInstant(m, m.gen, "mac", answer([recent([["m-new", 50], ["m-mid", 8]])])).model;
     expect(shape(rowsOf(m))).toEqual(["# Recent", "m-new", "b-old", "m-mid", "b-older"]);
+  });
+  it("lists a thing two hosts hold once, by its newest opening, to be opened on the host that holds that one", () => {
+    let m = typed("", [box, mac]);
+    const recent = (keys: [string, number][]): SearchGroup => ({ source: "search.recent", kind: "recent", label: "Recent", more: false, hits: keys.map(([key, openedAt]) => hit(key, { openedAt })) });
+    m = landInstant(m, m.gen, "box", answer([recent([["b-mid", 20], ["shared", 5]])])).model;
+    m = landInstant(m, m.gen, "mac", answer([recent([["shared", 90], ["m-old", 1]])])).model;
+    const rows = rowsOf(m);
+    expect(shape(rows)).toEqual(["# Recent", "shared", "b-mid", "m-old"]);
+    expect(rows.find((row) => row.type === "hit" && row.hit.key === "shared")).toMatchObject({ host: "mac" });
   });
 });
 

@@ -106,8 +106,9 @@ export function WorkSearchPreview({ state = "across" }: { state?: PreviewState }
   const { model, job } = modelOf(state);
   const rows = rowsOf(model, { scoped: job !== null });
   return (
-    // The dialog's own box (components/ui/dialog.tsx), still: 560px, a 16px radius, a 4px inset.
-    <div data-work-search className="w-full max-w-[560px] rounded-2xl bg-popover p-1 text-[13px] text-popover-foreground shadow-overlay ring-1 ring-border">
+    // The dialog's own box (components/ui/dialog.tsx), still: 560px, a 16px radius, a 4px inset, and its body's 14px on a 22px line,
+    // which a row must not inherit.
+    <div data-work-search className="w-full max-w-[560px] rounded-2xl bg-popover p-1 text-sm leading-[22px] text-popover-foreground shadow-overlay ring-1 ring-border">
       <PickerFrame
         label="Search Work"
         search={createRef()}

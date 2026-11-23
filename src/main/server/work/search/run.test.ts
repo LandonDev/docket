@@ -58,8 +58,8 @@ describe('the tiers', () => {
   it('answers nothing for no words, and nothing for a reach with no job', async () => {
     const rig = makeRig()
     const source = fakeSource('mail', [hit('m1', PURDUE)])
-    expect(await run(rig, [source], { text: '   ' })).toEqual({ groups: [], pending: [], quiet: [] })
-    expect(await run(rig, [source], { reach: { workspaces: [], chats: false, sessionId: null } })).toEqual({ groups: [], pending: [], quiet: [] })
+    expect(await run(rig, [source], { text: '   ' })).toEqual({ groups: [], pending: [], quiet: [], searched: 0 })
+    expect(await run(rig, [source], { reach: { workspaces: [], chats: false, sessionId: null } })).toEqual({ groups: [], pending: [], quiet: [], searched: 0 })
     expect(source.asks).toHaveLength(0)
   })
   it('hands a source the trimmed words, the reach, the caller and a limit', async () => {
@@ -98,7 +98,19 @@ describe('a source that fails', () => {
     const source = fakeSource('mail', (ask) => new Promise((_, reject) => ask.signal.addEventListener('abort', () => reject(new Error('aborted')))))
     const asked = run(rig, [source], { signal: gone.signal })
     gone.abort()
-    expect(await asked).toEqual({ groups: [], pending: [], quiet: [] })
+    expect(await asked).toEqual({ groups: [], pending: [], quiet: [], searched: 0 })
+  })
+  it('counts the sources that searched and answered, with or without rows: none means nothing can be said to be not found', async () => {
+    const rig = makeRig()
+    const some = await run(rig, [fakeSource('mail', []), fakeSource('task', [hit('t1', PURDUE)]), fakeSource('person', () => Promise.reject(new Error('boom')))])
+    expect(some.searched).toBe(2)
+    // the instant tier counts its own; a source named for later has not searched yet
+    const first = await run(rig, [fakeSource('thread', [], { tier: 'instant' }), fakeSource('mail', [hit('m1', PURDUE)], { tier: 'network' })], { tier: 'instant' })
+    expect([first.searched, first.pending.map((p) => p.source)]).toEqual([1, ['search.mail']])
+    // LifeOS not connected, and nothing else of that kind to ask
+    rig.lifeosDown('This host is not signed in to LifeOS')
+    const none = await run(rig, [fakeSource('mail', [hit('m1', PURDUE)], { lifeos: true })], { kind: 'mail' })
+    expect(none).toEqual({ groups: [], pending: [], quiet: [{ cause: 'lifeos', line: 'This host is not signed in to LifeOS' }], searched: 0 })
   })
 })
 

@@ -81,7 +81,7 @@ export interface SearchRun {
   opened?: (key: string) => number | undefined
 }
 
-const EMPTY: SearchAnswer = { groups: [], pending: [], quiet: [] }
+const EMPTY: SearchAnswer = { groups: [], pending: [], quiet: [], searched: 0 }
 
 export async function runSearch(ctx: WorkCtx, o: SearchRun): Promise<SearchAnswer> {
   const text = o.text.trim()
@@ -99,12 +99,14 @@ export async function runSearch(ctx: WorkCtx, o: SearchRun): Promise<SearchAnswe
   const asked = o.sources ? listed.filter((l) => o.sources!.includes(l.id)) : o.tier === 'instant' ? listed.filter((l) => tierOf(l.source, ctx) === 'instant') : listed
   const pending = o.sources || o.tier !== 'instant' ? [] : listed.filter((l) => tierOf(l.source, ctx) !== 'instant').map((l) => ({ source: l.id, kind: l.source.kind }))
   const limit = o.limit ?? (o.kind !== undefined ? SEARCH_ALL : SEARCH_PER_GROUP)
-  const groups = await Promise.all(asked.map((l) => askOne(ctx, l, { ...o, text }, limit, quiet)))
+  const answered = { count: 0 }
+  const groups = await Promise.all(asked.map((l) => askOne(ctx, l, { ...o, text }, limit, quiet, answered)))
   return {
     // A stable sort: two sources of one kind stay in the order they were listed.
     groups: groups.filter((g): g is SearchGroup => g !== null).sort((a, b) => searchRank(a.kind) - searchRank(b.kind)),
     pending,
-    quiet: quiet.filter((q, i) => quiet.findIndex((other) => other.cause === q.cause) === i)
+    quiet: quiet.filter((q, i) => quiet.findIndex((other) => other.cause === q.cause) === i),
+    searched: answered.count
   }
 }
 
@@ -118,7 +120,7 @@ export function tierOf(source: SearchSource, ctx: WorkCtx): SearchTier {
   }
 }
 
-async function askOne(ctx: WorkCtx, listed: Listed, o: SearchRun, limit: number, quiet: SearchQuiet[]): Promise<SearchGroup | null> {
+async function askOne(ctx: WorkCtx, listed: Listed, o: SearchRun, limit: number, quiet: SearchQuiet[], answered: { count: number }): Promise<SearchGroup | null> {
   const { id, source } = listed
   const label = searchLabel(source.kind, source.label)
   // The source's own signal: the caller's, and the wait's end, so a source that heeds it stops when nobody listens.
@@ -141,6 +143,7 @@ async function askOne(ctx: WorkCtx, listed: Listed, o: SearchRun, limit: number,
     own.abort()
     o.signal?.removeEventListener('abort', stop)
   }
+  answered.count++
   // The fence, a second time: whatever a source answered, a hit outside the reach is never shown.
   const inside = hits.filter((hit) => hit && typeof hit.key === 'string' && inReach(o.reach, hit.workspaceId ?? null))
   if (inside.length !== hits.length) ctx.log(`search: ${id} answered ${hits.length - inside.length} hit(s) outside the reach; dropped`)

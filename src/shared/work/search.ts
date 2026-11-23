@@ -72,6 +72,8 @@ export interface SearchAnswer {
   /** the network sources the window asks next, each on its own */
   pending: { source: string; kind: SearchKind }[]
   quiet: SearchQuiet[]
+  /** how many sources searched and answered for this call, with or without rows; 0: none could (the window then says only why) */
+  searched?: number
 }
 
 /** The order the kinds' groups stand in; a kind not named here follows them, in the order it came. */

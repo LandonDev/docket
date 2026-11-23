@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactNode, RefObject } from "react";
+import { useId, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { MENU_ROW } from "../components/ui/menu-row";
@@ -69,12 +69,13 @@ export function PickerDialog({
 
 /** What the dialog holds: the field, the rule under it, the list. Its own piece so a design page can draw a picker with no dialog round it. */
 export function PickerFrame({ label, search, query, onQuery, onSearchKey, leading, trailing, listId, activeId, rule = true, children }: FrameProps) {
+  const leadingId = useId();
   return (
     <>
       {/* The frame's radius less its 4px inset (16 − 4 = 12px), as a row's. */}
       <InputGroup leading={<Search className="size-3.5" />} trailing={trailing} className="h-9 rounded-xl border-transparent">
         {leading ? (
-          <span data-picker-leading className="shrink-0 text-[13px] text-muted-foreground">
+          <span id={leadingId} data-picker-leading className="shrink-0 text-[13px] text-muted-foreground">
             {leading}
           </span>
         ) : null}
@@ -83,6 +84,8 @@ export function PickerFrame({ label, search, query, onQuery, onSearchKey, leadin
           value={query}
           placeholder={label}
           aria-label={label}
+          // What the list is narrowed to is part of what the field is, for a reader that cannot see it stand there.
+          aria-describedby={leading ? leadingId : undefined}
           spellCheck={false}
           autoComplete="off"
           autoCorrect="off"
@@ -109,11 +112,14 @@ export function PickerNote({ children }: { children: ReactNode }) {
 /** One row of a picker list, in a menu row's box (`MENU_ROW`: 28px, 12px
  *  in, 8px from glyph to label) with the frame's radius less its 4px inset
  *  (16 − 4 = 12px); the highlighted row is a muted fill. The line is 20px,
- *  whatever the dialog's own body sets, so the row is 28px. */
+ *  whatever the dialog's own body sets (22px), so the row is 28px: it
+ *  stands after `MENU_ROW`, whose font size would otherwise take the line
+ *  with it in the class merge. */
 export function pickerRowClass(highlighted: boolean): string {
   return cn(
-    "flex w-full cursor-default items-center rounded-xl text-left leading-5",
+    "flex w-full cursor-default items-center rounded-xl text-left",
     MENU_ROW,
+    "leading-5",
     highlighted && "bg-muted",
   );
 }

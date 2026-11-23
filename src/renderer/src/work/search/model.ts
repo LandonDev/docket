@@ -20,7 +20,8 @@ import {
  *
  * - A generation a keystroke. An answer of an older generation is dropped.
  * - Groups stand in `SEARCH_ORDER`, never by speed or score; rows on screen
- *   never change order among themselves.
+ *   never change order among themselves, and a row that lands later goes
+ *   under the rows of its kind already there, whoever answered first.
  * - A thing is shown once, in the first group that has it, whichever source
  *   or host found it.
  * - The highlight stays on the first row until he moves it; then it stays
@@ -64,12 +65,16 @@ export interface SearchModel {
   quiet: { key: string; line: string }[];
   /** kinds in the order they were first seen, for the ones the fixed order does not name */
   seen: string[];
+  /** each kind's rows, by key, in the order they came to stand: what lands later goes under them */
+  order: Readonly<Record<string, readonly string[]>>;
+  /** a source searched and answered this generation: only then is there something to say was not found */
+  searched: boolean;
   /** he moved the highlight (an arrow, the pointer): it stays on `active` */
   moved: boolean;
   active: string | null;
 }
 
-export const emptyModel = (): SearchModel => ({ gen: 0, text: "", kind: null, scope: null, hosts: [], slots: [], out: new Set(), quiet: [], seen: [], moved: false, active: null });
+export const emptyModel = (): SearchModel => ({ gen: 0, text: "", kind: null, scope: null, hosts: [], slots: [], out: new Set(), quiet: [], seen: [], order: {}, searched: false, moved: false, active: null });
 
 const outKey = (host: string, source = "*"): string => `${host}\n${source}`;
 
@@ -101,6 +106,8 @@ export function begin(model: SearchModel, ask: { text: string; kind: string | nu
     slots: scope === model.scope ? model.slots.filter((slot) => ask.hosts.some((h) => h.id === slot.host)) : [],
     out: new Set(ask.hosts.map((h) => outKey(h.id))),
     quiet: (ask.offline ?? []).map((name) => ({ key: `offline:${name}`, line: `${name} is offline.` })),
+    order: same ? model.order : {},
+    searched: false,
     moved: same ? model.moved : false,
     active: same ? model.active : null,
   };
@@ -144,6 +151,9 @@ function withQuiet(model: SearchModel, host: SearchHost, quiet: SearchAnswer["qu
   return out;
 }
 
+/** A host that predates the count is taken to have searched. */
+const didSearch = (answer: SearchAnswer): boolean => answer.searched === undefined || answer.searched > 0;
+
 const withSeen = (seen: string[], groups: readonly SearchGroup[]): string[] => [...seen, ...groups.map((g) => g.kind).filter((kind, i, all) => !seen.includes(kind) && all.indexOf(kind) === i)];
 
 /**
@@ -161,8 +171,9 @@ export function landInstant(model: SearchModel, gen: number, hostId: string, ans
   out.delete(outKey(hostId));
   for (const { source } of ask) out.add(outKey(hostId, source));
   const kept = model.slots.filter((slot) => slot.host !== hostId || (slot.tier === "network" && ask.some((a) => a.source === slot.source)));
+  const slots = [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "instant", gen))];
   return {
-    model: { ...model, out, slots: [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "instant", gen))], quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups) },
+    model: settled({ ...model, out, slots, quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups), searched: model.searched || didSearch(answer) }),
     ask,
   };
 }
@@ -174,7 +185,8 @@ export function landSource(model: SearchModel, gen: number, hostId: string, sour
   const out = new Set(model.out);
   out.delete(outKey(hostId, source));
   const kept = model.slots.filter((slot) => !(slot.host === hostId && slot.source === source));
-  return { ...model, out, slots: [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "network", gen))], quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups) };
+  const slots = [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "network", gen))];
+  return settled({ ...model, out, slots, quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups), searched: model.searched || didSearch(answer) });
 }
 
 /**
@@ -191,11 +203,8 @@ export function failed(model: SearchModel, gen: number, hostId: string, source: 
   const slots = model.slots.filter((slot) => slot.host !== hostId || (source !== null && slot.source !== source.source));
   const said = source ? quietLine(`source:${source.source}`, `${searchLabel(source.kind)} did not answer`, host, model.hosts.length) : { key: `host:${hostId}`, line: `${host.name} did not answer.` };
   const quiet = model.quiet.some((q) => q.key === said.key) ? model.quiet : [...model.quiet, said];
-  return { ...model, out, slots, quiet };
+  return settled({ ...model, out, slots, quiet });
 }
-
-/** Whether any host could be asked and answered: with none, there is nothing to say was not found. */
-const someoneAnswered = (model: SearchModel): boolean => model.hosts.some((h) => !model.quiet.some((q) => q.key === `host:${h.id}`));
 
 /** Something asked this generation is still out: the field's spinner. */
 export const busy = (model: SearchModel): boolean => model.out.size > 0;
@@ -213,14 +222,22 @@ export type Row =
 export type Option = Extract<Row, { type: "hit" | "all" | "widen" }>;
 export const isOption = (row: Row): row is Option => row.type === "hit" || row.type === "all" || row.type === "widen";
 
+/** One kind's rows, every one a source holds, in the order they stand. */
+interface Group {
+  kind: string;
+  label: string;
+  hits: { hit: SearchHit; host: string }[];
+  more: boolean;
+}
+
 /**
- * The list, top to bottom. Kinds stand in the fixed order (Recent first,
- * then a kind the order does not name in the order it was first seen);
- * within a kind, the Work home's rows before another host's and what a
- * host knew at once before what it fetched, so a row that lands later goes
- * under the rows of its kind already there, never among them.
+ * The kinds in the fixed order (Recent first, then a kind the order does
+ * not name in the order it was first seen), each with its rows. A thing is
+ * listed once. Within a kind the rows already standing keep their order
+ * (`model.order`) and the rest follow: the Work home's before another
+ * host's, what a host knew at once before what it fetched.
  */
-export function rowsOf(model: SearchModel, o: { scoped?: boolean } = {}): Row[] {
+function groupsOf(model: SearchModel): Group[] {
   const rank = (kind: string): number => (kind === RECENT_KIND ? -1 : searchRank(kind));
   const place = (slot: Slot): number[] => [rank(slot.kind), model.seen.indexOf(slot.kind), model.hosts.findIndex((h) => h.id === slot.host), slot.tier === "instant" ? 0 : 1];
   const shown = model.slots
@@ -229,41 +246,73 @@ export function rowsOf(model: SearchModel, o: { scoped?: boolean } = {}): Row[] 
     .map((slot, index) => ({ slot, index, at: place(slot) }))
     .sort((a, b) => a.at[0] - b.at[0] || a.at[1] - b.at[1] || a.at[2] - b.at[2] || a.at[3] - b.at[3] || a.slot.source.localeCompare(b.slot.source) || a.index - b.index);
 
-  const rows: Row[] = [];
+  const groups: Group[] = [];
   const taken = new Set<string>();
-  const kinds = [...new Set(shown.map((s) => s.slot.kind))];
-  let hits = 0;
-  for (const kind of kinds) {
-    const cap = kind === RECENT_KIND ? SEARCH_RECENTS : model.kind ? SEARCH_ALL : SEARCH_PER_GROUP;
+  for (const kind of new Set(shown.map((s) => s.slot.kind))) {
     const mine = shown.filter((s) => s.slot.kind === kind).map((s) => s.slot);
-    const fresh: { hit: SearchHit; host: string }[] = [];
+    let hits: Group["hits"] = [];
     let more = false;
-    for (const slot of mine) {
-      // A row of an older generation waits for its own answer only while it still holds his words.
-      const stale = slot.gen !== model.gen;
-      for (const hit of slot.hits) {
-        if (taken.has(hit.key)) continue;
-        if (stale && model.text && !mentionMatches(model.text, hit.title, hit.detail, hit.snippet)) continue;
-        taken.add(hit.key);
-        fresh.push({ hit, host: slot.host });
+    if (kind === RECENT_KIND) {
+      // Recent is one list across hosts: what he opened last, wherever he opened it, each thing by its newest opening.
+      const all = mine.flatMap((slot) => slot.hits.map((hit) => ({ hit, host: slot.host }))).sort((a, b) => (b.hit.openedAt ?? 0) - (a.hit.openedAt ?? 0));
+      for (const found of all) {
+        if (taken.has(found.hit.key)) continue;
+        taken.add(found.hit.key);
+        hits.push(found);
       }
-      more ||= slot.more && !stale;
+    } else {
+      for (const slot of mine) {
+        // A row of an older generation waits for its own answer only while it still holds his words.
+        const stale = slot.gen !== model.gen;
+        for (const hit of slot.hits) {
+          if (taken.has(hit.key)) continue;
+          if (stale && model.text && !mentionMatches(model.text, hit.title, hit.detail, hit.snippet)) continue;
+          taken.add(hit.key);
+          hits.push({ hit, host: slot.host });
+        }
+        more ||= slot.more && !stale;
+      }
+      const stood = model.order[kind];
+      if (stood) {
+        const at = (key: string): number => {
+          const index = stood.indexOf(key);
+          return index < 0 ? stood.length : index;
+        };
+        hits = hits.sort((a, b) => at(a.hit.key) - at(b.hit.key));
+      }
     }
-    if (fresh.length === 0) continue;
-    // Recent is one list across hosts: what he opened last, wherever he opened it.
-    if (kind === RECENT_KIND) fresh.sort((a, b) => (b.hit.openedAt ?? 0) - (a.hit.openedAt ?? 0));
-    more ||= fresh.length > cap;
-    const shownHits = fresh.slice(0, cap);
-    // The row he chose is never the one the cap cuts: when rows that landed since stand before it, it takes the last place.
-    const chosen = model.moved && model.active ? fresh.findIndex((f) => `hit:${f.hit.key}` === model.active) : -1;
-    if (chosen >= cap) shownHits[cap - 1] = fresh[chosen];
+    if (hits.length > 0) groups.push({ kind, label: mine[0].label, hits, more });
+  }
+  return groups;
+}
+
+/** After an answer: each kind's rows as they now stand are the order the next answer goes under. */
+function settled(model: SearchModel): SearchModel {
+  const order: Record<string, string[]> = {};
+  for (const group of groupsOf(model)) if (group.kind !== RECENT_KIND) order[group.kind] = group.hits.map((found) => found.hit.key);
+  return { ...model, order };
+}
+
+/** The list, top to bottom: each kind's heading, its rows up to the cap, the row that opens all of it; then what was not found, and what could not be searched. */
+export function rowsOf(model: SearchModel, o: { scoped?: boolean } = {}): Row[] {
+  const rows: Row[] = [];
+  let hits = 0;
+  for (const group of groupsOf(model)) {
+    const { kind } = group;
+    const cap = kind === RECENT_KIND ? SEARCH_RECENTS : model.kind ? SEARCH_ALL : SEARCH_PER_GROUP;
+    const more = group.more || group.hits.length > cap;
+    const shownHits = group.hits.slice(0, cap);
+    // The row he chose is never the one the cap cuts: when rows stand before it that did not, it takes the last place.
+    const chosen = model.moved && model.active ? group.hits.findIndex((found) => `hit:${found.hit.key}` === model.active) : -1;
+    if (chosen >= cap) shownHits[cap - 1] = group.hits[chosen];
     // Held to one kind, the field already names it: no heading says it again.
-    if (!model.kind) rows.push({ type: "heading", id: `heading:${kind}`, label: mine[0].label });
+    if (!model.kind) rows.push({ type: "heading", id: `heading:${kind}`, label: group.label });
     for (const { hit, host } of shownHits) rows.push({ type: "hit", id: `hit:${hit.key}`, hit, host });
     hits += shownHits.length;
-    if (more && !model.kind && kind !== RECENT_KIND) rows.push({ type: "all", id: `all:${kind}`, kind, label: `All ${searchNoun(kind, mine[0].label)} for “${model.text}”` });
+    if (more && !model.kind && kind !== RECENT_KIND) rows.push({ type: "all", id: `all:${kind}`, kind, label: `All ${searchNoun(kind, group.label)} for “${model.text}”` });
   }
-  if (hits === 0 && model.text && !busy(model) && someoneAnswered(model)) {
+  // "Nothing for …" is true only of a search that ran: every source asked (none is, under two characters), and at least one answering.
+  if (hits === 0 && asksNetwork(model.text) && !busy(model) && model.searched) {
     rows.push({ type: "note", id: "nothing", text: `Nothing for “${model.text}”` });
     if (o.scoped) rows.push({ type: "widen", id: "widen", label: "Search all jobs" });
   }

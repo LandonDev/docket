@@ -76,6 +76,26 @@ export const SAME_PRESS_MS = 80;
 /** The list's cap where the page gives no measure (a test): the class below says the same. */
 const LIST_CAP = 380;
 
+/** The spinner waits this long for an answer before it shows, and once shown stays this long: an answer in a few frames never flickers it. */
+export const SPIN_AFTER_MS = 150;
+export const SPIN_FOR_MS = 300;
+
+/** `out`, steadied: true only once it has been true for `SPIN_AFTER_MS`, and then for at least `SPIN_FOR_MS`. */
+export function useSteadySpin(out: boolean): boolean {
+  const [spin, setSpin] = useState(false);
+  const since = useRef(0);
+  useEffect(() => {
+    if (out === spin) return;
+    const wait = out ? SPIN_AFTER_MS : Math.max(0, SPIN_FOR_MS - (performance.now() - since.current));
+    const timer = setTimeout(() => {
+      if (out) since.current = performance.now();
+      setSpin(out);
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [out, spin]);
+  return spin;
+}
+
 export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: () => void }) {
   const search = useRef<HTMLInputElement>(null);
   const workspaces = useWorkspaces();
@@ -90,6 +110,14 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   const [jobKey, setJobKey] = useState<string | null>(() => jobOfWorkspace(jobs, seed.workspaceId)?.key ?? null);
   const job = jobs.find((j) => j.key === jobKey) ?? null;
   const [scopeOpen, setScopeOpen] = useState(false);
+  // One kind, said to a reader that cannot see it stand in the field: on the way in and on the way out, never at the open.
+  const [said, setSaid] = useState("");
+  const kindWas = useRef(kind);
+  useEffect(() => {
+    if (kindWas.current === kind) return;
+    kindWas.current = kind;
+    setSaid(kind ? `${searchLabel(kind)} only` : "Every kind");
+  }, [kind]);
 
   const [controller] = useState(() => new SearchController(liveDeps(askHost)));
   const model = useSyncExternalStore(controller.subscribe, controller.read, controller.read);
@@ -123,6 +151,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   const rows = useMemo(() => rowsOf(model, { scoped: job !== null }), [model, job]);
   const options = useMemo(() => rows.filter(isOption), [rows]);
   const active = activeOf(model, rows);
+  const spin = useSteadySpin(busy(model));
   const mixed = job === null && jobs.length > 1;
   const jobOf = (hit: SearchHit): Job | null => jobOfWorkspace(jobs, hit.workspaceId);
 
@@ -142,7 +171,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   };
 
   const onSearchKey = (e: ReactKeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !e.altKey) {
       e.preventDefault();
       controller.step(rows, e.key === "ArrowDown" ? 1 : -1);
       return;
@@ -157,6 +186,12 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
     if (modOrCtrl(e) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
       e.preventDefault();
       openWorkSearch();
+      return;
+    }
+    // The scope by keys: the field's own menu, as a select opens.
+    if (e.altKey && e.key === "ArrowDown" && jobs.length > 1) {
+      e.preventDefault();
+      setScopeOpen(true);
       return;
     }
     // The kind stands before his words like a word of them: Backspace at the field's start takes it away.
@@ -184,7 +219,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
       rule={rows.length > 0}
       trailing={
         <FieldEnd
-          busy={busy(model)}
+          busy={spin}
           jobs={jobs}
           job={job}
           open={scopeOpen}
@@ -194,6 +229,10 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
         />
       }
     >
+      {/* `data-out` is the truth the spinner steadies: something asked has not answered (the live proof waits on it). */}
+      <span role="status" data-out={busy(model) || undefined} className="sr-only">
+        {said}
+      </span>
       <Results
         rows={rows}
         options={options}
@@ -202,6 +241,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
         text={model.text}
         mixed={mixed}
         jobOf={jobOf}
+        label={kind ? `${searchLabel(kind)} results` : undefined}
         onPoint={(id) => controller.point(id)}
         onTake={take}
       />
@@ -267,6 +307,7 @@ export function Results({
   mixed,
   jobOf,
   now,
+  label = "Work search results",
   onPoint,
   onTake,
 }: {
@@ -279,6 +320,8 @@ export function Results({
   jobOf: (hit: SearchHit) => Job | null;
   /** the clock the rows' times are worded by; a design page fixes it */
   now?: number;
+  /** the list's name for a reader: the kind it is held to, when it is */
+  label?: string;
   onPoint: (id: string) => void;
   onTake: (row: Option, o?: { thread?: boolean }) => void;
 }) {
@@ -312,14 +355,22 @@ export function Results({
   // Holding still: the highlighted row's place in the box, as it was last drawn or scrolled to.
   const place = useRef<{ id: string; top: number } | null>(null);
   const rowOf = (el: HTMLElement): HTMLElement | null => (active ? el.querySelector<HTMLElement>(`[data-row="${CSS.escape(active)}"]`) : null);
-  /** Stands the scroller at `scrollTop`, its box no taller than the rows from there down, and notes where the highlighted row now is. */
-  const stand = (el: HTMLElement, at: (natural: HTMLElement) => number): void => {
+  /**
+   * Stands the scroller at `scrollTop`, its box no taller than the rows from there down, and notes where the highlighted row now is.
+   * Nothing is let go to be measured: the rows' own height is read from the rows, and the box and the scroller are written only
+   * where they differ. A box let go even for a moment is pulled back to its top by the browser, and each such move is a scroll
+   * event that would come back here.
+   */
+  const stand = (el: HTMLElement, at: (stood: number) => number): void => {
     const cap = Number.parseFloat(getComputedStyle(el).maxHeight) || LIST_CAP;
-    el.style.height = "";
-    const row = rowOf(el);
-    const held = holdStill({ rowTop: at(el), was: 0, scrollHeight: el.scrollHeight, cap });
-    el.style.height = held.height === null ? "" : `${held.height}px`;
+    const first = el.firstElementChild as HTMLElement | null;
+    const last = el.lastElementChild as HTMLElement | null;
+    const all = first && last ? last.offsetTop + last.offsetHeight - first.offsetTop : 0;
+    const held = holdStill({ rowTop: at(el.scrollTop), was: 0, scrollHeight: all, cap });
+    const height = held.height === null ? "" : `${held.height}px`;
+    if (el.style.height !== height) el.style.height = height;
     if (el.scrollTop !== held.scrollTop) el.scrollTop = held.scrollTop;
+    const row = rowOf(el);
     place.current = row && active ? { id: active, top: row.offsetTop - el.scrollTop } : null;
   };
   useLayoutEffect(() => {
@@ -334,16 +385,17 @@ export function Results({
     }
     const was = place.current?.id === active ? place.current.top : null;
     // The row he chose keeps its place: the scroller takes up what landed above it. Any other change leaves the scroller where it is.
-    stand(el, (natural) => {
-      const row = rowOf(natural);
-      return row && was !== null ? Math.max(0, row.offsetTop - was) : natural.scrollTop;
+    stand(el, (stood) => {
+      const row = rowOf(el);
+      return row && was !== null ? Math.max(0, row.offsetTop - was) : stood;
     });
   });
   // He scrolled (or an arrow brought a row into view): the box grows back as what was above the fold comes down.
   const onScroll = (): void => {
     const el = list.current;
     if (!el) return;
-    if (moved) stand(el, (natural) => natural.scrollTop);
+    // His own scroll, or the one the hold above just made: either way the scroller stays where it is.
+    if (moved) stand(el, (stood) => stood);
     else {
       const row = rowOf(el);
       place.current = row && active ? { id: active, top: row.offsetTop - el.scrollTop } : null;
@@ -376,12 +428,13 @@ export function Results({
         ref={setList}
         id={LIST_ID}
         role="listbox"
-        aria-label="Work search results"
+        aria-label={label}
         data-work-search-list
         onMouseMove={onMouseMove}
         onScroll={onScroll}
-        // The strip is kept from the start, so the columns do not shift when the list first overflows; a cut edge fades.
-        className={cn("max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [scrollbar-gutter:stable] [--scrollbar-inset:var(--radius-xl)]", OVERFLOW_FADE_Y)}
+        // The strip is kept from the start, so the columns do not shift when the list first overflows; it lies in the
+        // frame's own right inset (-mr-1), so a row ends 10px from the frame's edge and not 14. A cut edge fades.
+        className={cn("-mr-1 max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [scrollbar-gutter:stable] [--scrollbar-inset:var(--radius-xl)]", OVERFLOW_FADE_Y)}
       >
         {rows.map((row, index) => {
           if (row.type === "heading") {
@@ -395,7 +448,10 @@ export function Results({
             return (
               // What could not be searched stands apart from what was found: one step of the grid above its first line.
               <div key={row.id} className={index > 0 && rows[index - 1].type !== "note" ? "pt-1" : undefined}>
-                <PickerNote>{row.text}</PickerNote>
+                <PickerNote>
+                  {/* One line, whatever he typed: the field holds his words whole. */}
+                  <span className="min-w-0 truncate">{row.text}</span>
+                </PickerNote>
               </div>
             );
           }
@@ -413,7 +469,8 @@ export function Results({
           };
           if (row.type !== "hit") {
             return (
-              <div key={row.id} {...common} className={cn(pickerRowClass(highlighted), "text-muted-foreground")}>
+              // A quiet row at rest; the one Return will take reads as any highlighted row does.
+              <div key={row.id} {...common} className={cn(pickerRowClass(highlighted), !highlighted && "text-muted-foreground")}>
                 {/* "All mail for …" stands under its group's titles; "Search all jobs" under the line it answers. */}
                 {row.type === "all" ? <span aria-hidden className="size-4 shrink-0" /> : null}
                 <span className="min-w-0 truncate">{row.label}</span>

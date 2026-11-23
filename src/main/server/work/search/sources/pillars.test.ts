@@ -108,7 +108,7 @@ describe('files', () => {
   it('is absent, with no line, until Files answers', async () => {
     const rig = makeRig()
     const answer = await runSearch(rig.ctx, { modules: [], own: fileSources([standIn('files', {})]), reach: everywhere, text: 'budget', by: window })
-    expect(answer).toEqual({ groups: [], pending: [], quiet: [] })
+    expect(answer).toMatchObject({ groups: [], pending: [], quiet: [] })
   })
 })
 

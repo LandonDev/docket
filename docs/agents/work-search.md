@@ -96,7 +96,7 @@ what LifeOS holds), and relay only while the host is unlocked.
 
 | Method | Params | Answer |
 |---|---|---|
-| `work.search.query` | `{ text ≤200, workspaceId?, tier?: 'instant', sources?: string[], kind?, own?: boolean }` | `SearchAnswer`: `{ groups: { source, kind, label, hits, more }[], pending: { source, kind }[], quiet: { cause, line }[] }` |
+| `work.search.query` | `{ text ≤200, workspaceId?, tier?: 'instant', sources?: string[], kind?, own?: boolean }` | `SearchAnswer`: `{ groups: { source, kind, label, hits, more }[], pending: { source, kind }[], quiet: { cause, line }[], searched }` |
 | `work.search.opened` | `{ hit }` | `{}`; writes one row of `work_search_recent` |
 
 One method serves both speeds. The window's first call for a keystroke is
@@ -109,7 +109,11 @@ with `SEARCH_ALL` (30) rows. `own: true` leaves out the LifeOS sources: the
 window sends it to every host but the Work home, so LifeOS is asked once. A
 source's id is `<pillar>.<kind>` (`<pillar>.<kind>/<tier>` when a pillar
 lists two of a kind). No param is named for a path; a file is a ref inside
-a hit's `open`, which the listener's fence reads.
+a hit's `open`, which the listener's fence reads. `searched` counts the
+sources that searched and answered for this call, with or without rows: the
+window says "Nothing for …" only when some source did, so mail alone with
+LifeOS signed out says why and nothing else. A host that predates the
+count is taken to have searched.
 
 ## The frame
 
@@ -155,7 +159,8 @@ of a job this host has. A row keeps the kind, the title, the id, the job
 and how to open the thing again: never its fact, its snippet, or the words
 a chip carried. Empty text answers the newest eight whose job still exists,
 each with `openedAt`, so the window makes one Recent list across hosts, the
-newest first, before it takes eight; a deleted job takes its rows with it
+newest first and a thing two hosts hold by its newest opening, before it
+takes eight; a deleted job takes its rows with it
 (`workspaceRemoved`).
 `SEARCH_RECENTS = 0` turns the list off.
 
@@ -227,7 +232,11 @@ method can be given a small source here on `ask.ts`, as Files is.
   change of kind does; a change of his words keeps the rows on screen
   until the new ones land. A source that fails is one line by its kind
   ("Mail did not answer."); a host whose first answer fails is one line by
-  its name. "Nothing for …" is said only when someone answered.
+  its name. "Nothing for …" is said only of a search that ran (two
+  characters or more, a source answering: `searched`). Within a kind the
+  rows already standing keep their order and what lands later goes under
+  them (`model.order`, afresh with new words), whichever host answered
+  first; Recent alone is sorted by time.
 - `hosts.ts`: every connected host with Work on is asked, the Work home for
   what LifeOS holds and the rest with `own: true`. A job is a sector's Work
   workspaces on every host (one a sector a host). A host with Work on that
@@ -235,7 +244,10 @@ method can be given a small source here on `ask.ts`, as Files is.
 - `Picker.tsx` draws the model's rows in `PickerDialog` and decides no
   order. The key pressed while it is open reaches it through the port by
   two roads at once (the field, the menu's accelerator): two bare asks
-  within `SAME_PRESS_MS` (80) are one press. `hold.ts` is the rule that keeps a row he moved to in its place:
+  within `SAME_PRESS_MS` (80) are one press. ⌥↓ opens the scope's menu.
+  The spinner shows after `SPIN_AFTER_MS` (150) of waiting and stays
+  `SPIN_FOR_MS` (300); the truth it steadies is `data-out` on the picker's
+  status line, which the live proof waits on. `hold.ts` is the rule that keeps a row he moved to in its place:
   the scroller moves by what landed above it, and its box is no taller than
   the rows from there down.
 - `open.ts`: Return. The window enters the hit's job when it is in another
