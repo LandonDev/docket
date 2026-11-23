@@ -249,8 +249,9 @@ export function Body(props: Props) {
           {...(view.notes?.length && !locked && !state.reloading ? { noteControls: view.notes } : {})}
           marks={marks}
           was={was}
-          // An Excel file's charts and pictures, drawn where Excel draws them; each change goes to the file as the tab's list.
-          objects={book.objects}
+          // The sheet's charts and pictures, drawn where Excel draws them; each change goes to its store as the tab's list. A
+          // sheet that has none yet still gets the layer where its store keeps them, so Insert → Chart draws what it makes.
+          objects={book.objects ?? (controls.includes("objects") ? NO_OBJECTS : undefined)}
           media={sync.media}
           onObjects={(change) => sync.object(change)}
           onReady={setHandle}
@@ -277,6 +278,7 @@ export function Body(props: Props) {
 }
 
 const LABELS = { failed: "Couldn't draw this sheet." };
+const NO_OBJECTS = { charts: [], pictures: [], warnings: [] };
 /** The picture formats an Excel file takes (sheets/patch/pictures.ts): the picker offers these alone. */
 const PICTURE_TYPES = "image/png,image/jpeg,image/gif,image/bmp";
 

@@ -3,7 +3,7 @@ import type { SheetCellJson, SheetMutationJson, SheetView } from "@shared/contra
 import type { ObjectChange, SheetObjects } from "work-kit/sheet";
 import { AUTO_FIT, forPackage, isObjectList, latestRules, ruleKinds, SHEET_MOVES, sheetStopWords, type ObjectIds, type RulesSetParams, type SheetRuleKind } from "@shared/work/sheets";
 import { cellText, holds } from "./model";
-import { MadePictures, objectListOf, rekeyed } from "./objects";
+import { listChanges, listMedia, MadePictures, objectListOf, rekeyed, tabList } from "./objects";
 import { EDIT_MAX, fromBase64, LOAD_MAX, type SheetHost, type SheetPushed } from "./host";
 
 /**
@@ -38,7 +38,7 @@ export interface GridLink {
   /** a sheet's rules of one kind as they stand now (the workbook's names take no sheet); absent in a grid with no rules */
   rules?(kind: SheetRuleKind, sheet?: string): unknown;
   /** the grid's charts and pictures: every one as it stands, a tab's id by its name, and changes from elsewhere laid in (not told back); absent in a grid with none */
-  objects?: { list(): SheetObjects; sheetId(name: string): string | undefined; apply(changes: ObjectChange[]): void };
+  objects?: { list(): SheetObjects; sheetId(name: string): string | undefined; sheetName(id: string): string | undefined; apply(changes: ObjectChange[]): void };
 }
 
 export interface SheetSyncState {
@@ -127,6 +127,14 @@ export class SheetSync {
   private books = 0;
   /** the bytes of pictures made here, until the grid lets go */
   private made = new MadePictures();
+  /** the made pictures whose bytes the host has: a list sends them no more */
+  private sentMedia = new Set<string>();
+  /** the chart and picture lists of the turn in hand: sent after its other mutations (a row put in, then the list it left) */
+  private pendingObjects: SheetMutationJson[] = [];
+  /** gathers the turn in hand, while a grid is up */
+  private gather: (() => void) | null = null;
+  /** ops from elsewhere are being laid on the grid: the objects it moves under them are not his change */
+  private applying = false;
 
   constructor(
     readonly host: SheetHost,
@@ -197,6 +205,8 @@ export class SheetSync {
     this.queue = [];
     this.detach();
     this.made = new MadePictures();
+    this.sentMedia = new Set();
+    this.pendingObjects = [];
     this.set({ book: { ...book, key: ++this.books } });
   }
 
@@ -229,6 +239,8 @@ export class SheetSync {
     let gathering = false;
     const settle = (): void => {
       gathering = false;
+      // The turn's chart and picture lists go after its other mutations: rows put in first, then the lists they left.
+      const lists = this.pendingObjects.splice(0);
       const moved = moves.length > 0 || moveStop !== null;
       const taken = moved ? moves : group;
       const why = moved ? moveStop : stop;
@@ -239,19 +251,29 @@ export class SheetSync {
       moveStop = null;
       commands = 0;
       if (why) return this.stop(grid, why, grid.onCommand ? ran : 1);
-      if (taken.length === 0) return;
+      if (lists.length) {
+        const keys = new Set(lists.map(listKey));
+        this.queue = this.queue.filter((m) => !isObjectList(m) || !keys.has(listKey(m)));
+      }
+      if (taken.length === 0) {
+        if (!lists.length) return;
+        this.queue.push(...lists);
+        this.set({ saving: true });
+        this.wait();
+        return;
+      }
       if (moved) {
         // A move goes now, by itself (`batch`), and the grid takes no edit until the host has answered: the host may still
         // refuse it (a table it would cut, a formula that reads where it lands), and an edit made on a move the file never
         // took would be lost with it or written into another cell.
-        this.queue.push(...taken);
+        this.queue.push(...taken, ...lists);
         this.set({ tick: this.state.tick + 1, saving: true, reloading: true });
         if (this.timer) clearTimeout(this.timer);
         this.timer = null;
         this.run(() => this.send());
         return;
       }
-      this.queue.push(...latestRules(taken));
+      this.queue.push(...latestRules([...taken, ...lists]));
       this.set({ tick: this.state.tick + 1, saving: true });
       if (this.queue.length >= EDIT_MAX) this.flush();
       else this.wait();
@@ -262,6 +284,7 @@ export class SheetSync {
       gathering = true;
       queueMicrotask(settle);
     };
+    this.gather = gather;
     const offCommand = grid.onCommand?.(() => {
       if (this.reverting) return;
       commands++;
@@ -343,6 +366,7 @@ export class SheetSync {
     this.offGrid?.();
     this.offGrid = null;
     this.settle = null;
+    this.gather = null;
     this.grid = null;
     this.laid = new Map();
   }
@@ -394,10 +418,14 @@ export class SheetSync {
     const move = SHEET_MOVES.has(batch[0]!.id);
     try {
       for (let tries = 0; ; tries++) {
-        const answer = await this.host.edit(this.rev, batch);
+        // A chart or picture list is the tab's as the grid holds it at the send: one queued before a conflict's catch-up
+        // goes as the grid now has it, under the ids the last save gave.
+        const sent = batch.map((m) => this.fresh(m));
+        const answer = await this.host.edit(this.rev, sent);
         if (!answer.conflict) {
           this.mine.add(answer.rev);
           this.rev = Math.max(this.rev, answer.rev);
+          for (const m of sent) if (isObjectList(m)) for (const [part] of listMedia(m)) this.sentMedia.add(part);
           if (answer.ids) this.rekey(answer.ids);
           break;
         }
@@ -474,7 +502,7 @@ export class SheetSync {
     }
     for (const op of answer.ops) {
       if (op.rev <= this.rev) continue;
-      if (!this.mine.has(op.rev)) grid.apply(op.mutations.map((m) => inUnit(m, grid.unitId)));
+      if (!this.mine.has(op.rev)) this.applyFrom(grid, op.mutations);
       this.rev = op.rev;
     }
     this.rev = Math.max(this.rev, answer.rev);
@@ -530,14 +558,57 @@ export class SheetSync {
     const grid = this.grid;
     const view = this.state.view;
     if (!grid?.objects || !view?.row?.includes("objects")) return;
+    // Objects moved under rows and columns: an Excel file's own writer moves its drawings, and what the grid laid from
+    // elsewhere moved them on the host already. A sheet the service holds takes his own grid's list after his rows.
+    if (change.cause === "cells" && (view.store === "package" || this.applying)) return;
     const objects = grid.objects;
-    const list = objectListOf(change, objects.list(), (name) => objects.sheetId(name), (part) => this.made.get(part)?.bytes);
+    const list = objectListOf(change, objects.list(), (name) => objects.sheetId(name), (part) => this.bytesToSend(part), true);
     if (!list) return;
-    const key = (m: { params: unknown }): string => `${(m.params as RulesSetParams).kind}\u0000${(m.params as RulesSetParams).subUnitId}`;
-    this.queue = this.queue.filter((m) => !isObjectList(m) || key(m) !== key(list));
-    this.queue.push(list);
-    this.set({ saving: true });
-    this.wait();
+    this.pendingObjects = [...this.pendingObjects.filter((m) => listKey(m) !== listKey(list)), list];
+    this.gather?.();
+  }
+
+  /** A made picture's bytes while the host does not have them. */
+  private bytesToSend(part: string): Uint8Array | undefined {
+    return this.sentMedia.has(part) ? undefined : this.made.get(part)?.bytes;
+  }
+
+  /** A queued chart or picture list as the grid holds that tab now; anything else as it is. */
+  private fresh(m: SheetMutationJson): SheetMutationJson {
+    const objects = this.grid?.objects;
+    if (!objects || !isObjectList(m)) return m;
+    const p = m.params as RulesSetParams;
+    const tab = objects.sheetName(p.subUnitId ?? "");
+    return tab === undefined ? m : tabList(p.kind as "charts" | "pictures", p.subUnitId!, tab, objects.list(), (part) => this.bytesToSend(part));
+  }
+
+  /** Ops from elsewhere laid on the grid: a chart or picture list on its objects (the bytes it carries kept to draw), the rest on its cells. */
+  private applyFrom(grid: GridLink, mutations: readonly SheetMutationJson[]): void {
+    this.applying = true;
+    try {
+      let cells: SheetMutationJson[] = [];
+      const flush = (): void => {
+        if (cells.length) grid.apply(cells.map((m) => inUnit(m, grid.unitId)));
+        cells = [];
+      };
+      for (const m of mutations) {
+        if (!isObjectList(m)) {
+          cells.push(m);
+          continue;
+        }
+        flush();
+        const tab = grid.objects?.sheetName((m.params as RulesSetParams).subUnitId ?? "");
+        if (!grid.objects || tab === undefined) continue;
+        for (const [part, media] of listMedia(m)) {
+          this.made.keep(part, media);
+          this.sentMedia.add(part);
+        }
+        grid.objects.apply(listChanges(grid.objects.list(), m, tab));
+      }
+      flush();
+    } finally {
+      this.applying = false;
+    }
   }
 
   /** A picture's bytes by its part, for the grid to draw: the file's own as it was read, or one made here. */
@@ -557,6 +628,9 @@ export class SheetSync {
     if (changes.length) objects.apply(changes);
   }
 }
+
+/** A chart or picture list's kind and tab: one list a tab waits to be sent. */
+const listKey = (m: SheetMutationJson): string => `${(m.params as RulesSetParams).kind}\u0000${(m.params as RulesSetParams).subUnitId}`;
 
 export const useSheetSync = (sync: SheetSync): SheetSyncState => useSyncExternalStore(sync.subscribe, sync.get, sync.get);
 

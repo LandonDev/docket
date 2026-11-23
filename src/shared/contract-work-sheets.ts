@@ -52,7 +52,7 @@ const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size',
 const DATA_KEPT: readonly SheetDataControl[] = ['sort', 'filter', 'validation', 'conditional', 'names', 'table']
 /** The page's controls: held for each store by `sheets/pagesMatrix.test.ts` (an opened Excel file, a sheet the service holds, its export). */
 const PAGE_KEPT: readonly SheetPageControl[] = ['page', 'pageBreaks', 'printArea', 'breakHere']
-/** Insert's Chart and Picture, and changing either on the grid: held for an opened Excel file by `sheets/objectsMatrix.test.ts`. */
+/** Insert's Chart and Picture, and changing either on the grid: held for an opened Excel file by `sheets/objectsMatrix.test.ts`, for a sheet the service holds by `sheets/host/objects.test.ts`. */
 const OBJECTS_KEPT: readonly SheetObjectControl[] = ['chart', 'picture', 'objects']
 
 /**
@@ -69,9 +69,10 @@ const OBJECTS_KEPT: readonly SheetObjectControl[] = ['chart', 'picture', 'object
  * lose.
  */
 export const SHEET_ROW: Record<SheetStoreKind, readonly SheetRowControl[]> = {
-  lifeos: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT],
-  tcsheet: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT],
-  // An opened Excel file keeps its charts and pictures: each change goes as the tab's whole list to the chart and picture writers.
+  // Charts and pictures: a tab's whole list each change, kept beside the service's engine and in its snapshots (host/objects.ts),
+  // and in an opened Excel file by the chart and picture writers.
+  lifeos: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT, ...OBJECTS_KEPT],
+  tcsheet: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT, ...OBJECTS_KEPT],
   package: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT, ...OBJECTS_KEPT],
   csv: []
 }

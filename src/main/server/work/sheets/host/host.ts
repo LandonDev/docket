@@ -10,6 +10,8 @@ import { diffWorkbooks } from '../diff'
 import { flatText, mutationsOf, SET_RANGE_VALUES, STRUCTURAL } from '../mutations'
 import { moveThrough } from './live'
 import { NOTES_RESOURCE, noteMutations, ruleMutations, sheetNotes } from './rules'
+import { heldOf, layOn, listMisfit, objectMutations, withHeld, type HeldObjects } from './objects'
+import { isObjectList } from '../../../../../shared/work/sheets'
 import { SNAPSHOT_EVERY, type Op, type SheetBackend, type StoredSuggestion } from './backends'
 import { createRules } from 'work-kit/sheet/rules'
 import { guestMisfit } from './guest'
@@ -31,6 +33,17 @@ type Box = { startRow: number; endRow: number; startColumn: number; endColumn: n
 
 /** Every engine the host makes: with the rule, note and page plugins, or their ops would not apply and their rules, notes and page set-ups would leave the snapshot. */
 const ENGINE = { rules: true, notes: true, pages: true } as const
+
+/** What each engine holds that Univer does not: its charts and pictures (objects.ts). */
+const kept = new WeakMap<HeadlessSheet, HeldObjects>()
+/** An engine over a snapshot, with the objects the snapshot carries. */
+function engineOf(snapshot: IWorkbookData): HeadlessSheet {
+  const engine = headlessSheet('work', snapshot, ENGINE)
+  kept.set(engine, heldOf(snapshot))
+  return engine
+}
+/** The engine's workbook as a snapshot, its charts and pictures laid in. */
+const savedOf = (engine: HeadlessSheet): IWorkbookData => withHeld(engine.workbook.save(), kept.get(engine) ?? heldOf(null))
 
 interface Open {
   key: string
@@ -145,7 +158,7 @@ export class SheetHost {
   private async load(ref: SheetRef): Promise<Open> {
     const backend = this.backendOf(ref)
     const loaded = await backend.load()
-    const engine = headlessSheet('work', loaded.snapshot, ENGINE)
+    const engine = engineOf(loaded.snapshot)
     const o: Open = { key: refKey(ref), backend, engine, unitId: engine.workbook.getId(), title: loaded.title, shared: loaded.shared, sector: loaded.sector, rev: loaded.snapRev, snapRev: loaded.snapRev }
     this.replay(o, await backend.opsAfter(loaded.snapRev))
     await engine.settled()
@@ -153,9 +166,13 @@ export class SheetHost {
   }
 
   private applyTo(engine: HeadlessSheet, unitId: string, mutations: readonly SheetMutationJson[]): void {
+    const held = kept.get(engine)
     for (const m of mutations) {
-      const params = { ...(m.params as object), unitId }
-      engine.api.syncExecuteCommand(m.id, params, { fromCollab: true })
+      // A sheet's names as they stood before the mutation: a rename is read after it ran.
+      const names = held ? new Map(engine.workbook.getSheets().map((x) => [x.getSheetId(), x.getSheetName()])) : null
+      // A tab's chart or picture list is ours, not Univer's: it is laid beside the engine.
+      if (!isObjectList(m)) engine.api.syncExecuteCommand(m.id, { ...(m.params as object), unitId }, { fromCollab: true })
+      if (held && names) layOn(held, m, (id) => names.get(id))
     }
   }
   private replay(o: Open, ops: readonly Op[]): void {
@@ -231,7 +248,7 @@ export class SheetHost {
     }
     if (o.rev - o.snapRev >= SNAPSHOT_EVERY) {
       await o.engine.settled()
-      await o.backend.cutSnapshot(o.rev, o.engine.workbook.save())
+      await o.backend.cutSnapshot(o.rev, savedOf(o.engine))
       o.snapRev = o.rev
     }
     return { rev: o.rev }
@@ -257,7 +274,7 @@ export class SheetHost {
   snapshotJson(ref: SheetRef): Promise<{ rev: number; json: string }> {
     return this.with(ref, async (o) => {
       await o.engine.settled()
-      return { rev: o.rev, json: JSON.stringify(o.engine.workbook.save()) }
+      return { rev: o.rev, json: JSON.stringify(savedOf(o.engine)) }
     })
   }
 
@@ -271,7 +288,7 @@ export class SheetHost {
       let s = this.serialized.get(o.key)
       if (!s || s.rev !== o.rev) {
         await o.engine.settled()
-        s = { rev: o.rev, bytes: Buffer.from(JSON.stringify(o.engine.workbook.save()), 'utf8') }
+        s = { rev: o.rev, bytes: Buffer.from(JSON.stringify(savedOf(o.engine)), 'utf8') }
         this.serialized.set(o.key, s)
       }
       const part = s.bytes.subarray(offset, offset + length)
@@ -308,6 +325,12 @@ export class SheetHost {
           const sheet = o.engine.workbook.getSheetBySheetId(id)?.getSheet()
           return sheet ? { rows: sheet.getRowCount(), columns: sheet.getColumnCount(), merges: sheet.getMergeData() } : null
         })
+        if (why) throw new Error(why)
+      }
+      // A tab's chart or picture list is held to its shape and a made picture's bytes to their bounds, before anything is kept.
+      const held = kept.get(o.engine)
+      for (const m of ops) {
+        const why = held && isObjectList(m) ? listMisfit(held, m) : null
         if (why) throw new Error(why)
       }
       return this.commit(o, o.rev, [{ by, mutations: ops }])
@@ -406,16 +429,16 @@ export class SheetHost {
   private async workbookAt(o: Open, rev: number): Promise<IWorkbookData> {
     if (rev === o.rev) {
       await o.engine.settled()
-      return o.engine.workbook.save()
+      return savedOf(o.engine)
     }
     if (rev > o.rev) throw new Error(`There is no revision ${rev} yet.`)
     const snap = await o.backend.snapshotAt(rev)
-    const engine = headlessSheet('work', snap.data, ENGINE)
+    const engine = engineOf(snap.data)
     try {
       const ops = (await o.backend.opsAfter(snap.rev)).filter((op) => op.rev <= rev)
       this.applyTo(engine, engine.workbook.getId(), ops.flatMap((op) => op.mutations))
       await engine.settled()
-      return engine.workbook.save()
+      return savedOf(engine)
     } finally {
       engine.dispose()
     }
@@ -438,7 +461,7 @@ export class SheetHost {
       const writes = diff.cells
         .filter((c) => (c.before?.f || c.after?.f ? c.before?.f !== c.after?.f : true))
         .map((c) => ({ sheet: c.sheet, row: c.row, col: c.col, cell: c.after?.f ? { f: c.after.f } : c.after }))
-      const rules = [...ruleMutations(o.unitId, now, then), ...noteMutations(o.unitId, now, then)]
+      const rules = [...ruleMutations(o.unitId, now, then), ...noteMutations(o.unitId, now, then), ...objectMutations(o.unitId, now, then)]
       if (!writes.length && !rules.length) return { rev: o.rev }
       const got = await this.commit(o, o.rev, [{ by, mutations: [...(writes.length ? mutationsOf(o.unitId, writes) : []), ...rules] }])
       if ('conflict' in got) throw new Error('The sheet changed while restoring: try again.')
@@ -459,6 +482,11 @@ function labelOf(mutations: readonly SheetMutationJson[]): string {
   if (mutations.some((m) => STRUCTURAL.has(m.id))) {
     const id = mutations.find((m) => STRUCTURAL.has(m.id))!.id
     return id.includes('insert-row') ? 'Inserted rows' : id.includes('remove-rows') ? 'Deleted rows' : id.includes('insert-col') ? 'Inserted columns' : id.includes('remove-col') ? 'Deleted columns' : 'Moved cells'
+  }
+  // A tab's chart or picture list alone: "Chart", "Picture" (the labels an opened Excel file's revisions take).
+  if (mutations.length && mutations.every(isObjectList)) {
+    const kinds = new Set(mutations.map((m) => (m.params as { kind?: string }).kind))
+    return kinds.size === 1 ? (kinds.has('charts') ? 'Chart' : 'Picture') : 'Charts and pictures'
   }
   if (mutations.length && mutations.every((m) => m.id.endsWith('-note') || m.id === 'sheet.mutation.update-note-position')) return mutations.length === 1 && mutations[0].id.endsWith('remove-note') ? 'Removed a note' : 'A note'
   let n = 0

@@ -1495,3 +1495,102 @@ describe("charts and pictures", () => {
     expect(grid.handle!.objects.state().selected).toBe(CHART.id);
   });
 });
+
+describe("charts and pictures on a sheet the service holds", () => {
+  const ROW: NonNullable<SheetView["row"]> = [...ROW_ALL, "chart", "picture", "objects"];
+  const at = (row: number) => ({ kind: "oneCell" as const, from: { column: 6, row, columnOffset: 0, rowOffset: 0 }, width: 4572000, height: 2743200 });
+  const CHART = { id: "chart-ab12cd34", sheet: "Budget", anchor: at(1), kind: "column" as const, grouping: "clustered" as const, groups: [{ kind: "column" as const, grouping: "clustered" as const }], legend: null, axes: {}, series: [{ kind: "column" as const, group: 0, values: { ref: "Budget!$E$2:$E$5" } }], flags: {} };
+  const INSERT: SheetMutationJson = { id: "sheet.mutation.insert-row", params: { unitId: "book", subUnitId: "budget", range: { startRow: 0, endRow: 1, startColumn: 0, endColumn: 25 } } };
+  const SERVICE = sheetView({ store: "tcsheet", name: "Plan.tcsheet", row: ROW });
+
+  function openHeld(objects?: { charts: (typeof CHART)[]; pictures: never[]; warnings: never[] }) {
+    sheetHost = fakeSheetHost(SERVICE, objects ? { workbook: BOOK, objects } : BOOK);
+    grid = fakeGrid();
+    host.current = fakeHost([ITEM], host as never);
+    return render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div data-testid="thread" />
+      </CanvasSeat>,
+    );
+  }
+  const sentIds = () => edits().map((e) => e.mutations.map((m) => (m.id === "tempcode.sheet.rules" ? `list:${(m.params as { kind: string }).kind}` : m.id)));
+
+  it("draws the layer on a sheet with none yet, so a chart made there is drawn and sent", async () => {
+    openHeld();
+    await gridUp();
+    expect(grid.objectsGiven?.objects).toEqual({ charts: [], pictures: [], warnings: [] });
+    act(() => void grid.handle!.objects.add({ chart: CHART }));
+    await waitFor(() => expect(sentIds()).toEqual([["list:charts"]]));
+  });
+
+  it("sends the grid's own list after the rows he put in, in one edit: the host moves, then takes his grid's list", async () => {
+    openHeld({ charts: [CHART], pictures: [], warnings: [] });
+    await gridUp();
+    act(() => {
+      grid.edit(INSERT);
+      // the kit follows the rows with the chart, as its own change caused by the cells
+      grid.objectsGiven!.onObjects!({ kind: "set", object: { chart: { ...CHART, anchor: at(3) } }, cause: "cells" });
+    });
+    await waitFor(() => expect(sentIds()).toEqual([["sheet.mutation.insert-row", "list:charts"]]));
+  });
+
+  it("lays a list from elsewhere on the grid, and sends nothing back for what the grid moved under ops from elsewhere", async () => {
+    openHeld({ charts: [CHART], pictures: [], warnings: [] });
+    await gridUp();
+    grid.onApply = () => grid.objectsGiven!.onObjects!({ kind: "set", object: { chart: { ...CHART, anchor: at(3) } }, cause: "cells" });
+    act(() => sheetHost.land([INSERT]));
+    await waitFor(() => expect(grid.applied.length).toBeGreaterThan(0));
+    const moved = { ...CHART, anchor: at(7), title: { text: "Moved by Dana" } };
+    act(() => sheetHost.land([{ id: "tempcode.sheet.rules", params: { unitId: "book", kind: "charts", subUnitId: "budget", list: [moved] } }]));
+    await waitFor(() => expect(grid.handle!.objects.list().charts).toEqual([moved]));
+    // the list was not laid on the cells, and nothing went back
+    expect(grid.applied.flat().some((m) => m.id === "tempcode.sheet.rules")).toBe(false);
+    await new Promise((done) => setTimeout(done, EDIT_WAIT + 50));
+    expect(edits()).toEqual([]);
+  });
+
+  it("sends a made picture's bytes once: a later change to its tab names its part alone", async () => {
+    openHeld();
+    await gridUp();
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    let id = "";
+    act(() => void (id = grid.handle!.objects.add({ picture: { bytes, type: "image/png", name: "Logo" } })!));
+    await waitFor(() => expect(edits()).toHaveLength(1));
+    act(() => void grid.handle!.objects.move(id, at(5)));
+    await waitFor(() => expect(edits()).toHaveLength(2));
+    const data = edits().map((e) => ((e.mutations[0]!.params as { list: { data?: string }[] }).list[0]!.data ?? null));
+    expect(data).toEqual([btoa(String.fromCharCode(...bytes)), null]);
+  });
+
+  it("an Excel file still sends nothing for what only follows its rows: its own writer moves its drawings", async () => {
+    sheetHost = fakeSheetHost(sheetView({ row: ROW }), { workbook: BOOK, objects: { charts: [CHART], pictures: [], warnings: [] } });
+    grid = fakeGrid();
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    await gridUp();
+    act(() => grid.objectsGiven!.onObjects!({ kind: "set", object: { chart: { ...CHART, anchor: at(3) } }, cause: "cells" }));
+    await new Promise((done) => setTimeout(done, EDIT_WAIT + 50));
+    expect(edits()).toEqual([]);
+  });
+
+  it("the grid opens a held sheet's snapshot with its charts and the bytes of its made pictures", async () => {
+    const { univerGrid } = await import("./grid");
+    const snapshot = {
+      ...BOOK,
+      resources: [
+        { name: "TEMPCODE_SHEET_OBJECTS", data: JSON.stringify({ v: 1, charts: [CHART], pictures: [{ id: "picture-1", sheet: "Budget", anchor: at(2), part: "media:p1", contentType: "image/png" }] }) },
+        { name: "TEMPCODE_SHEET_MEDIA", data: JSON.stringify({ "media:p1": { type: "image/png", data: btoa("\x89PNG") } }) },
+      ],
+    };
+    const book = await univerGrid.decode(new TextEncoder().encode(JSON.stringify(snapshot)), "snapshot");
+    expect(book.objects?.charts).toEqual([CHART]);
+    expect(book.objects?.pictures.map((p) => p.part)).toEqual(["media:p1"]);
+    expect([...book.media!.get("media:p1")!.bytes]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    // a snapshot with none opens with none
+    expect((await univerGrid.decode(new TextEncoder().encode(JSON.stringify(BOOK)), "snapshot")).objects).toBeUndefined();
+  });
+});

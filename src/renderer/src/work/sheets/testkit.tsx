@@ -243,6 +243,8 @@ export interface FakeGrid extends SheetGrid {
   /** The sheet's rules as the grid holds them (`handle.rules` reads and writes these); each change is reported as the grid's own mutation. */
   rules: FakeRules;
   /** What the canvas was given for its charts and pictures at its last mount: `objects` (undefined: none drawn), `media`, `onObjects`. */
+  /** Set: called as ops from elsewhere are laid on the grid (the kit follows rows with its objects then). */
+  onApply: ((mutations: SheetMutationJson[]) => void) | null;
   objectsGiven: { objects: SheetObjects | undefined; media: ((part: string) => Promise<Blob | string>) | undefined; onObjects: ((change: ObjectChange) => void) | undefined } | null;
 }
 
@@ -474,6 +476,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
         snapshot: () => book,
         apply: (mutations: SheetMutationJson[]) => {
           grid.applied.push(mutations);
+          grid.onApply?.(mutations);
           for (const m of mutations) write(cells, m);
           redraw();
         },
@@ -587,6 +590,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     lockedOnce: false,
     rules: { conditional: {}, validation: {}, names: [], filter: {} },
     objectsGiven: null,
+    onApply: null,
     formulas: new Map(),
     Canvas: FakeCanvas,
     fonts: async (workbook) => void grid.fontsAsked.push(workbook),
@@ -606,6 +610,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       objects: {
         list: () => grid.handle!.objects.list(),
         sheetId: (name) => grid.handle!.store.get().sheets.find((x) => x.name === name)?.id,
+        sheetName: (id) => grid.handle!.store.get().sheets.find((x) => x.id === id)?.name,
         apply: (changes) => grid.handle!.objects.apply(changes),
       },
     }),

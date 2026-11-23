@@ -445,9 +445,7 @@ describe('the format row on an opened Excel file', () => {
   const AT = [[29, 0], [29, 1], [30, 0], [30, 1]] as const
 
   it('lists every control: the patch writer saves each press into the file', () => {
-    // (and its charts and pictures, which objectsMatrix.test.ts holds)
-    const objects: readonly string[] = ['chart', 'picture', 'objects']
-    expect(SHEET_ROW.package.filter((c) => !objects.includes(c)).sort()).toEqual(SHEET_ROW.tcsheet.filter((c) => !objects.includes(c)).sort())
+    expect([...SHEET_ROW.package].sort()).toEqual([...SHEET_ROW.tcsheet].sort())
   })
 
   for (const control of SHEET_ROW.package.filter((c): c is Exclude<SheetFormatControl, 'undo'> => c !== 'undo' && c in PRESSES)) {

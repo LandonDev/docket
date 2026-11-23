@@ -1,7 +1,8 @@
 import { createElement, type ComponentType } from "react";
 import type { SheetCellJson, SheetChart } from "@shared/contract-work-sheets";
-import { fontsOfSnapshot, SheetCanvas, type SheetCanvasProps, type SheetHandle } from "work-kit/sheet";
+import { fontsOfSnapshot, readObjectsResource, SheetCanvas, type SheetCanvasProps, type SheetHandle } from "work-kit/sheet";
 import type { Book, Decode, GridLink, Workbook } from "./sync";
+import { snapshotMedia } from "./objects";
 
 /**
  * The grid the sheet canvas draws: work-kit's `SheetCanvas` on Univer, and
@@ -61,6 +62,7 @@ export const univerGrid: SheetGrid = {
     objects: {
       list: () => handle.objects.list(),
       sheetId: (name) => handle.store.get().sheets.find((s) => s.name === name)?.id,
+      sheetName: (id) => handle.store.get().sheets.find((s) => s.id === id)?.name,
       apply: (changes) => handle.objects.apply(changes),
     },
   }),
@@ -92,6 +94,9 @@ export const univerGrid: SheetGrid = {
       }
       return { workbook: workbook as never, objects, media };
     }
-    return { workbook: JSON.parse(new TextDecoder().decode(bytes)) };
+    // A sheet the service holds keeps its charts and pictures in its snapshot, a made picture's bytes beside them.
+    const workbook = JSON.parse(new TextDecoder().decode(bytes)) as Workbook & { resources?: Array<{ name: string; data: string }> };
+    const objects = readObjectsResource(workbook as never);
+    return objects ? { workbook, objects, media: snapshotMedia(workbook) } : { workbook };
   },
 };

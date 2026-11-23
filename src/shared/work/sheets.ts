@@ -99,6 +99,11 @@ export const isObjectList = (m: SheetMutation): boolean => m.id === RULES_SET &&
  * chart takes its part's name; pictures after one added or removed are numbered again), with a picture's new part.
  */
 export type ObjectIds = Record<string, { id: string; part?: string }>
+/**
+ * On a sheet the service holds, the bytes of the pictures made on its grid travel with the sheet: in the op that
+ * made each (its list entry's `data`) and in every snapshot, as this resource (`{ [part]: { type, data } }`, base64).
+ */
+export const MEDIA_RESOURCE = 'TEMPCODE_SHEET_MEDIA'
 
 /**
  * The format row's controls a guest with an Edit link gets on the hosted page: every one whose
