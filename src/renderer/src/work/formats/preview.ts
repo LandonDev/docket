@@ -48,9 +48,11 @@ export type PreviewPicture =
        * draws its first 50): `from` and `to` are which pages of the whole
        * the PDF's first and last are, 1-based and inclusive, so
        * `to - from + 1` is `pages`; `of` is about how many the whole has.
-       * The bar then reads "Page 3 of 2,084".
+       * The bar then reads "Page 3 of 2,084". A whole nobody has counted
+       * leaves `of` out: the bar reads "Page 3 of 50+" and the way to the
+       * rest is "Draw all", with no number.
        */
-      shown?: { from: number; to: number; of: number };
+      shown?: { from: number; to: number; of?: number };
     }
   | { kind: "text"; text: string }
   | { kind: "html"; html: string }
@@ -176,6 +178,12 @@ export interface Drawn {
   picture: PreviewPicture;
   /** what this format cannot hold, one plain line each, counted from the item; empty when nothing is lost */
   drops: string[];
+  /**
+   * What is true of this picture and is not a loss, one plain line each ("Prints on more than 50
+   * pages", "Drawn on another computer: only the first 20 pages could be sent"). Said under the
+   * line over the first sheet, never under "In this format".
+   */
+  notes?: string[];
 }
 
 export interface PreviewSource {

@@ -82,8 +82,9 @@ export function drawnByLine(picture: PreviewPicture, format: PreviewFormat | und
 export function countLine(page: number, pages: number, picture: PreviewPicture, format: PreviewFormat | undefined): string {
   const shown = picture.kind === "paged" ? picture.shown : undefined;
   const at = shown ? shown.from + page - 1 : page;
-  const of = shown ? shown.of : pages;
-  return `${format?.unit === "slide" ? "Slide" : "Page"} ${at.toLocaleString("en-US")} of ${of.toLocaleString("en-US")}`;
+  // A whole nobody has counted: at least as many as were drawn ("of 50+").
+  const of = shown ? (shown.of === undefined ? `${shown.to.toLocaleString("en-US")}+` : shown.of.toLocaleString("en-US")) : pages.toLocaleString("en-US");
+  return `${format?.unit === "slide" ? "Slide" : "Page"} ${at.toLocaleString("en-US")} of ${of}`;
 }
 
 type Draw = { status: "drawing" } | { status: "drawn"; drawn: Drawn } | { status: "failed"; message: string };
@@ -141,7 +142,11 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
       .then(
         (drawn) => {
           if (job.signal.aborted) return;
-          if (drawn.picture.kind === "paged") known.current.set(formatId, drawn.picture.shown?.of ?? drawn.picture.pages);
+          // How many pages the next draw of this format will be, for its waiting line; unknown for a whole nobody has counted.
+          if (drawn.picture.kind === "paged") {
+            if (drawn.picture.shown && drawn.picture.shown.of === undefined) known.current.delete(formatId);
+            else known.current.set(formatId, drawn.picture.shown?.of ?? drawn.picture.pages);
+          }
           setDraw({ status: "drawn", drawn });
         },
         (error: unknown) => !job.signal.aborted && setDraw({ status: "failed", message: messageOf(error, "It could not be drawn") }),
@@ -269,7 +274,8 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
   const by = picture ? drawnByLine(picture, current) : null;
   const officeName = office?.app;
   const canCheck = !!office && (office.state === "ready" || office.state === "asleep") && picture?.kind === "paged" && picture.drawnBy !== office.app.toLowerCase() && !checking;
-  const part = picture?.kind === "paged" && picture.shown && picture.shown.to < picture.shown.of ? picture.shown : null;
+  const part = picture?.kind === "paged" && picture.shown && (picture.shown.of === undefined || picture.shown.to < picture.shown.of) ? picture.shown : null;
+  const notes = draw.status === "drawn" ? (draw.drawn.notes ?? []) : [];
 
   /** The line over the first sheet: who drew it, or what is happening to it; under it, folded, what the format drops. */
   const head = (line: ReactNode, action?: ReactNode): ReactNode => (
@@ -278,6 +284,13 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
         {line}
         {action ? <span className="ms-auto shrink-0">{action}</span> : null}
       </div>
+      {notes.length > 0 ? (
+        <div data-preview-notes className="flex flex-col text-xs leading-4 text-muted-foreground">
+          {notes.map((note) => (
+            <span key={note}>{note}</span>
+          ))}
+        </div>
+      ) : null}
       {folded && drops.length > 0 ? (
         <div data-preview-drops className="flex flex-col text-xs leading-4 text-muted-foreground">
           {drops.map((d) => (
@@ -300,7 +313,7 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
       return head(
         <span className="min-w-0 truncate">The first {part.to.toLocaleString("en-US")} pages</span>,
         <Button variant="ghost" size="xs" onClick={() => setAll(true)}>
-          Draw all {part.of.toLocaleString("en-US")}
+          {part.of === undefined ? "Draw all" : `Draw all ${part.of.toLocaleString("en-US")}`}
         </Button>,
       );
     return head(

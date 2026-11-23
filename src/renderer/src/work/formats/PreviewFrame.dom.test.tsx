@@ -346,6 +346,28 @@ describe("the frame", () => {
     expect(screen.queryByRole("button", { name: "Print…" })).toBeNull();
   });
 
+  it("a whole nobody has counted reads \"of 50+\" and offers Draw all with no number; a note that is no loss stands under the line over the paper", async () => {
+    const f = fake();
+    await show(f);
+    await f.answer({ picture: paged("r1", 50, { shown: { from: 1, to: 50 } }), drops: ["1 chart is left out"], notes: ["Prints on more than 50 pages"] });
+    await waitFor(() => expect(count()).toBe("Page 1 of 50+"));
+    expect(screen.getByRole("button", { name: "Draw all" })).toBeTruthy();
+    // The note is about the picture, so it is with the picture's line, not among what the format loses.
+    const notes = document.querySelector("[data-preview-notes]")!;
+    expect(notes.textContent).toBe("Prints on more than 50 pages");
+    expect(document.querySelector("[data-preview-head]")!.contains(notes)).toBe(true);
+    expect(document.querySelector("[data-preview-column]")!.textContent).not.toContain("Prints on more than 50 pages");
+    expect(document.querySelector("[data-preview-column]")!.textContent).toContain("1 chart is left out");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Draw all" })));
+    expect(f.asked.at(-1)).toEqual({ format: "docx", opts: { pages: [1, Number.MAX_SAFE_INTEGER] } });
+    // It cannot say how many it is drawing: nobody has counted.
+    expect(head()).toBe("Drawing the pages");
+    await f.answer({ picture: paged("r2", 73), drops: [] });
+    await waitFor(() => expect(head()).toBe("As LibreOffice draws it"));
+    expect(screen.queryByRole("button", { name: /Draw all/ })).toBeNull();
+    expect(document.querySelector("[data-preview-notes]")).toBeNull();
+  });
+
   it("a long file draws its first pages and offers the rest: the count is of the whole", async () => {
     const f = fake();
     await show(f);

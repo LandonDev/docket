@@ -43,7 +43,7 @@ async function pictureProblems(what: string, picture: PreviewPicture, paged: boo
   if (picture.kind === "paged") {
     if (!Number.isInteger(picture.pages) || picture.pages < 1) out.push(`${what}: ${picture.pages} pages`);
     const shown = picture.shown;
-    if (shown && !(shown.from >= 1 && shown.to >= shown.from && shown.of >= shown.to)) out.push(`${what}: the pages shown are not a range of the whole`);
+    if (shown && !(shown.from >= 1 && shown.to >= shown.from && (shown.of === undefined || shown.of >= shown.to))) out.push(`${what}: the pages shown are not a range of the whole`);
     else if (shown && shown.to - shown.from + 1 !== picture.pages) out.push(`${what}: pages ${shown.from} to ${shown.to} are shown and the PDF holds ${picture.pages}`);
     out.push(...(await bytesProblems(what, picture.pdf, PDF_MAGIC)));
   } else if (picture.kind === "video") {

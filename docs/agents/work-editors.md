@@ -110,7 +110,7 @@ interface PreviewSource {
   formats: PreviewFormat[]            // { id, label, ext?, paged, verb }
   setup?: PageSetupModel              // one arm per kind over CommonSetup
   office?(format?): Promise<{ app, state } | null> // null when this format has no Office draw
-  draw(format, { by?, pages?, sheet?, signal }): Promise<{ picture, drops }>
+  draw(format, { by?, pages?, sheet?, signal }): Promise<{ picture, drops, notes? }>
   export(format): Promise<{ name }>
 }
 ```
@@ -126,6 +126,12 @@ interface PreviewSource {
 - **`drops`** are what the format cannot hold, one plain line each, counted
   from the item ("3 comments stay behind"), never a fixed list and never "not
   supported". Empty when nothing is lost.
+- **`notes`** (optional) are what is true of the picture and is not a loss
+  ("Prints on more than 50 pages", "Drawn on another computer: only the first
+  20 pages could be sent"). The frame says them under the line over the
+  first sheet, never under "In this format". A `shown` with no `of` is a
+  whole nobody has counted: the bar reads "Page 3 of 50+" and the way to the
+  rest is "Draw all", with no number.
 - **`CommonSetup`** is paper (`PAPERS`, sizes in points in `PAPER_POINTS`),
   orientation, margins in points (`MARGIN_PRESETS` are Word's Normal, Narrow,
   Moderate and Wide) and the header and footer each on or off. The document,
