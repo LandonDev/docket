@@ -100,7 +100,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   tiers, `TIER_PATHS`); a post-commit hook tags `release-N` on every green
   master commit (`bun scripts/release.ts`); `bun run release:publish`
   (scripts/release-publish.sh) ships HEAD's 1.0.N to the feed; both are
-  buttons in Settings → Hosts, pressed by the user. No AI attribution
+  buttons in Settings → Hosts, pressed by the user. The build runs
+  itself again with an 8 GB heap (scripts/lib/buildHeap.ts, from
+  electron.vite.config.ts). No AI attribution
   trailers in commits. [docs/agents/releases.md](docs/agents/releases.md)
 - **Project preambles** — the house rules as markdown on the project row
   (`projects.preamble`), added to a thread's first message on every start

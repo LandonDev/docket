@@ -8,6 +8,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { directIconImports } from './scripts/lib/iconImports'
 import { buildTcComputer } from './scripts/lib/tcComputerBuild'
+import { BUILD_HEAP_ENV, buildHeapHold } from './scripts/lib/buildHeap'
 
 /** Measurement builds (scripts/measure-react-compiler.ts): the profiling
  *  reconciler makes <Profiler> report in production mode and keeps the dev
@@ -158,26 +159,36 @@ export function hostedBuildConfig(outDir: string = resolve('out/hosted')): Inlin
   }
 }
 
-/** Builds the hosted pages into out/hosted once the renderer's bundle is
- *  written, in a process of their own (Vite's CLI on scripts/hosted.vite.config.ts):
- *  the renderer build's memory is gone by then, and the two together ran past
- *  node's heap. */
+/** Builds the hosted pages into out/hosted in a process of their own (Vite's
+ *  CLI on scripts/hosted.vite.config.ts): with the renderer in one process they
+ *  ran past node's heap. */
+function buildHosted(outDir?: string): Promise<void> {
+  const args = [resolve('node_modules/vite/bin/vite.js'), 'build', '--config', resolve('scripts/hosted.vite.config.ts')]
+  return new Promise<void>((done, fail) => {
+    const child = spawn(process.execPath, args, { stdio: 'inherit', env: { ...process.env, TEMP_CODE_HOSTED_OUT: outDir ?? '' } })
+    child.on('error', fail)
+    child.on('exit', (code, signal) => (code === 0 ? done() : fail(new Error(`the hosted pages' build failed (${signal ?? `exit ${code}`})`))))
+  })
+}
+
+/** The hosted pages, once the renderer's bundle is written. Under the build
+ *  heap's rerun the small parent builds them after the rerun has exited
+ *  (`buildHeapHold` below): the renderer's process still holds its 5.6 GB
+ *  of RSS at closeBundle, and the two together came to 7.9 of the 8 GiB a
+ *  tool call may hold (docs/box.md "The memory cap"). */
 export function hostedPages(outDir?: string): Plugin {
   return {
     name: 'temp-code-hosted-pages',
     apply: 'build',
     closeBundle() {
-      const args = [resolve('node_modules/vite/bin/vite.js'), 'build', '--config', resolve('scripts/hosted.vite.config.ts')]
-      return new Promise<void>((done, fail) => {
-        const child = spawn(process.execPath, args, { stdio: 'inherit', env: { ...process.env, TEMP_CODE_HOSTED_OUT: outDir ?? '' } })
-        child.on('error', fail)
-        child.on('exit', (code, signal) => (code === 0 ? done() : fail(new Error(`the hosted pages' build failed (${signal ?? `exit ${code}`})`))))
-      })
+      if (process.env[BUILD_HEAP_ENV]) return
+      return buildHosted(outDir)
     }
   }
 }
 
-export default defineConfig({
+/** A build under node's default heap runs again with room for the renderer (scripts/lib/buildHeap.ts). */
+export default buildHeapHold(() => buildHosted()) ?? defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: ['aliax-core', '@muse-code/sdk', 'work-kit'] }), appshotHelper(), tcComputer()],
     resolve: {

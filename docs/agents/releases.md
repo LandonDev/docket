@@ -198,3 +198,22 @@ local updater itself.
 
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.
+
+## The build's heap
+
+`electron-vite build` runs main, preload and the renderer in one node
+process, and the renderer needs 4.4 GB of heap at its peak (measured
+2026-11-23 on master, 8,877 modules; 5.6 GB of RSS), past node's default
+limit of about 4 GB: the release gate died "JavaScript heap out of memory".
+The limit lives in electron.vite.config.ts, the one file every caller loads
+(`bun run build`, the gate's `build` step, release.ts through the gate,
+release-publish.sh, the box's box-update lib, the Windows build, the
+proofs): its export asks `buildHeapHold` (scripts/lib/buildHeap.ts) first,
+and a build under a smaller heap runs the same command again in a child
+node with `--max-old-space-size=8192` (BUILD_HEAP_MB), marked
+TEMP_CODE_BUILD_HEAP so it never runs a third, on any OS. The small parent
+then builds the hosted pages, after the renderer's process has exited:
+beside it they came to 7.9 of the 8 GiB a tool call may hold (docs/box.md
+"The memory cap"). A caller that already gives node 8 GB or more (through
+NODE_OPTIONS) builds in place, as before. scripts/lib/buildHeap.test.ts
+holds the export line and the callers.
