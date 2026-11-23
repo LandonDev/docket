@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
 import { isWorkMethod } from '@shared/work/wire'
+import { ENVIRONMENT_ID } from './environment'
 
 /**
  * The path fence for remote principals (R2 H1/H2). The donor `fs.*`,
@@ -187,14 +188,21 @@ export function attachmentPaths(req: ClientRequest): string[] | null {
 const SOURCE_DEPTH_MAX = 12
 
 /** Collects the file paths of every `CanvasSource` in a value (src/shared/work/canvas.ts `canvasSourcePath`); false when it is deeper than this reads. */
-function sourcePaths(value: unknown, out: string[], depth = 0): boolean {
+function sourcePaths(value: unknown, out: WorkSourcePath[], depth = 0): boolean {
   if (depth > SOURCE_DEPTH_MAX) return false
   if (Array.isArray(value)) return value.every((v) => sourcePaths(v, out, depth + 1))
   if (!value || typeof value !== 'object') return true
-  const o = value as { at?: unknown; path?: unknown; ref?: { kind?: unknown; path?: unknown } }
-  if (o.at === 'file' && typeof o.path === 'string') out.push(o.path)
-  if (o.at === 'microsoft' && o.ref && o.ref.kind === 'path' && typeof o.ref.path === 'string') out.push(o.ref.path)
+  const o = value as { at?: unknown; host?: unknown; path?: unknown; ref?: { kind?: unknown; path?: unknown } }
+  const host = typeof o.host === 'string' ? o.host : null
+  if (o.at === 'file' && typeof o.path === 'string') out.push({ path: o.path, host })
+  if (o.at === 'microsoft' && o.ref && o.ref.kind === 'path' && typeof o.ref.path === 'string') out.push({ path: o.ref.path, host })
   return Object.values(value).every((v) => sourcePaths(v, out, depth + 1))
+}
+
+/** A path named inside a `CanvasSource`, with the host that source says holds it (null when it names none). */
+export interface WorkSourcePath {
+  path: string
+  host: string | null
 }
 
 /**
@@ -207,9 +215,14 @@ function sourcePaths(value: unknown, out: string[], depth = 0): boolean {
  * fenced like any other path param, whatever host the source names.
  */
 export function workSourcePaths(req: ClientRequest): string[] | null {
+  return workSources(req)?.map((s) => s.path) ?? null
+}
+
+/** `workSourcePaths` with each path's host, as its source names it. */
+export function workSources(req: ClientRequest): WorkSourcePath[] | null {
   if (!isWorkMethod(req.method) && req.method !== 'session.create') return null
   const params = (req as { params?: unknown }).params
-  const out: string[] = []
+  const out: WorkSourcePath[] = []
   if (!sourcePaths(req.method === 'session.create' ? (params as { about?: unknown } | undefined)?.about : params, out)) throw new FenceError(req.method)
   return out
 }
@@ -247,18 +260,45 @@ export function guestPath(method: string, path: string, platform: NodeJS.Platfor
 }
 
 /**
+ * The verbs that may name a file of ANOTHER host of his without this host ever opening that path: each handler
+ * either sends the source to the host it names (`work.office.filesCopy`: the bytes come over the host link, and
+ * that host holds the path to a library it syncs, office/files/handle.ts `admitted`) or keeps it as words alone
+ * (`filesThreads` and `work.files.threads` match it against the canvas's items; a tab or a mark keeps its address,
+ * work/files/handle.ts `admitPage`, `markedOf`), and treats a source as this host's only when its `host` is this
+ * host's own id. Listed one verb at a time, never a pillar whole; a verb that reads or changes a file here is never
+ * among them. docs/agents/work-teams-files.md "Another host's file, from a remote key".
+ */
+const ELSEWHERE_METHODS = /^work\.office\.files(Copy|Threads)$|^work\.files\.(threads|tabOpen|tabSet|star|seen)$/
+
+/**
+ * A file another host holds (his Mac's OneDrive, named by the Mac's own path), in a verb `ELSEWHERE_METHODS` lists:
+ * no path of this host's disk, so this host's roots have nothing to say of it. `self` is this host's own id, the one
+ * Work's handlers call `ctx.host`; a source that names no host, or this one, is this host's and stays fenced, so
+ * claiming another host never opens a path here: the handler then sends it away or keeps it as words, never reads
+ * it. Without `self` nothing passes as another host's. The host must be spelled as a host's id is
+ * (`ENVIRONMENT_ID`): no other word and no `:`, so a key kept as `<host>:<path>` (a mark's) never meets one of
+ * this host's.
+ */
+export function elsewherePath(method: string, source: WorkSourcePath, self: string | undefined): boolean {
+  return !!self && source.host !== null && source.host !== self && ENVIRONMENT_ID.test(source.host) && ELSEWHERE_METHODS.test(method)
+}
+
+/**
  * Throw the typed error when a request names a path outside the roots.
  * `attachmentRoots` widen the roots for attachment paths only. `denied` are
  * directories no remote request may name even inside a root (the computer
  * history, whose pictures are the person's windows): a workspace that
  * contains the data directory, by a symlink too, does not open them.
+ * `self` is this host's own id: a Work source naming another host is that
+ * host's to fence, in the verbs `elsewherePath` allows.
  */
-export function fenceRequest(req: ClientRequest, roots: readonly string[], attachmentRoots: readonly string[] = [], denied: readonly string[] = []): void {
+export function fenceRequest(req: ClientRequest, roots: readonly string[], attachmentRoots: readonly string[] = [], denied: readonly string[] = [], self?: string): void {
   const admits = (p: unknown, within: readonly string[]): boolean => typeof p === 'string' && admitsPath(p, within, denied)
   const paths = fencedPaths(req)
   if (paths) for (const p of paths) if (!admits(p, roots)) throw new FenceError(req.method)
-  // Work: the files named inside a CanvasSource, by the same roots and the same denied directories.
-  for (const p of workSourcePaths(req) ?? []) if (!guestPath(req.method, p) && !admits(p, roots)) throw new FenceError(req.method)
+  // Work: the files named inside a CanvasSource, by the same roots and the same denied directories, unless the
+  // source puts it in this host's Windows VM or on another host, in a verb that never opens it here.
+  for (const s of workSources(req) ?? []) if (!guestPath(req.method, s.path) && !elsewherePath(req.method, s, self) && !admits(s.path, roots)) throw new FenceError(req.method)
   const files = attachmentPaths(req)
   if (!files?.length) return
   const all = [...roots, ...attachmentRoots]

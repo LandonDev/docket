@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { deflateRawSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
 import { teamsCanvasOf, teamsKindOf, teamsWebOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
+import { FenceError, fenceRequest } from '../../../remote/fence'
 import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../../modules'
 import { FakeOffice } from '../fake'
 import { office as module, setCarrier } from '../index'
@@ -488,5 +489,123 @@ describe('the thread that already holds a file', () => {
         item('made far', 's5', { at: 'file', host: 'env_mac', path: '/c/T/General/Plan.tcdoc' }),
       ]),
     ).toEqual([])
+  })
+})
+
+describe("his window on the box opens the Mac's files one after another (F-files-refused)", () => {
+  // The box: a Work workspace whose copy switch is on and which may use the Mac. His Mac's window reaches it as a
+  // remote key: each request passes the listener's fence first (index.ts), with the box's roots and its own id.
+  const key: Caller = { kind: 'remote', caps: ['read', 'operate', 'approve'] }
+  // Host ids as environment.ts makes them: the listener passes only such an id as another host's.
+  const MAC = 'env_MacMacMacMacMacMacMacM'
+  const BOX = 'env_BoxBoxBoxBoxBoxBoxBoxB'
+  const rig = () => {
+    const items: { id: string; sessionId: string; workspaceId: string; source: unknown; state: 'open' }[] = []
+    const asked: { host: string; verb: string; args: unknown }[] = []
+    const macCtx = ctxOn(MAC)
+    setCloudDir((host) => (host === MAC ? cloud : join(base, 'no-cloud')))
+    const ctx = ctxOn(BOX, {
+      settings: { workspace: () => ({ mayUseDesktop: [MAC] }) },
+      scopeOf: (sessionId: string) => ({ sessionId, workspaceId: 'w1', sector: 'purdue', host: BOX, away: false, routineRunId: null, shared: () => true }),
+      // The Mac answers as servePeerWork does: its own module, as another host of his. A host the workspace may not
+      // use is refused before it is asked, as work/peer.ts refuses it.
+      peer: (host: string) => ({
+        call: async (_m: string, verb: string, args: unknown) => {
+          if (host !== MAC) throw new Error("this workspace may not use that host's desktop")
+          asked.push({ host, verb, args })
+          return call(`work.office.${verb}`, args, { kind: 'remote', caps: ['read'], peer: BOX }, macCtx)
+        }
+      }),
+      canvas: { forWorkspace: (id: string) => items.filter((i) => i.workspaceId === id) }
+    } as unknown as Partial<WorkCtx>)
+    void module.handle!({ id: '1', method: 'work.office.filesCopySet', params: { workspaceId: 'w1', on: true } } as unknown as ClientRequest, ctx, window)
+    const roots = [join(base, 'box-work')]
+    mkdirSync(roots[0]!, { recursive: true })
+    /** One request from his window: the listener's fence, then the pillar. */
+    const fromWindow = async (method: string, params: Record<string, unknown>): Promise<never> => {
+      const req = { id: '1', method, params } as unknown as ClientRequest
+      fenceRequest(req, roots, [], [], BOX)
+      return call(method, params, key, ctx)
+    }
+    /** The Files view's open (FilesView.tsx `useOpener`): the thread holding it, else a new thread, its copy and its item. */
+    const open = async (sessionId: string, path: string): Promise<{ sessionId: string; reused: boolean; copy?: string }> => {
+      const source = { at: 'file', host: MAC, path }
+      const held = (await fromWindow('work.office.filesThreads', { workspaceId: 'w1', source })) as { threads: { sessionId: string }[] }
+      if (held.threads[0]) return { sessionId: held.threads[0].sessionId, reused: true }
+      const copy = (await fromWindow('work.office.filesCopy', { sessionId, source })) as { source: { at: 'file'; host: string; path: string } }
+      items.push({ id: `item-${sessionId}`, sessionId, workspaceId: 'w1', source: copy.source, state: 'open' })
+      return { sessionId, reused: false, copy: copy.source.path }
+    }
+    return { ctx, asked, fromWindow, open, roots, MAC }
+  }
+  const deck = () => join(team, 'Events', 'Deck.pptx')
+  const pdf = () => join(team, 'General', 'Cloud only.pdf')
+  const plan = () => join(team, 'General', 'Plan.docx')
+
+  it('opens a deck, then a PDF, then a document, each a thread with a copy of its own bytes', async () => {
+    const { open, asked } = rig()
+    const first = await open('s1', deck())
+    expect(readFileSync(first.copy!)).toEqual(readFileSync(deck()))
+    const second = await open('s2', pdf())
+    expect(second).toMatchObject({ sessionId: 's2', reused: false })
+    expect(statSync(second.copy!).size).toBe(200_000)
+    const third = await open('s3', plan())
+    expect(readFileSync(third.copy!)).toEqual(readFileSync(plan()))
+    // Every byte came from the Mac over the host link, never from a path of the box's disk.
+    expect(asked.map((a) => [a.host, a.verb])).toEqual([[MAC, 'filesRead'], [MAC, 'filesRead'], [MAC, 'filesRead']])
+  })
+
+  it("opens the same file again in its own thread, making no second copy", async () => {
+    const { open, asked } = rig()
+    await open('s1', deck())
+    await open('s2', pdf())
+    expect(await open('s9', deck())).toEqual({ sessionId: 's1', reused: true })
+    expect(asked).toHaveLength(2)
+  })
+
+  it("refuses a path of the box's own disk outside its roots, by its own host or by none, at the fence", async () => {
+    const { fromWindow } = rig()
+    const secret = join(base, 'outside', 'secret.txt')
+    for (const source of [{ at: 'file', host: BOX, path: secret }, { at: 'file', path: secret }, { at: 'microsoft', host: BOX, app: 'word', name: 'x', ref: { kind: 'path', path: secret } }])
+      await expect(fromWindow('work.office.filesCopy', { sessionId: 's1', source })).rejects.toThrow(FenceError)
+    // One source of another host's beside one of this host's outside the roots: the request is refused whole.
+    await expect(fromWindow('work.office.filesCopy', { sessionId: 's1', source: { at: 'file', host: MAC, path: deck() }, extra: { at: 'file', host: BOX, path: secret } })).rejects.toThrow(FenceError)
+  })
+
+  it("never opens a path of the box's disk for a source that claims another host: the claimed host is asked, and it holds the path to its libraries", async () => {
+    const { fromWindow, asked } = rig()
+    const secret = join(base, 'outside', 'secret.txt')
+    await expect(fromWindow('work.office.filesCopy', { sessionId: 's1', source: { at: 'file', host: MAC, path: secret } })).rejects.toThrow('Teams')
+    expect(asked).toEqual([{ host: MAC, verb: 'filesRead', args: { source: { at: 'file', host: MAC, path: secret }, as: 'bytes' } }])
+    // A host the workspace may not use is never asked at all.
+    await expect(fromWindow('work.office.filesCopy', { sessionId: 's1', source: { at: 'file', host: 'env_OtherOtherOtherOtherOt', path: secret } })).rejects.toThrow('may not use')
+    expect(asked).toHaveLength(1)
+    // The threads verb only matches the source against the canvas's items: it reads nothing.
+    await expect(fromWindow('work.office.filesThreads', { workspaceId: 'w1', source: { at: 'file', host: 'env_OtherOtherOtherOtherOt', path: secret } })).resolves.toEqual({ threads: [] })
+  })
+
+  it('never writes a copy through a link left where it lands', async () => {
+    const { ctx, open } = rig()
+    const target = join(base, 'outside', 'secret.txt')
+    // a link where the deck's copy would land
+    const dir = copyFolderOf(ctx.dataDir, 's1', { host: MAC, path: deck() })
+    mkdirSync(dir, { recursive: true })
+    symlinkSync(target, join(dir, 'Deck.pptx'))
+    await expect(open('s1', deck())).rejects.toThrow('is a link')
+    // a link in place of the source's own folder
+    const other = copyFolderOf(ctx.dataDir, 's2', { host: MAC, path: pdf() })
+    mkdirSync(dirname(other), { recursive: true })
+    symlinkSync(join(base, 'outside'), other)
+    await expect(open('s2', pdf())).rejects.toThrow('not a folder')
+    expect(readFileSync(target, 'utf8')).toBe('not his to share')
+  })
+
+  it("passes a file in the box's Windows VM by the guest's own path, and the pillar holds it to the VM's libraries", async () => {
+    const { fromWindow } = rig()
+    const guest = 'C:\\Users\\tcuser\\Purdue University\\RecWell - Documents\\Budget.xlsx'
+    // The fence lets it by; with no VM on this box, the copy is refused in the pillar's own words, never at the fence.
+    const err = await fromWindow('work.office.filesCopy', { sessionId: 's1', source: { at: 'file', host: BOX, path: guest } }).catch((e: Error) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err).not.toBeInstanceOf(FenceError)
   })
 })

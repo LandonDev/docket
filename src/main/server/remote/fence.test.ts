@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
-import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, expandPath, fenceDenied, fenceRequest, fencedPaths, guestPath, insideRoots, plainWindowsPath, requestBases, workSourcePaths } from './fence'
+import { ATTACHMENT_PARAMS, FENCED_PARAMS, FenceError, attachmentPaths, elsewherePath, expandPath, fenceDenied, fenceRequest, fencedPaths, guestPath, insideRoots, plainWindowsPath, requestBases, workSourcePaths } from './fence'
 import { isWorkMethod } from '@shared/work/wire'
 
 /** R2 H1/H2: the real-path fence every remote request passes before a handler runs. */
@@ -375,6 +375,77 @@ describe("a file in the Windows VM a host keeps", () => {
     expect(guestPath('work.office.filesList', '/etc/passwd', 'linux')).toBe(false)
     expect(guestPath('work.office.filesList', guest, 'win32')).toBe(false)
     expect(() => fenceRequest(list('/etc/passwd'), ['/srv/work'])).toThrow(FenceError)
+  })
+})
+
+describe("a file another host of his holds, named by a remote key (F-files-refused)", () => {
+  const mac = '/Users/l/Library/CloudStorage/OneDrive-purdue.edu-RecWell/Deck.pptx'
+  // Host ids as environment.ts makes them (`env_` and 22 of base64url).
+  const MAC = 'env_MacMacMacMacMacMacMacM'
+  const BOX = 'env_BoxBoxBoxBoxBoxBoxBoxB'
+  const at = (path: string, host?: string) => ({ at: 'file', ...(host === undefined ? {} : { host }), path })
+  const ask = (method: string, params: Record<string, unknown>) => ({ id: '1', method, params }) as unknown as ClientRequest
+  const ELSEWHERE: [string, (src: object) => Record<string, unknown>][] = [
+    ['work.office.filesCopy', (source) => ({ sessionId: 's', source })],
+    ['work.office.filesThreads', (source) => ({ workspaceId: 'w', source })],
+    ['work.files.threads', (ref) => ({ workspaceId: 'w', ref })],
+    ['work.files.tabOpen', (page) => ({ workspaceId: 'w', page: { at: page, name: 'P' } })],
+    ['work.files.tabSet', (page) => ({ workspaceId: 'w', tabId: 't', page: { at: page, name: 'P' } })],
+    ['work.files.star', (ref) => ({ workspaceId: 'w', ref, name: 'P', on: true })],
+    ['work.files.seen', (ref) => ({ workspaceId: 'w', ref, name: 'P' })]
+  ]
+
+  it("is that host's to fence in the verbs that send it there or keep it as words: this host's roots say nothing of it", () => {
+    for (const [method, params] of ELSEWHERE) {
+      expect(() => fenceRequest(ask(method, params(at(mac, MAC))), ['/srv/work'], [], [], BOX), method).not.toThrow()
+      expect(() => fenceRequest(ask(method, params({ at: 'microsoft', host: MAC, app: 'powerpoint', name: 'Deck.pptx', ref: { kind: 'path', path: mac } })), ['/srv/work'], [], [], BOX), method).not.toThrow()
+    }
+    expect(elsewherePath('work.office.filesCopy', { path: mac, host: MAC }, BOX)).toBe(true)
+  })
+
+  it("keeps every path of this host fenced in those verbs: by this host's id, by no host, or with no id given for this host", () => {
+    for (const [method, params] of ELSEWHERE) {
+      expect(() => fenceRequest(ask(method, params(at('/etc/passwd', BOX))), ['/srv/work'], [], [], BOX), method).toThrow(FenceError)
+      expect(() => fenceRequest(ask(method, params(at('/etc/passwd'))), ['/srv/work'], [], [], BOX), method).toThrow(FenceError)
+      expect(() => fenceRequest(ask(method, params(at('/etc/passwd', MAC))), ['/srv/work']), method).toThrow(FenceError)
+    }
+    expect(elsewherePath('work.office.filesCopy', { path: mac, host: null }, BOX)).toBe(false)
+    expect(elsewherePath('work.office.filesCopy', { path: mac, host: BOX }, BOX)).toBe(false)
+    expect(elsewherePath('work.office.filesCopy', { path: mac, host: MAC }, undefined)).toBe(false)
+    expect(elsewherePath('work.office.filesCopy', { path: mac, host: MAC }, '')).toBe(false)
+    // a host is claimed only by a host's id: no other word, no case or spelling of this one, no `:` that would make a
+    // mark's `<host>:<path>` key meet one of this host's
+    for (const host of ['local', 'env_mac', `${BOX}:/srv`, BOX.toLowerCase().replace('env_', 'ENV_'), ` ${BOX}`, `${MAC}/`])
+      expect(elsewherePath('work.files.star', { path: mac, host }, BOX), host).toBe(false)
+  })
+
+  it('is fenced by this host\'s roots in every verb that reads, opens or changes a file here, whatever host it claims', () => {
+    const claimed = at('/etc/passwd', MAC)
+    for (const [method, params] of [
+      ['work.canvas.open', { sessionId: 's', kind: 'pdf', source: claimed, title: 'A' }],
+      ['work.canvas.fetch', { sessionId: 's', source: claimed }],
+      ['work.office.filesList', { source: claimed }],
+      ['work.office.filesRead', { source: claimed, as: 'bytes' }],
+      ['work.office.filesFetch', { source: claimed }],
+      ['work.office.filesOpen', { source: claimed }],
+      ['work.files.list', { workspaceId: 'w', at: claimed }],
+      ['work.files.stat', { workspaceId: 'w', refs: [claimed] }],
+      ['work.files.fetch', { workspaceId: 'w', ref: claimed }],
+      ['work.files.open', { workspaceId: 'w', ref: claimed }],
+      ['work.files.copy', { workspaceId: 'w', refs: [claimed], to: at('/srv/work', BOX) }],
+      ['work.files.copyTo', { workspaceId: 'w', refs: [claimed] }],
+      ['work.office.filesCopyX', { sessionId: 's', source: claimed }],
+      ['app.workCall', { sessionId: 's', token: 't', call: 1, tool: 'teams_open', args: { source: claimed } }]
+    ] as [string, Record<string, unknown>][])
+      expect(() => fenceRequest(ask(method, params), ['/srv/work'], [], [], BOX), method).toThrow(FenceError)
+    expect(() => fenceRequest(ask('session.create', { provider: 'claude', model: 'm', about: { kind: 'selection', label: 'A', ref: claimed } }), ['/srv/work'], [], [], BOX)).toThrow(FenceError)
+  })
+
+  it("judges each path alone: another host's beside this host's outside the roots is refused whole", () => {
+    const both = ask('work.office.filesCopy', { sessionId: 's', source: at(mac, MAC), extra: [at('/etc/passwd', BOX)] })
+    expect(() => fenceRequest(both, ['/srv/work'], [], [], BOX)).toThrow(FenceError)
+    // a host that is not a string names no host
+    expect(() => fenceRequest(ask('work.office.filesCopy', { sessionId: 's', source: { at: 'file', host: [MAC], path: '/etc/passwd' } }), ['/srv/work'], [], [], BOX)).toThrow(FenceError)
   })
 })
 

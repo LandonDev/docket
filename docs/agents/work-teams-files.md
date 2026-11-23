@@ -274,6 +274,43 @@ library or `..` is refused. Then by caller:
   a phone's key reaches a Teams file only under the app-managed roots; its
   search runs over the libraries it could name.
 
+### Another host's file, from a remote key
+
+His Mac's window reaches the box as a remote key. When a box workspace opens
+a file his Mac holds (its copy switch on), the window sends
+`work.office.filesThreads` and `work.office.filesCopy` to the box with the
+Mac's own path (`~/Library/CloudStorage/OneDrive-…`). Until 2026-11-23 the
+box's listener judged that path by the box's roots and refused it: "forbidden:
+work.office.filesCopy is outside app-managed roots". `filesThreads` was
+refused the same way, but the view swallows that error and reads it as "no
+thread holds it". A place the box's Windows VM also holds opened from the VM's
+copy, whose guest path the fence let by (`guestPath`). That is the likely
+reason the first open worked and the next ones failed, the same file too: the
+view opens a place from its first copy, and `placeGroups` ranks the VM's copy
+below the Mac's while the VM's place is not `ok`.
+
+The rule now (`elsewherePath`, remote/fence.ts): a path in a source whose
+`host` is another host's id is that host's to fence, in the verbs
+`ELSEWHERE_METHODS` lists, one at a time: `work.office.filesCopy` (the box
+asks the named host for the bytes over the host link, `copyIn`, only a host the
+workspace may use; that host holds the path to a library it syncs,
+`admitted`), and `work.office.filesThreads`, `work.files.threads`, `tabOpen`,
+`tabSet`, `star`, `seen` (each matches or keeps the source as words and
+reads nothing). The listener passes its own id (`fenceRequest`'s `self`, the
+id Work calls `ctx.host`), and a claimed host must be spelled as a host's id
+is (`ENVIRONMENT_ID`, `env_` and 22 characters): no other word and no `:`, so a
+mark kept as `<host>:<path>` never meets one of this host's. A copy lands
+through no link: the owner's folder and the source's must be folders and the
+file opens without following one (`writeCopy`). Every other path stays fenced: one with this host's
+id, one with no host, one with no `self` given, and one in any other verb
+(`work.canvas.*`, `filesList`, `filesRead`, `filesFetch`, `filesOpen`,
+`work.files.list`, `stat`, `fetch`, `open`, every change), whatever host it
+claims. Each path is judged alone, so a request that also names a path of
+this host outside the roots is refused whole. Proven by fence.test.ts, the
+"his window on the box" tests in files.test.ts, and live by
+`scripts/e2e-files-open-remote.ts` (two instances under xvfb, a deck, a PDF
+and a picture, then the deck again).
+
 The Office tools take the same rule for a peer: a workbook, document or deck
 in this host's libraries is reachable from another host's thread
 (`office/index.ts`), and counts as one others can open, so an agent's own

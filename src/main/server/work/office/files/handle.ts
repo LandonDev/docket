@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
 import { canvasSourcePath, filesPaneOf, filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type CanvasSource, type Handled } from '@shared/work'
@@ -233,6 +233,27 @@ const vmSetUp = (): boolean => {
 }
 
 /**
+ * Writes a copy into its folder, never through a link: the owner's folder and the source's folder must be folders,
+ * and the file itself is opened without following one, so a link put there by anything else never carries the
+ * bytes out of the copies.
+ */
+function writeCopy(dataDir: string, sessionId: string, dir: string, path: string, bytes: Buffer): void {
+  for (const folder of [copyDirOf(dataDir, sessionId), dir]) if (!lstatSync(folder).isDirectory()) throw new Error('The copy\'s folder is not a folder: nothing was copied.')
+  let fd: number
+  try {
+    fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ELOOP') throw new Error('The copy\'s place is a link: nothing was copied.')
+    throw err
+  }
+  try {
+    writeFileSync(fd, bytes)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/**
  * Copies a file from another host, or out of this host's Windows VM, into the owner's attachments here, when its
  * workspace allows it. The owner is a Work thread, or the Files pane of a Work workspace here (a file opened in a tab).
  */
@@ -260,7 +281,7 @@ export async function copyIn(ctx: WorkCtx, sessionId: string, source: CanvasSour
   const dir = copyFolderOf(ctx.dataDir, sessionId, source)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const path = join(dir, basename(got.name))
-  writeFileSync(path, got.bytes, { mode: 0o600 })
+  writeCopy(ctx.dataDir, sessionId, dir, path, got.bytes)
   return { source: { at: 'file', host: ctx.host, path }, entry: entryOf('', path) }
 }
 

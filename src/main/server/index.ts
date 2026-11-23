@@ -2271,7 +2271,7 @@ export async function startServer(
         // refusal is one typed error that never carries the path. Ahead of
         // the lane gate: a bulk request never joins one it may not make.
         if (principal.kind !== 'local') {
-          fenceRequest(req, managedRoots(), [ATTACH_DIR], [computerHistoryRoot])
+          fenceRequest(req, managedRoots(), [ATTACH_DIR], [computerHistoryRoot], environmentId)
           // the same deny for a file named through a project id or inside a cwd, and for a copy that would carry it out
           fenceDenied(req, requestBases(req, (id) => registry.getProject(id)?.cwd), [computerHistoryRoot])
         }
