@@ -2113,10 +2113,11 @@ Around the canvas:
   document, 16px from the sides, sections 24px apart under 13px semibold
   headings. The 40px header holds Month or Year and the stepper (two ghost
   arrows round the period in 13px tabular, 120px wide so the arrows never
-  move), drawn only once the job has money or something waits (a job known
-  to have none opens without them), then Add and More, two menus of plain
-  text rows as the other Work views' header menus are. A read belongs to
-  its period: when the period changes the body is bones until that period
+  move), drawn only once the job is known to have money or something
+  waiting (never before the first read lands, never on a job with none,
+  never in a columns fault), then Add and More, two menus of plain text
+  rows as the other Work views' header menus are. A read belongs to its
+  period: when the period changes the body is bones until that period
   answers, and a failed read keeps only the same period's last figures
   under the state line. Money has one right edge: By category's amounts,
   Entries' Amount column, Owed's and To confirm's amounts all end 120px
@@ -2132,76 +2133,91 @@ Around the canvas:
   in a toast with Undo, never asked about. The calendar's games and paid
   events follow under a 12px medium muted group name, "From the calendar",
   16px below the receipts (still drawn when only offers wait), with Add
-  all at the end of that line once two can be added: the day ("Sat Nov
-  21") in 12px muted, the event, then its fee with cents and its miles as
-  a muted comma run (`Facts`), never a dot; Add when both are known and
-  the miles were measured, else Review; Skip in the row's menu, said back
-  in a toast with Undo. Then the figures, as text on one row with a
-  hairline under it and no heading: In, Out and Net for the period, then,
-  at the row's end, Owed to you and You owe, which are not the period's
-  and are drawn only when not nothing; each a 12px muted label over a
-  16/24 semibold tabular figure, no tiles and no colour on a number. A
-  year adds one chart, In and out by month: paired bars in `chart-1` and
-  `chart-2` with a legend, since it compares two things, money short on
-  the axis ($1.2k from a thousand up, cents kept where neighbouring ticks
+  all at the end of that line once two can be added ("Add 2" when some
+  need Review, so the label says its reach): the day ("Sat Nov 21") in
+  12px muted, the event, then its fee with cents and its miles as a muted
+  comma run (`Facts`), never a dot; Add when both are known and the miles
+  were measured, else Review; Skip in the row's menu, said back in a toast
+  with Undo. Then the figures, as text on one row with a hairline under it
+  and no heading: In, Out and Net for the period, then, at the row's end,
+  Owed to you and You owe, which are not the period's and are drawn only
+  when not nothing; each a 12px muted label over a 16/24 semibold tabular
+  figure, no tiles and no colour on a number. A year adds one chart, In
+  and out by month: paired bars in `chart-1` and `chart-2` with a legend,
+  since it compares two things, no bar below the axis, money short on the
+  axis ($1.2k from a thousand up, cents kept where neighbouring ticks
   would read alike). By category is a flat list on one scale (each bar its
   size beside the largest), the name, the 8px `chart-neutral` bar and the
   amount, `+` before money in; a row's press narrows Entries to it, and
   the heading then names the category beside a Clear. Owed is two groups,
   Owed to you and You owe: 40px rows of who and what for in muted, how
   long ("32 days"), the amount and one ghost Paid that spins while it
-  lands; a cost to be paid back leads with what it was for and puts the
-  seller after it in muted (with no For, the seller and "to be paid
-  back"), so it never reads as the seller owing him. Entries is the flat
-  `Table` (Date, Who, Category, Amount, and a paperclip where a receipt is
-  kept; a row he typed with money both ways shows both figures, the In
-  first); the whole row is one press, reached by Tab, that opens the entry
-  dialog, and it takes a `muted` fill in hand and while focused within,
-  the table's one row with one, since the row is the control. Mileage,
-  when there was any, is one muted comma line. Loading is bones in the
-  shape of the figures and six rows with a Category bone and the amount
-  bone on money's edge. "No money yet" ("Drop a receipt here.", Add entry)
-  shows only when the job has never had money in any period (`any`) and
-  nothing waits, so the first drop on a new job is seen; a period with
-  nothing keeps its figures and says "Nothing in November 2026" in the
-  table's place; a ledger missing a needed header is the state line ("The
-  ledger's columns changed", "No In or Out column", Restore columns) over
-  To confirm and nothing else. The entry dialog is one form for a new
+  lands (on a row with money both ways, where one status covers both
+  sides, Open ledger in its place); a cost to be paid back leads with what
+  it was for and puts the seller after it in muted (with no For, the
+  seller and "to be paid back"), so it never reads as the seller owing
+  him. Entries is the flat `Table` (Date, Who, Category, Amount, and a
+  paperclip where a receipt is kept; every row's money in the one shared
+  form, `moneyWords`: "+$30.00", "$20.00", "+$30.00 and $20.00", "-$20.00
+  out" for a correction below zero); the whole row is one press, reached
+  by Tab, that opens the entry dialog, and it takes a `muted` fill in hand
+  and while focused within, the table's one row with one, since the row is
+  the control. Mileage, when there was any, is one muted comma line; a
+  mileage log that cannot be read is one quiet line in its place, never a
+  zero ("The mileage log has no Miles column, so its trips are not
+  counted." with Open mileage log, or "The mileage log leads outside this
+  job's folder, so its trips are not counted."), while the ledger still
+  reads. Loading is bones in the shape of the figures and six rows with a
+  Category bone and the amount bone on money's edge. "No money yet" ("Drop
+  a receipt here.", Add entry) shows only when the job has never had money
+  in any period (`any`) and nothing waits, so the first drop on a new job
+  is seen; a period with nothing keeps its figures and says "Nothing in
+  November 2026" in the table's place; a ledger missing a needed header is
+  the state line over To confirm and nothing else: "The ledger's columns
+  changed", "No In or Out column" and Restore columns, or, where an
+  unknown header holds cells, "No Out column. Spent may be it: name it
+  back in the ledger." and Open ledger, never Restore (it would add an
+  empty column beside his figures). The entry dialog is one form for a new
   entry, a row and a receipt to confirm: Amount (focused and selected, "$"
   quiet before it) beside Date, Who (the ledger's names offered) beside
   Category (the list, then New…), Spent or Received with To be paid back
   beside it for money spent (ticked, Status is not drawn: the two never
   disagree), Status beside For. Return in any field saves, pressed afresh
   each time (a held key saves nothing more); Save waits for an amount and
-  a date. A row with money both in and out opens read only, its fields off
-  under one muted line, "This row has money in and money out. Edit it in
-  the ledger.", with Close and Open ledger in the footer. On a ledger
-  others can open a write waits as a suggestion, and every write says so
-  (an entry, Paid, an accept, a trip's pay or log row): "Suggested in the
-  ledger. Accept it there.", with Open ledger; an invoice says "Invoice
-  1042 is kept. Its row waits in the ledger for you to accept."; restored
-  columns say they wait, and the line's press becomes Open ledger. Review
-  opens the entry dialog wide, titled "Confirm receipt 1 of 2" while more
-  wait, the picture in a 320px column at the left (at its own height,
-  420px at most, a taller one scrolling inside the column; one muted line,
-  "The picture did not load", with Retry where it failed or the browser
-  could not draw it, at the column's same 420px so the footer never moves)
-  and what was read in the fields, empty where nothing was, with no mark
-  of how sure the reading was; Discard sits at the footer's start, its
-  word on the picture's edge, and waits while Save is in flight; Save
-  shows the next waiting receipt in the same dialog, Amount selected
-  again. A file held over the view, its header too, lays a quiet wash over
-  the body with "File as receipt" in foreground on a patch of the
-  background; the view takes the drop itself, so it never starts a thread,
-  a drop (or paste, or pick) of nothing Money files says "Money files
-  pictures and PDFs." and how many were left out, by the host's own rule
-  (`receiptFileName`); and from the drop until the host has every file one
-  loading toast says "Filing 2 receipts…", let go when they reach To
-  confirm or settled to the refusal. Add → Trip… is the trip dialog (Date,
-  Name, Place, Miles there and back beside Fee, "Estimated: check the
-  miles" under an estimate) led by From the calendar; Add waits for miles
-  or a fee, and a fee of 0 is none. More → Mileage rate… is titled for its
-  year ("Mileage rate for 2026") and holds one quiet-"$" field, Per mile,
+  a date. A row the one-way form cannot say (money both in and out, or an
+  amount below zero) opens read only, its fields off and its stored status
+  always shown as text, under one muted line, "This row has money in and
+  money out. Edit it in the ledger." or "This row has an amount below
+  zero. Edit it in the ledger.", with Close and Open ledger in the footer.
+  On a ledger others can open a write waits as a suggestion, and every
+  write says so (an entry, Paid, an accept, a trip's pay or log row):
+  "Suggested in the ledger. Accept it there.", with Open ledger; one press
+  is one toast: a suggested invoice's created toast carries "Its row waits
+  in the ledger for you to accept." as its second line, Add all says a
+  suggestion once, and restored columns are said on the line alone, whose
+  press becomes Open ledger, remembered for the job. Review opens the
+  entry dialog wide, titled "Confirm receipt 1 of 2" while more wait, the
+  picture in a 320px column at the left (at its own height, 420px at most,
+  a taller one scrolling inside the column; one muted line, "The picture
+  did not load", with Retry where it failed or the browser could not draw
+  it, at the column's same 420px so the footer never moves) and what was
+  read in the fields, empty where nothing was, with no mark of how sure
+  the reading was; Discard sits at the footer's start, its word on the
+  picture's edge, and waits while Save is in flight; Save shows the next
+  waiting receipt in the same dialog, Amount selected again. A file held
+  over the view, its header too, lays a quiet wash over the body with
+  "File as receipt" in foreground on a patch of the background; the view
+  takes the drop itself, so it never starts a thread, a drop (or paste, or
+  pick) of nothing Money files says "Money files pictures and PDFs." and
+  how many were left out, by the host's own rule (`receiptFileName`); and
+  from the drop until the host has every file one loading toast says
+  "Filing 2 receipts…", let go when they reach To confirm or settled to
+  the refusal. Add → Trip… is the trip dialog (Date, Name, Place, Miles
+  there and back beside Fee, "Estimated: check the miles" under an
+  estimate) led by From the calendar; Add waits for miles or a fee, and a
+  fee of 0 is none; an event added before keeps the form open with "That
+  event was already added." More → Mileage rate… is titled for its year
+  ("Mileage rate for 2026") and holds one quiet-"$" field, Per mile,
   seeded from the stored rate padded to two places and never rounded
   ("0.70", "0.7251"). More → Export… asks the year (this one and the four
   before, the period's first when offered) and three boxes, all ticked:
@@ -2215,19 +2231,19 @@ Around the canvas:
   at its end, a remove on every line but the first, Add line quiet under
   them; Return in a line adds the next) with a quiet "Total" and the total
   under the amounts in semibold, then his own details, asked whole the
-  first time and one muted line with Edit after. Create prints it and
-  keeps the PDF with its row, then one toast, "Invoice 1042 created", with
-  Send…. A Purdue job's Add also has Purchase request…, the same form with
-  Vendor for To, Needed by for Due, a Reason, From for the name, and no
-  How to pay. Send…, there and in a kept invoice's or request's own dialog
-  (at its footer's start), opens the job's Mail with the composer filled
-  (no address, the subject, one line that claims no attachment) and toasts
-  the PDF to attach with Show in Files: the composer takes no file from
-  outside, and nothing leaves until his own Send. A PDF's or a picture's
-  More in a job's canvas pane, a mail's attachment or a file, holds File
-  as receipt, after the pane's own rows and before Close: "Filing to
-  Money…" at once, settling to "Filed to confirm in Money" with Open
-  Money, or to the host's words.
+  first time and one muted line with Edit after; Create waits for a name
+  in From. Create prints it and keeps the PDF with its row, then one
+  toast, "Invoice 1042 created", with Send…. A Purdue job's Add also has
+  Purchase request…, the same form with Vendor for To, Needed by for Due,
+  a Reason, From for the name, and no How to pay. Send…, there and in a
+  kept invoice's or request's own dialog (at its footer's start), opens
+  the job's Mail with the composer filled (no address, the subject, one
+  line that claims no attachment) and toasts the PDF to attach with Show
+  in Files: the composer takes no file from outside, and nothing leaves
+  until his own Send. A PDF's or a picture's More in a job's canvas pane,
+  a mail's attachment or a file, holds File as receipt, after the pane's
+  own rows and before Close: "Filing to Money…" at once, settling to
+  "Filed to confirm in Money" with Open Money, or to the host's words.
 - **A meeting's page** (work/prep/; docs/agents/work-prep.md). A view
   inside Agenda with no row in the column. The 40px header is People's
   way back (the arrow, "Agenda", the event's title muted) and holds one
