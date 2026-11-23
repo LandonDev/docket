@@ -1546,3 +1546,28 @@ describe("charts and pictures on a sheet the service holds", () => {
     expect((await univerGrid.decode(new TextEncoder().encode(JSON.stringify(BOOK)), "snapshot")).objects).toBeUndefined();
   });
 });
+
+describe("old charts on a workbook desktop Excel or Google holds", () => {
+  const anchor = { kind: "oneCell" as const, from: { column: 4, row: 2, columnOffset: 0, rowOffset: 0 }, width: 3619500, height: 1905000 };
+  const OLD = { id: "legacy:c1", sheet: "Budget", anchor, kind: "bar" as const, grouping: "clustered" as const, groups: [{ kind: "bar" as const, grouping: "clustered" as const }], legend: null, axes: {}, series: [{ kind: "bar" as const, group: 0, values: { ref: "'Budget'!$B$1:$B$5" } }], flags: {}, title: { text: "Totals" } };
+  // a row whose tab the workbook no longer has
+  const GONE = { ...OLD, id: "legacy:c2", sheet: "Old tab" };
+
+  for (const to of ["excel", "google"] as const)
+    it(`are drawn on the grid to see and nothing about them is sent (${to})`, async () => {
+      // As the host answers such a workbook: a package with no row, the switch to its app, the old rows as charts.
+      open(sheetView({ reach: { parts: ["formatting", "inserting rows and columns"], to }, legacyCharts: [OLD, GONE] }), { selection: "A1:B5" });
+      await gridUp();
+      expect(grid.objectsGiven?.objects).toEqual({ charts: [], pictures: [], warnings: [] });
+      await waitFor(() => expect(grid.handle!.objects.list().charts.map((c) => c.id)).toEqual(["legacy:c1"]));
+      // No row, so nothing to select or change them with, and More offers no Chart.
+      expect(screen.queryByRole("toolbar", { name: "Formatting" })).toBeNull();
+      fireEvent.click(await screen.findByRole("button", { name: "More" }));
+      await screen.findByRole("menuitem", { name: "Preview…" });
+      expect(screen.queryByRole("menuitem", { name: "Chart" })).toBeNull();
+      // Whatever the grid tells of them goes nowhere.
+      act(() => grid.objectsGiven!.onObjects!({ kind: "set", object: { chart: { ...OLD, anchor: { ...anchor, from: { ...anchor.from, row: 9 } } } } }));
+      await new Promise((done) => setTimeout(done, EDIT_WAIT + 50));
+      expect(edits()).toEqual([]);
+    });
+});

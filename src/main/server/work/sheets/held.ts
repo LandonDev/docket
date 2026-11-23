@@ -342,10 +342,15 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       ...(st.missing ? { missing: true } : {})
     }
   }
+  // A workbook desktop Excel or Google holds keeps no charts of its own: its old rows are drawn to see, read only. Its
+  // snapshot names each sheet by its tab (office/grid.ts, google/grid.ts), as a row names its sheet; the canvas leaves out
+  // a row whose tab the workbook no longer has.
+  const toSee = (): { legacyCharts?: ChartSpec[] } => legacyOf(rows.map((row) => ({ id: row.sheet, name: row.sheet })))
   if (held.at === 'excel') {
     const grid = await import('../office/grid')
     return {
       ...base,
+      ...toSee(),
       name: held.ref.name,
       // In the canvas it is a file whose cell contents save and nothing else, as an opened package.
       store: 'package',
@@ -360,6 +365,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     const grid = await import('../google/grid')
     return {
       ...base,
+      ...toSee(),
       name: held.ref.name,
       // As an Excel workbook: cell contents save, and the switch opens the spreadsheet in Google.
       store: 'package',

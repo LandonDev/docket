@@ -305,9 +305,13 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   rows (index.ts `endOldCharts`), whether each was written or he took it
   out. Nothing is written into the file before his own change. A `.tcsheet`
   and a LifeOS sheet take their old rows the same way ("Sheets the service
-  holds"). A workbook desktop Excel or Google holds keeps no objects, so its
-  old rows are no longer drawn; they stay in the table. The old bars,
-  `work.sheets.chart` and `SheetChart` are gone.
+  holds"). A workbook desktop Excel or Google holds keeps no objects: its
+  old rows come as `legacyCharts` too (its snapshot names each sheet by its
+  tab, as a row names its sheet) and are drawn on the kit's layer to see
+  only, since its view lists no `chart`, `picture` or `objects` control and
+  More offers no Chart there; a row whose tab the workbook no longer has is
+  left out (SheetBody.tsx `useLegacyCharts`), and the rows stay in the
+  table. The old bars, `work.sheets.chart` and `SheetChart` are gone.
 - **What it cannot keep yet is stopped as he makes it** (`forPackage` and
   `stop`, sync.ts): a cell given only a type, a move where the host does
   not save moves, a note removed, and any change with no saved form (a

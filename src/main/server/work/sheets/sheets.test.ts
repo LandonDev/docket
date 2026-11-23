@@ -250,6 +250,33 @@ describe('a package in the canvas', () => {
     expect(after.legacyCharts).toBeUndefined()
   })
 
+  it('shows an old chart row of a workbook desktop Excel or Google holds as the chart it becomes, to see: no control to change it', async () => {
+    const { setCarrier } = await import('../office/index')
+    const { FakeOffice } = await import('../office/fake')
+    const { GOOGLE_MIME } = await import('../google/client')
+    const book = 'https://contoso.sharepoint.com/sites/t/Budget.xlsx'
+    const office = new FakeOffice()
+    office.addBook(book, { Data: { A1: 'Rent', B1: 1200 } })
+    setCarrier(() => office)
+    try {
+      const sources: Array<[CanvasSource, string]> = [
+        [{ at: 'microsoft', host: 'env_test', app: 'excel', name: 'Budget.xlsx', ref: { kind: 'url', url: book } }, `excel:${book}`],
+        [{ at: 'google', account: 'me@example.com', fileId: 'sh1', mime: GOOGLE_MIME.sheet } as CanvasSource, 'google:sh1']
+      ]
+      for (const [source, store] of sources) {
+        const id = canvasStoreOf(db).open('t1', { kind: 'sheet', source, title: 'Budget' }).id
+        // these workbooks name each sheet by its tab, as the row names its sheet
+        oldChart(store, { id: 'c1', sheet: 'Data', range: 'A1:B5', title: 'Totals', row: 2, col: 4 })
+        const view = await call<SheetView>('work.sheets.open', { itemId: id })
+        expect(view.legacyCharts, store).toMatchObject([{ id: 'legacy:c1', sheet: 'Data', kind: 'bar', title: { text: 'Totals' }, series: [{ values: { ref: "'Data'!$B$1:$B$5" } }] }])
+        // the store keeps no charts: none of the controls that would change one
+        for (const control of ['chart', 'picture', 'objects']) expect(view.row ?? [], store).not.toContain(control)
+      }
+    } finally {
+      setCarrier(() => null)
+    }
+  })
+
   it('ends an old chart row he took off the grid: its tab\'s list was saved without it', async () => {
     const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]!
     oldChart(`file:${path}`, { id: 'c1', sheet, range: 'A1:B5', title: 'Totals', row: 2, col: 4 })

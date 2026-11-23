@@ -304,15 +304,18 @@ function PictureInput({ ref, handle }: { ref: React.Ref<HTMLInputElement>; handl
 }
 
 /**
- * An opened Excel file's old charts, kept beside it before the file could hold one, as the charts they become
- * (held.ts): laid on the grid as from elsewhere, not told back, so they are drawn and the next change to their
- * tab's charts writes them into the file with it. Nothing is written before that.
+ * Our old charts, kept beside a sheet before it kept charts of its own, as the charts they become (held.ts): laid on
+ * the grid as from elsewhere, not told back, so they are drawn, and where the store keeps charts the next change to
+ * their tab's charts keeps them with the sheet. Nothing is written before that. On a workbook desktop Excel or Google
+ * holds the row lists no object control, so they are there to see only.
  */
 function useLegacyCharts(handle: SheetHandle | null, legacy: readonly ChartSpec[] | undefined): void {
   useEffect(() => {
     if (!handle || !legacy?.length) return;
     const have = new Set(handle.objects.list().charts.map((c) => c.id));
-    const add = legacy.filter((chart) => !have.has(chart.id)).map((chart) => ({ kind: "add" as const, object: { chart } }));
+    // (a row whose tab the workbook no longer has is left out)
+    const tabs = new Set(handle.store.get().sheets.map((x) => x.name));
+    const add = legacy.filter((chart) => !have.has(chart.id) && tabs.has(chart.sheet)).map((chart) => ({ kind: "add" as const, object: { chart } }));
     if (add.length) handle.objects.apply(add);
   }, [handle, legacy]);
 }
