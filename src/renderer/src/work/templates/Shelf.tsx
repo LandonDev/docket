@@ -32,6 +32,8 @@ import type { ShelfGroup } from "./model";
 export const SPIN_AFTER_MS = 150;
 
 const KIND_GLYPH: Record<TemplateKind, typeof Doc> = { document: Doc, sheet: Table, deck: Slides };
+/** Each kind's tint (docs/DESIGN.md "File kind tints"): a template's tile is a file's tile, and only its glyph takes the colour. */
+const KIND_TINT: Record<TemplateKind, string> = { document: "text-kind-doc", sheet: "text-kind-sheet", deck: "text-kind-slides" };
 
 /** The widths of a drawn page's lines, as shares of the line: enough of a rhythm to read as writing. */
 const LINES = ["w-[92%]", "w-[78%]", "w-[86%]", "w-[58%]"] as const;
@@ -168,7 +170,7 @@ function Tile({
       <span className="pointer-events-none relative flex min-w-0 flex-col gap-1.5">
         <Plate kind={template.kind} />
         <span className="flex h-5 min-w-0 items-center gap-2 text-[13px] leading-5 text-foreground">
-          {spin ? <Spinner aria-hidden className="size-3.5" /> : <Glyph aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
+          {spin ? <Spinner aria-hidden className="size-3.5" /> : <Glyph aria-hidden className={cn("size-3.5 shrink-0", KIND_TINT[template.kind])} />}
           <span ref={caption} data-tile-name="" className="min-w-0 truncate">
             {template.name}
           </span>

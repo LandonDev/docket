@@ -10,7 +10,7 @@
  * files of the workspace's own host on the shelf one add at a time, each file
  * tried and one message for those left out, while no thread starts.
  */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Template } from "@shared/work/templates";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
@@ -51,6 +51,18 @@ vi.mock("../../components/ui/toaster", async (original) => {
   });
   return { ...(await original<object>()), loadToast: async () => toast };
 });
+
+// Files' own opener (work/files/openFrom.ts), standing in: it asks the workspace's host to open the file in a tab, then shows Files.
+const filesOpened: { workspace: { id: string; environmentId: string }; what: { ref: unknown; name: string } }[] = [];
+vi.mock("../files/openFrom", () => ({
+  openInFiles: async (workspace: { id: string; environmentId: string }, what: { ref: unknown; name: string }) => {
+    filesOpened.push({ workspace, what });
+    const { registry } = await import("../../lib/connection");
+    await registry.linkOf(workspace.environmentId).request("work.files.open", { workspaceId: workspace.id, ref: what.ref });
+    const { openWorkView } = await import("../../lib/workSwitch");
+    openWorkView({ workspaceId: workspace.id, view: "files" });
+  },
+}));
 
 const { View, Head } = await import("./TemplatesView");
 const { workTemplatePort } = await import("./open");
@@ -159,9 +171,12 @@ describe("the Templates view", () => {
     fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
     await settle();
     expect(asked("work.templates.make").map((p) => p.template)).toEqual(["job:Crew memo.docx"]);
-    expect(asked("work.files.open")).toEqual([{ workspaceId: "ws", ref: { at: "file", host: "box", path: "/w/Dummy Esports/Crew memo.docx" } }]);
+    await waitFor(() => expect(asked("work.files.open")).toEqual([{ workspaceId: "ws", ref: { at: "file", host: "box", path: "/w/Dummy Esports/Crew memo.docx" } }]));
+    // The make is over once Files has the file: the next press is taken.
+    await settle();
+    await settle();
     fireEvent.click(screen.getByRole("button", { name: "Game report" }));
-    expect(open).toHaveBeenCalledWith({ workspaceId: "ws", template: REPORT });
+    await waitFor(() => expect(open).toHaveBeenCalledWith({ workspaceId: "ws", template: REPORT }));
     expect(asked("work.templates.make")).toHaveLength(1);
   });
 

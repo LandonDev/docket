@@ -17,10 +17,10 @@ import { REPO, Run, sleep, textOf } from './e2e-work-lib'
  * fence, a starter made into the workspace's own folder with its fields
  * filled, Save as template, rename, move, hide and show, the confirm before
  * a delete, and `template_make` and `template_save` as a thread's bridge
- * calls them. The window's part runs when the Templates row is in the
- * column: a tile with fields is pressed, the fields are typed, and the file
- * is made; it is skipped, and said so, while the row waits for Files' new
- * view. Dummy names only.
+ * calls them. The window's part: the Templates row and its shelf, a tile's
+ * menus, a tile with fields pressed, typed and created, the file open in a
+ * Files tab, Hide with its Undo, and Files' New → From a Template… making a
+ * file in the folder Files shows. Dummy names only.
  */
 const run = new Run('templates')
 const FIXTURES = join(REPO, 'src', 'main', 'server', 'work', 'templates', 'fixtures')
@@ -219,6 +219,34 @@ try {
       await run.shot('09-hidden')
       if (await run.press('Undo')) run.check('Undo shows that starter again', await run.until('the starter is back', 8000, async () => (await list()).hidden === 0))
       await run.call('work.templates.unhide', { workspaceId: ws.id })
+    }
+    // ── Files' New → From a Template… ─────────────────────────────────
+    // Files owns New: its menu's row opens this pillar's dialog, and the file is kept in the folder Files shows.
+    await run.press('Files')
+    await sleep(2500)
+    await run.shot('10-files')
+    if (run.check('Files shows its New button', await run.press('New'))) {
+      await sleep(600)
+      const rows = await run.page<string[]>(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((e) => e.textContent.trim())`)
+      run.check("New's menu has From a Template…", rows.includes('From a Template…'), rows.join(' | '))
+      await run.shot('11-new-menu')
+      await run.press('From a Template…')
+      if (run.check('it opens New from a template', await run.until('the dialog', 8000, () => run.has('New from a template')))) {
+        await sleep(800)
+        await run.shot('12-dialog')
+        run.check('the dialog says where the file is kept', await run.page<boolean>(`/Kept in /.test(document.querySelector('[role=dialog]')?.textContent ?? '')`))
+        // A tile with no fields makes its file at once and the dialog closes.
+        const count = readdirSync(folder).filter((n) => n.startsWith('Season log')).length
+        if (await pressTile('Season log')) {
+          const made = await run.until('the sheet is made', 20_000, () => readdirSync(folder).filter((n) => n.startsWith('Season log') && n.endsWith('.xlsx')).length > count)
+          run.check('a tile with no fields makes its file in the folder Files shows', made, readdirSync(folder).join(', '))
+          run.check('and the dialog closes', await run.until('the dialog closes', 8000, async () => !(await run.has('New from a template'))))
+          await sleep(2500)
+          const tabs2 = await run.call<{ tabs: { kind: string; name: string }[] }>('work.files.tabs', { workspaceId: ws.id })
+          run.check('the made sheet is open in a Files tab', tabs2.tabs.some((t) => t.kind === 'file' && t.name.startsWith('Season log')), tabs2.tabs.map((t) => `${t.kind}:${t.name}`).join(', '))
+          await run.shot('13-made-in-files')
+        } else run.check('a tile in the dialog can be pressed', false)
+      }
     }
   } else run.note('the Templates row is not in the column (it waits for Files\' new view): the window\'s part was not run')
 } catch (err) {

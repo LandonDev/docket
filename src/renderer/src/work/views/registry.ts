@@ -78,11 +78,11 @@ export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
 
 /**
  * Whether the Templates row stands in the column (docs/agents/work-templates.md
- * "The row"). Off until Files' F1b lands (`openInFiles`, work/files/openFrom.ts):
- * its view, dialogs and port are built and live, but no row leads to the view.
- * Set true and the row stands after Files.
+ * "The row"). On since Files' new view landed: a made file opens in a Files tab
+ * there. Set false and the shelf is reached from Files' New alone (the owner's
+ * ruling 1 in the templates plan: the row is one line to drop).
  */
-export const TEMPLATES_ROW = false;
+export const TEMPLATES_ROW = true;
 
 /** The views in their rows' order. */
 export const workViewList = (): WorkViewDef[] => Object.values(WORK_VIEWS).sort((a, b) => a.order - b.order);

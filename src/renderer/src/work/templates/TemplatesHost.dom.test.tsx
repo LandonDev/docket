@@ -68,9 +68,13 @@ describe("the templates port", () => {
     expect(workTemplatePort.get()).toBeNull();
   });
 
-  it("keeps open.ts free of any chunk: it reaches the dialogs through the port alone", () => {
+  it("keeps open.ts free of any chunk: it reaches the dialogs through the port alone, and loads Files' opener only when a file is opened", () => {
     const text = readFileSync(join(__dirname, "open.ts"), "utf8");
-    expect(text).not.toMatch(/import\(|defineChunk|from "\.\/(?!open)/);
+    expect(text).not.toMatch(/defineChunk/);
+    // Of this pillar it imports the pure model alone: no dialog, no shelf, no view.
+    expect([...text.matchAll(/from "(\.\/[^"]+)"/g)].map((m) => m[1])).toEqual(["./model"]);
+    // Its one import on demand is Files' own way in from another screen.
+    expect([...text.matchAll(/import\("([^"]+)"\)/g)].map((m) => m[1])).toEqual(["../files/openFrom"]);
   });
 });
 

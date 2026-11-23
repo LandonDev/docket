@@ -57,9 +57,35 @@ describe('with the real files module', () => {
     expect(made.source.at === 'file' && existsSync(made.source.path) && made.source.path.startsWith(rig.folder)).toBe(true)
   })
 
+  it("his window's make in a folder of the workspace goes through Files, which keeps the template's form and takes the name", async () => {
+    if (!(await folderCan(rig.ctx, window, WS, 'make', real))) return // Files' folder cannot make yet: the plain copy is held by the test above
+    const into = { at: 'file' as const, host: 'env_box', path: join(rig.folder, 'Events') }
+    const made = await makeFromShelf(rig.ctx, window, { workspaceId: WS, template: 'Crew report', into, fields: { Client: 'Central' }, today: '2026-11-23' }, { pillars: real })
+    expect(made).toEqual({ source: { at: 'file', host: 'env_box', path: join(rig.folder, 'Events', 'Crew report - Central.docx') }, kind: 'document', title: 'Crew report - Central', unfilled: [] })
+    // Filled before Files ever saw it, and never over another file.
+    const again = await makeFromShelf(rig.ctx, window, { workspaceId: WS, template: 'Crew report', into, fields: { Client: 'Central' }, today: '2026-11-23' }, { pillars: real })
+    expect(again.title).not.toBe(made.title)
+    expect(readdirSync(join(rig.folder, 'Events')).filter((n) => n.startsWith('Crew report - Central')).length).toBe(2)
+  })
+
+  it("a make in a library others can open is Files' to refuse or to ask about, in its own words, and nothing is written there", async () => {
+    const before = readdirSync(join(rig.team, 'General')).sort()
+    const into = { at: 'file' as const, host: 'env_box', path: join(rig.team, 'General') }
+    await expect(makeFromShelf(rig.ctx, window, { workspaceId: WS, template: 'Crew report', into, fields: { Client: 'Central' } }, { pillars: real })).rejects.toThrow()
+    // A thread never reaches Files' door at all: the workspace's own folder only.
+    await expect(makeFromShelf(rig.ctx, thread(), { workspaceId: WS, template: 'Crew report', into }, { pillars: real })).rejects.toThrow("made in this workspace's own folder")
+    expect(readdirSync(join(rig.team, 'General')).sort()).toEqual(before)
+  })
+
   it('a remove of his own is never a delete he was not asked about: Trash, or the confirm', async () => {
     const answer = await removeTemplate(rig.ctx, window, WS, 'job:Crew report.docx', false, { pillars: real })
     if (answer.confirm) expect(readdirSync(join(rig.folder, 'Templates'))).toEqual(['Crew report.docx'])
-    else expect(answer.trashed?.length).toBe(1)
+    else {
+      // Files' Trash took it: it is off the shelf, and Put back returns it.
+      expect(answer.trashed?.length).toBe(1)
+      expect(readdirSync(join(rig.folder, 'Templates'))).toEqual([])
+      await files.handle!({ id: '1', method: 'work.files.restore', params: { workspaceId: WS, ids: answer.trashed, op: 'restore-0001' } } as never, rig.ctx, window)
+      expect(readdirSync(join(rig.folder, 'Templates'))).toEqual(['Crew report.docx'])
+    }
   })
 })

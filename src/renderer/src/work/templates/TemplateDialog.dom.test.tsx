@@ -36,6 +36,18 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
 const opened = vi.fn();
 vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object>()), openWorkView: (v: unknown) => opened(v) }));
 
+// Files' own opener (work/files/openFrom.ts), standing in: it asks the workspace's host to open the file in a tab, then shows Files.
+const filesOpened: { workspace: { id: string; environmentId: string }; what: { ref: unknown; name: string } }[] = [];
+vi.mock("../files/openFrom", () => ({
+  openInFiles: async (workspace: { id: string; environmentId: string }, what: { ref: unknown; name: string }) => {
+    filesOpened.push({ workspace, what });
+    const { registry } = await import("../../lib/connection");
+    await registry.linkOf(workspace.environmentId).request("work.files.open", { workspaceId: workspace.id, ref: what.ref });
+    const { openWorkView } = await import("../../lib/workSwitch");
+    openWorkView({ workspaceId: workspace.id, view: "files" });
+  },
+}));
+
 const { TemplateDialog } = await import("./TemplateDialog");
 
 const tpl = (id: string, name: string, fields: string[] = []): Template => ({ id, name, kind: "document", form: "docx", where: id.startsWith("job:") ? "job" : id.startsWith("all:") ? "all" : "starter", fields, source: { at: "file", host: "box", path: `/w/Templates/${name}.docx` } });
@@ -78,8 +90,10 @@ describe("New from a template", () => {
     fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
     await settle();
     expect(asked("work.templates.make")).toEqual([{ workspaceId: "ws", template: "job:Crew memo.docx", into, today: dayOf(new Date()) }]);
+    await waitFor(() => expect(opened).toHaveBeenCalledWith({ workspaceId: "ws", view: "files" }));
     expect(asked("work.files.open")).toEqual([{ workspaceId: "ws", ref: MADE.source }]);
-    expect(opened).toHaveBeenCalledWith({ workspaceId: "ws", view: "files" });
+    // Through Files' own way in, with the file's name for its tab.
+    expect(filesOpened.at(-1)).toEqual({ workspace: { id: "ws", environmentId: "box" }, what: { ref: MADE.source, name: "Game report - North.docx" } });
     expect(host.asked.some((a) => a.method.startsWith("session."))).toBe(false);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });

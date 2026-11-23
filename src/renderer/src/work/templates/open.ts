@@ -1,10 +1,9 @@
 import type { CanvasSource } from "@shared/work/canvas";
 import type { FolderRef } from "@shared/work/files";
 import type { Template } from "@shared/work/templates";
-import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
-import { openWorkView } from "../../lib/workSwitch";
+import { baseName } from "./model";
 
 /**
  * The templates pillar's ways in for every other screen (docs/agents/work-templates.md
@@ -65,16 +64,18 @@ export function hostOfWorkspace(workspaceId: string): string {
 }
 
 /**
- * Opens a file in a Files tab of the workspace and shows Files (SEAMS.md "files":
- * `work.files.open` on the workspace's host, then the Files view); no thread is
- * made. A made file and a template's own file (Edit) open this way.
+ * Opens a file in a Files tab of the workspace and shows Files, through Files'
+ * own way in from another screen (`openInFiles`, work/files/openFrom.ts); no
+ * thread is made. A made file and a template's own file (Edit) open this way.
  */
-export async function openMade(ask: { workspaceId: string; source: CanvasSource }): Promise<void> {
-  const env = hostOfWorkspace(ask.workspaceId);
+export async function openMade(ask: { workspaceId: string; source: CanvasSource; name?: string }): Promise<void> {
+  const environmentId = hostOfWorkspace(ask.workspaceId);
+  const name = ask.name ?? (ask.source.at === "file" ? baseName(ask.source.path) : "");
   try {
-    await registry.linkOf(env).request("work.files.open", { workspaceId: ask.workspaceId, ref: ask.source });
+    // Files' opener is loaded when a file is first opened, so this file still brings no other pillar's code with it.
+    const { openInFiles } = await import("../files/openFrom");
+    await openInFiles({ id: ask.workspaceId, environmentId }, { ref: ask.source, name });
   } catch (err) {
     throw new Error(refusalWords(err) || "The host did not open the file");
   }
-  openWorkView({ workspaceId: ask.workspaceId, view: "files" });
 }
