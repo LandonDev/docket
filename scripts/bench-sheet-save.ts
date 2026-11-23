@@ -9,8 +9,9 @@
  * It makes the lab's four workbooks (two number columns, a formula every tenth row, one more that
  * hangs off the first), sets A1 and times, per size:
  *
- *   worker      the save job as the sheet worker runs it (jobs.ts through `localJobs`): read, patch,
- *               IronCalc, zip, write. The workbook's import is kept between runs, as the lab's was.
+ *   worker      the save job the sheet worker runs (jobs.ts), here in this process through
+ *               `localJobs`, so with no message to a utility process: read, patch, IronCalc, zip,
+ *               write. The workbook's import is kept between runs, as the lab's was.
  *   commit      his edit to the committed revision (`PackageStore.edit`): the plan, the job, the
  *               rename over the file, the kept copy, the rows. Each run saves on the last, so the
  *               import is fresh every time, as it is in the app.
@@ -20,7 +21,7 @@
  *               save can cost.
  *
  * and the dense corpus file (800,002 formulas; `--dense <path>`, else the research lab's copy) on
- * the first two. The box's measuring rules (MASTER-NOTES): pin the cores with taskset, the
+ * the first two, three runs (`--dense-runs`), its import warmed first. The box's measuring rules (MASTER-NOTES): pin the cores with taskset, the
  * variants interleaved so they see the same load, five runs, the median with the load average
  * beside it, and a mark where the spread is too wide to rule on.
  */
@@ -43,7 +44,7 @@ const arg = (name: string): string | undefined => {
 }
 const SIZES = (arg('sizes') ?? '100,10000,100000,500000').split(',').map(Number).filter((n) => n > 0)
 const RUNS = Number(arg('runs') ?? 5)
-const DENSE_RUNS = Number(arg('dense-runs') ?? 1)
+const DENSE_RUNS = Number(arg('dense-runs') ?? 3)
 const IRONCALC = process.env.IRONCALC_DIR ?? '/srv/agents/temp-code-data/work-tools/ironcalc/0.9.1'
 /** The research lab's corpus holds the two big files (roundtrip.test.ts reads them from the same place). */
 const DENSE = arg('dense') ?? join(process.env.SHEET_CORPUS_BIG ?? '/srv/agents/work/temp-code/.temp-code/reports/nJLC5WoplSWf/lab/corpus', 'big_100k.xlsx')
@@ -212,7 +213,9 @@ async function bench(input: string, label: string, runs: number, dense: boolean)
   const variants = await variantsFor(input, label, dense)
   const samples = new Map(variants.map((v) => [v.name, [] as number[]]))
   const loads: number[] = []
-  if (!dense) for (const v of variants) await v.run(0)
+  // A warm-up each; the dense file's is its import alone (a save of it takes ten seconds and more).
+  if (dense) await (await localJobs()).inspect(input)
+  else for (const v of variants) await v.run(0)
   for (let i = 1; i <= runs; i++) {
     for (const v of variants) {
       Bun.gc(true)
@@ -228,16 +231,21 @@ async function bench(input: string, label: string, runs: number, dense: boolean)
 }
 
 const rows: Row[] = []
-for (const n of SIZES) {
-  const label = `rows-${n}`
-  const input = FIXTURES ? join(FIXTURES, `${label}.xlsx`) : join(scratch, `${label}.xlsx`)
-  if (!FIXTURES) writeFileSync(input, rowsWorkbook(n))
-  rows.push(...(await bench(input, label, RUNS, false)))
+try {
+  for (const n of SIZES) {
+    const label = `rows-${n}`
+    const input = FIXTURES ? join(FIXTURES, `${label}.xlsx`) : join(scratch, `${label}.xlsx`)
+    if (!FIXTURES) writeFileSync(input, rowsWorkbook(n))
+    rows.push(...(await bench(input, label, RUNS, false)))
+  }
+  if (DENSE_RUNS > 0 && existsSync(DENSE)) rows.push(...(await bench(DENSE, 'dense-100k', DENSE_RUNS, true)))
+  else if (DENSE_RUNS > 0) console.error(`no dense file at ${DENSE}: skipped`)
+} finally {
+  // a 500,000-row run leaves gigabytes behind
+  if (!arg('dir')) rmSync(scratch, { recursive: true, force: true })
 }
-if (DENSE_RUNS > 0 && existsSync(DENSE)) rows.push(...(await bench(DENSE, 'dense-100k', DENSE_RUNS, true)))
-else if (DENSE_RUNS > 0) console.error(`no dense file at ${DENSE}: skipped`)
 
-console.log(`cores ${cpus}; ${RUNS} runs a variant, interleaved; load is the one-minute average while it ran`)
+console.log(`cores ${cpus}; ${RUNS} runs a variant (${DENSE_RUNS} on the dense file), interleaved; load is the one-minute average while it ran`)
 console.log('file          MiB     variant       median ms   spread   load   runs')
 for (const r of rows) {
   const wide = r.spread > 0.25 && r.median >= 5 ? '  too wide to rule on' : ''
@@ -245,4 +253,3 @@ for (const r of rows) {
 }
 const json = arg('json')
 if (json) writeFileSync(json, JSON.stringify({ at: new Date().toISOString(), cores: cpus, runs: RUNS, sha: createHash('sha256').update(readFileSync(__filename)).digest('hex').slice(0, 12), rows }, null, 1))
-if (!arg('dir')) rmSync(scratch, { recursive: true, force: true })

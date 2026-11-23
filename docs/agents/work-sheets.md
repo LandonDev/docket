@@ -304,14 +304,15 @@ owner's alone, unmodified, a separate server (architecture §12.1). Code in
 (run it pinned: `taskset -c 2,3 bun scripts/bench-sheet-save.ts`; `--json`
 keeps the runs). It makes four workbooks of 100 to 500,000 rows (two number
 columns, a formula every tenth row) and times four things, interleaved, five
-runs each, the median with the load beside it: `worker` (the save job as the
-sheet worker runs it, the workbook's import kept between runs), `commit`
+runs each, the median with the load beside it: `worker` (the save job the
+sheet worker runs, here in the bench's own process, the workbook's import
+kept between runs), `commit`
 (`PackageStore.edit`, his edit to the committed revision: the plan, the job,
 the rename, the kept copy, the rows; the import is fresh each time, as in
-the app), and two floors no save can beat, `floor-skip` (the patch writer
-with no engine, on a cell nothing reads) and `floor-style` (a font appended
-and one cell pointed at it). The dense corpus file (800,002 formulas) gets
-the first two. On the box, 2026-11-23, cores 2 and 3, load 3 to 6:
+the app), and two floors, what a save costs with the engine left out:
+`floor-skip` (the patch writer with no engine, on a cell nothing reads) and
+`floor-style` (a font appended and one cell pointed at it). The dense corpus
+file (800,002 formulas) gets the first two, three runs. On the box, 2026-11-23, cores 2 and 3, load 3 to 6:
 
 | Rows | `worker` | `commit` | `floor-skip` | `floor-style` |
 |---|---|---|---|---|
@@ -319,10 +320,11 @@ the first two. On the box, 2026-11-23, cores 2 and 3, load 3 to 6:
 | 10,000 | 68 ms | 118 ms | 12.7 ms | 9.8 ms |
 | 100,000 | 556 ms | 785 ms | 112 ms | 96 ms |
 | 500,000 | 3,176 ms | 4,213 ms | 592 ms | 492 ms |
-| the dense file (100,000 rows) | 14,068 ms | 16,004 ms | | |
+| the dense file (100,000 rows) | 13,515 ms | 14,073 ms | | |
 
-The 10,000-row figures and the dense file's spread past a quarter of their
-median: read them as about that much. Today every save takes the `worker`
+The 10,000-row figures spread past a quarter of their median: read them as
+about that much. The dense file ran at a load near 7 (the plan's lab
+measured 9,954 ms for its `worker`, one run, on a quieter box). Today every save takes the `worker`
 path; nothing yet saves at a floor.
 
 The harness corpus also keeps the workbooks the editors plan measured with

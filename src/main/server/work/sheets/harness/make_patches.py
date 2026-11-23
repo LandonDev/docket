@@ -1,8 +1,10 @@
 """Makes the nine part-local patches of corpus/patch from corpus/patch/base.xlsx (the editors
 plan's sheets lab, sheets-measure.md section 2). Needs lxml and openpyxl:
 
-    python make_patches.py <work dir> emit     # writes <name>.json: each changed part's XML
+    python make_patches.py <work dir> emit     # writes <name>.parts.json: each changed part's XML
     python make_patches.py <work dir> verify   # reads each <name>.xlsx back with openpyxl
+
+The work dir must hold base.xlsx (a copy of corpus/patch, say).
 
 Between the two, the parts are fed to the production zip writer (harness/fixtures.test.ts does
 the same from the kept <name>.parts.json).
@@ -194,14 +196,12 @@ def verify(path, which):
 
 
 if __name__ == "__main__":
-    import sys
-
     operations = ("style", "layout", "cf", "validation", "name", "filter", "page", "page-fixed", "combined")
     if sys.argv[2] == "emit":
         with ZipFile(BASE) as z:
             originals = {name: z.read(name) for name in (SHEET, STYLES, BOOK)}
         for operation in operations:
-            (WORK / f"{operation}.json").write_text(json.dumps(edit(operation, originals)))
+            (WORK / f"{operation}.parts.json").write_text(json.dumps(edit(operation, originals)))
     elif sys.argv[2] == "verify":
         for operation in operations:
             print(operation, json.dumps(verify(WORK / f"{operation}.xlsx", operation)))
