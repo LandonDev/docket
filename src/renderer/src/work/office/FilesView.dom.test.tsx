@@ -29,6 +29,9 @@ let searchHold: Record<string, Promise<void>> = {};
 const pushListeners = new Set<{ env: string; fn: (push: { push: string }) => void }>();
 const pushFrom = (env: string, push: { push: string }) => [...pushListeners].filter((l) => l.env === env).forEach((l) => l.fn(push));
 const signIns: string[] = [];
+/** the threads the host says already hold a file (`work.office.filesThreads`), and which threads are archived */
+let held: { sessionId: string; itemId: string }[] = [];
+const archived = new Set<string>();
 const opened: string[] = [];
 const T = "/c/S/Purdue Esports - Documents";
 const LIB: TeamsLibrary = { id: "env_mac~1", host: "env_mac", path: T, team: "Purdue Esports", library: null, tenant: "Purdue University", kind: "channels", channels: ["General"], web: "https://p.sharepoint.com/sites/e/Shared Documents", found: true };
@@ -79,8 +82,12 @@ const answer = (env: string, method: string, params: unknown): Promise<unknown> 
     case "work.office.filesCopy":
       if (copyFails) return Promise.reject(new Error("over 48 MB"));
       return Promise.resolve({ source: { at: "file", host: "env_box", path: "/box/attachments/teams-files/t1/Report.pdf" } });
-    case "work.canvas.open":
-      return Promise.resolve({ item: { id: "i1" } });
+    case "work.office.filesThreads":
+      return Promise.resolve({ threads: held });
+    case "work.canvas.open": {
+      const { sessionId, itemId, kind = "document", source = null, title = "" } = params as { sessionId: string; itemId?: string; kind?: string; source?: unknown; title?: string };
+      return Promise.resolve({ id: itemId ?? "i1", sessionId, workspaceId: null, kind, title, source, state: "open", position: 0, rev: 1, createdAt: 0, updatedAt: 0 });
+    }
   }
   return Promise.reject(new Error(`unexpected ${method}`));
 };
@@ -88,6 +95,7 @@ const answer = (env: string, method: string, params: unknown): Promise<unknown> 
 vi.mock("../../lib/connection", () => ({
   LOCAL_ENVIRONMENT_ID: "local",
   registry: {
+    onLink: () => () => {},
     has: (id: string) => id === "local" || id === "box",
     link: (id: string) => (id === "local" ? { request: () => Promise.resolve({ environmentId: "env_mac" }) } : undefined),
     environment: (id: string) => ({ id, name: id === "local" ? "This Mac" : "The box" }),
@@ -115,11 +123,12 @@ const stage: unknown[] = [];
 let computersOpened = 0;
 vi.mock("../../lib/popOut", () => ({ requestStage: (c: unknown) => stage.push(c) }));
 vi.mock("../../stores/shell", () => ({ shell: { openComputers: () => void computersOpened++, openSettings: vi.fn() } }));
-vi.mock("../../lib/tcserver/store", () => ({ sessionStore: { adopt: vi.fn() } }));
+vi.mock("../../lib/tcserver/store", () => ({ sessionStore: { adopt: vi.fn(), metaOf: (id: string) => ({ id, archived: archived.has(id) }) } }));
 vi.mock("../../lib/macBridge", () => ({ bridgeNewThread: () => Promise.resolve() }));
 vi.mock("../../lib/workSwitch", () => ({ workOpenPort: { get: () => (id: string) => opened.push(id) }, workPlayPort: { get: () => null }, workViewNow: () => null }));
 
 const { View, Head } = await import("./FilesView");
+const { canvasOf, resetCanvasStore } = await import("../canvas/store");
 
 const props = (environmentId: string): WorkViewProps =>
   ({ env: environmentId, workspace: { id: `w-${environmentId}-${Math.random()}`, environmentId, path: "/w", name: "Purdue", kind: "work" }, sector: "purdue", lifeos: {}, startThread: () => {} }) as unknown as WorkViewProps;
@@ -140,6 +149,9 @@ beforeEach(() => {
   vmLibs = [];
   macListDown = false;
   signIns.length = 0;
+  held = [];
+  archived.clear();
+  resetCanvasStore();
   hold = {};
   searchHold = {};
   pushListeners.clear();
@@ -177,6 +189,33 @@ describe("the Files view", () => {
     expect(calls.map((c) => c.method).slice(-3)).toEqual(["work.office.filesFetch", "session.create", "work.canvas.open"]);
     expect(calls.at(-1)!.params).toMatchObject({ sessionId: "t1", kind: "pdf", source: { at: "file", host: "env_mac" }, title: "Report.pdf" });
     expect(opened).toEqual(["t1"]);
+  });
+
+  // The owner, 2026-11-23: opening a file went to a new chat with no viewer. The file takes the pane, the thread folded beside it.
+  it("shows the file it opened at once: the item selected in its thread and the thread folded away", async () => {
+    await openGeneral(props("local"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /^Budget\.xlsx/ })));
+    const view = canvasOf("t1");
+    expect(view.items.map((i) => [i.id, i.kind, i.title])).toEqual([["i1", "sheet", "Budget.xlsx"]]);
+    expect(view.selected).toBe("i1");
+    expect(view.folded).toBe(true);
+    expect(opened).toEqual(["t1"]);
+  });
+
+  it("opens a file again in the thread that already holds it, passing over an archived one", async () => {
+    copyOn = true;
+    held = [
+      { sessionId: "t-old", itemId: "i-old" },
+      { sessionId: "t0", itemId: "i0" },
+    ];
+    archived.add("t-old");
+    await openGeneral(props("box"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /^Report\.pdf/ })));
+    expect(calls.find((c) => c.method === "work.office.filesThreads")).toMatchObject({ env: "box", params: { source: { at: "file", host: "env_mac", path: `${T}/General/Report.pdf` } } });
+    expect(calls.some((c) => c.method === "session.create" || c.method === "work.office.filesCopy")).toBe(false);
+    expect(calls.at(-1)).toMatchObject({ method: "work.canvas.open", params: { sessionId: "t0", itemId: "i0" } });
+    expect(canvasOf("t0")).toMatchObject({ selected: "i0", folded: true });
+    expect(opened).toEqual(["t0"]);
   });
 
   it("from a workspace on another host with no copy allowed, opens the file in its app where it lies", async () => {

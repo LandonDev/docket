@@ -82,6 +82,54 @@ describe("the state line's words", () => {
   });
 });
 
+describe("a body that fails", () => {
+  /** The document kind with a body that throws while `fail` says so, or whose code never arrives. */
+  async function failing(how: "throws" | "no code") {
+    const { defineChunk } = await import("../../lib/lazyChunk");
+    const { CANVAS } = await import("./registry");
+    const state = { fail: true };
+    function Body({ item }: { item: CanvasItem }) {
+      if (state.fail) throw new Error("the sheet's workbook is damaged");
+      return <p data-testid="body">The body of {item.title}</p>;
+    }
+    const chunk = defineChunk(`failing-${how}`, () => (how === "throws" ? Promise.resolve({ Body }) : Promise.reject(new TypeError("Failed to fetch dynamically imported module: tempcode-app://renderer/assets/work-docs-canvas-x1.js"))));
+    return { state, kinds: { ...CANVAS, document: { ...CANVAS.document, history: false, chunk } } };
+  }
+
+  it("says why on the item's state line with Retry, and Retry shows the body once it can", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { state, kinds } = await failing("throws");
+    await seat([DOC], kinds as never);
+    const line = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[data-canvas-state="failed"]');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    expect(line.textContent).toContain("Couldn't open this document");
+    expect(line.textContent).toContain("the sheet's workbook is damaged");
+    state.fail = false;
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
+    expect(await screen.findByTestId("body")).toBeTruthy();
+    expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
+    quiet.mockRestore();
+  });
+
+  it("says a viewer whose code did not load in his words, not as a module address", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { kinds } = await failing("no code");
+    await seat([DOC], kinds as never);
+    const line = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[data-canvas-state="failed"]');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    expect(line.textContent).toContain("Its viewer did not load");
+    expect(line.textContent).not.toContain("tempcode-app://");
+    expect(within(line).getByRole("button", { name: "Retry" })).toBeTruthy();
+    quiet.mockRestore();
+  });
+});
+
 describe("a file from outside", () => {
   it("says what is opening: alone in an empty pane, and the bar once it is big", async () => {
     const { container } = await seat([]);

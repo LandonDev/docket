@@ -9,7 +9,7 @@ import { teamsCanvasOf, teamsKindOf, teamsWebOf, type TeamsEntry, type TeamsLibr
 import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../../modules'
 import { FakeOffice } from '../fake'
 import { office as module, setCarrier } from '../index'
-import { copyDirOf, setFilesOpener } from './handle'
+import { copyDirOf, copyFolderOf, setFilesOpener } from './handle'
 import { isLocal, setCloudDir, splitLibraryName, tenantOfSynced } from './library'
 import { teamsTools } from './tools'
 import { zipEntries } from './zip'
@@ -420,5 +420,43 @@ describe('the shared-file rule on a Teams file', () => {
     office.addBook(join(base, 'outside', 'Mine.xlsx'), { Sheet1: { A1: 1 } })
     const own = await call('work.office.write', { tool: 'office_range_write', args: { workbook: join(base, 'outside', 'Mine.xlsx'), range: 'Sheet1!A1', values: [[2]], because: 'own' } }, window)
     expect(JSON.stringify(own)).not.toContain('nothing was written')
+  })
+})
+
+describe('the thread that already holds a file', () => {
+  const plan = '/c/T/General/Plan.docx'
+  const item = (id: string, sessionId: string, source: object, state: 'open' | 'closed' = 'open') => ({ id, sessionId, workspaceId: 'w1', kind: 'document', title: id, source, state, position: 0, rev: 1, createdAt: 0, updatedAt: 0 })
+  const holding = (items: object[]) => {
+    const ctx = ctxOn('env_box', { canvas: { forWorkspace: (id: string) => (id === 'w1' ? items : []) } } as unknown as Partial<WorkCtx>)
+    return call('work.office.filesThreads', { workspaceId: 'w1', source: { at: 'file', host: 'env_mac', path: plan } }, window, ctx) as Promise<{ threads: { sessionId: string; itemId: string }[] }>
+  }
+
+  it('finds the file in place, as its Office file, as the copy he allowed and as the document it became, newest first', async () => {
+    const box = ctxOn('env_box')
+    const answer = await holding([
+      item('copy', 's1', { at: 'file', host: 'env_box', path: join(copyFolderOf(box.dataDir, 's1', { host: 'env_mac', path: plan }), 'Plan.docx') }),
+      item('made', 's2', { at: 'file', host: 'env_mac', path: '/c/T/General/Plan (2).tcdoc' }),
+      item('word', 's3', { at: 'microsoft', host: 'env_mac', app: 'word', name: 'Plan.docx', ref: { kind: 'path', path: plan } }),
+      item('here', 's4', { at: 'file', host: 'env_mac', path: plan }),
+      item('also', 's4', { at: 'file', host: 'env_mac', path: plan }),
+    ])
+    expect(answer.threads).toEqual([
+      { sessionId: 's1', itemId: 'copy' },
+      { sessionId: 's2', itemId: 'made' },
+      { sessionId: 's3', itemId: 'word' },
+      { sessionId: 's4', itemId: 'here' },
+    ])
+  })
+
+  it('passes over a closed item, another file of the same name, the same path on another host and another file\'s copy', async () => {
+    const box = ctxOn('env_box')
+    const answer = await holding([
+      item('closed', 's1', { at: 'file', host: 'env_mac', path: plan }, 'closed'),
+      item('elsewhere', 's2', { at: 'file', host: 'env_mac', path: '/c/T/Events/Plan.docx' }),
+      item('other host', 's3', { at: 'file', host: 'env_pc', path: plan }),
+      item('other copy', 's4', { at: 'file', host: 'env_box', path: join(copyFolderOf(box.dataDir, 's4', { host: 'env_mac', path: '/c/T/Events/Plan.docx' }), 'Plan.docx') }),
+      item('planner', 's5', { at: 'file', host: 'env_mac', path: '/c/T/General/Planner.tcdoc' }),
+    ])
+    expect(answer.threads).toEqual([])
   })
 })

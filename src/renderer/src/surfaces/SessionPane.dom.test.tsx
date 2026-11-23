@@ -2,15 +2,17 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadState, Session } from "../lib/session";
+import type React from "react";
 
 const { retryLoad, block, store } = vi.hoisted(() => ({
   retryLoad: vi.fn(),
   block: { degraded: null as unknown, name: "box", text: null as string | null },
-  /** What the store says of the thread: a draft (no meta), or one its host holds. */
-  store: { draft: true },
+  /** What the store says of the thread: a draft (no meta), or one its host holds; `work` stamps its row Work. */
+  store: { draft: true, work: false },
 }));
 vi.mock("../lib/tcserver/store", () => ({
   sessionStore: { retryLoad, isDraft: () => store.draft, isProvisional: () => false },
+  useSessionMetaValue: (_id: string, read: (meta: { scope?: string }) => unknown) => read(store.work ? { scope: "work" } : {}),
   useQueue: () => [],
 }));
 vi.mock("../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => block, ConnectionLine: () => null }));
@@ -28,7 +30,10 @@ vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null }));
 vi.mock("./chunks", () => new Proxy({}, { has: (_target, key) => key !== "then", get: (_target, key) => (key === "then" ? undefined : { surface: () => () => null }) }));
 vi.mock("../lib/lazyChunk", async (importOriginal) => ({ ...(await importOriginal<typeof import("../lib/lazyChunk")>()), preloadWhenIdle: () => {} }));
 vi.mock("./EmptySession", () => ({ EmptySession: () => <div data-testid="empty-session" /> }));
-vi.mock("./threads/ThreadView", () => ({ ThreadView: () => <div data-testid="thread-view" /> }));
+vi.mock("./threads/ThreadView", () => ({
+  ThreadView: ({ quiet }: { quiet?: React.ReactNode }) => <div data-testid="thread-view">{quiet}</div>,
+  isWorkThread: (meta: { scope?: string }) => meta.scope === "work",
+}));
 vi.mock("./threads/WorkingStrip", () => ({ WorkingStrip: () => null }));
 vi.mock("../lib/tcserver/commands", () => ({ focusSignal: { pane: () => {}, left: () => {} } }));
 vi.mock("../lib/preconnect", () => ({ askPreconnect: () => {}, idleForPreconnect: () => false }));
@@ -103,6 +108,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   block.degraded = null;
   store.draft = true;
+  store.work = false;
 });
 afterEach(() => {
   cleanup();
@@ -144,6 +150,24 @@ describe("the pane while a transcript loads", () => {
     expect(document.querySelector("[data-no-rows]")?.textContent).toBe("No messages yet");
     expect(screen.getByTestId("composer")).toBeTruthy();
     expect(skeleton()).toBeNull();
+  });
+
+  // A file opened from the Files view makes a Work thread with one canvas item and no message (2026-11-23): its view,
+  // which holds the canvas seat, must mount with no rows, or the pane is a bare new chat and the file never shows.
+  it("a Work thread its host holds with no rows sits in its own view, the line and the composer in the chat's place", () => {
+    store.draft = false;
+    store.work = true;
+    pane(session({ phase: "loaded", since: NOW, attempt: 0, empty: true }));
+    const view = screen.getByTestId("thread-view");
+    expect(view.querySelector("[data-no-rows]")?.textContent).toBe("No messages yet");
+    expect(view.querySelector('[data-testid="composer"]')).toBeTruthy();
+  });
+
+  it("a Work thread whose rows are still coming sits in its own view too, the skeleton in the chat's place", () => {
+    store.draft = false;
+    store.work = true;
+    pane(session({ phase: "loading", since: NOW, attempt: 0 }));
+    expect(screen.getByTestId("thread-view").querySelector('[data-surface-skeleton="transcript"]')).toBeTruthy();
   });
 
   it("the no-rows and load lines share the column's edges: the gutter outside, the column inside", async () => {

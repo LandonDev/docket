@@ -202,4 +202,15 @@ describe("a Work thread's canvas seat", () => {
     expect(seat?.querySelector("[data-chat]")).not.toBeNull();
     canvas.work.clear();
   });
+
+  it("holds the pane's quiet word in the chat's place while the host has no rows, inside the same seat", () => {
+    canvas.work.add("t1");
+    const { container } = render(
+      <ThreadView session={session} composing={false} onArmNewPass={() => {}} onOpenFile={() => {}} onOpenDiff={() => {}} quiet={<p data-no-rows>No messages yet</p>} {...({} as never)} />,
+    );
+    const seat = container.querySelector("[data-canvas-seat]");
+    expect(seat?.querySelector("[data-no-rows]")?.textContent).toBe("No messages yet");
+    expect(seat?.querySelector("[data-chat]")).toBeNull();
+    canvas.work.clear();
+  });
 });

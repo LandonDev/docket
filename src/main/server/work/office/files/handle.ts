@@ -148,7 +148,7 @@ export function dropCopies(ctx: Pick<WorkCtx, 'dataDir' | 'scopeOf'>, which: { s
 }
 
 /** The folder in a thread's copies that holds the copy of one source file. */
-const copyFolderOf = (dataDir: string, sessionId: string, source: { host: string; path: string }): string =>
+export const copyFolderOf = (dataDir: string, sessionId: string, source: { host: string; path: string }): string =>
   join(copyDirOf(dataDir, sessionId), createHash('sha1').update(`${source.host}\u0000${source.path}`).digest('hex').slice(0, 12))
 
 /** `Name.tcdoc` or `Name (2).tcdoc` beside `Name.docx`: the document an import made of it (formats/importer.ts `freePath`). */
