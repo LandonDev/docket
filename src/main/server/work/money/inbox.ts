@@ -8,11 +8,11 @@ import { errorText, type SectorKey } from '@shared/work/ids'
 import { fileWord, knownSellers, parseReceipt, receiptFileName, receiptName, type ReceiptFields, type ReceiptLine } from '@shared/work/money'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
-import { appendRow, MONEY_FOLDER, moneyFolder, openBooks, valuesOf } from './book'
+import { appendRow, insideJob, MONEY_FOLDER, moneyFolder, newRef, openBooks, valuesOf, writtenRow } from './book'
 import { partOf, takePart } from './parts'
 import { booksHere, ledgerOf, MoneyError, waiting } from './read'
 import { extOf, isReceiptFile, pdfPicture, readReceipt, shownPicture } from './reader'
-import { workspaceOf, workspaces, type Workspace } from './store'
+import { workspaceOf, type Workspace } from './store'
 
 /**
  * What waits for his accept (docs/agents/work-money.md "In: four ways, one
@@ -81,11 +81,22 @@ function tell(ctx: Ctx, row: Pick<Row, 'id' | 'workspace_id' | 'source' | 'name'
 }
 const told = (ctx: Ctx, id: string): void => void tellOf(ctx)?.done?.(tellKey(id))
 
-/** The job a receipt names: a workspace of this host, or the first Work workspace here in the sector it names. */
-export function jobOf(ctx: Pick<WorkCtx, 'db'>, p: { workspaceId?: string; sector?: SectorKey }): Workspace {
-  const ws = p.workspaceId ? workspaceOf(ctx, p.workspaceId) : (workspaces(ctx).find((w) => w.sector === p.sector) ?? null)
-  if (!ws) throw new MoneyError(p.workspaceId ? 'That job is not on this computer.' : 'No workspace for that job on this computer.')
-  return ws
+/**
+ * The job a receipt or a parse names, among the ones its caller may ask
+ * about: a workspace of this host, or the first Work workspace here in the
+ * sector it names. The module hands this in (`index.ts`), so no ledger is
+ * opened for a caller who could not have named it.
+ */
+export type JobFor = (p: { workspaceId?: string; sector?: SectorKey | null }) => Workspace | null
+
+/** One at a time for each sender's key: an upload's parts, its putting together and its filing never run twice at once, and the second sees what the first left. */
+const keys = new Map<string, Promise<unknown>>()
+export function keyed<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const run = (keys.get(key) ?? Promise.resolve()).then(fn, fn)
+  const tail = run.catch(() => {})
+  keys.set(key, tail)
+  void tail.then(() => keys.get(key) === tail && keys.delete(key))
+  return run
 }
 
 /** A name safe as a file's own in this host's folder: no folder part, nothing that could leave it. */
@@ -94,11 +105,15 @@ const safeName = (name: string): string => {
   return `${fileWord(basename(name.replace(/\\/g, '/')).replace(/\.[^.]*$/, ''), 80) || 'Receipt'}.${ext}`
 }
 
-function insert(ctx: Ctx, r: { key: string; workspaceId: string; state: State; source: MoneySource; name?: string; mime?: string; sessionId?: string; fields?: Waiting; lines?: ReceiptLine[] }, now = Date.now()): string {
-  const id = randomUUID()
+function insert(
+  ctx: Ctx,
+  r: { id?: string; key: string; workspaceId: string; state: State; source: MoneySource; name?: string; mime?: string; file?: string; sessionId?: string; fields?: Waiting; lines?: ReceiptLine[] },
+  now = Date.now()
+): string {
+  const id = r.id ?? randomUUID()
   ctx.db
-    .prepare('INSERT INTO work_money_inbox (id, key, workspace_id, state, source, name, mime, lines, fields, session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(id, r.key, r.workspaceId, r.state, r.source, r.name ?? null, r.mime ?? null, r.lines ? JSON.stringify(r.lines) : null, r.fields ? JSON.stringify(r.fields) : null, r.sessionId ?? null, now, now)
+    .prepare('INSERT INTO work_money_inbox (id, key, workspace_id, state, source, name, mime, file, lines, fields, session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(id, r.key, r.workspaceId, r.state, r.source, r.name ?? null, r.mime ?? null, r.file ?? null, r.lines ? JSON.stringify(r.lines) : null, r.fields ? JSON.stringify(r.fields) : null, r.sessionId ?? null, now, now)
   return id
 }
 
@@ -112,10 +127,9 @@ async function knownOf(ctx: Ctx, workspaceId: string): Promise<Record<string, st
   )
 }
 
-/** The one parser, with what this job's ledger knows. */
-export async function parseFor(ctx: Ctx, lines: readonly ReceiptLine[], at: { workspaceId?: string; sector?: SectorKey | null }): Promise<ReceiptFields> {
-  const ws = at.workspaceId ? workspaceOf(ctx, at.workspaceId) : (workspaces(ctx).find((w) => w.sector === at.sector) ?? null)
-  return parseReceipt(lines, { sector: ws?.sector ?? at.sector ?? null, known: ws ? await knownOf(ctx, ws.id) : {} })
+/** The one parser, with what the job's ledger knows of each seller. With no job the caller may ask about, the receipt is read all the same, with no seller's history. */
+export async function parseFor(ctx: Ctx, lines: readonly ReceiptLine[], ws: Workspace | null, sector?: SectorKey | null): Promise<ReceiptFields> {
+  return parseReceipt(lines, { sector: ws?.sector ?? sector ?? null, known: ws ? await knownOf(ctx, ws.id) : {} })
 }
 
 /**
@@ -144,11 +158,13 @@ export function read(ctx: Ctx, id: string): Promise<void> {
   reading.set(id, stop)
   return (async () => {
     const row = byId(ctx, id)
-    if (!row || row.state !== 'reading' || !row.file) return
+    if (!row || row.state !== 'reading') return
     let lines: ReceiptLine[] = []
     let error: string | null = null
     try {
-      lines = await readReceipt(ctx, row.file, stop.signal)
+      // With no file to read (it never arrived, or is gone) it is ready as it stands: nothing waits as "reading" for ever.
+      if (row.file && existsSync(row.file)) lines = await readReceipt(ctx, row.file, stop.signal)
+      else error = 'no file'
     } catch (err) {
       error = errorText(err)
       ctx.log(`money: ${row.name ?? id} was not read (${error})`)
@@ -196,20 +212,27 @@ const answer = (row: Pick<Row, 'id' | 'state' | 'ref'>): MoneyReceived => ({ id:
  * (the phone's reader) it is not read again; with fields that hold an
  * amount and a date it is filed at once, as his own accept.
  */
-export async function receive(ctx: Ctx, p: ReceiveParams, by: Caller, admit: (workspaceId: string) => Workspace): Promise<MoneyReceived> {
+export function receive(ctx: Ctx, p: ReceiveParams, by: Caller, jobFor: JobFor): Promise<MoneyReceived> {
   if ((p.file !== undefined) === (p.dataBase64 !== undefined)) throw new MoneyError('A receipt is its bytes or a file, one of the two.')
   if (!p.workspaceId && !p.sector) throw new MoneyError('A receipt names its job.')
   // A file with no extension Money knows is taken by its type (a mail's attachment), under a name that says what it is.
   const filed = receiptFileName(p.name, p.mime)
   if (!filed) throw new MoneyError('Money files pictures and PDFs.')
-  p = { ...p, name: filed }
-  const ws = admit(jobOf(ctx, p).id)
+  const ws = jobFor(p)
+  if (!ws) throw new MoneyError(p.workspaceId ? 'That job is not on this computer.' : 'No workspace for that job on this computer.')
+  // One at a time a key: two parts that land together, or the last part sent twice, put the file together and file it once.
+  return keyed(`in:${p.key}`, () => receiveOnce(ctx, { ...p, name: filed }, by, ws))
+}
+
+async function receiveOnce(ctx: Ctx, p: ReceiveParams, by: Caller, ws: Workspace): Promise<MoneyReceived> {
   const before = byKey(ctx, p.key)
+  // A key is one receipt of one job: sent again under another job it is neither finished there nor answered from here.
+  if (before && before.workspace_id !== ws.id) throw new MoneyError('That receipt was sent to another job. Scan it again for this one.')
   if (before && before.state !== 'partial') {
     // He accepted it where he sent it from (an amount and a date) and it still waits here: its filing failed the
     // first time (the ledger's columns, say). The same Save again tries the filing again, and answers what came of it.
     if ((before.state === 'ready' || before.state === 'reading') && p.fields?.amount && p.fields.date) {
-      const acted = await accept(ctx, before.id, { date: p.fields.date, who: p.fields.who ?? '', what: '', category: p.fields.category ?? '', way: 'out', amount: p.fields.amount, status: 'Paid' }, workspaceOf(ctx, before.workspace_id) ?? ws)
+      const acted = await accept(ctx, before.id, { date: p.fields.date, who: p.fields.who ?? '', what: '', category: p.fields.category ?? '', way: 'out', amount: p.fields.amount, status: 'Paid' }, ws)
       return { id: before.id, state: 'filed', ...('ok' in acted && acted.suggested ? { suggested: true } : {}) }
     }
     return answer(before)
@@ -241,7 +264,7 @@ export async function receive(ctx: Ctx, p: ReceiveParams, by: Caller, admit: (wo
 
   const typed = p.fields ? { ...p.fields, way: 'out' as const } : undefined
   if (p.lines) {
-    const fields = merged(await parseFor(ctx, receiptLines(p.lines), { workspaceId: ws.id }), typed, p.seen === true)
+    const fields = merged(await parseFor(ctx, receiptLines(p.lines), ws), typed, p.seen === true)
     set(ctx, id, { state: 'ready', file: whole, lines: JSON.stringify(p.lines), fields: JSON.stringify(fields) })
   } else {
     set(ctx, id, { state: 'reading', file: whole, ...(typed ? { fields: JSON.stringify(typed) } : {}) })
@@ -272,14 +295,27 @@ export async function leave(ctx: Ctx, o: { key: string; ws: Workspace; sessionId
   }
   // With fields it is ready as the thread wrote it; with a file alone it is read like any receipt.
   const state: State = o.fields ? 'ready' : 'reading'
-  const id = insert(ctx, { key: o.key, workspaceId: o.ws.id, state, source: 'agent', name: o.file ? basename(o.file) : undefined, sessionId: o.sessionId, fields: o.fields })
+  const id = randomUUID()
+  let whole: string | undefined
   if (o.file) {
+    // The copy first: one that fails (the file went, the disk is full) leaves nothing waiting with a file it does not have.
     const dir = folderOf(ctx, id)
     mkdirSync(dir, { recursive: true, mode: 0o700 })
-    const whole = join(dir, safeName(o.file))
-    await copyFile(o.file, whole)
-    set(ctx, id, { file: whole })
+    whole = join(dir, safeName(o.file))
+    try {
+      await copyFile(o.file, whole)
+    } catch (err) {
+      rmSync(dir, { recursive: true, force: true })
+      throw new MoneyError(`${basename(o.file)} could not be copied (${errorText(err)}).`)
+    }
   }
+  // Two of the same call at once: the first to land is the one, and the other's copy goes.
+  if (byKey(ctx, o.key)) {
+    rmSync(folderOf(ctx, id), { recursive: true, force: true })
+    const first = byKey(ctx, o.key)!
+    return { id: first.id, state: first.state, fresh: false }
+  }
+  insert(ctx, { id, key: o.key, workspaceId: o.ws.id, state, source: 'agent', name: o.file ? basename(o.file) : undefined, file: whole, sessionId: o.sessionId, fields: o.fields })
   announce(ctx, o.ws.id)
   if (state === 'reading') void read(ctx, id)
   else tell(ctx, { id, workspace_id: o.ws.id, source: 'agent', name: null }, { amount: null, date: null, who: null, category: null, ...o.fields })
@@ -332,33 +368,76 @@ export function accept(ctx: Ctx, id: string, fields: EntryFields, to?: Workspace
 }
 const accepting = new Map<string, Promise<MoneyActed>>()
 
+/** What an accept in hand means to write, noted on the waiting row before the ledger is touched: the Ref its row will carry, the job, and the file it kept. */
+interface Intent {
+  ref: string
+  workspaceId: string
+  receipt?: string
+}
+function intentOf(row: Pick<Row, 'state' | 'ref'>): Intent | null {
+  if (row.state === 'filed' || !row.ref) return null
+  try {
+    return (JSON.parse(row.ref) as { intent?: Intent }).intent ?? null
+  } catch {
+    return null
+  }
+}
+
+/** A file an unfinished accept kept that no row came to name: it is that accept's own, and goes. */
+function unkeep(ws: Workspace, receipt: string): void {
+  const path = join(ws.path, MONEY_FOLDER, ...receipt.split('/').filter((p) => p && p !== '.' && p !== '..'))
+  if (existsSync(path) && insideJob(ws, path)) rmSync(path, { force: true })
+}
+
+/** The waiting one is filed: its row is in the ledger (or waits there), its own copy of the file goes, and everyone who counts is told. */
+function fileIt(ctx: Ctx, row: Row, ws: Workspace, acted: MoneyActed): MoneyActed {
+  reading.get(row.id)?.abort()
+  // `workspace_id` stays the job it was sent to: the sender's key is that job's, wherever he filed it.
+  set(ctx, row.id, { state: 'filed', ref: JSON.stringify(acted), file: null })
+  rmSync(folderOf(ctx, row.id), { recursive: true, force: true })
+  announce(ctx, row.workspace_id)
+  if (ws.id !== row.workspace_id) announce(ctx, ws.id)
+  told(ctx, row.id)
+  return acted
+}
+
 async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to?: Workspace): Promise<MoneyActed> {
   const row = byId(ctx, id)
   if (!row || row.state === 'dropped' || row.state === 'partial') throw new MoneyError('That one is not waiting any more.')
   if (row.state === 'filed') return row.ref ? (JSON.parse(row.ref) as MoneyActed) : { changed: true }
+  // An accept of this one was begun and not seen to its end (the host stopped between the ledger's write and this
+  // row's note): the row it meant to write is looked for by its Ref, else by its file, and is never written twice.
+  const begun = intentOf(row)
+  const there = begun ? workspaceOf(ctx, begun.workspaceId) : null
+  if (begun && there) {
+    const books = booksHere(ctx, there.id)
+    const found = books ? writtenRow(await ledgerOf(ctx, books), begun) : null
+    if (found) return fileIt(ctx, row, there, { ok: true, ref: found.ref, row: found.row, ...(found.suggested ? { suggested: true as const } : {}) })
+    if (begun.receipt) unkeep(there, begun.receipt)
+  }
   const ws = to ?? workspaceOf(ctx, row.workspace_id)
   if (!ws) throw new MoneyError('That job is not on this computer.')
+  // The file it came with must still be here: a row is not filed for a receipt whose picture is gone.
+  if (row.file && !existsSync(row.file)) throw new MoneyError("That receipt's file is no longer on this computer. Discard it, then add it again.")
   const books = await openBooks(ctx, ws)
+  const ref = newRef()
+  const note = (receipt?: string): void => set(ctx, id, { ref: JSON.stringify({ intent: { ref, workspaceId: ws.id, ...(receipt ? { receipt } : {}) } } satisfies { intent: Intent }) })
+  note()
   let kept: { path: string; receipt: string } | null = null
-  if (row.file && existsSync(row.file)) {
-    kept = await keepFile(ws, row.file, ['Receipts', fields.date.slice(0, 4)], receiptName({ date: fields.date, who: fields.who, amount: fields.amount }, extOf(row.file)))
-  }
   let got: Awaited<ReturnType<typeof appendRow>>
   try {
-    got = await appendRow(ctx, ws, books, { ...valuesOf(fields), ...(kept ? { Receipt: kept.receipt } : {}) })
+    if (row.file) {
+      kept = await keepFile(ws, row.file, ['Receipts', fields.date.slice(0, 4)], receiptName({ date: fields.date, who: fields.who, amount: fields.amount }, extOf(row.file)))
+      note(kept.receipt)
+    }
+    got = await appendRow(ctx, ws, books, { ...valuesOf(fields), ...(kept ? { Receipt: kept.receipt } : {}) }, { ref })
   } catch (err) {
     // No row, no kept file: the waiting one stays as it was for his next try.
     if (kept) rmSync(kept.path, { force: true })
+    set(ctx, id, { ref: null })
     throw err
   }
-  const acted: MoneyActed = { ok: true, ref: got.ref, row: got.row, ...(got.suggested ? { suggested: true as const } : {}) }
-  reading.get(id)?.abort()
-  set(ctx, id, { state: 'filed', ref: JSON.stringify(acted), file: null, workspace_id: ws.id })
-  rmSync(folderOf(ctx, id), { recursive: true, force: true })
-  announce(ctx, row.workspace_id)
-  if (ws.id !== row.workspace_id) announce(ctx, ws.id)
-  told(ctx, id)
-  return acted
+  return fileIt(ctx, row, ws, { ok: true, ref: got.ref, row: got.row, ...(got.suggested ? { suggested: true as const } : {}) })
 }
 
 /**
@@ -434,6 +513,8 @@ export function filedPicture(ctx: Ctx, by: Caller, ws: Workspace, receipt: strin
   const path = join(root, ...receipt.split(/[\\/]/).filter((p) => p && p !== '.' && p !== '..'))
   let real: string
   try {
+    // The Money folder itself must lie in the job's own folder: one that is a link to another job's shows none of that job's files.
+    if (!insideJob(ws, root)) throw new Error('outside')
     real = realpathSync(path)
     if (!real.startsWith(realpathSync(root) + sep)) throw new Error('outside')
   } catch {

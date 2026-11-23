@@ -38,9 +38,9 @@ export function ensureMoneyTables(db: DatabaseSync): void {
     updated_at INTEGER NOT NULL
   )`)
   db.exec('CREATE INDEX IF NOT EXISTS work_money_inbox_ws ON work_money_inbox (workspace_id, state)')
-  // The miles there and back to a venue, typed once.
+  // The miles there and back to a venue, typed once: by job and place (`placeId`), since two jobs start from two places.
   db.exec('CREATE TABLE IF NOT EXISTS work_money_places (place TEXT PRIMARY KEY, miles REAL NOT NULL, updated_at INTEGER NOT NULL)')
-  // A calendar event is offered once: added or skipped, it is not offered again.
+  // A calendar event is offered once: added or skipped, it is not offered again. A trip typed by hand is kept here too, by its sender's key.
   db.exec(`CREATE TABLE IF NOT EXISTS work_money_events (
     workspace_id TEXT NOT NULL,
     event_id TEXT NOT NULL,
@@ -50,6 +50,9 @@ export function ensureMoneyTables(db: DatabaseSync): void {
     at INTEGER NOT NULL,
     PRIMARY KEY (workspace_id, event_id)
   )`)
+  // What an add in hand means to write (`EventMark.intent`): added after the table first shipped.
+  const columns = (db.prepare('PRAGMA table_info(work_money_events)').all() as { name: string }[]).map((c) => c.name)
+  if (!columns.includes('intent')) db.exec('ALTER TABLE work_money_events ADD COLUMN intent TEXT')
 }
 
 export interface Workspace {
@@ -115,6 +118,7 @@ export function putBooks(ctx: Db, b: { workspaceId: string; ledger: string; mile
 /** Everything Money kept for a workspace that is gone. Its files are the folder's, and go with it or stay as he left them. */
 export function dropWorkspace(ctx: Db, workspaceId: string): void {
   for (const table of ['work_money_books', 'work_money_inbox', 'work_money_events']) ctx.db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).run(workspaceId)
+  ctx.db.prepare("DELETE FROM work_money_places WHERE place LIKE ? ESCAPE '\\'").run(`${workspaceId.replace(/[\\%_]/g, '\\$&')}\n%`)
 }
 
 /** His own mileage rate for a year, in dollars a mile. */
@@ -130,31 +134,52 @@ export function setInvoice(ctx: Db, workspaceId: string, invoice: unknown): void
 
 /** A venue as the places table keys it: its words, in lower case, with single spaces. */
 export const placeKey = (place: string): string => place.trim().toLowerCase().replace(/\s+/g, ' ')
+/** A job's venue: the miles to a place are from this job's own start, and are no other job's. */
+const placeId = (workspaceId: string, place: string): string => `${workspaceId}\n${placeKey(place)}`
 
-/** The miles there and back he gave a place, or null. */
-export function milesTo(ctx: Db, place: string): number | null {
-  const row = ctx.db.prepare('SELECT miles FROM work_money_places WHERE place = ?').get(placeKey(place)) as { miles: number } | undefined
+/** The miles there and back he gave a place in this job, or null. */
+export function milesTo(ctx: Db, workspaceId: string, place: string): number | null {
+  const row = ctx.db.prepare('SELECT miles FROM work_money_places WHERE place = ?').get(placeId(workspaceId, place)) as { miles: number } | undefined
   return row ? row.miles : null
 }
-export function keepMiles(ctx: Db, place: string, miles: number, now = Date.now()): void {
+export function keepMiles(ctx: Db, workspaceId: string, place: string, miles: number, now = Date.now()): void {
   if (!placeKey(place) || !(miles > 0)) return
-  ctx.db.prepare('INSERT INTO work_money_places (place, miles, updated_at) VALUES (?, ?, ?) ON CONFLICT(place) DO UPDATE SET miles = excluded.miles, updated_at = excluded.updated_at').run(placeKey(place), miles, now)
+  ctx.db
+    .prepare('INSERT INTO work_money_places (place, miles, updated_at) VALUES (?, ?, ?) ON CONFLICT(place) DO UPDATE SET miles = excluded.miles, updated_at = excluded.updated_at')
+    .run(placeId(workspaceId, place), miles, now)
 }
 
+/** What an add in hand means to write, noted before either sheet is touched: the Ref each row will carry, and the miles of its trip. A later add of the same event looks for those rows and writes only what is not there. */
+export interface TripIntent {
+  pay: string
+  trip: string
+  miles?: number
+}
 export interface EventMark {
-  /** `adding`: its pay is in the ledger and its trip is not yet in the log (a write failed between the two): offered still, and a retry writes only what is missing */
+  /** `adding`: an add was begun and not seen to its end (a write failed, or the host stopped between the two sheets): offered still, and the next add writes only what is missing */
   state: 'added' | 'skipped' | 'adding'
   role: string | null
+  /** the fee that add wrote, or means to write */
   fee: number | null
+  intent?: TripIntent | null
 }
 export function eventMarks(ctx: Db, workspaceId: string): Map<string, EventMark> {
-  const rows = ctx.db.prepare('SELECT event_id, state, role, fee FROM work_money_events WHERE workspace_id = ?').all(workspaceId) as { event_id: string; state: EventMark['state']; role: string | null; fee: number | null }[]
-  return new Map(rows.map((r) => [r.event_id, { state: r.state, role: r.role, fee: r.fee }]))
+  const rows = ctx.db.prepare('SELECT event_id, state, role, fee, intent FROM work_money_events WHERE workspace_id = ?').all(workspaceId) as { event_id: string; state: EventMark['state']; role: string | null; fee: number | null; intent: string | null }[]
+  const intent = (text: string | null): TripIntent | null => {
+    try {
+      return text ? (JSON.parse(text) as TripIntent) : null
+    } catch {
+      return null
+    }
+  }
+  return new Map(rows.map((r) => [r.event_id, { state: r.state, role: r.role, fee: r.fee, intent: intent(r.intent) }]))
 }
 export function markEvent(ctx: Db, workspaceId: string, eventId: string, mark: EventMark, now = Date.now()): void {
   ctx.db
-    .prepare('INSERT INTO work_money_events (workspace_id, event_id, state, role, fee, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, event_id) DO UPDATE SET state = excluded.state, role = excluded.role, fee = excluded.fee, at = excluded.at')
-    .run(workspaceId, eventId, mark.state, mark.role, mark.fee, now)
+    .prepare(
+      'INSERT INTO work_money_events (workspace_id, event_id, state, role, fee, intent, at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, event_id) DO UPDATE SET state = excluded.state, role = excluded.role, fee = excluded.fee, intent = excluded.intent, at = excluded.at'
+    )
+    .run(workspaceId, eventId, mark.state, mark.role, mark.fee, mark.intent ? JSON.stringify(mark.intent) : null, now)
 }
 /** The last fee he gave an event with this role, in this job. */
 export function lastFee(ctx: Db, workspaceId: string, role: string): number | null {

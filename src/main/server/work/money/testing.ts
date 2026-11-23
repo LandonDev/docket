@@ -38,6 +38,10 @@ export interface StandIn {
   grid(path: string): Cell[][]
   /** his own edit, typed into the sheet */
   type(path: string, at: string, v: Cell): void
+  /** his press in the sheet: every waiting suggestion is written (`accept`) or let go */
+  review(path: string, verdict: 'accept' | 'reject'): void
+  /** set to make the next call it answers true for fail, once: a write that never reached the sheet */
+  failing: ((route: string, body: Record<string, unknown>) => boolean) | null
 }
 
 export function standInSheets(): StandIn {
@@ -50,12 +54,17 @@ export function standInSheets(): StandIn {
     return s
   }
   const set = (s: Sheet, at: string, v: Cell): void => void (v === null || v === undefined || v === '' ? s.cells.delete(at) : s.cells.set(at, v))
-  return {
+  const standIn: StandIn = {
     sheets,
     asked,
+    failing: null,
     async internal(route, raw) {
       const body = raw as Record<string, unknown>
       asked.push({ route, body })
+      if (standIn.failing?.(route, body)) {
+        standIn.failing = null
+        throw new Error('The Work service did not answer.')
+      }
       switch (route) {
         case '/internal/sheet/create': {
           const path = (body.at as { tcsheet: string }).tcsheet
@@ -67,7 +76,12 @@ export function standInSheets(): StandIn {
         }
         case '/internal/sheet/open': {
           const s = of(body)
-          return { title: s.title, rev: s.rev, shared: s.shared, suggestions: [] }
+          // What waits as a suggestion, a cell each, where it stands: rows and columns counted from 0, as the service answers.
+          const suggestions = s.suggested.flat().map((c) => {
+            const m = A1.exec(c.at)!
+            return { row: Number(m[2]) - 1, col: colOf(m[1]), proposed: c.f !== undefined ? { f: c.f } : c.v === null || c.v === undefined ? null : { v: c.v }, state: 'pending' }
+          })
+          return { title: s.title, rev: s.rev, shared: s.shared, suggestions }
         }
         case '/internal/sheet/cells': {
           const s = of(body)
@@ -133,8 +147,17 @@ export function standInSheets(): StandIn {
       const s = sheets.get(path)!
       set(s, at, v)
       s.rev++
+    },
+    review(path, verdict) {
+      const s = sheets.get(path)!
+      if (verdict === 'accept') {
+        for (const c of s.suggested.flat()) set(s, c.at, c.f !== undefined ? `=${c.f.replace(/^=/, '')}` : c.v)
+        s.rev++
+      }
+      s.suggested = []
     }
   }
+  return standIn
 }
 
 export const LOCAL: Caller = { kind: 'local', caps: ['read', 'operate', 'approve', 'admin'] }

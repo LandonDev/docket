@@ -4,10 +4,10 @@ import { errorText } from '@shared/work/ids'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
-import { formatMoney, inPeriod, milesLine, milesOf, sumsOf, today, type LedgerRow } from '@shared/work/money'
+import { formatMoney, inPeriod, isDay, milesLine, milesOf, moneyWords, sumsOf, today, type LedgerRow } from '@shared/work/money'
 import type { ToolCtx, WorkTool } from '../modules'
 import { leave } from './inbox'
-import { booksHere, ledgerOf, mileageRows, MoneyError } from './read'
+import { booksHere, ledgerOf, mileageLog, mileageWords, MoneyError } from './read'
 import { workspaceOf, type Workspace } from './store'
 
 /**
@@ -19,12 +19,14 @@ import { workspaceOf, type Workspace } from './store'
 
 const fail = (text: string): WorkToolResult => ({ ...workText(text), isError: true })
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+/** A day an entry is filed on: one the ledger will read back (a date that exists, 1990 to 2100). */
+const filedDay = day.refine(isDay, 'a date that exists, from 1990 to 2100')
 
 /** The most rows one read lists; the sums are always of every row asked for. */
 export const READ_ROWS_MAX = 200
 
 const lineOf = (r: LedgerRow): string =>
-  [r.date ?? 'no date', r.who || 'no name', r.category || 'no category', r.in ? `+${formatMoney(r.in)}` : formatMoney(r.out), r.status, r.what, r.receipt ? `receipt: ${r.receipt}` : ''].filter(Boolean).join(' | ')
+  [r.date ?? 'no date', r.who || 'no name', r.category || 'no category', moneyWords(r), r.status, r.what, r.receipt ? `receipt: ${r.receipt}` : ''].filter(Boolean).join(' | ')
 
 const moneyRead: WorkTool = {
   name: 'money_read',
@@ -45,8 +47,9 @@ const moneyRead: WorkTool = {
     try {
       const now = today()
       const period = { from: a.from ?? `${now.slice(0, 4)}-01-01`, to: a.to ?? new Date(Date.parse(`${now}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10) }
-      const [ledger, trips] = await Promise.all([ledgerOf(ctx, books), mileageRows(ctx, books)])
+      const [ledger, log] = await Promise.all([ledgerOf(ctx, books), mileageLog(ctx, books)])
       if (ledger.missing.length) return fail(`The ledger's columns changed: it has no ${ledger.missing.join(', ')} column. The owner restores them in the Money view.`)
+      const trips = log.trips
       const wanted = a.category?.trim().toLowerCase()
       const all = wanted ? ledger.rows.filter((r) => r.category.toLowerCase() === wanted) : ledger.rows
       const rows = all.filter((r) => inPeriod(r.date, period)).sort((x, y) => (x.date ?? '').localeCompare(y.date ?? '') || x.row - y.row)
@@ -56,7 +59,7 @@ const moneyRead: WorkTool = {
         `${ws.name}, ${period.from} up to ${period.to}${wanted ? `, ${a.category}` : ''}`,
         `In ${formatMoney(sums.in)}, out ${formatMoney(sums.out)}, net ${formatMoney(sums.net)}`,
         `Owed to the owner ${formatMoney(sums.owedToHim)}, the owner owes ${formatMoney(sums.heOwes)} (all time)`,
-        ...(miles.miles && !wanted ? [`Mileage: ${milesLine(miles)}`] : [])
+        ...(log.problem ? [`Mileage: not read. ${mileageWords(log.problem)}`] : miles.miles && !wanted ? [`Mileage: ${milesLine(miles)}`] : [])
       ]
       const shown = rows.slice(-READ_ROWS_MAX)
       const cut = rows.length > shown.length ? [`Showing the latest ${shown.length} of ${rows.length} entries: narrow the days to see the rest.`] : []
@@ -112,7 +115,7 @@ const moneyAdd: WorkTool = {
   description:
     "Leaves one entry (money in or out) in the owner's To confirm list in Money. It is not in the ledger until the owner accepts it: say so. Use money_receipt instead when all you have is a receipt's file.",
   input: z.object({
-    date: day.describe('The day, YYYY-MM-DD.'),
+    date: filedDay.describe('The day, YYYY-MM-DD.'),
     who: z.string().min(1).max(200).describe('Who was paid, or who pays.'),
     amount: z.number().positive().max(1_000_000_000).describe('Dollars, above zero: 48.17'),
     way: z.enum(['in', 'out']).describe('`out`: money the owner spent. `in`: money the owner is paid.'),

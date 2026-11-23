@@ -12,6 +12,7 @@ import {
   LEDGER_COLUMNS,
   MILEAGE_COLUMNS,
   paidStatus,
+  sheetOnly,
   today,
   type Cell,
   type Columns,
@@ -20,7 +21,7 @@ import {
   type RowAt
 } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
-import { forgetGrid, gridOf, ledgerOf, MoneyError } from './read'
+import { forgetGrid, gridOf, ledgerOf, MoneyError, nextRow, writtenAt, type Ledger } from './read'
 import { booksOf, putBooks, type Books, type Workspace } from './store'
 
 /**
@@ -188,11 +189,6 @@ export function restoreColumns(ctx: Ctx, ws: Workspace, books: Books): Promise<{
   })
 }
 
-/** Rows suggested since a sheet's revision last moved, so two suggestions never name one row. The ledger's and the mileage log's alike. */
-const suggestedAt = new Map<string, { rev: number; n: number }>()
-export const suggestedRows = (path: string, rev: number): number => (suggestedAt.get(path)?.rev === rev ? suggestedAt.get(path)!.n : 0)
-export const suggestedOne = (path: string, rev: number): void => void suggestedAt.set(path, { rev, n: suggestedRows(path, rev) + 1 })
-
 type Values = Partial<Record<LedgerColumn, Cell>>
 
 /** One cell for each column the sheet still has: a column he removed is left out, not put back. */
@@ -214,23 +210,46 @@ export function valuesOf(f: EntryFields): Values {
 }
 
 /**
- * Adds a row under the last one that holds anything. There is no append in
- * the service: under the workspace's lock the ledger is read for its first
- * empty row and the row written at once.
+ * What a write needs of the sheet beside the columns it is read by. A
+ * column he removed is left out of a write, not put back; but a status that
+ * is not Paid must have a Status cell to stand in (an unpaid invoice read
+ * with none is money in hand), and a file must have a Receipt cell to be
+ * named in.
  */
-export function appendRow(ctx: Ctx, ws: Workspace, books: Books, values: Values): Promise<{ ref: string | null; row: number; suggested: boolean }> {
+function needs(ledger: Ledger, values: Values): void {
+  if (ledger.missing.length) throw new MoneyError(COLUMNS_CHANGED)
+  if (values.Receipt && ledger.columns.Receipt === undefined) throw new MoneyError('The ledger has no Receipt column, so this row could not name its file. Add a Receipt column in the ledger, then save again.')
+  if (values.Status && values.Status !== 'Paid' && ledger.columns.Status === undefined)
+    throw new MoneyError(`The ledger has no Status column, so this row could not say it is ${String(values.Status).toLowerCase()}. Add a Status column in the ledger, then save again.`)
+}
+
+/** A row Money wrote before, by the Ref it was given, else by the file it names: in the ledger, or waiting in it as a suggestion. */
+export function writtenRow(ledger: Ledger, mark: { ref?: string | null; receipt?: string | null }): { ref: string | null; row: number; suggested: boolean } | null {
+  const byRef = mark.ref ? writtenAt(ledger.grid, 'Ref', mark.ref) : null
+  if (byRef) return { ref: mark.ref!, ...byRef }
+  const byFile = mark.receipt ? writtenAt(ledger.grid, 'Receipt', mark.receipt) : null
+  return byFile ? { ref: null, ...byFile } : null
+}
+
+/**
+ * Adds a row under the last one that holds anything and under every row
+ * that waits there as a suggestion. There is no append in the service:
+ * under the workspace's lock the ledger is read for its first free row and
+ * the row written at once. With `ref` (an add that was begun before and
+ * may have been written: a restart came between the write and its note),
+ * a row that already carries it is answered and nothing is written twice.
+ */
+export function appendRow(ctx: Ctx, ws: Workspace, books: Books, values: Values, o: { ref?: string } = {}): Promise<{ ref: string | null; row: number; suggested: boolean }> {
   return locked(ws.id, async () => {
     const ledger = await ledgerOf(ctx, books)
-    if (ledger.missing.length) throw new MoneyError(COLUMNS_CHANGED)
-    // A row that keeps a file must be able to name it: with no Receipt column the file would be kept and its row would not lead to it.
-    if (values.Receipt && ledger.columns.Receipt === undefined) throw new MoneyError('The ledger has no Receipt column, so this row could not name its file. Add a Receipt column in the ledger, then save again.')
+    needs(ledger, values)
+    const before = o.ref ? writtenRow(ledger, { ref: o.ref, receipt: typeof values.Receipt === 'string' ? values.Receipt : null }) : null
+    if (before) return before
     const shared = await othersCanOpen(ctx, books.ledger, ledger.grid.shared)
-    // On a sheet others can open the row waits as a suggestion and the sheet's last row does not move: each one waiting takes the next row down.
-    const waits = shared ? suggestedRows(books.ledger, ledger.grid.rev) : 0
-    const row = ledger.grid.last + 1 + waits
-    const ref = ledger.columns.Ref === undefined ? null : newRef()
+    // On a sheet others can open the row waits as a suggestion and the sheet's last row does not move: it goes under the ones that wait.
+    const row = nextRow(ledger.grid)
+    const ref = ledger.columns.Ref === undefined ? null : (o.ref ?? newRef())
     const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row, { ...values, ...(ref ? { Ref: ref } : {}) }), shared)
-    if (suggested) suggestedOne(books.ledger, ledger.grid.rev)
     return { ref, row, suggested }
   })
 }
@@ -262,16 +281,21 @@ function act(ctx: Ctx, ws: Workspace, books: Books, at: RowAt, values: (row: Led
     if (ledger.missing.length) throw new MoneyError(COLUMNS_CHANGED)
     const row = findRow(ledger.rows, at)
     if (!row) return { changed: true as const }
-    const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row.row, values(row)), await othersCanOpen(ctx, books.ledger, ledger.grid.shared))
+    const next = values(row)
+    needs(ledger, next)
+    const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row.row, next), await othersCanOpen(ctx, books.ledger, ledger.grid.shared))
     return { ok: true as const, ref: row.ref, row: row.row, ...(suggested ? { suggested: true as const } : {}) }
   })
 }
 
 /** A row he typed with money both in and out has no one direction: the entry form cannot say it, so it is his to edit in the sheet. */
 export const BOTH_WAYS = 'This row has money in and money out. Edit it in the ledger.'
+/** A figure below nothing is a correction he typed: the form's amount is above nothing, so it cannot say it either. */
+export const NEGATIVE = 'This row has an amount below zero. Edit it in the ledger.'
 export const editRow = (ctx: Ctx, ws: Workspace, books: Books, at: RowAt, fields: EntryFields): Promise<MoneyActed> =>
   act(ctx, ws, books, at, (row) => {
-    if (row.in && row.out) throw new MoneyError(BOTH_WAYS)
+    const why = sheetOnly(row)
+    if (why) throw new MoneyError(why === 'both' ? BOTH_WAYS : NEGATIVE)
     return changed(row, fields)
   })
 

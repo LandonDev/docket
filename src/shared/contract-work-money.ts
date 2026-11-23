@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { CanvasSourceSchema, type CanvasSource } from './work/canvas'
 import { SectorKeySchema, type SectorKey } from './work/ids'
-import { STATUSES, type CategorySum, type LedgerRow, type MilesSum, type MonthSum, type OwedRow, type Period, type ReceiptFields, type ReceiptLine, type Sums } from './work/money'
+import { isDay, STATUSES, type CategorySum, type LedgerRow, type MilesSum, type MonthSum, type OwedRow, type Period, type ReceiptFields, type ReceiptLine, type Sums } from './work/money'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -13,7 +13,10 @@ import { request, type CapsOf, type RelayOf } from './work/wire'
  * writes the ledger: the writes are the owner's, refused for a model caller.
  */
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'a day is YYYY-MM-DD')
+/** An edge of a span of days: `YYYY-MM-DD`, and nothing is written from it (a year's end is the next year's first day). */
+const span = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'a day is YYYY-MM-DD')
+/** A day that is written: one that exists, in the years the ledger reads. A day a read would drop is refused before anything is written. */
+const day = span.refine(isDay, 'That is not a day Money can file: a date that exists, from 1990 to 2100.')
 const workspaceId = z.string().min(1).max(200)
 /** Whole cents, above nothing: which way it went is said beside it. */
 const cents = z.number().int().min(1).max(100_000_000_000)
@@ -22,7 +25,7 @@ const cents = z.number().int().min(1).max(100_000_000_000)
 export const RowAtSchema = z.object({
   ref: z.string().max(40).nullable().optional(),
   row: z.number().int().min(2).max(1_000_000),
-  sig: z.string().max(600)
+  sig: z.string().max(64)
 })
 
 export const EntryFieldsSchema = z.object({
@@ -101,6 +104,8 @@ export const TripParamsSchema = z.object({
   workspaceId,
   /** the calendar event it came from: it is then marked added, and offered no more */
   eventId: z.string().min(1).max(200).optional(),
+  /** a trip typed by hand: the sender's own id for this add, so the same Add again writes nothing twice */
+  key: z.string().min(8).max(100).optional(),
   date: day,
   /** the trip's name: the event's title */
   title: z.string().trim().min(1).max(300),
@@ -148,13 +153,13 @@ export const MoneyRequestSchemas = [
   /** → MoneyBooks: where a job's ledger and mileage log are, made first when they are missing; `restore` also writes the headers the ledger lacks, at the end of its first row */
   request('work.money.open', z.object({ workspaceId, restore: z.boolean().optional() })),
   /** → MoneyRead: everything the view paints for a span of local days (`to` is not in it) */
-  request('work.money.read', z.object({ workspaceId, from: day, to: day })),
+  request('work.money.read', z.object({ workspaceId, from: span, to: span })),
   /** → MoneyActed: adds a row, or with `at` changes that one */
   request('work.money.entry', z.object({ workspaceId, at: RowAtSchema.optional(), fields: EntryFieldsSchema })),
   /** → MoneyActed: an open row is paid, or paid back, on `on` (today when absent) */
   request('work.money.paid', z.object({ workspaceId, at: RowAtSchema, on: day.optional() })),
   /** → MoneySums: each job's sums for a span of local days; with no workspace, every job on this host that has a ledger */
-  request('work.money.sums', z.object({ from: day, to: day, workspaceId: workspaceId.optional() })),
+  request('work.money.sums', z.object({ from: span, to: span, workspaceId: workspaceId.optional() })),
   /** → MoneyOwed: unpaid rows, the oldest first, and how many receipts wait for his accept */
   request('work.money.owed', z.object({ workspaceId: workspaceId.optional() })),
   /** → MoneyHits: the ledger's rows that hold the words, newest first */
@@ -181,8 +186,8 @@ export const MoneyRequestSchemas = [
   request('work.money.export', z.object({ workspaceId, year: z.number().int().min(1990).max(2100), csv: z.boolean().default(true), xlsx: z.boolean().default(true), pdf: z.boolean().default(true) })),
   /** → MoneyInvoiceNext: the next free number, his details as he last gave them, and the terms he last used */
   request('work.money.invoiceNext', z.object({ workspaceId, kind: z.enum(['invoice', 'request']).default('invoice') })),
-  /** → MoneyInvoicePage: checks an invoice, keeps his details and terms for next time, and answers its page for the window to print and hand back with `keep` */
-  request('work.money.invoice', z.object({ workspaceId, invoice: InvoiceSchema })),
+  /** → MoneyInvoicePage: checks an invoice, takes its number for this Create (`key`, the one `keep` then names), keeps his details and terms for next time, and answers its page for the window to print and hand back with `keep` */
+  request('work.money.invoice', z.object({ workspaceId, key: z.string().min(8).max(100), invoice: InvoiceSchema })),
   /** → MoneyKept: a file the window printed, kept in the job's Money folder; an invoice's also files its row (Sales, Unpaid; a request: Requested) */
   request('work.money.keep', KeepParamsSchema)
 ] as const
@@ -215,7 +220,15 @@ export interface MoneyBooks {
  * `restore` (which adds empty columns) is refused and the fix is his, in
  * the sheet: name the column back.
  */
-export type MoneyProblem = { kind: 'columns'; missing: string[]; renamed: string[] }
+export type MoneyProblem =
+  | { kind: 'columns'; missing: string[]; renamed: string[] }
+  /**
+   * The mileage log cannot be read, so the miles shown are none and are not
+   * the truth: `outside`, its file leads out of the job's folder; `columns`,
+   * it holds rows and lacks Date or Miles (`missing`). An export is refused
+   * until it is right.
+   */
+  | { kind: 'mileage'; reason: 'outside' | 'columns'; missing: string[] }
 
 export interface MoneyRead {
   /** false: this job has no ledger yet, and everything below is empty */
@@ -355,14 +368,18 @@ export interface MoneyPicture {
 export type MoneyActed = { ok: true; ref: string | null; row: number; suggested?: true } | { changed: true }
 
 export interface MoneySums {
-  rows: { workspaceId: string; sector: SectorKey | null; in: number; out: number; owedToHim: number; heOwes: number; miles: number; currency: 'USD' }[]
+  /** `problem`: that job's books could not be read whole (a needed column gone, the mileage log unreadable, the sheet not answering), so its figures here are not its money and must not be shown as if they were */
+  rows: { workspaceId: string; sector: SectorKey | null; in: number; out: number; owedToHim: number; heOwes: number; miles: number; currency: 'USD'; problem?: true }[]
 }
 export interface MoneyOwed {
   rows: { workspaceId: string; sector: SectorKey | null; row: number; who: string; what: string; amount: number; since: string | null; way: 'toHim' | 'byHim'; reimburse: boolean; both: boolean }[]
   toConfirm: number
+  /** the jobs whose ledger could not be read: what they are owed is not known, which is not nothing */
+  problems?: string[]
 }
 export interface MoneyHits {
-  hits: { row: number; date: string | null; who: string; amount: number; way: 'in' | 'out'; category: string; receipt?: string }[]
+  /** `amount` and `way` are the row's one side; a row with money both ways also says `other`, the cents out */
+  hits: { row: number; date: string | null; who: string; amount: number; way: 'in' | 'out'; other?: number; category: string; receipt?: string }[]
 }
 
 /** Something waits for his accept, or stopped waiting: to every client socket. */

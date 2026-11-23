@@ -4,6 +4,7 @@ import {
   byCategory,
   byMonth,
   categoriesFor,
+  centsFrom,
   centsOf,
   cleanSeller,
   columnLetter,
@@ -17,21 +18,26 @@ import {
   formatMoney,
   invoiceHtml,
   invoiceTotal,
+  isDay,
   joinLines,
   knownSellers,
   LEDGER_COLUMNS,
+  mileageMissing,
   mileageOf,
   milesLine,
   milesOf,
+  moneyWords,
   monthPeriod,
   nextInvoiceNumber,
   owedOf,
   paidStatus,
   parseReceipt,
   rateFor,
+  rateWords,
   receiptFileName,
   receiptName,
   rowsOf,
+  sheetOnly,
   sigOf,
   statusOf,
   sumsOf,
@@ -388,5 +394,78 @@ describe('out', () => {
     expect(request).toContain('Purchase request 12')
     expect(request).toContain('Jerseys for &lt;spring&gt;')
     expect(request).not.toContain('How to pay')
+  })
+})
+
+describe('what the fourth council round asked of the rules', () => {
+  it('rounds half a cent up through a float’s noise, the same wherever a value is worked out', () => {
+    // 1.4 miles at $0.725 is $1.015, held as 1.01499…: one dollar and two cents.
+    expect(1.4 * 0.725 * 100).toBeLessThan(101.5)
+    expect(centsFrom(1.4 * 0.725)).toBe(102)
+    expect(centsOf(1.4 * 0.725)).toBe(102)
+    expect(centsOf('1.015')).toBe(102)
+    expect(mileageOf(['Date', 'Miles', 'Rate', 'Value'], [['2026-03-01', 1.4, 0.725, '']])[0].value).toBe(102)
+    expect(centsFrom(10.43)).toBe(1043)
+    expect(centsFrom(0.005)).toBe(1)
+  })
+
+  it('keeps the sign of a figure below nothing: a correction takes away from its column, as it does in the sheet', () => {
+    const rows = read(line('2026-03-01', 'Shop', '', 100), line('2026-03-02', 'Shop refund', '', -20), line('2026-03-03', 'Client', 500, ''), ['2026-03-04', 'Client credit', '', '', '(50.00)', '', '', '', '', ''])
+    expect(rows.map((r) => [r.in, r.out])).toEqual([
+      [0, 10000],
+      [0, -2000],
+      [50000, 0],
+      [-5000, 0]
+    ])
+    expect(sumsOf(rows, yearPeriod(2026))).toMatchObject({ in: 45000, out: 8000, net: 37000 })
+    expect(csvOf(rows, [], 2026)).toContain('2026-03-02,Shop refund,,,,-20.00,Paid')
+    // The form cannot say it, so it is his in the sheet; its words say its column, so the sign is not read as its way.
+    expect(rows.map((r) => sheetOnly(r))).toEqual([null, 'negative', null, 'negative'])
+    expect(sheetOnly({ in: 3000, out: 2000 })).toBe('both')
+    expect(rows.map((r) => moneyWords(r))).toEqual(['$100.00', '-$20.00 out', '+$500.00', '-$50.00 in'])
+    expect(moneyWords({ in: 3000, out: 2000 })).toBe('+$30.00 and $20.00')
+    expect(taxSummaryHtml(rows, [], { year: 2026, job: 'Unify' })).toContain('-$20.00 out')
+  })
+
+  it('tells two rows apart whose cells run together, and is one length however long his words are', () => {
+    const base = read(line('2026-03-01', 'A|B', '', 10, '', { for: 'C' }))[0]
+    const other = read(line('2026-03-01', 'A', '', 10, '', { for: 'B|C' }))[0]
+    expect(sigOf(base)).not.toBe(sigOf(other))
+    const long = read(line('2026-03-01', 'W'.repeat(200), '', 10, '', { for: 'F'.repeat(500), receipt: 'R'.repeat(400) }))[0]
+    expect(sigOf(long)).toHaveLength(32)
+    expect(sigOf(base)).toHaveLength(32)
+    expect(sigOf(base)).toBe(sigOf({ ...base }))
+  })
+
+  it('reads no row while a Status column stands under another name: unpaid rows would read as money in hand', () => {
+    const header: Cell[] = ['Date', 'Who', 'For', 'Category', 'In', 'Out', 'State', 'Paid on', 'Receipt', 'Ref']
+    const got = rowsOf(header, [line('2026-03-01', 'Client', 75, '', 'Unpaid')])
+    expect(got).toMatchObject({ rows: [], missing: ['Status'], renamed: ['State'] })
+    // A ledger that never had a Status column, with a column of his own beside it, reads: every row is Paid.
+    const plain = rowsOf(['Date', 'Who', 'In', 'Out', 'Notes'], [['2026-03-01', 'Client', 75, '', 'sent a card']])
+    expect(plain.missing).toEqual([])
+    expect(plain.rows).toMatchObject([{ in: 7500, status: 'Paid' }])
+  })
+
+  it('names figures that stand under no header, wherever they are', () => {
+    const header: Cell[] = ['Date', 'Who', 'For', 'Category', 'In', '', 'Status', 'Paid on', 'Receipt', 'Ref', '']
+    const got = rowsOf(header, [['2026-03-01', 'Shop', '', '', '', '', '', '', '', '', 12]])
+    expect(got).toMatchObject({ rows: [], missing: ['Out'], renamed: ['column K'] })
+  })
+
+  it('says a mileage log with rows and no Date or Miles cannot be read, and one with only its header can', () => {
+    expect(mileageMissing(['Date', 'Trip', 'Place', 'Distance'], [['2026-03-01', 'Game', 'Gym', 24]])).toEqual(['Miles'])
+    expect(mileageMissing(['Date', 'Trip', 'Place', 'Distance'], [])).toEqual([])
+    expect(mileageMissing(['Date', 'Miles'], [['2026-03-01', 24]])).toEqual([])
+  })
+
+  it('prints a rate as it was given, never short of what the value was worked out with', () => {
+    expect([0.7, 0.725, 0.7249, 1].map(rateWords)).toEqual(['0.70', '0.725', '0.7249', '1.00'])
+    expect(milesLine({ miles: 1000, value: 72490, rate: 0.7249 })).toBe('1,000 mi · $724.90 at $0.7249')
+  })
+
+  it('takes for writing only a day a read would give back', () => {
+    expect(['2026-02-28', '2024-02-29', '1990-01-01', '2100-12-31'].every(isDay)).toBe(true)
+    expect(['2026-02-30', '1989-12-31', '2101-01-01', '2026-13-01', '2026-1-5', 'tomorrow'].some(isDay)).toBe(false)
   })
 })

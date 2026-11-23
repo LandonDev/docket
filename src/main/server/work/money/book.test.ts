@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { MoneyActed, MoneyRead } from '@shared/contract-work-money'
+import type { MoneyActed, MoneyHits, MoneyOwed, MoneyRead, MoneySums } from '@shared/contract-work-money'
 import { requiredCapability } from '@shared/capabilities'
 import { MONEY_CAPS, MoneyRequestSchemas } from '@shared/contract-work-money'
 import { LEDGER_COLUMNS, sigOf, type LedgerRow } from '@shared/work/money'
@@ -453,5 +453,111 @@ describe('a receipt as a file', () => {
     expect(receiptSource(got.root, 'Receipts/2026/a b.png').path).toBe(join(b.ref, 'Money', 'Receipts', '2026', 'a b.png'))
     expect(receiptSource(got.root, '../../etc/passwd').path).toBe(join(b.ref, 'Money', 'etc', 'passwd'))
     expect(receiptSource({ at: 'file', host: 'pc', path: 'C:\\Jobs\\Ref\\Money' }, 'Receipts/2026/a.png').path).toBe('C:\\Jobs\\Ref\\Money\\Receipts\\2026\\a.png')
+  })
+})
+
+describe('what the fourth council round asked of the ledger', () => {
+  const type = (cells: Record<string, string | number>): void => {
+    for (const [at, v] of Object.entries(cells)) b.sheets.type(ledger(), at, v)
+  }
+
+  it('puts a suggested row under every row that waits, after one was accepted and the revision moved', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const sheet = b.sheets.sheets.get(ledger())!
+    sheet.shared = true
+    expect(await entry({ who: 'A' })).toMatchObject({ row: 2, suggested: true })
+    expect(await entry({ who: 'B' })).toMatchObject({ row: 3, suggested: true })
+    // He accepts A alone in the sheet: the revision moves, and B still waits at row 3.
+    const [a, rest] = [sheet.suggested[0], sheet.suggested.slice(1)]
+    for (const c of a) sheet.cells.set(c.at, c.v as string)
+    sheet.suggested = rest
+    sheet.rev++
+    // C goes under B, never onto it.
+    expect(await entry({ who: 'C' })).toMatchObject({ row: 4, suggested: true })
+    b.sheets.review(ledger(), 'accept')
+    expect((await read()).rows.map((r) => r.who).sort()).toEqual(['A', 'B', 'C'])
+  })
+
+  it('refuses a row that is not Paid when the ledger has no Status column to say so, and reads no row while Status stands under another name', async () => {
+    await entry({})
+    // He removed the Status column, its words with it: every row reads as Paid, which is what such a ledger means.
+    type({ G1: '', G2: '' })
+    await expect(entry({ way: 'in', who: 'Client', amount: 7500, status: 'Unpaid' })).rejects.toThrow('The ledger has no Status column, so this row could not say it is unpaid.')
+    expect(b.sheets.grid(ledger())).toHaveLength(2)
+    // A Paid row needs no such column.
+    expect(await entry({ who: 'Paid one' })).toMatchObject({ ok: true, row: 3 })
+    // Renamed with his words under it: the read stops and names it, and nothing restores an empty Status beside it.
+    type({ G1: 'State', G2: 'Unpaid' })
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Status'], renamed: ['State'] }])
+    await expect(call('work.money.open', { workspaceId: 'ws-ref', restore: true })).rejects.toThrow('State may be it')
+  })
+
+  it('sees figures that stand past the last header, and appends under a row that holds only a formula', async () => {
+    await entry({})
+    // Out moved to K with its header cleared: the figures are still there, under no header.
+    type({ F1: '', F2: '', K2: 10.43 })
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: ['column K'] }])
+    await expect(call('work.money.open', { workspaceId: 'ws-ref', restore: true })).rejects.toThrow('column K may be it')
+    type({ F1: 'Out', F2: 10.43, K2: '' })
+    // A row of his that holds only a formula with no result yet reads as blank, and is a row all the same.
+    b.sheets.sheets.get(ledger())!.cells.set('E3', '=E2')
+    b.sheets.sheets.get(ledger())!.rev++
+    const sheet = b.sheets.sheets.get(ledger())!
+    const range = b.sheets.internal
+    // The range read gives a formula's result, here none: stand in for it by hiding the cell from the range alone.
+    b.sheets.internal = async (route, body) => {
+      const got = (await range(route, body)) as { cells?: { at: string; v?: unknown }[][] }
+      if (route === '/internal/sheet/range') for (const line of got.cells ?? []) for (const c of line) if (typeof c.v === 'string' && c.v.startsWith('=')) delete c.v
+      return got
+    }
+    ;(b.ctx.service as { internal: unknown }).internal = b.sheets.internal
+    expect(await entry({ who: 'Under the formula' })).toMatchObject({ row: 4 })
+    expect(sheet.cells.get('E3')).toBe('=E2')
+  })
+
+  it('counts a figure below nothing as the sheet does, and leaves such a row to the sheet', async () => {
+    await entry({ amount: 10000, who: 'Shop' })
+    type({ A3: '2026-11-22', B3: 'Shop refund', F3: -20 })
+    const got = await read()
+    expect(got.sums).toMatchObject({ out: 8000, net: -8000 })
+    const refund = got.rows.find((r) => r.who === 'Shop refund')!
+    expect(refund.out).toBe(-2000)
+    await expect(entry({ who: 'Shop refund', amount: 2000 }, atOf(refund))).rejects.toThrow('amount below zero')
+  })
+
+  it('answers a caller only for its own jobs, opens no other job’s sheet, and says which job’s books it could not read', async () => {
+    await entry({ amount: 5000 })
+    await entry({ amount: 700, way: 'in', status: 'Unpaid' }, undefined, 'ws-purdue')
+    const purdue = join(b.purdue, 'Money', 'Ledger.tcsheet')
+    b.sheets.asked.length = 0
+    const mine = await call<MoneySums>('work.money.sums', { from: '2026-01-01', to: '2027-01-01' }, REMOTE)
+    expect(mine.rows.map((r) => r.workspaceId)).toEqual(['ws-ref'])
+    expect(b.sheets.asked.some((a) => JSON.stringify(a.body).includes(purdue))).toBe(false)
+    // A job whose ledger lost a needed header is answered as a problem, never as a job with no money; the other job still answers.
+    b.sheets.type(ledger(), 'F1', 'Spent')
+    const all = await call<MoneySums>('work.money.sums', { from: '2026-01-01', to: '2027-01-01' })
+    expect(all.rows).toMatchObject([
+      { workspaceId: 'ws-ref', out: 0, problem: true },
+      { workspaceId: 'ws-purdue', owedToHim: 700 }
+    ])
+    expect(all.rows[1].problem).toBeUndefined()
+    const owed = await call<MoneyOwed>('work.money.owed', {})
+    expect(owed.problems).toEqual(['ws-ref'])
+    expect(owed.rows.map((r) => r.workspaceId)).toEqual(['ws-purdue'])
+  })
+
+  it('finds a row with money both ways by either figure, and says both', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    type({ A2: '2026-11-20', B2: 'Mixed', E2: 30, F2: 20 })
+    const hits = await call<MoneyHits>('work.money.search', { workspaceId: 'ws-ref', query: '$20.00' })
+    expect(hits.hits).toMatchObject([{ who: 'Mixed', amount: 3000, way: 'in', other: 2000 }])
+    const run = moneyTools[0].run({}, { ...b.ctx, sessionId: 't-ref', scope: b.ctx.scopeOf('t-ref')!, signal: new AbortController().signal } as never)
+    expect(((await run).content[0] as { text: string }).text).toContain('| +$30.00 and $20.00 |')
+  })
+
+  it('refuses a day that does not exist in words, before anything is written', async () => {
+    await expect(entry({ date: '2026-02-30' })).rejects.toThrow('That is not a day Money can file: a date that exists, from 1990 to 2100.')
+    await expect(entry({ date: '1989-12-31' })).rejects.toThrow('That is not a day Money can file')
+    expect(existsSync(join(b.ref, 'Money'))).toBe(false)
   })
 })

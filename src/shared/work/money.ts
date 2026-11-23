@@ -66,14 +66,26 @@ export const columnLetter = (i: number): string => {
   return s
 }
 
-/** Whole cents from a cell: a number of dollars, or text like "$1,204.50" or "(12.00)". Zero for anything else. */
+/**
+ * Whole cents from dollars, half a cent going up. The noise a float carries
+ * is put aside first: 1.4 miles at $0.725 is held as 1.01499…, and is one
+ * dollar and two cents wherever Money says it.
+ */
+export const centsFrom = (dollars: number): number => Math.round(Number((dollars * 100).toPrecision(14)))
+
+/**
+ * Whole cents from a cell: a number of dollars, or text like "$1,204.50" or
+ * "(12.00)". Zero for anything else. A figure below nothing keeps its sign:
+ * a correction he typed takes away from its column's sum, as it does in the
+ * sheet.
+ */
 export function centsOf(cell: Cell): number {
-  if (typeof cell === 'number') return Number.isFinite(cell) ? Math.round(cell * 100) : 0
+  if (typeof cell === 'number') return Number.isFinite(cell) ? centsFrom(cell) : 0
   if (typeof cell !== 'string') return 0
   const text = cell.trim()
   const m = /^\(?-?\s*\$?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*\)?$/.exec(text)
   if (!m) return 0
-  const n = Math.round(Number(m[1].replace(/,/g, '') + (m[2] ?? '')) * 100)
+  const n = centsFrom(Number(m[1].replace(/,/g, '') + (m[2] ?? '')))
   return /^\(|^-/.test(text) ? -n : n
 }
 
@@ -133,6 +145,9 @@ export function dayOf(cell: Cell): string | null {
   return datesIn(cell.trim())[0] ?? null
 }
 
+/** A day Money writes: `YYYY-MM-DD`, a date that exists, in the years the ledger reads. One a read would drop is never written. */
+export const isDay = (text: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(text) && dayOf(text) === text
+
 /** Today as a local ISO day. */
 export function today(now: Date = new Date()): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
@@ -191,13 +206,18 @@ export function columnsOf<C extends string>(header: readonly Cell[], names: read
 export interface LedgerRead {
   rows: LedgerRow[]
   columns: Columns<LedgerColumn>
-  /** the needed headers the sheet lacks: with any, no row is read */
+  /**
+   * The headers the sheet lacks and cannot be read as money without: a
+   * needed one (Date, In, Out), or Status while a column Money does not
+   * know holds a status's words. With any, no row is read.
+   */
   missing: LedgerColumn[]
   /**
-   * With a needed header missing: the headers Money does not know that
-   * have cells under them. One of them is likely the missing column under
-   * another name (he renamed Out to Spent), so adding an empty column
-   * would read his figures as nothing: the fix is his, in the sheet.
+   * With a header missing: the columns Money does not know that have cells
+   * under them (for Status alone: the ones that hold a status's words).
+   * One of them is likely the missing column under another name (he
+   * renamed Out to Spent), so adding an empty column would read his
+   * figures as nothing: the fix is his, in the sheet.
    */
   renamed: string[]
 }
@@ -211,26 +231,33 @@ const textOf = (cell: Cell): string => (cell === null || cell === undefined ? ''
  */
 export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])[], firstRow = 2): LedgerRead {
   const columns = columnsOf(header, LEDGER_COLUMNS)
-  const missing = LEDGER_NEEDED.filter((c) => columns[c] === undefined)
-  if (missing.length) {
-    const known = new Set(LEDGER_COLUMNS.map((c) => c.toLowerCase()))
-    const width = Math.max(header.length, ...body.map((line) => line.length))
-    const renamed: string[] = []
+  const known = new Set(LEDGER_COLUMNS.map((c) => c.toLowerCase()))
+  const width = Math.max(header.length, ...body.map((line) => line.length))
+  /** The columns Money does not know (a header of his, or none) that hold a cell the test takes. */
+  const unknownWith = (test: (cell: Cell) => boolean): string[] => {
+    const names: string[] = []
     for (let i = 0; i < width; i++) {
       const name = String(header[i] ?? '').trim()
-      if (known.has(name.toLowerCase())) continue
-      // A column with cells under a header Money does not know, or under none: his figures may be there.
-      if (body.some((line) => line[i] !== undefined && line[i] !== null && line[i] !== '')) renamed.push(name || `column ${columnLetter(i)}`)
+      if (!known.has(name.toLowerCase()) && body.some((line) => test(line[i]))) names.push(name || `column ${columnLetter(i)}`)
     }
-    return { rows: [], columns, missing, renamed }
+    return names
+  }
+  const needed = LEDGER_NEEDED.filter((c) => columns[c] === undefined)
+  // With no Status column every row reads as Paid. That is so for a ledger that never had one; one whose Status
+  // column stands under another name still holds "Unpaid" and "Requested", and would be read as money in hand.
+  const statuses = columns.Status === undefined ? unknownWith((c) => typeof c === 'string' && STATUSES.some((s) => s.toLowerCase() === c.trim().toLowerCase())) : []
+  if (needed.length || statuses.length) {
+    // A column with cells under a header Money does not know, or under none: his figures may be there.
+    const renamed = needed.length ? unknownWith((c) => c !== undefined && c !== null && c !== '') : statuses
+    return { rows: [], columns, missing: [...needed, ...(statuses.length ? (['Status'] as const) : [])], renamed }
   }
   const at = (line: readonly Cell[], c: LedgerColumn): Cell => (columns[c] === undefined ? undefined : line[columns[c]!])
   const rows: LedgerRow[] = []
   body.forEach((line, i) => {
     const date = dayOf(at(line, 'Date'))
     const who = textOf(at(line, 'Who'))
-    const cin = Math.abs(centsOf(at(line, 'In')))
-    const cout = Math.abs(centsOf(at(line, 'Out')))
+    const cin = centsOf(at(line, 'In'))
+    const cout = centsOf(at(line, 'Out'))
     if (!date && !who && !cin && !cout) return
     rows.push({
       row: firstRow + i,
@@ -249,8 +276,49 @@ export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])
   return { rows, columns, missing: [], renamed: [] }
 }
 
-/** What a row was when the window last saw it: every cell Money reads of it. A row that no longer reads so has changed, whichever cell he changed. */
-export const sigOf = (row: Omit<LedgerRow, 'row' | 'ref'>): string => [row.date ?? '', row.who, row.what, row.category, row.in, row.out, row.status, row.paidOn ?? '', row.receipt].join('|')
+/** A short print of a text (cyrb128, 32 hex letters): the same on the host and in the window, and not for secrets. */
+function printOf(text: string): string {
+  let [h1, h2, h3, h4] = [1779033703, 3144134277, 1013904242, 2773480762]
+  for (let i = 0; i < text.length; i++) {
+    const k = text.charCodeAt(i)
+    h1 = h2 ^ Math.imul(h1 ^ k, 597399067)
+    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233)
+    h3 = h4 ^ Math.imul(h3 ^ k, 951274213)
+    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179)
+  }
+  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067)
+  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233)
+  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213)
+  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179)
+  h1 ^= h2 ^ h3 ^ h4
+  return [h1, h2 ^ h1, h3 ^ h1, h4 ^ h1].map((h) => (h >>> 0).toString(16).padStart(8, '0')).join('')
+}
+
+/**
+ * What a row was when the window last saw it: every cell Money reads of it,
+ * each kept apart from the next (so "A|B" and "C" never read as "A" and
+ * "B|C"), as a print of one length however long his words are. A row that
+ * no longer reads so has changed, whichever cell he changed.
+ */
+export const sigOf = (row: Omit<LedgerRow, 'row' | 'ref'>): string => printOf(JSON.stringify([row.date ?? '', row.who, row.what, row.category, row.in, row.out, row.status, row.paidOn ?? '', row.receipt]))
+
+/**
+ * Why the entry form cannot say a row: it has money both in and out, or a
+ * figure below nothing (a correction he typed). Such a row is his to change
+ * in the sheet; null for every other row.
+ */
+export const sheetOnly = (row: Pick<LedgerRow, 'in' | 'out'>): 'both' | 'negative' | null => (row.in && row.out ? 'both' : row.in < 0 || row.out < 0 ? 'negative' : null)
+
+/**
+ * A row's money in words: "+$30.00" in, "$20.00" out, "+$30.00 and $20.00"
+ * for a row with both. A figure below nothing says its column ("-$20.00
+ * out"), so its sign is not read as its way. The one form, wherever a row's
+ * money is said.
+ */
+export function moneyWords(row: Pick<LedgerRow, 'in' | 'out'>): string {
+  const one = (cents: number, way: 'in' | 'out'): string => (cents < 0 ? `${formatMoney(cents)} ${way}` : way === 'in' ? `+${formatMoney(cents)}` : formatMoney(cents))
+  return [row.in ? one(row.in, 'in') : '', row.out ? one(row.out, 'out') : ''].filter(Boolean).join(' and ') || formatMoney(0)
+}
 
 /** How the window names a row to act on: by `ref` when Money wrote it, else by number and what it read. */
 export interface RowAt {
@@ -408,7 +476,7 @@ export function owedOf(rows: readonly LedgerRow[]): OwedRow[] {
   const out: OwedRow[] = []
   for (const row of rows) {
     const c = countOf(row)
-    const base = { row: row.row, ref: row.ref, sig: sigOf(row), who: row.who, what: row.what, since: row.date, both: row.in > 0 && row.out > 0 }
+    const base = { row: row.row, ref: row.ref, sig: sigOf(row), who: row.who, what: row.what, since: row.date, both: row.in !== 0 && row.out !== 0 }
     // To be paid back by its status alone: a row he typed with money both ways is no reimbursement.
     if (c.owedToHim) out.push({ ...base, amount: c.owedToHim, way: 'toHim', reimburse: row.status === 'To reimburse' })
     if (c.heOwes) out.push({ ...base, amount: c.heOwes, way: 'byHim', reimburse: false })
@@ -451,6 +519,13 @@ export interface MileageRow {
   value: number
 }
 
+/** The headers the mileage log needs and lacks while it holds anything under its first row: its trips cannot then be read, and are not nothing. */
+export function mileageMissing(header: readonly Cell[], body: readonly (readonly Cell[])[]): MileageColumn[] {
+  const columns = columnsOf(header, MILEAGE_COLUMNS)
+  const missing = (['Date', 'Miles'] as const).filter((c) => columns[c] === undefined)
+  return missing.length && body.some((line) => line.some((c) => c !== undefined && c !== null && c !== '')) ? [...missing] : []
+}
+
 export function mileageOf(header: readonly Cell[], body: readonly (readonly Cell[])[], firstRow = 2): MileageRow[] {
   const columns = columnsOf(header, MILEAGE_COLUMNS)
   if (columns.Miles === undefined) return []
@@ -471,7 +546,7 @@ export function mileageOf(header: readonly Cell[], body: readonly (readonly Cell
       miles,
       rate,
       // No value yet, or a formula the sheet has not worked out: the miles at their rate.
-      value: value === undefined || value === null || value === '' || (typeof value === 'string' && value.startsWith('=')) ? Math.round(miles * rate * 100) : centsOf(value)
+      value: value === undefined || value === null || value === '' || (typeof value === 'string' && value.startsWith('=')) ? centsFrom(miles * rate) : centsOf(value)
     })
   })
   return rows
@@ -498,7 +573,13 @@ export function milesOf(rows: readonly MileageRow[], period: Period): MilesSum {
 /** "412 mi · $288.40 at $0.70": the view's one line. */
 export function milesLine(sum: MilesSum): string {
   const miles = `${sum.miles.toLocaleString('en-US')} mi · ${formatMoney(sum.value)}`
-  return sum.rate === null ? miles : `${miles} at $${sum.rate.toFixed(sum.rate * 100 === Math.round(sum.rate * 100) ? 2 : 3)}`
+  return sum.rate === null ? miles : `${miles} at $${rateWords(sum.rate)}`
+}
+
+/** A rate a mile as it was given: "0.70", "0.725", "0.7249". Never rounded short of what the value was worked out with. */
+export function rateWords(rate: number): string {
+  const [whole, part = ''] = rate.toFixed(6).replace(/0+$/, '').split('.')
+  return `${whole}.${part.padEnd(2, '0')}`
 }
 
 // ── reading a receipt ────────────────────────────────────────────────
@@ -760,7 +841,7 @@ export function taxSummaryHtml(rows: readonly LedgerRow[], mileage: readonly Mil
   const rowLines = inside
     .map((r) => {
       // A row with money both ways prints both, as the totals and the CSV count both.
-      const amount = r.in && r.out ? `+${formatMoney(r.in)} and ${formatMoney(r.out)}` : r.in ? `+${formatMoney(r.in)}` : formatMoney(r.out)
+      const amount = moneyWords(r)
       const receipt = r.receipt ? esc(r.receipt.split('/').pop() ?? r.receipt) : ''
       return `<tr><td>${esc(r.date ?? '')}</td><td>${esc(r.who)}</td><td>${esc(r.category)}</td><td>${esc(r.status)}</td><td class="n">${amount}</td><td>${receipt}</td></tr>`
     })

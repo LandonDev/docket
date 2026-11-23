@@ -8,7 +8,8 @@ import { sinceWords } from "./model";
 /**
  * Money on Today (docs/agents/work-money.md "For others"): what is owed,
  * each open row of every job's ledger, the longest open first. It is drawn
- * only while something is owed. A row opens its job's Money view. What
+ * only while something is owed, or while a job's ledger cannot be read (what
+ * it is owed is then not known). A row opens its job's Money view. What
  * waits for his accept is not counted here: Today shows rows, and a receipt
  * to confirm is the digest's to tell.
  */
@@ -17,8 +18,19 @@ import { sinceWords } from "./model";
 const at = (day: string | null): number | undefined => (day ? Date.parse(`${day}T12:00:00`) : undefined);
 
 export function owedRows(answers: ReturnType<typeof useEachWorkspace<MoneyOwed>>["answers"], now: string = today()): TodayRow[] {
-  return answers.flatMap(({ workspace, value }) =>
-    value.rows.map((row): TodayRow => {
+  return answers.flatMap(({ workspace, value }) => [
+    // A ledger that cannot be read owes an unknown sum, which is not nothing: the job says so, and opens where it is put right.
+    ...(value.problems ?? []).map(
+      (): TodayRow => ({
+        key: `money:${workspace.environmentId}:${workspace.workspaceId}:problem`,
+        section: "money",
+        sector: workspace.sector,
+        title: workspace.name,
+        detail: "The ledger's columns changed, so what is owed is not known",
+        open: () => goTo(workspace, { view: "money" }),
+      }),
+    ),
+    ...value.rows.map((row): TodayRow => {
       const since = at(row.since);
       const waited = sinceWords(row.since, now);
       return {
@@ -33,7 +45,7 @@ export function owedRows(answers: ReturnType<typeof useEachWorkspace<MoneyOwed>>
         open: () => goTo(workspace, { view: "money" }),
       };
     }),
-  );
+  ]);
 }
 
 function useOwed(env: TodayEnv): TodayAnswer {

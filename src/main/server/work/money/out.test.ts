@@ -52,7 +52,9 @@ describe('export for tax time', () => {
     expect(csv).not.toContain('Last year')
     expect(csv).toContain('Date,Trip,Place,Miles,Rate,Value,Ref\r\n2026-06-01,Client visit,Rivera Dental,30,0.7,21.00')
     // The Excel file came from the conversion runner, asked for csv to xlsx.
-    expect(b.converted.map((j) => [j.from, j.to, j.input])).toEqual([['csv', 'xlsx', join(tax(), 'Ledger 2026.csv')]])
+    expect(b.converted.map((j) => [j.from, j.to])).toEqual([['csv', 'xlsx']])
+    // From this read's own copy, in the host's data folder: never from the file in the year's folder, which another hand could change first.
+    expect(b.converted[0].input.startsWith(join(b.root, 'data', 'work-money', 'export'))).toBe(true)
     expect(existsSync(join(tax(), 'Ledger 2026.xlsx'))).toBe(true)
     expect(got.summary?.name).toBe('Summary 2026.pdf')
     // The reimbursed clinic is listed and left out of the costs; the mileage is there.
@@ -114,6 +116,29 @@ describe('export for tax time', () => {
     await expect(keep({ key: 'no-year-key', what: 'summary' })).rejects.toThrow('names its year')
   })
 
+  it('makes two exports of one year one after the other, each whole from its own read', async () => {
+    await add({})
+    const [x, y] = await Promise.all([call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, pdf: false }), call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, pdf: false })])
+    expect([x.files, y.files]).toEqual([
+      ['Ledger 2026.csv', 'Ledger 2026.xlsx'],
+      ['Ledger 2026.csv', 'Ledger 2026.xlsx']
+    ])
+    // The second began only when the first had written everything: it is the one that found files to replace.
+    expect([x.replaced, y.replaced]).toEqual([false, true])
+    expect(new Set(b.converted.map((j) => j.input)).size).toBe(2)
+  })
+
+  it('exports no year whose trips it cannot read: a log with rows and no Miles column is not a year with no miles', async () => {
+    await add({})
+    await call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-06-01', title: 'Client visit', place: 'Rivera Dental', miles: 30 })
+    b.sheets.type(join(b.ref, 'Money', 'Mileage.tcsheet'), 'D1', 'Distance')
+    const now = await view()
+    expect(now.problems).toEqual([{ kind: 'mileage', reason: 'columns', missing: ['Miles'] }])
+    expect(now.miles.miles).toBe(0)
+    await expect(call('work.money.export', { workspaceId: 'ws-ref', year: 2026 })).rejects.toThrow('The mileage log has no Miles column, so its trips cannot be read. Put it right, then export.')
+    expect(existsSync(tax())).toBe(false)
+  })
+
   it('refuses a job with no ledger', async () => {
     await expect(call('work.money.export', { workspaceId: 'ws-ref', year: 2026 })).rejects.toThrow('Ref has no ledger to export yet.')
   })
@@ -122,7 +147,7 @@ describe('export for tax time', () => {
 describe('an invoice', () => {
   it('starts at 1001, then one past the highest used; his details are asked once and come back with his terms', async () => {
     expect(await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref' })).toEqual({ number: '1001', from: null, dueDays: 14 })
-    const page = await call<MoneyInvoicePage>('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ due: '2026-12-23' }) })
+    const page = await call<MoneyInvoicePage>('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-1', invoice: invoice({ due: '2026-12-23' }) })
     expect(page.name).toBe('Invoice 1042 Rivera Dental.pdf')
     expect(page.html).toContain('Invoice 1042')
     expect(page.html).toContain('$320.00')
@@ -134,12 +159,58 @@ describe('an invoice', () => {
   })
 
   it('keeps each kind’s details and terms by itself: a purchase request never overwrites how he is paid or when an invoice is due', async () => {
-    await call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ due: '2026-12-23' }) })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-1', invoice: invoice({ due: '2026-12-23' }) })
     // First request: who he is carries over, how to pay does not apply.
     expect(await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref', kind: 'request' })).toEqual({ number: '1001', from: { name: 'Unify Platforms', address: '1 Main St', pay: '' }, dueDays: 14 })
-    await call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ kind: 'request', number: '7', due: '2026-11-26', from: { name: 'Esports', address: 'Rec Center', pay: '' } }) })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-2', invoice: invoice({ kind: 'request', number: '7', due: '2026-11-26', from: { name: 'Esports', address: 'Rec Center', pay: '' } }) })
     expect(await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref' })).toEqual({ number: '1043', from: { name: 'Unify Platforms', address: '1 Main St', pay: 'Check or ACH' }, dueDays: 30 })
     expect(await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref', kind: 'request' })).toEqual({ number: '8', from: { name: 'Esports', address: 'Rec Center', pay: '' }, dueDays: 3 })
+  })
+
+  it('gives one number to one Create: a second form that holds the same number is told the next free one', async () => {
+    const first = await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref' })
+    const second = await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref' })
+    expect([first.number, second.number]).toEqual(['1001', '1001'])
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-a', invoice: invoice({ number: '1001' }) })
+    // The other form's Create: the number is held by the first, though no row carries it yet.
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-b', invoice: invoice({ number: '1001' }) })).rejects.toThrow('Invoice 1001 is taken. The next free number is 1002.')
+    // A form opened now is offered the next one, and the first Create pressed again keeps its own.
+    expect((await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref' })).number).toBe('1002')
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-a', invoice: invoice({ number: '1001' }) })
+    await keep({ key: 'create-key-a', what: 'invoice', invoice: invoice({ number: '1001' }) })
+    // Filed: the number is the ledger's, and still no other Create's; the same Create again (its answer was lost) is let through.
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-b', invoice: invoice({ number: '1001' }) })).rejects.toThrow('is taken')
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-a', invoice: invoice({ number: '1001' }) })
+    // A page whose number another Create took meanwhile is not filed.
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-c', invoice: invoice({ number: '1005' }) })
+    await expect(keep({ key: 'create-key-d', what: 'invoice', invoice: invoice({ number: '1005' }) })).rejects.toThrow('Invoice 1005 is taken')
+    expect((await view()).rows).toHaveLength(1)
+  })
+
+  it('never brings the count back down: a lower number typed by hand leaves the highest standing', async () => {
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-a', invoice: invoice({ number: '1042' }) })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-b', invoice: invoice({ number: '12' }) })
+    expect((await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref' })).number).toBe('1043')
+  })
+
+  it('holds a page’s key to its job, and files a keep that was begun and never noted only once', async () => {
+    const got = await keep({ what: 'invoice', invoice: invoice() })
+    // The same key under another job neither answers this job's file nor files anything there.
+    await expect(call('work.money.keep', { workspaceId: 'ws-purdue', key: 'keep-key-01', what: 'invoice', invoice: invoice(), part: 0, parts: 1, dataBase64: PDF.toString('base64') })).rejects.toThrow('kept for another job')
+    expect(existsSync(join(b.purdue, 'Money'))).toBe(false)
+    // The host stopped after the ledger's write and before its note: the row is there under its Ref, the note still says "begun".
+    const ref = (got.acted as { ref: string }).ref
+    b.db.prepare("UPDATE work_money_inbox SET state = 'partial', ref = ? WHERE key = 'kept:keep-key-01'").run(JSON.stringify({ intent: { ref, receipt: got.receipt } }))
+    expect(await keep({ what: 'invoice', invoice: invoice() })).toEqual(got)
+    expect((await view()).rows).toHaveLength(1)
+    expect(readdirSync(join(b.ref, 'Money', 'Invoices'))).toEqual(['Invoice 1042 Rivera Dental.pdf'])
+    // Begun, the file kept, and the row never written: that file is no row's and goes, and the keep starts afresh.
+    b.db.prepare("INSERT INTO work_money_inbox (id, key, workspace_id, state, source, ref, created_at, updated_at) VALUES ('k2', 'kept:keep-key-09', 'ws-ref', 'partial', 'kept', ?, 1, 1)").run(JSON.stringify({ intent: { ref: 'mnone1', receipt: 'Invoices/Invoice 7 Stray.pdf' } }))
+    writeFileSync(join(b.ref, 'Money', 'Invoices', 'Invoice 7 Stray.pdf'), 'left behind')
+    const fresh = await keep({ key: 'keep-key-09', what: 'invoice', invoice: invoice({ number: '7', to: 'Stray' }) })
+    expect(fresh.receipt).toBe('Invoices/Invoice 7 Stray.pdf')
+    expect(readFileSync(join(b.ref, 'Money', 'Invoices', 'Invoice 7 Stray.pdf')).equals(PDF)).toBe(true)
+    expect((await view()).rows).toHaveLength(2)
   })
 
   it('files one invoice for the same key sent twice at once', async () => {
@@ -180,14 +251,14 @@ describe('an invoice', () => {
   })
 
   it('needs to know who it is from', async () => {
-    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ from: { name: '  ', address: '', pay: '' } }) })).rejects.toThrow()
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-1', invoice: invoice({ from: { name: '  ', address: '', pay: '' } }) })).rejects.toThrow()
     await expect(keep({ key: 'no-from-key1', what: 'invoice', invoice: invoice({ from: { name: '', address: '', pay: '' } }) })).rejects.toThrow()
     expect((await view()).rows).toEqual([])
   })
 
   it('refuses one with no amount, and one due before its date', async () => {
-    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ lines: [{ what: 'Nothing', quantity: 0, rate: 100 }] }) })).rejects.toThrow('needs a line with an amount')
-    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ due: '2026-11-01' }) })).rejects.toThrow('due before its date')
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-1', invoice: invoice({ lines: [{ what: 'Nothing', quantity: 0, rate: 100 }] }) })).rejects.toThrow('needs a line with an amount')
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'create-key-1', invoice: invoice({ due: '2026-11-01' }) })).rejects.toThrow('due before its date')
     await expect(keep({ what: 'invoice' })).rejects.toThrow('comes with its fields')
   })
 })

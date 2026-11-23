@@ -59,7 +59,15 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   cells ("Spent", or "column F" for cells under no header): with any, a
   header was most likely renamed, and the restore is refused, since an
   empty Out beside his figures would read them as nothing. He names it
-  back in the sheet. Money never reorders or deletes his cells.
+  back in the sheet. Status is such a header too while a column Money does
+  not know holds a status's words ("Unpaid" under "State"): read without
+  it, every unpaid row would be money in hand. A ledger that never had a
+  Status column reads, every row Paid. Money never reorders or deletes his
+  cells. A figure below nothing (a correction he typed) keeps its sign in
+  every sum and export, as the sheet's own SUM counts it; the form cannot
+  say such a row (`sheetOnly`), so it opens read only, as a row with money
+  both ways does. `moneyWords` is the one form of a row's money in words.
+  Cents are rounded half up through a float's noise (`centsFrom`).
 - **Status** is `Paid`, `Unpaid`, `To reimburse`, `Reimbursed` or
   `Requested`, read without regard to case; an empty or unknown word is
   `Paid`. What a row counts as (`countOf`):
@@ -76,9 +84,11 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
 - **The rev cache** (`gridOf`): `/internal/sheet/open` gives the sheet's
   revision; unchanged, the cells come from memory; changed, row 1 and then
   pages of `/internal/sheet/range` down to the sheet's last row that holds
-  anything. That row is found from the workbook itself
-  (`/internal/sheet/snapshot`, `extentOf`), so a stretch of blank rows he
-  left, however long, never ends the read or misplaces the next append. A
+  anything and across to its last column that does. Both are found from
+  the workbook itself (`/internal/sheet/snapshot`, `extentOf`), so a
+  stretch of blank rows he left, however long, never ends the read or
+  misplaces the next append, a row that holds only a formula is a row, and
+  figures under no header are still seen ("column K" in `renamed`). A
   workbook past 32 MB is not asked for whole: the read then stops at a
   whole blank page.
 - **`any`** on the read says whether the job has money at all (a ledger row
@@ -88,20 +98,32 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   workspace (`locked`) the ledger is read for its last row that holds
   anything and the new row's cells are written at once with
   `/internal/sheet/cells` (`by: 'money'`). A sheet others can open
-  takes the row as a suggestion, each waiting one on a row of its own, and
-  the answer says `suggested`; the window then says "Suggested in the
-  ledger. Accept it there." Others can open it when the sheet says so
+  takes the row as a suggestion and the answer says `suggested`; the
+  window then says "Suggested in the ledger. Accept it there." A new row
+  goes under every cell that waits as a suggestion, by where the sheet's
+  own `open` says each stands now (`Grid.pending`, `nextRow`), so two
+  suggestions never name one row, after an accept and after a restart
+  alike. Others can open it when the sheet says so
   (`open().shared`) or when the job's folder lies in a place Files calls
   shared (`othersCanOpen`, Files' own `sharedOf`): a synced folder shares
   a file the sheet service knows nothing about. A row that keeps a file
   needs a Receipt column to name it; without one the write is refused
-  ("The ledger has no Receipt column, …") and the file is not kept.
+  ("The ledger has no Receipt column, …") and the file is not kept. A row
+  that is not Paid needs a Status column to say so, and is refused without
+  one (`needs`).
+- **Written once** (`appendRow {ref}`, `writtenRow`): a write with more
+  than one step (a receipt's accept, a kept invoice, a trip and its pay)
+  notes the Ref its row will carry before the ledger is touched. Taken up
+  again after a stop between the sheet's write and the note, it looks for
+  that Ref in the ledger and among what waits there, and writes nothing
+  twice.
 - **Inside the job's folder** (`moneyFolder`, `insideJob`): every folder
   Money writes into is made one level at a time and checked by its real
   spelling. A `Money` folder, or a ledger, that is a link out of the job's
   folder is refused: nothing is read or written through it.
 - **Acting on a row** (`editRow`, `payRow`): the window names the row as
-  `{ref, row, sig}`, where `sig` is every cell Money reads of it, as the
+  `{ref, row, sig}`, where `sig` is a print of every cell Money reads of it
+  (each kept apart, one length however long his words are), as the
   window last read them (`sigOf`). The host reads the sheet again and finds the
   row by `Ref` wherever it now stands, else by its number; either way only
   while it still reads the same (`findRow`). A row he changed since the
@@ -131,7 +153,10 @@ Giving, Other.
 
 Every way in makes one row in `work_money_inbox` (`partial` → `reading` →
 `ready` → `filed` or `dropped`) by the sender's own key, so a retry files
-nothing twice. Only his accept writes the ledger.
+nothing twice. Only his accept writes the ledger. A key is one receipt of
+one job: sent again under another job it is refused. One call a key at a
+time (`keyed`), so two parts that land together put the file together and
+file it once.
 
 - **Bytes** (`work.money.receive`): parts of at most 2 MiB as base64, 25 MB a
   file, written as they land (any order) and put together when the last is
@@ -154,7 +179,12 @@ nothing twice. Only his accept writes the ledger.
   the path in Receipt, and the waiting one is filed. `workspaceId` sends it
   to another job. If the row cannot be written the kept copy is removed and
   the receipt still waits; a phone's Save sent again under the same key
-  with an amount and a date then files it, once the ledger is right. One accept a receipt at a time: a second press
+  with an amount and a date then files it, once the ledger is right. The
+  accept notes what it means to write on the waiting row first (`Intent`:
+  the row's Ref, the job, the file it kept): after a stop in the middle
+  the next accept finds the row by that Ref and files nothing twice, or
+  finds none and lets go of the file that accept kept. A receipt whose own
+  file is gone from this host is not filed. One accept a receipt at a time: a second press
   while the first is being filed answers the first, and a later one
   answers what was filed.
 - **Drop** (`work.money.drop {id, undo?}`) takes the receipt out of the
@@ -168,7 +198,8 @@ nothing twice. Only his accept writes the ledger.
   kept 30 days.
 - **A picture** (`work.money.picture`): a waiting receipt by `id`, or a
   filed one by `workspaceId` and its Receipt cell (held inside the job's
-  Money folder by real path). In parts of 2 MiB. A HEIC or TIFF is shown as
+  Money folder by real path, the Money folder itself inside the job's). In
+  parts of 2 MiB. A HEIC or TIFF is shown as
   its JPEG, a PDF as its first page.
 - **A file that moves** (`moved.ts`): Money registers `registerFileMoved`.
   The ledger or the mileage log renamed in Files is followed in the books'
@@ -185,8 +216,10 @@ Offered to a job's thread alone (a Work Chat gets none):
   `money_receipt {file | item}` land in To confirm with the thread named.
   A file must be in the job's own folder or among the files the canvas
   keeps for that thread's own pane (a mail's attachment one of its items
-  fetched): not another thread's, not another job's waiting receipts. No
-  tool writes the ledger.
+  fetched): not another thread's, not another job's waiting receipts. The
+  file is copied before anything waits, so a copy that fails leaves
+  nothing behind and the call can be made again. No tool writes the
+  ledger.
 
 Every wire method that changes something (`MONEY_OWNER_ONLY`) is refused for
 a thread's own call before its params are read.
@@ -225,24 +258,37 @@ box. About 4 seconds a file.
   the owner, at most every ten minutes. Offered once: an ended event with a
   `role` or a US-dollar `amount` that `work_money_events` does not hold.
 - Fee: the event's amount; else the last fee he gave an event with the same
-  role. Miles: the ones he gave that place (`work_money_places`); else the
-  clashes pillar's `milesBetween`, there and back. A leg Clashes did not
+  role. Miles: the ones he gave that place in this job (`work_money_places`,
+  by job and place: two jobs start from two places); else the clashes
+  pillar's `milesBetween`, there and back. A leg Clashes did not
   measure along roads fills the miles with `measured: false`: the view then
   offers Review, never Add.
 - `work.money.trip` writes the pay to the ledger (money in, Unpaid, under
   `payCategory(sector)`) and the trip to the mileage log (`Date | Trip |
   Place | Miles | Rate | Value | Ref`, Value a formula), keeps the miles by
-  place, and marks the event added. One add an event at a time; when the
-  pay was written and the trip then failed, the event stays offered
-  (`adding`) and the next add writes the trip alone. A log others can open
+  place, and marks the event added. One add an event at a time. The log is
+  asked first whether it can take a trip, so the pay is not written and
+  then left without one for a cause known beforehand. What the add means
+  to write is noted before either sheet is touched (`TripIntent`: a Ref
+  for each row, the miles): an add not seen to its end (a write failed,
+  the host stopped between the two sheets) stays offered (`adding`), as
+  that add meant it, and the next add looks for those rows and writes only
+  what is missing; the fee that was written stands. A trip typed by hand
+  goes by the sender's `key` the same way. A log others can open
   takes the trip as a suggestion on a row of its own, and the answer says
   so. The log is read and written only inside the job's folder, as the
   ledger is. `work.money.events` (Add → Trip…) leaves out an event already
   added, and a trip that names one answers `already` and writes nothing.
-  `work.money.skip` marks it skipped; `undo` offers it again.
+  `work.money.skip` marks it skipped; `undo` offers it again (a begun add
+  keeps its note through both).
 - The rate is `rateFor(year, his own)`: his for that year, else
   `MILEAGE_RATES` ($0.70 for 2025), else the newest year before it.
-  `work.money.rate` sets a year's.
+  `work.money.rate` sets a year's. A rate is printed as it was given
+  (`rateWords`), never short of what the value was worked out with.
+- A log that cannot be read (`mileageLog`: its file leads out of the job's
+  folder, or it holds rows and lacks Date or Miles) is `problems: [{kind:
+  'mileage', reason, missing}]` on the read: the miles shown are none and
+  the view says why; the sums carry `problem`; the export is refused.
 
 ## Out (`out.ts`)
 
@@ -251,7 +297,9 @@ box. About 4 seconds a file.
   rows) and `Ledger <year>.xlsx` (`ctx.convert({from: 'csv', to: 'xlsx'})`),
   and answers the summary's page (`taxSummaryHtml`). A second export
   replaces the first's files and says so (`replaced`, for the files it
-  wrote over). Each file is staged beside its place under a fresh name
+  wrote over). One export a job and a year at a time, the Excel file made
+  from that read's own CSV in the host's data folder; a year whose mileage
+  log cannot be read is not exported. Each file is staged beside its place under a fresh name
   made exclusively, then renamed in, so nothing is ever written through a
   name that was already there.
 - `work.money.invoiceNext` and `work.money.invoice` number an invoice (from
@@ -259,13 +307,18 @@ box. About 4 seconds a file.
   and terms, and answer its page (`invoiceHtml`). A purchase request is the
   same page under its name; it counts by itself and keeps its own details
   and dates, so it never overwrites how he is paid or when an invoice is
-  due. A page with no sender's name is refused.
+  due. A page with no sender's name is refused. `work.money.invoice`
+  takes the Create's `key` and holds the number for it (an hour, or until
+  its row is filed): a number another Create holds, or a row carries, is
+  refused with the next free one, so two forms opened together never print
+  one number. The highest number used stands when a lower one is typed.
 - A page is printed by the formats pillar from the window
   (`work.formats.print`) and handed back in parts with `work.money.keep`: a
   summary goes to the year's folder; an invoice goes to `Money/Invoices/`
   and is filed as its row (money in, Unpaid; a request: money out,
   `Requested`). The window sends one key for every try of one Create, and
-  the host files a key once.
+  the host files a key once, for the job it first named, and by a note of
+  its own (as an accept's) through a stop in the middle.
 - Money declares no act kind. An invoice leaves from Mail's composer, by his
   own Send; an agent's draft is the held `mail.send`.
 
@@ -339,9 +392,12 @@ since the key dedupes only per host; once a part has gone the job is fixed. The 
 ## For others
 
 - **Weekly review**: `work.money.sums {from, to, workspaceId?}` → `{rows:
-  [{workspaceId, sector, in, out, owedToHim, heOwes, miles, currency}]}`.
+  [{workspaceId, sector, in, out, owedToHim, heOwes, miles, currency,
+  problem?}]}`. Only the caller's own jobs are opened. `problem`: that
+  job's books could not be read whole, and its figures are not its money.
 - **Today**: `work.money.owed {workspaceId?}` → unpaid rows, the oldest
-  first, and `toConfirm`. Money's own source (`src/renderer/src/work/money/today.ts`,
+  first, `toConfirm`, and `problems` (the jobs whose ledger cannot be
+  read: Money's source says so, in place of showing nothing owed). Money's own source (`src/renderer/src/work/money/today.ts`,
   one line in `TODAY_SOURCES`) lists each open row of every job under
   "Owed", order 60, drawn only while something is owed; a row opens its
   job's Money view. It shows rows, never the count that waits.
@@ -368,6 +424,11 @@ reaches. A code workspace has no money.
 
 ## Known limits
 
+- A write of more than one step is made safe against a stop in the middle
+  by a note and a Ref (above). Two windows stay: a file copied and the
+  host stopped before the note names it (one stray file, linked by no
+  row), and a ledger with no Ref column and a row with no file (nothing to
+  find it by). A plain entry from the form carries no key.
 - An append reads the first empty row and writes it with nothing between,
   under Money's own lock; the sheet's editor does not take that lock, so a
   row he begins in the same instant could be written over. The service

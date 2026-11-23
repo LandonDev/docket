@@ -1,6 +1,6 @@
 import type { CalendarOffer } from '@shared/contract-work-money'
 import type { WorkCtx } from '../modules'
-import { eventMarks, lastFee, milesTo, type Books, type Workspace } from './store'
+import { eventMarks, lastFee, milesTo, type Books, type EventMark, type Workspace } from './store'
 
 /**
  * Pay and mileage from the calendar (docs/agents/work-money.md "From the
@@ -73,7 +73,7 @@ const usd = (e: CalendarEvent): number | null => (e.amount && e.amount.currency.
  */
 export function offerOf(ctx: Pick<WorkCtx, 'db'>, ws: Workspace, e: CalendarEvent): CalendarOffer {
   const place = e.location?.trim() || null
-  const miles = place ? milesTo(ctx, place) : null
+  const miles = place ? milesTo(ctx, ws.id, place) : null
   return {
     eventId: e._id,
     date: dayOfEvent(e.startsAt),
@@ -144,9 +144,15 @@ export async function offers(ctx: Ctx, ws: Workspace, books: Books | null, now =
   const rule = books?.calendar ?? 'games'
   if (rule === 'off') return []
   const marks = eventMarks(ctx, ws.id)
-  const list = (await endedEvents(ctx, ws, now)).filter((e) => (marks.get(e._id)?.state ?? 'adding') === 'adding' && (rule === 'all' || !!e.role || usd(e) !== null)).map((e) => offerOf(ctx, ws, e))
+  const list = (await endedEvents(ctx, ws, now))
+    .filter((e) => (marks.get(e._id)?.state ?? 'adding') === 'adding' && (rule === 'all' || !!e.role || usd(e) !== null))
+    .map((e) => begunOffer(offerOf(ctx, ws, e), marks.get(e._id)))
   return withDrives(ctx, ws, list)
 }
+
+/** An event whose add was begun and not finished is offered as that add meant it: its fee, and the miles he gave it. */
+const begunOffer = (o: CalendarOffer, mark: EventMark | undefined): CalendarOffer =>
+  mark?.state === 'adding' ? { ...o, fee: mark.fee ?? o.fee, ...(mark.intent?.miles ? { miles: mark.intent.miles, measured: true } : {}) } : o
 
 /** The job's ended events that name a place and are not yet added, the latest first: what Add → Trip… lists. */
 export async function placed(ctx: Ctx, ws: Workspace, now = Date.now()): Promise<CalendarOffer[]> {
@@ -158,7 +164,7 @@ export async function placed(ctx: Ctx, ws: Workspace, now = Date.now()): Promise
       // One already added is in the ledger and the log: offering it again would add nothing.
       .filter((e) => e.location?.trim() && marks.get(e._id)?.state !== 'added')
       .reverse()
-      .map((e) => offerOf(ctx, ws, e))
+      .map((e) => begunOffer(offerOf(ctx, ws, e), marks.get(e._id)))
   )
 }
 

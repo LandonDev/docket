@@ -268,7 +268,7 @@ try {
 
   const number = (await rpc<{ number: string; from: unknown; dueDays: number }>('work.money.invoiceNext', { workspaceId: job.id })).number
   const invoice = { kind: 'invoice', number, to: 'Rivera Dental', date: '2026-11-23', due: '2026-12-07', lines: [{ what: 'Clinic, two days', quantity: 2, rate: 15000 }], from: { name: 'E2E Officials', address: '1 Main St', pay: 'Check' } }
-  const page = await rpc<{ name: string; html: string }>('work.money.invoice', { workspaceId: job.id, invoice })
+  const page = await rpc<{ name: string; html: string }>('work.money.invoice', { workspaceId: job.id, key: 'e2e-money-invoice', invoice })
   check('the first invoice is 1001, and its page is answered to print', number === '1001' && page.name === 'Invoice 1001 Rivera Dental.pdf' && page.html.includes('$300.00'))
   const filedInvoice = await keep({ key: 'e2e-money-invoice', what: 'invoice', invoice })
   const withInvoice = await read()

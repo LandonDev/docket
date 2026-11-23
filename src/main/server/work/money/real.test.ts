@@ -99,6 +99,14 @@ describe('a job whose folder is a place others can open', () => {
       expect(open.suggestions.length).toBeGreaterThan(0)
       expect(open.suggestions.every((s) => s.state === 'pending')).toBe(true)
       expect((await call<MoneyRead>('work.money.read', { workspaceId: 'ws-ref', from: '2026-11-01', to: '2026-12-01' })).rows).toHaveLength(before)
+      // A second one goes under the first, by where the sheet's own host says the first waits: the two never name one row.
+      const second = await call<MoneyActed>('work.money.entry', { workspaceId: 'ws-ref', fields: { date: '2026-11-22', who: 'Shared place again', way: 'out', amount: 600 } })
+      expect(second).toMatchObject({ ok: true, suggested: true, row: (acted as { row: number }).row + 1 })
+      // He accepts both in the sheet: both rows are in the ledger, each whole.
+      await ctx.service.internal('/internal/sheet/review', { sheet: { tcsheet: ledger }, which: 'all', verdict: 'accept' })
+      const after = (await call<MoneyRead>('work.money.read', { workspaceId: 'ws-ref', from: '2026-11-01', to: '2026-12-01' })).rows
+      expect(after).toHaveLength(before + 2)
+      expect(after.filter((r) => r.who.startsWith('Shared place')).map((r) => r.out).sort()).toEqual([500, 600])
     } finally {
       setSharedProbe(null)
     }

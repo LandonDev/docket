@@ -9,8 +9,8 @@ import { registerFileMoved } from '../files/hooks'
 import { MONEY_TELLS, moneySearch } from './borders'
 import { addRow, editRow, MONEY_FOLDER, openBooks, payRow, restoreColumns } from './book'
 import { offers, placed } from './calendar'
-import { accept, drop, filedPicture, forgetJob, jobOfWaiting, parseFor, receive, resume, toConfirm, waitingPicture } from './inbox'
-import { addTrip, setYearRate, skipEvent } from './mileage'
+import { accept, drop, filedPicture, forgetJob, jobOfWaiting, parseFor, receive, resume, toConfirm, waitingPicture, type JobFor } from './inbox'
+import { addTrip, pruneTrips, setYearRate, skipEvent } from './mileage'
 import { movedHook } from './moved'
 import { exportYear, invoiceNext, invoicePage, keep } from './out'
 import { booksHere, MoneyError, owedFor, readMoney, searchMoney, sumsFor } from './read'
@@ -28,7 +28,11 @@ import { moneyTools } from './tools'
 type Params<M extends string> = Extract<(typeof MoneyRequestSchemas)[number]['_output'], { method: M }>['params']
 const paramsOf = <M extends string>(method: M, req: ClientRequest): Params<M> => {
   const schema = MoneyRequestSchemas.find((s) => s.shape.method.value === method)!
-  return schema.shape.params.parse((req as { params?: unknown }).params) as Params<M>
+  const got = schema.shape.params.safeParse((req as { params?: unknown }).params)
+  if (got.success) return got.data as Params<M>
+  // A day that does not exist is his to put right, so it is said in words; anything else is a caller's fault and stays as the schema says it.
+  const day = got.error.issues.find((i) => i.message.startsWith('That is not a day'))
+  throw day ? new MoneyError(day.message) : got.error
 }
 
 const OWNER_ONLY = 'Only the owner writes the ledger. A thread adds with money_add or money_receipt, which wait for his accept.'
@@ -60,6 +64,12 @@ const reachable = (ctx: WorkCtx, by: Caller, method: string): Workspace[] =>
       return false
     }
   })
+
+/** The job a receipt or a parse names: the workspace it names, when the caller may ask about it; else the first job in its sector that the caller may ask about. */
+const jobFor =
+  (ctx: WorkCtx, by: Caller, method: string): JobFor =>
+  (p) =>
+    p.workspaceId ? admit(ctx, by, method, p.workspaceId) : p.sector ? (reachable(ctx, by, method).find((ws) => ws.sector === p.sector) ?? null) : null
 
 async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: AbortSignal): Promise<Handled> {
   // A thread's own call is refused before anything it sent is read.
@@ -98,18 +108,12 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     }
     case 'work.money.sums': {
       const p = paramsOf('work.money.sums', req)
-      if (p.workspaceId) return handled(await sumsFor(ctx, { from: p.from, to: p.to }, admit(ctx, by, req.method, p.workspaceId).id))
-      const mine = new Set(reachable(ctx, by, req.method).map((ws) => ws.id))
-      const all = await sumsFor(ctx, { from: p.from, to: p.to })
-      return handled({ rows: all.rows.filter((r) => mine.has(r.workspaceId)) })
+      // Only the jobs the caller may ask about are opened: another job's broken sheet never keeps these from being answered.
+      return handled(await sumsFor(ctx, { from: p.from, to: p.to }, p.workspaceId ? [admit(ctx, by, req.method, p.workspaceId)] : reachable(ctx, by, req.method)))
     }
     case 'work.money.owed': {
       const p = paramsOf('work.money.owed', req)
-      if (p.workspaceId) return handled(await owedFor(ctx, admit(ctx, by, req.method, p.workspaceId).id))
-      const mine = reachable(ctx, by, req.method)
-      const parts = await Promise.all(mine.map((ws) => owedFor(ctx, ws.id)))
-      const rows = parts.flatMap((part) => part.rows).sort((a, b) => (a.since ?? '9999').localeCompare(b.since ?? '9999'))
-      return handled({ rows, toConfirm: parts.reduce((n, part) => n + part.toConfirm, 0) })
+      return handled(await owedFor(ctx, p.workspaceId ? [admit(ctx, by, req.method, p.workspaceId)] : reachable(ctx, by, req.method)))
     }
     case 'work.money.search': {
       const p = paramsOf('work.money.search', req)
@@ -117,12 +121,11 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     }
     case 'work.money.parse': {
       const p = paramsOf('work.money.parse', req)
-      if (p.workspaceId) admit(ctx, by, req.method, p.workspaceId)
-      return handled(await parseFor(ctx, receiptLines(p.lines), { workspaceId: p.workspaceId, sector: p.sector }))
+      return handled(await parseFor(ctx, receiptLines(p.lines), jobFor(ctx, by, req.method)(p), p.sector))
     }
     case 'work.money.receive': {
       const p = paramsOf('work.money.receive', req)
-      return handled(await receive(ctx, p, by, (workspaceId) => admit(ctx, by, req.method, workspaceId)))
+      return handled(await receive(ctx, p, by, jobFor(ctx, by, req.method)))
     }
     case 'work.money.accept': {
       const p = paramsOf('work.money.accept', req)
@@ -171,7 +174,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     }
     case 'work.money.invoice': {
       const p = paramsOf('work.money.invoice', req)
-      return handled(await invoicePage(ctx, admit(ctx, by, req.method, p.workspaceId), p.invoice))
+      return handled(await invoicePage(ctx, admit(ctx, by, req.method, p.workspaceId), p.key, p.invoice))
     }
     case 'work.money.keep': {
       const p = paramsOf('work.money.keep', req)
@@ -196,6 +199,7 @@ const module: WorkModule = {
   search: [moneySearch],
   start(ctx) {
     const stopReading = resume(ctx)
+    pruneTrips(ctx)
     const off = registerFileMoved(movedHook(ctx))
     return () => {
       stopReading()

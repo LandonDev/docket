@@ -41,6 +41,11 @@ describe("Money on Today", () => {
     expect([row.title, row.detail]).toEqual(["Crew meal before the game", "To be paid back $16.25"]);
   });
 
+  it("says a job whose ledger cannot be read, in place of showing it as owed nothing", () => {
+    const rows = owedRows([{ workspace: ref, value: { rows: [], toConfirm: 0, problems: ["ws-ref"] } }]);
+    expect(rows.map(({ open: _open, ...row }) => row)).toEqual([{ key: "money:box:ws-ref:problem", section: "money", sector: "ref", title: "Ref", detail: "The ledger's columns changed, so what is owed is not known" }]);
+  });
+
   it("opens the row's own job in the Money view", () => {
     owedRows([{ workspace: purdue, value: owed([{ workspaceId: "ws-purdue", sector: "purdue", row: 2, who: "Catering", what: "", amount: 4500, since: "2026-11-20", way: "byHim", reimburse: false, both: false }]) }])[0].open();
     expect(went).toEqual([[purdue, { view: "money" }]]);

@@ -1,4 +1,4 @@
-import { formatDay, formatMoney } from '@shared/work/money'
+import { formatDay, moneyWords } from '@shared/work/money'
 import type { SearchSource } from '../search/source'
 import { searchMoney } from './read'
 import { workspaceOf } from './store'
@@ -29,7 +29,7 @@ export const moneySearch: SearchSource = {
           key: `money:${ws.id}:${h.row}`,
           kind: 'money',
           title: h.who || h.category || 'Entry',
-          detail: [h.date ? formatDay(h.date) : null, `${h.way === 'in' ? '+' : ''}${formatMoney(h.amount)}`, h.category || null].filter(Boolean).join(', '),
+          detail: [h.date ? formatDay(h.date) : null, moneyWords(h.way === 'in' ? { in: h.amount, out: h.other ?? 0 } : { in: 0, out: h.amount }), h.category || null].filter(Boolean).join(', '),
           ...(h.date ? { at: Date.parse(`${h.date}T12:00:00`) } : {}),
           workspaceId: ws.id,
           open: { to: 'view' as const, view: 'money', with: { row: h.row } }

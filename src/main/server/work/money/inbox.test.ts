@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MONEY_PART_BYTES, type MoneyActed, type MoneyPicture, type MoneyRead, type MoneyReceived } from '@shared/contract-work-money'
@@ -545,5 +545,119 @@ describe('the reader', () => {
     await call('work.money.drop', { id: got.id })
     await readWaiting(b.ctx, got.id)
     expect((await view()).toConfirm).toEqual([])
+  })
+})
+
+describe('what the fourth council round asked of receipts', () => {
+  const tool = (name: string) => moneyTools.find((t) => t.name === name)!
+  const run = (name: string, args: unknown, sessionId = 't-ref') =>
+    tool(name)
+      .run(args, { ...b.ctx, sessionId, scope: b.ctx.scopeOf(sessionId)!, signal: new AbortController().signal } as never)
+      .then((r) => ({ text: (r.content[0] as { text: string }).text, isError: r.isError }))
+  const waitingRow = (id: string) => b.db.prepare('SELECT state, file, ref, workspace_id FROM work_money_inbox WHERE id = ?').get(id) as { state: string; file: string | null; ref: string | null; workspace_id: string }
+
+  it('holds a key to the job it was first sent to: under another job it is neither finished nor answered', async () => {
+    const got = await send('coffee.png', { key: 'bound-key-01' })
+    await settle()
+    const more = { source: 'phone', lines: [], seen: true, fields: { amount: 1043, date: '2026-11-21', who: 'Blue Heron Coffee', category: 'Food' } }
+    await expect(send('coffee.png', { key: 'bound-key-01', workspaceId: 'ws-purdue', more })).rejects.toThrow('sent to another job')
+    expect(existsSync(join(b.purdue, 'Money'))).toBe(false)
+    expect((await view()).toConfirm.map((w) => w.id)).toEqual([got.id])
+    // Filed into another job by his own accept, the key still answers for the job it was sent to.
+    await call('work.money.accept', { id: got.id, workspaceId: 'ws-purdue', fields: fields() })
+    expect(await send('coffee.png', { key: 'bound-key-01' })).toEqual({ id: got.id, state: 'filed' })
+    expect(waitingRow(got.id).workspace_id).toBe('ws-ref')
+  })
+
+  it('puts a file together and files it once when its last part lands twice at once', async () => {
+    const more = { source: 'phone', lines: [], seen: true, fields: { amount: 4817, date: '2026-11-14', who: 'Northside Fuel Stop', category: 'Travel' } }
+    const [x, y] = await Promise.all([send('fuel.jpg', { key: 'twice-key-01', more }), send('fuel.jpg', { key: 'twice-key-01', more })])
+    expect([x.state, y.state]).toEqual(['filed', 'filed'])
+    expect((await view()).rows).toHaveLength(1)
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toHaveLength(1)
+  })
+
+  it('files once what an accept wrote before the host stopped: the row is found by its Ref, and no second file is kept', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    // The accept wrote the ledger's row and kept the file, and the host stopped before the waiting one was marked filed.
+    mkdirSync(join(b.ref, 'Money', 'Receipts', '2026'), { recursive: true })
+    copyFileSync(fixture('coffee.png'), join(b.ref, 'Money', 'Receipts', '2026', '2026-11-21 Blue Heron Coffee 10.43.png'))
+    for (const [at, v] of [
+      ['A2', '2026-11-21'],
+      ['B2', 'Blue Heron Coffee'],
+      ['F2', 10.43],
+      ['I2', 'Receipts/2026/2026-11-21 Blue Heron Coffee 10.43.png'],
+      ['J2', 'mdone1']
+    ] as const)
+      b.sheets.type(ledger(), at, v)
+    b.db.prepare('UPDATE work_money_inbox SET ref = ? WHERE id = ?').run(JSON.stringify({ intent: { ref: 'mdone1', workspaceId: 'ws-ref', receipt: 'Receipts/2026/2026-11-21 Blue Heron Coffee 10.43.png' } }), got.id)
+    expect(await call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() })).toEqual({ ok: true, ref: 'mdone1', row: 2 })
+    expect(b.sheets.grid(ledger())).toHaveLength(2)
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toHaveLength(1)
+    expect((await view()).toConfirm).toEqual([])
+  })
+
+  it('lets go of the file an accept kept when its row was never written, and files afresh', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    mkdirSync(join(b.ref, 'Money', 'Receipts', '2026'), { recursive: true })
+    writeFileSync(join(b.ref, 'Money', 'Receipts', '2026', 'stray.png'), 'kept, never named by a row')
+    b.db.prepare('UPDATE work_money_inbox SET ref = ? WHERE id = ?').run(JSON.stringify({ intent: { ref: 'mnone1', workspaceId: 'ws-ref', receipt: 'Receipts/2026/stray.png' } }), got.id)
+    expect(await call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() })).toMatchObject({ ok: true, row: 2 })
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toEqual(['2026-11-21 Blue Heron Coffee 10.43.png'])
+  })
+
+  it('leaves nothing waiting for a thread’s file that could not be copied, so the same call can be made again', async () => {
+    copyFileSync(fixture('fuel.jpg'), join(b.ref, 'fuel.jpg'))
+    chmodSync(join(b.ref, 'fuel.jpg'), 0o000)
+    const failed = await run('money_receipt', { file: join(b.ref, 'fuel.jpg') })
+    expect(failed.isError).toBe(true)
+    expect(failed.text).toContain('could not be copied')
+    expect((await view()).toConfirm).toEqual([])
+    chmodSync(join(b.ref, 'fuel.jpg'), 0o644)
+    expect((await run('money_receipt', { file: join(b.ref, 'fuel.jpg') })).text).toContain('will wait for the owner to confirm')
+  })
+
+  it('makes a waiting one with no file ready as it stands, and files no receipt whose file is gone', async () => {
+    // Left "reading" with no file (an older build's failed copy): a restart makes it ready, not reading for ever.
+    b.db.prepare("INSERT INTO work_money_inbox (id, key, workspace_id, state, source, created_at, updated_at) VALUES ('stuck', 'stuck-key-01', 'ws-ref', 'reading', 'agent', 1, 1)").run()
+    resume(b.ctx)
+    await settle()
+    expect((await view()).toConfirm).toMatchObject([{ id: 'stuck', state: 'ready', picture: false }])
+    await call('work.money.drop', { id: 'stuck' })
+    // A receipt whose own file went from this host's folder is not filed as if it still had one.
+    const got = await send('coffee.png', { key: 'gone-key-01' })
+    await settle()
+    rmSync(waitingRow(got.id).file!)
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow("That receipt's file is no longer on this computer.")
+    expect((await view()).made).toBe(false)
+  })
+
+  it('shows no file through a Money folder that is a link to another job’s', async () => {
+    await call('work.money.open', { workspaceId: 'ws-purdue' })
+    mkdirSync(join(b.purdue, 'Money', 'Receipts'), { recursive: true })
+    copyFileSync(fixture('coffee.png'), join(b.purdue, 'Money', 'Receipts', 'a.png'))
+    // Job A's Money folder is a link to job B's: the path is inside "its" Money folder, and is another job's file.
+    symlinkSync(join(b.purdue, 'Money'), join(b.ref, 'Money'))
+    await expect(call('work.money.picture', { workspaceId: 'ws-ref', receipt: 'Receipts/a.png', part: 0 })).rejects.toThrow('not in the Money folder')
+  })
+
+  it('reads a seller’s history only from a job its caller may ask about', async () => {
+    // Purdue's ledger knows the seller; a remote key reaches the ref job alone.
+    await call('work.money.entry', { workspaceId: 'ws-purdue', fields: fields({ category: 'Events' }) })
+    const lines = linesOf(FIXTURES.find((f) => f.file === 'coffee.png')!)
+    const purdue = join(b.purdue, 'Money', 'Ledger.tcsheet')
+    b.sheets.asked.length = 0
+    const got = await call<{ category: string | null }>('work.money.parse', { lines, sector: 'purdue' }, REMOTE)
+    // The receipt is read all the same, with no history: the category is the receipt's own words, not that ledger's.
+    expect(got.category).not.toBe('Events')
+    expect(b.sheets.asked.some((a) => JSON.stringify(a.body).includes(purdue))).toBe(false)
+    // The owner at the desk is given it.
+    expect((await call<{ category: string | null }>('work.money.parse', { lines, sector: 'purdue' })).category).toBe('Events')
+    // A receipt by sector goes to the first job in it the caller may ask about, or to none.
+    await expect(send('coffee.png', { key: 'sector-key-9', sector: 'purdue', by: REMOTE })).rejects.toThrow('No workspace for that job')
   })
 })
