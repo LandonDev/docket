@@ -18,7 +18,7 @@ import { BUDGET, BUDGET_CHANGES, INVOICES, SPEND } from "./SheetBody.preview.fix
 import { resetSheetSyncs, SheetSync, syncOf, type Workbook } from "./sync";
 import { fakeGrid, fakeSheetHost, sheetView, type FakeGrid } from "./testkit";
 
-export type SheetMoment = "suggestions" | "stepped" | "own" | "format" | "chart" | "loading" | "readonly";
+export type SheetMoment = "suggestions" | "stepped" | "own" | "format" | "proposed" | "chart" | "loading" | "readonly";
 
 void workCanvasChunk.load();
 
@@ -40,6 +40,17 @@ function setUp(moment: SheetMoment): { view: SheetView; book: Workbook; title: s
       book: INVOICES,
       grid: fakeGrid({ selection: "E1", columns: 7 }),
       view: sheetView({ name: "Invoices 2026", store: "tcsheet", mode: "writes", row: [...SHEET_ROW.tcsheet] }),
+    };
+  // An opened Excel file others can open: the agent's format waits in words, stepped from the bar.
+  if (moment === "proposed")
+    return {
+      ...budget,
+      grid: fakeGrid({ selection: "E4" }),
+      view: sheetView({
+        shared: true,
+        row: [...SHEET_ROW.package],
+        changes: [{ id: "f1", changeSet: "turn2", by: "agent:local:t1", kind: "format", sheet: "budget", range: { startRow: 3, endRow: 7, startColumn: 4, endColumn: 4 }, words: "Bold, yellow fill on E4:E8", state: "pending", reason: "the line totals" }],
+      }),
     };
   if (moment === "chart")
     return {

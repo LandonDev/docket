@@ -9,6 +9,7 @@ export default [
   { name: "Stepped to the third change", props: { moment: "stepped" } },
   { name: "His own sheet: the agent wrote, with Undo", props: { moment: "own" } },
   { name: "A sheet TempCode keeps: the format row", props: { moment: "format" } },
+  { name: "An agent proposed a format: said in the formula bar, its range marked", props: { moment: "proposed" } },
   { name: "A chart over the cells", props: { moment: "chart" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "Read only", props: { moment: "readonly" } },

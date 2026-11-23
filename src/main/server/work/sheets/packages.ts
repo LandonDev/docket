@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpat
 import type { DatabaseSync } from 'node:sqlite'
 import { basename, dirname, join } from 'node:path'
 import type { SheetCellDiff, SheetMutationJson, SheetRevision } from '@shared/contract-work-sheets'
+import { RULES_SET, type RulesSetParams } from '@shared/work/sheets'
 import { saveFile, versionWord } from '../files/save'
 import { versionOf } from '../files/write'
 import { cellName, colName, parseA1 } from './a1'
@@ -163,7 +164,10 @@ export class PackageStore {
     const ops = this.db.prepare('SELECT rev, by, mutations FROM work_sheets_ops WHERE path = ? AND rev > ? ORDER BY rev').all(path, rev) as { rev: number; by: string; mutations: string }[]
     // A change from outside and a restore carry no ops: the grids load the file again.
     if (ops.some((o) => o.by === 'file' || o.mutations === 'null')) return { rev: row.rev, reload: true }
-    return { rev: row.rev, ops: ops.map((o) => ({ rev: o.rev, by: o.by, mutations: JSON.parse(o.mutations) as SheetMutationJson[] })) }
+    const out = ops.map((o) => ({ rev: o.rev, by: o.by, mutations: JSON.parse(o.mutations) as SheetMutationJson[] }))
+    // A rule's whole list is no mutation a grid applies: the grids that were not its sender load the file again.
+    if (out.some((o) => o.mutations.some((m) => m.id === RULES_SET))) return { rev: row.rev, reload: true }
+    return { rev: row.rev, ops: out }
   }
 
   private sheetName(path: string): (id: string) => string | undefined {
@@ -211,10 +215,13 @@ export class PackageStore {
         return { conflict: true as const, rev: this.sync(path).rev }
       }
       const edits = steps.flatMap((s) => (s.kind === 'cells' ? s.edits : []))
+      const rules = mutations.filter((m) => m.id === RULES_SET)
       // After a structural save every grid loads the file again (LibreOffice renumbers sheets): its op carries no mutations.
+      // A rule's op keeps its own (the whole list its change left), which `since` answers as a reload: no other grid
+      // can apply a list as it is, but no cell moved, so an edit made before it still lands.
       this.db
         .prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations, write_id, undo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(path, rev, by, this.now(), extra.label ?? (ops.length ? labelOfOps(ops) : labelOf(edits)), ops.length ? 'null' : JSON.stringify(mutations), extra.writeId ?? null, extra.undo && !ops.length ? JSON.stringify(extra.undo) : null)
+        .run(path, rev, by, this.now(), extra.label ?? (ops.length ? labelOfOps(ops) : rules.length && !edits.length ? labelOfRules(rules) : labelOf(edits)), ops.length ? 'null' : JSON.stringify(mutations), extra.writeId ?? null, extra.undo && !ops.length ? JSON.stringify(extra.undo) : null)
       return ops.length ? { rev, moved: { ops, before } } : { rev }
     })
   }
@@ -471,6 +478,13 @@ function labelOfOps(ops: readonly StructuralOp[]): string {
     case 'renameSheet':
       return `Renamed ${op.sheet} to ${op.to}${many}`
   }
+}
+
+/** "Conditional formatting", "Validation", "Names", "Filter"; "Rules" for more than one kind */
+function labelOfRules(rules: readonly SheetMutationJson[]): string {
+  const kinds = new Set(rules.map((m) => (m.params as RulesSetParams).kind))
+  if (kinds.size !== 1) return 'Rules'
+  return { conditional: 'Conditional formatting', validation: 'Validation', names: 'Names', filter: 'Filter' }[[...kinds][0]!]
 }
 
 /** "12 cells", "B4"; "Formatting" for an edit that changed no cell's contents */

@@ -36,9 +36,14 @@ export type SheetStoreKind = 'package' | 'tcsheet' | 'lifeos' | 'csv'
 /**
  * A control of the sheet's format row (work-kit's `SheetControl`).
  */
-export type SheetRowControl = 'undo' | 'style' | 'font' | 'size' | 'bold' | 'italic' | 'underline' | 'colour' | 'fill' | 'align' | 'vertical' | 'wrap' | 'merge' | 'borders' | 'number'
+export type SheetFormatControl = 'undo' | 'style' | 'font' | 'size' | 'bold' | 'italic' | 'underline' | 'colour' | 'fill' | 'align' | 'vertical' | 'wrap' | 'merge' | 'borders' | 'number'
+/** The Data menu's rows: a sort, the filter, and the rules its side sheet lists. */
+export type SheetDataControl = 'sort' | 'filter' | 'validation' | 'conditional' | 'names'
+export type SheetRowControl = SheetFormatControl | SheetDataControl
 
 const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size', 'bold', 'italic', 'underline', 'colour', 'fill', 'align', 'vertical', 'wrap', 'merge', 'borders', 'number']
+/** The Data menu's rows: held for each store by `sheets/rulesMatrix.test.ts`, `host/rules.test.ts` and `writer.test.ts`. */
+const DATA_KEPT: readonly SheetDataControl[] = ['sort', 'filter', 'validation', 'conditional', 'names']
 
 /**
  * The format row's controls by where a sheet lives, which the host puts in the view (`row`). A
@@ -46,15 +51,16 @@ const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size',
  * engine replays it, a cold load shows it and the Excel export holds it
  * (`sheets/rowMatrix.test.ts` holds every cell of this table). A store with none draws no row at
  * all. For an opened Excel file the same holds through the patch writer: the press is saved into
- * the file and read back from it. A sheet read from a .csv keeps cell contents only, so it has
+ * the file and read back from it. The Data menu's rows are listed by the same rule: a sort, the
+ * filter, and the rules its side sheet lists (validations, conditional formats, names). A sheet read from a .csv keeps cell contents only, so it has
  * none; a workbook Excel or Google holds is a `package` in the view with no `row`. The host says
  * it, not the canvas, so a canvas a release ahead of its host draws no control that host could
  * lose.
  */
 export const SHEET_ROW: Record<SheetStoreKind, readonly SheetRowControl[]> = {
-  lifeos: KEPT_WHOLE,
-  tcsheet: KEPT_WHOLE,
-  package: KEPT_WHOLE,
+  lifeos: [...KEPT_WHOLE, ...DATA_KEPT],
+  tcsheet: [...KEPT_WHOLE, ...DATA_KEPT],
+  package: [...KEPT_WHOLE, ...DATA_KEPT],
   csv: []
 }
 
@@ -81,6 +87,26 @@ export interface SheetSuggestion {
 }
 
 /**
+ * A format or a rule an agent proposed. It has no cell value to show in the grid, so it is said in
+ * words ("Bold, yellow fill on B2:B9") and steps with the cell suggestions; taking it lays it as
+ * the owner's own edit. `orphaned`: rows, columns or sheets changed since, so its range may no
+ * longer be where the agent saw it, and it can only be dropped.
+ */
+export interface SheetChange {
+  id: string
+  changeSet: string
+  by: Principal
+  kind: 'format' | 'rule'
+  /** Univer's sheet id */
+  sheet: string
+  /** the cells it is about; null for a workbook's name */
+  range: { startRow: number; endRow: number; startColumn: number; endColumn: number } | null
+  words: string
+  state: 'pending' | 'orphaned'
+  reason?: string
+}
+
+/**
  * What our grid cannot reach in this file (docs/agents/work-sheets.md "The
  * switch"): each a short phrase a person reads ("a pivot table", "macros").
  * The canvas offers the switch while this is not empty.
@@ -98,6 +124,8 @@ export interface SheetWritten {
   /** "Wrote 12 cells in Budget" */
   text: string
   at: number
+  /** false: the line offers no Undo (a format or a rule an agent wrote: History takes it back) */
+  undo?: false
 }
 
 /**
@@ -139,6 +167,8 @@ export interface SheetView {
   mode: 'suggests' | 'writes'
   /** open suggestions (pending, conflict, orphaned), in sheet order */
   suggestions: SheetSuggestion[]
+  /** formats and rules an agent proposed, oldest first; absent with none */
+  changes?: SheetChange[]
   written?: SheetWritten
   /** what our grid cannot reach, when there is something */
   reach?: SheetReach
@@ -221,7 +251,7 @@ export const SheetsRequestSchemas = [
   /** → { opened: true, url? }: opens the file in the app `SheetView.reach.to` names (desktop Excel for a package; the full editor on the box answers its page's `url`, which the canvas opens); refused where that app is not on this host. `scheme` is the theme the asking window wears: the full editor opens in it, and follows the browser's system where none is sent (the phone) */
   request('work.sheets.switch', z.object({ itemId, scheme: z.enum(['dark', 'light']).optional() })),
   /**
-   * → { path }: the sheet written out. `xlsx`: a new package from the sheet (a LifeOS sheet, a
+   * → { path, left? }: the sheet written out; `left` names what the file could not hold ("the names"). `xlsx`: a new package from the sheet (a LifeOS sheet, a
    * `.tcsheet`, a sheet read from a .csv), beside the .csv or among the item's own files. `csv`: one
    * sheet (`sheet`, else the first), back over the .csv it was read from, else beside the file or
    * among the item's files. An opened package is its own .xlsx.

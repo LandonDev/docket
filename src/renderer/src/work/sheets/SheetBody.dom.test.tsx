@@ -44,6 +44,17 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined) } };
 });
 
+/** The side sheet itself is work-kit's (its own tests draw it on a real grid): here a stand-in that shows what the body gives it. */
+vi.mock("work-kit/sheet", async (original) => ({
+  ...(await original<typeof import("work-kit/sheet")>()),
+  RulesSheet: ({ open, kinds, stacked, onOpen, onClose }: { open: { view: string }; kinds?: readonly string[]; stacked?: boolean; onOpen(next: unknown): void; onClose(): void }) => (
+    <aside data-rules-sheet="" data-view={open.view} data-kinds={(kinds ?? []).join(" ")} data-stacked={String(!!stacked)}>
+      <button onClick={() => onOpen({ view: "rule", kind: "conditional", id: "cf1" })}>open a rule</button>
+      <button onClick={onClose}>close rules</button>
+    </aside>
+  ),
+}));
+
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { contextChipsOf, resetContextChips } from "../canvas/chips";
 import { resetCanvasStore } from "../canvas/store";
@@ -429,6 +440,13 @@ describe("the sheet kind", () => {
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
+  it("a format or a rule the agent wrote is said with no Undo on the line: the sheet's own Undo and History take it back", async () => {
+    open(sheetView({ mode: "writes", written: { id: "w1", text: "Bold on A1:B1", at: Date.now(), undo: false } }));
+    await gridUp();
+    expect(await screen.findByText(/Bold on A1:B1/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
   it("shows what the agent wrote directly, with Undo, and its mode", async () => {
     open(sheetView({ mode: "writes", written: { id: "w1", text: "Changed 6 cells", at: Date.now() } }));
     await gridUp();
@@ -501,6 +519,16 @@ describe("the sheet kind", () => {
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Export as Excel" }));
     await waitFor(() => expect(sheetHost.calls.find((c) => c[0] === "export")?.[1]).toEqual({ format: "xlsx", sheet: undefined }));
+    await waitFor(() => expect(toasts.said).toEqual(["Saved Nationals travel budget.xlsx"]));
+  });
+
+  it("says with the save what the Excel file could not hold", async () => {
+    open(sheetView({ store: "tcsheet" }));
+    await gridUp();
+    sheetHost.exportLeft = ["the names", "conditional formats on Budget"];
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Export as Excel" }));
+    await waitFor(() => expect(toasts.said).toEqual(["Saved Nationals travel budget.xlsx without the names and conditional formats on Budget"]));
   });
 
   it("offers Save as CSV, back over the file, for a sheet read from a .csv", async () => {
@@ -849,3 +877,193 @@ describe("the format row", () => {
   });
 });
 
+describe("the sheet's rules", () => {
+  const DATA: NonNullable<SheetView["row"]> = [...ROW_ALL, "sort", "filter", "validation", "conditional", "names"];
+  const side = () => document.querySelector<HTMLElement>("[data-rules-sheet]");
+  /** The row at jsdom's width folds Data into More formatting: open that, then Data. */
+  const dataMenu = async (): Promise<void> => {
+    const bar = await screen.findByRole("toolbar", { name: "Formatting" });
+    const direct = within(bar).queryByRole("button", { name: "Data" });
+    if (direct) return void fireEvent.click(direct);
+    fireEvent.click(within(bar).getByRole("button", { name: "More formatting" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^Data/ }));
+  };
+
+  it("opens the side sheet from the row's Data menu with the lists the host keeps, beside the grid, and closes it", async () => {
+    open(sheetView({ store: "tcsheet", name: "Budget", row: DATA }), { selection: "B2" });
+    await gridUp();
+    expect(side()).toBeNull();
+    await dataMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Conditional formatting" }));
+    await waitFor(() => expect(side()).toBeTruthy());
+    expect(side()!.dataset).toMatchObject({ view: "lists", kinds: "conditional validation names", stacked: "false" });
+    // docked at the grid's right: the grid first, the sheet after it, in one row under the format row
+    const dock = side()!.parentElement!;
+    expect(dock.className).toContain("w-80");
+    expect(dock.previousElementSibling?.querySelector("[data-cell]") ?? dock.previousElementSibling).toBeTruthy();
+    // a rule opened in it stays the body's state
+    fireEvent.click(within(side()!).getByText("open a rule"));
+    await waitFor(() => expect(side()!.dataset.view).toBe("rule"));
+    fireEvent.click(within(side()!).getByText("close rules"));
+    await waitFor(() => expect(side()).toBeNull());
+  });
+
+  it("shuts the side sheet when the sheet turns read-only, and leaves it shut when he can edit again", async () => {
+    open(sheetView({ store: "tcsheet", name: "Budget", row: DATA }), { selection: "B2" });
+    await gridUp();
+    await dataMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Conditional formatting" }));
+    await waitFor(() => expect(side()).toBeTruthy());
+    act(() => sheetHost.push({ rev: sheetHost.rev, view: { ...sheetHost.view, readOnly: "Open in Excel to edit." } }));
+    await waitFor(() => expect(side()).toBeNull());
+    act(() => sheetHost.push({ rev: sheetHost.rev, view: { ...sheetHost.view, readOnly: undefined } }));
+    await screen.findByRole("toolbar", { name: "Formatting" });
+    expect(side()).toBeNull();
+  });
+
+  it("tells the grid to offer the filter's own buttons and menu only where the host keeps a filter", async () => {
+    const first = open(sheetView({ store: "tcsheet", name: "Budget", row: DATA }), { selection: "B2" });
+    await gridUp();
+    expect(grid.filter).toBe(true);
+    // the sort dialog, the filter's menu and a list's drop-down are the kit's own
+    expect(grid.dataChrome).toBe(true);
+    first.unmount();
+    cleanup();
+    resetCanvasStore();
+    resetSheetSyncs();
+    // a workbook Excel or Google holds lists no control: no filter menu to change what its host would drop
+    open(sheetView({ store: "package" }), { selection: "B2" });
+    await gridUp();
+    expect(grid.filter).toBe(false);
+  });
+
+  it("lists only the rules a store keeps, and offers no Data menu where it keeps none", async () => {
+    const first = open(sheetView({ store: "tcsheet", name: "Budget", row: [...ROW_ALL, "sort", "filter", "names"] }), { selection: "B2" });
+    await gridUp();
+    await dataMenu();
+    expect(await screen.findByRole("menuitem", { name: "Named ranges" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Conditional formatting" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Validation" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Named ranges" }));
+    await waitFor(() => expect(side()!.dataset.kinds).toBe("names"));
+    first.unmount();
+    cleanup();
+    resetCanvasStore();
+    resetSheetSyncs();
+
+    open(sheetView({ store: "tcsheet", name: "Budget", row: ROW_ALL }), { selection: "B2" });
+    await gridUp();
+    const bar = await screen.findByRole("toolbar", { name: "Formatting" });
+    expect(within(bar).queryByRole("button", { name: "Data" })).toBeNull();
+    fireEvent.click(within(bar).getByRole("button", { name: "More formatting" }));
+    await screen.findAllByRole("menuitem");
+    expect(screen.queryByRole("menuitem", { name: /^Data/ })).toBeNull();
+  });
+
+  it("a rule made in an opened Excel file is saved as the whole list it leaves, once a turn", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      open(sheetView({ store: "package", row: DATA }), { selection: "B2" });
+      await gridUp();
+      await act(async () => {
+        const rules = grid.handle!.rules;
+        rules.conditional.add({ ranges: [], stopIfTrue: false, rule: { type: "highlightCell" } } as never);
+        rules.conditional.add({ ranges: [], stopIfTrue: false, rule: { type: "colorScale" } } as never);
+        rules.filter.set();
+      });
+      await act(async () => void (await vi.advanceTimersByTimeAsync(EDIT_WAIT + 20)));
+      await waitFor(() => expect(edits()).toHaveLength(1));
+      const sent = edits()[0]!.mutations;
+      // the two adds are one list, the newest first as the grid holds it; the filter is its range; nothing of the filter's own noise
+      expect(sent.map((m) => [m.id, (m.params as { kind: string }).kind, (m.params as { subUnitId?: string }).subUnitId])).toEqual([
+        ["tempcode.sheet.rules", "conditional", "budget"],
+        ["tempcode.sheet.rules", "filter", "budget"],
+      ]);
+      expect(((sent[0]!.params as { list: { cfId: string }[] }).list).map((r) => r.cfId)).toEqual(["cf2", "cf1"]);
+      expect(toasts.said).toEqual([]);
+      expect(grid.undone).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a sheet the service holds is sent the rule's own mutation; an Excel file whose host lists no such rule has it stopped at the press", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const first = open(sheetView({ store: "tcsheet", name: "Budget", row: DATA }), { selection: "B2" });
+      await gridUp();
+      await act(async () => void grid.handle!.rules.validation.add({ type: "list", formula1: "Open,Done", ranges: [] } as never));
+      await act(async () => void (await vi.advanceTimersByTimeAsync(EDIT_WAIT + 20)));
+      await waitFor(() => expect(edits()).toHaveLength(1));
+      expect(edits()[0]!.mutations.map((m) => m.id)).toEqual(["data-validation.mutation.addRule"]);
+      first.unmount();
+      cleanup();
+      resetCanvasStore();
+      resetSheetSyncs();
+      toasts.said.length = 0;
+
+      // a host that keeps formatting but lists no rule (a release behind): the rule is taken back as he makes it
+      open(sheetView({ store: "package", row: ROW_ALL }), { selection: "B2" });
+      await gridUp();
+      await act(async () => void grid.handle!.rules.validation.add({ type: "list", formula1: "Open,Done", ranges: [] } as never));
+      await act(async () => void (await vi.advanceTimersByTimeAsync(EDIT_WAIT + 20)));
+      await waitFor(() => expect(toasts.said).toEqual(["That change is not saved in an Excel file yet. Make it in Excel"]));
+      expect(grid.undone).toBe(1);
+      expect(edits()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("a format or a rule an agent proposed", () => {
+  const said = (id: string, over: Partial<NonNullable<SheetView["changes"]>[number]> = {}): NonNullable<SheetView["changes"]>[number] => ({
+    id,
+    changeSet: `set-${id}`,
+    by: "agent:local:t1",
+    kind: "format",
+    sheet: "budget",
+    range: { startRow: 1, endRow: 2, startColumn: 1, endColumn: 2 },
+    words: "Bold, yellow fill on B2:C3",
+    state: "pending",
+    ...over,
+  });
+
+  it("is stepped after the cells, marks its range, is said in words in the formula bar, and is taken by its id", async () => {
+    open(
+      sheetView({
+        suggestions: [suggestion("a", 1, 3, { base: { v: 412 }, proposed: { v: 438 } })],
+        changes: [said("f1", { reason: "the totals" }), said("r1", { kind: "rule", range: null, words: "The name Budgeted for E2:E5" })],
+      }),
+    );
+    await gridUp();
+    const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+    expect(within(bar).getByText("1/3")).toBeTruthy();
+    // waiting: its cells are marked as a cell's change marks its own
+    await waitFor(() => expect(cell("B2").dataset.mark).toBe("pending"));
+    expect(cell("C3").dataset.mark).toBe("pending");
+    // a cell with no value of the change keeps what it held
+    expect(cell("B2").textContent).toBe("14");
+
+    fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+    await waitFor(() => expect(cell("B2").dataset.mark).toBe("current"));
+    expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("Suggested: Bold, yellow fill on B2:C3 (the totals)");
+
+    // a name sits in no cell: the bar still says it
+    fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
+    await waitFor(() => expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("Suggested: The name Budgeted for E2:E5"));
+    expect(cell("B2").dataset.mark).toBe("pending");
+
+    fireEvent.click(within(bar).getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(sheetHost.calls).toContainEqual(["review", { which: { ids: ["r1"] }, verdict: "accept" }]));
+  });
+
+  it("one whose rows moved since says so and can be rejected", async () => {
+    open(sheetView({ changes: [said("f1", { state: "orphaned" })] }));
+    await gridUp();
+    const bar = await screen.findByRole("toolbar", { name: "Review changes" });
+    await waitFor(() => expect(document.querySelector("[data-sheet-was]")?.textContent).toBe("Bold, yellow fill on B2:C3. Rows or columns changed since: reject it"));
+    fireEvent.click(within(bar).getByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(sheetHost.calls).toContainEqual(["review", { which: { ids: ["f1"] }, verdict: "reject" }]));
+  });
+});

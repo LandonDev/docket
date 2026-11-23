@@ -16,6 +16,19 @@ export interface A1Cell {
   f?: string
 }
 
+/** The rules a sheet holds, as far as a new one is checked against them: each name with its scope, each sheet's filter and validated ranges. */
+export interface RulesHeld {
+  names: { name: string; scope?: string }[]
+  filters: Record<string, RuleBox>
+  validations: Record<string, RuleBox[]>
+}
+export interface RuleBox {
+  startRow: number
+  endRow: number
+  startColumn: number
+  endColumn: number
+}
+
 export type Which = { ids: string[] } | { changeSet: string } | 'all'
 
 export type HostAsk =
@@ -32,7 +45,8 @@ export type HostAsk =
   | { op: 'create'; title: string; at: { tcsheet: string } | { lifeos: { sector: string; projectId?: string } } }
 
 interface Answers {
-  open: { title: string; rev: number; shared: boolean; suggestions: SheetSuggestion[]; missing?: boolean }
+  /** `unit` is the workbook's id in every grid of it and `sheets` its tabs in order: what a mutation made elsewhere names */
+  open: { title: string; rev: number; shared: boolean; suggestions: SheetSuggestion[]; missing?: boolean; unit: string; sheets: { id: string; name: string }[]; rules: RulesHeld }
   /** a frame of the workbook as Univer's JSON at `rev`, base64 */
   snapshot: { rev: number; data: string; size: number }
   since: { rev: number; ops: { rev: number; by: string; mutations: SheetMutationJson[] }[] } | { rev: number; reload: true }

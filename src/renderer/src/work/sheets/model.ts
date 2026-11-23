@@ -1,4 +1,4 @@
-import type { SheetCellJson, SheetChart, SheetSuggestion, SheetView } from "@shared/contract-work-sheets";
+import type { SheetCellJson, SheetChange as ProposedChange, SheetChart, SheetSuggestion, SheetView } from "@shared/contract-work-sheets";
 import type { Principal } from "@shared/work";
 import { changeRuns, type ChangeRun, type SuggestionCell } from "work-kit/sheet/suggest";
 
@@ -7,10 +7,11 @@ import { changeRuns, type ChangeRun, type SuggestionCell } from "work-kit/sheet/
  * the changes the stepper walks, a cell in words, a chart's bars.
  */
 
-/** One change the stepper walks: a run of neighbouring cells, or a change set whose cells are gone. */
+/** One change the stepper walks: a run of neighbouring cells, a change set whose cells are gone, or a format or a rule said in words. */
 export type SheetChange =
   | { kind: "cells"; run: ChangeRun; changeSet: string; ids: string[] }
-  | { kind: "orphaned"; changeSet: string; ids: string[] };
+  | { kind: "orphaned"; changeSet: string; ids: string[] }
+  | { kind: "said"; said: ProposedChange; changeSet: string; ids: string[] };
 
 export interface SheetChanges {
   changes: SheetChange[];
@@ -35,24 +36,33 @@ const toCell = (s: SheetSuggestion): SuggestionCell => ({
  * as the grid shows it, then one change for each change set whose row,
  * column or sheet was deleted, which has no cell to show.
  */
-export function sheetChanges(suggestions: readonly SheetSuggestion[], sheetOrder: readonly string[] = []): SheetChanges {
+export function sheetChanges(suggestions: readonly SheetSuggestion[], sheetOrder: readonly string[] = [], proposed: readonly ProposedChange[] = []): SheetChanges {
   const runs = changeRuns(suggestions.map(toCell), sheetOrder);
   const changes: SheetChange[] = runs.map((run) => ({ kind: "cells", run, changeSet: run.changeSet, ids: run.cells.map((c) => c.id) }));
   const orphaned = new Map<string, string[]>();
   for (const s of suggestions) if (s.state === "orphaned") orphaned.set(s.changeSet, [...(orphaned.get(s.changeSet) ?? []), s.id]);
   for (const [changeSet, ids] of orphaned) changes.push({ kind: "orphaned", changeSet, ids });
+  // A format or a rule changes no cell's value, so it has no cell to sit in: it is stepped after the cells, in the order it was made.
+  for (const said of proposed) changes.push({ kind: "said", said, changeSet: said.changeSet, ids: [said.id] });
 
   const groups: SheetChanges["groups"] = [];
   for (const change of changes) {
     let group = groups.find((g) => g.id === change.changeSet);
     if (!group) {
       const first = suggestions.find((s) => s.changeSet === change.changeSet);
-      group = { id: change.changeSet, label: first?.reason ?? "Suggested changes", by: first?.by ?? "owner", count: 0 };
+      // A format or a rule is its own group, named by what it does.
+      group = change.kind === "said" ? { id: change.changeSet, label: change.said.words, by: change.said.by, count: 0 } : { id: change.changeSet, label: first?.reason ?? "Suggested changes", by: first?.by ?? "owner", count: 0 };
       groups.push(group);
     }
     group.count++;
   }
   return { changes, runs, groups };
+}
+
+/** What the formula bar says while the stepper is on a format or a rule: its words, the agent's reason, and why it can only be dropped when it can. */
+export function saidLine(said: ProposedChange): string {
+  const why = said.reason ? ` (${said.reason})` : "";
+  return said.state === "orphaned" ? `${said.words}${why}. Rows or columns changed since: reject it` : `Suggested: ${said.words}${why}`;
 }
 
 /** A cell as the formula bar would show it: its formula, else its value; "empty" for nothing. */

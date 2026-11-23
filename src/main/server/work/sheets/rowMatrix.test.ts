@@ -8,8 +8,10 @@ import { TEMPCODE_THEME } from 'work-kit/format/theme'
 import { headlessSheet } from 'work-kit/sheet/engine'
 import { applyFormat, cellStyleOf, readFormat, type SheetFormat } from 'work-kit/sheet/format'
 import { importXlsx } from 'work-kit/sheet/xlsx'
-import { SHEET_ROW, type SheetMutationJson, type SheetRowControl, type SheetStoreKind } from '@shared/contract-work-sheets'
+import { SHEET_ROW, type SheetFormatControl, type SheetMutationJson, type SheetStoreKind } from '@shared/contract-work-sheets'
+import { GUEST_ROW } from '@shared/work/sheets'
 import { blankWorkbook, TcsheetBackend, type Op, type SheetBackend, type StoredSuggestion } from './host/backends'
+import { FORMAT_RANGES_MAX, GUEST_OPS, guestCells, refusal, SIZE_MAX } from './host/live'
 import { SheetHost } from './host/host'
 import type { SheetRef } from './host/wire'
 import { ensurePackageTables, PackageStore } from './packages'
@@ -92,7 +94,7 @@ interface Press {
 }
 
 /** Everything the row can press, by the control that carries it: a control is kept only if each of these survives. */
-const PRESSES: Record<Exclude<SheetRowControl, 'undo'>, Press[]> = {
+const PRESSES: Record<Exclude<SheetFormatControl, 'undo'>, Press[]> = {
   style: [
     { what: 'Heading 1', steps: [{ style: 'heading1' }], a1: { style: 'heading1', bold: true, size: 15, borders: 'b13' } },
     { what: 'Total, a thin top and a double bottom in the theme\'s accent', steps: [{ style: 'total' }], a1: { style: 'total', borders: 't1 b7' } },
@@ -205,10 +207,11 @@ const PLAIN = look(blankWorkbook('x', 'x'), 0, 0)
 
 describe.each(['tcsheet', 'lifeos'] as const)('the format row on a %s', (kind) => {
   it('lists every control: the service keeps a sheet it holds whole', () => {
-    expect([...SHEET_ROW[kind]].sort()).toEqual(['align', 'bold', 'borders', 'colour', 'fill', 'font', 'italic', 'merge', 'number', 'size', 'style', 'underline', 'undo', 'vertical', 'wrap'])
+    // (the Data menu's rows are listed after these: rulesMatrix.test.ts)
+    expect(SHEET_ROW[kind].filter((c) => c === 'undo' || c in PRESSES).sort()).toEqual(['align', 'bold', 'borders', 'colour', 'fill', 'font', 'italic', 'merge', 'number', 'size', 'style', 'underline', 'undo', 'vertical', 'wrap'])
   })
 
-  for (const control of SHEET_ROW[kind].filter((c): c is Exclude<SheetRowControl, 'undo'> => c !== 'undo')) {
+  for (const control of SHEET_ROW[kind].filter((c): c is Exclude<SheetFormatControl, 'undo'> => c !== 'undo' && c in PRESSES)) {
     it.each(PRESSES[control])(`${control}, $what: the grid emits it, the engine replays it, a cold load shows it, the export holds it`, async (press) => {
       const store = await storeOf(kind)
       const { grid, emitted, rev } = await gridOn(store)
@@ -289,6 +292,134 @@ describe.each(['tcsheet', 'lifeos'] as const)('the format row on a %s', (kind) =
  * package store, which saves it into the file with the patch writer, and the file read again is
  * both the cold load and what Excel opens.
  */
+/**
+ * A guest with an Edit link gets the row too (`GUEST_ROW`, the hosted page). Every press of every
+ * control it lists must pass the live route's guest check as the route applies it (`guestCells`,
+ * then `refusal`), and land in the host as the grid drew it; and the list names nothing the
+ * route would refuse.
+ */
+describe('the format row for a guest with an Edit link', () => {
+  it('lists the format controls and no Data control', () => {
+    expect([...GUEST_ROW].sort()).toEqual(['align', 'bold', 'borders', 'colour', 'fill', 'font', 'italic', 'merge', 'number', 'size', 'style', 'underline', 'undo', 'vertical', 'wrap'])
+    for (const control of GUEST_ROW) expect(SHEET_ROW.tcsheet).toContain(control)
+  })
+
+  for (const control of GUEST_ROW.filter((c): c is Exclude<SheetFormatControl, 'undo'> => c !== 'undo')) {
+    it.each(PRESSES[control])(`${control}, $what: the route lets a guest send it, and the host holds it`, async (press) => {
+      const store = await storeOf('tcsheet')
+      const { grid, emitted, rev } = await gridOn(store)
+      try {
+        for (const step of press.steps) expect(applyFormat(grid.api, step, TEMPCODE_THEME)).toBe(true)
+        expect(emitted.length).toBeGreaterThan(0)
+        for (const m of emitted) expect(GUEST_OPS.has(m.id), m.id).toBe(true)
+        const sent = guestCells(emitted)
+        expect(refusal(sent, 'edit', true)).toBeNull()
+        const made = grid.workbook.save()
+        const live = new SheetHost(() => store.backend())
+        hosts.push(live)
+        const took = await live.apply(store.ref, rev, sent, 'guest:L1')
+        expect('conflict' in took ? 'conflict' : 'landed').toBe('landed')
+        const held = JSON.parse((await live.snapshotJson(store.ref)).json) as IWorkbookData
+        // what a guest's cells are cut down to (values, formulas, styles, types) loses nothing of the press
+        expect(CELLS.map(([r, c]) => look(held, r, c))).toEqual(CELLS.map(([r, c]) => look(made, r, c)))
+        expect(merges(held)).toEqual(merges(made))
+      } finally {
+        grid.dispose()
+      }
+    })
+  }
+
+  it('a width, a height and a row told to fit pass; and an undo of each, which gives every column its own back', async () => {
+    const store = await storeOf('tcsheet')
+    const { grid, emitted, rev } = await gridOn(store)
+    try {
+      const sheet = grid.workbook.getActiveSheet()
+      sheet.setColumnWidths(0, 2, 160)
+      sheet.setRowHeights(0, 2, 40)
+      sheet.setRowAutoHeight(0, 1)
+      await grid.api.undo()
+      await grid.api.undo()
+      await grid.api.undo()
+      expect(new Set(emitted.map((m) => m.id))).toEqual(new Set(['sheet.mutation.set-worksheet-col-width', 'sheet.mutation.set-worksheet-row-height', 'sheet.mutation.set-worksheet-row-is-auto-height']))
+      expect(refusal(guestCells(emitted), 'edit', true)).toBeNull()
+      const live = new SheetHost(() => store.backend())
+      hosts.push(live)
+      expect('conflict' in (await live.apply(store.ref, rev, guestCells(emitted), 'guest:L1'))).toBe(false)
+    } finally {
+      grid.dispose()
+    }
+  })
+
+  it('holds a guest\'s sizes and merges to the sheet as it stands: nothing past its end, no merge over a merged cell', async () => {
+    const store = await storeOf('tcsheet')
+    const live = new SheetHost(() => store.backend())
+    hosts.push(live)
+    const rev = (await store.backend().load()).rev
+    const at = (id: string, params: Record<string, unknown>): SheetMutationJson => ({ id, params: { unitId: 'workbook', subUnitId: 'sheet1', ...params } })
+    const guest = (m: SheetMutationJson[]) => live.apply(store.ref, rev, guestCells(m), 'guest:L1')
+    // one height over every row a grid can have passes the route's shape check, and is refused by the sheet's own size
+    const everyRow = [at('sheet.mutation.set-worksheet-row-height', { ranges: [{ startRow: 0, endRow: 1_048_575, startColumn: 0, endColumn: 0 }], rowHeight: 40 })]
+    expect(refusal(everyRow, 'edit', true)).toBeNull()
+    await expect(guest(everyRow)).rejects.toThrow('that range runs past the end of the sheet')
+    await expect(guest([at('sheet.mutation.set-worksheet-col-width', { ranges: [{ startRow: 0, endRow: 0, startColumn: 0, endColumn: 16_383 }], colWidth: 40 })])).rejects.toThrow('past the end of the sheet')
+    // nothing of either was stored
+    expect((await store.backend().load()).rev).toBe(rev)
+    // a merge, then one over it: the second is refused; parting the first and merging wider in one batch passes
+    const first = { startRow: 4, endRow: 5, startColumn: 0, endColumn: 1 }
+    expect('conflict' in (await guest([at('sheet.mutation.add-worksheet-merge', { ranges: [first] })]))).toBe(false)
+    const next = (await store.backend().load()).rev
+    const wider = { startRow: 4, endRow: 6, startColumn: 0, endColumn: 2 }
+    await expect(live.apply(store.ref, next, [at('sheet.mutation.add-worksheet-merge', { ranges: [wider] })], 'guest:L1')).rejects.toThrow('those cells overlap a merged cell')
+    expect('conflict' in (await live.apply(store.ref, next, [at('sheet.mutation.remove-worksheet-merge', { ranges: [first] }), at('sheet.mutation.add-worksheet-merge', { ranges: [wider] })], 'guest:L1'))).toBe(false)
+    // the owner's own grid is not held to it (its row parts merges itself)
+    const own = (await store.backend().load()).rev
+    const past = [at('sheet.mutation.set-worksheet-row-height', { ranges: [{ startRow: 0, endRow: 4_999, startColumn: 0, endColumn: 0 }], rowHeight: 40 })]
+    await expect(live.apply(store.ref, own, past, 'guest:L1')).rejects.toThrow('past the end of the sheet')
+    expect('conflict' in (await live.apply(store.ref, own, past, 'owner'))).toBe(false)
+  })
+
+  it('refuses a guest a merge or a size that is not one, and everything of the Data menu', () => {
+    const S = 'sheet1'
+    const at = (id: string, params: Record<string, unknown>): SheetMutationJson[] => [{ id, params: { unitId: 'workbook', subUnitId: S, ...params } }]
+    const range = { startRow: 0, endRow: 1, startColumn: 0, endColumn: 1 }
+    const guest = (m: SheetMutationJson[]): string | null => refusal(m, 'edit', true)
+    expect(guest(at('sheet.mutation.add-worksheet-merge', { ranges: [range] }))).toBeNull()
+    expect(guest(at('sheet.mutation.remove-worksheet-merge', { ranges: [range] }))).toBeNull()
+    expect(guest(at('sheet.mutation.set-worksheet-col-width', { ranges: [range], colWidth: 160 }))).toBeNull()
+    expect(guest(at('sheet.mutation.set-worksheet-col-width', { ranges: [range], colWidth: { 0: 88, 1: null } }))).toBeNull()
+    expect(guest(at('sheet.mutation.set-worksheet-row-height', { ranges: [range], rowHeight: 40 }))).toBeNull()
+    // ranges that are not ranges on the grid
+    for (const ranges of [undefined, [], 'A1', [null], [{ ...range, startRow: -1 }], [{ ...range, endRow: 1.5 }], [{ ...range, startRow: 2 }], [{ ...range, endRow: 1_048_576 }], [{ ...range, endColumn: 16_384 }], Array.from({ length: FORMAT_RANGES_MAX + 1 }, () => range)])
+      expect(guest(at('sheet.mutation.add-worksheet-merge', { ranges })), JSON.stringify(ranges)?.slice(0, 60)).toBe('a merge, a size change or a number format names at most 1000 ranges on the grid')
+    // sizes that are not sizes
+    for (const colWidth of [undefined, '160', -1, SIZE_MAX + 1, Number.NaN, [160], {}, { x: 1 }, { 0: '9' }, { 16384: 9 }, { 0: SIZE_MAX + 1 }])
+      expect(guest(at('sheet.mutation.set-worksheet-col-width', { ranges: [range], colWidth })), JSON.stringify(colWidth)).toBe('a column is at most 2000 wide')
+    expect(guest(at('sheet.mutation.set-worksheet-row-height', { ranges: [range], rowHeight: 1e9 }))).toBe('a row is at most 2000 tall')
+    // the owner's own grid is not held to the guest's bounds
+    expect(refusal(at('sheet.mutation.set-worksheet-col-width', { ranges: [range], colWidth: 5000 }), 'edit', false)).toBeNull()
+    // nothing of the Data menu, no sheet added or removed, no cells moved
+    for (const id of ['sheet.mutation.add-conditional-rule', 'data-validation.mutation.addRule', 'sheet.mutation.set-filter-range', 'sheet.mutation.set-filter-criteria', 'sheet.mutation.reorder-range', 'sheet.mutation.insert-sheet', 'sheet.mutation.remove-sheet', 'sheet.mutation.set-worksheet-name', 'sheet.mutation.move-range', 'sheet.mutation.move-rows', 'sheet.mutation.set-row-hidden', 'sheet.mutation.add-table', 'tempcode.sheet.rules'])
+      expect(guest(at(id, {})), id).toMatch(/^a guest cannot /)
+    expect(guest([{ id: 'formula.mutation.set-defined-name', params: { unitId: 'workbook', id: 'n', name: 'N', formulaOrRefString: '=1' } }])).toBe("a guest cannot change the workbook's names")
+    // and the list is exactly this
+    expect([...GUEST_OPS].sort()).toEqual([
+      'sheet.mutation.add-worksheet-merge',
+      'sheet.mutation.insert-col',
+      'sheet.mutation.insert-row',
+      'sheet.mutation.remove-col',
+      'sheet.mutation.remove-rows',
+      'sheet.mutation.remove-worksheet-merge',
+      'sheet.mutation.remove.numfmt',
+      'sheet.mutation.set-range-values',
+      'sheet.mutation.set-worksheet-col-width',
+      'sheet.mutation.set-worksheet-row-auto-height',
+      'sheet.mutation.set-worksheet-row-height',
+      'sheet.mutation.set-worksheet-row-is-auto-height',
+      'sheet.mutation.set.numfmt'
+    ])
+  })
+})
+
 describe('the format row on an opened Excel file', () => {
   const CORPUS = join(import.meta.dirname, 'harness/corpus')
   let n = 0
@@ -317,7 +448,7 @@ describe('the format row on an opened Excel file', () => {
     expect([...SHEET_ROW.package].sort()).toEqual([...SHEET_ROW.tcsheet].sort())
   })
 
-  for (const control of SHEET_ROW.package.filter((c): c is Exclude<SheetRowControl, 'undo'> => c !== 'undo')) {
+  for (const control of SHEET_ROW.package.filter((c): c is Exclude<SheetFormatControl, 'undo'> => c !== 'undo' && c in PRESSES)) {
     it.each(PRESSES[control])(`${control}, $what: the grid emits it, the file takes it, and the file read again shows it`, async (press) => {
       const { path, store, grid, emitted, read } = await opened()
       try {

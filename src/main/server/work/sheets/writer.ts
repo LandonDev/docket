@@ -1,5 +1,6 @@
 import type { ICellData, IStyleData, IWorkbookData, IWorksheetData } from '@univerjs/core'
 import { toFileFormula } from './patch/formula'
+import { patchRules, RulesRefused, type DefinedName, type RulesEdit, type SheetFilter } from './patch/rules'
 import { readZip, writeZip } from './patch/zip'
 import { colName, esc, escText } from './patch/xml'
 import { excelColour, TEMPCODE_THEME, themeXml, type OfficeTheme } from 'work-kit/format/theme'
@@ -13,8 +14,11 @@ import { colourOfStyle } from 'work-kit/sheet/colour'
  * widths and row heights, frozen panes, hidden sheets. A colour picked from
  * the theme is written as that theme colour with its tint, beside the theme
  * itself (the file's own where the sheet came from one, else TempCode's), so
- * changing the theme in Excel recolours it. An opened package is never
- * written by this: it stays its own truth.
+ * changing the theme in Excel recolours it. The workbook's rules (conditional
+ * formats, validations, names, a filter) are then written into that file by
+ * the patch writer, the one an opened Excel file is saved with, so both hold
+ * a rule the same way. An opened package is never written by this: it stays
+ * its own truth.
  */
 
 const enc = new TextEncoder()
@@ -231,7 +235,83 @@ function lookOf(wb: IWorkbookData): { theme: OfficeTheme; font: { family: string
   return { theme, font: { family: typeof d?.family === 'string' && d.family ? d.family : MADE_HERE.family, size: typeof d?.size === 'number' && d.size > 0 ? d.size : MADE_HERE.size } }
 }
 
+/** The workbook as a new .xlsx. */
 export function writeXlsx(wb: IWorkbookData): Uint8Array {
+  return writeXlsxWhole(wb).bytes
+}
+
+/** The resources the grid's plugins keep a workbook's rules under (work-kit's importer writes the same). */
+const RES = {
+  names: 'SHEET_DEFINED_NAME_PLUGIN',
+  conditional: 'SHEET_CONDITIONAL_FORMATTING_PLUGIN',
+  validation: 'SHEET_DATA_VALIDATION_PLUGIN',
+  filter: 'SHEET_FILTER_PLUGIN'
+} as const
+
+/**
+ * The workbook's rules as the patch writer takes them: each sheet's conditional formats and
+ * validations, the names, a sheet's filter. `nameOf` gives the tab's name in the file being
+ * written. A resource that does not parse, or a sheet that is gone, gives nothing.
+ */
+export function rulesOf(wb: IWorkbookData, nameOf: (sheetId: string) => string | undefined): RulesEdit[] {
+  const read = (name: string): Record<string, unknown> => {
+    const data = wb.resources?.find((r) => r.name === name)?.data
+    if (!data) return {}
+    try {
+      const value = JSON.parse(data) as unknown
+      return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+    } catch {
+      return {}
+    }
+  }
+  const out: RulesEdit[] = []
+  const names = Object.values(read(RES.names)) as DefinedName[]
+  if (names.length) out.push({ kind: 'names', names })
+  for (const kind of ['conditional', 'validation'] as const)
+    for (const [id, rules] of Object.entries(read(RES[kind]))) {
+      const sheet = nameOf(id)
+      if (sheet && Array.isArray(rules) && rules.length) out.push({ kind, sheet, rules } as RulesEdit)
+    }
+  for (const [id, filter] of Object.entries(read(RES.filter))) {
+    const sheet = nameOf(id)
+    if (sheet && filter && typeof filter === 'object' && (filter as SheetFilter).ref) out.push({ kind: 'filter', sheet, filter: filter as SheetFilter })
+  }
+  return out
+}
+
+/** What a rule the file could not take is called, for the line that says it was left out. */
+const RULE_WORDS = { names: 'names', conditional: 'conditional formats', validation: 'validations', filter: 'the filter' } as const
+
+/**
+ * The workbook as a new .xlsx, and what it could not hold. A rule the patch writer refuses (an
+ * icon set of his own icons, a name Excel would not take) leaves its whole list out of the file
+ * rather than failing the export: `left` names each, for whoever shows the export.
+ */
+export function writeXlsxWhole(wb: IWorkbookData): { bytes: Uint8Array; left: { what: string; sheet?: string; why: string }[] } {
+  const base = writeCells(wb)
+  const edits = rulesOf(wb, (id) => base.names.get(id))
+  const left: { what: string; sheet?: string; why: string }[] = []
+  let bytes = base.bytes
+  if (!edits.length) return { bytes, left }
+  const opts = { sheetIds: base.ids }
+  try {
+    return { bytes: patchRules(bytes, edits, opts).bytes, left }
+  } catch (err) {
+    if (!(err instanceof RulesRefused)) throw err
+  }
+  // One list was refused: lay each by itself, so the others are kept.
+  for (const edit of edits)
+    try {
+      bytes = patchRules(bytes, [edit], opts).bytes
+    } catch (err) {
+      if (!(err instanceof RulesRefused)) throw err
+      left.push({ what: RULE_WORDS[edit.kind], ...('sheet' in edit ? { sheet: edit.sheet } : {}), why: err.message })
+    }
+  return { bytes, left }
+}
+
+/** The cells, styles and shape of the workbook as a new .xlsx; `names` is each sheet's tab name in it and `ids` the sheets' ids in the file's order. */
+function writeCells(wb: IWorkbookData): { bytes: Uint8Array; names: Map<string, string>; ids: string[] } {
   const look = lookOf(wb)
   const pools: Pools = {
     font: look.font,
@@ -246,10 +326,14 @@ export function writeXlsx(wb: IWorkbookData): Uint8Array {
   }
   const files = new Map<string, Uint8Array>()
   const taken = new Set<string>()
-  const sheets = wb.sheetOrder.map((id) => wb.sheets[id]).filter((s): s is IWorksheetData => !!s)
+  const ids = wb.sheetOrder.filter((id) => !!wb.sheets[id])
+  const sheets = ids.map((id) => wb.sheets[id] as IWorksheetData)
+  const names = new Map<string, string>()
   const entries = sheets.map((sh, i) => {
     files.set(`xl/worksheets/sheet${i + 1}.xml`, enc.encode(sheetXml(wb, sh, pools)))
-    return `<sheet name="${esc(excelName(sh.name ?? `Sheet${i + 1}`, taken))}" sheetId="${i + 1}"${sh.hidden ? ' state="hidden"' : ''} r:id="rId${i + 1}"/>`
+    const name = excelName(sh.name ?? `Sheet${i + 1}`, taken)
+    names.set(ids[i]!, name)
+    return `<sheet name="${esc(name)}" sheetId="${i + 1}"${sh.hidden ? ' state="hidden"' : ''} r:id="rId${i + 1}"/>`
   })
   const numFmts = [...pools.numFmts].map(
     ([code, id]) => `<numFmt numFmtId="${id}" formatCode="${esc(code)}"/>`
@@ -314,12 +398,13 @@ export function writeXlsx(wb: IWorkbookData): Uint8Array {
     ...sheets.map((_, i) => `xl/worksheets/sheet${i + 1}.xml`)
   ]
   files.set('xl/theme/theme1.xml', enc.encode(themeXml(look.theme)))
-  return writeZip(
+  const bytes = writeZip(
     readZip(EMPTY_ZIP),
     new Map(),
     new Set(),
     new Map(order.map((n) => [n, files.get(n)!]))
   )
+  return { bytes, names, ids }
 }
 
 /** One sheet as CSV (RFC 4180, CRLF): what each cell shows as a value; a formula gives its last value. */

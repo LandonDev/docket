@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -98,6 +98,7 @@ function serve(): void {
     if (op === 'apply') return h.apply(b.sheet, b.baseRev, b.mutations, b.by)
     if (op === 'cells') return h.cells(b.sheet, b.cells, b.by, b.suggest === true, b.reason)
     if (op === 'review') return h.review(b.sheet, b.which, b.verdict)
+    if (op === 'restore') return h.restore(b.sheet, b.rev, b.by)
     throw new Error(`not in this test: ${op}`)
   }
 }
@@ -255,6 +256,174 @@ describe('a workbook in a library, from a window that reaches this host with a r
   })
 })
 
+describe('a format or a rule an agent proposes on an Excel file others can open', () => {
+  let path: string
+  let itemId: string
+  const book = () => importXlsx(new Uint8Array(readFileSync(path))).workbook
+  const data = (wb: ReturnType<typeof book>): string => wb.sheetOrder.find((s) => wb.sheets[s]?.name === 'Data')!
+  const styleOf = (wb: ReturnType<typeof book>, row: number, col: number): Record<string, unknown> => {
+    const s = wb.sheets[data(wb)]?.cellData?.[row]?.[col]?.s
+    return ((typeof s === 'string' ? wb.styles?.[s] : s) ?? {}) as Record<string, unknown>
+  }
+  const rulesOf = (wb: ReturnType<typeof book>, name: string): unknown[] => ((JSON.parse(wb.resources?.find((r) => r.name === name)?.data ?? '{}') as Record<string, unknown[]>)[data(wb)] ?? []) as unknown[]
+  beforeEach(() => {
+    mkdirSync(join(library, 'Budget'), { recursive: true })
+    path = join(library, 'Budget', 'Budget.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+    itemId = open(path, 'Budget.xlsx')
+  })
+
+  it('sheet_format and sheet_rule leave the file and its folder byte for byte: each waits on this host, in words', async () => {
+    const before = folder()
+    const f = await tool('sheet_format', { item: itemId, range: 'Data!A2:B3', format: { bold: true, fill: '#FFF2CC' }, because: 'own', reason: 'the totals' })
+    expect(f.text).toMatch(/^Suggested: Bold, yellow fill on Data!A2:B3\. Others share this sheet/)
+    const r = await tool('sheet_rule', { file: path, rule: { kind: 'highlight', range: 'Data!A2:A9', when: 'greater', value: 100, look: { colour: '#C00000' } }, because: 'own' })
+    expect(r.text).toMatch(/^Suggested: Red text where Data!A2:A9 is greater than 100\./)
+    // a quote he never said counts as the agent's own idea
+    const q = await tool('sheet_rule', { item: itemId, rule: { kind: 'list', range: 'Data!C2:C9', items: ['Open', 'Done'] }, because: 'asked', quote: 'add a status list' })
+    expect(q.text).toMatch(/^Suggested: A list \(Open, Done\) on Data!C2:C9\./)
+    expect(folder()).toEqual(before)
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view).toMatchObject({ shared: true, rev: 0 })
+    expect(view.changes!.map((c) => [c.kind, c.words, c.state])).toEqual([
+      ['format', 'Bold, yellow fill on Data!A2:B3', 'pending'],
+      ['rule', 'Red text where Data!A2:A9 is greater than 100', 'pending'],
+      ['rule', 'A list (Open, Done) on Data!C2:C9', 'pending']
+    ])
+    expect(view.changes![0]).toMatchObject({ reason: 'the totals', range: { startRow: 1, endRow: 2, startColumn: 0, endColumn: 1 } })
+    // the view carries the words, never the ask
+    expect(JSON.stringify(view.changes)).not.toContain('FFF2CC')
+    expect((db.prepare('SELECT COUNT(*) AS n FROM work_sheets_changes').get() as { n: number }).n).toBe(3)
+    expect(folder()).toEqual(before)
+  })
+
+  it('his accept lays each as his own ordinary edit; a reject leaves nothing anywhere', async () => {
+    await tool('sheet_format', { item: itemId, range: 'Data!A2:B3', format: { bold: true, fill: '#FFF2CC' }, because: 'own' })
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'Data!A2:A9', when: 'greater', value: 100, look: { colour: '#C00000' } }, because: 'own' })
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'list', range: 'Data!C2:C9', items: ['Open', 'Done'] }, because: 'own' })
+    const before = folder()
+    const [format, highlight, list] = (await call<SheetView>('work.sheets.open', { itemId })).changes!
+    const value = book().sheets[data(book())]?.cellData?.[1]?.[0]?.v
+    const rejected = await call<SheetView>('work.sheets.review', { itemId, which: { ids: [list.id] }, verdict: 'reject' })
+    expect(rejected.changes).toHaveLength(2)
+    expect(folder()).toEqual(before)
+    const one = await call<SheetView>('work.sheets.review', { itemId, which: { ids: [format.id] }, verdict: 'accept' })
+    expect(one).toMatchObject({ rev: 1 })
+    expect(one.changes!.map((c) => c.id)).toEqual([highlight.id])
+    expect(styleOf(book(), 1, 0)).toMatchObject({ bl: 1, bg: { rgb: '#FFF2CC' } })
+    expect(styleOf(book(), 2, 1)).toMatchObject({ bl: 1 })
+    expect(book().sheets[data(book())]?.cellData?.[1]?.[0]?.v).toEqual(value)
+    const all = await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    expect(all.changes).toBeUndefined()
+    expect(all.rev).toBe(2)
+    const rules = rulesOf(book(), 'SHEET_CONDITIONAL_FORMATTING_PLUGIN') as { ranges: unknown[]; rule: { subType: string; operator: string; value: number } }[]
+    expect(rules).toHaveLength(1)
+    expect(rules[0]).toMatchObject({ ranges: [{ startRow: 1, endRow: 8, startColumn: 0, endColumn: 0 }], rule: { type: 'highlightCell', subType: 'number', operator: 'greaterThan', value: 100 } })
+    expect(rulesOf(book(), 'SHEET_DATA_VALIDATION_PLUGIN')).toEqual([])
+    // nothing was written beside the file
+    expect(Object.keys(folder())).toEqual(Object.keys(before))
+    const { revisions } = await call<{ revisions: { by: string; label: string }[] }>('work.sheets.history', { itemId })
+    expect(revisions.slice(0, 2).map((r) => [r.by, r.label])).toEqual([
+      ['owner', 'Red text where Data!A2:A9 is greater than 100'],
+      ['owner', 'Bold, yellow fill on Data!A2:B3']
+    ])
+  })
+
+  it('a format or a rule he asked for in so many words is written at once', async () => {
+    state.said.push('make the header bold and add a filter please')
+    const f = await tool('sheet_format', { item: itemId, range: 'Data!A1:C1', format: { bold: true }, because: 'asked', quote: 'make the header bold' })
+    expect(f.text).toBe('Bold on Data!A1:C1.')
+    expect(styleOf(book(), 0, 0)).toMatchObject({ bl: 1 })
+    const r = await tool('sheet_rule', { item: itemId, rule: { kind: 'check', range: 'Data!B2:B9', of: 'whole', when: 'between', value: 1, value2: 21 }, because: 'asked', quote: 'add a filter' })
+    expect(r.text).toBe('Data!B2:B9 takes only a whole number that is between 1 and 21.')
+    const [rule] = rulesOf(book(), 'SHEET_DATA_VALIDATION_PLUGIN') as Record<string, unknown>[]
+    // a value outside the rule is refused in Excel, as its own dialog sets a new rule
+    expect(rule).toMatchObject({ type: 'whole', operator: 'between', formula1: '1', formula2: '21', showErrorMessage: true })
+    expect((await call<SheetView>('work.sheets.open', { itemId })).changes).toBeUndefined()
+  })
+
+  it('only he takes one: a thread is refused, and a remote key needs approve there', async () => {
+    await tool('sheet_format', { item: itemId, range: 'Data!A2', format: { italic: true }, because: 'own' })
+    const before = folder()
+    const thread = { kind: 'model' as const, caps: [], sessionId: 't1' }
+    await expect(sheets.handle!(req('work.sheets.review', { itemId, which: 'all', verdict: 'accept' }), work.ctx, thread)).rejects.toThrow('Only the owner accepts or rejects a suggestion.')
+    const operate = { kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps: ['read', 'operate'] } as never
+    await expect(call('work.sheets.review', { itemId, which: 'all', verdict: 'accept' }, operate)).rejects.toThrow('this key may not change it')
+    expect(folder()).toEqual(before)
+    expect((await call<SheetView>('work.sheets.open', { itemId })).changes).toHaveLength(1)
+  })
+
+  it('a rule that would replace what the sheet holds, or that the file cannot keep, is refused as it is asked', async () => {
+    state.said.push('name the rate and filter the table please')
+    expect((await tool('sheet_rule', { item: itemId, rule: { kind: 'name', name: 'Markup', refersTo: '=0.08' }, because: 'asked', quote: 'name the rate' })).text).toBe('The name Markup for =0.08.')
+    expect((await tool('sheet_rule', { item: itemId, rule: { kind: 'filter', range: 'Data!A1:C9' }, because: 'asked', quote: 'filter the table' })).text).toBe('A filter on Data!A1:C9.')
+    expect((await tool('sheet_rule', { item: itemId, rule: { kind: 'list', range: 'Data!C2:C5', items: ['Open', 'Done'] }, because: 'asked', quote: 'filter the table' })).isError).toBeFalsy()
+    const bytes = sha(path)
+    const refused = async (rule: unknown): Promise<string> => {
+      const got = await tool('sheet_rule', { item: itemId, rule, because: 'own' })
+      expect(got.isError).toBe(true)
+      return got.text
+    }
+    expect(await refused({ kind: 'name', name: 'markup', refersTo: '=0.1' })).toContain("The name markup is already there: change it in the sheet's Rules.")
+    expect(await refused({ kind: 'filter', range: 'Data!A1:B9' })).toContain('Data already has a filter on A1:C9: take it off first.')
+    expect(await refused({ kind: 'filter', range: null, sheet: 'Calc' })).toContain('Calc has no filter.')
+    expect(await refused({ kind: 'check', range: 'Data!C4:C9', of: 'whole', when: 'greater', value: 1 })).toContain('C2:C5 already has a validation')
+    expect(await refused({ kind: 'name', name: 'TRUE', refersTo: '=1' })).toContain('TRUE is a name Excel keeps for itself')
+    expect(await refused({ kind: 'highlight', range: 'Data!A2:A9', when: 'top', value: 5000, look: { bold: true } })).toContain('Top and bottom take a whole number from 1 to 1,000.')
+    // nothing waits, nothing was written
+    expect((await call<SheetView>('work.sheets.open', { itemId })).changes).toBeUndefined()
+    expect(sha(path)).toBe(bytes)
+  })
+
+  it('an accept of all goes on past a change the sheet has no place for now', async () => {
+    // the same name proposed twice: the second has no place once the first is taken
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'name', name: 'Markup', refersTo: '=0.08' }, because: 'own' })
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'name', name: 'Markup', refersTo: '=0.09' }, because: 'own' })
+    await tool('sheet_format', { item: itemId, range: 'Data!A1:C1', format: { bold: true }, because: 'own' })
+    const all = await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    expect(all.changes!.map((c) => [c.words, c.state])).toEqual([['The name Markup for =0.09', 'orphaned']])
+    expect(all.rev).toBe(2)
+    expect(styleOf(book(), 0, 0)).toMatchObject({ bl: 1 })
+    // taken alone, it says why
+    await expect(call('work.sheets.review', { itemId, which: { ids: [all.changes![0].id] }, verdict: 'accept' })).rejects.toThrow('Rows or columns changed since the agent suggested this')
+  })
+
+  it('a passing fault as he takes one leaves it waiting: only a change with no place turns orphaned', async () => {
+    const real = await localJobs()
+    let broken = false
+    setJobs(async () => ({
+      ...real,
+      compose: async (ask) => {
+        if (broken) throw new Error('the sheet worker stopped')
+        return real.compose(ask)
+      }
+    }))
+    try {
+      await tool('sheet_format', { item: itemId, range: 'Data!A1:C1', format: { bold: true }, because: 'own' })
+      broken = true
+      await expect(call('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })).rejects.toThrow('the sheet worker stopped')
+      expect((await call<SheetView>('work.sheets.open', { itemId })).changes!.map((c) => c.state)).toEqual(['pending'])
+      broken = false
+      expect((await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })).changes).toBeUndefined()
+      expect(styleOf(book(), 0, 0)).toMatchObject({ bl: 1 })
+    } finally {
+      setJobs(localJobs)
+    }
+  })
+
+  it('rows inserted since it was proposed: the change is not laid where the agent no longer saw it', async () => {
+    await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'Data!A2:A9', when: 'duplicate', look: { fill: '#FFC7CE' } }, because: 'own' })
+    // (the store answers an edit made on an older revision with a conflict once a restore or an outside change came between)
+    await call('work.sheets.restore', { itemId, rev: 0 })
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view.changes!.map((c) => c.state)).toEqual(['orphaned'])
+    const bytes = sha(path)
+    await expect(call('work.sheets.review', { itemId, which: { ids: [view.changes![0].id] }, verdict: 'accept' })).rejects.toThrow('Rows or columns changed since the agent suggested this')
+    expect(sha(path)).toBe(bytes)
+    expect((await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'reject' })).changes).toBeUndefined()
+  })
+})
+
 describe('an agent\'s suggestion on a .tcsheet others can open', () => {
   let path: string
   let itemId: string
@@ -317,5 +486,90 @@ describe('an agent\'s suggestion on a .tcsheet others can open', () => {
     expect(view.suggestions.map((s) => s.proposed)).toEqual([{ v: SECRET }])
     expect(readText(readZip(new Uint8Array(readFileSync(old))), 'suggestions.json')).toBe('[]')
     expect(readFileSync(old).includes(SECRET)).toBe(false)
+  })
+})
+
+describe('a format or a rule an agent proposes on a .tcsheet others can open', () => {
+  let path: string
+  let itemId: string
+  const side = (): string[] => (existsSync(join(dir, 'sheets', 'suggestions')) ? readdirSync(join(dir, 'sheets', 'suggestions')) : [])
+  /** The sheet as a cold engine reads the file. */
+  const cold = async () => {
+    const host = new SheetHost(() => new TcsheetBackend(path, join(dir, 'sheets', 'suggestions')))
+    try {
+      return JSON.parse((await host.snapshotJson({ tcsheet: path })).json) as { sheets: Record<string, { cellData?: Record<string, Record<string, { s?: unknown; v?: unknown }>> }>; styles?: Record<string, Record<string, unknown>>; resources?: { name: string; data: string }[] }
+    } finally {
+      host.close()
+    }
+  }
+  beforeEach(() => {
+    path = join(library, 'Plan.tcsheet')
+    TcsheetBackend.create(path, 'Plan')
+    itemId = open(path, 'Plan')
+  })
+
+  it('they leave the file and its folder byte for byte, wait in this host\'s own database, and land as his edit when he takes them', async () => {
+    const before = folder()
+    expect((await tool('sheet_format', { item: itemId, range: 'A1:B2', format: { bold: true, borders: 'outside' }, because: 'own' })).text).toMatch(/^Suggested: Bold, an outside border on A1:B2\. Others share this sheet/)
+    expect((await tool('sheet_rule', { item: itemId, rule: { kind: 'list', range: 'C1:C9', items: ['Open', 'Done'] }, because: 'own' })).text).toMatch(/^Suggested: A list \(Open, Done\) on C1:C9\./)
+    expect((await tool('sheet_rule', { item: itemId, rule: { kind: 'name', name: 'Status', refersTo: 'C1:C9' }, because: 'own' })).text).toMatch(/^Suggested: The name Status for C1:C9\./)
+    expect(folder()).toEqual(before)
+    // nothing of them in the Work service's folder either: they are main's own rows
+    expect(side()).toEqual([])
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view).toMatchObject({ shared: true, rev: 0, suggestions: [] })
+    expect(view.changes!.map((c) => c.words)).toEqual(['Bold, an outside border on A1:B2', 'A list (Open, Done) on C1:C9', 'The name Status for C1:C9'])
+
+    const taken = await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    expect(taken.changes).toBeUndefined()
+    expect(taken.rev).toBe(3)
+    const wb = await cold()
+    const style = (row: number, col: number): Record<string, unknown> => {
+      const s = wb.sheets.sheet1!.cellData?.[row]?.[col]?.s
+      return ((typeof s === 'string' ? wb.styles?.[s] : s) ?? {}) as Record<string, unknown>
+    }
+    expect(style(0, 0)).toMatchObject({ bl: 1 })
+    expect(Object.keys((style(0, 0).bd ?? {}) as object).sort()).toEqual(['l', 't'])
+    const resource = (name: string): Record<string, unknown> => JSON.parse(wb.resources?.find((r) => r.name === name)?.data ?? '{}') as Record<string, unknown>
+    expect((resource('SHEET_DATA_VALIDATION_PLUGIN').sheet1 as Record<string, unknown>[])[0]).toMatchObject({ type: 'list', formula1: 'Open,Done', showErrorMessage: true })
+    expect(Object.values(resource('SHEET_DEFINED_NAME_PLUGIN'))[0]).toMatchObject({ name: 'Status', formulaOrRefString: 'Sheet1!$C$1:$C$9' })
+  })
+
+  it('on his own sheet set to write, the agent\'s own format is written and said in the bar, with no Undo on the line', async () => {
+    const own = join(dir, 'Own.tcsheet')
+    TcsheetBackend.create(own, 'Own')
+    const id = open(own, 'Own')
+    await call('work.sheets.mode', { itemId: id, mode: 'writes' })
+    expect((await tool('sheet_format', { item: id, range: 'A1:B1', format: { bold: true }, because: 'own' })).text).toBe('Bold on A1:B1.')
+    const view = await call<SheetView>('work.sheets.open', { itemId: id })
+    expect(view.rev).toBe(1)
+    expect(view.written).toMatchObject({ text: 'Bold on A1:B1', undo: false })
+    // what he asked for in so many words leaves no line: he knows
+    state.said.push('make the second row italic')
+    await tool('sheet_format', { item: id, range: 'A2:B2', format: { italic: true }, because: 'asked', quote: 'second row italic' })
+    expect((await call<SheetView>('work.sheets.open', { itemId: id })).written).toMatchObject({ text: 'Bold on A1:B1' })
+  })
+
+  it('a restore turns what waits orphaned: the sheet is another revision\'s now', async () => {
+    const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 0: { 0: { v: 1 } } } } }
+    await call('work.sheets.edit', { itemId, baseRev: 0, mutations: [typed] })
+    await tool('sheet_format', { item: itemId, range: 'A1', format: { bold: true }, because: 'own' })
+    const restored = await call<SheetView>('work.sheets.restore', { itemId, rev: 0 })
+    expect(restored.changes!.map((c) => c.state)).toEqual(['orphaned'])
+    await expect(call('work.sheets.review', { itemId, which: { ids: [restored.changes![0].id] }, verdict: 'accept' })).rejects.toThrow('Rows or columns changed since the agent suggested this')
+  })
+
+  it('a rule he asked for is written at once; a sheet read from a .csv takes neither', async () => {
+    state.said.push('highlight anything over 100 in column A')
+    const r = await tool('sheet_rule', { item: itemId, rule: { kind: 'highlight', range: 'A1:A9', when: 'greater', value: 100, look: { bold: true } }, because: 'asked', quote: 'highlight anything over 100' })
+    expect(r.text).toBe('Bold where A1:A9 is greater than 100.')
+    const wb = await cold()
+    const rules = (JSON.parse(wb.resources?.find((x) => x.name === 'SHEET_CONDITIONAL_FORMATTING_PLUGIN')?.data ?? '{}') as Record<string, unknown[]>).sheet1
+    expect(rules).toHaveLength(1)
+    const csv = join(dir, 'list.csv')
+    writeFileSync(csv, 'a,b\n1,2\n')
+    const refused = await tool('sheet_format', { file: csv, range: 'A1', format: { bold: true }, because: 'own' })
+    expect(refused.isError).toBe(true)
+    expect(refused.text).toContain('A .csv keeps cell contents only')
   })
 })

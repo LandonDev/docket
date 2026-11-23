@@ -18,6 +18,7 @@ import { gz, writeTcsheet } from './host/backends'
 import type { HostAnswer, HostAsk, SheetRef } from './host/wire'
 import { readCsv } from './writer'
 import { cellsOfMutations, PackageStore } from './packages'
+import { ChangeStore } from './changes'
 import { SuggestionStore } from './suggestions'
 import type { SheetJobs } from './workerClient'
 
@@ -87,6 +88,8 @@ export interface Sheets {
   ctx: WorkCtx
   packages: PackageStore
   suggestions: SuggestionStore
+  /** formats and rules an agent proposed, waiting for him (changes.ts) */
+  changes: ChangeStore
   jobs: SheetJobs
 }
 
@@ -107,6 +110,7 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
     (await (await import('./workerClient')).localJobs())
   const tools = new Toolchain(ctx.dataDir)
   const suggestions = new SuggestionStore(ctx.db)
+  const changes = new ChangeStore(ctx.db)
   const s: Sheets = {
     ctx,
     // A change from outside moves cells we cannot follow: every open suggestion over the file is orphaned.
@@ -116,7 +120,10 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
       join(ctx.dataDir, 'sheets', 'files'),
       () => tools.dir('ironcalc'),
       Date.now,
-      (path) => suggestions.orphanAll(`file:${path}`),
+      (path) => {
+        suggestions.orphanAll(`file:${path}`)
+        changes.orphanAll(`file:${path}`)
+      },
       // LibreOffice runs where it is installed: a host without it forwards the job (formats/jobs.ts).
       async (input, ops, kind) => {
         const dir = mkdtempSync(join(tmpdir(), 'tc-sheet-ops-'))
@@ -126,6 +133,7 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
       (path) => fileKey(ctx, path)
     ),
     suggestions,
+    changes,
     jobs
   }
   made.set(ctx.db, s)
@@ -193,6 +201,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       rev: st.rev,
       shared,
       suggestions: s.suggestions.open(key),
+      ...changesOf(s, key),
       ...(written ? { written } : {}),
       // The switch goes to the full editor where this host runs it (the box), else to desktop Excel.
       ...(st.inspected.reach ? { reach: { ...st.inspected.reach, to: fullEditorHere(s.ctx.dataDir) ? 'full' : 'excel' } } : {}),
@@ -241,9 +250,16 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     rev: st.rev,
     shared: shared || st.shared,
     suggestions: st.suggestions,
+    ...changesOf(s, key),
     ...(written ? { written } : {}),
     ...(st.missing ? { missing: true } : {})
   }
+}
+
+/** The formats and rules an agent proposed on a sheet, for its view: this host's own rows, said in words. */
+function changesOf(s: Sheets, key: string): { changes?: SheetView['changes'] } {
+  const changes = s.changes.open(key)
+  return changes.length ? { changes } : {}
 }
 
 /** Bytes of a file by range. */

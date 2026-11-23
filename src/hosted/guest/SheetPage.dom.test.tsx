@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** The hosted sheet: a refused guest edit says "Edit not saved" with the service's reason while the sheet reloads, one whose answer never came "Edit not confirmed"; the next edit it takes clears it, and a Retry after the page could not be reached keeps it. */
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 
@@ -27,10 +28,15 @@ class FakeSocket {
 vi.stubGlobal("WebSocket", FakeSocket);
 
 vi.mock("work-kit/sheet", () => ({
-  SheetCanvas: ({ onReady, readOnly }: { onReady?: (h: unknown) => void; readOnly?: boolean }) => (onReady?.(grid.handle), <div data-grid="" data-readonly={String(!!readOnly)} />),
+  SheetCanvas: ({ onReady, readOnly, filter, dataChrome }: { onReady?: (h: unknown) => void; readOnly?: boolean; filter?: boolean; dataChrome?: boolean }) => {
+    // as the real canvas: the handle is given once the grid is up, not while it renders
+    useEffect(() => onReady?.(grid.handle), []);
+    return <div data-grid="" data-readonly={String(!!readOnly)} data-filter={String(filter)} data-chrome={String(!!dataChrome)} />;
+  },
+  SheetToolbar: ({ sheet, controls, editorKeys }: { sheet: unknown; controls?: readonly string[]; editorKeys?: boolean }) => <div data-row="" data-controls={(controls ?? []).join(" ")} data-keys={String(!!editorKeys)} data-sheet={String(sheet === grid.handle)} />,
 }));
 const grid = vi.hoisted(() => ({ handle: null as unknown, emit: null as ((m: unknown) => void) | null }));
-const { SheetPage, refusedWords } = await import("./SheetPage");
+const { SheetPage, plainCells, refusedWords } = await import("./SheetPage");
 const { OpenFailed } = await import("./session");
 
 afterEach(cleanup);
@@ -71,10 +77,56 @@ describe("the hosted sheet", () => {
     expect(FakeSocket.last!.sent[0]).toContain('"token":"new"');
   });
 
+  it("draws the format row for an Edit link once the grid is up, with the controls a guest may use and no Data menu; a View link gets none", async () => {
+    grid.handle = { onMutation: () => () => {} };
+    try {
+      const { container, unmount } = render(<SheetPage session={session} opened={opened} onGone={() => {}} onDown={() => {}} />);
+      await flush();
+      // no row while the sheet loads
+      expect(container.querySelector("[data-row]")).toBeNull();
+      await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+      await flush();
+      const row = container.querySelector<HTMLElement>("[data-row]")!;
+      expect(row.dataset.controls).toBe("undo style font size bold italic underline colour fill align vertical wrap merge borders number");
+      for (const data of ["sort", "filter", "validation", "conditional", "names"]) expect(row.dataset.controls!.split(" ")).not.toContain(data);
+      expect(row.dataset).toMatchObject({ keys: "true", sheet: "true" });
+      // a guest changes no filter, so the grid offers none of its buttons or menus
+      expect(container.querySelector<HTMLElement>("[data-grid]")!.dataset.filter).toBe("false");
+      // a list's drop-down and a refused value are drawn in the kit's own chrome
+      expect(container.querySelector<HTMLElement>("[data-grid]")!.dataset.chrome).toBe("true");
+      // over the grid, as in the owner's canvas
+      expect(row.compareDocumentPosition(container.querySelector("[data-grid]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      unmount();
+
+      const view = render(<SheetPage session={session} opened={{ role: "view", me: "guest:1" } as never} onGone={() => {}} onDown={() => {}} />);
+      await flush();
+      await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+      await flush();
+      expect(view.container.querySelector("[data-row]")).toBeNull();
+      expect(view.container.querySelector<HTMLElement>("[data-grid]")!.dataset.readonly).toBe("true");
+    } finally {
+      grid.handle = null;
+    }
+  });
+
   it("says the service's reasons in plain words", () => {
     expect(refusedWords("the sheet changed under that edit: reload and make it again")).toBe("Someone changed the sheet first. Type it again");
     expect(refusedWords("a guest cannot insert row")).toBe("Guests can change values and formats only");
     expect(refusedWords("ops is 1 to 500 mutations")).toBeNull();
+    // the host's caps on what one press of a guest's changes
+    for (const cap of ["insert at most 1000 rows or columns at once", "a number format is laid on at most 200,000 cells at once", "at most 10,000 rows or columns are sized at once", "a merge covers at most 200,000 cells", "a sheet has at most 1,048,576 rows and 16,384 columns"]) expect(refusedWords(cap), cap).toBe("That is too much to change at once. Do it in smaller parts");
+    expect(refusedWords("that range runs past the end of the sheet")).toBe("That reaches past the end of the sheet");
+    expect(refusedWords("a formula is at most 8,192 characters")).toBe("That formula is too long");
+    expect(refusedWords("a cell holds at most 32,767 characters")).toBe("That is too much text for one cell");
+    expect(refusedWords("a guest sends at most 2 MiB at once")).toBe("That is too much to change at once. Do it in smaller parts");
+  });
+
+  it("sends a filled formula with each cell's own text: the service keeps no shared formula's id", () => {
+    const fill = { id: "sheet.mutation.set-range-values", params: { unitId: "u", subUnitId: "s1", cellValue: { 2: { 1: { f: "=A3*2", si: "x1" } }, 3: { 1: { si: "x1" } }, 4: { 1: { si: "x1", s: { bl: 1 } } }, 5: { 1: { v: 7 } } } } };
+    const formula = (sheet: string, row: number, col: number): string | null => (sheet === "s1" && col === 1 && row < 5 ? `=A${row + 1}*2` : null);
+    expect(plainCells(fill as never, formula).params.cellValue).toEqual({ 2: { 1: { f: "=A3*2", si: "x1" } }, 3: { 1: { f: "=A4*2" } }, 4: { 1: { f: "=A5*2", s: { bl: 1 } } }, 5: { 1: { v: 7 } } });
+    // a grid that cannot say the formula leaves the cell as it was sent
+    expect(plainCells(fill as never, () => null).params.cellValue).toEqual(fill.params.cellValue);
   });
 
   it("says an edit could not be confirmed, and to check the cell, when the line drops before the sheet answered it", async () => {

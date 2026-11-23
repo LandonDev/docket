@@ -148,10 +148,37 @@ describe('the sheet host', () => {
     expect(await host.since(REF, 0)).toMatchObject({ rev: 2, ops: [{ rev: 1, by: 'owner' }, { rev: 2, by: 'guest:L' }] })
   })
 
+  it('a formula the engine cannot read does not take the sheet down: it is stored, replayed by a cold host, and both still answer', async () => {
+    const unhandled: unknown[] = []
+    const seen = (err: unknown): void => void unhandled.push(err)
+    process.on('unhandledRejection', seen)
+    try {
+      const store = new MemoryBackend(budget())
+      const host = hostOf(store)
+      // a lambda written as an Excel file writes it, and a formula of forty thousand characters: each makes Univer's calculation throw
+      const bad = { 20: { 0: { f: '=_xlfn.MAP({1,2},_xlfn.LAMBDA(_xlpm.x,_xlpm.x*2))' } }, 21: { 0: { f: `=${'1+'.repeat(20_000)}1` } } }
+      expect(await host.apply(REF, 0, [{ id: 'sheet.mutation.set-range-values', params: { unitId: 'book', subUnitId: 'sheet1', cellValue: bad } }], 'owner')).toEqual({ rev: 1 })
+      expect((await host.range(REF, 'B5')).cells[0][0].v).toBe(1560)
+      // a later edit lands and is read back
+      expect(await host.apply(REF, 1, [{ id: 'sheet.mutation.set-range-values', params: { unitId: 'book', subUnitId: 'sheet1', cellValue: { 22: { 0: { v: 7 } } } } }], 'owner')).toEqual({ rev: 2 })
+      expect((await host.range(REF, 'A23')).cells[0][0].v).toBe(7)
+      // a cold host replays the op and opens
+      const cold = hostOf(store)
+      expect((await cold.open(REF)).rev).toBe(2)
+      expect((await cold.range(REF, 'A23')).cells[0][0].v).toBe(7)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', seen)
+    }
+  }, 60_000)
+
   it('refuses an op the engine cannot apply and never stores it, so the sheet still opens', async () => {
     const store = new MemoryBackend(budget())
     const host = hostOf(store)
-    await expect(host.apply(REF, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: 'book' } }], 'guest:L')).rejects.toThrow(/could not be applied/)
+    // (a guest's op that names no sheet of the workbook is refused before the engine is asked)
+    await expect(host.apply(REF, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: 'book' } }], 'guest:L')).rejects.toThrow('that sheet is not in the workbook')
+    await expect(host.apply(REF, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: 'book' } }], 'owner')).rejects.toThrow(/could not be applied/)
     await expect(host.apply(REF, 0, [{ id: 'nobody.mutation.at-all', params: {} }], 'owner')).rejects.toThrow(/could not be applied/)
     expect(store.ops).toEqual([])
     expect((await host.range(REF, 'B5')).cells[0][0].v).toBe(1560)

@@ -1,6 +1,6 @@
 import type { SheetCellJson, SheetMutationJson } from '@shared/contract-work-sheets'
 // (by its path: the Work service reaches this file, and its bundle resolves no alias for a value)
-import { sheetStopWords } from '../../../../shared/work/sheets'
+import { RULES_SET, sheetStopWords, type RulesSetParams } from '../../../../shared/work/sheets'
 import { cellName } from './a1'
 import type { EditSpec } from './patch/patch'
 
@@ -34,7 +34,9 @@ export const FORMATTING = new Set([
   // a row told to fit what it holds: its own height leaves the file
   'sheet.mutation.set-worksheet-row-is-auto-height',
   'sheet.mutation.add-worksheet-merge',
-  'sheet.mutation.remove-worksheet-merge'
+  'sheet.mutation.remove-worksheet-merge',
+  // a rule's whole list as its change left it (the canvas sends it in place of the rule's own mutation): rules.ts lays it
+  RULES_SET
 ])
 
 /** What an opened Excel file cannot keep yet, in the words he reads when he tries it: the canvas stops these as he makes them and says the same (`sheetStopWords`, the contract). */
@@ -104,12 +106,18 @@ const styled = (cell: unknown): boolean => !!cell && typeof cell === 'object' &&
  * The mutations of a list that change formatting, each named by its tab (`subUnitId` is the tab's
  * name in what this answers, so the sheet worker needs no workbook to place it): a
  * set-range-values cut down to its cells' styles, and the width, height and merge mutations whole.
+ * A rule's whole list (`RULES_SET`) rides with them the same way.
  */
 export function formatsOf(mutations: readonly SheetMutationJson[], sheetName: (id: string) => string | undefined): SheetMutationJson[] {
   const out: SheetMutationJson[] = []
   for (const m of mutations) {
     const p = m.params as RangeValuesParams & Record<string, unknown>
     if (m.id !== SET_RANGE_VALUES && !FORMATTING.has(m.id)) continue
+    if (m.id === RULES_SET && (p as unknown as RulesSetParams).kind === 'names') {
+      // the workbook's names belong to no sheet
+      out.push({ id: m.id, params: { kind: 'names', list: (p as unknown as RulesSetParams).list } })
+      continue
+    }
     const sheet = typeof p?.subUnitId === 'string' ? sheetName(p.subUnitId) : undefined
     if (!sheet) throw new NotSaved('That sheet is not in the file.')
     if (FORMATTING.has(m.id)) {

@@ -65,6 +65,8 @@ export type FakeSheetHost = SheetHost & {
   switchRefusal: string | null;
   /** a switch the host is still answering (the full editor starting) */
   switchWait: Promise<void> | null;
+  /** what an export says the file could not hold; a test sets it */
+  exportLeft?: string[];
   /** Set: open never answers (the loading state). */
   hold: boolean;
 };
@@ -139,7 +141,7 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook): FakeSheet
     },
     async exportAs(format: "xlsx" | "csv", sheet?: string) {
       host.calls.push(["export", { format, sheet }]);
-      return { path: `/host/files/${host.view.name.replace(/\.[^.]+$/, "")}.${format}` };
+      return { path: `/host/files/${host.view.name.replace(/\.[^.]+$/, "")}.${format}`, ...(host.exportLeft ? { left: host.exportLeft } : {}) };
     },
     async switchApp() {
       host.calls.push(["switch", null]);
@@ -211,12 +213,26 @@ export interface FakeGrid extends SheetGrid {
   lockedOnce: boolean;
   /** whether the canvas was told the grid's own style keys act (`styleKeys`) */
   styleKeys: boolean | undefined;
+  /** whether the canvas was told to offer the filter's buttons and menu (`filter`) */
+  filter: boolean | undefined;
+  /** whether the canvas was told to draw work-kit's own Data chrome (`dataChrome`) */
+  dataChrome: boolean | undefined;
   /** formula text the grid holds, by `sheet!row:col`, for a fill's cells */
   formulas: Map<string, string>;
   /** The person selects a range, A1. */
   select(a1: string): void;
   /** Whether something listens for the person's edits: the body has attached. */
   listening(): boolean;
+  /** The sheet's rules as the grid holds them (`handle.rules` reads and writes these); each change is reported as the grid's own mutation. */
+  rules: FakeRules;
+}
+
+/** A grid's rules kept in memory: lists by sheet id, the names, a filter by sheet id. */
+export interface FakeRules {
+  conditional: Record<string, { cfId: string }[]>;
+  validation: Record<string, { uid: string }[]>;
+  names: { id: string; name: string }[];
+  filter: Record<string, { ref: unknown } | undefined>;
 }
 
 interface Live {
@@ -225,6 +241,98 @@ interface Live {
   redraw(): void;
   slots: Map<string, { chart: SheetChart; onSlot: (slot: HTMLElement | null) => void }>;
   sheet: string;
+}
+
+/**
+ * `handle.rules` over a kept store: each change edits the lists and is reported as the mutation the real grid's
+ * plugin would emit, so a body under test sees what Univer would tell it.
+ */
+function rulesOver(held: FakeRules, active: () => string, emit: (id: string, params: Record<string, unknown>) => void) {
+  const listeners = new Set<(kind: string) => void>();
+  const told = (kind: string): void => {
+    for (const listener of listeners) listener(kind);
+  };
+  let n = 0;
+  return {
+    conditional: {
+      list: (sheet = active()) => held.conditional[sheet] ?? [],
+      add(rule: { cfId?: string }, sheet = active()) {
+        const made = { ...rule, cfId: rule.cfId ?? `cf${++n}` };
+        held.conditional[sheet] = [made, ...(held.conditional[sheet] ?? [])];
+        emit("sheet.mutation.add-conditional-rule", { subUnitId: sheet, rule: made });
+        told("conditional");
+        return made.cfId;
+      },
+      set(id: string, rule: { cfId: string }, sheet = active()) {
+        held.conditional[sheet] = (held.conditional[sheet] ?? []).map((r) => (r.cfId === id ? rule : r));
+        emit("sheet.mutation.set-conditional-rule", { subUnitId: sheet, cfId: id, rule });
+        told("conditional");
+        return true;
+      },
+      remove(id: string, sheet = active()) {
+        held.conditional[sheet] = (held.conditional[sheet] ?? []).filter((r) => r.cfId !== id);
+        emit("sheet.mutation.delete-conditional-rule", { subUnitId: sheet, cfId: id });
+        told("conditional");
+        return true;
+      },
+      move: () => false,
+    },
+    validation: {
+      list: (sheet = active()) => held.validation[sheet] ?? [],
+      add(rule: { uid?: string }, sheet = active()) {
+        const made = { ...rule, uid: rule.uid ?? `dv${++n}` };
+        held.validation[sheet] = [...(held.validation[sheet] ?? []), made];
+        emit("data-validation.mutation.addRule", { subUnitId: sheet, rule: made });
+        told("validation");
+        return made.uid;
+      },
+      set: () => false,
+      remove(id: string, sheet = active()) {
+        held.validation[sheet] = (held.validation[sheet] ?? []).filter((r) => r.uid !== id);
+        emit("data-validation.mutation.removeRule", { subUnitId: sheet, ruleId: id });
+        told("validation");
+        return true;
+      },
+    },
+    names: {
+      list: () => held.names,
+      add(name: { id?: string; name: string }) {
+        const made = { ...name, id: name.id ?? `n${++n}` };
+        held.names.push(made);
+        emit("formula.mutation.set-defined-name", made);
+        told("names");
+        return made.id;
+      },
+      set: () => false,
+      remove(id: string) {
+        const gone = held.names.find((x) => x.id === id);
+        held.names = held.names.filter((x) => x.id !== id);
+        if (gone) emit("formula.mutation.remove-defined-name", gone);
+        told("names");
+        return !!gone;
+      },
+      problem: () => null,
+    },
+    filter: {
+      get: (sheet = active()) => held.filter[sheet] ?? null,
+      set(range?: unknown, sheet = active()) {
+        if (range === null) {
+          delete held.filter[sheet];
+          emit("sheet.mutation.remove-filter", { subUnitId: sheet });
+          emit("sheet.mutation.mark-dirty-filter-change", { subUnitId: sheet });
+        } else {
+          held.filter[sheet] = { ref: range ?? { startRow: 0, endRow: 4, startColumn: 0, endColumn: 4 } };
+          emit("sheet.mutation.set-filter-range", { subUnitId: sheet, range: held.filter[sheet]!.ref });
+        }
+        told("filter");
+        return true;
+      },
+      criteria: () => false,
+      values: () => [],
+    },
+    sort: () => false,
+    onChange: (listener: (kind: string) => void) => (listeners.add(listener), () => listeners.delete(listener)),
+  };
 }
 
 export function fakeGrid(options: { selection?: string; rows?: number; columns?: number; commands?: boolean } = {}): FakeGrid {
@@ -273,8 +381,10 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     };
   };
 
-  function FakeCanvas({ snapshot, marks, was, styleKeys, readOnly, onReady, onSelection }: SheetCanvasProps) {
+  function FakeCanvas({ snapshot, marks, was, styleKeys, filter, dataChrome, readOnly, onReady, onSelection }: SheetCanvasProps) {
     grid.styleKeys = styleKeys;
+    grid.filter = filter;
+    grid.dataChrome = dataChrome;
     grid.readOnly = !!readOnly;
     if (readOnly) grid.lockedOnce = true;
     const book = snapshot as unknown as Workbook & { sheets: Record<string, { name: string; cellData?: Record<string, Record<string, SheetCellJson>>; columnData?: Record<string, { w?: number }> }> };
@@ -335,6 +445,10 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
           return true;
         },
         size: () => undefined,
+        rules: rulesOver(grid.rules, () => store.get().selection?.sheet ?? sheetId, (id, params) => {
+          const mutation = { id, params: { unitId: "book", ...params } };
+          for (const listener of listeners) listener(mutation);
+        }),
         reveal: (range: { sheet: string; startRow: number; endRow: number; startColumn: number; endColumn: number }) => setSelection(selectionOf(range.sheet, `${ref(range.startRow, range.startColumn)}:${ref(range.endRow, range.endColumn)}`, cells)),
         snapshot: () => book,
         apply: (mutations: SheetMutationJson[]) => {
@@ -444,8 +558,11 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     undone: 0,
     drops: 0,
     styleKeys: undefined,
+    filter: undefined,
+    dataChrome: undefined,
     readOnly: false,
     lockedOnce: false,
+    rules: { conditional: {}, validation: {}, names: [], filter: {} },
     formulas: new Map(),
     Canvas: FakeCanvas,
     fonts: async (workbook) => void grid.fontsAsked.push(workbook),
@@ -460,6 +577,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       undo: () => void grid.undone++,
       ...(options.commands ? { onCommand: (listener: (id: string) => void) => (commandListeners.add(listener), () => commandListeners.delete(listener)) } : {}),
       style: (id) => grid.styles.get(id) ?? null,
+      rules: (kind, sheet) => (kind === "names" ? grid.rules.names : kind === "filter" ? (grid.rules.filter[sheet ?? ""] ?? null) : (grid.rules[kind][sheet ?? ""] ?? [])),
     }),
     values(_handle, sheet, a1) {
       const r = parseA1(a1);

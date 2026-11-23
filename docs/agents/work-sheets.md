@@ -102,6 +102,25 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   carry all three; it is one revision, labelled "Formatting" when no cell's
   contents changed. A cell that only takes a style keeps what it held, so a
   suggestion waiting on it still stands.
+- **Rules are saved a list at a time** (`patch/rules.ts`, `patchRules`): a
+  sheet's conditional formats with their `dxf` records, its validations, the
+  workbook's names, a sheet's filter with the rows it hides. The file is
+  written a list at a time, so the canvas sends, in place of a rule's own
+  mutation, the whole list its change left (`RULES_SET`,
+  `src/shared/work/sheets.ts`: `forPackage` reads it from the grid, once a
+  kind and sheet a turn), and `savePackage` hands it to the rules writer: no
+  workbook model, no engine. A rule the model does not change keeps its XML
+  and its `dxf` byte for byte; Excel 2010's extension rules (`x14`) and
+  their links stay as they are; a solid data bar is written as the pair
+  Excel writes. A name or a filter can change what a formula answers, so
+  either asks Excel to calculate again on load. A rule's revision is
+  labelled by its list ("Conditional formatting", "Validation", "Names",
+  "Filter"); its op keeps the list, which `since` answers as a reload for
+  every other grid (a list is no mutation a grid applies), while an edit
+  made before it still lands. What the writer refuses (a protected sheet,
+  a filter over a table that has its own, a name Excel would not take, an
+  icon set of custom icons) is said over the grid after the press, as any
+  refusal only the host can know.
 - **What it cannot keep yet is stopped as he makes it** (`forPackage` and
   `stop`, sync.ts): moved cells (a drag of a range, a row or a column),
   text with more than one style in a cell, a cell given only a type, and any
@@ -232,7 +251,12 @@ writer): a LifeOS sheet, a `.tcsheet` or a sheet read from a .csv as a new
 number formats, alignment and wrap, merges, column widths and row heights,
 frozen panes, hidden sheets, the workbook's theme and default font, a theme
 colour as its slot and tint; `fullCalcOnLoad` set), or one sheet as .csv
-(RFC 4180, a formula's last value). A sheet read from a .csv saves back over
+(RFC 4180, a formula's last value). The workbook's rules (each sheet's
+conditional formats and validations, the names, a filter: the snapshot's
+`resources`) are then laid into that .xlsx by the rules writer, the one an
+opened Excel file is saved with, so both hold a rule the same way
+(`writeXlsxWhole`, `rulesOf`). A list the file cannot hold is left out
+rather than failing the export, and `left` names it. A sheet read from a .csv saves back over
 it and exports beside it; a package gives a .csv of one sheet beside itself
 (it is its own .xlsx); anything else lands in the item's own folder. The
 canvas puts these in More.
@@ -250,7 +274,16 @@ canvas puts these in More.
   when its cell is gone;
 - a snapshot (Univer's JSON, gzipped) is cut every 500 ops;
 - history lists the ops; compare and restore replay from the nearest
-  snapshot in a second engine.
+  snapshot in a second engine;
+- every engine it makes mounts the grid's data plugins (`headlessSheet(…,
+  { rules: true })`: conditional formatting, validation, filter, table,
+  sort), so a rule made in the grid applies, stays in the snapshot's
+  `resources` and survives a cold load; a restore writes back the cells'
+  diff and, through `host/rules.ts` `ruleMutations`, the conditional
+  formats, validations, filters and defined names of the revision (not
+  tables). The mutation ids and payloads are in the editors plan's SHT3
+  report, held by `host/rules.test.ts` and work-kit's
+  `src/sheet/engine/rules.test.ts`.
 
 Main reaches it through `ctx.service.internal('/internal/sheet/<op>')` with
 the bodies of `host/wire.ts`. The LifeOS worker's tools reach
@@ -266,16 +299,60 @@ token naming the sheet (`ctx.service.token({item: {sheet}})`), checked then
 and once a second (4401 run out, 4403 a revoked guest link); the service
 sends the workbook, orders ops through the sheet host and sends everyone the
 ops that land. A view link writes nothing; a guest's ops pass `GUEST_OPS`
-(cell values, number formats, row and column inserts and deletes). An edit
-that missed a row or column insert is moved through it (`moveThrough`, the
-rebase's code); a stale structural edit is refused and the client reloads.
+(cell values and their styles, number formats, row and column inserts and
+deletes, and what the format row sends beside a cell's style: a merge made or
+parted, a column's width, a row's height). A guest's merge, size change or
+number format is checked for its shape as well: at most 1,000 ranges, each on
+the grid, and a size from 0 to 2,000. The host then holds the whole batch to
+the sheet as it stands (`host/guest.ts` `guestMisfit`, which only the engine
+can do): no cell, format, size or merge past the sheet's own rows and
+columns; no merge over a merged cell; at most 1,000 rows or columns inserted
+in one send and never past what a sheet holds (1,048,576 by 16,384); at most
+10,000 rows or columns sized and 200,000 cells formatted or merged by one
+op. Each op is read against the sheet as the ops before it in the batch leave
+it, merges as Univer's own insert and delete leave them (`host/guest.test.ts`
+holds the walk against the real engine, and the grid's own insert and delete
+commands against it). A guest's cells are named by a row and a column that are
+indexes (a key such as `-1` or `1.5` would be stored where no grid draws it),
+hold at most 32,767 characters, a formula of at most 8,192 (nobody's formula
+is longer: the engine overflows on forty thousand), a style cut to the grid's
+own shape (short keys, numbers, flags, strings of at most 255 characters), and
+a formula in plain names: the prefixes an Excel file gives newer functions
+(`_xlfn.`, `_xlpm.`) are dropped, since Univer's engine throws on a lambda
+written with them. An inserted row or column carries its size and nothing
+else (not hidden). One send of a guest's is at most 2 MiB. The guest's own
+page sends none of what this refuses (a paste heavier than that aside, which
+it is told); a filled formula is sent with each cell's own text, since the
+service keeps no shared formula's id (`plainCells`). It keeps an op made by hand from
+writing millions of rows into the owner's sheet. A guest sends no rule, no
+name, no filter, no sort and no sheet added or removed.
+
+A calculation that throws does not take a sheet or the service down: the
+headless engine catches it (work-kit `headlessSheet`, `failures()`), the
+sheet still answers and the next calculation runs; the cells of that
+calculation keep what they had. What is not bounded: how many sends a guest
+makes over time (each is kept in the store's op log), the styles a workbook
+gathers as cells are restyled (nothing prunes one no cell uses), and a guest
+may delete every row and write to a hidden sheet (it is sent the whole
+workbook). An Edit link's page draws the format row with
+exactly the controls those cover (`GUEST_ROW`, `src/shared/work/sheets.ts`;
+`rowMatrix.test.ts` runs every press of every control through the route's
+guest check and into the host). Every
+mutation names its sheet but a defined name's (`WORKBOOK_MUTATIONS`), which
+an editor may send and a guest may not. An editor here is the owner's own
+page of the full editor: it may also add or remove a sheet and part a merge,
+with no cap, as his canvas may. An edit that missed a row or column
+insert is moved through it (`moveThrough`, the rebase's code); a rule named
+only by its id passes as it is (`MOVES_AS_IS`); a stale structural edit, or
+a rule with a range or a formula, is refused and the client reloads.
 Our own canvas does not use the socket: it calls the pillar's methods.
 
 ## Agents: the tools and the rule
 
-`sheet_read`, `sheet_write`, `sheet_suggest`, `sheet_create` (tools.ts),
-cells in A1 (`a1.ts`), at most 10,000 cells a read and 1,000 a write.
-`sheet_write` says why (`because`):
+`sheet_read`, `sheet_write`, `sheet_suggest`, `sheet_format`, `sheet_rule`,
+`sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
+read and 1,000 a write. `sheet_write`, `sheet_format` and `sheet_rule` say
+why (`because`), under one rule (`ruled`):
 
 - `asked` with `quote`, the owner's own words in the thread
   (`ctx.threads.ownerSaid`): written at once;
@@ -296,6 +373,63 @@ A quote he never typed, or `routine` outside a routine, counts as `own` and
 the answer says so. An owner's edit over a pending cell makes it a conflict.
 Accepting writes the proposed cells as his own edit.
 
+**A format and a rule** (`asks.ts`). `sheet_format {range, format}` sets
+what the row sets on a range (bold, italic, underline, strike, the two
+colours, the face and size, alignment, wrap, a border preset, a number
+format, a named cell style, clear) and the widths of its columns and
+heights of its rows, on at most 20,000 cells. It does not merge (a merge
+can empty cells) and does not step decimals (the pattern is given whole).
+`sheet_rule {rule}` adds one rule: a `highlight` (every comparison, text,
+duplicates, top and bottom, average, a formula), a colour `scale`, a data
+`bar`, a `list` (typed items or a range), a `check` (a whole number, a
+number, a date, a text's length), a `custom` validation, a `name` (a
+workbook's, or one tab's) and the `filter` (a range, or null to take it
+off, with `sheet` for the tab). A validation made here refuses a bad value, as Excel's own dialog
+sets a new one (`showErrorMessage`). An agent adds rules; changing or
+removing one is his, in the side sheet.
+
+Each ask becomes the grid's own data: a format, the mutations the row's own
+code makes (`compose.ts` runs work-kit's `applyFormat` in the sheet worker
+on a blank workbook with the real one's sheets, since a format reads no
+cell); a rule, Univer's own model (plain data; main loads no Univer). On a
+sheet the service holds they are applied as any edit (`host apply`); on an
+opened Excel file a format is saved by the format writer, and a rule goes as
+the whole list it leaves (`RULES_SET`: the file's own list, read from its
+rule parts alone by `readRules`, with the new rule added).
+
+Where the rule says wait, a format or a rule is kept as a **change**
+(`changes.ts`, `work_sheets_changes`): the ask itself and the words he
+reads for it ("Bold, yellow fill on B2:B9", "Red text where B2:B9 is
+greater than 100"), in this host's own database for every kind of sheet, a
+LifeOS sheet and a `.tcsheet` included. The view carries the words, the
+range and the reason (`SheetView.changes`), never the ask. Taking one
+(`work.sheets.review`, the same call and the same `which` as a cell
+suggestion) lays it as his own edit made on the revision the agent saw:
+the store moves it through what landed since, and where rows, columns or
+sheets changed in between it turns `orphaned` and can only be dropped. So
+does every waiting change when he restores a revision (either kind of
+sheet) or an Excel file changes outside; a LifeOS sheet changed from LifeOS
+orphans nothing: a change that no longer fits turns `orphaned` as he takes it.
+One the sheet has no place for now (its tab renamed, its name taken since)
+turns `orphaned` too (`Unplaced`), and an accept of many goes on past it.
+
+An agent adds; it replaces nothing. A name already there in its scope, a
+filter where one is laid (or none where one is to go), a validation over
+cells that have one, a rank outside 1 to 1,000, a name Excel keeps for
+itself (`TRUE`, `Print_Area`, any `_xlnm.` name: the writer's own list,
+`patch/names.ts`), a width or height past what Excel keeps: each is refused as it is
+asked, in words that say where he changes it (`ruleClash`, `nameProblem`,
+`FormatSchema`), and the change is made once and thrown away before it is
+kept, so little waits that the save would refuse. What still fails only as
+he takes it, on an Excel file: a filter over a table that has its own, and
+a validation over one Excel 2010 keeps in its extension list (`readRules`
+does not list those). The sheet's rules are read for the check from the file
+(`readRules`) or from the service's engine (`open` answers `rules`). A
+failure that is not about the sheet (the sheet worker, a read of the file)
+leaves the change waiting. A format or a rule written at once on the
+agent's own idea is said in the bar's written line with no Undo on it
+(`SheetWritten.undo: false`): History takes it back.
+
 **A suggestion stays his until he approves it** (the owner's ruling,
 2026-11-23; `private.test.ts`, and the guest's page in
 `service/routes/sheet.test.ts`). Where each store keeps what an agent
@@ -307,6 +441,7 @@ proposes:
 | a workbook held by Excel, a Google sheet | `work_sheets_suggestions` under `excel:<key>`, `google:<fileId>` | no: nothing is sent to Excel or Google before his accept |
 | a `.tcsheet`, and the sheet a .csv opens as | one JSON file per path in the Work service's own folder, `<userData>/work-service/sheets/suggestions/`, on the host that serves it (`TcsheetBackend`'s `side`) | no: `suggestions.json` in the file is always empty, and one a file from before the rule carries is taken out the first time it is read |
 | a LifeOS sheet | LifeOS's `sheetSuggestionCells` rows | not the live sheet: a suggestion is no op, so the live socket sends a guest nothing and the workbook a guest loads has none of it. The rows are in his LifeOS, the store that holds the sheet itself |
+| a format or a rule, on any of them | `work_sheets_changes` in this host's database, under the sheet's key | no: not the file, its folder, the Work service's folder, LifeOS or the live route, until he takes it |
 
 `work.sheets.review` and `work.sheets.mode` are his press: a thread's call
 (`by.kind === 'model'`) is refused. A remote key changes a sheet others can
@@ -413,6 +548,38 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   workbook's fonts are read before the grid first draws (at most 2.5 s),
   and a font picked in the row before it is laid: a canvas does not draw
   again when a face arrives late.
+- Data. The row's Data menu (work-kit's, in the row's data group) lists
+  what the host's `view.row` names of `sort`, `filter`, `validation`,
+  `conditional` and `names`; with none of them there is no menu. Sort is
+  the grid's own (A to Z, Z to A, a dialog of up to three keys) and saves
+  as any reorder does; Filter lays or lifts the sheet's filter; the other
+  three open the rules' side sheet.
+- The rules' side sheet (work-kit's `RulesSheet`, docked by `SheetBody`:
+  320px at the grid's right, under the grid at 344px where the canvas is
+  under 560px wide). It lists the kinds the host names, in the sheet's
+  order, and edits one rule at a time through `handle.rules` (work-kit's
+  `createRules`: every change is one of Univer's own commands, so one step
+  of Undo and the mutations any change makes). Univer's own panels for
+  conditional formats, validations, the filter and a list's drop-down do
+  not open: the filter's menu, a list's menu and a refused value's notice
+  are work-kit's own, drawn over the grid.
+- Where a rule goes. On a sheet the service holds the rule's own mutation
+  is sent as any edit (the host's engine mounts the same plugins and
+  replays it). On an opened Excel file the canvas sends the whole list the
+  change left (`forPackage`, `RULES_SET`; `grid.rules` reads it from the
+  grid), one list a kind and sheet a turn, and a kind the host does not
+  name is stopped at the press as any change the file cannot keep.
+  `rulesMatrix.test.ts` runs the real plugins' commands through that
+  mapping and the package store into a real .xlsx and reads each back.
+- A format or a rule an agent proposed (`view.changes`) steps with the
+  cell suggestions in the bar's stepper (`sheetChanges`, model.ts), after
+  the cells, in the order they were made. Its range is marked as a waiting
+  change is, and while the stepper is on it the formula bar says it
+  (`saidLine`: "Suggested: Bold, yellow fill on B2:B9", with the agent's
+  reason); a name, which sits in no cell, is said the same way. Accept and
+  Reject call `work.sheets.review` with its id.
+- An export that could not hold a list of rules says so with the save
+  ("Saved Budget.xlsx without the names").
 
 ## The full editor
 
@@ -598,11 +765,16 @@ The harness corpus also keeps the workbooks the editors plan measured with
 
 - Moving cells (drag a range, move rows or columns) and rich text in an
   opened Excel file: stopped as he tries, until they are saved.
-- The model writer leaves out conditional formats, validations, defined
-  names, notes and our charts.
+- The model writer leaves out notes and our charts.
+- An agent adds rules and formats (`sheet_rule`, `sheet_format`); it does
+  not change or remove a rule, merge cells or sort.
+- A table made in the grid on an opened Excel file, a chart, page set-up:
+  later milestones.
 - Presence on the canvas.
-- Keeping IronCalc's model in memory between saves: each save loads the
-  package afresh, which on the 100,000-row file is tens of seconds.
+- Keeping IronCalc's model in memory between saves: a save that needs the
+  engine loads the package afresh (1.3 s on the 100,000-row file, 22 s on
+  the dense one); formatting, rules and a value nothing reads need no
+  engine.
 
 ## Known limits
 

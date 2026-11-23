@@ -15,7 +15,7 @@ import { csvSheetPath, PACKAGE_EXT } from './held'
  *
  *  - an opened Excel file: its revision row and op log (`work_sheets_files`, `work_sheets_ops`),
  *    the kept copies under `sheets/files/<hash of the path>/`, and what is keyed `file:<path>`
- *    (suggestions, the mode and written line, our charts);
+ *    (suggestions, a waiting format or rule, the mode and written line, our charts);
  *  - a `.tcsheet`: what is keyed `tcsheet:<path>`, and its waiting suggestions' file in the Work
  *    service's folder (`work-service/sheets/suggestions/`, by the path's hash);
  *  - a `.csv`: the sheet it opens as (`sheets/csv/<hash>.tcsheet`), with that sheet's own keys.
@@ -25,7 +25,7 @@ const hash = (path: string): string => createHash('sha256').update(path).digest(
 
 function rekey(db: DatabaseSync, from: string, to: string): void {
   // What was kept under the new name before (a file once there, long gone) gives way to what moves in.
-  for (const table of ['work_sheets_suggestions', 'work_sheets_prefs', 'work_sheets_charts']) {
+  for (const table of ['work_sheets_suggestions', 'work_sheets_changes', 'work_sheets_prefs', 'work_sheets_charts']) {
     db.prepare(`DELETE FROM ${table} WHERE store = ?`).run(to)
     db.prepare(`UPDATE ${table} SET store = ? WHERE store = ?`).run(to, from)
   }

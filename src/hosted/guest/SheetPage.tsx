@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { SheetCanvas, type SheetHandle } from "work-kit/sheet";
+import { SheetCanvas, SheetToolbar, type SheetHandle } from "work-kit/sheet";
+import { GUEST_ROW } from "@shared/work/sheets";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { StatusMark } from "@renderer/components/ui/status";
 import { OpenFailed, type Opened, type Session } from "./session";
@@ -9,7 +10,10 @@ import { OpenFailed, type Opened, type Session } from "./session";
  * sheet socket (docs/agents/work-sheets.md "Live editing"). An edit link's
  * cell edits go as ops from the revision the grid stands at; everyone's ops
  * come back, and a refused one reloads the workbook. A view link is the grid
- * read only. The service holds a guest to values, formats and rows. A refused
+ * read only. An edit link draws the format row over the grid, with the controls
+ * whose presses the service lets a guest send (`GUEST_ROW`): a guest formats
+ * cells, merges them and sizes rows and columns, and makes no rule, name or
+ * filter. The service holds a guest to values, formats and rows. A refused
  * edit says so on one line over the grid ("Edit not saved" and why, in plain
  * words) while the sheet as it is reloads; so does an edit the line dropped
  * before the sheet answered it. While the line is down the grid stays as it
@@ -34,6 +38,11 @@ export function refusedWords(reason: string | "lost" | "offline" | "unsent"): st
   if (reason === "unsent") return "The connection dropped before it was sent";
   if (/changed under that edit/i.test(reason)) return "Someone changed the sheet first. Type it again";
   if (/^a guest cannot/i.test(reason)) return "Guests can change values and formats only";
+  if (/overlap a merged cell/i.test(reason)) return "Those cells overlap a merged cell. Unmerge it first";
+  if (/past the end of the sheet/i.test(reason)) return "That reaches past the end of the sheet";
+  if (/formula is at most/i.test(reason)) return "That formula is too long";
+  if (/cell holds at most/i.test(reason)) return "That is too much text for one cell";
+  if (/\bat most\b/i.test(reason)) return "That is too much to change at once. Do it in smaller parts";
   if (/can view, not edit/i.test(reason)) return "This link can view the sheet, not edit it";
   return null;
 }
@@ -73,6 +82,9 @@ export function SheetPage({
   // The socket is down: the grid stays as it was, read only, under one line, until a fresh state comes.
   const [offline, setOffline] = useState(false);
   const handle = useRef<SheetHandle | null>(null);
+  // The grid as the row acts on it: state, so the row draws once the grid is up.
+  const [grid, setGrid] = useState<SheetHandle | null>(null);
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
   const live = useRef<{ ws: WebSocket | null; rev: number; pending: Mutation[]; sent: string[]; unit: string; inflight: boolean; timer: ReturnType<typeof setTimeout> | null; n: number }>({ ws: null, rev: -1, pending: [], sent: [], unit: "", inflight: false, timer: null, n: 0 });
 
   useEffect(() => {
@@ -181,12 +193,19 @@ export function SheetPage({
           <StatusMark state="failed" word={refused.unconfirmed ? "Edit not confirmed" : "Edit not saved"} detail={refused.why ?? undefined} className="min-w-0 flex-1" />
         </div>
       ) : null}
+      {grid && opened.role === "edit" ? <SheetToolbar sheet={grid} controls={GUEST_ROW} boundary={box} mac={IS_MAC} editorKeys /> : null}
+      <div ref={setBox} className="flex min-h-0 flex-1 flex-col">
       <SheetCanvas
         key={book.key}
         snapshot={book.snapshot as never}
         readOnly={opened.role !== "edit" || offline}
+        // A guest changes no filter: the service takes none from one, so the grid offers none.
+        filter={false}
+        // A list's drop-down and a validation's refusal are drawn in work-kit's own chrome, as in the app.
+        dataChrome
         onReady={(h) => {
           handle.current = h;
+          setGrid(h);
           if (!h || opened.role !== "edit") return;
           h.onMutation((m) => {
             const l = live.current;
@@ -199,28 +218,45 @@ export function SheetPage({
               l.rev = -1;
               return;
             }
-            l.pending.push(plainCells(m as unknown as Mutation));
+            // A fill's cells after the first carry a shared formula's id and no text: each is sent with its own formula, read from the grid.
+            const formula = (sheet: string, row: number, col: number): string | null => h.api.getActiveWorkbook()?.getSheetBySheetId(sheet)?.getRange(row, col).getFormula() || null;
+            l.pending.push(plainCells(m as unknown as Mutation, formula));
             l.timer ??= setTimeout(flush, EDIT_WAIT);
           });
         }}
         className="min-h-0 flex-1"
       />
+      </div>
     </>
   );
 }
 
+/** The guest's own machine: which key the row's hints name. */
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
+
 /**
  * A typed cell as the service takes a guest's: a value, a formula, a style, a type. The grid's
  * editor hands back rich text (`p`) for what was typed; its words become the value, a number
- * when they read as one.
+ * when they read as one. A filled cell that names a shared formula by id alone (`si`) takes its
+ * own formula's text from the grid (`formula`): the service keeps no id, so without the text the
+ * owner would get an empty cell where the guest sees a formula.
  */
-export function plainCells(m: Mutation): Mutation {
+export function plainCells(m: Mutation, formula?: (sheet: string, row: number, col: number) => string | null): Mutation {
   if (m.id !== "sheet.mutation.set-range-values") return m;
   const cells = (m.params.cellValue ?? {}) as Record<string, Record<string, Record<string, unknown> | null>>;
+  const sheet = typeof m.params.subUnitId === "string" ? m.params.subUnitId : "";
   const out: typeof cells = {};
   for (const [r, cols] of Object.entries(cells)) {
     out[r] = {};
     for (const [c, cell] of Object.entries(cols ?? {})) {
+      if (cell && cell.si != null && cell.f == null) {
+        const f = formula?.(sheet, Number(r), Number(c)) ?? null;
+        if (f) {
+          const { si: _id, ...rest } = cell;
+          out[r]![c] = { ...rest, f };
+          continue;
+        }
+      }
       if (!cell || !("p" in cell) || cell.v != null || cell.f != null) {
         out[r]![c] = cell;
         continue;

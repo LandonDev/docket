@@ -2,12 +2,14 @@ import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import type { ICellData, IWorkbookData } from '@univerjs/core'
 import { importXlsx, type ImportReport } from 'work-kit/sheet/xlsx'
 import type { SheetCellDiff, SheetMutationJson, SheetReach } from '@shared/contract-work-sheets'
+import { RULES_SET, type RulesSetParams } from '@shared/work/sheets'
 import { rangeCells, READ_MAX_CELLS, type A1Range } from './a1'
 import { readThemeXml } from 'work-kit/format/theme'
 import { independent } from './patch/depends'
 import { patchFormat, type FormatReport } from './patch/format'
 import { dependsInput } from './patch/package'
 import { patchXlsx, workbookMap, type EditSpec, type Report } from './patch/patch'
+import { patchRules, readRules, type DefinedNames, type RulesEdit, type SheetFilter } from './patch/rules'
 import { formatEditsOf } from './formats'
 import { diffWorkbooks } from './diff'
 import { graft } from './graft'
@@ -160,6 +162,20 @@ function readsFormats(z: ReturnType<typeof readZip>): boolean {
   }
 }
 
+/** The rule lists among a save's formatting mutations (`RULES_SET`, each named by its tab), as the rules writer takes them. */
+export function rulesEditsOf(formats: readonly SheetMutationJson[]): RulesEdit[] {
+  const out: RulesEdit[] = []
+  for (const m of formats) {
+    if (m.id !== RULES_SET) continue
+    const p = m.params as RulesSetParams
+    if (p.kind === 'names') out.push({ kind: 'names', names: (p.list ?? []) as DefinedNames })
+    else if (!p.subUnitId) throw new Error('A rule names its sheet.')
+    else if (p.kind === 'filter') out.push({ kind: 'filter', sheet: p.subUnitId, filter: (p.list ?? null) as SheetFilter | null })
+    else out.push({ kind: p.kind, sheet: p.subUnitId, rules: (Array.isArray(p.list) ? p.list : []) as never })
+  }
+  return out
+}
+
 /**
  * Saves `edits` and `formats` into the package at `input`, written to a new file the caller moves
  * into place. Three ways, the lightest that is safe (the editors plan, decision 3):
@@ -172,7 +188,8 @@ function readsFormats(z: ReturnType<typeof readZip>): boolean {
  *    `ironcalcDir` is given and the file is one it can load.
  *
  * A 1904 file gets its date-formatted numbers back in its own system (the importer moved them by
- * 1,462 days). `formats` are the grid's formatting mutations, each named by its tab (mutations.ts).
+ * 1,462 days). `formats` are the grid's formatting mutations, each named by its tab (mutations.ts);
+ * a rule's whole list among them is laid by the rules writer (`patch/rules.ts`).
  */
 export async function savePackage(input: string, edits: EditSpec[], ironcalcDir: string | null, formats: readonly SheetMutationJson[] = []): Promise<{ bytes: Uint8Array } & SaveAnswer> {
   let bytes: Uint8Array = new Uint8Array(readFileSync(input))
@@ -204,8 +221,23 @@ export async function savePackage(input: string, edits: EditSpec[], ironcalcDir:
     report.path = proof.independent ? 'independent' : engine ? 'engine' : 'plain'
     if (!proof.independent) report.why = proof.why
   }
+  const lists = rulesEditsOf(formats)
+  if (lists.length) {
+    // A rule never changes a cell's contents: the lists are laid part by part, no model and no engine.
+    const done = patchRules(bytes, lists)
+    bytes = done.bytes
+    report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged])]
+    // A name's meaning or the rows a filter hides can change what a formula answers (a name it reads, SUBTOTAL over
+    // the filter): no engine here knows, so Excel is asked to calculate again on load.
+    if (!report.recalc.fullCalcOnLoad && lists.some((l) => l.kind === 'names' || l.kind === 'filter')) {
+      const again = await patchXlsx(bytes, [], {})
+      bytes = again.bytes
+      report.partsChanged = [...new Set([...report.partsChanged, ...again.report.partsChanged])]
+      report.recalc.fullCalcOnLoad = again.report.recalc.fullCalcOnLoad
+    }
+  }
   if (formats.length) {
-    const made = formatEditsOf(formats, (tab) => tab, themeOf(zip))
+    const made = formatEditsOf(formats.filter((m) => m.id !== RULES_SET), (tab) => tab, themeOf(zip))
     if (made.length) {
       const done = patchFormat(bytes, made)
       bytes = done.bytes
@@ -245,6 +277,26 @@ export function graftPackage(original: string, written: string, output: string, 
   const g = graft(new Uint8Array(readFileSync(original)), new Uint8Array(readFileSync(written)), ops)
   writeFileSync(output, g.bytes)
   return g.notes
+}
+
+/** The rules a package holds, by sheet id, as the importer models them (Univer's own models): the sheets and kinds that have any. */
+export interface PackageRules {
+  conditional: Record<string, unknown[]>
+  validation: Record<string, unknown[]>
+  names: unknown[]
+  filter: Record<string, unknown>
+}
+
+/** Read from the rule parts alone (patch/rules-reader.ts): no cell is parsed, so a large workbook answers in a fraction of an import. */
+export function packageRules(path: string): PackageRules {
+  const got = readRules(new Uint8Array(readFileSync(path)))
+  const out: PackageRules = { conditional: {}, validation: {}, names: Object.values(got.names), filter: {} }
+  for (const tab of Object.values(got.sheets)) {
+    if (tab.conditional.length) out.conditional[tab.id] = tab.conditional
+    if (tab.validation.length) out.validation[tab.id] = tab.validation
+    if (tab.filter) out.filter[tab.id] = tab.filter
+  }
+  return out
 }
 
 /** One sheet of a package as CSV (writer.ts). */

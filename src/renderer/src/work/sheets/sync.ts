@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { SheetCellJson, SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
-import { sheetStopWords } from "@shared/work/sheets";
+import { AUTO_FIT, forPackage, latestRules, ruleKinds, sheetStopWords, type SheetRuleKind } from "@shared/work/sheets";
 import { cellText, holds } from "./model";
 import { EDIT_MAX, fromBase64, LOAD_MAX, type SheetHost, type SheetPushed } from "./host";
 
@@ -33,6 +33,8 @@ export interface GridLink {
   onCommand?(listener: (id: string) => void): () => void;
   /** a style the grid names by its own id, as the style itself; null when it knows none by that id */
   style?(id: string): Record<string, unknown> | null;
+  /** a sheet's rules of one kind as they stand now (the workbook's names take no sheet); absent in a grid with no rules */
+  rules?(kind: SheetRuleKind, sheet?: string): unknown;
 }
 
 export interface SheetSyncState {
@@ -67,96 +69,10 @@ export const EDIT_WAIT = 150;
 const CONFLICT_TRIES = 5;
 /** Univer's own bookkeeping after an edit (the heights it works out again from what a row holds): nothing a file keeps, so never sent and never said. */
 const BOOKKEEPING = new Set(["sheet.mutation.set-worksheet-row-auto-height"]);
-/** A row told to fit: an Excel file that keeps formatting takes it (its height leaves the file); every other store works the fit out again itself. */
-const AUTO_FIT = "sheet.mutation.set-worksheet-row-is-auto-height";
 
-/**
- * What an opened Excel file saves (docs/agents/work-sheets.md "Structural edits"): rows and columns
- * inserted or deleted, a sort, sheets added, removed or renamed (through LibreOffice on the host), and
- * cell contents (through the patch writer).
- */
-const STRUCTURAL_SAVED = new Set([
-  "sheet.mutation.insert-row",
-  "sheet.mutation.remove-rows",
-  "sheet.mutation.insert-col",
-  "sheet.mutation.remove-col",
-  "sheet.mutation.reorder-range",
-  "sheet.mutation.insert-sheet",
-  "sheet.mutation.remove-sheet",
-  "sheet.mutation.set-worksheet-name",
-]);
-
-type Cells = Record<string, Record<string, Record<string, unknown> | null>>;
-
-/** What an opened Excel file keeps of the grid's formatting: a column's width, a row's height he set, a merge made or parted. A cell's style rides in its set-range-values. */
-const FORMAT_SAVED = new Set([
-  "sheet.mutation.set-worksheet-col-width",
-  "sheet.mutation.set-worksheet-row-height",
-  // a row told to fit what it holds (a double-click on its border): its own height leaves the file
-  "sheet.mutation.set-worksheet-row-is-auto-height",
-  "sheet.mutation.add-worksheet-merge",
-  "sheet.mutation.remove-worksheet-merge",
-]);
-
-/** Why a change cannot be saved, in the words he reads as it is stopped: the contract's, which the host's own refusals say too. */
+export { forPackage, latestRules, ruleKinds };
+/** Why a change cannot be saved, in the words he reads as it is stopped: the shared words, which the host's own refusals say too. */
 export const stoppedWords = sheetStopWords;
-
-/**
- * A mutation as an opened Excel file takes it, or why it cannot. Cell contents are saved as they
- * are; so are rows and columns inserted or deleted, a sort and a sheet added, removed or renamed. A
- * fill's cells carry only a shared formula's id: each gets its own formula text from the grid, which
- * the file needs. Where the host keeps formatting (`formats`: it listed controls for the row), a
- * cell's style, a column's width, a row's height and a merge are saved too; where it does not (a
- * workbook Excel or Google holds), a pasted cell's style is left out. What cannot be kept (moved
- * cells, rich text, a hidden row and the like) answers `stop`: the caller takes the change back as
- * he makes it and says why, so nothing he made stays in the grid that the file does not have.
- */
-export function forPackage(
-  mutation: SheetMutationJson,
-  formula: (sheet: string, row: number, col: number) => string | null,
-  opts: { formats?: boolean; google?: boolean; style?: (id: string) => Record<string, unknown> | null } = {},
-): { keep: SheetMutationJson[] } | { stop: string } {
-  if (STRUCTURAL_SAVED.has(mutation.id)) return { keep: [mutation] };
-  if (mutation.id === AUTO_FIT && !opts.formats) return { keep: [] };
-  if (FORMAT_SAVED.has(mutation.id)) return opts.formats ? { keep: [mutation] } : { stop: stoppedWords("other", opts.google) };
-  if (mutation.id !== SET_RANGE_VALUES) return { stop: stoppedWords(mutation.id.includes(".move-") ? "moved" : "other", opts.google) };
-  const params = mutation.params as { subUnitId?: string; cellValue?: Cells } | null;
-  if (!params?.cellValue) return { keep: [mutation] };
-  const cellValue: Cells = {};
-  let kept = 0;
-  for (const [r, row] of Object.entries(params.cellValue))
-    for (const [c, cell] of Object.entries(row)) {
-      let out = cell;
-      if (cell !== null) {
-        let next: Record<string, unknown> = cell;
-        if (cell.p != null) return { stop: stoppedWords("rich", opts.google) };
-        if (cell.si != null && cell.f == null) {
-          const f = formula(params.subUnitId ?? "", Number(r), Number(c));
-          if (!f) return { stop: stoppedWords("fill", opts.google) };
-          next = { ...cell, f };
-        }
-        if ("s" in next && !opts.formats) {
-          const { s: _style, ...rest } = next;
-          // A cell that carried only a style has nothing for a store that keeps none.
-          if (!("v" in rest) && !("f" in rest)) continue;
-          next = rest;
-        } else if (typeof next.s === "string") {
-          // The file's style ids are not the grid's: the style itself is sent.
-          const style = opts.style?.(next.s) ?? null;
-          if (!style) return { stop: stoppedWords("other", opts.google) };
-          // (laid over what the cell has, as the grid lays a style it names by id)
-          next = { ...next, s: style };
-        }
-        // A cell with neither contents nor a style (a type alone, custom data) has no saved form.
-        if (!("v" in next) && !("f" in next) && !("s" in next)) return { stop: stoppedWords("other", opts.google) };
-        out = next;
-      }
-      (cellValue[r] ??= {})[c] = out;
-      kept++;
-    }
-  if (!kept) return { keep: [] };
-  return { keep: [{ id: mutation.id, params: { ...params, cellValue } }] };
-}
 
 /** An op as this grid names its workbook: the host's unit id and the grid's can differ. */
 const inUnit = (mutation: SheetMutationJson, unitId: string): SheetMutationJson =>
@@ -296,7 +212,7 @@ export class SheetSync {
       commands = 0;
       if (why) return this.stop(grid, why, grid.onCommand ? ran : 1);
       if (taken.length === 0) return;
-      this.queue.push(...taken);
+      this.queue.push(...latestRules(taken));
       this.set({ tick: this.state.tick + 1, saving: true });
       if (this.queue.length >= EDIT_MAX) this.flush();
       else this.wait();
@@ -317,7 +233,12 @@ export class SheetSync {
       if (BOOKKEEPING.has(mutation.id) || this.reverting) return;
       const view = this.state.view;
       if (view?.store === "package") {
-        const got = forPackage(mutation, (sheet, row, col) => grid.formula(sheet, row, col), { formats: (view.row?.length ?? 0) > 0, google: view.reach?.to === "google", ...(grid.style ? { style: (id: string) => grid.style!(id) } : {}) });
+        const got = forPackage(mutation, (sheet, row, col) => grid.formula(sheet, row, col), {
+          formats: (view.row?.length ?? 0) > 0,
+          google: view.reach?.to === "google",
+          ...(grid.style ? { style: (id: string) => grid.style!(id) } : {}),
+          ...(grid.rules ? { rules: (kind: SheetRuleKind, sheet?: string) => grid.rules!(kind, sheet), kinds: ruleKinds(view.row) } : {}),
+        });
         if ("stop" in got) stop ??= got.stop;
         else group.push(...got.keep);
       } else if (mutation.id !== AUTO_FIT) group.push(mutation);

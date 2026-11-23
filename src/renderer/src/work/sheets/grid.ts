@@ -1,7 +1,6 @@
 import { createElement, type ComponentType } from "react";
 import type { SheetCellJson, SheetChart } from "@shared/contract-work-sheets";
 import { fontsOfSnapshot, SheetCanvas, type SheetCanvasProps, type SheetHandle } from "work-kit/sheet";
-import { ensureSheetFonts } from "./fonts";
 import type { Decode, GridLink, Workbook } from "./sync";
 
 /**
@@ -44,8 +43,9 @@ export const univerGrid: SheetGrid = {
     SheetWorker ??= (await import("work-kit/sheet/worker?worker")).default;
   },
   worker: () => new SheetWorker!(),
-  fonts: (workbook) => ensureSheetFonts(fontsOfSnapshot(workbook as never)),
-  font: (name) => ensureSheetFonts([name]),
+  // The font files' list is read only when a workbook is about to be drawn (and a static preview never reads it).
+  fonts: async (workbook) => (await import("./fonts")).ensureSheetFonts(fontsOfSnapshot(workbook as never)),
+  font: async (name) => (await import("./fonts")).ensureSheetFonts([name]),
   link: (handle) => ({
     unitId: handle.api.getActiveWorkbook()?.getId() ?? "",
     apply: (mutations) => handle.apply(mutations),
@@ -55,6 +55,8 @@ export const univerGrid: SheetGrid = {
     undo: () => handle.api.undo(),
     onCommand: (listener) => handle.onCommand(listener),
     style: (id) => (handle.api.getActiveWorkbook()?.getWorkbook().getStyles().get(id) as Record<string, unknown> | null | undefined) ?? null,
+    // A list as it stands: what an opened Excel file is sent after a rule changes (sync.ts `forPackage`).
+    rules: (kind, sheet) => (kind === "conditional" ? handle.rules.conditional.list(sheet) : kind === "validation" ? handle.rules.validation.list(sheet) : kind === "names" ? handle.rules.names.list() : handle.rules.filter.get(sheet)),
   }),
   values: (handle, sheet, a1) => (sheetOf(handle, sheet)?.getRange(a1).getValues() ?? []) as unknown[][],
   place(handle, chart, size, onSlot) {

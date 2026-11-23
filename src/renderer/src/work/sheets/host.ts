@@ -43,8 +43,8 @@ export interface SheetHost {
   mode(mode: "suggests" | "writes"): Promise<SheetView>;
   undo(writeId: string): Promise<SheetView>;
   chart(chart: SheetChart, remove?: boolean): Promise<SheetView>;
-  /** Writes the sheet out on the host (`work.sheets.export`); answers where it went. */
-  exportAs(format: "xlsx" | "csv", sheet?: string): Promise<{ path: string }>;
+  /** Writes the sheet out on the host (`work.sheets.export`); answers where it went, and what the file could not hold. */
+  exportAs(format: "xlsx" | "csv", sheet?: string): Promise<{ path: string; left?: string[] }>;
   /** Opens the file in the app `view.reach.to` names; refused where it is not on the host. The full editor answers its page, opened in the browser. */
   switchApp(): Promise<void>;
   /** Something landed on this item. */

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { SheetChart, SheetView } from "@shared/contract-work-sheets";
-import { patternProblem, reviewMarks, SheetToolbar, useGridState, type GridSelection, type SheetHandle } from "work-kit/sheet";
+import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, useGridState, type GridSelection, type RuleKind, type RulesView, type SheetHandle, type SheetMark } from "work-kit/sheet";
 import { ChartBar, MoreHorizontal, Trash2 } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { RowsMenu } from "../../chrome/menuRows";
@@ -21,7 +21,7 @@ import { Export, Share } from "../icons";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
-import { chartBars, chartFrom, chartTicks, savedLine, sheetChanges, tickText, type ChartBar as Bars } from "./model";
+import { chartBars, chartFrom, chartTicks, saidLine, savedLine, sheetChanges, tickText, type ChartBar as Bars } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
 import { guestSource } from "../guests/api";
 import { ShareButton } from "../guests/Share";
@@ -92,17 +92,23 @@ export function Body(props: Props) {
     };
   }, [grid, book]);
 
-  const changes = useMemo(() => sheetChanges(view?.suggestions ?? [], book?.workbook.sheetOrder), [view?.suggestions, book]);
+  const changes = useMemo(() => sheetChanges(view?.suggestions ?? [], book?.workbook.sheetOrder, view?.changes), [view?.suggestions, view?.changes, book]);
   const current = Math.max(0, Math.min(state.current, changes.changes.length - 1));
   const change = changes.changes[current];
-  const marks = useMemo(() => reviewMarks(changes.runs, change?.kind === "cells" ? changes.runs.indexOf(change.run) : -1), [changes, change]);
+  const marks = useMemo((): SheetMark[] => {
+    const cells = reviewMarks(changes.runs, change?.kind === "cells" ? changes.runs.indexOf(change.run) : -1);
+    // A format or a rule waiting marks the cells it is about, as a cell's change marks its own.
+    const said = changes.changes.flatMap((c): SheetMark[] => (c.kind === "said" && c.said.range ? [{ id: `said-${c.said.id}`, range: { sheet: c.said.sheet, ...c.said.range }, kind: c === change ? "current" : "pending" }] : []));
+    return [...cells, ...said];
+  }, [changes, change]);
   const locked = !!view && (view.readOnly !== undefined || !!view.missing);
   // A sheet that opens with changes waiting opens on the one the stepper is on, so the formula bar says what it replaces.
   const opening = useRef<SheetHandle | null>(null);
   useEffect(() => {
-    if (!handle || opening.current === handle || change?.kind !== "cells") return;
+    const at = whereOf(change);
+    if (!handle || opening.current === handle || !at) return;
     opening.current = handle;
-    handle.reveal({ sheet: change.run.sheet, ...change.run.range });
+    handle.reveal(at);
   }, [handle, change]);
   const act = useCallback((work: Promise<SheetView>, fallback: string): Promise<void> => work.then((next) => sync.view(next), (error: unknown) => sayError(error, fallback)), [sync]);
 
@@ -132,9 +138,21 @@ export function Body(props: Props) {
   // The format row: only the controls whose changes this sheet's store keeps, as its host says (`view.row`); none on a sheet he cannot edit.
   const controls = view && !locked ? (view.row ?? []) : [];
   const [customFormat, setCustomFormat] = useState<string | null>(null);
+  // The rules' side sheet, opened from the row's Data menu: the lists this store keeps, in the sheet's order.
+  const kinds = useMemo(() => RULE_KINDS.filter((kind) => controls.includes(kind)), [controls.join(" ")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [rules, setRules] = useState<RulesView | null>(null);
+  // Shut while the sheet takes no edit (read-only, or reading the file again after a stop), and it stays shut after: a rule made then would be in neither the grid nor the file.
+  const still = locked || state.reloading;
+  useEffect(() => {
+    if (still) setRules(null);
+  }, [still]);
+  const siding = handle && rules && kinds.length > 0 && !still ? rules : null;
+  // Beside the grid; under it where the canvas is too narrow to give up 320px.
+  const stacked = width > 0 && width < SIDE_STACKS_UNDER;
 
   // The cell in hand, when a suggestion is laid in it: what the value replaces. Read on every render, which each laying causes.
-  const was = selection ? sync.was(selection.sheet, selection.row, selection.column) : undefined;
+  // While the stepper is on a format or a rule, which sits in no cell, the bar says that change in words.
+  const was = (selection ? sync.was(selection.sheet, selection.row, selection.column) : undefined) ?? (change?.kind === "said" ? saidLine(change.said) : undefined);
 
   // A sheet that did not open says so once, in the body: the bar keeps no line about it.
   // Retry tries again what failed: the grid's own code (fetched afresh), the host's open, or both.
@@ -158,29 +176,63 @@ export function Body(props: Props) {
       }}
     >
       {handle && controls.length > 0 ? (
-        <SheetToolbar sheet={handle} controls={controls} boundary={box} mac={IS_MAC} editorKeys tip={rowTip} loadFont={grid.font} onCustomFormat={(current) => setCustomFormat(current)} confirmMerge={confirmMerge} />
+        <SheetToolbar
+          sheet={handle}
+          controls={controls}
+          boundary={box}
+          mac={IS_MAC}
+          editorKeys
+          tip={rowTip}
+          loadFont={grid.font}
+          onCustomFormat={(current) => setCustomFormat(current)}
+          confirmMerge={confirmMerge}
+          // The Data menu's rules open the side sheet on their lists; a second press of the one open closes it.
+          onRules={() => setRules((open) => (open ? null : { view: "lists" }))}
+        />
       ) : null}
       {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
-      <Canvas
-        key={book.key}
-        snapshot={book.workbook as never}
-        worker={grid.worker}
-        // Locked too while the book is read again after a stop: an edit made then would be in neither the grid nor the file.
-        readOnly={locked || state.reloading}
-        styleKeys={controls.length > 0}
-        marks={marks}
-        was={was}
-        onReady={setHandle}
-        onSelection={setSelection}
-        labels={LABELS}
-        className="min-h-0 flex-1"
-      />
+      <div className={stacked ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1"}>
+        <Canvas
+          key={book.key}
+          snapshot={book.workbook as never}
+          worker={grid.worker}
+          // Locked too while the book is read again after a stop: an edit made then would be in neither the grid nor the file.
+          readOnly={locked || state.reloading}
+          styleKeys={controls.length > 0}
+          // The filter's header buttons and menu only where the host keeps a filter (a workbook Excel or Google holds keeps none).
+          filter={controls.includes("filter")}
+          // The sort dialog, the filter's menu, a list's drop-down and a validation's refusal are work-kit's own, not Univer's.
+          dataChrome
+          marks={marks}
+          was={was}
+          onReady={setHandle}
+          onSelection={setSelection}
+          labels={LABELS}
+          className="min-h-0 min-w-0 flex-1"
+        />
+        {siding ? (
+          <div data-sheet-rules="" className={stacked ? "h-[344px] shrink-0" : "w-80 shrink-0"}>
+            <RulesSheet sheet={handle} open={siding} onOpen={setRules} onClose={() => setRules(null)} kinds={kinds} stacked={stacked} className="size-full" />
+          </div>
+        ) : null}
+      </div>
       {handle ? <Charts charts={view.charts} grid={grid} handle={handle} tick={state.tick} locked={locked} width={chartWidth(width)} remove={(chart) => act(sync.host.chart(chart, true), "Couldn't remove the chart")} /> : null}
     </div>
   );
 }
 
 const LABELS = { failed: "Couldn't draw this sheet." };
+/** The side sheet's lists, in its order: each shown where the host lists its control. */
+const RULE_KINDS: readonly RuleKind[] = ["conditional", "validation", "names"];
+/** Under this much canvas the side sheet stacks under the grid (the prototype's 560px). */
+const SIDE_STACKS_UNDER = 560;
+
+/** Where a change is on the grid, for the stepper to show it: a run's cells, a format's or a rule's range; null for one with no cell (a name, a change whose cells are gone). */
+function whereOf(change: ReturnType<typeof sheetChanges>["changes"][number] | undefined): { sheet: string; startRow: number; endRow: number; startColumn: number; endColumn: number } | null {
+  if (change?.kind === "cells") return { sheet: change.run.sheet, ...change.run.range };
+  if (change?.kind === "said" && change.said.range) return { sheet: change.said.sheet, ...change.said.range };
+  return null;
+}
 
 /** Asked before a merge empties cells: the app's own question. Undo brings them back, but the loss is said first. */
 const confirmMerge = (): Promise<boolean> => confirmAction({ title: "Merge these cells?", body: "Only the top-left value is kept.", action: "Merge" });
@@ -293,7 +345,7 @@ function useFeeds(
   useEffect(() => {
     if (!written || count > 0) return shell.written(null);
     // Only an opened Excel file takes a write back here; a LifeOS sheet or a .tcsheet does it with the sheet's own Undo or History.
-    const undo = store === "package" ? () => act(host.undo(written.id), "Couldn't undo") : undefined;
+    const undo = store === "package" && written.undo !== false ? () => act(host.undo(written.id), "Couldn't undo") : undefined;
     shell.written({ text: `${written.text}, ${dayTime(written.at)}`, ...(undo ? { undo } : {}) });
     return () => shell.written(null);
   }, [shell, host, written, count, store, act]);
@@ -305,7 +357,8 @@ function useFeeds(
       const next = list[to];
       if (!next) return;
       sync.step(to);
-      if (next.kind === "cells") handle?.reveal({ sheet: next.run.sheet, ...next.run.range });
+      const at = whereOf(next);
+      if (at) handle?.reveal(at);
     };
     const which = (w: number | { group: string } | "all"): ReviewWhich => (w === "all" ? "all" : typeof w === "number" ? { ids: list[w]?.ids ?? [] } : { changeSet: w.group });
     const review: ReviewAdapter = {
@@ -689,9 +742,12 @@ export function TabEnd(props: Props) {
 /** Writes the sheet out on the host and says where, by the file's name: the folder is the host's. */
 async function saveAs(host: SheetHost, format: "xlsx" | "csv", sheet?: string): Promise<void> {
   try {
-    const { path } = await host.exportAs(format, sheet);
+    const { path, left } = await host.exportAs(format, sheet);
     const toast = await loadToast();
-    toast.success(`Saved ${path.split(/[\\/]/).pop()}`);
+    const name = path.split(/[\\/]/).pop();
+    // What the file could not hold is said with the save, not after it.
+    if (left?.length) toast.message(`Saved ${name} without ${left.join(" and ")}`);
+    else toast.success(`Saved ${name}`);
   } catch (error) {
     sayError(error, "Couldn't save the sheet");
   }

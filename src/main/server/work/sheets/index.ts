@@ -11,13 +11,14 @@ import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
 import { blankWorkbook } from './host/backends'
 import type { SheetRef } from './host/wire'
-import { writeCsv, writeXlsx } from './writer'
-import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Sheets } from './held'
+import { writeCsv, writeXlsx, writeXlsxWhole } from './writer'
+import { ensureChangeTables } from './changes'
+import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Held, type Sheets } from './held'
 import { sheetFileMoved } from './moved'
 import { ensurePackageTables, type Moved } from './packages'
 import { mapCell, STRUCTURAL_CONVERTERS } from './structural'
 import { ensureSuggestionTables, type Which } from './suggestions'
-import { sheetTools, writeAccepted } from './tools'
+import { layChange, sheetTools, Unplaced, writeAccepted } from './tools'
 import { sheetWaiting } from './waiting'
 
 /**
@@ -58,8 +59,11 @@ async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: She
     // A refusal (NotSaved) is said once over the grid: the edit stays in the grid, and the file keeps what it had.
     const got = await s.packages.edit(held.path, baseRev, mutations, who)
     if ('conflict' in got) return got
-    if (got.moved) await followRows(s, held.path, got.moved)
-    else afterEdit(s, storeKey(held), mutations)
+    if (got.moved) {
+      await followRows(s, held.path, got.moved)
+      // Rows, columns or sheets changed: a waiting format or rule may no longer be where the agent saw it.
+      s.changes.orphanAll(storeKey(held))
+    } else afterEdit(s, storeKey(held), mutations)
     return { rev: got.rev }
   }
   return host(s.ctx, 'apply', { sheet: held.ref, baseRev, mutations, by: who })
@@ -89,6 +93,7 @@ export const sheets: WorkModule = {
   ensure(db) {
     ensurePackageTables(db)
     ensureSuggestionTables(db)
+    ensureChangeTables(db)
     db.exec('CREATE TABLE IF NOT EXISTS work_sheets_charts (store TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY (store, id))')
   },
   async handle(req, ctx, by) {
@@ -135,7 +140,11 @@ export const sheets: WorkModule = {
         const key = storeKey(held)
         // Taking one writes it: a remote key changes a sheet others can open only with `approve`.
         if (req.params.verdict === 'accept') await approves(s, item!, by)
-        if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
+        // A format or a rule the agent proposed is this host's own row: taken, it is laid as his edit; dropped, it is gone.
+        const mine = held.at === 'package' || held.at === 'service' ? await reviewChanges(s, held, key, req.params.which, req.params.verdict, principalOf(ctx, by)) : false
+        if (mine === 'only') {
+          // (the ids named no cell suggestion)
+        } else if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
         else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
         // An accepted set goes to Google as one write (google/grid.ts).
         else if (held.at === 'google') await (await import('../google/grid')).review(ctx, held.ref, req.params.which, req.params.verdict)
@@ -173,7 +182,12 @@ export const sheets: WorkModule = {
         if (held.at === 'package') {
           await s.packages.restore(held.path, req.params.rev, principalOf(ctx, by))
           s.suggestions.orphanAll(storeKey(held))
-        } else await host(ctx, 'restore', { sheet: held.ref, rev: req.params.rev, by: principalOf(ctx, by) })
+          s.changes.orphanAll(storeKey(held))
+        } else {
+          await host(ctx, 'restore', { sheet: held.ref, rev: req.params.rev, by: principalOf(ctx, by) })
+          // The sheet is another revision's now: a waiting format or rule may no longer be where the agent saw it.
+          s.changes.orphanAll(storeKey(held))
+        }
         await announce(s, item!)
         return handled(await viewOf(s, item!))
       }
@@ -198,7 +212,7 @@ export const sheets: WorkModule = {
         return handled({ opened: true as const })
       }
       case 'work.sheets.export':
-        return handled({ path: await exportSheet(s, item!, req.params.format, req.params.sheet) })
+        return handled(await exportSheet(s, item!, req.params.format, req.params.sheet))
     }
     return NOT_HANDLED
   },
@@ -251,6 +265,43 @@ async function approves(s: Sheets, item: CanvasItem, by: Caller): Promise<void> 
 }
 
 /**
+ * Takes or drops the formats and rules an agent proposed (changes.ts). Taken, each is laid as the
+ * owner's own edit on the sheet as the agent saw it (`rev`), which its store moves through what
+ * landed since; where rows, columns or sheets changed in between it cannot be, and the change
+ * turns `orphaned`, for him to drop; so does one the sheet has no place for now (its tab renamed,
+ * its name taken since), and an accept of many goes on past it. `only`: the ids named these and no
+ * cell suggestion.
+ */
+async function reviewChanges(s: Sheets, held: Extract<Held, { at: 'package' | 'service' }>, key: string, which: Which, verdict: 'accept' | 'reject', by: Principal): Promise<'only' | 'some' | false> {
+  const picked = s.changes.pick(key, which)
+  if (!picked.length) return false
+  const only = which !== 'all' && 'ids' in which && which.ids.every((id) => picked.some((p) => p.id === id))
+  if (verdict === 'reject') {
+    s.changes.mark(key, picked.map((p) => p.id), 'rejected')
+    return only ? 'only' : 'some'
+  }
+  for (const change of picked) {
+    if (change.state !== 'pending') {
+      if (only) throw new Error(MOVED_SINCE)
+      continue
+    }
+    let why = MOVED_SINCE
+    const landed = await layChange(s, held, change.ask, by, change.words, change.rev).catch((err: unknown) => {
+      if (!(err instanceof Unplaced)) throw err
+      why = err.message
+      return false
+    })
+    if (landed) s.changes.mark(key, [change.id], 'accepted')
+    else {
+      s.changes.mark(key, [change.id], 'orphaned')
+      if (only) throw new Error(why)
+    }
+  }
+  return only ? 'only' : 'some'
+}
+const MOVED_SINCE = 'Rows or columns changed since the agent suggested this: reject it, or make the change yourself.'
+
+/**
  * Takes or drops suggestions over a package. An accepted cell is written only while it still holds
  * what the agent saw (a cell changed since, here or in Excel, turns `conflict`), and is marked
  * accepted only once the file has it: a save that fails leaves it waiting.
@@ -299,9 +350,10 @@ async function workbookOf(ctx: WorkCtx, ref: SheetRef): Promise<IWorkbookData> {
 /**
  * Writes a sheet out (the model writer, writer.ts): a held sheet to a new .xlsx, or one of its sheets
  * to .csv. A sheet read from a .csv saves back over it as .csv, and as .xlsx beside it; a package
- * gives .csv beside itself; anything else lands among the item's own files.
+ * gives .csv beside itself; anything else lands among the item's own files. `left`: the lists of rules
+ * the .xlsx could not hold, in words.
  */
-export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string): Promise<string> {
+export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string): Promise<{ path: string; left?: string[] }> {
   const held = heldOf(item, s.ctx.dataDir)
   const base = item.title.replace(/\.(xlsx|xlsm|tcsheet|csv)$/i, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim() || 'Sheet'
   const own = (): string => {
@@ -315,17 +367,19 @@ export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 
     if (format === 'xlsx') throw new Error('This is an Excel file already: every edit is saved into it.')
     const path = free(join(dirname(held.path), `${base}.csv`))
     writeFileSync(path, await s.jobs.csv(held.path, sheet))
-    return path
+    return { path }
   }
   const wb = await workbookOf(s.ctx, held.ref)
   if (format === 'csv') {
     const path = held.csv ?? join(own(), `${base}.csv`)
     writeFileSync(path, writeCsv(wb, sheet))
-    return path
+    return { path }
   }
   const path = held.csv ? free(join(dirname(held.csv), `${base}.xlsx`)) : join(own(), `${base}.xlsx`)
-  writeFileSync(path, writeXlsx(wb))
-  return path
+  // A list of rules the file cannot hold is left out, and said: "the names", "conditional formats on Q1".
+  const { bytes, left } = writeXlsxWhole(wb)
+  writeFileSync(path, bytes)
+  return { path, ...(left.length ? { left: left.map((l) => (l.sheet ? `${l.what} on ${l.sheet}` : `the ${l.what}`.replace('the the ', 'the '))) } : {}) }
 }
 
 /** A new sheet in a thread's canvas: a LifeOS sheet when its workspace has a sector, else a `.tcsheet` among this host's files. */

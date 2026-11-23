@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CanvasSource } from '@shared/work'
 import { csvSheetPath } from './held'
 import { sheetFileMoved } from './moved'
+import { ensureChangeTables } from './changes'
 import { ensurePackageTables } from './packages'
 import { ensureSuggestionTables } from './suggestions'
 
@@ -20,6 +21,8 @@ const at = () => ({ db, dataDir: dir, host: 'env_test' })
 const stores = (table: string): string[] => (db.prepare(`SELECT store FROM ${table} ORDER BY store`).all() as { store: string }[]).map((r) => r.store)
 const keyed = (store: string): void => {
   db.prepare("INSERT INTO work_sheets_suggestions (store, id, change_set, by, sheet, row, col, base_hash, state, at) VALUES (?, 's1', 'cs', 'agent:h:t', 'sheet1', 0, 0, '', 'pending', 1)").run(store)
+  // a format an agent proposed, waiting in words
+  db.prepare("INSERT INTO work_sheets_changes (store, id, change_set, by, kind, sheet, words, ask, state, rev, at) VALUES (?, 'f1', 'cs2', 'agent:h:t', 'format', 'sheet1', 'Bold on A1', '{}', 'pending', 0, 1)").run(store)
   db.prepare("INSERT INTO work_sheets_prefs (store, mode) VALUES (?, 'suggests')").run(store)
   db.prepare("INSERT INTO work_sheets_charts (store, id, json) VALUES (?, 'c1', '{}')").run(store)
 }
@@ -29,6 +32,7 @@ beforeEach(() => {
   db = new DatabaseSync(':memory:')
   ensurePackageTables(db)
   ensureSuggestionTables(db)
+  ensureChangeTables(db)
   db.exec('CREATE TABLE IF NOT EXISTS work_sheets_charts (store TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY (store, id))')
 })
 afterEach(() => {
@@ -55,7 +59,7 @@ describe('a sheet\'s file renamed', () => {
     expect(db.prepare('SELECT path, rev FROM work_sheets_files ORDER BY path').all()).toEqual([{ path: to, rev: 2 }, { path: '/work/Other.xlsx', rev: 5 }])
     expect((db.prepare('SELECT COUNT(*) AS n FROM work_sheets_ops WHERE path = ?').get(to) as { n: number }).n).toBe(2)
     expect((db.prepare('SELECT COUNT(*) AS n FROM work_sheets_ops WHERE path = ?').get(from) as { n: number }).n).toBe(0)
-    for (const table of ['work_sheets_suggestions', 'work_sheets_prefs', 'work_sheets_charts']) expect(stores(table)).toEqual([`file:${to}`, 'file:/work/Other.xlsx'].sort())
+    for (const table of ['work_sheets_suggestions', 'work_sheets_changes', 'work_sheets_prefs', 'work_sheets_charts']) expect(stores(table)).toEqual([`file:${to}`, 'file:/work/Other.xlsx'].sort())
     expect(existsSync(copies)).toBe(false)
     expect(readFileSync(join(dir, 'sheets', 'files', hash(to), '0.xlsx'), 'utf8')).toBe('as opened')
   })

@@ -4,6 +4,7 @@ import { filesPaneOf, mailPaneOf } from '@shared/work'
 import { makeRig, at, WS, type Rig } from '../files/testkit'
 import { viewOf, type Sheets } from './held'
 import { createSheet } from './index'
+import { ChangeStore, ensureChangeTables } from './changes'
 import { ensureSuggestionTables, SuggestionStore } from './suggestions'
 
 /** A sheet open in a Files tab: its owner is the pane, which has no scope row. */
@@ -18,6 +19,7 @@ beforeEach(() => {
   lifeos = false
   rig.db.exec('CREATE TABLE IF NOT EXISTS work_sheets_charts (store TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY (store, id))')
   ensureSuggestionTables(rig.db)
+  ensureChangeTables(rig.db)
   Object.assign(rig.ctx, {
     lifeos: { connected: () => lifeos },
     service: {
@@ -28,7 +30,7 @@ beforeEach(() => {
     }
   })
   const packages = { open: async () => ({ rev: 0, inspected: { sheets: [], date1904: false, reach: null }, saveError: null, missing: false }) }
-  s = { ctx: rig.ctx, packages, suggestions: new SuggestionStore(rig.db), jobs: {} } as unknown as Sheets
+  s = { ctx: rig.ctx, packages, suggestions: new SuggestionStore(rig.db), changes: new ChangeStore(rig.db), jobs: {} } as unknown as Sheets
 })
 afterEach(() => rig.close())
 

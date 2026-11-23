@@ -2522,6 +2522,52 @@ set by hand.
   the select names the style a cell wears while that part of its look is
   the style's. A border preset too large for one press has its row off; a
   merge that would empty cells asks first, in the app's own confirm.
+- **The sheet's Data** is one menu in the row's data group (232px): Sort
+  (A to Z, Z to A on the selection's column, then "Custom sort…"), Filter
+  with a check while the sheet has one (⇧⌘L), and under a rule Validation,
+  Conditional formatting and Named ranges, which open the side sheet. A
+  row is there only where the sheet's store keeps what it makes; a guest's
+  page has no Data menu. Custom sort is a dialog: the range, "My data has a
+  header", up to three keys.
+- **Rules, the side sheet.** 320px, docked at the grid's right on
+  `background` with a 1px `border` left edge and no scrim: the grid stays
+  live, and the open rule's range shows on it in `sel-bg`. Under 560px of
+  canvas it stacks under the grid, 344px tall, its hairline on top. The
+  header is 40px: a 13px medium title ("Rules", or the rule's kind with a
+  24px Back chevron first) and a 24px close. One list a kind
+  (Conditional formatting, Validation, Named ranges): a 28px heading in
+  12px medium `muted-foreground` with New at its end; a rule one 32px row
+  at 6px radius: a 32 by 20 swatch reading "Aa" in the rule's own format
+  (a validation or a name takes a 14px muted glyph), the condition in
+  plain words at 13px, truncating ("Total above Budgeted", "Status from a
+  list"), then its range in 12px muted tabular figures. Hover is
+  `foreground` 5%; the open rule `muted`. A rule opens in the same sheet,
+  16px by 12px in, 16px between fields under 12px medium muted labels:
+  Apply to with a 24px pick-in-grid button inside the field, the
+  condition, the style (a preset select, then Bold, Italic, the text
+  colour and the fill from the format row's parts). The foot is Delete
+  rule (ghost, the destructive ink on hover) and Done. Edits apply as he
+  makes them and each is one step of Undo; there is no Cancel. No list
+  says anything while it is empty but one quiet line. It is shut while
+  the sheet takes no edit (read only, or reading its file again) and stays
+  shut after.
+- **In the grid, a filter and a list.** A filtered range's header cells
+  carry an 18px button 4px from the cell's right edge (4px radius, a 12px
+  chevron, `muted-foreground`; the accent's ink on a column with a
+  criterion), and the header's text keeps clear of it. Its menu is ours:
+  Sort A to Z and Z to A, a search field, the column's values with
+  checkboxes and their counts in 12px muted, "(Blanks)" last, one
+  condition, Clear and Apply. A cell with a list validation shows the same
+  button while it is the cell in hand; its list is a menu under the cell,
+  128px or more, with a check on the current value. A value a rule refuses
+  is said in a small notice by the cell, in the rule's own words when it
+  has some. Univer's own panels for these never open.
+- **A format or a rule an agent proposes** changes no cell's value, so it
+  sits in no cell: it steps with the cell changes in the bar's stepper,
+  its range marked as a waiting change is, and while the stepper is on it
+  the formula bar says it in words ("Suggested: Bold, yellow fill on
+  B2:B9"). One whose rows or columns moved since says so there and can
+  only be rejected.
 
 **The show** (`src/renderer/src/work/slides/show/`; the approved page is
 `.temp-code/prototypes/work-editors/present.html`, "Slide and column"). A

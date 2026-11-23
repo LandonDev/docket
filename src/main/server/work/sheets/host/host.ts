@@ -8,8 +8,13 @@ import { colName, parseA1, rangeCells, READ_MAX_CELLS } from '../a1'
 import { diffWorkbooks } from '../diff'
 import { mutationsOf, SET_RANGE_VALUES, STRUCTURAL } from '../mutations'
 import { moveThrough } from './live'
+import { ruleMutations } from './rules'
 import { SNAPSHOT_EVERY, type Op, type SheetBackend, type StoredSuggestion } from './backends'
-import type { A1Cell, HostAnswer, SheetRef, Which } from './wire'
+import { createRules } from 'work-kit/sheet/rules'
+import { guestMisfit } from './guest'
+import type { A1Cell, HostAnswer, SheetRef, Which, RulesHeld } from './wire'
+
+type Box = { startRow: number; endRow: number; startColumn: number; endColumn: number }
 
 /**
  * The Work service's host engine for the sheets it holds (architecture §9.1,
@@ -17,8 +22,13 @@ import type { A1Cell, HostAnswer, SheetRef, Which } from './wire'
  * per open sheet, kept at the store's newest op. Every write goes to the store
  * first, compare-and-set on its revision, then into the engine; agents read
  * its computed values; a suggestion is rebased over every op that lands after
- * it; a snapshot is cut every 500 ops.
+ * it; a snapshot is cut every 500 ops. Its engines mount the grid's data
+ * plugins (`rules`), so a conditional format, a validation, a filter or a
+ * defined name made in the grid is replayed, kept in the snapshot and restored.
  */
+
+/** Every engine the host makes: with the rule plugins, or their ops would not apply and their rules would leave the snapshot. */
+const ENGINE = { rules: true } as const
 
 interface Open {
   key: string
@@ -133,7 +143,7 @@ export class SheetHost {
   private async load(ref: SheetRef): Promise<Open> {
     const backend = this.backendOf(ref)
     const loaded = await backend.load()
-    const engine = headlessSheet('work', loaded.snapshot)
+    const engine = headlessSheet('work', loaded.snapshot, ENGINE)
     const o: Open = { key: refKey(ref), backend, engine, unitId: engine.workbook.getId(), title: loaded.title, shared: loaded.shared, sector: loaded.sector, rev: loaded.snapRev, snapRev: loaded.snapRev }
     this.replay(o, await backend.opsAfter(loaded.snapRev))
     await engine.settled()
@@ -231,7 +241,8 @@ export class SheetHost {
   open(ref: SheetRef): Promise<HostAnswer<'open'>> {
     return this.with(ref, async (o) => {
       o.shared = await o.backend.sharedNow()
-      return { title: o.title, rev: o.rev, shared: o.shared, suggestions: (await this.suggestionsOf(o)).map(toSuggestion) }
+      const sheets = o.engine.workbook.getSheets().map((sheet) => ({ id: sheet.getSheetId(), name: sheet.getSheetName() }))
+      return { title: o.title, rev: o.rev, shared: o.shared, suggestions: (await this.suggestionsOf(o)).map(toSuggestion), unit: o.unitId, sheets, rules: this.rulesHeld(o, sheets) }
     })
   }
 
@@ -289,8 +300,30 @@ export class SheetHost {
         if (!moved) return { conflict: true as const, rev: o.rev }
         ops = moved
       }
+      // A guest's ops are held to the sheet as it stands: the route checks their shape, only the engine knows the sheet.
+      if (by.startsWith('guest:')) {
+        const why = guestMisfit(ops, (id) => {
+          const sheet = o.engine.workbook.getSheetBySheetId(id)?.getSheet()
+          return sheet ? { rows: sheet.getRowCount(), columns: sheet.getColumnCount(), merges: sheet.getMergeData() } : null
+        })
+        if (why) throw new Error(why)
+      }
       return this.commit(o, o.rev, [{ by, mutations: ops }])
     })
+  }
+
+  /** The names, filters and validated ranges the sheet holds now, read from the engine's own models (work-kit's `createRules`). */
+  private rulesHeld(o: Open, sheets: readonly { id: string }[]): RulesHeld {
+    const rules = createRules(o.engine.api, () => true)
+    const box = (r: Box): Box => ({ startRow: r.startRow, endRow: r.endRow, startColumn: r.startColumn, endColumn: r.endColumn })
+    const held: RulesHeld = { names: rules.names.list().map((n) => ({ name: n.name, ...(n.localSheetId && sheets.some((x) => x.id === n.localSheetId) ? { scope: n.localSheetId } : {}) })), filters: {}, validations: {} }
+    for (const { id } of sheets) {
+      const filter = rules.filter.get(id)
+      if (filter) held.filters[id] = box(filter.ref)
+      const ranges = rules.validation.list(id).flatMap((rule) => rule.ranges.map(box))
+      if (ranges.length) held.validations[id] = ranges
+    }
+    return held
   }
 
   range(ref: SheetRef, range: string): Promise<HostAnswer<'range'>> {
@@ -369,7 +402,7 @@ export class SheetHost {
     }
     if (rev > o.rev) throw new Error(`There is no revision ${rev} yet.`)
     const snap = await o.backend.snapshotAt(rev)
-    const engine = headlessSheet('work', snap.data)
+    const engine = headlessSheet('work', snap.data, ENGINE)
     try {
       const ops = (await o.backend.opsAfter(snap.rev)).filter((op) => op.rev <= rev)
       this.applyTo(engine, engine.workbook.getId(), ops.flatMap((op) => op.mutations))
@@ -384,15 +417,22 @@ export class SheetHost {
     return this.with(ref, async (o) => diffWorkbooks(await this.workbookAt(o, from), await this.workbookAt(o, to), max))
   }
 
-  /** Writes revision `rev`'s contents back as a new revision; a formula whose value moved is not written, its formula is. */
+  /**
+   * Writes revision `rev`'s contents back as a new revision; a formula whose value moved is not
+   * written, its formula is. Its rules (conditional formats, validations, filters, defined names)
+   * come back too.
+   */
   restore(ref: SheetRef, rev: number, by: string): Promise<HostAnswer<'restore'>> {
     return this.with(ref, async (o) => {
-      const diff = diffWorkbooks(await this.workbookAt(o, o.rev), await this.workbookAt(o, rev), Number.MAX_SAFE_INTEGER)
+      const now = await this.workbookAt(o, o.rev)
+      const then = await this.workbookAt(o, rev)
+      const diff = diffWorkbooks(now, then, Number.MAX_SAFE_INTEGER)
       const writes = diff.cells
         .filter((c) => (c.before?.f || c.after?.f ? c.before?.f !== c.after?.f : true))
         .map((c) => ({ sheet: c.sheet, row: c.row, col: c.col, cell: c.after?.f ? { f: c.after.f } : c.after }))
-      if (!writes.length) return { rev: o.rev }
-      const got = await this.commit(o, o.rev, [{ by, mutations: mutationsOf(o.unitId, writes) }])
+      const rules = ruleMutations(o.unitId, now, then)
+      if (!writes.length && !rules.length) return { rev: o.rev }
+      const got = await this.commit(o, o.rev, [{ by, mutations: [...(writes.length ? mutationsOf(o.unitId, writes) : []), ...rules] }])
       if ('conflict' in got) throw new Error('The sheet changed while restoring: try again.')
       return { rev: got.rev }
     })
