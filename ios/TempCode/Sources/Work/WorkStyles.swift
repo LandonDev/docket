@@ -47,6 +47,7 @@ enum WorkGlyph {
         case .mailSend, .officeMailSend: "envelope"
         case .calendarOp, .officeCalendarOp: "calendar"
         case .teamsPost: "bubble.left.and.text.bubble.right"
+        case .chatReply: "bubble.left"
         case .shareGuestLink: "link"
         case .shareGoogle: "person.2"
         case .formPublish: "list.bullet.rectangle"

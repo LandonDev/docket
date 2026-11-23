@@ -199,6 +199,7 @@ struct ItemChip: View {
         case .held: "tray.and.arrow.up"
         case .routine: "clock"
         case .card: "rectangle.split.3x1"
+        case .chat: "bubble.left.and.bubble.right"
         case .selection, .unknown: "text.quote"
         }
     }
