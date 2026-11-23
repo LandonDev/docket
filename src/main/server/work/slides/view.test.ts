@@ -82,6 +82,10 @@ describe('how a slide comes and builds, in words', () => {
     const at = (order: number[]): SlideInfo => ({ ...slideOf(shapes), builds: { steps: [{ shapes: [...order].sort(), paras: [] }, { shapes: order.slice(1), paras: [] }, { shapes: [], paras: [] }], changed: 0, order } })
     expect(editsOf(at([2, 4]), at([4, 2])).edits).toEqual([{ where: 'Builds', before: 'Title, Picture', after: 'Picture, Title' }])
     expect(editsOf(at([2, 4]), at([2, 4])).edits).toEqual([])
+    // A shape that fades in is said so; the same order by another effect is a change too.
+    const fading = (order: number[], fade: number[]): SlideInfo => ({ ...at(order), builds: { ...at(order).builds!, fade } })
+    expect(editsOf(fading([2, 4], [4]), fading([4, 2], [4])).edits).toEqual([{ where: 'Builds', before: 'Title, Picture (Fade)', after: 'Picture (Fade), Title' }])
+    expect(editsOf(at([2, 4]), fading([2, 4], [2])).edits).toEqual([{ where: 'Builds', before: 'Title, Picture', after: 'Title (Fade), Picture' }])
   })
 })
 

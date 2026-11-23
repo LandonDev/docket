@@ -177,7 +177,7 @@ function setUp(moment: SlidesMoment): {
   if (moment === "shaperownarrow") return { view: whoComes(), current: "3", picked: 4, width: 520 };
   if (moment === "sheet") return { view: whoComes(), current: "3", picked: 4, width: 1200, sheet: true };
   // The Animate tab on "Who comes": a push from the right that moves on after 5 s, the title then the points on presses.
-  if (moment === "animate") return { view: animated(whoComes(), { transition: { kind: "push", dir: "l", ms: 750, after: 5000 }, builds: { steps: [{ shapes: [2, 3], paras: [] }, { shapes: [3], paras: [] }, { shapes: [], paras: [] }], changed: 0, order: [2, 3] } }), current: "3", width: 816, sheet: true, tab: "animate" };
+  if (moment === "animate") return { view: animated(whoComes(), { transition: { kind: "push", dir: "l", ms: 750, after: 5000 }, builds: { steps: [{ shapes: [2, 3], paras: [] }, { shapes: [3], paras: [] }, { shapes: [], paras: [] }], changed: 0, order: [2, 3], fade: [3] } }), current: "3", width: 816, sheet: true, tab: "animate" };
   // A slide whose effects are PowerPoint's: a wipe, and a motion path; under the slide on a 640px canvas.
   if (moment === "animateppt") return { view: animated(whoComes(), { transition: { kind: "wipe", ms: 500 }, builds: { steps: [{ shapes: [], paras: [] }], changed: 2, whole: "a motion path" } }), current: "3", width: 640, sheet: true, tab: "animate" };
   if (moment === "sheetunder") return { view: whoComes(), current: "3", picked: 4, width: 640, sheet: true };

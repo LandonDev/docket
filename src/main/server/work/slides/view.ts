@@ -711,9 +711,9 @@ export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefi
     if (before.layout !== after.layout) edits.push({ where: 'Layout', before: before.layout, after: after.layout })
     if (comesAs(before.transition) !== comesAs(after.transition)) edits.push({ where: 'Transition', before: comesAs(before.transition), after: comesAs(after.transition) })
     if (pressesOf(before) !== pressesOf(after)) edits.push({ where: 'Builds', before: pressWords(pressesOf(before)), after: pressWords(pressesOf(after)) })
-    // The same presses in another order: said by what comes in, in turn ("Title, Picture" then "Picture, Title").
-    else if (JSON.stringify(before.builds?.steps ?? null) !== JSON.stringify(after.builds?.steps ?? null)) {
-      const turn = (x: SlideInfo, names: Map<number, string>): string => x.builds?.order?.map((id) => names.get(id) ?? 'Shape').join(', ') || 'Another order'
+    // The same presses in another order, or by another effect: said by what comes in, in turn ("Title, Picture (Fade)" then "Picture (Fade), Title").
+    else if (JSON.stringify([before.builds?.steps, before.builds?.fade]) !== JSON.stringify([after.builds?.steps, after.builds?.fade])) {
+      const turn = (x: SlideInfo, names: Map<number, string>): string => x.builds?.order?.map((id) => `${names.get(id) ?? 'Shape'}${x.builds?.fade?.includes(id) ? ' (Fade)' : ''}`).join(', ') || 'Another order'
       edits.push({ where: 'Builds', before: turn(before, wasNames), after: turn(after, names) })
     }
   }

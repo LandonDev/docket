@@ -148,11 +148,47 @@ describe("the Animate tab", () => {
     await waitFor(() => expect(document.activeElement?.getAttribute("data-build")).toBe("4"));
   });
 
+  it("lists a slide built by Fade, and each shape keeps its Fade through a new order, a shape added and one taken out", async () => {
+    await animate(withFirst({ builds: { steps: [{ shapes: [2, 5], paras: [] }, { shapes: [5], paras: [] }, none], changed: 0, order: [2, 5], fade: [2, 5] } }));
+    expect(sheet().textContent).not.toContain("Edit in PowerPoint");
+    expect(rows()).toEqual(["1. Title: Who comes, Fade", "2. Rectangle 4, Fade"]);
+    const row = within(sheet()).getByRole("listitem", { name: "2. Rectangle 4, Fade" });
+    expect(within(row).getByText("Fade").className).toContain("text-muted-foreground");
+    act(() => row.focus());
+    fireEvent.keyDown(row, { key: "ArrowUp", altKey: true });
+    await waitFor(() => expect(t.edits()).toEqual([[{ op: "builds", slide: 3, order: [5, 2], fade: [5, 2] }]]));
+    await waitFor(() => expect(rows()).toEqual(["1. Rectangle 4, Fade", "2. Title: Who comes, Fade"]));
+    // One added comes by Appear, and says nothing more than its name.
+    await pick("Appear on click", "Picture", "menuitem");
+    await waitFor(() => expect(t.edits()[1]).toEqual([{ op: "builds", slide: 3, order: [5, 2, 4], fade: [5, 2] }]));
+    await waitFor(() => expect(rows()).toEqual(["1. Rectangle 4, Fade", "2. Title: Who comes, Fade", "3. Picture"]));
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Remove Rectangle 4" }));
+    await waitFor(() => expect(t.edits()[2]).toEqual([{ op: "builds", slide: 3, order: [2, 4], fade: [2] }]));
+    await waitFor(() => expect(rows()).toEqual(["1. Title: Who comes, Fade", "2. Picture"]));
+    // The last that fades taken out: the op names none.
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Remove Title: Who comes" }));
+    await waitFor(() => expect(t.edits()[3]).toEqual([{ op: "builds", slide: 3, order: [4] }]));
+  });
+
+  it("brings a shape he took out back by Appear, even before the deck has come back without it", async () => {
+    await animate(withFirst({ builds: { steps: [{ shapes: [2, 5], paras: [] }, { shapes: [5], paras: [] }, none], changed: 0, order: [2, 5], fade: [2, 5] } }));
+    // The host answers nothing yet: the list is his own change, held.
+    let answer = (): void => undefined;
+    t.host.hold = new Promise<void>((done) => (answer = done));
+    fireEvent.click(within(sheet()).getByRole("button", { name: "Remove Rectangle 4" }));
+    await waitFor(() => expect(rows()).toEqual(["1. Title: Who comes, Fade"]));
+    await pick("Appear on click", "Rectangle 4", "menuitem");
+    await waitFor(() => expect(rows()).toEqual(["1. Title: Who comes, Fade", "2. Rectangle 4"]));
+    answer();
+    await waitFor(() => expect(t.edits()).toHaveLength(2));
+    expect(t.edits()[1]).toEqual([{ op: "builds", slide: 3, order: [2, 5], fade: [2] }]);
+  });
+
   it.each([
     ["shown whole for a motion path", { builds: { steps: [none], changed: 2, whole: "a motion path" } }, "A shape moves along a path", true],
     ["paragraph by paragraph", { builds: { steps: [{ shapes: [], paras: [{ shape: 2, from: 0, to: 0 }] }, none], changed: 0 } }, "Its text comes in a paragraph at a time", true],
     ["with an exit", { builds: { steps: [none, { shapes: [5], paras: [] }], changed: 0 } }, "A shape leaves on a press", true],
-    ["fading in", { builds: { steps: [{ shapes: [5], paras: [] }, none], changed: 0 } }, "Its effects are more than appear on click", true],
+    ["flying in", { builds: { steps: [{ shapes: [5], paras: [] }, none], changed: 1 } }, "Its effects are more than appear or fade on click", true],
     ["with a video", { shapes: [{ ...handView().slides[0].shapes[0] }, { id: 9, name: "Clip", label: "Media", kind: "media" as const, media: "video" as const, bbox: [0, 0, 1, 1] as [number, number, number, number], text: "" }] }, "It holds a video", false],
   ])("reads Edit in PowerPoint on a slide %s, offering nothing that would drop its effects unasked", async (_, over, why, replace) => {
     await animate(withFirst(over as Partial<DeckSlide>));
@@ -184,7 +220,7 @@ describe("the Animate tab", () => {
       tint: "add",
       from: "proposed",
       transition: { kind: "push", dir: "l", ms: 750, after: 4000 },
-      builds: { steps: [{ shapes: [2], paras: [] }, none], changed: 0, order: [2] },
+      builds: { steps: [{ shapes: [2], paras: [] }, none], changed: 0, order: [2], fade: [2] },
     });
     await animate({ ...view, renders: { file: { rev: "f1", size: 10, pages: 2 }, proposed: { rev: "p1", size: 10, pages: 2 } }, changes: [{ id: "c1", kind: "changed", slideId: 3, label: "Slide 3", edits: [{ where: "Transition", before: "None", after: "Push, moves on after 4 s" }], by: "agent:local:t1" }] });
     expect(sheet().textContent).toContain("Accept or reject the suggestion on this slide first");
@@ -197,6 +233,7 @@ describe("the Animate tab", () => {
     expect(within(sheet()).getByText("On click, after 4 s")).toBeTruthy();
     // The builds the suggestion does not change: listed, untinted.
     expect(within(sheet()).getByText("Title: Who comes").className).not.toContain("bg-(--add-bg)");
+    expect(within(within(sheet()).getByRole("listitem")).getByText("Fade")).toBeTruthy();
     expect(t.edits()).toEqual([]);
   });
 });

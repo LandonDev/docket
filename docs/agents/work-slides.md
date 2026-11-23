@@ -333,7 +333,7 @@ and the deck"); every other part keeps its bytes.
 | `layout` | another of the deck's layouts for a slide | the slide's relationship to its layout |
 | `theme` | twelve colours and two fonts, into the theme of every slide master | the theme parts |
 | `transition` | how a slide comes in a show: a cut, a fade or a push from a side; whether a press moves on; the seconds after which it moves on by itself. Replaces what the slide had, PowerPoint's wrapped newer kinds too | the slide |
-| `builds` | the shapes that come in on a press, one a press, in order (PowerPoint's Appear); none takes the builds away. A slide whose timing is more than Appear and Fade entrances of whole shapes (a video's play, a motion path, a trigger, paragraphs one by one) keeps it: "edit them in PowerPoint". With `replace: true` (his confirmed Remove animations… in the Animate tab) every animation the slide had goes first, whatever it was | the slide |
+| `builds` | the shapes that come in on a press, one a press, in order: those also named in `fade` by PowerPoint's Fade, the rest by its Appear; none takes the builds away. A shape that already came in that way on a press of its own keeps its effect as the file has it (how long a fade takes, its delay: `own_presses`); any other gets PowerPoint's own first form (a fade of half a second). A slide whose timing is more than Appear and Fade entrances of whole shapes (a video's play, a motion path, a trigger, paragraphs one by one) keeps it: "edit them in PowerPoint". With `replace: true` (his confirmed Remove animations… in the Animate tab) every animation the slide had goes first, whatever it was | the slide |
 
 - **A colour** is a hex, or one of the theme's by its slot with Office's
   tint (`{slot: 'accent1', tint: 0.4}`: `a:schemeClr` with `lumMod` and
@@ -621,12 +621,16 @@ reader (builds.ts `buildsOf`, pure) is sure:
   effect on a shape the slide does not have or a paragraph past its last, an
   entrance or exit that undoes itself, a start on an event, any other
   nesting, a tree past the cap.
-- **The order a `builds` edit would write back** (`order`): set only when
-  the timing is exactly that, each press one whole shape outside any group
-  brought in by Appear, nothing that starts by itself, no media node, no
-  interactive sequence. The Animate tab sets a slide's builds only then (or
-  where it has none): an edit anywhere else would turn a fade into Appear,
-  drop an entrance that starts by itself, or take a clip's timing with it.
+- **The order a `builds` edit would write back** (`order`, and `fade`:
+  those of it that come in by Fade): set only when the timing is exactly
+  that, each press one whole shape outside any group brought in by Appear
+  or by Fade as the press's own effect, nothing that starts by itself, no
+  media node, no interactive sequence. The Animate tab sets a slide's
+  builds only then (or where it has none): an edit anywhere else would
+  turn a fly-in into Appear, drop an entrance that starts by itself, or
+  take a clip's timing with it. A `builds` edit with that order and that
+  `fade` writes the timing back as it stood, each press's own node moved
+  and nothing in it changed but the time nodes' numbers.
 - **Counted** (`changed`): an entrance or exit other than Appear or Fade
   (the show plays each as a 240 ms fade), an emphasis or motion path left
   out, a clip the main sequence starts, every effect of a slide shown whole,
@@ -987,8 +991,10 @@ slide's.
   table's rows and columns, the sheet under the slide),
   `AnimateTab.dom.test.tsx` (the tab with nothing picked and kept on close;
   each transition and builds edit with its exact op; a kind it does not
-  play; the order by keyboard; each "Edit in PowerPoint" case; Remove
-  animations… confirmed; a suggested slide) and `edit/animation.test.ts`.
+  play; the order by keyboard; a slide built by Fade listed, moved, added
+  to and taken from with each Fade kept; each "Edit in PowerPoint" case;
+  Remove animations… confirmed; a suggested slide) and
+  `edit/animation.test.ts`.
 
 ## Every format in: read only until he makes a copy
 
@@ -1240,23 +1246,30 @@ once as a toast; `saving` and `saved` on the save line follow it.
   (`wipe`, `morph`) shows by its own name with "Plays in PowerPoint; a cut
   here", its On click and After held; only a press on None, Fade or Push
   replaces it, its timing kept. **Builds** (`buildsHold`): where the
-  outline gives `order` (or the slide has no builds), the shapes that appear
-  on a press, in order, each by the label the stage reads to a screen
-  reader (`shapeLabel`, geometry.ts); drag (`useSortable`), ⌥↑ and ⌥↓ on a
-  focused row, Delete or its remove button, and "Appear on click" to add a
-  shape of the slide in no group (`addable`); each change sends one
-  `builds` with the whole new order, shown at once until the deck comes
-  back. Anything else reads "Edit in PowerPoint" with why in a few words (a
+  outline gives `order` (or the slide has no builds), the shapes that come
+  in on a press, in order, each by the label the stage reads to a screen
+  reader (`shapeLabel`, geometry.ts), one that fades in saying "Fade"; drag
+  (`useSortable`), ⌥↑ and ⌥↓ on a focused row, Delete or its remove button,
+  and "Appear on click" to add a shape of the slide in no group
+  (`addable`), which comes by Appear; each change sends one `builds` with
+  the whole new order and, in `fade`, the shapes still in it that fade
+  (`buildsOp`), so each keeps its Fade as PowerPoint timed it; shown at once
+  until the deck comes back. The tab has no switch between Appear and Fade.
+  Anything else reads "Edit in PowerPoint" with why in a few words (a
   trigger, a motion path, paragraphs one at a time, a shape leaving, more
-  than one shape a press, a video or sound on the slide, any other effect).
+  than one shape a press, a video or sound on the slide, any other effect:
+  a fly-in, a wipe).
   Remove animations… asks first (`ConfirmDialog`) and sends `builds` with
   `replace: true`; it is not offered on a slide with a video or a sound,
   whose own timing would go with it. On a slide a suggestion changes the
   tab shows the proposed values, read only, under the hand's refusal
   ("Accept or reject the suggestion on this slide first"), and what the
   change's words name (`Transition`, `Builds`) in the added tint. The
-  stepper says builds put in another order by what comes in, in turn
-  ("Title, Picture" then "Picture, Title": `editsOf`, view.ts).
+  stepper says builds put in another order, or brought in by another
+  effect, by what comes in, in turn ("Title, Picture (Fade)" then "Picture
+  (Fade), Title": `editsOf`, view.ts). An agent reads the order and who
+  fades in `slides_read` ("3 presses (order 2, 5, 4; fade 5)") and names
+  them again in `fade`, or its edit turns them into Appear.
 - **Slides** (`edit/slides.ts`, `Strip.tsx`, `Sorter.tsx`): a slide's menu
   writes `add`, `duplicate`, `hide`, `layout`, `section` (its place counted
   from the slides that start one, `sectionIndex`) and `remove`; a drag

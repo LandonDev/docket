@@ -3,8 +3,9 @@ import type { DeckSlide, SlideOp, SlideTransition } from "@shared/contract-work-
 /**
  * What the Animate tab reads and sets (docs/agents/work-slides.md "The
  * Animate tab"): a slide's transition as a cut, a fade or a push with its
- * side, a press and a wait; its builds as the shapes that appear on a press,
- * in order, where that is all the slide's timing holds. Pure.
+ * side, a press and a wait; its builds as the shapes that come in on a press,
+ * in order, each by Appear or by Fade, where that is all the slide's timing
+ * holds. Pure.
  */
 
 export type Side = "l" | "r" | "u" | "d";
@@ -71,19 +72,25 @@ const WHOLE_WORDS: Record<string, string> = {
 };
 
 /**
- * The slide's builds as the tab can set them: the order, where a `builds` edit would write back just that
- * (`SlideBuilds.order`, or no builds at all); else why they are PowerPoint's, and whether he may take them out
- * (not on a slide with a video or a sound, whose own timing goes with them).
+ * The slide's builds as the tab can set them: the order and those of it that fade in, where a `builds` edit would
+ * write back just that (`SlideBuilds.order`, or no builds at all); else why they are PowerPoint's, and whether he
+ * may take them out (not on a slide with a video or a sound, whose own timing goes with them).
  */
-export type BuildsHold = { order: number[] } | { why: string; replace: boolean };
+export type BuildsHold = { order: number[]; fade: number[] } | { why: string; replace: boolean };
 
 export function buildsHold(slide: DeckSlide): BuildsHold {
   const b = slide.builds;
-  if (b?.order) return { order: b.order };
+  if (b?.order) return { order: b.order, fade: b.fade ?? [] };
   const media = slide.shapes.find((s) => s.kind === "media");
   if (media) return { why: media.media === "audio" ? "It holds a sound" : "It holds a video", replace: false };
-  if (!b) return { order: [] };
+  if (!b) return { order: [], fade: [] };
   return { why: buildsWhy(b), replace: true };
+}
+
+/** The one edit that sets the builds: the whole order, each shape still in it keeping its Fade. */
+export function buildsOp(slide: number, order: readonly number[], fade: readonly number[]): SlideOp {
+  const fading = order.filter((id) => fade.includes(id));
+  return { op: "builds", slide, order: [...order], ...(fading.length ? { fade: fading } : {}) };
 }
 
 function buildsWhy(b: NonNullable<DeckSlide["builds"]>): string {
@@ -94,7 +101,7 @@ function buildsWhy(b: NonNullable<DeckSlide["builds"]>): string {
     if (b.steps[k].shapes.some((id) => !was.has(id))) return "A shape leaves on a press";
     if (was.size - b.steps[k].shapes.length > 1) return "More than one shape comes in on a press";
   }
-  return "Its effects are more than appear on click";
+  return "Its effects are more than appear or fade on click";
 }
 
 /** The shapes he may add: on the slide, in no group (PowerPoint builds a group as one), not yet in the list. */

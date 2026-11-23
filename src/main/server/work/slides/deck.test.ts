@@ -774,6 +774,41 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       await expect(apply(input, [{ op: 'builds', slide: 258, order: [3, 3] }], true)).rejects.toThrow('a shape comes in once')
     })
 
+    it('builds by Fade: written as PowerPoint writes it, and a shape keeps its own effect through a new order', async () => {
+      const input = file(readFileSync(FEATURE))
+      const part = await slidePart(input, 258)
+      const timingOf = async (f: string): Promise<string> => /<p:timing.*<\/p:timing>/s.exec(await xmlOf(f, await slidePart(f, 258)))?.[0] ?? ''
+      const built = async (f: string) => withBuilds(await inspect(f)).slides.find((x) => x.id === 258)!.builds
+      const { output } = await apply(input, [{ op: 'builds', slide: 258, order: [3, 10, 2], fade: [3, 2] }], true)
+      expect(await partsDiff(input, output)).toEqual({ changed: [part], added: [], gone: [] })
+      expect(await built(output)).toMatchObject({ changed: 0, order: [3, 10, 2], fade: [3, 2] })
+      const xml = await timingOf(output)
+      expect(xml).toContain('presetID="10" presetClass="entr" presetSubtype="0" fill="hold" grpId="0" nodeType="clickEffect"')
+      expect(xml).toContain('<p:animEffect transition="in" filter="fade"><p:cBhvr><p:cTn id="7" dur="500"/><p:tgtEl><p:spTgt spid="3"/></p:tgtEl></p:cBhvr></p:animEffect>')
+      // Every time node numbered once, in the file's order, as PowerPoint numbers them; no name declared twice.
+      const ids = [...xml.matchAll(/<p:cTn id="(\d+)"/g)].map((m) => Number(m[1]))
+      expect(ids).toEqual(ids.map((_, i) => i + 1))
+      expect(xml).not.toContain('xmlns')
+      // The same order and effects again changes nothing at all.
+      expect(await timingOf((await apply(output, [{ op: 'builds', slide: 258, order: [3, 10, 2], fade: [3, 2] }], true)).output)).toBe(xml)
+      // A fade he timed in PowerPoint (a second, after a wait) is still his after another order and with one taken out.
+      const slow = xml.replace('dur="500"', 'dur="1000"').replace(/(presetID="10"[^>]*><p:stCondLst><p:cond delay=)"0"/, '$1"250"')
+      const zip = await JSZip.loadAsync(readFileSync(output))
+      zip.file(part, (await zip.file(part)!.async('string')).replace(xml, slow))
+      const timed = file(await zip.generateAsync({ type: 'uint8array' }))
+      const moved = await apply(timed, [{ op: 'builds', slide: 258, order: [2, 3], fade: [3, 2] }], true)
+      expect(await built(moved.output)).toMatchObject({ order: [2, 3], fade: [2, 3] })
+      const kept = await timingOf(moved.output)
+      expect(kept).toMatch(/presetID="10"[^>]*><p:stCondLst><p:cond delay="250"\/>.*<p:cTn id="\d+" dur="1000"\/><p:tgtEl><p:spTgt spid="3"\/>/s)
+      expect(kept.indexOf('spid="2"')).toBeLessThan(kept.indexOf('spid="3"'))
+      expect(kept).not.toContain('spid="10"')
+      // Named another way, a shape takes the effect asked for: Appear in place of its fade, PowerPoint's own half second for a new one.
+      const turned = await apply(timed, [{ op: 'builds', slide: 258, order: [3, 10], fade: [10] }], true)
+      expect(await built(turned.output)).toMatchObject({ order: [3, 10], fade: [10] })
+      expect(await timingOf(turned.output)).not.toContain('dur="1000"')
+      await expect(apply(input, [{ op: 'builds', slide: 258, order: [3], fade: [2] }], true)).rejects.toThrow('a shape that fades in is one of the order')
+    })
+
     it('a look in a theme colour is the theme\'s own, lighter or darker by Office\'s maths', async () => {
       const input = file(readFileSync(FIXTURE))
       const { output } = await apply(input, [{ op: 'format', slide: 268, shape: 133, set: { color: { slot: 'accent1', tint: 0.4 } } }, { op: 'fill', slide: 268, shape: 134, color: { slot: 'accent2', tint: -0.25 } }], true)

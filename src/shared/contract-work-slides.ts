@@ -166,10 +166,12 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
    */
   z.object({ op: z.literal('transition'), slide, kind: z.enum(['none', 'fade', 'push']), dir: z.enum(['l', 'r', 'u', 'd']).optional(), click: z.boolean().optional(), after: z.number().min(0).max(86_400).nullable().optional() }),
   /**
-   * The shapes that come in on a press, one a press, in order; none takes the builds away. A slide whose animations
-   * are more than that is PowerPoint's, unless `replace`: his confirmed press, which takes every animation it had out first.
+   * The shapes that come in on a press, one a press, in order; none takes the builds away. Those named in `fade`
+   * come in by Fade, the rest by Appear; a shape that already came in that way on a press of its own keeps its effect
+   * as the file has it (how long a fade takes). A slide whose animations are more than that is PowerPoint's, unless
+   * `replace`: his confirmed press, which takes every animation it had out first.
    */
-  z.object({ op: z.literal('builds'), slide, order: z.array(shape).max(200), replace: z.literal(true).optional() }),
+  z.object({ op: z.literal('builds'), slide, order: z.array(shape).max(200), fade: z.array(shape).max(200).optional(), replace: z.literal(true).optional() }),
   /** The deck's colours (by Office's twelve names) and its heading and body fonts, into its theme. */
   z.object({
     op: z.literal('theme'),
@@ -316,10 +318,12 @@ export interface SlideBuilds {
   whole?: string
   /**
    * The shapes that come in on a press, in order, when that is all the slide's timing holds (each press one whole
-   * shape outside any group, by Appear; nothing by itself, no media, no trigger): exactly what a `builds` edit writes
-   * back. Absent: a `builds` edit would change more than the order, so it is PowerPoint's (or a confirmed `replace`).
+   * shape outside any group, by Appear or by Fade; nothing by itself, no media, no trigger): exactly what a `builds`
+   * edit writes back. Absent: a `builds` edit would change more than the order, so it is PowerPoint's (or a confirmed `replace`).
    */
   order?: number[]
+  /** those of `order` that come in by Fade; absent: every one by Appear */
+  fade?: number[]
 }
 
 /** One thumbnail of the strip, in the proposed order. */

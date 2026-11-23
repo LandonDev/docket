@@ -22,7 +22,9 @@ describe('a slide\'s timing to the show\'s steps', () => {
   it('makes one step a press, each shape hidden until its press', () => {
     expect(slide(kinds, 'Click groups')).toEqual({
       steps: [{ shapes: [3, 4, 5], paras: [] }, { shapes: [4, 5], paras: [] }, { shapes: [5], paras: [] }, none],
-      changed: 0
+      changed: 0,
+      order: [3, 4, 5],
+      fade: [3, 4, 5]
     })
   })
 
@@ -138,20 +140,29 @@ describe('trees the reader is not sure of', () => {
     expect(buildsOf(undefined, shapes)).toBeNull()
   })
 
-  it('gives the order only where the timing is no more than a builds edit writes: one shape a press, by Appear', () => {
+  it('gives the order only where the timing is no more than a builds edit writes: one shape a press, by Appear or by Fade', () => {
     const more: BuildShape[] = [...shapes, { id: 5, kind: 'other' }, { id: 6, kind: 'other', group: 7 }]
     expect(buildsOf(tree(main(press([fx('entr', 5)]), press([fx('entr', 3)]))), more)).toEqual({ steps: [{ shapes: [3, 5], paras: [] }, { shapes: [3], paras: [] }, none], changed: 0, order: [5, 3] })
-    const fade = fx('entr', 5, { a: { presetID: '10' } })
+    // Those that fade in are named, in the order's own order; a slide of Appear alone names none.
+    const fade = (spid: number, a: Record<string, string> = {}) => fx('entr', spid, { a: { presetID: '10', ...a } })
+    expect(buildsOf(tree(main(press([fade(5)]), press([fx('entr', 3)]))), more)).toMatchObject({ changed: 0, order: [5, 3], fade: [5] })
+    expect(buildsOf(tree(main(press([fade(3)]), press([fade(5)]))), more)).toMatchObject({ order: [3, 5], fade: [3, 5] })
+    // PowerPoint's own three fades on presses.
+    expect(slide(kinds, 'Click groups')).toMatchObject({ order: [3, 4, 5], fade: [3, 4, 5] })
     for (const timing of [
-      tree(main(press([fade]))),
+      // any other entrance, a fade that is not its press's own effect, a fade twice
+      tree(main(press([fx('entr', 5, { a: { presetID: '2' } })]))),
+      tree(main(press([fade(5, { nodeType: 'withEffect' })]))),
+      tree(main(press([fade(5)]), press([fade(5)]))),
+      tree(main(press([fade(5), fade(3)]))),
       tree(main(press([fx('entr', 5), fx('entr', 3)]))),
       tree(main(press([fx('entr', 5)], '0'), press([fx('entr', 3)]))),
       tree(main(press([fx('exit', 5)]))),
       tree(main(press([fx('entr', 7)]))),
       tree(main(press([fx('entr', 3)])), { t: 'video', c: [{ t: 'cMediaNode' }] })
     ])
-      expect(buildsOf(timing, more)?.order).toBeUndefined()
-    expect(slide(kinds, 'Click groups')?.order).toBeUndefined()
+      expect(buildsOf(timing, more)).not.toHaveProperty('order')
+    for (const title of ['With previous and after previous', 'Exits', 'Paragraphs one by one', 'After previous at the start', 'A group', 'A picture flies in']) expect(slide(kinds, title)).not.toHaveProperty('order')
   })
 
   it('refuses an entrance that undoes itself, and a start on an event', () => {

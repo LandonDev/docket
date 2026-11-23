@@ -140,9 +140,10 @@ function read(timing: TimingNode, shapes: readonly BuildShape[], count: { change
   if (!root || root.a?.nodeType !== 'tmRoot') throw new Unsure('a timing the reader does not know')
   let main: TimingNode | undefined
   // Whether the timing is no more than a `builds` edit writes (`SlideBuilds.order`): each press brings in one whole
-  // shape by Appear, nothing starts by itself, and there is no media node or trigger beside the main sequence.
+  // shape by Appear or by Fade, nothing starts by itself, and there is no media node or trigger beside the main sequence.
   let plain = true
   const order: number[] = []
+  const fade: number[] = []
   for (const part of kids(child(root, 'childTnLst'))) {
     plain &&= part.t === 'seq'
     // a video's or a sound's own node: how loud, whether it loops; the show's transport plays it
@@ -187,8 +188,11 @@ function read(timing: TimingNode, shapes: readonly BuildShape[], count: { change
           const n = paraCount.get(shape) ?? 0
           if (!n || paras[1] >= n) throw new Unsure('an effect on a paragraph the reader does not know')
         }
-        if (plain && !paras && act.show && e.a?.presetID === '1' && ids.has(shape) && shapes.find((s) => s.id === shape)?.group === undefined) order.push(shape)
-        else plain = false
+        // The press's own effect (`clickEffect`): the one a `builds` edit keeps as the file has it.
+        if (plain && !paras && act.show && PLAIN.has(e.a?.presetID ?? '') && e.a?.nodeType === 'clickEffect' && ids.has(shape) && shapes.find((s) => s.id === shape)?.group === undefined) {
+          order.push(shape)
+          if (e.a.presetID === '10') fade.push(shape)
+        } else plain = false
         const keys = paras ? Array.from({ length: paras[1] - paras[0] + 1 }, (_, i) => keyOf(shape, paras[0] + i)) : [keyOf(shape)]
         acts.push({ show: act.show, keys })
       }
@@ -203,7 +207,8 @@ function read(timing: TimingNode, shapes: readonly BuildShape[], count: { change
     for (const { show, keys } of acts) for (const k of keys) seen.set(k, show)
     steps.push(hidesOf(seen))
   }
-  return { steps, changed: count.changed, ...(plain && order.length === presses.length - 1 && new Set(order).size === order.length ? { order } : {}) }
+  const ordered = plain && order.length === presses.length - 1 && new Set(order).size === order.length
+  return { steps, changed: count.changed, ...(ordered ? { order, ...(fade.length ? { fade } : {}) } : {}) }
 }
 
 /** What is unseen, as shapes and runs of paragraphs; a paragraph of a shape that is itself unseen is not named again. */

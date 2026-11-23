@@ -3218,8 +3218,9 @@ other picked shape is the outline alone.
   PowerPoint; a cut here", its two checkboxes held. Builds: the shapes that
   appear on a press, one 28px row each: its place 12px muted tabular in a
   16px slot (the grip there under the pointer or the keyboard), the label
-  the stage reads to a screen reader 13/20, truncating, and a 24px remove
-  at the end by the hover reveal; a drag shows the 2px `accent` line where
+  the stage reads to a screen reader 13/20, truncating, "Fade" 12/16 muted
+  after it on a shape that fades in (one that appears says nothing), and a
+  24px remove at the end by the hover reveal; a drag shows the 2px `accent` line where
   it will land, and the row carries the `muted` fill. ⌥↑ and ⌥↓ move the
   focused row, ↑↓ walk the rows, Delete takes one out. Under them "Appear
   on click", a ghost xs button with its plus, opening a 224px menu of the
