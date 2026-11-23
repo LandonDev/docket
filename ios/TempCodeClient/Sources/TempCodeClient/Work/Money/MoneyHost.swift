@@ -27,8 +27,10 @@ public struct ReceiptPart: Hashable, Sendable {
     public var data: Data
     public var lines: [ReceiptTextLine]?
     public var fields: Fields
+    /// A host's parser answered and he saw its result in the fields: what he left empty stays empty on the desktop.
+    public var seen: Bool
 
-    public init(key: String, sector: String, name: String, mime: String, part: Int, parts: Int, data: Data, lines: [ReceiptTextLine]?, fields: Fields) {
+    public init(key: String, sector: String, name: String, mime: String, part: Int, parts: Int, data: Data, lines: [ReceiptTextLine]?, fields: Fields, seen: Bool = false) {
         self.key = key
         self.sector = sector
         self.name = name
@@ -38,6 +40,7 @@ public struct ReceiptPart: Hashable, Sendable {
         self.data = data
         self.lines = lines
         self.fields = fields
+        self.seen = seen
     }
 
     /// The host's limits: 2,000 lines of at most 500 characters.
@@ -51,7 +54,7 @@ public struct ReceiptPart: Hashable, Sendable {
     }
 
     public var params: Methods.WorkMoneyReceive.Params {
-        .init(key: key, sector: sector, name: name, mime: mime, part: part, parts: parts, dataBase64: data.base64EncodedString(), lines: wireLines, fields: fields, source: .phone)
+        .init(key: key, sector: sector, name: name, mime: mime, part: part, parts: parts, dataBase64: data.base64EncodedString(), lines: wireLines, fields: fields, seen: seen ? true : nil, source: .phone)
     }
 
     /// `work.money.parse`'s lines, held to the same limits.

@@ -26,14 +26,29 @@ struct ReceiptSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                if receipt.unkept != nil {
+                    Section {
+                        Button("Try Again", systemImage: "arrow.clockwise") { _ = receipt.keepAgain() }
+                            .accessibilityIdentifier("receipt-keep-again")
+                        Button(role: .destructive) { receipt.dropUnkept() } label: {
+                            Label("Discard Scan", systemImage: "trash").foregroundStyle(Tint.destructiveText)
+                        }
+                    } footer: {
+                        Text(notKept).foregroundStyle(Tint.destructiveText)
+                    }
+                }
                 if let draft = receipt.current {
                     Section {
                         HStack(spacing: Layout.rowGap) {
                             ReceiptPicture(draft: draft, receipt: receipt)
-                            TextField("Amount", text: $receipt.amount)
-                                .keyboardType(.decimalPad)
-                                .foregroundStyle(receipt.amountValid ? Color.primary : Tint.destructiveText)
-                                .accessibilityIdentifier("receipt-amount")
+                            // The desktop's quiet "$" before every amount.
+                            HStack(spacing: 0) {
+                                Text("$").foregroundStyle(.secondary).accessibilityHidden(true)
+                                TextField("Amount", text: $receipt.amount, prompt: Text("0.00"))
+                                    .keyboardType(.decimalPad)
+                                    .foregroundStyle(receipt.amountValid ? Color.primary : Tint.destructiveText)
+                                    .accessibilityIdentifier("receipt-amount")
+                            }
                         }
                         date
                         TextField("Seller", text: $receipt.seller)
@@ -52,11 +67,16 @@ struct ReceiptSheet: View {
                     }
                     Section {
                         Button("Scan Another", systemImage: "doc.viewfinder") { ReceiptFlow.scan(camera: $scanning, take: add) }
-                        Button("Discard Receipt", systemImage: "trash", role: .destructive) { discarding = true }
+                        // One colour: the glyph takes the destructive tint with its words.
+                        Button(role: .destructive) { discarding = true } label: {
+                            Label("Discard Receipt", systemImage: "trash").foregroundStyle(Tint.destructiveText)
+                        }
                     }
                 }
             }
             .disabled(receipt.saving)
+            // "Filed in …" when another receipt keeps the sheet up; Home shows it once the sheet closes.
+            .fleetToastInset()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -117,6 +137,8 @@ struct ReceiptSheet: View {
                         .tag(key)
                 }
             }
+            // Once a part has gone to a host the receipt is that host's job's.
+            .disabled(receipt.pinned)
             .accessibilityIdentifier("receipt-job")
         }
     }
@@ -130,9 +152,16 @@ struct ReceiptSheet: View {
         landed()
     }
 
-    /// The host has it: the light impact, and the sheet closes unless another waits.
+    /// Why the scan is held in memory, with the system's words.
+    private var notKept: String {
+        guard let reason = receipt.unkeptReason else { return Receipt.notKept }
+        return "\(Receipt.notKept) \(reason)"
+    }
+
+    /// The host has it: the light impact, where it went, and the sheet closes unless another waits.
     private func landed() {
         saved += 1
+        if let line = receipt.outcome { FleetToastCenter.shared.post(message: line) }
         // Another waits: the sheet goes on to it.
         if receipt.pending == 0 { dismiss() }
     }

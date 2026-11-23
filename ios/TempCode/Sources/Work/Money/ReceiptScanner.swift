@@ -5,11 +5,7 @@ import UIKit
 import VisionKit
 
 /// What the document camera gave: the file the host keeps and the pages the reader reads.
-struct ReceiptScan {
-    let file: Data
-    let mime: String
-    let pages: [Data]
-}
+typealias ReceiptScan = ReceiptScanBytes
 
 /// VisionKit's document camera: it finds the page's edges and flattens it.
 /// Cancel or a failure ends it with nothing.

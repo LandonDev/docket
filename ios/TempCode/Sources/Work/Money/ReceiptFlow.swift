@@ -44,7 +44,10 @@ final class ReceiptFlow {
 
     func press() {
         let receipt = made
-        if receipt.pending > 0 {
+        // A scan this phone could not write is still held: its sheet says so and tries again.
+        if receipt.unkept != nil {
+            shown = receipt
+        } else if receipt.pending > 0 {
             receipt.showOldest()
             shown = receipt
         } else {
@@ -52,9 +55,10 @@ final class ReceiptFlow {
         }
     }
 
+    /// The sheet opens either way: on the kept scan, or on the line that says it could not be kept.
     func took(_ scan: ReceiptScan) {
         let receipt = made
-        guard (try? receipt.add(file: scan.file, mime: scan.mime, pages: scan.pages)) != nil else { return }
+        _ = try? receipt.add(file: scan.file, mime: scan.mime, pages: scan.pages)
         shown = receipt
     }
 

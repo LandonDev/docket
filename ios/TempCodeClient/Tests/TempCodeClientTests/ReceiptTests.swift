@@ -18,6 +18,12 @@ private final class StubHost: MoneyHost {
     var failure = "timed out"
     /// Files the receipt, then the answer is lost on the way back.
     var loseAnswer = false
+    /// Holds `parse` until `answerParse()` (a parser still working when he presses Save).
+    var parseGated = false
+    /// Holds `receive` of this part until `answerPart()`.
+    var gatedPart: Int?
+    private var parseGate: CheckedContinuation<Void, Never>?
+    private var partGate: CheckedContinuation<Void, Never>?
     private(set) var parsed: [(lines: [ReceiptTextLine], sector: String?)] = []
     private(set) var received: [ReceiptPart] = []
     /// The host's record by key: a repeat answers the first.
@@ -35,12 +41,17 @@ private final class StubHost: MoneyHost {
 
     func parse(lines: [ReceiptTextLine], sector: String?) async throws -> MoneyReceiptFields {
         parsed.append((lines, sector))
+        if parseGated { await withCheckedContinuation { parseGate = $0 } }
         if parseAsleep { try await Task.sleep(for: .seconds(3600)) }
         return fields
     }
 
     func receive(_ part: ReceiptPart) async throws -> MoneyReceived {
         received.append(part)
+        if part.part == gatedPart {
+            gatedPart = nil
+            await withCheckedContinuation { partGate = $0 }
+        }
         if let first = kept[part.key] { return first }
         if part.part == failAt { throw ActionError.refused(message: failure, forbidden: false) }
         guard part.part == part.parts - 1 else { return MoneyReceived(id: "r-\(part.key)", state: .partial) }
@@ -51,6 +62,19 @@ private final class StubHost: MoneyHost {
             throw ActionError.refused(message: failure, forbidden: false)
         }
         return answer
+    }
+
+    var parseHeld: Bool { parseGate != nil }
+    var partHeld: Bool { partGate != nil }
+
+    func answerParse() {
+        parseGate?.resume()
+        parseGate = nil
+    }
+
+    func answerPart() {
+        partGate?.resume()
+        partGate = nil
     }
 
     /// The bytes of the last whole send, joined in order.
@@ -76,9 +100,9 @@ private struct Phone {
     let text = StubText()
 
     @MainActor
-    func receipt(keys: [String] = ["key-0001", "key-0002", "key-0003"]) -> Receipt {
+    func receipt(keys: [String] = ["key-0001", "key-0002", "key-0003"], wait: Duration = .milliseconds(80)) -> Receipt {
         var left = keys
-        return Receipt(source: text, folder: folder, defaults: defaults, wait: .milliseconds(80), makeKey: { left.removeFirst() }, now: { Date(timeIntervalSince1970: 1_795_000_000) })
+        return Receipt(source: text, folder: folder, defaults: defaults, wait: wait, makeKey: { left.removeFirst() }, now: { Date(timeIntervalSince1970: 1_795_000_000) })
     }
 }
 
@@ -360,6 +384,134 @@ private let scan = Data("a made-up receipt".utf8)
         #expect(json.contains(scan.base64EncodedString()))
         // A box that is not four numbers is left off rather than refused.
         #expect(!json.contains(#""box""#))
+        // No parse answered: `seen` is left out, and the host may fill what is empty.
+        #expect(!json.contains("seen"))
+    }
+
+    @Test func `what Save sends is what he saw at the press: a parse that answers during the Save changes nothing sent`() async throws {
+        let phone = Phone()
+        // Long enough that the parser is still asked when he presses Save.
+        let receipt = phone.receipt(wait: .seconds(30))
+        let host = StubHost()
+        host.parseGated = true
+        host.gatedPart = 0
+        let bytes = Data((0..<(2 * 1024 * 1024 + 9)).map { UInt8($0 % 5) })
+        try receipt.add(file: bytes, mime: "image/jpeg", pages: [scan])
+        await receipt.find([host])
+        let reading = Task { await receipt.read([host]) }
+        #expect(await eventually { host.parseHeld })
+        // Blank amount and date at the press.
+        let saving = Task { await receipt.save([host]) }
+        #expect(await eventually { host.partHeld })
+        host.answerParse()
+        await reading.value
+        host.answerPart()
+        let answer = await saving.value
+        #expect(answer?.state == .ready)
+        #expect(host.received.count == 2)
+        #expect(host.received.allSatisfy { $0.fields.amount == nil && $0.fields.date == nil && $0.fields.who == nil && !$0.seen })
+    }
+
+    @Test func `a receipt whose parse answered before the press says he saw it`() async throws {
+        let phone = Phone()
+        let receipt = phone.receipt()
+        let host = StubHost()
+        try receipt.add(file: scan, mime: "image/jpeg", pages: [scan])
+        await receipt.find([host])
+        await receipt.read([host])
+        receipt.seller = ""
+        #expect(await receipt.save([host])?.state == .filed)
+        let sent = try #require(host.received.first)
+        #expect(sent.seen)
+        #expect(sent.fields.who == nil)
+        #expect(sent.params.seen == true)
+        #expect(receipt.outcome == "Filed in Unify")
+    }
+
+    @Test func `once a part may have arrived, a retry goes to that host and never to another`() async throws {
+        let phone = Phone()
+        let receipt = phone.receipt()
+        let box = StubHost("box")
+        let mac = StubHost("mac")
+        try receipt.add(file: scan, mime: "image/jpeg", pages: [])
+        await receipt.find([box])
+        // The part reaches the box, and no answer comes back.
+        box.failAt = 0
+        #expect(await receipt.save([box, mac]) == nil)
+        #expect(receipt.pinned)
+        #expect(box.received.count == 1)
+        // The box asleep: the Mac keeps the same job, and is never asked.
+        box.asleep = true
+        box.failAt = nil
+        #expect(await receipt.save([mac, box]) == nil)
+        #expect(receipt.error == "Unify's host did not answer. The receipt is kept on this phone.")
+        #expect(mac.received.isEmpty)
+        // The box unpaired: the same.
+        #expect(await receipt.save([mac]) == nil)
+        #expect(receipt.error == Receipt.noAnswer(from: "Unify"))
+        #expect(mac.received.isEmpty)
+        // A relaunch keeps the pin, and the job cannot move.
+        let again = phone.receipt()
+        again.pick("cosmic")
+        #expect(again.sector == "unify")
+        box.asleep = false
+        await again.find([mac, box])
+        #expect(await again.save([mac, box])?.state == .ready)
+        #expect(mac.received.isEmpty)
+        #expect(box.received.map(\.key) == ["key-0001", "key-0001"])
+        #expect(again.outcome == "Waiting in Money on the desktop")
+    }
+
+    @Test func `a receipt that has sent nothing may still go to any host with its job`() async throws {
+        let phone = Phone()
+        let receipt = phone.receipt()
+        let asleep = StubHost("box")
+        asleep.asleep = true
+        let mac = StubHost("mac")
+        try receipt.add(file: scan, mime: "image/jpeg", pages: [])
+        await receipt.find([asleep, mac])
+        #expect(!receipt.pinned)
+        #expect(await receipt.save([asleep, mac]) != nil)
+        #expect(mac.received.count == 1)
+    }
+
+    @Test func `a scan this phone cannot write is held in memory, said, and kept on a second try`() throws {
+        let phone = Phone()
+        // A file where the folder should be: nothing can be written under it.
+        try Data("in the way".utf8).write(to: phone.folder)
+        let receipt = phone.receipt()
+        #expect(throws: (any Error).self) { try receipt.add(file: scan, mime: "image/jpeg", pages: [scan]) }
+        #expect(receipt.pending == 0)
+        #expect(receipt.unkept == ReceiptScanBytes(file: scan, mime: "image/jpeg", pages: [scan]))
+        #expect(receipt.unkeptReason != nil)
+        #expect(receipt.keepAgain() == nil)
+        #expect(receipt.unkept != nil)
+
+        try FileManager.default.removeItem(at: phone.folder)
+        let kept = try #require(receipt.keepAgain())
+        #expect(receipt.unkept == nil)
+        #expect(receipt.unkeptReason == nil)
+        #expect(receipt.pending == 1)
+        #expect(receipt.scan(kept) == scan)
+        #expect(phone.receipt().pending == 1)
+    }
+
+    @Test func `a held scan he lets go is gone`() throws {
+        let phone = Phone()
+        try Data("in the way".utf8).write(to: phone.folder)
+        let receipt = phone.receipt()
+        _ = try? receipt.add(file: scan, mime: "image/jpeg", pages: [])
+        #expect(receipt.unkept != nil)
+        receipt.dropUnkept()
+        #expect(receipt.unkept == nil)
+        #expect(receipt.keepAgain() == nil)
+    }
+
+    @Test func `where a saved receipt went, in his words`() {
+        #expect(Receipt.outcomeLine(.filed, job: "Purdue Esports") == "Filed in Purdue Esports")
+        #expect(Receipt.outcomeLine(.ready, job: "Unify") == "Waiting in Money on the desktop")
+        #expect(Receipt.outcomeLine(.reading, job: "Unify") == "Waiting in Money on the desktop")
+        #expect(Receipt.outcomeLine(.dropped, job: "Unify") == nil)
     }
 
     @Test(arguments: [

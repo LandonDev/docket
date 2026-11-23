@@ -2545,27 +2545,38 @@ The receipt (Money, docs/agents/work-money.md):
   pages go as one PDF, each page fitted to the same Letter bound.
 - **The sheet** fills the height (`tcSheet(.editor)`), "Receipt" ("Receipt 1
   of 2" while two wait): the scan as a 56 pt picture at the row radius with
-  the 10 % outline (the photos pattern) beside Amount (the decimal pad; a
-  word turns it destructive and holds Save off), then Date (a date picker,
+  the 10 % outline (the photos pattern) beside Amount (a quiet "$" in the
+  secondary tint before it, as the desktop draws every amount; the decimal
+  pad; a word turns it destructive and holds Save off), then Date (a date picker,
   never after today; Add Date until one is read or picked) and Seller; then
   Category (the job's own list, what was read chosen, and None) and Job (the
   sectors some host keeps a job in, each with its dot and the job's name,
-  the last one used first; a spinner while the hosts answer), the reason a
-  Save failed as that section's footer in destructive text; last, Scan
-  Another and Discard Receipt (it asks first). The fields fill when a host's
+  the last one used first; a spinner while the hosts answer; fixed once a
+  part has gone to a host), the reason a Save failed as that section's
+  footer in destructive text; last, Scan Another and Discard Receipt (one
+  colour, the glyph destructive with its words; it asks first). The fields fill when a host's
   parser answers, with no spinner or mark in them; what he typed first
   stands. Cancel keeps the draft; Save is the one confirm, a spinner while
-  the parts go, a light impact when the host has it.
-- **Save** sends the scan in parts of at most 2 MiB to one host, under one
-  key, with the lines and the fields. With an amount and a date the host
-  files it in the job's ledger at once; without, it waits in the desktop's
-  To confirm list. Either answer removes the draft; while another waits, the
+  the parts go, then a light impact and the app's toast line saying where
+  it went: "Filed in Unify", or "Waiting in Money on the desktop".
+- **Save** sends what he saw at the press: the fields, the job and whether
+  a host's parser had answered are fixed then, so a parse that lands during
+  the Save changes nothing sent. The scan goes in parts of at most 2 MiB to
+  one host, under one key, with the lines and the fields, and `seen` when
+  the parse had answered (then what he left empty stays empty on the
+  desktop). With an amount and a date the host files it in the job's ledger
+  at once; without, it waits in the desktop's To confirm list. Either answer removes the draft; while another waits, the
   sheet goes on to it.
 - **Nothing lost.** The scan is a file in Application Support and the rest
   is in the phone's defaults (`work.money.receipt`) from the moment the
-  camera closes, so Cancel, a failed Save and a quit keep it. A retry keeps
-  the key and goes back to the host that took the last try while it keeps
-  the job, so nothing is filed twice.
+  camera closes, so Cancel, a failed Save and a quit keep it. Once a part
+  has gone to a host the receipt is that host's: a retry keeps the key and
+  goes there and nowhere else, and while it does not answer the draft stays
+  ("Unify's host did not answer. The receipt is kept on this phone."), since
+  a second host keeps no record of the key and would file it again. A scan
+  the phone cannot write is held in memory: the sheet opens on Try Again
+  and Discard Scan with the reason as their footer in destructive text, and Home's press
+  opens that row again until the scan is kept.
 
 Not on the phone, and why: the Docs row and LifeOS's project cards on a
 Work workspace's screen (no wire lists a workspace's documents yet); a

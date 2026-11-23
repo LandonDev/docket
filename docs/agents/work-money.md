@@ -289,12 +289,16 @@ camera; the scan lands in `ReceiptSheet` (docs/IOS-DESIGN.md "The
 receipt"). `OnDeviceText` reads the scan on the phone (Vision, accurate,
 never a network recogniser); the phone asks a host's `work.money.parse` for
 the fields (one parser, the host's) and never parses itself. Save sends the
-scan in parts with its lines and the fields he accepted
-(`work.money.receive`, `source: 'phone'`, the job named by sector): with an
-amount and a date it is filed at once, else it waits in the desktop's To
-confirm. `Receipt` (the client package) keeps each draft on the phone under
-one key until a host answers: nothing is lost on Cancel, a failed Save or a
-quit, and a retry goes to the same host first. The phone has no Money page.
+scan in parts with its lines and the fields as they stood at his press
+(`work.money.receive`, `source: 'phone'`, the job named by sector, `seen`
+when the host's parse had answered): with an amount and a date it is filed
+at once, else it waits in the desktop's To confirm. `Receipt` (the client
+package) keeps each draft on the phone under one key until a host answers:
+nothing is lost on Cancel, a failed Save or a quit, and a scan the phone
+cannot write is held in memory with Try Again. Once a part has gone to a
+host the receipt is pinned there: a retry goes to that host alone, and
+waits on the phone while it does not answer, since the key dedupes only per
+host. The phone has no Money page.
 
 ## For others
 

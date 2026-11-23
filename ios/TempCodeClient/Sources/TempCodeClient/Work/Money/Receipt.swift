@@ -29,8 +29,11 @@ public struct ReceiptDraft: Codable, Hashable, Sendable, Identifiable {
     public var sector: String?
     /// The fields he typed in: the host's parser never fills those.
     public var typed: Set<Field> = []
-    /// The host the last Save went to: a retry goes there first.
+    /// The host the first part went to. From then on the receipt is that
+    /// host's alone: another keeps no record of the key and would file it again.
     public var hostId: String?
+    /// The job's name on that host, for the line that says it did not answer.
+    public var job: String?
     /// The host's parser has answered for this scan.
     public var parsed = false
 
@@ -56,6 +59,11 @@ public final class Receipt {
     public static let noReader = "No host read the receipt in time."
     public static let partial = "The host has only part of the scan. Save again."
     public static let gone = "The scan is no longer on this iPhone."
+    /// The camera's scan could not be written to this phone; it is held in memory until a try succeeds.
+    public static let notKept = "This iPhone could not keep the scan."
+
+    /// The line for a receipt pinned to a host that does not answer.
+    public static func noAnswer(from job: String) -> String { "\(job)'s host did not answer. The receipt is kept on this phone." }
     /// LifeOS's six sectors in the order its screens list them.
     public static let sectorOrder = ["cosmic", "hypixel", "purdue", "ref", "unify", "life"]
 
@@ -75,6 +83,12 @@ public final class Receipt {
     public private(set) var saving = false
     /// The last failure, kept beside the draft.
     public private(set) var error: String?
+    /// A scan the camera gave that this phone could not write, held until `keepAgain` succeeds.
+    public private(set) var unkept: ReceiptScanBytes?
+    /// Why it could not be written: the system's words.
+    public private(set) var unkeptReason: String?
+    /// Where the last saved receipt went, in his words: "Filed in Unify", or that it waits on the desktop.
+    public private(set) var outcome: String?
     /// The sector the last filed receipt went to: first in the picker.
     public private(set) var lastSector: String?
     /// Each host's jobs, in the order the hosts answered.
@@ -133,6 +147,8 @@ public final class Receipt {
         set { edit(.category) { $0.category = newValue } }
     }
     public var sector: String? { current?.sector }
+    /// Some part has gone to a host: the job can no longer change.
+    public var pinned: Bool { current?.hostId != nil }
 
     /// The amount as whole cents; nil when the field is empty or not a sum.
     public var cents: Int? { ReceiptAmount.cents(amount) }
@@ -166,13 +182,23 @@ public final class Receipt {
     // MARK: - his presses
 
     /// A new scan: kept at once (the file, then the draft), shown by the sheet.
+    /// When the file cannot be written the scan is held in memory (`unkept`)
+    /// and the error is thrown; `keepAgain` tries once more.
     @discardableResult
     public func add(file data: Data, mime: String, pages: [Data]) throws -> ReceiptDraft {
         let key = makeKey()
         let ext = mime == "application/pdf" ? "pdf" : "jpg"
         let file = "\(key).\(ext)"
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try data.write(to: url(file), options: .atomic)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try data.write(to: url(file), options: .atomic)
+        } catch {
+            unkept = ReceiptScanBytes(file: data, mime: mime, pages: pages)
+            unkeptReason = error.localizedDescription
+            throw error
+        }
+        unkept = nil
+        unkeptReason = nil
         var draft = ReceiptDraft(key: key, file: file, name: "Receipt \(Self.stamp(now())).\(ext)", mime: mime)
         // Hosts that answered already: the picker's first sector until he picks.
         draft.sector = sectors.first
@@ -183,6 +209,19 @@ public final class Receipt {
         return draft
     }
 
+    /// The held scan, written again; nil while it still cannot be.
+    @discardableResult
+    public func keepAgain() -> ReceiptDraft? {
+        guard let held = unkept else { return nil }
+        return try? add(file: held.file, mime: held.mime, pages: held.pages)
+    }
+
+    /// He let the held scan go.
+    public func dropUnkept() {
+        unkept = nil
+        unkeptReason = nil
+    }
+
     /// Home's press with receipts waiting: the oldest first.
     public func showOldest() {
         currentKey = drafts.first?.key
@@ -190,7 +229,7 @@ public final class Receipt {
     }
 
     public func pick(_ sector: String) {
-        guard let key = current?.key else { return }
+        guard let key = current?.key, !pinned else { return }
         update(key) { $0.sector = sector }
     }
 
@@ -244,43 +283,56 @@ public final class Receipt {
         fill(key, fields)
     }
 
-    /// Sends the scan in parts, in order, to one host, awaiting each. A retry
-    /// goes back to the host that took the last try while it keeps the job.
-    /// Filed or waiting in To confirm, the draft and its file are removed; on a
-    /// failure they stay and `error` says why.
+    /// Sends the scan in parts, in order, to one host, awaiting each. What
+    /// goes is what he saw at the press: a parser that answers during the
+    /// Save changes nothing sent. Once a part has gone, the receipt is pinned
+    /// to that host: a retry goes there and nowhere else, and while it does
+    /// not answer the draft stays and `error` says so. Filed or waiting in To
+    /// confirm, the draft and its file are removed; on a failure they stay.
     @discardableResult
     public func save(_ hosts: [any MoneyHost]) async -> MoneyReceived? {
-        guard canSave, let draft = current, let sector = draft.sector else { return nil }
-        let key = draft.key
+        guard canSave, let pressed = current, let sector = pressed.sector, let data = scan(pressed) else {
+            if canSave { error = Self.gone }
+            return nil
+        }
+        let key = pressed.key
         saving = true
         defer { saving = false }
         error = nil
-        var host: (any MoneyHost)?
-        if let id = draft.hostId, let retry = hosts.first(where: { $0.hostId == id }),
-           case let (_, state)? = await first([retry], { try await $0.moneyState() }), state.jobs.contains(where: { $0.sector == sector }) {
-            host = retry
+        outcome = nil
+        let host: any MoneyHost
+        if let id = pressed.hostId {
+            let job = pressed.job ?? jobName(sector) ?? sector.capitalized
+            guard let pinned = hosts.first(where: { $0.hostId == id }), await first([pinned], { try await $0.moneyState() }) != nil else {
+                error = Self.noAnswer(from: job)
+                return nil
+            }
+            host = pinned
+        } else {
+            var found = holder(of: sector, among: hosts)
+            if found == nil {
+                await find(hosts)
+                found = holder(of: sector, among: hosts)
+            }
+            guard let found else {
+                error = Self.noHost
+                return nil
+            }
+            host = found
         }
-        if host == nil { host = holder(of: sector, among: hosts) }
-        if host == nil {
-            await find(hosts)
-            host = holder(of: sector, among: hosts)
+        let job = pressed.job ?? jobName(sector) ?? sector.capitalized
+        // Pinned before the first byte goes: a part may arrive though no answer comes back.
+        update(key) {
+            $0.hostId = host.hostId
+            $0.job = job
         }
-        guard let host else {
-            error = Self.noHost
-            return nil
-        }
-        update(key) { $0.hostId = host.hostId }
-        guard let sending = drafts.first(where: { $0.key == key }), let data = scan(sending) else {
-            error = Self.gone
-            return nil
-        }
-        let seller = sending.seller.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fields = ReceiptPart.Fields(amount: ReceiptAmount.cents(sending.amount), date: sending.date, who: seller.isEmpty ? nil : seller, category: sending.category)
+        let seller = pressed.seller.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fields = ReceiptPart.Fields(amount: ReceiptAmount.cents(pressed.amount), date: pressed.date, who: seller.isEmpty ? nil : seller, category: pressed.category)
         let parts = ReceiptParts.cut(data)
         do {
             var answer: MoneyReceived?
             for (index, bytes) in parts.enumerated() {
-                let got = try await host.receive(ReceiptPart(key: key, sector: sector, name: sending.name, mime: sending.mime, part: index, parts: parts.count, data: bytes, lines: sending.lines, fields: fields))
+                let got = try await host.receive(ReceiptPart(key: key, sector: sector, name: pressed.name, mime: pressed.mime, part: index, parts: parts.count, data: bytes, lines: pressed.lines, fields: fields, seen: pressed.parsed))
                 answer = got
                 // A repeat of a receipt the host already has answers the first at once.
                 if got.state != .partial { break }
@@ -292,10 +344,20 @@ public final class Receipt {
             remove(key)
             lastSector = sector
             defaults.set(sector, forKey: Self.sectorKey)
+            outcome = Self.outcomeLine(answer.state, job: job)
             return answer
         } catch {
             self.error = ActionError.wrap(error).message
             return nil
+        }
+    }
+
+    /// Where a saved receipt went: the ledger, or To confirm on the desktop.
+    static func outcomeLine(_ state: MoneyReceived.State, job: String) -> String? {
+        switch state {
+        case .filed: "Filed in \(job)"
+        case .ready, .reading: "Waiting in Money on the desktop"
+        default: nil
         }
     }
 
@@ -390,6 +452,19 @@ public final class Receipt {
         format.locale = Locale(identifier: "en_US_POSIX")
         format.dateFormat = "yyyy-MM-dd 'at' HH.mm"
         return format.string(from: date)
+    }
+}
+
+/// A scan as the camera gave it: the file the host keeps and the pages the reader reads.
+public struct ReceiptScanBytes: Hashable, Sendable {
+    public let file: Data
+    public let mime: String
+    public let pages: [Data]
+
+    public init(file: Data, mime: String, pages: [Data]) {
+        self.file = file
+        self.mime = mime
+        self.pages = pages
     }
 }
 
