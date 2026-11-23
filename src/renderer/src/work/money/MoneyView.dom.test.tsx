@@ -206,6 +206,15 @@ describe("the Money view", () => {
     expect(asked("work.money.open")).toEqual([{ workspaceId: "ws", restore: true }]);
   });
 
+  it("lists the header's verbs, and opens Export for the period's year", async () => {
+    mount();
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Open ledger", "Open mileage log", "Export…", "Mileage rate…"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Export…" }));
+    expect(await screen.findByRole("dialog", { name: "Export" })).toBeTruthy();
+  });
+
   it("keeps the last read under a failed one, with Retry", async () => {
     mount();
     await settle();

@@ -24,6 +24,7 @@ import { atOf, markPaid, openBook, openBooks, openReceipt, useMoney, withToast }
 import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
 import { receiveFiles, takesFile } from "./receive";
+import { ExportDialog } from "./ExportDialog";
 import { RateDialog } from "./RateDialog";
 import { addAll, CalendarRows, ReceiptPicture, ReceiptRows, ToConfirmSection } from "./ToConfirm";
 import { offerWhole, TripDialog } from "./TripDialog";
@@ -42,7 +43,7 @@ const SPANS = [
 ] as const;
 
 /** A dialog the header or the body opened. */
-export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string } | { kind: "trip"; offer: CalendarOffer | null } | { kind: "rate" };
+export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string } | { kind: "trip"; offer: CalendarOffer | null } | { kind: "rate" } | { kind: "export" };
 
 /** What the header and the body share: the period, and the dialog open. */
 const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null }>({ period: periodNow(), dialog: null });
@@ -66,6 +67,7 @@ export function Head({ env, workspace }: WorkViewProps) {
     { kind: "item", id: "ledger", label: "Open ledger" },
     { kind: "item", id: "mileage", label: "Open mileage log" },
     { kind: "sep" },
+    { kind: "item", id: "export", label: "Export…" },
     { kind: "item", id: "rate", label: "Mileage rate…" },
   ];
   return (
@@ -105,6 +107,7 @@ export function Head({ env, workspace }: WorkViewProps) {
         onPick={(id) => {
           if (id === "ledger" || id === "mileage") withToast(() => openBook(env, workspace.id, id));
           else if (id === "rate") set({ dialog: { kind: "rate" } });
+          else if (id === "export") set({ dialog: { kind: "export" } });
         }}
         trigger={
           <Button variant="ghost" size="icon-sm" aria-label="More">
@@ -235,6 +238,7 @@ export function View({ env, workspace }: WorkViewProps) {
         <TripDialog env={env} workspaceId={workspace.id} offer={dialog.offer} day={today() >= span.from && today() < span.to ? today() : span.from} onClose={close} onSaved={() => void reload()} />
       ) : null}
       {read && dialog?.kind === "rate" ? <RateDialog env={env} workspaceId={workspace.id} rate={read.rate} onClose={close} onSaved={() => void reload()} /> : null}
+      {dialog?.kind === "export" ? <ExportDialog env={env} workspaceId={workspace.id} year={period.year} onClose={close} /> : null}
       {read && dialog?.kind === "confirm" ? <ConfirmFlow env={env} workspaceId={workspace.id} read={read} first={dialog.id} onClose={close} reload={reload} /> : null}
     </div>
   );

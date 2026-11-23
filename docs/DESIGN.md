@@ -1613,7 +1613,12 @@ Around the canvas:
   check the miles" under an estimate; Add all at the heading's end once
   two can be added; Skip in the row's menu. Add → Trip… is the same
   dialog led by From the calendar; More → Mileage rate… is one field,
-  Dollars a mile, for the period's year.
+  Dollars a mile, for the period's year. More → Export… asks the year (this
+  one and the four before) and three boxes, all ticked: Spreadsheet
+  (Excel), CSV, Summary (PDF); Export spins through the host's files, the
+  summary's print and its keeping, then one toast, "Exported 2026 for tax
+  time", with Show in Files and, on its second line, whatever could not
+  be made.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way
