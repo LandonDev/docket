@@ -71,7 +71,7 @@ struct SearchView: View {
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
                 case .file(let file):
-                    FileRow(file: file)
+                    SearchFileRow(file: file)
                         .listRowInsets(Layout.rowInsets)
                         .separatorAtTextEdge(glyphEdge)
                 case .project(let project):

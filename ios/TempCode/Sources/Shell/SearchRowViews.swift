@@ -104,7 +104,7 @@ struct ProjectHeadRow: View {
 /// number dim and "Newer" after it when this copy won the cross-host fold,
 /// the line itself in mono with the match in weight. The phone has no
 /// editor, so the row is a fact, not a push.
-struct FileRow: View {
+struct SearchFileRow: View {
     let file: SearchRow.FileHit
     @ScaledMetric(relativeTo: .subheadline) private var glyphWidth = Layout.glyphWidth
 
