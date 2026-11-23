@@ -638,6 +638,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case money
             case search
             case review
+            case clashes
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -674,6 +675,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case "money": self = .money
                 case "search": self = .search
                 case "review": self = .review
+                case "clashes": self = .clashes
                 default: self = .unknown(rawValue)
                 }
             }
@@ -711,6 +713,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case .money: "money"
                 case .search: "search"
                 case .review: "review"
+                case .clashes: "clashes"
                 case .unknown(let value): value
                 }
             }
@@ -738,7 +741,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             let container = try decoder.singleValueContainer()
             if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events", "projects", "people"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }
             if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "item", let value = try? container.decode(RefCase2.self) { self = .object2(value); return }
-            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "work", ["outbox", "canvas", "lifeos", "routines", "rules", "mail", "tasks", "agenda", "docs", "history", "formats", "sheets", "office", "google", "guests", "pdf", "slides", "media", "frameio", "meetings", "forms", "dashboards", "browser", "projects", "winvm", "capture", "files", "prep", "money", "search", "review"].contains(probe["pillar"]?.stringValue ?? ""), let value = try? container.decode(RefCase3.self) { self = .object3(value); return }
+            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "work", ["outbox", "canvas", "lifeos", "routines", "rules", "mail", "tasks", "agenda", "docs", "history", "formats", "sheets", "office", "google", "guests", "pdf", "slides", "media", "frameio", "meetings", "forms", "dashboards", "browser", "projects", "winvm", "capture", "files", "prep", "money", "search", "review", "clashes"].contains(probe["pillar"]?.stringValue ?? ""), let value = try? container.decode(RefCase3.self) { self = .object3(value); return }
             if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
             self = .unknown(try container.decode(JSONValue.self))
         }
@@ -5030,6 +5033,7 @@ public struct WorkResult: Codable, Hashable, Sendable {
             case money
             case search
             case review
+            case clashes
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -5066,6 +5070,7 @@ public struct WorkResult: Codable, Hashable, Sendable {
                 case "money": self = .money
                 case "search": self = .search
                 case "review": self = .review
+                case "clashes": self = .clashes
                 default: self = .unknown(rawValue)
                 }
             }
@@ -5103,6 +5108,7 @@ public struct WorkResult: Codable, Hashable, Sendable {
                 case .money: "money"
                 case .search: "search"
                 case .review: "review"
+                case .clashes: "clashes"
                 case .unknown(let value): value
                 }
             }

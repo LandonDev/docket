@@ -50,7 +50,8 @@ export const PILLAR_IDS = [
   'prep',
   'money',
   'search',
-  'review'
+  'review',
+  'clashes'
 ] as const
 export type PillarId = (typeof PILLAR_IDS)[number]
 export const PillarIdSchema = z.enum(PILLAR_IDS)
@@ -96,7 +97,9 @@ export const PILLAR_MILESTONE: Record<PillarId, number> = {
   /** one search for everything in Work (plan-3lajhR4Inx-d), a feature of the third round */
   search: 62,
   /** the weekly review (plan-toGPPKaX6Q1P), numbered past the pillars that landed before it */
-  review: 63
+  review: 63,
+  /** clashes across jobs with the drive time counted (plan-7BzZxxMKA7yn), numbered past Files */
+  clashes: 58
 }
 
 /**

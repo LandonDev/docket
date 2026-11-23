@@ -317,7 +317,8 @@ export const PILLAR_LOADERS: PillarLoaders = {
   prep: () => import('./prep').then((m) => m.prep),
   money: () => import('./money').then((m) => m.money),
   search: () => import('./search').then((m) => m.search),
-  review: () => import('./review').then((m) => m.review)
+  review: () => import('./review').then((m) => m.review),
+  clashes: () => import('./clashes').then((m) => m.clashes)
 }
 
 let loaded: Promise<Map<PillarId, string>> | null = null
