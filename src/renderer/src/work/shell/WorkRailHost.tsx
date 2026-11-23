@@ -18,6 +18,7 @@ import { FileDrops } from "../canvas/fileDrop";
 import { LapseNotices } from "../connections/lapseNotice";
 import { openConnections, openWorkSettings } from "./open";
 import { PlaysHost } from "../routines/plays/PlaysHost";
+import { TemplatesHost } from "../templates/TemplatesHost";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
 import { refreshLifeos, useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
@@ -153,6 +154,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       <FileDrops />
       {/* Run a play… and Save as a play…, from wherever Work is on screen (work/routines/plays/PlaysHost.tsx). */}
       <PlaysHost />
+      {/* New from a template and Save as template, for every screen of Work (work/templates/TemplatesHost.tsx). */}
+      <TemplatesHost />
       {/* What Work leans on that ends soon, said once (work/connections/lapseNotice.tsx). */}
       <LapseNotices />
       {naming && home ? (

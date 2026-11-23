@@ -14,6 +14,7 @@ import { projectsView } from "../projects/view";
 import { playsView } from "../routines/plays/view";
 import { routinesView } from "../routines/view";
 import { tasksView } from "../tasks/view";
+import { templatesView } from "../templates/view";
 
 /**
  * The rows over a linked Work workspace's projects (architecture §7.3):
@@ -21,7 +22,7 @@ import { tasksView } from "../tasks/view";
  * the thread strip. One closed list; each pillar fills its own `view.ts`
  * (milestones 23 and 25, and Docs after them) and edits nothing here.
  */
-export type WorkViewId = "mail" | "tasks" | "projects" | "agenda" | "prep" | "people" | "docs" | "files" | "plays" | "routines";
+export type WorkViewId = "mail" | "tasks" | "projects" | "agenda" | "prep" | "people" | "docs" | "files" | "templates" | "plays" | "routines";
 
 export interface WorkViewProps {
   env: string;
@@ -68,15 +69,24 @@ export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
   people: peopleView,
   docs: docsView,
   files: filesView,
+  templates: templatesView,
   plays: playsView,
   routines: routinesView,
 };
 
+/**
+ * Whether the Templates row stands in the column (docs/agents/work-templates.md
+ * "The row"). Off until Files' F1b lands (`openInFiles`, work/files/openFrom.ts):
+ * its view, dialogs and port are built and live, but no row leads to the view.
+ * Set true and the row stands after Files.
+ */
+export const TEMPLATES_ROW = false;
+
 /** The views in their rows' order. */
 export const workViewList = (): WorkViewDef[] => Object.values(WORK_VIEWS).sort((a, b) => a.order - b.order);
 
-/** The views the column draws a row for: every one that does not stand inside another. */
-export const workViewRows = (): WorkViewDef[] => workViewList().filter((view) => !view.inside);
+/** The views the column draws a row for: every one that does not stand inside another, and Templates only once its row is on (`TEMPLATES_ROW`). */
+export const workViewRows = (): WorkViewDef[] => workViewList().filter((view) => !view.inside && (TEMPLATES_ROW || view.id !== "templates"));
 
 /** The row that reads as open for a view: its own, or the row of the view it stands inside. */
 export const rowOfView = (view: string): string => (WORK_VIEWS as Record<string, WorkViewDef | undefined>)[view]?.inside ?? view;

@@ -6,7 +6,7 @@ import { sectorName } from "./actions";
 import { columnProjects } from "./WorkColumn";
 import { keyLine, lifeosLine } from "./settings";
 import { addMenuRows, freeSectors, sectorMenuRows } from "./WorkRailHost";
-import { rowOfView, WORK_VIEWS, workViewList, workViewRows } from "../views/registry";
+import { rowOfView, TEMPLATES_ROW, WORK_VIEWS, workViewList, workViewRows } from "../views/registry";
 
 const ids = (rows: MenuRow[]): string[] => rows.map((r) => (r.kind === "sep" ? "—" : r.kind === "label" ? r.label : r.id));
 
@@ -99,8 +99,8 @@ describe("the column's LifeOS projects", () => {
 });
 
 describe("WORK_VIEWS", () => {
-  it("is Mail, Tasks, Projects, Agenda, People, Docs and Files in that order, then Plays and Routines; none of them says a fact it has not read", async () => {
-    expect(workViewRows().map((v) => v.label)).toEqual(["Mail", "Tasks", "Projects", "Agenda", "People", "Docs", "Files", "Plays", "Routines"]);
+  it("is Mail, Tasks, Projects, Agenda, People, Docs and Files in that order, then Templates (once its row is on), Plays and Routines; none of them says a fact it has not read", async () => {
+    expect(workViewRows().map((v) => v.label)).toEqual(["Mail", "Tasks", "Projects", "Agenda", "People", "Docs", "Files", ...(TEMPLATES_ROW ? ["Templates"] : []), "Plays", "Routines"]);
     for (const view of Object.values(WORK_VIEWS)) {
       expect(view.chunk.name).toBe(`work-${view.id}-view`);
       expect(view.fact({} as WorkspaceMeta)).toBeNull();
@@ -108,9 +108,9 @@ describe("WORK_VIEWS", () => {
     }
   });
 
-  it("has every view say whether it reads LifeOS: Files, Plays and Routines read the host alone, so no sign-in or LifeOS line stands over them", () => {
+  it("has every view say whether it reads LifeOS: Files, Templates, Plays and Routines read the host alone, so no sign-in or LifeOS line stands over them", () => {
     const reads = Object.fromEntries(Object.values(WORK_VIEWS).map((view) => [view.id, view.readsLifeos]));
-    expect(reads).toEqual({ mail: true, tasks: true, projects: true, agenda: true, prep: true, people: true, docs: true, files: false, plays: false, routines: false });
+    expect(reads).toEqual({ mail: true, tasks: true, projects: true, agenda: true, prep: true, people: true, docs: true, files: false, templates: false, plays: false, routines: false });
   });
 
   it("draws no row for a view that stands inside another, and reads its parent's row as open while it shows", () => {
