@@ -361,6 +361,9 @@ describe('the Files place on the phone (F9)', () => {
     expect(W.FilesOpenedPhoneSchema.parse({ rev: 4, tabs: [], held: { sessionId: 's1', itemId: 'i1' } })).toEqual({ rev: 4, held: { sessionId: 's1', itemId: 'i1' } })
     expect(W.WorkFilesPushSchema.parse({ push: 'work.files', workspaceId: 'w1', at: 'file:box:/w' })).toEqual({ push: 'work.files', workspaceId: 'w1', at: 'file:box:/w' })
     expect(W.RemotePushSchema.options.map((o) => o.shape.push.value)).toContain('work.files')
+  })
+})
+
 describe('the digest on the phone', () => {
   const row: TellRow = {
     id: 't1',
