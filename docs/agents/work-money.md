@@ -307,15 +307,18 @@ receipt"). `OnDeviceText` reads the scan on the phone (Vision, accurate,
 never a network recogniser); the phone asks a host's `work.money.parse` for
 the fields (one parser, the host's) and never parses itself. Save sends the
 scan in parts with its lines and the fields as they stood at his press
-(`work.money.receive`, `source: 'phone'`, the job named by sector, `seen`
-when the host's parse had answered): with an amount and a date it is filed
-at once, else it waits in the desktop's To confirm. `Receipt` (the client
+(`work.money.receive`, `source: 'phone'`, the job he saw named by its
+`workspaceId` on its own host with the sector beside it, `seen` when the
+host's parse had answered): with an amount and a date it is filed at once
+(the phone says "Suggested in …'s ledger" when the answer carries
+`suggested`), else it waits in the desktop's To confirm; `dropped` keeps the
+draft with its key spent until he discards it. `Receipt` (the client
 package) keeps each draft on the phone under one key until a host answers:
 nothing is lost on Cancel, a failed Save or a quit, and a scan the phone
-cannot write is held in memory with Try Again. Once a part has gone to a
-host the receipt is pinned there: a retry goes to that host alone, and
-waits on the phone while it does not answer, since the key dedupes only per
-host. The phone has no Money page.
+cannot write is held in memory with Try Again, and no second scan is taken
+while it is. A receipt goes only to the host of the job it shows: a retry
+goes to that host alone, and waits on the phone while it does not answer,
+since the key dedupes only per host; once a part has gone the job is fixed. The phone has no Money page.
 
 ## For others
 

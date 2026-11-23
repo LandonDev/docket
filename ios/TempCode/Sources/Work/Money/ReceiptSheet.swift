@@ -26,6 +26,7 @@ struct ReceiptSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Recovery comes first: while a scan is held, nothing else shows, so nothing can take its place.
                 if receipt.unkept != nil {
                     Section {
                         Button("Try Again", systemImage: "arrow.clockwise") { _ = receipt.keepAgain() }
@@ -36,8 +37,7 @@ struct ReceiptSheet: View {
                     } footer: {
                         Text(notKept).foregroundStyle(Tint.destructiveText)
                     }
-                }
-                if let draft = receipt.current {
+                } else if let draft = receipt.current {
                     Section {
                         HStack(spacing: Layout.rowGap) {
                             ReceiptPicture(draft: draft, receipt: receipt)
@@ -65,7 +65,7 @@ struct ReceiptSheet: View {
                         .accessibilityIdentifier("receipt-category")
                         job
                     } footer: {
-                        if let error = receipt.error { Text(error).foregroundStyle(Tint.destructiveText) }
+                        if let problem = receipt.problem { Text(problem).foregroundStyle(Tint.destructiveText) }
                     }
                     Section {
                         Button("Scan Another", systemImage: "doc.viewfinder") { ReceiptFlow.scan(camera: $scanning, take: add) }
@@ -125,24 +125,34 @@ struct ReceiptSheet: View {
         }
     }
 
-    /// The sectors some host keeps a job in, the last one used first; a spinner while the hosts are asked.
+    /// The jobs the hosts keep, the last sector used first, and the one the draft holds; a spinner while the hosts are asked.
     @ViewBuilder
     private var job: some View {
-        if receipt.sectors.isEmpty {
+        let choices = receipt.choices
+        if choices.isEmpty {
             LabeledContent("Job") {
                 if receipt.finding { ProgressView() }
             }
         } else {
-            Picker("Job", selection: Binding(get: { receipt.sector ?? "" }, set: { receipt.pick($0) })) {
-                ForEach(receipt.sectors, id: \.self) { key in
-                    Label { Text(receipt.jobName(key) ?? Sectors.name(key)) } icon: { SectorDot(sector: key) }
-                        .tag(key)
+            Picker("Job", selection: Binding(get: { receipt.chosen?.id ?? "" }, set: { id in
+                if let job = choices.first(where: { $0.id == id }) { receipt.pick(job) }
+            })) {
+                ForEach(choices) { job in
+                    Label { Text(name(of: job, among: choices)) } icon: { SectorDot(sector: job.sector) }
+                        .tag(job.id)
                 }
             }
             // Once a part has gone to a host the receipt is that host's job's.
             .disabled(receipt.pinned)
             .accessibilityIdentifier("receipt-job")
         }
+    }
+
+    /// The job's name; with the host's own name after it when two hosts keep a job of that name.
+    private func name(of job: ReceiptJob, among choices: [ReceiptJob]) -> String {
+        guard choices.contains(where: { $0.name == job.name && $0.id != job.id }),
+              let host = model.registry.ordered.first(where: { $0.environment.id == job.hostId }) else { return job.name }
+        return "\(job.name) · \(host.environment.name)"
     }
 
     private func add(_ scan: ReceiptScan) {
@@ -182,13 +192,13 @@ private struct ReceiptPicture: View {
     private var outline: Color { (scheme == .dark ? Color.white : Color.black).opacity(0.1) }
 
     var body: some View {
-        Group {
+        // The whole page fitted inside the box, the fill behind it: a square crop would cut the seller's name off.
+        ZStack {
+            Surface.fill
             if let image {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFill()
-            } else {
-                Surface.fill
+                    .scaledToFit()
             }
         }
         .frame(width: size, height: size)
@@ -230,10 +240,6 @@ enum ReceiptDay {
 
     static func date(_ day: String) -> Date? { format.date(from: day) }
     static func string(_ date: Date) -> String { format.string(from: date) }
-}
-
-extension Sectors {
-    static func name(_ key: String) -> String { all.first { $0.key == key }?.name ?? key.capitalized }
 }
 
 /// The sheet shows one receipt queue, by its identity.

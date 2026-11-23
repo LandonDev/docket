@@ -18,6 +18,10 @@ private final class StubHost: MoneyHost {
     var failure = "timed out"
     /// Files the receipt, then the answer is lost on the way back.
     var loseAnswer = false
+    /// The ledger is a sheet others can open: a filing only waits there as a suggestion.
+    var suggests = false
+    /// Keys he discarded on the desktop: the host answers `dropped`.
+    var dropped: Set<String> = []
     /// Holds `parse` until `answerParse()` (a parser still working when he presses Save).
     var parseGated = false
     /// Holds `receive` of this part until `answerPart()`.
@@ -31,7 +35,7 @@ private final class StubHost: MoneyHost {
 
     init(_ hostId: String = "box", sectors: [String] = ["unify"]) {
         self.hostId = hostId
-        jobs = sectors.map { MoneyState.Job(workspaceId: "ws-\($0)", name: $0.capitalized, sector: $0, made: true, categories: ["Meals", "Software", "Travel"]) }
+        jobs = sectors.map { MoneyState.Job(workspaceId: "\(hostId)-ws-\($0)", name: $0.capitalized, sector: $0, made: true, categories: ["Meals", "Software", "Travel"]) }
     }
 
     func moneyState() async throws -> MoneyState {
@@ -53,9 +57,11 @@ private final class StubHost: MoneyHost {
             await withCheckedContinuation { partGate = $0 }
         }
         if let first = kept[part.key] { return first }
+        if dropped.contains(part.key) { return MoneyReceived(id: "r-\(part.key)", state: .dropped) }
         if part.part == failAt { throw ActionError.refused(message: failure, forbidden: false) }
         guard part.part == part.parts - 1 else { return MoneyReceived(id: "r-\(part.key)", state: .partial) }
-        let answer = MoneyReceived(id: "r-\(part.key)", state: part.fields.amount != nil && part.fields.date != nil ? .filed : .ready)
+        let files = part.fields.amount != nil && part.fields.date != nil
+        let answer = MoneyReceived(id: "r-\(part.key)", state: files ? .filed : .ready, suggested: files && suggests ? true : nil)
         kept[part.key] = answer
         if loseAnswer {
             loseAnswer = false
@@ -132,17 +138,19 @@ private let scan = Data("a made-up receipt".utf8)
         try receipt.add(file: scan, mime: "image/jpeg", pages: [scan])
         let other = StubHost("mac")
         let box = StubHost("box")
-        // The Mac answered first once, so it leads the find.
-        await receipt.find([other])
+        await receipt.find([box])
         box.failAt = 0
         receipt.amount = "10.43"
         #expect(await receipt.save([box]) == nil)
         #expect(receipt.error == "timed out")
         #expect(receipt.pending == 1)
 
+        // A relaunch: the Mac answers first now, and the receipt still goes to the box's job it showed.
         let again = phone.receipt()
         box.failAt = nil
+        await again.find([other])
         await again.find([other, box])
+        #expect(again.chosen?.hostId == "box")
         let answer = await again.save([other, box])
         #expect(answer?.state == .ready)
         #expect(other.received.isEmpty)
@@ -333,7 +341,7 @@ private let scan = Data("a made-up receipt".utf8)
         await receipt.find([host])
         #expect(receipt.sectors == ["cosmic", "ref", "unify"])
         #expect(receipt.sector == "cosmic")
-        receipt.pick("ref")
+        receipt.pick(sector: "ref")
         #expect(await receipt.save([host]) != nil)
 
         let next = phone.receipt()
@@ -450,29 +458,119 @@ private let scan = Data("a made-up receipt".utf8)
         #expect(await receipt.save([mac]) == nil)
         #expect(receipt.error == Receipt.noAnswer(from: "Unify"))
         #expect(mac.received.isEmpty)
-        // A relaunch keeps the pin, and the job cannot move.
+        // A relaunch keeps the pin, and the job cannot move to the Mac's.
         let again = phone.receipt()
-        again.pick("cosmic")
-        #expect(again.sector == "unify")
         box.asleep = false
         await again.find([mac, box])
+        again.pick(try #require(again.jobs.first { $0.hostId == "mac" }))
+        #expect(again.chosen?.hostId == "box")
         #expect(await again.save([mac, box])?.state == .ready)
         #expect(mac.received.isEmpty)
         #expect(box.received.map(\.key) == ["key-0001", "key-0001"])
         #expect(again.outcome == "Waiting in Money on the desktop")
     }
 
-    @Test func `a receipt that has sent nothing may still go to any host with its job`() async throws {
+    @Test func `the job shown at the press is the job it goes to, and never another in its sector`() async throws {
         let phone = Phone()
         let receipt = phone.receipt()
-        let asleep = StubHost("box")
-        asleep.asleep = true
+        let box = StubHost("box")
         let mac = StubHost("mac")
         try receipt.add(file: scan, mime: "image/jpeg", pages: [])
-        await receipt.find([asleep, mac])
+        await receipt.find([box])
+        await receipt.find([box, mac])
+        // The find ends at the box's answer; the Mac's joins the picker when it lands.
+        #expect(await eventually { receipt.jobs.count == 2 })
+        #expect(receipt.jobs.map(\.hostId) == ["box", "mac"])
+        #expect(receipt.chosen?.hostId == "box")
+        receipt.pick(try #require(receipt.jobs.first { $0.hostId == "mac" }))
+        #expect(receipt.chosen?.workspaceId == "mac-ws-unify")
+        // The Mac goes quiet: the box keeps a Unify job too, and is never asked.
+        mac.asleep = true
+        #expect(await receipt.save([box, mac]) == nil)
+        #expect(receipt.error == Receipt.noAnswer(from: "Unify"))
+        #expect(box.received.isEmpty)
+        #expect(mac.received.isEmpty)
         #expect(!receipt.pinned)
-        #expect(await receipt.save([asleep, mac]) != nil)
-        #expect(mac.received.count == 1)
+        // Back: it goes to the Mac's workspace by its id, with the sector beside it.
+        mac.asleep = false
+        #expect(await receipt.save([box, mac]) != nil)
+        #expect(box.received.isEmpty)
+        let sent = try #require(mac.received.first)
+        #expect(sent.workspaceId == "mac-ws-unify")
+        #expect(sent.params.workspaceId == "mac-ws-unify")
+        #expect(sent.params.sector == "unify")
+    }
+
+    @Test func `with no job chosen, Save stays off and says no host answered`() async throws {
+        let phone = Phone()
+        let receipt = phone.receipt()
+        let asleep = StubHost()
+        asleep.asleep = true
+        try receipt.add(file: scan, mime: "image/jpeg", pages: [])
+        await receipt.find([asleep])
+        #expect(receipt.chosen == nil)
+        #expect(!receipt.canSave)
+        #expect(receipt.problem == Receipt.noHost)
+        #expect(await receipt.save([asleep]) == nil)
+        #expect(asleep.received.isEmpty)
+    }
+
+    @Test func `while a scan is held, a second scan is refused and the held one stays`() async throws {
+        let phone = Phone()
+        let receipt = phone.receipt()
+        let host = StubHost()
+        try receipt.add(file: scan, mime: "image/jpeg", pages: [])
+        await receipt.find([host])
+        #expect(receipt.canSave)
+        // The folder goes read-only: the next scan cannot be written.
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: phone.folder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: phone.folder.path) }
+        let first = Data("the first held scan".utf8)
+        #expect(throws: (any Error).self) { try receipt.add(file: first, mime: "image/jpeg", pages: []) }
+        #expect(receipt.unkept?.file == first)
+        #expect(!receipt.canScan)
+        #expect(!receipt.canSave)
+        #expect(await receipt.save([host]) == nil)
+        #expect(host.received.isEmpty)
+        #expect(throws: Receipt.ScanHeld.self) { try receipt.add(file: Data("a second".utf8), mime: "image/jpeg", pages: []) }
+        #expect(receipt.unkept?.file == first)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: phone.folder.path)
+        let kept = try #require(receipt.keepAgain())
+        #expect(receipt.scan(kept) == first)
+        #expect(receipt.pending == 2)
+        #expect(receipt.canScan)
+    }
+
+    @Test func `a receipt discarded on the desktop stays, says so, and only Discard is left`() async throws {
+        let phone = Phone()
+        let receipt = phone.receipt()
+        let host = StubHost()
+        host.dropped = ["key-0001"]
+        try receipt.add(file: scan, mime: "image/jpeg", pages: [])
+        await receipt.find([host])
+        #expect(await receipt.save([host]) == nil)
+        #expect(receipt.pending == 1)
+        #expect(receipt.problem == Receipt.discardedOnDesktop)
+        #expect(receipt.outcome == nil)
+        #expect(!receipt.canSave)
+        // A relaunch knows it too.
+        let again = phone.receipt()
+        #expect(again.problem == Receipt.discardedOnDesktop)
+        #expect(!again.canSave)
+        again.discard()
+        #expect(again.pending == 0)
+    }
+
+    @Test func `a filing that only waits as a suggestion says so`() async throws {
+        let phone = Phone()
+        let receipt = phone.receipt()
+        let host = StubHost()
+        host.suggests = true
+        try receipt.add(file: scan, mime: "image/jpeg", pages: [scan])
+        await receipt.find([host])
+        await receipt.read([host])
+        #expect(await receipt.save([host])?.suggested == true)
+        #expect(receipt.outcome == "Suggested in Unify's ledger")
     }
 
     @Test func `a scan this phone cannot write is held in memory, said, and kept on a second try`() throws {
@@ -508,10 +606,11 @@ private let scan = Data("a made-up receipt".utf8)
     }
 
     @Test func `where a saved receipt went, in his words`() {
-        #expect(Receipt.outcomeLine(.filed, job: "Purdue Esports") == "Filed in Purdue Esports")
-        #expect(Receipt.outcomeLine(.ready, job: "Unify") == "Waiting in Money on the desktop")
-        #expect(Receipt.outcomeLine(.reading, job: "Unify") == "Waiting in Money on the desktop")
-        #expect(Receipt.outcomeLine(.dropped, job: "Unify") == nil)
+        #expect(Receipt.outcomeLine(MoneyReceived(id: "r", state: .filed), job: "Purdue Esports") == "Filed in Purdue Esports")
+        #expect(Receipt.outcomeLine(MoneyReceived(id: "r", state: .filed, suggested: true), job: "Unify") == "Suggested in Unify's ledger")
+        #expect(Receipt.outcomeLine(MoneyReceived(id: "r", state: .ready), job: "Unify") == "Waiting in Money on the desktop")
+        #expect(Receipt.outcomeLine(MoneyReceived(id: "r", state: .reading), job: "Unify") == "Waiting in Money on the desktop")
+        #expect(Receipt.outcomeLine(MoneyReceived(id: "r", state: .dropped), job: "Unify") == nil)
     }
 
     @Test(arguments: [

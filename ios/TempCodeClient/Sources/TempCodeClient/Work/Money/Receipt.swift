@@ -4,7 +4,7 @@ import TempCodeContract
 
 /// One scanned receipt as the phone keeps it until a host answers: the
 /// scan's file (under the receipts folder), what the reader found, the four
-/// fields as he edits them and the job's sector. `key` is made with the scan
+/// fields as he edits them and the job he chose (its host, its workspace). `key` is made with the scan
 /// and never changes, so every part and every retry is the same receipt to
 /// the host.
 public struct ReceiptDraft: Codable, Hashable, Sendable, Identifiable {
@@ -29,15 +29,46 @@ public struct ReceiptDraft: Codable, Hashable, Sendable, Identifiable {
     public var sector: String?
     /// The fields he typed in: the host's parser never fills those.
     public var typed: Set<Field> = []
-    /// The host the first part went to. From then on the receipt is that
-    /// host's alone: another keeps no record of the key and would file it again.
+    /// The job the picker shows: its host, its workspace on that host and its
+    /// name there. Save goes to that job and no other.
     public var hostId: String?
-    /// The job's name on that host, for the line that says it did not answer.
+    public var workspaceId: String?
     public var job: String?
+    /// A part has gone to that host: the job can no longer change, since another
+    /// host keeps no record of the key and would file it again.
+    public var sent = false
+    /// He discarded it on the desktop: its key is spent, and only Discard Receipt is left.
+    public var discarded = false
     /// The host's parser has answered for this scan.
     public var parsed = false
 
     public var id: String { key }
+
+    private enum CodingKeys: String, CodingKey {
+        case key, file, name, mime, lines, amount, date, seller, category, sector, typed, hostId, workspaceId, job, sent, discarded, parsed
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key)
+        file = try c.decode(String.self, forKey: .file)
+        name = try c.decode(String.self, forKey: .name)
+        mime = try c.decode(String.self, forKey: .mime)
+        lines = try c.decodeIfPresent([ReceiptTextLine].self, forKey: .lines)
+        amount = try c.decodeIfPresent(String.self, forKey: .amount) ?? ""
+        date = try c.decodeIfPresent(String.self, forKey: .date)
+        seller = try c.decodeIfPresent(String.self, forKey: .seller) ?? ""
+        category = try c.decodeIfPresent(String.self, forKey: .category)
+        sector = try c.decodeIfPresent(String.self, forKey: .sector)
+        typed = try c.decodeIfPresent(Set<Field>.self, forKey: .typed) ?? []
+        hostId = try c.decodeIfPresent(String.self, forKey: .hostId)
+        workspaceId = try c.decodeIfPresent(String.self, forKey: .workspaceId)
+        job = try c.decodeIfPresent(String.self, forKey: .job)
+        // A draft kept before `sent` existed held a host only once a part had gone to it.
+        sent = try c.decodeIfPresent(Bool.self, forKey: .sent) ?? (hostId != nil)
+        discarded = try c.decodeIfPresent(Bool.self, forKey: .discarded) ?? false
+        parsed = try c.decodeIfPresent(Bool.self, forKey: .parsed) ?? false
+    }
 
     init(key: String, file: String, name: String, mime: String) {
         self.key = key
@@ -64,6 +95,11 @@ public final class Receipt {
 
     /// The line for a receipt pinned to a host that does not answer.
     public static func noAnswer(from job: String) -> String { "\(job)'s host did not answer. The receipt is kept on this phone." }
+    /// The host answered `dropped`: he discarded this one on the desktop.
+    public static let discardedOnDesktop = "This receipt was discarded on the desktop."
+
+    /// `add` while a scan that could not be written is still held: the new one is refused, the held one kept.
+    public struct ScanHeld: Error {}
     /// LifeOS's six sectors in the order its screens list them.
     public static let sectorOrder = ["cosmic", "hypixel", "purdue", "ref", "unify", "life"]
 
@@ -148,13 +184,44 @@ public final class Receipt {
     }
     public var sector: String? { current?.sector }
     /// Some part has gone to a host: the job can no longer change.
-    public var pinned: Bool { current?.hostId != nil }
+    public var pinned: Bool { current?.sent == true }
+    /// While a scan that could not be written is held, nothing else is scanned or saved.
+    public var canScan: Bool { unkept == nil }
+    /// The line under the job: the last failure, or that the desktop discarded it.
+    public var problem: String? { current?.discarded == true ? Self.discardedOnDesktop : error }
 
     /// The amount as whole cents; nil when the field is empty or not a sum.
     public var cents: Int? { ReceiptAmount.cents(amount) }
     /// An empty amount is allowed (it waits on the desktop); a word is not.
     public var amountValid: Bool { amount.trimmingCharacters(in: .whitespaces).isEmpty || cents != nil }
-    public var canSave: Bool { current != nil && sector != nil && amountValid && !saving }
+    /// Save needs a job chosen (a host answered), a sum or nothing in Amount, and a key not spent on the desktop.
+    public var canSave: Bool {
+        guard let draft = current, draft.hostId != nil, draft.workspaceId != nil, draft.sector != nil else { return false }
+        return amountValid && !saving && !draft.discarded && canScan
+    }
+
+    /// Every job a host answered with, the last sector used first, then LifeOS's order, then by host in the order they answered.
+    public var jobs: [ReceiptJob] {
+        let all = answers.flatMap { answer in
+            answer.jobs.compactMap { job in job.sector.map { ReceiptJob(hostId: answer.host.hostId, workspaceId: job.workspaceId, name: job.name, sector: $0, categories: job.categories) } }
+        }
+        let order = sectors
+        return order.flatMap { sector in all.filter { $0.sector == sector } }
+    }
+
+    /// The job the draft holds, from the hosts' answers or as kept with the draft.
+    public var chosen: ReceiptJob? {
+        guard let draft = current, let hostId = draft.hostId, let workspaceId = draft.workspaceId, let sector = draft.sector else { return nil }
+        return jobs.first { $0.hostId == hostId && $0.workspaceId == workspaceId }
+            ?? ReceiptJob(hostId: hostId, workspaceId: workspaceId, name: draft.job ?? sector.capitalized, sector: sector, categories: [])
+    }
+
+    /// What the picker offers: every job, and the one the draft holds though its host has not answered.
+    public var choices: [ReceiptJob] {
+        var list = jobs
+        if let held = chosen, !list.contains(where: { $0.id == held.id }) { list.insert(held, at: 0) }
+        return list
+    }
 
     /// The sectors some host keeps a job in: the last one used first, then LifeOS's order.
     public var sectors: [String] {
@@ -166,7 +233,7 @@ public final class Receipt {
 
     /// The chosen job's categories, and what was read or picked when the job does not list it.
     public var categories: [String] {
-        var list = sector.flatMap { job(in: $0)?.categories } ?? []
+        var list = chosen?.categories ?? []
         if let picked = category, !picked.isEmpty, !list.contains(picked) { list.append(picked) }
         return list
     }
@@ -186,6 +253,12 @@ public final class Receipt {
     /// and the error is thrown; `keepAgain` tries once more.
     @discardableResult
     public func add(file data: Data, mime: String, pages: [Data]) throws -> ReceiptDraft {
+        // The held scan is the only copy: a second may never take its place.
+        guard canScan else { throw ScanHeld() }
+        return try write(file: data, mime: mime, pages: pages)
+    }
+
+    private func write(file data: Data, mime: String, pages: [Data]) throws -> ReceiptDraft {
         let key = makeKey()
         let ext = mime == "application/pdf" ? "pdf" : "jpg"
         let file = "\(key).\(ext)"
@@ -200,8 +273,8 @@ public final class Receipt {
         unkept = nil
         unkeptReason = nil
         var draft = ReceiptDraft(key: key, file: file, name: "Receipt \(Self.stamp(now())).\(ext)", mime: mime)
-        // Hosts that answered already: the picker's first sector until he picks.
-        draft.sector = sectors.first
+        // Hosts that answered already: the picker's first job until he picks.
+        if let first = jobs.first { Self.hold(first, in: &draft) }
         self.pages[key] = pages
         drafts.append(draft)
         currentKey = key
@@ -213,7 +286,7 @@ public final class Receipt {
     @discardableResult
     public func keepAgain() -> ReceiptDraft? {
         guard let held = unkept else { return nil }
-        return try? add(file: held.file, mime: held.mime, pages: held.pages)
+        return try? write(file: held.file, mime: held.mime, pages: held.pages)
     }
 
     /// He let the held scan go.
@@ -228,9 +301,22 @@ public final class Receipt {
         error = nil
     }
 
-    public func pick(_ sector: String) {
+    /// The job he picked: its host and workspace are held with the draft, and Save goes there.
+    public func pick(_ job: ReceiptJob) {
         guard let key = current?.key, !pinned else { return }
-        update(key) { $0.sector = sector }
+        update(key) { Self.hold(job, in: &$0) }
+    }
+
+    /// The first job in a sector (the proof's hook names a sector).
+    public func pick(sector: String) {
+        if let job = jobs.first(where: { $0.sector == sector }) { pick(job) }
+    }
+
+    private static func hold(_ job: ReceiptJob, in draft: inout ReceiptDraft) {
+        draft.sector = job.sector
+        draft.hostId = job.hostId
+        draft.workspaceId = job.workspaceId
+        draft.job = job.name
     }
 
     /// He let this one go: the draft and its file are removed.
@@ -253,7 +339,7 @@ public final class Receipt {
         _ = await first(hosts, { try await $0.moneyState() }, accept: { state in
             wanted.map { want in state.jobs.contains { $0.sector == want } } ?? state.jobs.contains { $0.sector != nil }
         }, each: { [weak self] host, state in self?.take(host, state) })
-        if sectors.isEmpty { error = Self.noHost }
+        if jobs.isEmpty, chosen == nil { error = Self.noHost }
     }
 
     /// Reads the scan on the phone (once), then asks the first host to answer
@@ -283,56 +369,39 @@ public final class Receipt {
         fill(key, fields)
     }
 
-    /// Sends the scan in parts, in order, to one host, awaiting each. What
-    /// goes is what he saw at the press: a parser that answers during the
-    /// Save changes nothing sent. Once a part has gone, the receipt is pinned
-    /// to that host: a retry goes there and nowhere else, and while it does
-    /// not answer the draft stays and `error` says so. Filed or waiting in To
-    /// confirm, the draft and its file are removed; on a failure they stay.
+    /// Sends the scan in parts, in order, to the job the picker shows, awaiting
+    /// each. What goes is what he saw at the press: a parser that answers
+    /// during the Save changes nothing sent. The job's host is the only one
+    /// asked: while it does not answer the draft stays and `error` says so;
+    /// another job in the sector is never chosen for him. Once a part has gone
+    /// the job is fixed. Filed or waiting in To confirm, the draft and its file
+    /// are removed; discarded on the desktop, it stays with its key spent.
     @discardableResult
     public func save(_ hosts: [any MoneyHost]) async -> MoneyReceived? {
-        guard canSave, let pressed = current, let sector = pressed.sector, let data = scan(pressed) else {
-            if canSave { error = Self.gone }
+        guard canSave, let pressed = current, let sector = pressed.sector, let hostId = pressed.hostId, let workspaceId = pressed.workspaceId else { return nil }
+        guard let data = scan(pressed) else {
+            error = Self.gone
             return nil
         }
         let key = pressed.key
+        let job = pressed.job ?? sector.capitalized
         saving = true
         defer { saving = false }
         error = nil
         outcome = nil
-        let host: any MoneyHost
-        if let id = pressed.hostId {
-            let job = pressed.job ?? jobName(sector) ?? sector.capitalized
-            guard let pinned = hosts.first(where: { $0.hostId == id }), await first([pinned], { try await $0.moneyState() }) != nil else {
-                error = Self.noAnswer(from: job)
-                return nil
-            }
-            host = pinned
-        } else {
-            var found = holder(of: sector, among: hosts)
-            if found == nil {
-                await find(hosts)
-                found = holder(of: sector, among: hosts)
-            }
-            guard let found else {
-                error = Self.noHost
-                return nil
-            }
-            host = found
+        guard let host = hosts.first(where: { $0.hostId == hostId }), await first([host], { try await $0.moneyState() }) != nil else {
+            error = Self.noAnswer(from: job)
+            return nil
         }
-        let job = pressed.job ?? jobName(sector) ?? sector.capitalized
-        // Pinned before the first byte goes: a part may arrive though no answer comes back.
-        update(key) {
-            $0.hostId = host.hostId
-            $0.job = job
-        }
+        // Fixed before the first byte goes: a part may arrive though no answer comes back.
+        update(key) { $0.sent = true }
         let seller = pressed.seller.trimmingCharacters(in: .whitespacesAndNewlines)
         let fields = ReceiptPart.Fields(amount: ReceiptAmount.cents(pressed.amount), date: pressed.date, who: seller.isEmpty ? nil : seller, category: pressed.category)
         let parts = ReceiptParts.cut(data)
         do {
             var answer: MoneyReceived?
             for (index, bytes) in parts.enumerated() {
-                let got = try await host.receive(ReceiptPart(key: key, sector: sector, name: pressed.name, mime: pressed.mime, part: index, parts: parts.count, data: bytes, lines: pressed.lines, fields: fields, seen: pressed.parsed))
+                let got = try await host.receive(ReceiptPart(key: key, sector: sector, workspaceId: workspaceId, name: pressed.name, mime: pressed.mime, part: index, parts: parts.count, data: bytes, lines: pressed.lines, fields: fields, seen: pressed.parsed))
                 answer = got
                 // A repeat of a receipt the host already has answers the first at once.
                 if got.state != .partial { break }
@@ -341,10 +410,15 @@ public final class Receipt {
                 error = Self.partial
                 return nil
             }
+            if answer.state == .dropped {
+                // Not a success: the key is spent, and the draft waits for his Discard.
+                update(key) { $0.discarded = true }
+                return nil
+            }
             remove(key)
             lastSector = sector
             defaults.set(sector, forKey: Self.sectorKey)
-            outcome = Self.outcomeLine(answer.state, job: job)
+            outcome = Self.outcomeLine(answer, job: job)
             return answer
         } catch {
             self.error = ActionError.wrap(error).message
@@ -353,9 +427,9 @@ public final class Receipt {
     }
 
     /// Where a saved receipt went: the ledger, or To confirm on the desktop.
-    static func outcomeLine(_ state: MoneyReceived.State, job: String) -> String? {
-        switch state {
-        case .filed: "Filed in \(job)"
+    static func outcomeLine(_ answer: MoneyReceived, job: String) -> String? {
+        switch answer.state {
+        case .filed: answer.suggested == true ? "Suggested in \(job)'s ledger" : "Filed in \(job)"
         case .ready, .reading: "Waiting in Money on the desktop"
         default: nil
         }
@@ -406,18 +480,13 @@ public final class Receipt {
         answers.removeAll { $0.host.hostId == host.hostId }
         answers.append(Answer(host: host, jobs: state.jobs))
         if !sectors.isEmpty, error == Self.noHost { error = nil }
-        // The picker's first sector until he picks one.
-        if let key = current?.key, current?.sector == nil, let first = sectors.first { update(key) { $0.sector = first } }
+        // A draft with no job yet takes the picker's first (in its sector, if it has one) until he picks.
+        guard let draft = current, draft.hostId == nil else { return }
+        if let first = jobs.first(where: { draft.sector == nil || $0.sector == draft.sector }) { update(draft.key) { Self.hold(first, in: &$0) } }
     }
 
     private func job(in sector: String) -> MoneyState.Job? {
         answers.lazy.compactMap { $0.jobs.first { $0.sector == sector } }.first
-    }
-
-    /// The first host to have answered with a job in the sector, of those still paired.
-    private func holder(of sector: String, among hosts: [any MoneyHost]) -> (any MoneyHost)? {
-        let answer = answers.first { answer in answer.jobs.contains { $0.sector == sector } && hosts.contains { $0.hostId == answer.host.hostId } }
-        return answer.flatMap { answer in hosts.first { $0.hostId == answer.host.hostId } }
     }
 
     /// The first of `hosts` whose call answers with a value `accept` takes, or
@@ -452,6 +521,25 @@ public final class Receipt {
         format.locale = Locale(identifier: "en_US_POSIX")
         format.dateFormat = "yyyy-MM-dd 'at' HH.mm"
         return format.string(from: date)
+    }
+}
+
+/// A job a host keeps, as the picker offers it: Save sends to `workspaceId` on `hostId`.
+public struct ReceiptJob: Hashable, Sendable, Identifiable {
+    public let hostId: String
+    public let workspaceId: String
+    public let name: String
+    public let sector: String
+    public let categories: [String]
+
+    public var id: String { "\(hostId)/\(workspaceId)" }
+
+    public init(hostId: String, workspaceId: String, name: String, sector: String, categories: [String]) {
+        self.hostId = hostId
+        self.workspaceId = workspaceId
+        self.name = name
+        self.sector = sector
+        self.categories = categories
     }
 }
 

@@ -20,6 +20,8 @@ public struct ReceiptPart: Hashable, Sendable {
 
     public var key: String
     public var sector: String
+    /// The job he chose, on this host.
+    public var workspaceId: String?
     public var name: String
     public var mime: String
     public var part: Int
@@ -30,9 +32,10 @@ public struct ReceiptPart: Hashable, Sendable {
     /// A host's parser answered and he saw its result in the fields: what he left empty stays empty on the desktop.
     public var seen: Bool
 
-    public init(key: String, sector: String, name: String, mime: String, part: Int, parts: Int, data: Data, lines: [ReceiptTextLine]?, fields: Fields, seen: Bool = false) {
+    public init(key: String, sector: String, workspaceId: String? = nil, name: String, mime: String, part: Int, parts: Int, data: Data, lines: [ReceiptTextLine]?, fields: Fields, seen: Bool = false) {
         self.key = key
         self.sector = sector
+        self.workspaceId = workspaceId
         self.name = name
         self.mime = mime
         self.part = part
@@ -54,7 +57,7 @@ public struct ReceiptPart: Hashable, Sendable {
     }
 
     public var params: Methods.WorkMoneyReceive.Params {
-        .init(key: key, sector: sector, name: name, mime: mime, part: part, parts: parts, dataBase64: data.base64EncodedString(), lines: wireLines, fields: fields, seen: seen ? true : nil, source: .phone)
+        .init(key: key, workspaceId: workspaceId, sector: sector, name: name, mime: mime, part: part, parts: parts, dataBase64: data.base64EncodedString(), lines: wireLines, fields: fields, seen: seen ? true : nil, source: .phone)
     }
 
     /// `work.money.parse`'s lines, held to the same limits.
