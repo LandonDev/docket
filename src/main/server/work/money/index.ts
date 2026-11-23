@@ -1,7 +1,8 @@
 import { join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
-import { MONEY_OWNER_ONLY, MoneyRequestSchemas, type MoneyBooks, type MoneyState } from '@shared/contract-work-money'
+import { MONEY_OWNER_ONLY, MoneyRequestSchemas, receiptLines, type MoneyBooks, type MoneyState } from '@shared/contract-work-money'
 import { handled, NOT_HANDLED, type Handled } from '@shared/work'
+import { categoriesFor } from '@shared/work/money'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { registerFileMoved } from '../files/hooks'
@@ -64,7 +65,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
   if (by.kind === 'model' && MONEY_OWNER_ONLY.has(req.method)) throw new MoneyError(OWNER_ONLY)
   switch (req.method) {
     case 'work.money.state': {
-      const jobs = reachable(ctx, by, req.method).map((ws) => ({ workspaceId: ws.id, name: ws.name, sector: ws.sector, made: booksHere(ctx, ws.id) !== null }))
+      const jobs = reachable(ctx, by, req.method).map((ws) => ({ workspaceId: ws.id, name: ws.name, sector: ws.sector, made: booksHere(ctx, ws.id) !== null, categories: categoriesFor(ws.sector) }))
       return handled({ host: ctx.host, jobs } satisfies MoneyState)
     }
     case 'work.money.open': {
@@ -116,7 +117,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     case 'work.money.parse': {
       const p = paramsOf('work.money.parse', req)
       if (p.workspaceId) admit(ctx, by, req.method, p.workspaceId)
-      return handled(await parseFor(ctx, p.lines, { workspaceId: p.workspaceId, sector: p.sector }))
+      return handled(await parseFor(ctx, receiptLines(p.lines), { workspaceId: p.workspaceId, sector: p.sector }))
     }
     case 'work.money.receive': {
       const p = paramsOf('work.money.receive', req)

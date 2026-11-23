@@ -3,7 +3,7 @@ import { constants, existsSync, mkdirSync, realpathSync, rmSync, statSync } from
 import { copyFile } from 'node:fs/promises'
 import { basename, join, sep } from 'node:path'
 import type { EntryFields, MoneyActed, MoneyPicture, MoneyReceived, MoneySource, ReceiveParams, ToConfirm } from '@shared/contract-work-money'
-import { MONEY_FILE_MAX } from '@shared/contract-work-money'
+import { MONEY_FILE_MAX, receiptLines } from '@shared/contract-work-money'
 import { errorText, type SectorKey } from '@shared/work/ids'
 import { fileWord, knownSellers, parseReceipt, receiptName, type ReceiptFields, type ReceiptLine } from '@shared/work/money'
 import { FenceError } from '../../remote/fence'
@@ -212,7 +212,7 @@ export async function receive(ctx: Ctx, p: ReceiveParams, by: Caller, admit: (wo
 
   const typed = p.fields ? { ...p.fields, way: 'out' as const } : undefined
   if (p.lines) {
-    const fields = merged(await parseFor(ctx, p.lines, { workspaceId: ws.id }), typed)
+    const fields = merged(await parseFor(ctx, receiptLines(p.lines), { workspaceId: ws.id }), typed)
     set(ctx, id, { state: 'ready', file: whole, lines: JSON.stringify(p.lines), fields: JSON.stringify(fields) })
   } else {
     set(ctx, id, { state: 'reading', file: whole, ...(typed ? { fields: JSON.stringify(typed) } : {}) })

@@ -530,6 +530,13 @@ export const SUBSET: SubsetEntry[] = [
   type('CaptureFiled', W.CaptureFiledSchema),
   method('work.capture.state', W.CaptureStateSchema),
   method('work.capture.file', W.CaptureFiledSchema),
+  // money: the phone's receipt (docs/agents/work-money.md "The phone")
+  type('MoneyState', W.MoneyStateSchema),
+  type('MoneyReceiptFields', W.MoneyReceiptFieldsSchema),
+  type('MoneyReceived', W.MoneyReceivedSchema),
+  method('work.money.state', W.MoneyStateSchema),
+  method('work.money.parse', W.MoneyReceiptFieldsSchema),
+  method('work.money.receive', W.MoneyReceivedSchema),
   method('away.get', W.AwaySnapshotSchema),
   method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state })),
   // live video of the computer an agent drives (docs/agents/live-video.md): a stream's ticket, and who is driven where

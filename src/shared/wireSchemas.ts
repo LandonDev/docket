@@ -8,6 +8,8 @@ import { OutboxItemSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, ty
 import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStatus } from './contract-work-lifeos'
 import { AwayDecidedSchema, AwayStateSchema } from './away'
 import type { CaptureFiled, CaptureState } from './contract-work-capture'
+import type { MoneyReceived, MoneyState } from './contract-work-money'
+import type { ReceiptFields } from './work/money'
 import { CanvasItemSchema, type CanvasItem } from './work/canvas'
 import type { WorkspaceWorkSettings } from './work/scope'
 import type { LifeosJwtAnswer } from './contract-work-lifeos'
@@ -1209,6 +1211,21 @@ export const CaptureFiledSchema = z.object({
   threadId: z.string().optional(),
   threadError: z.string().optional()
 })
+/** The money pillar (contract-work-money.ts): the phone's receipt reads which jobs a host keeps, asks the one parser for its own reader's lines, then sends the scan. */
+export const MoneyStateSchema = z.object({
+  host: z.string(),
+  jobs: z.array(z.object({ workspaceId: z.string(), name: z.string(), sector: SectorKeySchema.nullable(), made: z.boolean(), categories: z.array(z.string()) }))
+})
+export const MoneyReceiptFieldsSchema = z.object({
+  amount: z.number().nullable(),
+  date: z.string().nullable(),
+  who: z.string().nullable(),
+  category: z.string().nullable()
+})
+export const MoneyReceivedSchema = z.object({
+  id: z.string(),
+  state: z.enum(['partial', 'reading', 'ready', 'filed', 'dropped'])
+})
 /** Away from computer: the state and the stretch's tally, on each change. */
 export const AwayPushSchema = push('away', { state: AwayStateSchema, decided: AwayDecidedSchema })
 
@@ -1639,6 +1656,9 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof LifeosStatusSchema, LifeosStatus>>,
   Expect<Mirror<typeof CaptureStateSchema, CaptureState>>,
   Expect<Mirror<typeof CaptureFiledSchema, CaptureFiled>>,
+  Expect<Mirror<typeof MoneyStateSchema, MoneyState>>,
+  Expect<Mirror<typeof MoneyReceiptFieldsSchema, ReceiptFields>>,
+  Expect<Mirror<typeof MoneyReceivedSchema, MoneyReceived>>,
   Expect<Mirror<typeof ComputerPushSchema, PushOf<'computer'>>>,
   Expect<Mirror<typeof ComputerFramePushSchema, PushOf<'computer-frame'>>>,
   Expect<Mirror<typeof ComputerClickPushSchema, PushOf<'computer-click'>>>,

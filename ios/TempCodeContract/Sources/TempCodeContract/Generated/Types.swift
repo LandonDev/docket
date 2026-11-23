@@ -7240,6 +7240,113 @@ public struct CaptureFiled: Codable, Hashable, Sendable {
     }
 }
 
+public struct MoneyState: Codable, Hashable, Sendable {
+    public struct Job: Codable, Hashable, Sendable {
+        public let workspaceId: String
+        public let name: String
+        public let sector: String?
+        public let made: Bool
+        public let categories: [String]
+
+        public init(workspaceId: String, name: String, sector: String?, made: Bool, categories: [String]) {
+            self.workspaceId = workspaceId
+            self.name = name
+            self.sector = sector
+            self.made = made
+            self.categories = categories
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case workspaceId, name, sector, made, categories
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(workspaceId, forKey: .workspaceId)
+            try container.encode(name, forKey: .name)
+            try container.encode(sector, forKey: .sector)
+            try container.encode(made, forKey: .made)
+            try container.encode(categories, forKey: .categories)
+        }
+    }
+
+    public let host: String
+    public let jobs: [Job]
+
+    public init(host: String, jobs: [Job]) {
+        self.host = host
+        self.jobs = jobs
+    }
+}
+
+public struct MoneyReceiptFields: Codable, Hashable, Sendable {
+    public let amount: Double?
+    public let date: String?
+    public let who: String?
+    public let category: String?
+
+    public init(amount: Double?, date: String?, who: String?, category: String?) {
+        self.amount = amount
+        self.date = date
+        self.who = who
+        self.category = category
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case amount, date, who, category
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(amount, forKey: .amount)
+        try container.encode(date, forKey: .date)
+        try container.encode(who, forKey: .who)
+        try container.encode(category, forKey: .category)
+    }
+}
+
+public struct MoneyReceived: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case partial
+        case reading
+        case ready
+        case filed
+        case dropped
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "partial": self = .partial
+            case "reading": self = .reading
+            case "ready": self = .ready
+            case "filed": self = .filed
+            case "dropped": self = .dropped
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .partial: "partial"
+            case .reading: "reading"
+            case .ready: "ready"
+            case .filed: "filed"
+            case .dropped: "dropped"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let id: String
+    public let state: State
+
+    public init(id: String, state: State) {
+        self.id = id
+        self.state = state
+    }
+}
+
 public struct VideoOpenAnswer: Codable, Hashable, Sendable {
     public enum Reason: RawRepresentable, Codable, Hashable, Sendable {
         case off

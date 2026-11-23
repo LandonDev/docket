@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { CanvasSourceSchema, type CanvasSource } from './work/canvas'
 import { SectorKeySchema, type SectorKey } from './work/ids'
-import { STATUSES, type CategorySum, type LedgerRow, type MilesSum, type MonthSum, type OwedRow, type Period, type ReceiptFields, type Sums } from './work/money'
+import { STATUSES, type CategorySum, type LedgerRow, type MilesSum, type MonthSum, type OwedRow, type Period, type ReceiptFields, type ReceiptLine, type Sums } from './work/money'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -48,9 +48,12 @@ const PARTS_MAX = Math.ceil(MONEY_FILE_MAX / MONEY_PART_BYTES)
 /** One run of text a reader found and where it stands (`ReceiptLine` in work/money.ts). */
 export const ReceiptLineSchema = z.object({
   text: z.string().max(500),
-  box: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+  /** left, top, right, bottom: four numbers in any one unit */
+  box: z.array(z.number()).length(4).optional(),
   score: z.number().optional()
 })
+/** Lines as they came over the wire, as the parser reads them: each box was checked to hold four numbers. */
+export const receiptLines = (lines: readonly z.infer<typeof ReceiptLineSchema>[]): ReceiptLine[] => lines as unknown as ReceiptLine[]
 export const RECEIPT_LINES_MAX = 2000
 
 /** What was read off a receipt, or what he typed over it: each may be missing. */
@@ -187,6 +190,8 @@ export interface MoneyJob {
   sector: SectorKey | null
   /** it has a ledger */
   made: boolean
+  /** the job's starting categories, for a sender that draws a picker (the phone) */
+  categories: string[]
 }
 export interface MoneyState {
   host: string

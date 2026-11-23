@@ -304,7 +304,7 @@ describe('who may ask', () => {
     const sums = await call<{ rows: { workspaceId: string }[] }>('work.money.sums', { from: '2026-01-01', to: '2027-01-01' }, REMOTE)
     expect(sums.rows.map((r) => r.workspaceId)).toEqual(['ws-ref'])
     const state = await call<{ jobs: { workspaceId: string; made: boolean }[] }>('work.money.state', {}, REMOTE)
-    expect(state.jobs).toEqual([{ workspaceId: 'ws-ref', name: 'Ref', sector: 'ref', made: true }])
+    expect(state.jobs).toEqual([{ workspaceId: 'ws-ref', name: 'Ref', sector: 'ref', made: true, categories: ['Game fees', 'Mileage', 'Uniform and gear', 'Dues and registration', 'Training', 'Travel', 'Meals', 'Other'] }])
   })
 })
 

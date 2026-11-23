@@ -4323,6 +4323,144 @@ public enum Methods {
         public typealias Output = CaptureFiled
     }
 
+    public enum WorkMoneyState: ContractMethod {
+        public static let name = "work.money.state"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = MoneyState
+    }
+
+    public enum WorkMoneyParse: ContractMethod {
+        public static let name = "work.money.parse"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Line: Codable, Hashable, Sendable {
+                public let text: String
+                public let box: [Double]?
+                public let score: Double?
+
+                public init(text: String, box: [Double]? = nil, score: Double? = nil) {
+                    self.text = text
+                    self.box = box
+                    self.score = score
+                }
+            }
+
+            public let lines: [Line]
+            public let workspaceId: String?
+            public let sector: Patch<String>?
+
+            public init(lines: [Line], workspaceId: String? = nil, sector: Patch<String>? = nil) {
+                self.lines = lines
+                self.workspaceId = workspaceId
+                self.sector = sector
+            }
+        }
+
+        public typealias Output = MoneyReceiptFields
+    }
+
+    public enum WorkMoneyReceive: ContractMethod {
+        public static let name = "work.money.receive"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Line: Codable, Hashable, Sendable {
+                public let text: String
+                public let box: [Double]?
+                public let score: Double?
+
+                public init(text: String, box: [Double]? = nil, score: Double? = nil) {
+                    self.text = text
+                    self.box = box
+                    self.score = score
+                }
+            }
+            public struct Fields: Codable, Hashable, Sendable {
+                public let amount: Int?
+                public let date: String?
+                public let who: String?
+                public let category: String?
+
+                public init(amount: Int?, date: String?, who: String?, category: String?) {
+                    self.amount = amount
+                    self.date = date
+                    self.who = who
+                    self.category = category
+                }
+
+                private enum CodingKeys: String, CodingKey {
+                    case amount, date, who, category
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.container(keyedBy: CodingKeys.self)
+                    try container.encode(amount, forKey: .amount)
+                    try container.encode(date, forKey: .date)
+                    try container.encode(who, forKey: .who)
+                    try container.encode(category, forKey: .category)
+                }
+            }
+            public enum Source: RawRepresentable, Codable, Hashable, Sendable {
+                case drop
+                case phone
+                case mail
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "drop": self = .drop
+                    case "phone": self = .phone
+                    case "mail": self = .mail
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .drop: "drop"
+                    case .phone: "phone"
+                    case .mail: "mail"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let key: String
+            public let workspaceId: String?
+            public let sector: String?
+            public let name: String
+            public let mime: String?
+            public let part: Int?
+            public let parts: Int?
+            public let dataBase64: String?
+            public let file: CanvasSource?
+            public let lines: [Line]?
+            public let fields: Fields?
+            public let source: Source?
+
+            public init(key: String, workspaceId: String? = nil, sector: String? = nil, name: String, mime: String? = nil, part: Int? = nil, parts: Int? = nil, dataBase64: String? = nil, file: CanvasSource? = nil, lines: [Line]? = nil, fields: Fields? = nil, source: Source? = nil) {
+                self.key = key
+                self.workspaceId = workspaceId
+                self.sector = sector
+                self.name = name
+                self.mime = mime
+                self.part = part
+                self.parts = parts
+                self.dataBase64 = dataBase64
+                self.file = file
+                self.lines = lines
+                self.fields = fields
+                self.source = source
+            }
+        }
+
+        public typealias Output = MoneyReceived
+    }
+
     public enum AwayGet: ContractMethod {
         public static let name = "away.get"
 
