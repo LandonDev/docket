@@ -101,7 +101,7 @@ export const shownEvent = (p: EventShown | null | undefined): string =>
   JSON.stringify([p?.eventTitle ?? null, p?.eventStartsAt ?? null, p?.eventEndsAt ?? null, p?.eventLocation ?? null])
 
 /** Kinds whose payload, edited here, is what goes. The renderer's Edit follows the same list (work/outbox/model.ts EDITABLE). */
-export const EDITABLE_KINDS: readonly ActKind[] = ['mail.send', 'addon.call', 'teams.post', 'office.mail.send']
+export const EDITABLE_KINDS: readonly ActKind[] = ['mail.send', 'addon.call', 'teams.post', 'office.mail.send', 'chat.reply']
 export const NOT_EDITABLE = 'This act cannot be changed here; change it where it was made, and it is held again.'
 export const NO_SUCH_ITEM = 'no such held item on this host'
 export const CHANGED_SINCE = 'This item changed since you opened it. Look at it again before you decide.'

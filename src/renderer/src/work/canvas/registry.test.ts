@@ -5,6 +5,7 @@ import { agendaActs } from "../agenda/act";
 import { browserActs } from "../browser/act";
 import { formsActs } from "../forms/act";
 import { frameioActs } from "../frameio/act";
+import { messagesActs } from "../messages/act";
 import { googleActs } from "../google/act";
 import { guestsActs } from "../guests/act";
 import { mailActs } from "../mail/act";
@@ -139,7 +140,7 @@ describe("the act views", () => {
   });
 
   it("each pillar's file holds the kinds that are its own, and no other", () => {
-    const files = { agenda: agendaActs, browser: browserActs, forms: formsActs, frameio: frameioActs, google: googleActs, guests: guestsActs, mail: mailActs, office: officeActs, outbox: outboxActs };
+    const files = { agenda: agendaActs, browser: browserActs, forms: formsActs, frameio: frameioActs, google: googleActs, guests: guestsActs, mail: mailActs, messages: messagesActs, office: officeActs, outbox: outboxActs };
     const owned = (pillar: string): ActKind[] => ACT_KINDS.filter((kind) => ACT_PILLAR[kind] === pillar);
     expect(Object.keys(files).sort()).toEqual([...new Set(Object.values(ACT_PILLAR))].sort());
     for (const [pillar, views] of Object.entries(files)) expect(Object.keys(views).sort(), pillar).toEqual(owned(pillar).sort());

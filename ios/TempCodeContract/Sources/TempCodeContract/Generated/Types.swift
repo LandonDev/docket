@@ -4808,6 +4808,7 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         case portalSubmit
         case computerAct
         case addonCall
+        case chatReply
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -4827,6 +4828,7 @@ public struct OutboxItem: Codable, Hashable, Sendable {
             case "portal.submit": self = .portalSubmit
             case "computer.act": self = .computerAct
             case "addon.call": self = .addonCall
+            case "chat.reply": self = .chatReply
             default: self = .unknown(rawValue)
             }
         }
@@ -4847,6 +4849,7 @@ public struct OutboxItem: Codable, Hashable, Sendable {
             case .portalSubmit: "portal.submit"
             case .computerAct: "computer.act"
             case .addonCall: "addon.call"
+            case .chatReply: "chat.reply"
             case .unknown(let value): value
             }
         }
@@ -5207,6 +5210,7 @@ public struct OutboxGrant: Codable, Hashable, Sendable {
         case portalSubmit
         case computerAct
         case addonCall
+        case chatReply
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -5226,6 +5230,7 @@ public struct OutboxGrant: Codable, Hashable, Sendable {
             case "portal.submit": self = .portalSubmit
             case "computer.act": self = .computerAct
             case "addon.call": self = .addonCall
+            case "chat.reply": self = .chatReply
             default: self = .unknown(rawValue)
             }
         }
@@ -5246,6 +5251,7 @@ public struct OutboxGrant: Codable, Hashable, Sendable {
             case .portalSubmit: "portal.submit"
             case .computerAct: "computer.act"
             case .addonCall: "addon.call"
+            case .chatReply: "chat.reply"
             case .unknown(let value): value
             }
         }

@@ -1,9 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { handled, NOT_HANDLED } from '@shared/work'
-import type { WorkCtx, WorkModule } from '../modules'
+import type { ActKindDef, WorkModule } from '../modules'
 import { messagesHealth } from './health'
+import { chatReplyKind } from './held'
 import { searchChats, unanswered, unread, workSector } from './lifeos'
-import { ChatWatch } from './watch'
+import { draftsOf, dropDraft, dropWorkspaceDrafts, pushDrafts, retryReply, sendReply, undoReply } from './replies'
+import { messagesTools, PREAMBLE, readsChat } from './tools'
+import { startWatch, watchOf } from './watch'
 
 /**
  * The messages pillar's server module (docs/agents/work-messages.md). LifeOS
@@ -27,14 +30,26 @@ export function ensureMessagesTables(db: DatabaseSync): void {
   db.exec('CREATE INDEX IF NOT EXISTS work_messages_drafts_chat ON work_messages_drafts (workspace_id, chat_id)')
 }
 
-/** The live watch of each running context, so the workspace hooks reach it. */
-const watches = new Map<WorkCtx, ChatWatch>()
-
 export const messages: WorkModule = {
   id: 'messages',
   ensure: ensureMessagesTables,
-  async handle(req, ctx) {
+  async handle(req, ctx, by) {
     switch (req.method) {
+      case 'work.messages.send': {
+        const { workspaceId, chatId, replyTo, text } = req.params
+        return handled(await sendReply(ctx, by, { workspaceId, chatId, text, ...(replyTo ? { replyTo } : {}) }))
+      }
+      case 'work.messages.undo':
+        return handled(await undoReply(ctx, by, req.params))
+      case 'work.messages.retry':
+        return handled(await retryReply(ctx, by, req.params))
+      case 'work.messages.drafts':
+        return handled(draftsOf(ctx, req.params.workspaceId, req.params.chatId))
+      case 'work.messages.dropDraft': {
+        const { workspaceId } = req.params
+        if (dropDraft(ctx, by, req.params)) await pushDrafts(ctx, workspaceId, watchOf(ctx)?.unreadOf(workspaceId))
+        return handled({})
+      }
       case 'work.messages.search': {
         const { workspaceId, query, limit } = req.params
         return handled(await searchChats(ctx, workSector(ctx, workspaceId), query, limit))
@@ -47,19 +62,17 @@ export const messages: WorkModule = {
         return NOT_HANDLED
     }
   },
-  start(ctx) {
-    const watch = new ChatWatch(ctx)
-    watches.set(ctx, watch)
-    return () => {
-      watch.stop()
-      if (watches.get(ctx) === watch) watches.delete(ctx)
-    }
-  },
+  tools: messagesTools,
+  acts: [chatReplyKind as unknown as ActKindDef],
+  preamble: (scope) => (readsChat(scope) ? PREAMBLE : null),
+  start: startWatch,
   workspaceCreated(_workspaceId, ctx) {
-    watches.get(ctx)?.follow()
+    watchOf(ctx)?.follow()
   },
+  // A draft outlives the thread that wrote it (`sessionsRemoved` drops nothing); it goes with its workspace.
   workspaceRemoved(workspaceId, ctx) {
-    watches.get(ctx)?.drop(workspaceId)
+    watchOf(ctx)?.drop(workspaceId)
+    dropWorkspaceDrafts(ctx, workspaceId)
   },
   health: messagesHealth
 }

@@ -10,6 +10,7 @@ import { guestsActs } from "../guests/act";
 import { googleActs } from "../google/act";
 import { formsActs } from "../forms/act";
 import { frameioActs } from "../frameio/act";
+import { messagesActs } from "../messages/act";
 
 /**
  * How each kind of held act is shown (docs/agents/work-outbox.md): one view
@@ -47,4 +48,5 @@ export const ACT_VIEWS: Record<ActKind, ActKindView> = {
   ...googleActs,
   ...formsActs,
   ...frameioActs,
+  ...messagesActs,
 };

@@ -1,3 +1,4 @@
+import type { DatabaseSync } from 'node:sqlite'
 import { errorText, type SectorKey } from '@shared/work'
 import type { WorkCtx } from '../modules'
 import { linkedWorkspaces, unreadAnswer } from './lifeos'
@@ -8,6 +9,20 @@ import { linkedWorkspaces, unreadAnswer } from './lifeos'
  * every window as the `work.messages` push, once a change. Workspaces
  * coming and going are followed by the module's hooks (`follow`).
  */
+
+/** The running watch of a host, by its database: a tool's context is a copy of the one `start` was given. */
+const watches = new WeakMap<DatabaseSync, ChatWatch>()
+export const watchOf = (ctx: Pick<WorkCtx, 'db'>): ChatWatch | undefined => watches.get(ctx.db)
+
+/** Starts the watch for a context; its return stops it. */
+export function startWatch(ctx: WorkCtx): () => void {
+  const watch = new ChatWatch(ctx)
+  watches.set(ctx.db, watch)
+  return () => {
+    watch.stop()
+    if (watches.get(ctx.db) === watch) watches.delete(ctx.db)
+  }
+}
 
 interface Watched {
   sector: SectorKey

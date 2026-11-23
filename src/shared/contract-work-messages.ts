@@ -22,10 +22,13 @@ export const MessagesRequestSchemas = [
    * someone else. A thread's call is refused: an agent's reply is `messages_draft_reply`, which is held.
    */
   request('work.messages.send', z.object({ workspaceId, chatId: id, replyTo: id.optional(), text: z.string().min(1).max(4000) })),
-  /** → { text }: takes back a reply still inside its undo time, and answers its words. */
-  request('work.messages.undo', z.object({ workspaceId, id })),
-  /** → {}: sends a failed reply again. */
-  request('work.messages.retry', z.object({ workspaceId, id })),
+  /**
+   * → { text }: takes back a reply still inside its undo time, and answers its words. `chatId` is the conversation it
+   * is in: the host checks it is the workspace's and that the reply is one of its own before LifeOS hears of it.
+   */
+  request('work.messages.undo', z.object({ workspaceId, chatId: id, id })),
+  /** → {}: sends a failed reply again; `chatId` as for `undo`. */
+  request('work.messages.retry', z.object({ workspaceId, chatId: id, id })),
   /** → { hits: ChatHit[] }: this job's messages that hold the words, newest first. */
   request('work.messages.search', z.object({ workspaceId, query: z.string().min(1).max(200), limit: z.number().int().min(1).max(50).optional() })),
   /** → { rows: ChatWaiting[] }: conversations whose newest message is someone else's, written to him, unread and unanswered. */

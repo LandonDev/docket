@@ -112,6 +112,10 @@ export function wordsOf(kind: ActKind, payload: unknown): unknown {
     const p = payload as { chat?: unknown; text?: unknown } | null
     return typeof p?.chat === 'string' && typeof p.text === 'string' ? { chat: p.chat, text: p.text } : null
   }
+  if (kind === 'chat.reply') {
+    const p = payload as { chatId?: unknown; text?: unknown } | null
+    return typeof p?.chatId === 'string' && typeof p.text === 'string' ? { chatId: p.chatId, text: p.text } : null
+  }
   return null
 }
 

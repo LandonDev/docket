@@ -403,7 +403,7 @@ export function applyEdits(payload: unknown, edits: ReadonlyMap<string, string>,
 }
 
 /** Kinds whose payload a person may change while it waits (the host refuses the rest). */
-export const EDITABLE: readonly ActKind[] = ["mail.send", "addon.call", "teams.post", "office.mail.send"];
+export const EDITABLE: readonly ActKind[] = ["mail.send", "addon.call", "teams.post", "office.mail.send", "chat.reply"];
 
 // ── grants: made only from a held item, narrow ───────────────────────────
 
@@ -455,7 +455,7 @@ export function offerLine(offer: Pick<GrantOffer, "label" | "count" | "routineId
   return `${offer.label}${offer.routineId ? " from this routine" : ""}: you sent the last ${offer.count} as written.`;
 }
 
-const KIND_WORDS: Partial<Record<ActKind, string>> = { "mail.send": "mail", "office.mail.send": "mail", "addon.call": "add-on call", "teams.post": "post", "calendar.op": "calendar act" };
+const KIND_WORDS: Partial<Record<ActKind, string>> = { "mail.send": "mail", "office.mail.send": "mail", "addon.call": "add-on call", "teams.post": "post", "calendar.op": "calendar act", "chat.reply": "reply" };
 
 /** A grant row's muted line, under its workspace's heading: "Made today from a held mail". */
 export function grantLine(kind: ActKind, createdAt: number, now = Date.now()): string {
