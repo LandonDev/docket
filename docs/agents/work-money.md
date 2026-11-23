@@ -71,7 +71,15 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
 
 - **The rev cache** (`gridOf`): `/internal/sheet/open` gives the sheet's
   revision; unchanged, the cells come from memory; changed, row 1 and then
-  pages of `/internal/sheet/range`.
+  pages of `/internal/sheet/range` down to the sheet's last row that holds
+  anything. That row is found from the workbook itself
+  (`/internal/sheet/snapshot`, `extentOf`), so a stretch of blank rows he
+  left, however long, never ends the read or misplaces the next append. A
+  workbook past 32 MB is not asked for whole: the read then stops at a
+  whole blank page.
+- **`any`** on the read says whether the job has money at all (a ledger row
+  or a trip in any period): the view's empty state hangs on it, not on the
+  period on screen.
 - **Appending** (`appendRow`): the service has no append. Under a lock per
   workspace (`locked`) the ledger is read for its last row that holds
   anything and the new row's cells are written at once with
@@ -84,14 +92,16 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   spelling. A `Money` folder, or a ledger, that is a link out of the job's
   folder is refused: nothing is read or written through it.
 - **Acting on a row** (`editRow`, `payRow`): the window names the row as
-  `{ref, row, sig}`, where `sig` is its date, name, amounts and status as
-  it last read them (`sigOf`). The host reads the sheet again and finds the
+  `{ref, row, sig}`, where `sig` is every cell Money reads of it, as the
+  window last read them (`sigOf`). The host reads the sheet again and finds the
   row by `Ref` wherever it now stands, else by its number; either way only
   while it still reads the same (`findRow`). A row he changed since the
   window read it answers `{changed: true}` and nothing is written, so an
-  edit of one field never puts an old amount back and Paid never settles a
+  edit of one field never puts another cell back and Paid never settles a
   figure he did not see. Only the cells whose reading differs are written.
-  A row he typed is never given a `Ref`.
+  A row he typed is never given a `Ref`. A row he typed with money both in
+  and out has no one direction, so the form cannot change it: the host
+  refuses the edit and the window shows it read only, with Open ledger.
 - **The look** (`dress`): a bold first row that stays in view, set once at
   create through `/internal/sheet/apply` (raw sheet mutations).
   `real.test.ts` holds that both reach an exported Excel file. Currency
@@ -115,7 +125,10 @@ nothing twice. Only his accept writes the ledger.
   file, written as they land (any order) and put together when the last is
   in (`parts.ts`). A window on the workspace's own host may send `file:
   {at: 'file', host, path}` instead, and the host copies it after
-  `ctx.reaches(by, path)`. Pictures and PDFs only. A receipt names its job
+  `ctx.reaches(by, path)`. Pictures and PDFs only, by `receiptFileName`: a
+  name with an extension Money takes, else a picture's or a PDF's type
+  gives the name that extension (a mail's attachment with none). A receipt
+  names its job
   by `workspaceId`, or by `sector` (the phone): the first Work workspace
   here in that sector.
 - **The sender's own reading**: with `lines` (the phone's reader) the host
@@ -208,8 +221,9 @@ box. About 4 seconds a file.
   Place | Miles | Rate | Value | Ref`, Value a formula), keeps the miles by
   place, and marks the event added. One add an event at a time; when the
   pay was written and the trip then failed, the event stays offered
-  (`adding`) and the next add writes the trip alone. `work.money.skip`
-  marks it skipped.
+  (`adding`) and the next add writes the trip alone. A log others can open
+  takes the trip as a suggestion on a row of its own, and the answer says
+  so. `work.money.skip` marks it skipped; `undo` offers it again.
 - The rate is `rateFor(year, his own)`: his for that year, else
   `MILEAGE_RATES` ($0.70 for 2025), else the newest year before it.
   `work.money.rate` sets a year's.
@@ -220,7 +234,10 @@ box. About 4 seconds a file.
   `Ledger <year>.csv` (`csvOf`, RFC 4180: the year's rows, then the mileage
   rows) and `Ledger <year>.xlsx` (`ctx.convert({from: 'csv', to: 'xlsx'})`),
   and answers the summary's page (`taxSummaryHtml`). A second export
-  replaces the first's files and says so (`replaced`).
+  replaces the first's files and says so (`replaced`, for the files it
+  wrote over). Each file is staged beside its place under a fresh name
+  made exclusively, then renamed in, so nothing is ever written through a
+  name that was already there.
 - `work.money.invoiceNext` and `work.money.invoice` number an invoice (from
   1001, one past the highest in the ledger or the books), keep his details
   and terms, and answer its page (`invoiceHtml`). A purchase request is the
