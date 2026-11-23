@@ -1,12 +1,12 @@
 import type { ExportAnswer, PreviewAnswer, PreviewFormatId, PreviewOfficeAnswer, PreviewResult } from "@shared/contract-work-formats";
 import { PREVIEW_READ_MAX } from "@shared/contract-work-formats";
 import type { CanvasSource } from "@shared/work";
-import type { AnyEditor } from "work-kit/editor";
-import type { DocumentPage } from "work-kit/editor/page";
+import type { AnyEditor, DocumentHandle, PagesHtmlOptions } from "work-kit/editor";
+import type { DocumentPage, PageSetup } from "work-kit/editor/page";
 import { paraOf } from "work-kit/editor/para";
 import { registry } from "../../lib/connection";
 import { fileStem, fromBase64, mimeOf, paperFor, saveFile } from "../formats/model";
-import { NotInReach, type Drawn, type PreviewBytes, type PreviewFormat, type PreviewSource } from "../formats/preview";
+import { NotInReach, type CommonSetup, type DocumentSetup, type Drawn, type PaperName, type PreviewBytes, type PreviewFormat, type PreviewSource } from "../formats/preview";
 import { docFonts } from "./fonts";
 import { servedBy } from "./host";
 
@@ -17,8 +17,9 @@ import { servedBy } from "./host";
  * - Word, OpenDocument and Rich Text are written on the host from the live
  *   text, converted there, and drawn by LibreOffice from the exported file
  *   itself (`work.formats.preview`).
- * - PDF is the document's print page, written here from the editor's blocks
- *   and printed on the host.
+ * - PDF is the document's print page, printed on the host: in Pages the
+ *   sheets as he sees them (the editor's `pagesHtml`, with the faces inlined),
+ *   else the page written here from the editor's blocks.
  * - Markdown is the text the host writes; a web page is the page written
  *   here.
  *
@@ -179,6 +180,45 @@ export interface DocPreviewDeps {
   /** hands a PDF to this computer to print, which says where it went (work/formats/printOut.ts) */
   print?(name: string, bytes: Uint8Array): Promise<void>;
   locale?: string;
+  /**
+   * A styled document's pages as the editor holds them (its `DocumentHandle`), in either view; null
+   * for a classic one or while it opens. `pagesHtml` answers null in Flow. `setSetup` is there only
+   * where he may edit. `settled` waits until what was just set is laid out.
+   */
+  pages?(): DocPages | null;
+  /** The `@font-face` rules a print of the pages carries (a test hands its own; the default reads the faces as `data:` URLs). */
+  faces?(editor: AnyEditor, styled: DocumentPage): Promise<string>;
+}
+
+export type DocPages = Pick<DocumentHandle, "pagesHtml"> & Partial<Pick<DocumentHandle, "setSetup">> & { settled?(): Promise<void> };
+type SetSetup = DocumentHandle["setSetup"];
+
+/** The papers a document may take: Preview's list less what the document's set-up does not hold (Tabloid). */
+export const DOC_PAPERS: readonly PaperName[] = ["Letter", "A4", "Legal", "A3", "A5"];
+
+/**
+ * The document's own set-up as Preview's Page section reads it, and writes it back through the editor:
+ * paper, orientation, margins and the header and footer chosen there are the document's.
+ */
+export function documentSetup(setup: PageSetup, setSetup: SetSetup, settled?: () => Promise<void>): DocumentSetup {
+  const common: CommonSetup = { paper: setup.paper, orientation: setup.orientation, margins: { ...setup.margins }, header: setup.header, footer: setup.footer, papers: DOC_PAPERS };
+  return {
+    kind: "document",
+    common,
+    columns: Math.min(3, Math.max(1, Math.round(setup.columns))) as 1 | 2 | 3,
+    differentFirst: setup.differentFirst,
+    async set(next) {
+      const c = next.common;
+      if (c && !DOC_PAPERS.includes(c.paper)) throw new Error(`A document cannot be set on ${c.paper}`);
+      const patch: Parameters<SetSetup>[0] = {
+        ...(c ? { paper: c.paper as PageSetup["paper"], orientation: c.orientation, margins: { ...c.margins }, header: c.header, footer: c.footer } : {}),
+        ...(next.columns !== undefined ? { columns: next.columns } : {}),
+        ...(next.differentFirst !== undefined ? { differentFirst: next.differentFirst } : {}),
+      };
+      if (!setSetup(patch)) throw new Error("The page set-up could not be changed");
+      await settled?.();
+    },
+  };
 }
 
 const linkRequest: Request = (env, method, params, opts) => registry.linkOf(env).request(method, params, opts);
@@ -186,18 +226,22 @@ const linkRequest: Request = (env, method, params, opts) => registry.linkOf(env)
 /** The font a document's text is in on paper when nothing names one: Office's own default, drawn with its twin. */
 export const DOC_PAPER_FONT = "Calibri";
 
+/** The print window loads no file, so a printed page carries its faces: the same ones LibreOffice draws Word's file with. */
+async function docPrintFonts(editor: AnyEditor, styled: DocumentPage | null): Promise<{ faces: string; body: string }> {
+  const { printFonts } = await import("../formats/fonts");
+  const { resolveStyle, pageFonts, NORMAL } = await import("work-kit/editor/page");
+  const body = styled ? (resolveStyle(styled.styles, NORMAL).fontFamily ?? DOC_PAPER_FONT) : DOC_PAPER_FONT;
+  const named = styled ? [...pageFonts(styled), ...docFonts(editor.document as readonly unknown[])] : [];
+  return printFonts(named, body);
+}
+
 async function writePage(editor: AnyEditor, title: string, print: { paper: "A4" | "Letter" } | null, styled: DocumentPage | null): Promise<string> {
   const { htmlDocument } = await import("work-kit/formats/html");
   const blocks = editor.document as never;
   // A styled document's page wears its own styles, theme and sheet; a classic one keeps the page's own look.
   const own = styled ? { page: styled } : {};
   if (!print) return htmlDocument(editor, blocks, { title, ...own });
-  // The print window loads no file, so the page carries its faces: the same ones LibreOffice draws Word's file with.
-  const { printFonts } = await import("../formats/fonts");
-  const { resolveStyle, pageFonts, NORMAL } = await import("work-kit/editor/page");
-  const body = styled ? (resolveStyle(styled.styles, NORMAL).fontFamily ?? DOC_PAPER_FONT) : DOC_PAPER_FONT;
-  const named = styled ? [...pageFonts(styled), ...docFonts(editor.document as readonly unknown[])] : [];
-  return htmlDocument(editor, blocks, { title, print, ...own, fonts: await printFonts(named, body) });
+  return htmlDocument(editor, blocks, { title, print, ...own, fonts: await docPrintFonts(editor, styled) });
 }
 
 const cancelled = (): DOMException => new DOMException("The draw was cancelled", "AbortError");
@@ -209,6 +253,7 @@ const asLine = (warning: string): string => warning.trim().replace(/\.$/, "");
 export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
   const request = deps.request ?? linkRequest;
   const page = deps.page ?? writePage;
+  const faces = deps.faces ?? (async (editor: AnyEditor, styled: DocumentPage) => (await docPrintFonts(editor, styled)).faces);
   const save = deps.save ?? saveFile;
   const print =
     deps.print ??
@@ -248,10 +293,28 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
     return editor;
   };
 
+  /**
+   * The page a print is made of. In Pages it is the sheets as he sees them, the editor's own frame
+   * written out (one print contract: Pages is the PDF, page for page); in Flow, or for a classic
+   * document, the page written from the blocks.
+   */
+  const printPage = async (paper: "A4" | "Letter"): Promise<string> => {
+    const editor = mustHaveEditor();
+    const styled = deps.styled?.() ?? null;
+    const pages = styled ? deps.pages?.() : null;
+    if (pages && styled) {
+      await pages.settled?.();
+      const options: PagesHtmlOptions = { title: deps.title, faces: await faces(editor, styled) };
+      const html = pages.pagesHtml(options);
+      if (html) return html;
+    }
+    return page(editor, deps.title, { paper }, styled);
+  };
+
   /** The format as pages on the host: a render it already keeps for this very text is answered as it is. */
   const render = async (format: PreviewFormatId, signal: AbortSignal, by?: "word"): Promise<{ env: string; home: boolean; answer: PreviewAnswer }> => {
     const paper = paperFor(deps.locale ?? globalThis.navigator?.language ?? "en-US");
-    const html = format === "pdf" ? await page(mustHaveEditor(), deps.title, { paper }, deps.styled?.() ?? null) : undefined;
+    const html = format === "pdf" ? await printPage(paper) : undefined;
     if (signal.aborted) throw cancelled();
     return onHost(async (env, home) => {
       if (signal.aborted) throw cancelled();
@@ -288,6 +351,13 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
 
   return {
     formats: [...DOC_FORMATS],
+    // Read each time Preview draws: the document's set-up as it stands, for a styled document he may edit. A reader, and a classic document, have no Page section.
+    get setup() {
+      const styled = deps.styled?.() ?? null;
+      const pages = styled ? deps.pages?.() : null;
+      const set = pages?.setSetup;
+      return styled && pages && set ? documentSetup(styled.setup, (patch) => set(patch), pages.settled) : undefined;
+    },
     async office(format = "docx") {
       if (format !== "docx") return null;
       const { state } = await onHost((env, home) => request<PreviewOfficeAnswer>(env, "work.formats.previewOffice", target(home)));

@@ -555,6 +555,24 @@ describe("the Page section", () => {
     expect(sets.at(-1)).toMatchObject({ common: { paper: "A4" } });
   });
 
+  it("lists only the papers the kind may be set on, in the menu's own order; a kind that names none is offered every paper", async () => {
+    const whole = setupOf(async () => {});
+    const f = fake({ setup: { ...whole, common: { ...whole.common, papers: ["A4", "Letter", "A5"] } } as PageSetupModel });
+    await show(f);
+    await f.answer({ picture: paged("r1"), drops: [] });
+    await act(async () => fireEvent.click(within(column()!).getByRole("button", { name: /Letter/ })));
+    await screen.findByRole("menuitemcheckbox", { name: "A4" });
+    expect(screen.getAllByRole("menuitemcheckbox").map((row) => row.textContent)).toEqual(["Letter", "A4", "A5"]);
+    cleanup();
+
+    const g = fake({ setup: whole });
+    await show(g);
+    await g.answer({ picture: paged("r1"), drops: [] });
+    await act(async () => fireEvent.click(within(column()!).getByRole("button", { name: /Letter/ })));
+    await screen.findByRole("menuitemcheckbox", { name: "Tabloid" });
+    expect(screen.getAllByRole("menuitemcheckbox").length).toBeGreaterThan(3);
+  });
+
   it("is in a popover from the bar's Page button when the column is folded, and absent for a format with no pages", async () => {
     const f = fake({ setup: setupOf(async () => {}) });
     await show(f, { width: 500, tight: true });

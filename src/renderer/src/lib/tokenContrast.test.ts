@@ -103,7 +103,18 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
   },
   // Paper is white in both themes: its two inks are read on it, and its rule is an edge on it.
   { name: "paper", floor: 4.5, pairs: pairs(["--paper-ink", "--paper-ink-2"], ["--paper"]) },
-  { name: "edge", floor: 1.15, pairs: [...pairs(["--border"], EDGE_GROUNDS), { ink: "--paper-rule", on: "--paper", base: "--paper" }] },
+  // A document's sheet wears the theme: its inks are read on it, and its edge and its rule are edges, on the sheet and against the stage.
+  { name: "page", floor: 4.5, pairs: pairs(["--page-ink", "--page-ink-2", "--page-dim"], ["--page"]) },
+  {
+    name: "edge",
+    floor: 1.15,
+    pairs: [
+      ...pairs(["--border"], EDGE_GROUNDS),
+      { ink: "--paper-rule", on: "--paper", base: "--paper" },
+      { ink: "--page-rule", on: "--page", base: "--page" },
+      { ink: "--page-edge", on: "--stage", base: "--stage" },
+    ],
+  },
   { name: "field edge", floor: 1.4, pairs: pairs(["--input"], PAGE) },
   {
     // Words on a canvas tint, the tint laid on the page or a card.

@@ -635,7 +635,7 @@ function PageSection({ setup, onChange, rows }: { setup?: CommonSetup; onChange?
       <ColumnHeading first>Page</ColumnHeading>
       {setup && onChange ? (
         <>
-          <PageMenuRow<PaperName> label="Paper" value={setup.paper} options={PAPER_ROWS} onPick={(paper) => onChange({ paper })} />
+          <PageMenuRow<PaperName> label="Paper" value={setup.paper} options={setup.papers ? PAPER_ROWS.filter((row) => setup.papers!.includes(row.id)) : PAPER_ROWS} onPick={(paper) => onChange({ paper })} />
           <PageMenuRow label="Orientation" value={setup.orientation === "landscape" ? "Landscape" : "Portrait"} options={ORIENTATIONS} onPick={(orientation) => onChange({ orientation })} />
           <PageMenuRow<MarginPreset> label="Margins" value={marginPresetOf(setup.margins) ?? "Custom"} options={MARGINS} onPick={(preset) => onChange({ margins: { ...MARGIN_PRESETS[preset] } })} />
           <PageSwitchRow label="Headers and footers" checked={setup.header || setup.footer} onChange={(on) => onChange({ header: on, footer: on })} />

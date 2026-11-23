@@ -7,7 +7,7 @@ import type { DocumentPage } from "work-kit/editor/page";
 import { paraText } from "work-kit/editor/para";
 import { NotInReach } from "../formats/preview";
 import { previewProblems } from "../formats/previewContract";
-import { blockFacts, DOC_FORMATS, docDrops, docPreviewSource, type DocFacts, type DocPreviewDeps } from "./previewSource";
+import { blockFacts, DOC_FORMATS, DOC_PAPERS, docDrops, docPreviewSource, type DocFacts, type DocPreviewDeps } from "./previewSource";
 
 /**
  * The document's side of Preview (docs/agents/work-docs.md "Preview"): what
@@ -442,5 +442,85 @@ describe("the document's Preview source", () => {
     // Word is made on the host from the live text: it needs no editor here.
     await expect(opening.source.draw("docx", { signal: signal() })).resolves.toMatchObject({ picture: { kind: "paged" } });
     await expect(s.draw("csv", { signal: signal() })).rejects.toThrow("A document does not go out as csv");
+  });
+});
+
+describe("a styled document's pages", () => {
+  const page = { schema: 1, setup: { paper: "Legal", orientation: "landscape", margins: { top: 72, right: 54, bottom: 72, left: 54 }, columns: 2, header: true, footer: false, differentFirst: true } } as unknown as DocumentPage;
+  const sheets = "<!doctype html><html><body>the sheets</body></html>";
+
+  it("a PDF and Print are the sheets he sees once what he set is laid out, with the document's faces inlined; the flow page is not written", async () => {
+    const h = host();
+    const order: string[] = [];
+    const asked: unknown[] = [];
+    const { source: s, pages, printed } = source(h, {
+      styled: () => page,
+      faces: async (_editor, styled) => (order.push("faces"), expect(styled).toBe(page), "@font-face{font-family:Carlito}"),
+      pages: () => ({ settled: async () => void order.push("settled"), pagesHtml: (options) => (order.push("written"), asked.push(options), sheets) }),
+    });
+    await s.draw("pdf", { signal: signal() });
+    expect(order).toEqual(["settled", "faces", "written"]);
+    expect(asked).toEqual([{ title: 'Plan: "spring"', faces: "@font-face{font-family:Carlito}" }]);
+    expect(h.calls[0]!.params).toMatchObject({ format: "pdf", html: sheets });
+    await s.draw("print", { signal: signal() });
+    expect(h.calls.filter((call) => call.method === "work.formats.preview").at(-1)!.params.html).toBe(sheets);
+    await s.export("print");
+    await flush();
+    expect(printed).toHaveLength(1);
+    expect(pages).toEqual([]);
+  });
+
+  it("in Flow the editor answers no page and the page written from the blocks goes; a classic document's pages are never asked for", async () => {
+    const h = host();
+    const flow = source(h, { styled: () => page, faces: async () => "", pages: () => ({ pagesHtml: () => null }) });
+    await flow.source.draw("pdf", { signal: signal() });
+    expect(flow.pages).toEqual(["Letter"]);
+    expect(flow.pageOf).toEqual([page]);
+    expect(h.calls[0]!.params).toMatchObject({ html: expect.stringContaining("<body>page</body>") });
+    const asked = vi.fn(() => ({ pagesHtml: () => sheets }));
+    const classic = source(h, { pages: asked });
+    await classic.source.draw("pdf", { signal: signal() });
+    expect(asked).not.toHaveBeenCalled();
+    expect(classic.pages).toEqual(["Letter"]);
+    // A web page is the text in its column in either view: it has no sheets.
+    const web = source(h, { styled: () => page, pages: asked });
+    await web.source.draw("html", { signal: signal() });
+    expect(web.pages).toEqual([null]);
+  });
+
+  it("Preview's Page section reads the document's own set-up and writes it back through the editor, then waits for the sheets", async () => {
+    const h = host();
+    const order: string[] = [];
+    const set = vi.fn((_patch: unknown) => (order.push("set"), true));
+    const { source: s } = source(h, { styled: () => page, pages: () => ({ pagesHtml: () => sheets, setSetup: set, settled: async () => void order.push("settled") }) });
+    const setup = s.setup!;
+    expect(setup).toMatchObject({ kind: "document", columns: 2, differentFirst: true, common: { paper: "Legal", orientation: "landscape", margins: { top: 72, right: 54, bottom: 72, left: 54 }, header: true, footer: false, papers: DOC_PAPERS } });
+    expect(await previewProblems(s, { only: [] })).toEqual([]);
+    if (setup.kind !== "document") throw new Error("a document's set-up");
+    await setup.set({ common: { ...setup.common, paper: "A4", header: false }, differentFirst: false });
+    expect(set).toHaveBeenLastCalledWith({ paper: "A4", orientation: "landscape", margins: { top: 72, right: 54, bottom: 72, left: 54 }, header: false, footer: false, differentFirst: false });
+    expect(order).toEqual(["set", "settled"]);
+    await setup.set({ columns: 3 });
+    expect(set).toHaveBeenLastCalledWith({ columns: 3 });
+  });
+
+  it("says so when the set-up could not be changed, and never sets a paper a document cannot take", async () => {
+    const h = host();
+    const set = vi.fn(() => false);
+    const { source: s } = source(h, { styled: () => page, pages: () => ({ pagesHtml: () => sheets, setSetup: set }) });
+    const setup = s.setup!;
+    await expect(setup.set({ common: { ...setup.common, orientation: "portrait" } })).rejects.toThrow("The page set-up could not be changed");
+    await expect(setup.set({ common: { ...setup.common, paper: "Tabloid" } })).rejects.toThrow("A document cannot be set on Tabloid");
+    expect(set).toHaveBeenCalledTimes(1);
+  });
+
+  it("has no Page section for a classic document, for a reader, or while the editor holds no pages; more than three columns read as three", () => {
+    const h = host();
+    expect(source(h, { pages: () => ({ pagesHtml: () => sheets, setSetup: () => true }) }).source.setup).toBeUndefined();
+    expect(source(h, { styled: () => page, pages: () => ({ pagesHtml: () => sheets }) }).source.setup).toBeUndefined();
+    expect(source(h, { styled: () => page, pages: () => null }).source.setup).toBeUndefined();
+    expect(source(h, { styled: () => page }).source.setup).toBeUndefined();
+    const four = { ...page, setup: { ...page.setup, columns: 4 } } as DocumentPage;
+    expect(source(h, { styled: () => four, pages: () => ({ pagesHtml: () => sheets, setSetup: () => true }) }).source.setup).toMatchObject({ columns: 3 });
   });
 });

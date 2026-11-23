@@ -144,6 +144,17 @@
      black under a video in both themes. */
   --stage: var(--sidebar);
   --matte: #000000;
+  /* A document's sheet while it is edited in Pages (docs/DESIGN.md "Work
+     editors: Document pages"): it wears the theme, so a day in dark stays
+     calm. The sheet, its 1px edge, its two inks, a rule on it (the header
+     and footer zone's hairline) and the body's ink while a header is edited.
+     Preview's paper stays white (paper, above). */
+  --page: var(--card);
+  --page-edge: var(--border);
+  --page-ink: var(--foreground);
+  --page-ink-2: var(--muted-foreground);
+  --page-rule: color-mix(in srgb, var(--foreground) 24%, transparent);
+  --page-dim: var(--muted-foreground);
   /* The bar over a slideshow (docs/DESIGN.md "The show"): the dark popover at
      94%, one value in both themes, since it sits on the deck and never on
      the app. Its window wears the dark theme whatever the app wears. */
@@ -394,6 +405,9 @@ html.theme-light {
   --pr-code-type: var(--muted-foreground);
   --slide-stage: var(--stage);
   --slide-stage-inset: 16px;
+  /* A document's sheet in light: the page itself, with a firmer rule. */
+  --page: var(--background);
+  --page-rule: color-mix(in srgb, var(--foreground) 30%, transparent);
   --mark-tile: var(--matte);
   /* Slate (docs/DESIGN.md "The light theme"): content and every floating
      layer white, chrome and the regions inside content stepping down from it

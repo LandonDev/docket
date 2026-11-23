@@ -11,8 +11,11 @@ import {
   type AnyEditor,
   type DocumentPresence,
   type DocumentSelection,
+  type DocumentHandle as PagesHandle,
   type DocumentStatus,
+  type DocumentView,
   type EditorAdapters,
+  type PageZoom,
   type FindHandle,
   type ReviewChange,
 } from "work-kit/editor";
@@ -52,11 +55,38 @@ import { ShareButton } from "../guests/Share";
 
 export interface DocState {
   scrollTop?: number;
+  /** His own pick of Flow or Pages for this item; left out, the canvas's width at open decides (`openingView`). */
+  view?: DocumentView;
+  /** Pages' zoom as he last set it for this item. */
+  zoom?: PageZoom;
 }
+
+/** The canvas width from which a styled document opens in Pages: narrower, a page is too small to type on (8px text beside a thread). */
+export const PAGES_FROM = 640;
+/** The canvas width that holds a US Letter sheet at true size (816px) inside the stage's 24px sides. */
+export const TRUE_SIZE_FROM = 864;
+
+/** The view an item opens in before he picks one: Pages on a canvas of 640px or more, Flow under it. A classic document is Flow whatever this says (the editor's own rule). */
+export const openingView = (width: number): DocumentView => (width >= PAGES_FROM ? "pages" : "flow");
+
+/** The zoom Pages opens at before he picks one: true size where a sheet fits at it, else fitted to the width (a sheet stretched over a wide window sets 11 pt text at 26px). */
+export const openingZoom = (width: number): PageZoom => (width >= TRUE_SIZE_FROM ? 100 : "width");
 
 /** The text's measure, the block handle's gutter, and the margin column (24px gap + 272px card). */
 const MEASURE = 672;
 const GUTTER = 52;
+
+/**
+ * What the column gives up while the editor draws sheets (its `.te-pages-stage` is in it): the
+ * measure, the gutter and the title go, and a review's page summary keeps the stage's 24px side and
+ * its 16px over the first sheet. In CSS, not state: the editor knows a frame before the pane is told.
+ */
+const IN_PAGES = {
+  column: "has-[.te-pages-stage]:max-w-none",
+  title: "group-has-[.te-pages-stage]/doc:hidden",
+  text: "group-has-[.te-pages-stage]/doc:px-0",
+  summary: "group-has-[.te-pages-stage]/doc:-mb-4 group-has-[.te-pages-stage]/doc:px-6",
+} as const;
 const MARGIN = 296;
 /** The canvas width from which comment threads sit in the margin. */
 export const MARGIN_FROM = 1104;
@@ -215,19 +245,59 @@ function useOpenState(itemId: string): OpenState {
   );
 }
 
+/** Where each item's reader is in Pages, "Page 2 of 5": told by the editor as he scrolls, gone in Flow and while unknown. */
+type PageAt = { page: number; count: number };
+const pagesAt = new Map<string, PageAt>();
+const pagesWatchers = new Set<() => void>();
+
+export function tellPage(itemId: string, at: PageAt | null): void {
+  const was = pagesAt.get(itemId);
+  if (at ? was?.page === at.page && was?.count === at.count : !was) return;
+  if (at) pagesAt.set(itemId, at);
+  else pagesAt.delete(itemId);
+  for (const watcher of pagesWatchers) watcher();
+}
+
+function usePageAt(itemId: string): PageAt | null {
+  return useSyncExternalStore(
+    (watcher) => {
+      pagesWatchers.add(watcher);
+      return () => pagesWatchers.delete(watcher);
+    },
+    () => pagesAt.get(itemId) ?? null,
+  );
+}
+
+/** The bar's one fact in Pages: which sheet he is on, of how many. */
+function PageFact({ itemId }: { itemId: string }) {
+  const at = usePageAt(itemId);
+  if (!at) return null;
+  return (
+    <span data-doc-page data-narrow-hide className="ms-auto shrink-0 px-1.5 text-xs text-muted-foreground tabular-nums">
+      Page {at.page.toLocaleString("en-US")} of {at.count.toLocaleString("en-US")}
+    </span>
+  );
+}
+
 /**
  * The document's own tools on the kind's bar: Share (milestone 31), only on
  * what can be shared, once it has opened. While it opens, a bone holds the
  * bar's place, so the mode and Share arrive without the body moving; a
  * document that could not open draws nothing, and the bar goes. A Word file
- * that becomes a document draws nothing: the item it becomes has the bar.
+ * that becomes a document draws nothing: the item it becomes has the bar. In
+ * Pages, "Page 2 of 5" stands at the bar's end, before History.
  */
 export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
   const state = useOpenState(item.id);
   // A mail's attachment is read only and is not shared; a Word file becoming a document has nothing yet.
   if (source.at === "mail" || importsFirst(source) || state === "failed") return null;
   if (state === "opening") return <Skeleton aria-hidden className="h-3 w-30" />;
-  return <ShareButton env={env} source={source} title={item.title} />;
+  return (
+    <>
+      <ShareButton env={env} source={source} title={item.title} />
+      <PageFact itemId={item.id} />
+    </>
+  );
 }
 
 /** A Word, OpenDocument or RTF file becomes a `.tcdoc` first (work/formats, milestone 21); the rest open as they are. */
@@ -287,8 +357,29 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
     shell.ready?.(now === "open");
   }, [item.id, opened, shell]);
   useEffect(() => () => markOpen(item.id, null), [item.id]);
+  const [root, canvasWidth] = useWidth();
+  // Flow or Pages, and Pages' zoom: his own pick for this item, else what the canvas's width says as it opens (a later resize changes nothing).
+  const [opens, setOpens] = useState<{ view: DocumentView; zoom: PageZoom } | null>(null);
+  useLayoutEffect(() => {
+    if (opens === null && canvasWidth > 0) setOpens({ view: openingView(canvasWidth), zoom: openingZoom(canvasWidth) });
+  }, [opens, canvasWidth]);
+  // A document that was classic when it opened stays in Flow when he styles it: the text never jumps onto sheets under his hands.
+  const [classic, setClassic] = useState(false);
+  const view = state?.view ?? (classic ? "flow" : (opens?.view ?? "flow"));
+  const zoom = state?.zoom ?? opens?.zoom;
+  const latestState = useRef(state);
+  latestState.current = state;
+  const pages = useMemo<PagesWiring>(
+    () => ({
+      view,
+      ...(zoom !== undefined ? { zoom } : {}),
+      onView: (next) => setState({ ...latestState.current, view: next }),
+      onZoom: (next) => setState({ ...latestState.current, zoom: next }),
+      onOpened: (styled) => setClassic(!styled),
+    }),
+    [view, zoom, setState],
+  );
   // Preview is a state of the item: it takes the body, and the editor stays mounted under it, out of reach, with its place kept.
-  const root = useRef<HTMLDivElement | null>(null);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   // The format row is the body's first, unscrolled row (docs/DESIGN.md "Work editors"): the editor draws it into this place.
   const [rowSlot, setRowSlot] = useState<HTMLDivElement | null>(null);
@@ -307,7 +398,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
         {/* Its keys are the editor's own while focus is in it (⌘B in the size field is bold, not the sidebar). */}
         <div ref={setRowSlot} data-doc-row data-editor-keys="document" className={previewing ? "invisible flex-none" : "flex-none"} inert={previewing ? true : undefined} />
         <div className={previewing ? "invisible min-h-0 flex-1" : "min-h-0 flex-1"} inert={previewing ? true : undefined}>
-          <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...state, scrollTop })}>
+          <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...latestState.current, scrollTop })}>
             {(width) =>
               opened === null ? (
                 <ItemBones title={<Title text={item.title} />} />
@@ -323,6 +414,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                   root={root}
                   preview={{ slot, on: previewing, asked, set: showPreview }}
                   rowSlot={rowSlot}
+                  pages={pages}
                 />
               ) : null
             }
@@ -334,7 +426,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
 }
 
 /**
- * The scrolling surface, its place kept in the item's state; the text column centred in it. The kept place comes back
+ * The scrolling surface, its place kept in the item's state; the text column centred in it, or in Pages the sheets' stage. The kept place comes back
  * once what it scrolls is open (`ready`) and has laid out tall enough to hold it: never over the bones, and never clamped
  * to a shorter page and saved so. A scroll of his own before then ends the wait.
  */
@@ -378,7 +470,8 @@ export function Scroller({
     <div
       ref={ref}
       data-doc-scroller
-      className="h-full overflow-x-hidden overflow-y-auto px-6 pt-8 pb-24"
+      // In Pages the sheets' stage fills it edge to edge, on the stage's own ground and padding: said in CSS, so the frame that draws the sheets is the frame that makes room.
+      className="h-full overflow-x-hidden overflow-y-auto px-6 pt-8 pb-24 has-[.te-pages-stage]:bg-(--stage) has-[.te-pages-stage]:p-0"
       onScroll={(event) => {
         const top = event.currentTarget.scrollTop;
         // A scroll of his own while the kept place waits for room: his place wins.
@@ -405,6 +498,32 @@ interface PreviewSlot {
   set(on: PreviewOn): void;
 }
 
+/** What the body hands the editor for Pages, and what it hears back. */
+export interface PagesWiring {
+  view: DocumentView;
+  zoom?: PageZoom;
+  onView(view: DocumentView): void;
+  onZoom(zoom: PageZoom): void;
+  /** Told once, when the document has been read: whether it is a styled one (only a styled document is ever drawn in Pages). */
+  onOpened(styled: boolean): void;
+}
+
+/**
+ * Until Pages has gone three frames without laying out again (`data-settles` on the frame,
+ * pages/flow.ts), or a second at most: a set-up just changed is drawn before it is printed.
+ */
+export async function pagesSettled(scope: HTMLElement | null, frames = 3, capMs = 1000): Promise<void> {
+  if (typeof requestAnimationFrame === "undefined") return;
+  const start = performance.now();
+  let last: string | null = null;
+  for (let still = 0; still < frames && performance.now() - start < capMs; ) {
+    await new Promise<void>((done) => requestAnimationFrame(() => done()));
+    const now = scope?.querySelector<HTMLElement>(".te-pages")?.dataset.settles ?? "";
+    still = now === last ? still + 1 : 0;
+    last = now;
+  }
+}
+
 /** The open document: the editor and everything it tells the pane. */
 function Opened({
   host,
@@ -416,6 +535,7 @@ function Opened({
   root,
   preview,
   rowSlot,
+  pages,
 }: {
   host: DocHost;
   open: DocOpen;
@@ -426,9 +546,13 @@ function Opened({
   root: React.RefObject<HTMLDivElement | null>;
   preview: PreviewSlot;
   rowSlot: HTMLElement | null;
+  pages?: PagesWiring;
 }) {
   const doc = useDocument(host, open);
   const margin = width >= MARGIN_FROM;
+  // The editor's handle on a styled document's pages: print writes them, Preview's Page section sets them.
+  const pagesHandle = useRef<PagesHandle | null>(null);
+  const onDocumentHandle = useCallback((handle: PagesHandle | null) => void (pagesHandle.current = handle), []);
 
   useEffect(() => {
     shell.mode(
@@ -474,10 +598,32 @@ function Opened({
   useWorkCommands(root, { export: () => showPreview("last"), print: () => showPreview("print"), find: () => finder.current?.open() });
   // The document went (a tab closed, another opened in its place): its Preview goes with it.
   useEffect(() => () => showPreview(false), [showPreview]);
+  // Under Preview the editor draws the document and nothing else: find's tints go here, and the changes in review below.
+  // The sheets it holds are what a PDF and a print are made of, and neither carries a mark of the editor's own.
+  const previewing = preview.on !== false;
+  useEffect(() => {
+    if (previewing) finder.current?.close();
+  }, [previewing]);
 
   // What Preview draws: one source for as long as this document is open, reading the editor and the counts as they stand.
   // The document's styles, theme and page set-up as the editor reads them; null for a classic document.
   const [page, setPage] = useState<DocumentPage | null>(null);
+  // The editor is handed over once the document is read, its page with it.
+  const onOpened = pages?.onOpened;
+  const toldOpened = useRef(false);
+  useEffect(() => {
+    if (!editor || toldOpened.current) return;
+    toldOpened.current = true;
+    onOpened?.(page !== null);
+  }, [editor, page, onOpened]);
+  // Drawn as sheets: the bar's fact follows the editor, and goes with the sheets.
+  const sheets = pages?.view === "pages" && page !== null;
+  const onPages = useCallback((at: PageAt) => tellPage(itemId, at), [itemId]);
+  useEffect(() => {
+    if (!sheets) tellPage(itemId, null);
+  }, [sheets, itemId]);
+  useEffect(() => () => tellPage(itemId, null), [itemId]);
+  const canSet = open.role === "edit";
   const live = useRef({ editor, suggestions: review.hooks?.count ?? 0, threads: doc.threads, page });
   live.current = { editor, suggestions: review.hooks?.count ?? 0, threads: doc.threads, page };
   const source = useMemo(
@@ -489,6 +635,12 @@ function Opened({
         title: open.title,
         editor: () => live.current.editor,
         styled: () => live.current.page,
+        pages: () => {
+          const handle = pagesHandle.current;
+          if (!handle) return null;
+          // A reader prints the pages he sees and sets nothing.
+          return { pagesHtml: (options) => handle.pagesHtml(options), settled: () => pagesSettled(root.current), ...(canSet ? { setSetup: (patch) => handle.setSetup(patch) } : {}) };
+        },
         // Threads, not marks: a thread over three lines is one comment. One with a second comment has a reply.
         review: () => ({
           comments: new Set(Array.from(live.current.editor?.domElement?.querySelectorAll(".bn-thread-mark") ?? [], (m) => m.getAttribute("data-bn-thread-id") ?? m.textContent)).size,
@@ -496,7 +648,7 @@ function Opened({
           suggestions: live.current.suggestions,
         }),
       }),
-    [host.env, open.source, open.title, open.doc, itemId],
+    [host.env, open.source, open.title, open.doc, itemId, root, canSet],
   );
   const closePreview = (): void => {
     showPreview(false);
@@ -517,12 +669,13 @@ function Opened({
         onStatus={(status) => shell.statusLine(statusLineOf(status))}
         onPresence={(people) => shell.presence(presenceOf(people))}
         onAsk={onAsk}
-        review={review.state}
-        {...(review.pageWords ? { pageReview: review.pageWords } : {})}
+        review={previewing ? null : review.state}
+        {...(review.pageWords && !previewing ? { pageReview: review.pageWords } : {})}
         onReviewPick={review.pick}
         onEditor={setEditor}
         row={{ into: rowSlot, onPreview: () => showPreview("last"), onPage: setPage }}
         onFind={onFind}
+        {...(pages ? { pages: { view: pages.view, ...(pages.zoom !== undefined ? { zoom: pages.zoom } : {}), onView: pages.onView, onZoom: pages.onZoom, onPages, onDocumentHandle, sheets } } : {})}
       />
       {preview.on && preview.slot
         ? createPortal(
@@ -669,6 +822,7 @@ export function DocumentFrame({
   onEditor,
   row,
   onFind,
+  pages,
 }: {
   doc: DocumentHandle;
   open: DocOpen;
@@ -688,6 +842,12 @@ export function DocumentFrame({
   row?: { into: HTMLElement | null; onPreview(): void; onPage?(page: DocumentPage | null): void };
   /** Given, the editor has find (and Replace where he may edit) and hands its way to open it; left out, ⌘F stays the app's. */
   onFind?(handle: FindHandle | null): void;
+  /**
+   * Flow or Pages, held by the body (docs/DESIGN.md "Work editors: Document pages"). `sheets` is
+   * the document drawn as sheets: threads then open at their words, not in a margin. Left out, the
+   * editor holds its own view.
+   */
+  pages?: Omit<PagesWiring, "onOpened"> & { sheets: boolean; onPages?(at: PageAt): void; onDocumentHandle?(handle: PagesHandle | null): void };
 }) {
   const scheme = useColorScheme();
   const [own, setOwn] = useState<AnyEditor | null>(null);
@@ -698,27 +858,38 @@ export function DocumentFrame({
     up.current?.(editor);
   }, []);
   const namesItself = useNamesItself(own, open.title);
+  // In Pages the stage is the editor's, edge to edge: no title over the sheets, no 672px measure, no gutter (IN_PAGES, in CSS), and threads at their words.
+  const side = margin && !(pages?.sheets ?? false);
+  const { view, zoom, onView, onZoom, onPages, onDocumentHandle } = pages ?? {};
   return (
     <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER, fonts: DOC_FONTS }}>
       <EditorAdaptersProvider adapters={doc.adapters}>
         {/* The editor's keys are its own while the caret is here (docs/agents/work-editors.md "Who hears a key"): ⌘B is bold, ⌘K a link. */}
-        <div data-editor-keys={open.role === "edit" ? "document" : "read"} className="mx-auto" style={{ maxWidth: GUTTER + MEASURE + (margin ? MARGIN : 0) }}>
+        <div
+          data-editor-keys={open.role === "edit" ? "document" : "read"}
+          className={`group/doc mx-auto max-w-(--doc-column) ${IN_PAGES.column}`}
+          style={{ "--doc-column": `${GUTTER + MEASURE + (side ? MARGIN : 0)}px`, "--doc-gutter": `${GUTTER}px`, "--doc-margin": `${side ? MARGIN : 0}px` } as React.CSSProperties}
+        >
           {/* A LifeOS document's title is where he renames it, so it stays; a file's name is not said again over a first line that is that name. */}
           {open.role === "edit" && open.source.at === "lifeos" ? (
-            <div style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }} className="mb-4">
+            <div style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }} className={`mb-4 ${IN_PAGES.title}`}>
               <TitleField text={open.title} rename={doc.host.rename} />
             </div>
           ) : namesItself ? null : (
-            <div style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }} className="mb-4">
+            <div style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }} className={`mb-4 ${IN_PAGES.title}`}>
               <Title text={open.title} />
             </div>
           )}
-          <div style={{ paddingLeft: GUTTER, paddingRight: margin ? MARGIN : 0 }}>
-            {pageReview?.length ? <PageChangeSummary words={pageReview} current /> : null}
+          <div className={`pr-(--doc-margin) pl-(--doc-gutter) ${IN_PAGES.text}`}>
+            {pageReview?.length ? (
+              <div className={IN_PAGES.summary}>
+                <PageChangeSummary words={pageReview} current />
+              </div>
+            ) : null}
             <DocumentEditor
               documentName={open.doc}
               editable={open.role === "edit"}
-              threadMargin={margin ? "side" : undefined}
+              threadMargin={side ? "side" : undefined}
               // What the serving host can keep: the editor offers nothing of a newer schema (work-docs.md "The schema gate").
               hostSchema={open.schema ?? 0}
               {...(row && open.role === "edit" ? { formatRow: true, formatRowInto: row.into, onPreview: row.onPreview, paper: paperFor(navigator.language) } : {})}
@@ -730,6 +901,14 @@ export function DocumentFrame({
               {...(onReviewPick ? { onReviewPick } : {})}
               onEditor={editorCame}
               {...(onFind ? { find: true, onFind } : {})}
+              {...(view ? { view } : {})}
+              {...(zoom !== undefined ? { zoom } : {})}
+              {...(onView ? { onView } : {})}
+              {...(onZoom ? { onZoom } : {})}
+              {...(onPages ? { onPages } : {})}
+              {...(onDocumentHandle ? { onDocumentHandle } : {})}
+              title={open.title}
+              locale={navigator.language}
             />
           </div>
         </div>

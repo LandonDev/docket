@@ -3004,6 +3004,86 @@ it and Preview covers it.
   line under its block ("Heading 1 becomes Title · 11 pt becomes 14 pt"), and
   the page's own changes are one last step, "Page formatting".
 
+#### Work editors: Document pages
+
+A styled document as sheets of its own paper while it is edited (work-kit
+`src/editor/pages/`, `pages.css`; the pane's side is `DocumentCanvas.tsx`;
+the account is docs/agents/work-docs.md "Pages"). The row's last group holds
+the switch, **Flow | Pages**; a classic document has no switch and is always
+Flow.
+
+- **Which view an item opens in.** A styled document opens in Pages on a
+  canvas of 640px or more and in Flow under it: beside a thread a 504px
+  canvas sets 11 pt text at 8px, which can be read and not typed on. His own
+  switch is kept per item and wins from then on; a later resize changes
+  nothing. A document that was classic when it opened stays in Flow when he
+  styles it, so the text never jumps onto sheets under his hands; the next
+  time it opens, its width decides.
+- **The stage** is the scroller itself, edge to edge on `stage`, padded 16px
+  over the first sheet and 24px at the sides and under the last (12px all
+  round under 640px of stage). The column's 672px measure, its 52px gutter
+  and the title over the text are not drawn: the sheets are the document.
+  Comments open at their words, not in a margin. The format row stays the
+  body's first, unscrolled row.
+- **A sheet** is the paper at true size (US Letter 816 by 1056px, at 96 to
+  the inch), 12px from the next, with no shadow: `page` under a 1px ring of
+  `page-edge`. Its text is `page-ink`, its header and footer `page-ink-2`.
+  The sheet wears the theme: `page` is `card` in dark and `background` in
+  light, the inks are `foreground` and `muted-foreground`, `page-rule` is
+  `foreground` at 24% in dark and 30% in light, and `page-dim` is
+  `muted-foreground`. Preview's paper and every print stay white. A colour
+  the file names is lifted on the dark sheet as in Flow ("The document"
+  above); a picture never is.
+- **Zoom** never re-flows: the document is laid out once at true size and
+  drawn larger or smaller, so the breaks do not move as he zooms. The menu
+  sits after the switch, in Pages only, and reads its value: Fit width (the
+  stage less its side padding), Fit page (one whole sheet in the stage's
+  height), 50%, 75%, 100%, 125%, 150%, 200%. An item opens at 100% where a
+  true-size sheet fits (a canvas of 864px or more) and at Fit width where it
+  does not; his own pick is kept per item. Wider than the stage, the sheets
+  scroll sideways inside it and the pane does not.
+- **"Page 2 of 5" in the kind's bar**: one 12px `muted-foreground` tabular
+  fact at the end of the kind's tools, before History, in Pages only. It
+  follows the scroll, naming the last sheet whose top is above 40% of the
+  stage's height. It is said nowhere else in the pane, is absent while
+  unknown, and goes whole in the bar's narrow form (under 560px).
+- **The header and footer** stand on every sheet, half an inch from its top
+  and bottom edge, across the text column in three places (start, middle,
+  end), 9 pt at 1.3 in the document's body face. A press in one enters it:
+  the body's words dim to `page-dim`, and pictures, tables and tints go to
+  half; the zone takes a 1px `page-rule` hairline across the sheet, 18px from
+  the text, broken 8px from the sheet's edge by its name, "Header" or "Footer", 12/16
+  in `page-ink-2` on the sheet's fill, with Insert (Page number, Number of
+  pages, Document title, Date) at the other end. A press in the body, or Escape, leaves.
+- **Page set-up** opens from the row, from a double press on a sheet's
+  margin and from the column note. It is the kit's 448px dialog, rows 12px
+  apart, a label at the left and its control at the right: Paper (US Letter,
+  US Legal, A4, A3, A5), Orientation (Portrait | Landscape), Margins (Normal
+  | Narrow | Wide | Custom; Custom opens Top, Bottom, Left and Right in
+  inches or millimetres by his locale), Columns (1 | 2 | 3), a hairline,
+  then the switches Header and footer and Different first page. Cancel is
+  ghost, Apply primary.
+- **Columns are not drawn while editing.** A set-up of two or three says so
+  once, in one 12px line, "2 columns in print and export": under the first
+  sheet's top edge at the text's left in Pages (at this size whatever the
+  zoom), above the text in Flow. A press on it opens Page set-up. It is
+  never printed.
+- **A table** that fits moves whole to the next sheet; one longer than the
+  room left breaks between rows and its header row is drawn again at the
+  top of the next. A list item, a picture and a code block move whole.
+- **Find** keeps its place at the stage's top right, and its tints are drawn
+  on the sheets.
+- **Under a review**, the page's own changes ("Page formatting") stand on
+  the stage over the first sheet, 16px from the top and 24px from the side,
+  which is the sheet's own left edge at Fit width.
+- **Print and the PDF are these sheets**, page for page, in paper colours
+  whatever the theme, with no mark of the editor's own: under Preview the
+  editor draws no change in review and no find tint. Preview's Page rows (Paper, Orientation, Margins,
+  Headers and footers) read and write the same set-up, on a document he may
+  edit; a reader has no such rows.
+- **Nothing here moves.** A switch of view, a zoom and a new page count are
+  drawn at once: he presses them many times a day.
+
 #### Work search
 
 One field over everything in Work (`work/search/Picker.tsx`; the account is

@@ -220,6 +220,90 @@ with no layout the rows have none. A Word table keeps its header rows
 through Word as he made them (one header row stays one: work-kit v74).
 
 
+## Pages
+
+A styled document is drawn as sheets of its own paper while it is edited
+(the look is docs/DESIGN.md "Work editors: Document pages"). The layout is
+the editor's (work-kit `src/editor/pages/`: the text is laid out once at the
+paper's true size around floats that end each page, and zoom is a transform);
+the pane holds the view, the zoom, the bar's fact and the print.
+
+- **The view and the zoom are the item's.** `DocState` keeps `view` (`flow`
+  or `pages`) and `zoom` (`width`, `page` or a percent) once he picks them,
+  with the scroll place. Until then the canvas's width as the item opens
+  decides (`openingView`, `openingZoom` in `DocumentCanvas.tsx`): Pages from
+  640px (`PAGES_FROM`), Flow under it; 100% from 864px (`TRUE_SIZE_FROM`, a
+  US Letter sheet inside the stage's sides), Fit width under it. A later
+  resize changes nothing. The body passes `view`, `onView`, `zoom`, `onZoom`
+  to `DocumentEditor`, which draws Pages only for a styled document. The
+  editor hands the pane its editor once the document is read; a document
+  that is classic then (`onOpened(false)`) is held in Flow for as long as it
+  stays open, so styling it never moves the text onto sheets.
+- **The pane makes room in CSS.** The scroller drops its padding and takes
+  `--stage`, and the column drops its measure, gutter and title, wherever
+  the editor's `.te-pages-stage` is inside them (`has-[.te-pages-stage]`,
+  `IN_PAGES`). The editor knows the document is styled a frame before the
+  pane is told, and a rule keyed on what is drawn has no frame in which the
+  sheets stand in the column's padding. Only the comment margin is state
+  (`threadMargin` is left out while sheets are drawn).
+- **"Page 2 of 5"** comes from the editor's `onPages` as he scrolls and is
+  kept by item id in a small store (`tellPage`), which the kind's `Bar`
+  reads; it is cleared when the view is Flow, when the document is not
+  styled, and when the document goes.
+- **The tokens** are six in `index.css`, a value per theme: `--page`,
+  `--page-edge`, `--page-ink`, `--page-ink-2`, `--page-rule`, `--page-dim`.
+  work-kit's `pages.css` reads them by those names, with fallbacks that only
+  matter to a host without them. `lib/tokenContrast.test.ts` holds the inks
+  to 4.5 on the sheet and the edge and the rule to the edge floor;
+  `lib/darkHeld.json` holds their dark values.
+- **One print contract.** The editor hands the pane a `DocumentHandle` for a
+  styled document, in either view (`onDocumentHandle`): `scrollToPage`,
+  `openPageSetup`, `setSetup`, and `pagesHtml`, which in Pages writes the
+  laid-out frame as a page of its own (every rule of the window's style
+  sheets, `@page` at the paper's size with no margin, paper colours) and in
+  Flow answers null. `previewSource.ts` `printPage` waits for the sheets to
+  settle (`pagesSettled`: three frames with no new layout, a second at
+  most), asks for that page with the document's faces inlined (`printFonts`,
+  as `data:` URLs: the print window loads no file) and sends it to
+  `work.formats.preview` as the PDF; Print… prints those bytes. So in Pages
+  the PDF and the print are the sheets he sees. What he sees and the
+  document does not hold must not print: under Preview the body hands the
+  editor no review (`review` is null while Preview is up) and closes find,
+  so the sheets carry no suggestion and no tint. In Flow, and for a classic
+  document, the page written from the blocks goes as before
+  (`htmlDocument`), and Chromium breaks it into pages itself: its page
+  breaks can differ from Pages' by a line.
+- **Preview's Page rows are the document's set-up.** For a styled document
+  he may edit, the source's `setup` is read from the document's page each
+  time Preview draws and written through the handle's `setSetup`
+  (`documentSetup`): Paper (Letter, A4, Legal, A3, A5: Tabloid is not a
+  document's, `CommonSetup.papers`), Orientation, Margins, Headers and
+  footers. A change waits for the sheets, then Preview draws again. A reader
+  and a classic document have no Page rows.
+- **Where Pages and the PDF may differ.** Columns are kept, exported and
+  drawn by Word and LibreOffice, and not drawn in Pages or its PDF (one
+  line says so). Footnotes stand at the document's end in both. A table
+  longer than a page breaks between rows with its header drawn again; the
+  spike found rows of such a table on different pages in Chromium's print
+  than on screen, and work-kit's own report says how far that is closed.
+  The Word file LibreOffice draws is another engine's layout: its page
+  count can differ from Pages' by a page.
+- **Undo does not take back a change of the page set-up** (nor of a named
+  style or the theme): the document's `page` map is outside the editor's
+  undo. He sets it back in Page set-up.
+- **Not built here**: a reader's own switch and zoom (a document he can only
+  read opens by the width rule and has no row to change it), and keeping the
+  same words in view across a switch of view.
+
+`scripts/proof-doc-window.ts` proves the pane in a running window: sheets on
+the stage at true size, the stage edge to edge, the bar's fact and its
+following the scroll, Flow and back, a double press on a margin opening Page
+set-up, Narrow margins moving the breaks and Undo putting them back, find's
+tints on the sheets, the PDF's page count against the sheets' and against
+LibreOffice's drawing of the Word file, and Preview's Margins row setting
+the document's own margins.
+
+## The canvas
 
 The shared editor in a 672px measure with a 52px gutter for the block
 handle, the title above it in the document ladder's title step (renamed in

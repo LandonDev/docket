@@ -106,6 +106,8 @@ export interface CommonSetup {
   /** the running header and footer, each on or off */
   header: boolean;
   footer: boolean;
+  /** the papers this kind may be set on, in the menu's order; left out, every one of `PAPERS` */
+  papers?: readonly PaperName[];
 }
 
 /** How a sheet is scaled onto its pages: a percent, or fitted to a count of pages wide and tall (null: as many as it takes). */
