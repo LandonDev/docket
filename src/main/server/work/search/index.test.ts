@@ -128,6 +128,14 @@ describe('Recent', () => {
     recordOpened(rig.db, hit('msgC', COSMIC, { kind: 'message', title: '#launch-crew' }), 500)
     expect(recentGroup(rig.db, windowReach(rig.ctx))!.hits.slice(0, 2).map((h) => h.key)).toEqual(['msgC', 'msg8'])
   })
+  it('held to one kind, answers the last of that kind, picked before the eight are counted', async () => {
+    const rig = makeRig()
+    recordOpened(rig.db, hit('lifeos:mailThreads:old', PURDUE, { title: 'An old mail' }), 1)
+    for (let i = 0; i < 9; i++) recordOpened(rig.db, hit(`thread:t${i}`, PURDUE, { kind: 'thread', title: `Thread ${i}`, open: { to: 'thread', sessionId: `t${i}` } }), 10 + i)
+    expect((await ask(rig, { text: '' })).groups[0].hits.map((h) => h.kind)).toEqual(Array.from({ length: SEARCH_RECENTS }, () => 'thread'))
+    expect((await ask(rig, { text: '', kind: 'mail' })).groups[0].hits.map((h) => h.key)).toEqual(['lifeos:mailThreads:old'])
+    expect((await ask(rig, { text: '', kind: 'person' })).groups).toEqual([])
+  })
   it('shows only things whose job still exists, and a deleted job takes its rows with it', async () => {
     const rig = makeRig()
     await opened(rig, hit('a', PURDUE))

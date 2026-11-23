@@ -38,9 +38,9 @@ export const search: WorkModule = {
       case 'work.search.query': {
         const { text, workspaceId, tier, sources, kind, own } = req.params
         const reach = windowReach(ctx, workspaceId)
-        // Nothing typed: what he opened last, and nothing else.
+        // Nothing typed: what he opened last, and nothing else; held to one kind, the last of that kind, picked before the eight are counted.
         if (!text.trim()) {
-          const recent = recentGroup(ctx.db, reach, (hit) => by.kind !== 'remote' || namesOnlyReachable(ctx, by, hit))
+          const recent = recentGroup(ctx.db, reach, (hit) => (kind === undefined || hit.kind === kind) && (by.kind !== 'remote' || namesOnlyReachable(ctx, by, hit)))
           return handled({ groups: recent ? [recent] : [], pending: [], quiet: [] } satisfies SearchAnswer)
         }
         return handled(await runSearch(ctx, { modules: WORK_MODULES, own: OWN_SOURCES, reach, text, by, tier, sources, kind, skipLifeos: own, signal, opened: openedAt(ctx.db) }))

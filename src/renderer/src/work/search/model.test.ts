@@ -220,8 +220,11 @@ describe("the highlight", () => {
     let gone = step(filled(), rowsOf(filled()), 1);
     gone = landInstant(gone, gone.gen, "box", answer([group("thread", ["t1"])])).model;
     expect(activeOf(gone, rowsOf(gone))).toBeNull();
-    // the next arrow starts from the top
+    // the next arrow starts from the top, whichever arrow it is
+    gone = landInstant(gone, gone.gen, "box", answer([group("thread", ["t1", "t8", "t9"])])).model;
+    expect(activeOf(gone, rowsOf(gone))).toBeNull();
     expect(activeOf(step(gone, rowsOf(gone), 1), rowsOf(gone))).toBe("hit:t1");
+    expect(activeOf(step(gone, rowsOf(gone), -1), rowsOf(gone))).toBe("hit:t1");
   });
 });
 const emptyModelWith = (m: SearchModel): SearchModel => ({ ...m, moved: false, active: null });
@@ -476,6 +479,13 @@ describe("a change of scope", () => {
     m = landInstant(m, m.gen, "box", answer([{ ...group("mail", []), hits: [hit("m-purdue", { workspaceId: "w-purdue" })] }])).model;
     m = begin(m, { text: "budget", kind: null, scope: null, hosts: [box] });
     expect(shape(rowsOf(m))).toEqual(["# Mail", "m-purdue"]);
+    // a row the host found by words past its cut text stays through a change of scope: for the same words its verdict stands
+    let far = begin(emptyModel(), { text: "venue", kind: null, scope: null, hosts: [box] });
+    far = landInstant(far, far.gen, "box", answer([{ ...group("project", []), hits: [hit("j1", { kind: "project", title: "Offsite", snippet: "The budget and", workspaceId: "w-purdue" })] }])).model;
+    far = begin(far, { text: "venue", kind: null, scope: "purdue", within: ["w-purdue"], hosts: [box] });
+    expect(shape(rowsOf(far))).toEqual(["# Project", "j1"]);
+    // and leaves when his words change to ones its text does not hold
+    expect(rowsOf(begin(far, { text: "venues", kind: null, scope: "purdue", within: ["w-purdue"], hosts: [box] }))).toEqual([]);
     // with no word of which workspaces the job has, nothing is kept
     let blind = begin(emptyModel(), { text: "budget", kind: null, scope: null, hosts: [box] });
     blind = landInstant(blind, blind.gen, "box", answer([mails()])).model;

@@ -337,6 +337,40 @@ describe("Work search", () => {
     expect(fact("hit:m2")).toContain("min-w-[4.5rem]");
   });
 
+  it("a right-click on the row already lit is his choice all the same: what lands above does not take the highlight from under the menu", async () => {
+    world.hosts = [
+      { id: "box", name: "The box", home: true },
+      { id: "mac", name: "MacBook", home: false },
+    ];
+    await mount();
+    await type("budget");
+    const [box, mac] = asks.slice(-2);
+    await act(async () => mac.answer(answer([group("thread", "Threads", [hit("thread:t1", "thread")])])));
+    expect(selected()).toBe("hit:thread:t1");
+    await act(async () => void fireEvent.contextMenu(list().querySelector('[data-row="hit:thread:t1"]')!));
+    await screen.findByRole("menu");
+    await act(async () => box.answer(answer([group("mail", "Mail", [hit("m1", "mail")])])));
+    expect(selected()).toBe("hit:thread:t1");
+  });
+
+  it("goes back to its top with a new ask, wherever he had scrolled: Return never takes a row above what he sees", async () => {
+    await mount();
+    await type("budge");
+    const many = (): SearchAnswer => answer([group("mail", "Mail", Array.from({ length: 4 }, (_, i) => hit(`m${i}`, "mail"))), group("thread", "Threads", Array.from({ length: 4 }, (_, i) => hit(`thread:t${i}`, "thread"))), group("task", "Tasks", Array.from({ length: 4 }, (_, i) => hit(`t${i}`, "task"))), group("person", "People", Array.from({ length: 4 }, (_, i) => hit(`p${i}`, "person")))]);
+    await land(asks.length - 1, many());
+    // he scrolls with the trackpad; the highlight has not moved
+    await act(async () => {
+      list().scrollTop = 3 * ROW;
+      fireEvent.scroll(list());
+    });
+    expect(list().scrollTop).toBe(3 * ROW);
+    await type("budget");
+    expect(list().scrollTop).toBe(0);
+    await land(asks.length - 1, many());
+    expect(selected()).toBe("hit:p0");
+    expect(list().scrollTop).toBe(0);
+  });
+
   it("the row's menu holds the key it shows: ⌘↩ starts the thread while the menu is open on a row", async () => {
     await mount();
     await type("budget");

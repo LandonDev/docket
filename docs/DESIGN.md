@@ -2845,7 +2845,9 @@ his hands and leaves no trace on what he was searching from.
   same frame, so the row under his eye, and the one Return will take,
   never moves, and a group that fills keeps the row he is on among its
   four. A thing he chose that an answer takes off the list leaves no row
-  lit: Return never opens a neighbour in its place. The scroller keeps its 10px strip from the start
+  lit: Return never opens a neighbour in its place, and the next arrow
+  starts from the top. A new ask (his words, the kind, the scope) stands
+  the list at its top again, with the highlight. The scroller keeps its 10px strip from the start
   (`scrollbar-gutter: stable`), so the columns do not shift when the list
   first overflows; the strip lies in the frame's own right inset (`-mr-1`),
   so a row ends 10px from the frame's edge. A cut edge fades (`OVERFLOW_FADE_Y`) while more

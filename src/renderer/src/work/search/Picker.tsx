@@ -268,6 +268,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
         mixed={mixed}
         jobOf={jobOf}
         label={kind ? `${searchLabel(kind)} results` : undefined}
+        asked={`${model.text}\n${model.kind ?? ""}\n${model.scope ?? ""}`}
         onPoint={(id) => controller.point(id)}
         onTake={take}
       />
@@ -313,7 +314,8 @@ export function FieldEnd({
           rows={rows}
           onPick={(id) => onPick(id === ALL_JOBS ? null : id)}
           trigger={
-            <Button variant="ghost" size="xs" data-work-search-scope aria-label={`Search in ${job?.name ?? "all jobs"}`} className="gap-1 px-1.5 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground">
+            // 4px in from the field's end, so the scope ends over the rows' own end (their strip lies past it).
+            <Button variant="ghost" size="xs" data-work-search-scope aria-label={`Search in ${job?.name ?? "all jobs"}`} className="mr-1 gap-1 px-1.5 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground">
               {job ? <SectorDot sector={job.sector} className="-mx-0.5" /> : null}
               <span className="max-w-32 truncate">{job?.name ?? "All jobs"}</span>
               <ChevronDown />
@@ -335,6 +337,7 @@ export function Results({
   jobOf,
   now,
   label = "Work search results",
+  asked,
   onPoint,
   onTake,
 }: {
@@ -349,6 +352,8 @@ export function Results({
   now?: number;
   /** the list's name for a reader: the kind it is held to, when it is */
   label?: string;
+  /** what was asked (his words, the kind, the scope): when it changes the list stands at its top again, where the highlight is */
+  asked?: string;
   onPoint: (id: string) => void;
   onTake: (row: Option, o?: { thread?: boolean }) => void;
 }) {
@@ -363,6 +368,11 @@ export function Results({
     },
     [lockOverscroll, overflowEdges],
   );
+  // A new ask puts the highlight back on the first row: the list goes back to its top with it, wherever he had scrolled,
+  // so Return never takes a row above what he sees. (The same first row keeps its name, so nothing else would bring it into view.)
+  useLayoutEffect(() => {
+    if (list.current) list.current.scrollTop = 0;
+  }, [asked]);
   // More rows landed, or fewer: the cut edge fades only while there is more past it.
   useLayoutEffect(() => {
     if (list.current) markOverflowEdges(list.current, "y");
@@ -481,7 +491,11 @@ export function Results({
           const on = open && id && menuRows(id) ? id : null;
           setMenuRow(on);
           // The pointer's own choice: the highlight goes to the row, and the list is not scrolled under the menu.
-          if (on) pointAt(options.findIndex((option) => option.id === on));
+          if (on) {
+            pointAt(options.findIndex((option) => option.id === on));
+            // And his choice even when the row was lit already (the first row, not yet moved to): what lands above must not take the highlight from under the menu.
+            onPoint(on);
+          }
         }}
         onPick={(pick, id) => {
           const row = options.find((option) => option.id === id);

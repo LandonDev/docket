@@ -48,6 +48,8 @@ export interface Slot {
   more: boolean;
   /** the generation it answered; an older one is shown only while it still holds the words */
   gen: number;
+  /** the words it answered: for the same words the host's own verdict stands, whatever the row's cut text shows */
+  text: string;
 }
 
 export interface SearchModel {
@@ -140,7 +142,7 @@ export function paramsFor(model: SearchModel, host: SearchHost, o: { workspaceId
   };
 }
 
-const slotOf = (host: string, group: SearchGroup, tier: Slot["tier"], gen: number): Slot => ({ host, source: group.source, kind: group.kind, label: group.label, tier, hits: group.hits, more: group.more, gen });
+const slotOf = (host: string, group: SearchGroup, tier: Slot["tier"], model: SearchModel): Slot => ({ host, source: group.source, kind: group.kind, label: group.label, tier, hits: group.hits, more: group.more, gen: model.gen, text: model.text });
 
 /** LifeOS's and a host's own words, as the list's foot says them. */
 export function quietLine(cause: string, line: string, host: SearchHost, hosts: number): { key: string; line: string } {
@@ -188,7 +190,7 @@ export function landInstant(model: SearchModel, gen: number, hostId: string, ans
   out.delete(outKey(hostId));
   for (const { source } of ask) out.add(outKey(hostId, source));
   const kept = model.slots.filter((slot) => slot.host !== hostId || (slot.tier === "network" && ask.some((a) => a.source === slot.source)));
-  const slots = [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "instant", gen))];
+  const slots = [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "instant", model))];
   return {
     model: settled({ ...model, out, slots, quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups), searched: model.searched || didSearch(answer) }),
     ask,
@@ -202,7 +204,7 @@ export function landSource(model: SearchModel, gen: number, hostId: string, sour
   const out = new Set(model.out);
   out.delete(outKey(hostId, source));
   const kept = model.slots.filter((slot) => !(slot.host === hostId && slot.source === source));
-  const slots = [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "network", gen))];
+  const slots = [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "network", model))];
   return settled({ ...model, out, slots, quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups), searched: model.searched || didSearch(answer) });
 }
 
@@ -293,7 +295,8 @@ function groupsOf(model: SearchModel, jobOf: (workspaceId: string | null) => str
         const stale = slot.gen !== model.gen;
         for (const hit of slot.hits) {
           if (taken.has(hit.key)) continue;
-          if (stale && model.text && !mentionMatches(model.text, hit.title, hit.detail, hit.snippet)) continue;
+          // For the words it answered (a change of scope alone) the host's verdict stands: a match may lie past the row's cut text.
+          if (stale && model.text && slot.text !== model.text && !mentionMatches(model.text, hit.title, hit.detail, hit.snippet)) continue;
           taken.add(hit.key);
           hits.push({ hit, host: slot.host });
         }
@@ -370,12 +373,12 @@ export function activeOf(model: SearchModel, rows: readonly Row[]): string | nul
   return options[0]?.id ?? null;
 }
 
-/** An arrow: the next or the previous row a Return can take, round the ends. */
+/** An arrow: the next or the previous row a Return can take, round the ends. With no row lit, either arrow starts from the top. */
 export function step(model: SearchModel, rows: readonly Row[], by: 1 | -1): SearchModel {
   const options = rows.filter(isOption);
   if (options.length === 0) return model;
   const at = options.findIndex((row) => row.id === activeOf(model, rows));
-  return { ...model, moved: true, active: options[(at + by + options.length) % options.length].id };
+  return { ...model, moved: true, active: options[at < 0 ? 0 : (at + by + options.length) % options.length].id };
 }
 
 /** The pointer on a row. */
