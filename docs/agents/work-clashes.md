@@ -11,7 +11,11 @@ the look of each surface is docs/DESIGN.md "Clashes".
 
 - **LifeOS** finds the clashes, places events, measures and keeps drives
   (`clashes:range`, `legs:ask`, tables `legs` and `clashWaived`). Only LifeOS
-  asks a map service; no pillar asks one itself.
+  asks a map service; no pillar asks one itself. It also decides each
+  side's ways out (`canOf`): a Google invitation Decline and Propose new
+  time…, an Outlook one in a job with one Outlook account Decline alone
+  (the Outlook a desktop carries sends no proposal), his own event Move…,
+  the later event with guests Running late….
 - **The host** (`src/main/server/work/clashes/`, pillar 58): the watcher, the
   tell, the wire, the tool and `milesBetween`. Its one table is
   `work_clashes_told (key, stamp, told_at)`.
@@ -65,7 +69,11 @@ Every call runs on the owner session, so it reads every job.
   `{queued}` (`ClashAnswered`): true when the act was handed to LifeOS's
   sender for a calendar, which has not reached the calendar yet, false when
   the move was written in LifeOS itself. The toast words follow it
-  (`doneWords`: "Declining…", "Moving…", and "Moved" only when written). A move of an event
+  (`doneWords`: "Declining…", "Moving…", and "Moved" only when written). A
+  Send that left and got no answer (a timeout, a link that closed under
+  it) may have been queued all the same: the step says "The host did not
+  confirm the send. Check the calendar before trying again." and keeps
+  Send off; Back gives the step afresh. A move of an event
   that lives only in LifeOS moves a leave-by he set by hand by as much, as
   LifeOS's own event sheet does, and its arrive-by too: the lead the offer
   left is kept, and LifeOS does not refuse the move for a leave-by after

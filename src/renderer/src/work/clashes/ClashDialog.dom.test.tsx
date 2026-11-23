@@ -11,13 +11,20 @@ const HOUR = 3_600_000;
 /** A day far ahead of any clock this runs on, 1:00 PM. */
 const T0 = new Date(2031, 10, 26, 13, 0).getTime();
 
-const wire = vi.hoisted(() => ({ calls: [] as { method: string; params: unknown }[], fail: null as string | null, hold: null as (() => void) | null, reply: null as unknown }));
-vi.mock("../../lib/connection", async (original) => ({
-  ...(await original<object>()),
+const wire = vi.hoisted(() => ({ calls: [] as { method: string; params: unknown }[], fail: null as string | null, hold: null as (() => void) | null, reply: null as unknown, lost: null as "timeout" | "closed" | "offline" | null }));
+const errors = vi.hoisted(() => ({}) as { TimeoutError: new (method: string, ms: number) => Error; ConnectionLostError: new (message: string) => Error });
+vi.mock("../../lib/connection", async (original) => {
+  const real = await original<typeof errors>();
+  Object.assign(errors, { TimeoutError: real.TimeoutError, ConnectionLostError: real.ConnectionLostError });
+  return mocked(real);
+});
+const mocked = (real: object) => ({
+  ...real,
   registry: {
     linkOf: () => ({
       request: (method: string, params: unknown) => {
         wire.calls.push({ method, params });
+        if (wire.lost) return Promise.reject(wire.lost === "timeout" ? new errors.TimeoutError(method, 30_000) : new errors.ConnectionLostError(wire.lost === "closed" ? "connection closed" : "not connected"));
         if (wire.fail) return Promise.reject(new Error(wire.fail));
         return new Promise<null>((resolve) => {
           if (wire.hold === null) resolve(wire.reply as null);
@@ -26,7 +33,7 @@ vi.mock("../../lib/connection", async (original) => ({
       },
     }),
   },
-}));
+});
 const marks = vi.hoisted(() => ({ now: null as unknown, asked: [] as unknown[] }));
 vi.mock("./mark", () => ({ useClashes: (...asked: unknown[]) => ((marks.asked = asked), marks.now) }));
 const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false, held: null as Promise<unknown> | null }));
@@ -70,6 +77,7 @@ beforeEach(() => {
   wire.fail = null;
   wire.hold = null;
   wire.reply = null;
+  wire.lost = null;
   toasts.said.length = 0;
   mail.drafts.length = 0;
   lifeos.attendees = [];
@@ -364,6 +372,38 @@ describe("the Clash dialog", () => {
     await settle();
     expect(screen.getByRole("alert").textContent).toBe("That time has passed");
     expect(wire.calls).toEqual([]);
+  });
+
+  it("sends no second act when a Send left and got no answer: it says so, Send stays off, and Back gives the step afresh", async () => {
+    for (const lost of ["timeout", "closed"] as const) {
+      wire.lost = lost;
+      show(overlap());
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await settle();
+      expect(screen.getByRole("alert").textContent).toBe("The host did not confirm the send. Check the calendar before trying again.");
+      expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.submit(document.querySelector("[data-clash-step]")!);
+      await settle();
+      expect(wire.calls).toHaveLength(1);
+      // Back, and the way out again: a fresh step he may send from, once he has looked.
+      wire.lost = null;
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+      expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+      cleanup();
+      wire.calls.length = 0;
+    }
+    // A request that never left sent nothing: the words are the link's, and Send is his again.
+    wire.lost = "offline";
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("Not connected");
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("keeps a refusal in the dialog in LifeOS's words", async () => {

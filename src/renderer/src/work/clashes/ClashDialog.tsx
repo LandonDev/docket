@@ -14,7 +14,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
-import { registry } from "../../lib/connection";
+import { ConnectionLostError, registry, TimeoutError } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 import { openWorkView } from "../../lib/workSwitch";
 import { writeMail } from "../mail/mailto";
@@ -203,6 +203,8 @@ function Body({
   };
   // What LifeOS said of the last Send, shown in the step until he sends again or goes back.
   const [refused, setRefused] = useState<string | null>(null);
+  // The last Send got no answer from the host, which may have handed the act on all the same: the step sends no second one.
+  const [lost, setLost] = useState(false);
   const [busy, setBusy] = useState<"fine" | "late" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const link = registry.linkOf(environmentId);
@@ -279,9 +281,11 @@ function Body({
         pending={pending}
         refused={refused}
         cleared={cleared}
+        lost={lost}
         onBack={() => {
           from.current = `${side}:${step.way}`;
           setRefused(null);
+          setLost(false);
           setStep(null);
         }}
         onSend={(params) => {
@@ -293,6 +297,11 @@ function Body({
             },
             (err: unknown) => {
               setPending(false);
+              // A request that never left ("not connected") sent nothing. One that left and got no answer may have been queued by the host: a second press could send the act twice.
+              if (err instanceof TimeoutError || (err instanceof ConnectionLostError && err.message !== "not connected")) {
+                setLost(true);
+                return setRefused("The host did not confirm the send. Check the calendar before trying again.");
+              }
               setRefused(refusalWords(err) || "LifeOS refused it");
             },
           );
@@ -383,6 +392,7 @@ export function StepForm({
   pending,
   refused = null,
   cleared = false,
+  lost = false,
   onBack,
   onSend,
 }: {
@@ -393,6 +403,8 @@ export function StepForm({
   refused?: string | null;
   /** the two no longer clash: what he typed stays to read or copy, and nothing more can be sent */
   cleared?: boolean;
+  /** the last Send left and got no answer: it may have gone, so Send is off; Back gives the step afresh once he has looked */
+  lost?: boolean;
   onBack: () => void;
   onSend: (params: { comment?: string; start?: number; end?: number }) => void;
 }) {
@@ -422,7 +434,7 @@ export function StepForm({
     e.preventDefault();
     if (pending) return;
     // Asked of the clock again at the press, since the minute's tick may be behind it.
-    if (held || event.endsAt <= Date.now()) return;
+    if (held || lost || event.endsAt <= Date.now()) return;
     const when = timed ? whenOf(form, offered) : null;
     if (typeof when === "string") return setError(when);
     // A proposal goes to another person and a move has no Undo: neither goes to a time already gone.
@@ -461,7 +473,7 @@ export function StepForm({
           <ErrorLine error={error ?? refused} />
         </div>
       </ModalBody>
-      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending} disabled={held !== null}>
+      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending} disabled={held !== null || lost}>
         <Button data-clash-back variant="secondary" disabled={pending} onClick={onBack}>
           Back
         </Button>

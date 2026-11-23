@@ -1926,7 +1926,10 @@ Around the canvas:
   true when the host answers: a calendar's act is with LifeOS's sender
   then, not yet on the calendar ("Declining Staff meeting…", "Proposing a
   new time for Staff meeting…", "Moving Dinner…"), and only a move
-  written in LifeOS itself is done ("Moved Dinner"); a refusal stays in the
+  written in LifeOS itself is done ("Moved Dinner"). A Send that left
+  and got no answer may have gone all the same: the step says "The host
+  did not confirm the send. Check the calendar before trying again." as
+  its alert and keeps Send off, with Back on; a refusal stays in the
   step in LifeOS's words, in `destructive`, as an alert. Back puts focus on the way it came from, or on Close when that way is gone. While the dialog
   reads a clash it was not handed, it draws the two events' bones with the
   hairline between them (and says "Reading the clash…" to a screen
