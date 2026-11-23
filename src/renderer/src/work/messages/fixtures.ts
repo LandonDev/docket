@@ -150,7 +150,7 @@ export function manyChats(count: number): ChatRow[] {
     const kind: ChatKind = i % 5 === 0 ? "channel" : i % 7 === 0 ? "group" : "direct";
     const who = people[i % people.length]!;
     const name = kind === "channel" ? `#team-${i}` : kind === "group" ? `${firstName(who.name)}, ${firstName(people[(i + 2) % people.length]!.name)}` : `${who.name} ${i}`;
-    return rowOf({ id: `h_${i}`, name, kind, source: i % 9 === 0 ? "discord" : "slack", account: "Starboard Games", who: [who], lastAt: NOW - i * 37 * MIN, text: `${WORDS[i % WORDS.length]} ${WORDS[(i * 3) % WORDS.length]} notes for round ${i}, see the doc before standup`, lastWho: who.name, unread: i % 11 === 0, readAt: NOW - i * 37 * MIN - HOUR });
+    return rowOf({ id: `h_${i}`, name, kind, source: i % 9 === 0 ? "discord" : "slack", account: "Starboard Games", who: [who], lastAt: NOW - i * 37 * MIN, text: `${WORDS[i % WORDS.length]} ${WORDS[(i * 3) % WORDS.length]} notes for round ${i}, see the doc before standup`, lastWho: who.name, unread: i % 11 === 5, readAt: NOW - i * 37 * MIN });
   });
 }
 

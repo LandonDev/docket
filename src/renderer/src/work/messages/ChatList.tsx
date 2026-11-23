@@ -14,7 +14,7 @@ import { Face } from "../mail/face";
 import { Hash } from "../icons";
 import { openConnections } from "../shell/open";
 import { useMessagesData } from "./data";
-import { aroundMatch, CHAT_FILTERS, FILTER_EMPTY, FILTER_LABEL, FILTER_ROW, markWords, rowLine, rowTime, threadRows, type ChatFilter } from "./model";
+import { aroundMatch, CHAT_FILTERS, FILTER_EMPTY, FILTER_LABEL, FILTER_ROW, firstName, markWords, rowLine, rowTime, threadRows, type ChatFilter } from "./model";
 import { keepListTop, listTopOf, patchPage, usePage } from "./page";
 
 /**
@@ -51,7 +51,7 @@ export function ChatList({ workspaceId, job, onOpen }: { workspaceId: string; jo
       <ListHead filter={page.filter} onFilter={(filter) => patchPage(workspaceId, { filter })} />
       <SearchField workspaceId={workspaceId} query={page.query} />
       {line ? (
-        <p data-sync-line className="shrink-0 truncate px-4 pb-2 text-xs text-muted-foreground">
+        <p data-sync-line className="shrink-0 px-4 pb-2 text-xs text-muted-foreground">
           {line}
         </p>
       ) : null}
@@ -221,9 +221,10 @@ function RowFace({ row }: { row: Pick<ChatRow, "kind" | "name" | "faces"> }) {
   if (row.kind === "group" && row.faces.length > 1) {
     const [a, b] = row.faces;
     return (
-      <span aria-hidden className="relative size-6">
-        <Face name={a!.name} picture={a!.picture} size="chip" className="absolute start-0 top-0" />
-        <Face name={b!.name} picture={b!.picture} size="chip" className="absolute end-0 bottom-0 ring-2 ring-background" />
+      // Lapped side by side by 6px, as Mail's fold row laps them, level with a 24px face; the first leans 4px into the gutter, so the words keep their edge.
+      <span aria-hidden className="relative mb-[3px] h-[18px] w-6">
+        <Face name={a!.name} picture={a!.picture} size="chip" className="absolute -start-1 top-0" />
+        <Face name={b!.name} picture={b!.picture} size="chip" className="absolute start-2 top-0 ring-2 ring-background" />
       </span>
     );
   }
@@ -396,8 +397,8 @@ function HitRow({ hit, row, query, open, now, onOpen }: { hit: ChatHit; row: Cha
         <time className="ms-auto shrink-0 ps-2 text-xs text-muted-foreground tabular-nums">{rowTime(hit.at, now)}</time>
       </span>
       <span dir="auto" className="h-5 truncate text-start text-xs leading-5 text-muted-foreground">
-        {`${hit.who}: `}
-        <Lit text={aroundMatch(hit.text, query)} query={query} />
+        {`${firstName(hit.who)}: `}
+        <Lit text={aroundMatch(hit.text, query, 8)} query={query} />
       </span>
     </div>
   );

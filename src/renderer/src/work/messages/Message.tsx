@@ -69,7 +69,7 @@ function ReplyLine({ to }: { to: NonNullable<ChatMessage["replyTo"]> }) {
     <div className="grid h-5 grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 text-xs text-muted-foreground">
       <CornerDownRight aria-hidden className="size-3 justify-self-end" />
       <span className="truncate">
-        <span className="font-medium">{to.who}</span> {firstWords(to.text, 80)}
+        <span className="font-medium">{to.who}</span> <span className="text-faint-foreground">{firstWords(to.text, 80)}</span>
       </span>
     </div>
   );
