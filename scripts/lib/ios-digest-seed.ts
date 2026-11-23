@@ -52,19 +52,18 @@ try {
     const environmentId = env('TC_DIGEST_ENVIRONMENT_ID')
     const now = Date.now()
     const min = 60_000
-    const today = (h: number, m: number): number => {
-      const d = new Date(now)
-      d.setHours(h, m, 0, 0)
-      return d.getTime()
-    }
+    // A clock still ahead whenever the set runs, which no row's words say: the whole hour two hours on.
+    const ahead = new Date(now + 2 * 3_600_000)
+    ahead.setMinutes(0, 0, 0)
     // What waited for the day's digest: a held mail, a routine's result, an answer he waits on, a meeting with a
-    // clock, and a sign-in about no one job. No key under a source's prefix (`prep:`, `lapse:`, `winvm:`): that
+    // clock ahead ("by …"), and a sign-in about no one job. The failed send the work seeds hold is told by the
+    // host itself, its clock the failure (no "by"). No key under a source's prefix (`prep:`, `lapse:`, `winvm:`): that
     // source's next read would withdraw a row it did not name.
     await tells([
       { kind: 'outbox.held', group: 'held', workspaceId: ids.purdue, sector: 'purdue', title: 'Held: Send to events booking', key: `held:host:${WORK_MAIL_ID}`, open: { held: { at: 'host', id: WORK_MAIL_ID }, ...(thread ? { thread } : {}) }, at: now - 50 * min },
       { kind: 'routines.done', group: 'results', workspaceId: cosmic.id, sector: 'cosmic', title: 'Weekly sponsor recap finished', detail: 'Three sponsors updated in the tracker', key: `thread:${cosmicThread.id}`, open: { thread: cosmicThread.id }, at: now - 40 * min },
       { kind: 'mail.waiting', group: 'people', workspaceId: ids.purdue, sector: 'purdue', title: 'Dana Reyes has not answered', detail: 'Re: budget for the spring LAN, sent Thursday', key: 'mail:dana-budget', open: { view: 'mail', workspaceId: ids.purdue }, at: now - 30 * min },
-      { kind: 'prep.ready', group: 'meetings', workspaceId: ids.purdue, sector: 'purdue', title: 'Prep is ready: Budget review with Dana Reyes', detail: 'Three open questions from last week', key: 'seed:budget-review', by: today(14, 0), at: now - 20 * min },
+      { kind: 'prep.ready', group: 'meetings', workspaceId: ids.purdue, sector: 'purdue', title: 'Prep is ready: Budget review with Dana Reyes', detail: 'Three open questions from last week', key: 'seed:budget-review', by: ahead.getTime(), at: now - 20 * min },
       { kind: 'connections.ending', group: 'ending', workspaceId: null, sector: null, title: 'The Microsoft sign-in ends in 3 days', detail: 'Sign in again from Connections', key: 'ending:microsoft', open: { settings: 'connections' }, at: now - 10 * min }
     ])
     keep({ environmentId, purdue: ids.purdue, unify: ids.unify, cosmic: cosmic.id, thread, cosmicThread: cosmicThread.id, unifyThread, held: WORK_MAIL_ID })

@@ -288,7 +288,9 @@ rules; nothing about the wire is the phone's own.
   `Route.digest` (a sidebar list). Title "Digest"; "Since the digest",
   "Today, 8:00 AM", "Yesterday", then dates; a row is the job's dot (a muted
   ring for no one job), the title, the detail, the time: "by 2:00 PM" for a
-  row with a clock its words do not already say, else when it was told, a
+  row whose clock was still ahead when it was told and its words do not
+  already say (a failed send's clock is its failure: no "by"), else when it
+  was told, a
   day that is not today named ("Mon 2:02 PM", "Nov 26, 2:00 PM"). A row is a button only where the phone has a route: a
   thread, a held item (over the Outbox) or a Work view it draws (mail, tasks,
   agenda, projects, routines). The rows' shape while reading; "Nothing
@@ -303,10 +305,12 @@ rules; nothing about the wire is the phone's own.
   `NavigationRouter.open` takes `target.route`. In the foreground a Work notice
   is a banner, or the list alone while the Digest is on screen. Through the
   hub `tc.work` is lost and the notice has no thread: a tap opens the app.
-- **Settings → Work.** A Digest section leads, once for every host: Time (a
-  time picker of the "HH:mm" wall time, written once the wheel rests), Held
-  items, Routine results, Messages and mail, each "In the digest", "When it
-  can’t wait" or "Right away". A change goes to every host with Work on as
+- **Settings → Work.** A Digest section follows the group with the Work
+  switch and LifeOS (the first host with Work on, once for every host), and
+  shows only while some host has Work on: Time (a time picker of the "HH:mm"
+  wall time, written once the wheel rests), Held items, Routine results,
+  Messages and mail, Meetings (the desktop's `SETTING_GROUPS`), each "In the
+  digest", "When it can’t wait" or "Right away". A change goes to every host with Work on as
   `work.digest.set` with only that group in `levels`; a host that refused is
   that row's red line.
 - **Tests.** `DigestModelTests.swift`, `PushTargetTests.swift` and

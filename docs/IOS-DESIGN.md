@@ -2358,14 +2358,16 @@ phone does everything the desktop does. What milestone 46 built:
   notice. Sections by day, newest first, under the Outbox's gray band step:
   "Since the digest", "Today, 8:00 AM", "Yesterday", then dates. A row is the
   job's sector dot in the mark column (a muted ring for a row about no one
-  job), the title, the detail in meta under it, the time as a stamp ("by
-  2:00 PM" for a row with a clock its words do not already say, a day that
-  is not today named). The dot is the only colour; no counts,
+  job), the title, the detail in meta under it, the time as a stamp; the dot
+  and the time sit on the title's first line, as the Inbox's rows do ("by
+  2:00 PM" for a row whose clock was ahead when it was told and its words do
+  not already say, else when it was told; a day that is not today named). The dot is the only colour; no counts,
   no chips. A row the phone has no screen for is not a button. Loading draws
   the rows' shape; empty is "Nothing Waited"; a host that did not answer is
-  one meta line at the foot. Settings → Work leads with its Digest section:
-  Time, then Held items, Routine results and Messages and mail, each a menu
-  of three levels.
+  one meta line at the foot. Settings → Work has its Digest section after the
+  group with the Work switch and LifeOS, only while some host has Work on:
+  Time, then Held items, Routine results, Messages and mail and Meetings, each
+  a menu of three levels.
 - **A held notice** (the host's `needs_you` with `tc.held`) opens its item
   over the Outbox. Its category is Open alone: nothing sends from the lock
   screen.

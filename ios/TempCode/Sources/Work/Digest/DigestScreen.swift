@@ -143,9 +143,11 @@ private struct DigestRow: View {
         }
     }
 
+    // The dot and the time sit on the title's first line, as the Inbox's two-line rows do: the row aligns on
+    // the first baseline, and the dot is centred on one line of the title step (`FirstLineMark`).
     private var content: some View {
-        HStack(alignment: .center, spacing: Layout.rowGap) {
-            Group {
+        HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
+            FirstLineMark {
                 if row.sector != nil {
                     SectorDot(sector: row.sector, size: Layout.dotSize)
                 } else {
@@ -155,7 +157,6 @@ private struct DigestRow: View {
                         .accessibilityHidden(true)
                 }
             }
-            .frame(width: Layout.glyphWidth + Layout.markWidth)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
                     .textStep(.title)
@@ -174,6 +175,22 @@ private struct DigestRow: View {
         .padding(.vertical, Layout.rowVertical)
         .frame(minHeight: Layout.rowHeight + 8)
         .contentShape(Rectangle())
+        // At the title: the mark column's hidden line is the row's first text, which the list would start it at.
+        .separatorAtTextEdge(Layout.glyphWidth + Layout.markWidth + Layout.rowGap)
+    }
+}
+
+/// The mark column, its mark centred on the first line of a title-step text: a hidden line of that step
+/// gives the column the title's first baseline and its line's height.
+private struct FirstLineMark<Mark: View>: View {
+    @ViewBuilder let mark: Mark
+
+    var body: some View {
+        ZStack {
+            Text(verbatim: "A").textStep(.title).hidden()
+            mark
+        }
+        .frame(width: Layout.glyphWidth + Layout.markWidth)
     }
 }
 
@@ -200,11 +217,12 @@ private struct DigestSkeleton: View {
     var body: some View {
         Section {
             ForEach(0..<4, id: \.self) { i in
-                HStack(spacing: Layout.rowGap) {
-                    Circle()
-                        .fill(.quaternary)
-                        .frame(width: Layout.dotSize, height: Layout.dotSize)
-                        .frame(width: Layout.glyphWidth + Layout.markWidth)
+                HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
+                    FirstLineMark {
+                        Circle()
+                            .fill(.quaternary)
+                            .frame(width: Layout.dotSize, height: Layout.dotSize)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(i.isMultiple(of: 2) ? "Budget review starts soon" : "A routine finished its run").textStep(.title)
                         Text("Placeholder detail").textStep(.meta)

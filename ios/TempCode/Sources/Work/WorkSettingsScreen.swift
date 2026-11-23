@@ -7,7 +7,8 @@ import TempCodeContract
 /// grant comes back from the next held item), and each add-on's tools with
 /// the rule a Work thread runs them under. A host from before Work, or a key
 /// that cannot read it, is left out. Guest links come with milestone 31. The
-/// Digest leads, once for every host (docs/agents/work-digest.md "The phone").
+/// Digest follows the first Work host's switch, once for every host, and only
+/// while some host has Work on (docs/agents/work-digest.md "The phone").
 struct WorkSettingsScreen: View {
     @Environment(AppModel.self) private var model
 
@@ -18,12 +19,10 @@ struct WorkSettingsScreen: View {
                 Text("No paired host has Work yet.")
                     .textStep(.meta)
             }
-            // One digest across hosts: the section writes every host with Work on.
-            if hosts.contains(where: \.work.isOn) {
-                DigestSettingsSection(hosts: hosts.filter(\.work.isOn))
-            }
+            // One digest across hosts, under the first Work host's switch: the section writes every host with Work on.
+            let on = hosts.filter(\.work.isOn)
             ForEach(hosts, id: \.environment.id) { client in
-                WorkHostSection(client: client, named: hosts.count > 1)
+                WorkHostSection(client: client, named: hosts.count > 1, digestHosts: client.environment.id == on.first?.environment.id ? on : [])
             }
         }
         .listStyle(.insetGrouped)
@@ -36,6 +35,8 @@ struct WorkSettingsScreen: View {
 private struct WorkHostSection: View {
     let client: EnvironmentClient
     let named: Bool
+    /// Every host with Work on, for the one host that draws the Digest section after its switch; else empty.
+    let digestHosts: [EnvironmentClient]
     @State private var grants: WorkRead<[OutboxGrant]> = .reading
     @State private var rules: WorkRead<[ToolRulesCard]> = .reading
     /// This host's guest links; nil while reading, or when another host serves them.
@@ -58,6 +59,9 @@ private struct WorkHostSection: View {
             if !work.canAdmin { Text("This phone’s key can’t change Work on \(client.environment.name).") }
         }
         .task(id: "\(work.isOn)-\(work.guestsRev)") { await load() }
+        if !digestHosts.isEmpty {
+            DigestSettingsSection(hosts: digestHosts)
+        }
         if work.isOn {
             if let guests {
                 Section("Guest links") {
@@ -243,7 +247,7 @@ private struct WorkHostSection: View {
     }
 }
 
-/// Settings → Work → Digest: the time, then a level for three groups, each
+/// Settings → Work → Digest: the time, then a level for four groups, each
 /// written to every host with Work on. Every group starts at "When it can’t
 /// wait"; only a changed group is sent. A host that refused a change is that
 /// row's red line.

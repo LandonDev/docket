@@ -156,6 +156,15 @@ import TempCodeContract
         #expect(when(row("r", title: "Budget review starts at 2:00\u{202F}PM", at: ms(22, 13, 50), by: ms(23, 14))) == "Sun 1:50 PM")
     }
 
+    @Test func `a clock that had come when the row was told is no deadline: it ends with when it was told`() {
+        // a send that failed, told at once: its clock is the failure itself
+        #expect(when(row("r", title: "Not sent: Send to Rivera Dental", at: ms(23, 5, 17), by: ms(23, 5, 17))) == "5:17 AM")
+        // a clock already past when it was told
+        #expect(when(row("r", at: ms(23, 9), by: ms(23, 8, 30))) == "9:00 AM")
+        // one minute ahead is still ahead
+        #expect(when(row("r", at: ms(23, 13, 59), by: ms(23, 14))) == "by 2:00 PM")
+    }
+
     @Test func `nothing at all says since when`() {
         #expect(DigestModel.emptyLine(now: now, calendar: calendar, locale: locale) == "Work has had nothing to tell you since Oct 24.")
     }
@@ -175,11 +184,13 @@ import TempCodeContract
     // MARK: - Settings → Work → Digest
 
     @Test func `every group starts at when it can't wait, in his words`() {
-        #expect(DigestModel.settingsGroups.map(DigestModel.groupName) == ["Held items", "Routine results", "Messages and mail"])
+        // the desktop's SETTING_GROUPS, in its order
+        #expect(DigestModel.settingsGroups.map(DigestModel.groupName) == ["Held items", "Routine results", "Messages and mail", "Meetings"])
         #expect(DigestModel.levels.map(DigestModel.levelName) == ["In the digest", "When it can’t wait", "Right away"])
         let settings = DigestSettings(at: "08:00", zone: "UTC", levels: ["held": .now], nextAt: 0)
         #expect(DigestModel.level(settings, .held) == .now)
         #expect(DigestModel.level(settings, .results) == .clock)
+        #expect(DigestModel.level(settings, .meetings) == .clock)
         #expect(DigestModel.level(nil, .people) == .clock)
     }
 

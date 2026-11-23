@@ -202,10 +202,12 @@ public enum DigestModel {
     }
 
     /// A row's trailing fact: its clock in words when it has one ("by 2:00 PM"), else when it was told,
-    /// each naming its day when it is not today. A clock the row's own words already say ("Budget review
-    /// starts at 2:00 PM") is not said twice: that row ends with when it was told (the desktop's `rowWhen`).
+    /// each naming its day when it is not today. A clock that had already come when the row was told (a
+    /// send that failed: `by` is its failure) is no deadline, and a clock the row's own words already say
+    /// ("Budget review starts at 2:00 PM") is not said twice: either row ends with when it was told (the
+    /// desktop's `rowWhen`).
     public nonisolated static func when(_ row: TellRow, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
-        if let by = row.by, !says(row, clock(date(by), calendar, locale)) { return "by \(dayTime(date(by), now: now, calendar, locale))" }
+        if let by = row.by, by > row.at, !says(row, clock(date(by), calendar, locale)) { return "by \(dayTime(date(by), now: now, calendar, locale))" }
         return dayTime(date(row.at), now: now, calendar, locale)
     }
 
@@ -245,8 +247,8 @@ public enum DigestModel {
 
     // MARK: - Settings → Work → Digest
 
-    /// The three groups Settings shows, in its order. Every other group stays at `clock` with no row.
-    public nonisolated static let settingsGroups: [TellGroup] = [.held, .results, .people]
+    /// The groups Settings shows, in its order (the desktop's `SETTING_GROUPS`). Every other group stays at `clock` with no row.
+    public nonisolated static let settingsGroups: [TellGroup] = [.held, .results, .people, .meetings]
 
     /// The desktop's GROUP_NAMES for the rows Settings shows.
     public nonisolated static func groupName(_ group: TellGroup) -> String {
