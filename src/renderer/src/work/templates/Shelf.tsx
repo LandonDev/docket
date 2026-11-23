@@ -27,17 +27,59 @@ export const SPIN_AFTER_MS = 150;
 
 const KIND_GLYPH: Record<TemplateKind, typeof Doc> = { document: Doc, sheet: Table, deck: Slides };
 
+/** The widths of a drawn page's lines, as shares of the line: enough of a rhythm to read as writing. */
+const LINES = ["w-[92%]", "w-[78%]", "w-[86%]", "w-[58%]"] as const;
+const MORE_LINES = ["w-[88%]", "w-[70%]"] as const;
+/** A drawn sheet's rows: the bar in each cell, as a share of the cell. The first row is the head. */
+const CELLS = [
+  ["w-[64%]", "w-[52%]", "w-[58%]", "w-[46%]"],
+  ["w-[72%]", "w-[40%]", "w-[62%]", "w-[50%]"],
+  ["w-[56%]", "w-[66%]", "w-[44%]", "w-[60%]"],
+  ["w-[68%]", "w-[48%]", "w-[70%]", "w-[42%]"],
+  ["w-[60%]", "w-[58%]", "w-[52%]", "w-[64%]"],
+  ["w-[74%]", "w-[44%]", "w-[60%]", "w-[54%]"],
+] as const;
+
 /**
- * The picture area of a file that has no picture yet: the kind's glyph on a
- * page shape (Files' plate, until Files' thumbnails land and take its place).
+ * The picture area of a template: a small drawing of what its kind is, in the
+ * tile's own measure (container units), until Files' thumbnails land and take
+ * its place. A document is a heading and lines of writing, a sheet a grid with
+ * a head row, a deck a title slide. It says the kind at a glance and shows no
+ * glyph: the glyph is on the name's line, once.
  */
 export function Plate({ kind }: { kind: TemplateKind }) {
-  const Glyph = KIND_GLYPH[kind];
   return (
-    <span data-plate={kind} className="grid aspect-[4/3] w-full place-items-center rounded-md bg-card outline-1 -outline-offset-1 outline-image-outline">
-      <span className={cn("grid place-items-center rounded-sm bg-popover ring-1 ring-border", kind === "deck" ? "aspect-[16/10] w-[52%]" : "aspect-[3/4] w-[34%]")}>
-        <Glyph aria-hidden className="size-5 text-muted-foreground" />
-      </span>
+    <span data-plate={kind} aria-hidden className="@container relative block aspect-[4/3] w-full overflow-hidden rounded-md bg-card outline-1 -outline-offset-1 outline-image-outline">
+      {kind === "document" ? (
+        <span className="absolute inset-0 flex flex-col gap-[4.5cqw] px-[11cqw] pt-[11cqw]">
+          <span className="mb-[1cqw] block h-[3.6cqw] w-[46%] flex-none rounded-[2px] bg-foreground/40" />
+          {LINES.map((w) => (
+            <span key={w} className={cn("block h-[2.4cqw] flex-none rounded-[2px] bg-foreground/15", w)} />
+          ))}
+          <span className="mt-[2cqw] block h-[3cqw] w-[30%] flex-none rounded-[2px] bg-foreground/40" />
+          {MORE_LINES.map((w) => (
+            <span key={w} className={cn("block h-[2.4cqw] flex-none rounded-[2px] bg-foreground/15", w)} />
+          ))}
+        </span>
+      ) : kind === "sheet" ? (
+        <span className="absolute top-[9cqw] right-0 bottom-0 left-[9cqw] flex flex-col border-t border-l border-border">
+          {CELLS.map((row, r) => (
+            <span key={r} className="grid h-[11cqw] flex-none grid-cols-[2fr_1fr_1fr_1fr] border-b border-border">
+              {row.map((w, c) => (
+                <span key={c} className="flex items-center border-r border-border px-[12%]">
+                  <span className={cn("block h-[2.4cqw] rounded-[2px]", r === 0 ? "bg-foreground/40" : "bg-foreground/15", w)} />
+                </span>
+              ))}
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span className="absolute inset-0 flex flex-col justify-center gap-[3cqw] px-[11cqw]">
+          <span className="mb-[1cqw] block h-[1.4cqw] w-[12cqw] flex-none rounded-[1px] bg-foreground/40" />
+          <span className="block h-[5.2cqw] w-[62%] flex-none rounded-[2px] bg-foreground/40" />
+          <span className="block h-[2.6cqw] w-[40%] flex-none rounded-[2px] bg-foreground/15" />
+        </span>
+      )}
     </span>
   );
 }

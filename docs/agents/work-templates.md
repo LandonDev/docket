@@ -129,6 +129,31 @@ A play is text, so "start the game report" is a step that says so; the play's th
 - `templatesFor(ctx, workspaceId)` answers the shelf.
 - `registerStarterTemplates(kind, entries)`: see "The shelf".
 
+## The screens (`src/renderer/src/work/templates/`)
+
+Every part is a Kobra part (`components/README.md`). One tile, one grid and one dialog serve the shelf, New and the fields.
+
+- **The tile** (`Shelf.tsx`). A button over the whole tile: the plate, then one 13/20 line with the kind's glyph and the name, truncated. 6px of padding against a -6px margin so tiles align to the grid's edge, a 12px radius, a 5% foreground wash on hover, the focus ring inside, `scale(0.97)` while pressed. No badge, no description, no count. Starters and his own look the same; only their menus differ. The glyph turns to a `Spinner` when a make runs past 150 ms (`SPIN_AFTER_MS`); the tile does not move.
+- **The plate** (`Plate`) is a small drawing of the kind in the tile's own measure, until Files' thumbnails land and take its place: a document is a heading and lines of writing, a sheet a grid with a head row, a deck a title slide. It shows no glyph, so the glyph stands once, on the name's line. The glyph is uncoloured until Files' kind tints are on master.
+- **The groups** (`model.ts` `shelfGroups`): the workspace's name (his own, then the sector's starters, each by name), then "All jobs". A group with nothing is not drawn. Each is a 12px muted label over a grid: `repeat(auto-fill, minmax(148px, 1fr))` on the page, three columns in the dialog (two under 640px), gap 16px by 12px.
+- **Keys**: the shelf is one tab stop. Arrows walk the tiles across both groups, Home and End jump to the ends, Return makes.
+- **The Templates view** (`view.ts`, `TemplatesView.tsx`; id `templates`, order 3.6, `readsLifeos: false`, chunk `work-templates-view`). The header carries a ghost "Add…" (the system's file chooser) and, only when starters are hidden, a ⋯ with "Show hidden". Loading is skeleton tiles in the grid's shape, an error is the frame's own line with Retry, and an empty shelf is "No templates" with "Add…". A file dropped on the view becomes a template: the view takes the drop as an inner surface, so no thread starts. Add and a drop take a file of the workspace's own host; from a window on another computer one line says so.
+- **A tile's menu** (right-click, or the ⋯ that shows on hover and focus; on the page only): New from this; Edit (a starter: Edit a copy, which saves it as his own and opens that); Rename…; "Use in all jobs" or "Only in <job>"; Remove (a starter: Hide). Remove of his own follows the host's answer: `{ confirm }` shows a `ConfirmDialog`, `{ trashed }` a toast "Moved to Trash" with Undo (`work.files.restore`).
+- **New from a template** (`TemplateDialog.tsx`, a `Modal` of size md, chunk `work-templates`). The same two groups. The footer says "Kept in <folder>" only when `into` was given. A tile with no fields makes the file and the dialog closes. A tile with fields turns the same dialog to the fields; no second dialog opens on top. The step that arrives fades in over the fast duration, with no motion under reduced motion.
+- **The fields** (`FieldsForm.tsx`). The title is the template's name. One `Field` per asked field in the file's order, the first focused; Return moves to the next and in the last makes the file. "Back" stands at the footer's start when he came from the tiles. Create is never greyed: an empty field stays in the file. While making, Create spins and the fields are read only. The host's refusal is one line under the fields, in its words.
+- **Save as template** (`SaveDialog.tsx`). "Name", filled with the file's name and selected; the check row "All jobs"; when the caller knows the fields, "Asks for Client and Game." as the name's hint, else the toast "Saved to Templates" says it from the host's answer.
+- **The ways in** (`open.ts`, the one renderer file another pillar may import; it loads no chunk): `openTemplates({ workspaceId, into?, intoName? })`, `saveAsTemplate({ workspaceId, source, name?, fields? })`, `openMade({ workspaceId, source })` (`work.files.open`, then the Files view; no thread). They go through `workTemplatePort` (`lib/workSwitch.ts`), which `TemplatesHost` fills while Work's shell is up; first paint carries the port alone.
+- **The make** sends the window's own day (`today`).
+- The pillar raises no notice. Its toasts answer his own press.
+
+### The row
+
+`TEMPLATES_ROW` in `src/renderer/src/work/views/registry.ts` is off, so the column draws no Templates row (`workViewRows`) and Save's toast has no "Show". A made file opens in a Files tab, and the Files row on master is still the Teams view; the row goes on with Files' new view (its F1b). Setting the constant true is the whole change, and shell.test.ts holds both states. The dialogs, the port and `open.ts` are live either way.
+
+### Pictures
+
+`Templates.preview.tsx` holds the preview pages (`bun run ui:preview src/renderer/src/work/templates/Templates.preview.tsx#TemplatesViewPreview`, also `TemplateDialogPreview`, `FieldsPreview`, `SavePreview`). A menu and a dialog draw in portals a preview cannot hold, so the dialogs are drawn inside the Modal's own box and the menu is held by DOM tests.
+
 ## A job's look (`look.ts`)
 
 `lookOf(ctx, workspaceId): JobLook | null`, with `JobLook = { theme: OfficeTheme; logo? }`. It answers null. `make.ts` asks it once, after the fill and before the file is placed. The feature that gives a job its colours, fonts and logo fills `lookOf` and writes the one swap of `theme/theme1.xml` in the scratch file. `OfficeTheme` is work-kit's (`work-kit/format/theme`).
@@ -138,3 +163,4 @@ A play is text, so "start the game report" is a step that says so; the play's th
 - `bun scripts/proof-bun.ts scripts/proof-templates.ts`: the module as the host loads it, a dummy workspace on a real database, a stand-in thread calling the three tools on the fill's fixtures, each made file read back. With `TEMP_CODE_WORK_TOOLS_DATA` (through `heavy`) the deck is filled by the slides pillar's real edit and LibreOffice opens every filled file.
 - `fixtures/make.ts` makes the fixtures: `split.docx`, `fields.xlsx`, `split.pptx`.
 - `deckFill.test.ts` runs the real deck edit behind `TEMP_CODE_WORK_TOOLS_DATA`.
+- `env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-templates.ts --out <dir>` (after `electron-vite build`, through `heavy`): an isolated instance of the built app with a dummy Work workspace and no LifeOS sign-in. It drives the wire through the real router and fence, a thread's tools through the bridge, and the window's part when the Templates row is on.
