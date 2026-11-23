@@ -11,18 +11,16 @@ export type StartPlace = { address?: string; label?: string; state: "none" | "lo
 export type JobStart = StartPlace & { sector: SectorKey; lookups: boolean };
 export type StartPlaces = { home: StartPlace; jobs: JobStart[] };
 
-/** The part of LifeOS's `settings:get` a Save reads: `starts` and `placeLookups` are sent whole. */
-export type StartSettings = {
-  homeAddress?: string;
-  starts?: Partial<Record<SectorKey, string>>;
-  placeLookups?: Partial<Record<SectorKey, boolean>>;
-};
-
-/** What `settings:update` takes from this screen. */
+/**
+ * What `settings:update` takes from this screen: home's address, or one job
+ * set alone. LifeOS lays a job's start and its lookups over the maps it
+ * holds in the one write, so two windows that each change a job keep each
+ * other's change; an empty address clears the start.
+ */
 export type StartPatch = {
   homeAddress?: string | null;
-  starts?: Partial<Record<SectorKey, string>>;
-  placeLookups?: Partial<Record<SectorKey, boolean>>;
+  startFor?: { sector: SectorKey; address: string };
+  lookupsFor?: { sector: SectorKey; on: boolean };
 };
 
 /** Home, or one job. */
@@ -57,19 +55,13 @@ export function formChanged(saved: StartForm, form: StartForm): boolean {
   return form.address.trim() !== saved.address.trim() || form.lookups !== saved.lookups;
 }
 
-/** The patch a Save sends, or null when nothing changed. A job's maps go whole, changed at its one key; an empty address clears the start. */
-export function savePatch(target: StartTarget, saved: StartForm, form: StartForm, settings: StartSettings): StartPatch | null {
+/** The patch a Save sends, or null when nothing changed: only what he changed, for this one place. */
+export function savePatch(target: StartTarget, saved: StartForm, form: StartForm): StartPatch | null {
   if (!formChanged(saved, form)) return null;
   const address = form.address.trim();
   if (target === "home") return { homeAddress: address || null };
   const patch: StartPatch = {};
-  if (address !== saved.address.trim()) patch.starts = address ? { ...settings.starts, [target]: address } : withoutStart(target, settings);
-  if (form.lookups !== saved.lookups) patch.placeLookups = { ...settings.placeLookups, [target]: form.lookups };
+  if (address !== saved.address.trim()) patch.startFor = { sector: target, address };
+  if (form.lookups !== saved.lookups) patch.lookupsFor = { sector: target, on: form.lookups };
   return patch;
-}
-
-function withoutStart(sector: SectorKey, settings: StartSettings): Partial<Record<SectorKey, string>> {
-  const starts = { ...settings.starts };
-  delete starts[sector];
-  return starts;
 }

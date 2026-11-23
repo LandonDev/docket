@@ -29,10 +29,10 @@ vi.mock("../../lib/connection", async (original) => ({
 }));
 const marks = vi.hoisted(() => ({ now: null as unknown }));
 vi.mock("./mark", () => ({ useClashes: () => marks.now }));
-const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false }));
+const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: async () => ({ attendees: lifeos.attendees }) } }),
+  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: () => (lifeos.silent ? new Promise<never>(() => {}) : Promise.resolve({ attendees: lifeos.attendees })) } }),
 }));
 const toasts = vi.hoisted(() => ({ said: [] as { words: string; action?: { label: string; onClick: () => void } }[] }));
 vi.mock("../../components/ui/toaster", () => ({
@@ -74,6 +74,7 @@ beforeEach(() => {
   lifeos.attendees = [];
   lifeos.gone = false;
   lifeos.connecting = false;
+  lifeos.silent = false;
 });
 afterEach(() => {
   cleanup();
@@ -377,6 +378,27 @@ describe("the Clash dialog", () => {
     expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
     expect(mail.drafts).toEqual([]);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("lets go of Running late when LifeOS never answers: ten seconds on it says so and Close works again", async () => {
+    vi.useFakeTimers();
+    try {
+      lifeos.silent = true;
+      show(overlap());
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+      await settle();
+      // The read is out: the dialog holds, as it does for any press.
+      const closes = () => screen.getAllByRole("button", { name: "Close" }).map((b) => (b as HTMLButtonElement).disabled);
+      expect(closes()).toEqual([true, true]);
+      await act(async () => void vi.advanceTimersByTime(10_000));
+      expect(screen.getByRole("alert").textContent).toBe("LifeOS did not answer");
+      // The header's and the foot's both work again.
+      expect(closes()).toEqual([false, false]);
+      expect(mail.drafts).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says LifeOS is still connecting when Running late is pressed in that wait, never that he is signed out", async () => {

@@ -56,7 +56,8 @@ export function freeAfter(clash: Clash, eventId: string, now = Date.now()): { st
     const start = Math.floor((other.startsAt - early - drive - length) / STEP) * STEP;
     if (start > now && sameDay(start, side.startsAt)) return { start, end: start + length };
   }
-  const start = Math.ceil((other.endsAt + drive + (side === clash.b ? early : 0)) / STEP) * STEP;
+  // Never a time already gone: once the other event is over, or he is past the drive, the next quarter hour from now.
+  const start = Math.ceil(Math.max(other.endsAt + drive + (side === clash.b ? early : 0), now + 1) / STEP) * STEP;
   return { start, end: start + length };
 }
 
@@ -119,7 +120,8 @@ function clocksOn(day: string, clock: string, field: keyof typeof SKIPPED): numb
   const at = new Date(`${day}T${clock}`).getTime();
   if (!Number.isFinite(at)) return UNSET;
   const shows = (ms: number) => dayField(ms) === day && timeField(ms) === clock;
-  return shows(at) ? [at - HOUR, at, at + HOUR].filter(shows) : SKIPPED[field];
+  // The clocks go back an hour in most zones and half an hour in a few: either way the same clock, later.
+  return shows(at) ? [at - HOUR, at - HOUR / 2, at, at + HOUR / 2, at + HOUR].filter(shows) : SKIPPED[field];
 }
 const noon = (day: string) => new Date(`${day}T12:00`);
 const dayPlus = (day: string, days: number): string => {

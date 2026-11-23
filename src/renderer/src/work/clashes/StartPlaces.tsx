@@ -13,7 +13,7 @@ import { Switch } from "../../components/ui/switch";
 import { refusalWords } from "../../lib/settingsHome";
 import { sectorName } from "../shell/actions";
 import { sessionFailure, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
-import { formChanged, placeWords, rowLabel, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartSettings, type StartTarget } from "./places";
+import { formChanged, placeWords, rowLabel, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
 
 /**
  * Settings → Work, "Start places" (docs/agents/work-clashes.md): where each
@@ -29,18 +29,17 @@ type Sector = { key: string; label: string; order: number };
 export function StartPlacesSection({ environmentId }: { environmentId: string }) {
   const session = useLifeosSession(environmentId, null);
   const places = useLifeosQuery<StartPlaces>(session, "settings:startPlaces", {});
-  const settings = useLifeosQuery<StartSettings>(session, "settings:get", {});
   // The names the LifeOS section above uses, so a job reads the same on the whole page.
   const sectors = useLifeosQuery<Sector[]>(session, "sectors:list", {});
   const [open, setOpen] = useState<StartTarget | null>(null);
   const connected = session.state === "connected";
-  const failed = places.status === "failed" ? places.error : settings.status === "failed" ? settings.error : null;
-  const ready = connected && places.status === "ready" && settings.status === "ready" && sectors.status !== "loading";
+  const failed = places.status === "failed" ? places.error : null;
+  const ready = connected && places.status === "ready" && sectors.status !== "loading";
   const names = sectors.status === "ready" ? new Map(sectors.value.map((s) => [s.key, s.label])) : undefined;
   const nameOf = (target: StartTarget): string => (target === "home" ? "Home" : sectorName(target, names));
   // What the reads last gave whole: an open dialog stands on it while a read is out or has failed, so what he typed is never taken away under him.
-  const good = useRef<{ places: StartPlaces; settings: StartSettings; names: typeof names } | null>(null);
-  if (ready && places.status === "ready" && settings.status === "ready") good.current = { places: places.value, settings: settings.value, names };
+  const good = useRef<{ places: StartPlaces; names: typeof names } | null>(null);
+  if (ready && places.status === "ready") good.current = { places: places.value, names };
   const held = open ? good.current : null;
   const job = held && open !== "home" ? held.places.jobs.find((j) => j.sector === open) : undefined;
   const dialog =
@@ -51,8 +50,7 @@ export function StartPlacesSection({ environmentId }: { environmentId: string })
         title={open === "home" ? "Home" : sectorName(open, held.names)}
         place={open === "home" ? held.places.home : (job ?? { state: "none" })}
         lookups={job?.lookups ?? false}
-        settings={held.settings}
-        // Save writes the maps whole from the last read: it waits for a read that is current.
+        // Save sends this one place alone, and waits for a read that is current, so he saves beside what LifeOS holds now.
         // A session still connecting is a wait like a read that is out, not a sign-out, and comes before what an earlier read said: a query keeps its last answer for a render after the session turns.
         blocked={ready ? null : sessionWaits(session) ? "" : (failed ?? (connected ? "" : sessionFailure(session.state)))}
         onClose={() => setOpen(null)}
@@ -61,7 +59,7 @@ export function StartPlacesSection({ environmentId }: { environmentId: string })
   // One shape whatever the reads say, so the dialog is the same mounted form through a failed read, a dropped session and a read that is out.
   const body = failed ? (
     <PageError>{failed}</PageError>
-  ) : places.status !== "ready" || settings.status !== "ready" || sectors.status === "loading" ? (
+  ) : places.status !== "ready" || sectors.status === "loading" ? (
     <PageRowsSkeleton rows={7} description control="none" />
   ) : (
     <>
@@ -113,7 +111,6 @@ function StartPlaceDialog({
   title,
   place,
   lookups,
-  settings,
   blocked,
   onClose,
 }: {
@@ -122,7 +119,6 @@ function StartPlaceDialog({
   title: string;
   place: StartPlace | JobStart;
   lookups: boolean;
-  settings: StartSettings;
   blocked: string | null;
   onClose: () => void;
 }) {
@@ -130,7 +126,7 @@ function StartPlaceDialog({
   const send = (patch: StartPatch): Promise<unknown> => (session.client ? session.client.mutation(update, patch) : Promise.reject(new Error(sessionFailure(session.state))));
   return (
     <Modal onClose={onClose} title={title} size="sm" busy={pending !== null}>
-      <StartPlaceForm target={target} place={place} lookups={lookups} settings={settings} blocked={blocked} send={send} onClose={onClose} pending={pending} setPending={setPending} />
+      <StartPlaceForm target={target} place={place} lookups={lookups} blocked={blocked} send={send} onClose={onClose} pending={pending} setPending={setPending} />
     </Modal>
   );
 }
@@ -142,7 +138,6 @@ export function StartPlaceForm({
   target,
   place,
   lookups,
-  settings,
   send,
   onClose,
   pending,
@@ -153,7 +148,6 @@ export function StartPlaceForm({
   target: StartTarget;
   place: StartPlace;
   lookups: boolean;
-  settings: StartSettings;
   send: (patch: StartPatch) => Promise<unknown>;
   onClose: () => void;
   pending: Pending;
@@ -173,7 +167,7 @@ export function StartPlaceForm({
   const address = useRef<HTMLInputElement>(null);
   const submit = (event: FormEvent): void => {
     event.preventDefault();
-    const patch = savePatch(target, saved, form, settings);
+    const patch = savePatch(target, saved, form);
     if (!patch || pending || blocked !== null) return;
     setPending("save");
     setError(null);

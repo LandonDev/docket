@@ -210,8 +210,8 @@ export function timeNear(at: number, on: number, opts: ClashWordsOpts = {}): str
   const lead = apart === 0 ? '' : apart <= 3 ? `${dayOf(at, opts)} ` : `${format('date', opts.timeZone).format(at)}, `
   return `${lead}${isSecond(at, opts) ? 'second ' : ''}${clockOf(at, opts)}`
 }
-/** Whether an instant is the second time its clock shows, in the hour the clocks repeat: said as "second 1:30 AM", since the clock alone names two instants. */
-export const isSecond = (at: number, opts: ClashWordsOpts = {}): boolean => clockOf(at - 3_600_000, opts) === clockOf(at, opts)
+/** Whether an instant is the second time its clock shows, where the clocks go back (an hour in most zones, half an hour in a few): said as "second 1:30 AM", since the clock alone names two instants. */
+export const isSecond = (at: number, opts: ClashWordsOpts = {}): boolean => [3_600_000, 1_800_000].some((back) => clockOf(at - back, opts) === clockOf(at, opts))
 
 /** "38 min", "1 hr", "1 hr 10 min". */
 function durationOf(minutes: number): string {

@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
-/** Settings → Work, Start places: seven rows from LifeOS, each opening a dialog whose Save sends `settings:update` with the maps whole. */
+/** Settings → Work, Start places: seven rows from LifeOS, each opening a dialog whose Save sends `settings:update` with that one place alone. */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { StartPlaces, StartSettings } from "./places";
+import type { StartPlaces } from "./places";
 
 const lifeos = vi.hoisted(() => ({
   state: "connected" as string,
   loading: false,
   places: null as unknown,
-  settings: null as unknown,
   sent: [] as { name: string; args: unknown }[],
   refuse: null as string | null,
   failed: null as string | null,
@@ -35,7 +34,6 @@ vi.mock("../shell/lifeos", async (original) => ({
     if (lifeos.loading) return { status: "loading" };
     if (lifeos.failed) return { status: "failed", error: lifeos.failed };
     if (name === "settings:startPlaces") return { status: "ready", value: lifeos.places };
-    if (name === "settings:get") return { status: "ready", value: lifeos.settings };
     if (name === "sectors:list") return { status: "ready", value: SECTORS };
     return { status: "loading" };
   },
@@ -63,17 +61,11 @@ const PLACES: StartPlaces = {
     { sector: "life", lookups: true, state: "none" },
   ],
 };
-const SETTINGS: StartSettings = {
-  homeAddress: "9 Office Rd",
-  starts: { hypixel: "5 Pine Ave", purdue: "Cedar Hall, 4 Elm St, Cedar Falls, IN", ref: "2 Gym Ln" },
-  placeLookups: { purdue: false },
-};
 
 beforeEach(() => {
   lifeos.state = "connected";
   lifeos.loading = false;
   lifeos.places = PLACES;
-  lifeos.settings = SETTINGS;
   lifeos.sent = [];
   lifeos.refuse = null;
   lifeos.failed = null;
@@ -146,17 +138,17 @@ describe("Start places", () => {
     expect(confirm.disabled).toBe(false);
   });
 
-  it("Save on a job sends the whole starts map changed at that one key, then closes", async () => {
+  it("Save on a job sends that job's start alone, then closes", async () => {
     render(<StartPlacesSection environmentId="box" />);
     const dialog = await open("Change Ref");
     fireEvent.change(within(dialog).getByLabelText("Address"), { target: { value: "3 Court St" } });
     await save(dialog);
-    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { starts: { ...SETTINGS.starts, ref: "3 Court St" } } }]);
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "ref", address: "3 Court St" } } }]);
     await act(async () => void (await new Promise((r) => setTimeout(r, 400))));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("turning the switch sends the whole placeLookups map", async () => {
+  it("turning the switch sends that job's lookups alone, and nothing of another job", async () => {
     render(<StartPlacesSection environmentId="box" />);
     const dialog = await open("Change Purdue");
     const line = within(dialog).getByText("When off, this job's event places never leave your machines.");
@@ -166,7 +158,7 @@ describe("Start places", () => {
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(toggle);
     await save(dialog);
-    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { placeLookups: { purdue: true } } }]);
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { lookupsFor: { sector: "purdue", on: true } } }]);
   });
 
   it("Use home empties the address for Save to send, with a switch he flipped beside it, and shows only while there is an address", async () => {
@@ -185,10 +177,7 @@ describe("Start places", () => {
     expect(document.activeElement).toBe(within(dialog).getByLabelText("Address"));
     expect(within(dialog).queryByRole("button", { name: "Use home" })).toBeNull();
     await save(dialog);
-    const { hypixel: _gone, ...rest } = SETTINGS.starts!;
-    expect(lifeos.sent).toHaveLength(1);
-    expect(lifeos.sent[0]).toMatchObject({ name: "settings:update", args: { starts: rest } });
-    expect(Object.keys((lifeos.sent[0] as { args: { placeLookups?: object } }).args.placeLookups ?? {})).toContain("hypixel");
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "hypixel", address: "" }, lookupsFor: { sector: "hypixel", on: false } } }]);
   });
 
   it("names each row's button by what the row says, and turns a spinner while a place is looked up", () => {
@@ -266,7 +255,7 @@ describe("Start places", () => {
     expect(saveOff()).toBe(false);
     await save(screen.getByRole("dialog"));
     expect(lifeos.sent).toHaveLength(1);
-    expect(lifeos.sent[0]).toMatchObject({ name: "settings:update", args: { starts: { purdue: "12 Oak Ct" }, placeLookups: { purdue: true } } });
+    expect(lifeos.sent[0]).toMatchObject({ name: "settings:update", args: { startFor: { sector: "purdue", address: "12 Oak Ct" }, lookupsFor: { sector: "purdue", on: true } } });
   });
 
   it("a refusal's words stay in the dialog", async () => {

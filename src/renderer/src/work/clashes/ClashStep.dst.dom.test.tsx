@@ -14,7 +14,10 @@ const at = (hour: number, minute = 0) => new Date(2027, 2, 14, hour, minute).get
 const side = (eventId: string, title: string, startsAt: number, endsAt: number, can: ClashSide["can"]): ClashSide => ({ eventId, sector: "ref", title, startsAt, endsAt, can });
 const clash: Clash = { id: "ev_a-ev_b", kind: "overlap", a: side("ev_a", "Film review", at(9), at(11), ["propose"]), b: side("ev_b", "Varsity Basketball", at(10), at(12), []) };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 afterAll(() => {
   delete process.env.TZ;
 });
@@ -23,6 +26,8 @@ describe("a step on the night the clocks go back", () => {
   it("says which 1:30 AM an event ends at, in its times and under the field", () => {
     // 2026-11-01 in New York: 1:00 to 1:59 AM comes twice. A game from the first 1:30 to the second, and a call that offers it the hour after.
     const first = Date.UTC(2026, 10, 1, 5, 30);
+    // The evening before, by the clock the step reads: an offer is never a time already gone.
+    vi.useFakeTimers({ now: first - 6 * 3_600_000, toFake: ["Date"] });
     const game = side("ev_a", "Late game", first, first + 3_600_000, ["propose"]);
     const call = side("ev_b", "Call", first - 15 * 60_000, first + 15 * 60_000, []);
     render(<StepForm clash={{ id: "ev_b-ev_a", kind: "overlap", a: call, b: game }} step={{ side: "b", way: "propose" }} pending={false} onBack={() => {}} onSend={() => {}} />);

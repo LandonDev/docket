@@ -66,6 +66,15 @@ describe("the time a move starts filled with", () => {
     expect(freeAfter(none, "b", morning)).toEqual({ start: T0 + 3 * HOUR, end: T0 + 3 * HOUR + 15 * MINUTE });
   });
 
+  it("never offers a time already gone: past the drive, the later event is offered the next quarter hour from now", () => {
+    // Dinner at 8:00, 44 minutes from a game that ended at 7:30; he opens Move at 8:22, and 8:15 is behind him.
+    const dinner = drive({ a: side("a", 5.5, 2), b: side("b", 8, 1.5), minutes: 44, shortBy: 14 });
+    expect(freeAfter(dinner, "b", T0 + 7 * HOUR)).toEqual({ start: T0 + 8.25 * HOUR, end: T0 + 9.75 * HOUR });
+    expect(freeAfter(dinner, "b", T0 + 8 * HOUR + 22 * MINUTE)).toEqual({ start: T0 + 8.5 * HOUR, end: T0 + 10 * HOUR });
+    // On the quarter hour itself, the one after.
+    expect(freeAfter(dinner, "b", T0 + 8.5 * HOUR).start).toBe(T0 + 8.75 * HOUR);
+  });
+
   it("moves the earlier event after the later one when no time before it is left today", () => {
     // It is already noon: nothing before the game is ahead of now.
     expect(freeAfter(overlap({ minutes: 38 }), "a", T0)).toEqual({ start: T0 + 3 * HOUR + 45 * MINUTE, end: T0 + 5 * HOUR + 45 * MINUTE });

@@ -4,7 +4,7 @@ import { Page } from "../../components/page";
 import { Button } from "../../components/ui/button";
 import { setLifeosSession, setLifeosStatus } from "../shell/lifeos";
 import { StartPlaceForm, StartPlacesSection } from "./StartPlaces";
-import type { StartPlaces, StartSettings } from "./places";
+import type { StartPlaces } from "./places";
 
 /**
  * Start places over fixed data, for `bun run ui:preview
@@ -25,9 +25,8 @@ const PLACES: StartPlaces = {
     { sector: "life", lookups: true, state: "none" },
   ],
 };
-const SETTINGS: StartSettings = { homeAddress: "9 Office Rd", starts: { hypixel: "5 Pine Ave", purdue: "Cedar Hall, 4 Elm St, Cedar Falls, IN", ref: "2 Gym Ln, Cedar Fals" } };
 const SECTORS = ["cosmic", "hypixel", "purdue", "ref", "unify", "life"].map((key, order) => ({ key, label: key.charAt(0).toUpperCase() + key.slice(1), order }));
-const ANSWERS: Record<string, unknown> = { "settings:startPlaces": PLACES, "settings:get": SETTINGS, "sectors:list": SECTORS };
+const ANSWERS: Record<string, unknown> = { "settings:startPlaces": PLACES, "sectors:list": SECTORS };
 
 // A session with a client that answers each query at once from the table above.
 const ENV = "preview-start-places";
@@ -53,7 +52,7 @@ export function StartPlacesPreview({ state = "section" }: { state?: "section" | 
               <X />
             </Button>
           </header>
-          <StartPlaceForm target="purdue" place={purdue} lookups={purdue.lookups} settings={SETTINGS} blocked={state === "blocked" ? "LifeOS did not answer" : state === "waiting" ? "" : null} send={async () => null} onClose={none} pending={null} setPending={none} />
+          <StartPlaceForm target="purdue" place={purdue} lookups={purdue.lookups} blocked={state === "blocked" ? "LifeOS did not answer" : state === "waiting" ? "" : null} send={async () => null} onClose={none} pending={null} setPending={none} />
         </div>
       </div>
     );

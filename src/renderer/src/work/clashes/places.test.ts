@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { formChanged, placeWords, rowLabel, savePatch, type StartSettings } from "./places";
+import { formChanged, placeWords, rowLabel, savePatch } from "./places";
 
-const settings: StartSettings = { homeAddress: "9 Office Rd", starts: { ref: "Cedar Hall, 4 Elm St, Cedar Falls, IN", unify: "1 Mill St" }, placeLookups: { purdue: false } };
 
 describe("a start place's words", () => {
   it("a job with no start of its own starts from home; Home with none is not set", () => {
@@ -25,31 +24,31 @@ describe("what a Save sends", () => {
 
   it("nothing while the form is as LifeOS holds it, spaces at the ends aside", () => {
     expect(formChanged(saved, { ...saved, address: ` ${saved.address} ` })).toBe(false);
-    expect(savePatch("ref", saved, { ...saved, address: ` ${saved.address} ` }, settings)).toBeNull();
+    expect(savePatch("ref", saved, { ...saved, address: ` ${saved.address} ` })).toBeNull();
     expect(formChanged(saved, { ...saved, lookups: false })).toBe(true);
   });
 
-  it("a job's new address: the whole starts map, changed at its one key", () => {
-    expect(savePatch("ref", saved, { ...saved, address: " 2 Gym Ln " }, settings)).toEqual({ starts: { ref: "2 Gym Ln", unify: "1 Mill St" } });
-    expect(savePatch("cosmic", { address: "", lookups: true }, { address: "5 Pine Ave", lookups: true }, settings)).toEqual({ starts: { ref: settings.starts!.ref, unify: "1 Mill St", cosmic: "5 Pine Ave" } });
+  it("a job's new address alone: that job and nothing of another, so a change made elsewhere is kept", () => {
+    expect(savePatch("ref", saved, { ...saved, address: " 2 Gym Ln " })).toEqual({ startFor: { sector: "ref", address: "2 Gym Ln" } });
+    expect(savePatch("cosmic", { address: "", lookups: true }, { address: "5 Pine Ave", lookups: true })).toEqual({ startFor: { sector: "cosmic", address: "5 Pine Ave" } });
   });
 
-  it("an emptied address leaves the job out, so it starts from home", () => {
-    expect(savePatch("ref", saved, { ...saved, address: "  " }, settings)).toEqual({ starts: { unify: "1 Mill St" } });
+  it("an emptied address goes as empty, which clears the job's start: it starts from home", () => {
+    expect(savePatch("ref", saved, { ...saved, address: "  " })).toEqual({ startFor: { sector: "ref", address: "" } });
   });
 
-  it("the lookups switch: the whole placeLookups map, changed at its one key", () => {
-    expect(savePatch("purdue", { address: "", lookups: false }, { address: "", lookups: true }, settings)).toEqual({ placeLookups: { purdue: true } });
-    expect(savePatch("ref", saved, { ...saved, lookups: false }, settings)).toEqual({ placeLookups: { purdue: false, ref: false } });
+  it("the lookups switch alone: that job's, never another job's", () => {
+    expect(savePatch("purdue", { address: "", lookups: false }, { address: "", lookups: true })).toEqual({ lookupsFor: { sector: "purdue", on: true } });
+    expect(savePatch("ref", saved, { ...saved, lookups: false })).toEqual({ lookupsFor: { sector: "ref", on: false } });
   });
 
   it("Home sends its address, or null to clear it", () => {
-    expect(savePatch("home", { address: "9 Office Rd", lookups: false }, { address: "12 Oak Ct", lookups: false }, settings)).toEqual({ homeAddress: "12 Oak Ct" });
-    expect(savePatch("home", { address: "9 Office Rd", lookups: false }, { address: "", lookups: false }, settings)).toEqual({ homeAddress: null });
+    expect(savePatch("home", { address: "9 Office Rd", lookups: false }, { address: "12 Oak Ct", lookups: false })).toEqual({ homeAddress: "12 Oak Ct" });
+    expect(savePatch("home", { address: "9 Office Rd", lookups: false }, { address: "", lookups: false })).toEqual({ homeAddress: null });
   });
 
   it("sends an emptied address and a flipped switch in one patch, so Use home never drops the switch", () => {
-    expect(savePatch("ref", { address: "4 Gym Way", lookups: true }, { address: "", lookups: false }, settings)).toEqual({ starts: { unify: "1 Mill St" }, placeLookups: { ...settings.placeLookups, ref: false } });
+    expect(savePatch("ref", { address: "4 Gym Way", lookups: true }, { address: "", lookups: false })).toEqual({ startFor: { sector: "ref", address: "" }, lookupsFor: { sector: "ref", on: false } });
   });
 
   it("names a row's button by its verb, whose place and what the row says", () => {

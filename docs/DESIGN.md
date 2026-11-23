@@ -1898,8 +1898,9 @@ Around the canvas:
   Send (Move for a move). The times start filled: the earlier event with
   the latest quarter hour that still ends a drive before the later one
   (before the time that one asks him there, when a drive clash tells it),
-  the later with the first after the earlier ends; the start lands on the
-  quarter hour and the event keeps the length it has. A field he leaves as
+  the later with the first after the earlier ends, never a time already
+  gone; the start lands on the quarter hour and the event keeps the length
+  it has. A field he leaves as
   offered sends the instant offered, each field on its own. A To before
   the start on the clock is the next day's, and says "Next day" under it;
   the same minute is no span. An event a day long or more keeps the days
@@ -1925,7 +1926,9 @@ Around the canvas:
   seen gone never comes back from an old copy; a read that failed says why in the body; two
   events that no longer clash are the title "No longer a clash" over the
   foot, with nothing between. Running late… opens Mail's composer in
-  that job's workspace with the people on the event and one line; "This
+  that job's workspace with the people on the event and one line, and
+  lets go with LifeOS's words when the read of those people gets no
+  answer in ten seconds; "This
   is fine" closes with a toast that carries Undo.
   In the Week and the Month a clashing event's block carries a 6px
   `warning` dot before its title, named "Clashes with another event";
@@ -1946,7 +1949,9 @@ Around the canvas:
   line, "When off, this job's event places never leave your machines.",
   and Use home at the foot's start while the field holds an address: it
   empties the field and leaves focus there, and Save sends that with
-  whatever else changed. The fields are locked while Save is out. An open
+  whatever else changed, for that one job alone (another job's start or
+  switch, changed elsewhere meanwhile, is kept). The fields are locked
+  while Save is out. An open
   dialog keeps what he typed when a read fails or the session drops: it
   says why in its alert, before what LifeOS said of an earlier Save, and
   Save waits for a read that is current; while a read is merely out or

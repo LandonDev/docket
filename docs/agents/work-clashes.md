@@ -130,7 +130,9 @@ The pillar has no view of its own and no row in the column.
 - `ClashDialog.tsx`: the two events and the drive, the ways out each allows,
   each way's one step. Decline, a proposed time and a move go through
   `work.clashes.answer`; "This is fine" through `work.clashes.waive`, with
-  Undo on its toast. Running late reads the event's people (`events:get`)
+  Undo on its toast. Running late reads the event's people (`events:get`,
+  given ten seconds: Convex's own read has no end, and the dialog is locked
+  while it is out)
   and opens Mail's composer in that job's workspace (`mail/mailto.ts`), so it
   is offered only where this host has that workspace. The dialog reads the
   clash's own day or two (whole local days); a clash that is gone says so in
@@ -155,7 +157,8 @@ The pillar has no view of its own and no row in the column.
 - `model.ts` holds the pure parts: the marks, the time a move or a proposal
   starts filled with (the earlier event: the latest quarter hour that ends a
   drive before the later one, while that is ahead and on its day; else the
-  first quarter hour after the other event that the drive allows; a drive
+  first quarter hour after the other event that the drive allows, and never
+  a time already gone; a drive
   clash's shortfall tells how long before its start the later event asks
   him there, and the offer leaves that too), a To that runs past midnight,
   how late he is, the words.
@@ -209,17 +212,19 @@ while it reads, the read's error in a red line if it fails.
   LifeOS's words, as an alert. No toast: the row changes. The dialog stands
   on what the reads last gave whole, so it and what he typed stay when a
   read fails, the session drops or a read is out; Save waits until the
-  reads are current again, since it writes the maps whole. Why LifeOS
+  reads are current again, so he saves beside what LifeOS holds now. Why LifeOS
   cannot be read now shows in the alert before an earlier Save's refusal,
   and a read that is merely out, or a session still connecting
   (`sessionWaits`), says "Waiting for LifeOS…" as a status.
 - **LifeOS.** Queries `settings:startPlaces {}` (the rows: `{home, jobs}`,
   each `{address?, label?, state: none | looking | found | failed}`, a job
-  with `sector` and its `lookups`) and `settings:get {}` (the maps a Save
-  sends). The one write is `settings:update`: `homeAddress` (null clears it),
-  or for a job `starts` and `placeLookups`, each sent whole, changed at its one
-  key (`savePatch`). A job left out of `starts`, or given an empty
-  address, starts from home.
+  with `sector` and its `lookups`). The one write is `settings:update`:
+  `homeAddress` (null clears it), or for a job `startFor {sector, address}`
+  and `lookupsFor {sector, on}`, that job alone (`savePatch`). LifeOS lays
+  each over the map it holds in the one write, so two windows that each
+  change a job keep each other's change, and a press on one job never
+  turns another job's lookups back on. An empty address clears the job's
+  start: it starts from home.
 - **Lookups are his alone.** Only this switch, pressed by him, changes
   `placeLookups`; no tool or thread does. A job with no entry takes LifeOS's
   default: every job on, Purdue off (ruling 1 of the plan). A start place he

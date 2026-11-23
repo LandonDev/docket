@@ -33,6 +33,19 @@ import type { ClashAsk } from "./open";
  * own send; "This is fine" quiets the clash until a time or a place moves.
  */
 
+/** How long Running late waits for the event's people before it says LifeOS did not answer. */
+const LATE_WAIT = 10_000;
+/** A read with an end. Convex's own query never times out, and one whose client is closed under it never settles: without this the dialog would stay locked on its spinner. An answer after the end is dropped. */
+function answered<T>(read: Promise<T>): Promise<T> {
+  return new Promise((yes, no) => {
+    const timer = setTimeout(() => no(new Error("LifeOS did not answer")), LATE_WAIT);
+    read.then(
+      (value) => (clearTimeout(timer), yes(value)),
+      (err: unknown) => (clearTimeout(timer), no(err)),
+    );
+  });
+}
+
 type Side = "a" | "b";
 type Step = { side: Side; way: Exclude<ClashWay, "late"> };
 const eventGet = makeFunctionReference<"query">("events:get");
@@ -228,7 +241,7 @@ function Body({
     setError(null);
     setPending(true);
     setBusy("late");
-    session.client.query(eventGet, { id: clash.b.eventId }).then(
+    answered(session.client.query(eventGet, { id: clash.b.eventId })).then(
       (event: { attendees?: { address: string }[] } | null) => {
         setPending(false);
         const to = (event?.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
