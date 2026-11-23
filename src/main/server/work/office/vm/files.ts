@@ -16,6 +16,7 @@ import {
   type VmSyncLibrary
 } from '@shared/contract-work-office'
 import { BYTES_MAX, FETCH_MS, libraryId, noText, readText, SEARCH_MAX, splitLibraryName, TEXT_MAX } from '../files/library'
+import type { WorkCtx } from '../../modules'
 import { vmCall, VmAsleep } from './link'
 
 /**
@@ -25,7 +26,8 @@ import { vmCall, VmAsleep } from './link'
  * guest's path; every `work.office.files*` verb takes it as it takes a folder of the host's own disk.
  *
  * What OneDrive syncs there is read while the machine is awake and kept (`vm:status`), so the list
- * shows without waking it; a folder, a search, a read or an open wakes it.
+ * shows without waking it; a folder, a search, a read or an open wakes it. A list never waits on a
+ * read: it answers from what was kept and reads behind (`readVmBehind`), one read at a time.
  */
 
 interface GuestMount {
@@ -151,8 +153,11 @@ export async function refreshVm(db: DatabaseSync, opts: { wake?: boolean; signal
     status = (await vmCall('guest.status', {}, { wake: opts.wake ?? false, timeoutMs: 30_000, signal: opts.signal })) as GuestStatus
   } catch (err) {
     if (err instanceof VmAsleep) return null
+    // An aborted caller says nothing of the helper.
+    if (!opts.signal?.aborted) readingOf(db).failure = err instanceof Error ? err.message : String(err)
     throw err
   }
+  readingOf(db).failure = null
   const tops: Record<string, string[]> = {}
   for (const m of status.mounts) {
     if (m.type !== 'team') continue
@@ -167,6 +172,55 @@ export async function refreshVm(db: DatabaseSync, opts: { wake?: boolean; signal
   setValue(db, 'vm:status', JSON.stringify(stored))
   await syncWanted(db, stored, opts.signal).catch(() => undefined)
   return stored
+}
+
+/** Per database (one host's): why the last read of the guest failed, cleared by the next that works, and the read under way. */
+interface Reading {
+  failure: string | null
+  running: Promise<void> | null
+}
+const readings = new WeakMap<DatabaseSync, Reading>()
+function readingOf(db: DatabaseSync): Reading {
+  let r = readings.get(db)
+  if (!r) readings.set(db, (r = { failure: null, running: null }))
+  return r
+}
+/** Why the last read of the guest failed (the helper down, a time-out, a wake that did not come), or null. */
+export const lastReadFailure = (db: DatabaseSync): string | null => readings.get(db)?.failure ?? null
+/** Whether a read is under way. */
+export const readingVm = (db: DatabaseSync): boolean => !!readings.get(db)?.running
+
+/** What a person's screen shows of the VM's files: a read that changes it is pushed. */
+const shownOf = (db: DatabaseSync): string => {
+  const stored = storedStatus(db)
+  return JSON.stringify([stored?.status ?? null, stored?.tops ?? null, lastReadFailure(db)])
+}
+
+/**
+ * Reads the guest behind an answer already given: never two at once (a second ask joins the first),
+ * and when the read changes what was kept or the failure it says, every window that may read hears
+ * `work.office.files` and asks again. Resolves when the read is done; it never rejects.
+ */
+export function readVmBehind(ctx: Pick<WorkCtx, 'db' | 'log' | 'push'>, opts: { wake: boolean }): Promise<void> {
+  const r = readingOf(ctx.db)
+  if (r.running) return r.running
+  const before = shownOf(ctx.db)
+  const read = refreshVm(ctx.db, { wake: opts.wake })
+    .then(
+      () => undefined,
+      (err) => ctx.log(`office: the Windows VM's OneDrive could not be read: ${err instanceof Error ? err.message : String(err)}`)
+    )
+    .finally(() => {
+      r.running = null
+      if (shownOf(ctx.db) === before) return
+      try {
+        ctx.push({ push: 'work.office.files' }, { need: 'read' })
+      } catch (err) {
+        ctx.log(`office: the Files push failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })
+  r.running = read
+  return read
 }
 
 /** The folder name OneDrive gives a library under Windows: `<Site> - <Library>`. */
@@ -206,7 +260,13 @@ export function vmPlace(db: DatabaseSync, vm: { state: string; cannot: string | 
   if (!vm || vm.cannot) return null
   if (vm.state === 'none' || vm.state === 'setting-up') return { kind: 'vm', state: 'not-set-up', account: null }
   const stored = storedStatus(db)
-  if (!stored) return { kind: 'vm', state: 'error', account: null, detail: 'OneDrive in the Windows VM has not been read yet.' }
+  const failure = lastReadFailure(db)
+  if (!stored) {
+    if (failure) return { kind: 'vm', state: 'error', account: null, detail: failure }
+    return readingVm(db) ? { kind: 'vm', state: 'reading', account: null } : { kind: 'vm', state: 'error', account: null, detail: 'OneDrive in the Windows VM has not been read yet.' }
+  }
+  // An awake machine whose helper does not answer: what was kept is listed, and the place says why it is not fresh.
+  if (failure && vm.state === 'awake') return { kind: 'vm', state: 'error', account: stored.status.onedrive.account, detail: failure }
   const od = stored.status.onedrive
   if (!od.installed) return { kind: 'vm', state: 'no-onedrive', account: null }
   // Signed out is signed out, whatever folders an earlier sign-in left listed: nothing in them is kept in step.

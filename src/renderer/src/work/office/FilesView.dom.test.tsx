@@ -22,6 +22,12 @@ let vmLibs: TeamsLibrary[] = [];
 let macPlaces: TeamsPlace[] | null = null;
 /** the Mac's read of a folder fails as a machine out of reach */
 let macListDown = false;
+/** a host's list answers only once its gate opens (a host still being asked, or one that never answers) */
+let hold: Record<string, Promise<void>> = {};
+/** a host's search answers only once its gate opens */
+let searchHold: Record<string, Promise<void>> = {};
+const pushListeners = new Set<{ env: string; fn: (push: { push: string }) => void }>();
+const pushFrom = (env: string, push: { push: string }) => [...pushListeners].filter((l) => l.env === env).forEach((l) => l.fn(push));
 const signIns: string[] = [];
 const opened: string[] = [];
 const T = "/c/S/Purdue Esports - Documents";
@@ -36,9 +42,11 @@ const answer = (env: string, method: string, params: unknown): Promise<unknown> 
   calls.push({ env, method, params });
   switch (method) {
     case "work.office.filesLibraries":
-      if (macDown && env === "local") return Promise.reject(new Error("not connected"));
-      if (env === "box") return Promise.resolve({ host: "env_box", libraries: vmLibs, roots: [], off: [], ...(boxPlaces ? { places: boxPlaces } : {}) });
-      return Promise.resolve({ host: "env_mac", libraries: !noLibs ? [LIB] : [], roots: [], off: [], ...(macPlaces ? { places: macPlaces } : {}) });
+      return (hold[env] ?? Promise.resolve()).then(() => {
+        if (macDown && env === "local") throw new Error("not connected");
+        if (env === "box") return { host: "env_box", libraries: vmLibs, roots: [], off: [], ...(boxPlaces ? { places: boxPlaces } : {}) };
+        return { host: "env_mac", libraries: !noLibs ? [LIB] : [], roots: [], off: [], ...(macPlaces ? { places: macPlaces } : {}) };
+      });
     case "work.workspace.get":
       return Promise.resolve(settings);
     case "work.workspace.set":
@@ -56,9 +64,10 @@ const answer = (env: string, method: string, params: unknown): Promise<unknown> 
       return Promise.resolve({ entries: ENTRIES });
     }
     case "work.office.filesSearch":
-      if (searchFails) return Promise.reject(new Error("The host did not answer"));
-      if (searchNone) return Promise.resolve({ entries: [], more: false });
-      return Promise.resolve({ entries: env === "local" ? [entry("Budget.xlsx")] : [], more: false });
+      return (searchHold[env] ?? Promise.resolve()).then(() => {
+        if (searchFails) throw new Error("The host did not answer");
+        return { entries: searchNone || env !== "local" ? [] : [entry("Budget.xlsx")], more: false };
+      });
     case "work.office.filesFetch":
       return fetchGate.then(() => ({ entry: { ...(params as { source: { path: string } }) && entry("Report.pdf") } }));
     case "work.office.filesOpen":
@@ -86,7 +95,15 @@ vi.mock("../../lib/connection", () => ({
       { id: "local", name: "This Mac", platform: "darwin" },
       { id: "box", name: "The box", platform: "linux" },
     ],
-    linkOf: (env: string) => ({ environmentId: env, request: (method: string, params: unknown) => answer(env, method, params) }),
+    linkOf: (env: string) => ({
+      environmentId: env,
+      request: (method: string, params: unknown) => answer(env, method, params),
+      onPush: (fn: (push: { push: string }) => void) => {
+        const l = { env, fn };
+        pushListeners.add(l);
+        return () => void pushListeners.delete(l);
+      },
+    }),
   },
 }));
 // The workspace's desktops are host ids: this Mac is env_mac on every host and "local" in its own window.
@@ -123,10 +140,16 @@ beforeEach(() => {
   vmLibs = [];
   macListDown = false;
   signIns.length = 0;
+  hold = {};
+  searchHold = {};
+  pushListeners.clear();
   stage.length = 0;
   computersOpened = 0;
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const openGeneral = async (p: WorkViewProps) => {
   await act(async () => void render(<View {...p} />));
@@ -322,5 +345,75 @@ describe("the Files view", () => {
     await act(async () => fireEvent.click(await screen.findByRole("button", { name: /^From the VM\.pdf/ })));
     expect(calls.filter((c) => c.method === "work.office.filesOpen").map((c) => c.env)).toEqual(["box"]);
     expect(calls.some((c) => c.method === "session.create")).toBe(false);
+  });
+
+  it("paints a host that answered while another is still being asked, with bones under its rows for the rest", async () => {
+    settings = { mayUseDesktop: ["env_mac"], windowsVm: true };
+    let open = () => {};
+    hold = { box: new Promise<void>((done) => (open = done)) };
+    vmLibs = [VM_LIB];
+    boxPlaces = [{ kind: "vm", state: "ok", account: "landon@purdue.edu" }];
+    const { container } = await act(async () => render(<View {...props("box")} />));
+    expect(await screen.findByText("Purdue Esports")).toBeTruthy();
+    expect(screen.queryByText("RecWell")).toBeNull();
+    expect(container.querySelector("[aria-busy]")).toBeTruthy();
+    await act(async () => open());
+    expect(await screen.findByText("RecWell")).toBeTruthy();
+    expect(container.querySelector("[aria-busy]")).toBeNull();
+  });
+
+  it("says a host past its deadline is not answering, over what the others listed, and Retry asks it again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    settings = { mayUseDesktop: ["env_mac"], windowsVm: true };
+    hold = { box: new Promise<void>(() => {}) };
+    await act(async () => void render(<View {...props("box")} />));
+    expect(await screen.findByText("Purdue Esports")).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+    await act(async () => void vi.advanceTimersByTime(4_000));
+    const line = await screen.findByRole("status");
+    expect(line.textContent).toContain("The box did not answer");
+    hold = {};
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(await screen.findByText("Purdue Esports")).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("holds the bones while the VM is read for the first time, and paints what the read found when its host pushes", async () => {
+    settings = { mayUseDesktop: [], windowsVm: true };
+    boxPlaces = [{ kind: "vm", state: "reading", account: null }];
+    const { container } = await act(async () => render(<View {...props("box")} />));
+    await act(async () => void (await Promise.resolve()));
+    expect(container.querySelector("[aria-busy]")).toBeTruthy();
+    expect(screen.queryByText(/No Teams files|did not load/)).toBeNull();
+    boxPlaces = [{ kind: "vm", state: "ok", account: "landon@purdue.edu" }];
+    vmLibs = [VM_LIB];
+    await act(async () => pushFrom("box", { push: "work.office.files" }));
+    expect(await screen.findByText("RecWell")).toBeTruthy();
+    expect(calls.filter((c) => c.method === "work.office.filesLibraries" && c.env === "box")).toHaveLength(2);
+  });
+
+  it("says a VM helper that did not answer on the state line, with its words, over the libraries it kept", async () => {
+    settings = { mayUseDesktop: [], windowsVm: true };
+    boxPlaces = [{ kind: "vm", state: "error", account: "landon@purdue.edu", detail: "The Office helper did not answer" }];
+    vmLibs = [VM_LIB];
+    await act(async () => void render(<View {...props("box")} />));
+    expect(await screen.findByText("RecWell")).toBeTruthy();
+    const line = screen.getByRole("status");
+    expect(line.textContent).toContain("The Windows VM did not answer");
+    expect(line.textContent).toContain("The Office helper did not answer");
+  });
+
+  it("shows the hits of a host that answered a search while another is still searching", async () => {
+    settings = { mayUseDesktop: ["env_mac"], windowsVm: true };
+    boxPlaces = [{ kind: "vm", state: "ok", account: "landon@purdue.edu" }];
+    vmLibs = [VM_LIB];
+    searchHold = { box: new Promise<void>(() => {}) };
+    const p = props("box");
+    const { container } = await act(async () => render(<><Head {...p} /><View {...p} /></>));
+    expect(await screen.findByText("Purdue Esports")).toBeTruthy();
+    await act(async () => fireEvent.change(screen.getByLabelText("Search files"), { target: { value: "budget" } }));
+    expect(await screen.findByText("Purdue Esports/General", {}, { timeout: 2000 })).toBeTruthy();
+    expect(container.querySelector("[aria-busy]")).toBeTruthy();
+    expect(calls.filter((c) => c.method === "work.office.filesSearch").map((c) => c.env).sort()).toEqual(["box", "local"]);
   });
 });

@@ -1,11 +1,14 @@
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { OfficeAppState, TeamsLibrary } from '@shared/contract-work-office'
 import type { WorkCtx } from '../modules'
 import { AddinKeys, ensureAddinTables } from './addin/keys'
 import { ensureFilesTables, setRoots } from './files/library'
 import { officeProbe, officeRows, parseTasklist, vmRows, windowsOffice, type OfficeProbe } from './health'
+import { lastReadFailure, readingVm, refreshVm } from './vm/files'
+import { setVmCall, VmUnreachable } from './vm/link'
+import { setVmState } from './vm/office'
 
 /** Connections' office rows: each app, the add-in and OneDrive, read from a probe that starts nothing. */
 const signal = new AbortController().signal
@@ -143,6 +146,11 @@ describe('OneDrive and Office in the Windows VM', () => {
     expect(rows['office.vm.office']).toBeUndefined()
   })
 
+  it("says a helper that did not answer its last read as broken, in the failure's own words", () => {
+    const rows = byId(vmRows(vm({ onedrive: { kind: 'vm', state: 'error', account: 'him@purdue.edu', detail: "The Windows VM's Office helper did not answer" } })))
+    expect(rows['office.vm.onedrive']).toMatchObject({ state: 'broken', line: "The Windows VM's Office helper did not answer" })
+  })
+
   it('is left out where this host keeps no VM, and until the VM has been read', async () => {
     expect(vmRows(null)).toEqual([])
     expect(vmRows(vm({ at: null }))).toEqual([])
@@ -169,5 +177,34 @@ describe('the probe on this host', () => {
     expect(officeProbe(ctx, () => null, { TEMP_CODE_USER_DATA: '/tmp/dev' }).addin().holds).toBe(false)
     // A row says paired, never the key.
     return officeRows(p, signal).then((rows) => expect(JSON.stringify(rows)).not.toContain(made.key))
+  })
+
+  it("answers the VM's rows from what was kept while its helper never answers, and reads it behind the check", async () => {
+    const db = new DatabaseSync(':memory:')
+    ensureAddinTables(db)
+    ensureFilesTables(db)
+    const pushes: unknown[] = []
+    ctx = { db, host: 'env_box', log: () => {}, push: (p: unknown) => pushes.push(p) } as unknown as WorkCtx
+    const status = { onedrive: { installed: true, running: true, account: 'him@purdue.edu' }, mounts: [], office: { installed: true, version: '16.0', apps: ['excel'], account: null, licensed: true } }
+    setVmState(() => ({ state: 'awake', cannot: null }))
+    setVmCall(async () => status)
+    await refreshVm(db, { wake: false, now: () => 0 })
+    let fail: (err: Error) => void = () => {}
+    setVmCall(() => new Promise((_, no) => (fail = no)))
+    try {
+      const before = byId(await officeRows(officeProbe(ctx, () => null), signal))
+      expect(before['office.vm.onedrive']).toMatchObject({ state: 'working', line: 'Signed in as him@purdue.edu, no Teams library synced' })
+      expect(readingVm(db)).toBe(true)
+      fail(new VmUnreachable("The Windows VM's Office helper did not answer"))
+      await vi.waitFor(() => expect(readingVm(db)).toBe(false))
+      expect(lastReadFailure(db)).toMatch(/Office helper did not answer/)
+      expect(pushes).toEqual([{ push: 'work.office.files' }])
+      const after = byId(await officeRows(officeProbe(ctx, () => null), signal))
+      expect(after['office.vm.onedrive']).toMatchObject({ state: 'broken', line: expect.stringContaining('Office helper did not answer') })
+    } finally {
+      fail(new Error('done'))
+      setVmCall(null)
+      setVmState(null)
+    }
   })
 })

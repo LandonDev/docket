@@ -16,7 +16,7 @@ import { owaCarrier } from './owa'
 import { ensureRouteTables, OutlookRoute } from './route'
 import { officeTool, runHere, type Env } from './tools'
 import { dropCopies, filesHandle, type FilesDeps } from './files/handle'
-import { missingLibraries, refreshVm, storedStatus } from './vm/files'
+import { missingLibraries, readVmBehind, storedStatus } from './vm/files'
 import { stopVmOffice, vmAllowed, vmAwake, vmHasOffice, vmHereOf, vmState } from './vm/office'
 import { onWinvmState } from '../winvm'
 import { ensureFilesTables, librariesOf, libraryOf, setCopyAllowed } from './files/library'
@@ -106,7 +106,8 @@ function watchVm(ctx: WorkCtx): () => void {
     const wanting = !stored || !stored.status.onedrive.account || missingLibraries(ctx.db, stored).length > 0 || !stored.status.office.installed || stored.status.office.licensed !== true
     if (Date.now() - last < (wanting ? VM_WATCH_MS : 10 * VM_WATCH_MS) - 1000) return
     last = Date.now()
-    refreshVm(ctx.db, { wake: false }).catch((err) => ctx.log(`office: the Windows VM could not be read: ${errorText(err)}`))
+    // A read that changes what was kept is pushed: his approval shows in an open Files view with no press.
+    void readVmBehind(ctx, { wake: false })
   }
   const off = onWinvmState((state) => {
     if (state?.state !== 'awake') return

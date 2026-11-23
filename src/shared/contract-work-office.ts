@@ -91,9 +91,10 @@ export interface TeamsLibrary {
  *  - `signed-out`: OneDrive in the VM is not signed in: `work.office.vmSignIn`, then his approval;
  *  - `no-libraries`: signed in, his own files only: no Teams library is synced there yet;
  *  - `not-set-up`: the Windows VM is not set up on this host (Settings → Work);
- *  - `error`: it could not be asked; `detail` says why.
+ *  - `error`: it could not be asked; `detail` says why (for the VM, also an awake machine whose helper did not answer its last read);
+ *  - `reading`: the VM has never been read and its first read is under way: `work.office.files` is pushed when it ends.
  */
-export const TEAMS_PLACE_STATES = ['ok', 'no-onedrive', 'signed-out', 'no-libraries', 'not-set-up', 'error'] as const
+export const TEAMS_PLACE_STATES = ['ok', 'no-onedrive', 'signed-out', 'no-libraries', 'not-set-up', 'error', 'reading'] as const
 export type TeamsPlaceState = (typeof TEAMS_PLACE_STATES)[number]
 export interface TeamsPlace {
   kind: 'folders' | 'vm'
@@ -272,7 +273,8 @@ export interface OfficeAddinKey {
   live: boolean
 }
 
-export type OfficePush = never
+/** A host's Teams files changed behind an answer it gave (the Windows VM read again): a Files view on screen asks that host again. */
+export type OfficePush = { push: 'work.office.files' }
 
 export const OFFICE_CAPS = {
   'work.office.status': 'read',

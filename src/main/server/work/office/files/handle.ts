@@ -11,7 +11,7 @@ import type { Caller, WorkCtx } from '../../modules'
 import type { OfficeCarrier } from '../carrier'
 import { BYTES_MAX, copyAllowed, entryOf, fetchFile, foldersPlace, librariesOf, libraryOf, listFolder, offFolders, readText, rootsOf, searchLibraries, SEARCH_MAX, setCopyAllowed, setRoots } from './library'
 import { NOT_SET_UP } from '../../winvm/keeper'
-import { isGuestPath, missingLibraries, refreshVm, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
+import { isGuestPath, lastReadFailure, missingLibraries, readVmBehind, refreshVm, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
 import { vmAllowed, vmKey, vmState } from '../vm/office'
 import { vmCall } from '../vm/link'
 import { followSignIn, OFFICE_SIGN_IN_LINES, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn } from '../vm/signin'
@@ -52,23 +52,24 @@ function follow(ctx: WorkCtx, account: () => Promise<string | null>, what: strin
     .finally(() => (following = false))
 }
 
-/** How fresh the VM's kept status must be for a list to use it without asking an awake machine again. */
+/** How fresh the VM's kept status must be for a list to use it without reading an awake machine again. */
 const VM_FRESH_MS = 15_000
 
 /**
- * The VM's libraries and its place, for a list. An awake machine is asked again (it costs one short
- * call); a sleeping one answers from what was kept, and is woken only if it has never been read.
+ * The VM's libraries and its place, for a list: always what was kept, at once. Behind the answer an
+ * awake machine whose status is stale (or whose last read failed) is read again, and one never read
+ * is woken for its first read (`readVmBehind`: one read at a time, a change pushed). A person's window
+ * never waits on it; a thread, or another host asking for one, has no screen to repaint and waits for
+ * the first read alone.
  */
-async function vmListing(ctx: WorkCtx, signal?: AbortSignal): Promise<{ libraries: TeamsLibrary[]; place: TeamsPlace | null }> {
+async function vmListing(ctx: WorkCtx, by: Caller): Promise<{ libraries: TeamsLibrary[]; place: TeamsPlace | null }> {
   const state = vmState()
   if (!state || state.cannot || state.state === 'none' || state.state === 'setting-up') return { libraries: [], place: vmPlace(ctx.db, state) }
   const stored = storedStatus(ctx.db)
-  try {
-    if (!stored) await refreshVm(ctx.db, { wake: true, signal })
-    else if (state.state === 'awake' && Date.now() - stored.at > VM_FRESH_MS) await refreshVm(ctx.db, { wake: false, signal })
-  } catch (err) {
-    ctx.log(`office: the Windows VM's OneDrive could not be read: ${err instanceof Error ? err.message : String(err)}`)
-    if (!storedStatus(ctx.db)) return { libraries: [], place: { kind: 'vm', state: 'error', account: null, detail: err instanceof Error ? err.message : String(err) } }
+  const stale = !!stored && state.state === 'awake' && (lastReadFailure(ctx.db) !== null || Date.now() - stored.at > VM_FRESH_MS)
+  if (!stored || stale) {
+    const read = readVmBehind(ctx, { wake: !stored })
+    if (!stored && (by.kind === 'model' || (by.kind === 'remote' && !!by.peer))) await read
   }
   return { libraries: vmLibraries(ctx.db, ctx.host), place: vmPlace(ctx.db, state) }
 }
@@ -82,9 +83,9 @@ const vmFor = (ctx: WorkCtx, by: Caller): boolean => {
   return !!scope && vmAllowed(ctx, scope)
 }
 
-async function librariesAnswer(ctx: WorkCtx, by: Caller, signal?: AbortSignal): Promise<TeamsLibrariesAnswer> {
+async function librariesAnswer(ctx: WorkCtx, by: Caller): Promise<TeamsLibrariesAnswer> {
   const own = librariesOf(ctx.db, ctx.host)
-  const vm = vmFor(ctx, by) ? await vmListing(ctx, signal) : { libraries: [], place: null }
+  const vm = vmFor(ctx, by) ? await vmListing(ctx, by) : { libraries: [], place: null }
   const folders = foldersPlace(ctx.host)
   // A folder he added himself is a library too: the place then has something to show.
   const places = [...(folders ? [own.some((l) => l.kind !== 'mine') && folders.state !== 'ok' ? { ...folders, state: 'ok' as const } : folders] : []), ...(vm.place ? [vm.place] : [])]
@@ -173,7 +174,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
   const p = (req as { params?: Record<string, unknown> }).params ?? {}
   switch (m) {
     case 'work.office.filesLibraries':
-      return handled(await librariesAnswer(ctx, by, signal))
+      return handled(await librariesAnswer(ctx, by))
     case 'work.office.filesList': {
       const { library, path } = admitted(ctx, by, m, p.source as CanvasSource)
       if (library.vm) return handled({ entries: await vmList(library, path, signal) })
@@ -226,7 +227,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
     }
     case 'work.office.filesSetRoots':
       setRoots(ctx.db, p.roots as never)
-      return handled(await librariesAnswer(ctx, by, signal))
+      return handled(await librariesAnswer(ctx, by))
     case 'work.office.vmStatus':
       return handled(vmOfficeStatus(ctx.db, vmState()))
     case 'work.office.vmSignIn': {

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { teamsPlaceKey, type TeamsLibrary, type TeamsPlace } from "@shared/contract-work-office";
-import { appVerb, crumbsOf, filesNote, openWay, partsOf, pathIn, placeGroups, placeOf, rowOf, showsHeading, unreachable, type HostRead, type NoteInput, type ShownLibrary } from "./files";
+import { appVerb, byDeadline, crumbsOf, filesNote, vmReading, openWay, partsOf, pathIn, placeGroups, placeOf, rowOf, showsHeading, unreachable, type HostRead, type NoteInput, type ShownLibrary } from "./files";
 
 const lib = (over: Partial<ShownLibrary> & Pick<TeamsLibrary, "id" | "path" | "team" | "kind">): ShownLibrary => ({ host: "env_mac", library: null, tenant: "Purdue University", channels: [], web: null, found: true, env: "local", ...over });
 const esports = lib({ id: "m~1", path: "/c/S/Purdue Esports - Documents", team: "Purdue Esports", kind: "channels", channels: ["Events", "General"] });
@@ -131,6 +131,19 @@ describe("what the view says when Teams files are missing", () => {
     expect(note({ reads: [box([vm("not-set-up")])], notAllowed: ["MacBook"] })?.fix).toEqual({ kind: "allow", vm: false });
   });
 
+  it("with rows listed, an awake VM whose helper did not answer is the state line, in its own words", () => {
+    const down: TeamsPlace = { kind: "vm", state: "error", account: "him@purdue.edu", detail: "The Office helper did not answer" };
+    expect(note({ reads: [box([down])], windowsVm: true, listed })).toEqual({ title: "The Windows VM did not answer", line: "The Office helper did not answer", fix: { kind: "retry" }, away: true });
+    // a workspace with the VM off hears nothing of it
+    expect(note({ reads: [box([down])], windowsVm: false, listed })).toBeNull();
+  });
+
+  it("knows a host whose VM is being read for the first time", () => {
+    expect(vmReading(box([vm("reading")]).answer)).toBe(true);
+    expect(vmReading(box([vm("ok")]).answer)).toBe(false);
+    expect(vmReading(undefined)).toBe(false);
+  });
+
   it("b: a machine it may use did not answer: which, with Retry", () => {
     expect(note({ reads: [box(), asleep] })).toEqual({ title: "MacBook did not answer", fix: { kind: "retry" }, away: true });
   });
@@ -162,5 +175,21 @@ describe("what the view says when Teams files are missing", () => {
     const fromVm = placeGroups([vmRecwell], "box").flatMap((g) => g.rows);
     expect(note({ listed: fromVm, windowsVm: true, reads: [box([vm("ok")]), asleep] })).toBeNull();
     expect(note({ listed, reads: [box(), mac([folders("ok")])] })).toBeNull();
+  });
+});
+
+describe("a host's deadline", () => {
+  it("passes an answer through, and past the deadline fails as a machine out of reach", async () => {
+    await expect(byDeadline(Promise.resolve(1), 4_000)).resolves.toBe(1);
+    await expect(byDeadline(Promise.reject(new Error("refused")), 4_000)).rejects.toThrow("refused");
+    vi.useFakeTimers();
+    try {
+      const late = byDeadline(new Promise(() => {}), 4_000);
+      vi.advanceTimersByTime(4_000);
+      const err = await late.catch((e: unknown) => e);
+      expect(unreachable(err)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

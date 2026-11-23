@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsLibrary, VmOfficeStatus } from '@shared/contract-work-office'
 import type { Caller, ToolCtx, WorkCtx, WorkTool } from '../../modules'
@@ -11,7 +11,7 @@ import { copyDirOf, setSignInPace } from '../files/handle'
 import { setCloudDir } from '../files/library'
 import { teamsTools, twinOf } from '../files/tools'
 import { office as module, setCarrier } from '../index'
-import { forgetAsked, guestWithin, isGuestPath, missingLibraries, refreshVm, storedStatus, vmLibraries, vmLibraryOf, vmPlace } from './files'
+import { forgetAsked, guestWithin, isGuestPath, lastReadFailure, missingLibraries, readingVm, refreshVm, storedStatus, vmLibraries, vmLibraryOf, vmPlace } from './files'
 import { setVmCall, VmAsleep, VmUnreachable, type VmCall } from './link'
 import { setVmState } from './office'
 
@@ -126,8 +126,16 @@ let vm: { state: string; cannot: string | null } | null
 const window: Caller = { kind: 'local', caps: ['read', 'operate', 'approve', 'admin'] }
 const scope = { sessionId: 's1', workspaceId: 'w1', sector: 'purdue', host: 'env_box', away: false, routineRunId: null, shared: () => true }
 let settings: { mayUseDesktop: string[]; windowsVm?: boolean }
+let pushes: unknown[]
 const call = (method: string, params: unknown, by: Caller = window, ctx: WorkCtx = box) => module.handle!({ id: '1', method, params } as unknown as ClientRequest, ctx, by).then((a) => (a as { result: unknown }).result as never)
 const file = (path: string) => ({ source: { at: 'file', host: 'env_box', path } })
+/** The list as a window gets it once the read behind its first answer is done. */
+const settled = (db = box.db) => vi.waitFor(() => expect(readingVm(db)).toBe(false))
+const listed = async (by: Caller = window, ctx: WorkCtx = box) => {
+  await call('work.office.filesLibraries', {}, by, ctx)
+  await settled(ctx.db)
+  return (await call('work.office.filesLibraries', {}, by, ctx)) as TeamsLibrariesAnswer
+}
 
 beforeEach(() => {
   base = mkdtempSync(join(tmpdir(), 'teams-vm-'))
@@ -140,9 +148,10 @@ beforeEach(() => {
   setCarrier(() => new FakeOffice())
   forgetAsked()
   settings = { mayUseDesktop: [], windowsVm: true }
+  pushes = []
   const db = new DatabaseSync(':memory:')
   module.ensure(db)
-  box = { db, host: 'env_box', dataDir: join(base, 'data'), log: () => {}, reaches: () => false, scopeOf: () => scope, settings: { workspace: () => settings } } as unknown as WorkCtx
+  box = { db, host: 'env_box', dataDir: join(base, 'data'), log: () => {}, push: (p: unknown, to: unknown) => pushes.push([p, to]), reaches: () => false, scopeOf: () => scope, settings: { workspace: () => settings } } as unknown as WorkCtx
 })
 afterEach(() => {
   setSignInPace(null)
@@ -153,7 +162,7 @@ afterEach(() => {
 
 describe("the VM's libraries", () => {
   it("lists what OneDrive syncs in the guest as this host's libraries: his files, a site's Documents with its top folders, another library", async () => {
-    const got = (await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer
+    const got = await listed()
     expect(got.libraries.map((l) => [l.team, l.library, l.kind, l.channels, l.vm, l.host, l.tenant])).toEqual([
       ['Esports', 'Site Policies', 'library', [], true, 'env_box', 'Purdue University'],
       ['My files', null, 'mine', [], true, 'env_box', 'Purdue University'],
@@ -173,11 +182,68 @@ describe("the VM's libraries", () => {
     expect(guest.asked).toEqual([])
   })
 
-  it('wakes a machine that has never been read, once, to learn what it holds', async () => {
+  it('wakes a machine that has never been read for its first read, behind an answer given at once, and pushes what it found', async () => {
     vm = { state: 'asleep', cannot: null }
-    const got = (await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer
+    const first = (await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer
+    expect(first.libraries).toEqual([])
+    expect(first.places).toEqual([{ kind: 'vm', state: 'reading', account: null }])
     expect(guest.asked[0]).toBe('guest.status')
-    expect(got.libraries).toHaveLength(3)
+    await settled()
+    expect(pushes).toEqual([[{ push: 'work.office.files' }, { need: 'read' }]])
+    expect(((await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer).libraries).toHaveLength(3)
+  })
+
+  it("answers at once from what was kept while the helper never answers, reads behind one at a time, and says the helper's failure as the place", async () => {
+    await listed()
+    pushes = []
+    // The helper is down: each call hangs until its own time-out, which the test ends by hand.
+    const hung: (() => void)[] = []
+    setVmCall((verb) => (guest.asked.push(verb), new Promise((_, fail) => void hung.push(() => fail(new VmUnreachable("The Windows VM's Office helper did not answer"))))))
+    await box.db.prepare("UPDATE work_office_files SET value = json_set(value, '$.at', 0) WHERE key = 'vm:status'").run()
+    guest.asked = []
+    for (let i = 0; i < 3; i++) {
+      const got = (await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer
+      expect(got.libraries).toHaveLength(3)
+      expect(got.places).toEqual([{ kind: 'vm', state: 'ok', account: 'him@purdue.edu' }])
+    }
+    // one read under way, however many lists were asked
+    expect(guest.asked).toEqual(['guest.status'])
+    expect(readingVm(box.db)).toBe(true)
+    hung.shift()!()
+    await settled()
+    expect(lastReadFailure(box.db)).toMatch(/Office helper did not answer/)
+    expect(pushes).toEqual([[{ push: 'work.office.files' }, { need: 'read' }]])
+    const after = (await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer
+    expect(after.libraries).toHaveLength(3)
+    expect(after.places).toEqual([{ kind: 'vm', state: 'error', account: 'him@purdue.edu', detail: expect.stringMatching(/Office helper did not answer/) }])
+    // a failed read is tried again behind the next list; one that fails the same way has nothing new to push
+    expect(guest.asked).toEqual(['guest.status', 'guest.status'])
+    setVmCall(guest.call)
+    pushes = []
+    hung.shift()!()
+    await settled()
+    expect(pushes).toEqual([])
+    // one that works clears the failure and is pushed
+    await call('work.office.filesLibraries', {})
+    await settled()
+    expect(lastReadFailure(box.db)).toBeNull()
+    expect(((await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer).places).toEqual([{ kind: 'vm', state: 'ok', account: 'him@purdue.edu' }])
+    expect(pushes).toHaveLength(1)
+  })
+
+  it('pushes nothing when a read finds what was kept', async () => {
+    await listed()
+    pushes = []
+    await box.db.prepare("UPDATE work_office_files SET value = json_set(value, '$.at', 0) WHERE key = 'vm:status'").run()
+    await call('work.office.filesLibraries', {})
+    await settled()
+    expect(guest.asked.filter((v) => v === 'guest.status')).toHaveLength(2)
+    expect(pushes).toEqual([])
+  })
+
+  it('a thread waits for the first read alone: it has no screen to repaint', async () => {
+    const thread: Caller = { kind: 'model', caps: [], sessionId: 's1' }
+    expect(((await call('work.office.filesLibraries', {}, thread)) as TeamsLibrariesAnswer).libraries).toHaveLength(3)
   })
 
   it('says what stands in the way: not set up, signed out, signed in with nothing synced, never read and out of reach', async () => {
@@ -185,7 +251,7 @@ describe("the VM's libraries", () => {
     expect(vmPlace(box.db, { state: 'none', cannot: 'not the box' })).toBeNull()
     expect(vmPlace(box.db, null)).toBeNull()
     guest.account = null
-    expect(((await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer).places).toEqual([{ kind: 'vm', state: 'signed-out', account: null }])
+    expect((await listed()).places).toEqual([{ kind: 'vm', state: 'signed-out', account: null }])
     // folders an earlier sign-in left listed do not make it signed in
     await box.db.prepare("UPDATE work_office_files SET value = json_set(value, '$.status.mounts', json(?)) WHERE key = 'vm:status'").run(JSON.stringify(guest.mounts))
     expect(vmPlace(box.db, vm)).toEqual({ kind: 'vm', state: 'signed-out', account: null })
@@ -197,9 +263,9 @@ describe("the VM's libraries", () => {
     const fresh = new DatabaseSync(':memory:')
     module.ensure(fresh)
     guest.awake = false
-    const answer = (await call('work.office.filesLibraries', {}, window, { ...box, db: fresh } as WorkCtx)) as TeamsLibrariesAnswer
+    const answer = await listed(window, { ...box, db: fresh } as WorkCtx)
     expect(answer.libraries).toEqual([])
-    expect(answer.places![0]).toMatchObject({ kind: 'vm', state: 'error' })
+    expect(answer.places![0]).toMatchObject({ kind: 'vm', state: 'error', detail: expect.stringContaining('Windows did not come up within 300 s') })
   })
 
   it("leaves the VM out for a thread whose workspace has not turned it on, and for a Work Chat", async () => {

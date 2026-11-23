@@ -121,6 +121,27 @@ export function appVerb(entry: Pick<TeamsEntry, "name" | "kind">): string {
   return app ? `Open in ${APP[app]}` : "Open in the app";
 }
 
+/** How long a host has to answer the list before the view says it did not: a host answers from what it keeps, never waiting on its VM. */
+export const HOST_DEADLINE_MS = 4_000;
+/** How long a host has to answer a search: the VM walks its disk for up to 15 s. Each host's hits show as they come. */
+export const SEARCH_DEADLINE_MS = 20_000;
+/** While the VM's first read is under way, the host is asked again this often, in case its push is missed. */
+export const READING_AGAIN_MS = 5_000;
+
+/** `p`, or past `ms` a failure that reads as a machine out of reach (`unreachable`); `p` itself keeps running. */
+export function byDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(Object.assign(new Error(`No answer in ${Math.round(ms / 1000)} s`), { name: "TimeoutError" })), ms);
+    p.then(
+      (v) => (clearTimeout(timer), resolve(v)),
+      (e) => (clearTimeout(timer), reject(e)),
+    );
+  });
+}
+
+/** Whether a host's answer says its VM is being read for the first time: what it holds is still to come. */
+export const vmReading = (answer: TeamsLibrariesAnswer | undefined): boolean => !!answer?.places?.some((p) => p.kind === "vm" && p.state === "reading");
+
 /** One host's answer to `filesLibraries`, or why it gave none. */
 export interface HostRead {
   env: string;
@@ -167,6 +188,8 @@ export function filesNote({ workspaceEnv, reads, windowsVm, notAllowed, listed }
     // A desktop that did not answer goes unsaid while the VM lists its copies; the state line says it otherwise.
     if (away.length && !listed.some((row) => row.copies.some((c) => c.library.vm))) return { title: `${names(away.map((r) => r.name))} did not answer`, fix: { kind: "retry" }, away: true };
     if (vm?.state === "signed-out") return { title: "OneDrive on the Windows VM is signed out", fix: { kind: "sign-in", env: workspaceEnv } };
+    // The VM's helper did not answer its last read: its rows are what was kept, and the state line says why.
+    if (vm?.state === "error") return { title: "The Windows VM did not answer", line: vm.detail, fix: { kind: "retry" }, away: true };
     return null;
   }
   // e: the workspace's own host refused, and nothing else answered: its own words.

@@ -124,6 +124,27 @@ in as him, files on demand. The code is `office/vm/` (`link.ts`, `files.ts`,
   pillar reads it again each minute until nothing is missing (signed in,
   the wanted libraries there, Office licensed), then every ten: his
   approval shows with no screen open (`watchVm`, office/index.ts).
+- **A list never waits on the VM.** `filesLibraries` answers at once from
+  what was kept and reads the guest behind its answer (`readVmBehind`,
+  vm/files.ts): an awake machine whose status is over 15 s old or whose last
+  read failed, and a machine never read (woken for it). One read at a time
+  per host: a second ask while one runs joins it. A read that changes what
+  was kept, or the failure it says, pushes `work.office.files` (`OfficePush`,
+  `need: 'read'`) and a Files view on screen asks that host again; `watchVm`
+  reads the same way, so its finds are pushed too. Measured 2026-11-23 before
+  this: with the helper down the box took 30.0 s to answer the list and the
+  view sat in its bones. A thread, or another host asking for one
+  (`by.peer`), has no screen to repaint, so it alone waits, and only for a
+  first read. Why the last read failed is kept in memory per host
+  (`lastReadFailure`), cleared by the next read that works.
+- **The VM's place while it is read or down.** Never read and its first read
+  under way: `reading`. Never read and that read failed: `error` with the
+  failure's words. Read before, awake, and its last read failed (the helper
+  down, a time-out): `error` with those words and the account kept, over the
+  libraries kept; asleep, it says what was kept. Connections answers the
+  same way (`officeProbe`'s `vm`: what was kept, an awake machine read
+  behind, which Check again shows); an `error` place is a broken OneDrive
+  row in the failure's words.
 - **Never a full download.** Machine policies set at setup and at each
   helper start (`ONEDRIVE_POLICY`, winvm/setup.ts): `FilesOnDemandEnabled`,
   no folder backup offered, no tutorial, and Storage Sense sends a
@@ -346,10 +367,24 @@ most useful thing, checked in this order, with its press:
 | an older host that says nothing of its places | "No Teams files" | — |
 
 With rows listed, a machine that did not answer is the state line over them,
-unless the VM holds copies (then it goes unsaid), and OneDrive signed out in
-the VM is one quiet line under the rows with Sign in to OneDrive. The list
-waits in its bones until every host has answered, so the empty state never
-flashes first.
+unless the VM holds copies (then it goes unsaid); OneDrive signed out in the
+VM is one quiet line under the rows with Sign in to OneDrive; and a VM whose
+helper did not answer its last read is the state line, "The Windows VM did
+not answer" with the failure's words, over the libraries it kept.
+
+**Each host paints as it answers** (`useReach`). Every host is asked at once,
+each with its own deadline (`HOST_DEADLINE_MS`, 4 s, `byDeadline` in
+files.ts); one past it is a machine that did not answer (the state line, with
+the view's Retry). While nothing is listed and a host is still to answer, or
+the VM's first read is under way (`vmReading`), the view holds its bones, so
+the empty state never shows first; with rows listed, two bones under them
+stand for what is still coming. A host's `work.office.files` push asks that
+host again, its last answer kept on screen until the new one lands; while its
+VM is `reading` it is also asked again every 5 s, in case the push is missed.
+The search asks every host at once too and shows each one's hits as they
+come, with bones under them for the rest, under a 20 s deadline
+(`SEARCH_DEADLINE_MS`: the VM walks its disk for up to 15 s); it fails only
+when no host answered.
 
 Opening a file (`openWay`): a cloud-only file shows Downloading… in its row
 first, then Opening…. On the workspace's own host it opens in a new thread of
@@ -379,7 +414,11 @@ team's Documents with two channels, a site's other library, a sparse file for a
 cloud-only one, a link out, zips for the Office files) and proves the finder,
 the list, search, the fence by caller, download, text, open, the canvas kinds,
 the tools from a box thread through a stand-in peer, the copy only where
-allowed, and the shared-file rule on a folder he added. The renderer:
+allowed, and the shared-file rule on a folder he added. `office/vm/vm.test.ts`
+proves the list answers at once while the helper never answers, one read
+behind it at a time, the failure as the place, the push only on a change, and
+a thread waiting for the first read; `office/health.test.ts` the same for
+Connections. The renderer:
 `files.test.ts`, `FilesView.dom.test.tsx`, `TeamsFilesRow.dom.test.tsx`.
 
 Not provable until he signs in to OneDrive on the Mac: real folder names, the
