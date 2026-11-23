@@ -13,7 +13,7 @@ import { modOrCtrl } from "../../lib/keys";
 import { refusalWords } from "../../lib/settingsHome";
 import { Face } from "../mail/face";
 import { findPeople, pictureOf, type DirectoryPerson } from "../people/model";
-import { useLifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import { followUpFromFile, followUpPrep, keepPrepNotes, loadPrep, notesDocPrep, openWorkspaceFile, setPrepPeople } from "./data";
 import { addedKey, NOTES_FILE_ACCEPT, pickable, uploadWords } from "./model";
 
@@ -29,17 +29,36 @@ import { addedKey, NOTES_FILE_ACCEPT, pickable, uploadWords } from "./model";
  */
 export function AddPeopleDialog({ env, lifeos, page, faces, onClose }: { env: string; lifeos: LifeosSession; page: PrepPage; faces: ReadonlyMap<string, string>; onClose: () => void }) {
   const [pending, setPending] = useState(false);
+  const directory = useLifeosQuery<DirectoryPerson[]>(lifeos, "people:directory", { sector: page.sector });
   return (
     <Modal onClose={onClose} title="Add people" size="sm" busy={pending} data-prep-dialog="people">
-      <PeopleForm env={env} lifeos={lifeos} page={page} faces={faces} onClose={onClose} pending={pending} setPending={setPending} />
+      <PeopleForm env={env} directory={directory} page={page} faces={faces} onClose={onClose} pending={pending} setPending={setPending} />
     </Modal>
   );
 }
 
-function PeopleForm({ env, lifeos, page, faces, onClose, pending, setPending }: { env: string; lifeos: LifeosSession; page: PrepPage; faces: ReadonlyMap<string, string>; onClose: () => void; pending: boolean; setPending: (p: boolean) => void }) {
+/** The dialog's inside, over a directory read handed to it: the preview draws it as the app does. `search`: what the field starts with. */
+export function PeopleForm({
+  env,
+  directory,
+  page,
+  faces,
+  onClose,
+  pending,
+  setPending,
+  search = "",
+}: {
+  env: string;
+  directory: LifeosQuery<DirectoryPerson[]>;
+  page: PrepPage;
+  faces: ReadonlyMap<string, string>;
+  onClose: () => void;
+  pending: boolean;
+  setPending: (p: boolean) => void;
+  search?: string;
+}) {
   const close = useModalClose();
-  const directory = useLifeosQuery<DirectoryPerson[]>(lifeos, "people:directory", { sector: page.sector });
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(search);
   const [picked, setPicked] = useState<PrepAddedPerson[]>(page.doc.people);
   const [error, setError] = useState<string | null>(null);
   const rows = directory.status === "ready" ? directory.value : null;
@@ -201,7 +220,8 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
   );
 }
 
-function NotesForm({
+/** The Notes dialog's inside, holding no call of its own: the preview draws it as the app does. */
+export function NotesForm({
   text,
   setText,
   pending,

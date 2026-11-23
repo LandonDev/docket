@@ -14,5 +14,6 @@ export const TODAY_SOURCES: { id: string; load: () => Promise<{ source: TodaySou
   { id: "clashes", load: () => import("../clashes/today") },
   { id: "money", load: () => import("../money/today") },
   { id: "review", load: () => import("../review/today") },
+  { id: "prep", load: () => import("../prep/today") },
   // one line per pillar that adds to Today: { id: 'clashes', load: () => import('../clashes/today') }
 ];

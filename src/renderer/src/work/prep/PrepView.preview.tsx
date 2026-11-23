@@ -2,6 +2,10 @@ import type { ReactNode } from "react";
 import { emptyPrepDoc, type PrepPage } from "@shared/contract-work-prep";
 import { Calendar } from "../icons";
 import { headVerb } from "./model";
+import { X } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
+import type { DirectoryPerson } from "../people/model";
+import { NotesForm, PeopleForm } from "./PrepDialogs";
 import { BackTitle, PageVerbs, PrepPageBody, PrepSkeleton } from "./PrepView";
 
 /**
@@ -13,7 +17,10 @@ import { BackTitle, PageVerbs, PrepPageBody, PrepSkeleton } from "./PrepView";
  * and what came of them, the tasks waiting for his ticks, the mail that
  * waits), `filed` (two of them in LifeOS), `failed` (a filing LifeOS did not
  * take), `recording` (the notes are a recording its thread is still reading),
- * and `loading` and `partial` (the bones; a part that did not load).
+ * and `loading` and `partial` (the bones; a part that did not load). The two
+ * dialogs' insides stand still in a panel drawn as the app's: `notes`,
+ * `notes-typed`, `notes-uploading`, `notes-failed`, `people`, `people-typed`,
+ * `people-loading`.
  * Dummy people. Rendered by nothing in the app.
  */
 
@@ -131,7 +138,75 @@ function Frame({ title, head, children }: { title: string | undefined; head?: Re
   );
 }
 
+/**
+ * A dialog's panel as `ModalPanel` draws it (chrome/Modal.tsx: the popover fill, 16px corners, the title on the 16px
+ * recipe, the close), standing still on the page: a dialog is a portal, which a static render does not draw.
+ */
+function DialogFrame({ title, wide, children }: { title: string; wide?: boolean; children: ReactNode }) {
+  return (
+    <div className="flex w-[864px] max-w-full justify-center bg-background p-8">
+      <div role="dialog" aria-label={title} className={`flex w-full flex-col rounded-2xl bg-popover text-sm leading-[22px] text-popover-foreground shadow-overlay ring-1 ring-border ${wide ? "max-w-xl" : "max-w-md"}`}>
+        <header className="flex shrink-0 items-start gap-2 px-5 pt-5">
+          <h2 className="min-w-0 flex-1 text-base leading-6 font-semibold tracking-[-0.01em] text-balance">{title}</h2>
+          <Button variant="ghost" size="icon-sm" aria-label="Close" className="-me-1 -mt-0.5 text-muted-foreground">
+            <X />
+          </Button>
+        </header>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const DIRECTORY: DirectoryPerson[] = [
+  { _id: "p1", name: "Maya Chen", emails: ["mchen@school.edu"] },
+  { _id: "p3", name: "Dana Reyes", emails: ["dreyes@school.edu"] },
+  { _id: "p4", name: "Sam Whitaker", emails: ["sam.whitaker@arena.com"] },
+  { _id: "p5", name: "Priya Raman", emails: ["praman@school.edu"] },
+  { _id: "p6", name: "Front desk", emails: ["frontdesk@school.edu"] },
+];
+const NOTES_TYPED = "Seat list goes to Maya Wed.\nDana drives the van to Illinois, leaves 3:30 Fri.\nJerseys: Tom to confirm sizes with the vendor.";
+
+/** The two dialogs' insides, each in the states a picture can hold. */
+function DialogPreview({ state }: { state: string }) {
+  if (state.startsWith("people")) {
+    // The meeting with no one on it, one person already added: she leads the list, ticked.
+    const page: PrepPage = { ...NOBODY, doc: { ...emptyPrepDoc(), people: [{ name: "Dana Reyes", address: "dreyes@school.edu", personId: "p3" }] } };
+    return (
+      <DialogFrame title="Add people">
+        <PeopleForm
+          env="box"
+          page={page}
+          faces={new Map()}
+          directory={state === "people-loading" ? { status: "loading" } : { status: "ready", value: DIRECTORY }}
+          search={state === "people-typed" ? "Jordan Ellis" : ""}
+          pending={false}
+          setPending={none}
+          onClose={none}
+        />
+      </DialogFrame>
+    );
+  }
+  const upload = state === "notes-uploading" ? { name: "Staff sync 2026-11-23.m4a", progress: { sent: 21, total: 50 } } : null;
+  return (
+    <DialogFrame title="Notes" wide>
+      <NotesForm
+        text={state === "notes" ? "" : NOTES_TYPED}
+        setText={none}
+        pending={!!upload}
+        upload={upload}
+        error={state === "notes-failed" ? "The transcriber is not installed on this host." : null}
+        onCancel={none}
+        onFollowUp={none}
+        onFile={none}
+        onDocument={none}
+      />
+    </DialogFrame>
+  );
+}
+
 export function PrepPreview({ state = "facts" }: { state?: string }) {
+  if (state.startsWith("notes") || state.startsWith("people")) return <DialogPreview state={state} />;
   if (state === "loading")
     return (
       <Frame title={undefined}>
