@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { everyBlock, plain, type Block } from 'work-kit/formats'
 import type { WorkCtx } from '../modules'
 import { GoogleApi, GoogleTokens, GOOGLE_MIME } from './client'
-import { docMirror, readDoc, suggestDoc, writeDoc, type GoogleSource } from './docs'
+import { checkEdits, docMirror, readDoc, writeDoc, writeEdits, type GoogleSource } from './docs'
 import { FakeGoogle, FAKE_TOKEN_URL } from './fake'
 import { ensureGoogleTables, googleOf, resetGoogle, setGoogleDeps } from './google'
 import { mapGoogleDoc } from './mapper'
@@ -96,23 +96,28 @@ describe('a Google Doc in the document canvas', () => {
     expect(fake.docText('doc1')).toContain('Budget is very tight.')
   })
 
-  it("sends an agent's edit as a Google suggestion, and the Doc read again shows it as one", async () => {
-    const first = await docMirror(ctx, googleOf(ctx), src)
-    live = await fresh()
-    await suggestDoc(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }])
-    expect(fake.docText('doc1')).toContain('Budget is tightfine.')
-    expect(fake.docSuggestions('doc1')).toEqual(['-tight', '+fine'])
-    // Nothing of his waits, so opening again reads the Doc anew, with the suggestion as a branch.
-    const again = await docMirror(ctx, googleOf(ctx), src)
-    expect(again).not.toBe(first)
-    expect(existsSync(first)).toBe(false)
-    await expect(readDoc(googleOf(ctx), src)).resolves.toContain(`${ME} suggests adding “fine”`)
+  it("judges an agent's edit without sending Google anything, and writes it plainly only on his press", async () => {
+    await docMirror(ctx, googleOf(ctx), src)
+    const before = JSON.stringify([...fake.files])
+    const writes = () => fake.calls.filter((c) => c.startsWith('POST'))
+    const judged = await checkEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }])
+    expect(writes()).toEqual([])
+    expect(JSON.stringify([...fake.files])).toBe(before)
+    // his press: a plain edit, no suggestion left in the Doc for anyone
+    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged)).resolves.toEqual({ moved: false })
+    expect(fake.docText('doc1')).toContain('Budget is fine.')
+    expect(fake.docSuggestions('doc1')).toEqual([])
   })
 
-  it('refuses an agent edit whose words stand twice or not at all', async () => {
-    await expect(suggestDoc(googleOf(ctx), src, [{ find: 'March', replace: 'May' }])).resolves.toBe(1)
-    await expect(suggestDoc(googleOf(ctx), src, [{ find: 'a', replace: 'o' }])).rejects.toThrow(/stands \d+ times/)
-    await expect(suggestDoc(googleOf(ctx), src, [{ find: 'June', replace: 'May' }])).rejects.toThrow('not in the Doc')
+  it('refuses an agent edit whose words stand twice or not at all, and at the press says the Doc moved or the words went', async () => {
+    const judged = await checkEdits(googleOf(ctx), src, [{ find: 'March', replace: 'May' }])
+    await expect(checkEdits(googleOf(ctx), src, [{ find: 'a', replace: 'o' }])).rejects.toThrow(/stands \d+ times/)
+    await expect(checkEdits(googleOf(ctx), src, [{ find: 'June', replace: 'May' }])).rejects.toThrow('not in the Doc')
+    fake.editDoc('doc1', 1, 'Note: ')
+    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged)).resolves.toEqual({ moved: true })
+    const now = fake.docText('doc1')
+    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged)).resolves.toEqual({ stale: expect.stringContaining('not in the Doc') })
+    expect(fake.docText('doc1')).toBe(now)
   })
 
   it('keeps his unwritten edits when the Doc moved, and marks it behind', async () => {

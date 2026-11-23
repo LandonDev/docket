@@ -8,9 +8,11 @@ import type { ToolCtx, WorkCtx, WorkTool } from '../modules'
 import { parseA1, rangeCells } from '../sheets/a1'
 import type { SuggestionStore } from '../sheets/suggestions'
 import { eventById, type OfficeCarrier } from './carrier'
-import { cleanMailHtml } from './held'
+import { cleanMailHtml, fileText, placesOf, textHash, type OfficeEdit } from './held'
 import { cellOf, EXCEL_MAX_CELLS, excelStore, type ExcelHelper } from './excel'
-import { librariesOf, libraryOf } from './files/library'
+import { fileKey, fileShared, sharedKey } from './shared'
+
+export { fileKey, sharedKey }
 
 /**
  * The one Office tool set (architecture §10; docs/agents/work-office.md "The
@@ -18,10 +20,11 @@ import { librariesOf, libraryOf } from './files/library'
  * has a carrier, else on the first host the thread's workspace may use
  * ("May use this Mac"), through `ctx.peer`, which runs the same tool there.
  *
- * The rule for a file others can open (a workbook or document in OneDrive,
- * SharePoint or Teams, named by its URL): a change he asked for in so many
- * words is written; the agent's own idea waits for him (a suggestion in the
- * grid, a tracked change in Word). Sends, replies, forwards, invitations and
+ * The rule for a file others can open (`fileShared`: a workbook, document or
+ * deck in OneDrive, SharePoint or Teams): a change he asked for in so many
+ * words is written; the agent's own idea waits on his host, unseen by anyone
+ * else, until he approves it (cells as suggestions in the grid, a document's
+ * or a deck's words as a held `office.edit`). Sends, replies, forwards, invitations and
  * answers to invitations are held acts: the tool answers what waits for his
  * press, and nothing goes before it.
  */
@@ -50,38 +53,11 @@ export interface OfficeTool {
 
 const fail = (text: string): WorkToolResult => ({ ...workText(text), isError: true })
 const json = (v: unknown): WorkToolResult => workText(JSON.stringify(v, null, 1))
-/** Others can open it: it lives in OneDrive, SharePoint or Teams, by URL or in a folder synced from there, on a Mac or under Windows. */
-export const sharedKey = (key: string): boolean => {
-  const k = key.replace(/\\/g, '/')
-  // A network share (\\server\share\…) is others' to open as surely as OneDrive (milestone 50's hold review).
-  return /^https?:\/\//i.test(k) || k.startsWith('//') || /\/Library\/CloudStorage\/|\/OneDrive( |-|\/|$)/i.test(k)
-}
-
-/**
- * The open file a write names, as the carrier keys it: its key (either separator), else the one open file of that
- * name, since a carrier also takes a bare name. Null when none or several answer to it, or the app cannot be asked.
- */
-export async function fileKey(env: Pick<Env, 'carrier'>, kind: 'workbook' | 'document' | 'deck', name: string): Promise<string | null> {
-  let open: { key: string; name: string }[]
-  try {
-    open = kind === 'workbook' ? await env.carrier.workbooks() : kind === 'document' ? await env.carrier.documents() : await env.carrier.presentations()
-  } catch {
-    return null
-  }
-  // either separator, and /tmp for /private/tmp (Word's keys are the resolved form)
-  const slash = (s: string): string => s.replace(/\\/g, '/').replace(/^\/private(?=\/(tmp|var|etc)\/)/, '')
-  const byKey = open.filter((f) => f.key === name || slash(f.key) === slash(name))
-  if (byKey.length === 1) return byKey[0]!.key
-  const byName = open.filter((f) => f.name === name)
-  return byName.length === 1 ? byName[0]!.key : null
-}
-
-/** A write judged on the file it lands in: found by its key first, and one that cannot be found counts as one others can open. */
+/** A write judged on the file it lands in: found by its key first, and one that cannot be found counts as one others can open (`fileShared`). */
 async function judged(reason: WriteReason, kind: 'workbook' | 'document' | 'deck', name: string, env: Env): Promise<{ verdict: ReturnType<typeof judgeWrite>; key: string }> {
   const key = await fileKey(env, kind, name)
-  // A file in a Teams folder he added himself is others' to open as surely as one under CloudStorage.
-  const teams = key !== null && libraryOf(librariesOf(env.ctx.db, env.ctx.host), key) !== null
-  return { verdict: judgeWrite(reason, { shared: key === null || sharedKey(key) || teams, ownerSaid: () => env.asked }), key: key ?? name }
+  const app = kind === 'workbook' ? 'excel' : kind === 'document' ? 'word' : 'powerpoint'
+  return { verdict: judgeWrite(reason, { shared: fileShared(env.ctx, key, app), ownerSaid: () => env.asked }), key: key ?? name }
 }
 
 const Reason = WriteReasonSchema.shape
@@ -215,16 +191,16 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   tool({
     name: 'office_doc_edit',
     description:
-      'Changes an open Word document: `insert` text at its `start` or `end`, or `find` and `replace` every match. On a document others can open, your own idea is made as a tracked change he accepts or rejects in Word; `because: "asked"` with his words as `quote` writes it plainly.',
+      'Changes an open Word document: `insert` text at its `start` or `end`, or `find` and `replace` every match. On a document others can open, your own idea waits for the owner, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
     input: { document: z.string(), insert: z.string().max(100_000).optional(), at: z.enum(['start', 'end']).optional(), find: z.string().min(1).max(255).optional(), replace: z.string().max(255).optional(), ...Reason },
     readOnly: false,
     async run(a, env) {
       const edit = a.insert !== undefined ? { insert: a.insert, at: a.at ?? 'end' } : a.find !== undefined && a.replace !== undefined ? { find: a.find, replace: a.replace } : null
       if (!edit) return fail('Pass `insert` (with `at`), or `find` and `replace`.')
       const { verdict, key } = await judged(a, 'document', a.document, env)
-      const tracked = verdict === 'suggest'
-      const n = await env.carrier.editDocument(key, edit, tracked)
-      return workText(`${n === 0 ? 'Nothing matched.' : `Changed ${n} place${n === 1 ? '' : 's'}`}${n && tracked ? ', as tracked changes for the owner to accept.' : n ? '.' : ''}`)
+      if (verdict === 'suggest') return held(env, 'word', key, a.document, edit)
+      const n = await env.carrier.editDocument(key, edit, false)
+      return workText(n === 0 ? 'Nothing matched.' : `Changed ${n} place${n === 1 ? '' : 's'}.`)
     }
   }),
   tool({
@@ -236,12 +212,12 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   }),
   tool({
     name: 'office_slides_replace',
-    description: 'Replaces text on every slide of an open deck. A deck others can open is changed only when he asked for it (`because: "asked"` with his words as `quote`); PowerPoint keeps no suggestions, so otherwise say the change in your reply.',
+    description: 'Replaces text on every slide of an open deck. On a deck others can open, your own idea waits for the owner, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
     input: { deck: z.string(), find: z.string().min(1).max(1_000), replace: z.string().max(1_000), ...Reason },
     readOnly: false,
     async run(a, env) {
       const { verdict, key } = await judged(a, 'deck', a.deck, env)
-      if (verdict === 'suggest') return fail('Others can open this deck and he did not ask for this change in so many words: nothing was changed. Say it in your reply instead.')
+      if (verdict === 'suggest') return held(env, 'powerpoint', key, a.deck, { find: a.find, replace: a.replace })
       const n = await env.carrier.replaceSlideText(key, a.find, a.replace)
       return workText(n ? `Changed ${n} text box${n === 1 ? '' : 'es'}.` : 'Nothing matched.')
     }
@@ -355,6 +331,31 @@ export const OFFICE_TOOLS: OfficeTool[] = [
     }
   })
 ]
+
+/**
+ * An agent's own change to a file others can open, kept on this host as a held `office.edit` (the owner's ruling
+ * of 2026-11-23): Word and PowerPoint are not touched, so no tracked change, comment or saved edit reaches the
+ * file's co-authors or its sync folder. His press makes it as a plain edit. With the file's text as it reads now,
+ * so the press can tell whether it moved.
+ */
+async function held(env: Env, app: OfficeEdit['app'], key: string, asked: string, edit: OfficeEdit['edit']): Promise<WorkToolResult> {
+  const texts = await fileText(env.carrier, app, key)
+  const places = 'find' in edit ? placesOf(texts, edit.find) : 0
+  if ('find' in edit && places === 0) return workText('Nothing matched.')
+  const name = fileName(key) || asked
+  const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts) } satisfies OfficeEdit })
+  return workText(`Others can open ${name}, so nothing in it changed: "${item.summary}" waits for the owner, and nobody else sees it. It is written only when he approves it.`)
+}
+
+/** A file's name from its key: the last part of a path or a URL, without a query. */
+export function fileName(key: string): string {
+  const last = key.replace(/\\/g, '/').replace(/[?#].*$/, '').split('/').pop() ?? ''
+  try {
+    return decodeURIComponent(last)
+  } catch {
+    return last
+  }
+}
 
 /** What a held tool answers: it waits for him, or a grant he made let it go. */
 function heldAnswer(state: string, summary: string): WorkToolResult {

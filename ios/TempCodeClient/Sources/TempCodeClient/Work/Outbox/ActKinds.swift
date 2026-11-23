@@ -53,6 +53,22 @@ public extension OutboxModel {
             if case .object(let read)? = o["read"], let on = word(read["on"]) { rows.append(("On", on)) }
             // Every step in order, what it types in full: a batch's tail never hides behind its cut title.
             if case .object(let args)? = o["args"] { rows += stepRows(args: args, targets: o["targets"]) }
+        case .officeEdit:
+            // An agent's change to a shared file: a Word insert's text is the body, a find and replace are rows,
+            // each in full (the desktop's `kindRows`).
+            if let app = editApp[word(o["app"]) ?? ""] { rows.append(("In", app)) }
+            if case .object(let e)? = o["edit"] {
+                if case .string(let insert)? = e["insert"] {
+                    rows.append(("Adds at", word(e["at"]) == "start" ? "The start" : "The end"))
+                    body = insert
+                } else {
+                    rows += editRows([.object(e)])
+                }
+            }
+        case .googleEdit:
+            if let app = editApp[word(o["app"]) ?? ""] { rows.append(("In", app)) }
+            if case .array(let edits)? = o["edits"] { rows += editRows(edits) }
+            if let account = word(o["account"]) { rows.append(("Account", account)) }
         default:
             return nil
         }
@@ -77,6 +93,8 @@ public extension OutboxModel {
         case .teamsPost:
             if case .string? = o["html"] { return nil }
             return sent ? "Posted in Teams" : "Post in Teams"
+        case .officeEdit, .googleEdit:
+            return word(o["name"]).map { "\(sent ? "Changed" : "Change") \($0)" }
         default:
             return nil
         }
@@ -108,7 +126,9 @@ public extension OutboxModel {
     /// summary's words after the ": " (the desktop's row), never the first text of its payload (an
     /// account, an id).
     nonisolated static func rowWords(_ item: OutboxItem) -> (title: String, line: String?) {
-        let (act, about) = shareWords(item) ?? splitSummary(item.summary)
+        // An agent's change to a shared file leads with the file, so a long verb never cuts its name off (the desktop's `rowWords`).
+        let changed = item.kind == .officeEdit || item.kind == .googleEdit ? kindHeading(kind: item.kind, payload: item.payload, sent: item.state == .sent) : nil
+        let (act, about) = changed.map { ($0, splitSummary(item.summary).about) } ?? shareWords(item) ?? splitSummary(item.summary)
         if item.state == .failed { return (act, checkFirst(item) ?? item.error ?? "Didn’t send") }
         if let when = calendarWhen(kind: item.kind, payload: item.payload) { return (act, when) }
         switch item.kind {
@@ -396,6 +416,24 @@ public extension OutboxModel {
     }
 
     private nonisolated static let access = ["reader": "Can view", "commenter": "Can comment", "writer": "Can edit"]
+    private nonisolated static let editApp = ["word": "Word", "powerpoint": "PowerPoint", "doc": "Google Docs", "slides": "Google Slides"]
+
+    /// Each change as he approves it, in full (the desktop's `editRows`): the words it replaces and what takes
+    /// their place, or a box's words before and after, by its slide.
+    nonisolated static func editRows(_ edits: [JSONValue]) -> [(String, String)] {
+        var rows: [(String, String)] = []
+        for case .object(let e) in edits {
+            if case .string(let find)? = e["find"] {
+                if word(e["replace"]) != nil, case .string(let replace)? = e["replace"] { rows += [("Replace", find), ("With", replace)] } else { rows.append(("Take out", find)) }
+            } else if case .string? = e["shape"] {
+                let slide: String = if case .number(let n)? = e["slide"] { "Slide \(Int(n))" } else { "A box" }
+                let was: String = if case .string(let w)? = e["was"] { w } else { "" }
+                let text: String = if case .string(let t)? = e["text"] { t } else { "" }
+                rows += [(slide, was), ("Becomes", text)]
+            }
+        }
+        return rows
+    }
 
     private nonisolated static func word(_ value: JSONValue?) -> String? {
         guard case .string(let s)? = value else { return nil }

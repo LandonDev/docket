@@ -4793,8 +4793,10 @@ public struct OutboxItem: Codable, Hashable, Sendable {
         case teamsPost
         case officeMailSend
         case officeCalendarOp
+        case officeEdit
         case shareGuestLink
         case shareGoogle
+        case googleEdit
         case formPublish
         case frameioPost
         case portalSubmit
@@ -4810,8 +4812,10 @@ public struct OutboxItem: Codable, Hashable, Sendable {
             case "teams.post": self = .teamsPost
             case "office.mail.send": self = .officeMailSend
             case "office.calendar.op": self = .officeCalendarOp
+            case "office.edit": self = .officeEdit
             case "share.guestLink": self = .shareGuestLink
             case "share.google": self = .shareGoogle
+            case "google.edit": self = .googleEdit
             case "form.publish": self = .formPublish
             case "frameio.post": self = .frameioPost
             case "portal.submit": self = .portalSubmit
@@ -4828,8 +4832,10 @@ public struct OutboxItem: Codable, Hashable, Sendable {
             case .teamsPost: "teams.post"
             case .officeMailSend: "office.mail.send"
             case .officeCalendarOp: "office.calendar.op"
+            case .officeEdit: "office.edit"
             case .shareGuestLink: "share.guestLink"
             case .shareGoogle: "share.google"
+            case .googleEdit: "google.edit"
             case .formPublish: "form.publish"
             case .frameioPost: "frameio.post"
             case .portalSubmit: "portal.submit"
@@ -5180,8 +5186,10 @@ public struct OutboxGrant: Codable, Hashable, Sendable {
         case teamsPost
         case officeMailSend
         case officeCalendarOp
+        case officeEdit
         case shareGuestLink
         case shareGoogle
+        case googleEdit
         case formPublish
         case frameioPost
         case portalSubmit
@@ -5197,8 +5205,10 @@ public struct OutboxGrant: Codable, Hashable, Sendable {
             case "teams.post": self = .teamsPost
             case "office.mail.send": self = .officeMailSend
             case "office.calendar.op": self = .officeCalendarOp
+            case "office.edit": self = .officeEdit
             case "share.guestLink": self = .shareGuestLink
             case "share.google": self = .shareGoogle
+            case "google.edit": self = .googleEdit
             case "form.publish": self = .formPublish
             case "frameio.post": self = .frameioPost
             case "portal.submit": self = .portalSubmit
@@ -5215,8 +5225,10 @@ public struct OutboxGrant: Codable, Hashable, Sendable {
             case .teamsPost: "teams.post"
             case .officeMailSend: "office.mail.send"
             case .officeCalendarOp: "office.calendar.op"
+            case .officeEdit: "office.edit"
             case .shareGuestLink: "share.guestLink"
             case .shareGoogle: "share.google"
+            case .googleEdit: "google.edit"
             case .formPublish: "form.publish"
             case .frameioPost: "frameio.post"
             case .portalSubmit: "portal.submit"

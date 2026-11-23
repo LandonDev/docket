@@ -24,7 +24,8 @@ the sheet canvas.
 | `office/excel.ts` | `ExcelHelper`: Excel as the truth behind a grid |
 | `office/grid.ts` | what the sheets pillar asks for an item whose source is `{at: 'microsoft', app: 'excel'}` |
 | `office/tools.ts` | the tool set, and how a call reaches the host that has Office |
-| `office/held.ts` | the held acts `office.mail.send` and `office.calendar.op`, and `cleanMailHtml` |
+| `office/held.ts` | the held acts `office.mail.send`, `office.calendar.op` and `office.edit`, and `cleanMailHtml` |
+| `office/shared.ts` | `fileShared`, the one test of whether others can open a file, and `fileKey` |
 | `office/route.ts` | `OutlookRoute`: LifeOS's Outlook-account mail and calendar acts, carried by this host's Outlook |
 | `office/index.ts` | the module: tables, wire, tools, acts, the Excel trigger source, the route's start |
 | `addins/office/` | the add-in itself: `manifest.xml`, `taskpane.html`, `taskpane.js` (its screen), `core.js` (what it does), the icons as base64 |
@@ -437,8 +438,8 @@ One set for Claude, Codex and Muse (architecture §10):
 | `office_range_read` | values, formulas and the block's `hash` | no |
 | `office_range_write` | a block, with `base` the hash read; stale answers `conflict` and writes nothing; answers a `writeId` | no; the rule below |
 | `office_range_undo` | puts back one of its writes, only while the cells hold what it wrote | no |
-| `office_doc_read`, `office_doc_edit` | paragraphs; insert at start or end, or find and replace | no; the rule below |
-| `office_slides_read`, `office_slides_replace` | each slide's text; replace text | no; the rule below |
+| `office_doc_read`, `office_doc_edit` | paragraphs; insert at start or end, or find and replace | on a shared document, an agent's own idea: **yes**, `office.edit` |
+| `office_slides_read`, `office_slides_replace` | each slide's text; replace text | on a shared deck, an agent's own idea: **yes**, `office.edit` |
 | `office_mail_list`, `office_mail_read` | Outlook's inbox, sent or drafts | no |
 | `office_mail_draft` | a draft left in Outlook's Drafts; nothing is sent | no |
 | `office_mail_send` | send, reply (`replyTo`: to that mail's sender, read when the act is made, so the card and a grant judge the address Outlook uses), forward (`forward`); a reply or forward goes from the account its mail sits in, which the act is bound to, and another `account` asked for is refused; a new mail is bound when held to the `account` named, or Outlook's only account, and several accounts with none named is refused, HTML body, cleaned when held; `outlookAdds` names the mail Outlook puts under a reply or forward, and an edit keeps the account, the mail answered, a reply's recipients and the subject (`keepOfficeMail`) | **yes**: `office.mail.send` |
@@ -446,19 +447,29 @@ One set for Claude, Codex and Muse (architecture §10):
 | `office_calendar_create` | with nobody invited, a hold on his own calendar, made at once; with attendees, bound when held to the account it goes from, as a new mail is | with `attendees`, **yes**: `office.calendar.op` |
 | `office_calendar_answer` | accept, decline, tentative; the invitation's subject, start, end, place and organizer are read from the event when the act is made, and the press refuses an event changed in any of them, or a hold made before its end and place were kept | **yes**: `office.calendar.op` |
 
-**The rule for a file others can open.** A file named by a URL, or one in a
+**The rule for a file others can open.** One function decides it,
+`fileShared` (office/shared.ts): Files' `sharedOf` first, then the office
+rules it does not hold yet: a file named by a URL, a network share, one in a
 folder synced from OneDrive or SharePoint (`~/Library/CloudStorage/`, a
-`OneDrive` folder, with either slash, so a Windows path counts), is shared.
-The name a write gives is first found among the open files as the carrier
-keys them (by key, else the one open file of that name, since a carrier
-takes a bare name too), and the write goes to that key; a name no open
-file answers to, or two do, counts as shared (`fileKey`, tools.ts).
-On a shared file, a change he asked for in so many words is written: the
-tool carries `because: "asked"` and a `quote`, and the host finds the quote
-in his own messages (`ctx.threads.ownerSaid`). Otherwise the change waits
-for him (`judgeWrite`, `shared/work/because.ts`). On a workbook it waits as
-suggestions; in Word, as a tracked change. PowerPoint keeps no suggestions,
-so the tool refuses and says so. On his own files every write is direct.
+`OneDrive` folder, with either slash, so a Windows path in the VM counts),
+and a Teams folder he added. The name a write gives is first found among the
+open files as the carrier keys them (by key, else the one open file of that
+name, since a carrier takes a bare name too), and the write goes to that
+key; a name no open file answers to, or two do, counts as shared (`fileKey`,
+shared.ts). On a shared file, a change he asked for in so many words is
+written: the tool carries `because: "asked"` and a `quote`, and the host
+finds the quote in his own messages (`ctx.threads.ownerSaid`). Otherwise the
+change waits for him on this host, seen by nobody else (`judgeWrite`,
+`shared/work/because.ts`; the owner's ruling of 2026-11-23, work-outbox.md
+"An agent's suggestion stays his"). On a workbook it waits as suggestions in
+the grid. In Word and PowerPoint it is a held `office.edit`: the app is not
+touched, so no tracked change reaches the file's co-authors or its sync
+folder, and his press in the Outbox makes it as a plain edit (Track Changes
+off), on the host that holds it, in the file while it is open there. The
+press reads the file first: words that stand where they did are written
+(the result says when the file moved under it), words gone or standing in
+another number of places leave the act stale with nothing written. On his
+own files every write is direct.
 
 **Where a tool runs.** On the host that has a carrier, the tool runs there.
 Elsewhere (the box), it goes to the first host in the workspace's
@@ -474,8 +485,9 @@ passes.
 
 ## What is held
 
-`office.mail.send` and `office.calendar.op` are host-store act kinds
-(`held.ts`, registered through `WorkModule.acts`). A tool only ever calls
+`office.mail.send`, `office.calendar.op` and `office.edit` are host-store act kinds
+(`held.ts`, registered through `WorkModule.acts`). `office.edit` takes no
+grant and no edit in the Outbox: each one waits for his press. A tool only ever calls
 `ctx.held.create`; Outlook is called in the kind's `execute`, which the
 Outbox runs once, after his press or a grant he made from one of these. A
 send that comes over the peer link is held on the host that has Outlook,

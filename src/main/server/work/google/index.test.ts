@@ -11,7 +11,7 @@ import { GOOGLE_MIME } from './client'
 import { FakeGoogle, FAKE_TOKEN_URL } from './fake'
 import { resetGoogle, setGoogleDeps } from './google'
 import { unfollowAll } from './grid'
-import { googleShare } from './held'
+import { googleEdit, googleShare } from './held'
 import { google as module, setOpenBrowser } from './index'
 import { pickerUrl } from './picker'
 import { pollOnce } from './poll'
@@ -169,15 +169,43 @@ describe('the version poll', () => {
 })
 
 describe('the google tools', () => {
-  it("revises a copy of a deck and leaves the deck as it was", async () => {
+  it("holds a deck's edits on this host: no copy and no change in Google until his press, which makes them in the deck", async () => {
     const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck1' })
     expect(text(await run('google_slides_read', { item: itemId }))).toContain('[t1] Hello 2025')
-    const got = await run('google_slides_revise', { item: itemId, edits: [{ find: '2025', replace: '2026' }] })
-    expect(text(got)).toMatch(/Made "Pitch \(revised\)"/)
-    expect(fake.files.get('deck1')!.deck!.slides[0].texts[0].text).toBe('Hello 2025')
-    const copy = [...fake.files.values()].find((f) => f.name === 'Pitch (revised)')!
-    expect(copy.deck!.slides[0].texts[0].text).toBe('Hello 2026')
-    expect(results.map((r) => r.kind)).toEqual(['google.slides.copy'])
+    const before = JSON.stringify([...fake.files])
+    const got = await run('google_slides_revise', { item: itemId, edits: [{ find: '2025', replace: '2026' }, { shape: 't1', text: 'Hi' }] })
+    expect(text(got)).toMatch(/^Held for the owner/)
+    expect(JSON.stringify([...fake.files])).toBe(before)
+    expect(fake.calls.filter((c) => c.startsWith('POST') && !c.includes('/google/token'))).toEqual([])
+    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026' }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2025' }] }) })])
+    expect(results).toEqual([])
+    const done = await googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)
+    expect(done.summary).toBe('Made 2 changes in Pitch')
+    expect(fake.files.get('deck1')!.deck!.slides[0].texts[0].text).toBe('Hi')
+    expect([...fake.files.values()].map((f) => f.name)).not.toContain('Pitch (revised)')
+  })
+
+  it("holds a Doc's edits on this host: nothing goes to Google, and his press writes them plainly", async () => {
+    fake.addDoc(ME, 'doc2', 'Brief', [['NORMAL_TEXT', 'We ship in March.']])
+    const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'doc2' })
+    const before = JSON.stringify([...fake.files])
+    const got = await run('google_doc_suggest', { item: itemId, edits: [{ find: 'March', replace: 'May' }] })
+    expect(text(got)).toMatch(/^Held for the owner: .*Nothing went to Google and nobody else sees it/)
+    expect(JSON.stringify([...fake.files])).toBe(before)
+    expect(fake.docSuggestions('doc2')).toEqual([])
+    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'doc', fileId: 'doc2', edits: [{ find: 'March', replace: 'May' }] }) })])
+    const payload = googleEdit.payload.parse(held[0].payload)
+    expect(googleEdit.words(payload)).toEqual({ summary: 'Make change in Brief: "March" to "May"', verb: 'Make change' })
+    await expect(googleEdit.execute(payload, { ...ctx, item: { sessionId: 's1' } } as never)).resolves.toMatchObject({ summary: 'Made the change in Brief' })
+    expect(fake.docText('doc2')).toContain('We ship in May.')
+    expect(fake.docSuggestions('doc2')).toEqual([])
+    // pressed again: the words are gone, so nothing is written and he is told why
+    await expect(googleEdit.execute(payload, { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow(/Brief changed since: .*not in the Doc/)
+  })
+
+  it('an agent edit takes no grant and cannot be edited', () => {
+    expect(googleEdit.matcher).toBeUndefined()
+    expect(googleEdit.keep).toBeUndefined()
   })
 
   it("holds a share for his press, and its way back takes the person out", async () => {

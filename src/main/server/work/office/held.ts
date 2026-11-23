@@ -1,16 +1,20 @@
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { ActKindDef } from '../modules'
-import { ActStale } from '../outbox/kinds'
+import { ActNotSent, ActStale } from '../outbox/kinds'
 import { eventById, OfficeError, type OfficeCarrier } from './carrier'
+import { fileKey } from './shared'
 
 /**
- * The office pillar's two held acts (docs/agents/work-office.md "What is
- * held"): `office.mail.send` (a send, a reply, a forward through Outlook)
- * and `office.calendar.op` (a meeting with others, or his answer to an
- * invitation). An agent's tool only ever makes one; Outlook is called in
- * `execute`, which the Outbox runs once, after his press or a grant he made
- * from one of these. Each act runs on the host it was held on, which is the
- * host whose Outlook carries it.
+ * The office pillar's held acts (docs/agents/work-office.md "What is
+ * held"): `office.mail.send` (a send, a reply, a forward through Outlook),
+ * `office.calendar.op` (a meeting with others, or his answer to an
+ * invitation) and `office.edit` (an agent's own change to a Word document or
+ * a PowerPoint deck others can open, kept here until he approves it). An
+ * agent's tool only ever makes one; the app is called in `execute`, which
+ * the Outbox runs once, after his press or a grant he made from one of
+ * these. Each act runs on the host it was held on, which is the host whose
+ * Office carries it.
  */
 
 const Address = z.string().trim().min(3).max(320).regex(/^[^\s@<>,;]+@[^\s@<>,;]+$/, 'an email address')
@@ -78,6 +82,34 @@ export const OfficeCalendarSchema = z.discriminatedUnion('op', [
   })
 ])
 export type OfficeCalendarOp = z.infer<typeof OfficeCalendarSchema>
+
+/**
+ * An agent's own change to a file others can open (the owner's ruling of 2026-11-23): nothing of it reaches
+ * the file, its sync folder or its co-authors until his press, which makes it as a plain edit. With what the
+ * file read as when it was suggested, so the press can say the file moved under it.
+ */
+export const OfficeEditSchema = z.object({
+  host: z.string(),
+  app: z.enum(['word', 'powerpoint']),
+  /** the file's key as the carrier gave it: a path or a URL */
+  key: z.string().max(4_000),
+  name: z.string().max(500),
+  edit: z.union([z.object({ find: z.string().min(1).max(1_000), replace: z.string().max(1_000) }), z.object({ insert: z.string().max(100_000), at: z.enum(['start', 'end']) })]),
+  /** how many places held `find` then; 0 for an insert */
+  places: z.number().int().min(0),
+  /** `textHash` of the file's text then */
+  base: z.string().max(100)
+})
+export type OfficeEdit = z.infer<typeof OfficeEditSchema>
+
+/** A file's text as an edit is judged on it: a document's paragraphs, or a deck's text boxes slide by slide. */
+export async function fileText(c: OfficeCarrier, app: OfficeEdit['app'], key: string): Promise<string[]> {
+  return app === 'word' ? c.readDocument(key) : (await c.readSlides(key)).flatMap((s) => s.texts)
+}
+export const textHash = (texts: readonly string[]): string => createHash('sha256').update(JSON.stringify(texts)).digest('hex')
+/** How many places hold the words. */
+export const placesOf = (texts: readonly string[], find: string): number => texts.reduce((n, t) => n + t.split(find).length - 1, 0)
+export const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 const everyone = (m: OfficeMail): string[] => [...m.to, ...m.cc, ...m.bcc].map((a) => a.toLowerCase())
 const list = (xs: string[]): string => (xs.length <= 2 ? xs.join(' and ') : `${xs.slice(0, 2).join(', ')} and ${xs.length - 2} more`)
@@ -181,5 +213,34 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
     },
     wayBack: () => null
   }
-  return [mail as ActKindDef, calendar as ActKindDef]
+  // No matcher: no grant covers an agent's change to a file others can open, and no Away releases it.
+  const edit: ActKindDef<OfficeEdit> = {
+    kind: 'office.edit',
+    store: 'host',
+    payload: OfficeEditSchema,
+    words(p) {
+      const e = p.edit
+      const what = 'find' in e ? (e.replace ? `"${clip(e.find)}" to "${clip(e.replace)}"` : `take out "${clip(e.find)}"`) : `add to its ${e.at}`
+      return { summary: `Make change in ${p.name}: ${what}`, verb: 'Make change' }
+    },
+    async execute(p, ctx) {
+      const c = carrierHere(deps, p.host, ctx.host)
+      const app = p.app === 'word' ? 'Word' : 'PowerPoint'
+      const key = await fileKey({ carrier: c }, p.app === 'word' ? 'document' : 'deck', p.key)
+      if (key === null) throw new ActNotSent(`${p.name} is not open in ${app} on this computer: open it, then press again. Nothing was changed.`)
+      const texts = await fileText(c, p.app, key)
+      const moved = textHash(texts) !== p.base
+      if ('find' in p.edit) {
+        const now = placesOf(texts, p.edit.find)
+        if (now === 0) throw new ActStale(`${p.name} changed since: the words this replaces are no longer in it. Nothing was changed`)
+        if (now !== p.places) throw new ActStale(`${p.name} changed since: the words stand in ${now} places now, not the ${p.places} this was suggested for. Nothing was changed`)
+      }
+      if (p.app === 'word') await c.editDocument(key, p.edit, false)
+      else if ('find' in p.edit) await c.replaceSlideText(key, p.edit.find, p.edit.replace)
+      else throw new ActStale('PowerPoint takes only a find and replace')
+      return { summary: `Changed ${p.name}${moved ? '. It had changed since the suggestion; the words still stood as they did' : ''}` }
+    },
+    wayBack: () => null
+  }
+  return [mail as ActKindDef, calendar as ActKindDef, edit as ActKindDef]
 }

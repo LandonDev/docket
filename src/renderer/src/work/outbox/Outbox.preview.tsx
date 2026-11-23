@@ -9,7 +9,8 @@ import { resetOutboxStore } from "./store";
  * The Outbox over one fixed host, for `bun run ui:preview
  * src/renderer/src/work/outbox/Outbox.preview.tsx#OutboxPreview --props '{"state":"offer"}'`:
  * Sent with the mail whose press completed a run and the grant it earned at
- * its foot (`offer`), and the same mail with none (`plain`). Rendered by
+ * its foot (`offer`), the same mail with none (`plain`), and Waiting with an
+ * agent's changes to shared files held for his press (`edits`). Rendered by
  * nothing in the app.
  */
 
@@ -48,10 +49,65 @@ const SENT = [
   sent(4, "Re: Travel for nationals", "Hi Dana,\n\nSix players and two staff, leaving Thursday at 7 AM. The van is booked through RecWell.\n\nLandon", at(19, 16, 5)),
   sent(3, "Re: Jersey order", "Hi Dana,\n\nThe order is 14 jerseys at $62 each. Invoice attached.\n\nLandon", at(18, 11, 20)),
 ];
+/** An agent's change to a file others can open, as the host holds it (office.edit, google.edit). */
+const edit = (n: number, kind: "office.edit" | "google.edit", summary: string, verb: string, payload: unknown, when: number): OutboxItem => ({
+  ...sent(n, "", "", when),
+  ref: { at: "host", id: `h_${n}` },
+  kind,
+  summary,
+  verb,
+  account: kind === "google.edit" ? "landon@purdue.edu" : null,
+  state: "held",
+  payload,
+  decidedBy: null,
+  decidedAt: null,
+  why: "pillar",
+  result: null,
+});
+const EDITS = [
+  edit(
+    8,
+    "office.edit",
+    'Make change in Spring LAN budget.docx: "$4,180" to "$4,320"',
+    "Make change",
+    { host: "local", app: "word", key: "/Users/landon/Library/CloudStorage/OneDrive-Purdue/Spring LAN budget.docx", name: "Spring LAN budget.docx", edit: { find: "The Spring LAN comes to $4,180", replace: "The Spring LAN comes to $4,320, with $140 more for prizes" }, places: 1, base: "x" },
+    at(20, 10, 12),
+  ),
+  edit(
+    7,
+    "google.edit",
+    'Make 2 changes in Nationals travel: "Thursday at 7 AM" to "Thursday at 6:30 AM" and 1 more',
+    "Make 2 changes",
+    {
+      app: "slides",
+      account: "landon@purdue.edu",
+      fileId: "1AbC",
+      name: "Nationals travel",
+      edits: [
+        { find: "Thursday at 7 AM", replace: "Thursday at 6:30 AM" },
+        { shape: "t4", text: "Six players, two staff, one van", slide: 3, was: "Six players and two staff" },
+      ],
+      revisionId: "r1",
+    },
+    at(20, 9, 58),
+  ),
+  edit(
+    6,
+    "office.edit",
+    "Make change in Jersey order.docx: add to its end",
+    "Make change",
+    { host: "local", app: "word", key: "https://purdue0.sharepoint.com/sites/esports/Jersey order.docx", name: "Jersey order.docx", edit: { insert: "Sizes still to confirm: two players.", at: "end" }, places: 0, base: "x" },
+    at(20, 9, 30),
+  ),
+];
+
 const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", routineId: null, from: SENT[0]!.ref, count: 5, createdAt: at(20, 9, 41) };
 
-type State = "offer" | "plain";
+type State = "offer" | "plain" | "edits";
 let state: State = "offer";
+/** Which held change shows in the detail (the oldest waiting item is the one selected): 0 a Word replace, 1 a deck's two changes, 2 a Word insert. */
+let pick = 0;
+const waitingEdits = (): OutboxItem[] => EDITS.map((e, i) => (i === pick ? { ...e, createdAt: at(20, 8) } : e));
 let ready = false;
 
 const answers = (method: string, params: { show?: string } = {}): unknown => {
@@ -61,7 +117,8 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
     case "project.list":
       return [];
     case "work.outbox.list":
-      return params.show === "decided" ? { items: SENT } : { items: [], waiting: 0 };
+      if (params.show === "decided") return { items: SENT };
+      return state === "edits" ? { items: waitingEdits(), waiting: EDITS.length } : { items: [], waiting: 0 };
     case "work.outbox.grants":
       return { grants: [] };
     case "work.outbox.offers":
@@ -69,7 +126,7 @@ const answers = (method: string, params: { show?: string } = {}): unknown => {
     case "work.outbox.results":
       return { results: [] };
     case "work.outbox.get":
-      return SENT[0];
+      return state === "edits" ? waitingEdits()[pick] : SENT[0];
   }
   throw new Error(`no ${method}`);
 };
@@ -93,13 +150,14 @@ Object.assign(registry, { primary: () => link, linkOf: () => link, link: () => l
 workspaceStore.reset();
 workspaceStore.attach(link);
 
-export function OutboxPreview({ state: s = "offer" }: { state?: State }) {
+export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: State; pick?: number }) {
   if (!ready) {
     ready = true;
     state = s;
+    pick = p;
     resetOutboxStore();
     setWorkOn("local", true);
-    rememberOutboxTab("sent");
+    rememberOutboxTab(s === "edits" ? "waiting" : "sent");
   }
   return (
     <div className="flex h-[640px] w-full">

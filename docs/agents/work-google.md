@@ -85,10 +85,16 @@ paragraph keeps its old base, so it stays counted as his and is never
 dropped by a later read. The base's hashes are taken from the mirror as the
 Work service reads it back, so an untouched table compares equal.
 
-**An agent's edits** are always Google suggestions: `google_doc_suggest`
-sends `{find, replace}` pairs (each `find` must stand once in a plain
-paragraph) as one `batchUpdate` with `writeMode: SUGGEST`. The docs tools
-refuse a Google item and name the google tools.
+**An agent's edits** never reach Google before his press (the owner's
+ruling of 2026-11-23; work-outbox.md "An agent's suggestion stays his"):
+`google_doc_suggest` checks its `{find, replace}` pairs against the Doc
+(each `find` must stand once in a plain paragraph; `checkEdits`) and holds
+them as a `google.edit` with the revision it read. Nothing goes to Google:
+no suggestion, no comment. His press in the Outbox reads the Doc again and
+writes them as plain edits in one `batchUpdate` bound to the revision just
+read (`writeEdits`); a `find` no longer standing once leaves the act stale,
+and a Doc that moved while every `find` still stands is written and said.
+The docs tools refuse a Google item and name the google tools.
 
 The screen: a Google Doc's ⋯ holds **Write to Google**, **Read again from
 Google**, **Drop unwritten edits** (while there are some) and **Open in
@@ -116,12 +122,15 @@ opens the spreadsheet in the system browser.
 
 ## Slides
 
-Slides has no suggest mode, so an agent never changes his deck:
-`google_slides_read` reads each slide's words with shape ids and
-`google_slides_revise` makes a copy with its comments (`files.copy`) and
-edits that (replace words everywhere, or set one shape's words) in one
-`batchUpdate`; the copy's link goes to the thread and the Results. A deck
-is not drawn in our slides canvas: it says it lives in Google.
+Slides has no suggest mode. `google_slides_read` reads each slide's words
+with shape ids; `google_slides_revise` checks its edits (replace words
+everywhere, or set one shape's words) against the deck and holds them as a
+`google.edit`, with each shape's slide and words as they were. No copy is
+made: Drive puts a copy in the deck's own folders, where everyone who shares
+them would see it. His press makes the edits in the deck itself, in one
+`batchUpdate` bound to the revision just read (`writeDeckEdits`); words gone,
+or a shape holding other words than it did, leave the act stale. A deck is
+not drawn in our slides canvas: it says it lives in Google.
 
 ## Changes
 
@@ -134,6 +143,9 @@ trigger fires (`googleChanges`, `at: 'google'`). Nothing is polled for a
 file no item has open.
 
 ## What is held
+
+`google.edit` (`held.ts`): an agent's change to a Doc or a deck, above. It
+takes no grant and no edit in the Outbox; Away releases none.
 
 `share.google` (`held.ts`): letting a person into a file as reader,
 commenter or writer, made by `google_share` and run only after his press or

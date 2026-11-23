@@ -18,7 +18,7 @@ import type { Google } from './google'
  * its own under `<dataDir>/google/` (the mirror), which the document kind
  * opens as it opens any `.tcdoc`. Google stays the truth: his edits in the
  * mirror go back by `batchUpdate` when he writes them (write.ts), an
- * agent's only as Google suggestions, and the mirror is read again when the
+ * agent's only when he approves them (a held `google.edit`), and the mirror is read again when the
  * Doc moved in Google and nothing of his waits to be written.
  */
 
@@ -178,15 +178,34 @@ async function settle(g: Google, source: GoogleSource, current: Block[], kept: R
   g.files.update(source.account, source.fileId, { base: rebase(current, mapGoogleDoc(after).paragraphs, kept), version, ours: version, behind: null })
 }
 
-/** An agent's edits, as Google suggestions he accepts or rejects in Google or here. */
-export async function suggestDoc(g: Google, source: GoogleSource, edits: { find: string; replace: string }[]): Promise<number> {
-  const api = g.api(source.account)
-  const fresh = await api.doc(source.fileId)
-  if (!fresh.revisionId) throw new GoogleError('Google lets this account read the Doc but not suggest in it.', 'refused')
+/**
+ * Where an agent's edits to a Doc stand now: each `find` must stand once in a plain paragraph. Nothing is sent to
+ * Google: the edits wait on his host as a held `google.edit` (the owner's ruling of 2026-11-23), so no suggestion
+ * of the agent's is ever in the Doc for others to see. Answers the revision it was judged on.
+ */
+export async function checkEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string }[]): Promise<string> {
+  const fresh = await g.api(source.account).doc(source.fileId)
+  if (!fresh.revisionId) throw new GoogleError('Google lets this account read the Doc but not change it.', 'refused')
   const plan = planSuggest(mapGoogleDoc(fresh).paragraphs, edits)
   if ('error' in plan) throw new Error(plan.error)
-  await api.docUpdate(source.fileId, plan.requests, { requiredRevisionId: fresh.revisionId, writeMode: 'SUGGEST' })
-  return edits.length
+  return fresh.revisionId
+}
+
+/**
+ * His press on a held `google.edit`: the edits written as plain edits, against the Doc as Google has it now, in
+ * one `batchUpdate` bound to the revision just read. `stale` when a `find` no longer stands once; `moved` when
+ * the Doc changed since the edits were judged, though each still stood once.
+ */
+export function writeEdits(g: Google, source: GoogleSource, edits: readonly { find: string; replace: string }[], judgedOn: string): Promise<{ stale: string } | { moved: boolean }> {
+  return locked(source, async () => {
+    const api = g.api(source.account)
+    const fresh = await api.doc(source.fileId)
+    if (!fresh.revisionId) throw new GoogleError('Google lets this account read the Doc but not change it.', 'refused')
+    const plan = planSuggest(mapGoogleDoc(fresh).paragraphs, edits)
+    if ('error' in plan) return { stale: plan.error }
+    await api.docUpdate(source.fileId, plan.requests, { requiredRevisionId: fresh.revisionId })
+    return { moved: fresh.revisionId !== judgedOn }
+  })
 }
 
 /** The Doc as an agent reads it: its words by paragraph, then its open comments and waiting suggestions. */

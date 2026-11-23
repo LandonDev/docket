@@ -17,6 +17,7 @@ it: the Outbox, a Work thread's Results and the return from Away
 | mail or calendar draft in LifeOS | listed with the host's own held rows, sent only by his press through the host | `work/outbox/lifeosHeld.ts` |
 | computer act the host reads as outward, or the model flagged | kept as a live hold: nothing of the call runs | `computer/run.ts`, `shared/computer/outward.ts` |
 | act of a pillar's own kind (a Teams post, a guest link, …) | held through `ctx.held.create` | the pillar, against `work/outbox/outbox.ts` |
+| change of its own idea to a file others can open (a Word document, a PowerPoint deck, a Google Doc or deck) | held as `office.edit` or `google.edit`; nothing of it reaches the file, its sync folder, its co-authors or Google before his press, which writes it as a plain edit. No grant covers it and Away releases none. Cells wait as suggestions in the grid. Below: "An agent's suggestion stays his" | `office/tools.ts`, `google/tools.ts` |
 | `addon_add` | a card for a person with an admin key; never allowed by Away, never by a model | `shared/away.ts`, `sessions.ts` |
 | `addon_remove` | a card over a row a person wrote (none over a thread's own), never allowed by Away; it reaches only rows the thread can see. Nothing leaves by it | `addons/tools.ts` |
 | shell | **not caught.** The owner accepted this; the Work preamble is the rule there | |
@@ -66,6 +67,44 @@ true`, which the Outbox offers as "Send again" beside "Check Sent first" in
 place of Send. No group send or tick takes such a row. A LifeOS row is never
 marked: LifeOS holds what became of it, and its kind reads that before it
 sends again. On the phone the item's button already reads Send Again for any failed send; for one that may have gone the press carries `again: true` (`WorkHost.send`) and the line reads the desktop's words (`OutboxModel.checkFirst`, `failureLine`; milestone 47).
+
+## An agent's suggestion stays his
+
+The owner's ruling of 2026-11-23: "Make sure agent suggests mode doesn't
+let any agent changes let anyone else on the team see them (synced edits)
+until they are approved and the file is actually edited." An agent's own
+idea on a file others can open is kept on his host and shown only to him.
+
+- **Which files.** Office's tools ask `fileShared` (office/shared.ts):
+  Files' `sharedOf` first, then a URL, a network share, a folder named
+  OneDrive on any host, a Teams folder he added, and a name no open file
+  answers to. A Google file is always shared.
+- **Where it waits.** A Word document's or a PowerPoint deck's words: a held
+  `office.edit` (the file's key, the change, how many places held the words
+  and a hash of the file's text then). A Google Doc's or deck's words: a held
+  `google.edit` (the edits, a box's words before, the revision then). Cells
+  in Excel or a Google Sheet: `work_sheets_suggestions`, as before. Word
+  gets no tracked change, Google no suggestion and no copy, and no comment
+  is made anywhere.
+- **His press** makes it a plain edit through the tool that reaches the
+  file: on the host that holds it, in a file still open there. When the file
+  moved since, it says so: written when the words still stand as they did
+  (the result line says the file had changed), else stale with the reason
+  ("the words stand in 2 places now, not the 1 this was suggested for"),
+  nothing written. A Google write is bound to the revision just read.
+- **No grant, no edit.** Neither kind has a matcher, so the Send menu offers
+  no grant and `work.outbox.grant` refuses one; neither is in
+  `EDITABLE_KINDS`. Send N on a workspace's group approves every one there;
+  Discard refuses one, and nothing was ever in the file.
+- **What still writes at once**: his words found in the thread (`because:
+  "asked"` with the quote, Office tools only; a Google change always waits),
+  and a file only he can open.
+- **Where the other builds stand** (the audit is
+  `.temp-code/plans/landed/F-private-suggestions.md`): a `.tcdoc`'s
+  branches and a `.tcsheet`'s suggestions are kept inside the file, so a
+  shared one carries them to whoever syncs it; the slides kind judges a deck
+  "hosted" only by a Microsoft URL; a LifeOS bot's comment on a document a
+  guest link shows reaches the guest. Each is its build's to close.
 
 ## Add-on tools: the rule he sets
 

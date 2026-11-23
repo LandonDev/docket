@@ -167,6 +167,20 @@ import TempCodeContract
         let quiet = OutboxModel.actView(item("g2", kind: .shareGoogle, payload: .object(["email": .string("dana@purdue.edu"), "role": .string("reader"), "notify": .bool(false)])))
         #expect(quiet.fields.map(\.value) == ["dana@purdue.edu", "Can view"])
 
+        // An agent's change to a shared file: the app, each change in full, never a key, host or revision.
+        let word = OutboxModel.actView(item("e1", kind: .officeEdit, payload: .object(["host": .string("env_mac"), "app": .string("word"), "key": .string("/x/OneDrive-P/Brief.docx"), "name": .string("Brief.docx"), "edit": .object(["find": .string("March"), "replace": .string("May")]), "places": .number(1), "base": .string("abc")])))
+        #expect(word.fields.map(\.label) == ["In", "Replace", "With"])
+        #expect(word.fields.map(\.value) == ["Word", "March", "May"])
+        let insert = OutboxModel.actView(item("e2", kind: .officeEdit, payload: .object(["app": .string("word"), "name": .string("Brief.docx"), "edit": .object(["insert": .string("A last line."), "at": .string("end")])])))
+        #expect(insert.fields.map(\.value) == ["Word", "The end"])
+        #expect(insert.body?.text == "A last line.")
+        let deck = OutboxModel.actView(item("e3", kind: .googleEdit, payload: .object(["app": .string("slides"), "account": .string("a@b.edu"), "fileId": .string("1AbC"), "name": .string("Pitch"), "revisionId": .string("r9"), "edits": .array([.object(["find": .string("2025"), "replace": .string("2026")]), .object(["shape": .string("t4"), "text": .string("Hi"), "slide": .number(3), "was": .string("Hello")])])])))
+        #expect(deck.fields.map(\.label) == ["In", "Replace", "With", "Slide 3", "Becomes", "Account"])
+        #expect(deck.fields.map(\.value) == ["Google Slides", "2025", "2026", "Hello", "Hi", "a@b.edu"])
+        let row = OutboxModel.rowWords(item("e4", kind: .officeEdit, summary: "Make change in Brief.docx: \"March\" to \"May\"", payload: .object(["name": .string("Brief.docx")])))
+        #expect(row.title == "Change Brief.docx")
+        #expect(row.line == "\"March\" to \"May\"")
+
         let comment = OutboxModel.actView(item("p1", kind: .frameioPost, payload: .object(["what": .string("comment"), "account": .string("acc_1"), "fileId": .string("f_1"), "fileName": .string("cut.mp4"), "text": .string("Tighten the open"), "clock": .string("0:12"), "durationFrames": .number(48), "pin": .object(["x": .number(0.31), "y": .number(0.62)]), "shapes": .array([
             .object(["tool": .string("arrow"), "color": .string("#ff0000"), "x1": .number(0.1), "y1": .number(0.2), "x2": .number(0.5), "y2": .number(0.6)]),
             .object(["tool": .string("rect"), "color": .string("#ffffff"), "x": .number(0.2), "y": .number(0.3), "w": .number(0.25), "h": .number(0.1)]),
@@ -456,6 +470,8 @@ import TempCodeContract
         #expect(OutboxModel.kindHeading(kind: .formPublish, payload: .object(["title": .string("Spring LAN signup")]), sent: true) == "Published Spring LAN signup")
         #expect(OutboxModel.kindHeading(kind: .shareGoogle, payload: .object(["name": .string("Budget.xlsx"), "email": .string("dana@purdue.edu"), "role": .string("writer")]), sent: false) == "Share Budget.xlsx")
         #expect(OutboxModel.kindHeading(kind: .shareGoogle, payload: .object(["name": .string("Budget.xlsx")]), sent: true) == "Shared Budget.xlsx")
+        #expect(OutboxModel.kindHeading(kind: .officeEdit, payload: .object(["name": .string("Brief.docx")]), sent: false) == "Change Brief.docx")
+        #expect(OutboxModel.kindHeading(kind: .googleEdit, payload: .object(["name": .string("Pitch")]), sent: true) == "Changed Pitch")
         #expect(OutboxModel.kindHeading(kind: .teamsPost, payload: .object(["chat": .string("Esports staff"), "text": .string("Hi")]), sent: false) == "Post in Teams")
         #expect(OutboxModel.kindHeading(kind: .teamsPost, payload: .object(["chat": .string("Esports staff"), "text": .string("Hi")]), sent: true) == "Posted in Teams")
         #expect(OutboxModel.kindHeading(kind: .mailSend, payload: .object([:]), sent: false) == nil)

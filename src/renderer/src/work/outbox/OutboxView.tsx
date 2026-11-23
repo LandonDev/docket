@@ -79,7 +79,10 @@ const checkWords = (item: HostItem): string => (item.kind === "mail.send" || ite
  * title is who and how ("Share with dana@purdue.edu (can edit)") and the file
  * its second line. The detail keeps its own heading.
  */
-export function rowWords(item: Pick<HostItem, "kind" | "summary" | "verb" | "payload">): { act: string; about: string | null } {
+export function rowWords(item: Pick<HostItem, "kind" | "summary" | "verb" | "payload"> & { state?: HostItem["state"] }): { act: string; about: string | null } {
+  // An agent's change to a shared file: the file leads ("Change Brief.docx"), so a long verb never cuts its name off.
+  const changed = item.kind === "office.edit" || item.kind === "google.edit" ? kindHeading(item.kind, item.payload, item.state === "sent") : null;
+  if (changed) return { act: changed, about: splitSummary(item.summary).about };
   if (item.kind === "share.google") {
     const p = (item.payload ?? {}) as { email?: unknown; name?: unknown };
     const role = /\(([^)]*)\)\s*$/.exec(item.summary)?.[1];

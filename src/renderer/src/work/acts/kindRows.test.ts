@@ -260,3 +260,41 @@ describe("a kind's detail heading", () => {
     expect(kindHeading("mail.send", {}, false)).toBeNull();
   });
 });
+
+describe("an agent's change to a shared file, as he approves it", () => {
+  it("reads a Word replace in full, the app it goes into, and no key, host or count", () => {
+    const p = { host: "env_mac", app: "word", key: "/Users/l/Library/CloudStorage/OneDrive-Purdue/Brief.docx", name: "Brief.docx", edit: { find: "We ship in March", replace: "We ship in May, after the review" }, places: 1, base: "abc" };
+    expect(kindRows("office.edit", p)).toEqual({
+      fields: [
+        { label: "In", value: "Word" },
+        { label: "Replace", value: "We ship in March" },
+        { label: "With", value: "We ship in May, after the review" },
+      ],
+      body: null,
+    });
+    expect(noise(kindRows("office.edit", p))).not.toMatch(/OneDrive|env_mac|abc/);
+    expect(kindRows("office.edit", { ...p, edit: { find: "draft", replace: "" } })!.fields.at(-1)).toEqual({ label: "Take out", value: "draft" });
+  });
+
+  it("reads an insert as where it goes, its text the body", () => {
+    expect(kindRows("office.edit", { app: "word", name: "Brief.docx", edit: { insert: "A last line.", at: "end" } })).toEqual({ fields: [{ label: "In", value: "Word" }, { label: "Adds at", value: "The end" }], body: "A last line." });
+  });
+
+  it("reads each of a deck's changes, a box by its slide with its words before and after, and the account", () => {
+    const p = { app: "slides", account: "landon@purdue.edu", fileId: "1AbC", name: "Pitch", revisionId: "r9", edits: [{ find: "2025", replace: "2026" }, { shape: "t4", text: "Hi", slide: 3, was: "Hello" }] };
+    expect(kindRows("google.edit", p)!.fields).toEqual([
+      { label: "In", value: "Google Slides" },
+      { label: "Replace", value: "2025" },
+      { label: "With", value: "2026" },
+      { label: "Slide 3", value: "Hello" },
+      { label: "Becomes", value: "Hi" },
+      { label: "Account", value: "landon@purdue.edu" },
+    ]);
+    expect(noise(kindRows("google.edit", p))).not.toMatch(/1AbC|r9|t4/);
+  });
+
+  it("heads the detail with the file, in the past once made", () => {
+    expect(kindHeading("office.edit", { name: "Brief.docx" }, false)).toBe("Change Brief.docx");
+    expect(kindHeading("google.edit", { name: "Pitch" }, true)).toBe("Changed Pitch");
+  });
+});

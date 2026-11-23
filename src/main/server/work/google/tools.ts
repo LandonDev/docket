@@ -5,18 +5,21 @@ import type { SheetCell } from 'work-kit/sheet/source'
 import type { ToolCtx, WorkTool } from '../modules'
 import { parseA1, READ_MAX_CELLS, rangeCells, cellName } from '../sheets/a1'
 import { GOOGLE_MIME } from './client'
-import { readDoc, suggestDoc, type GoogleSource } from './docs'
+import { checkEdits, readDoc, type GoogleSource } from './docs'
 import { googleOf } from './google'
 import { gridOf, googleSheetRefOf, suggest } from './grid'
-import { deckText, readDeck, reviseCopy } from './slides'
+import type { GoogleEdit } from './held'
+import { checkDeckEdits, deckText, readDeck } from './slides'
 
 /**
  * The agents' Google tools (docs/agents/work-google.md "The tools"). A
  * thread reaches a Google file only through an item of its own canvas, one
- * he opened from the Picker. Every change an agent makes reaches him as a
- * suggestion: in a Doc a Google suggestion (Google's own suggest mode), in a
- * Sheet a suggestion in the grid he accepts as one write, in a deck a
- * revised copy. Letting someone into a file waits for his press.
+ * he opened from the Picker. Every change an agent makes waits on his host,
+ * seen by nobody else, until he approves it (the owner's ruling of
+ * 2026-11-23): a Sheet's cells as suggestions in the grid he accepts as one
+ * write, a Doc's or a deck's words as a held `google.edit` his press makes in
+ * the file. Nothing of it goes to Google before: no Google suggestion, no
+ * comment, no copy. Letting someone into a file waits for his press too.
  */
 
 const fail = (text: string): WorkToolResult => ({ ...workText(text), isError: true })
@@ -44,6 +47,12 @@ const tool = <S extends z.ZodRawShape>(t: { name: string; description: string; i
   }
 })
 
+/** An agent's change, held on this host for his press: nothing of it is in Google until then. */
+function held(ctx: ToolCtx, edit: GoogleEdit): WorkToolResult {
+  const item = ctx.held.create({ kind: 'google.edit', sessionId: ctx.sessionId, account: edit.account, payload: edit })
+  return workText(`Held for the owner: "${item.summary}". Nothing went to Google and nobody else sees it; it is written only when he approves it.`)
+}
+
 /** A cell an agent writes: a formula when it starts with `=`, else the value. */
 const cellOf = (v: string | number | boolean | null): SheetCell | null => (v === null || v === '' ? null : typeof v === 'string' && v.startsWith('=') ? { f: v } : { v })
 
@@ -58,14 +67,13 @@ export const GOOGLE_TOOLS: WorkTool[] = [
   tool({
     name: 'google_doc_suggest',
     description:
-      "Suggests changes in a Google Doc: each edit replaces the words in `find` (quoted exactly, standing once in the Doc) with `replace` (empty to remove them). They go to Google as suggestions in his name's place for this thread; he accepts or rejects them in Google or in the canvas. Read the Doc first.",
+      "Suggests changes in a Google Doc: each edit replaces the words in `find` (quoted exactly, standing once in the Doc) with `replace` (empty to remove them). Nothing goes to Google: they wait for the owner, seen by nobody else, and are written into the Doc as plain edits only when he approves them. Read the Doc first.",
     input: { item: Item, edits: z.array(z.object({ find: z.string().min(1).max(5_000), replace: z.string().max(20_000) })).min(1).max(50) },
     readOnly: false,
     async run(a, ctx) {
       const item = itemOf(ctx, a.item, GOOGLE_MIME.doc, 'Doc')
-      const n = await suggestDoc(googleOf(ctx), item.source, a.edits)
-      ctx.results.add({ sessionId: ctx.sessionId, kind: 'google.doc.suggest', summary: `Suggested ${n} ${n === 1 ? 'change' : 'changes'} in ${item.title}`, account: item.source.account, ref: { at: 'google', fileId: item.source.fileId } })
-      return workText(`Suggested ${n} ${n === 1 ? 'change' : 'changes'} in ${item.title}. They wait in Google for the owner.`)
+      const revisionId = await checkEdits(googleOf(ctx), item.source, a.edits)
+      return held(ctx, { app: 'doc', account: item.source.account, fileId: item.source.fileId, name: item.title, edits: a.edits, revisionId })
     }
   }),
   tool({
@@ -129,7 +137,7 @@ export const GOOGLE_TOOLS: WorkTool[] = [
   tool({
     name: 'google_slides_revise',
     description:
-      "Revises a copy of a Google Slides deck, never the deck itself (Slides has no suggestions): each edit either replaces words everywhere (`find`, `replace`) or sets one shape's words (`shape` id from google_slides_read, `text`). Answers the copy's link, which the owner opens to take or leave it.",
+      "Revises a Google Slides deck: each edit either replaces words everywhere (`find`, `replace`) or sets one shape's words (`shape` id from google_slides_read, `text`). Nothing goes to Google: the edits wait for the owner, seen by nobody else, and are made in the deck only when he approves them.",
     input: {
       item: Item,
       edits: z
@@ -140,10 +148,8 @@ export const GOOGLE_TOOLS: WorkTool[] = [
     readOnly: false,
     async run(a, ctx) {
       const item = itemOf(ctx, a.item, GOOGLE_MIME.slides, 'Slides deck')
-      const copy = await reviseCopy(googleOf(ctx), item.source.account, item.source.fileId, `${item.title} (revised)`, a.edits)
-      const url = copy.webViewLink ?? `https://docs.google.com/presentation/d/${copy.id}/edit`
-      ctx.results.add({ sessionId: ctx.sessionId, kind: 'google.slides.copy', summary: `Revised a copy of ${item.title}`, account: item.source.account, ref: { at: 'google', fileId: copy.id, url } })
-      return workText(`Made "${copy.name}" with ${a.edits.length} ${a.edits.length === 1 ? 'edit' : 'edits'}: ${url}. The deck itself is unchanged.`)
+      const got = await checkDeckEdits(googleOf(ctx), item.source.account, item.source.fileId, a.edits)
+      return held(ctx, { app: 'slides', account: item.source.account, fileId: item.source.fileId, name: item.title, edits: got.held, revisionId: got.revisionId })
     }
   }),
   tool({

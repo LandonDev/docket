@@ -490,6 +490,12 @@ describe("the Outbox", () => {
     expect(rowWords({ kind: "mail.send", verb: "Send", summary: "Send to Dana Lee: Budget", payload: {} } as never)).toEqual({ act: "Send to Dana Lee", about: "Budget" });
   });
 
+  it("leads an agent's change to a shared file with the file, in the past once made", () => {
+    const change = { kind: "office.edit", verb: "Make change", state: "held", summary: 'Make change in Spring LAN budget.docx: "$4,180" to "$4,320"', payload: { name: "Spring LAN budget.docx" } } as never;
+    expect(rowWords(change)).toEqual({ act: "Change Spring LAN budget.docx", about: '"$4,180" to "$4,320"' });
+    expect(rowWords({ ...(change as object), kind: "google.edit", state: "sent" } as never).act).toBe("Changed Spring LAN budget.docx");
+  });
+
   it("says an empty list once at either width: in the list when narrow, in the detail when wide", async () => {
     world.items.set("box", []);
     world.items.set("mac", []);

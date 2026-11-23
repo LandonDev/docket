@@ -6,7 +6,7 @@ import { GOOGLE_MIME } from './client'
 import { rereadDoc, unsentEdits, writeDoc, type GoogleSource } from './docs'
 import { ensureGoogleTables, googleOf } from './google'
 import { bump, unfollowAll } from './grid'
-import { googleShare } from './held'
+import { googleEdit, googleShare } from './held'
 import { clientIdOf, pick, setClientId } from './picker'
 import { googleChanges, startPoll, watch } from './poll'
 import { GOOGLE_TOOLS } from './tools'
@@ -111,7 +111,7 @@ export const google: WorkModule = {
       case 'work.google.watch':
         return handled(await stateOf(ctx, googleItem(ctx, req.params.itemId)))
       case 'work.google.write': {
-        if (!person(by)) throw new Error('Agents suggest in Google with google_doc_suggest.')
+        if (!person(by)) throw new Error('Agents change a Doc with google_doc_suggest, which waits for the owner.')
         const item = googleItem(ctx, req.params.itemId)
         if (item.source.mime !== GOOGLE_MIME.doc) throw new Error('Only a Doc is written from its mirror: a Sheet writes as he edits it.')
         const done: GoogleWritten = await writeDoc(ctx, googleOf(ctx), item.source)
@@ -147,10 +147,10 @@ export const google: WorkModule = {
     return NOT_HANDLED
   },
   tools: () => GOOGLE_TOOLS,
-  acts: [googleShare as ActKindDef],
+  acts: [googleShare as ActKindDef, googleEdit as ActKindDef],
   triggers: [googleChanges],
   preamble: () =>
-    "A Google file open in the canvas is reached with the `google_*` tools. A Doc is read with `google_doc_read` and changed only by `google_doc_suggest`, which leaves Google suggestions for the owner; a Sheet with `google_sheet_read` and `google_sheet_suggest`; a Slides deck with `google_slides_read`, and `google_slides_revise` works on a copy, never the deck. `google_share` waits for the owner's press.",
+    "A Google file open in the canvas is reached with the `google_*` tools. A Doc is read with `google_doc_read` and changed only by `google_doc_suggest`; a Sheet with `google_sheet_read` and `google_sheet_suggest`; a Slides deck with `google_slides_read` and `google_slides_revise`. Every change waits for the owner, seen by nobody else, and reaches Google only when he approves it. `google_share` waits for his press too.",
   start(ctx) {
     const stop = startPoll(ctx, (w) => {
       // Someone else changed it: each open item hears, a grid reads it again.

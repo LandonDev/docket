@@ -1,7 +1,8 @@
 /**
  * The kinds that keep the generic view, read in his words beside the generic
  * reader (outbox/model.ts `payloadView`): a form's publish, a Google share, a
- * Frame.io comment or version, a Teams post, a computer act. Each says what goes and nothing
+ * Frame.io comment or version, a Teams post, a computer act, an agent's change
+ * to a shared file (`office.edit`, `google.edit`). Each says what goes and nothing
  * the host keeps for itself: no ids, revisions, paths or raw JSON. A kind not
  * named here falls back to `payloadView`.
  */
@@ -180,6 +181,25 @@ export function stepRows(args: Rec, targets: unknown): { label: string; value: s
   return rows;
 }
 
+// ── an agent's change to a shared file ───────────────────────────────────
+
+const EDIT_APP: Record<string, string> = { word: "Word", powerpoint: "PowerPoint", doc: "Google Docs", slides: "Google Slides" };
+
+/** Each change as he approves it, in full: the words it replaces and what takes their place, a box's words before and after, or what it adds. */
+export function editRows(edits: unknown): { label: string; value: string }[] {
+  const rows: { label: string; value: string }[] = [];
+  for (const raw of Array.isArray(edits) ? edits : []) {
+    const e = (raw ?? {}) as Rec;
+    if (typeof e.find === "string") {
+      if (str(e.replace) === null) rows.push({ label: "Take out", value: e.find });
+      else rows.push({ label: "Replace", value: e.find }, { label: "With", value: e.replace as string });
+    } else if (typeof e.shape === "string") {
+      rows.push({ label: num(e.slide) === null ? "A box" : `Slide ${e.slide}`, value: str(e.was) ?? "" }, { label: "Becomes", value: typeof e.text === "string" ? e.text : "" });
+    }
+  }
+  return rows;
+}
+
 // ── a Frame.io comment's marks ───────────────────────────────────────────
 
 /** A share of the frame as a percentage, exact (the value that goes, float noise trimmed): 31%, 15.5%, 12.3456%. */
@@ -249,6 +269,11 @@ export function kindHeading(kind: string, payload: unknown, sent: boolean): stri
     }
     case "teams.post":
       return typeof p.html === "string" ? null : sent ? "Posted in Teams" : "Post in Teams";
+    case "office.edit":
+    case "google.edit": {
+      const name = str(p.name);
+      return name ? `${sent ? "Changed" : "Change"} ${name}` : null;
+    }
     default:
       return null;
   }
@@ -311,6 +336,17 @@ export function kindRows(kind: string, payload: unknown): KindRows | null {
         body: null,
       };
     }
+    case "office.edit": {
+      // A Word insert's text is the body; a find and replace are rows, each in full.
+      const e = (p.edit && typeof p.edit === "object" ? p.edit : {}) as Rec;
+      const insert = typeof e.insert === "string" ? e.insert : null;
+      return {
+        fields: [...row("In", EDIT_APP[str(p.app) ?? ""] ?? null), ...(insert === null ? editRows([e]) : row("Adds at", e.at === "start" ? "The start" : "The end"))],
+        body: insert,
+      };
+    }
+    case "google.edit":
+      return { fields: [...row("In", EDIT_APP[str(p.app) ?? ""] ?? null), ...editRows(p.edits), ...row("Account", str(p.account))], body: null };
     default:
       return null;
   }

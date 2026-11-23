@@ -1,18 +1,23 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { HeldItem, WorkToolResult } from '@shared/work'
 import type { ActCtx, ToolCtx, WorkCtx } from '../modules'
 import { ensureSuggestionTables, SuggestionStore } from '../sheets/suggestions'
 import { ensureExcelTables, excelStore, ExcelHelper } from './excel'
-import { ActStale } from '../outbox/kinds'
+import { ActNotSent, ActStale } from '../outbox/kinds'
 import { FakeOffice } from './fake'
-import { cleanMailHtml, keepOfficeMail, officeActs, OfficeCalendarSchema, OfficeMailSchema, type OfficeCalendarOp, type OfficeMail } from './held'
-import { fileKey, OFFICE_TOOLS, sharedKey, type Env, workTools } from './tools'
+import { cleanMailHtml, keepOfficeMail, officeActs, OfficeCalendarSchema, OfficeEditSchema, OfficeMailSchema, type OfficeCalendarOp, type OfficeEdit, type OfficeMail } from './held'
+import { fileShared } from './shared'
+import { fileKey, fileName, OFFICE_TOOLS, sharedKey, type Env, workTools } from './tools'
 
 /**
- * The tool set over a fake Office: what is written, what waits as a
- * suggestion or a tracked change, and that every verb that sends answers a
- * held act while Outlook sends nothing until the act's own execute.
+ * The tool set over a fake Office: what is written, what waits on this host
+ * (cells as suggestions, a document's or a deck's words as a held
+ * `office.edit`), and that every verb that sends or changes a shared file
+ * answers a held act while Office does nothing until the act's own execute.
  */
 const SHARED = 'https://contoso.sharepoint.com/sites/t/Plan.xlsx'
 const MINE = '/Users/owner/Documents/Mine.xlsx'
@@ -20,6 +25,7 @@ let office: FakeOffice
 let db: DatabaseSync
 let suggestions: SuggestionStore
 let held: { kind: string; sessionId: string | null; payload: unknown }[]
+const dataDir = mkdtempSync(join(tmpdir(), 'office-tools-'))
 let said: string[]
 let peerCalls: { host: string; module: string; verb: string; args: unknown }[]
 
@@ -27,6 +33,7 @@ const ctx = (): ToolCtx =>
   ({
     db,
     host: 'env_mac',
+    dataDir,
     held: {
       create(act: { kind: string; sessionId: string | null; payload: unknown }) {
         held.push(act)
@@ -89,16 +96,32 @@ describe('writes, by the rule for files others can open', () => {
     expect((await office.readRange(MINE, 'Sheet1', 'A1')).values).toEqual([[5]])
   })
 
-  it('makes an own idea in a shared Word document a tracked change', async () => {
-    await run('office_doc_edit', { document: 'https://contoso.sharepoint.com/Brief.docx', find: 'one', replace: 'two', because: 'own' })
-    expect(office.docs.get('https://contoso.sharepoint.com/Brief.docx')).toEqual({ paragraphs: ['Draft two.'], tracked: [JSON.stringify({ find: 'one', replace: 'two' })] })
+  it("keeps an agent's own idea for a shared Word document on this host: nothing reaches Word until his press", async () => {
+    const KEY = 'https://contoso.sharepoint.com/Brief.docx'
+    const before = JSON.stringify([...office.docs])
+    expect(text(await run('office_doc_edit', { document: KEY, find: 'one', replace: 'two', because: 'own' }))).toContain('nobody else sees it')
+    expect(JSON.stringify([...office.docs])).toBe(before)
+    expect(office.log.filter((c) => c.verb === 'editDocument')).toEqual([])
+    expect(held).toMatchObject([{ kind: 'office.edit', sessionId: 't1', payload: { host: 'env_mac', app: 'word', key: KEY, name: 'Brief.docx', edit: { find: 'one', replace: 'two' }, places: 1 } }])
+    // his press makes it a plain edit: no tracked change is left for anyone
+    const edit = officeActs({ carrier: () => office }).find((a) => a.kind === 'office.edit')!
+    await expect(edit.execute(OfficeEditSchema.parse(held[0]!.payload), { host: 'env_mac' } as ActCtx)).resolves.toMatchObject({ summary: 'Changed Brief.docx' })
+    expect(office.docs.get(KEY)).toEqual({ paragraphs: ['Draft two.'], tracked: [] })
+  })
+
+  it("writes a shared document plainly when his own words for it are in the thread", async () => {
+    said = ['change one to two please']
+    await run('office_doc_edit', { document: 'https://contoso.sharepoint.com/Brief.docx', find: 'one', replace: 'two', because: 'asked', quote: 'change one to two' })
+    expect(office.docs.get('https://contoso.sharepoint.com/Brief.docx')).toEqual({ paragraphs: ['Draft two.'], tracked: [] })
+    expect(held).toEqual([])
   })
 
   it('judges a file named by its bare name, or by a Windows path, as the file the carrier opens: a shared one is not written plainly', async () => {
     const CLOUD = '/Users/owner/Library/CloudStorage/OneDrive-Contoso/Budget.docx'
     office.docs.set(CLOUD, { paragraphs: ['Draft one.'], tracked: [] })
     await run('office_doc_edit', { document: 'Budget.docx', find: 'one', replace: 'two', because: 'own' })
-    expect(office.docs.get(CLOUD)).toEqual({ paragraphs: ['Draft two.'], tracked: [JSON.stringify({ find: 'one', replace: 'two' })] })
+    expect(office.docs.get(CLOUD)).toEqual({ paragraphs: ['Draft one.'], tracked: [] })
+    expect(held.at(-1)).toMatchObject({ kind: 'office.edit', payload: { key: CLOUD } })
 
     const BOOK = '/Users/owner/Library/CloudStorage/OneDrive-Contoso/Plan 2.xlsx'
     office.addBook(BOOK, { Sheet1: { B1: 100 } })
@@ -107,8 +130,9 @@ describe('writes, by the rule for files others can open', () => {
     expect(suggestions.open(excelStore(BOOK))).toHaveLength(1)
 
     office.decks.set('/Users/owner/OneDrive - Contoso/Pitch.pptx', [['Q1 plan']])
-    expect(await run('office_slides_replace', { deck: 'Pitch.pptx', find: 'Q1', replace: 'Q2', because: 'own' })).toMatchObject({ isError: true })
+    expect(text(await run('office_slides_replace', { deck: 'Pitch.pptx', find: 'Q1', replace: 'Q2', because: 'own' }))).toContain('nobody else sees it')
     expect(office.decks.get('/Users/owner/OneDrive - Contoso/Pitch.pptx')).toEqual([['Q1 plan']])
+    expect(held.at(-1)).toMatchObject({ kind: 'office.edit', payload: { app: 'powerpoint', key: '/Users/owner/OneDrive - Contoso/Pitch.pptx', edit: { find: 'Q1', replace: 'Q2' }, places: 1 } })
 
     expect(sharedKey('C:\\Users\\owner\\OneDrive - Company\\Budget.docx')).toBe(true)
     expect(sharedKey('C:\\Users\\owner\\Documents\\Budget.docx')).toBe(false)
@@ -334,6 +358,97 @@ describe("the account a held mail or invitation goes from (the hold review's 16.
     ).rejects.toThrow('before the account it goes from was kept')
     expect(office.sent).toEqual([])
     expect(office.log.map((l) => l.verb).filter((v) => v === 'createEvent')).toEqual([])
+  })
+})
+
+describe("an agent's change to a shared document or deck, held (the owner's ruling of 2026-11-23)", () => {
+  const DOC = 'https://contoso.sharepoint.com/Brief.docx'
+  const DECK = '/Users/owner/Library/CloudStorage/OneDrive-Contoso/Pitch.pptx'
+  const editAct = () => officeActs({ carrier: () => office }).find((a) => a.kind === 'office.edit')!
+  const press = (p: unknown) => editAct().execute(OfficeEditSchema.parse(p), { host: 'env_mac' } as ActCtx)
+  const state = () => JSON.stringify([[...office.docs], [...office.decks], [...office.books].map(([k, b]) => [k, JSON.stringify(b)])])
+
+  it('leaves every open file byte for byte as it was, whatever the tool and whatever the agent says of itself', async () => {
+    office.decks.set(DECK, [['Q1 plan', 'Q1 goals'], ['Close']])
+    const before = state()
+    await run('office_doc_edit', { document: DOC, insert: 'A new last line.', at: 'end', because: 'own' })
+    await run('office_doc_edit', { document: DOC, find: 'Draft', replace: 'Final', because: 'asked', quote: 'words he never wrote' })
+    await run('office_doc_edit', { document: DOC, find: 'Draft', replace: 'Final', because: 'routine' })
+    await run('office_slides_replace', { deck: DECK, find: 'Q1', replace: 'Q2', because: 'own' })
+    await run('office_range_write', { workbook: SHARED, range: 'Sheet1!A1', values: [['Q2']], because: 'own' })
+    expect(state()).toBe(before)
+    expect(office.log.filter((c) => ['editDocument', 'replaceSlideText', 'writeRange'].includes(c.verb))).toEqual([])
+    expect(held.map((h) => h.kind)).toEqual(['office.edit', 'office.edit', 'office.edit', 'office.edit'])
+    expect(held[3]).toMatchObject({ payload: { app: 'powerpoint', places: 2 } })
+  })
+
+  it('takes no grant and cannot be edited: every one waits for his press', () => {
+    const def = editAct()
+    expect(def.matcher).toBeUndefined()
+    expect(def.matches).toBeUndefined()
+    expect(def.keep).toBeUndefined()
+  })
+
+  it('makes a deck change on his press, as a plain replace', async () => {
+    office.decks.set(DECK, [['Q1 plan']])
+    await run('office_slides_replace', { deck: DECK, find: 'Q1', replace: 'Q2', because: 'own' })
+    await expect(press(held[0]!.payload)).resolves.toMatchObject({ summary: 'Changed Pitch.pptx' })
+    expect(office.decks.get(DECK)).toEqual([['Q2 plan']])
+  })
+
+  it('says plainly when the file changed under it: written while the words still stand as they did, else nothing', async () => {
+    await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
+    const p = held[0]!.payload as OfficeEdit
+    // someone added a line: the words still stand once, so it is written, and he is told the file moved
+    office.docs.get(DOC)!.paragraphs.push('A co-author wrote this.')
+    await expect(press(p)).resolves.toMatchObject({ summary: expect.stringContaining('It had changed since the suggestion') })
+    expect(office.docs.get(DOC)!.paragraphs[0]).toBe('Draft two.')
+    // the words are gone: stale, nothing written
+    office.docs.set(DOC, { paragraphs: ['Draft three.'], tracked: [] })
+    await expect(press(p)).rejects.toThrow(ActStale)
+    await expect(press(p)).rejects.toThrow('no longer in it')
+    // the words stand in more places than he was shown: stale, nothing written
+    office.docs.set(DOC, { paragraphs: ['one and one'], tracked: [] })
+    await expect(press(p)).rejects.toThrow('stand in 2 places now, not the 1')
+    expect(office.docs.get(DOC)).toEqual({ paragraphs: ['one and one'], tracked: [] })
+  })
+
+  it('a file no longer open is not sent: open it and press again', async () => {
+    await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
+    office.docs.delete(DOC)
+    await expect(press(held[0]!.payload)).rejects.toThrow(ActNotSent)
+  })
+
+  it('runs only on the host it was held on', async () => {
+    await run('office_doc_edit', { document: DOC, find: 'one', replace: 'two', because: 'own' })
+    await expect(editAct().execute(OfficeEditSchema.parse(held[0]!.payload), { host: 'env_other' } as ActCtx)).rejects.toThrow('another host')
+    expect(office.docs.get(DOC)!.paragraphs).toEqual(['Draft one.'])
+  })
+
+  it('reads its words as he approves them', () => {
+    const words = (edit: OfficeEdit['edit']) => editAct().words({ host: 'h', app: 'word', key: '/x/Brief.docx', name: 'Brief.docx', edit, places: 1, base: 'b' })
+    expect(words({ find: 'one', replace: 'two' })).toEqual({ summary: 'Make change in Brief.docx: "one" to "two"', verb: 'Make change' })
+    expect(words({ find: 'one', replace: '' }).summary).toBe('Make change in Brief.docx: take out "one"')
+    expect(words({ insert: 'x', at: 'end' }).summary).toBe('Make change in Brief.docx: add to its end')
+  })
+
+  it('names a file by its key', () => {
+    expect(fileName('https://contoso.sharepoint.com/sites/t/Q3%20Plan.docx?web=1')).toBe('Q3 Plan.docx')
+    expect(fileName('C:\\Users\\o\\OneDrive - Contoso\\Deck.pptx')).toBe('Deck.pptx')
+    expect(fileName('/x/100%.docx')).toBe('100%.docx')
+  })
+})
+
+describe('fileShared: the one test of whether others can open an Office file', () => {
+  const c = () => ({ db, host: 'env_mac', dataDir })
+  it('counts a URL, a cloud or OneDrive folder on a Mac or in Windows, a network share and an unknown file as shared', () => {
+    for (const key of ['https://contoso.sharepoint.com/x.docx', '/Users/o/Library/CloudStorage/OneDrive-Contoso/x.docx', 'C:\\Users\\o\\OneDrive - Contoso\\x.xlsx', '\\\\server\\team\\x.pptx', '//server/team/x.pptx'])
+      expect(fileShared(c(), key, 'word')).toBe(true)
+    expect(fileShared(c(), null, 'word')).toBe(true)
+  })
+  it('counts his own file, and what the app keeps for him, as his', () => {
+    expect(fileShared(c(), '/Users/owner/Documents/Mine.docx', 'word')).toBe(false)
+    expect(fileShared(c(), join(dataDir, 'copy.docx'), 'word')).toBe(false)
   })
 })
 

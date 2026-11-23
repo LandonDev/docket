@@ -272,7 +272,7 @@ export function planWrite(base: DocBase, current: readonly Block[], fresh: reado
   return plan
 }
 
-/** An agent's edits as Google suggestions: each `find` must stand once, inside one paragraph Google holds as plain words. */
+/** An agent's edits as one `batchUpdate`, made on his press: each `find` must stand once, inside one paragraph Google holds as plain words. */
 export function planSuggest(fresh: readonly DocParagraph[], edits: readonly { find: string; replace: string }[]): { requests: Record<string, unknown>[] } | { error: string } {
   const ops: { at: number; rank: number; request: Record<string, unknown> }[] = []
   const taken: [number, number][] = []

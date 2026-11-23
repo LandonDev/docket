@@ -10,7 +10,7 @@ import { request, type CapsOf, type RelayOf } from './work/wire'
  * Picker gives a file to TempCode (`drive.file`), and every call goes with a
  * short-lived token LifeOS's worker mints. A Doc opens in the document canvas
  * on a mirror read when it is opened; his edits there are written to Google
- * with `write`, an agent's go as Google suggestions (tools). A Sheet opens in
+ * with `write`, an agent's wait on his host until he approves them (tools). A Sheet opens in
  * the sheet canvas through `work.sheets.*`.
  */
 

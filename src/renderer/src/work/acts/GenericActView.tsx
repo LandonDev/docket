@@ -6,8 +6,9 @@ import type { ActViewProps } from "./registry";
 /**
  * The view every held act falls back to (docs/agents/work-outbox.md, "The
  * screens"): its fields as a person reads them, then its body as plain text,
- * exactly as it will go. A form's publish, a Google share, a Frame.io post and
- * a Teams post read through their own rows (kindRows.ts); any other kind
+ * exactly as it will go. A form's publish, a Google share, a Frame.io post, a
+ * Teams post and an agent's change to a shared file read through their own
+ * rows (kindRows.ts); any other kind
  * through the generic reader. A kind with a view of its own
  * (`work/<pillar>/act.ts`) never comes here.
  */
