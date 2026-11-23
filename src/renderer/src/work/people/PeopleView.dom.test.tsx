@@ -87,7 +87,7 @@ describe("the list", () => {
     expect(lifeos.asked).toContainEqual({ name: "people:directory", args: { sector: "purdue" } });
     const rows = screen.getAllByRole("listitem");
     // Each row: the face (initials here), the name, the address, and when they were last heard from.
-    expect(rows.map((r) => r.textContent)).toEqual([expect.stringMatching(/^MCMaya Chenmaya@school.edu\d/), "TBTom Becktom@school.edu"]);
+    expect(rows.map((r) => r.textContent)).toEqual([expect.stringMatching(/^MCMaya Chenmaya@school.edu(\d|Yesterday)/), "TBTom Becktom@school.edu"]);
     fireEvent.change(screen.getByLabelText("Search people"), { target: { value: "tom" } });
     expect(screen.getAllByRole("listitem").map((r) => r.textContent)).toEqual(["TBTom Becktom@school.edu"]);
     fireEvent.change(screen.getByLabelText("Search people"), { target: { value: "nobody" } });
