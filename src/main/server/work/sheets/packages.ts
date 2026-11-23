@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import type { DatabaseSync } from 'node:sqlite'
 import { basename, dirname, join } from 'node:path'
 import type { SheetCellDiff, SheetMutationJson, SheetRevision } from '@shared/contract-work-sheets'
-import { RULES_SET, type RulesSetParams } from '@shared/work/sheets'
+import { isObjectList, RULES_SET, type ObjectIds, type RulesSetParams } from '@shared/work/sheets'
 import { saveFile, versionWord } from '../files/save'
 import { versionOf } from '../files/write'
 import { cellName, colName, parseA1 } from './a1'
@@ -282,7 +282,7 @@ export class PackageStore {
     mutations: SheetMutationJson[],
     by: string,
     extra: { label?: string; writeId?: string; undo?: SheetMutationJson[] } = {}
-  ): Promise<{ rev: number; moved?: Moved } | { conflict: true; rev: number }> {
+  ): Promise<{ rev: number; moved?: Moved; ids?: ObjectIds } | { conflict: true; rev: number }> {
     return this.serial(path, async () => {
       // A file moved or deleted since it was opened takes no edit: said, not thrown as a raw error.
       if (!existsSync(path)) throw new NotSaved('This file is not where it was: it was moved or deleted.')
@@ -294,8 +294,11 @@ export class PackageStore {
       if (!steps.length) return { rev: row.rev }
       const ops = steps.flatMap((s) => (s.kind === 'structural' ? s.ops : []))
       let rev: number
+      let ids: ObjectIds = {}
       try {
-        rev = await this.save(path, row, (target, out) => this.write(path, target, out, steps))
+        rev = await this.save(path, row, async (target, out) => {
+          ids = await this.write(path, target, out, steps)
+        })
       } catch (err) {
         if (!(err instanceof ChangedOutside)) throw err
         // The file was moved or deleted while we patched: nothing is made under its old name, and the edit goes back.
@@ -312,17 +315,16 @@ export class PackageStore {
       // can apply a list as it is, but no cell moved, so an edit made before it still lands.
       this.db
         .prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations, write_id, undo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(path, rev, by, this.now(), extra.label ?? (ops.length ? labelOfOps(ops) : rules.length && !edits.length ? labelOfRules(rules) : labelOf(edits)), ops.length ? 'null' : unkept ? UNKEPT : JSON.stringify(mutations), extra.writeId ?? null, extra.undo && !ops.length && !unkept ? JSON.stringify(extra.undo) : null)
-      return ops.length ? { rev, moved: { ops, before } } : { rev }
+        .run(path, rev, by, this.now(), extra.label ?? (ops.length ? labelOfOps(ops) : rules.length && !edits.length ? labelOfRules(rules) : labelOf(edits)), ops.length ? 'null' : unkept ? UNKEPT : JSON.stringify(mutations.map(withoutBytes)), extra.writeId ?? null, extra.undo && !ops.length && !unkept ? JSON.stringify(extra.undo) : null)
+      const named = Object.keys(ids).length ? { ids } : {}
+      return ops.length ? { rev, moved: { ops, before }, ...named } : { rev, ...named }
     })
   }
 
   /** Writes the edit's steps from `target` into `out`: the patch writer for cells, LibreOffice and the graft for structure. */
-  private async write(path: string, target: string, out: string, steps: Step[]): Promise<void> {
-    if (steps.length === 1 && steps[0].kind === 'cells') {
-      await this.jobs.save(target, out, steps[0].edits, this.ironcalcDir(), steps[0].formats)
-      return
-    }
+  private async write(path: string, target: string, out: string, steps: Step[]): Promise<ObjectIds> {
+    if (steps.length === 1 && steps[0].kind === 'cells') return (await this.jobs.save(target, out, steps[0].edits, this.ironcalcDir(), steps[0].formats)).report.ids ?? {}
+    const ids: ObjectIds = {}
     if (!this.structural) throw new NotSaved('Rows, columns and sheets cannot be changed in an opened Excel file on this host.')
     const kind = target.toLowerCase().endsWith('.xlsm') ? 'xlsm' : 'xlsx'
     const work = join(this.scratchOf(path), randomUUID())
@@ -331,7 +333,7 @@ export class PackageStore {
       let at = target
       for (const [i, step] of steps.entries()) {
         const next = join(work, `${i}.${kind}`)
-        if (step.kind === 'cells') await this.jobs.save(at, next, step.edits, this.ironcalcDir(), step.formats)
+        if (step.kind === 'cells') Object.assign(ids, (await this.jobs.save(at, next, step.edits, this.ironcalcDir(), step.formats)).report.ids)
         else {
           // A move the file cannot take is refused here, on the file as this step finds it, before the job is asked
           // for: the words come back at once, not after a wait behind another conversion, and as a refusal even where
@@ -352,6 +354,7 @@ export class PackageStore {
     } finally {
       rmSync(work, { recursive: true, force: true })
     }
+    return ids
   }
 
   /** Whether a change from outside or a restore landed after `rev`: the cells may have moved. */
@@ -646,7 +649,14 @@ function labelOfOps(ops: readonly StructuralOp[]): string {
 function labelOfRules(rules: readonly SheetMutationJson[]): string {
   const kinds = new Set(rules.map((m) => (m.params as RulesSetParams).kind))
   if (kinds.size !== 1) return 'Rules'
-  return { conditional: 'Conditional formatting', validation: 'Validation', names: 'Names', filter: 'Filter', tables: 'Table', pages: 'Page set-up' }[[...kinds][0]!]
+  return { conditional: 'Conditional formatting', validation: 'Validation', names: 'Names', filter: 'Filter', tables: 'Table', pages: 'Page set-up', charts: 'Chart', pictures: 'Picture' }[[...kinds][0]!]
+}
+
+/** A picture list as the op log keeps it: a new picture's bytes are in the file and its kept copy, not the database. */
+function withoutBytes(m: SheetMutationJson): SheetMutationJson {
+  if (!isObjectList(m) || (m.params as RulesSetParams).kind !== 'pictures') return m
+  const p = m.params as RulesSetParams
+  return { ...m, params: { ...p, list: (Array.isArray(p.list) ? p.list : []).map((x: Record<string, unknown>) => { const { data: _data, ...rest } = x; return rest }) } }
 }
 
 /** "12 cells", "B4"; "Formatting" for an edit that changed no cell's contents */

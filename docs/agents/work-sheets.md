@@ -261,6 +261,52 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   moves it with the cells. `readNotes` gives each note with its author, the author's line out of
   the text. What either writer refuses (`TextRefused`, `NotesRefused`) is said over the grid
   after the press, as any writer's refusal is.
+- **Charts and pictures are saved a tab's list at a time** (`patch/charts.ts`
+  `patchCharts`, `patch/pictures.ts` `patchPictures`; proven in real Excel on
+  41 workbooks, no repair, 2,696 checks:
+  `.temp-code/plans/landed/E-sheets/sheets-charts-writer-report.md`). The
+  canvas reads a file's charts and pictures with the workbook
+  (`importXlsx(...).objects`, grid.ts `decode`) and keeps each picture's
+  bytes from the bytes it loaded, by part (`readMedia`), so no wire carries
+  them; it hands both to work-kit's grid (`SheetCanvas objects`, `media`),
+  which draws, selects, makes and edits them (Insert → Chart and Picture, the
+  chart's row: `chart`, `picture`, `objects` in `SHEET_ROW.package`). Each
+  change the grid tells (`onObjects`) goes to the host as the tab's whole
+  list (`RULES_SET` of kind `charts` or `pictures`, `subUnitId` the grid's
+  sheet id; `sync.ts` `object`, `objects.ts` `objectListOf`), a newer list
+  of the same tab replacing one that waits. A change that only follows rows
+  and columns (`cause: 'cells'`) sends nothing: LibreOffice and the graft
+  move the file's drawings with the cells. A picture made here rides with
+  its bytes as base64 (`data`) until a save gives it a part; the op log
+  keeps the list without them (`withoutBytes`). `savePackage` hands the lists
+  to the writers after the cells and the tables, so a new chart's cache holds
+  what the cells now hold (`jobs.ts` `chartsEditsOf`, `picturesEditsOf`, the
+  last list of a tab in a batch). The save answers the ids the file now gives
+  (`SaveAnswer.report.ids`, through `PackageStore.edit` and
+  `work.sheets.edit` as `ids`, `ObjectIds`: a new chart becomes its part's
+  name, pictures after one added or removed are numbered again, a new
+  picture's part), and the canvas lays them on the grid as from elsewhere
+  (`rekeyed`, `handle.objects.apply`), so the next save names the same
+  parts. A revision is labelled "Chart" or "Picture". The writers' refusals
+  (`ObjectsRefused`: a protected sheet, a range in another workbook, a kind
+  this editor cannot make, a chart in a group) are said once as a toast,
+  and the canvas reads the file again, so the object is as it was. A
+  chart sheet's chart is listed but not drawn (it has no tab in the grid),
+  and still puts "charts" in `reach`. Keys: ⌃⌥5 takes the first chart or
+  picture in hand, as in Excel; while one is, Tab and ⇧Tab walk them
+  (SheetBody.tsx `useObjectKeys`). `objectsMatrix.test.ts` holds the whole
+  way on a headless grid and a real file.
+  **Our old charts** (`work_sheets_charts`, plain bars kept beside a file
+  before it could hold a chart) are no longer drawn as bars on an opened
+  Excel file: the view hands each as the bar chart it becomes
+  (`legacyCharts`, `patch/charts-legacy.ts` `legacyChartSpec`), the canvas
+  lays it on the grid unsent, and the next change to that tab's charts
+  writes it into the file with the rest; a tab's list saved ends that tab's
+  rows (index.ts), whether each was written or he took it out. Nothing is
+  written into the file before his own change. A `.tcsheet` and a LifeOS
+  sheet keep the old charts as they were: the service does not keep the
+  grid's charts and pictures yet, so those stores list none of the three
+  controls.
 - **What it cannot keep yet is stopped as he makes it** (`forPackage` and
   `stop`, sync.ts): a cell given only a type, a move where the host does
   not save moves, a note removed, and any change with no saved form (a
@@ -1140,8 +1186,12 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   where it is installed; Full editor opens it in ONLYOFFICE on the box (next
   section), and its side spins until the host answers the page, which opens
   in the browser (`work.sheets.switch` answers `{ opened, url? }`).
-- Our own charts (`work.sheets.chart`, `work_sheets_charts`): plain neutral
-  bars over a range, made from a selection through More.
+- Charts and pictures on an opened Excel file are the file's own, drawn and
+  edited by work-kit's grid ("Packages" above); More → Chart makes one from
+  the selection's block there, as Insert → Chart does. On a `.tcsheet` and a
+  LifeOS sheet our old charts stay (`work.sheets.chart`,
+  `work_sheets_charts`): plain neutral bars over a range, made from a
+  selection through More.
 - The format row (docs/DESIGN.md "Work editors: The format row"; work-kit's
   `SheetToolbar` on `src/format`) is the Body's first row, above the formula
   bar, on a LifeOS sheet, a `.tcsheet` and an opened Excel file. A
@@ -1450,8 +1500,9 @@ The harness corpus also keeps the workbooks the editors plan measured with
   Check in Excel for a macro workbook, and for a workbook others can open.
 - Excel's own picture of a page range: Check in Excel draws the whole
   workbook.
-- A table made in the grid on an opened Excel file, a chart, page set-up:
-  later milestones.
+- Charts and pictures on a sheet the service holds (`.tcsheet`, LifeOS):
+  the grid's objects are not kept there yet, so those stores list no
+  `chart`, `picture` or `objects` control and keep the old bars.
 - Presence on the canvas.
 - Keeping IronCalc's model in memory between saves: a save that needs the
   engine loads the package afresh (1.3 s on the 100,000-row file, 22 s on

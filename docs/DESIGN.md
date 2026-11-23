@@ -392,7 +392,8 @@ purdue 0.78 0.1 85, 0.7 0.11 85; ref 0.72 0.09 155, 0.62 0.1 155; unify
 `--sector-cosmic` and so on, defined with the sectors themselves. An
 unlinked workspace's dot is a 1.5px `muted-foreground` ring.
 
-A canvas chart of one series is the neutral, never a provider's
+A canvas chart of one series is the neutral (a sheet's own charts are
+not: they wear the file's theme, "Work editors"), never a provider's
 `chart-1..4`, with no legend; those come in only when a chart compares
 entities (two clients, sent against paid), and colour then follows the
 entity. A dashboard has no hero tiles, card grids, sparklines, rings or
@@ -1276,8 +1277,10 @@ The kinds, each a hand-made body built from components/ui:
   its row and column headers take `muted`. Another person's cell is their
   presence hue as a 2px outline with their name on its right edge. A
   change is one cell or one run of neighbours. Columns keep the file's
-  widths and scroll; a number never clips. A sheet's chart object is plain
-  bars on the neutral. A Microsoft-hosted file has a switch in the tab row
+  widths and scroll; a number never clips. An Excel file's charts and
+  pictures are its own, in its theme's colours ("Work editors": a sheet's
+  charts and pictures); our old charts on a `.tcsheet` or a LifeOS sheet
+  are plain bars on the neutral. A Microsoft-hosted file has a switch in the tab row
   beside ⋯ ("TempCode", "Excel"); the hosted app then fills the body edge
   to edge and our formula bar and sheet tabs go. An opened Excel file that
   holds what only Excel does says so at the end of the kind's own tools
@@ -2742,6 +2745,25 @@ set by hand.
   128px or more, with a check on the current value. A value a rule refuses
   is said in a small notice by the cell, in the rule's own words when it
   has some. Univer's own panels for these never open.
+- **A sheet's charts and pictures** (work-kit `src/sheet/objects`; on an
+  opened Excel file). A chart's colours are the file's theme, as cell fills
+  are (TempCode's theme for a sheet made here: `chart-1` to `chart-4` as
+  accents 1 to 4), and are never themed: they hold in light and dark. The
+  frame: 12px in, a 1px `border`, 8px corners, `background`; the title 12px
+  medium; the legend 8px squares at 2px corners with 12px
+  `muted-foreground` names (the series in hand `foreground` while the chart
+  is selected); axes 12px tabular `muted-foreground`, gridlines `border`,
+  the baseline `border-strong`; bars with 2px outer corners, stacked bars
+  square. In hand: a 2px `accent` outline 1px inside the box and four 8px
+  corner handles (2px corners, `background`, a 1.5px `accent` edge), held to
+  their size at any zoom. A picture: 4px corners, a 1px `image-outline`
+  ring. With a chart in hand the row holds the chart type (a 132px select,
+  a 216px menu, a rule over each family), font, size, B, I, U, text colour,
+  series fill, then Data range, Title, Legend and Axis titles as word
+  buttons (Title a pressed word); Data range is 288px, 12px in, 28px range
+  fields, 32px series rows, a 10px swatch. A kind not drawn keeps the frame
+  and title, with the kind in 13px `foreground` and "Opens in Excel" in
+  12px `muted-foreground`, centred. Nothing of a chart animates.
 - **A format or a rule an agent proposes** changes no cell's value, so it
   sits in no cell: it steps with the cell changes in the bar's stepper,
   its range marked as a waiting change is, and while the stepper is on it

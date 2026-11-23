@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import type { IWorkbookData } from '@univerjs/core'
 import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
+import { isObjectList, type ObjectIds, type RulesSetParams } from '@shared/work/sheets'
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
 import { sharedOf, workspaceHere } from '../files/policy'
@@ -17,7 +18,7 @@ import { writeCsv, writeXlsx, writeXlsxWhole } from './writer'
 import { ensureChangeTables } from './changes'
 import { dropSharedImports, ensureImported, importAct } from './formatsIn'
 import { SHEET_BACK_CONVERTERS } from './formatsInBack'
-import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setChart, setSharedPath, sheetsOf, storeKey, viewFor, viewOf, type Held, type Sheets } from './held'
+import { afterEdit, chartsOf, dropChart, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setChart, setSharedPath, sheetsOf, storeKey, viewFor, viewOf, type Held, type Sheets } from './held'
 import { sheetFileMoved } from './moved'
 import { ensurePackageTables, type Moved } from './packages'
 import { dropSharedPreviews, dropSharedPreviewsOf, exportPreview, previewSheet, readSheetPreview, SHEET_PREVIEW_CONVERTERS, sheetFilePreviewer, sweepPreviewScratch } from './preview'
@@ -59,7 +60,7 @@ export async function announce(s: Sheets, item: CanvasItem, withView = true): Pr
   s.ctx.push({ push: 'work.sheets', sessionId: item.sessionId, itemId: item.id, rev: view.rev, ...sent }, path ? { path } : undefined)
 }
 
-async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: SheetMutationJson[], by: Caller): Promise<{ rev: number } | { conflict: true; rev: number }> {
+async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: SheetMutationJson[], by: Caller): Promise<{ rev: number; ids?: ObjectIds } | { conflict: true; rev: number }> {
   const held = heldOf(item, s.ctx.dataDir)
   const who = principalOf(s.ctx, by)
   if (held.at === 'excel') return (await import('../office/grid')).edit(s.ctx, held.ref, baseRev, mutations, who)
@@ -73,7 +74,12 @@ async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: She
       // Rows, columns or sheets changed: a waiting format or rule may no longer be where the agent saw it.
       s.changes.orphanAll(storeKey(held))
     } else afterEdit(s, storeKey(held), mutations)
-    return { rev: got.rev }
+    // A tab's chart list saved ends its old chart rows (held.ts `legacyCharts`): each was in the list and is now a chart
+    // in the file, or he took it out.
+    const tabs = new Set(mutations.filter((m) => isObjectList(m) && (m.params as RulesSetParams).kind === 'charts').map((m) => (m.params as RulesSetParams).subUnitId))
+    for (const row of tabs.size ? chartsOf(s.ctx, storeKey(held)) : []) if (tabs.has(row.sheet)) dropChart(s.ctx, storeKey(held), row.id)
+    // The charts and pictures the file now names otherwise: the canvas that sent them takes the file's ids.
+    return got.ids ? { rev: got.rev, ids: got.ids } : { rev: got.rev }
   }
   return host(s.ctx, 'apply', { sheet: held.ref, baseRev, mutations, by: who })
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { ChartSpec } from 'work-kit/sheet/xlsx'
 import type { Principal } from './work/ids'
 import { SHEET_IMPORT_ACTS, type SheetImported } from './work/sheetFormats'
 import { request, type CapsOf, type RelayOf } from './work/wire'
@@ -51,6 +52,8 @@ const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size',
 const DATA_KEPT: readonly SheetDataControl[] = ['sort', 'filter', 'validation', 'conditional', 'names', 'table']
 /** The page's controls: held for each store by `sheets/pagesMatrix.test.ts` (an opened Excel file, a sheet the service holds, its export). */
 const PAGE_KEPT: readonly SheetPageControl[] = ['page', 'pageBreaks', 'printArea', 'breakHere']
+/** Insert's Chart and Picture, and changing either on the grid: held for an opened Excel file by `sheets/objectsMatrix.test.ts`. */
+const OBJECTS_KEPT: readonly SheetObjectControl[] = ['chart', 'picture', 'objects']
 
 /**
  * The format row's controls by where a sheet lives, which the host puts in the view (`row`). A
@@ -68,7 +71,8 @@ const PAGE_KEPT: readonly SheetPageControl[] = ['page', 'pageBreaks', 'printArea
 export const SHEET_ROW: Record<SheetStoreKind, readonly SheetRowControl[]> = {
   lifeos: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT],
   tcsheet: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT],
-  package: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT],
+  // An opened Excel file keeps its charts and pictures: each change goes as the tab's whole list to the chart and picture writers.
+  package: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT, ...OBJECTS_KEPT],
   csv: []
 }
 
@@ -208,6 +212,8 @@ export interface SheetView {
   /** the file is not where the item says */
   missing?: boolean
   charts: SheetChart[]
+  /** an opened Excel file's old charts (`charts` above, kept here before the file could hold one) as the charts they become; written into the file with the next change to that tab's charts */
+  legacyCharts?: ChartSpec[]
   /** the format row's controls this sheet keeps (`SHEET_ROW`); absent or empty, the canvas draws no row */
   row?: SheetRowControl[]
   /** what the notes' pop-over offers here (`SHEET_NOTES`); absent or empty, notes are read only */

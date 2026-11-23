@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, statSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, sep } from 'node:path'
+import { legacyChartSpec } from './patch/charts-legacy'
 import { SHEET_NOTES, SHEET_ROW, type SheetChart, type SheetMutationJson, type SheetStoreKind, type SheetView } from '@shared/contract-work-sheets'
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
 import { refKey } from '@shared/work/files'
@@ -288,6 +289,11 @@ export function setChart(ctx: WorkCtx, store: string, chart: SheetChart, remove:
   else ctx.db.prepare('INSERT INTO work_sheets_charts (store, id, json) VALUES (?, ?, ?) ON CONFLICT (store, id) DO UPDATE SET json = excluded.json').run(store, chart.id, JSON.stringify(chart))
 }
 
+/** An old chart row gone: it became a chart in the file. */
+export function dropChart(ctx: WorkCtx, store: string, id: string): void {
+  ctx.db.prepare('DELETE FROM work_sheets_charts WHERE store = ? AND id = ?').run(store, id)
+}
+
 /** The view a canvas draws: the store's state, with this host's suggestions, mode, written line and charts. */
 export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   const held = heldOf(item, s.ctx.dataDir)
@@ -303,9 +309,18 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     const st = await s.packages.open(held.path)
     // A workbook others can open is held by this tab: its copies go when the tab does (index.ts `itemsRemoved`).
     s.packages.hold(held.path, item.id, item.sessionId)
+    // Our old charts of this file, kept beside it before the file could hold one: drawn now as the charts they become,
+    // and written into the file with the next change to that tab's charts (index.ts drops the row then), never before.
+    const legacy = base.charts.flatMap((row) => {
+      const tab = st.inspected.sheets.find((x) => x.id === row.sheet)?.name
+      const spec = tab === undefined ? undefined : legacyChartSpec(row, tab)
+      return spec ? [spec] : []
+    })
     const imported = importedOf(held)
     return {
       ...base,
+      charts: [],
+      ...(legacy.length ? { legacyCharts: legacy } : {}),
       // A copy of another format goes by the name of the file it was made from.
       name: imported?.name ?? basename(held.path),
       ...(imported ? { imported } : {}),

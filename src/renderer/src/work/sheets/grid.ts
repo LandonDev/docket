@@ -1,7 +1,7 @@
 import { createElement, type ComponentType } from "react";
 import type { SheetCellJson, SheetChart } from "@shared/contract-work-sheets";
 import { fontsOfSnapshot, SheetCanvas, type SheetCanvasProps, type SheetHandle } from "work-kit/sheet";
-import type { Decode, GridLink, Workbook } from "./sync";
+import type { Book, Decode, GridLink, Workbook } from "./sync";
 
 /**
  * The grid the sheet canvas draws: work-kit's `SheetCanvas` on Univer, and
@@ -58,6 +58,11 @@ export const univerGrid: SheetGrid = {
     // A list as it stands: what an opened Excel file is sent after a rule changes (sync.ts `forPackage`).
     rules: (kind, sheet) =>
       kind === "conditional" ? handle.rules.conditional.list(sheet) : kind === "validation" ? handle.rules.validation.list(sheet) : kind === "names" ? handle.rules.names.list() : kind === "tables" ? handle.tables.models(sheet) : kind === "pages" ? handle.pages.get(sheet) : handle.rules.filter.get(sheet),
+    objects: {
+      list: () => handle.objects.list(),
+      sheetId: (name) => handle.store.get().sheets.find((s) => s.name === name)?.id,
+      apply: (changes) => handle.objects.apply(changes),
+    },
   }),
   values: (handle, sheet, a1) => (sheetOf(handle, sheet)?.getRange(a1).getValues() ?? []) as unknown[][],
   place(handle, chart, size, onSlot) {
@@ -75,8 +80,18 @@ export const univerGrid: SheetGrid = {
       onSlot(null);
     };
   },
-  async decode(bytes, format) {
-    if (format === "xlsx") return (await import("work-kit/sheet/xlsx")).importXlsx(bytes).workbook as never;
-    return JSON.parse(new TextDecoder().decode(bytes));
+  async decode(bytes, format): Promise<Book> {
+    if (format === "xlsx") {
+      // An Excel file's charts and pictures are read with it, and each picture's bytes kept by its part for the grid to draw.
+      const { importXlsx, readMedia } = await import("work-kit/sheet/xlsx");
+      const { workbook, objects } = importXlsx(bytes);
+      const media = new Map<string, { bytes: Uint8Array; type: string }>();
+      for (const picture of objects.pictures) {
+        const got = media.has(picture.part) ? undefined : readMedia(bytes, picture.part);
+        if (got) media.set(picture.part, { bytes: got, type: picture.contentType });
+      }
+      return { workbook: workbook as never, objects, media };
+    }
+    return { workbook: JSON.parse(new TextDecoder().decode(bytes)) };
   },
 };

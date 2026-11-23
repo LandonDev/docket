@@ -2,7 +2,7 @@ import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import type { ICellData, IWorkbookData } from '@univerjs/core'
 import { importXlsx, type ImportReport } from 'work-kit/sheet/xlsx'
 import type { SheetCellDiff, SheetMutationJson, SheetReach } from '@shared/contract-work-sheets'
-import { RULES_SET, type RulesSetParams } from '@shared/work/sheets'
+import { RULES_SET, type ObjectIds, type ObjectListKind, type RulesSetParams } from '@shared/work/sheets'
 import { cellName, rangeCells, READ_MAX_CELLS, type A1Range } from './a1'
 import { readThemeXml } from 'work-kit/format/theme'
 import { defaultPageSetup, type SheetPageSetup } from 'work-kit/sheet/pages'
@@ -17,6 +17,8 @@ import { patchText, type TextEdit } from './patch/text'
 import { patchNotes, type NotesEdit } from './patch/notes'
 import { SHEET_NOTE, SHEET_TEXT, type SheetNoteParams, type SheetTextParams } from './mutations'
 import { NOTES_RESOURCE, sheetNotes } from './host/rules'
+import { patchCharts, type ChartsEdit } from './patch/charts'
+import { patchPictures, readPictures, type PictureModel, type PicturesEdit } from './patch/pictures'
 import { formatEditsOf } from './formats'
 import { diffWorkbooks } from './diff'
 import { waitsOf } from './excelWaits'
@@ -69,6 +71,8 @@ export interface SaveAnswer {
     path: 'engine' | 'independent' | 'format' | 'plain'
     why?: string
     format?: FormatReport['styles']
+    /** the charts and pictures the save wrote that the file now names otherwise: the canvas takes these ids */
+    ids?: ObjectIds
   }
 }
 
@@ -169,7 +173,7 @@ export function rulesEditsOf(formats: readonly SheetMutationJson[]): RulesEdit[]
   for (const m of formats) {
     if (m.id !== RULES_SET) continue
     const p = m.params as RulesSetParams
-    if (p.kind === 'tables' || p.kind === 'pages') continue
+    if (p.kind === 'tables' || p.kind === 'pages' || p.kind === 'charts' || p.kind === 'pictures') continue
     if (p.kind === 'names') out.push({ kind: 'names', names: (p.list ?? []) as DefinedNames })
     else if (!p.subUnitId) throw new Error('A rule names its sheet.')
     else if (p.kind === 'filter') out.push({ kind: 'filter', sheet: p.subUnitId, filter: (p.list ?? null) as SheetFilter | null })
@@ -246,6 +250,33 @@ function changedWords(input: string, edits: EditSpec[], text: readonly TextEdit[
     const was = workbook.sheets[id]?.cellData?.[Number(m[2]) - 1]?.[col]
     return !!was?.f || String(was?.v ?? '') !== String(e.value ?? '')
   })
+}
+
+/** A tab's lists of one object kind among a save's formatting mutations, by its tab's name: the last a tab was sent, as the writers take one list a tab. */
+function objectLists(formats: readonly SheetMutationJson[], kind: ObjectListKind): Map<string, unknown[]> {
+  const out = new Map<string, unknown[]>()
+  for (const m of formats) {
+    const p = m.params as RulesSetParams
+    if (m.id !== RULES_SET || p.kind !== kind) continue
+    if (!p.subUnitId) throw new Error('A chart or picture list names its sheet.')
+    out.delete(p.subUnitId)
+    out.set(p.subUnitId, Array.isArray(p.list) ? p.list : [])
+  }
+  return out
+}
+
+/** The chart lists among a save's formatting mutations (`RULES_SET` of kind `charts`, each named by its tab's name), as the chart writer takes them. */
+export function chartsEditsOf(formats: readonly SheetMutationJson[]): ChartsEdit[] {
+  return [...objectLists(formats, 'charts')].map(([sheet, list]) => ({ kind: 'charts', sheet, charts: list as ChartsEdit['charts'] }))
+}
+
+/** The picture lists likewise: a picture made on the grid carries its bytes as base64 (`data`), handed to the writer as bytes. */
+export function picturesEditsOf(formats: readonly SheetMutationJson[]): PicturesEdit[] {
+  return [...objectLists(formats, 'pictures')].map(([sheet, list]) => ({
+    kind: 'pictures',
+    sheet,
+    pictures: (list as (PictureModel & { data?: unknown })[]).map(({ data, ...picture }) => (typeof data === 'string' ? { ...picture, bytes: new Uint8Array(Buffer.from(data, 'base64')) } : picture))
+  }))
 }
 
 /**
@@ -340,6 +371,33 @@ export async function savePackage(input: string, edits: EditSpec[], ironcalcDir:
     bytes = done.bytes
     report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged])]
   }
+  // After the cells and the tables, so a new chart's cache holds what the cells now hold. A refusal (ObjectsRefused) is
+  // thrown before anything is written, in words for the person.
+  const ids: ObjectIds = {}
+  const charts = chartsEditsOf(formats)
+  if (charts.length) {
+    const done = patchCharts(bytes, charts)
+    bytes = done.bytes
+    report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged, ...done.report.partsAdded, ...done.report.partsRemoved])]
+    for (const [from, to] of Object.entries(done.report.ids)) if (from !== to) ids[from] = { id: to }
+  }
+  const pictures = picturesEditsOf(formats)
+  if (pictures.length) {
+    const done = patchPictures(bytes, pictures)
+    bytes = done.bytes
+    report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged, ...done.report.partsAdded, ...done.report.partsRemoved])]
+    const sent = new Map(pictures.flatMap((edit) => edit.pictures.map((p) => [p.id, p.part] as const)))
+    const changed = Object.entries(done.report.ids).filter(([from, to]) => from !== to || sent.get(from)?.startsWith('media:'))
+    if (changed.length) {
+      // A picture's id and part in the file as written: a picture made on the grid had a part of its own ('media:…').
+      const parts = new Map(Object.values(readPictures(bytes).sheets).flatMap((tab) => tab.pictures.map((p) => [p.id, p.part] as const)))
+      for (const [from, to] of changed) {
+        const part = parts.get(to)
+        ids[from] = part ? { id: to, part } : { id: to }
+      }
+    }
+  }
+  if (Object.keys(ids).length) report.ids = ids
   if (formats.length) {
     const made = formatEditsOf(formats.filter((m) => m.id !== RULES_SET && m.id !== SHEET_TEXT && m.id !== SHEET_NOTE), (tab) => tab, themeOf(zip))
     if (made.length) {

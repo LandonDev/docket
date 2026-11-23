@@ -1,5 +1,6 @@
 import type { SheetChart, SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
 import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
+import type { ObjectIds } from "@shared/work/sheets";
 import { isLightScheme } from "../../lib/appearance";
 import { registry } from "../../lib/connection";
 import { openUrl } from "../../lib/native";
@@ -41,7 +42,8 @@ export interface SheetHost {
   open(): Promise<SheetView>;
   load(rev: number, offset: number, length: number): Promise<LoadAnswer>;
   since(rev: number): Promise<SinceAnswer>;
-  edit(baseRev: number, mutations: SheetMutationJson[]): Promise<{ rev: number; conflict?: boolean }>;
+  /** `ids`: the charts and pictures the save wrote that the file now names otherwise */
+  edit(baseRev: number, mutations: SheetMutationJson[]): Promise<{ rev: number; conflict?: boolean; ids?: ObjectIds }>;
   review(which: ReviewWhich, verdict: "accept" | "reject"): Promise<SheetView>;
   mode(mode: "suggests" | "writes"): Promise<SheetView>;
   undo(writeId: string): Promise<SheetView>;

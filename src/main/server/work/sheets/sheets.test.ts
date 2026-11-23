@@ -2,7 +2,8 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileS
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { importXlsx } from 'work-kit/sheet/xlsx'
+import { importXlsx, readObjects } from 'work-kit/sheet/xlsx'
+import { RULES_SET } from '@shared/work/sheets'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
@@ -225,10 +226,32 @@ describe('a package in the canvas', () => {
     if (process.platform === 'linux') await expect(call('work.sheets.switch', { itemId: id })).rejects.toThrow(/Excel is not on this host/)
   })
 
-  it('keeps a chart of ours over a range, and takes it off', async () => {
-    const chart = { id: 'c1', sheet: 'sheet1', range: 'A1:B5', title: 'Totals', row: 2, col: 4 }
-    expect((await call<SheetView>('work.sheets.chart', { itemId, chart })).charts).toEqual([chart])
-    expect((await call<SheetView>('work.sheets.chart', { itemId, chart, remove: true })).charts).toEqual([])
+  it('shows an old chart row of an opened Excel file as the chart it becomes, and writes it into the file with the next change to its tab\'s charts', async () => {
+    const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]!
+    const chart = { id: 'c1', sheet, range: 'A1:B5', title: 'Totals', row: 2, col: 4 }
+    const before = readFileSync(path)
+    const view = await call<SheetView>('work.sheets.chart', { itemId, chart })
+    // Drawn as a real chart on the grid, not as our old bars, and nothing is written yet.
+    expect(view.charts).toEqual([])
+    expect(view.legacyCharts).toMatchObject([{ id: 'legacy:c1', sheet: 'Data', kind: 'bar', title: { text: 'Totals' }, series: [{ categories: { ref: "'Data'!$A$1:$A$5" }, values: { ref: "'Data'!$B$1:$B$5" } }] }])
+    expect(readFileSync(path).equals(before)).toBe(true)
+    // His next change to that tab's charts sends the tab's list, the old chart in it.
+    const list = { id: RULES_SET, params: { kind: 'charts', subUnitId: sheet, list: view.legacyCharts } }
+    const got = await call<{ rev: number; ids?: Record<string, { id: string }> }>('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [list] })
+    const [written] = readObjects(new Uint8Array(readFileSync(path))).charts
+    expect(written).toMatchObject({ sheet: 'Data', kind: 'bar', title: { text: 'Totals' } })
+    expect(got.ids).toEqual({ 'legacy:c1': { id: written!.id } })
+    // The row is done with: the file holds the chart now.
+    const after = await call<SheetView>('work.sheets.open', { itemId })
+    expect(after.legacyCharts).toBeUndefined()
+  })
+
+  it('ends an old chart row he took off the grid: its tab\'s list was saved without it', async () => {
+    const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]!
+    const view = await call<SheetView>('work.sheets.chart', { itemId, chart: { id: 'c1', sheet, range: 'A1:B5', title: 'Totals', row: 2, col: 4 } })
+    await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [{ id: RULES_SET, params: { kind: 'charts', subUnitId: sheet, list: [] } }] })
+    expect((await call<SheetView>('work.sheets.open', { itemId })).legacyCharts).toBeUndefined()
+    expect(readObjects(new Uint8Array(readFileSync(path))).charts).toEqual([])
   })
 })
 

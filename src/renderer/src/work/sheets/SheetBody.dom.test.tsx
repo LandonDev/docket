@@ -1377,3 +1377,121 @@ describe("a format or a rule an agent proposed", () => {
     await waitFor(() => expect(sheetHost.calls).toContainEqual(["review", { which: { ids: ["f1"] }, verdict: "reject" }]));
   });
 });
+
+describe("charts and pictures", () => {
+  const OBJECTS_ROW: NonNullable<SheetView["row"]> = [...ROW_ALL, "chart", "picture", "objects"];
+  const anchor = { kind: "oneCell" as const, from: { column: 6, row: 1, columnOffset: 0, rowOffset: 0 }, width: 4572000, height: 2743200 };
+  const CHART = { id: "xl/charts/chart1.xml", sheet: "Budget", anchor, kind: "column" as const, grouping: "clustered" as const, groups: [{ kind: "column" as const, grouping: "clustered" as const }], legend: null, axes: {}, series: [{ kind: "column" as const, group: 0, values: { ref: "Budget!$E$2:$E$5" } }], flags: {} };
+  const PICTURE = { id: "xl/drawings/drawing1.xml#1", sheet: "Budget", anchor, part: "xl/media/image1.png", contentType: "image/png", name: "Logo" };
+  const OBJECTS = { charts: [CHART], pictures: [PICTURE], warnings: [] };
+
+  function openWith(view: SheetView) {
+    sheetHost = fakeSheetHost(view, { workbook: BOOK, objects: OBJECTS });
+    grid = fakeGrid();
+    host.current = fakeHost([ITEM], host as never);
+    return render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div data-testid="thread" />
+      </CanvasSeat>,
+    );
+  }
+  const lists = () => edits().flatMap((e) => e.mutations.filter((m) => m.id === "tempcode.sheet.rules"));
+
+  it("hands the grid the file's charts and pictures, and sends a change as the tab's whole list", async () => {
+    openWith(sheetView({ row: OBJECTS_ROW }));
+    await gridUp();
+    expect(grid.objectsGiven?.objects).toEqual(OBJECTS);
+    const moved = { ...anchor, from: { ...anchor.from, row: 9 } };
+    // Two changes in one wait go as one list: the last.
+    act(() => void grid.handle!.objects.move(CHART.id, anchor));
+    act(() => void grid.handle!.objects.move(CHART.id, moved));
+    await waitFor(() => expect(lists()).toHaveLength(1));
+    expect(lists()[0]).toEqual({ id: "tempcode.sheet.rules", params: { kind: "charts", subUnitId: "budget", list: [{ ...CHART, anchor: moved }] } });
+  });
+
+  it("takes the ids a save answers, so the next save names the file's parts", async () => {
+    openWith(sheetView({ row: OBJECTS_ROW }));
+    await gridUp();
+    const made = { ...CHART, id: "chart-ab12cd34" };
+    sheetHost.nextEdit = { ids: { "chart-ab12cd34": { id: "xl/charts/chart2.xml" } } };
+    act(() => void grid.handle!.objects.add({ chart: made }));
+    await waitFor(() => expect(grid.handle!.objects.list().charts.map((c) => c.id)).toEqual([CHART.id, "xl/charts/chart2.xml"]));
+    // Taken as the file's, not told back as his change: nothing more is sent.
+    await new Promise((done) => setTimeout(done, EDIT_WAIT + 50));
+    expect(lists()).toHaveLength(1);
+  });
+
+  it("says a list the file refused once and reads the file again, so the object is as it was", async () => {
+    openWith(sheetView({ row: OBJECTS_ROW }));
+    await gridUp();
+    const loads = () => sheetHost.calls.filter((c) => c[0] === "load").length;
+    const before = loads();
+    sheetHost.nextEdit = { refuse: "“Budget” is protected. Unprotect the sheet in Excel before changing its charts and pictures." };
+    act(() => void grid.handle!.objects.remove(CHART.id));
+    await waitFor(() => expect(toasts.said).toEqual(["“Budget” is protected. Unprotect the sheet in Excel before changing its charts and pictures."]));
+    await waitFor(() => expect(loads()).toBeGreaterThan(before));
+    await gridUp();
+    expect(grid.handle!.objects.list().charts.map((c) => c.id)).toEqual([CHART.id]);
+    // Said once, as a stopped change: no "Couldn't save" line waits on a Reload press.
+    expect(screen.queryByText("Couldn't save")).toBeNull();
+  });
+
+  it("sends nothing where the host keeps no objects", async () => {
+    openWith(sheetView({ row: ROW_ALL }));
+    await gridUp();
+    act(() => void grid.handle!.objects.remove(CHART.id));
+    await new Promise((done) => setTimeout(done, EDIT_WAIT + 50));
+    expect(lists()).toEqual([]);
+  });
+
+  it("puts a picture he picks on the grid and sends it with its bytes", async () => {
+    openWith(sheetView({ row: OBJECTS_ROW }));
+    await gridUp();
+    const input = await waitFor(() => document.querySelector<HTMLInputElement>("[data-sheet-picture-input]")!);
+    expect(input.accept).toBe("image/png,image/jpeg,image/gif,image/bmp");
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const file = new File([bytes], "Team photo.png", { type: "image/png" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(lists().some((m) => (m.params as { kind: string }).kind === "pictures")).toBe(true));
+    const sent = lists().find((m) => (m.params as { kind: string }).kind === "pictures")!.params as { list: { id: string; name?: string; data?: string }[] };
+    expect(sent.list.map((p) => [p.name, p.data])).toEqual([["Logo", undefined], ["Team photo", btoa(String.fromCharCode(...bytes))]]);
+    // The grid draws a made picture from the bytes the canvas keeps.
+    const made = grid.handle!.objects.list().pictures[1]!;
+    const blob = await grid.objectsGiven!.media!(made.part);
+    expect(blob instanceof Blob && blob.type).toBe("image/png");
+  });
+
+  it("offers no picture picker where the host keeps no pictures", async () => {
+    openWith(sheetView({ row: ROW_ALL }));
+    await gridUp();
+    expect(document.querySelector("[data-sheet-picture-input]")).toBeNull();
+  });
+
+  it("draws an old chart row as the chart it becomes, and sends nothing until he changes that tab's charts", async () => {
+    const legacy = { ...CHART, id: "legacy:c1", kind: "bar" as const, title: { text: "Totals" } };
+    openWith(sheetView({ row: OBJECTS_ROW, legacyCharts: [legacy] }));
+    await gridUp();
+    await waitFor(() => expect(grid.handle!.objects.list().charts.map((c) => c.id)).toEqual([CHART.id, "legacy:c1"]));
+    expect(document.querySelector("[data-sheet-chart]")).toBeNull();
+    await new Promise((done) => setTimeout(done, EDIT_WAIT + 50));
+    expect(lists()).toEqual([]);
+    act(() => void grid.handle!.objects.move(CHART.id, anchor));
+    await waitFor(() => expect(lists()).toHaveLength(1));
+    expect((lists()[0]!.params as { list: { id: string }[] }).list.map((c) => c.id)).toEqual([CHART.id, "legacy:c1"]);
+  });
+
+  it("⌃⌥5 takes the first object in hand, and Tab and ⇧Tab walk them while one is", async () => {
+    openWith(sheetView({ row: OBJECTS_ROW }));
+    await gridUp();
+    const frame = document.querySelector<HTMLElement>("[data-sheet-item]")!;
+    frame.tabIndex = -1;
+    frame.focus();
+    fireEvent.keyDown(window, { key: "5", code: "Digit5", ctrlKey: true, altKey: true });
+    expect(grid.handle!.objects.state().selected).toBe(CHART.id);
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(grid.handle!.objects.state().selected).toBe(PICTURE.id);
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(grid.handle!.objects.state().selected).toBe(CHART.id);
+  });
+});

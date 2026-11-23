@@ -39,8 +39,8 @@ export const MOVE_WHY = {
 } as const
 export type MoveRefusal = keyof typeof MOVE_WHY
 
-/** A sheet's rules by kind: its conditional formats, its validations, the workbook's names, its filter, its tables, its page set-up. */
-export type SheetRuleKind = 'conditional' | 'validation' | 'names' | 'filter' | 'tables' | 'pages'
+/** A sheet's rules by kind: its conditional formats, its validations, the workbook's names, its filter, its tables, its page set-up; and its charts and pictures (`OBJECT_LISTS`). */
+export type SheetRuleKind = 'conditional' | 'validation' | 'names' | 'filter' | 'tables' | 'pages' | ObjectListKind
 
 /** The kit's one mutation for a sheet's page set-up (paper, margins, breaks, the print area): the whole set-up as it stands. */
 export const PAGE_SETUP = 'tempcode.sheet.mutation.set-page-setup'
@@ -82,6 +82,23 @@ export interface RulesSetParams {
   subUnitId?: string
   list: unknown
 }
+
+// ── charts and pictures ──────────────────────────────────────────────
+/**
+ * A tab's charts and pictures go to the host as its whole list, the way a rule's list does (`RULES_SET` of
+ * kind `charts` or `pictures`, `subUnitId` the grid's sheet id): the Excel writers take a tab's list at a
+ * time (sheets/patch/charts.ts, pictures.ts). A picture made here rides with its bytes as base64 (`data`)
+ * until a save gives it a part in the file.
+ */
+export type ObjectListKind = 'charts' | 'pictures'
+export const OBJECT_LISTS: readonly ObjectListKind[] = ['charts', 'pictures']
+/** Whether a mutation is a tab's chart or picture list. */
+export const isObjectList = (m: SheetMutation): boolean => m.id === RULES_SET && OBJECT_LISTS.includes((m.params as RulesSetParams | null)?.kind as ObjectListKind)
+/**
+ * What a save answers for the objects it wrote: each id the canvas sent that the file now calls otherwise (a new
+ * chart takes its part's name; pictures after one added or removed are numbered again), with a picture's new part.
+ */
+export type ObjectIds = Record<string, { id: string; part?: string }>
 
 /**
  * The format row's controls a guest with an Edit link gets on the hosted page: every one whose

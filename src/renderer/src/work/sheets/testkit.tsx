@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useReducer, useState, type ReactNode } from "react";
 import type { SheetCellJson, SheetChart, SheetMutationJson, SheetSuggestion, SheetView } from "@shared/contract-work-sheets";
 import { TEMPCODE_THEME } from "work-kit/format/theme";
-import type { GridSelection, GridState, SheetCanvasProps, SheetFormat, SheetHandle } from "work-kit/sheet";
+import type { GridSelection, GridState, ObjectAdd, ObjectChange, ObjectAnchor, ObjectsState, SheetCanvasProps, SheetFormat, SheetHandle, SheetObject, SheetObjects, SheetObjectsAccess } from "work-kit/sheet";
 import { readFormat, styleOf } from "work-kit/sheet/format";
 import type { SheetGrid } from "./grid";
+import type { ObjectIds } from "@shared/work/sheets";
 import type { ReviewWhich, SheetHost, SheetOp, SheetPushed } from "./host";
 import type { Workbook } from "./sync";
 
@@ -72,9 +73,11 @@ export type FakeSheetHost = SheetHost & {
   importDrops?: string[];
   /** Set: open never answers (the loading state). */
   hold: boolean;
+  /** Set: the next edit answers these ids (a save that named charts or pictures anew), or is refused in these words. */
+  nextEdit: { ids: ObjectIds } | { refuse: string } | null;
 };
 
-export function fakeSheetHost(initial: SheetView, workbook: Workbook): FakeSheetHost {
+export function fakeSheetHost(initial: SheetView, workbook: Workbook | { workbook: Workbook; objects: SheetObjects }): FakeSheetHost {
   const listeners = new Set<(push: SheetPushed) => void>();
   const text = JSON.stringify(workbook);
   const pick = (which: ReviewWhich) => (s: SheetSuggestion) => which === "all" || ("ids" in which ? which.ids.includes(s.id) : s.changeSet === which.changeSet);
@@ -87,6 +90,7 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook): FakeSheet
     switchRefusal: null,
     switchWait: null,
     hold: false,
+    nextEdit: null,
     land(mutations, by = "person:dana") {
       host.rev++;
       host.ops.push({ rev: host.rev, by, mutations });
@@ -118,9 +122,12 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook): FakeSheet
         }
         return { conflict: true, rev: host.rev };
       }
+      const next = host.nextEdit;
+      host.nextEdit = null;
+      if (next && "refuse" in next) throw new Error(next.refuse);
       host.rev++;
       host.ops.push({ rev: host.rev, by: "owner", mutations });
-      return { rev: host.rev };
+      return next ? { rev: host.rev, ids: next.ids } : { rev: host.rev };
     },
     async review(which, verdict) {
       host.calls.push(["review", { which, verdict }]);
@@ -235,6 +242,8 @@ export interface FakeGrid extends SheetGrid {
   listening(): boolean;
   /** The sheet's rules as the grid holds them (`handle.rules` reads and writes these); each change is reported as the grid's own mutation. */
   rules: FakeRules;
+  /** What the canvas was given for its charts and pictures at its last mount: `objects` (undefined: none drawn), `media`, `onObjects`. */
+  objectsGiven: { objects: SheetObjects | undefined; media: ((part: string) => Promise<Blob | string>) | undefined; onObjects: ((change: ObjectChange) => void) | undefined } | null;
 }
 
 /** A grid's rules kept in memory: lists by sheet id, the names, a filter by sheet id. */
@@ -391,8 +400,9 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     };
   };
 
-  function FakeCanvas({ snapshot, marks, was, styleKeys, filter, dataChrome, noteControls, readOnly, onReady, onSelection }: SheetCanvasProps) {
+  function FakeCanvas({ snapshot, marks, was, styleKeys, filter, dataChrome, noteControls, readOnly, objects, media, onObjects, onReady, onSelection }: SheetCanvasProps) {
     grid.noteControls = noteControls;
+    grid.objectsGiven = { objects, media, onObjects };
     grid.styleKeys = styleKeys;
     grid.filter = filter;
     grid.dataChrome = dataChrome;
@@ -469,6 +479,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
         },
         onMutation: (listener: (m: SheetMutationJson) => void) => (listeners.add(listener), () => listeners.delete(listener)),
         focus: () => undefined,
+        objects: fakeObjects(objects, (change) => grid.objectsGiven?.onObjects?.(change)),
       } as unknown as SheetHandle;
       grid.handle = handle;
       onReady?.(handle);
@@ -575,6 +586,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     readOnly: false,
     lockedOnce: false,
     rules: { conditional: {}, validation: {}, names: [], filter: {} },
+    objectsGiven: null,
     formulas: new Map(),
     Canvas: FakeCanvas,
     fonts: async (workbook) => void grid.fontsAsked.push(workbook),
@@ -590,7 +602,12 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       ...(options.commands ? { onCommand: (listener: (id: string) => void) => (commandListeners.add(listener), () => commandListeners.delete(listener)) } : {}),
       style: (id) => grid.styles.get(id) ?? null,
       // (the fake keeps no tables: a test of a table's save drives the store itself)
-      rules: (kind, sheet) => (kind === "names" ? grid.rules.names : kind === "filter" ? (grid.rules.filter[sheet ?? ""] ?? null) : kind === "tables" ? [] : kind === "pages" ? null : (grid.rules[kind][sheet ?? ""] ?? [])),
+      rules: (kind, sheet) => (kind === "names" ? grid.rules.names : kind === "filter" ? (grid.rules.filter[sheet ?? ""] ?? null) : kind === "tables" || kind === "charts" || kind === "pictures" ? [] : kind === "pages" ? null : (grid.rules[kind][sheet ?? ""] ?? [])),
+      objects: {
+        list: () => grid.handle!.objects.list(),
+        sheetId: (name) => grid.handle!.store.get().sheets.find((x) => x.name === name)?.id,
+        apply: (changes) => grid.handle!.objects.apply(changes),
+      },
     }),
     values(_handle, sheet, a1) {
       const r = parseA1(a1);
@@ -612,7 +629,11 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
         onSlot(null);
       };
     },
-    decode: async (bytes) => JSON.parse(new TextDecoder().decode(bytes)),
+    // A fixture's book is its snapshot, or `{ workbook, objects }` for one that has charts and pictures.
+    decode: async (bytes) => {
+      const got = JSON.parse(new TextDecoder().decode(bytes)) as Workbook & { workbook?: Workbook; objects?: SheetObjects };
+      return got.workbook ? { workbook: got.workbook, ...(got.objects ? { objects: got.objects } : {}) } : { workbook: got };
+    },
     edit(mutation) {
       if (live) write(live.cells, mutation);
       live?.redraw();
@@ -624,6 +645,102 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     listening: () => listeners.size > 0,
   };
   return grid;
+}
+
+/**
+ * The grid's charts and pictures without Univer: the lists, select, add, move, set and remove, each told as the
+ * grid tells them (`onObjects`), and `apply` laying changes from elsewhere without telling them back.
+ */
+function fakeObjects(initial: SheetObjects | undefined, tell: (change: ObjectChange) => void): SheetObjectsAccess {
+  let objects: SheetObjects = initial ?? { charts: [], pictures: [], warnings: [] };
+  let selected: string | null = null;
+  let n = 0;
+  const listeners = new Set<() => void>();
+  const state = (): ObjectsState => ({ objects, selected, series: 0, edits: true, held: false });
+  let shown = state();
+  const emit = (): void => {
+    shown = state();
+    for (const listener of listeners) listener();
+  };
+  const find = (id: string): SheetObject | null => {
+    const chart = objects.charts.find((c) => c.id === id);
+    if (chart) return { chart };
+    const picture = objects.pictures.find((p) => p.id === id);
+    return picture ? { picture } : null;
+  };
+  // (in place, as the kit keeps the order objects are drawn in; a new one goes last)
+  const put = <T extends { id: string }>(list: T[], item: T, gone: boolean): T[] => (gone ? list.filter((x) => x.id !== item.id) : list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item]);
+  const lay = (change: ObjectChange): void => {
+    const o = change.object;
+    if ("chart" in o) objects = { ...objects, charts: put(objects.charts, o.chart, change.kind === "remove") };
+    else objects = { ...objects, pictures: put(objects.pictures, o.picture, change.kind === "remove") };
+    if (selected && !find(selected)) selected = null;
+  };
+  const made = (change: ObjectChange): void => {
+    lay(change);
+    emit();
+    tell(change);
+  };
+  const moved = (id: string, anchor: ObjectAnchor): boolean => {
+    const o = find(id);
+    if (!o) return false;
+    made({ kind: "set", object: "chart" in o ? { chart: { ...o.chart, anchor } } : { picture: { ...o.picture, anchor } } });
+    return true;
+  };
+  return {
+    list: () => objects,
+    get: find,
+    state: () => shown,
+    subscribe: (listener) => (listeners.add(listener), () => listeners.delete(listener)),
+    select: (id) => ((selected = id && find(id) ? id : null), emit(), selected === id),
+    selectNext: (step = 1) => {
+      const ids = [...objects.charts.map((c) => c.id), ...objects.pictures.map((p) => p.id)];
+      if (!ids.length) return null;
+      const at = selected ? ids.indexOf(selected) : -1;
+      selected = ids[at < 0 ? (step > 0 ? 0 : ids.length - 1) : (at + step + ids.length) % ids.length] ?? null;
+      emit();
+      return selected;
+    },
+    pickSeries: () => undefined,
+    move: (id, anchor) => moved(id, anchor),
+    size: (id, anchor) => moved(id, anchor),
+    set: (id, change) => {
+      const o = find(id);
+      if (!o || !("chart" in o)) return false;
+      made({ kind: "set", object: { chart: typeof change === "function" ? change(o.chart) : { ...o.chart, ...change } } });
+      return true;
+    },
+    remove: (id) => {
+      const o = find(id);
+      if (!o) return false;
+      made({ kind: "remove", object: o });
+      return true;
+    },
+    add: (what: ObjectAdd) => {
+      const anchor = { kind: "oneCell" as const, from: { column: 1, row: 1, columnOffset: 0, rowOffset: 0 }, width: 1905000, height: 952500 };
+      const sheet = objects.charts[0]?.sheet ?? objects.pictures[0]?.sheet ?? "Budget";
+      if ("picture" in what) {
+        const id = `picture-${++n}`;
+        made({ kind: "add", object: { picture: { id, sheet, anchor, part: `media:${n}`, contentType: what.picture.type, ...(what.picture.name ? { name: what.picture.name } : {}) } }, media: what.picture });
+        selected = id;
+        emit();
+        return id;
+      }
+      if (what.chart === "selection") return null;
+      made({ kind: "add", object: { chart: what.chart } });
+      return what.chart.id;
+    },
+    refusal: () => null,
+    cells: { values: () => [] } as unknown as SheetObjectsAccess["cells"],
+    apply: (changes) => {
+      for (const change of changes) lay(change);
+      emit();
+    },
+    onChange: () => () => undefined,
+    edits: () => undefined,
+    hold: () => undefined,
+    media: async () => null,
+  };
 }
 
 function SheetTabsRow({ names }: { names: string[] }): ReactNode {

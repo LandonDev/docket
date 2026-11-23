@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from "react";
 import type { SheetCellJson, SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
-import { AUTO_FIT, forPackage, latestRules, ruleKinds, SHEET_MOVES, sheetStopWords, type SheetRuleKind } from "@shared/work/sheets";
+import type { ObjectChange, SheetObjects } from "work-kit/sheet";
+import { AUTO_FIT, forPackage, isObjectList, latestRules, ruleKinds, SHEET_MOVES, sheetStopWords, type ObjectIds, type RulesSetParams, type SheetRuleKind } from "@shared/work/sheets";
 import { cellText, holds } from "./model";
+import { MadePictures, objectListOf, rekeyed } from "./objects";
 import { EDIT_MAX, fromBase64, LOAD_MAX, type SheetHost, type SheetPushed } from "./host";
 
 /**
@@ -35,13 +37,15 @@ export interface GridLink {
   style?(id: string): Record<string, unknown> | null;
   /** a sheet's rules of one kind as they stand now (the workbook's names take no sheet); absent in a grid with no rules */
   rules?(kind: SheetRuleKind, sheet?: string): unknown;
+  /** the grid's charts and pictures: every one as it stands, a tab's id by its name, and changes from elsewhere laid in (not told back); absent in a grid with none */
+  objects?: { list(): SheetObjects; sheetId(name: string): string | undefined; apply(changes: ObjectChange[]): void };
 }
 
 export interface SheetSyncState {
   view: SheetView | null;
   /** the item could not be opened or its workbook read */
   failed: string | null;
-  book: { workbook: Workbook; key: number } | null;
+  book: (Book & { key: number }) | null;
   /** the person's edits did not reach the host */
   sendError: string | null;
   /** edits of his wait to be sent, or are on their way */
@@ -58,8 +62,14 @@ export interface SheetSyncState {
   tick: number;
 }
 
+/** A workbook as it was read, with its charts and pictures and their bytes by part where it holds any (an Excel file's own; absent elsewhere). */
+export interface Book {
+  workbook: Workbook;
+  objects?: SheetObjects;
+  media?: ReadonlyMap<string, { bytes: Uint8Array; type: string }>;
+}
 /** Bytes and their format, as the grid opens them. */
-export type Decode = (bytes: Uint8Array, format: "xlsx" | "snapshot") => Promise<Workbook>;
+export type Decode = (bytes: Uint8Array, format: "xlsx" | "snapshot") => Promise<Book>;
 
 const SET_RANGE_VALUES = "sheet.mutation.set-range-values";
 /** Every key a cell can hold, as null: what a restored cell is laid over, so nothing of the overlay stays. */
@@ -115,6 +125,8 @@ export class SheetSync {
   private readonly listeners = new Set<() => void>();
   private live = 0;
   private books = 0;
+  /** the bytes of pictures made here, until the grid lets go */
+  private made = new MadePictures();
 
   constructor(
     readonly host: SheetHost,
@@ -179,12 +191,13 @@ export class SheetSync {
       whole.set(part, offset);
       offset += part.length;
     }
-    const workbook = await this.decode(whole, format);
+    const book = await this.decode(whole, format);
     this.rev = stood;
     this.mine.clear();
     this.queue = [];
     this.detach();
-    this.set({ book: { workbook, key: ++this.books } });
+    this.made = new MadePictures();
+    this.set({ book: { ...book, key: ++this.books } });
   }
 
   /** A new view: the stepper stays on its change where it can, and the cells follow the suggestions. */
@@ -385,6 +398,7 @@ export class SheetSync {
         if (!answer.conflict) {
           this.mine.add(answer.rev);
           this.rev = Math.max(this.rev, answer.rev);
+          if (answer.ids) this.rekey(answer.ids);
           break;
         }
         if (tries + 1 >= CONFLICT_TRIES) throw new Error("Others kept changing the sheet; your edits did not save");
@@ -399,6 +413,19 @@ export class SheetSync {
       if (this.state.view?.store !== "package") {
         this.queue.unshift(...batch);
         this.set({ sendError: message(error, "The host did not answer"), saving: false });
+        return;
+      }
+      if (batch.some(isObjectList)) {
+        // A chart or picture the file's writer refused (a protected sheet, a range it cannot name, a kind it cannot make):
+        // said once, as a change stopped at the press, and the book read again from the file so the object is as it was.
+        // What waits after it goes first.
+        this.set({ reloading: true, stopped: { why: message(error, "The host did not answer"), n: (this.state.stopped?.n ?? 0) + 1 } });
+        try {
+          if (this.queue.length > 0) await this.send();
+          await this.open();
+        } finally {
+          this.set({ reloading: false, saving: false });
+        }
         return;
       }
       if (move) {
@@ -492,6 +519,42 @@ export class SheetSync {
 
   step(to: number): void {
     this.set({ current: to });
+  }
+
+  /**
+   * A change to the grid's charts or pictures. Where the host keeps them (its row lists `objects`), the
+   * tab's whole list goes in the change's place, replacing one of the same tab that waits to be sent.
+   */
+  object(change: ObjectChange): void {
+    this.made.take(change);
+    const grid = this.grid;
+    const view = this.state.view;
+    if (!grid?.objects || !view?.row?.includes("objects")) return;
+    const objects = grid.objects;
+    const list = objectListOf(change, objects.list(), (name) => objects.sheetId(name), (part) => this.made.get(part)?.bytes);
+    if (!list) return;
+    const key = (m: { params: unknown }): string => `${(m.params as RulesSetParams).kind}\u0000${(m.params as RulesSetParams).subUnitId}`;
+    this.queue = this.queue.filter((m) => !isObjectList(m) || key(m) !== key(list));
+    this.queue.push(list);
+    this.set({ saving: true });
+    this.wait();
+  }
+
+  /** A picture's bytes by its part, for the grid to draw: the file's own as it was read, or one made here. */
+  media = async (part: string): Promise<Blob> => {
+    const got = this.state.book?.media?.get(part) ?? this.made.get(part);
+    if (!got) throw new Error("That picture is not in the file.");
+    return new Blob([got.bytes as BlobPart], { type: got.type });
+  };
+
+  /** A save named objects anew: the grid takes the file's ids, and a made picture's bytes go under its new part. */
+  private rekey(ids: ObjectIds): void {
+    const objects = this.grid?.objects;
+    if (!objects) return;
+    const list = objects.list();
+    this.made.rename(list, ids);
+    const changes = rekeyed(list, ids);
+    if (changes.length) objects.apply(changes);
   }
 }
 

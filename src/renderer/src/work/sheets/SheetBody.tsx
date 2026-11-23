@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { SheetChart, SheetView } from "@shared/contract-work-sheets";
-import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, useGridState, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
+import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, useGridState, type ChartSpec, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
 import { ChartBar, MoreHorizontal, Trash2 } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { RowsMenu } from "../../chrome/menuRows";
@@ -74,6 +74,7 @@ export function Body(props: Props) {
   const [selection, setSelection] = useState<GridSelection | null>(null);
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
+  const pictureInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => sync.start(), [sync]);
   useEffect(() => {
@@ -173,6 +174,8 @@ export function Body(props: Props) {
     if (still) setRules(null);
   }, [still]);
   const siding = handle && rules && kinds.length > 0 && !still ? rules : null;
+  useObjectKeys(handle, controls.includes("objects"), frame);
+  useLegacyCharts(handle, view?.legacyCharts);
   // Beside the grid; under it where the canvas is too narrow to give up 320px.
   const stacked = width > 0 && width < SIDE_STACKS_UNDER;
 
@@ -218,10 +221,13 @@ export function Body(props: Props) {
           onRules={() => setRules((open) => (open ? null : { view: "lists" }))}
           pageBreaks={pageView}
           onPageBreaks={setPageView}
+          // Insert → Picture opens the system's file picker; the grid seats what he picks at the cell in hand.
+          {...(controls.includes("picture") ? { onPicture: () => pictureInput.current?.click() } : {})}
         />
       ) : null}
       {/* A sheet that is the Excel copy of an .xls, .ods or .tsv says so in one quiet line, with its one press. */}
       {view.imported ? <ImportLine imported={view.imported} shared={view.shared} run={(act) => runImport((a) => sync.host.imported(a), view.imported!, act)} /> : null}
+      {handle && controls.includes("picture") ? <PictureInput ref={pictureInput} handle={handle} /> : null}
       {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
       {google.dialog}
       <div className={stacked ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1"}>
@@ -243,6 +249,10 @@ export function Body(props: Props) {
           {...(view.notes?.length && !locked && !state.reloading ? { noteControls: view.notes } : {})}
           marks={marks}
           was={was}
+          // An Excel file's charts and pictures, drawn where Excel draws them; each change goes to the file as the tab's list.
+          objects={book.objects}
+          media={sync.media}
+          onObjects={(change) => sync.object(change)}
           onReady={setHandle}
           onSelection={setSelection}
           labels={LABELS}
@@ -267,6 +277,68 @@ export function Body(props: Props) {
 }
 
 const LABELS = { failed: "Couldn't draw this sheet." };
+/** The picture formats an Excel file takes (sheets/patch/pictures.ts): the picker offers these alone. */
+const PICTURE_TYPES = "image/png,image/jpeg,image/gif,image/bmp";
+
+/** The system's file picker for Insert → Picture: what he picks goes on the grid at the cell in hand, or is refused in words. */
+function PictureInput({ ref, handle }: { ref: React.Ref<HTMLInputElement>; handle: SheetHandle }) {
+  return (
+    <input
+      ref={ref}
+      type="file"
+      accept={PICTURE_TYPES}
+      hidden
+      data-sheet-picture-input=""
+      onChange={(event) => {
+        const file = event.currentTarget.files?.[0];
+        event.currentTarget.value = "";
+        if (!file) return;
+        void file.arrayBuffer().then(
+          (bytes) => {
+            if (!handle.objects.add({ picture: { bytes: new Uint8Array(bytes), type: file.type, name: file.name.replace(/\.[^.]+$/, "") } })) void loadToast().then((toast) => toast.message(`${file.name} is not a picture this sheet can show`));
+          },
+          (error: unknown) => sayError(error, "Couldn't read the picture"),
+        );
+      }}
+    />
+  );
+}
+
+/**
+ * An opened Excel file's old charts, kept beside it before the file could hold one, as the charts they become
+ * (held.ts): laid on the grid as from elsewhere, not told back, so they are drawn and the next change to their
+ * tab's charts writes them into the file with it. Nothing is written before that.
+ */
+function useLegacyCharts(handle: SheetHandle | null, legacy: readonly ChartSpec[] | undefined): void {
+  useEffect(() => {
+    if (!handle || !legacy?.length) return;
+    const have = new Set(handle.objects.list().charts.map((c) => c.id));
+    const add = legacy.filter((chart) => !have.has(chart.id)).map((chart) => ({ kind: "add" as const, object: { chart } }));
+    if (add.length) handle.objects.apply(add);
+  }, [handle, legacy]);
+}
+
+/**
+ * Excel's keys for the objects over the grid: ⌃⌥5 takes the first chart or picture in hand, and while one is,
+ * Tab and ⇧Tab go to the next and the one before. Only where he may change objects, and only from this sheet.
+ */
+function useObjectKeys(handle: SheetHandle | null, on: boolean, frame: { current: HTMLDivElement | null }): void {
+  useEffect(() => {
+    if (!handle || !on) return;
+    const onKey = (event: KeyboardEvent): void => {
+      const inHand = handle.objects.state().selected !== null;
+      const here = !!frame.current && frame.current.contains(document.activeElement);
+      const enter = event.ctrlKey && event.altKey && !event.metaKey && event.code === "Digit5";
+      const next = event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && inHand;
+      if ((!enter || !(here || inHand)) && !next) return;
+      if (handle.objects.selectNext(next && event.shiftKey ? -1 : 1) === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [handle, on, frame]);
+}
 /** The side sheet's lists, in its order: each shown where the host lists its control. */
 const RULE_KINDS: readonly RuleKind[] = ["conditional", "validation", "names"];
 /** Under this much canvas the side sheet stacks under the grid (the prototype's 560px). */
@@ -479,6 +551,12 @@ function useSelectionFeed(
         run: async () => {
           const picked = held.current;
           if (!picked || !handle) return;
+          // Where the file keeps charts, a real one from the selection's block, as Insert → Chart makes it.
+          if (sync.state.view?.row?.includes("chart")) {
+            const refusal = handle.objects.refusal();
+            if (refusal || !handle.objects.add({ chart: "selection" })) void loadToast().then((toast) => toast.message(refusal ?? "Couldn't make the chart"));
+            return;
+          }
           const chart = chartFrom(picked, grid.values(handle, picked.sheet, picked.reference), `chart-${Date.now().toString(36)}`);
           await act(sync.host.chart(chart), "Couldn't make the chart");
         },

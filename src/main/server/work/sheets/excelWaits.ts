@@ -22,8 +22,8 @@ interface Waits {
 const WAITS: readonly Waits[] = [
   // A cache with no table left on any sheet is still a pivot Excel alone can refresh.
   { kinds: ['pivotTables', 'pivotCaches'], one: 'a pivot table', many: (n) => `${n} pivot tables` },
-  // A chart sheet's charts are counted with the rest; a chart sheet with none drawn still counts as one.
-  { kinds: ['charts', 'chartsheets'], one: 'a chart', many: (n) => `${n} charts` },
+  // A chart on a sheet is drawn and changed on the grid; one on a chart sheet of its own is not.
+  { kinds: ['chartsheets'], one: 'a chart sheet', many: (n) => `${n} chart sheets` },
   // One project holds any number of macros: the importer sees the project, so no count is said.
   { kinds: ['vbaProject'], one: 'macros', many: () => 'macros' },
   { kinds: ['slicers'], one: 'a slicer', many: (n) => `${n} slicers` },
