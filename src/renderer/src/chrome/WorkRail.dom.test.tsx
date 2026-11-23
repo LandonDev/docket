@@ -161,6 +161,22 @@ describe("the rail with Work on", () => {
   });
 });
 
+describe("Review in the rail", () => {
+  it("is listed under the Work heading while Work is on, with no count and no mark, and opens the review", async () => {
+    setWorkOn("local", true);
+    const root = await mountRail([CODE, WORK]);
+    const review = [...root.querySelectorAll("nav button")].find((b) => b.textContent?.trim() === "Review") as HTMLButtonElement;
+    expect(review).toBeTruthy();
+    const heading = [...root.querySelectorAll("nav [data-rail-heading]")].find((h) => h.textContent?.trim() === "Work")!;
+    const work = root.querySelector(`[data-rail-path="${WORK.path}"]`)!;
+    expect(heading.compareDocumentPosition(review) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(review.compareDocumentPosition(work) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await probe!.act(async () => review.click());
+    expect(shellStore.getState().workPlace).toBe("review");
+    shellStore.setState({ workPlace: null });
+  });
+});
+
 describe("the rail's Outbox row", () => {
   it("shows the waiting count, and the failed mark in its place while a send failed", async () => {
     setWorkOn("local", true);
@@ -221,7 +237,9 @@ describe("the rail's rows for the pages above the Work workspaces", () => {
     setWorkOn("local", true);
     WORK_PLACE_ROWS.push(PLACE);
     const names = labels(await mountRail([CODE]));
-    expect(names.indexOf("Probe place")).toBe(names.indexOf("Add workspace…") - 1);
+    // Every page's row leads, in its order; the last of them sits right over Add workspace….
+    expect(names.indexOf("Probe place")).toBeLessThan(names.indexOf("Add workspace…"));
+    expect(WORK_PLACE_ROWS.map((row) => row.label)).toContain(names[names.indexOf("Add workspace…") - 1]);
   });
 });
 

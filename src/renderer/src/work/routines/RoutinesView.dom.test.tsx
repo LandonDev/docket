@@ -150,12 +150,13 @@ describe("the Routines view", () => {
       expect(screen.getAllByText("Starts").length).toBeGreaterThan(0);
     });
 
-    it("a run with a page to open calls the port; with no port set, or nothing to open, it is plain text", async () => {
+    it("a run with a page to open calls the port; with no port it opens a page above the workspaces of that name, and with nothing to open it is plain text", async () => {
       host.list = async () => ({ routines: [job()] });
       host.runs = async () => ({
         runs: [
           { id: "x1", routineId: "r1", sessionId: null, firedAt: 2, cause: "Run now", folded: 0, state: "quiet", summary: "Review made", open: { place: "review", at: 5 } },
           { id: "x2", routineId: "r1", sessionId: null, firedAt: 1, cause: "Run now", folded: 0, state: "failed", summary: "Failed: its job is not on this host" },
+          { id: "x3", routineId: "r1", sessionId: null, firedAt: 0, cause: "Run now", folded: 0, state: "quiet", summary: "Made elsewhere", open: { place: "no-such-page" } },
         ],
       });
       const opened: unknown[] = [];
@@ -170,8 +171,14 @@ describe("the Routines view", () => {
       cleanup();
       render(<View {...props} />);
       await settle();
-      expect(screen.queryByRole("button", { name: /Review made/ })).toBeNull();
-      expect(screen.getByText("Review made")).toBeTruthy();
+      // No port: Review is a page above the workspaces, so its run opens it there, at the week it names.
+      const { shellStore, initialShellState } = await import("../../stores/shell");
+      fireEvent.click(screen.getByRole("button", { name: /Review made/ }));
+      expect(shellStore.getState().workPlace).toBe("review");
+      shellStore.setState(initialShellState());
+      // A page nobody knows is not a button.
+      expect(screen.queryByRole("button", { name: /Made elsewhere/ })).toBeNull();
+      expect(screen.getByText("Made elsewhere")).toBeTruthy();
     });
   });
 });

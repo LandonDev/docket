@@ -52,6 +52,13 @@ export function toEvent(doc: EventDoc, self: ReadonlySet<string>): ReviewEvent {
   }
 }
 
+/** One event by id; null when LifeOS no longer has it. */
+export async function eventById(owner: LifeosClient, id: string, self: ReadonlySet<string>, asked: Pick<Asked, 'only'>): Promise<ReviewEvent | null> {
+  const doc = await owner.query<EventDoc | null>('events:get', { id }).catch(() => null)
+  if (!doc || (asked.only !== undefined && doc.sector !== asked.only)) return null
+  return toEvent(doc, self)
+}
+
 /** The events that touch `[from, to)`, soonest first. */
 export async function eventsBetween(owner: LifeosClient, from: number, to: number, self: ReadonlySet<string>, asked: Pick<Asked, 'only'>): Promise<ReviewEvent[]> {
   const docs = await owner.query<EventDoc[]>('events:range', { from: from - DAY, to })

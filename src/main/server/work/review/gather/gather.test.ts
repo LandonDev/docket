@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { followedUp, meetingsSlipped } from '../followup'
+import { followedUp, meetingsSlipped, preppedAfter } from '../followup'
 import { setMark } from '../store'
 import { DAY, docItem, held, HOUR, makeRig, MIN, MON, TZ, WEEK, type Rig } from '../testkit'
 import { eventsBetween, ownAddresses, toEvent } from './calendar'
@@ -160,6 +160,22 @@ describe('a meeting that was not followed up', () => {
     const span = { from: WEEK.from, cut: WEEK.to }
     expect(meetingsSlipped([e], [], span, new Set())).toEqual([{ key: 'meeting:e1', ref: { kind: 'meeting', eventId: 'e1' }, sector: 'purdue', workspaceId: null, title: 'Budget review', at: MON + 14 * HOUR, people: ['Dana Reyes'], others: 1, open: true }])
     expect(meetingsSlipped([e], [sent(MON + 16 * HOUR, 'dana@example.edu')], span, new Set())).toEqual([])
+  })
+
+  it('is not one whose page in Prep holds notes or an outcome, asked through Prep\'s own wire', async () => {
+    const e = meeting()
+    const span = { from: WEEK.from, cut: WEEK.to }
+    expect(meetingsSlipped([e], [], span, new Set(), new Set(['e1']))).toEqual([])
+    // No Prep on the host: nothing is asked and the mail rule stands alone.
+    expect(await preppedAfter(rig.ctx, WEEK.from, WEEK.to)).toEqual(new Set())
+    const { WORK_MODULES } = await import('../../modules')
+    const asked: unknown[] = []
+    WORK_MODULES.push({ id: 'prep' as never, ensure() {}, async handle(req) { asked.push([req.method, (req as { params?: unknown }).params]); return { handled: true, result: { meetings: [{ eventId: 'e1', state: 'after' }, { eventId: 'e2', state: 'briefed' }] } } } })
+    expect(await preppedAfter(rig.ctx, WEEK.from, WEEK.to)).toEqual(new Set(['e1']))
+    expect(asked).toEqual([['work.prep.upcoming', { from: WEEK.from, to: WEEK.to }]])
+    WORK_MODULES.pop()
+    WORK_MODULES.push({ id: 'prep' as never, ensure() {}, async handle() { throw new Error('down') } })
+    expect(await preppedAfter(rig.ctx, WEEK.from, WEEK.to)).toEqual(new Set())
   })
 
   it('is never one he was alone at, declined, hid, that has not ended, or that he marked', () => {

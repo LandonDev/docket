@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { WorkCtx } from '../modules'
 import { review } from '.'
 import { MAKE_JOB, ROUTINE_NAME, ROUTINE_RRULE, routineOf, seedRoutine } from './friday'
 import { keptWeek, readyWeek, setupOf } from './store'
@@ -92,19 +91,15 @@ describe('the job', () => {
     expect(rig.pushes.map((x) => x.p)).toEqual([{ push: 'work.review', from: WEEK.from, madeAt: FRIDAY, seen: false }])
   })
 
-  it('tells him once a week, and never again for a second make of the same week', async () => {
-    const ctx = { ...rig.ctx, tell: (t: Rig['told'][number]) => void rig.told.push(t) } as unknown as WorkCtx
-    await job().run(ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })
-    await job().run(ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY + HOUR })
-    expect(rig.told).toEqual([{ kind: 'review.ready', workspaceId: null, title: 'Your week is ready to review', detail: 'Week of Nov 16', key: `review:${WEEK.from}` }])
+  it('tells him once a week through the digest, with a press that opens the page at that week, and never again for a second make of the same week', async () => {
+    await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })
+    await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY + HOUR })
+    // No `by`: nothing is too late, so the digest's rule lets it wait for the day's one notice.
+    expect(rig.told).toEqual([{ kind: 'review.ready', workspaceId: null, title: 'Your week is ready to review', detail: 'Week of Nov 16', key: `review:${WEEK.from}`, open: { place: 'review', at: String(WEEK.from) } }])
+    expect(review.tells).toEqual([{ kind: 'review.ready', group: 'review', name: 'The weekly review' }])
     // The week after is told again.
-    await job().run(ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY + 7 * 24 * HOUR })
+    await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY + 7 * 24 * HOUR })
     expect(rig.told.map((t) => t.key)).toEqual([`review:${WEEK.from}`, `review:${WEEK.to}`])
-  })
-
-  it('stands with no digest on the host: nothing is told and nothing throws', async () => {
-    rig.lifeos['tasks:due'] = []
-    expect((await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })).words).toBe('Week of Nov 16: nothing slipped')
   })
 
   it('ready answers null once he has seen it', async () => {
@@ -112,5 +107,9 @@ describe('the job', () => {
     expect(await call('work.review.ready', {})).toEqual({ handled: true, result: { from: WEEK.from, madeAt: FRIDAY } })
     await call('work.review.seen', { from: WEEK.from })
     expect(await call('work.review.ready', {})).toEqual({ handled: true, result: null })
+    // The digest's row goes with it, once.
+    expect(rig.toldDone).toEqual([`review:${WEEK.from}`])
+    await call('work.review.seen', { from: WEEK.from })
+    expect(rig.toldDone).toHaveLength(1)
   })
 })

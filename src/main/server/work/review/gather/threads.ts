@@ -11,10 +11,11 @@ import { breathe, stopped, type Jobs } from './common'
  *
  *  1. only the Work threads touched in the span are opened (`updated_at >= from AND created_at < to`);
  *  2. a thread's rows for the span are found by bisection on `ts` over its `seq` range, since both only grow;
- *  3. those rows are read a slice at a time, the loop handed back between slices. A slice is sized by bytes, not by
- *     rows: the rows' lengths are read first (`length(payload)`, which SQLite answers from the row's header without
- *     loading it), and the slice ends once the rows it would parse add up to its budget. A slice that ran long halves
- *     the budget; a quick one doubles it.
+ *  3. those rows are read a batch at a time. A batch is sized by bytes, not by rows: the rows' lengths are read first
+ *     (`length(payload)`, which SQLite answers from the row's header without loading it), a row at a time with an
+ *     eye on the clock, and the batch ends once the rows it would parse add up to its budget. A batch that ran long
+ *     halves the budget; a quick one doubles it. One clock runs over the whole read (`pace`): the loop is handed
+ *     back after every batch, and after any run of probes or headers that has held it for `SLICE_AIM_MS`.
  *  4. a row over `ROW_MOST` bytes is never loaded: a tool's output or a picture, or a paste so long it is no sign of
  *     typing. A status row is a few dozen bytes, so only rows under `STATUS_MOST` are looked at for one.
  *
@@ -41,6 +42,8 @@ const STATUS_MOST = 400
 const LOOK_BACK = 400
 
 type SessionRow = { id: string; parent_id: string | null; workspace_id: string | null; cold: number | null; routine_run_id: string | null; master_id: string | null; started_by: string | null; status: string; created_at: number; updated_at: number }
+type Statement = ReturnType<DatabaseSync['prepare']>
+type Statements = { ends: Statement; probe: Statement; prior: Statement; heads: Statement; read: Statement }
 type EventRow = { seq: number; ts: number; t: string | null; st: string | null; bk: string | null; bo: number | null }
 
 const WORKING = new Set(['running', 'starting'])
@@ -75,8 +78,41 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
   const facts: ThreadFacts = { points: [], before: [], ran: [], cost: { slices: 0, longestMs: 0, threads: 0, rows: 0 } }
   const ranMs = new Map<number, number>()
   let budget = BUDGET_START
-  const lap = (began: number): void => {
-    facts.cost.longestMs = Math.max(facts.cost.longestMs, performance.now() - began)
+
+  // One clock for the whole read: the time since the loop was last handed back. `pace` hands it back once that
+  // passes the aim (or at once, after a batch of rows was loaded), so no step of the read, a probe, a run of row
+  // headers or a batch, is ever followed by another without the host getting a turn.
+  let mark = performance.now()
+  const pace = async (now = false): Promise<void> => {
+    const held = performance.now() - mark
+    if (!now && held < SLICE_AIM_MS) return
+    facts.cost.slices++
+    facts.cost.longestMs = Math.max(facts.cost.longestMs, held)
+    await breathe()
+    stopped(signal)
+    mark = performance.now()
+  }
+
+  // The statements, made once a table: a week opens thousands of threads.
+  const made = new Map<string, Statements>()
+  const statements = (table: string): Statements => {
+    let st = made.get(table)
+    if (!st) {
+      st = {
+        ends: db.prepare(`SELECT MIN(seq) AS a, MAX(seq) AS b FROM ${table} WHERE session_id = ?`),
+        probe: db.prepare(`SELECT seq, ts FROM ${table} WHERE session_id = ? AND seq >= ? ORDER BY seq LIMIT 1`),
+        // Only short rows are looked at, so a tool's output in the rows before the span is never loaded.
+        prior: db.prepare(`SELECT json_extract(payload, '$.status') AS st FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? AND length(payload) <= ${STATUS_MOST} AND json_extract(payload, '$.type') = 'status' ORDER BY seq DESC LIMIT 1`),
+        heads: db.prepare(`SELECT seq, length(payload) AS n FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq LIMIT ${HEADS}`),
+        read: db.prepare(
+          `SELECT seq, ts, json_extract(payload, '$.type') AS t, json_extract(payload, '$.status') AS st, json_extract(payload, '$.by.kind') AS bk, json_extract(payload, '$.by.owner') AS bo
+           FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? AND length(payload) <= ${ROW_MOST}
+             AND (instr(payload, '"type":"user-text"') > 0 OR (length(payload) <= ${STATUS_MOST} AND instr(payload, '"type":"status"') > 0)) ORDER BY seq`
+        )
+      }
+      made.set(table, st)
+    }
+    return st
   }
 
   for (const s of all) {
@@ -84,40 +120,34 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
     const root = rootOf(s)
     const job = every ? 0 : root.workspace_id ? jobs.byWorkspace.get(root.workspace_id) : undefined
     if (job === undefined) continue
-    stopped(signal)
     facts.cost.threads++
-    const opened = performance.now()
-    const table = s.cold ? 'cold.events' : 'events'
-    const ends = db.prepare(`SELECT MIN(seq) AS a, MAX(seq) AS b FROM ${table} WHERE session_id = ?`).get(s.id) as { a: number | null; b: number | null }
+    const st = statements(s.cold ? 'cold.events' : 'events')
+    const ends = st.ends.get(s.id) as { a: number | null; b: number | null }
     if (ends.a === null || ends.b === null) continue
-    const probe = db.prepare(`SELECT seq, ts FROM ${table} WHERE session_id = ? AND seq >= ? ORDER BY seq LIMIT 1`)
     /** The first seq whose row is at or after `ts`; one past the last when none is. */
-    const seqAt = (ts: number): number => {
+    const seqAt = async (ts: number): Promise<number> => {
       let a = ends.a!
       let b = ends.b! + 1
       while (a < b) {
         const mid = Math.floor((a + b) / 2)
-        const row = probe.get(s.id, mid) as { seq: number; ts: number } | undefined
+        const row = st.probe.get(s.id, mid) as { seq: number; ts: number } | undefined
         if (!row || row.ts >= ts) b = mid
         else a = row.seq + 1
+        await pace()
       }
       return a
     }
-    const first = seqAt(lo)
-    const last = seqAt(hi)
+    const first = await seqAt(lo)
+    const last = await seqAt(hi)
     if (first >= last) continue
 
     // A row before F1 says nothing of who wrote it: it counts only where no model could have written.
     const legacy = s === root && !s.parent_id && !s.routine_run_id && !s.master_id && !s.started_by && !(farOwner.get(`${FAR_OWNER_PREFIX}${s.id}`) as { value?: string } | undefined)?.value
 
-    // Whether the thread was working when the span began: its last status in the rows just before. Only short rows
-    // are looked at, so a tool's output in those rows is never loaded.
-    const prior = db
-      .prepare(`SELECT json_extract(payload, '$.status') AS st FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? AND length(payload) <= ${STATUS_MOST} AND json_extract(payload, '$.type') = 'status' ORDER BY seq DESC LIMIT 1`)
-      .get(s.id, Math.max(ends.a, first - LOOK_BACK), first) as { st: string | null } | undefined
+    // Whether the thread was working when the span began: its last status in the rows just before.
+    const prior = st.prior.get(s.id, Math.max(ends.a, first - LOOK_BACK), first) as { st: string | null } | undefined
     let since: number | null = prior?.st && WORKING.has(prior.st) ? lo : null
-    lap(opened)
-    await breathe()
+    await pace()
     let lastTs = lo
     const worked = (from: number, to: number): void => {
       const a = Math.max(from, week.from)
@@ -125,28 +155,33 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
       if (b > a) ranMs.set(job, (ranMs.get(job) ?? 0) + (b - a))
     }
 
-    const heads = db.prepare(`SELECT seq, length(payload) AS n FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq LIMIT ${HEADS}`)
-    const read = db.prepare(
-      `SELECT seq, ts, json_extract(payload, '$.type') AS t, json_extract(payload, '$.status') AS st, json_extract(payload, '$.by.kind') AS bk, json_extract(payload, '$.by.owner') AS bo
-       FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? AND length(payload) <= ${ROW_MOST}
-         AND (instr(payload, '"type":"user-text"') > 0 OR (length(payload) <= ${STATUS_MOST} AND instr(payload, '"type":"status"') > 0)) ORDER BY seq`
-    )
     for (let at = first; at < last; ) {
-      const began = performance.now()
-      // Where this slice ends: the first row past its budget of bytes to load.
-      const lengths = heads.all(s.id, at, last) as unknown as { seq: number; n: number }[]
+      // Where this batch ends: the first row past its budget of bytes to load, or where the time for reading
+      // headers ran out. Headers come a row at a time, so the clock is looked at as they do.
       let end = last
       let bytes = 0
+      let seen = 0
+      let lastSeq = at
+      // A runtime from before `iterate` reads the headers in one go: they are short, and the batch is still bounded.
+      const lengths = (typeof st.heads.iterate === 'function' ? st.heads.iterate(s.id, at, last) : st.heads.all(s.id, at, last)) as Iterable<{ seq: number; n: number }>
       for (const h of lengths) {
-        if (h.n > ROW_MOST) continue
-        if (bytes > 0 && bytes + h.n > budget) {
-          end = h.seq
+        seen++
+        lastSeq = h.seq
+        if (h.n <= ROW_MOST) {
+          if (bytes > 0 && bytes + h.n > budget) {
+            end = h.seq
+            break
+          }
+          bytes += h.n
+        }
+        if (seen % 64 === 0 && performance.now() - mark > SLICE_AIM_MS) {
+          end = h.seq + 1
           break
         }
-        bytes += h.n
       }
-      if (end === last && lengths.length === HEADS) end = lengths[lengths.length - 1]!.seq + 1
-      const rows = bytes > 0 ? (read.all(s.id, at, end) as unknown as EventRow[]) : []
+      if (end === last && seen === HEADS) end = lastSeq + 1
+      const began = performance.now()
+      const rows = bytes > 0 ? (st.read.all(s.id, at, end) as unknown as EventRow[]) : []
       for (const r of rows) {
         lastTs = r.ts
         if (r.t === 'user-text') {
@@ -162,20 +197,19 @@ export async function scanThreads(db: DatabaseSync, week: Span, before: Span | n
           }
         }
       }
+      // The batch's own time sets the next one's budget.
       const took = performance.now() - began
-      facts.cost.slices++
-      facts.cost.rows += end - at
-      facts.cost.longestMs = Math.max(facts.cost.longestMs, took)
       if (took > SLICE_LONG_MS) budget = Math.max(BUDGET_MIN, Math.floor(budget / 2))
-      else if (took < SLICE_AIM_MS) budget = Math.min(BUDGET_MAX, budget * 2)
+      else if (took < SLICE_AIM_MS / 2) budget = Math.min(BUDGET_MAX, budget * 2)
+      facts.cost.rows += end - at
       at = end
-      await breathe()
-      stopped(signal)
+      await pace(rows.length > 0 || bytes > 0)
     }
     // Still working when the rows ran out: to the span's end if the thread works now, else to its last row (a
     // thread whose host stopped mid-turn never wrote the status that ends it).
     if (since !== null) worked(since, WORKING.has(s.status) ? week.to : lastTs)
   }
+  await pace(true)
   facts.ran = [...ranMs.entries()].sort((a, b) => a[0] - b[0])
   return facts
 }

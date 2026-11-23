@@ -102,6 +102,11 @@ export function dayStart(at: number, tz: string, days = 0): number {
   return instant(tz, Math.floor(wall(tz, at) / DAY) * DAY + days * DAY)
 }
 
+/** The local day that holds `at`, as "2026-11-16": how Money names the days of a span. */
+export function localDay(at: number, tz: string): string {
+  return new Date(Math.floor(wall(tz, at) / DAY) * DAY).toISOString().slice(0, 10)
+}
+
 // --- the facts a host answers ---------------------------------------------------------------
 
 /** A job on one host: a Work workspace. Jobs of one sector on several hosts are one job. */

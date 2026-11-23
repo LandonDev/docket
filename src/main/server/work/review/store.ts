@@ -70,10 +70,23 @@ export function seeWeek(db: DatabaseSync, from: number, now: number): boolean {
 
 export type Mark = { key: string; how: 'later' | 'drop'; until: number | null }
 
-/** The keys a mark hides at `now`. A mark whose day has come is dropped as it is read. */
+/** How long a meeting put off to next week is brought back for, once its day has come. */
+export const CARRIED_FOR_MS = 14 * 24 * 60 * 60_000
+
+/**
+ * The keys a mark hides at `now`. A held item's mark whose day has come is dropped as it is read: the item still
+ * waits, so it is listed again by itself. A meeting's is kept a while longer (`carriedMeetings`): the meeting ended
+ * in a week that is over, and nothing else would bring it back.
+ */
 export function hiddenKeys(db: DatabaseSync, now: number): Set<string> {
-  db.prepare('DELETE FROM work_review_marks WHERE until IS NOT NULL AND until <= ?').run(now)
-  return new Set((db.prepare('SELECT key FROM work_review_marks').all() as { key: string }[]).map((r) => r.key))
+  db.prepare(`DELETE FROM work_review_marks WHERE until IS NOT NULL AND until <= ? AND (key NOT LIKE 'meeting:%' OR until <= ?)`).run(now, now - CARRIED_FOR_MS)
+  return new Set((db.prepare('SELECT key FROM work_review_marks WHERE until IS NULL OR until > ?').all(now) as { key: string }[]).map((r) => r.key))
+}
+
+/** The events of the meetings he put off to "next week" whose day has come: this week's review lists them again. */
+export function carriedMeetings(db: DatabaseSync, now: number): string[] {
+  const rows = db.prepare(`SELECT key FROM work_review_marks WHERE key LIKE 'meeting:%' AND how = 'later' AND until IS NOT NULL AND until <= ? AND until > ?`).all(now, now - CARRIED_FOR_MS) as { key: string }[]
+  return rows.map((r) => r.key.slice('meeting:'.length))
 }
 
 export function setMark(db: DatabaseSync, mark: Mark, now: number): void {

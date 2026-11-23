@@ -2,15 +2,15 @@ import { countedSpan, LEFT, stepWeek, type HostPoint, type ReviewBefore, type Re
 import type { SectorKey } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import type { WorkCtx } from '../modules'
-import { meetingsSlipped } from './followup'
-import { eventsBetween, ownAddresses } from './gather/calendar'
+import { meetingsSlipped, preppedAfter } from './followup'
+import { eventById, eventsBetween, ownAddresses } from './gather/calendar'
 import { jobsOf, type Asked } from './gather/common'
 import { fileFacts } from './gather/files'
 import { heldFacts } from './gather/held'
 import { answeredBetween, sentBetween, waitingPast } from './gather/mail'
 import { doneBetween, pastDue } from './gather/tasks'
 import { scanThreads, type ThreadFacts } from './gather/threads'
-import { hiddenKeys } from './store'
+import { carriedMeetings, hiddenKeys } from './store'
 
 /**
  * Makes this host's part of one week (docs/agents/work-review.md "The gather"): every source is asked on its own, and
@@ -85,7 +85,16 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
       lifeos = { events: events ?? [], sent: sent ?? [], done: done ?? [], answered: answered?.rows ?? [], answeredSince: answered?.answeredSince ?? null }
       slipped.push(...(due ?? []), ...(waits ?? []))
       // Without the sent mail nobody can say a meeting was not followed up, so none is listed.
-      if (events && sent) slipped.push(...meetingsSlipped(events, [...sent, ...(sentAfter ?? [])], { from: a.from, cut }, hidden))
+      if (events && sent) {
+        // A meeting he put off to "next week" ended in a week that is over: the week that holds now lists it again,
+        // judged by the mail sent since it ended.
+        const carried = a.now >= a.from && a.now < a.to ? carriedMeetings(ctx.db, a.now).filter((id) => !events.some((e) => e.id === id)) : []
+        const back = (await Promise.all(carried.map((id) => eventById(owner, id, self, asked)))).filter((e): e is ReviewEvent => e !== null)
+        const earliest = Math.min(a.from, ...back.map((e) => e.endsAt ?? a.from))
+        const sentEarlier = back.length ? ((await ask(ctx, [], '', 'mail sent since a put-off meeting', () => sentBetween(owner, earliest, a.from, asked))) ?? []) : []
+        const prepped = await preppedAfter(ctx, earliest, cut)
+        slipped.push(...meetingsSlipped([...events, ...back], [...sentEarlier, ...sent, ...(sentAfter ?? [])], { from: a.from, cut }, hidden, prepped, new Set(back.map((e) => e.id))))
+      }
       if (eventsBefore || sentBefore) beforeLifeos = { events: spansOf(eventsBefore ?? [], asked.before), sent: (sentBefore ?? []).map((m: ReviewSent) => ({ at: m.at, sector: m.sector })) }
     }
   }

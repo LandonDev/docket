@@ -9,6 +9,7 @@ import {
   isWeek,
   jobKey,
   LEAD_MS,
+  localDay,
   LEFT,
   madeWords,
   mergeKept,
@@ -65,6 +66,14 @@ describe('the week', () => {
     expect((spring.to - spring.from) / HOUR).toBe(167)
     expect(stepWeek(fall, 1, TZ)).toEqual({ from: fall.to, to: fall.to + 7 * 24 * HOUR })
     expect(stepWeek(stepWeek(fall, 1, TZ), -1, TZ)).toEqual(fall)
+  })
+
+  it('names a local day as Money does', () => {
+    expect(localDay(WEEK.from, TZ)).toBe('2026-11-16')
+    expect(localDay(WEEK.to - 1, TZ)).toBe('2026-11-22')
+    expect(localDay(WEEK.to, TZ)).toBe('2026-11-23')
+    // Sunday evening in Chicago is Monday in UTC: the zone decides.
+    expect(localDay(at('2026-11-23T03:00:00Z'), TZ)).toBe('2026-11-22')
   })
 
   it('knows a whole week from any other span', () => {

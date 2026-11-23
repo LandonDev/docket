@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import { REVIEW_CAPS, type ReviewKept, type ReviewReady } from '@shared/contract-work-review'
 import { handled, NOT_HANDLED, workText } from '@shared/work'
-import { isWeek, knownZone, mergeKept, weekOf, type ReviewBody } from '@shared/work/review'
-import type { Caller, WorkCtx, WorkModule, WorkTool } from '../modules'
-import { hostZone, makeJob, routineOf } from './friday'
+import { isWeek, knownZone, localDay, mergeKept, weekOf, type ReviewBody } from '@shared/work/review'
+import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule, type WorkTool } from '../modules'
+import { HOST } from './gather/held'
+import { hostZone, makeJob, READY_TELL, readyKey, routineOf, seedRoutine } from './friday'
 import { makeWeek } from './make'
 import { mustBePerson, settle, undo } from './settle'
 import { ensureReviewTables, keepWeek, keptWeek, keptWeeks, readyWeek, seeWeek } from './store'
@@ -18,6 +19,16 @@ import { reviewText } from './words'
 
 export const NOT_A_WEEK = 'A review is of one whole week, Monday to Sunday'
 export const UNKNOWN_ZONE = 'That time zone is not one this host knows'
+
+/** How often a host with no routine yet looks again for a linked workspace and a time zone. */
+const SEED_EVERY_MS = 10 * 60_000
+
+/**
+ * The mount's own context, kept from `start`. A tool runs with a copy of it (`{...ctx, scope, sessionId, signal}`),
+ * and a pillar the review calls through its `handle` (the Outbox) finds itself by the mount's own object, so the
+ * tool makes its week on this one.
+ */
+let home: WorkCtx | null = null
 
 /** One make at a time per week: two windows asking at once share the read. */
 const making = new Map<number, Promise<ReviewBody>>()
@@ -70,8 +81,22 @@ const weekReview: WorkTool = {
     if (Number.isNaN(at)) return workText('That is not a day: write it as YYYY-MM-DD.')
     const span = weekOf(at, tz)
     // Nothing is kept: a thread's read leaves no mark on what he sees.
-    const { body } = await makeWeek(ctx, { ...span, tz, now, by: 'owner', only: { workspaceId: ctx.scope.workspaceId, sector: ctx.scope.sector }, signal: ctx.signal })
-    return workText(reviewText(body, now))
+    const mount = home ?? ctx
+    const { body } = await makeWeek(mount, { ...span, tz, now, by: 'owner', only: { workspaceId: ctx.scope.workspaceId, sector: ctx.scope.sector }, signal: ctx.signal })
+    return workText(reviewText(body, now, await jobMoney(mount, ctx.scope.workspaceId, localDay(span.from, tz), localDay(span.to, tz))))
+  }
+}
+
+/** The job's own sums of money for a span of local days, from Money's wire: null where Money is not on the host, has no ledger for the job, or does not answer. */
+async function jobMoney(ctx: WorkCtx, workspaceId: string, from: string, to: string): Promise<{ in: number; out: number } | null> {
+  const money = WORK_MODULES.find((m) => (m.id as string) === 'money')
+  if (!money?.handle) return null
+  try {
+    const answer = await money.handle({ id: 'review', method: 'work.money.sums', params: { from, to, workspaceId } } as never, ctx, HOST)
+    const row = answer.handled ? (answer.result as { rows?: { workspaceId: string; in: number; out: number }[] }).rows?.find((r) => r.workspaceId === workspaceId) : undefined
+    return row ? { in: row.in, out: row.out } : null
+  } catch {
+    return null
   }
 }
 
@@ -83,6 +108,8 @@ export const review: WorkModule = {
     switch (req.method) {
       case 'work.review.week':
         mustBePerson(by)
+        // The first window to open a review gives the Friday routine a time zone when LifeOS has said none.
+        void seedRoutine(ctx, req.params.tz)
         return handled(await weekFor(ctx, { ...req.params, by: 'owner' }, signal))
       case 'work.review.list': {
         mustBePerson(by)
@@ -111,12 +138,30 @@ export const review: WorkModule = {
     }
   },
   tools: () => [weekReview],
-  // The Friday routine is seeded with the page (the next landing): until there is a page to open, no routine is made.
-  jobs: [makeJob((ctx, ask, now) => weekFor(ctx, ask, undefined, now))]
+  tells: [{ kind: READY_TELL, group: 'review', name: 'The weekly review' }],
+  jobs: [makeJob((ctx, ask, now) => weekFor(ctx, ask, undefined, now))],
+  start(ctx) {
+    home = ctx
+    // The Friday routine is made once, as soon as there is a linked workspace and a time zone.
+    void seedRoutine(ctx)
+    const again = setInterval(() => void seedRoutine(ctx), SEED_EVERY_MS)
+    again.unref?.()
+    return () => {
+      clearInterval(again)
+      if (home === ctx) home = null
+    }
+  },
+  workspaceCreated(_workspaceId, ctx) {
+    if (ctx.enabled()) void seedRoutine(ctx)
+  }
 }
 
 /** He opened a week's review: it is no longer ready, and every screen that said so hears. */
 export function seen(ctx: WorkCtx, _by: Caller, from: number, now = Date.now()): { ok: true } {
-  if (seeWeek(ctx.db, from, now)) ctx.push({ push: 'work.review', from, madeAt: now, seen: true })
+  if (seeWeek(ctx.db, from, now)) {
+    ctx.push({ push: 'work.review', from, madeAt: now, seen: true })
+    // It is no longer news: the digest's row goes, and a notice of it is withdrawn.
+    ctx.tell.done(readyKey(from))
+  }
   return { ok: true }
 }

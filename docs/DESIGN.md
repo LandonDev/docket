@@ -1353,6 +1353,72 @@ Around the canvas:
   proposal line is a muted 13px line under the sent mail, in the mail
   canvas where he pressed Send ("Add rule…", "Reword…", "Not now"); after:
   "Added to <workspace>'s rules" with Undo.
+- **The weekly review** (the Review page, work/review/; docs/agents/work-review.md).
+  A page above the workspaces: a row under the rail's Work heading, before
+  the workspaces, with no count and no mark, opening over the board on the
+  frame of a page above the workspaces (`WorkPlacePage`, "Today"). The 40px
+  header is the glyph and the name, and at its end the page's controls as
+  one group: "This week" as one ghost verb only while another week shows,
+  the week ("Week of Nov 16", 13px tabular), Previous and Next as ghost icon
+  buttons (Next is off on this week), and a ⋯ menu: Make again, and "Made
+  Fridays at 4:00 PM…", which opens the routine in Routines. The body is a page's 672px column with a 24px inset
+  and **no title**: its first line is 12px muted and says when it was made
+  ("So far, made 2:02 PM", "Made Fri 4:00 PM"); a host that is off is one
+  more muted line there, a host that did not answer one red line with
+  Retry. Three sections under 12px muted headings, 24px apart, in the order
+  of a Friday: **Hours**, **Shipped**, **Slipped**. It shows a week, so it
+  carries no amber, no badge, no score, no streak and no praise, and no
+  chart library.
+  - **Hours**: every job, in the rail's order, a row each on one grid: the
+    sector's dot in a 16px slot, the name in a 144px column (a 12px muted
+    comparison line under it when there is one: "down from about 9 h"), a
+    bar, the total right-aligned in a 132px column in tabular figures, a
+    12px chevron. A row is 32px at least; it opens (`Collapsible`, the one
+    chevron) to its three facts in a 96px-label list, 12px, 24px in: "On the
+    calendar", "At the desk", "Threads ran", each value in the foreground
+    and what it stands on muted after a comma. **The bar** is 8px tall and
+    two parts on one scale shared by every job: calendar time **filled**
+    (`muted-foreground`), desk time an **empty outline** (a 1px
+    `muted-foreground` border), 2px apart, `rounded-sm`. Measured and
+    estimated differ by shape, so the bar reads the same in both themes and
+    needs no new colour; it is drawn for the eye alone (`aria-hidden`), the
+    total beside it saying the same in words. A total says "about" whenever
+    any of it is the estimate. A job with nothing has no bar and no chevron:
+    "Nothing seen this week", muted, in the bar's and the total's place.
+    One 12px muted line closes the section: "Calendar time is measured.
+    Desk time is an estimate from what you did in TempCode."
+  - **Shipped** and **Slipped** group by job, groups 16px apart. A group's
+    heading is 12px muted: the dot in the 24px gutter, then the name on the
+    same edge as its rows' words. The dot is the only thing in the gutter.
+    A job with nothing in a section is not listed in it.
+  - A **Shipped** row is 28px, led by what happened, the thing's own name
+    in the foreground and the rest muted ("Sent **Budget v2** to Dana
+    Reyes", "Finished **Order the new jerseys**", "Dana Reyes answered
+    **Field trip forms**"), the day at the row's end, 12px muted tabular
+    ("Thu"). Five rows a job, then a ghost "Show all 23". A row opens its
+    thing. Nothing at all is one muted line: "Nothing went out this week".
+  - A **Slipped** row is 32px: the thing's own title in the foreground and
+    one muted detail a space after it ("due Tue", "sent Nov 12 to Dana
+    Reyes", "held since Tue", "Thu 2:00 PM with Dana Reyes and 3 others,
+    nothing sent after"). On hover or keyboard focus (`reveal`, on the
+    row) three small ghost verbs lie over the row's end on the row's own
+    fill, named for what each does to that kind of thing: Done, Next week,
+    Drop; Nudge, Next week, Stop waiting; Open, Next week, Discard; Follow
+    up, Next week, None needed. The row itself opens its thing
+    (`ROW_HOLDS`). A row a press settled **leaves**: its height and opacity
+    ease out over `--dur-base` on `--ease-out`, it takes no pointer or
+    focus on the way, and under reduced motion it is simply gone; a toast
+    says what was done, with Undo where it can be taken back. A group whose
+    last row left leaves with it. Tasks due before the week fold behind "12
+    older"; in a kept week, rows dealt with since sit under one fold at the
+    section's end, "Dealt with since" and their count, titles only, with no
+    presses. Nothing slipped is one muted line: "Nothing slipped".
+  - Loading is the three sections' bones in the shape of what is coming,
+    until the first host answers; later hosts fill in. A source that did
+    not answer is one red line in its own section (`PageError`); LifeOS
+    missing touches every section, so it is said once, over them, and no
+    section then claims an empty list ("Not known while LifeOS does not
+    answer").
 - **Settings for Work.** The settings list gains a Work heading after
   Threads: the Work page, then each Work workspace led by its sector's
   dot. A grant row is the dot (on mixed lists only), the grant's name and

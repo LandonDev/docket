@@ -1,3 +1,4 @@
+import { formatMoney } from '@shared/work/money'
 import { dayWords, factsOf, madeWords, mergeReview, NOTHING_SEEN, shippedWords, slippedDetail, totalWords, weekWords, type ReviewBody } from '@shared/work/review'
 
 /**
@@ -7,7 +8,8 @@ import { dayWords, factsOf, madeWords, mergeReview, NOTHING_SEEN, shippedWords, 
 
 const ROWS = 40
 
-export function reviewText(body: ReviewBody, now: number): string {
+/** `money`: the job's own sums for the week from Money (cents), when its ledger has any. */
+export function reviewText(body: ReviewBody, now: number, money: { in: number; out: number } | null = null): string {
   const r = mergeReview([{ environmentId: body.host, body }], now)
   const job = r?.jobs[0]
   if (!r || !job) return 'There is nothing to review: this thread is in no job.'
@@ -27,6 +29,7 @@ export function reviewText(body: ReviewBody, now: number): string {
   }
   const ran = hours ? factsOf(hours).ran : null
   if (ran) lines.push(`- Threads ran (measured; not his hours): ${ran}`)
+  if (money && (money.in > 0 || money.out > 0)) lines.push(`- Money (the job's ledger, as Money sums it): ${formatMoney(money.in)} in, ${formatMoney(money.out)} out`)
   const compare = r.compare.find((c) => c.job === job.key)
   if (compare) lines.push(`- The week before: ${compare.words}`)
 

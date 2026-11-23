@@ -48,8 +48,9 @@ export interface Rig {
   started: { workspaceId: string; text: string }[]
   /** the routines the stand-in Routines pillar holds */
   routines: { id: string; workspaceId: string; name: string; job?: string; trigger: unknown; enabled: boolean; words: string }[]
-  /** what `ctx.tell` was given, once the digest is on master */
-  told: { kind: string; key: string; title: string; detail?: string; workspaceId: string | null }[]
+  /** what `ctx.tell` was given, and the keys it was told are done */
+  told: { kind: string; key?: string; title: string; detail?: string; workspaceId: string | null; open?: unknown }[]
+  toldDone: string[]
   connected: boolean
   session(id: string, o?: Partial<{ parent: string; workspace: string | null; cold: boolean; routineRunId: string; masterId: string; startedBy: string; status: string; created: number; updated: number; scope: string }>): void
   event(sessionId: string, ts: number, payload: Record<string, unknown>): void
@@ -111,6 +112,7 @@ export function makeRig(): Rig {
     started: [] as { workspaceId: string; text: string }[],
     routines: [],
     told: [],
+    toldDone: [],
     connected: true
   } as unknown as Rig
 
@@ -160,6 +162,7 @@ export function makeRig(): Rig {
       owner: () => ({ query: answer, mutation: answer, action: answer })
     },
     canvas: { forWorkspace: (workspaceId: string) => rig.items.get(workspaceId) ?? [] },
+    tell: Object.assign((t: Rig['told'][number]) => void rig.told.push(t), { done: (key: string) => void rig.toldDone.push(key), quiet: () => {} }),
     threads: {
       start: async (o: { workspaceId: string; text: string }) => {
         rig.started.push(o)

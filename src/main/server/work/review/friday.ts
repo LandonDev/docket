@@ -19,9 +19,10 @@ export const ROUTINE_NAME = 'Weekly review'
 export const ROUTINE_RRULE = 'FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0'
 const LIFE = 'life'
 
-/** What the digest takes, once it is on master (`ctx.tell`): one thing told once, by its key. */
-type Tell = (t: { kind: string; workspaceId: string | null; title: string; detail?: string; key: string; open?: unknown }) => void
-const tellOf = (ctx: WorkCtx): Tell | undefined => (ctx as { tell?: Tell }).tell
+/** The one kind of news the review tells: its module lists it (`tells`), in the digest's group `review`. */
+export const READY_TELL = 'review.ready'
+/** A week's tell and Today's row share this key, so one thing is one row everywhere. */
+export const readyKey = (from: number): string => `review:${from}`
 
 async function routinesCall<T>(ctx: WorkCtx, method: string, params: unknown): Promise<T> {
   const routines = WORK_MODULES.find((m) => m.id === 'routines')
@@ -91,7 +92,8 @@ const slippedWords = (body: ReviewBody): string => {
 }
 
 /**
- * The job the routine runs: this week's review, made and kept, then told once. `make` is the module's own
+ * The job the routine runs: this week's review, made and kept, then told once through the digest (no `by`: nothing
+ * is too late, so it waits for the day's one notice), with a press that opens the page at that week. `make` is the module's own
  * `weekFor`, handed in so this file and the module do not import each other.
  */
 export function makeJob(make: (ctx: WorkCtx, ask: { from: number; to: number; tz: string; by: 'routine' }, now: number) => Promise<ReviewBody>): RoutineJob {
@@ -105,7 +107,7 @@ export function makeJob(make: (ctx: WorkCtx, ask: { from: number; to: number; tz
       const body = await make(ctx, { ...week, tz, by: 'routine' }, firedAt)
       ctx.push({ push: 'work.review', from: week.from, madeAt: body.madeAt, seen: false })
       // Told once a week: a second run of the same week (Run now) makes it again and tells nobody.
-      if (!told) tellOf(ctx)?.({ kind: 'review.ready', workspaceId: null, title: 'Your week is ready to review', detail: weekWords(week, tz), key: `review:${week.from}` })
+      if (!told) ctx.tell({ kind: READY_TELL, workspaceId: null, title: 'Your week is ready to review', detail: weekWords(week, tz), key: readyKey(week.from), open: { place: 'review', at: String(week.from) } })
       return { words: `${weekWords(week, tz)}: ${slippedWords(body).toLowerCase()}`, open: { place: 'review', at: week.from } }
     }
   }

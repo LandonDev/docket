@@ -1,4 +1,4 @@
-import type { IconComponent } from "../chrome/icons";
+import { Layers, type IconComponent } from "../chrome/icons";
 import { workPlacesChunk } from "../surfaces/chunks";
 import { whenIdle } from "./hoverPrefetch";
 
@@ -21,7 +21,7 @@ export type WorkPlaceRow = {
   key?: string;
 };
 
-export const WORK_PLACE_ROWS: WorkPlaceRow[] = [];
+export const WORK_PLACE_ROWS: WorkPlaceRow[] = [{ id: "review", label: "Review", order: 20, icon: Layers }];
 
 /** The rows in the rail's order. */
 export const workPlaceRows = (): WorkPlaceRow[] => [...WORK_PLACE_ROWS].sort((a, b) => a.order - b.order);

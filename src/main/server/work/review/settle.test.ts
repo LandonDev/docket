@@ -113,6 +113,42 @@ describe('a meeting', () => {
     expect(everything()).toEqual([])
   })
 
+  it('put off to next week, it comes back in the new week\'s review until it is followed up or needs nothing', async () => {
+    const { weekFor } = await import('.')
+    const event = { _id: 'e1', sector: 'purdue', title: 'Budget review', startsAt: MON + 3 * DAY + 14 * HOUR, endsAt: MON + 3 * DAY + 15 * HOUR, allDay: false, attendees: [{ address: 'dana@example.edu', name: 'Dana Reyes' }] }
+    rig.lifeos['mail:accounts'] = []
+    // LifeOS lists an event in the week it starts in; by id it is always there.
+    rig.lifeos['events:range'] = (a: { to: number }) => (a.to === WEEK.to ? [event] : [])
+    rig.lifeos['events:get'] = event
+    rig.lifeos['review:sentBetween'] = []
+    rig.lifeos['review:doneBetween'] = []
+    rig.lifeos['review:answeredBetween'] = { rows: [], answeredSince: null }
+    rig.lifeos['tasks:due'] = []
+    rig.lifeos['mailWaits:list'] = { page: [], isDone: true, continueCursor: '' }
+    const keys = async (week: { from: number; to: number }, now: number) => (await weekFor(rig.ctx, { ...week, tz: TZ, by: 'owner' }, undefined, now)).slipped.rows.map((r) => r.key)
+    const next = { from: WEEK.to, to: WEEK.to + 7 * DAY }
+    expect(await keys(WEEK, NOW)).toEqual(['meeting:e1'])
+    await press(meeting, 'later')
+    expect(await keys(WEEK, NOW + HOUR)).toEqual([])
+    // Monday: it is back, in the week that holds now, though it ended last week.
+    expect(await keys(next, WEEK.to + 9 * HOUR)).toEqual(['meeting:e1'])
+    expect(rig.calls.filter((c) => c.fn === 'events:get').at(-1)!.args).toEqual({ id: 'e1' })
+    // A mail to Dana since it ended, whenever it went, settles it.
+    rig.lifeos['review:sentBetween'] = (a: { from: number; to: number }) => (a.to === WEEK.to ? [{ id: 'm1', threadId: 't1', subject: 'Notes', to: [{ address: 'dana@example.edu' }], sentAt: MON + 4 * DAY, sector: 'purdue' }] : [])
+    expect(await keys(next, WEEK.to + 10 * HOUR)).toEqual([])
+    rig.lifeos['review:sentBetween'] = []
+    // Put off again, it waits another week; "None needed" ends it for good.
+    await settle(rig.ctx, window, { row: meeting, how: 'later', tz: TZ }, WEEK.to + 11 * HOUR)
+    expect(await keys(next, WEEK.to + 12 * HOUR)).toEqual([])
+    expect(await keys({ from: next.to, to: next.to + 7 * DAY }, next.to + HOUR)).toEqual(['meeting:e1'])
+    await settle(rig.ctx, window, { row: meeting, how: 'drop', tz: TZ }, next.to + 2 * HOUR)
+    expect(await keys({ from: next.to, to: next.to + 7 * DAY }, next.to + 3 * HOUR)).toEqual([])
+    // Two weeks after its day a mark nobody acted on is let go.
+    await settle(rig.ctx, window, { row: { kind: 'meeting', eventId: 'e2' }, how: 'later', tz: TZ }, NOW)
+    expect([...hiddenKeys(rig.db, WEEK.to + 15 * DAY)]).toEqual(['meeting:e1'])
+    expect(rig.db.prepare("SELECT COUNT(*) AS n FROM work_review_marks WHERE key = 'meeting:e2'").get()).toEqual({ n: 0 })
+  })
+
   it('leaves the follow-up to the window, which starts a thread about it', async () => {
     await expect(press(meeting, 'now')).rejects.toThrow('Start the follow-up from the page')
   })

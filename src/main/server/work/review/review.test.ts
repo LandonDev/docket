@@ -227,6 +227,34 @@ describe('the week_review tool', () => {
     for (const other of ['Purdue', 'Budget', 'jerseys', 'travel forms', 'Dana', '#esports']) expect(cosmic).not.toContain(other)
   })
 
+  it('adds the job\'s own sums from Money, asked for that workspace alone', async () => {
+    const { WORK_MODULES } = await import('../modules')
+    const asked: unknown[] = []
+    WORK_MODULES.push({ id: 'money' as never, ensure() {}, async handle(req) { asked.push((req as { params?: unknown }).params); return { handled: true, result: { rows: [{ workspaceId: 'w-purdue', in: 120_00, out: 45_50 }] } } } })
+    expect(await run('t-purdue')).toContain("Money (the job's ledger, as Money sums it): $120.00 in, $45.50 out")
+    expect(asked).toEqual([{ from: '2026-11-16', to: '2026-11-23', workspaceId: 'w-purdue' }])
+    // Another job's thread asks for its own workspace and is shown nothing of this one.
+    expect(await run('t-cosmic')).not.toContain('Money')
+  })
+
+  it('makes its week on the mount\'s own context, where the pillars it calls find themselves', async () => {
+    // The mount runs a tool with a copy of its context; the Outbox knows only the mount's own object.
+    const stop = review.start!(rig.ctx)
+    const seen: unknown[] = []
+    const { WORK_MODULES } = await import('../modules')
+    const outbox = WORK_MODULES.find((m) => m.id === 'outbox')!
+    const real = outbox.handle!
+    outbox.handle = async (req, ctx, by) => {
+      seen.push(ctx)
+      return real(req, ctx, by)
+    }
+    await run('t-purdue')
+    stop()
+    outbox.handle = real
+    expect(seen.length).toBeGreaterThan(0)
+    for (const ctx of seen) expect(ctx).toBe(rig.ctx)
+  })
+
   it('shows a job with no sector nothing of LifeOS, and a Work Chat nothing at all', async () => {
     const side = await run('t-side')
     expect(side).toContain('Week of Nov 16, Side work.')

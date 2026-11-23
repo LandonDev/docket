@@ -209,7 +209,7 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
   const openRun = (run: RoutineRun): (() => void) | null => {
     if (run.sessionId) return () => open(run.sessionId);
     const page = run.open;
-    return page && routineJobOpenPort.has() ? () => routineJobOpenPort.open(page) : null;
+    return page && routineJobOpenPort.has(page) ? () => routineJobOpenPort.open(page) : null;
   };
   const starts = row.waiting ? `${row.words}, ${row.waiting.charAt(0).toLowerCase()}${row.waiting.slice(1)}` : row.nextAt ? `${row.words}, next ${dayTime(row.nextAt)}` : row.words;
   const ends = row.ends.kind === "day" ? dayTime(row.ends.at) : row.ends.kind === "once" ? "After the first run" : null;
