@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
-import type { FileEntry } from "@shared/work/files";
+import type { FileEntry, FolderRef } from "@shared/work/files";
 import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
 import { modOrCtrl } from "../../lib/keys";
@@ -143,6 +143,8 @@ export function dragProps(drag: RowDrag | undefined, entry: FileEntry): Record<s
 export interface DragNow {
   entries: readonly FileEntry[];
   from: PlaceCopy;
+  /** the one folder the rows lie in, where a move's Undo puts them back; absent for rows of a lens or a search */
+  back?: { at: FolderRef; name: string };
 }
 let dragNow: DragNow | null = null;
 export const dragging = (): DragNow | null => dragNow;
@@ -151,13 +153,17 @@ export const setDragging = (next: DragNow | null): void => void (dragNow = next)
 /**
  * Runs `done` once a drag the system carries is over. The call that starts one answers at its end on Windows and
  * Linux but at once on a Mac, and the window is told of no end when the drop lands outside it: so the rows stay the
- * rows being dragged until a drop in this window, or until the pointer is seen here again with no button held.
+ * rows being dragged until a drop in this window, until the pointer is seen here again with no button held, or
+ * until the window loses focus: a file of the desktop's can only be dragged in after a press there, which takes the
+ * focus, so what comes in then is the desktop's and uploads. A drag that leaves the window and comes back still
+ * held is the same rows, and a drop then still moves them.
  */
 export function whenDragEnds(done: () => void): void {
   const end = (): void => {
     window.removeEventListener("drop", end, true);
     window.removeEventListener("dragend", end, true);
     window.removeEventListener("mousemove", moved, true);
+    window.removeEventListener("blur", end);
     // After the drop's own handlers, which still read what was dragged.
     setTimeout(done, 0);
   };
@@ -167,6 +173,7 @@ export function whenDragEnds(done: () => void): void {
   window.addEventListener("drop", end, true);
   window.addEventListener("dragend", end, true);
   window.addEventListener("mousemove", moved, true);
+  window.addEventListener("blur", end);
 }
 
 /**

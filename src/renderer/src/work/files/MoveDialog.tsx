@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FileCrumb } from "@shared/contract-work-files";
 import { DEFAULT_SORT, refusal, type FileEntry, type FolderRef } from "@shared/work/files";
 import { DialogFooter } from "../../chrome/ConfirmDialog";
@@ -6,6 +6,7 @@ import { ChevronRight } from "../../chrome/icons";
 import { Modal } from "../../chrome/Modal";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
 import { KindGlyph } from "./KindGlyph";
 import { placePage, readCopy, samePage, type PlaceCopy, type Sidebar } from "./model";
 import { useListing, type ListFrom } from "./store";
@@ -55,7 +56,7 @@ export function MoveDialog({
     ...(sidebar.folder ? [{ copy: sidebar.folder, at: placePage(sidebar.folder, workspace.name).at, name: workspace.name }] : []),
     ...sidebar.rows.map((row) => {
       const copy = readCopy(row);
-      return { copy, at: placePage(copy, row.name).at, name: row.group && row.group !== row.name ? `${row.group} · ${row.name}` : row.name };
+      return { copy, at: placePage(copy, row.name).at, name: row.group && row.group !== row.name ? `${row.group}, ${row.name}` : row.name };
     }),
   ];
   // The grammar's refusal for the folder shown, for any of the things.
@@ -102,11 +103,24 @@ function Places({ places, onInto }: { places: readonly MoveTarget[]; onInto(to: 
   );
 }
 
-/** One folder's folders, under the trail that led to it; a press walks in. */
+/** One folder's folders, under the trail that led to it; a press walks in. The host is asked for folders alone, a page at a time as the list nears its end. */
 function Folders({ workspaceId, target, entries, onInto, onPlaces }: { workspaceId: string; target: MoveTarget; entries: readonly FileEntry[]; onInto(to: MoveTarget): void; onPlaces(): void }) {
-  const from: ListFrom = { workspaceId, copy: target.copy };
+  const from: ListFrom = { workspaceId, copy: target.copy, foldersOnly: true };
   const listing = useListing(from, target.at, DEFAULT_SORT);
   const folders = listing.entries.filter((e) => e.folder);
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const more = listing.more && !listing.error;
+  useEffect(() => {
+    if (!scroller || !more) return;
+    const near = (): void => {
+      if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 32 * 8) listing.loadMore();
+    };
+    near();
+    scroller.addEventListener("scroll", near, { passive: true });
+    return () => scroller.removeEventListener("scroll", near);
+    // `loadMore` is new each render; the scroller and the count decide when to listen again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scroller, more, folders.length]);
   const moving = new Set(entries.map((e) => e.key));
   const trail: FileCrumb[] = listing.trail.length ? listing.trail : [{ name: target.name, at: target.at }];
   return (
@@ -130,7 +144,7 @@ function Folders({ workspaceId, target, entries, onInto, onPlaces }: { workspace
           </span>
         ))}
       </nav>
-      <div role="listbox" aria-label={`Folders in ${target.name}`} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+      <div ref={setScroller} role="listbox" aria-label={`Folders in ${target.name}`} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
         {!listing.loaded ? (
           <div role="status" aria-label="Loading" aria-busy className="flex flex-col">
             {["w-[46%]", "w-[60%]", "w-[38%]"].map((w, i) => (
@@ -167,6 +181,19 @@ function Folders({ workspaceId, target, entries, onInto, onPlaces }: { workspace
             </Button>
           ))
         )}
+        {listing.loading && listing.more && folders.length ? (
+          <div aria-busy className="flex h-8 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground">
+            <Spinner className="size-3" />
+            Loading more
+          </div>
+        ) : listing.error && folders.length ? (
+          <div className="flex h-8 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground">
+            <span className="min-w-0 flex-1 truncate">The rest did not load.</span>
+            <Button variant="ghost" size="xs" onClick={listing.lostPage ? listing.loadMore : listing.retry}>
+              Retry
+            </Button>
+          </div>
+        ) : null}
       </div>
     </>
   );

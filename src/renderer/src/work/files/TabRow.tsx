@@ -189,7 +189,7 @@ export function TabRow({
               ref={(el) => sortable.setItemRef(tab.id, el)}
               data-menu-id={tab.id}
               data-drop-over={drop?.at === `tab:${tab.id}` || undefined}
-              className={`group/dock-tab relative flex max-w-60 min-w-9 shrink rounded-md ${dragging ? "z-10" : ""} ${drop?.at === `tab:${tab.id}` ? "bg-muted" : ""}`}
+              className={`group/dock-tab relative flex max-w-60 min-w-9 shrink rounded-md ${dragging ? "z-10" : ""} ${drop?.at === `tab:${tab.id}` ? "bg-sidebar-group-selected" : ""}`}
               {...(drop && tab.kind === "page"
                 ? {
                     onDragOver: (event: DragEvent) => {
@@ -237,7 +237,7 @@ export function TabRow({
                       if (event.button === 1) onClose(tab.id);
                     }}
                     // The close control lies over the tab's end: the name stops short of it on the tab that shows one.
-                    className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 ${active ? "pe-7" : "pe-2 group-hover/dock-tab:pe-7"}`}
+                    className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 ${active ? "pe-7" : "pe-2 group-hover/dock-tab:pe-7"}`}
                   >
                     <KindGlyph kind={tab.kind === "page" ? "folder" : kindOfEntry(name).kind} tinted={false} className="size-3.5 shrink-0" />
                     <span ref={titleRef} className="min-w-0 truncate">

@@ -134,7 +134,8 @@ export function FileHeader({
           </Button>
         </Tip>
       ) : null}
-      <Button variant="secondary" size="sm" className="shrink-0" aria-pressed={ask.pressed} disabled={ask.disabled} onClick={ask.run}>
+      {/* A pressed toggle is `muted` and flat: the raised button's own layer would hide a fill under it. */}
+      <Button variant={ask.pressed ? "ghost" : "secondary"} size="sm" className="shrink-0 aria-pressed:bg-muted" aria-pressed={ask.pressed} disabled={ask.disabled} onClick={ask.run}>
         <Ask />
         Ask
       </Button>

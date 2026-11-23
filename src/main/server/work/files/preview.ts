@@ -67,6 +67,7 @@ export const NO_PREVIEW = {
   big: 'Its preview is too large.',
   busy: 'Too many previews are waiting.',
   gone: 'It is not there any more.',
+  changed: 'It changed while it was drawn.',
   reach: 'It is out of reach.',
   folder: 'A folder has no preview.',
   page: (n: number): string => `It has no page ${n}.`
@@ -443,7 +444,8 @@ const ownThumb: Source = {
 const quickLook: Source = {
   name: 'quicklook',
   pages: false,
-  applies: (t) => (previewSeams.platform ?? process.platform) === 'darwin' && kindOf(t) !== 'text',
+  // Never for a shared file: the Mac's thumbnail service may keep its own picture of it on disk.
+  applies: (t) => (previewSeams.platform ?? process.platform) === 'darwin' && kindOf(t) !== 'text' && !t.shared,
   async draw(r) {
     const look = previewSeams.quickLook ?? qlmanage
     const png = await look(r.t.path, edgeOf(r.want), r.dir, r.signal)
@@ -664,6 +666,9 @@ export async function previewOne(ctx: WorkCtx, by: Caller, workspaceId: string, 
   // The second look: a file that moved out of this caller's reach during the render answers nothing, and is kept nowhere.
   const again = await targetOf(ctx, by, workspaceId, ref, method)
   if (isNone(again) || again.path !== t.path) return { none: NO_PREVIEW.reach }
+  // A file whose bytes or sharing changed during the render: the picture is of what it was, answered to no one and
+  // kept nowhere (a file now shared must leave nothing on disk).
+  if (again.version !== t.version || again.shared !== t.shared) return { none: NO_PREVIEW.changed }
   if (fresh) {
     if (t.shared) remember(s, key, got, t.library)
     else await toDisk(ctx.dataDir, s, key, got).catch((err) => ctx.log(`files: a preview could not be kept: ${err instanceof Error ? err.message : String(err)}`))

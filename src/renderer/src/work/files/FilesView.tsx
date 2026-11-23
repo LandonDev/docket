@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "rea
 import type { FilePage, FileTab, SavedFileSearch } from "@shared/contract-work-files";
 import { canvasSourcePath, filesPaneOf, type CanvasItem, type CanvasSource } from "@shared/work";
 import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, refusal, type FileEntry, type FolderRef } from "@shared/work/files";
-import { ChevronDown, ChevronRight, Clock, Folder, Search, Star, Trash2, Users } from "../../chrome/icons";
+import { ChevronRight, Clock, Folder, Search, Star, Trash2, Users } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
+import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { loadToast } from "../../components/ui/toaster";
@@ -25,7 +26,7 @@ import { FileTabView, type FileManage } from "./FileTabView";
 import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, type MoveTarget } from "./MoveDialog";
-import { samePage, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import "./bindings";
 import { FILES_KEYS } from "./chords";
 import { fetchHere, fileOf, openEntry, openInApp, type Busy } from "./open";
@@ -118,7 +119,7 @@ function SideRow({
         data-down={down || undefined}
         data-drop-over={over || undefined}
         style={depth ? { paddingInlineStart: 8 + depth * 16 } : undefined}
-        className={`${SIDE_ROW} ${fold ? "pe-7" : ""} ${on || over ? "bg-muted" : ""}`}
+        className={`${SIDE_ROW} ${fold ? "pe-7" : ""} ${on || over ? "bg-sidebar-group-selected" : ""}`}
         onClick={onClick}
         onAuxClick={(event) => {
           if (event.button === 1) onAuxClick?.();
@@ -130,7 +131,7 @@ function SideRow({
       </ItemButton>
       {fold ? (
         <Button variant="ghost" size="icon-xs" aria-label={fold.open ? `Hide the folders of ${name}` : `Show the folders of ${name}`} aria-expanded={fold.open} className="absolute end-0.5 top-0.5 text-muted-foreground" onClick={fold.toggle}>
-          {fold.open ? <ChevronDown /> : <ChevronRight />}
+          <ChevronRight className={`${DISCLOSURE_CHEVRON} ${fold.open ? "rotate-90" : ""}`} />
         </Button>
       ) : null}
     </div>
@@ -533,7 +534,7 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
       setDropAt(null);
       setDragLabel(null);
       setDragging(null);
-      if (how) void carryTo(of, how.verb, how.drag.from, how.drag.entries, to);
+      if (how) void carryTo(of, how.verb, how.drag.from, how.drag.entries, to, how.drag.back);
     },
   };
   /** The file tab another file tab can go to the side of: the one shown, else the one he was in before he pressed this one. Null where there is none, or the tab is a copy's. */
@@ -542,6 +543,9 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   const sideInto = (tabId: string): FileTab | null => {
     const from = view.tabs.find((t) => t.id === tabId);
     if (!from || from.kind !== "file" || from.copyOf) return null;
+    // Only a file on a disk sits at a side today: a LifeOS or Drive file opens in a tab of its own.
+    const fromItem = canvas.items.find((i) => i.id === from.itemId);
+    if (!fromItem || !sitsAtSide(fromItem.source)) return null;
     const target = view.tabs.find((t) => t.kind === "file" && t.id !== tabId && (t.id === (tab?.kind === "file" && tab.id !== tabId ? tab.id : before.current)));
     return target && !target.copyOf ? target : null;
   };
@@ -657,7 +661,8 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
           start={carrying.start}
           sidebar={reach.sidebar}
           workspace={workspace}
-          onPick={(to) => carryTo(of, carrying.verb, carrying.from, carrying.entries, to)}
+          // Rows of one folder go back to it on Undo; a lens's rows each live somewhere of their own.
+          onPick={(to) => carryTo(of, carrying.verb, carrying.from, carrying.entries, to, carrying.entries.some((e) => e.where) ? undefined : carrying.start)}
           onClose={() => setCarrying(null)}
         />
       ) : null}
@@ -788,7 +793,7 @@ function FolderPage({
           // A template is a file: the templates pillar's dialog makes the copy here, in the workspace's own folder.
           ...(copy.place.kind === "folder" && workTemplatePort.get() ? { fromTemplate: () => void openTemplates({ workspaceId: workspace.id, into: page.at, intoName: page.name }) } : {}),
           upload: (files, entry) => verbs.upload(copy, into(entry), files),
-          drop: (verb, entries, entry, from) => void carryTo(of, verb, from, entries, { copy, at: entry.folder!, name: entry.name }),
+          drop: (verb, entries, entry, from, back) => void carryTo(of, verb, from, entries, { copy, at: entry.folder!, name: entry.name }, back),
           // Out to the desktop, under Download's own rule: a file that lies on this computer, a shared one only where the workspace lives here too.
           ...(copy.link === LOCAL_ENVIRONMENT_ID && !copy.place.vm && (!copy.place.shared || copy.link === workspace.environmentId) ? { dragOut: (rows: readonly FileEntry[]) => dragOut(rows) } : {}),
           uploading: verbs.uploading,
@@ -852,7 +857,7 @@ function SearchTab({
 }: Nav & { tab: FileTab; page: FilePage; workspace: WorkspaceMeta; reach: Reach; busy: Busy; fixes: NoteFixes; find: PageFind | null; searches: readonly SavedFileSearch[]; onOpenFound(entry: FileEntry): void; onReveal(entry: FileEntry): void }) {
   const link = workspace.environmentId;
   const saved = searches.find((search) => search.id === savedIdOf(page.at)) ?? null;
-  const [filter, setFilter] = useSearchFilter(tab.id, saved?.filter);
+  const [filter, setFilter] = useSearchFilter(tab.id, page, saved?.filter);
   const [saving, setSaving] = useState(false);
   const query = page.query ?? saved?.query ?? "";
   // The search is the workspace's own host's: it knows every place it lists.

@@ -997,7 +997,9 @@
   workspace's places (`work.files.places`), each folder or lens shown by
   `FilesHost.slot(workspace, folder)` as a `WorkRead<Listing>` a page at a
   time (`list`, `more`; a `stale` page lists again from the top, a failed
-  refresh keeps a shown list), the uploads under way per folder, and every
+  refresh keeps a shown list; a next page that fails keeps the rows and the
+  cursor and says why in `Listing.moreFailed`, and `askingMore` holds the
+  folders whose next page is out, the foot's spinner alone), the uploads under way per folder, and every
   press: `open` (`work.files.open`, or the thread its `held` names through
   `work.canvas.list`), `seen`, `star`, `rename`, `make`, `trash` (answers the
   Trash rows) and `restore`, `upload` (`work.files.upload`, then
@@ -1014,7 +1016,9 @@
   (`sections`: Recent and Starred, the places with one row per `key`, From
   mail), `refusal` word for word for a change inside one place, `offers`
   (the place does it and the key may ask: operate, and approve where others
-  can open it), a row's `fact`, `opening` (`.item` seats it, `.quickLook`
+  can open it), a row's `fact`, Quick Look's `factDetail` (size and time as
+  prose after the kind), `sentence` (a failure's words without the wire's
+  code word), `opening` (`.item` seats it, `.quickLook`
   with `Original`: `allowed`, `readOnly`, `tooBig`, `facts(host:)`), the
   search field's `filter`, `nameProblem` and `untitled`.
 - **`OriginalFiles`**: Open the original reads a workspace-folder file of

@@ -8,13 +8,21 @@
  * "box" a headless one with a Work workspace whose copy switch is on and which may use mac's desktop.
  * mac saves box with a client key minted for the run (every capability, as his Mac's own key: its link registers the Mac bridge; revoked at the end), so
  * mac's window reaches box as a remote key, as his Mac's window reaches the real box. Every request
- * below goes out on that window's own link (`window.__monocode.registry`), in the order the Files
- * view's `open` makes them (FilesView.tsx `useOpener`): `work.office.filesThreads` (a thread that
- * holds the file already shows it again), else `session.create`, `work.office.filesCopy` (box fetches
- * the bytes from mac over the host link) and `work.canvas.open`.
+ * below goes out on that window's own link (`window.__monocode.registry`). Two routes are proven:
  *
+ * The route before tabs, where the workspace's host keeps none, in the order the window makes its requests
+ * (src/renderer/src/work/files/open.ts `openEntry`):
+ * `work.office.filesThreads` (a thread that holds the file already shows it again), else
+ * `session.create`, `work.office.filesCopy` (box fetches the bytes from mac over the host link) and
+ * `work.canvas.open`.
  *  - a deck, a PDF and a picture open one after another, each in its own thread with a copy
  *  - the deck again opens the deck's first thread, made no new one
+ *
+ * The Files place's route: one `work.files.open` to the workspace's host, which makes the same copy in a
+ * tab of its own with no thread.
+ *  - a deck, a PDF and a sheet open one after another, each in its tab; the deck again is its own tab
+ *  - the deck the first route's thread holds opens in a tab of its own too (a copy keeps its own marks)
+ *  - no thread is made, and the Files verbs that name mac's file pass the fence
  *  - a path of box's own disk outside its roots stays refused at the fence, by its own host or by a
  *    claim of another host's; a Windows guest path still passes the fence (and box, with no VM, refuses it)
  *
@@ -261,9 +269,9 @@ try {
   check('Files: then the sheet opens in its tab', !!sheetTab.tabId && sheetTab.kind === 'sheet' && sheetTab.tabs === 3, JSON.stringify(sheetTab))
   const deckAgain = await tab(files.deck2)
   check("Files: the deck again is the deck's own tab, and no fourth is made", deckAgain.tabId === deckTab.tabId && deckAgain.tabs === 3, JSON.stringify(deckAgain))
-  // The deck a thread already shows keeps its marks by item: it is answered as that thread's, with no refusal and no second seat.
+  // A copy is a file of its own with its own marks: the deck a thread already shows opens in a tab of its own.
   const heldDeck = await tab(files.deck)
-  check('Files: a deck a thread holds is answered as that thread\'s, not refused', !heldDeck.error && heldDeck.held === true && heldDeck.tabs === 3, JSON.stringify(heldDeck))
+  check('Files: a deck a thread holds opens in a tab of its own', !heldDeck.error && !heldDeck.held && !!heldDeck.tabId && heldDeck.kind === 'slides' && heldDeck.tabs === 4, JSON.stringify(heldDeck))
   const sessionsAfter = await threads()
   check('Files: opening made no thread', sessionsAfter === sessionsBefore, `${sessionsBefore} before, ${sessionsAfter} after`)
   for (const [method, params] of [

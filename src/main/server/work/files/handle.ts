@@ -294,15 +294,6 @@ export function openAs(ctx: WorkCtx, at: Located, name: string, as?: CanvasKind)
   throw new Error(NOT_BUILT_PLACE)
 }
 
-/**
- * The kinds that keep a file's marks by item, so two seats on one file would each write them: a file of these a
- * thread already holds opens in that thread. A PDF and a video keep theirs by the file (canvas/fileKey.ts), so a
- * tab and a thread on one share them.
- */
-const MARKS_BY_ITEM: readonly CanvasKind[] = ['slides']
-/** A copy is a file of its own, whose marks a thread on the original never shares: a kind with marks opens in that thread. */
-const MARKS_OF_A_COPY: readonly CanvasKind[] = ['pdf', 'slides', 'media']
-
 type OpenAsk = { workspaceId: string; ref: CanvasSource; name?: string; as?: CanvasKind; opener?: string; beside?: string; side?: string; key?: string }
 
 /**
@@ -325,10 +316,7 @@ async function openCopy(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, p: Op
   if (was && shown) return { ...tabsFor(ctx, by, workspace.id), tabId: was.id, item: cut(shown) }
   // A copy is the file it is, with no app behind it; a copy of a library's sound is played, not transcribed.
   const kind = p.as ?? (kindOfEntry(name).kind === 'audio' ? 'file' : seatOf(name))
-  if (MARKS_OF_A_COPY.includes(kind)) {
-    const holding = threadsHolding(ctx, workspace.id, { at: 'file', ...file }, (path) => reaches(ctx, by, path))[0]
-    if (holding) return { ...tabsFor(ctx, by, workspace.id), held: { sessionId: holding.sessionId, itemId: holding.itemId } }
-  }
+  // A copy is a file of its own: its marks are its own, so a thread that holds the original never takes its open.
   const copy = await copyIn(ctx, filesPaneOf(workspace.id), { at: 'file', ...file }, signal)
   const { tabId, item } = state.tabs.openFile(workspace.id, { key, name, kind, source: copy.source, copyOf: { host: file.host, path: file.path, ...(vm ? { vm: true } : {}) } }, p.opener)
   state.marks.seen(workspace.id, key, { file: { at: 'file', ...file } }, name)
@@ -363,10 +351,8 @@ async function open(ctx: WorkCtx, by: Caller, p: OpenAsk, method: string, signal
   const { library } = doorPlace(ctx, by, at)
   const key = library ? libraryKey(library, at.path) : refKey({ at: 'file', host: ctx.host, path: at.path })
   const made = openAs(ctx, at, name, p.as)
-  if (MARKS_BY_ITEM.includes(made.kind)) {
-    const holding = threadsHolding(ctx, workspace.id, { at: 'file', host: ctx.host, path: at.path }, (path) => reaches(ctx, by, path))[0]
-    if (holding) return { ...tabsFor(ctx, by, workspace.id), held: { sessionId: holding.sessionId, itemId: holding.itemId } }
-  }
+  // A file of this disk opens in its tab even when a thread shows it: a PDF, a video and a deck keep their marks and
+  // their state by the file (canvas/fileKey.ts, slides `deckKey`), so the tab and the thread share them.
   if (p.beside) {
     // No tab is made and none is selected: the window's one seat shows this file now, and the file it showed goes.
     const seated = state.tabs.seat(workspace.id, p.beside, { key, name, kind: made.kind, source: made.source })
@@ -382,7 +368,8 @@ export const BESIDE_HERE = 'A file on another computer opens in a tab of its own
 /**
  * A Google file in a Files tab: its kind's item on the workspace's Files pane, with no thread, and never twice
  * (opening it again selects its tab). The google pillar keeps its row and polls its version while it is open. A deck
- * a thread already shows opens in that thread: a deck keeps its review state by item.
+ * a thread already shows opens in that thread: a Google deck is no file of this disk, so the slides pillar keeps its
+ * review state by item (`deckKey`), and two seats on it would each write that state.
  */
 async function openGoogle(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, at: Located & { in: 'drive' }, p: OpenAsk): Promise<FilesOpened> {
   if (!at.mime) throw new Error('That is a folder: it opens in its tab.')
@@ -639,7 +626,16 @@ async function lifeosCase(ctx: WorkCtx, by: Caller, m: string, p: Record<string,
         const where = whereOf(ctx, at, placeOf(at, libraries))
         return where ? { ...entry, where } : entry
       }
-      const here = await waitingFiles(ctx, by, p.workspaceId, HOME_MOST, entryAt)
+      // Whether the caller could name a ref of this host now: the door's own look, so a held act it could not reach is never told of.
+      const mayName = (ref: FileRef): boolean => {
+        try {
+          locate(ctx, by, p.workspaceId, ref.at === 'place' ? placeRoot(ctx, by, p.workspaceId, ref.id) : ref, m)
+          return true
+        } catch {
+          return false
+        }
+      }
+      const here = await waitingFiles(ctx, by, p.workspaceId, HOME_MOST, entryAt, mayName)
       const keys = new Set(here.map((e) => e.key))
       const lifeos = (await waitingRows(ctx, by, ws, HOME_MOST)).filter((e) => !keys.has(e.key))
       const waiting = withMarks(filesState(ctx), p.workspaceId, [...here, ...lifeos].slice(0, HOME_MOST))

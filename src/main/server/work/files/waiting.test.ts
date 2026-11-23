@@ -142,6 +142,21 @@ describe("Home's Waiting on you", () => {
     expect(home.waiting.map((e) => e.name)).toEqual(['Budget.xlsx'])
   })
 
+  it('tells a key of a held act only where it could name everything the act names, a make and a destination included', async () => {
+    hold({ path: join(rig.team, 'General'), name: 'Roster', verb: 'make' })
+    // A key bound to the workspace's folder alone hears of no make in the team's channel: not its name, folder or item.
+    expect((await call<FilesHome>('work.files.home', {}, phone)).waiting).toEqual([])
+    // A key that may name General, but not Events where the move would put the file, hears of the make alone.
+    rig.roots.push(join(rig.team, 'General'))
+    const move = hold({ path: join(rig.team, 'General', 'Spring budget.xlsx'), name: 'Spring budget.xlsx' })
+    expect((await call<FilesHome>('work.files.home', {}, phone)).waiting.map((e) => e.name)).toEqual(['Roster'])
+    rig.roots.push(join(rig.team, 'Events'))
+    expect((await call<FilesHome>('work.files.home', {}, phone)).waiting.map((e) => [e.name, e.held?.id])).toEqual([
+      ['Spring budget.xlsx', move],
+      ['Roster', expect.any(String)]
+    ])
+  })
+
   it('counts the files Starred and Recent show too', async () => {
     suggest(join(rig.folder, 'Budget.xlsx'), 1)
     await call('work.files.star', { ref: at(join(rig.folder, 'Budget.xlsx')), name: 'Budget.xlsx', on: true })

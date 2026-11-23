@@ -81,6 +81,24 @@ struct FilesRulesTests {
         #expect(FilesRules.changedWords(1_700_000_000_000, now: now.addingTimeInterval(86_400 * 400), calendar: calendar) == "Nov 14, 2023")
     }
 
+    @Test func `a failure says the host's sentence without its code word`() {
+        #expect(FilesRules.sentence("internal: failed by the answer seam (TEMP_CODE_FAIL_ANSWERS)") == "Failed by the answer seam (TEMP_CODE_FAIL_ANSWERS)")
+        #expect(FilesRules.sentence("MacBook is out of reach.") == "MacBook is out of reach.")
+        #expect(FilesRules.sentence("Internal notes: none") == "Internal notes: none")
+    }
+
+    @Test func `a file's facts follow its kind as prose, never joined with a dot`() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        calendar.locale = Locale(identifier: "en_US")
+        let now = Date(timeIntervalSince1970: 1_700_000_000 + 86_400 * 20)
+        let detail = FilesRules.factDetail(size: 52, changed: 1_700_000_000_000, now: now, calendar: calendar)
+        #expect(detail == "52 bytes, Nov 14")
+        #expect(detail?.contains("·") == false)
+        #expect(FilesRules.factDetail(size: nil, changed: 1_700_000_000_000, now: now, calendar: calendar) == "Nov 14")
+        #expect(FilesRules.factDetail(size: nil, changed: nil, now: now, calendar: calendar) == nil)
+    }
+
     @Test func `a file opens by its kind, its place and the key`() throws {
         let folder: FilePlace = try decode(place("folder"))
         let library: FilePlace = try decode(place("lib", kind: "teams", name: "General", host: "MacBook", shared: true))
@@ -224,6 +242,23 @@ actor StubFilesWire: FilesWire {
         await host.list("w1", root)
         #expect(host.listing("w1", root)?.value?.entries.map(\.name) == ["C.pdf"])
         #expect(host.known("w1").map(\.name) == ["C.pdf"])
+    }
+
+    @Test func `a next page that fails keeps the rows and its cursor and says why, and Try Again appends it`() async throws {
+        let wire = StubFilesWire()
+        let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)
+        await wire.answer("work.files.list", #"{"entries":[\#(entry("A.pdf"))],"next":"c1"}"#)
+        await host.list("w1", root)
+        await wire.refuse("work.files.list", "internal: the disk did not answer")
+        await host.more("w1", root)
+        #expect(host.listing("w1", root)?.value?.entries.map(\.name) == ["A.pdf"])
+        #expect(host.listing("w1", root)?.value?.next == "c1")
+        #expect(host.listing("w1", root)?.value?.moreFailed == "The disk did not answer")
+        #expect(host.loadingMore("w1", root) == false)
+        await wire.answer("work.files.list", #"{"entries":[\#(entry("B.pdf"))]}"#)
+        await host.more("w1", root)
+        #expect(host.listing("w1", root)?.value?.entries.map(\.name) == ["A.pdf", "B.pdf"])
+        #expect(host.listing("w1", root)?.value?.moreFailed == nil)
     }
 
     @Test func `a place that fails says why, and a shown list stays through a failed refresh`() async throws {

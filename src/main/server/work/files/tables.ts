@@ -13,7 +13,7 @@ import type { DatabaseSync } from 'node:sqlite'
  *  - `work_files_marks`: stars, what he opened and when, and what a thread made and whether he has seen it.
  *  - `work_files_trash`: the Trash list. A workspace-folder file's bytes wait under
  *    `<userData>/work-files/trash/<workspaceId>/<id>/`; a row for a provider's own bin holds none.
- *  - `work_files_ops`: the journal behind operation ids, kept a week.
+ *  - `work_files_ops`: the journal behind operation ids, kept a week, with the thread whose tool ran each (`session_id`).
  *  - `work_files_names`: names this host has listed or found, for Go to.
  *  - `work_files_kept`: a mail's file he kept (`mail:<message>:<part>`), and where the copy went, so From mail
  *    and Home's Waiting on you leave it out.
@@ -39,6 +39,8 @@ export function ensureFilesTables(db: DatabaseSync): void {
     id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, verb TEXT NOT NULL, refs TEXT NOT NULL,
     state TEXT NOT NULL, result TEXT, at INTEGER NOT NULL)`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_ops_by_time ON work_files_ops (at)`)
+  // The thread whose files_* tool ran an op: files_undo undoes only the caller's own. Added to an older table.
+  if (!(db.prepare(`SELECT name FROM pragma_table_info('work_files_ops')`).all() as { name: string }[]).some((c) => c.name === 'session_id')) db.exec(`ALTER TABLE work_files_ops ADD COLUMN session_id TEXT`)
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_names (
     workspace_id TEXT NOT NULL, ref_key TEXT NOT NULL, ref TEXT NOT NULL, name TEXT NOT NULL,
     place TEXT NOT NULL, kind TEXT NOT NULL, changed INTEGER,

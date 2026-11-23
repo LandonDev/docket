@@ -77,8 +77,12 @@ export type FileMakeKind = (typeof FILE_MAKE_KINDS)[number]
 export const FILE_ACT_VERBS = ['make', 'rename', 'move', 'copy'] as const
 export type FileActVerb = (typeof FILE_ACT_VERBS)[number]
 
-/** One thing a held file act names, as it was when the act was held: its key, its name, and its version (`size:changed:`). */
-const FileActThing = z.object({ key: z.string().max(5000), name: Name, version: z.string().max(200) })
+/**
+ * One thing a held file act names, as it was when the act was held: its key, its name, its version
+ * (`size:changed:`) and whether others could open it (`shared`, as its place said; absent in an act held before it
+ * was bound). The press finds each the same or does nothing.
+ */
+const FileActThing = z.object({ key: z.string().max(5000), name: Name, version: z.string().max(200), shared: z.boolean().optional() })
 /** Where a thing is or goes, in words: the place's id and name, and the folders inside it. */
 const FileActWhere = z.object({ place: z.string().max(200), name: z.string().max(500), trail: z.array(z.string().max(500)).max(64) })
 
@@ -106,8 +110,8 @@ export const FileActSchema = z.object({
   things: z.array(FileActThing).min(1).max(100),
   /** where they are now */
   from: FileActWhere,
-  /** where a move or copy puts them, and that folder's key: the press finds the same folder or does nothing */
-  into: FileActWhere.extend({ key: z.string().max(5000) }).optional(),
+  /** where a move or copy puts them, that folder's key and whether others could open it: the press finds the same folder, shared the same, or does nothing */
+  into: FileActWhere.extend({ key: z.string().max(5000), shared: z.boolean().optional() }).optional(),
   /** who else can open the result: `audienceOf`'s sentence */
   audience: z.string().max(300)
 })

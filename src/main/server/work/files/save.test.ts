@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { chmod } from 'node:fs/promises'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { FileBytes, FileSaved } from '@shared/contract-work-files'
 import type { Caller } from '../modules'
@@ -11,6 +12,12 @@ import { approver, at, makeRig, peer, phone, thread, window, WS, type Rig } from
 import { versionOf } from './write'
 
 /** A file's own bytes read and replaced where it lies (save.ts), and the two wire verbs over it. */
+
+// `chmod` runs between the new bytes' write and the last look at the file: a test puts a second writer there.
+vi.mock('node:fs/promises', async (real) => {
+  const fs = await real<typeof import('node:fs/promises')>()
+  return { ...fs, chmod: vi.fn(fs.chmod) }
+})
 
 let rig: Rig
 let notes: string
@@ -89,6 +96,23 @@ describe('saving a file', () => {
     utimesSync(notes, atime, mtime)
     expect(await saveFile(fence(), 'k', notes, Buffer.from('mine\n'), read.version)).toHaveProperty('conflict')
     expect(readFileSync(notes, 'utf8')).toBe('FIRST line\n')
+  })
+
+  it('sees a same-size rewrite that kept its time while ours was written, by the whole version, and leaves it', async () => {
+    // A whole second, so the rewrite can keep the time exactly.
+    const atime = 1_700_000_000
+    const mtime = 1_700_000_000
+    utimesSync(notes, atime, mtime)
+    const read = await readFile(fence(), notes, 0, 1024)
+    const real = (await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')).chmod
+    vi.mocked(chmod).mockImplementationOnce(async (path, mode) => {
+      writeFileSync(notes, 'FIRST line\n')
+      utimesSync(notes, atime, mtime)
+      return real(path, mode)
+    })
+    expect(await saveFile(fence(), 'k', notes, Buffer.from('mine\n'), read.version)).toEqual({ conflict: { version: versionWord(await versionOf(notes)), changed: Math.round(statSync(notes).mtimeMs) } })
+    expect(readFileSync(notes, 'utf8')).toBe('FIRST line\n')
+    expect(readdirSync(join(rig.folder, 'Events')).filter((n) => n.includes('Notes'))).toEqual(['Notes.md'])
   })
 
   it('never makes a file again under its old name: one that was moved or deleted is a conflict', async () => {

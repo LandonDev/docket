@@ -193,6 +193,16 @@ describe('in his own place a change runs at once, with Undo', () => {
     // Nobody else's change is undone by its id: only a tool's own.
     expect(await call('files_undo', { op: 'window-op-123' }, ctx)).toMatchObject({ isError: true })
   })
+
+  it("undoes only the calling thread's own change: another thread of the workspace is told it is not one it can undo", async () => {
+    rig.scopes.set('t3', { workspaceId: WS })
+    const moved = await call('files_move', { place: 'folder', paths: ['notes.txt'], to: { place: 'folder', path: 'Events' } }, toolCtx(workCtx()))
+    const op = (moved.structuredContent as { undo: { op: string } }).undo.op
+    const other = await call('files_undo', { op }, toolCtx(workCtx(), 't3'))
+    expect(other).toMatchObject({ isError: true, text: 'That change is not one this thread can undo: it is unknown here, or older than a week.' })
+    expect(existsSync(join(rig.folder, 'Events', 'notes.txt'))).toBe(true)
+    expect((await call('files_undo', { op }, toolCtx(workCtx()))).text).toBe('Moved back: notes.txt.')
+  })
 })
 
 describe('in a place others can open a change is held as a file.act', () => {

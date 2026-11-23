@@ -98,13 +98,12 @@ export async function saveFile(fence: WriteFence, key: string, path: string, dat
         await out.close()
       }
       await chmod(temp, info.mode & 0o777).catch(() => {})
-      // The file is looked at once more just before it is replaced: a writer that came while ours was written wins.
+      // The file is looked at once more just before it is replaced, by its whole version (its hash where it has one,
+      // so a rewrite of the same size that kept its time is seen): a writer that came while ours was written wins.
       const last = await lstat(real).catch(() => null)
       if (!last) return { conflict: { gone: true } }
-      if (last.size !== before.size || last.mtimeMs !== before.mtimeMs || last.ino !== info.ino) {
-        const now = await versionOf(real)
-        return { conflict: { version: versionWord(now), changed: Math.round(now.mtimeMs) } }
-      }
+      const now = await versionOf(real)
+      if (last.ino !== info.ino || versionWord(now) !== expect) return { conflict: { version: versionWord(now), changed: Math.round(now.mtimeMs) } }
       await rename(temp, real)
     } finally {
       await unlink(temp).catch(() => {})

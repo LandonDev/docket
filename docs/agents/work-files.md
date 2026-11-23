@@ -160,7 +160,12 @@ the first paint.
   not to answer), keeps the tabs as the host says them (`useTabs`: the list
   again on each `work.files` push that names a new revision), lists folders
   a page at a time (`useListing`: more as the list nears its end, again from
-  the top when the host says a name changed or answers `stale`), and keeps
+  the top when the host says a name changed or answers `stale`; a later page
+  that fails keeps the rows above it and its cursor, `lostPage`, and the
+  list's line says "The rest did not load" with a Retry that asks that page
+  again; a search keeps what it left out, `incomplete` for `more` and
+  `asleep`, said over its results or under "Nothing found" with Retry,
+  `searchGap`; `foldersOnly` asks for folders alone, as Move to… does), and keeps
   what only this window knows in `localStorage` `work.files.view.v1`, under
   a window id kept in `sessionStorage`: the tab shown, the sidebar's fold,
   each page's order and row size. A window with nothing kept starts from
@@ -190,8 +195,9 @@ the first paint.
 | the same, with Copy Teams files off | refused in one toast, "Teams files open on MacBook for this workspace.", whose press Open copies here turns the switch on and opens it, and whose other press opens it on that computer |
 | a kind no canvas shows, in a library | in its own app on its computer (`work.office.filesOpen`) |
 | a kind no editor shows (a text or code file, a sound, a zip, anything else) | in a tab, as the `file` kind: text in an editor that saves as he types, a sound with Play, a zip as the list of what it holds, the rest as its facts with Download |
-| a deck a thread already holds, or a PDF or picture whose tab would be a copy of another computer's file | in that thread, folded (`held`): its marks are kept by item |
-| a PDF or picture on this computer a thread already holds | in a tab: the tab and the thread share its marks, kept by the file ("Marks kept by the file") |
+| a PDF, picture, video or deck on this computer a thread already holds | in a tab: the tab and the thread share its marks and its state, kept by the file ("Marks kept by the file"; a deck's by `deckKey`, docs/agents/work-slides.md "Kept by the deck, not the item") |
+| a copy of another computer's file that a thread already holds | in a tab of its own, as any copy: the copy is a file of its own, with marks of its own |
+| a Google deck a thread already holds | in that thread, folded (`held`): a Google deck is no file of this disk, so its state is kept by item. The only open the host answers with `held` |
 | anything, where the workspace's host keeps no tabs | as before tabs: in a new thread's canvas, the thread folded away |
 
 **A folder's shapes** (`PAGE_SHAPES` in model.ts; the window keeps each
@@ -204,13 +210,29 @@ rows, tile size, the order (name, when changed, size, kind: the host
 sorts), headings by kind, date or place (`groupEntries`, the list alone
 draws them, and the arrows walk the rows in the grouped order), and Show
 Details (the selected file's picture and facts in a pane beside a list or
-a grid, `DetailsPane`). Walking any shape with the arrow keys asks a host
-for pictures and nothing else: it opens nothing, mounts no editor and
-writes nothing (`FilesLooks.dom.test.tsx` holds each walk to that).
+a grid, `DetailsPane`, empty while nothing is selected). Columns' last
+column draws the rows the page has, so Search's field filters it and the
+arrows walk only what it leaves, scrolling the row they reach into view;
+the folder held on the way down turns `foreground` 5% while the keys are
+in the columns (`group-focus-within/columns`). Gallery's strip fills and
+announces the selection (`aria-selected`), the preview following the
+cursor. Beside reads the file it shows from the list by its key, so a file
+that changes under the same key is shown as it is now; its list is 280px
+down to 200px as the page narrows (`besideShape`), and under 520px the list
+and the file take turns: a press on a file (or →) shows it over the whole
+body under a 32px line led by Back. Walking any shape with the arrow keys
+asks a host for pictures and a text file's first lines and nothing else: it
+opens nothing, mounts no editor and writes nothing
+(`FilesLooks.dom.test.tsx` holds each walk to that).
 
-**Pictures in the window** (`previews.ts`). A tile asks for its thumbnail
-when it is drawn, so a long folder asks only for what is on screen; tiles
-drawn together go in one `work.files.thumbs` call (40 names at most, after
+**Pictures in the window** (`previews.ts`). A grid tile asks for its
+thumbnail once it is within a screen of what the grid shows (`useNear`: one
+IntersectionObserver a scroller, its root the grid, `rootMargin` a screen;
+the glyph holds the tile's place meanwhile, and a picture already kept shows
+at once), so a folder asks only for what is near the screen; a strip cell
+and the details pane ask when drawn. A picture fills its box and is fitted
+inside it (`object-contain`), never cut. Tiles asking together go in one
+`work.files.thumbs` call (40 names at most, after
 40 ms), at 192, 288 or 416px for a small, medium or large tile. Nothing is
 asked for a folder, a file kept in the cloud, a file in the Windows VM, a
 sound, an archive or a host on the old wire (`mayPicture`). What comes
@@ -226,10 +248,23 @@ place the row was listed from.
 arrows rest on. The layer is drawn over the page and takes no focus: the
 list under it keeps the keyboard, so the arrows walk and the layer follows.
 Space, Escape or a press outside closes it; Open opens the file as the
-list would. `FilePreviewPane` draws the file read only: its pages down the
-pane (the first two at once, two more as he nears the end, 20 at most), a
-picture fitted, a video's frame with Play under it, a sound's Play, a zip's
-listing (`work.files.archive`), else its facts and the host's one sentence.
+list would. Tab stays on the layer's own controls, an arrow on one of them
+walks the list as from the list, and closing it gives the list its focus
+back. The place in its head is cut only at a word (the first word goes
+whole or not at all). `FilePreviewPane` draws the file read only: its pages
+down the pane (the first two at once, two more as he nears the end, or at
+once where the pages drawn already end in sight, 20 at most), a picture
+fitted, a text file's first lines, a video's frame with Play under it, a
+sound's Play, a zip's listing (`work.files.archive`), else its facts in one
+comma sentence (`factsLine`) and the host's one sentence. **A text file's
+first lines** (`useTextHead`): a text file, and a file of no known kind the
+`file` kind would try as text (`triedAsText`), is read as that kind reads it,
+`work.files.read` on its own host, its first 32 KB (`TEXT_HEAD`) cut back to
+a whole character, UTF-8 with no NUL, shown in the mono face on a page of
+its own; bytes that are no text show its facts. It is read under a picture's
+rules (`mayReadText`): never a file kept in the cloud before his press, one
+in the Windows VM, or of a host on the old wire. Quick Look, Gallery, Beside
+and the details pane show it; a tile and the strip keep the host's sketch.
 Play reads the file's bytes into the window (`work.files.read`, by the
 version the first part named, 200 MB at most) and hands them to the
 system's own player; nothing is read before the press. A file kept in the
@@ -255,8 +290,10 @@ outlives a start of the host (`check`). A file on another computer or in
 the Windows VM is refused there: "A file on another computer opens in a
 tab of its own."
 
-**Two files in one tab** (`SideFile.tsx`). Open to the Side, in a file
-row's menu, puts the file at the side of the file tab he was last in; a
+**Two files in one tab** (`SideFile.tsx`). Open to the Side, in the menu
+of a row whose file lies on a disk (`ref.at === "file"`: a LifeOS document
+or a Drive file opens in a tab of its own, so it is not offered), puts the
+file at the side of the file tab he was last in; a
 file tab's own menu has the same row, which moves that tab's file to the
 side of the one shown; and a file tab dragged down onto the right half of
 the file shown goes to the side of the tab he was in before he pressed it.
@@ -286,7 +323,12 @@ link, a hundred at most, one bad path refuses the whole drag) and calls
 drop back in the Files place is still a move or a copy of those rows: the
 window keeps what is being dragged (`dragging()`), and every drop target
 reads a drag of `Files` as those rows while it is set, never as an upload.
-Rows that cannot go out (a folder among them, a file kept in the cloud,
+The window hears no end when the drop lands outside it, so the rows are let
+go (`whenDragEnds`, rowParts.tsx) on a drop or `dragend` here, the pointer
+seen with no button held, or the window's `blur`: a file of the desktop's
+is dragged in only after a press there, which takes the focus, so what
+comes in then uploads. A drag that leaves the window and comes back still
+held is the same rows, and a drop then still moves them. Rows that cannot go out (a folder among them, a file kept in the cloud,
 another computer's) keep the window's own drag.
 
 **Ask: a chat docked beside the file** (`Dock.tsx`, `dockThread.ts`). The
@@ -305,14 +347,17 @@ control, takes it away.
   puts it in the session store's open set. A draft has no meta, so no rail
   lists it, and nothing is on any host. Its composer starts with one chip,
   the file (a `file` chip, the file's own source as its ref: "Agents"),
-  which he may take off; the composer draws no draft row (folder, host, branch, type,
+  put on each time the dock shows the draft (`enterDock`), the first Ask of
+  a tab included, which he may take off: the dock follows the draft's chips
+  (`heedChips` on `chipPort`), and a chip he took off is not put back; the composer draws no draft row (folder, host, branch, type,
   Master thread, name: `draftRow: false`), since the dock decides them.
 - **The first send** goes the composer's normal way (App's `onSubmit`,
   `commands.send`). In it, in this order: `session.create` (the chip rides
   it as `about`, and its line leads the message), then the step the dock
   set with `afterCreate.set(draftId, …)` (lib/tcserver/commands.ts, run once
-  inside `ensureCreated`, after the create and the Mac bridge), which opens
-  the file as the new thread's own canvas item (`work.canvas.open` with the
+  inside `ensureCreated`, after the create and the Mac bridge), which, while
+  the file's chip was still on the composer when he sent, opens the file as
+  the new thread's own canvas item (`work.canvas.open` with the
   tab item's kind, source and title; for a copy of a file on another
   computer, `work.office.filesCopy {sessionId, source}` first, since the
   tab's copy goes with the tab), then `session.send`. So the first turn
@@ -427,7 +472,13 @@ and Upload.
 - Nothing is ever replaced. A file is made with exclusive create; a rename or
   move lands by hard link then unlink, or a checked exclusive copy where the
   volume has no hard links; a folder is moved onto a folder made exclusively
-  for it. A taken name answers "A file named "x" is already there."
+  for it, held open so its inode is never given to another, and looked at
+  again just before the rename: a folder another writer put in its place is
+  never replaced, and what one put inside it is left there (the rename is
+  refused, `ENOTEMPTY`). On Windows, where a folder cannot be renamed onto
+  one, the reserved folder is kept and the move is a checked copy into it
+  (as across volumes, 2 GB at most), the source removed only after. A taken
+  name answers "A file named "x" is already there."
 - Across volumes a move is a copy, synced to disk and read back (size, and
   sha256 for a file of 64 MB or less), then the source removed; a folder over
   2 GB is refused. A copy that fails its check is removed and the source left
@@ -445,9 +496,9 @@ and Upload.
   module's start (`settleOps`), and rows past a week go (`pruneOps`).
 
 Still open, and said here plainly: Node has no `openat`, so a folder swapped
-and swapped back between a write and its check can go unseen; on Windows a
-folder move removes its empty target before the rename, a small window in
-which another writer can take the name; Windows has no `O_NOFOLLOW`, so a
+and swapped back between a write and its check can go unseen; Node has no
+`renameat2`, so between the last look at a folder's reserved target and its
+rename there is a window of one system call; Windows has no `O_NOFOLLOW`, so a
 source link is caught only by the walk's `lstat` before the copy.
 
 ## New, rename, move and copy
@@ -510,7 +561,10 @@ or moved, and a file a save holds is refused ("A thread is writing in this
 file. Try when it is done.").
 
 **Move** inside one place is one rename per thing into the folder; a taken
-name is that thing's refused row, and the rest still move. Across places,
+name is that thing's refused row, and the rest still move. The window's
+toast says what went with Undo (`carryTo`'s `back`), which moves the
+answered entries back to the one folder they were in through the same
+`move`; rows of a lens, which live in many folders, and a copy offer none. Across places,
 which today means the workspace's folder into a library, it is a copy,
 checked whole, what hangs on the file carried to the copy, then the source
 to Trash through `trashAfterMove` (`setTrashHook`, Trash's build). A Trash
@@ -714,13 +768,17 @@ asked for.
   that), kept 5 s, put in the host's order here (folders first) and cut into
   pages of 500 by the disk's own keyset cursor (`cutPage`); a folder that
   changed between pages answers `stale`. A Google type's kind is read from
-  its type (a Doc named "Plan v1.2" has no extension), anything else from its
-  name. `by` is Drive's last modifier. The trail is the place, then the
+  its type (a Doc named "Plan v1.2" has no extension). Anything else (a
+  picked .xlsx or .pdf) is listed as `other`: it opens only in Google Drive,
+  so no row draws it as a kind an editor here shows and then refuses it. `by` is Drive's last modifier. The trail is the place, then the
   folders above (eight at most) that TempCode can see. `stat` asks Drive
   again; what it may not see, or what is in the bin, is null.
 - **Who else can open a thing** (`othersCan`, `itemShared`): Drive says it
   was shared, it lies in a shared drive, someone else owns it, or Drive's
-  facts do not say; and anything in a folder others can open. A move or New
+  facts do not say; and anything in a folder others can open, or in a folder
+  TempCode cannot read the facts of (the host cannot tell). My Drive's own
+  top is his: its id, which `drive.file` cannot read, is learned from what
+  is listed under `root` (`topIdOf`). A move or New
   into such a folder counts as a change others will see.
 - **Add from Drive** is the pillar's Picker, `work.google.pick {account}`
   (capability `local`: the machine's own window; work-google.md "Picking a
@@ -768,7 +826,8 @@ asked for.
   goes the same way and answers its item and tab. The google pillar keeps its
   row and polls the file's version while it is open (`googleSeated`). A deck
   a thread already shows opens in that thread. Anything else Drive holds says
-  "Scan.pdf opens in Google Drive". A thread's `files_open` opens a Google
+  "Scan.pdf opens in Google Drive: it is not a Doc, a Sheet or a Slides
+  deck.", and is listed as `other`. A thread's `files_open` opens a Google
   file beside the thread.
 
 Not yet: Drive in search and Go to (a Drive listing does not feed the names
@@ -828,7 +887,7 @@ files place."), and a thread of another workspace reaches only its own.
 | `files_move {place, paths, to?, name?}` | a move into a folder, or a rename of one thing (`name`, no `to`) |
 | `files_copy {place, paths, to}` | a copy, the next free name where one is taken |
 | `files_trash {place, paths}` | to Trash, in the workspace's folder |
-| `files_undo {op}` | the inverse of a change a tool ran in his own place |
+| `files_undo {op}` | the inverse of a change this thread's own tool ran in his own place (`work_files_ops.session_id`); another thread's op is refused as unknown |
 
 Each change asks the one door first (`admitChange`, over `admitWrite`), so
 the grammar's own refusal ("Delete it in Teams.", "Teams files stay in
@@ -874,8 +933,9 @@ contract-work-files.ts; pillar `files`). Verbs `make`, `rename`, `move`,
   id (`act:<uuid>`), the request exactly as the verb will be sent and its
   digest (`changeDigest`), each thing's key and version (`size:changed:`,
   from its place's listing: no byte of a shared file is read for it; for
-  `make`, the folder), where they are now and where they go in words, the
-  destination folder's key, and the audience.
+  `make`, the folder) and whether others could open it (`shared`, as its
+  place said), where they are now and where they go in words, the
+  destination folder's key and its `shared`, and the audience.
 - **The press** (`execute`): the item's workspace must be the payload's,
   and the thread must still be in it (a history import or a thread moved
   to another workspace leaves the act stale); the digest must match the
@@ -883,7 +943,11 @@ contract-work-files.ts; pillar `files`). Verbs `make`, `rename`, `move`,
   each thing is listed again: gone, or not the same key, is stale ("… is no
   longer where it was"); another version is stale ("… changed since this
   was held"); a destination folder gone or not the same key is stale ("The
-  folder … is gone or moved"). Stale does nothing. Then the window's own
+  folder … is gone or moved"); a thing or destination whose `shared` is not
+  what it was is stale ("Who can open … changed since this was held": a
+  folder keeps its key while its sharing changes, and the sentence he read
+  named who can open it). An act held before `shared` was bound skips that
+  check. Stale does nothing. Then the window's own
   verb runs: here through `filesHandle` as his window, with `asked`; on
   another host through `ctx.peer` with the thread's scope, where the peer's
   door runs it only for `origin: { from: 'act', id, digest }` whose digest
@@ -979,7 +1043,11 @@ the workspace names while it waits for his press (`held`, `live` or
 stat it (its place in `where`, and no "last saved by", which would read
 the file), else as the act named it; a held make is a row of the name it
 will take, with no ref. Each carries `held: { id, verb }` (`FileEntry`):
-pressing the row opens that Outbox item. Then this host's files of the
+pressing the row opens that Outbox item. His window hears of every held
+act; a key only of an act on this host whose every ref, the folder a make
+goes in and the folder a move or copy goes to, it could name now (the
+door's `locate`), so it never hears a proposed name, folder or item id of a
+place beyond its reach. Then this host's files of the
 workspace with suggestions waiting, each with its count, then LifeOS's rows
 and mail's files not kept ("LifeOS, From mail and Projects"), a row once.
 A key hears only of files it could name.
@@ -1000,7 +1068,10 @@ for the tile (`NO_PREVIEW`), and `thumbs` null.
 
 **Who gets one.** The file is located for the caller (`locate`) before a
 render and again before the answer: a file that moved out of reach while it
-was drawn answers "It is out of reach." and is kept nowhere.
+was drawn answers "It is out of reach." and is kept nowhere; one whose
+version or sharing changed while it was drawn answers "It changed while it
+was drawn." and is kept nowhere either (a file that became shared leaves
+nothing on disk).
 
 | The file | His window | A remote key, the phone | Another host (`peer`) | A thread |
 |---|---|---|---|---|
@@ -1022,7 +1093,8 @@ workspace's files included ("Threads get no previews.").
    any other by ffmpeg (`image→scaled.png`);
 2. an Office or OpenDocument file's own small picture from its zip
    (`docProps/thumbnail.jpeg`, `Thumbnails/thumbnail.png`);
-3. the system's thumbnailer on a Mac (`qlmanage -t`);
+3. the system's thumbnailer on a Mac (`qlmanage -t`), never for a shared
+   file: its service may keep a thumbnail of its own on disk;
 4. a PDF's page, by the pdf pillar's pypdfium2 (`pdf→png`; `pdf→extract`
    counts its pages for a preview);
 5. an Office or OpenDocument file through LibreOffice to PDF, then its page;
@@ -1221,7 +1293,8 @@ links (`repointLinks`).
 
 **Home** (`home`): `waiting` is the held file acts and this host's files
 with suggestions waiting ("Agents"), then the LifeOS rows with suggestions
-waiting, newest first, then the mail files not kept, 12 in all.
+waiting, newest first, then the mail files not kept, 12 in all. The window
+shows each file once, in the first of its lists it belongs to (`homeLists`).
 
 **Search**: "Search and Go to" above.
 
@@ -1262,6 +1335,8 @@ file of this host is located for the caller (`locate`; what throws is
 dropped), and its library must still be listed. `parseGoTo` reads "new sheet
 called travel" (also doc, document, deck, slides, note, text file, folder;
 "called" and "named" optional) for the window's "New sheet called …" row.
+Return in the window takes a row of the names for the words in the field:
+while an older answer is still drawn, it waits for the newer one.
 
 **A search** (`search {query, filter?, cursor?}`) looks for every word of
 the query in a name, case-blind, in four sources at once, each with its own
@@ -1339,6 +1414,10 @@ row only from his recents and tabs.
 honours `scope.signal`, holds to its own deadline, reads only names (and
 text where the place has an index), and checks its rows for `scope.rowsBy`.
 LifeOS then answers `review` and `project`.
+
+**The window keeps a search page's filter** by its tab and the search it
+shows (`searchFilterKey`), so another search in the tab starts with no
+filter and a saved search with its own saved one.
 
 **Saved searches** are the Docs view's saved views: the same rows of
 `work_docs_views`, read and written through the docs pillar's own store
@@ -1718,6 +1797,21 @@ and a scroll through 5,000 rows in the window (F1a).
 - `src/renderer/src/work/files/model.test.ts`: the sidebar, a team's page,
   where a file opens, a host a release behind, every note, the search bar's
   When words and its More (`filterChoices`, `moreRows`, `pickMore`).
+- `src/renderer/src/work/files/sideRow.test.ts`: Open to the Side on a row
+  only for a file on a disk.
+- `src/renderer/src/work/files/previews.test.ts`: which files a picture or a
+  text file's first lines is asked for, the sizes asked, and a head cut back
+  to a whole character (`wholeChars`).
+- `src/renderer/src/work/files/FilesLooks.dom.test.tsx`: the shapes, Quick
+  Look and their walks; after the council's first round: a tile asking only
+  near the screen, a fitted picture, Columns' filtered and revealed last
+  column and its held folder, Gallery's selection, Beside's live entry, its
+  narrow turns and empty half, a text file's first lines (and none read of a
+  cloud file), pages drawn on with no scroll, Quick Look's Tab, arrows and
+  focus, and its place cut at a word.
+- `src/renderer/src/work/files/dockChip.dom.test.tsx`: the file's chip on
+  the docked draft from the first Ask, put back when lost, kept off once he
+  took it off, and the first send opening the file only with the chip on.
 - `src/renderer/src/work/files/openFrom.test.ts`: a file or a page opened
   from another screen, a refusal, and every way into the Docs view
   (`filesOfDocs`, `openDocInFiles`); `work/shell/WorkViewPage.dom.test.tsx`
@@ -1814,8 +1908,9 @@ no build thread may or can do.
   file (the same bytes, the row still there) and a row dragged onto a
   folder moves it with no second copy. The system's drag tells the window
   of no end when the drop lands in Finder: the rows stay the rows being
-  dragged until a drop in the window or the pointer seen with no button
-  held (`whenDragEnds`, rowParts.tsx). Not run there: a real OneDrive
+  dragged until a drop in the window, the pointer seen with no button
+  held, the window's blur or a drag from outside it (`whenDragEnds`,
+  rowParts.tsx; the last two proven in jsdom only). Not run there: a real OneDrive
   library, and a PC.
 - **In the window, live.** The screens are proven by DOM tests against
   stand-in hosts and by preview pages in both themes; the host by the

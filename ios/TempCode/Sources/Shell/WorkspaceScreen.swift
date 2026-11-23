@@ -80,10 +80,16 @@ struct WorkspaceScreen: View {
                     }
                 }
             }
+            // Under a Work workspace's view rows the note is the list's last row, where its chats would start.
+            if let lead, screen?.emptyNoteIsRow == true {
+                QuietNote(text: "No threads here yet.", action: ("New thread", { presenter.compose(lead.client, lead.workspace, nil) }))
+                    .listRowInsets(EdgeInsets(top: foldGap, leading: Layout.textEdge, bottom: 0, trailing: Layout.textEdge))
+                    .listRowSeparator(.hidden)
+            }
         }
         .listStyle(.plain)
         .overlay {
-            if screen?.isEmpty ?? true {
+            if screen?.isEmpty ?? true, screen?.emptyNoteIsRow != true {
                 if let lead {
                     QuietNote(text: "No threads here yet.", action: ("New thread", { presenter.compose(lead.client, lead.workspace, nil) }))
                         .padding(.horizontal, Layout.textEdge)

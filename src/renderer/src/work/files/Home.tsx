@@ -5,14 +5,14 @@ import { ENTRY_KIND_WORDS, type EntryKind, type FileEntry } from "@shared/work/f
 import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Modal, ModalBody } from "../../chrome/Modal";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { KindGlyph } from "./KindGlyph";
-import { whereWords, type Sidebar } from "./model";
+import { homeLists, whereWords, type Sidebar } from "./model";
 import type { Busy } from "./open";
 import { RowState } from "./rowParts";
 
@@ -30,17 +30,43 @@ function HomeList({ title, entries, busy, onOpen }: { title: string; entries: re
   return (
     <section aria-label={title} className="flex flex-col">
       <h2 className="px-2 pb-1 text-xs font-medium text-muted-foreground">{title}</h2>
-      {entries.map((entry) => (
-        <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={busy?.key === entry.key} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
-          <KindGlyph kind={entry.kind} />
-          <span className="min-w-0 flex-1 truncate text-start text-foreground">{entry.name}</span>
-          {/* A change a thread holds for his press says its verb; the row opens the held item, not the file. */}
-          {entry.held ? <span className="shrink-0 text-xs text-warning">{HELD_WORDS[entry.held.verb] ?? "A change"} waits for you</span> : <RowState entry={entry} />}
-          {entry.where ? <span className="hidden max-w-[30%] shrink-0 truncate text-xs text-muted-foreground @[480px]/files-home:block">{whereWords(entry.where)}</span> : null}
-          {entry.changed ? <span className="w-28 shrink-0 text-end text-xs text-muted-foreground tabular-nums">{dayTime(entry.changed)}</span> : null}
-        </Button>
-      ))}
+      {entries.map((entry) => {
+        const opening = busy?.key === entry.key;
+        // A row that says a state gives its date up first in a narrow page, so the name keeps its room.
+        const stated = opening || !!entry.held || !!entry.state;
+        return (
+          <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={opening} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
+            <KindGlyph kind={entry.kind} />
+            <span className="min-w-0 flex-1 truncate text-start text-foreground">{entry.name}</span>
+            {/* A change a thread holds for his press says its verb; the row opens the held item, not the file. */}
+            {opening ? (
+              // The list's own opening state: its 12px spinner and word.
+              <span className="shrink-0 text-xs text-muted-foreground [--busy-space:0.75rem]">
+                <BusyLabel busy label={busy!.word} />
+              </span>
+            ) : entry.held ? (
+              <span className="shrink-0 text-xs text-warning">{HELD_WORDS[entry.held.verb] ?? "A change"} waits for you</span>
+            ) : (
+              <RowState entry={entry} />
+            )}
+            {entry.where ? <span className="hidden max-w-[30%] shrink-0 truncate text-xs text-muted-foreground @[480px]/files-home:block">{whereWords(entry.where)}</span> : null}
+            {entry.changed ? <span className={`w-28 shrink-0 text-end text-xs text-muted-foreground tabular-nums ${stated ? "hidden @[400px]/files-home:block" : ""}`}>{dayTime(entry.changed)}</span> : null}
+          </Button>
+        );
+      })}
     </section>
+  );
+}
+
+/** The three lists, each file in the first it belongs to: one that waits on him is not starred again or recent again. */
+function HomeLists({ home, busy, onOpen }: { home: FilesHome; busy: Busy; onOpen(entry: FileEntry): void }) {
+  const lists = homeLists(home);
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
+      <HomeList title="Waiting on you" entries={lists.waiting} busy={busy} onOpen={onOpen} />
+      <HomeList title="Starred" entries={lists.starred} busy={busy} onOpen={onOpen} />
+      <HomeList title="Recent" entries={lists.recent} busy={busy} onOpen={onOpen} />
+    </div>
   );
 }
 
@@ -65,11 +91,7 @@ export function HomePage({ panelId, home, error, busy, bar, onRetry, onOpen }: {
         ) : empty ? (
           <EmptyState title="Nothing here yet" line="Files you open and star show here." />
         ) : (
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
-            <HomeList title="Waiting on you" entries={home.waiting} busy={busy} onOpen={onOpen} />
-            <HomeList title="Starred" entries={home.starred} busy={busy} onOpen={onOpen} />
-            <HomeList title="Recent" entries={home.recent} busy={busy} onOpen={onOpen} />
-          </div>
+          <HomeLists home={home} busy={busy} onOpen={onOpen} />
         )}
       </div>
     </div>

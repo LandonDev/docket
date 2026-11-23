@@ -4,11 +4,12 @@ import { chipsOf, fileChipOf, TOO_MANY_FILES, type FileEntry, type FilePlace } f
 import type { Session } from "../../lib/session";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { chipPort } from "../../lib/contextChips";
 import { refusalWords } from "../../lib/settingsHome";
 import { afterCreate } from "../../lib/tcserver/commands";
 import { sessionStore } from "../../lib/tcserver/store";
 import { workDockPort } from "../../lib/workSwitch";
-import { addContextChip, CHIPS_MAX, contextChipsOf } from "../canvas/chips";
+import { aboutFor, addContextChip, CHIPS_MAX, contextChipsOf } from "../canvas/chips";
 import { openItem } from "../canvas/store";
 import { fileOf, heldBy, type OpenFrom } from "./open";
 import { dockKey } from "./store";
@@ -73,27 +74,57 @@ export async function dockThread(workspace: Workspace, tab: FileTab, item: Canva
   return { id, draft: true };
 }
 
-/** The drafts the docks made this run: the session to put back in the open set, and its first send's step. */
-const drafts = new Map<string, { session: Session; hold: () => Promise<void> }>();
+/** The drafts the docks made this run: the session to put back in the open set, its file's chip, and its first send's step. */
+const drafts = new Map<string, { session: Session; chip: ContextChip | null; hold: () => Promise<void> }>();
+/** Drafts whose composer has held the file's chip, and those he took it off: a chip he took off is not put back. */
+const chipSeen = new Set<string>();
+const chipTaken = new Set<string>();
+
+const sameChip = (a: ContextChip, b: ContextChip): boolean => a.kind === b.kind && JSON.stringify(a.ref) === JSON.stringify(b.ref);
+
+/**
+ * Follows each dock draft's chips as he changes them. The file's chip gone from a composer that still has a draft is
+ * his doing, unless the composer is sending: a send takes every chip at once and keeps the first for the create
+ * (`aboutFor`), and then the chip went with the message.
+ */
+function heedChips(): void {
+  for (const [id, draft] of drafts) {
+    if (!draft.chip || chipTaken.has(id) || !sessionStore.isDraft(id)) continue;
+    const have = contextChipsOf(id);
+    if (have.some((c) => sameChip(c, draft.chip!))) chipSeen.add(id);
+    else if (chipSeen.has(id) && !(have.length === 0 && aboutFor(id))) chipTaken.add(id);
+  }
+}
+let heeding = false;
 
 /** A draft for the tab, in the store's open set (no host has it, so no rail lists it), its file's chip on it. */
 function draftFor(workspace: Workspace, tab: FileTab, item: CanvasItem, again: string | undefined): string {
   const port = workDockPort.get();
   if (!port) throw new Error("This window cannot start a chat here");
+  if (!heeding) {
+    heeding = true;
+    chipPort.subscribe(heedChips);
+  }
   // The draft from before as it last stood (his picks kept), else a new one seeded as New thread seeds one.
   const session = (again ? sessionStore.get(again) : undefined) ?? port.draft(workspace, again);
-  drafts.set(session.id, { session, hold: () => holdFile(workspace, tab, item, session.id) });
+  const chip = fileChip(tab, item);
+  // The first send opens the file in the new thread only while its chip is still on the composer.
+  drafts.set(session.id, { session, chip, hold: () => (chipTaken.has(session.id) ? Promise.resolve() : holdFile(workspace, tab, item, session.id)) });
   // In the store before the dock draws it, so nothing asks a host for an id no host has.
   sessionStore.mutate((prev) => [...prev.filter((s) => s.id !== session.id), session]);
-  if (!again) {
-    const chip = fileChip(tab, item);
-    if (chip) addContextChip(session.id, chip);
-  }
+  putChip(session.id);
   return session.id;
 }
 
+/** The file's chip on a draft's composer, unless he took it off. */
+function putChip(id: string): void {
+  const chip = drafts.get(id)?.chip;
+  if (chip && !chipTaken.has(id)) addContextChip(id, chip);
+}
+
 /**
- * The dock shows `id`. A draft goes into the session store's open set (as it last stood there, its picks kept), and
+ * The dock shows `id`. A draft goes into the session store's open set (as it last stood there, its picks kept), its
+ * file's chip is on its composer (each time it is shown, the first Ask of a tab included, unless he took it off), and
  * its first send's step is set: the new thread opens the file before the message goes. A thread is left as it is.
  */
 export function enterDock(id: string): void {
@@ -103,6 +134,7 @@ export function enterDock(id: string): void {
     const session = sessionStore.get(id) ?? draft.session;
     sessionStore.mutate((prev) => [...prev.filter((s) => s.id !== id), session]);
   }
+  putChip(id);
   afterCreate.set(id, draft.hold);
 }
 
@@ -138,4 +170,6 @@ export function leaveDock(id: string): void {
 export function resetDocks(): void {
   shown.clear();
   drafts.clear();
+  chipSeen.clear();
+  chipTaken.clear();
 }

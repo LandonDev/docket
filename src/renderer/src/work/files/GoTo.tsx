@@ -49,36 +49,48 @@ export function GoToField({
   onClose(): void;
 }) {
   const [text, setText] = useState("");
-  const [names, setNames] = useState<readonly FileEntry[]>([]);
+  // The names the host answered, and the words they answer: the rows stay drawn while newer words are asked.
+  const [names, setNames] = useState<{ text: string | null; entries: readonly FileEntry[] }>({ text: null, entries: [] });
   const [at, setAt] = useState(0);
+  // Return pressed before the names for his words came: it takes the first row once they do.
+  const [waiting, setWaiting] = useState(false);
   const field = useRef<HTMLInputElement>(null);
   useEffect(() => field.current?.focus(), []);
   // The names for his words, asked as he types; an older answer never replaces a newer one.
   const asked = useRef(0);
   useEffect(() => {
     const mine = ++asked.current;
-    if (parseGoTo(text).kind === "new") return void setNames([]);
+    if (parseGoTo(text).kind === "new") return void setNames({ text, entries: [] });
     void registry
       .linkOf(link)
       .request<{ entries: FileEntry[] }>("work.files.names", { workspaceId, text })
       .then(
-        (got) => mine === asked.current && setNames(got.entries),
-        () => mine === asked.current && setNames([]),
+        (got) => mine === asked.current && setNames({ text, entries: got.entries }),
+        () => mine === asked.current && setNames({ text, entries: [] }),
       );
   }, [link, workspaceId, text]);
-  const rows = useMemo(() => goToRows(text, tabs, names), [text, tabs, names]);
+  const fresh = names.text === text || parseGoTo(text).kind === "new";
+  const rows = useMemo(() => goToRows(text, tabs, names.entries), [text, tabs, names.entries]);
   const on = Math.min(at, Math.max(0, rows.length - 1));
   const take = (row: GoToRow | undefined): void => {
     if (!row) return;
     onPick(row);
     onClose();
   };
+  useEffect(() => {
+    if (!waiting || !fresh) return;
+    setWaiting(false);
+    take(rows[on]);
+    // Run once the names for his words have come; `take` and the rows are this render's.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, fresh]);
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     // The page's own keys (the arrows, Return, Delete) are the field's while it is open.
     event.stopPropagation();
     if (event.key === "ArrowDown") return void (event.preventDefault(), setAt(Math.min(rows.length - 1, on + 1)));
     if (event.key === "ArrowUp") return void (event.preventDefault(), setAt(Math.max(0, on - 1)));
-    if (event.key === "Enter") return void (event.preventDefault(), take(rows[on]));
+    // Return takes a row of the names for the words in the field, never of words he has since typed over.
+    if (event.key === "Enter") return void (event.preventDefault(), fresh ? take(rows[on]) : setWaiting(true));
     if (event.key === "Escape") return void (event.preventDefault(), onClose());
   };
   const line = (row: GoToRow): { glyph: ReactNode; name: string; fact: string } => {
@@ -97,7 +109,7 @@ export function GoToField({
         aria-activedescendant={rows[on] ? `files-goto-${on}` : undefined}
         value={text}
         spellCheck={false}
-        placeholder="Go to a file or a folder, or type “new sheet called…”"
+        placeholder="Go to"
         className="h-7 min-w-0 flex-1 text-[13px]"
         onChange={(event) => {
           setText(event.target.value);
@@ -156,7 +168,7 @@ export function SearchField({ start, onFilter, onSearch, onClose }: { start: str
         aria-label="Search"
         value={text}
         spellCheck={false}
-        placeholder="Filter this folder; Return searches every place"
+        placeholder="Search"
         className="h-7 min-w-0 flex-1 text-[13px]"
         onChange={(event) => {
           setText(event.target.value);

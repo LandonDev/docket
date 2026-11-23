@@ -5,10 +5,11 @@ import { canDo, DEFAULT_SORT, MAKE_WORDS, refusal, type FileEntry, type FilePlac
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerDownRight, FileText, Layers, MoreHorizontal, Plus, Search, type IconComponent } from "../../chrome/icons";
 import { RowsContextMenu, RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { VirtualRows } from "../../chrome/railVirtualRows";
-import { Tip } from "../../components/tip";
+import { Tip, TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { Skeleton } from "../../components/ui/skeleton";
+import { ROW_PRESS } from "../../components/ui/press";
 import { Spinner } from "../../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { clockTime, dayTime } from "../../lib/duration";
@@ -33,7 +34,9 @@ import {
   pick,
   pickAll,
   pickedAmong,
+  folderGone,
   placeNote,
+  searchGap,
   SHAPE_WORDS,
   TILE_SIZES,
   TILE_WORDS,
@@ -144,9 +147,12 @@ function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; na
         <span key={i} className={`items-center gap-0.5 ${i === steps.length - 1 ? "flex min-w-0" : "hidden min-w-0 shrink-[2] overflow-hidden @[520px]/files-bar:flex"}`}>
           {i > 0 ? <ChevronRight aria-hidden className={`size-3.5 shrink-0 text-muted-foreground ${i === steps.length - 1 ? "hidden @[520px]/files-bar:block" : ""}`} /> : null}
           {i === steps.length - 1 || !crumb.at ? (
-            <span aria-current="page" className="truncate px-2 text-[13px] font-medium text-foreground">
-              {crumb.name}
-            </span>
+            // Cut in a narrow bar, the folder's whole name is in its tooltip.
+            <TruncateTip text={crumb.name}>
+              <span aria-current="page" className="truncate px-2 text-[13px] font-medium text-foreground">
+                {crumb.name}
+              </span>
+            </TruncateTip>
           ) : (
             <Button variant="ghost" size="xs" className="min-w-0 text-[13px] text-muted-foreground" onClick={() => onGo({ at: crumb.at!, name: crumb.name })}>
               <span className="truncate">{crumb.name}</span>
@@ -198,7 +204,29 @@ function Head({ sort, second, onSort }: { sort: FileSort; second: string; onSort
   );
 }
 
-export function FileList({ entries, picked, compact, heads, busy, more, loadingMore, renaming, onPick, onOpen, onMore, onParent, onRenamed, drag }: ShapeProps & { compact: boolean; /** where each heading stands: the index of a group's first row, and its words */ heads?: ReadonlyMap<number, string> | null }) {
+export function FileList({
+  entries,
+  picked,
+  compact,
+  heads,
+  busy,
+  more,
+  loadingMore,
+  renaming,
+  onPick,
+  onOpen,
+  onMore,
+  onParent,
+  onRenamed,
+  drag,
+  bulk = false,
+}: ShapeProps & {
+  compact: boolean;
+  /** where each heading stands: the index of a group's first row, and its words */
+  heads?: ReadonlyMap<number, string> | null;
+  /** the bar for many floats over the list's foot: the last row is kept clear of it */
+  bulk?: boolean;
+}) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const height = compact ? ROW_COMPACT_PX : ROW_PX;
   const [reveal, setReveal] = useState<{ index: number } | null>(null);
@@ -249,7 +277,7 @@ export function FileList({ entries, picked, compact, heads, busy, more, loadingM
         data-kind={entry.kind}
         data-drop-over={over || undefined}
         style={{ height }}
-        className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : "hover:bg-foreground/5"}`}
+        className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : ROW_PRESS}`}
         onClick={(event) => onPick(entry.key, howOf(event), onNameOf(event))}
         onDoubleClick={() => onOpen(entry)}
         {...dragProps(drag, entry)}
@@ -259,9 +287,11 @@ export function FileList({ entries, picked, compact, heads, busy, more, loadingM
           {renaming === entry.key ? (
             <NameField name={entry.name} onDone={(next) => onRenamed(entry, next)} />
           ) : (
-            <span data-files-name className={`min-w-0 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
-              {entry.name}
-            </span>
+            <TruncateTip text={entry.name}>
+              <span data-files-name className={`min-w-0 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
+                {entry.name}
+              </span>
+            </TruncateTip>
           )}
           {mine ? (
             <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -296,7 +326,7 @@ export function FileList({ entries, picked, compact, heads, busy, more, loadingM
       aria-activedescendant={at >= 0 ? `files-row-${at}` : undefined}
       tabIndex={0}
       data-files-list
-      className="focus-ring min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pt-1 pb-2 outline-none"
+      className={`focus-ring min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pt-1 outline-none ${bulk ? "pb-14" : "pb-2"}`}
       onKeyDown={onKeyDown}
       onClick={(event) => {
         // A press on the list's own ground lets go of the selection.
@@ -450,8 +480,8 @@ export interface PageActs {
   pickUpload(): void;
   /** files dropped from the desktop onto this folder, or onto a folder row of it */
   upload(files: readonly File[], into?: FileEntry): void;
-  /** rows dragged onto a folder row of this page, from this page or another place's */
-  drop(verb: "move" | "copy", entries: readonly FileEntry[], into: FileEntry, from: PlaceCopy): void;
+  /** rows dragged onto a folder row of this page, from this page or another place's; `back` the one folder they lie in, for a move's Undo */
+  drop(verb: "move" | "copy", entries: readonly FileEntry[], into: FileEntry, from: PlaceCopy, back?: { at: FolderRef; name: string }): void;
   /**
    * Rows dragged out to the desktop: where every one of them is a file that lies on this computer, the system
    * carries them and this answers when the drag ends; null where they cannot go (a folder among them, a file kept
@@ -508,6 +538,9 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
   );
 }
 
+/** The bar's own words for a verb, where they are shorter than the menu's: "Move", not "Move to…". */
+const BULK_WORDS: Partial<Record<EntryAct, string>> = { move: "Move", copy: "Copy" };
+
 /** With two or more selected, one bar floats at the foot of the list: how many, the verbs for them all, and Clear. */
 function BulkBar({ count, rows, onAsk, onAct, onClear }: { count: number; rows: readonly ActRow[]; onAsk?(): void; onAct(act: EntryAct): void; onClear(): void }) {
   const shown = rows.filter((row) => row.act === "move" || row.act === "copy" || row.act === "keep" || row.act === "delete" || row.act === "restore" || row.act === "purge");
@@ -524,7 +557,7 @@ function BulkBar({ count, rows, onAsk, onAct, onClear }: { count: number; rows: 
           <Tip key={row.act} label={row.refused ?? row.label} disabled={!row.refused}>
             <span className="inline-flex">
               <Button variant="ghost" size="sm" disabled={!!row.refused} className={row.danger ? "text-destructive" : ""} onClick={() => onAct(row.act)}>
-                {row.label.replace("…", "")}
+                {BULK_WORDS[row.act] ?? row.label.replace("…", "")}
               </Button>
             </span>
           </Tip>
@@ -545,7 +578,7 @@ function UploadLine({ progress, onCancel }: { progress: UploadProgress; onCancel
       <Spinner className="size-3 shrink-0" />
       <span className="min-w-0 truncate font-medium text-foreground">Uploading {progress.name}</span>
       <span className="min-w-0 flex-1 truncate text-muted-foreground tabular-nums">
-        {progress.count > 1 ? `${progress.index + 1} of ${progress.count} · ` : ""}
+        {progress.count > 1 ? `${progress.index + 1} of ${progress.count}, ` : ""}
         {percent}%
       </span>
       <Button variant="ghost" size="xs" onClick={onCancel}>
@@ -794,12 +827,13 @@ export function PageView({
     }
   };
 
-  const drag = useRowDrag(acts && !inTrash ? acts : null, entries, picked);
+  const drag = useRowDrag(acts && !inTrash ? acts : null, entries, picked, page);
   const shapeProps: ShapeProps = {
     entries,
     picked,
     busy,
-    more: !!listing?.more,
+    // A page that failed waits for Retry on its line, rather than being asked again on every scroll.
+    more: !!listing?.more && !listing.error,
     loadingMore: !!listing && listing.loading && entries.length > 0 && listing.more,
     renaming,
     onPick,
@@ -814,20 +848,23 @@ export function PageView({
   const down = copy ? placeNote(copy, clockTime) : null;
   const parent = trail.length > 1 ? trail[trail.length - 2]! : null;
   const toParent = parent ? () => onGo({ at: parent.at, name: parent.name }) : undefined;
+  // A search that left a place out says so, with Retry, whether or not anything came back.
+  const gap = results && listing?.loaded && !listing.error ? searchGap(listing) : null;
+  // A folder that is gone cannot come back on Retry: the folder above it is the way on, else Back.
+  const gone = !!listing?.error && folderGone(listing.error);
+  const way = gone && parent ? { label: `Open ${parent.name}`, onClick: toParent! } : gone && canBack ? { label: "Back", onClick: onBack } : { label: "Retry", onClick: () => listing?.retry() };
   let body: ReactNode;
   if (note) body = <NoteEmpty note={note} fixes={fixes} />;
   else if (!listing || !listing.loaded) body = <ListBones compact={compact} />;
-  else if (listing.error && !entries.length) body = listing.away ? null : <EmptyState title="This folder did not load" line={listing.error} action={{ label: "Retry", onClick: listing.retry }} />;
+  else if (listing.error && !entries.length) body = listing.away ? null : <EmptyState title="This folder did not load" line={listing.error} action={way} />;
   else if (!entries.length && filter) body = <EmptyState title="Nothing here by that name" line="Return searches every place." />;
-  else if (!entries.length && results) body = <EmptyState title="Nothing found" line={listing.more ? "Some places are still being searched." : undefined} />;
+  else if (!entries.length && results) body = <EmptyState title="Nothing found" line={gap ? `${gap.title}.` : listing.more ? "Some places are still being searched." : undefined} {...(gap ? { action: { label: "Retry", onClick: listing.retry } } : {})} />;
   else if (!entries.length)
     body =
       down && down.fix?.kind !== "wake" ? (
         <NoteEmpty note={down} fixes={fixes} />
       ) : inTrash ? (
         <EmptyState title="Trash is empty" line="What you delete waits here for 30 days." />
-      ) : acts && (acts.place.makes?.length || canDo(acts.place, "upload")) ? (
-        <EmptyState title="This folder is empty" line="Drop files here, or make one." />
       ) : (
         <EmptyState title="This folder is empty" />
       );
@@ -838,6 +875,7 @@ export function PageView({
         page={page}
         trail={trail}
         sort={sort}
+        rows={entries}
         picked={picked}
         renaming={renaming}
         onPick={onPick}
@@ -858,16 +896,17 @@ export function PageView({
       shape === "grid" ? (
         <FileGrid {...shapeProps} size={tile} from={pics} onParent={toParent} />
       ) : (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        // The list's columns leave by the list's own width, with the details pane beside it or not.
+        <div className="@container/files-list flex min-h-0 min-w-0 flex-1 flex-col">
           <Head sort={sort} second={inTrash ? "Was in" : results ? "Where" : "Last change by"} onSort={(next) => setLook({ ...look, sort: next })} />
-          <FileList {...shapeProps} compact={compact} heads={heads} onParent={toParent} />
+          <FileList {...shapeProps} compact={compact} heads={heads} onParent={toParent} bulk={!!acts && chosen.length >= 2} />
         </div>
       );
     // Show Details: the selected file's picture and facts beside the folder, where there is room for both.
     body = details ? (
       <div className="flex min-h-0 flex-1">
         {folder}
-        <DetailsPane from={pics} entry={chosen.length === 1 ? chosen[0]! : null} onOpen={open} className="hidden h-full w-72 shrink-0 border-s border-border @[640px]/files-list:block" />
+        <DetailsPane from={pics} entry={chosen.length === 1 ? chosen[0]! : null} onOpen={open} className="hidden h-full w-72 shrink-0 border-s border-border @[640px]/files-body:block" />
       </div>
     ) : (
       folder
@@ -877,7 +916,12 @@ export function PageView({
   const line = acts?.uploading ? (
     <UploadLine progress={acts.uploading} onCancel={acts.cancelUpload} />
   ) : listing?.error && listing.away ? (
-    <ViewStateLine word={`${copy?.host ?? "The host"} did not answer`} detail={listing.error} onRetry={listing.retry} />
+    <ViewStateLine word={`${copy?.host ?? "The host"} did not answer`} detail={listing.error} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />
+  ) : listing?.error && entries.length ? (
+    // The rows it has stay; a later page that failed is asked again from where it stopped.
+    <ViewStateLine word={listing.lostPage ? "The rest did not load" : "This folder did not load"} detail={listing.error} onRetry={listing.lostPage ? listing.loadMore : listing.retry} />
+  ) : gap && entries.length ? (
+    <NoteLine note={gap} fixes={{ busy: listing!.loading, run: () => listing!.retry() }} />
   ) : down && !note && entries.length ? (
     <NoteLine note={down.fix?.kind === "wake" && listing?.asOf ? { ...down, line: `This is the list from ${clockTime(listing.asOf)}.` } : down} fixes={fixes} />
   ) : null;
@@ -959,7 +1003,7 @@ export function PageView({
         <div
           data-files-body
           data-files-over={filesOver || undefined}
-          className={`@container/files-list relative flex min-h-0 flex-1 flex-col ${filesOver ? "bg-muted/60" : ""}`}
+          className={`@container/files-body relative flex min-h-0 flex-1 flex-col ${filesOver ? "bg-muted/60" : ""}`}
           onDragOver={(event) => {
             if (!fromDesktop(event)) return;
             event.preventDefault();
@@ -1022,7 +1066,7 @@ export const RENAME_AFTER_MS = 500;
  * Rows dragged within a page: onto a folder row is a move inside one place; ⌥ copies. The target takes the
  * `muted` fill and the pointer carries the verb; nothing moves until the drop.
  */
-function useRowDrag(acts: PageActs | null, entries: readonly FileEntry[], picked: Picked): RowDrag | null {
+function useRowDrag(acts: PageActs | null, entries: readonly FileEntry[], picked: Picked, page: FilePage): RowDrag | null {
   const [over, setOver] = useState<string | null>(null);
   if (!acts) return null;
   const takes = (into: FileEntry, event: DragEvent): { verb: "move" | "copy"; files: boolean } | null => {
@@ -1045,7 +1089,8 @@ function useRowDrag(acts: PageActs | null, entries: readonly FileEntry[], picked
     over,
     onStart(entry, event) {
       const rows = picked.keys.has(entry.key) ? entries.filter((e) => picked.keys.has(e.key)) : [entry];
-      setDragging({ entries: rows, from: acts.from });
+      // Rows of one folder (not a lens's, which say where each lives) can be moved back there by Undo.
+      setDragging({ entries: rows, from: acts.from, ...(rows.some((e) => e.where) ? {} : { back: { at: page.at, name: page.name } }) });
       // Files that lie on this computer go with the system's own drag, so they can be dropped on the desktop; a drop
       // in the Files place still reads what is being dragged from here.
       const out = acts.dragOut?.(rows) ?? null;
@@ -1089,7 +1134,7 @@ function useRowDrag(acts: PageActs | null, entries: readonly FileEntry[], picked
       }
       const drag = dragging();
       setDragging(null);
-      if (drag?.entries.length) acts.drop(how.verb, drag.entries, entry, drag.from);
+      if (drag?.entries.length) acts.drop(how.verb, drag.entries, entry, drag.from, drag.back);
     },
   };
 }

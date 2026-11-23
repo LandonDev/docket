@@ -165,7 +165,9 @@ paused reads its cue as the second line ("Approve: run bun test",
 tint at 8 %; tap opens the thread on that card. Swipe to pin and archive,
 the context menu with rename, Start now and Resume, and the master pin
 (Design/ThreadRowActions.swift) on every level. Empty states are one calm
-sentence with one tinted action: "No threads here yet." with New thread,
+sentence with one tinted action: "No threads here yet." with New thread
+(over the empty list; in a Work workspace it is the list's last row, under
+its view rows, where its chats would start: `emptyNoteIsRow`),
 "No workspaces on <host> yet…" with Hosts (the system spinner until it
 has listed), "Nothing paired yet" with Pair a host. Status and note rows
 are the only rows with an entrance (`Motion.appear`), and nothing animates
@@ -2612,7 +2614,8 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   not answer sits at half strength.
 - **A place, a folder, a lens** pushes a plain list of the host's rows in
   its order, a page at a time (the next page as the last row shows, a
-  spinner row while one is out). Each row: the kind's glyph, the name (cut
+  spinner row only while one is out; a next page that fails keeps the rows
+  and ends the list with the host's sentence and Try Again). Each row: the kind's glyph, the name (cut
   in the middle), one fact: what is happening to it ("Esports Staff is in
   it", "3 suggestions", "A thread is writing", "In the cloud"), else in a
   lens the place it lives in, else when it changed ("9:41 AM",
@@ -2624,7 +2627,8 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   "Nothing Recent", "Nothing Starred") when empty; a place that is down
   says its state as the title, the host's sentence under it and Try Again;
   any other failed read says "Can’t Open <name>" with the reason and Try
-  Again. Pull to refresh.
+  Again. The reason is the host's sentence alone, never the wire's code
+  word ("internal: …", `FilesRules.sentence`). Pull to refresh.
 - **Presses**: the context menu holds Star (Unstar), Rename… and Delete;
   swipe leading stars, swipe trailing deletes (never a full swipe). Each is
   offered only where `FilesRules.offers` says the place does it for this
@@ -2660,12 +2664,15 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   rows' mark slot so the names line up. The section is absent when nothing
   failed.
 - **Quick Look** is the host's preview pages in a paging view (the system
-  page dots past one page) with the meta line under them ("Text · 52 bytes
-  · Today": a text file's preview is a sketch of its lines, never its
-  words); where the host makes no
-  preview (F3) the file's facts stand in the middle: the glyph large, the
-  name (title3 semibold), one meta line "PDF · 2.4 MB · Nov 3", and who
-  saved it. The foot holds one thing: Open the Original (a prominent wide
+  page dots past one page) with the facts line under them: the kind in
+  medium weight, then its size and when it changed as prose in regular
+  weight ("Text" "52 bytes, 9:41 AM", `FilesRules.factDetail`; a text
+  file's preview is a sketch of its lines, never its words); where the
+  host makes no preview (F3) the file's facts stand in the middle: the
+  glyph large, the name (title3 semibold), the same facts line ("PDF"
+  "2.4 MB, Nov 3"), and who saved it. A page that does not come says
+  "Can’t Show Page 2" with the host's reason and Try Again in its place,
+  never a spinner that does not end. The foot holds one thing: Open the Original (a prominent wide
   button; Play for sound and video, which plays in AVKit in place) for a
   workspace-folder file of 50 MB or less; "Edit on your computer" above it
   for a document or sheet kept as a file; "Over 50 MB. Open it on your

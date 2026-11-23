@@ -13,8 +13,8 @@ import { doneWords, refusedWords, type PlaceCopy } from "./model";
  * The window's side of every change in the Files place (docs/agents/work-files.md "New, rename, move and copy",
  * "Trash", "Upload"). Each asks the file's own host, under an operation id of its own so a retry does nothing
  * twice; a change others will see is asked first, in the grammar's own question (`questionFor`); what a place
- * refuses is said in its one sentence, and a bulk act says what it could not do, file by file. A delete says
- * what went, with Undo.
+ * refuses is said in its one sentence, and a bulk act says what it could not do, file by file. A delete, and a
+ * move inside one place, say what went, with Undo.
  */
 
 const opId = (): string => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -60,11 +60,18 @@ export async function renameTo(of: ActsOf, copy: PlaceCopy, entry: FileEntry, na
   }
 }
 
+/** The folder a move's rows came from, where its Undo puts them back. */
+export interface CameFrom {
+  at: FolderRef;
+  name: string;
+}
+
 /**
  * Move or copy into a folder. The grammar's refusal is said before anything is asked; a change others will see
- * is asked first. Answers whether anything went.
+ * is asked first. Answers whether anything went. A move inside one place, of rows from one folder (`back`), says
+ * so with Undo, which moves what went back there through the same verb.
  */
-export async function carryTo(of: ActsOf, verb: "move" | "copy", from: PlaceCopy, entries: readonly FileEntry[], to: { copy: PlaceCopy; at: FolderRef; name: string }): Promise<boolean> {
+export async function carryTo(of: ActsOf, verb: "move" | "copy", from: PlaceCopy, entries: readonly FileEntry[], to: { copy: PlaceCopy; at: FolderRef; name: string }, back?: CameFrom): Promise<boolean> {
   if (!entries.length) return false;
   const no = entries.map((entry) => refusal(from.place, verb, entry, to.copy.place)).find((r) => r !== null);
   if (no) return (failed(verb === "move" ? "Nothing was moved" : "Nothing was copied", new Error(no.text)), false);
@@ -74,7 +81,9 @@ export async function carryTo(of: ActsOf, verb: "move" | "copy", from: PlaceCopy
     const done = await registry
       .linkOf(from.link)
       .request<FileDone>(`work.files.${verb}`, { workspaceId: of.workspaceId, refs: entries.map(refOf), to: to.at, op: opId(), ...(question ? { asked: true } : {}) }, longWait(from));
-    if (done.entries.length) said(doneWords(verb === "move" ? "Moved" : "Copied", done.entries.map((e) => e.name), to.name), { description: leftovers(done) });
+    const samePlace = from.link === to.copy.link && from.place.id === to.copy.place.id;
+    const undo = verb === "move" && back && samePlace ? () => void carryTo(of, "move", to.copy, done.entries, { copy: from, at: back.at, name: back.name }) : undefined;
+    if (done.entries.length) said(doneWords(verb === "move" ? "Moved" : "Copied", done.entries.map((e) => e.name), to.name), { description: leftovers(done), ...(undo ? { undo } : {}) });
     else failed(verb === "move" ? "Nothing was moved" : "Nothing was copied", new Error(leftovers(done) ?? "The folder took nothing."));
     return done.entries.length > 0;
   } catch (err) {

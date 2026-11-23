@@ -34,9 +34,11 @@ export interface WriteFence {
 /**
  * Test seams, set only from write.test.ts. `beforeWrite` runs after a target is admitted and just before it
  * is written, so a test can swap a folder for a link there. `beforeCheck` runs after a copy is synced and
- * before it is read back, so a test can spoil it. `across` makes every move take the path between volumes.
+ * before it is read back, so a test can spoil it. `beforeRename` runs just before a folder is renamed onto the
+ * empty folder reserved for it, so a test can take that name there. `across` makes every move take the path
+ * between volumes.
  */
-export const writeSeams: { beforeWrite?: (to: string) => Promise<void> | void; beforeCheck?: (copy: string) => Promise<void> | void; across?: boolean } = {}
+export const writeSeams: { beforeWrite?: (to: string) => Promise<void> | void; beforeCheck?: (copy: string) => Promise<void> | void; beforeRename?: (to: string) => Promise<void> | void; across?: boolean } = {}
 
 /** A file at most this big is checked by its sha256; a bigger one by its size alone. */
 const HASH_MAX = 64 * 1024 * 1024
@@ -308,32 +310,47 @@ export async function moveNoReplace(fence: WriteFence, from: string, toDir: stri
   if (within(parent, src)) throw new FileRefused('outside', 'A folder cannot go inside itself.')
   const made = await makeEmpty(name, to)
   await landed(parent, to, removeIfSame(made))
-  if (!writeSeams.across && info.dev === made.dev) {
+  // A folder is renamed only onto the empty folder reserved for it: POSIX allows that and refuses when anything
+  // appeared inside it since, and the reservation is looked at first, so a folder another writer put in its place is
+  // never replaced. Windows cannot rename onto it, and letting it go first would leave the name open to a sync client
+  // or another app: there the reservation is kept, the folder copied into it and checked, and only then the source removed.
+  if (!writeSeams.across && info.dev === made.dev && process.platform !== 'win32') {
+    // Held open, the reservation's inode cannot be freed and given to a folder made in its place.
+    const hold = await open(to, 'r')
+    const pinned = await hold.stat()
+    const ours = async (): Promise<boolean> => {
+      const now = await lstat(to).catch(() => null)
+      return !!now && pinned.ino === made.ino && pinned.dev === made.dev && now.ino === pinned.ino && now.dev === pinned.dev
+    }
     try {
-      // POSIX lets a folder be renamed onto an empty one, and refuses when something appeared inside it since.
-      // Windows does not, so there the empty folder goes first and another writer may take the name in that gap.
-      if (process.platform === 'win32') await rmdir(to)
+      await writeSeams.beforeRename?.(to)
+      if (!(await ours())) throw await taken(name, to)
       await rename(src, to)
     } catch (e) {
-      if (process.platform !== 'win32') await rmdir(to).catch(() => {})
-      if (['ENOTEMPTY', 'EEXIST', ...(process.platform === 'win32' ? ['EPERM'] : [])].includes(codeOf(e) ?? '')) throw await taken(name, to)
-      if (codeOf(e) !== 'EXDEV' || process.platform === 'win32') throw e
+      // Only the reservation goes, and only while it is empty: rmdir leaves anything another writer put in it.
+      if (await ours()) await rmdir(to).catch(() => {})
+      if (e instanceof FileRefused) throw e
+      if (['ENOTEMPTY', 'EEXIST'].includes(codeOf(e) ?? '')) throw await taken(name, to)
+      if (codeOf(e) !== 'EXDEV') throw e
       // A bind mount on one device still answers EXDEV: copy instead, into a fresh empty folder.
       return moveAcross(fence, src, parent, to, await makeEmpty(name, to))
+    } finally {
+      await hold.close()
     }
     await landed(parent, to, (real) => rename(real, src))
     return to
   }
-  return moveAcross(fence, src, parent, to, made)
+  return moveAcross(fence, src, parent, to, made, !writeSeams.across && info.dev === made.dev)
 }
 
-/** A folder moved to another volume: copied into `to` (new and empty), checked, then the source removed. */
-async function moveAcross(fence: WriteFence, src: string, parent: string, to: string, made: Stats): Promise<string> {
+/** A folder moved as a copy (to another volume, or on Windows): copied into `to` (new, empty and held), checked, then the source removed. */
+async function moveAcross(fence: WriteFence, src: string, parent: string, to: string, made: Stats, sameDisk = false): Promise<string> {
   const undo = removeIfSame(made)
+  const where = sameDisk ? 'here' : 'to another disk'
   try {
     const tree = await walk(src, 50_000)
-    if (tree.bytes > FOLDER_ACROSS_MAX) throw new FileRefused('too-big', 'This folder is over 2 GB, too big to move to another disk.')
-    if (tree.links.length) throw new FileRefused('link', 'This folder holds a link, which cannot be moved to another disk.')
+    if (tree.bytes > FOLDER_ACROSS_MAX) throw new FileRefused('too-big', `This folder is over 2 GB, too big to move ${where}.`)
+    if (tree.links.length) throw new FileRefused('link', `This folder holds a link, which cannot be moved ${where}.`)
     await fillFolder(tree, src, to)
     await landed(parent, to, undo)
   } catch (e) {

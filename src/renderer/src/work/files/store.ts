@@ -623,6 +623,12 @@ export interface Listing {
   away: boolean;
   /** when a kept list was read (a machine asleep) */
   asOf?: number;
+  /** the error is a later page's: the rows above it stay, and its cursor is kept for Retry */
+  lostPage?: boolean;
+  /** a search stopped before it looked through every place */
+  incomplete?: boolean;
+  /** a search left these places out because their machine sleeps */
+  asleep?: string[];
 }
 
 interface ListingEntry extends Listing {
@@ -649,6 +655,8 @@ export interface ListFrom {
   team?: readonly FileEntry[];
   /** a page of search results: every place of the host is searched for these words, under this filter */
   search?: { query: string; filter?: FileSearchFilter };
+  /** the folders alone (Move to… and Copy to…, which pick a folder): the host leaves the files out of every page */
+  foldersOnly?: boolean;
 }
 
 const readMs = (copy: PlaceCopy): { timeoutMs?: number } => (copy.place.vm ? { timeoutMs: 120_000 } : {});
@@ -659,12 +667,13 @@ export const listingSeams: { fetch?: (from: ListFrom, at: FolderRef, sort: FileS
 async function fetchPage(from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string): Promise<FilesListing> {
   if (listingSeams.fetch) return listingSeams.fetch(from, at, sort, cursor);
   if (from.search) return ask<FilesListing>(from.copy.link, "work.files.search", { workspaceId: from.workspaceId, query: from.search.query, ...(from.search.filter ? { filter: from.search.filter } : {}), ...(cursor ? { cursor } : {}) }, { timeoutMs: 30_000 });
-  if (from.copy.wire === "files") return ask<FilesListing>(from.copy.link, "work.files.list", { workspaceId: from.workspaceId, at, sort, ...(cursor ? { cursor } : {}) }, readMs(from.copy));
+  if (from.copy.wire === "files") return ask<FilesListing>(from.copy.link, "work.files.list", { workspaceId: from.workspaceId, at, sort, ...(cursor ? { cursor } : {}), ...(from.foldersOnly ? { foldersOnly: true } : {}) }, readMs(from.copy));
   // A host a release behind lists a folder whole, unsorted by the asker: the window orders it.
   const folder = at.at === "place" ? from.copy.place.root : at;
   const { entries } = await ask<{ entries: TeamsEntry[] }>(from.copy.link, "work.office.filesList", { source: folder }, readMs(from.copy));
   const host = from.copy.place.root.at === "file" ? from.copy.place.root.host : from.copy.place.env;
-  return { entries: sortEntries(entries.map((e) => entryFromOld(e, from.copy.place, host)), sort), place: from.copy.place.id, trail: trailFromOld(from.copy.place, folder) };
+  const all = sortEntries(entries.map((e) => entryFromOld(e, from.copy.place, host)), sort);
+  return { entries: from.foldersOnly ? all.filter((e) => e.folder) : all, place: from.copy.place.id, trail: trailFromOld(from.copy.place, folder) };
 }
 
 /** Who last saved each Office file of a page, asked once for its first hundred: a list never reads a file, so this comes after. */
@@ -684,7 +693,7 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
   const was = listings.get(key);
   if (more && (!was?.next || was.loading)) return;
   const round = more ? was!.round : (was?.round ?? 0) + 1;
-  putListing(key, { ...(was ?? { ...EMPTY_LISTING }), loading: true, error: null, round });
+  putListing(key, { ...(was ?? { ...EMPTY_LISTING }), loading: true, error: null, lostPage: false, round });
   try {
     if (from.team) return putListing(key, { ...EMPTY_LISTING, entries: sortEntries(from.team, sort), trail: [], loaded: true, loading: false, round });
     let first = !more;
@@ -706,18 +715,21 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
       error: null,
       away: false,
       asOf: first ? page.asOf : now.asOf,
+      // What a search left out is said by every page of it alike.
+      ...(page.more ? { incomplete: true } : {}),
+      ...(page.asleep?.length ? { asleep: page.asleep } : {}),
       round,
     });
     void fillWho(key, from, round);
   } catch (err) {
     const now = listings.get(key);
     if (!now || now.round !== round) return;
-    putListing(key, { ...now, loaded: true, loading: false, error: refusalWords(err) || "The host did not answer.", away: unreachable(err) });
+    putListing(key, { ...now, loaded: true, loading: false, error: refusalWords(err) || "The host did not answer.", away: unreachable(err), lostPage: more });
   }
 }
 
 const listingKey = (from: ListFrom, at: FolderRef, sort: FileSort): string =>
-  `${from.copy.link}\u0000${from.workspaceId}\u0000${refKey(at)}\u0000${sort.by}:${sort.dir}${from.search ? `\u0000${from.search.query}\u0000${JSON.stringify(from.search.filter ?? {})}` : ""}`;
+  `${from.copy.link}\u0000${from.workspaceId}\u0000${refKey(at)}\u0000${sort.by}:${sort.dir}${from.search ? `\u0000${from.search.query}\u0000${JSON.stringify(from.search.filter ?? {})}` : ""}${from.foldersOnly ? "\u0000folders" : ""}`;
 
 /** The key a host's push names a folder by: its own key as a row of its parent. */
 function pushKey(copy: PlaceCopy, at: FolderRef): string | null {
@@ -843,18 +855,23 @@ export async function dropSearch(link: string, workspaceId: string, id: string):
   putSaved(key, (savedSearches.get(key) ?? []).filter((s) => s.id !== id));
 }
 
-/** The filter each search page of this window stands under, by its tab: his own until he saves the search. */
+/**
+ * The filter each search page of this window stands under, by its tab and the search it shows: his own until he
+ * saves the search. Another search opened in the same tab starts from its own saved filter, not the last one's.
+ */
 const pageFilters = new Map<string, FileSearchFilter>();
 const filterListeners = new Set<() => void>();
-export function useSearchFilter(tabId: string, start?: FileSearchFilter): [FileSearchFilter, (next: FileSearchFilter) => void] {
+export const searchFilterKey = (tabId: string, page: FilePage): string => `${tabId}\u0000${refKey(page.at)}\u0000${page.query ?? ""}`;
+export function useSearchFilter(tabId: string, page: FilePage, start?: FileSearchFilter): [FileSearchFilter, (next: FileSearchFilter) => void] {
+  const key = searchFilterKey(tabId, page);
   const value = useSyncExternalStore(
     (listener) => (filterListeners.add(listener), () => void filterListeners.delete(listener)),
-    () => pageFilters.get(tabId),
+    () => pageFilters.get(key),
   );
   return [
     value ?? start ?? NO_FILTER,
     (next) => {
-      pageFilters.set(tabId, next);
+      pageFilters.set(key, next);
       for (const listener of filterListeners) listener();
     },
   ];

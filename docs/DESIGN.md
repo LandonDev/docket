@@ -1597,9 +1597,10 @@ Around the canvas:
   inside, its groups 16px apart: Home, Recent and Starred, with his saved
   searches under Starred; then "Places" (a 12px medium muted label), one
   28px row a place at radius 6, a 16px muted glyph 8px from its 13px
-  name, the row he stands in `muted`; then Made by threads and Trash. A
-  place's row ends in a quiet chevron, always drawn, that opens its
-  folders under it, 16px a level, kept open per window; a row or a folder
+  name, the row he stands in `sidebar-group-selected` (the rail's own
+  selected fill: `muted` on `sidebar` can barely be seen in light); then
+  Made by threads and Trash. A place's row ends in a quiet chevron, always
+  drawn, that turns as it opens its folders under it, 16px a level, kept open per window; a row or a folder
   of the sidebar takes a drop. A team with
   several channels is one row, its channels one level in. A place that is
   down greys its glyph and says why only when opened. With no Teams place
@@ -1609,7 +1610,8 @@ Around the canvas:
   over the list.
   The **tab row** is the canvas tab row's own: 36px on `sidebar`, 28px
   chips at radius 6, 2px apart, a 14px kind glyph in `muted-foreground`
-  (never tinted: no tab row's is), the name, the selected tab `muted`; a
+  (never tinted: no tab row's is), the name, the selected tab
+  `sidebar-group-selected`; a
   close control on the tab under the pointer and on the selected one; then
   a quiet +. A tab is a folder he is browsing or a file open as itself. A
   folder opens in the tab he is in; a file opens in a tab of its own beside
@@ -1618,8 +1620,8 @@ Around the canvas:
   glyph and then scroll under a faded edge.
   A **page's bar** is 44px: Back and Forward for this tab (28px ghost
   glyphs), then the trail, each step above the folder a ghost press in
-  `muted-foreground` and the folder itself in medium `foreground`, 14px
-  chevrons between; then Go to and Search (28px ghost glyphs), the view
+  `muted-foreground` and the folder itself in medium `foreground` (its
+  whole name in a tooltip where the bar cuts it), 14px chevrons between; then Go to and Search (28px ghost glyphs), the view
   switch, the page's options (⋯) and the one primary button, New. A press
   on the trail's empty part, or ⌘P, turns the trail into **Go to**'s
   field: a panel under it (the popover's own depth, 32px rows) lists the
@@ -1655,27 +1657,35 @@ Around the canvas:
   (semibold while a thread made it and he has not opened it), then one
   state at most (a 12px cloud mark, an amber count of suggestions, "Dana
   is in it", a spinner while a thread writes), then who last changed it
-  (160px) and when (128px, right aligned, tabular), both 12px muted. Who
-  goes first as the list narrows (under 560px of list), then when (under
-  360px). Folders come first. Grouped, each group's first row carries a
+  (160px) and when (128px, right aligned, tabular), both 12px muted; a
+  name the list cuts has its whole text in a tooltip. Who goes first as
+  the list narrows (under 560px of the list itself, a details pane beside
+  it not counted), then when (under 360px). Folders come first. Grouped, each group's first row carries a
   28px heading over it (12px medium muted), 8px clear of the group above.
   With Show Details on, a 288px pane at the list's right (past 640px of
-  list) shows the one selected file's picture in a 160px box on `stage`,
+  the folder's body) shows the one selected file's picture in a 160px box on `stage`,
   its name, its facts as a two-column list and Open.
   **Grid** is tiles at 96, 144 or 208px: the file's own picture where its
   host draws one, on `stage` inside the image outline with 4px around it,
   else the kind's glyph large (28, 36, 48px); under it the name on two
   lines at most, centred, and one 12px muted fact. A picture is asked for
-  only for the tiles on screen, never for a folder, a file kept in the
+  only once its tile is within a screen of what the grid shows (the glyph
+  holds its place till then), never for a folder, a file kept in the
   cloud, a sound or an archive, and a tile never waits on it. **Columns**
   is a 216px column a folder from the place's top down, 28px rows, the
-  folder on the way down held in `muted`, the last column the selected
-  file's picture and facts. **Gallery** is one large read-only preview on
+  folder on the way down held in `muted` (`foreground` 5% while the keys
+  are in the columns), the last column the selected file's picture and
+  facts; Search's field filters the last column, and the arrows walk what
+  it leaves. **Gallery** is one large read-only preview on
   `stage`, a 32px line under it with the file's name and one fact, and a
   76px strip of the folder (60px cells, a small picture or the glyph, the
-  one shown held in `muted`); the arrows walk, Return opens. **Beside** is
-  the list at 280px in two-line 44px rows (the name and when; under it
-  the one state, else who changed it) and the selected file at its right:
+  selected ones held in `muted`, the one shown where none is); the arrows
+  walk, Return opens. **Beside** is the list at 280px (down to 200px as
+  the page narrows) in two-line 44px rows (the name and when; under it
+  the one state in words, else who changed it) and the selected file at
+  its right, the right half empty on `stage` while nothing is selected;
+  under 520px the two take turns, a press on a file showing it under a
+  32px line led by Back:
   a read-only preview that follows the arrows after 120 ms, and, on a
   click or Tab into it, the file as itself, editable, under one 32px line
   that says where saving stands and Open in a Tab. It is no tab. A walk
@@ -1684,10 +1694,13 @@ Around the canvas:
   `foreground` 5%. Shift takes the run, ⌘ adds or takes one, ⌘A all. The
   arrows walk, Return opens, Space is **Quick Look**: a layer over the
   page (the popover's depth, radius 12, at most 1000 by 760px) with a
-  44px head (the glyph, the name, where it is kept, Open, Close) and the
+  44px head (the glyph, the name, where it is kept, cut only at a word,
+  Open, Close) and the
   file read only under it: its pages down the pane, its picture fitted,
-  a video's frame with Play under it, a sound's Play, a zip's listing,
-  else its facts and the one sentence that says why there is no picture.
+  a text file's first lines in the mono face, a video's frame with Play
+  under it, a sound's Play, a zip's listing, else its facts in one comma
+  sentence and the one sentence that says why there is no picture. Tab
+  stays on its own controls, and closing it gives the list its focus back.
   It opens with one scale from 0.96 and a fade over `--dur-base`, follows
   the arrows with no motion, and closes at once on Space, Escape or a
   press outside. A file kept in the cloud shows its facts and Download
@@ -1703,23 +1716,34 @@ Around the canvas:
   tooltip: Open, Open in New Tab, Rename, Move to…, Copy to…, Star,
   Delete. With two or more selected one bar floats 12px over the list's
   foot (40px, radius 12, the popover's depth): "3 selected", Move, Copy,
-  Delete, Clear. **Move to… and Copy to…** are one dialog: the places at
-  the left, the folder picked at the right, the place's own sentence where
-  it refuses. Delete goes to Trash and says so in one toast with Undo;
+  Delete, Clear; while it shows the list keeps 56px under its last row.
+  **Move to… and Copy to…** are one small dialog that drills down in one
+  column: it opens in the folder the things are in, a trail over it leads
+  back up and to Places, a press walks into a folder (folders alone,
+  more as the list nears its end), and the place's own sentence stands
+  beside the verb where it refuses. A move inside one place says what
+  went in one toast with Undo, back to the folder it came from. Delete
+  goes to Trash and says so in one toast with Undo;
   Trash is a lens whose rows have Put Back and Delete for Good, with
   Empty Trash in its bar. **Drag**: nothing moves while a thing is
   dragged; the target (a folder row, a place or folder of the sidebar, a
   folder's tab, which comes forward after 600 ms) takes `muted`, and the
   pointer carries a small label with the verb ("Move to Events", "Copy to
   General"). A drop inside one place moves and into another copies; ⌥
-  copies, ⌘ moves. Files dropped from the desktop upload into the folder,
+  copies, ⌘ moves. Rows the system carries out to the desktop are let go
+  once the window loses focus, so files dragged in from the desktop
+  next upload. Files dropped from the
+  desktop upload into the folder,
   with one line over the list for the file going, how far, and Cancel.
   Rows dragged onto the docked chat draw the document surface's wash 12px
   inside it ("Drop to add to the message") and become a file chip each in
   its composer, eight at most.
   **Home** is the page a new tab opens on: three short lists (Waiting on
   you, Starred, Recent) in a 768px column, 36px rows that open on one
-  press; a list with nothing in it is left out.
+  press; a file shows once, in the first list it belongs to, and a list
+  with nothing in it is left out. A row being opened shows the list's
+  spinner and word; a row that says a state gives its date up first in a
+  narrow page.
   A **file open as itself** has a 48px header: its kind's glyph in its
   tint, its name at 14px semibold, and under it one 12px muted line that
   says where it is kept ("In Events") or whose copy it is ("A copy from
@@ -1727,20 +1751,21 @@ Around the canvas:
   saves, where saving stands ("Saved 1:52 PM in Events"; it takes
   `foreground` only when it needs him, with at most two presses beside
   it: Reload, Keep mine as a copy); at the right ⋯ and Ask (secondary,
-  the Ask glyph). The name is a press that renames it in place. ⋯ holds
+  the Ask glyph; flat on `muted` while its chat is open). The name is a press that renames it in place. ⋯ holds
   its row's verbs, Download, Full Window and Close Tab. Full Window fills
   the app's window with the file, its way back in the header and on
   Escape. Under the header the kind's own bar and body, exactly as beside
   a thread; the `file` kind shows a text or code file in an editor that
   saves as he types, a sound with Play, a zip as its facts over the list
-  of what it holds, and anything else as its facts with Download and Open
-  in its app. Opening a file makes no thread, and the thread is never the
+  of what it holds, and anything else as its facts (one comma sentence;
+  the header already names it) with Download and Open in its app. Opening a file makes no thread, and the thread is never the
   first thing he sees.
   **Ask** docks a chat at the file's right, under the header; Ask again or
   the dock's close takes it away, at once, never a tween. It shows the
   thread that holds the file, else a draft that is in no rail and on no
   host until he sends ("New chat"), its composer holding the file's chip
-  and no draft row. The dock is 360px to start (360 to 720, kept per
+  from the first Ask (once he takes it off it stays off, and the thread
+  his send makes does not open the file) and no draft row. The dock is 360px to start (360 to 720, kept per
   window), the file never under 560px beside it; the canvas split's
   hairline sash between them (an 8px grab, the arrows, a double-click
   back to 360). Its head is 32px, level with the kind's bar: the title at
@@ -1753,7 +1778,12 @@ Around the canvas:
   closes. A selection's Ask opens the dock with the selection's chip.
   **States**: loading is the list's own bones (a 16px square and a line a
   row); an empty folder is one `Empty` ("This folder is empty"); a folder
-  that did not load is `Empty` with why and Retry; a machine asleep is one
+  that did not load is `Empty` with why and Retry, and one that is gone
+  offers the folder above it (else Back) in Retry's place; a later page
+  that did not load is the state line over the rows it kept ("The rest
+  did not load", Retry asks that page again); a search that left a place
+  out says so in one line over its results, or under "Nothing found",
+  with Retry; a machine asleep is one
   line over the list it kept ("The Windows VM is asleep", "This is the
   list from 1:40 PM.", Wake it) in the state line's shape with no failed
   glyph; a machine that did not answer is the state line with Retry; a

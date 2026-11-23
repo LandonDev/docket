@@ -4,6 +4,7 @@ import { deflateRawSync, gzipSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileArchive, FilePreview } from '@shared/contract-work-files'
 import type { ConvertJob } from '../formats/jobs'
+import { setCloudDir } from '../office/files/library'
 
 /**
  * Previews and thumbnails (preview.ts) and an archive's listing (zipdir.ts), through the module's own wire and
@@ -348,6 +349,15 @@ describe('a shared library: memory only, his window only', () => {
     expect(scaled).toBe(1)
   })
 
+  it("never asks the Mac's thumbnailer for a shared file, which may keep its own picture of it on disk", async () => {
+    previewSeams.platform = 'darwin'
+    writeFileSync(join(rig.team, 'General', 'Bare plan.docx'), makeZip([{ name: 'word/document.xml', data: '<w:document/>' }]))
+    expect(await via(shared('Bare plan.docx'))).toBe('libreoffice')
+    expect(looked).toBe(0)
+    // His own file still takes it, before any conversion.
+    expect(await via(mine('Bare.docx'))).toBe('quicklook')
+  })
+
   it("leaves nothing of a conversion: its job is marked shared, and its PDF goes with the render's scratch", async () => {
     writeFileSync(join(rig.team, 'General', 'Bare plan.docx'), makeZip([{ name: 'word/document.xml', data: '<w:document/>' }]))
     expect(await via(shared('Bare plan.docx'))).toBe('libreoffice')
@@ -494,6 +504,21 @@ describe('access is checked again before the answer', () => {
     previewSeams.rendered = (path) => renameSync(path, join(rig.outside, 'Bracket.pdf'))
     expect(await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })).toEqual({ none: NO_PREVIEW.reach })
     expect(kept().filter((n) => n.endsWith('.png'))).toEqual([])
+  })
+
+  it('answers nothing, and keeps nothing, for a file that changed during its render', async () => {
+    previewSeams.rendered = (path) => writeFileSync(path, '%PDF dummy, and a page more')
+    expect(await call<FilePreview>('work.files.preview', { ref: mine('Bracket.pdf'), width: 600 })).toEqual({ none: NO_PREVIEW.changed })
+    expect(kept().filter((n) => n.endsWith('.png'))).toEqual([])
+    expect(previewMemory(rig.db).count).toBe(0)
+  })
+
+  it('answers nothing, and leaves nothing on disk, for a file that others came to be able to open during its render', async () => {
+    // The workspace's folder is found to lie in a cloud folder of this computer: from then on it is shared.
+    previewSeams.rendered = () => setCloudDir(() => rig.base)
+    expect(await one(mine('Poster.png'), { thumb: 192 })).toEqual({ none: NO_PREVIEW.changed })
+    expect(kept()).toEqual([])
+    expect(previewMemory(rig.db).count).toBe(0)
   })
 
   it('answers nothing from the cache for a file now out of reach', async () => {

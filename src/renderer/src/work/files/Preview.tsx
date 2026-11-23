@@ -9,7 +9,7 @@ import { dayTime } from "../../lib/duration";
 import { refusalWords } from "../../lib/settingsHome";
 import { bytesOfBase64 } from "./fileText";
 import { KindGlyph } from "./KindGlyph";
-import { pageWidth, useArchive, usePreviewPage, type ArchiveView, type PictureFrom } from "./previews";
+import { pageWidth, readsAsText, useArchive, usePreviewPage, useTextHead, type ArchiveView, type PictureFrom } from "./previews";
 
 /**
  * A file shown read only (docs/DESIGN.md "The Files place", Quick Look's renderer): its pages, its picture, a
@@ -37,9 +37,9 @@ const MEDIA_TYPE: Record<string, string> = {
   webm: "video/webm",
 };
 
-/** A file's facts in one line: what it is, how big, when it changed. */
-export const factsLine = (entry: Pick<FileEntry, "kind" | "size" | "changed">): string =>
-  [ENTRY_KIND_WORDS[entry.kind], entry.size !== undefined ? formatBytes(entry.size) : null, entry.changed ? `Changed ${dayTime(entry.changed)}` : null].filter(Boolean).join(" · ");
+/** A file's facts in one sentence: what it is, how big, when it changed ("Sheet, 2 KB, changed Nov 3, 2:14 PM"). */
+export const factsLine = (entry: Pick<FileEntry, "kind" | "size" | "changed">, when: (at: number) => string = dayTime): string =>
+  [ENTRY_KIND_WORDS[entry.kind], entry.size !== undefined ? formatBytes(entry.size) : null, entry.changed ? `changed ${when(entry.changed)}` : null].filter(Boolean).join(", ");
 
 /** No picture: the kind's glyph large, the facts, the one sentence, and a press where there is one. */
 function Plain({ entry, why, children }: { entry: FileEntry; why?: string; children?: ReactNode }) {
@@ -97,14 +97,17 @@ function Pages({ from, entry }: { from: PictureFrom; entry: FileEntry }) {
     observer.observe(box);
     return () => observer.disconnect();
   }, [box]);
+  // Two more pages as the end of what is drawn comes within a pane of sight: on a scroll, and at once where the
+  // pages drawn already end in sight (a short landscape file, a pane made taller), so there is always a way on.
   useEffect(() => {
     if (!box || shown >= pages) return;
     const near = (): void => {
-      if (box.scrollHeight - box.scrollTop - box.clientHeight < box.clientHeight) setShown((n) => Math.min(pages, n + 2));
+      if (box.clientHeight > 0 && box.scrollHeight - box.scrollTop - box.clientHeight < box.clientHeight) setShown((n) => Math.min(pages, n + 2));
     };
+    near();
     box.addEventListener("scroll", near, { passive: true });
     return () => box.removeEventListener("scroll", near);
-  }, [box, shown, pages]);
+  }, [box, shown, pages, css]);
   const width = pageWidth(css);
   const count = picture ? 1 : Math.min(pages, shown);
   return (
@@ -112,6 +115,24 @@ function Pages({ from, entry }: { from: PictureFrom; entry: FileEntry }) {
       {Array.from({ length: count }, (_, i) => (
         <Page key={i} from={from} entry={entry} page={i + 1} width={width} picture={picture} {...(i === 0 ? { onPages: setPages } : {})} />
       ))}
+    </div>
+  );
+}
+
+/**
+ * A text file's first lines, read only, in the mono face on a page of its own: what the `file` kind would show,
+ * without its editor. A file the kind only tries as text shows its facts until its bytes read as text.
+ */
+function TextPage({ from, entry }: { from: PictureFrom; entry: FileEntry }) {
+  const head = useTextHead(from, entry);
+  if (head.is === "none" || (head.is === "loading" && entry.kind !== "text")) return <Plain entry={entry} />;
+  return (
+    <div data-files-preview-text className="flex min-h-0 flex-1 flex-col items-center overflow-x-hidden overflow-y-auto p-4">
+      {head.is === "loading" ? (
+        <Skeleton aria-label="Loading" className="aspect-[17/22] w-full max-w-3xl shrink-0 rounded-sm" />
+      ) : (
+        <pre className="w-full max-w-3xl shrink-0 rounded-sm bg-background p-6 font-mono text-xs leading-5 break-words whitespace-pre-wrap text-foreground outline-1 -outline-offset-1 outline-(--image-outline)">{head.text}</pre>
+      )}
     </div>
   );
 }
@@ -276,6 +297,7 @@ export function FilePreviewPane({
   else if (entry.kind === "audio") body = <MediaPlay key={entry.key} from={from} entry={entry} />;
   else if (entry.kind === "archive") body = <div className="flex min-h-0 flex-1 flex-col items-center overflow-x-hidden overflow-y-auto">{extOf(entry.name) === "zip" ? <ArchiveList view={archive} /> : <Plain entry={entry} />}</div>;
   else if (entry.kind === "video") body = <MediaPlay key={entry.key} from={from} entry={entry} still={<Pages from={from} entry={entry} />} />;
+  else if (readsAsText(entry)) body = <TextPage key={entry.key} from={from} entry={entry} />;
   else if (entry.kind === "other") body = <Plain entry={entry} />;
   else body = <Pages key={entry.key} from={from} entry={entry} />;
   return (

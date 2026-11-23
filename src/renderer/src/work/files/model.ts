@@ -1,4 +1,5 @@
 import type { FileCrumb, FilePage, FilesPlaces, FileTab } from "@shared/contract-work-files";
+import { canvasSourcePath, type CanvasSource } from "@shared/work/canvas";
 import type { TeamsEntry, TeamsLibrariesAnswer, TeamsPlace } from "@shared/contract-work-office";
 import { kindOfEntry, PLACE, refKey, refusal, threadCanvasOf, type FileEntry, type FilePlace, type FileSort, type FileVerb, type FolderRef, type PlaceKind } from "@shared/work/files";
 import { placesIn, type LibraryPlace } from "@shared/work/filePlaces";
@@ -209,6 +210,9 @@ export function openWay(entry: Pick<FileEntry, "name" | "kind">, copy: Pick<Plac
   if (!here && !workspace.copy) return "app";
   return "tab";
 }
+/** Whether an open file can sit at another's side: one on a disk can; a LifeOS or Drive file opens in a tab of its own. */
+export const sitsAtSide = (source: CanvasSource): boolean => canvasSourcePath(source) !== null;
+
 const isOffice = (name: string): boolean => /\.(xlsx|xlsm|xlsb|xls|docx|docm|doc|rtf|odt|pptx|pptm|ppt|odp)$/i.test(name);
 
 /** The verb for a file's own app: "Open in Excel", or "Open in its app". */
@@ -613,7 +617,8 @@ export function actsFor(
   if (one) {
     rows.push({ act: "open", label: "Open" });
     if (one.folder && o.tabs) rows.push({ act: "open-tab", label: "Open in New Tab" });
-    if (!one.folder && o.side) rows.push({ act: "open-side", label: "Open to the Side" });
+    // Only a file on a disk can sit at a tab's side today: a LifeOS document or a Drive file opens in a tab of its own.
+    if (!one.folder && o.side && one.ref?.at === "file") rows.push({ act: "open-side", label: "Open to the Side" });
     if (o.reveal && one.where) rows.push({ act: "reveal", label: "Show in Its Folder" });
     if (!one.folder && place && LIBRARY.includes(place.kind)) rows.push({ act: "open-app", label: appVerb(one) });
     rows.push({ act: "rename", label: "Rename", refused: no("rename"), rule: true });
@@ -649,6 +654,25 @@ export const stemEnd = (name: string): number => {
   const dot = name.lastIndexOf(".");
   return dot > 0 ? dot : name.length;
 };
+
+/** A folder its host says is gone ("That folder is not there any more."), as against one that did not load: Retry cannot bring it back. */
+export const folderGone = (error: string | null | undefined): boolean => !!error && / is not there any more\b/.test(error);
+
+/** Home's three lists with each file once, in the first it belongs to: what waits on him, then his stars, then what he opened last. */
+export function homeLists<T extends { key: string }>(home: { waiting: readonly T[]; starred: readonly T[]; recent: readonly T[] }): { waiting: T[]; starred: T[]; recent: T[] } {
+  const seen = new Set<string>();
+  const once = (list: readonly T[]): T[] => list.filter((e) => !seen.has(e.key) && (seen.add(e.key), true));
+  return { waiting: once(home.waiting), starred: once(home.starred), recent: once(home.recent) };
+}
+
+const andList = (names: readonly string[]): string => (names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
+/** What a search left out, as one note over its results: places whose machine sleeps, or a search that stopped before it looked everywhere. Null when it read every place. */
+export function searchGap(found: { incomplete?: boolean; asleep?: readonly string[] }): FilesNote | null {
+  const asleep = found.asleep ?? [];
+  if (asleep.length) return { title: `${andList(asleep)} ${asleep.length === 1 ? "is" : "are"} asleep`, line: found.incomplete ? "Not every place was searched." : asleep.length === 1 ? "Its files were not searched." : "Their files were not searched.", fix: { kind: "retry" } };
+  return found.incomplete ? { title: "Not every place was searched", fix: { kind: "retry" } } : null;
+}
 
 /** Where a lens's row lives, in words: the place and the folders down to it ("Dummy Esports › Events"). */
 export const whereWords = (where: NonNullable<FileEntry["where"]>): string => [where.name, ...where.trail].join(" › ");

@@ -183,7 +183,7 @@ struct FolderScreen: View {
         }
         .alert("Couldn’t Do That", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK", role: .cancel) {}
-        } message: { Text(failure ?? "") }
+        } message: { Text(FilesRules.sentence(failure ?? "")) }
         .filesUndoInset($undo) { pending in Task { await putBack(pending) } }
         .task {
             if files.places[route.workspaceId]?.value == nil { await files.loadPlaces(route.workspaceId) }
@@ -237,8 +237,16 @@ struct FolderScreen: View {
                 entryRow(entry)
                     .onAppear { if entry.key == shown.entries.last?.key { Task { await files.more(route.workspaceId, route.at) } } }
             }
+            // The foot: a spinner only while the next page is asked for; a page that failed says why, with Try Again.
             if shown.next != nil {
-                ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden)
+                if files.loadingMore(route.workspaceId, route.at) {
+                    ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden)
+                } else if let failed = shown.moreFailed {
+                    QuietNote(text: failed, action: ("Try Again", { Task { await files.more(route.workspaceId, route.at) } }))
+                        .listRowInsets(Layout.rowInsets)
+                        .listRowSeparator(.hidden)
+                        .accessibilityIdentifier("files-more-failed")
+                }
             }
         }
         .listStyle(.plain)
@@ -404,7 +412,7 @@ struct FilesFailed: View {
         ContentUnavailableView {
             Label(title, systemImage: symbol)
         } description: {
-            Text(message)
+            Text(FilesRules.sentence(message))
         } actions: {
             Button("Try Again", action: retry)
         }

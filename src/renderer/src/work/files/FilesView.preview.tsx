@@ -1,6 +1,6 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/FilesView.preview.tsx#FilesBrowse` (and
 // #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
-// #FilesSearch, #FilesQuickLook, #FilesFile): the Files place's window with stand-in places and rows, and its states. Rendered by nothing in the app.
+// #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile): the Files place's window with stand-in places and rows, and its states. Rendered by nothing in the app.
 import type { FilePage, FilesHome, FileTab } from "@shared/contract-work-files";
 import type { FileEntry, FilePlace } from "@shared/work/files";
 import type { MenuRow } from "../../chrome/menuRows";
@@ -215,6 +215,8 @@ function picture(kind: FileEntry["kind"], width: number): { png: string; width: 
 }
 previewSeams.thumbs = async (_from, list, size) => list.map((e) => (e.kind === "text" ? null : picture(e.kind, size).png));
 previewSeams.preview = async (_from, entry, _page, width) => (entry.kind === "other" ? { none: "There is no preview of this file." } : { ...picture(entry.kind, Math.min(width, 1024)), pages: entry.kind === "pdf" ? 4 : 1 });
+// A text file's first lines, as its host would read them.
+previewSeams.head = async () => ({ data: btoa("# Run of show\n\n4:00 PM  Doors open, check-in at the front desk\n4:30 PM  Captains meeting in room 2\n5:00 PM  Round one\n6:30 PM  Dinner break\n7:00 PM  Semifinals\n8:30 PM  Finals on the main stage\n\nBring the bracket and the spare headsets."), end: true });
 previewSeams.archive = async () => ({ entries: [{ name: "art/", size: 0, dir: true }, { name: "art/poster-final.png", size: 1_840_000, dir: false }, { name: "art/lower-third.png", size: 412_000, dir: false }, { name: "fonts/", size: 0, dir: true }, { name: "fonts/Inter.woff2", size: 148_000, dir: false }], more: false });
 
 /** Gallery: one large read-only preview over a strip of the folder. */
@@ -311,6 +313,18 @@ export function FilesQuickLook() {
     <div className="p-6">
       <Window width={980} height={680}>
         <PageView {...common} from={from} listing={listing()} drawn={{ picked: ["Ballroom contract.pdf"], quick: true }} />
+      </Window>
+    </div>
+  );
+}
+
+/** Quick Look over a text file: its first lines in the mono face, read only. */
+export function FilesQuickLookText() {
+  const from = { workspaceId: "w", copy: eventsCopy };
+  return (
+    <div className="p-6">
+      <Window width={980} height={680}>
+        <PageView {...common} from={from} listing={listing()} drawn={{ picked: ["Run of show.md"], quick: true }} />
       </Window>
     </div>
   );

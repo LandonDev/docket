@@ -1,8 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { THUMB_SIZES, type FileArchive, type FilePreview } from "@shared/contract-work-files";
+import { THUMB_SIZES, type FileArchive, type FileBytes, type FilePreview } from "@shared/contract-work-files";
 import type { FileEntry } from "@shared/work/files";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
+import { bytesOfBase64, decodeText, triedAsText } from "./fileText";
 import type { PlaceCopy, TileSize } from "./model";
 
 /**
@@ -27,6 +28,7 @@ export const previewSeams: {
   thumbs?: (from: PictureFrom, entries: readonly FileEntry[], size: number) => Promise<(string | null)[]>;
   preview?: (from: PictureFrom, entry: FileEntry, page: number, width: number) => Promise<FilePreview>;
   archive?: (from: PictureFrom, entry: FileEntry) => Promise<FileArchive>;
+  head?: (from: PictureFrom, entry: FileEntry, length: number) => Promise<Pick<FileBytes, "data" | "end">>;
 } = {};
 
 /** The kinds a host can draw a picture of; a sound and an archive have none. */
@@ -115,17 +117,18 @@ function want(from: PictureFrom, entry: FileEntry, size: number, key: string): v
 
 /**
  * A tile's picture: undefined while it is asked for (and for a file no picture is asked of), null where the host
- * has none, else a data URL. A tile asks when it is drawn, so a long folder asks only for what is on screen.
+ * has none, else a data URL. `near` false asks nothing yet (a tile far from what the grid shows) but still shows a
+ * picture already kept.
  */
-export function useThumb(from: PictureFrom | null, entry: FileEntry, tile: TileSize | 64): string | null | undefined {
+export function useThumb(from: PictureFrom | null, entry: FileEntry, tile: TileSize | 64, near = true): string | null | undefined {
   const may = mayPicture(entry, from);
   const size = thumbPx(tile);
   const key = may ? thumbKey(from!, entry, size) : null;
   useEffect(() => {
-    if (key) want(from!, entry, size, key);
+    if (key && near) want(from!, entry, size, key);
     // The key holds everything the ask depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, near]);
   return useSyncExternalStore(
     (listener) => {
       if (!key) return () => undefined;
@@ -141,6 +144,42 @@ export function useThumb(from: PictureFrom | null, entry: FileEntry, tile: TileS
   );
 }
 
+/** How far past what a scroller shows a tile counts as near: about a screen of rows either way. */
+const NEAR_MARGIN = "100% 0px";
+/** One observer a scroller, shared by all its tiles. */
+const watchers = new WeakMap<Element, { observer: IntersectionObserver; heard: Map<Element, () => void> }>();
+
+/**
+ * Whether `el` is near what `root` shows (within a screen of it), so its picture may be asked for. Once near it stays
+ * so: a tile scrolled past keeps its picture. Where the window has no IntersectionObserver every tile is near.
+ */
+export function useNear(el: Element | null, root: Element | null): boolean {
+  const [near, setNear] = useState(() => typeof IntersectionObserver === "undefined");
+  useEffect(() => {
+    if (near || !el || !root) return;
+    let watcher = watchers.get(root);
+    if (!watcher) {
+      const heard = new Map<Element, () => void>();
+      const observer = new IntersectionObserver(
+        (seen) => {
+          for (const one of seen) if (one.isIntersecting) heard.get(one.target)?.();
+        },
+        { root, rootMargin: NEAR_MARGIN },
+      );
+      watcher = { observer, heard };
+      watchers.set(root, watcher);
+    }
+    const { observer, heard } = watcher;
+    heard.set(el, () => setNear(true));
+    observer.observe(el);
+    return () => {
+      heard.delete(el);
+      observer.unobserve(el);
+    };
+  }, [near, el, root]);
+  return near;
+}
+
 /** Forgets every picture kept (a test's clean start). */
 export function forgetPictures(): void {
   thumbs.clear();
@@ -148,6 +187,7 @@ export function forgetPictures(): void {
   for (const queue of waiting.values()) if (queue.timer) clearTimeout(queue.timer);
   waiting.clear();
   pages.clear();
+  heads.clear();
 }
 
 // ── a page of Quick Look ──────────────────────────────────────────────
@@ -225,3 +265,76 @@ export function useArchive(from: PictureFrom | null, entry: FileEntry | null, en
   }, [key]);
   return view && view.key === key ? view.view : { is: "loading" };
 }
+
+// ── a text file's first lines ─────────────────────────────────────────
+
+export type HeadView = { is: "loading" } | { is: "text"; text: string } | { is: "none" };
+
+/** How much of a text file is read to show its first lines: a page or two, never the whole of a long log. */
+export const TEXT_HEAD = 32 * 1024;
+const heads = new Map<string, HeadView>();
+const HEADS_KEPT = 24;
+
+/** Whether a file is shown as its first lines: a text file, and what the `file` kind tries as text (`triedAsText`). */
+export const readsAsText = (entry: Pick<FileEntry, "name" | "kind" | "ref" | "size">): boolean => !!entry.ref && (entry.kind === "text" || (entry.kind === "other" && triedAsText(entry.name, entry.size)));
+
+/** Whether a file's first lines may be read for a preview: by the rules of a picture (no cloud file, no VM, no old wire). */
+export const mayReadText = (entry: Pick<FileEntry, "name" | "kind" | "ref" | "size" | "local" | "state">, from: PictureFrom | null): boolean =>
+  !!from && !!entry.ref && from.copy.wire === "files" && !from.copy.place.vm && entry.local !== false && entry.state?.is !== "cloud" && readsAsText(entry);
+
+/** The bytes before a UTF-8 character the read cut in two: a head ends on a whole character. */
+export function wholeChars(bytes: Uint8Array): Uint8Array {
+  let at = bytes.length;
+  // Back over the continuation bytes of the last character, to its lead.
+  let back = 0;
+  while (back < 3 && at - back - 1 >= 0 && (bytes[at - back - 1]! & 0xc0) === 0x80) back++;
+  const lead = at - back - 1;
+  if (lead < 0) return bytes;
+  const b = bytes[lead]!;
+  const need = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
+  if (need > back + 1) at = lead;
+  return bytes.subarray(0, at);
+}
+
+/**
+ * A text file's first lines, read as the `file` kind reads it (`work.files.read` on its own host, UTF-8 with no NUL
+ * in it), for a preview: read only, nothing written. `enabled` false asks nothing. A file that is not text, or a
+ * host that did not answer, is `none`: the pane shows the file's facts.
+ */
+export function useTextHead(from: PictureFrom | null, entry: FileEntry | null, enabled = true): HeadView {
+  const key = from && entry?.ref && enabled ? `${from.copy.link}\u0000${from.workspaceId}\u0000${entry.key}\u0000${entry.changed ?? 0}:${entry.size ?? 0}` : null;
+  const [, bump] = useState(0);
+  const [failed, setFailed] = useState<string | null>(null);
+  useEffect(() => {
+    if (!key || heads.has(key)) return;
+    let live = true;
+    const ask = previewSeams.head
+      ? previewSeams.head(from!, entry!, TEXT_HEAD)
+      : registry.linkOf(from!.copy.link).request<FileBytes>("work.files.read", { workspaceId: from!.workspaceId, ref: entry!.ref, offset: 0, length: TEXT_HEAD });
+    const done = (view: HeadView): void => {
+      heads.set(key, view);
+      if (heads.size > HEADS_KEPT) heads.delete(heads.keys().next().value!);
+      if (live) bump((n) => n + 1);
+    };
+    void ask.then(
+      (got) => {
+        if (typeof got?.data !== "string") return done({ is: "none" });
+        const bytes = bytesOfBase64(got.data);
+        const text = decodeText(got.end ? bytes : wholeChars(bytes));
+        done(text ? { is: "text", text: text.text } : { is: "none" });
+      },
+      // Not kept: the next look asks again.
+      () => live && setFailed(key),
+    );
+    return () => {
+      live = false;
+    };
+    // The key holds everything the ask depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  if (!key || failed === key) return NO_HEAD;
+  return heads.get(key) ?? HEAD_LOADING;
+}
+
+const NO_HEAD: HeadView = { is: "none" };
+const HEAD_LOADING: HeadView = { is: "loading" };

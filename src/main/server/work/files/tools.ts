@@ -212,7 +212,8 @@ const STALE = {
   changed: (name: string) => `${name} changed since this was held, so nothing was done. Ask the thread again if it is still wanted.`,
   gone: (name: string) => `${name} is no longer where it was, so nothing was done.`,
   folder: (name: string) => `The folder ${name} is gone or moved, so nothing was done.`,
-  digest: 'This act no longer matches the change it describes, so nothing was done.'
+  digest: 'This act no longer matches the change it describes, so nothing was done.',
+  audience: (name: string) => `Who can open ${name} changed since this was held, so nothing was done. Ask the thread again if it is still wanted.`
 }
 
 /**
@@ -241,10 +242,14 @@ export const fileActKind: ActKindDef<FileAct, never> = {
       const e = now.entries[i]
       if (!e || e.key !== thing.key) throw new ActStale(p.verb === 'make' ? STALE.folder(thing.name) : STALE.gone(thing.name))
       if (p.verb !== 'make' && versionOfEntry(e) !== thing.version) throw new ActStale(STALE.changed(thing.name))
+      // The sentence he read said who can open it: a thing whose sharing changed under the same key is not that act.
+      if (thing.shared !== undefined && !!e.shared !== thing.shared) throw new ActStale(STALE.audience(thing.name))
     })
     if (p.request.to) {
       const into = (await ask<{ entries: (FileEntry | null)[] }>(toolCtx, p.host, 'stat', { workspaceId: p.workspaceId, refs: [p.request.to] })).entries[0]
-      if (!into || into.key !== p.into?.key || into.kind !== 'folder') throw new ActStale(STALE.folder(p.into?.trail.at(-1) ?? p.into?.name ?? 'it was to go in'))
+      const name = p.into?.trail.at(-1) ?? p.into?.name ?? 'it was to go in'
+      if (!into || into.key !== p.into?.key || into.kind !== 'folder') throw new ActStale(STALE.folder(name))
+      if (p.into.shared !== undefined && !!into.shared !== p.into.shared) throw new ActStale(STALE.audience(name))
     }
     const origin = { from: 'act' as const, id: item.ref.id, digest: p.digest }
     const params = { workspaceId: p.workspaceId, ...(p.verb === 'rename' ? { ref: p.request.refs[0], name: p.request.name } : p.verb === 'make' ? { at: p.request.refs[0], kind: p.request.kind, ...(p.request.name ? { name: p.request.name } : {}) } : { refs: p.request.refs, to: p.request.to }), op: p.op, origin, asked: true }
@@ -316,6 +321,7 @@ async function change(ctx: ToolCtx, workspaceId: string, a: Asked): Promise<Work
   }
   const op = `tool:${randomUUID()}`
   const done = await runHere(ctx, me, workspaceId, a, op, method)
+  ctx.db.prepare(`UPDATE work_files_ops SET session_id = ? WHERE id = ?`).run(ctx.sessionId, op)
   if (a.verb === 'make') markMade(ctx, workspaceId, ctx.sessionId, done.entries)
   const what = done.entries.map((e) => (pathOf(e) !== null ? wordsIn(place.id === a.into?.named.place.id || !a.into ? place : a.into.named.place, pathOf(e)!) : [a.into ? a.into.words : a.verb === 'make' ? a.paths[0] : dirOfWords(a.paths[0] ?? ''), e.name].filter(Boolean).join('/')))
   const left = done.refused.map((r) => `${r.name}: ${r.text}`)
@@ -362,9 +368,9 @@ function hold(ctx: ToolCtx, workspaceId: string, a: Asked, things: FileEntry[]):
     op: `act:${randomUUID()}`,
     request: { ...a.request, refs: [...a.request.refs] },
     digest: changeDigest({ verb, refs: a.request.refs, to: a.request.to, name: a.request.name }),
-    things: things.map((e) => ({ key: e.key, name: e.name, version: versionOfEntry(e) })),
+    things: things.map((e) => ({ key: e.key, name: e.name, version: versionOfEntry(e), shared: !!e.shared })),
     from: whereOf(place, verb === 'make' ? (a.paths[0] ?? '') : dirOfWords(a.paths[0] ?? '')),
-    ...(a.into ? { into: { ...whereOf(a.into.named.place, a.into.words), key: a.into.entry.key } } : {}),
+    ...(a.into ? { into: { ...whereOf(a.into.named.place, a.into.words), key: a.into.entry.key, shared: !!a.into.entry.shared } } : {}),
     audience: audienceOf(at, true)
   }
   // A channel is said with its team: "Esports Staff, Events".
@@ -386,7 +392,8 @@ const UNDO_STALE = (name: string): string => `${name} changed since, so it was l
 /** The inverse of a change a `files_*` tool ran in his own place, refused for any file that is no longer the one the change left. */
 async function undo(ctx: ToolCtx, workspaceId: string, op: string): Promise<WorkToolResult> {
   if (!op.startsWith('tool:')) return fail(UNDO_GONE)
-  const row = ctx.db.prepare(`SELECT verb, refs, state, result FROM work_files_ops WHERE id = ? AND workspace_id = ?`).get(op, workspaceId) as { verb: string; refs: string; state: string; result: string | null } | undefined
+  // A thread undoes its own change alone: another thread's op is as unknown to it as one never made.
+  const row = ctx.db.prepare(`SELECT verb, refs, state, result FROM work_files_ops WHERE id = ? AND workspace_id = ? AND session_id = ?`).get(op, workspaceId, ctx.sessionId) as { verb: string; refs: string; state: string; result: string | null } | undefined
   if (!row || row.state !== 'done' || !row.result) return fail(UNDO_GONE)
   const done = JSON.parse(row.result) as FileDone
   const asked = JSON.parse(row.refs) as { ref?: FileRef; refs?: FileRef[] }

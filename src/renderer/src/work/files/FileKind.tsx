@@ -1,10 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { FileBytes } from "@shared/contract-work-files";
 import { canvasSourcePath, filesPaneWorkspace } from "@shared/work";
-import { ENTRY_KIND_WORDS, extOf, kindOfEntry, type FileEntry } from "@shared/work/files";
+import { extOf, kindOfEntry, type FileEntry } from "@shared/work/files";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
-import { formatBytes } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 import { sessionStore } from "../../lib/tcserver/store";
@@ -14,7 +13,7 @@ import type { CanvasBodyProps } from "../canvas/kind";
 import { FileSession } from "./fileSession";
 import { bytesOfBase64, whenWords } from "./fileText";
 import { KindGlyph } from "./KindGlyph";
-import { ArchiveList, MediaPlay } from "./Preview";
+import { ArchiveList, factsLine, MediaPlay } from "./Preview";
 import { hostFrom, useArchive } from "./previews";
 
 /**
@@ -90,7 +89,8 @@ const loadingView = (): typeof LOADING => LOADING;
 export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { name: string; entry: FileEntry | null; why?: string; env: string; workspaceId: string; itemId: string; source: CanvasBodyProps["source"] }) {
   const kind = kindOfEntry(name).kind;
   const [busy, setBusy] = useState<"app" | "download" | null>(null);
-  const facts = [ENTRY_KIND_WORDS[kind], entry?.size !== undefined ? formatBytes(entry.size) : null, entry?.changed ? `Changed ${whenWords(entry.changed)}` : null].filter(Boolean).join(" · ");
+  // One sentence of facts under the header that already names the file: the name is not said again.
+  const facts = factsLine({ kind, ...(entry?.size !== undefined ? { size: entry.size } : {}), ...(entry?.changed ? { changed: entry.changed } : {}) }, whenWords);
   // The host is asked only on a press: a facts page drawn with no host (a preview) still draws.
   const link = (): ReturnType<typeof registry.linkOf> => registry.linkOf(env);
   // Its own app can be asked for a file in a library, on the computer it lies on; a download takes its bytes from the disk they are on.
@@ -152,7 +152,6 @@ export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { 
     <>
       <KindGlyph kind={kind} className="size-10 shrink-0" />
       <div className="flex max-w-md min-w-0 flex-col gap-1">
-        <h3 className="text-base leading-6 font-medium break-words text-foreground">{name}</h3>
         {facts ? <p className="text-sm text-muted-foreground">{facts}</p> : null}
         {why ? <p className="text-sm text-muted-foreground">{why}</p> : null}
         {entry === null ? <p className="text-sm text-muted-foreground">It is not where it was.</p> : null}

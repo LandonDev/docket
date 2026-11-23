@@ -649,3 +649,36 @@ describe("LifeOS, projects, Drive and From mail", () => {
     expect(actsFor([{ ...linked, project: undefined }], folder, { tabs: true, projects: true }).map((r) => r.act)).not.toContain("project-out");
   });
 });
+
+describe("the list's rules of round 1", () => {
+  it("knows a folder that is gone from one that did not load", async () => {
+    const { folderGone } = await import("./model");
+    expect(folderGone("That folder is not there any more.")).toBe(true);
+    expect(folderGone("Events is not there any more.")).toBe(true);
+    expect(folderGone("Permission denied.")).toBe(false);
+    expect(folderGone(null)).toBe(false);
+  });
+
+  it("lists each file of Home once, in the first list it belongs to", async () => {
+    const { homeLists } = await import("./model");
+    const e = (key: string) => ({ key });
+    expect(homeLists({ waiting: [e("a")], starred: [e("b"), e("a")], recent: [e("a"), e("c"), e("b")] })).toEqual({ waiting: [e("a")], starred: [e("b")], recent: [e("c")] });
+  });
+
+  it("says what a search left out: the places asleep first, else that not every place was searched", async () => {
+    const { searchGap } = await import("./model");
+    expect(searchGap({})).toBeNull();
+    expect(searchGap({ asleep: ["The Windows VM"] })).toEqual({ title: "The Windows VM is asleep", line: "Its files were not searched.", fix: { kind: "retry" } });
+    expect(searchGap({ asleep: ["A", "B", "C"], incomplete: true })).toEqual({ title: "A, B and C are asleep", line: "Not every place was searched.", fix: { kind: "retry" } });
+    expect(searchGap({ incomplete: true })).toEqual({ title: "Not every place was searched", fix: { kind: "retry" } });
+  });
+});
+
+describe("a file at another's side", () => {
+  it("sits there when it is on a disk, and not when it is a LifeOS or a Drive file", async () => {
+    const { sitsAtSide } = await import("./model");
+    expect(sitsAtSide({ at: "file", host: "env_box", path: "/w/Plan.pdf" })).toBe(true);
+    expect(sitsAtSide({ at: "lifeos", table: "docs", id: "d1" } as never)).toBe(false);
+    expect(sitsAtSide({ at: "google", fileId: "g1" } as never)).toBe(false);
+  });
+});

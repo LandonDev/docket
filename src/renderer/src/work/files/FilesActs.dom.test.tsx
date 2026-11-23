@@ -352,7 +352,9 @@ describe("the selection", () => {
     expect(picked()).toEqual(["Budget.xlsx", "notes.txt", "Plan.docx"]);
     const bar = document.querySelector<HTMLElement>("[data-files-bulk]")!;
     expect(bar.textContent).toContain("3 selected");
-    expect(within(bar).getAllByRole("button").map((b) => b.textContent)).toEqual(["Ask", "Move to", "Copy to", "Delete", "Clear"]);
+    // The bar names its verbs as DESIGN.md does, and the list keeps its last row clear of the bar.
+    expect(within(bar).getAllByRole("button").map((b) => b.textContent)).toEqual(["Ask", "Move", "Copy", "Delete", "Clear"]);
+    expect(list().className).toContain("pb-14");
     // Ask starts a chat of the workspace about the files selected: a chip each, with its place and path in words.
     fireEvent.click(within(bar).getByRole("button", { name: "Ask" }));
     expect(world.started).toHaveLength(1);
@@ -365,6 +367,7 @@ describe("the selection", () => {
     expect(picked()).toHaveLength(5);
     fireEvent.click(within(document.querySelector<HTMLElement>("[data-files-bulk]")!).getByRole("button", { name: "Clear" }));
     expect(picked()).toEqual([]);
+    expect(list().className).not.toContain("pb-14");
     // Shift with the arrows takes the run too.
     fireEvent.click(row("Budget.xlsx"));
     fireEvent.keyDown(list(), { key: "ArrowDown", shiftKey: true });
@@ -519,6 +522,14 @@ describe("Move to…", () => {
     await waitFor(() => expect(rows()).not.toContain("Budget.xlsx"));
     expect(world.toasts.at(-1)).toMatchObject({ title: "Moved Budget.xlsx to Events" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // A move inside one place says so with Undo, which moves it back to the folder it came from.
+    await act(async () => world.toasts.at(-1)!.undo!());
+    await waitFor(() => expect(calls("work.files.move")).toHaveLength(2));
+    expect(calls("work.files.move")[1]).toMatchObject({ refs: [at("/w/Events/Budget.xlsx")], to: { at: "place", id: "folder" } });
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    expect(world.toasts.at(-1)).toMatchObject({ title: "Moved Budget.xlsx to Dummy Esports" });
+    // The move back is no move to undo again.
+    expect(world.toasts.at(-1)!.undo).toBeUndefined();
   });
 
   it("asks before a copy into a place others can open, and says the grammar's refusal for a move out of one", async () => {
@@ -608,6 +619,12 @@ describe("upload and drag", () => {
     await waitFor(() => expect(calls("work.files.move")).toHaveLength(1));
     expect(calls("work.files.move")[0]).toMatchObject({ refs: [at("/w/notes.txt"), at("/w/Plan.docx")], to: at("/w/Events") });
     expect(document.querySelector("[data-files-drag-label]")).toBeNull();
+    // A drop that moved says so with Undo, back to the folder the rows were dragged from.
+    await waitFor(() => expect(world.toasts.at(-1)?.title).toBe("Moved 2 things to Events"));
+    await act(async () => world.toasts.at(-1)!.undo!());
+    await waitFor(() => expect(calls("work.files.move")).toHaveLength(2));
+    expect(calls("work.files.move")[1]).toMatchObject({ refs: [at("/w/Events/notes.txt"), at("/w/Events/Plan.docx")], to: { at: "place", id: "folder" } });
+    await waitFor(() => expect(rows()).toContain("notes.txt"));
     // With ⌥ held it is a copy.
     fireEvent.dragStart(row("Budget.xlsx"), { dataTransfer });
     const held = (event: Event): Event => (Object.defineProperty(event, "altKey", { value: true }), event);
@@ -615,6 +632,9 @@ describe("upload and drag", () => {
     expect(document.querySelector("[data-files-drag-label]")!.textContent).toBe("Copy to Archive");
     fireEvent(row("Archive"), held(createEvent.drop(row("Archive"), { dataTransfer })));
     await waitFor(() => expect(calls("work.files.copy")).toHaveLength(1));
+    // A copy takes nothing away: there is nothing to undo.
+    await waitFor(() => expect(world.toasts.at(-1)?.title).toBe("Copied Budget.xlsx to Archive"));
+    expect(world.toasts.at(-1)!.undo).toBeUndefined();
   });
 
   it("takes files dropped from the desktop on the page into its folder", async () => {
@@ -646,6 +666,24 @@ describe("Go to", () => {
     expect(calls("work.files.names").at(-1)).toEqual({ workspaceId: "w1", text: "post" });
     fireEvent.keyDown(field, { key: "Enter" });
     await waitFor(() => expect(calls("work.files.open")).toEqual([expect.objectContaining({ ref: at("/w/Events/Poster.png") })]));
+  });
+
+  it("takes on Return a row of the words in the field, never one an older answer left: it waits for the names of his words", async () => {
+    await mount();
+    const field = await goTo();
+    expect(field.placeholder).toBe("Go to");
+    fireEvent.change(field, { target: { value: "post" } });
+    await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Go to" })).getAllByRole("option").map((o) => o.textContent)).toEqual(["Poster.pngDummy Esports › Events"]));
+    // The names for "plan" are slow to come; Poster.png is still drawn when he presses Return.
+    const answer = host.answer;
+    let release: () => void = () => undefined;
+    host.answer = (method, params) => (method === "work.files.names" && params.text === "plan" ? new Promise((done) => (release = () => done(answer(method, params)))) : answer(method, params));
+    fireEvent.change(field, { target: { value: "plan" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await act(async () => undefined);
+    expect(calls("work.files.open")).toEqual([]);
+    await act(async () => release());
+    await waitFor(() => expect(calls("work.files.open")).toEqual([expect.objectContaining({ ref: at("/w/Plan.docx") })]));
   });
 
   it("walks to a folder, lists an open tab first, and puts the trail back on Escape", async () => {
@@ -723,6 +761,42 @@ describe("Search", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Remove Saved Search" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Remove Saved Search" }));
     await waitFor(() => expect(within(places).queryByRole("button", { name: "Documents with an a" })).toBeNull());
+  });
+
+  it("starts a saved search opened in a tab with its own saved filter, not the filter the tab's last search had", async () => {
+    await mount();
+    const search = async (words: string): Promise<void> => {
+      fireEvent.click(screen.getByRole("button", { name: "Search" }));
+      const field = await screen.findByRole("searchbox", { name: "Search" });
+      expect((field as HTMLInputElement).placeholder).toBe("Search");
+      fireEvent.change(field, { target: { value: words } });
+      fireEvent.keyDown(field, { key: "Enter" });
+      await waitFor(() => expect(document.querySelector("[data-files-filters]")).not.toBeNull());
+    };
+    const kind = async (name: string): Promise<void> => {
+      fireEvent.click(screen.getByRole("button", { name: /^(Kind|Document|Sheet)$/ }));
+      fireEvent.click(await screen.findByRole("menuitemcheckbox", { name }));
+      fireEvent.keyDown(document.body, { key: "Escape" });
+    };
+    const places = screen.getByRole("navigation", { name: "Places" });
+    await search("a");
+    await kind("Document");
+    await waitFor(() => expect(calls("work.files.search").at(-1)).toMatchObject({ filter: { kinds: ["document"] } }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Search…" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Name" }), { target: { value: "Docs" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(within(places).getByRole("button", { name: "Docs" })).toBeTruthy());
+    // Another search in the same tab starts with no filter of its own, and he narrows it to sheets.
+    await search("budget");
+    await waitFor(() => expect(calls("work.files.search").at(-1)).toMatchObject({ query: "budget" }));
+    expect(calls("work.files.search").at(-1)!.filter ?? {}).toEqual({});
+    await kind("Sheet");
+    await waitFor(() => expect(calls("work.files.search").at(-1)).toMatchObject({ query: "budget", filter: { kinds: ["sheet"] } }));
+    // The saved search, opened in that tab again, is read under its own filter.
+    fireEvent.click(within(places).getByRole("button", { name: "Docs" }));
+    await waitFor(() => expect(calls("work.files.search").at(-1)).toMatchObject({ query: "a", filter: { kinds: ["document"] } }));
   });
 
   it("opens with / in the page, and Escape gives the whole folder back", async () => {

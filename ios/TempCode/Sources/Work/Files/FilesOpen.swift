@@ -84,6 +84,9 @@ struct FileQuickLookScreen: View {
     let original: FilesRules.Original
     let place: FilePlace?
     @State private var pages: [Int: UIImage] = [:]
+    /// A page that did not come, with why; Try Again asks for it once more (`tries`).
+    @State private var pageFailures: [Int: String] = [:]
+    @State private var tries: [Int: Int] = [:]
     @State private var pageCount = 0
     @State private var reading = false
     @State private var failure: String?
@@ -136,11 +139,16 @@ struct FileQuickLookScreen: View {
                 Group {
                     if let image = pages[page] {
                         Image(uiImage: image).resizable().scaledToFit().padding(Layout.textEdge)
+                    } else if let failed = pageFailures[page] {
+                        FilesFailed(title: "Can’t Show Page \(page)", message: failed) {
+                            pageFailures[page] = nil
+                            tries[page, default: 0] += 1
+                        }
                     } else {
                         ProgressView()
                     }
                 }
-                .task { await load(page) }
+                .task(id: tries[page, default: 0]) { await load(page) }
             }
         }
         .tabViewStyle(.page(indexDisplayMode: pageCount > 1 ? .automatic : .never))
@@ -156,10 +164,15 @@ struct FileQuickLookScreen: View {
         pageCount = max(1, Int(answer.pages ?? 1))
     }
 
+    /// One page; one that does not come says why (the host's `none`, or the failure) in place of a spinner that never ends.
     private func load(_ page: Int) async {
-        guard pages[page] == nil, let ref = entry.ref,
-              let answer = try? await files.preview(workspaceId, ref, page: page, width: previewWidth), let png = answer.png, let image = Self.image(png) else { return }
-        pages[page] = image
+        guard pages[page] == nil, pageFailures[page] == nil, let ref = entry.ref else { return }
+        do {
+            let answer = try await files.preview(workspaceId, ref, page: page, width: previewWidth)
+            if let png = answer.png, let image = Self.image(png) { pages[page] = image } else { pageFailures[page] = answer.none ?? "There is no preview of this page." }
+        } catch {
+            if !Task.isCancelled { pageFailures[page] = ActionError.wrap(error).message }
+        }
     }
 
     /// A phone's width at three pixels a point: the host makes it at most 2048 wide.
@@ -178,7 +191,7 @@ struct FileQuickLookScreen: View {
                 .font(.title3.weight(.semibold))
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
-            Text(factLine).textStep(.meta).multilineTextAlignment(.center)
+            factLine
             if let by = entry.by, !by.isEmpty {
                 Text("Saved by \(by)").textStep(.meta)
             }
@@ -188,12 +201,16 @@ struct FileQuickLookScreen: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Kind, size and when it changed, in one line; then where it lives.
-    private var factLine: String {
-        var parts = [FilesWords.kind(entry.kind)]
-        if let size = entry.size { parts.append(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)) }
-        if let changed = entry.changed, changed > 0 { parts.append(FilesRules.changedWords(Int(changed))) }
-        return parts.joined(separator: " · ")
+    /// The kind in its own weight, then its size and when it changed as prose: two texts, never a dotted join
+    /// (docs/IOS-DESIGN.md "Text hierarchy, not dotted joins").
+    private var factLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(FilesWords.kind(entry.kind)).textStep(.meta, weight: .medium)
+            if let detail = FilesRules.factDetail(size: entry.size, changed: entry.changed) {
+                Text(detail).textStep(.meta)
+            }
+        }
+        .multilineTextAlignment(.center)
     }
 
     // MARK: - the foot: Open the original, or why it stays where it is
@@ -202,10 +219,10 @@ struct FileQuickLookScreen: View {
         VStack(spacing: 8) {
             // Under a preview the facts are one line: a text file's preview is a sketch, which says nothing of it.
             if pageCount > 0, player == nil {
-                Text(factLine).textStep(.meta).multilineTextAlignment(.center)
+                factLine
             }
             if let failure {
-                Text(failure).textStep(.meta, tint: Tint.destructiveText).multilineTextAlignment(.center)
+                Text(FilesRules.sentence(failure)).textStep(.meta, tint: Tint.destructiveText).multilineTextAlignment(.center)
             }
             switch original {
             case .allowed:

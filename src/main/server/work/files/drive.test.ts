@@ -184,7 +184,8 @@ describe('listing what drive.file lets it see', () => {
     expect(by.get('Staff')).toMatchObject({ kind: 'folder', shared: true })
     expect(by.get('Budget')).toMatchObject({ key: 'google:sBudget', kind: 'sheet', ref: doc('sBudget', GOOGLE_MIME.sheet), shared: false })
     expect(by.get('Open letter')).toMatchObject({ kind: 'document', shared: true })
-    expect(by.get('Scan.pdf')).toMatchObject({ kind: 'pdf', size: 2048 })
+    // What is no Google type opens only in Google Drive: it is never listed as a kind an editor here shows.
+    expect(by.get('Scan.pdf')).toMatchObject({ kind: 'other', size: 2048 })
     // Never a file it may not see, and the same answer for the place's id and its top folder.
     expect(names(await list(TOP))).toEqual(names(top))
   })
@@ -361,12 +362,44 @@ describe("a thread's change", () => {
     expect([...fake.files.values()].find((f) => f.name === 'Roster')).toMatchObject({ mimeType: GOOGLE_MIME.sheet, parents: ['fStaff'] })
   })
 
+  it('to a file in a folder this client cannot see is held: unknown sharing counts as shared, My Drive\'s top as his', async () => {
+    // Scan.pdf lies in a folder of his TempCode cannot read the facts of: others may open it.
+    const held = await tool('files_move', { place: PLACE_ID, paths: ['Scan.pdf'], name: 'Scan 2.pdf' })
+    expect(held.text).toMatch(/^Held as item 1\./)
+    expect(fake.files.get('pScan')!.name).toBe('Scan.pdf')
+    // Budget lies at My Drive's top, which drive.file cannot read either: that is his own, and the change runs.
+    const ran = await tool('files_move', { place: PLACE_ID, paths: ['Budget'], name: 'Budget 2' })
+    expect(ran.isError).toBeFalsy()
+    expect(fake.files.get('sBudget')!.name).toBe('Budget 2')
+  })
+
   it('held, goes stale when the file changed in Drive before his press', async () => {
     await tool('files_move', { place: PLACE_ID, paths: ['Open letter'], name: 'Letter' })
     fake.files.get('dOpen')!.modified += 5_000
     const [row] = outbox.store.list({})
     expect(await outbox.send({ at: 'host', id: row!.id })).toMatchObject({ state: 'stale' })
     expect(fake.files.get('dOpen')!.name).toBe('Open letter')
+  })
+
+  it('held, goes stale when who can open the file or its folder changed in Drive before his press, its key and version the same', async () => {
+    await tool('files_move', { place: PLACE_ID, paths: ['Budget'], to: { place: PLACE_ID, path: 'Staff' } })
+    await tool('files_move', { place: PLACE_ID, paths: ['Open letter'], name: 'Letter' })
+    const [into, renamed] = outbox.store.list({})
+    // Budget is shared with someone now; Open letter is shared with no one.
+    fake.files.get('sBudget')!.shared = true
+    fake.files.get('dOpen')!.shared = false
+    forgetDriveLists()
+    expect(await outbox.send({ at: 'host', id: into!.id })).toMatchObject({ state: 'stale', error: 'Who can open Budget changed since this was held, so nothing was done. Ask the thread again if it is still wanted.' })
+    expect(await outbox.send({ at: 'host', id: renamed!.id })).toMatchObject({ state: 'stale', error: expect.stringMatching(/^Who can open Open letter changed since/) })
+    expect(fake.files.get('sBudget')!.parents).toEqual([FAKE_ROOT])
+    expect(fake.files.get('dOpen')!.name).toBe('Open letter')
+    // The folder it was to go in: Staff is shared with no one now.
+    await tool('files_move', { place: PLACE_ID, paths: ['Events/Brief'], to: { place: PLACE_ID, path: 'Staff' } })
+    const brief = outbox.store.list({}).find((r) => r.summary.startsWith('Move Brief'))!
+    fake.files.get('fStaff')!.shared = false
+    forgetDriveLists()
+    expect(await outbox.send({ at: 'host', id: brief.id })).toMatchObject({ state: 'stale', error: expect.stringMatching(/^Who can open Staff changed since/) })
+    expect(fake.files.get('dBrief')!.parents).toEqual(['fEvents'])
   })
 
   it('never comes through the wire, and a thread of another workspace reaches no Drive of this one', async () => {
@@ -389,6 +422,11 @@ describe('a Google file in a Files tab', () => {
     expect(sheet.item).toMatchObject({ kind: 'sheet', sessionId: filesPaneOf(WS) })
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs.filter((t) => t.kind === 'file')).toHaveLength(2)
     await expect(call('work.files.open', { ref: doc('pScan', 'application/pdf') })).rejects.toThrow('Scan.pdf opens in Google Drive')
+    // A picked workbook too: listed as no sheet, and its open says where it opens.
+    fake.addItem(ME, 'xRoster', 'Roster.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    forgetDriveLists()
+    expect((await list(TOP)).entries.find((e) => e.name === 'Roster.xlsx')).toMatchObject({ kind: 'other' })
+    await expect(call('work.files.open', { ref: doc('xRoster', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') })).rejects.toThrow('Roster.xlsx opens in Google Drive')
     // A tab on a file that goes to the bin closes with it.
     await call('work.files.trash', { refs: [doc('dBrief')], op: op() })
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs.filter((t) => t.kind === 'file').map((t) => t.key)).toEqual(['google:sBudget'])

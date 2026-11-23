@@ -3,10 +3,11 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import { besideSeatId as seatId, type FilesListing, type FilesOpened, type FilesPlaces, type FilesTabs } from '@shared/contract-work-files'
-import { filesPaneOf, type CanvasItem } from '@shared/work'
+import { canvasSourcePath, filesPaneOf, type CanvasItem } from '@shared/work'
 import type { FileEntry } from '@shared/work/files'
 import type { Caller } from '../modules'
 import { closeFilesState, filesState } from './handle'
+import { setCopyAllowed } from '../office/files/library'
 import { SEATS_MOST } from './tabs'
 import { registerFileMaker } from './hooks'
 import { files } from './index'
@@ -275,17 +276,34 @@ describe('tabs', () => {
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs).toEqual([])
   })
 
-  it('opens a deck, whose marks are kept by item, in the thread that already holds it, and makes no second seat', async () => {
+  it('opens a deck a thread holds in a tab of its own: the slides pillar keeps its state by the file', async () => {
     const deck = join(rig.folder, 'Events', 'Pitch.pptx')
     writeFileSync(deck, 'deck')
     const held = rig.canvas.open('t1', { kind: 'slides', source: at(deck), title: 'Pitch.pptx' })
     const got = await call<FilesOpened>('work.files.open', { ref: at(deck), as: 'slides' })
-    expect(got.held).toEqual({ sessionId: 't1', itemId: held.id })
-    expect(got.item).toBeUndefined()
-    expect(got.tabs).toEqual([])
-    // A sheet keeps its state by the file: it opens in a tab even while a thread holds it.
+    expect(got.held).toBeUndefined()
+    expect(got.item).toMatchObject({ kind: 'slides', sessionId: filesPaneOf(WS), source: at(deck) })
+    expect(got.item!.id).not.toBe(held.id)
+    expect(got.tabs.map((t) => t.itemId)).toEqual([got.item!.id])
+    // A sheet keeps its state by the file too: it opens in a tab while a thread holds it.
     rig.canvas.open('t1', { kind: 'sheet', source: at(join(rig.folder, 'Budget.xlsx')), title: 'Budget.xlsx' })
     expect((await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'Budget.xlsx')) })).item).toBeDefined()
+  })
+
+  it("opens a copy of another computer's deck, PDF or recording a thread holds as a tab of its own, with marks of its own", async () => {
+    setCopyAllowed(rig.db, WS, true)
+    const asked: unknown[] = []
+    ;(rig.ctx as { peer: unknown }).peer = { call: () => ({ call: async (_p: string, _m: string, a: { source: { path: string } }) => (asked.push(a.source.path), { name: a.source.path.slice(a.source.path.lastIndexOf('/') + 1), data: Buffer.from('bytes').toString('base64') }) }) }
+    for (const [name, kind] of [['Kickoff.pptx', 'slides'], ['Bracket.pdf', 'pdf'], ['Recap.mp4', 'media']] as const) {
+      const far = { at: 'file' as const, host: 'env_mac', path: `/Users/l/Team/${name}` }
+      const held = rig.canvas.open('t1', { kind, source: far, title: name })
+      const got = await call<FilesOpened>('work.files.open', { ref: far, name })
+      expect(got.held).toBeUndefined()
+      expect(got.item).toMatchObject({ kind, sessionId: filesPaneOf(WS) })
+      expect(got.item!.id).not.toBe(held.id)
+      expect(canvasSourcePath(got.item!.source)).not.toBe(far.path)
+    }
+    expect(asked).toHaveLength(3)
   })
 
   it('opens a PDF or a video a thread holds in a tab of its own: the two share its marks by the file', async () => {

@@ -313,6 +313,19 @@ describe("the window", () => {
     expect(trail()).toBe("Dummy Esports");
   });
 
+  it("holds the place he stands in and the selected tab in the sidebar's own selected fill, and turns one chevron for a fold", async () => {
+    await mount();
+    const places = within(screen.getByRole("navigation", { name: "Places" }));
+    // `muted` on `sidebar` can barely be seen in light; the rail's own selected fill is plain in both themes.
+    expect(places.getByRole("button", { name: "Dummy Esports" }).className).toContain("bg-sidebar-group-selected");
+    expect(places.getByRole("button", { name: "Starred" }).className).not.toContain("bg-sidebar-group-selected");
+    expect(document.querySelector("[data-files-tab]")!.className).toContain("aria-selected:bg-sidebar-group-selected");
+    const fold = places.getByRole("button", { name: "Show the folders of Dummy Esports" });
+    expect(fold.querySelector("svg")!.getAttribute("class")).not.toContain("rotate-90");
+    fireEvent.click(fold);
+    await waitFor(() => expect(places.getByRole("button", { name: "Hide the folders of Dummy Esports" }).querySelector("svg")!.getAttribute("class")).toContain("rotate-90"));
+  });
+
   it("marks itself for the app's key resolver and gives the tab row its own toolbar order", async () => {
     await mount();
     expect(document.querySelector("[data-files-view]")).not.toBeNull();

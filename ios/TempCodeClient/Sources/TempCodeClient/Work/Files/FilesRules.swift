@@ -161,6 +161,26 @@ public enum FilesRules {
         return changedWords(Int(changed), now: now, calendar: calendar)
     }
 
+    /// What follows a file's kind on its facts line: its size and when it changed, as prose ("52 bytes, 9:41 AM"),
+    /// never joined with a dot (docs/IOS-DESIGN.md "Text hierarchy, not dotted joins"). The view draws the kind
+    /// first in its own weight. Nil when there is neither.
+    public static func factDetail(size: Double?, changed: Double?, now: Date = .now, calendar: Calendar = .current) -> String? {
+        var parts: [String] = []
+        if let size { parts.append(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)) }
+        if let changed, changed > 0 { parts.append(changedWords(Int(changed), now: now, calendar: calendar)) }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    /// The host's sentence without the code word a failed answer can lead with ("internal: …"), its first letter
+    /// raised: a Files failure says what went wrong in words, never the wire's code.
+    public static func sentence(_ message: String) -> String {
+        for code in ["internal", "error", "unavailable", "timeout", "not found", "bad request", "invalid request", "invalid params"] where message.hasPrefix("\(code): ") {
+            let rest = message.dropFirst(code.count + 2)
+            return rest.prefix(1).uppercased() + rest.dropFirst()
+        }
+        return message
+    }
+
     /// "9:41 AM" today, "Yesterday", "Nov 3" this year, "Nov 3, 2025" before.
     public static func changedWords(_ ms: Int, now: Date = .now, calendar: Calendar = .current) -> String {
         let date = Date(timeIntervalSince1970: Double(ms) / 1000)

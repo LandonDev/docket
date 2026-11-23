@@ -52,6 +52,14 @@ import TempCodeContract
         #expect(HomeSections.workspace(HomeSections.chatsKey, hosts: hosts)?.showsChatsFold == false)
     }
 
+    @Test func `an empty Work workspace says it has no threads as the last row under its view rows, an empty code one over the list`() {
+        let empty = HomeHostInput(environmentId: "box", name: "box", workspaces: [ws("code"), ws("purdue", kind: .work, sector: "purdue")], sessions: [], workOn: true)
+        #expect(HomeSections.workspace("box:purdue", hosts: [empty])?.emptyNoteIsRow == true)
+        #expect(HomeSections.workspace("box:code", hosts: [empty])?.emptyNoteIsRow == false)
+        // A workspace with a thread says nothing.
+        #expect(HomeSections.workspace("box:purdue", hosts: [host(workOn: true)])?.emptyNoteIsRow == false)
+    }
+
     @Test func `Work Chats follows Chats, before the code workspaces, as on the desktop rail`() {
         let home = HomeSections.home(hosts: [host(workOn: true)])
         #expect(home.mainEntries.map(\.id) == [HomeSections.chatsKey, HomeSections.workChatsKey, "box:code"])

@@ -168,6 +168,43 @@ describe('nothing is replaced', () => {
     expect(existsSync(join(root, 'f'))).toBe(false)
   })
 
+  it('never replaces a folder another writer put where the move was reserved: the move is refused, both left', async () => {
+    mkdirSync(join(root, 'f'))
+    put(join(root, 'f', 'x'), 'x')
+    // Between the reservation and the rename, the empty folder is swapped for another writer's own empty one.
+    writeSeams.beforeRename = (to) => {
+      rmSync(to, { recursive: true })
+      mkdirSync(to)
+    }
+    const theirs = join(root, 'g')
+    await refusedWith(moveNoReplace(fence, join(root, 'f'), root, 'g'), 'taken')
+    expect(readdirSync(theirs)).toEqual([])
+    expect(readFileSync(join(root, 'f', 'x'), 'utf8')).toBe('x')
+    // Something put inside the reservation stays: the move is refused and the reservation is not taken away.
+    writeSeams.beforeRename = (to) => void put(join(to, 'theirs.txt'), 'theirs')
+    await refusedWith(moveNoReplace(fence, join(root, 'f'), root, 'h'), 'taken')
+    expect(readFileSync(join(root, 'h', 'theirs.txt'), 'utf8')).toBe('theirs')
+    expect(readFileSync(join(root, 'f', 'x'), 'utf8')).toBe('x')
+  })
+
+  it('on Windows keeps the reservation through a checked copy, so the name is never open while the folder moves', async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    try {
+      mkdirSync(join(root, 'f', 'deep'), { recursive: true })
+      put(join(root, 'f', 'deep', 'two'), '22')
+      const held: boolean[] = []
+      writeSeams.beforeCheck = () => void held.push(existsSync(join(root, 'g')))
+      const to = await moveNoReplace(fence, join(root, 'f'), root, 'g')
+      expect(held.length).toBeGreaterThan(0)
+      expect(held.every(Boolean)).toBe(true)
+      expect(readFileSync(join(to, 'deep', 'two'), 'utf8')).toBe('22')
+      expect(existsSync(join(root, 'f'))).toBe(false)
+    } finally {
+      Object.defineProperty(process, 'platform', platform)
+    }
+  })
+
   it('refuses to move a folder inside itself, or a place itself', async () => {
     mkdirSync(join(root, 'f', 'in'), { recursive: true })
     await refusedWith(moveNoReplace(fence, join(root, 'f'), join(root, 'f', 'in'), 'f'), 'outside')

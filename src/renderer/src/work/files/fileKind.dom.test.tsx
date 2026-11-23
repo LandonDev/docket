@@ -187,8 +187,10 @@ describe("a file no editor here shows", () => {
       expect(el).toBeTruthy();
       return el!;
     });
-    expect(facts.textContent).toContain("Assets.zip");
-    expect(facts.textContent).toContain("Archive · 2 MB · Changed 1:52 PM");
+    // The header names the file; the page under it says its facts in one sentence and never the name again.
+    expect(facts.textContent).not.toContain("Assets.zip");
+    expect(facts.querySelector("h3")).toBeNull();
+    expect(facts.textContent).toContain("Archive, 2 MB, changed 1:52 PM");
     expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/no viewer/i);
     // Its bytes are not read to show its facts, and the header keeps the frame's own line.

@@ -1,10 +1,9 @@
 import { FileActSchema, type FileAct, type FileRef } from '@shared/contract-work-files'
-import { canvasSourcePath, type CanvasSource } from '@shared/work'
+import type { CanvasSource } from '@shared/work'
 import { kindOfEntry, UNTITLED, type FileEntry } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { HELD_TABLE, PRESSABLE } from '../outbox/store'
 import { fileWaitingHooks } from './hooks'
-import { reachesPath } from './names'
 
 /**
  * What waits on him in a file (docs/agents/work-files.md "Home"): an agent's suggestions, counted by the pillars that
@@ -64,17 +63,21 @@ export function heldFileActs(ctx: Pick<WorkCtx, 'db'>, workspaceId: string, most
   })
 }
 
-const pathOfRef = (ref: FileRef): string | null => (ref.at === 'drive' || ref.at === 'project' || ref.at === 'place' ? null : canvasSourcePath(ref as CanvasSource))
-
 /**
  * Home's Waiting on you, `most` rows at most: each file a held act names (as it is now, where this host can still
  * find it, else as the act named it), then the files of the workspace with suggestions waiting. `entryAt` answers a
  * ref as the caller's row, or null for one outside the workspace or the caller's reach; it stats, and reads no file.
+ * `mayName` says whether the caller could name a ref of this host now (the door's `locate`). A held act is told of
+ * only to a caller that could name everything it names: his window every act; a key only an act on this host whose
+ * every ref and destination it could name, so a key never hears a proposed name, folder or act id of a place
+ * beyond its reach.
  */
-export async function waitingFiles(ctx: Pick<WorkCtx, 'db' | 'host' | 'log' | 'reaches'>, by: Caller, workspaceId: string, most: number, entryAt: (ref: CanvasSource) => Promise<FileEntry | null>): Promise<FileEntry[]> {
+export async function waitingFiles(ctx: Pick<WorkCtx, 'db' | 'host' | 'log' | 'reaches'>, by: Caller, workspaceId: string, most: number, entryAt: (ref: CanvasSource) => Promise<FileEntry | null>, mayName: (ref: FileRef) => boolean): Promise<FileEntry[]> {
   const out = new Map<string, FileEntry>()
   const put = (e: FileEntry): void => void (out.size < most && !out.has(e.key) && out.set(e.key, e))
+  const sees = (act: FileAct): boolean => by.kind === 'local' || (by.kind === 'remote' && !by.peer && act.host === ctx.host && [...act.request.refs, ...(act.request.to ? [act.request.to] : [])].every(mayName))
   for (const { id, act } of heldFileActs(ctx, workspaceId, most)) {
+    if (!sees(act)) continue
     const held = { id, verb: act.verb }
     const where = { place: act.from.place, name: act.from.name, trail: act.from.trail }
     if (act.verb === 'make') {
@@ -86,9 +89,6 @@ export async function waitingFiles(ctx: Pick<WorkCtx, 'db' | 'host' | 'log' | 'r
     for (const [i, thing] of act.things.entries()) {
       const ref = act.request.refs[i]
       if (!ref) continue
-      const path = pathOfRef(ref)
-      // A key hears only of what it could name itself.
-      if (path !== null && act.host === ctx.host && !reachesPath(ctx, by, path)) continue
       const now = act.host === ctx.host && ref.at === 'file' ? await entryAt(ref).catch(() => null) : null
       put(now ? { ...now, held } : { key: thing.key, ref: ref.at === 'file' ? (ref as CanvasSource) : null, folder: null, name: thing.name, kind: kindOfEntry(thing.name).kind, where, shared: true, held })
     }

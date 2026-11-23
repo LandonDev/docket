@@ -98,6 +98,7 @@ const keyOf = (account: string, id: string): string => `${account.toLowerCase()}
 export function forgetDriveLists(): void {
   lists.clear()
   facts.clear()
+  tops.clear()
 }
 /** A change in these folders of an account (or a pick that let more be seen): their next listing asks Drive again. The top is always read again, since what it shows hangs on every folder. */
 export function forgetDrive(account: string, folders: readonly string[] = []): void {
@@ -150,8 +151,12 @@ async function folderOf(ctx: WorkCtx, account: string, folderId: string, signal?
 }
 
 const GOOGLE_TYPE = 'application/vnd.google-apps.'
-/** A Drive item's kind: Google's own types by their type alone (a Doc named "Plan v1.2" has no extension), anything else by its name first. */
-export const kindOfItem = (item: Pick<DriveItem, 'name' | 'mimeType' | 'folder'>): EntryKind => (item.folder ? 'folder' : (item.mimeType.startsWith(GOOGLE_TYPE) ? kindOfEntry('', item.mimeType) : kindOfEntry(item.name, item.mimeType)).kind)
+/**
+ * A Drive item's kind: Google's own types by their type alone (a Doc named "Plan v1.2" has no extension). Anything
+ * else (a picked .xlsx or .pdf) opens only in Google Drive (`googleSeatOf` says so in one sentence), so it is
+ * listed as `other`, never as a kind an editor here shows.
+ */
+export const kindOfItem = (item: Pick<DriveItem, 'name' | 'mimeType' | 'folder'>): EntryKind => (item.folder ? 'folder' : item.mimeType.startsWith(GOOGLE_TYPE) ? kindOfEntry('', item.mimeType).kind : 'other')
 
 /** An item as the wire's entry. `inShared`: it lies in a folder others can open, so others can open it too. */
 export function driveEntry(account: string, item: DriveItem, inShared = false): FileEntry {
@@ -177,14 +182,32 @@ export async function folderShared(ctx: WorkCtx, account: string, folderId: stri
   return (await driveFacts(ctx, account, folderId))?.shared ?? true
 }
 
-/** Whether others can open an item: its own sharing, or the sharing of a folder it lies in that this client sees. */
+/**
+ * Whether others can open an item: its own sharing, or the sharing of a folder it lies in. A folder this client
+ * cannot see counts as shared, as in `folderShared`: the host cannot tell. My Drive's own top is his.
+ */
 export async function itemShared(ctx: WorkCtx, account: string, item: DriveItem): Promise<boolean> {
   if (item.shared) return true
   for (const parent of item.parents) {
     const p = await driveFacts(ctx, account, parent)
-    if (p?.shared) return true
+    if (p ? p.shared : parent !== (await topIdOf(ctx, account))) return true
   }
   return false
+}
+
+const tops = new Map<string, string>()
+/**
+ * The id Drive gives My Drive's top, which `drive.file` cannot read the facts of: learned from what lies there (every
+ * item listed under `root` names it as its folder) and kept. Null while nothing TempCode sees lies there.
+ */
+async function topIdOf(ctx: WorkCtx, account: string): Promise<string | null> {
+  const a = account.toLowerCase()
+  const kept = tops.get(a)
+  if (kept) return kept
+  const { items } = await driveOf(ctx, account).children(DRIVE_ROOT)
+  const id = items[0]?.parents.find((p) => items.every((i) => i.parents.includes(p))) ?? null
+  if (id) tops.set(a, id)
+  return id
 }
 
 /** The steps down to a folder: the place, then each folder above it this client sees (eight at most), then the folder. */

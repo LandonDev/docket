@@ -37,6 +37,8 @@ public final class FilesHost {
         public var trail: [String]
         /// When what is shown was read, for a list kept from before (a machine asleep).
         public var asOf: Double?
+        /// Why the next page did not come: the rows stay, and the foot offers Try Again.
+        public var moreFailed: String? = nil
     }
 
     /// An upload under way into a folder, as its row draws it.
@@ -58,6 +60,8 @@ public final class FilesHost {
     public private(set) var listings: [String: WorkRead<Listing>] = [:]
     /// Uploads per folder slot, newest last; a finished one leaves, a failed one stays with its reason.
     public private(set) var uploads: [String: [Upload]] = [:]
+    /// The folder slots whose next page is being asked for now: the foot's spinner, only while one runs.
+    public private(set) var askingMore: Set<String> = []
 
     @ObservationIgnored private let wire: any FilesWire
     @ObservationIgnored private var folders: [String: (workspaceId: String, at: FolderRef)] = [:]
@@ -103,16 +107,32 @@ public final class FilesHost {
         }
     }
 
-    /// The next page of a folder shown, appended; a folder that changed since lists again from the top.
+    /// Whether the next page of a folder is being asked for now.
+    public func loadingMore(_ workspaceId: String, _ folder: FolderRef) -> Bool { askingMore.contains(Self.slot(workspaceId, folder)) }
+
+    /// The next page of a folder shown, appended; a folder that changed since lists again from the top. A page
+    /// that fails keeps the rows and its cursor and says why (`moreFailed`), for the foot's Try Again; one ask at
+    /// a time per folder.
     public func more(_ workspaceId: String, _ folder: FolderRef) async {
         let slot = Self.slot(workspaceId, folder)
-        guard let shown = listings[slot]?.value, let cursor = shown.next else { return }
-        guard let page = try? await page(workspaceId, folder, cursor: cursor) else { return }
+        guard let shown = listings[slot]?.value, let cursor = shown.next, !askingMore.contains(slot) else { return }
+        askingMore.insert(slot)
+        defer { askingMore.remove(slot) }
+        let page: Page
+        do {
+            page = try await self.page(workspaceId, folder, cursor: cursor)
+        } catch {
+            guard var now = listings[slot]?.value, now.next == cursor else { return }
+            now.moreFailed = FilesRules.sentence(ActionError.wrap(error).message)
+            listings[slot] = .loaded(now)
+            return
+        }
         if page.stale { return await list(workspaceId, folder) }
         // A newer read may have replaced the list meanwhile: append only to the one this cursor came from.
         guard var now = listings[slot]?.value, now.next == cursor else { return }
         now.entries += page.listing.entries.filter { row in !now.entries.contains { $0.key == row.key } }
         now.next = page.listing.next
+        now.moreFailed = nil
         listings[slot] = .loaded(now)
     }
 

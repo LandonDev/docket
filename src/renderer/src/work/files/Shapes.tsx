@@ -13,7 +13,7 @@ import { factOf, gridStep, samePage, tilesAcross, type Picked, type PickHow, typ
 import type { Busy } from "./open";
 import { dragProps, howOf, NameField, onNameOf, stepHow, type RowDrag, type ShapeProps } from "./rowParts";
 import { DetailsPane, Thumb } from "./Looks";
-import type { PictureFrom } from "./previews";
+import { useNear, type PictureFrom } from "./previews";
 import { useListing, type ListFrom } from "./store";
 
 /**
@@ -37,6 +37,7 @@ function Tile({
   index,
   size,
   from,
+  root,
   on,
   busy,
   renaming,
@@ -50,6 +51,8 @@ function Tile({
   size: TileSize;
   /** where its picture is asked; null where there is no host to ask */
   from: PictureFrom | null;
+  /** the grid's scroller: a tile asks for its picture once it is near what that shows */
+  root: HTMLElement | null;
   on: boolean;
   busy: Busy;
   renaming: boolean;
@@ -61,8 +64,11 @@ function Tile({
   const mine = busy?.key === entry.key;
   const over = drag?.over === entry.key;
   const fact = mine ? busy!.word : factOf(entry, dayTime);
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const near = useNear(box, root);
   return (
     <div
+      ref={setBox}
       id={`files-tile-${index}`}
       role="option"
       aria-selected={on}
@@ -77,7 +83,7 @@ function Tile({
       {...dragProps(drag, entry)}
     >
       <div className="grid place-items-center overflow-hidden rounded-md bg-(--stage) p-1 outline-1 -outline-offset-1 outline-(--image-outline)" style={{ width: size, height: Math.round(size * 0.75) }}>
-        {mine ? <Spinner className="size-4" /> : <Thumb from={from} entry={entry} tile={size} glyph={GLYPH[size]} />}
+        {mine ? <Spinner className="size-4" /> : <Thumb from={from} entry={entry} tile={size} glyph={GLYPH[size]} near={near} />}
       </div>
       {/* The fact stands right under the name, one line or two; the room a second line would take is left under it, so rows keep one height. */}
       <div className="flex h-[52px] min-w-0 flex-col">
@@ -145,7 +151,7 @@ export function FileGrid({ entries, picked, size, from, busy, more, loadingMore,
   const row = (r: number): ReactNode => (
     <div key={r} role="presentation" className="flex" style={{ gap: TILE_GAP, height: rowPx - TILE_GAP }}>
       {entries.slice(r * across, (r + 1) * across).map((entry, i) => (
-        <Tile key={entry.key} entry={entry} index={r * across + i} size={size} from={from} on={picked.keys.has(entry.key)} busy={busy} renaming={renaming === entry.key} drag={drag} onPick={onPick} onOpen={onOpen} onRenamed={onRenamed} />
+        <Tile key={entry.key} entry={entry} index={r * across + i} size={size} from={from} root={scroller} on={picked.keys.has(entry.key)} busy={busy} renaming={renaming === entry.key} drag={drag} onPick={onPick} onOpen={onOpen} onRenamed={onRenamed} />
       ))}
     </div>
   );
@@ -197,6 +203,8 @@ function Column({
   renaming,
   drag,
   active,
+  rows,
+  reveal = null,
   onPick,
   onOpen,
   onRenamed,
@@ -214,18 +222,28 @@ function Column({
   drag?: RowDrag;
   /** the last folder's column, which the keys walk */
   active: boolean;
+  /** what the active column shows in place of its whole listing: the page's rows, as Search filters them */
+  rows?: readonly FileEntry[];
+  /** the row the keys moved to, brought into view */
+  reveal?: { index: number } | null;
   onPick(entry: FileEntry, how: PickHow): void;
   onOpen(entry: FileEntry): void;
   onRenamed(entry: FileEntry, name: string | null): void;
   registerRows?(rows: readonly FileEntry[]): void;
 }) {
   const listing = useListing(from, at, sort);
+  const shown = (active && rows) || listing.entries;
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (active) registerRows?.(listing.entries);
-    // The rows are the listing's own array, new only when it changes.
+    if (active) registerRows?.(shown);
+    // The rows are the listing's own array (or the page's), new only when it changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, listing.entries]);
+  }, [active, shown]);
+  // A row the keys moved to past what the column shows is scrolled to; the virtual list does it for a long one.
+  const plain = shown.length <= 80;
+  useEffect(() => {
+    if (reveal && plain) scroller?.querySelector<HTMLElement>(`#files-col-${reveal.index}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [reveal, plain, scroller]);
   useEffect(() => {
     if (!scroller || !listing.more) return;
     const near = (): void => {
@@ -237,19 +255,23 @@ function Column({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scroller, listing.more, listing.entries.length]);
   const row = (index: number): ReactNode => {
-    const entry = listing.entries[index]!;
-    const on = !!picked?.keys.has(entry.key) || (!!held && !!entry.folder && samePage(entry.folder, held));
+    const entry = shown[index]!;
+    const on = !!picked?.keys.has(entry.key);
+    // The folder on the way down: held in `muted`, and lighter while the keys are in the columns, which walk the column right of it.
+    const holding = !on && !!held && !!entry.folder && samePage(entry.folder, held);
     const over = active && drag?.over === entry.key;
     return (
       <div
         key={entry.key}
+        {...(active ? { id: `files-col-${index}` } : {})}
         role="option"
-        aria-selected={on}
+        aria-selected={on || holding}
         data-files-row={entry.key}
+        {...(holding ? { "data-files-held": "" } : {})}
         {...(active ? { "data-menu-id": entry.key } : {})}
         data-kind={entry.kind}
         style={{ height: COLUMN_ROW_PX }}
-        className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : "hover:bg-foreground/5"}`}
+        className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : holding ? "bg-muted group-focus-within/columns:bg-foreground/5" : "hover:bg-foreground/5"}`}
         onClick={(event) => onPick(entry, howOf(event))}
         onDoubleClick={() => (entry.folder ? undefined : onOpen(entry))}
         {...(active ? dragProps(drag, entry) : {})}
@@ -285,14 +307,13 @@ function Column({
         </Button>
       </div>
     );
-  else if (!listing.entries.length) body = <p className="p-3 text-xs text-muted-foreground">Empty</p>;
+  else if (!shown.length) body = <p className="p-3 text-xs text-muted-foreground">Empty</p>;
   else
-    body =
-      listing.entries.length <= 80 ? (
-        listing.entries.map((_, index) => row(index))
-      ) : (
-        <VirtualRows count={listing.entries.length} scroller={scroller} scrollMargin={4} estimateSize={() => COLUMN_ROW_PX} getItemKey={(index) => listing.entries[index]!.key} gap={0} reveal={null} sizeKey="work-files-column" render={row} />
-      );
+    body = plain ? (
+      shown.map((_, index) => row(index))
+    ) : (
+      <VirtualRows count={shown.length} scroller={scroller} scrollMargin={4} estimateSize={() => COLUMN_ROW_PX} getItemKey={(index) => shown[index]!.key} gap={0} reveal={reveal} sizeKey="work-files-column" render={row} />
+    );
   return (
     <div ref={setScroller} role="listbox" aria-label={name} data-files-column={name} className="h-full shrink-0 overflow-x-hidden overflow-y-auto border-e border-border px-1 pt-1 pb-2" style={{ width: COLUMN_PX }}>
       {body}
@@ -305,6 +326,7 @@ export function FileColumns({
   page,
   trail,
   sort,
+  rows,
   picked,
   renaming,
   drag,
@@ -318,6 +340,8 @@ export function FileColumns({
   /** the folders from the place's top down to the one shown */
   trail: readonly FileCrumb[];
   sort: FileSort;
+  /** the folder shown's rows as the page has them (Search's field filters them): the last column draws and walks these */
+  rows?: readonly FileEntry[];
   picked: Picked;
   renaming: string | null;
   drag?: RowDrag;
@@ -328,10 +352,12 @@ export function FileColumns({
 }) {
   const steps = trail.length ? trail.filter((c) => !(c.at.at === "place" && c.at.id.startsWith("team:"))) : [{ name: page.name, at: page.at }];
   const box = useRef<HTMLDivElement | null>(null);
-  const rows = useRef<readonly FileEntry[]>([]);
+  // The rows the last column draws, which the keys walk.
+  const walked = useRef<readonly FileEntry[]>([]);
   const [, bump] = useState(0);
+  const [reveal, setReveal] = useState<{ index: number } | null>(null);
   // One file selected shows its facts last; several, or a folder, show none.
-  const shown = picked.keys.size === 1 ? (rows.current.find((e) => picked.keys.has(e.key) && !e.folder) ?? null) : null;
+  const shown = picked.keys.size === 1 ? (walked.current.find((e) => picked.keys.has(e.key) && !e.folder) ?? null) : null;
   // The newest column is the one he is in: it stays in view as columns are added.
   useEffect(() => {
     const el = box.current;
@@ -345,11 +371,14 @@ export function FileColumns({
   const last = steps[steps.length - 1]!;
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (chordKey(event)) return;
-    const list = rows.current;
+    const list = walked.current;
     const at = list.findIndex((e) => e.key === picked.cursor);
     const to = (index: number): void => {
-      const next = list[Math.max(0, Math.min(list.length - 1, index))];
-      if (next) onPick(next.key, stepHow(event));
+      const step = Math.max(0, Math.min(list.length - 1, index));
+      const next = list[step];
+      if (!next) return;
+      onPick(next.key, stepHow(event));
+      setReveal({ index: step });
     };
     if (event.key === "ArrowDown") return void (event.preventDefault(), to(at < 0 ? 0 : at + 1));
     if (event.key === "ArrowUp") return void (event.preventDefault(), to(at < 0 ? list.length - 1 : at - 1));
@@ -362,7 +391,7 @@ export function FileColumns({
     if (event.key === "Escape" && picked.keys.size) return void (event.preventDefault(), onPick(null));
   };
   return (
-    <div ref={box} tabIndex={0} data-files-columns className="focus-ring flex min-h-0 flex-1 overflow-x-auto overflow-y-hidden outline-none" onKeyDown={onKeyDown}>
+    <div ref={box} tabIndex={0} data-files-columns className="group/columns focus-ring flex min-h-0 flex-1 overflow-x-auto overflow-y-hidden outline-none" onKeyDown={onKeyDown}>
       {steps.map((crumb, i) => (
         <Column
           key={`${i}:${crumb.name}`}
@@ -375,11 +404,12 @@ export function FileColumns({
           renaming={renaming}
           drag={drag}
           active={crumb === last}
+          {...(crumb === last ? { reveal, ...(rows ? { rows } : {}) } : {})}
           onPick={press}
           onOpen={onOpen}
           onRenamed={onRenamed}
           registerRows={(list) => {
-            rows.current = list;
+            walked.current = list;
             bump((n) => n + 1);
           }}
         />

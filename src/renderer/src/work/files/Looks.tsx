@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { besideSeatId, type FilesOpened } from "@shared/contract-work-files";
 import { filesPaneOf, type CanvasItem } from "@shared/work";
 import { ENTRY_KIND_WORDS, type FileEntry } from "@shared/work/files";
+import { ChevronLeft } from "../../chrome/icons";
 import { VirtualRows } from "../../chrome/railVirtualRows";
+import { Tip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { formatBytes } from "../../lib/attachmentUpload";
@@ -18,7 +20,7 @@ import type { SavedAction } from "../canvas/kind";
 import { KindGlyph } from "./KindGlyph";
 import { factOf } from "./model";
 import { FilePreviewPane } from "./Preview";
-import { useThumb, type PictureFrom } from "./previews";
+import { mayReadText, useTextHead, useThumb, type PictureFrom } from "./previews";
 import { dragProps, howOf, NameField, onNameOf, RowState, stepHow, type ShapeProps } from "./rowParts";
 import { SaveActions, SaveLine } from "./SaveLine";
 import { thisWindow } from "./store";
@@ -30,11 +32,21 @@ import { thisWindow } from "./store";
  * Beside opens the file as itself on a click or Tab into its right half, in the window's one Beside seat.
  */
 
-/** A file's small picture where the host has one, else its kind's glyph: a tile's, a strip cell's, the details pane's. */
-export function Thumb({ from, entry, tile, glyph }: { from: PictureFrom | null; entry: FileEntry; tile: 64 | 96 | 144 | 208; glyph: string }) {
-  const url = useThumb(from, entry, tile);
-  if (url) return <img src={url} alt="" draggable={false} className="max-h-full max-w-full rounded-[3px] object-contain select-none" />;
+/**
+ * A file's small picture where the host has one, else its kind's glyph: a tile's, a strip cell's, the details pane's.
+ * The picture fills its box and is fitted inside it, never cut. `near` false asks for none yet.
+ */
+export function Thumb({ from, entry, tile, glyph, near = true }: { from: PictureFrom | null; entry: FileEntry; tile: 64 | 96 | 144 | 208; glyph: string; near?: boolean }) {
+  const url = useThumb(from, entry, tile, near);
+  if (url) return <img src={url} alt="" draggable={false} className="size-full min-h-0 min-w-0 rounded-[3px] object-contain select-none" />;
   return <KindGlyph kind={entry.kind} className={`${glyph} shrink-0`} />;
+}
+
+/** A text file's first lines small, in the details pane's box: the file's own words, never a sketch of them. */
+function TextThumb({ from, entry }: { from: PictureFrom; entry: FileEntry }) {
+  const head = useTextHead(from, entry);
+  if (head.is !== "text") return <KindGlyph kind={entry.kind} className="size-10 shrink-0" />;
+  return <pre data-files-details-text className="size-full overflow-hidden rounded-[3px] bg-background p-2 font-mono text-xs leading-4 break-words whitespace-pre-wrap text-foreground select-none">{head.text}</pre>;
 }
 
 // ── Gallery ───────────────────────────────────────────────────────────
@@ -91,7 +103,9 @@ export function FileGallery({ entries, picked, from, more, onPick, onOpen, onMor
   const cells: ReactNode[] = [];
   for (let i = span.first; i <= Math.min(entries.length - 1, span.last); i++) {
     const entry = entries[i]!;
-    const on = shown?.key === entry.key;
+    // The selection takes the fill, as in every shape; with nothing selected the file shown is held in it.
+    const on = picked.keys.has(entry.key);
+    const held = on || (!picked.keys.size && shown?.key === entry.key);
     cells.push(
       <div
         key={entry.key}
@@ -101,7 +115,7 @@ export function FileGallery({ entries, picked, from, more, onPick, onOpen, onMor
         aria-label={entry.name}
         data-files-row={entry.key}
         data-menu-id={entry.key}
-        className={`absolute top-2 grid size-15 cursor-default place-items-center rounded-md p-1 ${on ? "bg-muted" : "hover:bg-foreground/5"}`}
+        className={`absolute top-2 grid size-15 cursor-default place-items-center rounded-md p-1 ${held ? "bg-muted" : "hover:bg-foreground/5"}`}
         style={{ left: i * STRIP_CELL + 2 }}
         onClick={(event) => onPick(entry.key, howOf(event))}
         onDoubleClick={() => onOpen(entry)}
@@ -123,6 +137,7 @@ export function FileGallery({ entries, picked, from, more, onPick, onOpen, onMor
         ref={setStrip}
         role="listbox"
         aria-label="Files"
+        aria-multiselectable
         aria-orientation="horizontal"
         aria-activedescendant={shown ? `files-strip-${at < 0 ? 0 : at}` : undefined}
         tabIndex={0}
@@ -155,19 +170,14 @@ export function factRows(entry: FileEntry): [string, string][] {
 
 /** The selected file's picture and facts, with Open: the last column of Columns, and the pane Show Details puts beside a list. */
 export function DetailsPane({ from, entry, onOpen, className }: { from: PictureFrom | null; entry: FileEntry | null; onOpen(entry: FileEntry): void; /** the pane's own box: its size, its rule, when it shows */ className: string }) {
-  if (!entry)
-    return (
-      <div data-files-details className={className}>
-        <div className="grid h-full place-items-center p-6">
-          <p className="text-center text-xs text-muted-foreground">Select a file to see it here.</p>
-        </div>
-      </div>
-    );
+  // With nothing selected the pane stands empty: what it is for is plain once a file is.
+  if (!entry) return <div data-files-details className={className} />;
+  const text = mayReadText(entry, from);
   return (
     <div data-files-details={entry.key} className={className}>
       <div className="flex h-full flex-col items-center gap-4 overflow-x-hidden overflow-y-auto p-6">
         <div className="grid h-40 w-full max-w-64 shrink-0 place-items-center rounded-md bg-(--stage) p-2 outline-1 -outline-offset-1 outline-(--image-outline)">
-          <Thumb from={from} entry={entry} tile={208} glyph="size-10" />
+          {text ? <TextThumb key={entry.key} from={from!} entry={entry} /> : <Thumb from={from} entry={entry} tile={208} glyph="size-10" />}
         </div>
         <h3 className="max-w-64 text-center text-sm leading-5 font-medium break-words text-foreground">{entry.name}</h3>
         <dl className="grid w-full max-w-64 grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
@@ -189,7 +199,19 @@ export function DetailsPane({ from, entry, onOpen, className }: { from: PictureF
 // ── Beside ────────────────────────────────────────────────────────────
 
 const BESIDE_LIST_PX = 280;
+/** The list gives way to the file down to this, and the file keeps at least `BESIDE_FILE_MIN` beside it; under both they take turns. */
+const BESIDE_LIST_MIN = 200;
+const BESIDE_FILE_MIN = 320;
+/** Past this much of file beside it the list keeps its full width. */
+const BESIDE_FILE_ROOM = 480;
 const BESIDE_ROW_PX = 44;
+
+/** How Beside lays out in `body` px: the list's width, or `turns` where the list and the file cannot both fit. */
+export function besideShape(body: number): { list: number; turns: boolean } {
+  if (body <= 0) return { list: BESIDE_LIST_PX, turns: false };
+  if (body < BESIDE_LIST_MIN + BESIDE_FILE_MIN) return { list: body, turns: true };
+  return { list: Math.max(BESIDE_LIST_MIN, Math.min(BESIDE_LIST_PX, body - BESIDE_FILE_ROOM)), turns: false };
+}
 /** The right half follows the list this long after the arrow keys rest. */
 export const BESIDE_FOLLOW_MS = 120;
 
@@ -207,7 +229,7 @@ export interface BesideSeatOf {
  * none is selected), and the file's kind draws its bar and body as in a tab, under one line that says where
  * saving stands. The seat is let go when the folder leaves Beside.
  */
-function Seat({ seat, entry, onTab }: { seat: BesideSeatOf; entry: FileEntry; onTab(entry: FileEntry): void }) {
+function Seat({ seat, entry, lead, onTab }: { seat: BesideSeatOf; entry: FileEntry; /** the way back to the list, where the two take turns */ lead?: ReactNode; onTab(entry: FileEntry): void }) {
   const { workspace } = seat;
   const [got, setGot] = useState<{ key: string; item: CanvasItem | null; why?: string } | null>(null);
   useEffect(() => {
@@ -247,7 +269,8 @@ function Seat({ seat, entry, onTab }: { seat: BesideSeatOf; entry: FileEntry; on
     );
   return (
     <div data-files-seat={entry.key} className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border ps-3 pe-2">
+      <div className={`flex h-8 shrink-0 items-center gap-2 border-b border-border pe-2 ${lead ? "ps-1" : "ps-3"}`}>
+        {lead}
         <div className="min-w-0 flex-1">{feeds.saved ? <SaveLine line={feeds.saved} where={null} /> : null}</div>
         {feeds.saved?.actions?.length ? <SaveActions actions={feeds.saved.actions} busy={running} onRun={run} /> : null}
         <Button variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={() => onTab(entry)}>
@@ -304,13 +327,37 @@ export function FileBeside({
   const at = entries.findIndex((e) => e.key === picked.cursor);
   const cursor = at >= 0 ? entries[at]! : null;
   // The right half follows the list a moment after the arrow keys rest, so a walk through a folder asks for one preview, not thirty.
-  const [shown, setShown] = useState<FileEntry | null>(cursor);
+  // It holds the file's key and reads the file from the list, so a file changed under the same key is shown as it is now.
+  const [shownKey, setShownKey] = useState<string | null>(cursor?.key ?? null);
+  const shown = shownKey === null ? null : (entries.find((e) => e.key === shownKey) ?? null);
   useEffect(() => {
-    if (cursor?.key === shown?.key) return;
-    const timer = setTimeout(() => setShown(cursor), BESIDE_FOLLOW_MS);
+    if (cursor?.key === shownKey) return;
+    const timer = setTimeout(() => setShownKey(cursor?.key ?? null), BESIDE_FOLLOW_MS);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor?.key]);
+  // The list gives way to the file as Beside narrows; where both cannot fit they take turns, the file with a way back.
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [body, setBody] = useState(0);
+  useEffect(() => {
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const measure = (): void => setBody(root.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [root]);
+  const shape = besideShape(body);
+  const [turn, setTurn] = useState<"list" | "file">("list");
+  const toFile = (entry: FileEntry): void => {
+    setShownKey(entry.key);
+    setTurn("file");
+  };
+  const toList = (): void => {
+    setTurn("list");
+    requestAnimationFrame(() => root?.querySelector<HTMLElement>("[data-files-list]")?.focus());
+  };
+  const fileTurn = shape.turns && turn === "file" && !!shown;
   // The file he stepped into: open as itself in the seat until the list moves on.
   const [seated, setSeated] = useState<string | null>(null);
   if (seated !== null && seated !== cursor?.key) setSeated(null);
@@ -353,6 +400,7 @@ export function FileBeside({
     if (event.key === "Home") return move(0, event);
     if (event.key === "End") return move(entries.length - 1, event);
     if (event.key === "Enter" && cursor) return void (event.preventDefault(), onOpen(cursor));
+    if (event.key === "ArrowRight" && shape.turns && cursor && !cursor.folder) return void (event.preventDefault(), toFile(cursor));
     if (event.key === "Escape" && picked.keys.size) return void (event.preventDefault(), onPick(null));
   };
   const row = (index: number): ReactNode => {
@@ -371,7 +419,12 @@ export function FileBeside({
         data-kind={entry.kind}
         style={{ height: BESIDE_ROW_PX }}
         className={`flex cursor-default items-start gap-2 rounded-md px-2 py-1.5 text-[13px] select-none ${on || over ? "bg-muted" : "hover:bg-foreground/5"}`}
-        onClick={(event) => onPick(entry.key, howOf(event), onNameOf(event))}
+        onClick={(event) => {
+          const how = howOf(event);
+          onPick(entry.key, how, onNameOf(event));
+          // Where the list and the file take turns, a press on a file shows it.
+          if (shape.turns && how === "one" && !entry.folder) toFile(entry);
+        }}
         onDoubleClick={() => onOpen(entry)}
         {...dragProps(drag, entry)}
       >
@@ -388,7 +441,9 @@ export function FileBeside({
             {entry.changed ? <span className="shrink-0 text-xs leading-4 text-muted-foreground tabular-nums">{dayTime(entry.changed)}</span> : null}
           </span>
           {/* Under the name: the one state, else who changed it. */}
-          <span className="flex h-4 min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">{mine ? busy!.word : entry.state ? <RowState entry={entry} /> : <span className="truncate">{entry.madeBy ?? entry.by ?? ""}</span>}</span>
+          <span className="flex h-4 min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
+            {mine ? busy!.word : entry.state?.is === "cloud" ? <span className="truncate">In the cloud</span> : entry.state ? <RowState entry={entry} /> : <span className="truncate">{entry.madeBy ?? entry.by ?? ""}</span>}
+          </span>
         </span>
       </div>
     );
@@ -397,45 +452,59 @@ export function FileBeside({
   const stepIn = (): void => {
     if (canSeat && shown && cursor?.key === shown.key) setSeated(shown.key);
   };
+  const back = fileTurn ? (
+    <Tip label="Back to the list">
+      <Button variant="ghost" size="icon-xs" aria-label="Back to the list" data-files-beside-back className="shrink-0 text-muted-foreground" onClick={toList}>
+        <ChevronLeft />
+      </Button>
+    </Tip>
+  ) : null;
   let right: ReactNode;
-  if (!shown) right = <div className="grid min-w-0 flex-1 place-items-center bg-(--stage) p-6 text-center text-xs text-muted-foreground">Select a file to see it here.</div>;
-  else if (seated === shown.key && seat) right = seat.draw ? seat.draw(shown) : <Seat seat={seat} entry={shown} onTab={onOpen} />;
+  // With nothing selected the right half stands empty on the stage.
+  if (!shown) right = shape.turns ? null : <div className="min-w-0 flex-1 bg-(--stage)" />;
+  else if (shape.turns && !fileTurn) right = null;
+  else if (seated === shown.key && seat) right = seat.draw ? seat.draw(shown) : <Seat seat={seat} entry={shown} onTab={onOpen} {...(back ? { lead: back } : {})} />;
   else
     right = (
-      // A click or Tab into the right half opens the file there as itself.
-      <div data-files-beside-look tabIndex={canSeat ? 0 : -1} className="focus-ring flex min-h-0 min-w-0 flex-1 flex-col outline-none" onFocus={stepIn} onClick={stepIn}>
-        <FilePreviewPane from={from} entry={shown} fetchLabel="Download and Open" {...(onFetch ? { onFetch } : {})} />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {back ? <div className="flex h-8 shrink-0 items-center border-b border-border ps-1">{back}</div> : null}
+        {/* A click or Tab into the right half opens the file there as itself. */}
+        <div data-files-beside-look tabIndex={canSeat ? 0 : -1} className="focus-ring flex min-h-0 min-w-0 flex-1 flex-col outline-none" onFocus={stepIn} onClick={stepIn}>
+          <FilePreviewPane from={from} entry={shown} fetchLabel="Download and Open" {...(onFetch ? { onFetch } : {})} />
+        </div>
       </div>
     );
   return (
-    <div data-files-beside className="flex min-h-0 flex-1">
-      <div
-        ref={setScroller}
-        role="listbox"
-        aria-label="Files"
-        aria-multiselectable
-        aria-activedescendant={at >= 0 ? `files-row-${at}` : undefined}
-        tabIndex={0}
-        data-files-list
-        className="focus-ring min-h-0 shrink-0 overflow-x-hidden overflow-y-auto border-e border-border px-2 pt-1 pb-2 outline-none"
-        style={{ width: BESIDE_LIST_PX }}
-        onKeyDown={onKeyDown}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) onPick(null);
-        }}
-      >
-        {entries.length <= 80 ? (
-          entries.map((_, index) => row(index))
-        ) : (
-          <VirtualRows count={entries.length} scroller={scroller} scrollMargin={4} estimateSize={() => BESIDE_ROW_PX} getItemKey={(index) => entries[index]!.key} gap={0} reveal={reveal} sizeKey="work-files-beside" render={row} />
-        )}
-        {loadingMore ? (
-          <div aria-busy className="flex h-7 items-center gap-2 px-2 text-xs text-muted-foreground">
-            <Spinner className="size-3" />
-            Loading more
-          </div>
-        ) : null}
-      </div>
+    <div ref={setRoot} data-files-beside={shape.turns ? turn : ""} className="flex min-h-0 flex-1">
+      {fileTurn ? null : (
+        <div
+          ref={setScroller}
+          role="listbox"
+          aria-label="Files"
+          aria-multiselectable
+          aria-activedescendant={at >= 0 ? `files-row-${at}` : undefined}
+          tabIndex={0}
+          data-files-list
+          className={`focus-ring min-h-0 overflow-x-hidden overflow-y-auto px-2 pt-1 pb-2 outline-none ${shape.turns ? "flex-1" : "shrink-0 border-e border-border"}`}
+          style={shape.turns ? undefined : { width: shape.list }}
+          onKeyDown={onKeyDown}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) onPick(null);
+          }}
+        >
+          {entries.length <= 80 ? (
+            entries.map((_, index) => row(index))
+          ) : (
+            <VirtualRows count={entries.length} scroller={scroller} scrollMargin={4} estimateSize={() => BESIDE_ROW_PX} getItemKey={(index) => entries[index]!.key} gap={0} reveal={reveal} sizeKey="work-files-beside" render={row} />
+          )}
+          {loadingMore ? (
+            <div aria-busy className="flex h-7 items-center gap-2 px-2 text-xs text-muted-foreground">
+              <Spinner className="size-3" />
+              Loading more
+            </div>
+          ) : null}
+        </div>
+      )}
       {right}
     </div>
   );
