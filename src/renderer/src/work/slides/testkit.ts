@@ -115,6 +115,17 @@ function arranged(view: DeckView, op: SlideOp): DeckView {
       return onSlide(op.slide, (s) => ({ ...s, hidden: op.hidden }));
     case "layout":
       return onSlide(op.slide, (s) => ({ ...s, layout: op.layout }));
+    case "transition":
+      return onSlide(op.slide, (s) => ({
+        ...s,
+        transition: op.kind === "none" && op.click !== false && op.after == null ? undefined : { kind: op.kind, ...(op.dir ? { dir: op.dir } : {}), ms: 750, ...(op.after != null ? { after: op.after * 1000 } : {}), ...(op.click === false ? { click: false } : {}) },
+      }));
+    case "builds":
+      // As the deck tool reads back what it wrote: each shape hidden until its press, and the order.
+      return onSlide(op.slide, (s) => {
+        const order = op.order as number[];
+        return { ...s, builds: order.length ? { steps: order.map((_, i) => ({ shapes: order.slice(i).sort((a, b) => a - b), paras: [] })).concat([{ shapes: [], paras: [] }]), changed: 0, order } : undefined };
+      });
     case "theme":
       return { ...view, theme: { colors: { ...view.theme?.colors, ...op.colors }, major: op.major ?? view.theme?.major ?? "", minor: op.minor ?? view.theme?.minor ?? "" } };
     case "move": {

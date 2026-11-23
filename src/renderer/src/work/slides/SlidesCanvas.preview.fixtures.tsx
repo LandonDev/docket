@@ -21,6 +21,8 @@ export default [
   { name: "Theme open", props: { moment: "theme" } },
   { name: "The Format sheet beside the stage", props: { moment: "sheet" } },
   { name: "The Format sheet under the slide on a 640px canvas", props: { moment: "sheetunder" } },
+  { name: "The Animate tab: a push and two builds", props: { moment: "animate" } },
+  { name: "The Animate tab on a slide that is PowerPoint's, under the slide", props: { moment: "animateppt" } },
   { name: "The Sorter: sections, a hidden slide", props: { moment: "sorter" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "No picture: LibreOffice is not here", props: { moment: "nopicture" } },

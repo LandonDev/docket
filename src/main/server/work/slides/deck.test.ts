@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { SlideOp } from '@shared/contract-work-slides'
 import { LIBREOFFICE_CONVERTERS } from '../formats'
 import { convertersOf, JobRunner } from '../formats/jobs'
+import { withBuilds } from './builds'
 import { DECK_PY } from './deckScript'
 import { allocateIds, DECK_ITSELF, HOST_ID_GAP, joinStep, SLIDES_CONVERTERS, slideOfOp, splitStep, type DeckInfo } from './deck'
 import { TWELVE } from './fixtures/twelve'
@@ -730,6 +731,47 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       expect(d.changed.length).toBeGreaterThan(0)
       expect([d.added, d.gone]).toEqual([[], []])
       expect((await inspect(themed.output)).theme).toMatchObject({ colors: { accent1: '112233', dk2: '445566' }, major: 'Georgia', minor: 'Verdana' })
+    })
+
+    it('transition and builds: how a slide comes and what comes in on each press, one part changed; more than that is PowerPoint\'s', async () => {
+      const input = file(readFileSync(FEATURE))
+      const part = await slidePart(input, 258)
+      const { output } = await apply(
+        input,
+        [
+          { op: 'transition', slide: 258, kind: 'push', dir: 'u', after: 5 },
+          { op: 'builds', slide: 258, order: [3, 10, 2] },
+          { op: 'transition', slide: 257, kind: 'none', after: 2.5, click: false }
+        ],
+        true
+      )
+      expect(await partsDiff(input, output)).toEqual({ changed: [await slidePart(input, 257), part].sort(), added: [], gone: [] })
+      const after = withBuilds(await inspect(output))
+      const made = after.slides.find((x) => x.id === 258)!
+      expect(made.transition).toEqual({ kind: 'push', dir: 'u', ms: 750, after: 5000 })
+      // Read back by the show's own reader: the slide comes up with the three hidden, and each press shows the next.
+      // (The reader lists what a step hides by shape id.)
+      expect(made.builds).toEqual({ steps: [{ shapes: [2, 3, 10], paras: [] }, { shapes: [2, 10], paras: [] }, { shapes: [2], paras: [] }, { shapes: [], paras: [] }], changed: 0, order: [3, 10, 2] })
+      expect(after.slides.find((x) => x.id === 257)!.transition).toEqual({ kind: 'none', ms: 500, after: 2500, click: false })
+      // In the order the schema wants: the transition before the timing.
+      const xml = await xmlOf(output, part)
+      expect(xml.indexOf('<p:transition')).toBeGreaterThan(xml.indexOf('</p:cSld>'))
+      expect(xml.indexOf('<p:transition')).toBeLessThan(xml.indexOf('<p:timing'))
+      expect(xml).toContain('<p:bldP spid="3" grpId="0" animBg="1"/>')
+      // Taken away again: no transition, no timing.
+      const bare = await apply(output, [{ op: 'transition', slide: 258, kind: 'none' }, { op: 'builds', slide: 258, order: [] }], true)
+      const plain = await xmlOf(bare.output, await slidePart(bare.output, 258))
+      expect([plain.includes('<p:transition'), plain.includes('<p:timing')]).toEqual([false, false])
+      // A slide whose timing plays a video, moves a shape or waits on a trigger keeps it for PowerPoint.
+      const info = withBuilds(await inspect(input))
+      const rich = info.slides.find((x) => x.builds?.whole || x.shapes.some((sh) => sh.kind === 'media'))!
+      await expect(apply(input, [{ op: 'builds', slide: rich.id, order: [rich.shapes[0].id] }], true)).rejects.toThrow('edit them in PowerPoint')
+      // Unless he confirmed taking them out: every animation goes, and what he set is all the slide has.
+      const replaced = await apply(input, [{ op: 'builds', slide: rich.id, order: [], replace: true }], true)
+      expect((await xmlOf(replaced.output, await slidePart(replaced.output, rich.id))).includes('<p:timing')).toBe(false)
+      const anew = await apply(input, [{ op: 'builds', slide: rich.id, order: [rich.shapes[0].id], replace: true }], true)
+      expect(withBuilds(await inspect(anew.output)).slides.find((x) => x.id === rich.id)!.builds?.order).toEqual([rich.shapes[0].id])
+      await expect(apply(input, [{ op: 'builds', slide: 258, order: [3, 3] }], true)).rejects.toThrow('a shape comes in once')
     })
 
     it('a look in a theme colour is the theme\'s own, lighter or darker by Office\'s maths', async () => {

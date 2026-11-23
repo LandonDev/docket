@@ -9,6 +9,7 @@ import { clockTime } from "../../../lib/duration";
 import type { PdfDoc } from "../../pdf/engine";
 import { useRoom, type Room } from "./Audience";
 import { aspectOf, fit, SlidePicture, Thumb } from "./pictures";
+import { MediaTransport, SlideMedia, usePicture, useStage } from "./stage";
 import { nextPress, NOTES_SIZES, placeLabel, placeText, type ShowAct, type ShowState } from "./state";
 import { clockOf, elapsedOf, overTarget, TARGETS, type ShowTimer, type Target } from "./timer";
 
@@ -85,7 +86,10 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
 
   // The slide takes the room the bar, the strip, the column and the insets leave; beside a column it is as tall as the body allows.
   const aspect = aspectOf(doc, slide?.page ?? 1);
-  const bodyHeight = Math.max(0, room.height - 40 - 60 - (notice ? 28 : 0) - 32);
+  // The transport's rows (28px each, 4px apart, 8px under the slide) come out of the slide's room.
+  const hidden = slide?.steps?.[state.step]?.hides ?? [];
+  const clips = slide && !state.ended ? (slide.media?.filter((m) => !hidden.includes(m.shape)).length ?? 0) : 0;
+  const bodyHeight = Math.max(0, room.height - 40 - 60 - (notice ? 28 : 0) - 32 - (clips ? clips * 32 + 4 : 0));
   const now_ = narrow ? fit({ width: room.width - 32, height: Math.max(120, bodyHeight * 0.5) }, aspect) : fit({ width: room.width - COLUMN - 48, height: bodyHeight - 24 }, aspect);
   const columnWidth = narrow ? Math.max(0, room.width - 32) : COLUMN;
   // Stacked, the next press is a small picture, so the notes keep the room.
@@ -93,6 +97,10 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
   const [size, line] = NOTES_SIZES[notesSize] ?? NOTES_SIZES[0];
 
   const nextSlide = next.kind === "slide" ? state.slides[next.at] : next.kind === "build" ? slide : undefined;
+  const pictureOf = usePicture(doc);
+  const stage = useStage();
+  const here = pictureOf(slide, state.step);
+  const coming = nextSlide ? pictureOf(nextSlide, next.kind === "build" ? next.step : 0) : null;
   return (
     <div
       ref={root}
@@ -160,9 +168,22 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
             <Ended size={now_} words="End of show" />
           ) : slide ? (
             <button type="button" data-show-now aria-label={`Current slide ${slide.number}${slide.title ? `, ${slide.title}` : ""}`} onClick={() => dispatch({ t: "next" })} className="block w-fit rounded-sm text-start">
-              <SlidePicture doc={doc} page={slide.page} width={now_.width} ratio={ratio} title={slide.title} className={`${PICTURE} ${state.blank ? "opacity-45" : ""}`} />
+              <SlidePicture
+                doc={here.doc}
+                page={here.page}
+                waiting={here.waiting}
+                width={now_.width}
+                ratio={ratio}
+                title={slide.title}
+                className={`${PICTURE} ${state.blank ? "opacity-45" : ""}`}
+                motion={stage?.motion ?? null}
+                motionKey={stage?.motionKey}
+              >
+                <SlideMedia slide={slide} step={state.step} surface="presenter" width={now_.width} height={now_.height} />
+              </SlidePicture>
             </button>
           ) : null}
+          {slide && !state.ended && !error ? <MediaTransport slide={slide} step={state.step} /> : null}
         </div>
         <div className="flex min-h-0 min-w-0 flex-col gap-4" style={{ width: columnWidth }}>
           <div className="flex shrink-0 flex-col gap-2">
@@ -182,7 +203,7 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
               <Ended size={{ width: nextWidth, height: Math.round(nextWidth / aspect) }} words="End of show" />
             ) : nextSlide ? (
               <button type="button" data-show-next aria-label={next.kind === "build" ? `Next: build ${next.step} of ${next.of}` : `Next slide ${nextSlide.number}${nextSlide.title ? `, ${nextSlide.title}` : ""}`} onClick={() => dispatch({ t: "next" })} className="block w-fit rounded-sm text-start">
-                <SlidePicture doc={doc} page={nextSlide.page} width={nextWidth} ratio={ratio} title={nextSlide.title} className={PICTURE} />
+                <SlidePicture doc={coming?.doc ?? doc} page={coming?.page ?? nextSlide.page} waiting={coming?.waiting} width={nextWidth} ratio={ratio} title={nextSlide.title} className={PICTURE} />
               </button>
             ) : null}
           </div>

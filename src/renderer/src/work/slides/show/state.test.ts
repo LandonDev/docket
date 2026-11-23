@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { keyAct, nextPress, NOTES_DEFAULT, NOTES_SIZES, placeText, showReducer, startShowState, stepNotes, type ShowAct, type ShowState, type Slide } from "./state";
+import { autoAfter, keyAct, motionBetween, nextPress, NOTES_DEFAULT, NOTES_SIZES, placeText, showReducer, startShowState, stepNotes, type ShowAct, type ShowState, type Slide } from "./state";
 import { clockOf, elapsedOf, overTarget, pauseTimer, restartTimer, resumeTimer, startTimer } from "./timer";
 
 const slide = (n: number, over: Partial<Slide> = {}): Slide => ({ id: 255 + n, number: n, page: n, title: `Slide ${n}`, notes: "", hidden: false, ...over });
@@ -203,5 +203,65 @@ describe("a show's timer", () => {
     expect(overTarget(20 * 60_000, 20)).toBe(false);
     expect(overTarget(20 * 60_000 + 1, 20)).toBe(true);
     expect(overTarget(99 * 60_000, null)).toBe(false);
+  });
+});
+
+describe("a show's steps, its transitions and its own clock", () => {
+  const step = (hides: number[] = []) => ({ hides });
+  // Slide 2 has three steps from the host (two presses); slide 3 comes by a push and moves on by itself after 5 s.
+  const slides = (): Slide[] =>
+    deck(4, {
+      2: { steps: [step([4, 5]), step([5]), step()] },
+      3: { transition: { kind: "push", dir: "u", ms: 750, after: 5000 } },
+      4: { transition: { kind: "wipe", ms: 500 } },
+    });
+
+  it("takes one press a step the host read, before the next slide", () => {
+    let s = run(startShowState(slides(), "start"), { t: "next" });
+    expect([at(s), s.step]).toEqual([2, 0]);
+    expect(nextPress(s)).toEqual({ kind: "build", at: 1, step: 1, of: 2 });
+    s = run(s, { t: "next" }, { t: "next" });
+    expect([at(s), s.step]).toEqual([2, 2]);
+    s = run(s, { t: "next" });
+    expect([at(s), s.step]).toEqual([3, 0]);
+    // back onto a slide with steps lands on its last
+    s = run(s, { t: "prev" });
+    expect([at(s), s.step]).toEqual([2, 2]);
+    // a slide of one step from the host takes one press
+    expect(nextPress(startShowState(deck(2, { 1: { steps: [step()] } }), "start"))).toEqual({ kind: "slide", at: 1 });
+  });
+
+  it("moves on by itself after the slide's time, at each place, unless the screen is black, the picker is open or the show moved", () => {
+    const s = run(startShowState(slides(), "start"), { t: "goto", number: 3 });
+    expect(autoAfter(s)).toBe(5000);
+    expect(autoAfter(run(s, { t: "blank" }))).toBeNull();
+    expect(autoAfter(run(s, { t: "picker" }))).toBeNull();
+    expect(autoAfter(run(s, { t: "next" }))).toBeNull();
+    expect(at(run(s, { t: "auto", at: 2, step: 0 }))).toBe(4);
+    // the clock ran out for a place the show has left: nothing
+    expect(at(run(s, { t: "prev" }, { t: "auto", at: 2, step: 0 }))).toBe(2);
+    expect(run(s, { t: "blank" }, { t: "auto", at: 2, step: 0 }).blank).toBe(true);
+  });
+
+  it("fades a step either way, plays a slide's fade or push on a press on, and cuts everything else", () => {
+    const start = startShowState(slides(), "start");
+    const two = run(start, { t: "next" });
+    expect(motionBetween(start, two, false)).toBeNull();
+    const built = run(two, { t: "next" });
+    expect(motionBetween(two, built, false)).toEqual({ kind: "step" });
+    expect(motionBetween(built, run(built, { t: "prev" }), false)).toEqual({ kind: "step" });
+    const last = run(built, { t: "next" });
+    const three = run(last, { t: "next" });
+    expect(motionBetween(last, three, false)).toEqual({ kind: "push", dir: "u" });
+    // a push under reduced motion is a fade
+    expect(motionBetween(last, three, true)).toEqual({ kind: "fade" });
+    // pressed on before the builds are done is no move to the next slide; a jump and a step back cut
+    expect(motionBetween(two, run(two, { t: "goto", number: 3 }), false)).toBeNull();
+    expect(motionBetween(three, run(three, { t: "prev" }), false)).toBeNull();
+    // a wipe is a cut; so is a fade into a black screen
+    expect(motionBetween(three, run(three, { t: "next" }), false)).toBeNull();
+    expect(motionBetween(three, run(three, { t: "blank" }), false)).toBeNull();
+    const fading = startShowState(deck(2, { 2: { transition: { kind: "fade", ms: 700 } } }), "start");
+    expect(motionBetween(fading, run(fading, { t: "next" }), false)).toEqual({ kind: "fade" });
   });
 });

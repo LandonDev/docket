@@ -2509,9 +2509,21 @@ the room sees, and the presenter's view. One state moves both.
   | Notes larger, smaller | + and − |
   | Start, from the deck | ⇧⌘↩ from the start, ⌘↩ from this slide, ⌥⌘↩ presenter view, F5 from the start (⇧F5 from this slide) |
 
-  A key held with ⌘, Ctrl or Alt is the window's own. A video's transport,
-  when a slide has one, is in the presenter's view only: the slideshow has
-  no chrome but the bar the pointer calls.
+  A key held with ⌘, Ctrl or Alt is the window's own.
+- **Builds, transitions and the clock.** A press that shows a build fades
+  its picture in; a slide's own fade or push plays on a press on to it
+  ("Motion values"). A slide whose file says it moves on after a time does,
+  in both windows, at each of its steps; a black screen or the open picker
+  holds it.
+- **Video and sound** play over their shapes in both windows: the room
+  hears the slideshow's copy. The transport is in the presenter's view
+  only, one 28px row a clip, 8px under the picture the room sees, its Play
+  glyph on the picture's edge: Play or Pause and Play from the start (24px
+  quiet icon buttons), the place as a 4px `Progress`, and "0:12 / 1:04" in
+  12px muted tabular; while the clip is read, "Getting the video ready…" in
+  its place. With no presenter's view a press on the clip's box starts and
+  stops it; the slideshow has no other chrome but the bar the pointer
+  calls.
 
 #### Work editors: Preview
 
@@ -2895,8 +2907,11 @@ other picked shape is the outline alone.
   280px at the stage's end on `background` with a hairline on its leading
   edge, on a canvas 720px wide or more; under that it lies under the slide
   in the notes' place (the notes go while it is open, the slide fitted to
-  42% of the height). Its head: the shape's name 13/20 medium and a 28px
-  close. Sections 20px apart, 8px inside, labels 12px medium muted:
+  42% of the height). Its head: two tabs, Format and Animate, as the
+  segmented control at 28px with 12px labels and the gliding pill, and a
+  28px close at its end; the sheet opens on the tab he left. Format's first
+  line is the shape's name 13/20 medium. Sections 20px apart, 8px inside,
+  labels 12px medium muted:
   Position and size (X, Y, W, H in a two-column grid of 28px fields, the
   letter 12px muted inside, values in his units, tabular; Rotation, a 96px
   field), Outline (its colour picker, "No outline" first; Weight and Dash
@@ -2905,8 +2920,30 @@ other picked shape is the outline alone.
   right) and Delete. A field writes when he leaves it or presses Return,
   only if its words changed; Escape puts it back. With nothing picked:
   "Pick a shape on the slide". Its body enters on opacity and an 8px slide,
-  `--dur-base` `--ease-out`. Shadow and crop have no edit yet and are not
-  drawn; Animate is the show's.
+  `--dur-base` `--ease-out`, each tab's body on its own. Shadow and crop
+  have no edit yet and are not drawn.
+- **The Animate tab** (`edit/Animate.tsx`) is the slide's, so it needs no
+  shape picked. Transition: Effect (None, Fade, Push) as a 112px quiet
+  select; for a push, Direction (From bottom, From left, From right, From
+  top, PowerPoint's words and order); On click and After as 16px checkboxes
+  with their words 8px after, After's seconds a 112px field under the selects' edge ("5 s") only
+  while it is ticked. A kind the app does not play is the select's face by
+  its own name ("Random bar") with one 12px muted line under it, "Plays in
+  PowerPoint; a cut here", its two checkboxes held. Builds: the shapes that
+  appear on a press, one 28px row each: its place 12px muted tabular in a
+  16px slot (the grip there under the pointer or the keyboard), the label
+  the stage reads to a screen reader 13/20, truncating, and a 24px remove
+  at the end by the hover reveal; a drag shows the 2px `accent` line where
+  it will land, and the row carries the `muted` fill. ⌥↑ and ⌥↓ move the
+  focused row, ↑↓ walk the rows, Delete takes one out. Under them "Appear
+  on click", a ghost xs button with its plus, opening a 224px menu of the
+  slide's shapes not in a group and not yet listed. A slide whose builds
+  are more than that shows no list: "Edit in PowerPoint" 13/20, why under
+  it in 12px muted, and, where it can, "Remove animations…" as a ghost xs
+  button, which asks in a confirm what goes before anything does. On a
+  slide a suggestion changes the tab is the proposed values as words,
+  under the refusal line 12px muted, and the values the change names on
+  the added tint, as the stage's words are.
 - **Slides by hand.** Where no suggestion waits, a slide in the strip or
   the Sorter opens its menu on a right-click or the menu key: New slide
   after (a layout), Duplicate, Hide or Show slide, Layout (those that map),
@@ -3123,7 +3160,9 @@ being produced shimmers (`WorkingText`); nothing else does.
 | A step's read text opening | `Collapsible` (`--dur-slow` open, `--dur-base` close) | the same | opacity |
 | The computer cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`FADE_IN`); its words morph (`MorphText`) | at once | the fade |
 | The agent's click on the live viewport (`CLICK_MARK`, a Web Animation on the ring alone, placed at the click's share of the picture) | scale 0.6→1 at full opacity over `--dur-base` `--ease-out`, holds `FOLD_HOLD_MS`, fades over `--dur-slow`; a new click restarts it | — | appears and fades, no scale |
-| A slide or a build changing in a show | a cut to a picture already painted: the page a press shows next is painted under the one shown, and the one shown stays until the new one is whole, so nothing dips to black | — | the same |
+| A slide or a build changing in a show | the new picture comes only once it is whole (the next press's is painted ahead under the one shown, so nothing dips to black); a build, either way, fades in over the one before, opacity 0→1, `--dur-slow` (240ms) `--ease-out`; any change of slide but a slide's own fade or push is a cut; a press during a motion ends it at once | — | the build's fade, the same |
+| A slide's own transition in a show (a press on to it; a jump, a step back and every other transition cut) | a fade: the new slide fades in over the old, opacity, `--dur-slow` `--ease-out`; a push: the new slide comes from the side the file names as the old one leaves by the other, `translate` by the slide's own size, `--dur-drawer` `--ease-drawer`; both Web Animations on the app's tokens, read from the window, never the file's own speed | — | a push is a fade; a fade is the same |
+| A slide's video in a show | none: it lies over its shape once started, the slide's own poster under it until then | at once, with its slide | the same |
 | The slideshow's bar | on a real move of the pointer: opacity 0→1 and a rise of 4px, `--dur-base` `--ease-out` | 2000ms after the last move (`PRESENT_IDLE_MS`), with the pointer hidden at the same moment: opacity →0 and 4px back down, `--dur-base` `--ease-exit`; held while the pointer is on it or its picker is open | opacity alone |
 | The slideshow's picker and the presenter's target menu (panels of their own window, so no portal) | the popover's: fade + scale 0.95→1 from the trigger's side, `--dur-base` `--ease-out` | at once | fade only |
 | The slide editor: a shape picked, the typing box opening, going and waiting for its picture | none: a selection and the box are there at once and go at once; the old picture stays until the new one has painted | none | none |

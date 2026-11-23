@@ -535,6 +535,36 @@ def transition_of(slide):
     return out
 
 
+TIMING_CAP = 4000
+
+
+def timing_of(slide):
+    """The slide's p:timing as a plain tree, each element its name, attributes, children and text, for the host to
+    read builds from (steps.ts). None when the slide has none; past TIMING_CAP elements only {'over': True}."""
+    el = slide._element.find(qn('p:timing'))
+    if el is None:
+        return None
+    seen = [0]
+
+    def node(e):
+        seen[0] += 1
+        if seen[0] > TIMING_CAP:
+            raise OverflowError()
+        out = {'t': etree.QName(e).localname}
+        if e.attrib:
+            out['a'] = {etree.QName(k).localname: v for k, v in e.attrib.items()}
+        kids = [node(c) for c in e if isinstance(c.tag, str)]
+        if kids:
+            out['c'] = kids
+        if e.text and e.text.strip():
+            out['x'] = e.text.strip()[:200]
+        return out
+    try:
+        return node(el)
+    except OverflowError:
+        return {'t': 'timing', 'over': True}
+
+
 def layouts_of(prs):
     """Each layout a slide can take: its name, its master's place, and the placeholders it holds by kind and index."""
     out = []
@@ -717,6 +747,7 @@ def inspect(src, out):
             **({'draws': d} if (d := draws_of(raw, parts.get(slide.slide_id, ''), len(slides) + 1, deck)) is not None else {}),
             'shapes': shapes,
             **({'transition': tr} if (tr := transition_of(slide)) is not None else {}),
+            **({'timing': tm} if (tm := timing_of(slide)) is not None else {}),
         })
     info = {'width': w, 'height': h, 'slides': slides, 'sections': sections_of(prs), 'layouts': layout_names(prs), 'layoutInfo': layouts_of(prs), 'theme': theme}
     looks = layouts_draws(raw, deck)
@@ -1887,10 +1918,112 @@ def op_theme(prs, op):
         part._blob = etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
 
+# ── his own edits: how a slide comes and builds ──────────────────────
+
+# What an appear-on-a-press build may stand beside in a slide's timing: Appear and Fade entrances of whole shapes.
+SIMPLE_PRESETS = ('1', '10')
+NOT_SIMPLE = ('audio', 'video', 'cmd', 'animMotion', 'animScale', 'animRot', 'animClr', 'txEl', 'graphicEl', 'oleChartEl', 'subSp', 'sndTgt', 'inkTgt')
+APPEAR = ('<p:par><p:cTn id="%d" fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst>'
+          '<p:par><p:cTn id="%d" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>'
+          '<p:par><p:cTn id="%d" presetID="1" presetClass="entr" presetSubtype="0" fill="hold"%s nodeType="clickEffect">'
+          '<p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>'
+          '<p:set><p:cBhvr><p:cTn id="%d" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>'
+          '<p:tgtEl><p:spTgt spid="%d"/></p:tgtEl><p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr>'
+          '<p:to><p:strVal val="visible"/></p:to></p:set>'
+          '</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>')
+
+
+def before_tail(root, el, tails):
+    """Puts el among a slide's children before the first of 'tails' that is there, else last."""
+    for name in tails:
+        at = root.find(qn(name))
+        if at is not None:
+            at.addprevious(el)
+            return
+    root.append(el)
+
+
+def op_transition(prs, op):
+    """How a slide comes in a show: a cut, a fade or a push; whether a press moves on; the seconds after which it
+    moves on by itself. Whatever the slide had, PowerPoint's wrapped newer kinds too, is replaced."""
+    slide, _ = slide_by_id(prs, op['slide'])
+    root = slide._element
+    for c in list(root):
+        if c.tag == qn('p:transition') or (c.tag == MC_ALT and next(c.iter(qn('p:transition')), None) is not None):
+            root.remove(c)
+    kind, after, click = op['kind'], op.get('after'), op.get('click', True)
+    if kind == 'none' and after is None and click:
+        return
+    tr = OxmlElement('p:transition')
+    if kind != 'none':
+        tr.set('spd', 'med')
+    if not click:
+        tr.set('advClick', '0')
+    if after is not None:
+        tr.set('advTm', str(int(round(float(after) * 1000))))
+    if kind == 'fade':
+        tr.append(OxmlElement('p:fade'))
+    elif kind == 'push':
+        push = OxmlElement('p:push')
+        push.set('dir', op.get('dir', 'l'))
+        tr.append(push)
+    before_tail(root, tr, ('p:timing', 'p:extLst'))
+
+
+def simple_timing(timing):
+    """Whether a slide's timing is no more than Appear and Fade entrances of whole shapes on presses."""
+    for el in timing.iter('*'):
+        if not isinstance(el.tag, str):
+            continue
+        name = etree.QName(el).localname
+        if name in NOT_SIMPLE:
+            return False
+        if name == 'cTn':
+            if el.get('nodeType') == 'interactiveSeq':
+                return False
+            if el.get('presetClass') is not None and (el.get('presetClass') != 'entr' or el.get('presetID') not in SIMPLE_PRESETS):
+                return False
+    return True
+
+
+def op_builds(prs, op):
+    """The shapes that come in on a press, one a press, in order; none takes the builds away. A slide whose
+    animations are more than that keeps them for PowerPoint, unless 'replace' (his confirmed press) takes them all out."""
+    slide, _ = slide_by_id(prs, op['slide'])
+    root = slide._element
+    timing = root.find(qn('p:timing'))
+    if timing is not None and not op.get('replace') and not simple_timing(timing):
+        raise Fail('slide %d has animations beyond shapes that appear on a press; edit them in PowerPoint' % op['slide'])
+    shapes = [shape_on(slide, op['slide'], ref) for ref in op['order']]
+    ids = [sh.shape_id for sh in shapes]
+    if len(set(ids)) != len(ids):
+        raise Fail('a shape comes in once')
+    if timing is not None:
+        root.remove(timing)
+    if not ids:
+        return
+    n = [2]
+    presses, built = [], []
+    for sh in shapes:
+        # as PowerPoint writes it: a shape that can hold words builds as one, background and all
+        wordy = sh._element.tag == qn('p:sp')
+        base = n[0]
+        n[0] += 4
+        presses.append(APPEAR % (base + 1, base + 2, base + 3, ' grpId="0"' if wordy else '', base + 4, sh.shape_id))
+        if wordy:
+            built.append('<p:bldP spid="%d" grpId="0" animBg="1"/>' % sh.shape_id)
+    xml = ('<p:timing xmlns:p="%s"><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst>'
+           '<p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>%s</p:childTnLst></p:cTn>'
+           '<p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst>'
+           '<p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq>'
+           '</p:childTnLst></p:cTn></p:par></p:tnLst>%s</p:timing>') % (NS_P, ''.join(presses), '<p:bldLst>%s</p:bldLst>' % ''.join(built) if built else '')
+    before_tail(root, etree.fromstring(xml, PARSER), ('p:extLst',))
+
+
 OPS = {'text': op_text, 'cell': op_cell, 'notes': op_notes, 'chart': op_chart, 'add': op_add, 'remove': op_remove, 'move': op_move,
        'runs': op_runs, 'format': op_format, 'geometry': op_geometry, 'order': op_order, 'insert': op_insert, 'delete': op_delete,
        'fill': op_fill, 'line': op_line, 'grid': op_grid, 'hide': op_hide, 'duplicate': op_duplicate, 'section': op_section,
-       'layout': op_layout, 'theme': op_theme}
+       'layout': op_layout, 'theme': op_theme, 'transition': op_transition, 'builds': op_builds}
 
 
 # ── the byte rule ────────────────────────────────────────────────────

@@ -26,3 +26,23 @@
   To measure again: `python -I kinds-make.py out.pptx tmpdir`, inspect it with the
   deck tool, export it with LibreOffice's `impress_pdf_Export`, then
   `python -I kinds-measure.py out.pdf outline.json tmpdir/targets.json 1920 measured.json`.
+- `steps-kinds.pptx` and `steps-talk.pptx`: the show's build decks, made by
+  `steps-make.py` with python-pptx and timing XML written the way PowerPoint
+  writes it (`python -I steps-make.py steps-kinds.pptx steps-talk.pptx
+  <ffmpeg>`; ffmpeg makes the one second of test video). `steps-kinds` holds
+  one kind of timing a slide, its title naming it: presses, with-previous and
+  after-previous, exits, paragraph builds (one anchored in the middle and
+  shrunk to fit), what starts by itself, a video with PowerPoint's own play
+  and pause and a caption, a group, a fly-in, and each kind the reader shows
+  whole (a trigger, an emphasis held, a motion path, a nesting it does not
+  know, a chart by series). `steps-talk` is a short talk: bullets with a
+  sub-point, a picture after its caption, a box that leaves for another, a
+  chart, numbered footers. Ours; no outside content. `steps-kinds.pptx` is a
+  test of our reader, not a deck PowerPoint made: its slide 9 nests an effect
+  one level deeper than PowerPoint writes, so PowerPoint asks to repair the
+  file (`.temp-code/plans/landed/SLD679-powerpoint-proof.md`, part B; with
+  that slide's timing taken out it opens clean). `steps-talk.pptx` and the
+  feature deck open in PowerPoint as they are.
+- `steps-kinds.json` and `steps-talk.json`: each slide's id, title, timing
+  tree and shapes as the deck tool reads them, which `builds.test.ts` reads;
+  `steps.gate.test.ts` holds them equal to what the tool reads today.

@@ -6,7 +6,7 @@
  * window closed, the slideshow's display leaving, and a browser's frame.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShowDeck } from "@shared/contract-work-slides";
 import { fakeDoc, fakeEngine } from "../../pdf/testkit";
 import { Audience, PRESENT_IDLE_MS } from "./Audience";
@@ -318,7 +318,13 @@ function place(surface: Surface): ShowPlace & { leave(): void; closed: boolean }
 
 function showHost(initial: ShowDeck) {
   const listeners = new Set<(rev: string) => void>();
+  const readies = new Set<(rev: string) => void>();
   const host = {
+    steps: [] as string[],
+    step: async (rev: string) => (host.steps.push(rev), new Uint8Array()),
+    media: async (_rev: string, _offset: number, length: number) => new Uint8Array(length),
+    onReady: (listener: (rev: string) => void) => (readies.add(listener), () => void readies.delete(listener)),
+    ready: (rev: string) => readies.forEach((fn) => fn(rev)),
     deck: initial,
     shows: 0,
     reads: [] as string[],
@@ -676,5 +682,145 @@ describe("where a show is drawn", () => {
     expect(ask).toHaveBeenCalledTimes(1);
     q.close();
     delete (document as { fullscreenElement?: unknown }).fullscreenElement;
+  });
+});
+
+// ── builds, transitions, video and sound ─────────────────────────────
+
+describe("a show's builds, its own clock and its clips", () => {
+  // Rooms with a size, so the windows paint their pictures.
+  const sized = ["clientWidth", "clientHeight"].map((name) => [name, Object.getOwnPropertyDescriptor(Element.prototype, name)!] as const);
+  beforeEach(() => {
+    Object.defineProperty(Element.prototype, "clientWidth", { configurable: true, get: () => 960 });
+    Object.defineProperty(Element.prototype, "clientHeight", { configurable: true, get: () => 600 });
+  });
+  afterEach(() => sized.forEach(([name, d]) => Object.defineProperty(Element.prototype, name, d)));
+  /** The words on the picture a window shows: the layer that is not hidden. */
+  const seen = (p: ShowPlace, root = "[data-show-slide]"): string | null => p.body.querySelector(`${root} [data-show-page]:not(.invisible)`)?.textContent ?? null;
+  const quad: Array<[number, number]> = [
+    [0.1, 0.2],
+    [0.5, 0.2],
+    [0.5, 0.6],
+    [0.1, 0.6],
+  ];
+  async function start(slides: Slide[]) {
+    const host = showHost(showDeck(slides.length, { slides }));
+    const places: Record<string, ReturnType<typeof place>> = {};
+    // A step's own picture is a one-page render of its own; the deck's render is opened once.
+    const opened: number[] = [];
+    const engine = {
+      async open(file: { size: number }) {
+        opened.push(file.size);
+        return file.size === 1000 ? pages(slides.length) : fakeDoc([{ size: WIDE, runs: [{ str: `Step picture ${file.size}`, box: [0.1, 0.1, 0.6, 0.2] as [number, number, number, number] }] }]);
+      },
+    };
+    let handle!: Awaited<ReturnType<typeof startShow>>;
+    await act(async () => {
+      handle = await startShow({ host, title: "Deck", from: "start", mode: "windowed", engine, native: null, open: (surface) => (places[surface] = place(surface)) });
+    });
+    return { host, places, handle, opened };
+  }
+
+  it("shows each step's own picture in both windows, and the slide's own page for a step whose picture is not made yet", async () => {
+    const { host, places, handle, opened } = await start(
+      deck(3, {
+        2: { steps: [{ hides: [4, 5], pic: { rev: "0123456789abcdef", size: 101 } }, { hides: [5], pic: { rev: "1123456789abcdef", size: 102 } }, { hides: [] }] },
+        3: { steps: [{ hides: [4] }, { hides: [] }] },
+      }),
+    );
+    await waitFor(() => expect(seen(places.audience)).toBe("Slide 1"));
+    // the next slide's step pictures are read ahead
+    await waitFor(() => expect(opened).toEqual(expect.arrayContaining([101, 102])));
+    fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
+    await waitFor(() => expect(seen(places.audience)).toBe("Step picture 101"));
+    expect(seen(places.presenter, "[data-show-now]")).toBe("Step picture 101");
+    expect(text(places.presenter, "[data-show-build]")).toBe("Build 1 of 2");
+    fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
+    await waitFor(() => expect(seen(places.audience)).toBe("Step picture 102"));
+    fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
+    // the last step hides nothing: the slide's page
+    await waitFor(() => expect(seen(places.audience)).toBe("Slide 2"));
+    fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
+    // slide 3's first step has no picture yet: the slide as it ends, and still a press before the end
+    await waitFor(() => expect(seen(places.audience)).toBe("Slide 3"));
+    expect(text(places.presenter, "[data-show-build]")).toBe("Build 1 of 1");
+    // More is ready on the host: the deck is read again and its render kept open.
+    const shows = host.shows;
+    await act(async () => host.ready("r1"));
+    await waitFor(() => expect(host.shows).toBe(shows + 1));
+    expect(opened.filter((size) => size === 1000)).toHaveLength(1);
+    await act(async () => handle.end());
+  });
+
+  it("moves on by itself after a slide's time, in both windows", async () => {
+    const { places, handle } = await start(deck(3, { 1: { transition: { kind: "fade", ms: 500, after: 30 } } }));
+    await waitFor(() => expect(text(places.presenter, "[data-show-place]")).toBe("2 / 3"));
+    expect(text(places.audience, "[data-show-place]")).toBe("2 / 3");
+    await act(async () => handle.end());
+  });
+
+  it("plays a slide's video in both windows: started from the presenter's view, heard from the slideshow, the transport in the presenter's view alone", async () => {
+    const plays = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) {
+      Object.defineProperty(this, "paused", { value: false, configurable: true });
+      return Promise.resolve();
+    });
+    const pauses = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) {
+      Object.defineProperty(this, "paused", { value: true, configurable: true });
+    });
+    const made = vi.fn(() => "blob:clip");
+    const revoked = vi.fn();
+    Object.assign(URL, { createObjectURL: made, revokeObjectURL: revoked });
+    const { places, handle } = await start(deck(3, { 2: { media: [{ shape: 3, kind: "video", quad: quad as never, file: { rev: "2123456789abcdef", size: 10, type: "video/mp4" } }] } }));
+    await waitFor(() => expect(seen(places.audience)).toBe("Slide 1"));
+    fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
+    const play = await within(places.presenter.body).findByRole("button", { name: "Play the video" });
+    await waitFor(() => expect((play as HTMLButtonElement).disabled).toBe(false));
+    const [room, own] = [places.audience, places.presenter].map((p) => p.body.querySelector<HTMLVideoElement>('video[data-show-media="3"]')!);
+    expect(room.src).toBe("blob:clip");
+    expect(own.src).toBe("blob:clip");
+    expect(made).toHaveBeenCalledTimes(1);
+    // the slideshow's copy is heard, the presenter's plays muted in step; neither shows before it is started
+    expect([room.muted, own.muted]).toEqual([false, true]);
+    expect(room.className).toContain("invisible");
+    // placed over the shape's box: 40% of the slide wide from 10% in
+    expect(parseFloat(room.style.width) / parseFloat(room.parentElement!.parentElement!.style.width)).toBeCloseTo(0.4, 2);
+    expect(within(places.audience.body).queryByRole("button", { name: /the video/ })).toBeNull();
+    fireEvent.click(play);
+    await waitFor(() => expect(room.className).not.toContain("invisible"));
+    expect(plays.mock.contexts).toEqual(expect.arrayContaining([room, own]));
+    expect(within(places.presenter.body).getByRole("button", { name: "Pause the video" })).toBeTruthy();
+    // the room's copy reports its place to the transport
+    Object.defineProperty(room, "duration", { value: 64, configurable: true });
+    room.currentTime = 12;
+    fireEvent.timeUpdate(room);
+    await waitFor(() => expect(places.presenter.body.querySelector("[data-show-clip]")?.textContent).toContain("0:12 / 1:04"));
+    fireEvent.click(within(places.presenter.body).getByRole("button", { name: "Pause the video" }));
+    await waitFor(() => expect(pauses.mock.contexts).toEqual(expect.arrayContaining([room, own])));
+    // leaving the slide stops its clip; the show's end lets the clip's URL go
+    fireEvent.keyDown(places.audience.body, { key: "ArrowRight" });
+    await waitFor(() => expect(places.audience.body.querySelector("video")).toBeNull());
+    await act(async () => handle.end());
+    expect(revoked).toHaveBeenCalledWith("blob:clip");
+    plays.mockRestore();
+    pauses.mockRestore();
+  });
+
+  it("starts and stops a clip from the slideshow itself where there is no presenter's view", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    Object.assign(URL, { createObjectURL: () => "blob:sound", revokeObjectURL: () => undefined });
+    const host = showHost(showDeck(2, { slides: deck(2, { 1: { media: [{ shape: 4, kind: "audio", quad: quad as never, file: { rev: "3123456789abcdef", size: 10, type: "audio/wav" } }] } }) }));
+    const places: Record<string, ReturnType<typeof place>> = {};
+    let handle!: Awaited<ReturnType<typeof startShow>>;
+    await act(async () => {
+      handle = await startShow({ host, title: "Deck", from: "start", mode: "full", engine: fakeEngine(() => pages(2)), native: null, open: (surface) => (places[surface] = place(surface)) });
+    });
+    const press = await within(places.audience.body).findByRole("button", { name: "Play the sound" });
+    fireEvent.click(press);
+    // the press was the clip's, not the next slide's
+    expect(text(places.audience, "[data-show-place]")).toBe("1 / 2");
+    await waitFor(() => expect(within(places.audience.body).getByRole("button", { name: "Pause the sound" })).toBeTruthy());
+    expect(places.audience.body.querySelector<HTMLAudioElement>("audio")!.muted).toBe(false);
+    await act(async () => handle.end());
+    vi.restoreAllMocks();
   });
 });

@@ -89,6 +89,13 @@ export function selectionOf(quad: Quad, width: number, height: number): { corner
 /** What a shape is called where it has no words: by what it is. */
 export const KIND_WORDS: Readonly<Record<DeckShapeKind, string>> = { text: "Text", other: "Shape", picture: "Picture", table: "Table", chart: "Chart", media: "Media", connector: "Line", frame: "Object" };
 
+/** A shape as a screen reader says it: what it is on its slide ("Title", "Text 2"), then its words. */
+export function shapeLabel(shape: DeckShape): string {
+  const what = shape.label ?? KIND_WORDS[shape.kind ?? "other"];
+  const words = shape.text.replace(/\s+/g, " ").trim();
+  return words ? `${what}: ${words.length > 80 ? `${words.slice(0, 80).trimEnd()}…` : words}` : what;
+}
+
 /**
  * Where a shape's words are laid on a stage of `width` by `height` CSS pixels: the corner they start from, how far
  * they run across and down, and the turn. Words keep reading the right way in a mirrored shape, as PowerPoint and

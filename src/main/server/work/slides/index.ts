@@ -14,7 +14,9 @@ import { SLIDES_CONVERTERS } from './deck'
 import { ensureSlidesTables, SlidesStore } from './store'
 import { slidesTools } from './tools'
 import { registerFileMaker, registerFileMoved, registerFilePreviewer } from '../files/hooks'
-import { accept, announce, ChangedSinceError, deckDir, fileMoved, itemsGone, reject, renderPath, seatOf, sessionsGone, setSlideEngine, setSlideRenderer, showOf, slidePath, StaleChangesError, undo, viewOf } from './view'
+import { accept, announce, ChangedSinceError, deckDir, fileMoved, itemsGone, onDeckOpened, reject, renderPath, seatOf, sessionsGone, setSlideEngine, setSlideRenderer, slidePath, StaleChangesError, undo, viewOf } from './view'
+import { mediaPath, prepareShow, showOf, stepPath, stopShows } from './show'
+import { STEPS_CONVERTERS } from './steps'
 
 /**
  * The slides pillar's server module (docs/agents/work-slides.md): a deck
@@ -36,12 +38,16 @@ const SLIDES_METHODS: ReadonlySet<string> = new Set([
   'work.slides.step',
   'work.slides.versions',
   'work.slides.restore',
-  'work.slides.attach'
+  'work.slides.attach',
+  'work.slides.build',
+  'work.slides.media'
 ])
 
 // A deck's rows and folder are kept by its file's path: a rename or a move through Files re-keys them in the
 // rename's own savepoint. Registered when the module loads; the files pillar keeps it whenever it starts.
 registerFileMoved((from, to, at) => fileMoved(from, to, at))
+// A deck opened or changed: its show's step pictures and media are made in the background (show.ts).
+onDeckOpened(prepareShow)
 
 // A new deck made in Files: a blank .pptx with PowerPoint's own layouts, which the deck kind then edits in place.
 // Written where Files says and never over a file: Files moves it into the place itself.
@@ -90,6 +96,7 @@ export const slides: WorkModule = {
     const offPreview = registerFilePreviewer('slides', deckPreviewer(ctx))
     return () => {
       offPreview()
+      stopShows()
       setSlideRenderer(null)
       setSlideEngine(null)
       forgetHands()
@@ -116,6 +123,14 @@ export const slides: WorkModule = {
       }
       case 'work.slides.show':
         return handled(await showOf(ctx, item, signal))
+      case 'work.slides.build': {
+        const path = await stepPath(ctx, item, req.params.rev)
+        return handled({ ...readRange(path, req.params.offset, req.params.length), rev: req.params.rev })
+      }
+      case 'work.slides.media': {
+        const path = await mediaPath(ctx, item, req.params.rev)
+        return handled({ ...readRange(path, req.params.offset, req.params.length), rev: req.params.rev })
+      }
       case 'work.slides.review': {
         // An agent suggests and the owner accepts: a thread's own call settles nothing.
         if (by.kind === 'model') throw new Error('Only the owner accepts or rejects a suggestion.')
@@ -169,7 +184,7 @@ export const slides: WorkModule = {
     return NOT_HANDLED
   },
   tools: () => slidesTools,
-  convert: SLIDES_CONVERTERS,
+  convert: [...SLIDES_CONVERTERS, ...STEPS_CONVERTERS],
   preamble: () =>
     'A deck in the canvas is a .pptx file. Read it with `slides_read` and look at a slide with `slides_image`. Revise it with `slides_edit`, naming slides and shapes by id: each revised slide is a suggestion the person steps through and accepts. Say `because: "asked"` with the person\'s own words as `quote` when they asked for the edit, and `because: "own"` when it is your idea. Draft a new deck with `slides_new`.',
   sessionsRemoved(ids, ctx) {

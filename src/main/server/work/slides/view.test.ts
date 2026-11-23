@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ShapeInfo, SlideInfo } from './deck'
 import type { DeckInfo } from './deck'
-import { changesOf, editsOf, lookWords, partNames } from './view'
+import { changesOf, comesAs, editsOf, lookWords, partNames } from './view'
 
 const shape = (id: number, name: string, kind: ShapeInfo['kind'], placeholder?: string, text = ''): ShapeInfo => ({
   id,
@@ -58,6 +58,30 @@ describe('a change that rewords nothing', () => {
     const two = slideOf([{ ...shape(2, 'Title 1', 'text', 'title', 'One'), bbox: [0, 0, 1, 1], paragraphs: [{ ...para('One'), runs: [{ text: 'O', font: 'Calibri', size: 18 }, { text: 'ne', font: 'Calibri', size: 18 }] }] }])
     expect(editsOf(before, two).edits).toEqual([{ where: 'Title, look', before: 'As it was', after: 'Changed within the text' }])
     expect(editsOf(before, before).edits).toEqual([])
+  })
+})
+
+describe('how a slide comes and builds, in words', () => {
+  it('says a transition and the presses a slide\'s builds take', () => {
+    expect(comesAs(undefined)).toBe('None')
+    expect(comesAs({ kind: 'fade', ms: 750 })).toBe('Fade')
+    expect(comesAs({ kind: 'push', dir: 'u', ms: 750, after: 5000 })).toBe('Push, moves on after 5 s')
+    expect(comesAs({ kind: 'none', ms: 500, after: 2500, click: false })).toBe('Cut, moves on after 2.5 s, no press')
+    expect(comesAs({ kind: 'morph', ms: 500 })).toBe('Morph')
+    const none = { shapes: [], paras: [] }
+    const before = slideOf([])
+    const after: SlideInfo = { ...slideOf([]), transition: { kind: 'fade', ms: 750 }, builds: { steps: [none, none, none], changed: 0 } }
+    expect(editsOf(before, after).edits).toEqual([
+      { where: 'Transition', before: 'None', after: 'Fade' },
+      { where: 'Builds', before: 'None', after: '2 presses' }
+    ])
+  })
+
+  it('says builds in another order by what comes in, in turn', () => {
+    const shapes = [shape(2, 'Title 1', 'text', 'title', 'Who'), shape(4, 'Picture 3', 'picture')]
+    const at = (order: number[]): SlideInfo => ({ ...slideOf(shapes), builds: { steps: [{ shapes: [...order].sort(), paras: [] }, { shapes: order.slice(1), paras: [] }, { shapes: [], paras: [] }], changed: 0, order } })
+    expect(editsOf(at([2, 4]), at([4, 2])).edits).toEqual([{ where: 'Builds', before: 'Title, Picture', after: 'Picture, Title' }])
+    expect(editsOf(at([2, 4]), at([2, 4])).edits).toEqual([])
   })
 })
 

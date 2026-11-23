@@ -8,7 +8,7 @@ import { chordKey } from "../../../lib/keys";
  * clicker all move one state and cannot disagree.
  */
 
-/** A slide of a show; `builds` is how many presses it takes before the next slide (none until the host reads a deck's timing). */
+/** A slide of a show; `builds` is how many presses it takes before the next slide: its steps after the first, unless given. */
 export type Slide = ShowSlide & { builds?: number };
 
 export interface ShowState {
@@ -45,9 +45,11 @@ export type ShowAct =
   | { t: "escape" }
   | { t: "end" }
   /** the file changed under the show: its slides again, the place kept by the slide's id */
-  | { t: "deck"; slides: Slide[] };
+  | { t: "deck"; slides: Slide[] }
+  /** the slide's "advance after" time ran out at this place: a next press, unless the show has moved since */
+  | { t: "auto"; at: number; step: number };
 
-const buildsOf = (slide: Slide | undefined): number => Math.max(0, slide?.builds ?? 0);
+const buildsOf = (slide: Slide | undefined): number => Math.max(0, slide?.builds ?? (slide?.steps?.length ?? 1) - 1);
 const clamp = (n: number, low: number, high: number): number => Math.min(high, Math.max(low, n));
 
 /** The next slide a press reaches from `from`, in a direction, passing hidden ones; -1 when there is none. */
@@ -106,6 +108,8 @@ export function showReducer(state: ShowState, act: ShowAct): ShowState {
       return state.picker ? { ...state, picker: false } : { ...state, closed: true };
     case "end":
       return { ...state, closed: true };
+    case "auto":
+      return act.at === state.at && act.step === state.step && !state.blank && !state.ended && !state.picker ? showReducer(state, { t: "next" }) : state;
     case "deck": {
       const id = state.slides[state.at]?.id;
       const kept = act.slides.findIndex((s) => s.id === id);
@@ -113,6 +117,34 @@ export function showReducer(state: ShowState, act: ShowAct): ShowState {
       return { ...state, slides: act.slides, at, step: kept >= 0 ? Math.min(state.step, buildsOf(act.slides[at])) : 0, ended: state.ended || act.slides.length === 0 };
     }
   }
+}
+
+/**
+ * How long the show waits at this place before it moves on by itself: the slide's "advance after" time, counted
+ * again at each of its steps; null while it waits for a press (no time, a black screen, the picker, the end).
+ */
+export function autoAfter(state: ShowState): number | null {
+  const after = state.slides[state.at]?.transition?.after;
+  return typeof after === "number" && after >= 0 && !state.blank && !state.ended && !state.picker && !state.closed ? after : null;
+}
+
+/** How a picture comes in: a build's fade, a slide's own fade or push, else a cut. */
+export type ShowMotion = { kind: "step" } | { kind: "fade" } | { kind: "push"; dir: "l" | "r" | "u" | "d" } | null;
+
+/**
+ * The motion from one state to the next (docs/DESIGN.md "Motion values"): a step of the same slide fades, either
+ * way; a press on to the next slide plays that slide's transition when it is a fade or a push (a push fades under
+ * reduced motion); a jump, a step back to another slide, a black screen and every other transition cut.
+ */
+export function motionBetween(was: ShowState | null, now: ShowState, reduced: boolean): ShowMotion {
+  if (!was || was.blank || now.blank || was.ended || now.ended || was.slides !== now.slides) return null;
+  if (was.at === now.at) return was.step !== now.step ? { kind: "step" } : null;
+  const forward = now.at === shownFrom(now.slides, was.at, 1) && now.step === 0 && was.step === buildsOf(was.slides[was.at]);
+  const t = now.slides[now.at]?.transition;
+  if (!forward || !t) return null;
+  if (t.kind === "fade") return { kind: "fade" };
+  if (t.kind === "push") return reduced ? { kind: "fade" } : { kind: "push", dir: t.dir === "r" || t.dir === "u" || t.dir === "d" ? t.dir : "l" };
+  return null;
 }
 
 /** What the next press shows: a build of this slide, another slide, the end, or (at the end) the show closing. */

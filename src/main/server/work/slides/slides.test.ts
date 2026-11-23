@@ -392,6 +392,14 @@ describe('the module, on a fake deck tool', () => {
     await expect(call('work.slides.read', { itemId: item.id, which: 'proposed', offset: 0, length: 10 })).rejects.toThrow('No changes wait on this deck.')
   })
 
+  it('refuses an agent a builds edit that takes the slide\'s other animations out: that is his press alone', async () => {
+    const item = openDeck(fileSource(path))
+    await call('work.slides.open', { itemId: item.id })
+    const r = await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'builds', slide: 257, order: [], replace: true }] })
+    expect(r.isError).toBe(true)
+    expect(JSON.stringify(r)).toContain('Animate tab')
+  })
+
   it('a show is the file as it is, in its own order, whatever suggestions wait', async () => {
     const item = openDeck(fileSource(path))
     const view = await call('work.slides.open', { itemId: item.id })
@@ -716,6 +724,32 @@ describe('the module, on a fake deck tool', () => {
     const after = (pushes.at(-1) as { view: DeckView }).view
     expect(after.slides[0]).toMatchObject({ tint: 'add', removed: [[0.05, 0.25, 0.95, 0.9]] })
     expect(after.changes[0].edits).toEqual([{ where: 'Text', before: 'About One', after: 'Removed' }])
+  })
+
+  it('slides_read with a slide reads that slide in full: boxes, looks run by run as a runs edit names them, how it comes and builds', async () => {
+    const d = JSON.parse(JSON.stringify(FAKE_DECK)) as FakeDeck
+    Object.assign(d.slides[0], { transition: { kind: 'fade', ms: 750, after: 5000 } })
+    Object.assign(d.slides[0].shapes[0], {
+      own: { box: [457200, 274638, 8229600, 1143000], rot: 15, flipH: false, flipV: false },
+      fill: 'FFAA00',
+      line: { color: '333333', width: 2, dash: 'dash' },
+      paragraphs: [{ level: 0, align: 'center', list: 'none', runs: [{ text: 'One', font: 'Calibri', size: 44, bold: true, color: '000000' }, { text: ' more', font: 'Calibri', size: 44 }] }]
+    })
+    writeFileSync(path, fakeBytes(d))
+    const item = openDeck(fileSource(path))
+    const one = textOf(await tool('slides_read', { item: item.id, slide: 256 }))
+    expect(one).toContain('Slide id 256 · Title and Content · the slide is 12192000 by 6858000 EMU')
+    expect(one).toContain('[2] "Title 1" title text · box [457200,274638,8229600,1143000], turned 15° · fill #FFAA00, outline #333333 2 pt dash')
+    expect(one).toContain('paragraph 0: center')
+    expect(one).toContain('[0, 0] "One" (Calibri, 44 pt, bold, #000000)')
+    expect(one).toContain('[0, 1] " more" (Calibri, 44 pt)')
+    expect(one).toContain('transition: Fade, moves on after 5 s')
+    // The other slides are not in it; the whole outline is as it was.
+    expect(one).not.toContain('Slide id 257')
+    expect(textOf(await tool('slides_read', { item: item.id }))).toContain('Slide 2 · id 257')
+    const none = await tool('slides_read', { item: item.id, slide: 999 })
+    expect(none.isError).toBe(true)
+    expect(textOf(none)).toContain('The deck has no slide 999. Its slide ids are 256, 257, 258, 259.')
   })
 
   it("only the owner reviews or sets the mode: a thread's own call is refused", async () => {
@@ -1800,3 +1834,131 @@ describe.skipIf(!DATA)('a real deck, through python-pptx and LibreOffice', () =>
 function hostFence(db: DatabaseSync): { roots(): string[]; denied(): string[] } {
   return { roots: () => (db.prepare(`SELECT cwd AS p FROM projects UNION SELECT path AS p FROM workspaces`).all() as Array<{ p: string }>).map((r) => r.p), denied: () => [] }
 }
+
+describe("a show's builds and clips, made in the background", () => {
+  /** A deck tool whose pictures are real PDFs: one page a slide, as wide as 100 plus its place, and 1000 more on a step copy. */
+  const realPdfs: Converter[] = [
+    ...FAKE.filter((c) => c.to !== 'pdf'),
+    {
+      from: 'pptx',
+      to: 'pdf',
+      async run(job) {
+        calls.push('pdf')
+        jobs.push({ to: job.to, shared: job.shared })
+        const raw = readFileSync(job.input, 'utf8')
+        const doc = await PDFDocument.create()
+        const deck = JSON.parse(raw.slice(MAGIC.length).replace(/#step$/, '')) as FakeDeck
+        deck.slides.forEach((_, i) => doc.addPage([100 + i + (raw.endsWith('#step') ? 1000 : 0), 100]))
+        writeFileSync(job.output, await doc.save())
+        return {}
+      }
+    },
+    {
+      from: 'pptx',
+      to: 'pptxsteps',
+      async run(job) {
+        calls.push(`steps ${JSON.stringify(job.options?.plan)}`)
+        jobs.push({ to: job.to, shared: job.shared })
+        writeFileSync(job.output, `${readFileSync(job.input, 'utf8')}#step`)
+        return {}
+      }
+    },
+    {
+      from: 'pptx',
+      to: 'slidemedia',
+      async run(job) {
+        calls.push(`media ${JSON.stringify(job.options)}`)
+        jobs.push({ to: job.to, shared: job.shared })
+        writeFileSync(job.output, Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(20, 7)]))
+        return {}
+      }
+    },
+    {
+      from: 'slidemedia',
+      to: 'playable',
+      async run(job) {
+        calls.push('playable')
+        jobs.push({ to: job.to, shared: job.shared })
+        writeFileSync(job.output, readFileSync(job.input))
+        return {}
+      }
+    }
+  ]
+  const hex = (n: number): string => n.toString(16).padStart(64, '0')
+  /** Slide 257 brings its body in on a press and holds a video; slide 258 moves on by itself and comes by a wipe. */
+  type N = { t: string; a?: Record<string, string>; c?: N[] }
+  const n = (t: string, a: Record<string, string> | null, ...c: N[]): N => ({ t, ...(a ? { a } : {}), ...(c.length ? { c } : {}) })
+  const timed = (delay: string, a: Record<string, string> | null, ...c: N[]): N => n('par', null, n('cTn', a, n('stCondLst', null, n('cond', { delay })), n('childTnLst', null, ...c)))
+  const flyIn = timed('0', { presetClass: 'entr', presetID: '2', nodeType: 'clickEffect' }, n('set', null, n('cBhvr', null, n('tgtEl', null, n('spTgt', { spid: '3' })))))
+  const timing = n('timing', null, n('tnLst', null, n('par', null, n('cTn', { nodeType: 'tmRoot' }, n('childTnLst', null, n('seq', null, n('cTn', { nodeType: 'mainSeq' }, n('childTnLst', null, timed('indefinite', null, timed('0', null, flyIn))))))))))
+  const quad = [[0.5, 0.3], [0.9, 0.3], [0.9, 0.7], [0.5, 0.7]] as NonNullable<SlideInfo['shapes'][number]['quad']>
+  const BUILT: FakeDeck = {
+    layouts: ['Title and Content'],
+    slides: [
+      slide(256, 'One', { draws: hex(1) }),
+      { ...slide(257, 'Two', { draws: hex(2), timing: timing as never }), shapes: [...slide(257, 'Two').shapes, { id: 4, name: 'clip.mp4', kind: 'media', media: 'video', bbox: [0.5, 0.3, 0.9, 0.7], quad, text: '' }] },
+      slide(258, 'Three', { draws: hex(3), transition: { kind: 'wipe', ms: 500, after: 4000 } })
+    ]
+  }
+  afterEach(() => {
+    sharedPaths.clear()
+    close()
+  })
+  const ready = (itemId: string) => pushes.filter((p) => p.push === 'work.slides.ready' && p.itemId === itemId)
+  const showOf = (itemId: string) => call<ShowDeck>('work.slides.show', { itemId })
+
+  it('draws each step that hides something, takes the clip out once, and tells the show; the show reads both by their revision', async () => {
+    await host(realPdfs)
+    const path = join(dir, 'Built.pptx')
+    writeFileSync(path, fakeBytes(BUILT))
+    const item = openDeck(fileSource(path))
+    const first = await showOf(item.id)
+    // a fly-in shown as a fade and a wipe shown as a cut: two things the show plays otherwise
+    expect(first.changed).toBe(2)
+    const two = first.slides[1]
+    expect(two.steps?.map((s) => s.hides)).toEqual([[3], []])
+    expect(two.media).toEqual([{ shape: 4, kind: 'video', quad }])
+    expect(first.slides[2].transition).toEqual({ kind: 'wipe', ms: 500, after: 4000 })
+    expect(first.slides[0].steps).toBeUndefined()
+    await vi.waitFor(() => expect(ready(item.id).length).toBeGreaterThanOrEqual(2))
+    expect(calls).toContain('steps {"257":{"shapes":[3],"paras":[]}}')
+    const shown = await showOf(item.id)
+    const [step0, step1] = shown.slides[1].steps!
+    // the step that hides nothing is the slide's own page; the other has its own picture, from the step copy
+    expect(step1).toEqual({ hides: [] })
+    const pic = await call<{ data: string; size: number; rev: string }>('work.slides.build', { itemId: item.id, rev: step0.pic!.rev, offset: 0, length: 1 << 20 })
+    expect(pic.size).toBe(step0.pic!.size)
+    const page = (await PDFDocument.load(Buffer.from(pic.data, 'base64'))).getPage(0)
+    expect(page.getWidth()).toBe(1101)
+    const clip = shown.slides[1].media![0].file!
+    expect(clip.type).toBe('video/mp4')
+    const bytes = await call<{ data: string; size: number }>('work.slides.media', { itemId: item.id, rev: clip.rev, offset: 4, length: 8 })
+    expect(Buffer.from(bytes.data, 'base64').toString()).toBe('ftypisom')
+    await expect(call('work.slides.media', { itemId: item.id, rev: '0'.repeat(16), offset: 0, length: 8 })).rejects.toThrow('That picture or clip is not ready, or is gone.')
+    // Opened again, nothing is made twice.
+    const made = calls.length
+    await call('work.slides.open', { itemId: item.id })
+    await showOf(item.id)
+    expect(calls.slice(made).filter((c) => c.startsWith('steps') || c.startsWith('media') || c === 'playable')).toEqual([])
+  })
+
+  it("keeps a shared library's step pictures and clips in the item's own folder, and marks every job so none leaves the host", async () => {
+    await host(realPdfs)
+    const team = join(dir, 'Esports Staff')
+    mkdirSync(team)
+    const path = join(team, 'Built.pptx')
+    writeFileSync(path, fakeBytes(BUILT))
+    sharedPaths.add(team)
+    const item = openDeck(fileSource(path))
+    jobs.length = 0
+    await showOf(item.id)
+    await vi.waitFor(() => expect(ready(item.id).length).toBeGreaterThanOrEqual(2))
+    expect(jobs.map((j) => j.to)).toEqual(expect.arrayContaining(['pptxsteps', 'slidemedia', 'playable']))
+    expect(jobs.every((j) => j.shared === true)).toBe(true)
+    const own = join(dir, 'canvas', 't1', item.id)
+    expect(readdirSync(join(own, 'media')).some((f) => f.endsWith('.play'))).toBe(true)
+    expect(readdirSync(join(own, 'pages')).length).toBeGreaterThan(3)
+    expect(readdirSync(team)).toEqual(['Built.pptx'])
+    expect(existsSync(deckCache(dir, deckKey(item)))).toBe(false)
+  })
+})

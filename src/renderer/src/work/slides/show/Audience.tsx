@@ -4,6 +4,7 @@ import { Toggle } from "../../../components/ui/toggle";
 import { ChevronLeft, ChevronRight } from "../../../chrome/icons";
 import type { PdfDoc } from "../../pdf/engine";
 import { aspectOf, fit, SlidePicture, Thumb } from "./pictures";
+import { SlideMedia, usePicture, useStage } from "./stage";
 import { nextPress, placeLabel, placeText, type ShowAct, type ShowState } from "./state";
 
 /**
@@ -59,7 +60,11 @@ export function Audience({ state, dispatch, doc, error = null, ratio = 1, picks 
   const room = useRoom(root, fixedRoom);
   const slide = state.slides[state.at];
   const next = nextPress(state);
-  const ahead = next.kind === "slide" ? (state.slides[next.at]?.page ?? null) : null;
+  const pictureOf = usePicture(doc);
+  const stage = useStage();
+  const here = pictureOf(slide, state.step);
+  // The next press's picture, painted ahead under this one: a build of this slide, or the next slide as it comes.
+  const ahead = next.kind === "build" ? pictureOf(slide, next.step) : next.kind === "slide" ? pictureOf(state.slides[next.at], 0) : null;
   const size = fit(room, aspectOf(doc, slide?.page ?? 1));
 
   // The bar comes for a real move of the pointer alone: the first reading only says where the pointer is (a window
@@ -100,7 +105,20 @@ export function Audience({ state, dispatch, doc, error = null, ratio = 1, picks 
         </p>
       ) : slide ? (
         <div data-show-slide>
-          <SlidePicture doc={doc} page={slide.page} ahead={ahead} width={size.width} ratio={ratio} title={slide.title} />
+          <SlidePicture
+            doc={here.doc}
+            page={here.page}
+            waiting={here.waiting}
+            ahead={ahead && !ahead.waiting ? ahead.page : null}
+            aheadDoc={ahead?.doc ?? null}
+            width={size.width}
+            ratio={ratio}
+            title={slide.title}
+            motion={stage?.motion ?? null}
+            motionKey={stage?.motionKey}
+          >
+            <SlideMedia slide={slide} step={state.step} surface="audience" width={size.width} height={Math.round(size.width / aspectOf(doc, slide.page))} presses={picks} />
+          </SlidePicture>
         </div>
       ) : null}
       <div

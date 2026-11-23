@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ShowDeck } from "@shared/contract-work-slides";
@@ -9,7 +9,8 @@ import { Audience } from "./Audience";
 import { RENDER_CHANGED } from "../deck";
 import { openFramePlace, openWindowPlace, type ShowPlace, type Surface } from "./places";
 import { Presenter } from "./Presenter";
-import { keyAct, NOTES_DEFAULT, NOTES_SIZES, showReducer, startShowState, stepNotes, type ShowAct, type ShowState } from "./state";
+import { playReducer, StageContext, useMediaUrls, useStepDocs, type MediaAct, type MediaRun, type Picture, type Playing, type ShowStage } from "./stage";
+import { autoAfter, keyAct, motionBetween, nextPress, NOTES_DEFAULT, NOTES_SIZES, showReducer, startShowState, stepNotes, type ShowAct, type ShowMotion, type ShowState, type Slide } from "./state";
 import { pauseTimer, restartTimer, resumeTimer, startTimer, TARGETS, type Target } from "./timer";
 
 /**
@@ -28,6 +29,12 @@ export interface ShowHost {
   read(offset: number, length: number, rev: string): Promise<Uint8Array>;
   /** Hears the file's revision whenever the deck is told again; the show reads again when it is not the one it drew. */
   onRev(listener: (rev: string) => void): () => void;
+  /** Bytes of a step's own picture, by its `rev` (`work.slides.build`). */
+  step?(rev: string, offset: number, length: number): Promise<Uint8Array>;
+  /** Bytes of a slide's clip as the app plays it, by its `rev` (`work.slides.media`). */
+  media?(rev: string, offset: number, length: number): Promise<Uint8Array>;
+  /** Hears that more of the show is ready on the host (a step's picture, a clip): the show reads the deck again. */
+  onReady?(listener: (rev: string) => void): () => void;
 }
 
 export type { ShowMode } from "@shared/slidesShow";
@@ -193,6 +200,7 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   // mid-talk never blanks the room's screen, and the place is kept by the slide's id. A read that fails is asked
   // again, sooner at first; the deck already up stays up meanwhile, and the presenter's view says so.
   const held = useRef<PdfDoc | null>(null);
+  const heldRev = useRef<string | null>(null);
   const drawn = useRef<string | null>(null);
   const loads = useRef(0);
   const retry = useRef<{ timer: ReturnType<typeof setTimeout> | undefined; wait: number }>({ timer: undefined, wait: RETRY_FIRST_MS });
@@ -203,10 +211,13 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
       const deck = await host.show();
       if (mine !== loads.current) return;
       const render = deck.render;
-      const opened = render ? await engine.open({ size: render.size, read: (offset, length) => host.read(offset, length, render.rev), onFail: () => void (mine === loads.current && void load()) }) : null;
-      if (mine !== loads.current) return void opened?.destroy();
-      held.current?.destroy();
+      // The same render read again (more of the show became ready) keeps the document it has open.
+      const kept = render && held.current && heldRev.current === render.rev ? held.current : null;
+      const opened = kept ?? (render ? await engine.open({ size: render.size, read: (offset, length) => host.read(offset, length, render.rev), onFail: () => void (mine === loads.current && void load()) }) : null);
+      if (mine !== loads.current) return void (opened !== kept && opened?.destroy());
+      if (held.current !== opened) held.current?.destroy();
       held.current = opened;
+      heldRev.current = render?.rev ?? null;
       drawn.current = deck.rev;
       retry.current.wait = RETRY_FIRST_MS;
       setDoc(opened);
@@ -228,9 +239,12 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   useEffect(() => {
     void load();
     const off = host.onRev((rev) => void (rev !== drawn.current && void load()));
+    // More of this revision's show is ready: read it again (the open render is kept).
+    const offReady = host.onReady?.((rev) => void (rev === drawn.current && void load())) ?? (() => undefined);
     const waiting = retry.current;
     return () => {
       off();
+      offReady();
       loads.current++;
       clearTimeout(waiting.timer);
       held.current?.destroy();
@@ -326,8 +340,68 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
   const shown = state ?? startShowState([], "start");
   const audience = places.find((p) => p.surface === "audience");
   const presenter = places.find((p) => p.surface === "presenter");
+
+  // "Advance after": one clock for both windows, counted again at each place the show reaches.
+  const wait = state ? autoAfter(state) : null;
+  const atNow = state?.at;
+  const stepNow = state?.step;
+  useEffect(() => {
+    if (wait === null || atNow === undefined || stepNow === undefined) return;
+    const timer = setTimeout(() => dispatch({ t: "auto", at: atNow, step: stepNow }), wait);
+    return () => clearTimeout(timer);
+  }, [wait, atNow, stepNow, dispatch]);
+
+  // How the picture now shown came in, decided once each time the place changes.
+  const placeKey = state ? `${state.slides[state.at]?.id ?? ""}:${state.step}:${state.blank ? "b" : ""}${state.ended ? "e" : ""}` : "";
+  const [moved, setMoved] = useState<{ key: string; state: ShowState | null; motion: ShowMotion }>({ key: placeKey, state, motion: null });
+  if (moved.key !== placeKey) setMoved({ key: placeKey, state, motion: motionBetween(moved.state, shown, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false) });
+  else if (moved.state !== state && state) setMoved({ ...moved, state });
+
+  // The step pictures near the show: the slide shown, and what the next press shows.
+  const near = useMemo(() => {
+    const slides: Slide[] = [];
+    const here = shown.slides[shown.at];
+    if (here) slides.push(here);
+    const next = nextPress(shown);
+    if (next.kind === "slide" && shown.slides[next.at]) slides.push(shown.slides[next.at]);
+    return slides;
+  }, [shown]);
+  const stepDocs = useStepDocs(engine, host.step, near.flatMap((s) => (s.steps ?? []).flatMap((p) => (p.pic ? [p.pic] : []))));
+  const mediaUrls = useMediaUrls(host.media, near.flatMap((s) => (s.media ?? []).flatMap((m) => (m.file ? [m.file] : []))));
+
+  // One clip state for both windows; leaving a slide stops its clips.
+  const [plays, setPlays] = useState<{ slide: number | null; by: ReadonlyMap<number, Playing> }>({ slide: null, by: new Map() });
+  const slideNow = shown.slides[shown.at]?.id ?? null;
+  if (plays.slide !== slideNow) setPlays({ slide: slideNow, by: new Map() });
+  const media = useMemo<MediaRun>(
+    () => ({
+      url: (file) => (file ? (mediaUrls.get(file.rev) ?? null) : null),
+      playing: (slide, shape) => (slide === plays.slide ? plays.by.get(shape) : undefined) ?? playReducer(undefined, { t: "pause" }),
+      act: (slide: number, shape: number, act: MediaAct) =>
+        setPlays((was) => (was.slide === slide ? { slide, by: new Map(was.by).set(shape, playReducer(was.by.get(shape), act)) } : was)),
+      heard: audience ? "audience" : "presenter",
+    }),
+    [mediaUrls, plays, audience],
+  );
+  const stage = useMemo<ShowStage>(
+    () => ({
+      pictureOf: (slide, step): Picture => {
+        const pic = slide.steps?.[step]?.pic;
+        const opened = pic ? stepDocs.get(pic.rev) : undefined;
+        if (opened && typeof opened === "object") return { doc: opened, page: 1, waiting: false };
+        // A step's picture on its way is waited for; one not made yet (or that failed) is the slide's final page.
+        if (opened === "opening" || (pic && !opened && host.step)) return { doc, page: slide.page, waiting: true };
+        return { doc, page: slide.page, waiting: false };
+      },
+      motion: moved.motion,
+      motionKey: moved.key,
+      media,
+    }),
+    [stepDocs, doc, moved.motion, moved.key, media, host.step],
+  );
+
   return (
-    <>
+    <StageContext.Provider value={stage}>
       {audience ? createPortal(<Audience state={shown} dispatch={dispatch} doc={doc} error={error} ratio={ratios.get(audience) ?? 1} picks={!presenter} />, audience.body) : null}
       {presenter
         ? createPortal(
@@ -355,6 +429,6 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
             presenter.body,
           )
         : null}
-    </>
+    </StageContext.Provider>
   );
 }

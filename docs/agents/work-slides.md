@@ -333,6 +333,8 @@ and the deck"); every other part keeps its bytes.
 | `section` | one started at a slide, one renamed, one taken away (its slides join the one before; the first one's, the next) | the presentation |
 | `layout` | another of the deck's layouts for a slide | the slide's relationship to its layout |
 | `theme` | twelve colours and two fonts, into the theme of every slide master | the theme parts |
+| `transition` | how a slide comes in a show: a cut, a fade or a push from a side; whether a press moves on; the seconds after which it moves on by itself. Replaces what the slide had, PowerPoint's wrapped newer kinds too | the slide |
+| `builds` | the shapes that come in on a press, one a press, in order (PowerPoint's Appear); none takes the builds away. A slide whose timing is more than Appear and Fade entrances of whole shapes (a video's play, a motion path, a trigger, paragraphs one by one) keeps it: "edit them in PowerPoint". With `replace: true` (his confirmed Remove animations… in the Animate tab) every animation the slide had goes first, whatever it was | the slide |
 
 - **A colour** is a hex, or one of the theme's by its slot with Office's
   tint (`{slot: 'accent1', tint: 0.4}`: `a:schemeClr` with `lumMod` and
@@ -497,7 +499,9 @@ thread (`rowSession`):
 | `work.slides.open` | read | → `DeckView`: reads and renders the deck and the proposed deck |
 | `work.slides.read` | read | → `{ data, size, rev }`: bytes of the `file` or `proposed` render by range, at most 4 MB a call |
 | `work.slides.slide` | read | → `{ data, size, rev }`: bytes of one slide's own one-page PDF (`{itemId, which, slide, offset, length}`, the slide by its id in the `file` or the `proposed` deck), at most 4 MB a call; `rev` is the picture's, so it changes only when that slide's picture does |
-| `work.slides.show` | read | → `ShowDeck`: the file's slides in the file's own order (`id`, `number`, `page`, `title`, `notes`, `hidden`), its render and its `rev`, for a show. A waiting suggestion is never in it: a show presents the deck as it is on disk. The render is read with `work.slides.read {which: 'file'}` |
+| `work.slides.show` | read | → `ShowDeck`: the file's slides in the file's own order (`id`, `number`, `page`, `title`, `notes`, `hidden`, and where they have them `steps`, `transition` and `media`), its render, its `rev` and `changed` (how many effects and transitions the show plays otherwise or leaves out), for a show. A waiting suggestion is never in it: a show presents the deck as it is on disk. The render is read with `work.slides.read {which: 'file'}`. It starts the deck's background work ("Builds", "Video and sound") |
+| `work.slides.build` | read | → `{ data, size, rev }`: bytes of one step's picture (a one-page PDF) by its `ShowStep.pic.rev`, at most 4 MB a call |
+| `work.slides.media` | read | → `{ data, size, rev }`: bytes of a slide's clip as the app plays it, by its `ShowMedia.file.rev`, at most 4 MB a call |
 | `work.slides.review` | operate | accept or reject changes by id, or `all` → `DeckView`; an optional `rev` (the proposed render's, as the view advertised it) binds the press to that preview: when the changes moved on since, nothing is accepted or rejected, every client is told the deck as it is, and the call fails with "The suggestions changed since this preview". The phone always sends it and reads the render's bytes only at that rev; the desktop's strip sends none and is not checked |
 | `work.slides.mode` | operate | `suggests` or `writes` → `DeckView` |
 | `work.slides.undo` | operate | puts the file back before the agent's direct write → `DeckView` |
@@ -508,7 +512,9 @@ thread (`rowSession`):
 | `work.slides.attach` | operate | one piece of a picture or a video he is adding by hand → `{token}`; refused for a thread |
 
 A thread's own call (`kind: 'model'`) may not review or set the mode. Every
-change pushes `work.slides` with the view. There is no method named `list`.
+change pushes `work.slides` with the view; `work.slides.ready` (`itemId`,
+`rev`) says more of that revision's show is ready (a step's picture, a clip),
+and a show of it reads the deck again. There is no method named `list`.
 
 The listener's path fence reads only the paths a request names, and these
 methods name an item id. So `handle` fences the item itself, once, before
@@ -524,9 +530,15 @@ own window, and a key whose roots hold it, admin or not.
 
 ### Tools
 
-- `slides_read { item }`: the outline (each slide's number, id, layout,
+- `slides_read { item, slide? }`: the outline (each slide's number, id, layout,
   title, every shape's id, name and words, a table by rows, a chart's data,
   the notes, the sections, the layouts). The proposed deck when edits wait.
+  With `slide` (an id), that one slide in full (`slideDetail`): each
+  shape's box in EMU as a `geometry` edit takes it, its turn, fill and
+  outline, its words run by run, each named `[paragraph, run]` as a `runs`
+  edit's `from` names it, with its font, size and colour, and how the slide
+  comes and builds. An agent reads this before it changes a look or a
+  place.
 - `slides_image { item, slide }`: one slide as a PNG, through `pdf → png`
   (the pdf pillar's converter) on the render.
 - `slides_edit { item, ops, because, quote?, summary? }`: the rules above. An
@@ -570,7 +582,131 @@ without drawing it. Since SLD3 it carries what a hand editor needs:
   `layoutInfo` (each layout's name and placeholders) and `theme` (its
   colours and fonts).
 
-A slide's timing tree (builds) is read by SLD6, with the show's builds.
+- **Its timing** (`timing`): the slide's `p:timing` as a plain tree, each
+  element its name, attributes, children and text (`timing_of`, cut to
+  `{over: true}` past 4,000 elements), and **its builds** (`builds`,
+  `SlideBuilds`), read from that tree by the host once the outline is read
+  (`withBuilds`, builds.ts) and carried on `DeckSlide.builds`: below.
+
+### Builds
+
+Built by SLD6. A slide's timing tree becomes the show's steps only where the
+reader (builds.ts `buildsOf`, pure) is sure:
+
+- **What it reads.** The main sequence's presses. Each press holds time
+  groups and each group its effects; an effect is an entrance or an exit
+  (`presetClass` `entr`, `exit`) of a whole shape (an outer group by its own
+  id) or of a run of a text shape's paragraphs (`p:txEl/p:pRg`).
+  With-previous and after-previous go into the press they follow; a group
+  that starts by itself before the first press is the slide as it comes up.
+  PowerPoint's own play and pause on a press of a video or sound (an
+  interactive sequence of `mediacall` effects on a media shape) and the
+  media nodes are left to the show's transport.
+- **What it makes.** `steps`: one entry a press, the first the slide as it
+  comes up, each what is unseen at that step (`StepHides`: shapes by id, and
+  paragraph runs `{shape, from, to}`). A shape whose first effect brings it
+  in starts unseen; one whose first effect takes it away starts seen.
+- **What makes a slide one step, shown whole** (`whole` says which): a
+  trigger (an interactive sequence on anything but a clip's own play and
+  pause), an emphasis or a motion path that changes where things end (one
+  that goes back as it was, by auto-reverse or not held, is left out and
+  keeps its press), a part of a shape the reader does not know (a chart by
+  series, a diagram by part, a shape's background, a range of letters), an
+  effect on a shape the slide does not have or a paragraph past its last, an
+  entrance or exit that undoes itself, a start on an event, any other
+  nesting, a tree past the cap.
+- **The order a `builds` edit would write back** (`order`): set only when
+  the timing is exactly that, each press one whole shape outside any group
+  brought in by Appear, nothing that starts by itself, no media node, no
+  interactive sequence. The Animate tab sets a slide's builds only then (or
+  where it has none): an edit anywhere else would turn a fade into Appear,
+  drop an entrance that starts by itself, or take a clip's timing with it.
+- **Counted** (`changed`): an entrance or exit other than Appear or Fade
+  (the show plays each as a 240 ms fade), an emphasis or motion path left
+  out, a clip the main sequence starts, every effect of a slide shown whole,
+  and (in `ShowDeck.changed`) every transition but a fade, a push or a cut.
+  The Present menu's "In PowerPoint" row reads `ShowDeck.changed`.
+
+The decision's table, as built:
+
+| In the file | In our show |
+|---|---|
+| Entrance and exit effects on a click | each press shows the next state, with a 240 ms fade whatever the effect was |
+| "With previous" and "after previous" | folded into the same press |
+| Emphasis effects, motion paths | left out where they end as they began; else the slide is shown whole |
+| Effects started by pressing a shape | the slide is shown whole |
+| Slide transitions | fade and push as authored (on the app's tokens, not the file's speed); any other is a cut |
+| Morph | a cut |
+| Advance after N seconds | honoured, at each step |
+| Video and audio on a slide | played by the app over the shape's box |
+| A slide whose timing the reader cannot make sense of | shown whole, in one press |
+
+**The pictures of the steps** (steps.ts). A step that hides nothing is the
+slide's own picture. Every other step is drawn from a copy of the deck in
+which what it has not shown yet (or has taken away) is unseen: the step tool
+(`STEPS_PY` in stepsScript.ts, the `pptx → pptxsteps` converter) takes a
+shape out of the slide's tree (an `mc:AlternateContent` around it with it)
+and makes a paragraph's runs fully clear (alpha 0, no effects, the
+underline in the clear colour) in their place and its bullet a character of
+no width (LibreOffice draws a bullet whatever its colour's alpha), so nothing
+around them moves and nothing of them is drawn; the numbered paragraphs
+still seen are given the numbers they had (`startAt`).
+One copy a step number holds that step of every slide (`stepJobs`,
+`hidePlan`); its pages are drawn one at a time by the LibreOffice kept
+running when there are up to four, else the copy is exported whole and split
+(`makeSteps`), with the toolchain's own export where the kept one fails. A
+step's picture is kept in the deck's `pages/` folder beside the slides' own,
+as `<stepKey>.pdf`: the sha256 of the step script's hash, the slide's
+`draws`, the step and what it hides, so an edit to the slide (its timing is
+in its XML) draws its steps again and an edit elsewhere does not.
+Marking the shape `hidden="1"` instead drew the same pixels in LibreOffice
+26.8.3; taking it out is used, as every reader honours that.
+
+**Made in the background** (show.ts `prepareShow`). When a deck is opened or
+told again (`onDeckOpened`, view.ts) and when a show reads it, a job of its
+own, off the deck's queue, copies the file, checks it still hashes as read,
+and makes every step picture and clip the revision lacks, pushing
+`work.slides.ready` after each step number and each clip. One job a deck;
+a newer revision stops the older; a revision is made once while the app
+runs (one that failed is tried again at its next change). A write never
+waits on it; an edit's own picture waits at most for the one page the kept
+LibreOffice is drawing. A step whose picture is not made yet is shown as the
+slide's final picture. Everything goes under `deckDir`, so a shared
+library's file keeps its step pictures and clips in the item's own folder,
+and every job is marked `shared` and never leaves the host.
+
+**The gate, picture by picture** (`steps.gate.test.ts`, behind
+`TEMP_CODE_WORK_TOOLS_DATA`): on the lab's feature deck and the two build
+decks (`fixtures/steps-make.py`), every step picture is made the app's way
+and step k differs from step k−1 only inside the boxes (the quads' boxes,
+12 px of slack at 1920 wide for a theme's shadow, which reached 10) of what
+step k shows or takes away, a paragraph made clear changes rows no other
+step of its shape changes, and a copy made with nothing hidden draws every
+page as the file does. A 959.98 pt page at 1920 wide ends in a partial
+column and row, which a one-page export and a whole one draw unlike; the
+gate leaves that edge out. Measured on the box (LibreOffice 26.8.3, load
+near 28 on 32 cores): the feature deck 2 step pictures in 0.9 s, the kinds
+deck 19 in 3.4 s, the talk 7 in 2.2 s; 41 pairs, 0 pixels changed outside
+the boxes; no slide had to be shown whole for failing it (the kinds deck's
+five slides shown whole are the kinds the reader refuses).
+
+### Video and sound
+
+A media shape (`kind: 'media'`) is played by the show over its box
+(media.ts). The clip is taken out of the package once (`pptx → slidemedia`:
+the part `p14:media` embeds, else the one `a:videoFile` or `a:audioFile`
+names; a linked file outside the package is not played), and made playable
+(`slidemedia → playable`, `needs: 'ffmpeg'`, ffprobe and ffmpeg as processes
+of their own): a file the app's Chromium plays (an MP4 or MOV of H.264 in
+4:2:0, VP8, VP9, AV1 or Theora, in MP4, WebM or Ogg; AAC, MP3, Opus,
+Vorbis, FLAC or PCM sound) is kept as it is; anything else (WMV, AVI, ProRes,
+H.264 in 4:2:2, WMA) becomes an .mp4 of H.264 and AAC, or AAC alone. It is
+kept by the sha256 of its bytes (`<hash>.play` in the deck's `media/`
+folder), so the same clip is made once whatever edits are made around it,
+and each shape's note (`<sha256 of draws and shape>.json`) names its file and
+its type (by its first bytes). The newest 24 clips stay. Where ffmpeg cannot
+run, the clip is kept as it is.
+
 
 ### Converters
 
@@ -584,9 +720,20 @@ input is the deck with the files its edits bring):
   any warning and keeps nothing. Options from another host's key that are not
   a list of edits are refused.
 
-The Python is `DECK_PY` in `deckScript.ts`, a `String.raw` (no backtick, no
-`${`), written into the job's scratch folder and run with `python -I`.
-`pptx → pdf` is the toolchain's LibreOffice converter.
+`steps.ts` registers three more for the show:
+
+- `pptx → pptxsteps` (`needs: 'python-pptx'`): a copy with `options.plan`'s
+  shapes taken out and paragraphs made clear ("Builds"). A plan from another
+  host's key that is not one is refused.
+- `pptx → slidemedia` (`needs: 'python-pptx'`): the bytes of the clip
+  `options.slide` and `options.shape` play.
+- `slidemedia → playable` (`needs: 'ffmpeg'`): the clip as the app plays it
+  ("Video and sound").
+
+The Python is `DECK_PY` in `deckScript.ts` and `STEPS_PY` in
+`stepsScript.ts`, each a `String.raw` (no backtick, no `${`), written into
+the job's scratch folder and run with `python -I`. `pptx → pdf` is the
+toolchain's LibreOffice converter.
 
 ### A new deck
 
@@ -738,7 +885,11 @@ slide's.
   the view switch), `SlideStrip.dom.test.tsx` (the slide's menu, sections,
   Delete, reorder by drag in the strip and the Sorter, the Sorter's grid)
   and `FormatSheet.dom.test.tsx` (the fields in his units, the outline, a
-  table's rows and columns, the sheet under the slide).
+  table's rows and columns, the sheet under the slide),
+  `AnimateTab.dom.test.tsx` (the tab with nothing picked and kept on close;
+  each transition and builds edit with its exact op; a kind it does not
+  play; the order by keyboard; each "Edit in PowerPoint" case; Remove
+  animations… confirmed; a suggested slide) and `edit/animation.test.ts`.
 
 ## A mail's attachment
 
@@ -764,7 +915,8 @@ stage".
 | `edit/TypingBox.tsx`, `edit/DeckRow.tsx`, `edit/History.tsx` | The box over a shape, the deck's format row (its glyphs are in `work/icons.tsx`), History in the bar |
 | `edit/drag.ts`, `edit/Manipulate.tsx` | A shape moved, resized, turned and nudged (the maths pure, in EMU), and the stage's layer for it: the carried picture, the guides, the label |
 | `edit/add.ts`, `edit/Insert.tsx` | What Insert adds and where it lands (pure: boxes, the layouts a slide can take, what an edit made), and Insert's rows with the file choosers |
-| `edit/LayoutSelect.tsx`, `edit/ThemeMenu.tsx`, `edit/FormatSheet.tsx` | The layout select and its pictures, Theme, the Format sheet |
+| `edit/LayoutSelect.tsx`, `edit/ThemeMenu.tsx`, `edit/FormatSheet.tsx`, `edit/sheetParts.tsx` | The layout select and its pictures, Theme, the Format sheet and the parts its tabs share |
+| `edit/Animate.tsx`, `edit/animation.ts` | The sheet's Animate tab, and its rules (pure) |
 | `edit/slides.ts`, `edit/SectionName.tsx` | A slide's menu and what each row writes, a slide's place moved; a section's name |
 | `show/` | The show, a chunk of its own loaded when the pointer first reaches Present: `state.ts` (the state and its keys), `timer.ts`, `Show.tsx` (a show running), `places.ts` (the documents it is drawn in), `Audience.tsx` (the slideshow), `Presenter.tsx` (the presenter's view), `pictures.tsx` (a slide painted at a window's size) |
 | `testkit.ts`, `stage.testkit.tsx`, `*.dom.test.tsx`, `SlidesCanvas.preview.tsx` | A host that keeps one view and answers his edits (every kind of them), the pane with a deck in it for the DOM tests, the tests, the preview |
@@ -883,7 +1035,37 @@ once as a toast; `saving` and `saved` on the save line follow it.
   "3 cm" or "1 in"), `line` for the outline (PowerPoint's own dashes read
   as solid, dash or dot: `dashOf`), `grid` for a table's rows and columns
   (their count from the outline's cells). Shadow and crop are not offered:
-  the host has no edit for them.
+  the host has no edit for them. Its two tabs are kept in the deck's store
+  (`DeckState.sheetTab`), so the sheet opens on the tab he left.
+- **The Animate tab** (`edit/Animate.tsx`, the rules pure in
+  `edit/animation.ts`; the look is docs/DESIGN.md "The slide editor"). About
+  the slide on the stage, so it works with nothing picked. Every change is
+  one edit through `HandSession.edit`, and Undo and Redo walk it as any
+  other. **Transition**: None, Fade or Push, a push's side in PowerPoint's
+  words (`PUSH_SIDES`: From bottom is `u`, From left `r`, From right `l`,
+  From top `d`, as the show draws them), On click and After N seconds;
+  each change sends the whole `transition` (`transitionOp`: kind, `dir` for
+  a push, `click`, `after` in seconds or null). A kind the app does not play
+  (`wipe`, `morph`) shows by its own name with "Plays in PowerPoint; a cut
+  here", its On click and After held; only a press on None, Fade or Push
+  replaces it, its timing kept. **Builds** (`buildsHold`): where the
+  outline gives `order` (or the slide has no builds), the shapes that appear
+  on a press, in order, each by the label the stage reads to a screen
+  reader (`shapeLabel`, geometry.ts); drag (`useSortable`), ⌥↑ and ⌥↓ on a
+  focused row, Delete or its remove button, and "Appear on click" to add a
+  shape of the slide in no group (`addable`); each change sends one
+  `builds` with the whole new order, shown at once until the deck comes
+  back. Anything else reads "Edit in PowerPoint" with why in a few words (a
+  trigger, a motion path, paragraphs one at a time, a shape leaving, more
+  than one shape a press, a video or sound on the slide, any other effect).
+  Remove animations… asks first (`ConfirmDialog`) and sends `builds` with
+  `replace: true`; it is not offered on a slide with a video or a sound,
+  whose own timing would go with it. On a slide a suggestion changes the
+  tab shows the proposed values, read only, under the hand's refusal
+  ("Accept or reject the suggestion on this slide first"), and what the
+  change's words name (`Transition`, `Builds`) in the added tint. The
+  stepper says builds put in another order by what comes in, in turn
+  ("Title, Picture" then "Picture, Title": `editsOf`, view.ts).
 - **Slides** (`edit/slides.ts`, `Strip.tsx`, `Sorter.tsx`): a slide's menu
   writes `add`, `duplicate`, `hide`, `layout`, `section` (its place counted
   from the slides that start one, `sectionIndex`) and `remove`; a drag
@@ -1033,10 +1215,44 @@ key a clicker sends.
   with one up it stays up and the presenter's view says "Reconnecting to
   the deck…". A read the file moved on from is read again at once.
 - **One state.** `show/state.ts` is a pure reducer: the slide, the build
-  (`Slide.builds`: none yet, the host does not read a deck's timing until
-  SLD6, so every slide is one press), blank, the end, the number being
-  typed, the picker. Hidden slides are passed by Next and Previous; a jump
-  by number or from the strip shows one. `keyAct` maps the keys.
+  (a slide takes one press a step after its first, `ShowSlide.steps`),
+  blank, the end, the number being typed, the picker. Hidden slides are
+  passed by Next and Previous; a jump by number or from the strip shows one;
+  Previous onto a slide with steps lands on its last. `keyAct` maps the
+  keys.
+- **Builds and transitions** (`show/stage.tsx`, `pictures.tsx`). Each step
+  that has its own picture is read from the host by its `rev`
+  (`work.slides.build`) and opened as a one-page render while the show is on
+  its slide or the next press reaches it (`useStepDocs`); one still being
+  read holds the picture shown, one not made yet is the slide's own page.
+  `motionBetween` decides how a picture comes in: a step of the same slide
+  fades, either way; a press on to the next slide plays that slide's
+  transition when it is a fade or a push (a push fades under reduced
+  motion); anything else cuts. The motion is a Web Animation on the
+  picture's layer (opacity, or transform for a push) on the window's own
+  tokens, the one replaced kept whole under it until it ends; a press
+  during it ends it at once. The values are in docs/DESIGN.md "Motion
+  values".
+- **Advance after.** `autoAfter` is the slide's time, counted again at each
+  of its steps, and null on a black screen, with the picker open or at the
+  end. One timer in the show's root dispatches `{t: 'auto', at, step}`; the
+  reducer moves on only if the show is still at that place, so both windows
+  move together and a press meanwhile wins. A slide that does not advance on
+  a press (`click: false`) still does here: a clicker must never be stuck.
+- **Video and sound.** A slide's clips are read whole from the host by
+  their `rev` (`work.slides.media`) into one object URL of the main
+  window's, which both windows play (`useMediaUrls`; let go when the show
+  ends). One state a clip (`playReducer`: playing, started, time, duration,
+  a seek) moves both copies: the slideshow's copy is heard and reports its
+  time, the presenter's plays muted in step (sent where the heard one is
+  when they drift past 0.3 s). A video lies over its shape's box (its quad:
+  centre, width, height and turn) once started, so until then the slide's
+  own poster shows; a sound has no box. The transport (Play or Pause, Play
+  from the start, the place as a bar and "0:12 / 1:04") is in the
+  presenter's view only, one row a clip under the picture the room sees;
+  with no presenter's view a press on the clip's box starts and stops it.
+  A clip a step hides is not played over its place. Leaving the slide stops
+  its clips.
 - **Its windows are drawn by the main window**, as the pop-out is, not
   pages of their own: the page asks main for a show (`window.tcShow`, the
   preload's `show:begin`), main answers a frame name for each window, made
@@ -1099,17 +1315,28 @@ key a clicker sends.
   (End show, Pause, the target's menu); after a press made with the
   pointer the keyboard goes back to the view, so Space is the next slide
   and never a second press of the button he last used.
-- **Not built yet** (each is a later milestone of the same plan): builds,
-  transitions and "advance after" (a change of slide is a cut), video and
-  audio on a slide, the phone as a clicker, presenting a PDF, and "In
-  PowerPoint". A menu in a child window cannot use the app's popover or
+- **Not built yet** (each is a later milestone of the same plan): the
+  phone as a clicker, presenting a PDF, "In PowerPoint" (the row reads
+  `ShowDeck.changed`) and the proof
+  against PowerPoint's own count of click effects. A menu in a child window cannot use the app's popover or
   menu components, which mount in the main window's page: the slideshow's
   picker and the presenter's target menu are panels of their own.
 
-Tests: `show/state.test.ts` (the state, every key, the timer),
+Tests: `builds.test.ts` (the timing tree to steps on the build decks'
+outlines, `fixtures/steps-kinds.json` and `steps-talk.json`, and on trees
+made by hand: presses, with-previous and after-previous folded, exits,
+paragraph builds, each kind shown whole), `steps.test.ts` (which step
+pictures are made, from which copy, how, and where a show reads them; what
+plays as it is), `media.test.ts`, `slides.test.ts` "a show's builds and
+clips, made in the background" (through the module, a shared library's kept
+in its item), `steps.gate.test.ts` (behind the gate, above),
+`show/state.test.ts` (the state, every key, the timer, steps, advance after,
+the motion between two states),
 `show/Show.dom.test.tsx` (both surfaces, and a whole show on places that
 stand in for its windows: one state in two places, the file changing under
-it, a window closed, the display leaving, a browser's frame),
+it, a window closed, the display leaving, a browser's frame, each step's own
+picture in both windows, advance after, a video in both windows started from
+the presenter's view, a sound started from the slideshow itself),
 `Present.dom.test.tsx`, `SlidesCanvas.dom.test.tsx` (Present in the bar and
 the keys), `src/main/present.test.ts` (the plan for one, two and three
 displays, the frames, the power assertion, a display removed).

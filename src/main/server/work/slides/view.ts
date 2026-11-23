@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { Bbox } from '@shared/contract-work-pdf'
-import type { DeckShape, DeckSlide, DeckView, ShowDeck, SlideChange, SlideOp } from '@shared/contract-work-slides'
+import type { DeckShape, DeckSlide, DeckView, SlideChange, SlideOp } from '@shared/contract-work-slides'
 import { canvasSourcePath, type CanvasItem, type CanvasSource } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import { sharedOf } from '../files/policy'
@@ -11,6 +11,7 @@ import type { WorkCtx } from '../modules'
 import { canvasItemDir } from '../canvas/store'
 import { copyWhole, hasMagic, ItemFileError, pushFor, sourcePath } from '../pdf/file'
 import { sweepAttached, withAttached } from './attach'
+import { withBuilds } from './builds'
 import { DECK_ITSELF, isNote, type DeckInfo, type ShapeInfo, type SlideInfo } from './deck'
 import { DECK_PY } from './deckScript'
 import { handMoved, handState } from './handLine'
@@ -135,6 +136,10 @@ let engine: () => string = () => ''
 export const setSlideEngine = (next: (() => string) | null): void => void (engine = next ?? (() => ''))
 /** Part of every kept page's name: a new deck script, filter or toolchain draws every slide again. */
 const pictureSalt = (): string => `${RENDER_V()}:${engine()}`
+
+/** Told whenever a deck is opened or told again (show.ts makes the show's pictures then, off the deck's queue). */
+let opened: ((ctx: Ctx, item: CanvasItem, deck: Deck) => void) | null = null
+export const onDeckOpened = (fn: typeof opened): void => void (opened = fn)
 
 // ── the file ─────────────────────────────────────────────────────────
 
@@ -267,6 +272,7 @@ async function build(ctx: Ctx, item: CanvasItem, key: string, input: string, sig
     }
   }
   touch(json)
+  withBuilds(info)
   let renderError: string | undefined
   if (draw && !existsSync(pdf)) {
     try {
@@ -455,7 +461,7 @@ async function predraw(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promis
   )
 }
 /** `predraw`, never the reason a read fails: the queue's own build draws what is still missing and says why. */
-const drawAhead = (ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<void> => predraw(ctx, item, signal).catch(() => {})
+export const drawAhead = (ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<void> => predraw(ctx, item, signal).catch(() => {})
 
 export interface Deck {
   path: string
@@ -582,6 +588,17 @@ export function lookWords(paragraphs: ShapeInfo['paragraphs']): string {
     .join(', ')
 }
 
+const TRANSITION_WORDS: Record<string, string> = { none: 'Cut', fade: 'Fade', push: 'Push' }
+/** How a slide comes in a show, in a few words: "Fade", "Push, moves on after 5 s", "None". */
+export function comesAs(t: SlideInfo['transition']): string {
+  if (!t) return 'None'
+  const kind = TRANSITION_WORDS[t.kind] ?? `${t.kind.charAt(0).toUpperCase()}${t.kind.slice(1)}`
+  return [kind, t.after !== undefined ? `moves on after ${Number((t.after / 1000).toFixed(1))} s` : '', t.click === false ? 'no press' : ''].filter(Boolean).join(', ')
+}
+/** The presses a slide's builds take in a show: its steps past the first, which is the slide as it comes up. */
+const pressesOf = (s: SlideInfo): number => Math.max(0, (s.builds?.steps.length ?? 1) - 1)
+const pressWords = (n: number): string => (n === 0 ? 'None' : n === 1 ? '1 press' : `${n} presses`)
+
 /** What the words were and are on one slide, shape by shape, cell by cell, then the notes. */
 export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefined): { edits: SlideChange['edits']; boxes: Bbox[]; gone: Bbox[] } {
   const edits: SlideChange['edits'] = []
@@ -652,6 +669,13 @@ export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefi
     if (order(before, both) !== order(after, both)) edits.push({ where: 'Order', before: 'As it was', after: 'Shapes brought forward or sent back' })
     if (before.hidden !== after.hidden) edits.push({ where: 'In the show', before: before.hidden ? 'Hidden' : 'Shown', after: after.hidden ? 'Hidden' : 'Shown' })
     if (before.layout !== after.layout) edits.push({ where: 'Layout', before: before.layout, after: after.layout })
+    if (comesAs(before.transition) !== comesAs(after.transition)) edits.push({ where: 'Transition', before: comesAs(before.transition), after: comesAs(after.transition) })
+    if (pressesOf(before) !== pressesOf(after)) edits.push({ where: 'Builds', before: pressWords(pressesOf(before)), after: pressWords(pressesOf(after)) })
+    // The same presses in another order: said by what comes in, in turn ("Title, Picture" then "Picture, Title").
+    else if (JSON.stringify(before.builds?.steps ?? null) !== JSON.stringify(after.builds?.steps ?? null)) {
+      const turn = (x: SlideInfo, names: Map<number, string>): string => x.builds?.order?.map((id) => names.get(id) ?? 'Shape').join(', ') || 'Another order'
+      edits.push({ where: 'Builds', before: turn(before, wasNames), after: turn(after, names) })
+    }
   }
   if ((before?.notes ?? '') !== (after?.notes ?? '')) edits.push({ where: 'Notes', before: before?.notes ?? '', after: after?.notes ?? '' })
   return { edits, boxes, gone }
@@ -709,6 +733,7 @@ const slideOf = (s: SlideInfo, o: Pick<DeckSlide, 'key' | 'number' | 'from' | 'p
   layout: s.layout,
   ...(s.fits ? { layoutsFit: s.fits } : {}),
   ...(s.transition ? { transition: s.transition } : {}),
+  ...(s.builds ? { builds: s.builds } : {}),
   ...(section ? { section } : {})
 })
 
@@ -751,7 +776,7 @@ export function stripOf(file: DeckInfo, proposed: DeckInfo | null, changes: read
   return out
 }
 
-const renderOf = (b: Built | null): DeckView['renders']['file'] => (b?.pdf ? { rev: b.key.slice(0, 16), size: statSync(b.pdf).size, pages: b.info.slides.length } : null)
+export const renderOf = (b: Built | null): DeckView['renders']['file'] => (b?.pdf ? { rev: b.key.slice(0, 16), size: statSync(b.pdf).size, pages: b.info.slides.length } : null)
 
 /**
  * The deck's last direct write as this seat may take it back: the deck's own, except on a file others can open,
@@ -813,6 +838,7 @@ export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): 
   await drawAhead(ctx, item, signal)
   return serial(ctx, item, async () => {
     const deck = await deckOf(ctx, item, signal)
+    opened?.(ctx, item, deck)
     const pages = await deckDir(ctx, item, 'pages')
     const view = viewFrom(ctx, item, deck, (from, s) => {
       const page = pageOf(pages, from === 'file' ? deck.file : deck.proposed, s)
@@ -844,22 +870,6 @@ export async function slidePath(ctx: Ctx, item: CanvasItem, which: 'file' | 'pro
     const path = join(pages, `${name}.pdf`)
     if (!existsSync(path)) await splitPdf(built.pdf, built.info.slides.map((_, i) => (i === at ? path : null)))
     return { path, rev: name.slice(0, 16) }
-  })
-}
-
-/** What a show draws from: the file as it is, in its own order, whatever suggestions wait. */
-export async function showOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<ShowDeck> {
-  await drawAhead(ctx, item, signal)
-  return serial(ctx, item, async () => {
-    const { path, hash, file } = await deckOf(ctx, item, signal)
-    return {
-      itemId: item.id,
-      name: nameOf(item, path),
-      rev: hash.slice(0, 16),
-      render: renderOf(file),
-      slides: file.info.slides.map((s, i) => ({ id: s.id, number: i + 1, page: i + 1, title: s.title, notes: s.notes, hidden: s.hidden })),
-      ...(file.renderError ? { renderError: file.renderError } : {})
-    }
   })
 }
 

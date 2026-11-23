@@ -1,9 +1,10 @@
 import { closeSync, copyFileSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { SlideOpSchema, type DeckParagraph, type DeckPoint, type DeckShapeKind, type DeckTextFrame, type DeckView, type SlideOp, type SlideTransition } from '@shared/contract-work-slides'
+import { SlideOpSchema, type DeckParagraph, type DeckPoint, type DeckShapeKind, type DeckTextFrame, type DeckView, type SlideBuilds, type SlideOp, type SlideTransition } from '@shared/contract-work-slides'
 import type { Converter, ConvertRun } from '../formats/jobs'
 import { tailOf } from '../formats/tools'
+import type { TimingNode } from './builds'
 import { DECK_PY } from './deckScript'
 
 /**
@@ -53,6 +54,10 @@ export interface SlideInfo {
   transition?: SlideTransition
   /** the layouts this slide may be given, by name: its own, and each whose placeholders match the slide's by index and kind (`op_layout`'s test) */
   fits?: string[]
+  /** its p:timing as a plain tree (`timing_of`), read by builds.ts */
+  timing?: TimingNode
+  /** its builds, read from `timing` by the host once the outline is read (builds.ts `withBuilds`) */
+  builds?: SlideBuilds
 }
 export interface ShapeInfo {
   id: number

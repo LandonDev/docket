@@ -30,6 +30,10 @@ export interface DeckHost {
   /** A picture or a video he adds, brought to the host in pieces: the token an `insert` edit names it by. */
   attach(name: string, data: Uint8Array): Promise<string>;
   onView(listener: (view: DeckView) => void): () => void;
+  /** A show's step pictures and clips, by their `rev` (`work.slides.build`, `work.slides.media`), and the word that more of them is ready. */
+  build?(rev: string, offset: number, length: number): Promise<Uint8Array>;
+  media?(rev: string, offset: number, length: number): Promise<Uint8Array>;
+  onReady?(listener: (rev: string) => void): () => void;
 }
 
 /**
@@ -76,6 +80,12 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
       link().onPush((push) => {
         if (push.push === "work.slides" && push.view.itemId === itemId) listener(push.view);
       }),
+    build: async (rev, offset, length) => fromBase64((await call<{ data: string }>("work.slides.build", { rev, offset, length })).data),
+    media: async (rev, offset, length) => fromBase64((await call<{ data: string }>("work.slides.media", { rev, offset, length })).data),
+    onReady: (listener) =>
+      link().onPush((push) => {
+        if (push.push === "work.slides.ready" && push.itemId === itemId) listener(push.rev);
+      }),
   };
 }
 
@@ -84,6 +94,10 @@ export const showHostOf = (host: DeckHost): ShowHost => ({
   show: () => host.show(),
   read: (offset, length, rev) => host.read("file", offset, length, rev),
   onRev: (listener) => host.onView((view) => listener(view.rev)),
+  // A step's own picture: the show calls it `step`; on the deck's host `step` is his undo and redo.
+  ...(host.build ? { step: host.build } : {}),
+  ...(host.media ? { media: host.media } : {}),
+  ...(host.onReady ? { onReady: host.onReady } : {}),
 });
 
 /**
@@ -102,10 +116,14 @@ export interface DeckState {
   look: "slide" | "sorter";
   /** The Format sheet is open beside the stage (or under it in a narrow canvas). */
   sheet: boolean;
+  /** The sheet's tab: the picked shape's format, or the slide's animation. Kept while the window lives, so the sheet opens where he left it. */
+  sheetTab: SheetTab;
 }
 
+export type SheetTab = "format" | "animate";
+
 export class DeckStore {
-  private state: DeckState = { view: null, error: null, current: null, side: "tempcode", look: "slide", sheet: false };
+  private state: DeckState = { view: null, error: null, current: null, side: "tempcode", look: "slide", sheet: false, sheetTab: "format" };
   private listeners = new Set<() => void>();
   get = (): DeckState => this.state;
   subscribe = (listener: () => void): (() => void) => {

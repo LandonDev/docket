@@ -24,7 +24,7 @@ import { unitFor } from "./edit/drag";
 import { Manipulate, movable, turnable, type ManipulateHandle, type Movable } from "./edit/Manipulate";
 import { CONFLICT_WORD, HandSession, type HandState, type Start } from "./edit/session";
 import { TypingBox } from "./edit/TypingBox";
-import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, textFrameOf, type Quad } from "./geometry";
+import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
 import { SectionName } from "./edit/SectionName";
 import type { NameAsk } from "./edit/slides";
 import { Picture } from "./Picture";
@@ -173,7 +173,7 @@ export function SlidesBody({
   mediaSize,
   dragging: firstDrag,
 }: CanvasBodyProps<SlidesState> & Omit<SlidesDeps, "host" | "engine"> & { host: DeckHost; store: DeckStore; engine: PdfEngine }) {
-  const { view, error, current, side, look, sheet } = useDeck(store);
+  const { view, error, current, side, look, sheet, sheetTab } = useDeck(store);
   const session = handOf(item.id, host, store);
   const hand = useSyncExternalStore(session.subscribe, session.get, session.get);
   // A box open when the tab closes, or the item leaves, commits.
@@ -298,6 +298,9 @@ export function SlidesBody({
       session={session}
       docked={!beside}
       boundary={root}
+      tab={sheetTab}
+      onTab={(tab) => store.set({ sheetTab: tab })}
+      edits={view.changes.find((c) => c.id === shown?.change)?.edits ?? NO_EDITS}
       onClose={() => store.set({ sheet: false })}
     />
   ) : null;
@@ -509,6 +512,8 @@ function useFeeds(
 }
 
 // ── the stage ────────────────────────────────────────────────────────
+
+const NO_EDITS: SlideChange["edits"] = [];
 
 /** The tints a slide takes: the dark theme's on a dark picture, paper's on a light one. */
 const TINTS = {
@@ -918,13 +923,6 @@ function Main({
       )}
     </div>
   );
-}
-
-/** A shape as a screen reader says it: what it is on its slide ("Title", "Text 2"), then its words. */
-function shapeLabel(shape: DeckShape): string {
-  const what = shape.label ?? KIND_WORDS[shape.kind ?? "other"];
-  const words = shape.text.replace(/\s+/g, " ").trim();
-  return words ? `${what}: ${words.length > 80 ? `${words.slice(0, 80).trimEnd()}…` : words}` : what;
 }
 
 /**

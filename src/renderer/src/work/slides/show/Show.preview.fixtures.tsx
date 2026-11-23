@@ -7,6 +7,7 @@ export default [
   { name: "Presenter's view: the slideshow's display left; the screen is black", props: { moment: "gone" } },
   { name: "Presenter's view: reading the deck", props: { moment: "loading" } },
   { name: "Presenter's view at 400px", props: { moment: "narrow" } },
+  { name: "Presenter's view: a slide with a video, paused", props: { moment: "video" } },
   { name: "The slideshow, with its bar (its window is dark in both themes)", props: { moment: "bar" } },
   { name: "The slideshow: the picker", props: { moment: "picker" } },
   { name: "The slideshow: the end", props: { moment: "over" } },

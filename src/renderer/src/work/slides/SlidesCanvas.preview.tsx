@@ -16,7 +16,7 @@ import { applyCanvasPush, resetCanvasStore, setFolded } from "../canvas/store";
 import type { PdfEngine } from "../pdf/engine";
 import { deckStoreOf } from "./deck";
 import * as SlidesCanvas from "./SlidesCanvas";
-import type { DeckParagraph } from "@shared/contract-work-slides";
+import type { DeckParagraph, DeckSlide } from "@shared/contract-work-slides";
 import { SelectionTools } from "../canvas/SelectionBar";
 import { VersionList } from "./edit/History";
 import { DECK_GROUND, DECK_INK, DECK_MUTED, DECK_THEME, LAYOUT_BARS, layoutsDoc, SPONSOR, sponsorDoc, TAG_BOX } from "./SlidesCanvas.preview.fixtures";
@@ -49,6 +49,8 @@ export type SlidesMoment =
   | "theme"
   | "sheet"
   | "sheetunder"
+  | "animate"
+  | "animateppt"
   | "sorter";
 
 void workCanvasChunk.load();
@@ -90,6 +92,9 @@ const measureAt =
     el.dataset.formatItem ? (ROW_WIDTHS[el.dataset.formatItem] ?? 28) : el.dataset.formatEnd === "out" ? 108 : el.dataset.formatEnd === "view" ? 104 : width;
 
 /** "Who comes" as he edits it: the title and its three points as text shapes in the deck's own look, where the picture draws them. */
+/** A deck with slide 3 given a transition and builds of its own. */
+const animated = (view: DeckView, over: Partial<DeckSlide>): DeckView => ({ ...view, slides: view.slides.map((s) => (s.id === 3 ? { ...s, ...over } : s)) });
+
 function whoComes(): DeckView {
   const run = (text: string, size: number, color: string, bold = false) => ({ text, font: "Arial", size, color, ...(bold ? { bold } : {}) });
   const points: DeckParagraph[] = ["480 players across 3 titles", "6,200 stream viewers", "38% from engineering"].map((text) => ({ level: 0, align: "left", list: "none", runs: [run(text, 18, DECK_MUTED)] }));
@@ -162,12 +167,17 @@ function setUp(moment: SlidesMoment): {
   width?: number;
   look?: "slide" | "sorter";
   sheet?: boolean;
+  tab?: "format" | "animate";
 } {
   // The tag carried left until its centre is 3px short of the slide's: the snap puts it there, with a guide down the middle.
   if (moment === "drag") return { view: whoComes(), current: "3", picked: 4, width: 864, dragging: { shape: 4, dx: Math.round((0.5 - 0.74) * 9_144_000) + 30_000, dy: -400_000 } };
   if (moment === "shaperow" || moment === "layouts" || moment === "insert" || moment === "theme") return { view: whoComes(), current: "3", picked: 4, width: 1200 };
   if (moment === "shaperownarrow") return { view: whoComes(), current: "3", picked: 4, width: 520 };
   if (moment === "sheet") return { view: whoComes(), current: "3", picked: 4, width: 1200, sheet: true };
+  // The Animate tab on "Who comes": a push from the right that moves on after 5 s, the title then the points on presses.
+  if (moment === "animate") return { view: animated(whoComes(), { transition: { kind: "push", dir: "l", ms: 750, after: 5000 }, builds: { steps: [{ shapes: [2, 3], paras: [] }, { shapes: [3], paras: [] }, { shapes: [], paras: [] }], changed: 0, order: [2, 3] } }), current: "3", width: 816, sheet: true, tab: "animate" };
+  // A slide whose effects are PowerPoint's: a wipe, and a motion path; under the slide on a 640px canvas.
+  if (moment === "animateppt") return { view: animated(whoComes(), { transition: { kind: "wipe", ms: 500 }, builds: { steps: [{ shapes: [], paras: [] }], changed: 2, whole: "a motion path" } }), current: "3", width: 640, sheet: true, tab: "animate" };
   if (moment === "sheetunder") return { view: whoComes(), current: "3", picked: 4, width: 640, sheet: true };
   if (moment === "sorter") return { view: whoComes(), current: "3", width: 864, look: "sorter" };
   if (moment === "typing") return { view: whoComes(), current: "3", typing: { shape: 3, sel: { from: [1, 0], to: [1, 5] }, ground: DECK_GROUND }, width: 862 };
@@ -228,14 +238,14 @@ export function SlidesPreview({ moment = "sugg" }: { moment?: SlidesMoment }) {
   const sessionId = `preview-slides-${moment}`;
   const itemId = `${sessionId}-item`;
   const item: CanvasItem = { id: itemId, sessionId, workspaceId: "ws", kind: "slides" as CanvasKind, title: "Sponsor deck.pptx", source: { at: "file", host: "local", path: "/work/Sponsor deck.pptx" }, state: "open", position: 0, rev: 0, createdAt: 0, updatedAt: 0 };
-  const { view, current, engine, picked, typing, dragging, width, look, sheet } = setUp(moment);
+  const { view, current, engine, picked, typing, dragging, width, look, sheet, tab } = setUp(moment);
   // One host a moment, whatever renders the page again: the deck's hand is kept by its host.
   const host = hosts.get(moment) ?? hosts.set(moment, fakeDeckHost({ ...view, itemId })).get(moment)!;
   const store = deckStoreOf(itemId);
   if (moment === "loading") host.open = () => new Promise(() => undefined);
   else store.view({ ...view, itemId });
   if (current) store.set({ current });
-  store.set({ look: look ?? "slide", sheet: !!sheet });
+  store.set({ look: look ?? "slide", sheet: !!sheet, sheetTab: tab ?? "format" });
   if (moment === "ppt") store.set({ side: "powerpoint" });
   // The file's render in the deck's order; the proposed render in the revision's.
   let opened = 0;

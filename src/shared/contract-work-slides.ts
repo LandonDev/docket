@@ -160,6 +160,16 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
   ]),
   /** Another of the deck's layouts for a slide, by name: only where each of the slide's placeholders has its match there. */
   z.object({ op: z.literal('layout'), slide, layout: z.string().min(1).max(200) }),
+  /**
+   * How a slide comes in a show: a cut (`none`), a fade or a push from a side; `click` false: a press does not
+   * move on; `after`: the seconds after which it moves on by itself (null: never). Replaces what the slide had.
+   */
+  z.object({ op: z.literal('transition'), slide, kind: z.enum(['none', 'fade', 'push']), dir: z.enum(['l', 'r', 'u', 'd']).optional(), click: z.boolean().optional(), after: z.number().min(0).max(86_400).nullable().optional() }),
+  /**
+   * The shapes that come in on a press, one a press, in order; none takes the builds away. A slide whose animations
+   * are more than that is PowerPoint's, unless `replace`: his confirmed press, which takes every animation it had out first.
+   */
+  z.object({ op: z.literal('builds'), slide, order: z.array(shape).max(200), replace: z.literal(true).optional() }),
   /** The deck's colours (by Office's twelve names) and its heading and body fonts, into its theme. */
   z.object({
     op: z.literal('theme'),
@@ -288,6 +298,30 @@ export interface SlideTransition {
   click?: boolean
 }
 
+/** What a slide does not show at one step of its builds: shapes by id (a group by its own id), and runs of a text shape's paragraphs (from 0, both ends in). */
+export interface StepHides {
+  shapes: number[]
+  paras: Array<{ shape: number; from: number; to: number }>
+}
+
+/**
+ * A slide's builds as the show plays them (docs/agents/work-slides.md "Builds"): one step a press, the first the
+ * slide as it comes up (after what starts by itself). Read from the slide's timing only where the reader is sure;
+ * else the slide is one step, shown whole, and `whole` says why.
+ */
+export interface SlideBuilds {
+  steps: StepHides[]
+  /** effects in the file the show plays otherwise (a fade for a fly-in) or leaves out */
+  changed: number
+  whole?: string
+  /**
+   * The shapes that come in on a press, in order, when that is all the slide's timing holds (each press one whole
+   * shape outside any group, by Appear; nothing by itself, no media, no trigger): exactly what a `builds` edit writes
+   * back. Absent: a `builds` edit would change more than the order, so it is PowerPoint's (or a confirmed `replace`).
+   */
+  order?: number[]
+}
+
 /** One thumbnail of the strip, in the proposed order. */
 export interface DeckSlide {
   /** unique in the list: the slide's id, or `ghost:<id>` for the place a slide leaves */
@@ -317,6 +351,8 @@ export interface DeckSlide {
   transition?: SlideTransition
   /** the layouts this slide may be given, by name (the host's own test for a `layout` edit): its own first among them */
   layoutsFit?: string[]
+  /** its builds, when its timing has any */
+  builds?: SlideBuilds
   /** the boxes of the shapes the change touched, to tint on the stage */
   changed: Bbox[]
   /** the boxes of the shapes the change takes off the slide, as they lay before it: tinted as removed */
@@ -410,6 +446,30 @@ export interface ShowSlide {
   notes: string
   /** skipped by Next and Previous; a jump by number or from the strip still shows it */
   hidden: boolean
+  /** its builds, one entry a press (the first the slide as it comes); absent: one press, its page */
+  steps?: ShowStep[]
+  /** played between slides when it is a fade or a push; `after` moves the show on by itself */
+  transition?: SlideTransition
+  /** each video or sound on it, played over its shape */
+  media?: ShowMedia[]
+}
+
+/** One step of a slide's builds in a show. */
+export interface ShowStep {
+  /** its own picture (a one-page PDF read with `work.slides.build`); absent while it is being made, or where it is the slide's own page */
+  pic?: { rev: string; size: number }
+  /** the shapes not seen at this step, a video's among them */
+  hides: number[]
+}
+
+/** A video or a sound on a slide of a show, read by range with `work.slides.media`. */
+export interface ShowMedia {
+  shape: number
+  kind: 'video' | 'audio'
+  /** its box's corners on the slide, as `DeckShape.quad` */
+  quad: [DeckPoint, DeckPoint, DeckPoint, DeckPoint]
+  /** absent while the host is still taking it out of the deck (or making it an .mp4 the app can play) */
+  file?: { rev: string; size: number; type: string }
 }
 
 /** What a show draws from: the file's slides and its render. */
@@ -422,6 +482,8 @@ export interface ShowDeck {
   render: DeckRender | null
   slides: ShowSlide[]
   renderError?: string
+  /** how many effects and transitions in the file this show plays otherwise or leaves out */
+  changed?: number
 }
 
 const itemId = z.string().min(1).max(100)
@@ -452,6 +514,10 @@ export const SlidesRequestSchemas = [
   ),
   /** → ShowDeck: the file's slides in its own order and its render, for a show; pending suggestions are not in it */
   request('work.slides.show', z.object({ itemId })),
+  /** → { data: base64, size, rev }: bytes of one step's picture (a one-page PDF), by its `ShowStep.pic.rev` */
+  request('work.slides.build', z.object({ itemId, rev: z.string().regex(/^[0-9a-f]{16}$/), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
+  /** → { data: base64, size, rev }: bytes of a slide's video or sound as the app plays it, by its `ShowMedia.file.rev` */
+  request('work.slides.media', z.object({ itemId, rev: z.string().regex(/^[0-9a-f]{16}$/), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → DeckView: what the agent does to this deck from now on */
   request('work.slides.mode', z.object({ itemId, mode: z.enum(['suggests', 'writes']) })),
   /** → DeckView: puts the file back as it was before the agent's direct write */
@@ -474,12 +540,16 @@ export const SlidesRequestSchemas = [
 
 /** A deck's view changed: an agent revised it, or a change was accepted or rejected. */
 export type SlidesPush = { push: 'work.slides'; sessionId: string; view: DeckView }
+/** More of a deck's show is ready (a step's picture, a video made playable): a show of file revision `rev` reads it again. */
+export type SlidesReadyPush = { push: 'work.slides.ready'; sessionId: string; itemId: string; rev: string }
 
 export const SLIDES_CAPS = {
   'work.slides.open': 'read',
   'work.slides.read': 'read',
   'work.slides.show': 'read',
   'work.slides.slide': 'read',
+  'work.slides.build': 'read',
+  'work.slides.media': 'read',
   'work.slides.review': 'operate',
   'work.slides.mode': 'operate',
   'work.slides.undo': 'operate',

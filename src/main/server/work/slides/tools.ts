@@ -8,11 +8,11 @@ import { errorText } from '@shared/work/ids'
 import { sharedOf } from '../files/policy'
 import type { ToolCtx, WorkTool } from '../modules'
 import { paneItem, sourcePath } from '../pdf/file'
-import { allocateIds, isNote, slideOfOp, type DeckInfo } from './deck'
+import { allocateIds, isNote, slideOfOp, type DeckInfo, type ShapeInfo } from './deck'
 import { writeNewDeck } from './newDeck'
 import { attachFile } from './attach'
 import { rowSession, SlidesStore } from './store'
-import { announce, applyTo, deckDir, deckKey, deckOf, OWN_FILE, renderPath, scratch, serial, sharedDeck, withDeck, writeInto } from './view'
+import { announce, applyTo, deckDir, deckKey, deckOf, OWN_FILE, renderPath, scratch, serial, sharedDeck, withDeck, writeInto, comesAs } from './view'
 
 /**
  * The tools a Work thread reads and revises a deck with
@@ -44,6 +44,34 @@ export function outlineOf(info: DeckInfo, head: string): string {
     }
     if (s.notes) lines.push(`  notes: ${JSON.stringify(s.notes)}`)
   })
+  return lines.join('\n')
+}
+
+const lookOf = (r: NonNullable<ShapeInfo['paragraphs']>[number]['runs'][number]): string =>
+  [r.font, r.size ? `${r.size} pt` : '', r.bold ? 'bold' : '', r.italic ? 'italic' : '', r.underline ? 'underlined' : '', r.color ? `#${r.color}` : ''].filter(Boolean).join(', ')
+
+/**
+ * One slide as an agent needs it to change a look or a place: each shape's box (left, top, width, height in EMU,
+ * what a `geometry` edit takes), its turn, fill and outline, and its words run by run, each named `[paragraph, run]`
+ * as a `runs` edit's `from` names it; then how the slide comes and builds.
+ */
+export function slideDetail(info: DeckInfo, slideId: number): string | null {
+  const s = info.slides.find((x) => x.id === slideId)
+  if (!s) return null
+  const lines = [`Slide id ${s.id} · ${s.layout}${s.hidden ? ' · hidden' : ''} · the slide is ${info.width} by ${info.height} EMU (12,700 to a point)`]
+  for (const sh of s.shapes) {
+    const place = sh.own ? `box ${JSON.stringify(sh.own.box)}${sh.own.rot ? `, turned ${sh.own.rot}°` : ''}${sh.own.flipH ? ', flipped across' : ''}${sh.own.flipV ? ', flipped down' : ''}` : 'in a turned group: move it in PowerPoint'
+    const paint = [sh.fill ? `fill ${sh.fill === 'none' ? 'none' : `#${sh.fill}`}` : '', sh.line ? `outline ${[sh.line.color === 'none' ? 'none' : sh.line.color ? `#${sh.line.color}` : '', sh.line.width !== undefined ? `${sh.line.width} pt` : '', sh.line.dash ?? ''].filter(Boolean).join(' ')}` : ''].filter(Boolean).join(', ')
+    lines.push(`  [${sh.id}] ${JSON.stringify(sh.name)} ${sh.placeholder ? `${sh.placeholder} ` : ''}${sh.kind}${sh.shape && sh.kind === 'other' ? ` (${sh.shape})` : ''} · ${place}${paint ? ` · ${paint}` : ''}`)
+    sh.paragraphs?.forEach((para, p) => {
+      lines.push(`    paragraph ${p}: ${para.align}${para.list !== 'none' ? `, ${para.list} list` : ''}${para.level ? `, level ${para.level}` : ''}`)
+      para.runs.forEach((run, r) => lines.push(`      [${p}, ${r}] ${JSON.stringify(run.text)}${lookOf(run) ? ` (${lookOf(run)})` : ''}`))
+    })
+    if (sh.cells) lines.push(...sh.cells.map((row, n) => `    row ${n}: ${row.map((c) => JSON.stringify(c)).join(' | ')}`))
+  }
+  lines.push(`  transition: ${comesAs(s.transition)}`)
+  if (s.builds) lines.push(`  builds: ${s.builds.whole ? `shown whole in TempCode's show (${s.builds.whole})` : `${Math.max(0, s.builds.steps.length - 1)} presses`}`)
+  if (info.theme) lines.push(`  theme: fonts ${info.theme.major} and ${info.theme.minor}; colours ${Object.entries(info.theme.colors).map(([slot, hex]) => `${slot} #${hex}`).join(', ')}`)
   return lines.join('\n')
 }
 
@@ -83,15 +111,20 @@ export const slidesTools: WorkTool[] = [
     name: 'slides_read',
     description:
       'Reads a deck in the canvas: each slide\'s number, id, layout and title, every shape\'s id, name and words (a table by rows from 0, a chart\'s data), and the notes. ' +
+      'With `slide` (an id), reads that one slide in full: each shape\'s box in EMU, turn, fill and outline, its words run by run with each run\'s font, size and colour, and how the slide comes and builds. ' +
       'When your suggestions wait, it reads the deck with them in. Edit with `slides_edit`, naming slides by id and shapes by id.',
-    input: z.object({ item }),
+    input: z.object({ item, slide: z.number().int().positive().optional().describe('A slide id: read this slide alone, in full.') }),
     readOnly: true,
     run: async (args, ctx) => {
-      const a = args as { item: string }
+      const a = args as { item: string; slide?: number }
       try {
         const it = deckItem(ctx, a.item)
         const deck = await serial(ctx, it, () => deckOf(ctx, it, ctx.signal))
         const info = deck.proposed?.info ?? deck.file.info
+        if (a.slide !== undefined) {
+          const one = slideDetail(info, a.slide)
+          return one === null ? fail(`The deck has no slide ${a.slide}. Its slide ids are ${info.slides.map((s) => s.id).join(', ')}.`) : workText(one.length > ANSWER_MAX ? `${one.slice(0, ANSWER_MAX)}\n\n(Cut here.)` : one)
+        }
         const waiting = new Set(deck.pending.map((p) => p.slide)).size
         const head = `${plural(info.slides.length, 'slide')}${waiting ? `, with ${plural(waiting, 'change')} that wait for the person in` : ''}`
         const body = outlineOf(info, head)
@@ -125,7 +158,7 @@ export const slidesTools: WorkTool[] = [
   {
     name: 'slides_edit',
     description:
-      'Revises a deck in the canvas, by slide id and shape id from `slides_read`: `text` (a shape\'s paragraphs; each keeps its look), `cell` (row and column from 0), `notes`, `chart` (new data, same look), `add` (a slide from one of the deck\'s layouts by name, after a slide id, 0 for first), `remove`, `move`, `runs` (a shape\'s paragraphs as runs: each `from` the run whose look it keeps, with a font, size, bold, italic, underline or colour set on top) and `format` (a look on a whole shape, or on a `range` of its characters); a shape\'s place and size in EMU (`geometry`), its `order`, `fill` and `line`; `insert` (a text box, a shape, a picture or video by its path on this host, a table, a chart) and `delete`; a table\'s rows and columns (`grid`); a slide hidden (`hide`), copied (`duplicate`) or given another `layout`; the deck\'s `section`s and `theme`. ' +
+      'Revises a deck in the canvas, by slide id and shape id from `slides_read`: `text` (a shape\'s paragraphs; each keeps its look), `cell` (row and column from 0), `notes`, `chart` (new data, same look), `add` (a slide from one of the deck\'s layouts by name, after a slide id, 0 for first), `remove`, `move`, `runs` (a shape\'s paragraphs as runs: each `from` the run whose look it keeps, with a font, size, bold, italic, underline or colour set on top) and `format` (a look on a whole shape, or on a `range` of its characters); a shape\'s place and size in EMU (`geometry`), its `order`, `fill` and `line`; `insert` (a text box, a shape, a picture or video by its path on this host, a table, a chart) and `delete`; a table\'s rows and columns (`grid`); a slide hidden (`hide`), copied (`duplicate`) or given another `layout`; the deck\'s `section`s and `theme`; how a slide comes in a show (`transition`: a cut, a fade or a push, and the seconds after which it moves on) and what comes in on each press (`builds`). Read one slide in full with `slides_read` and `slide` before you change a look or a place. ' +
       'An `add` is given an id in the answer; give it `id` yourself to edit the new slide in the same list. ' +
       'Each revised slide is a suggestion the person steps through and accepts. When the deck says "Agent writes", the edit goes into the file at once if `because` is `own`, or `asked` with `quote`: the person\'s own words asking for it. ' +
       'The edits are checked first: if one cannot be made, nothing is kept and the answer says why.',
@@ -139,6 +172,8 @@ export const slidesTools: WorkTool[] = [
     readOnly: false,
     run: async (args, ctx) => {
       const a = args as { item: string; ops: SlideOp[]; because: 'asked' | 'own'; quote?: string; summary?: string }
+      // Taking a slide's every animation out is the person's own confirmed press in the Animate tab, never an agent's.
+      if (a.ops.some((op) => op.op === 'builds' && op.replace)) return fail('A builds edit cannot take a slide\'s other animations out: leave out `replace`; the person removes them in the Animate tab.')
       try {
         const it = deckItem(ctx, a.item)
         const store = new SlidesStore(ctx.db)
