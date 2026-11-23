@@ -22,6 +22,7 @@ describe("generations", () => {
     expect(late.ask).toEqual([]);
     expect(landSource(second, first.gen, "box", "search.mail", answer([group("mail", ["m1"])]))).toBe(second);
     expect(failed(second, first.gen, "box", null)).toBe(second);
+    expect(failed(second, first.gen, "box", { source: "search.mail", kind: "mail" })).toBe(second);
   });
   it("everything asked is out until it answers: the spinner's whole rule", () => {
     let m = typed("budget", [box, mac]);
@@ -40,7 +41,10 @@ describe("the two tiers", () => {
     const one = typed("b");
     expect(landInstant(one, one.gen, "box", answer([], ["search.mail", "search.task"])).ask).toEqual([]);
     const two = typed("bu");
-    expect(landInstant(two, two.gen, "box", answer([], ["search.mail", "search.task"])).ask).toEqual(["search.mail", "search.task"]);
+    expect(landInstant(two, two.gen, "box", answer([], ["search.mail", "search.task"])).ask).toEqual([
+      { source: "search.mail", kind: "mail" },
+      { source: "search.task", kind: "task" },
+    ]);
   });
   it("asks a host first for what it knows at once, then for one source, by the ids it named", () => {
     const m = typed("budget", [box, mac]);
@@ -173,7 +177,9 @@ describe("one kind alone", () => {
     const rows = rowsOf(m);
     expect(rows.filter((r) => r.type === "hit")).toHaveLength(30);
     expect(rows.some((r) => r.type === "all")).toBe(false);
-    expect(shape(rows)[0]).toBe("# Mail");
+    // the field already names the kind: no heading says it a second time
+    expect(rows.some((r) => r.type === "heading")).toBe(false);
+    expect(shape(rows)[0]).toBe("m0");
     expect(shape(rows)).not.toContain("t1");
   });
 });
@@ -216,6 +222,9 @@ describe("nothing found, and what could not be searched", () => {
     m = landSource(m, m.gen, "box", "search.mail", answer([], [], [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }, { cause: "source:search.mail", line: "Mail did not answer." }]));
     m = failed(m, m.gen, "mac", null);
     expect(shape(rowsOf(m))).toEqual(["# Thread", "t1", "(Studio is offline.)", "(LifeOS is signed out on The box.)", "(Mail did not answer on The box.)", "(MacBook did not answer.)"]);
+    // the window's own failed ask of that source says the same one line, not a second
+    m = failed(m, m.gen, "box", { source: "search.mail", kind: "mail" });
+    expect(shape(rowsOf(m)).filter((r) => r.includes("Mail did not answer"))).toHaveLength(1);
     expect(busy(m)).toBe(false);
   });
   it("words LifeOS's states for the host that asked it, and a source's line with no host when one host is searched", () => {
@@ -227,12 +236,65 @@ describe("nothing found, and what could not be searched", () => {
   it("a source that failed loses its rows and leaves the host's others", () => {
     let m = typed("budget");
     m = landInstant(m, m.gen, "box", answer([group("thread", ["t1"])], ["search.mail"])).model;
-    m = failed(m, m.gen, "box", "search.mail");
-    expect(shape(rowsOf(m))).toEqual(["# Thread", "t1", "(The box did not answer.)"]);
+    m = failed(m, m.gen, "box", { source: "search.mail", kind: "mail" });
+    // the host answered its other sources: the line names what did not, never the host
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "t1", "(Mail did not answer.)"]);
+    expect(busy(m)).toBe(false);
+  });
+});
+
+describe("nothing could be asked", () => {
+  it("says only why: never that nothing was found, when no host answered or none could be asked", () => {
+    let none = begin(emptyModel(), { text: "budget", kind: null, hosts: [], offline: ["The box"] });
+    expect(shape(rowsOf(none))).toEqual(["(The box is offline.)"]);
+    none = typed("budget", [box, mac]);
+    none = failed(failed(none, none.gen, "box", null), none.gen, "mac", null);
+    expect(shape(rowsOf(none))).toEqual(["(The box did not answer.)", "(MacBook did not answer.)"]);
+    // one host answered and found nothing: that is worth saying
+    let one = typed("budget", [box, mac]);
+    one = failed(landInstant(one, one.gen, "box", answer([])).model, one.gen, "mac", null);
+    expect(shape(rowsOf(one))).toEqual(["(Nothing for “budget”)", "(MacBook did not answer.)"]);
+  });
+});
+
+describe("the row he chose and the cap", () => {
+  it("is never the one the cap cuts when rows that landed since stand before it: it takes the last place", () => {
+    let m = typed("budget", [box, mac]);
+    m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1", "mac-2", "mac-3"])])).model;
+    m = step(step(m, rowsOf(m), 1), rowsOf(m), 1);
+    expect(activeOf(m, rowsOf(m))).toBe("hit:mac-3");
+    // the Work home's rows stand before another host's: three of them land
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1", "box-2", "box-3"])])).model;
+    const rows = rowsOf(m);
+    expect(shape(rows)).toEqual(["# Thread", "box-1", "box-2", "box-3", "mac-3", "[All threads for “budget”]"]);
+    expect(activeOf(m, rows)).toBe("hit:mac-3");
+  });
+});
+
+describe("Recent across hosts", () => {
+  it("is one list, the newest opened first wherever he opened it", () => {
+    let m = typed("", [box, mac]);
+    const recent = (keys: [string, number][]): SearchGroup => ({ source: "search.recent", kind: "recent", label: "Recent", more: false, hits: keys.map(([key, openedAt]) => hit(key, { openedAt })) });
+    m = landInstant(m, m.gen, "box", answer([recent([["b-old", 10], ["b-older", 5]])])).model;
+    m = landInstant(m, m.gen, "mac", answer([recent([["m-new", 50], ["m-mid", 8]])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Recent", "m-new", "b-old", "m-mid", "b-older"]);
   });
 });
 
 describe("a change of scope", () => {
+  it("clears the list at once: no row of a job the search no longer reads stays for a Return to take", () => {
+    let m = begin(emptyModel(), { text: "budget", kind: null, scope: null, hosts: [box] });
+    m = landInstant(m, m.gen, "box", answer([group("mail", ["m-purdue", "m-cosmic"])])).model;
+    m = step(m, rowsOf(m), 1);
+    m = begin(m, { text: "budget", kind: null, scope: "purdue", hosts: [box] });
+    expect(rowsOf(m)).toEqual([]);
+    expect(activeOf(m, rowsOf(m))).toBeNull();
+    expect(m.moved).toBe(false);
+    // the same words in the same scope keep what is on screen
+    let same = begin(emptyModel(), { text: "budget", kind: null, scope: "purdue", hosts: [box] });
+    same = landInstant(same, same.gen, "box", answer([group("mail", ["m-purdue"])])).model;
+    expect(shape(rowsOf(begin(same, { text: "budget", kind: null, scope: "purdue", hosts: [box] })))).toEqual(["# Mail", "m-purdue"]);
+  });
   it("takes a host that is no longer asked off the list with its rows", () => {
     let m = typed("budget", [box, mac]);
     m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1"])])).model;

@@ -40,6 +40,12 @@ const MAIL = group(
   true,
 );
 const TASKS = group("task", "Tasks", [hit("t1", "task", "Send the budget to Dana", { detail: "PUR-41", at: NOW + 4 * DAY })]);
+// An event today says its time, any other its day, and never a year: the third is in the next one.
+const EVENTS = group("event", "Agenda", [
+  hit("e1", "event", "Budget review", { detail: "Room 204", at: NOW + 2 * 3_600_000 }),
+  hit("e2", "event", "Budget planning with Finance", { detail: "Teams", at: NOW + 7 * DAY }),
+  hit("e3", "event", "Budget kickoff for FY27", { detail: "Córdova Center", workspaceId: "w-unify", at: NOW + 50 * DAY }),
+]);
 const FILES = group("file", "Files", [hit("f1", "file", "Budget FY27.xlsx", { detail: "Esports › Finance", cloud: true, at: NOW - 7 * DAY, open: { to: "file", ref: null, name: "Budget FY27.xlsx" } })]);
 const THREADS = group("thread", "Threads", [hit("th1", "thread", "Budget review for the LAN", { snippet: "…the budget lines for the venue and the prizes…", at: NOW - 3 * DAY })]);
 
@@ -59,14 +65,14 @@ function modelOf(state: PreviewState): { model: SearchModel; job: Job | null } {
     case "across":
     case "moved": {
       let m = typed("budget");
-      m = landInstant(m, m.gen, "box", answer([PEOPLE, MAIL, TASKS, FILES, THREADS])).model;
+      m = landInstant(m, m.gen, "box", answer([PEOPLE, MAIL, TASKS, EVENTS, FILES, THREADS])).model;
       if (state === "moved") for (let i = 0; i < 6; i++) m = step(m, rowsOf(m), 1);
       return { model: m, job: null };
     }
     case "one-job": {
       const m = typed("budget");
       const mine = (g: SearchGroup): SearchGroup => ({ ...g, hits: g.hits.filter((h) => h.workspaceId === "w-purdue"), more: false });
-      return { model: landInstant(m, m.gen, "box", answer([PEOPLE, mine(MAIL), TASKS, FILES, THREADS])).model, job: JOBS[0] };
+      return { model: landInstant(m, m.gen, "box", answer([PEOPLE, mine(MAIL), TASKS, mine(EVENTS), FILES, THREADS])).model, job: JOBS[0] };
     }
     case "one-kind": {
       const m = typed("budget", "mail");

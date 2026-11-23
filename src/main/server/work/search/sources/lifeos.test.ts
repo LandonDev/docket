@@ -231,6 +231,8 @@ describe('projects', () => {
       ['lifeos:projects:j2', 'Budget tooling', COSMIC]
     ])
     expect(hits[0].open).toEqual({ to: 'view', view: 'projects', with: { project: 'j1' } })
+    // found by what it is about, not by its name: the line says why; one found by its name carries none
+    expect([hits[0].snippet, hits[1].snippet]).toEqual(['The budget and the venue', undefined])
   })
   it('of a sector outside the reach never come back', async () => {
     const rig = makeRig()

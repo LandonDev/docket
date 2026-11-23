@@ -723,7 +723,7 @@ export function ProjectRail({
               <ProjectSection
                 label="Work"
                 addLabel="Add Work workspace"
-                headingBefore={workRows.length === 0 ? undefined : workSearchMark()}
+                headingBefore={workSearchMark()}
                 items={workRows}
                 statusKey={statusKey}
                 onAdd={workRows.length === 0 ? undefined : openWorkAdd}

@@ -61,6 +61,21 @@ describe("PickerDialog", () => {
     expect([...group.children].map((el) => el.getAttribute("data-slot") ?? (el.hasAttribute("data-picker-leading") ? "picker-leading" : el.tagName))).toEqual(["input-group-leading", "picker-leading", "input", "input-group-trailing"]);
     expect(document.querySelector("[data-picker-leading]")!.textContent).toBe("Mail");
     expect(screen.getByRole("button", { name: "All jobs" })).toBeTruthy();
+    // with no list named, the field is a plain field, as Go to File's is
+    expect(screen.getByRole("textbox", { name: "Search Work" }).getAttribute("aria-controls")).toBeNull();
+  });
+
+  it("makes the field a combobox over the list it is told of, naming the highlighted row; and draws no rule when told there is no row", async () => {
+    await act(async () => {
+      render(
+        <PickerDialog label="Search Work" search={createRef()} query="budget" onQuery={vi.fn()} onSearchKey={vi.fn()} onClose={vi.fn()} listId="the-list" activeId="row-2" rule={false}>
+          <p>rows</p>
+        </PickerDialog>,
+      );
+    });
+    const field = screen.getByRole("combobox", { name: "Search Work" });
+    expect([field.getAttribute("aria-controls"), field.getAttribute("aria-activedescendant"), field.getAttribute("aria-expanded"), field.getAttribute("aria-autocomplete")]).toEqual(["the-list", "row-2", "true", "list"]);
+    expect(document.querySelector("[data-picker-rule]")).toBeNull();
   });
 
   it("says why it was asked to close, so a picker may take Escape for a step back first", async () => {

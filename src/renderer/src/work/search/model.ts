@@ -4,6 +4,7 @@ import {
   SEARCH_ALL,
   SEARCH_PER_GROUP,
   SEARCH_RECENTS,
+  searchLabel,
   searchNoun,
   searchRank,
   type SearchAnswer,
@@ -53,6 +54,8 @@ export interface SearchModel {
   text: string;
   /** one kind alone, or null */
   kind: string | null;
+  /** the job the search is held to (its key), or null for all jobs */
+  scope: string | null;
   hosts: SearchHost[];
   slots: Slot[];
   /** what was asked this generation and has not answered: `<host>\n*` for a host's first answer, `<host>\n<source>` for a source */
@@ -66,7 +69,7 @@ export interface SearchModel {
   active: string | null;
 }
 
-export const emptyModel = (): SearchModel => ({ gen: 0, text: "", kind: null, hosts: [], slots: [], out: new Set(), quiet: [], seen: [], moved: false, active: null });
+export const emptyModel = (): SearchModel => ({ gen: 0, text: "", kind: null, scope: null, hosts: [], slots: [], out: new Set(), quiet: [], seen: [], moved: false, active: null });
 
 const outKey = (host: string, source = "*"): string => `${host}\n${source}`;
 
@@ -78,21 +81,24 @@ export const asksNetwork = (text: string): boolean => text.trim().length >= NETW
 /**
  * A new generation: his words, the kind and the hosts to ask. Every host's
  * first answer is out. What is on screen stays until its own answer lands,
- * shown only where it still holds the words. A change of words puts the
- * highlight back on the first row; `offline` are hosts with Work on that
- * cannot be asked, each one quiet line.
+ * shown only where it still holds the words. A change of scope clears the
+ * list at once: a row of a job the search no longer reads must not stand
+ * there, unlabelled, for a Return to take. A change of words, kind or scope
+ * puts the highlight back on the first row; `offline` are hosts with Work
+ * on that cannot be asked, each one quiet line.
  */
-export function begin(model: SearchModel, ask: { text: string; kind: string | null; hosts: SearchHost[]; offline?: readonly string[] }): SearchModel {
+export function begin(model: SearchModel, ask: { text: string; kind: string | null; scope?: string | null; hosts: SearchHost[]; offline?: readonly string[] }): SearchModel {
   const text = ask.text.trim();
-  const same = text === model.text && ask.kind === model.kind;
+  const scope = ask.scope ?? null;
+  const same = text === model.text && ask.kind === model.kind && scope === model.scope;
   return {
     ...model,
     gen: model.gen + 1,
     text,
     kind: ask.kind,
+    scope,
     hosts: ask.hosts,
-    // A host no longer asked (the scope narrowed) takes its rows with it.
-    slots: model.slots.filter((slot) => ask.hosts.some((h) => h.id === slot.host)),
+    slots: scope === model.scope ? model.slots.filter((slot) => ask.hosts.some((h) => h.id === slot.host)) : [],
     out: new Set(ask.hosts.map((h) => outKey(h.id))),
     quiet: (ask.offline ?? []).map((name) => ({ key: `offline:${name}`, line: `${name} is offline.` })),
     moved: same ? model.moved : false,
@@ -147,14 +153,14 @@ const withSeen = (seen: string[], groups: readonly SearchGroup[]): string[] => [
  * network row of an older generation stays until its own answer lands,
  * unless its source is no longer asked.
  */
-export function landInstant(model: SearchModel, gen: number, hostId: string, answer: SearchAnswer): { model: SearchModel; ask: string[] } {
+export function landInstant(model: SearchModel, gen: number, hostId: string, answer: SearchAnswer): { model: SearchModel; ask: { source: string; kind: string }[] } {
   const host = model.hosts.find((h) => h.id === hostId);
   if (gen !== model.gen || !host) return { model, ask: [] };
-  const ask = asksNetwork(model.text) ? answer.pending.map((p) => p.source) : [];
+  const ask = asksNetwork(model.text) ? answer.pending : [];
   const out = new Set(model.out);
   out.delete(outKey(hostId));
-  for (const source of ask) out.add(outKey(hostId, source));
-  const kept = model.slots.filter((slot) => slot.host !== hostId || (slot.tier === "network" && ask.includes(slot.source)));
+  for (const { source } of ask) out.add(outKey(hostId, source));
+  const kept = model.slots.filter((slot) => slot.host !== hostId || (slot.tier === "network" && ask.some((a) => a.source === slot.source)));
   return {
     model: { ...model, out, slots: [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "instant", gen))], quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups) },
     ask,
@@ -171,17 +177,25 @@ export function landSource(model: SearchModel, gen: number, hostId: string, sour
   return { ...model, out, slots: [...kept, ...answer.groups.map((g) => slotOf(hostId, g, "network", gen))], quiet: withQuiet(model, host, answer.quiet), seen: withSeen(model.seen, answer.groups) };
 }
 
-/** A host, or one source of it, that did not answer: its rows leave, and it is one quiet line. */
-export function failed(model: SearchModel, gen: number, hostId: string, source: string | null): SearchModel {
+/**
+ * A host that did not answer its first ask: its rows leave, and it is one
+ * quiet line by its name. One source of a host that did not answer: that
+ * source's rows leave and the line names the kind ("Mail did not answer."),
+ * since the host's other sources did.
+ */
+export function failed(model: SearchModel, gen: number, hostId: string, source: { source: string; kind: string } | null): SearchModel {
   const host = model.hosts.find((h) => h.id === hostId);
   if (gen !== model.gen || !host) return model;
   const out = new Set(model.out);
-  out.delete(outKey(hostId, source ?? "*"));
-  const slots = model.slots.filter((slot) => slot.host !== hostId || (source !== null && slot.source !== source));
-  const key = `host:${hostId}`;
-  const quiet = model.quiet.some((q) => q.key === key) ? model.quiet : [...model.quiet, { key, line: `${host.name} did not answer.` }];
+  out.delete(outKey(hostId, source?.source ?? "*"));
+  const slots = model.slots.filter((slot) => slot.host !== hostId || (source !== null && slot.source !== source.source));
+  const said = source ? quietLine(`source:${source.source}`, `${searchLabel(source.kind)} did not answer`, host, model.hosts.length) : { key: `host:${hostId}`, line: `${host.name} did not answer.` };
+  const quiet = model.quiet.some((q) => q.key === said.key) ? model.quiet : [...model.quiet, said];
   return { ...model, out, slots, quiet };
 }
+
+/** Whether any host could be asked and answered: with none, there is nothing to say was not found. */
+const someoneAnswered = (model: SearchModel): boolean => model.hosts.some((h) => !model.quiet.some((q) => q.key === `host:${h.id}`));
 
 /** Something asked this generation is still out: the field's spinner. */
 export const busy = (model: SearchModel): boolean => model.out.size > 0;
@@ -236,13 +250,20 @@ export function rowsOf(model: SearchModel, o: { scoped?: boolean } = {}): Row[] 
       more ||= slot.more && !stale;
     }
     if (fresh.length === 0) continue;
+    // Recent is one list across hosts: what he opened last, wherever he opened it.
+    if (kind === RECENT_KIND) fresh.sort((a, b) => (b.hit.openedAt ?? 0) - (a.hit.openedAt ?? 0));
     more ||= fresh.length > cap;
-    rows.push({ type: "heading", id: `heading:${kind}`, label: mine[0].label });
-    for (const { hit, host } of fresh.slice(0, cap)) rows.push({ type: "hit", id: `hit:${hit.key}`, hit, host });
-    hits += Math.min(fresh.length, cap);
+    const shownHits = fresh.slice(0, cap);
+    // The row he chose is never the one the cap cuts: when rows that landed since stand before it, it takes the last place.
+    const chosen = model.moved && model.active ? fresh.findIndex((f) => `hit:${f.hit.key}` === model.active) : -1;
+    if (chosen >= cap) shownHits[cap - 1] = fresh[chosen];
+    // Held to one kind, the field already names it: no heading says it again.
+    if (!model.kind) rows.push({ type: "heading", id: `heading:${kind}`, label: mine[0].label });
+    for (const { hit, host } of shownHits) rows.push({ type: "hit", id: `hit:${hit.key}`, hit, host });
+    hits += shownHits.length;
     if (more && !model.kind && kind !== RECENT_KIND) rows.push({ type: "all", id: `all:${kind}`, kind, label: `All ${searchNoun(kind, mine[0].label)} for “${model.text}”` });
   }
-  if (hits === 0 && model.text && !busy(model)) {
+  if (hits === 0 && model.text && !busy(model) && someoneAnswered(model)) {
     rows.push({ type: "note", id: "nothing", text: `Nothing for “${model.text}”` });
     if (o.scoped) rows.push({ type: "widen", id: "widen", label: "Search all jobs" });
   }

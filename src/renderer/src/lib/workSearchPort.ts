@@ -1,8 +1,9 @@
 /**
  * Work search's door (docs/agents/work-search.md "The window"): how the
  * key, the menu, the rail's mark and any screen open the one field over
- * everything in Work. Safe in the first paint: it imports nothing, of Work
- * or otherwise. App hears it and mounts the picker's chunk.
+ * everything in Work. All of Work search that the first paint holds: it
+ * imports nothing. App hears it and mounts the picker's chunk; asked again
+ * with no seed while the picker is open, the picker flips its scope.
  *
  *   openWorkSearch()                        every job
  *   openWorkSearch({ text: "budget" })      with his words in the field
@@ -23,28 +24,14 @@ export interface WorkSearchSeed {
 type Listener = (seed: WorkSearchSeed) => void;
 const listeners = new Set<Listener>();
 
-/** An ask with no seed: the key itself. While the picker is open it flips the scope. */
-export const isBareSeed = (seed: WorkSearchSeed): boolean => seed.text === undefined && seed.workspaceId === undefined && seed.kind === undefined;
+/** An ask with no seed: the key itself. */
+export const isBareSeed = (seed: WorkSearchSeed): boolean => !seed.text && !seed.workspaceId && !seed.kind;
 
-/** One press of the key can arrive twice, by the window's own key handler and by the menu's accelerator: the second is dropped. */
-const SAME_PRESS_MS = 80;
-let lastBare = Number.NEGATIVE_INFINITY;
-
-export function openWorkSearch(seed: WorkSearchSeed = {}, now: number = performance.now()): void {
-  if (isBareSeed(seed)) {
-    if (now - lastBare < SAME_PRESS_MS) return;
-    lastBare = now;
-  }
+export function openWorkSearch(seed: WorkSearchSeed = {}): void {
   for (const listener of [...listeners]) listener(seed);
 }
 
-/** The command's own ask (⌘⇧K, the menu's row): nothing while no host has Work on, since there is nothing to search. */
-export function searchWork(workOn: boolean, now?: number): boolean {
-  if (workOn) openWorkSearch({}, now);
-  return workOn;
-}
-
-/** App's subscription; returns its off. */
+/** Returns its off. */
 export function onWorkSearch(listener: Listener): () => void {
   listeners.add(listener);
   return () => void listeners.delete(listener);

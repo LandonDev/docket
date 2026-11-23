@@ -250,10 +250,12 @@ export const project = source<Project>({
   unranked: true,
   read: async (ctx, ask, sectors) => (await q<Project[]>(ctx, 'projects:list', asked(sectors))).filter((p) => mentionMatches(ask.text, p.name, p.description)),
   sectors: (p) => [p.sector],
-  hit: (p, workspaceId) => ({
+  hit: (p, workspaceId, text) => ({
     key: lifeosKey('projects', p._id),
     kind: 'project',
     title: p.name,
+    // Found by what it is about and not by its name: the line says why.
+    ...(p.description && !mentionMatches(text, p.name) ? { snippet: mentionExcerpt(p.description, 160) } : {}),
     workspaceId,
     open: view('projects', { project: p._id }),
     chip: lifeosChip('project', 'projects', p._id, p.name, mentionExcerpt(p.description))

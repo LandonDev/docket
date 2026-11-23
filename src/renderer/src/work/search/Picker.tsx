@@ -10,6 +10,7 @@ import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { useLockOverscroll } from "../../hooks/useLockOverscroll";
+import { markOverflowEdges, OVERFLOW_FADE_Y, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { usePointerHighlight } from "../../hooks/usePointerHighlight";
 import { cn } from "../../lib/cn";
 import { modOrCtrl } from "../../lib/keys";
@@ -65,6 +66,13 @@ function dotIcon(sector: string | null): MenuIcon {
 }
 
 const ALL_JOBS = "all";
+/** The list's id and an option's, for the field to name the row the arrows are on (a combobox's `aria-activedescendant`). */
+export const LIST_ID = "work-search-list";
+export const optionId = (rowId: string): string => `work-search-option-${rowId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+
+/** Two asks with no seed closer than this are one press of the key, heard by the window and by the menu. */
+export const SAME_PRESS_MS = 80;
+
 /** The list's cap where the page gives no measure (a test): the class below says the same. */
 const LIST_CAP = 380;
 
@@ -88,7 +96,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   useEffect(() => () => controller.close(), [controller]);
   useEffect(() => {
     const { hosts, offline } = searchHosts(job, { workspaces: () => workspaces });
-    controller.search(query, kind, hosts, offline);
+    controller.search(query, kind, hosts, offline, job?.key ?? null);
     // The hosts follow the Work switches and the catalog; a job is its key.
   }, [controller, query, kind, job?.key, workHosts, workspaces]);
 
@@ -100,9 +108,17 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
     else setScopeOpen(true);
   };
   // The key reaches here through the door, whichever way it came (the field below, the menu's accelerator through App).
+  // One press can arrive both ways at once: the second, within a press's length, is the same press.
   const flipNow = useRef(flip);
   flipNow.current = flip;
-  useEffect(() => onWorkSearch((asked) => (isBareSeed(asked) ? flipNow.current() : undefined)), []);
+  useEffect(() => {
+    let last = Number.NEGATIVE_INFINITY;
+    return onWorkSearch((asked) => {
+      if (!isBareSeed(asked) || performance.now() - last < SAME_PRESS_MS) return;
+      last = performance.now();
+      flipNow.current();
+    });
+  }, []);
 
   const rows = useMemo(() => rowsOf(model, { scoped: job !== null }), [model, job]);
   const options = useMemo(() => rows.filter(isOption), [rows]);
@@ -163,6 +179,9 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
       // Escape steps out of one kind first; a second Escape closes.
       onClose={(reason) => (reason === "escape-key" && kind ? setKind(null) : onClose())}
       leading={kind ? searchLabel(kind) : undefined}
+      listId={rows.length > 0 ? LIST_ID : undefined}
+      activeId={active ? optionId(active) : null}
+      rule={rows.length > 0}
       trailing={
         <FieldEnd
           busy={busy(model)}
@@ -264,14 +283,22 @@ export function Results({
   onTake: (row: Option, o?: { thread?: boolean }) => void;
 }) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
+  const overflowEdges = useOverflowEdges<HTMLDivElement>("y");
   const list = useRef<HTMLDivElement | null>(null);
   const setList = useCallback(
     (el: HTMLDivElement | null) => {
       list.current = el;
       lockOverscroll(el);
+      overflowEdges(el);
     },
-    [lockOverscroll],
+    [lockOverscroll, overflowEdges],
   );
+  // More rows landed, or fewer: the cut edge fades only while there is more past it.
+  useLayoutEffect(() => {
+    if (list.current) markOverflowEdges(list.current, "y");
+  });
+  // The time column is drawn only when a row has a time: Recent, which has none, gives the room to its titles.
+  const timed = rows.some((row) => row.type === "hit" && timeOf(row.hit, now) !== undefined);
   const activeIndex = options.findIndex((option) => option.id === active);
   const { activeRef, onMouseMove, onRowEnter } = usePointerHighlight<HTMLDivElement>({
     active: activeIndex,
@@ -328,8 +355,8 @@ export function Results({
     const row = options.find((option) => option.id === id);
     if (!row || row.type !== "hit") return null;
     return [
-      { kind: "item", id: "open", label: "Open", shortcut: shortcutFor("Work", "Open a search result") },
-      ...(canStartAbout(row.hit) ? [{ kind: "item" as const, id: "thread", label: "New Thread About This", shortcut: shortcutFor("Work", "Start a thread about a search result") }] : []),
+      { kind: "item", id: "open", label: "Open", shortcut: shortcutFor("Work", "Open Result") },
+      ...(canStartAbout(row.hit) ? [{ kind: "item" as const, id: "thread", label: "New thread about this", shortcut: shortcutFor("Work", "New Thread About Result") }] : []),
     ];
   };
 
@@ -338,6 +365,8 @@ export function Results({
       lazyMount
       label="Search result"
       rowsFor={menuRows}
+      // The menu's row is the highlighted one while the menu is open, however the highlight stood before.
+      onOpenChange={(open, id) => (open && id && menuRows(id) ? onPoint(id) : undefined)}
       onPick={(pick, id) => {
         const row = options.find((option) => option.id === id);
         if (row) onTake(row, { thread: pick === "thread" });
@@ -345,17 +374,19 @@ export function Results({
     >
       <div
         ref={setList}
+        id={LIST_ID}
         role="listbox"
         aria-label="Work search results"
         data-work-search-list
         onMouseMove={onMouseMove}
         onScroll={onScroll}
-        className="max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-xl)]"
+        // The strip is kept from the start, so the columns do not shift when the list first overflows; a cut edge fades.
+        className={cn("max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [scrollbar-gutter:stable] [--scrollbar-inset:var(--radius-xl)]", OVERFLOW_FADE_Y)}
       >
         {rows.map((row, index) => {
           if (row.type === "heading") {
             return (
-              <div key={row.id} role="presentation" className={cn("px-3 pb-1 text-[11px] font-medium text-muted-foreground", index === 0 ? "pt-1" : "pt-2")}>
+              <div key={row.id} role="presentation" className={cn("px-3 pb-1 text-[11px] leading-4 font-medium text-muted-foreground", index === 0 ? "pt-1" : "pt-2")}>
                 {row.label}
               </div>
             );
@@ -372,6 +403,7 @@ export function Results({
           const option = options.indexOf(row);
           const common = {
             ref: highlighted ? activeRef : undefined,
+            id: optionId(row.id),
             role: "option" as const,
             "aria-selected": highlighted,
             "data-row": row.id,
@@ -382,7 +414,8 @@ export function Results({
           if (row.type !== "hit") {
             return (
               <div key={row.id} {...common} className={cn(pickerRowClass(highlighted), "text-muted-foreground")}>
-                <span aria-hidden className="size-4 shrink-0" />
+                {/* "All mail for …" stands under its group's titles; "Search all jobs" under the line it answers. */}
+                {row.type === "all" ? <span aria-hidden className="size-4 shrink-0" /> : null}
                 <span className="min-w-0 truncate">{row.label}</span>
               </div>
             );
@@ -406,14 +439,22 @@ export function Results({
                 <MatchText text={hit.title} query={text} active={Boolean(text)} />
                 {hit.cloud ? <Cloud aria-label="Kept in the cloud" className="ml-1.5 inline size-3.5 align-[-2px] text-muted-foreground" /> : null}
               </span>
-              <span className={cn("flex-[1_1_0] truncate text-xs text-muted-foreground", fact ? "min-w-[4.5rem] max-[480px]:min-w-0" : "min-w-0")}>{fact}</span>
-              {mixed ? (
-                <span data-job className="flex w-28 shrink-0 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-20">
-                  {job ? <SectorDot sector={job.sector} /> : <span aria-hidden className="size-4 shrink-0" />}
-                  <span className="min-w-0 truncate">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
+              {/* In a window too narrow for it the fact goes, rather than stand as a stub. */}
+              <span className={cn("flex-[1_1_0] truncate text-xs text-muted-foreground", fact ? "min-w-[4.5rem] max-[480px]:hidden" : "min-w-0")}>
+                {fact ? <MatchText text={fact} query={text} active={Boolean(text)} /> : null}
+              </span>
+              {/* The row's end: the job and the time, each a column of one width, at the right whatever stands before them. */}
+              {mixed || timed ? (
+                <span className="ml-auto flex shrink-0 items-center gap-2">
+                  {mixed ? (
+                    <span data-job className="flex w-28 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-20">
+                      {job ? <SectorDot sector={job.sector} /> : <span aria-hidden className="size-4 shrink-0" />}
+                      <span className="min-w-0 truncate">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
+                    </span>
+                  ) : null}
+                  {timed ? <span data-time className="w-14 text-right text-xs whitespace-nowrap tabular-nums text-muted-foreground">{time}</span> : null}
                 </span>
               ) : null}
-              <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground max-[480px]:w-9">{time}</span>
             </div>
           );
         })}

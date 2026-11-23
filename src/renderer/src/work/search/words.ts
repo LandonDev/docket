@@ -1,5 +1,4 @@
 import type { SearchHit } from "@shared/work/search";
-import { whenWords } from "../canvas/mentions";
 
 /**
  * A row's muted words (docs/DESIGN.md "Work search"): its one fact, and its
@@ -28,12 +27,21 @@ export function ageWords(at: number, now = Date.now()): string {
 export function factOf(hit: SearchHit, now = Date.now()): string | undefined {
   if (hit.snippet) return hit.snippet;
   // A task that is done, dropped or waiting says so; an open one says when it is due, else its key.
-  if (hit.kind === "task" && hit.at !== undefined && (!hit.detail || TASK_KEY.test(hit.detail))) return `Due ${whenWords(hit.at, now)}`;
+  if (hit.kind === "task" && hit.at !== undefined && (!hit.detail || TASK_KEY.test(hit.detail))) return `Due ${eventWords(hit.at, now)}`;
   return hit.detail;
+}
+
+const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const monthDay = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+
+/** When an event is: today's as a time, any other as its day. Never a year: an event is found only within months of today. */
+export function eventWords(at: number, now = Date.now()): string {
+  const date = new Date(at);
+  return date.toDateString() === new Date(now).toDateString() ? clock.format(date) : monthDay.format(date);
 }
 
 /** The time at a row's end; none for a task (its due day is its fact). */
 export function timeOf(hit: SearchHit, now = Date.now()): string | undefined {
   if (hit.at === undefined || hit.kind === "task") return undefined;
-  return hit.kind === "event" || hit.at > now ? whenWords(hit.at, now) : ageWords(hit.at, now);
+  return hit.kind === "event" || hit.at > now ? eventWords(hit.at, now) : ageWords(hit.at, now);
 }

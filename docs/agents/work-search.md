@@ -23,8 +23,9 @@ the window is in, and again widens. ⌘K is still the app's Search (threads,
 code and notes of every place).
 
 A screen that wants this field calls `openWorkSearch({ text?, workspaceId?,
-kind? })` from `lib/workSearchPort.ts` (safe in the first paint). No screen
-draws a second everything-search.
+kind? })` from `lib/workSearchPort.ts` (safe in the first paint: the port
+is a listener set and nothing else, and it opens nothing while Work is off
+because nothing listens). No screen draws a second everything-search.
 
 ## How a pillar registers
 
@@ -152,8 +153,10 @@ is not shown, since it has no view to open in.
 (`search/recents.ts`). `work.search.opened` writes a row only for a thing
 of a job this host has. A row keeps the kind, the title, the id, the job
 and how to open the thing again: never its fact, its snippet, or the words
-a chip carried. Empty text answers the newest eight whose job still exists;
-a deleted job takes its rows with it (`workspaceRemoved`).
+a chip carried. Empty text answers the newest eight whose job still exists,
+each with `openedAt`, so the window makes one Recent list across hosts, the
+newest first, before it takes eight; a deleted job takes its rows with it
+(`workspaceRemoved`).
 `SEARCH_RECENTS = 0` turns the list off.
 
 ## The sources this pillar brings
@@ -219,13 +222,20 @@ method can be given a small source here on `ask.ts`, as Files is.
   in their order, the highlight. `controller.ts` runs the asks: every host
   at once for its instant tier on each change of his words, then each
   source a host named on its own, 120 ms after his last key and from two
-  characters, so each lands when it is ready.
+  characters, so each lands when it is ready. A change of scope clears what
+  the last scope found (a row of another job is never left to take), as a
+  change of kind does; a change of his words keeps the rows on screen
+  until the new ones land. A source that fails is one line by its kind
+  ("Mail did not answer."); a host whose first answer fails is one line by
+  its name. "Nothing for …" is said only when someone answered.
 - `hosts.ts`: every connected host with Work on is asked, the Work home for
   what LifeOS holds and the rest with `own: true`. A job is a sector's Work
   workspaces on every host (one a sector a host). A host with Work on that
   is not connected is one quiet line.
 - `Picker.tsx` draws the model's rows in `PickerDialog` and decides no
-  order. `hold.ts` is the rule that keeps a row he moved to in its place:
+  order. The key pressed while it is open reaches it through the port by
+  two roads at once (the field, the menu's accelerator): two bare asks
+  within `SAME_PRESS_MS` (80) are one press. `hold.ts` is the rule that keeps a row he moved to in its place:
   the scroller moves by what landed above it, and its box is no taller than
   the rows from there down.
 - `open.ts`: Return. The window enters the hit's job when it is in another

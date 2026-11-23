@@ -16,6 +16,11 @@ type FrameProps = {
   leading?: ReactNode;
   /** The field's own end: a control that belongs to the search (Work search's scope, its spinner). */
   trailing?: ReactNode;
+  /** The list the field drives, by its id, and the highlighted option's: the field then says it is a combobox and names the row the arrows are on, for a reader that cannot see the highlight. */
+  listId?: string;
+  activeId?: string | null;
+  /** false: no rule under the field, for a picker with no row to show under it. */
+  rule?: boolean;
   children: ReactNode;
 };
 
@@ -34,6 +39,9 @@ export function PickerDialog({
   onClose,
   leading,
   trailing,
+  listId,
+  activeId,
+  rule,
   children,
   ...data
 }: FrameProps & {
@@ -51,7 +59,7 @@ export function PickerDialog({
         {...data}
       >
         <DialogTitle className="sr-only">{label}</DialogTitle>
-        <PickerFrame label={label} search={search} query={query} onQuery={onQuery} onSearchKey={onSearchKey} leading={leading} trailing={trailing}>
+        <PickerFrame label={label} search={search} query={query} onQuery={onQuery} onSearchKey={onSearchKey} leading={leading} trailing={trailing} listId={listId} activeId={activeId} rule={rule}>
           {children}
         </PickerFrame>
       </DialogContent>
@@ -60,10 +68,11 @@ export function PickerDialog({
 }
 
 /** What the dialog holds: the field, the rule under it, the list. Its own piece so a design page can draw a picker with no dialog round it. */
-export function PickerFrame({ label, search, query, onQuery, onSearchKey, leading, trailing, children }: FrameProps) {
+export function PickerFrame({ label, search, query, onQuery, onSearchKey, leading, trailing, listId, activeId, rule = true, children }: FrameProps) {
   return (
     <>
-      <InputGroup leading={<Search className="size-3.5" />} trailing={trailing} className="h-9 border-transparent">
+      {/* The frame's radius less its 4px inset (16 − 4 = 12px), as a row's. */}
+      <InputGroup leading={<Search className="size-3.5" />} trailing={trailing} className="h-9 rounded-xl border-transparent">
         {leading ? (
           <span data-picker-leading className="shrink-0 text-[13px] text-muted-foreground">
             {leading}
@@ -78,13 +87,14 @@ export function PickerFrame({ label, search, query, onQuery, onSearchKey, leadin
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
+          {...(listId ? { role: "combobox", "aria-autocomplete": "list" as const, "aria-expanded": true, "aria-controls": listId, "aria-activedescendant": activeId ?? undefined } : {})}
           onChange={(e) => onQuery(e.target.value)}
           onKeyDown={onSearchKey}
         />
       </InputGroup>
       {/* Across the frame's 4px inset to both edges: a full-width
           separator shifted by -mx-1 stopped 8px short of the right. */}
-      <Separator data-picker-rule className="-mx-1 mb-1 data-[orientation=horizontal]:w-auto" />
+      {rule ? <Separator data-picker-rule className="-mx-1 mb-1 data-[orientation=horizontal]:w-auto" /> : null}
       {children}
     </>
   );
@@ -98,10 +108,11 @@ export function PickerNote({ children }: { children: ReactNode }) {
 
 /** One row of a picker list, in a menu row's box (`MENU_ROW`: 28px, 12px
  *  in, 8px from glyph to label) with the frame's radius less its 4px inset
- *  (16 − 4 = 12px); the highlighted row is a muted fill. */
+ *  (16 − 4 = 12px); the highlighted row is a muted fill. The line is 20px,
+ *  whatever the dialog's own body sets, so the row is 28px. */
 export function pickerRowClass(highlighted: boolean): string {
   return cn(
-    "flex w-full cursor-default items-center rounded-xl text-left",
+    "flex w-full cursor-default items-center rounded-xl text-left leading-5",
     MENU_ROW,
     highlighted && "bg-muted",
   );

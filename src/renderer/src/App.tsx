@@ -301,7 +301,7 @@ import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
 import { openWorkView, useWorkOn, useWorkView, workHome, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
-import { isBareSeed, onWorkSearch, searchWork, type WorkSearchSeed } from "./lib/workSearchPort";
+import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from "./lib/workSearchPort";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
@@ -3259,7 +3259,7 @@ export default function App() {
         case "save_all": return go(a.onSaveAll);
         case "open_search": return go(a.onOpenSearch);
         // Nothing while no host has Work on: there is nothing to search.
-        case "search_work": return go(() => void searchWork(workSwitch.anyOn()));
+        case "search_work": return go(() => (workSwitch.anyOn() ? openWorkSearch() : undefined));
         case "open_inbox": return go(a.onOpenInbox);
         case "open_computers": return go(shell.openComputers);
         case "mark_all_read": return go(() => markAllSeen(sessionStore.metas().map((m) => m.id)));

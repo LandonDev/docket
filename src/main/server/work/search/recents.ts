@@ -33,7 +33,7 @@ export function recentGroup(db: DatabaseSync, reach: SearchReach, keep: (hit: Se
   for (const row of db.prepare(`SELECT key, hit, opened_at FROM work_search_recent ORDER BY opened_at DESC, key`).all() as unknown as Row[]) {
     if (hits.length >= limit) break
     try {
-      const hit = JSON.parse(row.hit) as SearchHit
+      const hit = { ...(JSON.parse(row.hit) as SearchHit), openedAt: row.opened_at }
       if (inReach(reach, hit.workspaceId ?? null) && keep(hit)) hits.push(hit)
     } catch {
       // a row from a shape this build no longer reads

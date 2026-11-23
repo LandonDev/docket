@@ -90,7 +90,7 @@ async function mount(seed: Record<string, unknown> = {}) {
   });
   return view;
 }
-const field = (): HTMLInputElement => screen.getByRole("textbox", { name: "Search Work" }) as HTMLInputElement;
+const field = (): HTMLInputElement => document.querySelector<HTMLInputElement>("[data-work-search] [data-slot=input]")!;
 const type = async (text: string): Promise<void> => void (await act(async () => fireEvent.change(field(), { target: { value: text } })));
 const land = async (index: number, a: SearchAnswer): Promise<void> => void (await act(async () => asks[index].answer(a)));
 const press = async (key: string, mods: Record<string, boolean> = {}): Promise<void> => void (await act(async () => fireEvent.keyDown(field(), { key, ...mods })));
@@ -103,9 +103,15 @@ describe("Work search", () => {
     expect(screen.getByRole("dialog").hasAttribute("data-work-search")).toBe(true);
     expect(asks.map((a) => a.params)).toEqual([{ text: "", tier: "instant" }]);
     expect(list()).toBeNull();
+    // with no row there is no rule under the field, and the field drives no list
+    expect(document.querySelector("[data-picker-rule]")).toBeNull();
+    expect(field().getAttribute("role")).toBeNull();
     await land(0, answer([group("recent", "Recent", [hit("r1", "mail"), hit("r2", "thread")])]));
     expect([...list().children].map((el) => el.textContent)).toEqual(expect.arrayContaining(["Recent"]));
     expect(list().querySelectorAll('[role="option"]')).toHaveLength(2);
+    expect(document.querySelector("[data-picker-rule]")).not.toBeNull();
+    // Recent has no times: no column is kept for them
+    expect(list().querySelector("[data-time]")).toBeNull();
   });
 
   it("fills groups under their headings in the fixed order, with the job at each row's end while jobs mix, and Return opens the highlighted row", async () => {
@@ -123,8 +129,12 @@ describe("Work search", () => {
     // the words he typed are marked in the title by weight
     expect(list().querySelector('[data-row="hit:m1"] mark')!.textContent).toBe("Budget");
     expect(selected()).toBe("hit:m1");
+    // the field is a combobox over the list, and names the row the highlight is on
+    expect([field().getAttribute("role"), field().getAttribute("aria-controls"), field().getAttribute("aria-expanded")]).toEqual(["combobox", list().id, "true"]);
+    expect(document.getElementById(field().getAttribute("aria-activedescendant")!)).toBe(list().querySelector('[data-row="hit:m1"]'));
     await press("ArrowDown");
     expect(selected()).toBe("hit:m2");
+    expect(document.getElementById(field().getAttribute("aria-activedescendant")!)).toBe(list().querySelector('[data-row="hit:m2"]'));
     await press("ArrowUp");
     await press("ArrowUp");
     expect(selected()).toBe("hit:thread:t1");
@@ -201,16 +211,19 @@ describe("Work search", () => {
     // scoped to one job the job column is gone
     await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail")])]));
     expect(list().querySelector("[data-job]")).toBeNull();
-    // the desktop's menu sends the same key through the door (App's command), once the press is over
-    await act(async () => openWorkSearch({}, performance.now() + 1000));
+    // the desktop's menu sends the same key through the door (App's command), once that press is over
+    const clock = vi.spyOn(performance, "now");
+    clock.mockReturnValue(100_000);
+    await act(async () => openWorkSearch());
     expect(scope()).toBe("All jobs");
     expect(asked.at(-1)).toBeNull();
-    // one press that arrives both ways flips once
-    await act(async () => {
-      openWorkSearch({}, performance.now() + 5000);
-      openWorkSearch({}, performance.now() + 5010);
-    });
+    // one press that arrives both ways, a few milliseconds apart, flips once
+    clock.mockReturnValue(200_000);
+    await act(async () => openWorkSearch());
+    clock.mockReturnValue(200_010);
+    await act(async () => openWorkSearch());
     expect(scope()).toBe("Purdue");
+    clock.mockRestore();
   });
 
   it("opens held to the job and the kind a screen named", async () => {
@@ -233,6 +246,9 @@ describe("Work search", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(document.querySelector("[data-picker-leading]")!.textContent).toBe("Mail");
     expect(asks.at(-1)!.params).toEqual({ text: "budget", tier: "instant", kind: "mail" });
+    // the field names the kind: the list says it no second time
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail"), hit("m2", "mail")])]));
+    expect([...list().children].map((el) => el.getAttribute("role"))).toEqual(["option", "option"]);
     await press("Escape");
     expect(document.querySelector("[data-picker-leading]")).toBeNull();
     expect(onClose).not.toHaveBeenCalled();

@@ -130,7 +130,7 @@ describe("the rail with Work on", () => {
     expect(loads.shell).toBeGreaterThan(0);
   });
 
-  it("puts a search mark on the Work heading, before its +, that opens Work search; none while there is no job to search", async () => {
+  it("puts a search mark on the Work heading, before its +, that opens Work search; it stays with no job yet, since Work Chats are searched too", async () => {
     setWorkOn("local", true);
     const heard: unknown[] = [];
     const off = onWorkSearch((seed) => heard.push(seed));
@@ -146,7 +146,8 @@ describe("the rail with Work on", () => {
     workspaceStore.reset();
     sessionStore.reset();
     const bare = await mountRail([CODE]);
-    expect(bare.querySelector('[aria-label="Search Work"]')).toBeNull();
+    expect(bare.querySelector('[aria-label="Search Work"]')).not.toBeNull();
+    expect(bare.querySelector('[aria-label="Add Work workspace"]')).toBeNull();
   });
 
   it("puts Work Chats after Chats, and draws no Outbox row with no page for it to open", async () => {

@@ -37,7 +37,8 @@ export const SearchHitSchema = z.object({
   workspaceId: z.string().max(200).nullable(),
   open: SearchOpenSchema,
   chip: ContextChipSchema.optional(),
-  cloud: z.literal(true).optional()
+  cloud: z.literal(true).optional(),
+  openedAt: z.number().optional()
 }) satisfies z.ZodType<SearchHit>
 
 export const SearchRequestSchemas = [

@@ -291,12 +291,13 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
     ],
   },
   {
-    // The canvas pane's selection bar (work/canvas/SelectionBar.tsx): Ask puts the selection in the thread's composer.
+    // Work search (work/search), then the canvas pane's selection bar (work/canvas/SelectionBar.tsx): Ask puts the selection in the thread's composer.
     title: "Work",
     bindings: [
       { name: "Search Work", keys: [[CMD, SHF, "K"]] },
-      { name: "Open a search result", keys: [[RET]], scope: "work-search" },
-      { name: "Start a thread about a search result", keys: [[CMD, RET]], scope: "work-search" },
+      { name: "This Job or All Jobs", keys: [[CMD, SHF, "K"]], scope: "work-search" },
+      { name: "Open Result", keys: [[RET]], scope: "work-search" },
+      { name: "New Thread About Result", keys: [[CMD, RET]], scope: "work-search" },
       { name: "Ask about the selection", keys: [[CMD, "L"]] },
     ],
     work: true,

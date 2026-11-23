@@ -2051,9 +2051,14 @@ docs/agents/work-search.md). It is a picker, never a page: it opens under
 his hands and leaves no trace on what he was searching from.
 
 - **The frame** is `PickerDialog`, the Go to File shell: 560px, the field
-  36px over a hairline, 28px rows at the frame's 4px inset, appearing at
-  once. The dialog's own exit is the shell's. Nothing in the list moves or
-  fades: it is read tens of times a day.
+  36px with 12px corners (the dialog's 16 less its 4px inset) over a
+  hairline, 28px rows (a 20px line and 4px above and below) at the frame's
+  4px inset, appearing at once. The hairline is drawn only over rows: with
+  nothing to list the field stands alone. The dialog's own exit is the
+  shell's. Nothing in the list moves or fades: it is read tens of times a
+  day. The field is a combobox that names the list and the highlighted
+  row (`aria-controls`, `aria-activedescendant`), so a screen reader says
+  the row the arrows are on.
 - **The key** is ⌘⇧K, a command of its own (`search_work`); ⌘K stays the
   app's Search. The place to click is a ghost search mark on the rail's
   **Work** heading, before its +, with the key in its tip. No other screen
@@ -2067,13 +2072,19 @@ his hands and leaves no trace on what he was searching from.
 - **Groups** stand in one fixed order by kind (People, Mail, Messages,
   Tasks, Agenda, Files, Documents, Projects, Threads, then the rest),
   never by speed or score, under the menu group label (11px medium muted,
-  `px-3 pt-2 pb-1`): the `@` list's own headings.
+  `px-3 pt-2 pb-1`): the `@` list's own headings. Narrowed to one kind
+  the heading is gone: the field already names the kind.
 - **A row** is the `@` list's own, one line: a 16px glyph of its kind, the
   title (13px, as wide as its words, the matched ones in the foreground's
   weight through `MatchText`), the fact or the matched line right after it
-  (12px muted, cut first), then at the row's end the job and the time
-  (12px muted, tabular, each a column of one width). A file kept in the
-  cloud wears Files' cloud mark after its name.
+  (12px muted, cut first, a matched word marked as in the title), then at
+  the row's end the job and the time (12px muted, tabular, each a column
+  of one width, 8px apart). The time column is drawn only when a row in
+  the list has a time: Recent has none and gives the room to its titles.
+  What has passed says how long ago ("2d"); an event says its time today
+  and its day otherwise ("Jan 12"), never a year and never on two lines.
+  Under 480px the fact goes rather than stand as a stub. A file kept in
+  the cloud wears Files' cloud mark after its name.
 - **The job** is the sector dot and the job's name in 12px muted, in a
   column of one width so the names line up; never a chip. It is drawn only
   while the results can mix jobs (All jobs, with more than one job in
@@ -2087,21 +2098,29 @@ his hands and leaves no trace on what he was searching from.
   Once he has moved it, by arrow or pointer, the highlighted row keeps its
   place on screen: what lands above it is taken up by the scroller in the
   same frame, so the row under his eye, and the one Return will take,
-  never moves.
+  never moves, and a group that fills keeps the row he is on among its
+  four. The scroller keeps its 10px strip from the start
+  (`scrollbar-gutter: stable`), so the columns do not shift when the list
+  first overflows, and a cut edge fades (`OVERFLOW_FADE_Y`) while more
+  lies past it.
 - **Nothing typed** shows Recent: the last eight things he opened from
   search, any job. No hint text and no tips.
 - **Nothing found** is one muted row, "Nothing for “q”" (`PickerNote`).
   Scoped to one job it is followed by one row he can take, "Search all
-  jobs".
+  jobs", on the note's own inset. When nothing could be asked at all the
+  causes below stand alone.
 - **What could not be searched** is one muted line a cause at the list's
   foot, in LifeOS's or the host's own words: "LifeOS is signed out on
-  MacBook.", "The box is offline.", "Mail did not answer." One line for
+  MacBook.", "The box is offline.", "Mail did not answer." (a source),
+  "The box did not answer." (a host's first answer). One line for
   LifeOS covers every kind it feeds. No button: Settings → Connections has
   the fix. A source that does not exist on a host says nothing.
 - **Return opens in place**: the picker closes, the window enters the
   thing's job if it is in another, and the thing opens in its own view,
   its thread or a Files tab. ⌘↩ starts a thread about it where the kind can
-  be a chip. Right-click gives the same two with their keys.
+  be a chip. Right-click gives the same two with their keys ("Open",
+  "New thread about this") and moves the highlight to the row it opened
+  on.
 
 ## Scrolling
 

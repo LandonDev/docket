@@ -100,7 +100,7 @@ describe("a search as it runs", () => {
     await r.tick(0);
     const notes = rowsOf(r.controller.model).flatMap((row) => (row.type === "note" ? [row.text] : []));
     expect(r.keys()).toEqual(["t1"]);
-    expect(notes).toEqual(["MacBook did not answer.", "The box did not answer."]);
+    expect(notes).toEqual(["MacBook did not answer.", "Mail did not answer on The box."]);
     expect(busy(r.controller.model)).toBe(false);
   });
   it("tells whoever reads it of every change, and asks nothing more once closed", async () => {

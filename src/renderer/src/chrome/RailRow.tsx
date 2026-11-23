@@ -290,10 +290,13 @@ function HoverAction({ action, bare = false }: { action: RailRowAction; bare?: b
   );
 }
 
+/** One verb at a heading's end: an icon button named by its tip, which may carry a key cap; hover or focus may warm a chunk. */
+type HeadingVerb = { label: string; icon: IconComponent; onClick: (event: MouseEvent<HTMLButtonElement>) => void; menu?: boolean; expanded?: boolean; shortcut?: string; intent?: IntentProps };
+
 /**
  * A group's name over its rows: 28px, 12px medium muted, sentence case, on
  * the rows' glyph column. `action` is one always-visible icon button at its
- * end (Add workspace).
+ * end (Add workspace); `before` a second one ahead of it (Work's search).
  */
 export function RailHeading({
   id,
@@ -304,50 +307,43 @@ export function RailHeading({
   id?: string;
   children: string;
   /** The heading's one verb; `menu` marks one that opens a menu (aria-haspopup, and expanded while it is open). */
-  action?: { label: string; icon: IconComponent; onClick: (event: MouseEvent<HTMLButtonElement>) => void; menu?: boolean; expanded?: boolean };
-  /** A second verb before it, for a heading that has two (Work: search, then add): its tip may carry a key cap, and hover or focus warms its chunk. */
-  before?: { label: string; icon: IconComponent; onClick: () => void; shortcut?: string; intent?: IntentProps };
+  action?: HeadingVerb;
+  /** A second verb before it, for a heading that has two (Work: search, then add). */
+  before?: HeadingVerb;
 }) {
-  const Icon = action?.icon;
-  const BeforeIcon = before?.icon;
   return (
     <div className="flex h-7 shrink-0 items-center gap-1 pr-1 pl-3">
       <span id={id} data-rail-heading className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
         {children}
       </span>
-      {before && BeforeIcon ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={<Button variant="ghost" size="icon-xs" aria-label={before.label} onClick={before.onClick} {...before.intent} className="text-muted-foreground hover:text-foreground" />}
-          >
-            <BeforeIcon className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            {before.label}
-            {before.shortcut ? <Kbd size="sm">{before.shortcut}</Kbd> : null}
-          </TooltipContent>
-        </Tooltip>
-      ) : null}
-      {action && Icon ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={action.label}
-                aria-haspopup={action.menu ? "menu" : undefined}
-                aria-expanded={action.menu ? !!action.expanded : undefined}
-                onClick={action.onClick}
-                className="text-muted-foreground hover:text-foreground"
-              />
-            }
-          >
-            <Icon className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipContent side="right">{action.label}</TooltipContent>
-        </Tooltip>
-      ) : null}
+      {[before, action].map((verb) => {
+        if (!verb) return null;
+        const Icon = verb.icon;
+        return (
+          <Tooltip key={verb.label}>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={verb.label}
+                  aria-haspopup={verb.menu ? "menu" : undefined}
+                  aria-expanded={verb.menu ? !!verb.expanded : undefined}
+                  onClick={verb.onClick}
+                  {...verb.intent}
+                  className="text-muted-foreground hover:text-foreground"
+                />
+              }
+            >
+              <Icon className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {verb.label}
+              {verb.shortcut ? <Kbd size="sm">{verb.shortcut}</Kbd> : null}
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }

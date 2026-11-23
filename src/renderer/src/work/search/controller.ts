@@ -35,10 +35,10 @@ export class SearchController {
     for (const listener of [...this.listeners]) listener();
   }
 
-  /** A new generation: his words, the kind, the hosts. */
-  search(text: string, kind: string | null, hosts: AskedHost[], offline: readonly string[] = []): void {
+  /** A new generation: his words, the kind, the hosts, and the job it is held to (its key; null: all jobs). */
+  search(text: string, kind: string | null, hosts: AskedHost[], offline: readonly string[] = [], scope: string | null = null): void {
     for (const cancel of this.waits.splice(0)) cancel();
-    this.set(begin(this.model, { text, kind, hosts, offline }));
+    this.set(begin(this.model, { text, kind, scope, hosts, offline }));
     const gen = this.model.gen;
     const typedAt = this.deps.now();
     for (const host of hosts) {
@@ -49,10 +49,10 @@ export class SearchController {
           if (ask.length === 0 || gen !== this.model.gen) return;
           const go = (): void => {
             if (gen !== this.model.gen) return;
-            for (const source of ask) {
-              this.deps.ask(host.id, paramsFor(this.model, host, { workspaceId: host.workspaceId, sources: [source] })).then(
-                (found) => this.set(landSource(this.model, gen, host.id, source, found)),
-                () => this.set(failed(this.model, gen, host.id, source)),
+            for (const one of ask) {
+              this.deps.ask(host.id, paramsFor(this.model, host, { workspaceId: host.workspaceId, sources: [one.source] })).then(
+                (found) => this.set(landSource(this.model, gen, host.id, one.source, found)),
+                () => this.set(failed(this.model, gen, host.id, one)),
               );
             }
           };

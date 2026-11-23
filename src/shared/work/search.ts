@@ -38,6 +38,8 @@ export interface SearchHit {
   chip?: ContextChip
   /** a file kept in the cloud alone, as Files marks one */
   cloud?: true
+  /** on a Recent row alone: when he opened it, so Recent is one list across hosts */
+  openedAt?: number
 }
 
 /** Where one search may look: the jobs of this host it may read, and whether Work Chats are among them. */
