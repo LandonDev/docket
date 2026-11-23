@@ -23,7 +23,7 @@ import { playRunner } from "../routines/plays/runOn";
 import { openWorkView, useWorkView, workViewNow } from "../../lib/workSwitch";
 import { sessionWaits, useLifeosQuery } from "../shell/lifeos";
 import { knownAttendees, type DirectoryPerson } from "../people/model";
-import type { Clash } from "@shared/work/clashes";
+import { clashTime, type Clash } from "@shared/work/clashes";
 import { ClashLines, useClashes } from "../clashes/mark";
 import { openClash } from "../clashes/open";
 import { sectorName } from "../shell/actions";
@@ -256,18 +256,18 @@ export const EventRow = memo(function EventRow({
           </Button>
         </span>
       </ContextMenuTrigger>
-      <EventMenu event={event} over={done} onPrepare={onPrepare} clashes={clash} environmentId={environmentId} />
+      <EventMenu event={event} over={done} onPrepare={onPrepare} clashes={clash} environmentId={environmentId} day={day} />
     </ContextMenu>
   );
 });
 
-function EventMenu({ event, over, onPrepare, clashes = NO_CLASHES, environmentId }: { event: AgendaEvent; over: boolean; onPrepare: (event: AgendaEvent) => void; clashes: readonly Clash[] | undefined; environmentId: string }) {
+function EventMenu({ event, over, onPrepare, clashes = NO_CLASHES, environmentId, day }: { event: AgendaEvent; over: boolean; onPrepare: (event: AgendaEvent) => void; clashes: readonly Clash[] | undefined; environmentId: string; /** the day the row sits under in its list */ day?: number | undefined }) {
   const runPlay = playRunner();
   const other = (clash: Clash) => (clash.a.eventId === event._id ? clash.b : clash.a);
-  // Two events of one name are told apart by job and time.
+  // Two events of one name are told apart by job and time, the time as the row's line says it (with its weekday on another day).
   const named = (clash: Clash) => {
-    const { title, sector, startsAt } = other(clash);
-    return clashes.some((c) => c !== clash && other(c).title === title) ? `${title} (${sectorName(sector)}, ${formatTime(startsAt)})` : title;
+    const { title, sector } = other(clash);
+    return clashes.some((c) => c !== clash && other(c).title === title) ? `${title} (${sectorName(sector)}, ${clashTime(clash, event._id, day === undefined ? {} : { on: day })})` : title;
   };
   return (
     <ContextMenuContent>

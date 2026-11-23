@@ -53,6 +53,32 @@ describe("a step's times when the clocks change", () => {
     expect(endHint(form)).toBe("Next day");
   });
 
+  it("reads a To earlier on the clock on the Day first when the hour repeats, before the next day", () => {
+    // 2027-11-07: 1:00 to 1:59 AM comes twice. An offer that crossed midnight, moved to that day: 1:45 AM to 1:30 AM is 45 minutes, to the second 1:30.
+    const offered = { start: new Date(2027, 10, 3, 23, 30).getTime(), end: new Date(2027, 10, 4, 0, 30).getTime() };
+    const form = { day: "2027-11-07", from: "01:45", to: "01:30" };
+    const when = whenOf(form, offered) as { start: number; end: number };
+    expect(when.end - when.start).toBe(45 * MINUTE);
+    expect(endHint(form, offered)).toBeUndefined();
+  });
+
+  it("refuses a long event's To in the skipped hour of the day it keeps, rather than send it a day short", () => {
+    // Fri 6:00 PM to Sun 1:00 AM, To typed as 2:30 on the Sunday the clocks go forward.
+    const offered = { start: new Date(2027, 2, 12, 18, 0).getTime(), end: new Date(2027, 2, 14, 1, 0).getTime() };
+    const skipped = "To is in the hour the clocks skip that day. Pick another time.";
+    expect(whenOf({ ...formOf(offered), to: "02:30" }, offered)).toBe(skipped);
+    // Sat 1:00 AM to Sun 3:30 AM, To typed as 2:30: the same, never Saturday's 2:30.
+    const other = { start: new Date(2027, 2, 13, 1, 0).getTime(), end: new Date(2027, 2, 14, 3, 30).getTime() };
+    expect(whenOf({ ...formOf(other), to: "02:30" }, other)).toBe(skipped);
+    // A Day that puts the kept end on that Sunday's skipped hour is refused too.
+    const late = { start: new Date(2027, 2, 5, 18, 0).getTime(), end: new Date(2027, 2, 7, 2, 30).getTime() };
+    expect(whenOf({ ...formOf(late), day: "2027-03-12" }, late)).toBe(skipped);
+  });
+
+  it("says the same minute is no span the day before the clocks go forward, not that the clocks skip it", () => {
+    expect(spanOf({ day: "2027-03-13", from: "02:30", to: "02:30" })).toBe("It must end after it starts");
+  });
+
   it("does not call an end in the repeated hour the next day's", () => {
     // From the first 1:45 AM to the second 1:15 AM: half an hour, the same day, though 1:15 is earlier on the clock.
     const offered = { start: FIRST_1_30 + 15 * MINUTE, end: SECOND_1_30 - 15 * MINUTE };

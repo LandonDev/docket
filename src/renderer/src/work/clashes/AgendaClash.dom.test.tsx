@@ -111,6 +111,20 @@ describe("a clash on the Agenda row", () => {
     expect(clashAsk.get()?.id).toBe("ev_meeting-ev_twin");
   });
 
+  it("gives a same-name clash on another day its weekday in the menu, as the row's line does", async () => {
+    events.rows = [meeting];
+    const next = side("ev_next", "ref", game.title, game.startsAt + 24 * HOUR, game.endsAt + 24 * HOUR);
+    lifeos.range = { clashes: [...overlap.clashes, { ...overlap.clashes[0]!, id: "ev_meeting-ev_next", b: next as never }], leaves: [] };
+    render(<View {...props} />);
+    await act(async () => {});
+    fireEvent.contextMenu(screen.getByRole("listitem"));
+    await act(async () => {});
+    const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(next.startsAt);
+    expect(await screen.findByRole("menuitem", { name: `Show clash with ${game.title} (Ref, ${clockOf(game.startsAt)})` })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: `Show clash with ${game.title} (Ref, ${weekday} ${clockOf(next.startsAt)})` }));
+    expect(clashAsk.get()?.id).toBe("ev_meeting-ev_next");
+  });
+
   it("draws no line and no menu row for an event with no clash, or one that is over", async () => {
     const over = { ...meeting, _id: "ev_over", startsAt: now - 3 * HOUR, endsAt: now - HOUR };
     events.rows = [over, { ...meeting, _id: "ev_free" }];

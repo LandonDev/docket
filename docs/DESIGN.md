@@ -1861,8 +1861,8 @@ Around the canvas:
   is a link `Button` at the line's own 16px that takes an underline on
   hover and opens that clash's dialog; the row's menu has
   Show clash, or with several "Show clash with Varsity Basketball" for
-  each (two of one name take their job and time: "Show clash with
-  Stand-up (Ref, 9:00 AM)"). An event that is over carries none. The line arrives with its
+  each (two of one name take their job and time, the time as the line
+  says it: "Show clash with Stand-up (Ref, Fri 9:00 AM)"). An event that is over carries none. The line arrives with its
   read and nothing pulses for it. "Leave 4:35" under the time is from
   where he will be: the event before when that ends within three hours,
   else the day's start.

@@ -217,11 +217,15 @@ export function clashLine(clash: Clash, eventId: string, opts: ClashWordsOpts = 
   const earlier = eventId === clash.a.eventId
   const [own, other] = earlier ? [clash.a, clash.b] : [clash.b, clash.a]
   const named = other.sector === own.sector ? other.title : `${other.title} (${labelOf(other.sector, opts)})`
-  if (clash.kind === 'overlap') {
-    const day = dayOf(other.startsAt, opts)
-    return `Overlaps ${named}, ${day === dayOf(opts.on ?? own.startsAt, opts) ? '' : `${day} `}${clockOf(other.startsAt, opts)}`
-  }
+  if (clash.kind === 'overlap') return `Overlaps ${named}, ${clashTime(clash, eventId, opts)}`
   return `${shortWords(clash)} ${earlier ? 'before' : 'after'} ${named}`
+}
+
+/** The other event's start as a line says it: "6:00 PM", with its weekday when it starts on another day than the one the line is read under ("Wed 11:00 PM"). */
+export function clashTime(clash: Clash, eventId: string, opts: ClashWordsOpts = {}): string {
+  const [own, other] = eventId === clash.a.eventId ? [clash.a, clash.b] : [clash.b, clash.a]
+  const day = dayOf(other.startsAt, opts)
+  return `${day === dayOf(opts.on ?? own.startsAt, opts) ? '' : `${day} `}${clockOf(other.startsAt, opts)}`
 }
 
 /** "38 min drive, 24 mi"; "About 40 min, 25 mi" without the map (to the nearest five minutes); null with no minutes. */

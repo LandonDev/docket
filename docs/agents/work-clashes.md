@@ -140,10 +140,12 @@ The pillar has no view of its own and no row in the column.
   (`whenOf`; `model.dst.test.ts` holds it across the clock changes). An
   offer under a day long stays under a day whatever he edits; one a day
   long or more keeps the days its end is past its Day (`endHint` names the
-  end's day under To). A To is looked for on the day it falls on, so only
-  that day's skipped hour refuses it, in words and with its field marked
-  invalid (`fieldOf`, `ClashStep.dst.dom.test.tsx`); a To typed into the
-  repeated hour is its first time after the start. A start already gone is
+  end's day under To) and its To is read on that day alone. A shorter
+  one's To is the first time after the start: the Day's own when there is
+  one, else the next day's when it is earlier on the clock. Either way a
+  To is looked for on the day it falls on, so only that day's skipped hour
+  refuses it, in words and with its field marked invalid (`fieldOf`,
+  `ClashStep.dst.dom.test.tsx`). A start already gone is
   refused. A move of an event with guests says they are told.
 - `model.ts` holds the pure parts: the marks, the time a move or a proposal
   starts filled with (the earlier event: the latest quarter hour that ends a

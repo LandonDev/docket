@@ -128,41 +128,43 @@ type Span = { start: number; end: number };
 /** Under a day by the clock, not the hours (a day the clocks change is 23 or 25 long): it ends on the day it starts, or the next day before the clock comes round to its start. */
 const underDay = (start: number, end: number): boolean => dayField(end) === dayField(start) || (dayField(end) === dayPlus(dayField(start), 1) && timeField(end) < timeField(start));
 
+const AFTER = "It must end after it starts";
+
 /**
  * The start and end a form names, or the words that say what is wrong with
  * it. What goes out is what the fields show, read the plain way: From on the
- * Day, To the first time after it, the next day's when it is earlier on the
- * clock (looked for on the day it falls on, so only that day's skipped hour
- * refuses it); the same minute is no span. A field he left as it was offered
- * keeps the instant offered, each on its own, since an hour the clocks
- * repeat shows one clock time for two instants. An offer under a day long
- * stays under a day whatever he edits; one a day long or more keeps the
- * days its end is past its Day, which the one Day field cannot say.
+ * Day, To the first time after it, on the Day when there is one, else the
+ * next day's when it is earlier on the clock; the same minute is no span. A
+ * To is looked for on the day it falls on, so only that day's skipped hour
+ * refuses it. A field he left as it was offered keeps the instant offered,
+ * each on its own, since an hour the clocks repeat shows one clock time for
+ * two instants. An offer under a day long stays under a day whatever he
+ * edits; one a day long or more keeps the days its end is past its Day,
+ * which the one Day field cannot say, and its To is read on that day alone.
  */
 export function whenOf(form: TimeForm, offered?: Span): Span | string {
   const was = offered ? formOf(offered) : null;
-  const sameDay = was !== null && form.day === was.day;
-  const starts = offered && sameDay && form.from === was?.from ? [offered.start] : clocksOn(form.day, form.from, "from");
+  const dayKept = was !== null && form.day === was.day;
+  const starts = offered && dayKept && form.from === was?.from ? [offered.start] : clocksOn(form.day, form.from, "from");
   if (typeof starts === "string") return starts;
   // A From typed into the repeated hour is its first time.
   const start = starts[0]!;
   const long = offered !== undefined && !underDay(offered.start, offered.end);
   const fits = (end: number) => end > start && (long || underDay(start, end));
-  if (offered && sameDay && form.to === was?.to && fits(offered.end)) return { start, end: offered.end };
+  if (offered && dayKept && form.to === was?.to && fits(offered.end)) return { start, end: offered.end };
   if (!form.to) return UNSET;
-  const kept = offered ? daysApart(dayField(offered.start), dayField(offered.end)) : 0;
-  let skipped: string | null = null;
-  for (const days of new Set([kept, 0, 1])) {
+  /** An end on that day (in the repeated hour, the first of the two after the start), the words why that day has no such time, or nothing when its time is no end for the start. */
+  const endOn = (days: number): number | string | undefined => {
     const ends = clocksOn(dayPlus(form.day, days), form.to, "to");
-    if (typeof ends === "string") {
-      skipped ??= ends;
-      continue;
-    }
-    // In the repeated hour, the first of the two that is after the start.
-    const end = ends.find(fits);
-    if (end !== undefined) return { start, end };
-  }
-  return skipped ?? "It must end after it starts";
+    return typeof ends === "string" ? ends : ends.find(fits);
+  };
+  const answer = (end: number | string | undefined): Span | string => (typeof end === "number" ? { start, end } : (end ?? AFTER));
+  if (offered && long) return answer(endOn(daysApart(dayField(offered.start), dayField(offered.end))));
+  const today = endOn(0);
+  if (typeof today === "number") return { start, end: today };
+  if (form.to === form.from) return AFTER;
+  // Later on the clock, it is the Day's own time or none; earlier, the next day's.
+  return answer(form.to > form.from ? today : endOn(1));
 }
 
 /** The same with nothing offered: every field is read as typed. */
