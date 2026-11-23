@@ -25,7 +25,9 @@
 #           opens (TC_TEST_ITEM picks it): the PDF, the video with a comment posted at a frame, the
 #           picture, the meeting, the browser with its held submit and that act opened, the form, the
 #           dashboard and history. TC_WORK_ONLY=m47 shoots that part alone. Last, the voice note's
-#           sheet light and dark (w60, w61); TC_WORK_ONLY=capture shoots it alone.
+#           sheet light and dark (w60, w61); TC_WORK_ONLY=capture shoots it alone. Then the receipt's
+#           sheet on the made-up scan light and dark (w62, w63) and one Save to the Unify job (w64,
+#           $OUT/receipt-report.json); TC_WORK_ONLY=money shoots that alone.
 #           scripts/ios-sim-proof-local.ts then reads back on the host what went
 #           ($OUT/work-report.txt).
 #   shell   Home, a workspace's project cards, the archived list, Inbox,
@@ -1068,11 +1070,13 @@ work_set() {
   appearance light
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   # TC_WORK_ONLY=m47 shoots milestone 47's part alone (a hand run while its screens change);
-  # TC_WORK_ONLY=capture the voice note alone.
+  # TC_WORK_ONLY=capture the voice note alone, TC_WORK_ONLY=money the receipt alone.
   [ "${TC_WORK_ONLY:-}" = capture ] && { work_capture; return; }
+  [ "${TC_WORK_ONLY:-}" = money ] && { work_money; return; }
   [ "${TC_WORK_ONLY:-}" = m47 ] || work_m46
   work_m47
   work_capture
+  work_money
 }
 
 # The voice note (docs/agents/work-capture.md "The phone"): Home's microphone opens the sheet
@@ -1082,6 +1086,29 @@ work_capture() {
   appearance dark
   ( TC_SHEET=voice-note shot w61-voice-note-dark home )
   appearance light
+}
+
+# The receipt (docs/agents/work-money.md, docs/IOS-DESIGN.md "The receipt"): the simulator has no document camera,
+# so TC_TEST_SHEET=receipt opens the sheet on the app's made-up scan, read by Vision on the phone and parsed by the
+# server's Money pillar; light and dark. Then TC_TEST_ACTION=receipt-save:unify presses Save to the Unify job (the
+# draft the shots left), and the app writes Documents/receipt-report.json; scripts/ios-sim-proof-local.ts checks the
+# receipt landed in that job's ledger or its To confirm list.
+work_money() {
+  local container
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  [ -n "$container" ] && rm -f "$container/Documents/receipt-report.json"
+  ( TC_SHEET=receipt shot w62-receipt-light home "" "" "" 15 )
+  appearance dark
+  ( TC_SHEET=receipt shot w63-receipt-dark home "" "" "" 15 )
+  appearance light
+  ( TC_SHEET=receipt TC_ACTION=receipt-save:unify shot w64-receipt-saved home "" "" "" 20 )
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  if [ -n "$container" ] && wait_for "$container/Documents/receipt-report.json" 20; then
+    cp "$container/Documents/receipt-report.json" "$OUT/receipt-report.json"
+    echo "ios-sim-proof: receipt $(cat "$OUT/receipt-report.json")"
+  else
+    echo "ios-sim-proof: receipt no report (the Save did not run)"
+  fi
 }
 
 # Milestone 47: a Work workspace's Mail, Tasks, Agenda and Routines (LifeKit's fixture day: the test server

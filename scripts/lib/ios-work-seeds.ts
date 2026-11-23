@@ -166,6 +166,31 @@ export async function verifyWork(ready: WorkSeedReady): Promise<string[]> {
   }
 }
 
+/** The receipt the work set's phone scans (ios/TempCode/Sources/Work/Money/ReceiptFixture.swift): every word made up. */
+export const RECEIPT_SELLER = /blue heron/i
+export const RECEIPT_CENTS = 1043
+
+/**
+ * The receipt's one Save from the phone (scripts/ios-sim-proof.sh work_money), read back on the host: filed in the
+ * Unify job's ledger (an amount and a date were read) or waiting in its To confirm list, sent from the phone.
+ */
+export async function verifyMoney(ready: WorkSeedReady, unify: string): Promise<string[]> {
+  const s = await socket(ready)
+  try {
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+    const read = await s.call<{ made: boolean; rows: { who: string; out: number; date: string | null }[]; toConfirm: { source: string; state: string; fields: { amount: number | null; who: string | null } }[] }>(
+      'work.money.read',
+      { workspaceId: unify, from: '2000-01-01', to: tomorrow }
+    )
+    const row = read.rows.find((r) => RECEIPT_SELLER.test(r.who) || r.out === RECEIPT_CENTS)
+    const waiting = read.toConfirm.filter((t) => t.source === 'phone')
+    const landed = row ? `filed in the ledger (${row.date ?? 'no date'}, ${row.who || 'no seller'}, ${row.out} cents)` : waiting.length ? `waiting in To confirm (${waiting.map((w) => `${w.state}, ${w.fields.amount ?? 'no'} cents`).join('; ')})` : 'nowhere'
+    return [`${row || waiting.length ? 'PASS' : 'FAIL'} the receipt saved from the phone reached the Unify job: ${landed}`]
+  } finally {
+    s.close()
+  }
+}
+
 /** Milestone 47's Work thread: every canvas kind the phone draws, open in one thread (TC_TEST_SEGMENT=item). */
 export const ITEMS_THREAD_TITLE = 'Spring LAN check-in'
 /** The comment the work set posts at a frame of the video, read back by `verifyWorkItems`. */

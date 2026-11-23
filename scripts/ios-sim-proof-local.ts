@@ -10,7 +10,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { bundleNodeScript } from './lib/bundle-node-script'
-import { seedVideo, seedWork, seedWorkItems, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
+import { seedVideo, seedWork, seedWorkItems, verifyMoney, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
 
 const repo = resolve(import.meta.dir, '..')
 const out = resolve(repo, 'scripts/.out/ios-client-test-server.mjs')
@@ -67,8 +67,10 @@ console.log(`ios-sim-proof-local: server on ${ready.baseUrl}`)
 const work = process.env.TC_PROOF_SET === 'work'
 const proofDir = process.env.TC_PROOF_DIR ?? '/tmp/tc-ios-proof'
 let items: { sessionId: string; lines: string[] } | null = null
+let unify: string | null = null
 if (work) {
   const ids = await seedWork(ready as unknown as WorkSeedReady, repo)
+  unify = ids.unify
   console.log(`ios-sim-proof-local: work seeded (${ids.purdue}, ${ids.unify})`)
   items = await seedWorkItems(ready as unknown as WorkSeedReady & { environmentId: string }, ids.purdue)
   console.log(items.lines.join('\n'))
@@ -102,12 +104,16 @@ const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
 if (work) {
   // What the phone's presses did, read back on the host (the server is still up unless the set quit it).
   // TC_WORK_ONLY=m47 skipped milestone 46's presses, and TC_WORK_ONLY=capture (the voice note's shots alone)
-  // every press, so their read-back would only say they did not happen.
+  // every press, so their read-back would only say they did not happen. TC_WORK_ONLY=money is the receipt alone.
   const only = process.env.TC_WORK_ONLY
-  const lines = only === 'm47' || only === 'capture' ? [] : await verifyWork(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the host back: ${String(err)}`])
-  if (items && only !== 'capture') {
+  const lines = only === 'm47' || only === 'capture' || only === 'money' ? [] : await verifyWork(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the host back: ${String(err)}`])
+  if (items && only !== 'capture' && only !== 'money') {
     lines.push(...items.lines)
     lines.push(...(await verifyWorkItems(ready as unknown as WorkSeedReady, items.sessionId).catch((err: unknown) => [`FAIL could not read the items back: ${String(err)}`])))
+  }
+  // The receipt's one Save (work_money), in the full set and in TC_WORK_ONLY=money.
+  if (unify && (only === undefined || only === '' || only === 'money')) {
+    lines.push(...(await verifyMoney(ready as unknown as WorkSeedReady, unify).catch((err: unknown) => [`FAIL could not read the receipt back: ${String(err)}`])))
   }
   writeFileSync(resolve(proofDir, 'work-report.txt'), lines.join('\n') + '\n')
   console.log(lines.join('\n'))
