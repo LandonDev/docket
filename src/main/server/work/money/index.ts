@@ -19,7 +19,7 @@ import { moneyTools } from './tools'
 type Params<M extends string> = Extract<(typeof MoneyRequestSchemas)[number]['_output'], { method: M }>['params']
 const paramsOf = <M extends string>(method: M, req: ClientRequest): Params<M> => {
   const schema = MoneyRequestSchemas.find((s) => s.shape.method.value === method)!
-  return schema.shape.params.parse(req.params) as Params<M>
+  return schema.shape.params.parse((req as { params?: unknown }).params) as Params<M>
 }
 
 /**
