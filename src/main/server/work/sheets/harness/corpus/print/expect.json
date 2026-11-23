@@ -1,0 +1,1199 @@
+{
+ "about": "Ten print cases from the editors plan's sheets lab (sheets-measure.md sections 3 and 4). libreoffice: the pages LibreOffice 26.8.3's calc_pdf_Export made of the file as it is, read back from the PDF (page size in points, the 1-based rows and columns whose cells were found on it, header and footer text). excelRules: the pages the lab's arithmetic gives following Excel's documented rules (no manual breaks under Fit to). libreofficeRules: the same arithmetic allowing manual breaks under Fit to, as LibreOffice does. match: [pages that agree, pages compared]. No Excel made any of these.",
+ "totals": {
+  "excelRules-libreoffice": [
+   25,
+   33
+  ],
+  "libreofficeRules-libreoffice": [
+   32,
+   34
+  ],
+  "excelRules-onlyoffice": [
+   6,
+   35
+  ]
+ },
+ "cases": {
+  "chart-print": {
+   "file": "print/chart-print.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "2-38",
+     "cols": "3-10"
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "2-38",
+     "cols": "3-10",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "2-38",
+     "cols": "3-10",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "onlyofficePages": 2,
+   "match": {
+    "excelRules-libreoffice": [
+     1,
+     1
+    ],
+    "libreofficeRules-libreoffice": [
+     1,
+     1
+    ],
+    "excelRules-onlyoffice": [
+     0,
+     2
+    ]
+   }
+  },
+  "fit-width": {
+   "file": "print/fit-width.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-19",
+     "cols": "1-12"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "20-86",
+     "cols": "1-12"
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-64",
+     "cols": "1-12",
+     "tab": "Data",
+     "scale": 0.73
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "65-86",
+     "cols": "1-12",
+     "tab": "Data",
+     "scale": 0.73
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-19",
+     "cols": "1-12",
+     "tab": "Data",
+     "scale": 0.73
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "20-83",
+     "cols": "1-12",
+     "tab": "Data",
+     "scale": 0.73
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "84-86",
+     "cols": "1-12",
+     "tab": "Data",
+     "scale": 0.73
+    }
+   ],
+   "onlyofficePages": 2,
+   "match": {
+    "excelRules-libreoffice": [
+     0,
+     2
+    ],
+    "libreofficeRules-libreoffice": [
+     1,
+     3
+    ],
+    "excelRules-onlyoffice": [
+     0,
+     2
+    ]
+   }
+  },
+  "landscape": {
+   "file": "print/landscape.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1-35",
+     "cols": "1-9",
+     "hf": [
+      "Header 1 of 2",
+      "Footer 1 of 2"
+     ]
+    },
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "36-42",
+     "cols": "1-9",
+     "hf": [
+      "Header 2 of 2",
+      "Footer 2 of 2"
+     ]
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1-35",
+     "cols": "1-9",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "36-42",
+     "cols": "1-9",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1-35",
+     "cols": "1-9",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "36-42",
+     "cols": "1-9",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "onlyofficePages": 2,
+   "match": {
+    "excelRules-libreoffice": [
+     2,
+     2
+    ],
+    "libreofficeRules-libreoffice": [
+     2,
+     2
+    ],
+    "excelRules-onlyoffice": [
+     0,
+     2
+    ]
+   }
+  },
+  "links_dest": {
+   "file": "links_dest.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "1-6",
+     "cols": "1-3,5"
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "1-6",
+     "cols": "1-5",
+     "tab": "Orders",
+     "scale": 1.0
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "1-6",
+     "cols": "1-5",
+     "tab": "Orders",
+     "scale": 1.0
+    }
+   ],
+   "onlyofficePages": 1,
+   "match": {
+    "excelRules-libreoffice": [
+     1,
+     1
+    ],
+    "libreofficeRules-libreoffice": [
+     1,
+     1
+    ],
+    "excelRules-onlyoffice": [
+     1,
+     1
+    ]
+   }
+  },
+  "manual-breaks": {
+   "file": "print/manual-breaks.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-13",
+     "cols": "1-3"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "14-31",
+     "cols": "1-3"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "32-46",
+     "cols": "1-3"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-13",
+     "cols": "4-8"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "14-31",
+     "cols": "4-8"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "32-46",
+     "cols": "4-8"
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-13",
+     "cols": "1-3",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "14-31",
+     "cols": "1-3",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "32-46",
+     "cols": "1-3",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-13",
+     "cols": "4-8",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "14-31",
+     "cols": "4-8",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "32-46",
+     "cols": "4-8",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-13",
+     "cols": "1-3",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "14-31",
+     "cols": "1-3",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "32-46",
+     "cols": "1-3",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-13",
+     "cols": "4-8",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "14-31",
+     "cols": "4-8",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "32-46",
+     "cols": "4-8",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "onlyofficePages": 6,
+   "match": {
+    "excelRules-libreoffice": [
+     6,
+     6
+    ],
+    "libreofficeRules-libreoffice": [
+     6,
+     6
+    ],
+    "excelRules-onlyoffice": [
+     2,
+     6
+    ]
+   }
+  },
+  "pivot": {
+   "file": "pivot.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "1-53",
+     "cols": "1-5,7"
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "54-106",
+     "cols": "1-5"
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "107-121",
+     "cols": "1-5"
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "3-12",
+     "cols": "1-7"
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "3-17",
+     "cols": "1-3"
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "1-53",
+     "cols": "1-7",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "54-106",
+     "cols": "1-7",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "107-121",
+     "cols": "1-7",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "3-12",
+     "cols": "1-7",
+     "tab": "Pivot",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "3-17",
+     "cols": "1-3",
+     "tab": "Pivot2",
+     "scale": 1.0
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "1-53",
+     "cols": "1-7",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "54-106",
+     "cols": "1-7",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "107-121",
+     "cols": "1-7",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "3-12",
+     "cols": "1-7",
+     "tab": "Pivot",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      595,
+      842
+     ],
+     "rows": "3-17",
+     "cols": "1-3",
+     "tab": "Pivot2",
+     "scale": 1.0
+    }
+   ],
+   "onlyofficePages": 3,
+   "match": {
+    "excelRules-libreoffice": [
+     5,
+     5
+    ],
+    "libreofficeRules-libreoffice": [
+     5,
+     5
+    ],
+    "excelRules-onlyoffice": [
+     0,
+     5
+    ]
+   }
+  },
+  "protect_print": {
+   "file": "protect_print.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "2-31",
+     "cols": "1-4",
+     "hf": [
+      "Page 2 of 7"
+     ]
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "32-40",
+     "cols": "1-4",
+     "hf": [
+      "Page 3 of 7"
+     ]
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "41-70",
+     "cols": "1-4",
+     "hf": [
+      "Page 4 of 7"
+     ]
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "71-80",
+     "cols": "1-4",
+     "hf": [
+      "Page 5 of 7"
+     ]
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "81-110",
+     "cols": "1-4",
+     "hf": [
+      "Page 6 of 7"
+     ]
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "111-120",
+     "cols": "1-4",
+     "hf": [
+      "Page 7 of 7"
+     ]
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "",
+     "cols": ""
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1-31",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1,32-61",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1,62-91",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1,92-120",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1",
+     "cols": "1-2",
+     "tab": "Plain",
+     "scale": 0.75
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1-31",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1,32-40",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1,41-70",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1,71-80",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1,81-110",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      842,
+      595
+     ],
+     "rows": "1,111-120",
+     "cols": "1-4",
+     "tab": "Report",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1",
+     "cols": "1-2",
+     "tab": "Plain",
+     "scale": 0.75
+    }
+   ],
+   "onlyofficePages": 6,
+   "match": {
+    "excelRules-libreoffice": [
+     1,
+     7
+    ],
+    "libreofficeRules-libreoffice": [
+     7,
+     7
+    ],
+    "excelRules-onlyoffice": [
+     1,
+     6
+    ]
+   }
+  },
+  "scale-70": {
+   "file": "print/scale-70.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-67",
+     "cols": "1-9"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "68-98",
+     "cols": "1-9"
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-67",
+     "cols": "1-9",
+     "tab": "Data",
+     "scale": 0.7
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "68-98",
+     "cols": "1-9",
+     "tab": "Data",
+     "scale": 0.7
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-67",
+     "cols": "1-9",
+     "tab": "Data",
+     "scale": 0.7
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "68-98",
+     "cols": "1-9",
+     "tab": "Data",
+     "scale": 0.7
+    }
+   ],
+   "onlyofficePages": 2,
+   "match": {
+    "excelRules-libreoffice": [
+     2,
+     2
+    ],
+    "libreofficeRules-libreoffice": [
+     2,
+     2
+    ],
+    "excelRules-onlyoffice": [
+     2,
+     2
+    ]
+   }
+  },
+  "titles": {
+   "file": "print/titles.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-47",
+     "cols": "1-4"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-47",
+     "cols": "1,5-6"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-2,48-81",
+     "cols": "1-4"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-2,48-81",
+     "cols": "1,5-6"
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-47",
+     "cols": "1-4",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-47",
+     "cols": "1,5-6",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-2,48-81",
+     "cols": "1-4",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-2,48-81",
+     "cols": "1,5-6",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-47",
+     "cols": "1-4",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-47",
+     "cols": "1,5-6",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-2,48-81",
+     "cols": "1-4",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-2,48-81",
+     "cols": "1,5-6",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "onlyofficePages": 6,
+   "match": {
+    "excelRules-libreoffice": [
+     4,
+     4
+    ],
+    "libreofficeRules-libreoffice": [
+     4,
+     4
+    ],
+    "excelRules-onlyoffice": [
+     0,
+     6
+    ]
+   }
+  },
+  "wide-columns": {
+   "file": "print/wide-columns.xlsx",
+   "libreoffice": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "1-3"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "4-6"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "8"
+    }
+   ],
+   "excelRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "1-3",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "4-6",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "8",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "libreofficeRules": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "1-3",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "4-6",
+     "tab": "Data",
+     "scale": 1.0
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "8",
+     "tab": "Data",
+     "scale": 1.0
+    }
+   ],
+   "onlyofficePages": 3,
+   "match": {
+    "excelRules-libreoffice": [
+     3,
+     3
+    ],
+    "libreofficeRules-libreoffice": [
+     3,
+     3
+    ],
+    "excelRules-onlyoffice": [
+     0,
+     3
+    ]
+   }
+  }
+ }
+}

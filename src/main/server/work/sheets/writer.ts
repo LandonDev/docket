@@ -13,7 +13,7 @@ import { colName, esc, escText } from './patch/xml'
  */
 
 const enc = new TextEncoder()
-const EMPTY_ZIP = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)])
+export const EMPTY_ZIP = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)])
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 const CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml'

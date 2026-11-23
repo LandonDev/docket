@@ -1,0 +1,688 @@
+{
+ "about": "What openpyxl 3.1.5 read from each patched workbook after LibreOffice 26.8.3 opened it and stored it again (style: bold, fill, number format, left border of A2; layout: width of B, height of row 3, merges; cf: each range and its rules; dv: validations; names; filter; page: orientation, fit width, fit height, fit on, print area, row breaks, header) and what LibreOffice printed of the patched file (pages: width and height in points, the page's first words). base is the workbook before any patch. Made by the editors plan's sheets lab (sheets-measure.md section 2); harness/make_patches.py makes the patches again.",
+ "variants": {
+  "base": {
+   "style": [
+    false,
+    "00000000",
+    "0.0",
+    null
+   ],
+   "layout": [
+    15.71,
+    15.0,
+    ""
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [],
+   "names": [
+    "Existing"
+   ],
+   "filter": null,
+   "page": [
+    "portrait",
+    1,
+    1,
+    false,
+    "",
+    [],
+    null
+   ],
+   "pages": [
+    [
+     612,
+     792,
+     [
+      "1 keep",
+      "0",
+      "0",
+      "12.3 keep"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  },
+  "cf": {
+   "style": [
+    false,
+    "00000000",
+    "0.0",
+    null
+   ],
+   "layout": [
+    15.71,
+    15.0,
+    ""
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ],
+    [
+     "A5:A20",
+     [
+      [
+       "cellIs",
+       "greaterThan",
+       [
+        "10"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [],
+   "names": [
+    "Existing"
+   ],
+   "filter": null,
+   "page": [
+    "portrait",
+    1,
+    1,
+    false,
+    "",
+    [],
+    null
+   ],
+   "pages": [
+    [
+     612,
+     792,
+     [
+      "1 keep",
+      "0",
+      "0",
+      "12.3 keep"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  },
+  "combined": {
+   "style": [
+    true,
+    "FFFFDD66",
+    "0.000\" kg\"",
+    "thin"
+   ],
+   "layout": [
+    22.0,
+    24.75,
+    "E2:F2"
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ],
+    [
+     "A5:A20",
+     [
+      [
+       "cellIs",
+       "greaterThan",
+       [
+        "10"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [
+    [
+     "list",
+     "B5:B20",
+     "\"yes,no\""
+    ]
+   ],
+   "names": [
+    "Existing",
+    "Inputs"
+   ],
+   "filter": "A1:D28",
+   "page": [
+    "landscape",
+    1,
+    0,
+    true,
+    "'Data'!$A$1:$D$19",
+    [
+     [
+      9,
+      true
+     ]
+    ],
+    "&P of &N"
+   ],
+   "pages": [
+    [
+     792,
+     612,
+     [
+      "1 of 3",
+      "1 keep",
+      "0",
+      "0"
+     ]
+    ],
+    [
+     792,
+     612,
+     [
+      "2 of 3",
+      "10 keep",
+      "18",
+      "27"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  },
+  "filter": {
+   "style": [
+    false,
+    "00000000",
+    "0.0",
+    null
+   ],
+   "layout": [
+    15.71,
+    15.0,
+    ""
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [],
+   "names": [
+    "Existing"
+   ],
+   "filter": "A1:D28",
+   "page": [
+    "portrait",
+    1,
+    1,
+    false,
+    "",
+    [],
+    null
+   ],
+   "pages": [
+    [
+     612,
+     792,
+     [
+      "1 keep",
+      "0",
+      "0",
+      "12.3 keep"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  },
+  "layout": {
+   "style": [
+    false,
+    "00000000",
+    "0.0",
+    null
+   ],
+   "layout": [
+    22.0,
+    24.75,
+    "E2:F2"
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [],
+   "names": [
+    "Existing"
+   ],
+   "filter": null,
+   "page": [
+    "portrait",
+    1,
+    1,
+    false,
+    "",
+    [],
+    null
+   ],
+   "pages": [
+    [
+     612,
+     792,
+     [
+      "1 keep",
+      "0",
+      "0",
+      "12.3 keep"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  },
+  "name": {
+   "style": [
+    false,
+    "00000000",
+    "0.0",
+    null
+   ],
+   "layout": [
+    15.71,
+    15.0,
+    ""
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [],
+   "names": [
+    "Existing",
+    "Inputs"
+   ],
+   "filter": null,
+   "page": [
+    "portrait",
+    1,
+    1,
+    false,
+    "",
+    [],
+    null
+   ],
+   "pages": [
+    [
+     612,
+     792,
+     [
+      "1 keep",
+      "0",
+      "0",
+      "12.3 keep"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  },
+  "page-fixed": {
+   "style": [
+    false,
+    "00000000",
+    "0.0",
+    null
+   ],
+   "layout": [
+    15.71,
+    15.0,
+    ""
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [],
+   "names": [
+    "Existing"
+   ],
+   "filter": null,
+   "page": [
+    "landscape",
+    1,
+    1,
+    false,
+    "'Data'!$A$1:$D$19",
+    [
+     [
+      9,
+      true
+     ]
+    ],
+    "&P of &N"
+   ],
+   "pages": [
+    [
+     792,
+     612,
+     [
+      "1 of 3",
+      "1 keep",
+      "0",
+      "0"
+     ]
+    ],
+    [
+     792,
+     612,
+     [
+      "2 of 3",
+      "10 keep",
+      "18",
+      "27"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  },
+  "page": {
+   "style": [
+    false,
+    "00000000",
+    "0.0",
+    null
+   ],
+   "layout": [
+    15.71,
+    15.0,
+    ""
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [],
+   "names": [
+    "Existing"
+   ],
+   "filter": null,
+   "page": [
+    "landscape",
+    1,
+    0,
+    true,
+    "'Data'!$A$1:$D$19",
+    [
+     [
+      9,
+      true
+     ]
+    ],
+    "&P of &N"
+   ],
+   "pages": [
+    [
+     792,
+     612,
+     [
+      "1 of 3",
+      "1 keep",
+      "0",
+      "0"
+     ]
+    ],
+    [
+     792,
+     612,
+     [
+      "2 of 3",
+      "10 keep",
+      "18",
+      "27"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  },
+  "style": {
+   "style": [
+    true,
+    "FFFFDD66",
+    "0.000\" kg\"",
+    "thin"
+   ],
+   "layout": [
+    15.71,
+    15.0,
+    ""
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [],
+   "names": [
+    "Existing"
+   ],
+   "filter": null,
+   "page": [
+    "portrait",
+    1,
+    1,
+    false,
+    "",
+    [],
+    null
+   ],
+   "pages": [
+    [
+     612,
+     792,
+     [
+      "1 keep",
+      "0",
+      "0",
+      "12.345 kg keep"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  },
+  "validation": {
+   "style": [
+    false,
+    "00000000",
+    "0.0",
+    null
+   ],
+   "layout": [
+    15.71,
+    15.0,
+    ""
+   ],
+   "cf": [
+    [
+     "D3:D6",
+     [
+      [
+       "cellIs",
+       "lessThan",
+       [
+        "4"
+       ]
+      ]
+     ]
+    ]
+   ],
+   "dv": [
+    [
+     "list",
+     "B5:B20",
+     "\"yes,no\""
+    ]
+   ],
+   "names": [
+    "Existing"
+   ],
+   "filter": null,
+   "page": [
+    "portrait",
+    1,
+    1,
+    false,
+    "",
+    [],
+    null
+   ],
+   "pages": [
+    [
+     612,
+     792,
+     [
+      "1 keep",
+      "0",
+      "0",
+      "12.3 keep"
+     ]
+    ],
+    [
+     595,
+     842,
+     [
+      "keep shared string"
+     ]
+    ]
+   ]
+  }
+ }
+}
