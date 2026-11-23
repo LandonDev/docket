@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import type { IWorkbookData } from '@univerjs/core'
@@ -226,11 +226,16 @@ export class LifeosBackend implements SheetBackend {
 
 // ── .tcsheet ────────────────────────────────────────────────────────
 
-/** A `.tcsheet`: a zip of `meta.json`, `snapshots/<rev>.json.gz`, `ops.json` and `suggestions.json`, replaced whole on every write. */
+/**
+ * A `.tcsheet`: a zip of `meta.json`, `snapshots/<rev>.json.gz`, `ops.json` and `suggestions.json`, replaced
+ * whole on every write. `suggestions.json` is always an empty list now: what an agent proposes is kept on this
+ * host, outside the file (`TcsheetBackend`), so a file in a folder others sync carries none of it.
+ */
 interface Tcsheet {
   meta: { title: string; rev: number; snapRev: number }
   snapshots: Map<number, Uint8Array>
   ops: Op[]
+  /** what a file written before that rule still holds: moved out on its first read */
   suggestions: StoredSuggestion[]
 }
 
@@ -266,7 +271,17 @@ const KEEP_SNAPSHOTS = 4
 export class TcsheetBackend implements SheetBackend {
   /** The file as last read or written: the service is its one writer, so it is read once. */
   private held: Tcsheet | null = null
-  constructor(readonly path: string) {}
+  /** What agents propose over this file, as last read or written. */
+  private proposed: StoredSuggestion[] | null = null
+  /**
+   * `side` is a folder of this host's own data: the suggestions waiting over the file are kept there,
+   * one JSON file per path, and never in the `.tcsheet` (the owner's ruling: nothing an agent proposes
+   * reaches a file others may sync before he approves). Without it they are kept in memory alone.
+   */
+  constructor(
+    readonly path: string,
+    private side?: string
+  ) {}
 
   static create(path: string, title: string): void {
     if (existsSync(path)) throw new Error(`There is a file at ${path} already.`)
@@ -277,6 +292,39 @@ export class TcsheetBackend implements SheetBackend {
     if (this.held) return this.held
     if (!existsSync(this.path)) throw new Error(`There is no file at ${this.path}.`)
     return (this.held = readTcsheet(this.path))
+  }
+  private sideFile(): string | null {
+    return this.side ? join(this.side, `${createHash('sha256').update(this.path).digest('hex').slice(0, 24)}.json`) : null
+  }
+  /** The suggestions waiting over the file. One a file written before the rule still carries is taken out of it here. */
+  private waiting(): StoredSuggestion[] {
+    if (this.proposed) return this.proposed
+    const at = this.sideFile()
+    this.proposed = at && existsSync(at) ? (JSON.parse(readFileSync(at, 'utf8')) as StoredSuggestion[]) : []
+    const t = this.read()
+    if (t.suggestions.length) {
+      const known = new Set(this.proposed.map((s) => s.id))
+      this.keep([...this.proposed, ...t.suggestions.filter((s) => !known.has(s.id))])
+      const carried = t.suggestions
+      t.suggestions = []
+      try {
+        this.write(t)
+      } catch {
+        // A file he may only read still opens: it keeps what it carried, and they are shown from here.
+        t.suggestions = carried
+      }
+    }
+    return this.proposed
+  }
+  private keep(list: StoredSuggestion[]): void {
+    this.proposed = list
+    const at = this.sideFile()
+    if (!at) return
+    if (!list.length) return rmSync(at, { force: true })
+    mkdirSync(dirname(at), { recursive: true })
+    const tmp = `${at}.${randomUUID()}.tmp`
+    writeFileSync(tmp, JSON.stringify(list), { mode: 0o600 })
+    renameSync(tmp, at)
   }
   private write(t: Tcsheet): void {
     writeTcsheet(this.path, t)
@@ -315,22 +363,20 @@ export class TcsheetBackend implements SheetBackend {
     return { rev: best, data: ungz(t.snapshots.get(best)!) }
   }
   async suggestions(): Promise<StoredSuggestion[]> {
-    return this.read().suggestions
+    return this.waiting()
   }
   async addSuggestions(changeSet: string, by: string, reason: string | undefined, cells: Omit<StoredSuggestion, 'id' | 'changeSet' | 'by' | 'reason' | 'state'>[]): Promise<void> {
-    const t = this.read()
-    for (const c of cells) t.suggestions.push({ ...c, id: `${changeSet}:${c.sheet}:${c.row}:${c.col}`, changeSet, by, ...(reason ? { reason } : {}), state: 'pending' })
-    this.write(t)
+    const added = cells.map((c): StoredSuggestion => ({ ...c, id: `${changeSet}:${c.sheet}:${c.row}:${c.col}`, changeSet, by, ...(reason ? { reason } : {}), state: 'pending' }))
+    this.keep([...this.waiting(), ...added])
   }
   async setSuggestions(updates: SuggestionUpdate[]): Promise<void> {
     if (!updates.length) return
-    const t = this.read()
+    const list = this.waiting()
     for (const u of updates) {
-      const s = t.suggestions.find((x) => x.id === u.id)
+      const s = list.find((x) => x.id === u.id)
       if (s) Object.assign(s, u)
     }
-    // decided cells leave the file
-    t.suggestions = t.suggestions.filter((s) => s.state !== 'accepted' && s.state !== 'rejected')
-    this.write(t)
+    // decided cells are kept no longer
+    this.keep(list.filter((s) => s.state !== 'accepted' && s.state !== 'rejected'))
   }
 }

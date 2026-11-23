@@ -119,13 +119,18 @@ export const sheets: WorkModule = {
         return handled(held.at === 'package' ? s.packages.since(held.path, req.params.rev) : await host(ctx, 'since', { sheet: held.ref, rev: req.params.rev }))
       }
       case 'work.sheets.edit': {
+        await approves(s, item!, by)
         const got = await edit(s, item!, req.params.baseRev, req.params.mutations, by)
         if (!('conflict' in got)) await announce(s, item!, false)
         return handled(got)
       }
       case 'work.sheets.review': {
+        // Taking a suggestion writes it where others may read it: his press alone, never a thread's call.
+        if (by.kind === 'model') throw new Error('Only the owner accepts or rejects a suggestion.')
         const held = heldOf(item!, ctx.dataDir)
         const key = storeKey(held)
+        // Taking one writes it: a remote key changes a sheet others can open only with `approve`.
+        if (req.params.verdict === 'accept') await approves(s, item!, by)
         if (held.at === 'package') await reviewPackage(s, held.path, key, req.params.which, req.params.verdict, principalOf(ctx, by))
         else if (held.at === 'excel') await (await import('../office/grid')).review(ctx, held.ref, req.params.which, req.params.verdict, principalOf(ctx, by))
         // An accepted set goes to Google as one write (google/grid.ts).
@@ -135,6 +140,7 @@ export const sheets: WorkModule = {
         return handled(await viewOf(s, item!))
       }
       case 'work.sheets.mode': {
+        if (by.kind === 'model') throw new Error('Only the owner sets what an agent may do to a sheet.')
         s.suggestions.setMode(storeKey(heldOf(item!, ctx.dataDir)), req.params.mode)
         await announce(s, item!)
         return handled(await viewOf(s, item!))
@@ -142,6 +148,7 @@ export const sheets: WorkModule = {
       case 'work.sheets.undo': {
         const held = heldOf(item!, ctx.dataDir)
         if (held.at !== 'package') throw new Error('Take it back with Undo in the sheet, or restore from History.')
+        await approves(s, item!, by)
         await s.packages.undo(held.path, req.params.writeId)
         s.suggestions.setWritten(storeKey(held), null)
         await announce(s, item!)
@@ -158,6 +165,7 @@ export const sheets: WorkModule = {
       }
       case 'work.sheets.restore': {
         const held = notExcel(heldOf(item!, ctx.dataDir))
+        await approves(s, item!, by)
         if (held.at === 'package') {
           await s.packages.restore(held.path, req.params.rev, principalOf(ctx, by))
           s.suggestions.orphanAll(storeKey(held))
@@ -198,6 +206,16 @@ export const sheets: WorkModule = {
     'A sheet in the canvas is read with `sheet_read` and changed with `sheet_write` or `sheet_suggest`, cells in A1. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a sheet others share, your own idea waits as a suggestion he steps through cell by cell.',
   sessionsRemoved() {},
   workspaceRemoved() {}
+}
+
+/**
+ * A change to a sheet others can open, made with a remote key: only a key that may approve, as Files' door asks of any
+ * change in such a place (files/policy.ts). His own window and another host of his are not held here.
+ */
+export const NEEDS_APPROVE = 'Others can open this sheet: this key may not change it.'
+async function approves(s: Sheets, item: CanvasItem, by: Caller): Promise<void> {
+  if (by.kind !== 'remote' || by.peer || by.caps.includes('approve')) return
+  if ((await viewOf(s, item)).shared) throw new Error(NEEDS_APPROVE)
 }
 
 /**

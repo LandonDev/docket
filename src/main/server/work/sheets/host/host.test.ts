@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { IWorkbookData } from '@univerjs/core'
@@ -203,18 +203,29 @@ describe('a .tcsheet', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tcsheet-'))
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
-  it('is made empty, written, suggested on and reopened from the file alone', async () => {
+  it('is made empty, written, suggested on and reopened: the cells from the file, what an agent proposes from this host\'s data', async () => {
     const path = join(dir, 'Plan.tcsheet')
+    const side = join(dir, 'host-data', 'suggestions')
     TcsheetBackend.create(path, 'Plan')
     const ref = { tcsheet: path }
-    const host = hostOf(new TcsheetBackend(path))
+    const host = hostOf(new TcsheetBackend(path, side))
     expect((await host.open(ref)).title).toBe('Plan')
     await host.cells(ref, [{ at: 'A1', v: 2 }, { at: 'A2', f: 'A1*21' }], 'owner', false)
+    const written = readFileSync(path)
     await host.cells(ref, [{ at: 'A1', v: 3 }], 'agent:h:t1', true, 'Three is right')
-    const again = new SheetHost(() => new TcsheetBackend(path))
+    // The suggestion is not in the file: it holds what it held.
+    expect(readFileSync(path).equals(written)).toBe(true)
+    const again = new SheetHost(() => new TcsheetBackend(path, side))
     hosts.push(again)
     expect((await again.range(ref, 'A2')).cells[0][0]).toEqual({ at: 'A2', v: 42, f: '=A1*21' })
     expect((await again.open(ref)).suggestions).toMatchObject([{ row: 0, col: 0, proposed: { v: 3 }, reason: 'Three is right', state: 'pending' }])
+    // A host with no folder of its own keeps them in memory, and still never in the file.
+    const bare = new SheetHost(() => new TcsheetBackend(path))
+    hosts.push(bare)
+    expect((await bare.open(ref)).suggestions).toEqual([])
+    await bare.cells(ref, [{ at: 'B1', v: 9 }], 'agent:h:t1', true)
+    expect((await bare.open(ref)).suggestions).toHaveLength(1)
+    expect(readFileSync(path).equals(written)).toBe(true)
   })
 })
 

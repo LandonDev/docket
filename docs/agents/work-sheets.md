@@ -153,17 +153,45 @@ cells in A1 (`a1.ts`), at most 10,000 cells a read and 1,000 a write.
   (`ctx.threads.ownerSaid`): written at once;
 - `routine`, in a thread a routine started: written at once on his own
   sheet; on a shared one it waits as suggestions (no grant covers a write);
-- `own`: on a sheet others share (`scope.shared`, or LifeOS's `shared`, which
-  the service's `open` reads afresh from LifeOS on every call, so a guest link
-  made since the sheet was loaded counts) it waits as suggestions; on his own sheet it follows the sheet's mode
-  (`writes` by default: written, with the bar's written line and Undo).
+- `own`: on a sheet others can open it waits as suggestions; on his own
+  sheet it follows the sheet's mode (`writes` by default: written, with the
+  bar's written line and Undo).
+
+A sheet others can open is one test for the tools and the grid's view:
+where the file lies (`sharedOf`, files/policy.ts: a Teams or OneDrive
+library, a cloud folder, another host, a Microsoft or Google file), what the
+scope says of the source (`scope.shared`), or LifeOS's `shared`, which the
+service's `open` reads afresh from LifeOS on every call, so a guest link made
+since the sheet was loaded counts.
 
 A quote he never typed, or `routine` outside a routine, counts as `own` and
-the answer says so. Suggestions over a package, an Excel workbook or
-a Google sheet are rows of `work_sheets_suggestions` with the mode and the written
-line in `work_sheets_prefs`; a LifeOS sheet's are LifeOS rows; a
-`.tcsheet`'s are in the file. An owner's edit over a pending cell makes it a
-conflict. Accepting writes the proposed cells as his own edit.
+the answer says so. An owner's edit over a pending cell makes it a conflict.
+Accepting writes the proposed cells as his own edit.
+
+**A suggestion stays his until he approves it** (the owner's ruling,
+2026-11-23; `private.test.ts`, and the guest's page in
+`service/routes/sheet.test.ts`). Where each store keeps what an agent
+proposes:
+
+| The sheet | Kept in | Reaches the file, its folder, a guest or another service |
+|---|---|---|
+| an opened .xlsx or .xlsm | `work_sheets_suggestions` under `file:<path>`, the mode and written line in `work_sheets_prefs` | no: the file and its folder stay byte for byte |
+| a workbook held by Excel, a Google sheet | `work_sheets_suggestions` under `excel:<key>`, `google:<fileId>` | no: nothing is sent to Excel or Google before his accept |
+| a `.tcsheet`, and the sheet a .csv opens as | one JSON file per path under `<dataDir>/sheets/suggestions/` on the host that serves it (`TcsheetBackend`'s `side`) | no: `suggestions.json` in the file is always empty, and one a file from before the rule carries is taken out the first time it is read |
+| a LifeOS sheet | LifeOS's `sheetSuggestionCells` rows | not the live sheet: a suggestion is no op, so the live socket sends a guest nothing and the workbook a guest loads has none of it. The rows are in his LifeOS, the store that holds the sheet itself |
+
+`work.sheets.review` and `work.sheets.mode` are his press: a thread's call
+(`by.kind === 'model'`) is refused. A remote key changes a sheet others can
+open only with `approve`, as Files' door asks of any change in such a
+place: `work.sheets.edit`, `.restore`, `.undo` and an accept in `.review`
+answer "Others can open this sheet: this key may not change it" without it
+(a reject writes nothing and passes). His own window and another host of
+his are not held to it, and his own sheet takes `operate` as before.
+
+Not closed: a read key of his own still reads a waiting suggestion's cells
+and reason through `work.sheets.open` and the push (his own devices); a
+LifeOS sheet's suggestions are LifeOS rows, in his own store, not on this
+host.
 
 ## The canvas
 
@@ -371,6 +399,9 @@ The harness corpus also keeps the workbooks the editors plan measured with
 - The round-trip harness runs only with `SHEET_HARNESS=1` on a host with
   the lab's Python (lxml) and LibreOffice: no gate row runs it.
 - A `.tcsheet` is rewritten whole on every op.
+- A `.tcsheet`'s waiting suggestions are kept by its path on the host that
+  serves it: a file moved or renamed outside TempCode, or opened from
+  another host, comes without them.
 - work-kit's `was` chip in the formula bar is not struck through on the
   delete tint as the prototype draws it; work-kit owns it.
 - ONLYOFFICE 10.0 cannot save an edit to the corpus's `pivot.xlsx` (its

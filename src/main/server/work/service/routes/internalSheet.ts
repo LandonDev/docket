@@ -1,4 +1,4 @@
-import { isAbsolute } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { LifeosBackend, TcsheetBackend } from '../../sheets/host/backends'
 import { SheetHost } from '../../sheets/host/host'
 import type { A1Cell, HostAsk, SheetRef, Which } from '../../sheets/host/wire'
@@ -27,7 +27,12 @@ const MAX_CELLS = 1000
 let made: { host: SheetHost; ctx: RouteCtx } | null = null
 /** The service's one sheet host, made on first use; the live route (sheet.ts) shares it. */
 export function hostOf(ctx: RouteCtx): SheetHost {
-  if (made?.ctx !== ctx) made = { host: new SheetHost((ref) => ('lifeos' in ref ? new LifeosBackend(ctx.convex, ref.lifeos) : new TcsheetBackend(ref.tcsheet))), ctx }
+  // A .tcsheet's waiting suggestions are kept under this host's data, never in the file; a service with no data folder (a test's) keeps them in memory.
+  const side = (): string | undefined => {
+    const dir = ctx.config().dataDir
+    return dir ? join(dir, 'sheets', 'suggestions') : undefined
+  }
+  if (made?.ctx !== ctx) made = { host: new SheetHost((ref) => ('lifeos' in ref ? new LifeosBackend(ctx.convex, ref.lifeos) : new TcsheetBackend(ref.tcsheet, side()))), ctx }
   return made.host
 }
 

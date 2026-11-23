@@ -6,6 +6,7 @@ import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type 
 import { guestCells, moveThrough, refusal } from '../../sheets/host/live'
 import type { ServiceLink } from '../wire'
 import type { RouteCtx } from './route'
+import { hostOf } from './internalSheet'
 import { sheetRoute } from './sheet'
 
 /**
@@ -14,6 +15,8 @@ import { sheetRoute } from './sheet'
  */
 
 const ops: { rev: number; by: string; at: number; mutations: string }[] = []
+/** What agents propose, as LifeOS keeps it: rows beside the sheet, never ops. */
+const suggested: { _id: string; changeSetId: string; by: string; sheet: string; row: number; col: number; base: string | null; proposed: string | null; state: string }[] = []
 const convex = async (_kind: string, fn: string, args: Record<string, unknown>): Promise<unknown> => {
   switch (fn) {
     case 'sheets:get':
@@ -27,7 +30,10 @@ const convex = async (_kind: string, fn: string, args: Record<string, unknown>):
       return { rev: ops.at(-1)!.rev }
     }
     case 'sheets:suggestions':
-      return []
+      return suggested.filter((c) => c.state === args.state)
+    case 'sheets:suggest':
+      for (const c of args.cells as { sheet: string; row: number; col: number; base: string | null; proposed: string | null }[]) suggested.push({ _id: `sg${suggested.length}`, changeSetId: args.changeSetId as string, by: args.by as string, ...c, state: 'pending' })
+      return null
   }
   throw new Error(`unexpected ${fn}`)
 }
@@ -36,6 +42,7 @@ const links = new Map<string, ServiceLink>()
 let server: Server
 let port: number
 let signer: CollabSigner
+let routeCtx: RouteCtx
 beforeAll(async () => {
   const keys = await generateCollabKeys('k1')
   signer = await createCollabSigner({ privateJwk: keys.privateJwk, iss: 'tempcode:test' })
@@ -52,6 +59,7 @@ beforeAll(async () => {
     wss,
     log: () => {}
   } as unknown as RouteCtx
+  routeCtx = ctx
   server = createServer()
   server.on('upgrade', (req, socket, head) => sheetRoute.upgrade!(req, socket, head, ctx, /x/.exec('x')!))
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -111,6 +119,31 @@ describe('the live sheet route', () => {
     links.set('L1', { ...links.get('L1')!, revokedAt: Date.now() })
     expect(await b.closed).toBe(4403)
     a.ws.close()
+  })
+
+  it('an agent\'s suggestion reaches no guest: nothing on the socket, nothing in the workbook a guest loads, no op', async () => {
+    links.set('L2', { linkId: 'L2', item: { sheet: 's1' }, role: 'edit', expiresAt: Date.now() + 60_000, revokedAt: null })
+    const owner = await client('s1', await tokenFor('s1', 'edit', 'owner'))
+    const guest = await client('s1', await tokenFor('s1', 'edit', 'guest:L2', 'L2'))
+    const rev = ((await owner.next()) as unknown as { rev: number }).rev
+    await guest.next()
+    const stored = ops.length
+    const SECRET = 'Q4-forecast-7731'
+    const got = await hostOf(routeCtx).cells({ lifeos: 's1' }, [{ at: 'C3', v: SECRET }], 'agent:env_box:t1', true, 'the new forecast')
+    expect(got).toMatchObject({ count: 1 })
+    expect(suggested.map((c) => c.proposed)).toEqual([JSON.stringify({ v: SECRET })])
+    expect(ops).toHaveLength(stored)
+    // The next thing the guest hears is the owner's own edit: the suggestion sent nothing first.
+    owner.ws.send(JSON.stringify({ t: 'ops', id: 9, baseRev: rev, mutations: [setCell(8, 0, 'after')] }))
+    const heard = await guest.next()
+    expect(heard).toMatchObject({ t: 'ops', rev: rev + 1, by: 'owner' })
+    expect(JSON.stringify(heard)).not.toContain(SECRET)
+    // A guest who opens the page now loads the workbook without it.
+    const late = await client('s1', await tokenFor('s1', 'view', 'guest:L2', 'L2'))
+    const state = await late.next()
+    expect(state).toMatchObject({ t: 'state', rev: rev + 1 })
+    expect(JSON.stringify(state)).not.toContain(SECRET)
+    for (const c of [owner, guest, late]) c.ws.close()
   })
 
   it('refuses a token for another sheet and a socket that never says hello with one', async () => {

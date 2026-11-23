@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { SheetCellJson, SheetSuggestion } from '@shared/contract-work-sheets'
 import { agentPrincipal, workText, type CanvasItem, type Principal, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
+import { sharedOf } from '../files/policy'
 import type { ToolCtx, WorkTool } from '../modules'
 import { parseA1 } from './a1'
 import { ensureCsvSheet, heldOf, heldOfPath, host, sheetsOf, storeKey, type Held, type Sheets } from './held'
@@ -41,8 +42,10 @@ interface Target {
 }
 
 /**
- * The sheet a call names, and whether others can edit it: a LifeOS sheet's own `shared` (the
- * service reads it), or what the scope says of the source (a guest link, a Microsoft or Google file).
+ * The sheet a call names, and whether others can open it: a LifeOS sheet's own `shared` (the
+ * service reads it), what Files says of where the file lies (a Teams or OneDrive library, a cloud
+ * folder, another host: `sharedOf`, the test the grid's view uses), or what the scope says of the
+ * source (a guest link, a Microsoft or Google file).
  */
 async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Promise<Target> {
   let item: CanvasItem | null = null
@@ -63,7 +66,7 @@ async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Prom
   }
   ensureCsvSheet(held)
   const stored = held.at === 'service' ? (await host(ctx, 'open', { sheet: held.ref })).shared : false
-  return { held, item, shared: stored || ctx.scope.shared(source) }
+  return { held, item, shared: stored || sharedOf(ctx, source) || ctx.scope.shared(source) }
 }
 
 function ownerSaid(ctx: ToolCtx, quote: string | undefined): boolean {
