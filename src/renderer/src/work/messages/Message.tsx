@@ -198,6 +198,7 @@ function FileFailed({ file, source, link }: { file: ChatFile; source: ChatRow["s
   const opens = link && /^https?:\/\//i.test(link) ? link : undefined;
   return (
     <p data-file-failed className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+      <FileGlyph aria-hidden className="me-1 size-3.5 shrink-0" />
       <span className="font-medium">{file.name}</span>
       <span>{file.error ?? "Couldn't load this file"}</span>
       {opens ? (

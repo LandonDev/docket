@@ -68,9 +68,12 @@ export function rowLine(row: Pick<ChatRow, "kind" | "lastText" | "lastWho" | "la
   return `${firstName(row.lastWho)}: ${words}`;
 }
 
-/** The one muted fact beside an open conversation's name: "Slack, CosmicGames". */
-export const chatFact = (chat: Pick<ChatRow, "source" | "accountName">): string =>
-  chat.accountName ? `${SOURCE_NAME[chat.source]}, ${chat.accountName}` : SOURCE_NAME[chat.source];
+/** The one muted fact beside an open conversation's name: "Slack, CosmicGames"; an account named as its service ("iMessage") is said once. */
+export function chatFact(chat: Pick<ChatRow, "source" | "accountName">): string {
+  const source = SOURCE_NAME[chat.source];
+  const account = chat.accountName?.trim();
+  return account && account.toLowerCase() !== source.toLowerCase() ? `${source}, ${account}` : source;
+}
 
 /** When he last saw a conversation: his mark here, the service's own, or his own last word, whichever is newest. */
 export const seenAt = (chat: Pick<ChatRow, "readAt" | "sourceReadAt" | "lastOutAt">): number => Math.max(chat.readAt ?? 0, chat.sourceReadAt ?? 0, chat.lastOutAt ?? 0);

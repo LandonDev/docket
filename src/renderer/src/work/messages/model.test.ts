@@ -42,6 +42,7 @@ describe("a row's words", () => {
   it("says the source and the account once", () => {
     expect(chatFact({ source: "slack", accountName: "Starboard Games" })).toBe("Slack, Starboard Games");
     expect(chatFact({ source: "imessage" })).toBe("iMessage");
+    expect(chatFact({ source: "imessage", accountName: "iMessage" })).toBe("iMessage");
   });
   it("counts the unread fact only when there is one", () => {
     expect(unreadFact(3)).toBe("3");
