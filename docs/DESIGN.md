@@ -2083,7 +2083,9 @@ his hands and leaves no trace on what he was searching from.
   the list has a time: Recent has none and gives the room to its titles.
   What has passed says how long ago ("2d"); an event says its time today
   and its day otherwise ("Jan 12"), never a year and never on two lines.
-  Under 480px the fact goes rather than stand as a stub. A file kept in
+  Under 480px (only /ui in a narrow browser: the desktop window is never
+  under 800) the fact goes rather than stand as a stub, and the job is its
+  dot alone. A file kept in
   the cloud wears Files' cloud mark after its name.
 - **The job** is the sector dot and the job's name in 12px muted, in a
   column of one width so the names line up; never a chip. It is drawn only

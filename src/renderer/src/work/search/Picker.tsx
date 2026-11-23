@@ -447,9 +447,10 @@ export function Results({
               {mixed || timed ? (
                 <span className="ml-auto flex shrink-0 items-center gap-2">
                   {mixed ? (
-                    <span data-job className="flex w-28 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-20">
+                    // In a window too narrow for the names the job is its dot alone, and the title keeps its words.
+                    <span data-job className="flex w-28 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-auto">
                       {job ? <SectorDot sector={job.sector} /> : <span aria-hidden className="size-4 shrink-0" />}
-                      <span className="min-w-0 truncate">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
+                      <span className="min-w-0 truncate max-[480px]:sr-only">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
                     </span>
                   ) : null}
                   {timed ? <span data-time className="w-14 text-right text-xs whitespace-nowrap tabular-nums text-muted-foreground">{time}</span> : null}
