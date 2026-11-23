@@ -13,7 +13,7 @@ import { useMessagesData, type Paged } from "./data";
 import { Composer } from "./Composer";
 import { MessageBlock } from "./Message";
 import { blocksOf, chatFact, estimateOf, menuKey, newSince, wantsRead, type Block } from "./model";
-import { dropWanted, heldUnread, holdUnread, keepPlace, keepVisitSince, placeOf, releaseUnread, useWanted, visitSince } from "./page";
+import { dropWanted, heldUnread, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, useWanted, visitPlaceOf, visitSince } from "./page";
 import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 
 /**
@@ -50,18 +50,14 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   const listed = data.useChats("all");
   const rowName = listed.status === "ready" ? listed.value.rows.find((row) => row._id === chatId)?.name : undefined;
 
-  // His Mark unread holds: nothing marks the conversation read again until a newer message from someone else comes.
-  // An unread mark that comes with no newer message is his: noted as it is drawn, before any effect could mark it read,
-  // and kept with the visit in page.ts, so a Retry or the 640px crossing finds it held. The visit's end lets it go.
+  // His Mark unread holds: nothing marks the conversation read again until a newer message from someone else comes or
+  // the visit ends. The hold is written by the command itself (`markUnreadHeld`), kept with the visit in page.ts.
   const lastIn = chat?.lastInAt ?? 0;
   const held = heldUnread(workspaceId, chatId);
-  const [seen, setSeen] = useState<{ unread: boolean; lastIn: number } | null>(null);
-  if (chat && (!seen || seen.unread !== chat.unread || seen.lastIn !== lastIn)) {
-    if (seen && !seen.unread && chat.unread && lastIn <= seen.lastIn) holdUnread(workspaceId, chatId, lastIn);
-    else if (held !== undefined && lastIn > held) releaseUnread(workspaceId, chatId);
-    setSeen({ unread: chat.unread, lastIn });
-  }
   const holding = held !== undefined && lastIn <= held;
+  useEffect(() => {
+    if (held !== undefined && lastIn > held) releaseUnread(workspaceId, chatId);
+  }, [held, lastIn, workspaceId, chatId]);
 
   // Opening marks it read; so does a newer message while it is open and the window is in front, or his coming back to
   // the window while something waits.
@@ -83,7 +79,7 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   const failed = detail.status === "failed" || messages.status === "failed";
   const gone = detail.status === "ready" && !detail.value;
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div data-conversation className="flex h-full min-h-0 flex-col">
       {/* The toolbar stays whatever came back, so under 640px the way back is always there. */}
       <Toolbar workspaceId={workspaceId} detail={detail.status === "ready" ? detail.value : undefined} loading={detail.status === "loading"} name={rowName} narrow={narrow} onBack={onBack} />
       {failed ? (
@@ -113,10 +109,13 @@ function Toolbar({ workspaceId, detail, loading, name, narrow, onBack }: { works
   const source = detail?.source;
   const heard = source ? lastHeard(source) : undefined;
   const line = narrow && source && staleOf(source, now) ? (heard ? `Last synced ${syncWhen(heard, now)}` : "Has not synced") : null;
-  // Opening a conversation under 640px puts the keys on its way back.
+  // Opening a conversation under 640px puts the keys on its way back. Crossing the line with it open moves them only
+  // when they stood outside the conversation (the list, now hidden): his place in it, the composer say, is kept.
   const back = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (narrow) back.current?.focus({ preventScroll: true });
+    if (!narrow) return;
+    const pane = back.current?.closest("[data-conversation]");
+    if (!pane?.contains(document.activeElement)) back.current?.focus({ preventScroll: true });
   }, [narrow]);
   // Start thread has its own button; More holds the rest, Mention only while a thread is open.
   const rows = (): MenuRow[] =>
@@ -131,7 +130,7 @@ function Toolbar({ workspaceId, detail, loading, name, narrow, onBack }: { works
   const pick = (id: string): void => {
     if (!chat) return;
     if (id === "read") data.markRead(chat._id);
-    else if (id === "unread") data.markUnread(chat._id);
+    else if (id === "unread") markUnreadHeld(data.markUnread, workspaceId, chat, true);
     else pickThreadVerb(id, chatChip(chat), start, link);
   };
   // A direct chat's name opens the person in People, where LifeOS knows an address for them.
@@ -269,10 +268,15 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
     anchor.current = atFoot.current ? null : layout.anchorAt(view.current.up);
   };
   const over = (index: number, air: number): number => layout.offsetOf(index + 1) + air - view.current.height;
-  /** Opens over "New", else where he left it, else at the foot, and tells the conversation he is placed. */
+  /**
+   * Opens where he stood in this visit, when a remount (Retry) finds one; else over "New", else where he left it last
+   * time, else at the foot; and tells the conversation he is placed.
+   */
   const placeOpening = (): void => {
+    const ours = visitPlaceOf(workspaceId, chatId);
     const kept = placeOf(workspaceId, chatId);
-    goTo(fresh >= 0 ? over(fresh, NEW_AIR) : kept ? (layout.scrollTopFor(kept) ?? 0) : 0);
+    if (ours !== undefined) goTo(ours ? (layout.scrollTopFor(ours) ?? 0) : 0);
+    else goTo(fresh >= 0 ? over(fresh, NEW_AIR) : kept ? (layout.scrollTopFor(kept) ?? 0) : 0);
     onPlaced();
   };
 
@@ -333,7 +337,10 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
       if (change) changes.push(change);
     }
     if (!opened.current && upward.length) {
-      if (unreadAbove && reach.current.pages < FIND_PAGES) {
+      // Older pages are read first to hold what it opens on: the row he stood on this visit, else "New".
+      const ours = visitPlaceOf(workspaceId, chatId);
+      const short = ours === undefined ? unreadAbove : ours !== null && layout.indexOf(ours.key) < 0 && !page.done;
+      if (short && reach.current.pages < FIND_PAGES) {
         if (reach.current.asked !== page.rows.length) {
           reach.current = { asked: page.rows.length, pages: reach.current.pages + 1 };
           page.more();

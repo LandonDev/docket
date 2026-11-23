@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState, useSyncExternalStore, type MouseEvent } from "react";
+import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { formatSize } from "work-kit/mail/lib/files";
 import { loadBytes } from "work-kit/mail/lib/bytes";
 import type { CanvasKind } from "@shared/work";
@@ -17,6 +17,7 @@ import { Face } from "../mail/face";
 import { useMessagesData, type FileVerb } from "./data";
 import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
+import { useWaitingDrafts } from "./drafts";
 import { keepTyped, typedFromDraft, typedIn } from "./page";
 
 /**
@@ -295,26 +296,38 @@ function FileFailed({ file, why, source, link, onRetry }: { file: ChatFile; why:
  */
 function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; workspaceId: string; chatId: string }) {
   const data = useMessagesData();
-  const drafts = data.useDrafts(chatId);
+  // The drafts still waiting, read at settlement through a ref: the Undo answers after he may have edited one.
+  const drafts = useWaitingDrafts(workspaceId, chatId);
+  const waiting = useRef(drafts);
+  useEffect(() => {
+    waiting.current = drafts;
+  }, [drafts]);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
   /**
-   * His undone words are his own and never take a draft's id. In front of his own words, a line between; where the
-   * field holds a thread's draft, an edit of a held one is saved to it first (the Outbox's edit), then the field takes
-   * his words and the draft waits behind Use draft. An edit of a copy-only draft cannot be kept there, so it stays in
-   * the field behind his words, as his own.
+   * His undone words are his own and never take a draft's id. Judged when the Undo settles, not at its press: whatever
+   * the field then holds under a held draft's id is saved to that item first (when it differs from the item's words),
+   * then the field takes his words and the draft waits behind Use draft. His own words, or a copy-only draft's (which
+   * has nowhere to be saved), stay behind his, a line between.
    */
   const undo = async (): Promise<void> => {
-    const from = typedFromDraft(workspaceId, chatId);
-    const draft = from ? drafts.find((d) => d.id === from) : undefined;
-    const held = typedIn(workspaceId, chatId);
-    // The edit is saved before the words come back: a refusal leaves both where they were.
-    if (draft?.held && held.trim() && held !== draft.text) await data.saveDraft(draft, held.trim());
     const words = await data.undo(chatId, reply.outboxId);
     const now = typedIn(workspaceId, chatId);
-    // What the field holds now, if it is still the draft's, waits as the draft; anything else is his own and stays.
-    const still = from !== null && typedFromDraft(workspaceId, chatId) === from && draft !== undefined;
-    const behind = now.trim() && !(still && (draft.held || now === draft.text)) ? now : "";
+    const from = typedFromDraft(workspaceId, chatId);
+    const draft = from ? waiting.current.find((d) => d.id === from && d.failed === undefined) : undefined;
+    if (draft?.held && now.trim()) {
+      try {
+        if (now.trim() !== draft.text) await data.saveDraft(draft, now.trim());
+      } catch (err) {
+        // Not saved: neither is lost. His words go in front, the draft's edit behind as his own, and the refusal shows.
+        keepTyped(workspaceId, chatId, `${words}\n${now}`, null);
+        throw err;
+      }
+      keepTyped(workspaceId, chatId, words, null);
+      return;
+    }
+    // An unedited copy-only draft waits behind Use draft; anything else in the field is his and stays behind his words.
+    const behind = now.trim() && !(draft && now === draft.text) ? now : "";
     keepTyped(workspaceId, chatId, behind ? `${words}\n${behind}` : words, null);
   };
   const act = (run: () => Promise<void>): void => {

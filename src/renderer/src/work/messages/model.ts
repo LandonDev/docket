@@ -239,6 +239,38 @@ export function markWords(text: string, query: string): [string, boolean][] {
  * when the match starts past `after` characters; a line that shows it whole
  * keeps its start.
  */
+/**
+ * A hit's words cut to show the match on a measured line. `fits` says whether a string, with the line's lead before it,
+ * fits the line. The words through the end of the first match fitting, nothing is cut (the line's own end may truncate
+ * what follows). Else the line starts as late as it must and no later, at a word where one starts there, and "…"
+ * says so; a match too wide for the line starts the line itself.
+ */
+export function cutToFit(text: string, query: string, fits: (line: string) => boolean): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  let at = 0;
+  let end = -1;
+  for (const [part, hit] of markWords(flat, query)) {
+    if (hit) {
+      end = at + part.length;
+      break;
+    }
+    at += part.length;
+  }
+  if (end < 0 || fits(flat.slice(0, end))) return flat;
+  if (!fits(`…${flat.slice(at, end)}`)) return `…${flat.slice(at)}`;
+  // The earliest start that still shows the match whole: a later start is always shorter, so halve the span.
+  let lo = 1;
+  let hi = at;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (fits(`…${flat.slice(mid, end)}`)) hi = mid;
+    else lo = mid + 1;
+  }
+  const space = flat.indexOf(" ", lo - 1);
+  const start = space >= 0 && space < at ? space + 1 : lo;
+  return `…${flat.slice(start)}`;
+}
+
 export function aroundMatch(text: string, query: string, after = 40, lead = 12): string {
   const flat = text.replace(/\s+/g, " ").trim();
   let at = 0;

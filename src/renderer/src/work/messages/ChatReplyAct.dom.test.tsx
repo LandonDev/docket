@@ -9,7 +9,7 @@ import type { HeldItem } from "@shared/work";
 import { ACT_VIEWS } from "../acts/registry";
 import { CHATS, MESSAGES } from "./fixtures";
 
-const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], answer: true, raw: undefined as unknown, pageFails: false, rawFails: false, detailFails: false }));
+const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], answer: true, raw: undefined as unknown, pageFails: false, rawFails: false, detailFails: false, pageLoading: false }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
   useLifeosSession: (environmentId: string, sector: string) => ({ environmentId, sector, client: {}, state: "connected" }),
@@ -18,6 +18,7 @@ vi.mock("../shell/lifeos", async (original) => ({
     if (!lifeos.answer) return { status: "loading" };
     if (name === "chats:get" && lifeos.detailFails) return { status: "failed", error: "LifeOS did not answer" };
     if (name === "chats:get") return { status: "ready", value: { chat: CHATS.find((c) => c._id === args.id), source: null, route: { can: true } } };
+    if (name === "chats:messages" && lifeos.pageLoading) return { status: "loading" };
     if (name === "chats:messages") return lifeos.pageFails ? { status: "failed", error: "LifeOS did not answer" } : { status: "ready", value: { page: MESSAGES[args.chatId!] ?? [] } };
     if (name === "rawMessages:get") return lifeos.rawFails ? { status: "failed", error: "LifeOS did not answer" } : lifeos.raw === undefined ? { status: "loading" } : { status: "ready", value: lifeos.raw };
     return { status: "loading" };
@@ -34,6 +35,7 @@ afterEach(() => {
   lifeos.pageFails = false;
   lifeos.rawFails = false;
   lifeos.detailFails = false;
+  lifeos.pageLoading = false;
 });
 
 const item = (payload: unknown): HeldItem =>
@@ -125,6 +127,13 @@ describe("the held reply's view", () => {
     const line = document.querySelector<HTMLElement>("[data-answers='unreadable']")!;
     expect(line.textContent).toContain("The message it answers could not be read");
     expect(within(line).getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("says at once that it could not be read when the conversation failed, the page still loading", () => {
+    lifeos.detailFails = true;
+    lifeos.pageLoading = true;
+    render(<View env="box" item={item({ chatId: "c_dana", source: "slack", chat: "Dana Lee", text: "Yes." })} />);
+    expect(document.querySelector("[data-answers]")!.getAttribute("data-answers")).toBe("unreadable");
   });
 
   it("says what a parent with no words is, and keeps 'no longer here' for one that is absent", () => {

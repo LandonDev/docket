@@ -73,6 +73,10 @@ export function returnTo(workspaceId: string, chatId: string): void {
   const from = opened.get(workspaceId);
   returns.set(workspaceId, from?.chatId === chatId ? from : { chatId, index: 0 });
 }
+/** Comes back to the list's first row: a list mounting afresh (Clear filter) takes the keys there. */
+export const returnToTop = (workspaceId: string): void => void returns.set(workspaceId, { chatId: "", index: 0 });
+/** Where to stand, if he just came back, left in place for whatever can take the keys (a failed list's Retry only looks). */
+export const peekReturn = (workspaceId: string): ReturnTarget | undefined => returns.get(workspaceId);
 /** Taken once: where to stand, if he just came back. */
 export function takeReturn(workspaceId: string): ReturnTarget | undefined {
   const target = returns.get(workspaceId);
@@ -84,12 +88,22 @@ export const placeOf = (workspaceId: string, chatId: string): RowAnchor | undefi
 export function keepPlace(workspaceId: string, chatId: string, anchor: RowAnchor | null): void {
   if (anchor) places.set(key(workspaceId, chatId), anchor);
   else places.delete(key(workspaceId, chatId));
+  visitPlaces.set(key(workspaceId, chatId), anchor);
 }
+/** Where he stood in this visit (null at the foot), if he has moved in it: a remount (Retry) puts him back there. */
+const visitPlaces = new Map<string, RowAnchor | null>();
+export const visitPlaceOf = (workspaceId: string, chatId: string): RowAnchor | null | undefined => visitPlaces.get(key(workspaceId, chatId));
 
 /** What he typed in a conversation and has not sent; the composer reads it back. */
 export const typedIn = (workspaceId: string, chatId: string): string => typed.get(key(workspaceId, chatId)) ?? "";
 /** The draft whose words the field holds (or his edit of them), if they came from one; else they are his own. */
 export const typedFromDraft = (workspaceId: string, chatId: string): string | null => typedFrom.get(key(workspaceId, chatId)) ?? null;
+/**
+ * The field's revision: moved on by every change of its words, so a press that settles later can tell the field it
+ * left from one that only reads the same (cleared and the same words typed again as his own).
+ */
+const typedRevs = new Map<string, number>();
+export const typedRev = (workspaceId: string, chatId: string): number => typedRevs.get(key(workspaceId, chatId)) ?? 0;
 const typedListeners = new Set<() => void>();
 /**
  * Keeps the field's words. `from` says whose they are: a draft's id, null for
@@ -98,6 +112,7 @@ const typedListeners = new Set<() => void>();
  */
 export function keepTyped(workspaceId: string, chatId: string, text: string, from?: string | null): void {
   const at = key(workspaceId, chatId);
+  typedRevs.set(at, (typedRevs.get(at) ?? 0) + 1);
   if (text) typed.set(at, text);
   else typed.delete(at);
   if (!text || from === null) typedFrom.delete(at);
@@ -157,8 +172,17 @@ const unreadHeld = new Map<string, number>();
 export const heldUnread = (workspaceId: string, chatId: string): number | undefined => unreadHeld.get(key(workspaceId, chatId));
 export const holdUnread = (workspaceId: string, chatId: string, lastIn: number): void => void unreadHeld.set(key(workspaceId, chatId), lastIn);
 export const releaseUnread = (workspaceId: string, chatId: string): void => void unreadHeld.delete(key(workspaceId, chatId));
+/**
+ * His Mark unread, held from the command itself (not from LifeOS's answer, which may come after a remount): only on the
+ * conversation he has open, whose visit would otherwise mark it read again. A refused write lets the hold go.
+ */
+export function markUnreadHeld(markUnread: (chatId: string, onFailed?: () => void) => void, workspaceId: string, row: { _id: string; lastInAt?: number }, open: boolean): void {
+  if (open) holdUnread(workspaceId, row._id, row.lastInAt ?? 0);
+  markUnread(row._id, open ? () => releaseUnread(workspaceId, row._id) : undefined);
+}
 export function endVisit(workspaceId: string, chatId: string): void {
   visits.delete(key(workspaceId, chatId));
+  visitPlaces.delete(key(workspaceId, chatId));
   unreadHeld.delete(key(workspaceId, chatId));
 }
 
@@ -187,6 +211,36 @@ export function usePendingPress(workspaceId: string, chatId: string): PendingPre
     },
     () => pendingPress(workspaceId, chatId),
     () => pendingPress(workspaceId, chatId),
+  );
+}
+
+/**
+ * What became of a thread's draft here before the Outbox's own list says so: settled (pressed and gone, or discarded)
+ * and not to be offered again, or failed with LifeOS's reason. Kept per conversation until the list itself drops the
+ * draft (or lists it failed), so no mount, Retry or 640px crossing offers it again in the meantime.
+ */
+export type DraftMark = { settled: true } | { failed: string };
+const draftMarks = new Map<string, ReadonlyMap<string, DraftMark>>();
+const NO_MARKS: ReadonlyMap<string, DraftMark> = new Map();
+const markListeners = new Set<() => void>();
+export const draftMarksOf = (workspaceId: string, chatId: string): ReadonlyMap<string, DraftMark> => draftMarks.get(key(workspaceId, chatId)) ?? NO_MARKS;
+export function markDraft(workspaceId: string, chatId: string, draftId: string, mark: DraftMark | null): void {
+  const at = key(workspaceId, chatId);
+  const next = new Map(draftMarks.get(at) ?? NO_MARKS);
+  if (mark) next.set(draftId, mark);
+  else if (!next.delete(draftId)) return;
+  if (next.size) draftMarks.set(at, next);
+  else draftMarks.delete(at);
+  for (const listener of markListeners) listener();
+}
+export function useDraftMarks(workspaceId: string, chatId: string): ReadonlyMap<string, DraftMark> {
+  return useSyncExternalStore(
+    (fn) => {
+      markListeners.add(fn);
+      return () => void markListeners.delete(fn);
+    },
+    () => draftMarksOf(workspaceId, chatId),
+    () => draftMarksOf(workspaceId, chatId),
   );
 }
 
@@ -230,7 +284,10 @@ export function resetPages(): void {
   places.clear();
   typed.clear();
   typedFrom.clear();
+  typedRevs.clear();
+  draftMarks.clear();
   visits.clear();
+  visitPlaces.clear();
   unreadHeld.clear();
   presses.clear();
   opened.clear();

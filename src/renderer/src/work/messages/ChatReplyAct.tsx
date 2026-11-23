@@ -55,6 +55,9 @@ export type Answered = { who: string; text: string } | "loading" | "gone" | "unr
  * conversation's own read failed and so no message to answer could be found.
  */
 export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: LifeosQuery<ChatDetail | null>, page: LifeosQuery<{ page: ChatMessage[] }>, byId: LifeosQuery<RawMessage> | null): Answered {
+  // Naming no message, the conversation's own read is the only way to its target: failed, the page cannot help, so the
+  // line says so at once, with Retry, whatever the page is doing.
+  if (!reply.replyTo && detail.status === "failed") return "unreadable";
   if (detail.status === "loading" && !reply.replyTo) return "loading";
   if (page.status === "loading") return "loading";
   const inPage = page.status === "ready" ? answeredOf(reply, ready(detail), page.value.page) : null;

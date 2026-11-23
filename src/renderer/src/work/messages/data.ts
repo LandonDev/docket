@@ -31,6 +31,8 @@ export interface ThreadDraft {
   threadId: string | null;
   /** Its title, when the host still holds it. */
   thread?: string;
+  /** A held reply whose press failed: LifeOS's reason. Its words are the item's, offered only through the Outbox. */
+  failed?: string;
 }
 
 /** What a press on a file does: show it beside the conversation, or save it to Downloads. */
@@ -54,7 +56,8 @@ export interface MessagesData {
   /** Now, moved on each minute, so "2:14 PM" turns to "Yesterday" at midnight. */
   useNow(): number;
   markRead(chatId: string): void;
-  markUnread(chatId: string): void;
+  /** Marks it unread; `onFailed` hears that LifeOS did not take the mark. */
+  markUnread(chatId: string, onFailed?: () => void): void;
   /** His own reply, through the host; LifeOS holds it for its undo time. Rejects with LifeOS's words. */
   send(chatId: string, text: string): Promise<void>;
   /** Takes a reply back inside its undo time and answers its words. */
@@ -63,10 +66,15 @@ export interface MessagesData {
   retry(chatId: string, replyId: string): Promise<void>;
   /** The threads' drafts waiting in a conversation, the held ones first. */
   useDrafts(chatId: string | null): readonly ThreadDraft[];
-  /** Presses a held draft with these words: an edit is saved to it first. Rejects with why nothing went. */
+  /**
+   * Presses a held draft with these words: an edit is saved to it first. Rejects with why nothing went, the error's
+   * `failed` true when the item itself failed (it stays in the Outbox, for Send again or Check Sent first there).
+   */
   sendDraft(draft: ThreadDraft, text: string): Promise<void>;
   /** Saves his edit to a held draft's words, the Outbox's edit, without pressing it. */
   saveDraft(draft: ThreadDraft, text: string): Promise<void>;
+  /** Opens the Outbox, where a failed held reply is sent again or checked. */
+  openOutbox(): void;
   /** Discards a held draft, or drops a copy-only one. */
   dropDraft(draft: ThreadDraft): Promise<void>;
   /** Asks LifeOS's worker to fetch a message's files it only listed; rejects when LifeOS did not take the ask. */
@@ -99,6 +107,7 @@ export const WAITING: MessagesData = {
   useDrafts: () => NO_DRAFTS,
   sendDraft: () => Promise.reject(new Error("LifeOS is not connected")),
   saveDraft: () => Promise.reject(new Error("LifeOS is not connected")),
+  openOutbox: () => {},
   dropDraft: () => Promise.resolve(),
   requestFiles: () => Promise.reject(new Error("LifeOS is not connected")),
   fileVerb: () => "save",

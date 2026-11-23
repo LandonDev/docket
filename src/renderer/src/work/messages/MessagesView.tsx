@@ -4,6 +4,7 @@ import "./messages.css";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { MessageMultiple } from "../../chrome/icons";
+import { cn } from "../../lib/cn";
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { sectorName } from "../shell/actions";
 import { sessionWaits } from "../shell/lifeos";
@@ -127,7 +128,10 @@ export function MessagesScreen({
     if (page.chatId) returnTo(workspaceId, page.chatId);
     patchPage(workspaceId, { chatId: null });
   };
-  const list = <ChatList workspaceId={workspaceId} job={job} narrow={narrow} onOpen={open} />;
+  // One tree in both layouts: the list and the pane keep their places whatever the width, and under 640px one of the
+  // two is hidden, so crossing the line remounts nothing (his place in the column, a Send on its way, the keys).
+  const opened = page.chatId !== null;
+  const list = <ChatList workspaceId={workspaceId} job={job} narrow={narrow} shown={!narrow || !opened} onOpen={open} />;
   // Keyed by the conversation: another one starts with its own place and its own pages.
   const conversation = page.chatId ? <Conversation key={page.chatId} workspaceId={workspaceId} chatId={page.chatId} narrow={narrow} onBack={back} /> : null;
   // A file opened from a message shows in the view's own pane beside the conversation, as Mail seats its reader.
@@ -141,7 +145,7 @@ export function MessagesScreen({
     );
   return (
     <div ref={root} data-messages={workspaceId} data-narrow={narrow || undefined} className="tc-messages h-full min-h-0">
-      {narrow ? (conversation ? seated(conversation) : list) : <ListFrame list={list} pane={seated(conversation ?? <NothingOpen />)} />}
+      <ListFrame list={list} pane={seated(conversation ?? <NothingOpen />)} narrow={narrow} opened={opened} />
     </div>
   );
 }
@@ -160,9 +164,11 @@ function NothingOpen() {
 /**
  * The list beside the conversation, with the edge between them to drag: 260 to 480px, kept for the
  * app. The arrow keys move the edge 16px on its own tab stop, and a double press puts it back. In a
- * view too narrow for the kept width the list draws narrower, leaving the pane its 360px.
+ * view too narrow for the kept width the list draws narrower, leaving the pane its 360px. Under
+ * 640px (`narrow`) the two take turns in the same tree: the list fills the view and the pane is
+ * hidden, or, a conversation open, the list is hidden and the pane fills it; the edge goes.
  */
-export function ListFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) {
+export function ListFrame({ list, pane, narrow = false, opened = false }: { list: ReactNode; pane: ReactNode; narrow?: boolean; opened?: boolean }) {
   const [width, setWidth] = useState(readListWidth);
   const [room, setRoom] = useState(0);
   const root = useRef<HTMLDivElement>(null);
@@ -189,7 +195,7 @@ export function ListFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) 
   };
   return (
     <div ref={root} className="flex h-full min-h-0">
-      <div data-messages-list="" style={{ width: drawn }} className="flex shrink-0 flex-col">
+      <div data-messages-list="" hidden={narrow && opened} style={narrow ? undefined : { width: drawn }} className={cn("flex flex-col", narrow ? "min-w-0 flex-1" : "shrink-0")}>
         {list}
       </div>
       {/* biome-ignore lint/a11y/useSemanticElements: a draggable edge is a separator with a value, which no element is */}
@@ -201,6 +207,7 @@ export function ListFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) 
         aria-valuemin={LIST_WIDTH.min}
         aria-valuemax={LIST_WIDTH.max}
         tabIndex={0}
+        hidden={narrow}
         className="group/edge relative z-10 -mx-[3px] w-[7px] shrink-0 cursor-col-resize touch-none outline-none"
         onPointerDown={(event) => {
           event.preventDefault();
@@ -222,7 +229,7 @@ export function ListFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) 
       >
         <span className="absolute inset-y-0 left-[3px] w-px bg-border transition-colors duration-(--dur-fast) ease-(--ease-out) group-hover/edge:bg-ring group-focus-visible/edge:bg-ring group-active/edge:bg-ring" />
       </div>
-      <div data-messages-pane="" className="flex min-w-0 flex-1 flex-col">
+      <div data-messages-pane="" hidden={narrow && !opened} className="flex min-w-0 flex-1 flex-col">
         {pane}
       </div>
     </div>

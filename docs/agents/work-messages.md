@@ -175,9 +175,9 @@ files: there a file is the plain line LifeOS stored.
 | `files.ts` | `viewKind` (the canvas kind `kindForFile` names, when the canvas fetches it), `fileVerb`, `chatFileSource` (the mail arm with `from: 'chat'`). |
 | `threads.ts` | `chatChip` ("Dana Lee in Slack", a message's words as `quote`), `threadRows` (Start thread; Mention in a thread only while one is open), `linkRows` (Open in the app, Copy link), `mention`, `StartThreadProvider`. |
 | `fixtures.ts`, `pictures.fixtures.ts` | The seam from a made-up studio, Starboard, kept in memory (a reply lands as his own message, an undo takes it away, a pressed draft goes), with switches: `loading`, `empty`, `noSource`, `stale`, `drafted`, `drafts`, `routes`, `refuse`, and `manyChats`/`manyMessages` for the speed proof; two made-up pictures as `data:` addresses. |
-| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search, what he typed in each conversation (live: Undo writes back into it), a message asked for (`wantMessage`), whose words the field holds (`keepTyped(…, from)`), the pending press (`keepPress`), the visit's "New" and his held unread mark; outside React, the list's scroll and each conversation's place. |
+| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search, what he typed in each conversation (live: Undo writes back into it), a message asked for (`wantMessage`), whose words the field holds (`keepTyped(…, from)`) and its revision (`typedRev`), the pending press (`keepPress`), what became of a draft before the Outbox's list says so (`markDraft`: settled or failed), the visit's "New", its place (`visitPlaceOf`) and his held unread mark (`markUnreadHeld`), the way back to the list (`returnTo`, `peekReturn`, `takeReturn`); outside React, the list's scroll and each conversation's place. |
 | `model.ts` | Pure rules: `rowTime`, `dayWords`, `rowLine`, `chatFact`, `newSince`, `wantsRead`, `blocksOf` (runs inside five minutes, days, "New"), `estimateOf`, `isPicture`, `pictureBox` (360 by 270), `linkParts` and `opensOutside` (http, https, mailto), `markWords`, `aroundMatch`. |
-| `MessagesView.tsx` | The frame (`ListFrame`, Mail's: 296px, 260 to 480, `tc.messages.listWidth`), the narrow rule at 640px, the conversation in a `CanvasSeat` on `messagesPaneOf` (toggle "Messages"), `useOpened` (`OpenWorkView.chat` and `.message`, taken once), `MessagesScreen` for the preview. |
+| `MessagesView.tsx` | The frame (`ListFrame`, Mail's: 296px, 260 to 480, `tc.messages.listWidth`), the narrow rule at 640px (one tree in both layouts: under it the list or the pane is hidden, never remounted), the conversation in a `CanvasSeat` on `messagesPaneOf` (toggle "Messages"), `useOpened` (`OpenWorkView.chat` and `.message`, taken once), `MessagesScreen` for the preview. |
 | `ChatList.tsx`, `Conversation.tsx`, `Message.tsx`, `Composer.tsx` | The list, the conversation, one message (its reply state, pictures and files), the composer. |
 | `act.ts`, `ChatReplyAct.tsx` | The Outbox's view of a held `chat.reply`: To, In ("Slack, Starboard Games"), the message it answers as one quoted line, the words exactly. |
 | `messages.css` | The 14/22 step and the one motion: a message arriving at the foot. |
@@ -185,6 +185,14 @@ files: there a file is the plain line LifeOS stored.
 
 The look is docs/DESIGN.md "The Messages view".
 
+- **One reader.** The list and the pane keep their places in one tree at
+  every width (`ListFrame` with `narrow`): under 640px the list is hidden
+  (the `hidden` attribute) while a conversation is open, and the pane while
+  none is, so crossing the line remounts nothing; his place in the column, a
+  Send on its way, his words and the keys stay where they were. The hidden
+  list takes the keys back as it shows again, not as it mounts. A remount
+  that cannot be helped (Retry) opens where he stood this visit, reading
+  older pages to hold that row, ahead of "New".
 - **Windowing.** The list's rows are one height, so `useWindowed`
   (work-kit/mail/lib/window, Mail's) draws only those near the window. The
   conversation's blocks are measured: `RowLayout` (lib/transcriptWindow.ts)
@@ -200,8 +208,8 @@ The look is docs/DESIGN.md "The Messages view".
   it read when it is unread or someone wrote since he last saw it
   (`wantsRead`); so does a message that arrives while it is open and the
   window is in front, or his coming back to the window. His own Mark unread
-  holds, kept with the visit in page.ts (`holdUnread`), so a Retry or the
-  640px crossing finds it held: nothing marks the conversation read again
+  on the open conversation holds from the command itself (`markUnreadHeld`,
+  let go if LifeOS refuses the write), kept with the visit in page.ts: nothing marks the conversation read again
   until a newer message from someone else comes or the visit ends. The read
   mark waits until the column has placed him (on a wanted message, or where
   it opens once that lookup ends without it) and needs a ready page, so a
@@ -233,16 +241,25 @@ The look is docs/DESIGN.md "The Messages view".
   on any mount, so nothing goes twice and sent words never sit in the field.
   On a refusal the pressed words come back before whatever he typed since, a
   line between, with the draft's id when a draft was pressed, and the
-  refusal shows. Discard empties the field if and only if its words are that
-  draft's (tied by its id, edited or not) at the press and unchanged when it
-  settles. A refusal is kept with the conversation (`page.ts`) until he
+  refusal shows. A held draft pressed or discarded here is marked settled in
+  page.ts (`markDraft`) and left out of the drafts (`useWaitingDrafts`,
+  drafts.ts) until the Outbox's own list drops it, so its line, Use draft
+  and a fill of an empty field never come back for the round trip, on any
+  mount. A held reply whose press failed stays in the Outbox (Send again,
+  Check Sent first there): the composer shows "Not sent." with the reason and
+  Open in Outbox, never puts its words in the field, and clears words tied to
+  it; what he types is his own reply. Discard empties the field if and only
+  if its words are that draft's (tied by its id, edited or not) at the press
+  and the field's revision (`typedRev`, moved by every edit) is unchanged
+  when it settles; the copy-only cleanup after Copy goes by the same rule. A refusal is kept with the conversation (`page.ts`) until he
   types or sends again. His own reply shows from LifeOS's row: `queued` is
   "Sending" with Undo, `sending` "Sending", `failed` "Not sent." with the
-  reason and Retry. Undone words are his own and never take a draft's id:
-  into an empty field, else before his own words, a line between; where the
-  field holds a held draft, an edit of it is saved first (`saveDraft`, the
-  Outbox's edit), then the field takes his words and the draft waits behind
-  Use draft.
+  reason and Retry. Undone words are his own and never take a draft's id,
+  judged when the Undo settles: into an empty field, else before his own
+  words, a line between; where the field then holds a held draft's words,
+  they are saved to the item first when they differ from its own
+  (`saveDraft`, the Outbox's edit), then the field takes his words and the
+  draft waits behind Use draft.
 - **Threads.** Start thread is the toolbar's 28px button and a row on the
   row's and a message's menus; a message's chip carries its words as
   `quote`. Mention in a thread puts the chip in the thread open in the window
@@ -259,14 +276,22 @@ The look is docs/DESIGN.md "The Messages view".
   its place when reading it took it off an Unread list, or Clear filter when
   none is left, or in a search the hit he opened); Shift+F10 or the
   menu key opens the active row's menu; until a row is active and drawn the
-  list wears the focus ring. Search hits are one list the same way; a search
+  list wears the focus ring. When the row the keys stand on leaves the list
+  (read, under Unread), they keep its index: the arrows move from there and
+  the menu key opens the row now there. Clear filter leaves the keys on the
+  whole list's first row; Clear search hands them to the search field. Search hits are one list the same way; a search
   keeps its last hits on screen while the next words are asked (bones only
   before the first answer), and a hit's line is measured so the word it
-  found always shows: the line is cut at a space only where one falls inside
-  the lead's budget, else at the budget itself (also deep in a URL), and
-  "…" stands only where words were cut. Back under 640px brings the hit he
-  left (or the one now in its place) into view; with no hits left, Clear
-  search takes the keys. In the column the
+  found always shows: measured in its own font on a canvas
+  (`measureText`, widths kept by words), the words through the match are
+  never cut when they fit, else the line starts as late as it must (at a
+  word where one starts there, else mid-run, so a URL's match shows too) and
+  "…" stands only where words were cut; where nothing can measure text it
+  counts characters (`aroundMatch`). Back under 640px is taken by the first
+  answer that shows, once: hits put the keys on the hit he left (or the one
+  now in its place), brought into view; no hits on Clear search; a failure
+  on its Retry, the way back kept for the search Retry brings. Later answers,
+  as he types, take nothing. In the column the
   arrows move from message to message and the menu key opens one's menu; a
   message's ⋯ is no tab stop. The log says nothing of itself (`aria-live
   off`), so an older page drawn on the way up is not read out; what arrives
@@ -295,8 +320,9 @@ The look is docs/DESIGN.md "The Messages view".
   holds its place until LifeOS answers. A reply that names its message is
   read by id also when the page did not load; "The message it answers is no
   longer here" only when LifeOS answers that it is absent, "could not be
-  read" with Retry when that read failed, or when the conversation's own
-  read failed and so no message to answer could be found. A parent with no
+  read" with Retry when that read failed, or at once, whatever the page is
+  doing, when the conversation's own read failed and the reply names no
+  message. A parent with no
   words says "A picture or file". The quote is "Writer: words", cut where its
   line ends; in a direct chat the writer is left out only when it is the
   recipient, so his own words still say "You:".

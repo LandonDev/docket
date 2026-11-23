@@ -9,6 +9,7 @@ import { registry } from "../../lib/connection";
 import { saveDownload } from "../../lib/native";
 import { refusalWords } from "../../lib/settingsHome";
 import { sessionStore } from "../../lib/tcserver/store";
+import { shell } from "../../stores/shell";
 import { openItem } from "../canvas/store";
 import { discardItem, editItem, notSentWords, outboxNow, sendItem, useOutbox, wentOut, type HostItem } from "../outbox/store";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
@@ -100,10 +101,13 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
       throw new Error(refusalWords(err) || "The host did not answer");
     }
   };
-  const write = (name: string, id: string, failed: string): void => {
+  const write = (name: string, id: string, failed: string, onFailed?: () => void): void => {
     const client = session.client;
-    if (!client) return;
-    client.mutation(makeFunctionReference<"mutation">(name), { id }).catch(() => void loadToast().then((toast) => toast.error(failed)));
+    if (!client) return void onFailed?.();
+    client.mutation(makeFunctionReference<"mutation">(name), { id }).catch(() => {
+      onFailed?.();
+      void loadToast().then((toast) => toast.error(failed));
+    });
   };
   return {
     useChats: (filter: ChatFilter) => usePaged<ChatRow>(session, "chats:list", { sector, filter }, CHAT_PAGE, filter),
@@ -134,7 +138,7 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     },
     useNow: useMinute,
     markRead: (chatId: string) => write("chats:markRead", chatId, "Couldn't mark it read"),
-    markUnread: (chatId: string) => write("chats:markUnread", chatId, "Couldn't mark it unread"),
+    markUnread: (chatId: string, onFailed?: () => void) => write("chats:markUnread", chatId, "Couldn't mark it unread", onFailed),
     send: async (chatId, text) => {
       await host<MessagesSendAnswer>("work.messages.send", { workspaceId, chatId, text });
     },
@@ -162,8 +166,9 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
       const payload = (item.payload ?? {}) as { text?: string };
       const pressed = payload.text === text ? item : { ...(await editItem(item, { ...payload, text })), environmentId: env };
       const after = await sendItem(pressed);
-      if (!wentOut(after)) throw new Error(notSentWords(after));
+      if (!wentOut(after)) throw Object.assign(new Error(notSentWords(after)), { failed: after.state === "failed" });
     },
+    openOutbox: () => shell.openOutbox(),
     saveDraft: async (draft, text) => {
       const item = heldItem(env, draft.id);
       if (!item) throw new Error("This draft is no longer waiting");
@@ -216,14 +221,21 @@ const chatOf = (item: HostItem): string | undefined => ((item.payload ?? {}) as 
 const threadTitle = (sessionId: string | null, kept?: string): string | undefined => (sessionId ? sessionStore.metaOf(sessionId)?.title?.trim() : undefined) || kept?.trim() || undefined;
 const heldDraft = (item: HostItem): ThreadDraft => {
   const title = threadTitle(item.sessionId);
-  return { id: item.ref.id, held: true, text: String(((item.payload ?? {}) as { text?: unknown }).text ?? ""), threadId: item.sessionId, ...(title ? { thread: title } : {}) };
+  return {
+    id: item.ref.id,
+    held: true,
+    text: String(((item.payload ?? {}) as { text?: unknown }).text ?? ""),
+    threadId: item.sessionId,
+    ...(title ? { thread: title } : {}),
+    ...(item.state === "failed" ? { failed: item.error ?? "It couldn't be sent" } : {}),
+  };
 };
 const heldItem = (env: string, id: string): HostItem | undefined => outboxNow().waiting.find((item) => item.environmentId === env && item.ref.id === id && item.kind === "chat.reply");
 
-/** This workspace's held replies still waiting, from the Outbox's own list of the host. */
+/** This workspace's held replies still waiting, and those whose press failed, from the Outbox's own list of the host. */
 function useHeldReplies(env: string, workspaceId: string): readonly HostItem[] {
   const { waiting } = useOutbox();
-  return useMemo(() => waiting.filter((item) => item.environmentId === env && item.workspaceId === workspaceId && item.kind === "chat.reply" && item.state === "held"), [waiting, env, workspaceId]);
+  return useMemo(() => waiting.filter((item) => item.environmentId === env && item.workspaceId === workspaceId && item.kind === "chat.reply" && (item.state === "held" || item.state === "failed")), [waiting, env, workspaceId]);
 }
 
 // The copy-only drafts a workspace holds, read once and again on the host's `work.messages` push.

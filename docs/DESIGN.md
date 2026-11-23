@@ -1744,8 +1744,8 @@ Around the canvas:
   docs/agents/work-messages.md). Mail's frame: no header of its own, the
   list's 44px head the page's, the list 296px (260 to 480, kept as
   `tc.messages.listWidth`) beside the conversation, and at and under 640px
-  of view the two take turns, the conversation's toolbar leading with the
-  way back. The head is "Messages" (13px semibold, the job's unread count
+  of view the two take turns in the same places (one hidden, neither
+  remounted), the conversation's toolbar leading with the way back. The head is "Messages" (13px semibold, the job's unread count
   muted after it) on a menu of All, Unread, Direct and Channels, and names
   the filter in force (the count only beside All and Unread; "Messages"
   while a search runs); under it the 28px search, then one 12px muted line
@@ -1769,8 +1769,8 @@ Around the canvas:
   rows' place (the last answer stays while the next words are asked), the
   conversation's name in a row's ink and the time, then who ("You: " alone in
   a direct chat) and the words, cut to start a little before the match only
-  where the measured line could not show it otherwise (at a word where one
-  starts close before it, else mid-run, so the match shows even deep in a
+  where the line, measured in its own 12px font, could not show it otherwise
+  (as late as it must, at a word where one starts there, else mid-run, so the match shows even deep in a
   URL; "…" only where words were cut), lit in `foreground` medium. A
   search's first bones say "Loading search results", the reader's "Loading
   messages". Name bones are fixed widths in pixels, different row to row. Under 640px the conversation's toolbar line reads "Last synced
@@ -1812,10 +1812,12 @@ Around the canvas:
   can send (the button is then Copy, with Open in the app quiet beside it),
   a thread's draft (the amber circle-dot, "Drafted in" and the thread's
   name in medium, LifeOS's reason while its button is Copy, for a copy-only
-  draft or a held one where the route says no, then its controls in ink so
-  the line ends with them: Use draft while the field holds his own words,
-  Open thread; Discard
-  beside the primary), or a refusal in red. His reply shows as his own message with one 12px line under it:
+  draft or a held one where the route says no, then its controls in ink at
+  the line's far end, apart from the name: Use draft while the field holds
+  his own words, Open thread; Discard beside the primary), a thread's held
+  reply whose press failed (the red mark, "Not sent.", LifeOS's reason, and
+  Open in Outbox at the far end; no Discard, its words never in the field),
+  or a refusal in red. His reply shows as his own message with one 12px line under it:
   "Sending" and Undo (in ink, as Retry), or the red mark, "Not sent.", LifeOS's reason and
   Retry. The field empties at Send's press, the button turning busy until
   LifeOS answers. A message that arrives at the foot rises 4px and fades in over

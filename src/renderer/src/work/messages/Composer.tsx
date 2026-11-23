@@ -3,13 +3,15 @@ import { CHAT_ROUTES, SOURCE_APP, SOURCE_NAME, type ChatDetail } from "@shared/w
 import { CircleDot } from "../../chrome/icons";
 import { COMPOSER_SURFACE } from "../../chrome/ComposerBar";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { StatusMark } from "../../components/ui/status";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { openUrl } from "../../lib/native";
 import { workOpenPort } from "../../lib/workSwitch";
 import { useMessagesData, type ThreadDraft } from "./data";
 import { firstName } from "./model";
-import { keepPress, keepRefusal, keepTyped, pendingPress, typedIn, usePendingPress, useRefusal, useTyped, useTypedFrom } from "./page";
+import { useWaitingDrafts } from "./drafts";
+import { keepPress, keepRefusal, keepTyped, markDraft, pendingPress, typedFromDraft, typedIn, typedRev, usePendingPress, useRefusal, useTyped, useTypedFrom } from "./page";
 import { QUICK_ANSWERS } from "./quick";
 
 /**
@@ -31,15 +33,15 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   const chatId = chat._id;
   const text = useTyped(workspaceId, chatId);
   const setText = (next: string): void => keepTyped(workspaceId, chatId, next);
-  const all = data.useDrafts(chatId);
   // A Send on its way is kept with the conversation, not this mount: leaving and coming back, a Retry or the 640px
   // crossing find it pending, and nothing more goes until LifeOS answers it.
-  const press = usePendingPress(workspaceId, chatId);
-  const pending = press !== undefined;
-  // A draft pressed and on its way is not offered again meanwhile.
-  const drafts = press?.draft ? all.filter((d) => d.id !== press.draft) : all;
-  // A held reply first: his press can send it. A copy-only draft when nothing here can.
-  const draft = drafts.find((d) => d.held) ?? drafts[0] ?? null;
+  const pending = usePendingPress(workspaceId, chatId) !== undefined;
+  // The drafts still waiting: none pressed and on its way, none sent or discarded here that the list still holds.
+  const drafts = useWaitingDrafts(workspaceId, chatId);
+  // A held reply first: his press can send it. Then one whose press failed, then a copy-only draft.
+  const draft = drafts.find((d) => d.held && d.failed === undefined) ?? drafts.find((d) => d.failed !== undefined) ?? drafts[0] ?? null;
+  // A held reply whose press failed is the Outbox's to send again or check: its words never come into the field.
+  const failed = draft?.failed !== undefined;
   const [dropping, setDropping] = useState(false);
   // A refusal stays with the conversation until he types or sends again.
   const refused = useRefusal(workspaceId, chatId);
@@ -55,11 +57,16 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   // still on its way waits for its answer (a refusal puts the pressed words back).
   const filled = useRef<string | null>(null);
   useEffect(() => {
-    if (!draft || filled.current === draft.id || pending) return;
+    if (!draft || failed || filled.current === draft.id || pending) return;
     filled.current = draft.id;
     if (!typedIn(workspaceId, chatId).trim()) keepTyped(workspaceId, chatId, draft.text, draft.id);
-  }, [draft, pending, workspaceId, chatId]);
-  const drafting = draft !== null && fromDraft === draft.id && text.trim() !== "";
+  }, [draft, failed, pending, workspaceId, chatId]);
+  // Words tied to a held reply that has since failed are the item's, kept in the Outbox: they leave the field, so no
+  // Send takes them as his own.
+  useEffect(() => {
+    if (draft && failed && typedFromDraft(workspaceId, chatId) === draft.id) keepTyped(workspaceId, chatId, "", null);
+  }, [draft, failed, fromDraft, workspaceId, chatId]);
+  const drafting = draft !== null && !failed && fromDraft === draft.id && text.trim() !== "";
   // The draft's words, put before his own on his say ("Use draft"), so neither is lost.
   const takeDraft = (d: ThreadDraft): void => {
     keepTyped(workspaceId, chatId, text.trim() ? `${d.text}\n${text}` : d.text, d.id);
@@ -88,9 +95,12 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
       setDropping(false);
     }
   };
-  /** After a discard or a copied draft, the field empties only if it still holds exactly what it held at the press. */
-  const settle = (pressed: string): void => {
-    if (typedIn(workspaceId, chatId) === pressed) keepTyped(workspaceId, chatId, "", null);
+  /**
+   * After a discard or a copied draft, the field empties only if it is the very field of the press: its revision moves
+   * on every change, so words cleared and typed again (the same words, his own now) are not taken.
+   */
+  const settle = (pressed: number): void => {
+    if (typedRev(workspaceId, chatId) === pressed) keepTyped(workspaceId, chatId, "", null);
   };
   /**
    * The field empties at the press; the pressed words (and the held draft's id when a draft was pressed) wait aside in
@@ -106,12 +116,21 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     setRefused(null);
     field.current?.focus();
     try {
-      if (pressing) await data.sendDraft(pressing, sent);
-      else await data.send(chatId, sent);
+      if (pressing) {
+        await data.sendDraft(pressing, sent);
+        // Pressed and gone: never offered again here, whatever the Outbox's list still says for a moment.
+        markDraft(workspaceId, chatId, pressing.id, { settled: true });
+      } else await data.send(chatId, sent);
     } catch (err) {
-      const now = typedIn(workspaceId, chatId);
-      keepTyped(workspaceId, chatId, now.trim() ? `${sent}\n${now}` : sent, pressing?.id ?? null);
-      keepRefusal(workspaceId, chatId, refusalOf(err));
+      if (pressing && (err as { failed?: boolean }).failed) {
+        // The item failed and stays in the Outbox with these words, for Send again or Check Sent first there. Its line
+        // says so; the words are its own, so they do not come back into the field.
+        markDraft(workspaceId, chatId, pressing.id, { failed: refusalOf(err) });
+      } else {
+        const now = typedIn(workspaceId, chatId);
+        keepTyped(workspaceId, chatId, now.trim() ? `${sent}\n${now}` : sent, pressing?.id ?? null);
+        keepRefusal(workspaceId, chatId, refusalOf(err));
+      }
     } finally {
       keepPress(workspaceId, chatId, null);
     }
@@ -128,15 +147,20 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     // again, and so does a held draft copied while the route says no: it waits for the route to return.
     if (drafting && draft && !draft.held) {
       const done = draft;
-      settle(text);
-      await drop(() => data.dropDraft(done));
+      const rev = typedRev(workspaceId, chatId);
+      await drop(async () => {
+        await data.dropDraft(done);
+        markDraft(workspaceId, chatId, done.id, { settled: true });
+        settle(rev);
+      });
     }
   };
   const discard = (d: ThreadDraft): Promise<void> => {
     // The field empties if and only if its words are that draft's (edited or not) at the press and unchanged since.
-    const pressed = fromDraft === d.id ? text : null;
+    const pressed = fromDraft === d.id ? typedRev(workspaceId, chatId) : null;
     return drop(async () => {
       await data.dropDraft(d);
+      markDraft(workspaceId, chatId, d.id, { settled: true });
       if (pressed !== null) settle(pressed);
     });
   };
@@ -150,6 +174,8 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     <p role="alert" className="text-xs text-destructive">
       {refused}
     </p>
+  ) : draft && failed ? (
+    <FailedLine why={draft.failed!} onOpen={data.openOutbox} />
   ) : draft ? (
     // A draft's line ends with why its button is Copy, while it is; a draft he is not using offers itself.
     <DraftLine draft={draft} why={draft.held && sends ? undefined : why} onUse={drafting ? undefined : () => takeDraft(draft)} />
@@ -189,7 +215,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
               </div>
             ) : null}
             <span className="flex-1" />
-            {draft ? (
+            {draft && !failed ? (
               <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={dropping || pending} onClick={() => void discard(draft)}>
                 <BusyLabel busy={dropping} label="Discard" />
               </Button>
@@ -224,21 +250,34 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
 function DraftLine({ draft, why, onUse }: { draft: ThreadDraft; why?: string; onUse?: () => void }) {
   const open = draft.threadId ? () => workOpenPort.get()?.(draft.threadId!) : undefined;
   return (
-    <span className="flex min-w-0 items-center gap-1.5 text-xs">
+    // The name and the reason take the room; the controls stand at the line's far end, apart from the thread's name.
+    <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
       <CircleDot aria-hidden className="size-3.5 shrink-0 text-warning" />
       <span className="shrink-0 text-muted-foreground">{draft.thread ? "Drafted in" : "Drafted in a thread"}</span>
       {draft.thread ? <span className="min-w-0 truncate font-medium text-foreground">{draft.thread}</span> : null}
       {why ? <span className="ms-1 min-w-0 truncate text-muted-foreground">{why}</span> : null}
       {onUse ? (
-        <Button variant="ghost" size="xs" className="-my-1 ms-1 shrink-0" onClick={onUse}>
+        <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" onClick={onUse}>
           Use draft
         </Button>
       ) : null}
       {open ? (
-        <Button variant="ghost" size="xs" className={cn("-my-1 shrink-0", onUse ? null : "ms-1")} onClick={open}>
+        <Button variant="ghost" size="xs" className={cn("-my-1 shrink-0", onUse ? null : "ms-auto")} onClick={open}>
           Open thread
         </Button>
       ) : null}
+    </span>
+  );
+}
+
+/** A thread's held reply whose press failed: "Not sent.", LifeOS's reason, and the one way on, the Outbox. */
+function FailedLine({ why, onOpen }: { why: string; onOpen: () => void }) {
+  return (
+    <span data-draft-failed className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
+      <StatusMark state="failed" word="Not sent." detail={why} className="min-w-0" />
+      <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" onClick={onOpen}>
+        Open in Outbox
+      </Button>
     </span>
   );
 }
