@@ -53,9 +53,13 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   any case, with his own columns among them. A date is ISO text, a US date
   as he may type it, or a sheet's serial number. A row with no date, name
   or amount is a blank line. A missing `Date`, `In` or `Out` header reads no
-  rows and answers `problems: [{kind: 'columns', missing}]`; `work.money.open
-  {restore: true}` writes the missing headers at the end of row 1. Money
-  never reorders or deletes his cells.
+  rows and answers `problems: [{kind: 'columns', missing, renamed}]`;
+  `work.money.open {restore: true}` writes the missing headers at the end
+  of row 1. `renamed` names every column Money does not know that holds
+  cells ("Spent", or "column F" for cells under no header): with any, a
+  header was most likely renamed, and the restore is refused, since an
+  empty Out beside his figures would read them as nothing. He names it
+  back in the sheet. Money never reorders or deletes his cells.
 - **Status** is `Paid`, `Unpaid`, `To reimburse`, `Reimbursed` or
   `Requested`, read without regard to case; an empty or unknown word is
   `Paid`. What a row counts as (`countOf`):
@@ -84,9 +88,14 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   workspace (`locked`) the ledger is read for its last row that holds
   anything and the new row's cells are written at once with
   `/internal/sheet/cells` (`by: 'money'`). A sheet others can open
-  (`open().shared`) takes the row as a suggestion, each waiting one on a
-  row of its own, and the answer says `suggested`; the window then says
-  "Suggested in the ledger. Accept it there."
+  takes the row as a suggestion, each waiting one on a row of its own, and
+  the answer says `suggested`; the window then says "Suggested in the
+  ledger. Accept it there." Others can open it when the sheet says so
+  (`open().shared`) or when the job's folder lies in a place Files calls
+  shared (`othersCanOpen`, Files' own `sharedOf`): a synced folder shares
+  a file the sheet service knows nothing about. A row that keeps a file
+  needs a Receipt column to name it; without one the write is refused
+  ("The ledger has no Receipt column, …") and the file is not kept.
 - **Inside the job's folder** (`moneyFolder`, `insideJob`): every folder
   Money writes into is made one level at a time and checked by its real
   spelling. A `Money` folder, or a ledger, that is a link out of the job's
@@ -102,6 +111,9 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   A row he typed is never given a `Ref`. A row he typed with money both in
   and out has no one direction, so the form cannot change it: the host
   refuses the edit and the window shows it read only, with Open ledger.
+  Paid is refused on it too (one status covers both sides); the owed rows
+  carry `both` so the window offers Open ledger in Paid's place, and the
+  tax summary prints both of its figures.
 - **The look** (`dress`): a bold first row that stays in view, set once at
   create through `/internal/sheet/apply` (raw sheet mutations).
   `real.test.ts` holds that both reach an exported Excel file. Currency
@@ -141,7 +153,8 @@ nothing twice. Only his accept writes the ledger.
   create, never over another file ("… (2).png"), the row is appended with
   the path in Receipt, and the waiting one is filed. `workspaceId` sends it
   to another job. If the row cannot be written the kept copy is removed and
-  the receipt still waits. One accept a receipt at a time: a second press
+  the receipt still waits; a phone's Save sent again under the same key
+  with an amount and a date then files it, once the ledger is right. One accept a receipt at a time: a second press
   while the first is being filed answers the first, and a later one
   answers what was filed.
 - **Drop** (`work.money.drop {id, undo?}`) takes the receipt out of the
@@ -223,7 +236,10 @@ box. About 4 seconds a file.
   pay was written and the trip then failed, the event stays offered
   (`adding`) and the next add writes the trip alone. A log others can open
   takes the trip as a suggestion on a row of its own, and the answer says
-  so. `work.money.skip` marks it skipped; `undo` offers it again.
+  so. The log is read and written only inside the job's folder, as the
+  ledger is. `work.money.events` (Add → Trip…) leaves out an event already
+  added, and a trip that names one answers `already` and writes nothing.
+  `work.money.skip` marks it skipped; `undo` offers it again.
 - The rate is `rateFor(year, his own)`: his for that year, else
   `MILEAGE_RATES` ($0.70 for 2025), else the newest year before it.
   `work.money.rate` sets a year's.
@@ -243,7 +259,7 @@ box. About 4 seconds a file.
   and terms, and answer its page (`invoiceHtml`). A purchase request is the
   same page under its name; it counts by itself and keeps its own details
   and dates, so it never overwrites how he is paid or when an invoice is
-  due.
+  due. A page with no sender's name is refused.
 - A page is printed by the formats pillar from the window
   (`work.formats.print`) and handed back in parts with `work.money.keep`: a
   summary goes to the year's folder; an invoice goes to `Money/Invoices/`
