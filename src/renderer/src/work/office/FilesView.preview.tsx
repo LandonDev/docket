@@ -1,8 +1,10 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/office/FilesView.preview.tsx#FilesStates`: the Files
-// view's states when Teams files are missing, and a list with one quiet line. Rendered by nothing in the app.
+// view's states when Teams files are missing, a list with one quiet line, and a list with the VM's helper down while
+// another host is still being asked. Rendered by nothing in the app.
 import type { TeamsLibrary } from "@shared/contract-work-office";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
-import { NoteEmpty, NoteLine, Places } from "./FilesView";
+import { ViewStateLine } from "../views/ViewStateLine";
+import { MoreBones, NoteEmpty, NoteLine, Places } from "./FilesView";
 import { placeGroups, type FilesNote, type ShownLibrary } from "./files";
 
 const workspace = { id: "w", environmentId: "box", path: "/w", name: "Purdue", kind: "work" } as unknown as WorkspaceMeta;
@@ -39,6 +41,16 @@ export function FilesStates() {
         <div className="rounded-lg border border-border px-6 py-5">
           <Places workspace={workspace} groups={groups} />
           <NoteLine note={{ title: "OneDrive on the Windows VM is signed out", fix: { kind: "sign-in", env: "box" } }} workspace={workspace} again={noop} />
+        </div>
+      </figure>
+      <figure className="m-0 flex flex-col gap-2">
+        <figcaption className="text-xs text-muted-foreground">The VM's helper did not answer: the state line over what it kept; a desktop still being asked: bones under the rows</figcaption>
+        <div className="overflow-hidden rounded-lg border border-border">
+          <ViewStateLine word="The Windows VM did not answer" detail="The Office helper did not answer in 30 s" onRetry={noop} />
+          <div className="px-6 py-5">
+            <Places workspace={workspace} groups={groups} />
+            <MoreBones />
+          </div>
         </div>
       </figure>
     </div>

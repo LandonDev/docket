@@ -29,7 +29,7 @@ import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { playRunner } from "../routines/plays/runOn";
-import { appVerb, crumbsOf, filesNote, openWay, pathIn, placeGroups, placeOf, rowOf, showsHeading, unreachable, type FilesNote, type HostRead, type PlaceCopy, type PlaceGroup, type PlaceRow, type ShownLibrary } from "./files";
+import { appVerb, byDeadline, crumbsOf, filesNote, HOST_DEADLINE_MS, openWay, pathIn, placeGroups, placeOf, READING_AGAIN_MS, rowOf, SEARCH_DEADLINE_MS, showsHeading, unreachable, vmReading, type FilesNote, type HostRead, type PlaceCopy, type PlaceGroup, type PlaceRow, type ShownLibrary } from "./files";
 
 /**
  * The Files view of a Work workspace (docs/agents/work-files.md "The Files view"): the Teams and
@@ -102,46 +102,85 @@ interface Reach {
   copy: boolean;
   /** why nothing (or not everything) is listed; null: nothing to say */
   note: FilesNote | null;
+  /** a host has not answered yet (within its deadline), or its VM's first read is under way: more is coming */
+  waiting: boolean;
 }
 
-/** The hosts this workspace may reach Teams files on (its own, then each desktop it may use), and what each said. */
+/**
+ * The hosts this workspace may reach Teams files on (its own, then each desktop it may use), and what each said. Each
+ * host paints as it answers; one past `HOST_DEADLINE_MS` is said not to answer. A host that pushes `work.office.files`
+ * (its VM read again behind an answer) is asked again, its last answer kept on screen until the new one lands.
+ */
 function useReach(workspace: WorkspaceMeta, attempt: number): Reach | null {
   const [reach, setReach] = useState<Reach | null>(null);
   useEffect(() => {
     let live = true;
+    const offs: (() => void)[] = [];
+    const timers = new Set<ReturnType<typeof setTimeout>>();
     setReach(null);
     void (async () => {
       const [settings, local, desktops] = await Promise.all([workspaceSettings(workspace).catch(() => null), localHostId(), windowDesktops()]);
       // The workspace's desktops are host ids; the window reaches each through its link ("local" for this machine).
       const allowed = (settings?.mayUseDesktop ?? []).map((id) => linkIdOfHost(id, local)).filter((id): id is string => id !== null);
       const hosts = [...new Set([workspace.environmentId, ...allowed])].filter((id) => registry.has(id));
-      const answers = await Promise.allSettled(hosts.map((env) => registry.linkOf(env).request<TeamsLibrariesAnswer>("work.office.filesLibraries", {})));
-      const copy = await registry
+      if (!live) return;
+      const windowsVm = !!settings?.windowsVm;
+      const own = desktops.find((d) => d.link === workspace.environmentId);
+      const notAllowed = desktops.filter((d) => d !== own && !hosts.includes(d.link)).map((d) => d.name);
+      const reads = new Map<string, HostRead>();
+      let copy = false;
+      const paint = (): void => {
+        if (!live) return;
+        const got = hosts.flatMap((env) => reads.get(env) ?? []);
+        // A library in the Windows VM is this workspace's only while its VM switch is on.
+        const shown = got.flatMap((r) => (r.answer?.libraries ?? []).filter((l) => windowsVm || !l.vm).map((l) => ({ ...l, env: r.env })));
+        const placeOk = (l: ShownLibrary): boolean => {
+          const places = reads.get(l.env)?.answer?.places;
+          return !places || places.some((p) => p.kind === (l.vm ? "vm" : "folders") && p.state === "ok");
+        };
+        const groups = placeGroups(shown, workspace.environmentId, placeOk);
+        const rows = groups.flatMap((g) => g.rows);
+        const waiting = got.length < hosts.length || (windowsVm && vmReading(reads.get(workspace.environmentId)?.answer));
+        setReach({ groups, rows, copy, waiting, note: filesNote({ workspaceEnv: workspace.environmentId, reads: got, windowsVm, notAllowed, listed: rows }) });
+      };
+      // Only the newest ask of a host lands.
+      const asked = new Map<string, number>();
+      const ask = (env: string): void => {
+        const mine = (asked.get(env) ?? 0) + 1;
+        asked.set(env, mine);
+        const name = registry.environment(env)?.name ?? env;
+        const desktop = desktops.some((d) => d.link === env);
+        void byDeadline(registry.linkOf(env).request<TeamsLibrariesAnswer>("work.office.filesLibraries", {}), HOST_DEADLINE_MS).then(
+          (answer) => {
+            if (!live || asked.get(env) !== mine) return;
+            reads.set(env, { env, name, desktop, answer });
+            paint();
+            if (!vmReading(answer)) return;
+            const timer = setTimeout(() => (timers.delete(timer), ask(env)), READING_AGAIN_MS);
+            timers.add(timer);
+          },
+          (err: unknown) => {
+            if (!live || asked.get(env) !== mine) return;
+            reads.set(env, { env, name, desktop, failed: { words: refusalWords(err) || "No answer.", unreachable: unreachable(err) } });
+            paint();
+          },
+        );
+      };
+      for (const env of hosts) {
+        ask(env);
+        offs.push(registry.linkOf(env).onPush((push) => void (push.push === "work.office.files" && ask(env))));
+      }
+      paint();
+      copy = await registry
         .linkOf(workspace.environmentId)
         .request<{ on: boolean }>("work.office.filesCopyGet", { workspaceId: workspace.id })
         .then((a) => a.on, () => false);
-      if (!live) return;
-      const windowsVm = !!settings?.windowsVm;
-      const reads: HostRead[] = hosts.map((env, i) => {
-        const a = answers[i]!;
-        const name = registry.environment(env)?.name ?? env;
-        const desktop = desktops.some((d) => d.link === env);
-        return a.status === "fulfilled" ? { env, name, desktop, answer: a.value } : { env, name, desktop, failed: { words: refusalWords(a.reason) || "No answer.", unreachable: unreachable(a.reason) } };
-      });
-      // A library in the Windows VM is this workspace's only while its VM switch is on.
-      const shown = reads.flatMap((r) => (r.answer?.libraries ?? []).filter((l) => windowsVm || !l.vm).map((l) => ({ ...l, env: r.env })));
-      const placeOk = (l: ShownLibrary): boolean => {
-        const places = reads.find((r) => r.env === l.env)?.answer?.places;
-        return !places || places.some((p) => p.kind === (l.vm ? "vm" : "folders") && p.state === "ok");
-      };
-      const groups = placeGroups(shown, workspace.environmentId, placeOk);
-      const rows = groups.flatMap((g) => g.rows);
-      const own = desktops.find((d) => d.link === workspace.environmentId);
-      const notAllowed = desktops.filter((d) => d !== own && !hosts.includes(d.link)).map((d) => d.name);
-      setReach({ groups, rows, copy, note: filesNote({ workspaceEnv: workspace.environmentId, reads, windowsVm, notAllowed, listed: rows }) });
+      if (copy) paint();
     })();
     return () => {
       live = false;
+      for (const off of offs) off();
+      for (const timer of timers) clearTimeout(timer);
     };
   }, [workspace.id, workspace.environmentId, attempt]);
   return reach;
@@ -211,9 +250,17 @@ export function View(props: WorkViewProps) {
   const { query, place } = useFilesState(workspace.id);
   const again = () => setAttempt((n) => n + 1);
   if (!reach) return <Bones />;
-  const { note } = reach;
+  const { note, waiting } = reach;
   // A machine that did not answer is the state line, with Retry, over what the others hold (docs/DESIGN.md "The state line").
-  const stateLine = note?.away ? <ViewStateLine word={note.title} onRetry={again} /> : null;
+  const stateLine = note?.away ? <ViewStateLine word={note.title} detail={note.line} onRetry={again} /> : null;
+  // Nothing listed yet while a host is still to answer: the bones, so the empty state never shows first.
+  if (!reach.rows.length && waiting)
+    return (
+      <>
+        {stateLine}
+        <Bones />
+      </>
+    );
   if (!reach.rows.length) return stateLine ?? (note ? <NoteEmpty note={note} workspace={workspace} again={again} /> : null);
   const row = place ? reach.rows.find((r) => r.key === place.row) : undefined;
   return (
@@ -227,7 +274,8 @@ export function View(props: WorkViewProps) {
       ) : (
         <>
           <Places workspace={workspace} groups={reach.groups} />
-          {note && !stateLine ? <NoteLine note={note} workspace={workspace} again={again} /> : null}
+          {/* A host still to answer: its rows' bones under the ones that came. */}
+          {waiting ? <MoreBones /> : note && !stateLine ? <NoteLine note={note} workspace={workspace} again={again} /> : null}
         </>
       )}
       </div>
@@ -242,6 +290,16 @@ function Bones() {
       <Skeleton className="h-3 w-[64%]" />
       <Skeleton className="h-3 w-[52%]" />
       <Skeleton className="h-3 w-[58%]" />
+    </div>
+  );
+}
+
+/** Rows still to come under rows already listed: two bones, at a group's distance, as the list's own bones are drawn. */
+export function MoreBones() {
+  return (
+    <div aria-busy className="mt-5 flex flex-col gap-3 py-2.5">
+      <Skeleton className="h-3 w-[52%]" />
+      <Skeleton className="h-3 w-[18%]" />
     </div>
   );
 }
@@ -362,16 +420,19 @@ function Results(props: ViewProps & { query: string }) {
     return () => window.clearTimeout(timer);
   }, [query]);
   const envs = [...new Set(reach.rows.flatMap((r) => r.copies.map((c) => c.library.env)))];
-  const [found, setFound] = useState<{ key: string; rows: Row[]; more: boolean; error?: string } | null>(null);
+  const [found, setFound] = useState<{ key: string; rows: Row[]; more: boolean; waiting: boolean; error?: string } | null>(null);
   const [round, setRound] = useState(0);
   useEffect(() => {
     let live = true;
-    void Promise.allSettled(envs.map((env) => registry.linkOf(env).request<{ entries: TeamsEntry[]; more: boolean }>("work.office.filesSearch", { query: asked }))).then((answers) => {
+    // Each host's hits show as it answers; one past its deadline is left out, and only no answer at all is a failure.
+    const answers = new Map<string, PromiseSettledResult<{ entries: TeamsEntry[]; more: boolean }>>();
+    const paint = (): void => {
       if (!live) return;
       // A place's hits come from one copy, the first whose machine answered, so no file is listed twice.
-      const answered = new Set(envs.filter((_, i) => answers[i]!.status === "fulfilled"));
+      const answered = new Set(envs.filter((env) => answers.get(env)?.status === "fulfilled"));
+      const settled = envs.flatMap((env) => answers.get(env) ?? []);
       const seen = new Set<string>();
-      const rows = answers.flatMap((a) => (a.status === "fulfilled" ? a.value.entries : [])).flatMap((entry): Row[] => {
+      const rows = settled.flatMap((a) => (a.status === "fulfilled" ? a.value.entries : [])).flatMap((entry): Row[] => {
         const at = rowOf(reach.rows, entry.library, entry.path);
         if (!at) return [];
         if (at.row.copies.find((c) => answered.has(c.library.env)) !== at.copy) return [];
@@ -380,14 +441,22 @@ function Results(props: ViewProps & { query: string }) {
         seen.add(id);
         return [{ entry, library: at.copy.library, at: { row: at.row, parts: at.parts } }];
       });
-      const error = answers.every((a) => a.status === "rejected") ? refusalWords((answers[0] as PromiseRejectedResult).reason) || "No host answered." : undefined;
-      setFound({ key: asked, rows: rows.sort((a, b) => b.entry.modified - a.entry.modified), more: answers.some((a) => a.status === "fulfilled" && a.value.more), error });
-    });
+      const waiting = settled.length < envs.length;
+      const failed = settled.filter((a): a is PromiseRejectedResult => a.status === "rejected");
+      const error = !waiting && failed.length === envs.length && envs.length ? refusalWords(failed[0]!.reason) || "No host answered." : undefined;
+      setFound({ key: asked, rows: rows.sort((a, b) => b.entry.modified - a.entry.modified), more: settled.some((a) => a.status === "fulfilled" && a.value.more), waiting, error });
+    };
+    for (const env of envs)
+      void byDeadline(registry.linkOf(env).request<{ entries: TeamsEntry[]; more: boolean }>("work.office.filesSearch", { query: asked }), SEARCH_DEADLINE_MS).then(
+        (value) => (answers.set(env, { status: "fulfilled", value }), paint()),
+        (reason: unknown) => (answers.set(env, { status: "rejected", reason }), paint()),
+      );
     return () => {
       live = false;
     };
   }, [asked, envs.join(","), round]);
-  if (!found || found.key !== asked) return <Bones />;
+  // Bones until the first host answers; past that, what came, with bones under it for the rest.
+  if (!found || found.key !== asked || (found.waiting && !found.rows.length)) return <Bones />;
   if (found.error)
     return (
       <EmptyState
@@ -406,7 +475,7 @@ function Results(props: ViewProps & { query: string }) {
   return (
     <>
       <Entries {...props} rows={found.rows} places />
-      {found.more ? <p className="mt-3 text-xs text-muted-foreground">More match: add a word</p> : null}
+      {found.waiting ? <MoreBones /> : found.more ? <p className="mt-3 text-xs text-muted-foreground">More match: add a word</p> : null}
     </>
   );
 }

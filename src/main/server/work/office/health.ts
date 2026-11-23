@@ -7,7 +7,7 @@ import type { WorkCtx } from '../modules'
 import { isIsolatedInstance } from '../service/config'
 import { AddinKeys } from './addin/keys'
 import { librariesOf, libraryId, rootsOf } from './files/library'
-import { missingLibraries, vmLibraries, vmOfficeStatus } from './vm/files'
+import { lastReadFailure, missingLibraries, readVmBehind, storedStatus, vmLibraries, vmOfficeStatus } from './vm/files'
 import { vmState } from './vm/office'
 import { macCarrier } from './mac'
 
@@ -38,7 +38,8 @@ export interface OfficeProbe {
   /**
    * OneDrive and Office in the Windows VM this host keeps, as last read while it was awake, with how many
    * Teams libraries it syncs and how many it was asked for and does not hold yet; null where this host
-   * keeps no VM, it is not set up, or it has never been read. Never wakes it.
+   * keeps no VM, it is not set up, or it has never been read. Never wakes it, and never waits on it: an
+   * awake machine is read again behind the answer, which Check again shows.
    */
   vm?(): (VmOfficeStatus & { libraries: number; coming: number }) | null
 }
@@ -49,6 +50,9 @@ const EDIT_LIST: HealthFix = { kind: 'page', label: 'Edit', page: 'settings:work
 /** His sign-in in the Windows VM: the page walks OneDrive's sign-in to his phone's number and opens the Computers page on the VM. */
 const VM_SIGN_IN: HealthFix = { kind: 'page', label: 'Sign in…', page: 'windows-vm-sign-in' }
 
+
+/** How fresh the VM's kept status must be for a check to use it without reading an awake machine again. */
+const VM_FRESH_MS = 15_000
 
 const listOf = (names: readonly string[]): string => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
 
@@ -115,6 +119,7 @@ export function vmRows(vm: ReturnType<NonNullable<OfficeProbe['vm']>>): HealthRo
   else if (vm.onedrive.state === 'no-libraries') rows.push({ ...od, state: 'working', line: vm.coming ? `Signed in as ${vm.onedrive.account}, its libraries are on their way` : `Signed in as ${vm.onedrive.account}, no Teams library synced` })
   else if (vm.onedrive.state === 'signed-out') rows.push({ ...od, state: 'needs-you', line: 'Signed out', fix: VM_SIGN_IN })
   else if (vm.onedrive.state === 'no-onedrive') rows.push({ ...od, state: 'broken', line: 'OneDrive is not installed in the Windows VM.' })
+  else if (vm.onedrive.state === 'error') rows.push({ ...od, state: 'broken', line: vm.onedrive.detail ?? 'OneDrive in the Windows VM could not be read.' })
   if (vm.office?.installed) {
     const base = { id: 'office.vm.office', pillar: 'office' as const, group: 'Office', title: 'Office on the Windows VM' }
     const apps = listOf(vm.office.apps.filter((a) => a !== 'outlook').map((a) => NAME[a]))
@@ -207,6 +212,8 @@ export function officeProbe(ctx: WorkCtx, route: () => { accounts: string[]; err
     vm: () => {
       const state = vmState()
       if (!state || state.cannot || state.state === 'none' || state.state === 'setting-up') return null
+      const stored = storedStatus(ctx.db)
+      if (stored && state.state === 'awake' && (lastReadFailure(ctx.db) !== null || Date.now() - stored.at > VM_FRESH_MS)) void readVmBehind(ctx, { wake: false })
       return { ...vmOfficeStatus(ctx.db, state), libraries: vmLibraries(ctx.db, ctx.host).filter((l) => l.kind !== 'mine').length, coming: missingLibraries(ctx.db).length }
     }
   }

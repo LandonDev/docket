@@ -89,6 +89,8 @@ export function onedriveLine(status: VmOfficeStatus, libraries: number | null): 
       return { words: "Not installed" };
     case "error":
       return { words: place.detail ?? "Could not be read", failed: true };
+    case "reading":
+      return { words: "Reading…" };
     case "not-set-up":
       return null;
   }
