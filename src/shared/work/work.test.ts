@@ -57,7 +57,7 @@ import {
 /** Every shared type of the Work architecture's section 7.3 exists, is exported from one place, and has the shape the pillars build to. */
 
 describe('the names', () => {
-  it('lists the 33 pillars once, in mount order, each with the milestone that builds it', () => {
+  it('lists the 34 pillars once, in mount order, each with the milestone that builds it', () => {
     expect([...PILLAR_IDS]).toEqual([
       'outbox', 'canvas', 'lifeos', 'routines', 'rules', 'mail', 'tasks', 'agenda', 'docs', 'history', 'formats', 'sheets',
       'office', 'google', 'guests', 'pdf', 'slides', 'media', 'frameio', 'meetings', 'forms', 'dashboards', 'browser', 'projects', 'winvm', 'capture', 'files', 'prep', 'money', 'search',
