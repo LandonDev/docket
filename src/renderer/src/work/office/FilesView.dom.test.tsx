@@ -30,7 +30,7 @@ const pushListeners = new Set<{ env: string; fn: (push: { push: string }) => voi
 const pushFrom = (env: string, push: { push: string }) => [...pushListeners].filter((l) => l.env === env).forEach((l) => l.fn(push));
 const signIns: string[] = [];
 /** the threads the host says already hold a file (`work.office.filesThreads`), and which threads are archived */
-let held: { sessionId: string; itemId: string }[] = [];
+let held: { sessionId: string; itemId: string; source: { at: string } }[] = [];
 const archived = new Set<string>();
 const opened: string[] = [];
 const T = "/c/S/Purdue Esports - Documents";
@@ -205,8 +205,8 @@ describe("the Files view", () => {
   it("opens a file again in the thread that already holds it, passing over an archived one", async () => {
     copyOn = true;
     held = [
-      { sessionId: "t-old", itemId: "i-old" },
-      { sessionId: "t0", itemId: "i0" },
+      { sessionId: "t-old", itemId: "i-old", source: { at: "file" } },
+      { sessionId: "t0", itemId: "i0", source: { at: "file" } },
     ];
     archived.add("t-old");
     await openGeneral(props("box"));
@@ -215,6 +215,15 @@ describe("the Files view", () => {
     expect(calls.some((c) => c.method === "session.create" || c.method === "work.office.filesCopy")).toBe(false);
     expect(calls.at(-1)).toMatchObject({ method: "work.canvas.open", params: { sessionId: "t0", itemId: "i0" } });
     expect(canvasOf("t0")).toMatchObject({ selected: "i0", folded: true });
+    expect(opened).toEqual(["t0"]);
+  });
+
+  it("brings Excel forward again when the thread it reuses holds the workbook as Excel's", async () => {
+    held = [{ sessionId: "t0", itemId: "i0", source: { at: "microsoft" } }];
+    await openGeneral(props("local"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /^Budget\.xlsx/ })));
+    expect(calls.filter((c) => c.method === "work.office.filesOpen").map((c) => c.env)).toEqual(["local"]);
+    expect(calls.some((c) => c.method === "session.create")).toBe(false);
     expect(opened).toEqual(["t0"]);
   });
 

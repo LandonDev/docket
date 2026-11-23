@@ -365,7 +365,7 @@ describe("a file in the Windows VM a host keeps", () => {
 
   it("passes the listener's fence only in a Teams files verb, by the guest's own path: the pillar holds it to OneDrive's libraries there", () => {
     expect(guestPath('work.office.filesList', guest, 'linux')).toBe(true)
-    for (const method of ['work.office.filesList', 'work.office.filesFetch', 'work.office.filesRead', 'work.office.filesOpen', 'work.office.filesCopy']) expect(() => fenceRequest(list(guest, method), ['/srv/work'])).not.toThrow()
+    for (const method of ['work.office.filesList', 'work.office.filesFetch', 'work.office.filesRead', 'work.office.filesOpen', 'work.office.filesCopy', 'work.office.filesThreads']) expect(() => fenceRequest(list(guest, method), ['/srv/work'])).not.toThrow()
   })
 
   it('stays fenced in every other Work method, with a slash in it, and on a Windows host, whose own paths look the same', () => {

@@ -572,10 +572,10 @@ async function newThread(workspace: WorkspaceMeta, title: string): Promise<strin
  * place, as its Office app's file, as the copy he allowed or as the document a Word file became. Archived threads and
  * threads this window does not know are passed over; a host from before the method answers none.
  */
-export async function heldBy(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, file: CanvasSource): Promise<{ sessionId: string; itemId: string } | null> {
+export async function heldBy(workspace: Pick<WorkspaceMeta, "id" | "environmentId">, file: CanvasSource): Promise<{ sessionId: string; itemId: string; source: CanvasSource } | null> {
   const answer = await registry
     .linkOf(workspace.environmentId)
-    .request<{ threads: { sessionId: string; itemId: string }[] }>("work.office.filesThreads", { workspaceId: workspace.id, source: file })
+    .request<{ threads: { sessionId: string; itemId: string; source: CanvasSource }[] }>("work.office.filesThreads", { workspaceId: workspace.id, source: file })
     .catch(() => null);
   return answer?.threads.find((t) => sessionStore.metaOf(t.sessionId)?.archived === false) ?? null;
 }
@@ -613,7 +613,11 @@ function useOpener({ workspace, reach }: ViewProps, setBusy: (busy: Busy) => voi
     try {
       // The thread that already holds the file shows it again: one file, one thread.
       const held = await heldBy(workspace, source(library, entry));
-      if (held) return await showFile(workspace.environmentId, held.sessionId, { itemId: held.itemId });
+      if (held) {
+        // Excel, Word or PowerPoint stands behind such an item: it comes forward again, as on the first open.
+        if (held.source.at === "microsoft") await registry.linkOf(library.env).request("work.office.filesOpen", { source: source(library, entry) });
+        return await showFile(workspace.environmentId, held.sessionId, { itemId: held.itemId });
+      }
       let at: NonNullable<ReturnType<typeof teamsCanvasOf>>;
       if (way === "canvas") {
         // Everything that can fail runs before the thread is made, so a failed open leaves no thread behind.

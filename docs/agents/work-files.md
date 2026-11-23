@@ -411,8 +411,13 @@ file, one thread**: the workspace's host first answers
 `work.office.filesThreads {workspaceId, source}` (`threadsHolding`,
 files/handle.ts), the threads whose open items show that file, newest first:
 the file in place, its Office app's file, the copy he allowed (by its
-folder, the hash of the source), or the `.tcdoc` a Word file became beside
-either. The first of them this window knows and that is not archived is
+folder, the hash of the source), or the `.tcdoc` a Word, OpenDocument,
+RTF, markdown or text file became beside it (`Name.tcdoc`, `Name 2.tcdoc`,
+the importer's spelling, the folder read through its links). Only open items
+count, however many closed ones changed since. A file in the Windows VM is
+named by the guest's path, so the method is one of the listener fence's
+Teams files verbs (`GUEST_METHODS`, remote/fence.ts). Reusing a thread whose
+item is Excel's, Word's or PowerPoint's brings that app forward again. The first of them this window knows and that is not archived is
 shown again with that item, and nothing is copied or made; a host from
 before the method answers none. Otherwise, on the workspace's own host it opens in a new thread of
 the workspace, titled for the file, in that thread's canvas (and an Office

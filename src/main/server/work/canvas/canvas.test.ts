@@ -88,6 +88,17 @@ describe('the store', () => {
     expect(store().open('t1', { itemId: a.id })).toMatchObject({ position: 0, rev: 1 })
   })
 
+  it("lists a workspace's open items alone when asked, however many closed ones changed since", () => {
+    let now = 1_000
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 10))
+    const old = store().open('t1', { kind: 'pdf', source: file('/old.pdf'), title: 'Old' })
+    const shut = store().open('t1', { kind: 'pdf', source: file('/shut.pdf'), title: 'Shut' })
+    store().close(shut.id)
+    expect(store().forWorkspace('w1').map((i) => i.id)).toEqual([shut.id, old.id])
+    expect(store().forWorkspace('w1', { most: 1 }).map((i) => i.id)).toEqual([shut.id])
+    expect(store().forWorkspace('w1', { open: true, most: 1 }).map((i) => i.id)).toEqual([old.id])
+  })
+
   it("`{ at: 'thread' }` twice is two items, each with its own folder; a close keeps the row and the folder", () => {
     const a = store().open('t1', { kind: 'document', source: { at: 'thread' }, title: 'Draft' })
     const b = store().open('t1', { kind: 'document', source: { at: 'thread' }, title: 'Draft' })

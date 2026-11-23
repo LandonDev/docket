@@ -424,39 +424,56 @@ describe('the shared-file rule on a Teams file', () => {
 })
 
 describe('the thread that already holds a file', () => {
-  const plan = '/c/T/General/Plan.docx'
   const item = (id: string, sessionId: string, source: object, state: 'open' | 'closed' = 'open') => ({ id, sessionId, workspaceId: 'w1', kind: 'document', title: id, source, state, position: 0, rev: 1, createdAt: 0, updatedAt: 0 })
-  const holding = (items: object[]) => {
-    const ctx = ctxOn('env_box', { canvas: { forWorkspace: (id: string) => (id === 'w1' ? items : []) } } as unknown as Partial<WorkCtx>)
-    return call('work.office.filesThreads', { workspaceId: 'w1', source: { at: 'file', host: 'env_mac', path: plan } }, window, ctx) as Promise<{ threads: { sessionId: string; itemId: string }[] }>
+  /** The workspace's host is `host`; the file is `plan` on `fileHost`. */
+  const holding = async (items: ReturnType<typeof item>[], host = 'env_box', plan = '/c/T/General/Plan.docx', fileHost = 'env_mac') => {
+    const forWorkspace = (id: string, o?: { open?: boolean }) => (id === 'w1' ? items.filter((i) => !o?.open || i.state === 'open') : [])
+    const ctx = ctxOn(host, { canvas: { forWorkspace } } as unknown as Partial<WorkCtx>)
+    const answer = (await call('work.office.filesThreads', { workspaceId: 'w1', source: { at: 'file', host: fileHost, path: plan } }, window, ctx)) as { threads: { sessionId: string; itemId: string }[] }
+    return answer.threads.map((t) => [t.sessionId, t.itemId])
   }
 
-  it('finds the file in place, as its Office file, as the copy he allowed and as the document it became, newest first', async () => {
-    const box = ctxOn('env_box')
-    const answer = await holding([
-      item('copy', 's1', { at: 'file', host: 'env_box', path: join(copyFolderOf(box.dataDir, 's1', { host: 'env_mac', path: plan }), 'Plan.docx') }),
-      item('made', 's2', { at: 'file', host: 'env_mac', path: '/c/T/General/Plan (2).tcdoc' }),
-      item('word', 's3', { at: 'microsoft', host: 'env_mac', app: 'word', name: 'Plan.docx', ref: { kind: 'path', path: plan } }),
-      item('here', 's4', { at: 'file', host: 'env_mac', path: plan }),
-      item('also', 's4', { at: 'file', host: 'env_mac', path: plan }),
+  it('finds the copy he allowed by its folder, and the file as its Office app holds it, newest first, with each item\'s source', async () => {
+    const plan = '/c/T/General/Plan.docx'
+    const copy = join(copyFolderOf(ctxOn('env_box').dataDir, 's1', { host: 'env_mac', path: plan }), 'Plan.docx')
+    const word = { at: 'microsoft', host: 'env_mac', app: 'word', name: 'Plan.docx', ref: { kind: 'path', path: plan } }
+    const items = [item('copy', 's1', { at: 'file', host: 'env_box', path: copy }), item('word', 's3', word), item('here', 's4', { at: 'file', host: 'env_mac', path: plan }), item('also', 's4', { at: 'file', host: 'env_mac', path: plan })]
+    expect(await holding(items)).toEqual([
+      ['s1', 'copy'],
+      ['s3', 'word'],
+      ['s4', 'here'],
     ])
-    expect(answer.threads).toEqual([
-      { sessionId: 's1', itemId: 'copy' },
-      { sessionId: 's2', itemId: 'made' },
-      { sessionId: 's3', itemId: 'word' },
-      { sessionId: 's4', itemId: 'here' },
-    ])
+    const ctx = ctxOn('env_box', { canvas: { forWorkspace: () => items } } as unknown as Partial<WorkCtx>)
+    const answer = (await call('work.office.filesThreads', { workspaceId: 'w1', source: { at: 'file', host: 'env_mac', path: plan } }, window, ctx)) as { threads: { source: unknown }[] }
+    expect(answer.threads[1]!.source).toEqual(word)
+  })
+
+  it("finds the document a Word file became beside it on the workspace's own host, by the importer's names", async () => {
+    const folder = join(base, 'lib', 'General')
+    mkdirSync(folder, { recursive: true })
+    const plan = join(folder, 'Plan  review.docx')
+    const at = (name: string) => ({ at: 'file', host: 'env_mac', path: join(folder, name) })
+    expect(await holding([item('made', 's1', at('Plan review.tcdoc'))], 'env_mac', plan)).toEqual([['s1', 'made']])
+    expect(await holding([item('second', 's2', at('Plan review 2.tcdoc'))], 'env_mac', plan)).toEqual([['s2', 'second']])
+    // Another file's document: "Plan review (2).docx" beside it, or a PDF of the same name.
+    expect(await holding([item('other', 's3', at('Plan review (2).tcdoc'))], 'env_mac', plan)).toEqual([])
+    expect(await holding([item('pdf', 's4', at('Report.tcdoc'))], 'env_mac', join(folder, 'Report.pdf'))).toEqual([])
+    // Read through a link to the same folder, it is still the same document.
+    symlinkSync(folder, join(base, 'lib', 'Linked'))
+    expect(await holding([item('made', 's1', at('Plan review.tcdoc'))], 'env_mac', join(base, 'lib', 'Linked', 'Plan  review.docx'))).toEqual([['s1', 'made']])
   })
 
   it('passes over a closed item, another file of the same name, the same path on another host and another file\'s copy', async () => {
-    const box = ctxOn('env_box')
-    const answer = await holding([
-      item('closed', 's1', { at: 'file', host: 'env_mac', path: plan }, 'closed'),
-      item('elsewhere', 's2', { at: 'file', host: 'env_mac', path: '/c/T/Events/Plan.docx' }),
-      item('other host', 's3', { at: 'file', host: 'env_pc', path: plan }),
-      item('other copy', 's4', { at: 'file', host: 'env_box', path: join(copyFolderOf(box.dataDir, 's4', { host: 'env_mac', path: '/c/T/Events/Plan.docx' }), 'Plan.docx') }),
-      item('planner', 's5', { at: 'file', host: 'env_mac', path: '/c/T/General/Planner.tcdoc' }),
-    ])
-    expect(answer.threads).toEqual([])
+    const plan = '/c/T/General/Plan.docx'
+    const other = join(copyFolderOf(ctxOn('env_box').dataDir, 's4', { host: 'env_mac', path: '/c/T/Events/Plan.docx' }), 'Plan.docx')
+    expect(
+      await holding([
+        item('closed', 's1', { at: 'file', host: 'env_mac', path: plan }, 'closed'),
+        item('elsewhere', 's2', { at: 'file', host: 'env_mac', path: '/c/T/Events/Plan.docx' }),
+        item('other host', 's3', { at: 'file', host: 'env_pc', path: plan }),
+        item('other copy', 's4', { at: 'file', host: 'env_box', path: other }),
+        item('made far', 's5', { at: 'file', host: 'env_mac', path: '/c/T/General/Plan.tcdoc' }),
+      ]),
+    ).toEqual([])
   })
 })

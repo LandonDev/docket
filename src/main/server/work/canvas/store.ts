@@ -140,8 +140,9 @@ export class CanvasStore {
   }
 
   /** A workspace's items, open and closed, newest change first (the Docs view's finding, docs/find.ts). */
-  forWorkspace(workspaceId: string, most = 1000): CanvasItem[] {
-    return this.items(this.db.prepare(`SELECT * FROM work_canvas_items WHERE workspace_id = ? ORDER BY updated_at DESC LIMIT ?`).all(workspaceId, most) as unknown as Row[])
+  forWorkspace(workspaceId: string, opts: { open?: boolean; most?: number } = {}): CanvasItem[] {
+    const open = opts.open ? ` AND state = 'open'` : ''
+    return this.items(this.db.prepare(`SELECT * FROM work_canvas_items WHERE workspace_id = ?${open} ORDER BY updated_at DESC LIMIT ?`).all(workspaceId, opts.most ?? 1000) as unknown as Row[])
   }
 
   /** Every row of these threads, open and closed. */

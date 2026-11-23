@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { teamsAppOf, teamsKindOf, type TeamsEntry, type TeamsLibrary } from '@shared/contract-work-office'
 import { canvasSourcePath, handled, NOT_HANDLED, type CanvasSource, type Handled } from '@shared/work'
@@ -151,12 +151,29 @@ export function dropCopies(ctx: Pick<WorkCtx, 'dataDir' | 'scopeOf'>, which: { s
 export const copyFolderOf = (dataDir: string, sessionId: string, source: { host: string; path: string }): string =>
   join(copyDirOf(dataDir, sessionId), createHash('sha1').update(`${source.host}\u0000${source.path}`).digest('hex').slice(0, 12))
 
-/** `Name.tcdoc` or `Name (2).tcdoc` beside `Name.docx`: the document an import made of it (formats/importer.ts `freePath`). */
+/** A Word, OpenDocument, RTF, markdown or text file: what the document kind imports into a `.tcdoc` beside it. */
+const IMPORTED = /\.(docx|doc|odt|rtf|md|markdown|txt)$/i
+/** The importer's own spelling of a name (formats/importer.ts `safeName`), kept here so office loads none of formats. */
+const importName = (name: string): string =>
+  name
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180) || 'Document'
+const realFolder = (path: string): string => {
+  try {
+    return realpathSync(dirname(path))
+  } catch {
+    return dirname(path)
+  }
+}
+
+/** `Name.tcdoc` or `Name 2.tcdoc` in the folder of `Name.docx`: the document an import made of it (formats/importer.ts `freePath`). */
 const madeOf = (path: string, file: string): boolean => {
-  if (dirname(path) !== dirname(file) || extname(path) !== '.tcdoc') return false
-  const stem = basename(file, extname(file))
+  if (extname(path) !== '.tcdoc' || !IMPORTED.test(file) || realFolder(path) !== realFolder(file)) return false
+  const stem = importName(basename(file, extname(file)))
   const name = basename(path, '.tcdoc')
-  return name === stem || (name.startsWith(`${stem} (`) && /^ \(\d+\)$/.test(name.slice(stem.length)))
+  return name === stem || (name.startsWith(`${stem} `) && /^ \d+$/.test(name.slice(stem.length)))
 }
 
 /**
@@ -164,19 +181,19 @@ const madeOf = (path: string, file: string): boolean => {
  * itself (in place, or its Office app's), the copy he allowed in the thread's own folder, or the `.tcdoc` a Word file
  * became beside either. The Files view reopens the first of them that is not archived instead of making another.
  */
-export function threadsHolding(ctx: Pick<WorkCtx, 'canvas' | 'dataDir' | 'host'>, workspaceId: string, file: CanvasSource): { sessionId: string; itemId: string }[] {
+export function threadsHolding(ctx: Pick<WorkCtx, 'canvas' | 'dataDir' | 'host'>, workspaceId: string, file: CanvasSource): { sessionId: string; itemId: string; source: CanvasSource }[] {
   if (file.at !== 'file') return []
-  const out = new Map<string, string>()
-  for (const item of ctx.canvas.forWorkspace(workspaceId)) {
-    if (item.state !== 'open' || out.has(item.sessionId)) continue
+  const out = new Map<string, { itemId: string; source: CanvasSource }>()
+  for (const item of ctx.canvas.forWorkspace(workspaceId, { open: true })) {
+    if (out.has(item.sessionId)) continue
     const s = item.source
     const path = canvasSourcePath(s)
     if (path === null || (s.at !== 'file' && s.at !== 'microsoft')) continue
-    const here = s.host === file.host && (path === file.path || madeOf(path, file.path))
+    const here = s.host === file.host && (path === file.path || (s.host === ctx.host && madeOf(path, file.path)))
     const copy = s.host === ctx.host && s.at === 'file' && dirname(path) === copyFolderOf(ctx.dataDir, item.sessionId, file)
-    if (here || copy) out.set(item.sessionId, item.id)
+    if (here || copy) out.set(item.sessionId, { itemId: item.id, source: s })
   }
-  return [...out].map(([sessionId, itemId]) => ({ sessionId, itemId }))
+  return [...out].map(([sessionId, held]) => ({ sessionId, ...held }))
 }
 
 /** Copies a file from another host into the thread's attachments here, when its workspace allows it. */

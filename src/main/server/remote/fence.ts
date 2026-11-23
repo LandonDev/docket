@@ -225,7 +225,7 @@ export function admitsPath(path: string, roots: readonly string[], denied: reado
 }
 
 /** The Teams files verbs that name one file or folder by a `CanvasSource`. */
-const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy)$/
+const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy|Threads)$/
 
 /**
  * A file in the Windows VM a host keeps (docs/agents/work-files.md "The Windows VM"), named by the guest's own

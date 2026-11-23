@@ -8,6 +8,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
+import { useEffect } from "react";
 import { contextChipsOf, resetContextChips } from "./chips";
 import { X } from "../../chrome/icons";
 import { openMenus } from "../../chrome/menuRows";
@@ -87,9 +88,10 @@ describe("a body that fails", () => {
   async function failing(how: "throws" | "no code") {
     const { defineChunk } = await import("../../lib/lazyChunk");
     const { CANVAS } = await import("./registry");
-    const state = { fail: true };
-    function Body({ item }: { item: CanvasItem }) {
-      if (state.fail) throw new Error("the sheet's workbook is damaged");
+    const state = { fail: true as boolean, error: new Error("the sheet's workbook is damaged") as Error };
+    function Body({ item, shell }: { item: CanvasItem; shell: CanvasShell }) {
+      useEffect(() => shell.statusLine({ tone: "waiting", word: "Reading the workbook" }), [shell]);
+      if (state.fail) throw state.error;
       return <p data-testid="body">The body of {item.title}</p>;
     }
     const chunk = defineChunk(`failing-${how}`, () => (how === "throws" ? Promise.resolve({ Body }) : Promise.reject(new TypeError("Failed to fetch dynamically imported module: tempcode-app://renderer/assets/work-docs-canvas-x1.js"))));
@@ -111,6 +113,27 @@ describe("a body that fails", () => {
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     expect(await screen.findByTestId("body")).toBeTruthy();
     expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
+    quiet.mockRestore();
+  });
+
+  it("drops what the body fed the frame before it threw, and says a fault in its code plainly", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { state, kinds } = await failing("throws");
+    state.fail = false;
+    await seat([DOC], kinds as never);
+    await screen.findByTestId("body");
+    await waitFor(() => expect(document.querySelector('[data-canvas-state="waiting"]')?.textContent).toContain("Reading the workbook"));
+    state.fail = true;
+    state.error = new TypeError("Cannot read properties of undefined (reading 'rows')");
+    await act(async () => applyCanvasPush({ sessionId: "t1", items: [{ ...DOC, title: "Run of show 2" }] }));
+    const line = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[data-canvas-state="failed"]');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    expect(line.textContent).toContain("It could not be shown");
+    expect(line.textContent).not.toContain("Cannot read");
+    expect(document.querySelector('[data-canvas-state="waiting"]')).toBeNull();
     quiet.mockRestore();
   });
 

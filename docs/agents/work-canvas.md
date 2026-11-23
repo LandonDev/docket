@@ -51,8 +51,10 @@ frame a plan and a report already use:
   `state` and `setState`. A kind says its own failures on the state line
   with Retry; a body that throws, or whose code never arrives, is caught by
   its chunk's boundary and said the same way (`bodyFailed`,
-  CanvasPane.tsx: "Couldn't open this document", the error's words or
-  "Its viewer did not load", Retry), never a blank pane or a bare chip.
+  CanvasPane.tsx: "Couldn't open this document", then a thrown sentence as
+  it is, "It could not be shown" for a fault in the code, or "Its viewer
+  did not load", and Retry); what the body fed the frame (its state line,
+  stepper, mode, More) goes with it. Never a blank pane or a bare chip.
 - Which tab is shown and whether the thread is folded are this window's,
   kept per thread in localStorage (`work.canvas.view.v1`). The items are
   the host's, so they are there after a restart and on every client.

@@ -244,7 +244,7 @@ export const OfficeRequestSchemas = [
   request('work.office.filesCopySet', z.object({ workspaceId: z.string().max(200), on: z.boolean() })),
   /** copies a file from the host `source` names into this thread's attachments here, when its workspace allows it; answers the copy's source */
   request('work.office.filesCopy', z.object({ sessionId: z.string().max(200), source: CanvasSourceSchema })),
-  /** → { threads: {sessionId, itemId}[] }: the threads of a Work workspace here whose open items show this file, newest first */
+  /** → { threads: {sessionId, itemId, source}[] }: the threads of a Work workspace here whose open items show this file, newest first */
   request('work.office.filesThreads', z.object({ workspaceId: z.string().max(200), source: CanvasSourceSchema })),
   /**
    * Brings OneDrive's sign-in up on the Windows VM's screen with his address filled in, so that only his

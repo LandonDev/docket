@@ -34,7 +34,7 @@ export const canvasPart: CtxPart<'canvas'> = (ctx, deps) => {
       open: (sessionId, kind, source, title) => store.open(sessionId, { kind, source, title }),
       close: (itemId) => store.close(itemId),
       forSession: (sessionId) => store.list(sessionId),
-      forWorkspace: (workspaceId) => store.forWorkspace(workspaceId),
+      forWorkspace: (workspaceId, opts) => store.forWorkspace(workspaceId, opts),
       get: (itemId) => store.get(itemId),
       paneOf: (sessionId) => store.paneOf(sessionId)
     }

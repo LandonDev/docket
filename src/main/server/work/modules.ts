@@ -189,8 +189,8 @@ export interface WorkCtx {
     open(sessionId: string, kind: CanvasKind, source: CanvasSource, title: string): CanvasItem
     close(itemId: string): void
     forSession(sessionId: string): CanvasItem[]
-    /** a workspace's items, open and closed, newest change first */
-    forWorkspace(workspaceId: string): CanvasItem[]
+    /** a workspace's items, open and closed (`open`: open alone), newest change first */
+    forWorkspace(workspaceId: string, opts?: { open?: boolean }): CanvasItem[]
     /** any item by id, open or closed; null when there is none (or its row no longer parses) */
     get(itemId: string): CanvasItem | null
     /** the thread whose pane a thread's items show in: its root thread (a subagent has none of its own) */

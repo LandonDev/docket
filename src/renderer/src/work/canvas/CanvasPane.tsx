@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { useTruncated } from "../../components/tip";
@@ -91,19 +91,40 @@ function StateLine({ line }: { line: StatusLine }) {
   );
 }
 
-/** Why a kind's code or body failed, in his words: a viewer whose code did not arrive is said so, not as a module URL. */
+/**
+ * Why a kind's code or body failed, in his words: a viewer whose code did not arrive is said so, not as a module URL,
+ * and a fault in the code (a TypeError and its kin) as "It could not be shown"; a thrown sentence is said as it is.
+ * React has already logged the error itself.
+ */
 export function bodyFailureWords(error: unknown): string {
-  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  const message = error instanceof Error ? error.message.trim() : typeof error === "string" ? error.trim() : "";
   if (/dynamically imported module|importing a module script failed|loading chunk|failed to fetch/i.test(message)) return "Its viewer did not load";
-  return message.trim() || "It could not be shown";
+  const fault = error instanceof TypeError || error instanceof ReferenceError || error instanceof RangeError || error instanceof SyntaxError;
+  return !fault && message ? message : "It could not be shown";
 }
 
-/** A kind's body that threw, or whose code did not load: the state line says why, with Retry, never a blank pane. */
+/** The pane's shell, for a failed body drawn by its chunk's boundary, which a kind's own `failed` cannot be handed. */
+const PaneShell = createContext<CanvasShell | null>(null);
+
+/** A body that threw, or whose code did not load: what it fed the frame goes, and the state line says why, with Retry. */
+function BodyFailed({ kind, error, retry }: { kind: CanvasKind; error: unknown; retry: () => void }) {
+  const shell = useContext(PaneShell);
+  useLayoutEffect(() => {
+    if (!shell) return;
+    shell.statusLine(null);
+    shell.review(null);
+    shell.selection(null);
+    shell.mode(null);
+    shell.written(null);
+    shell.more?.(null);
+    shell.ready?.(false);
+  }, [shell]);
+  return <StateLine line={{ tone: "failed", word: `Couldn't open this ${kindNoun(kind)}`, detail: bodyFailureWords(error), action: { label: "Retry", run: retry } }} />;
+}
+
 const bodyFailed =
   (kind: CanvasKind) =>
-  (retry: () => void, error: unknown): ReactNode => (
-    <StateLine line={{ tone: "failed", word: `Couldn't open this ${kindNoun(kind)}`, detail: bodyFailureWords(error), action: { label: "Retry", run: retry } }} />
-  );
+  (retry: () => void, error: unknown): ReactNode => <BodyFailed kind={kind} error={error} retry={retry} />;
 
 /**
  * The shown item under the tab row: the kind's bar, the one state line, the
@@ -158,7 +179,11 @@ export function CanvasPane({
       />
       {feeds.status ? <StateLine line={feeds.status} /> : null}
       <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
-        {waiting ? <FetchState fetch={waiting} kind={item.kind} name={item.title} onRetry={fetched!.retry} /> : <Body {...props} />}
+        {waiting ? <FetchState fetch={waiting} kind={item.kind} name={item.title} onRetry={fetched!.retry} /> : (
+          <PaneShell.Provider value={shell}>
+            <Body {...props} />
+          </PaneShell.Provider>
+        )}
       </div>
       <SelectionBar selection={feeds.selection} onAsk={onAsk} onDismiss={() => shell.selection(null)} />
     </div>
