@@ -73,7 +73,9 @@ describe("a message's files", () => {
   it("holds a picture's shape with a skeleton while LifeOS fetches it", () => {
     mount({}, "c_art");
     const waiting = within(block("c_art_m3")).getByLabelText("Loading launcher-banner.png");
-    expect(waiting.closest("button")!.getAttribute("style")).toContain("width: 360px; height: 120px");
+    // Its own shape at most 360 wide, the height from its proportions, never wider than the message.
+    expect(waiting.closest("button")!.getAttribute("style")).toContain("width: 360px; aspect-ratio: 360 / 120");
+    expect(waiting.closest("button")!.className).toContain("max-w-full");
   });
 
   it("names each file's verb on its chip and opens it through the seam", () => {

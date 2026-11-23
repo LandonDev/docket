@@ -99,7 +99,19 @@ export interface Block {
   head: boolean;
   day: string | null;
   isNew: boolean;
+  /** Whether its quote of what it answers is drawn: not when that message is the one right above it. */
+  quote: boolean;
 }
+
+const flatten = (text: string): string => text.replace(/\s+/g, " ").trim();
+/** Whether a thread reply answers the message right before it: the same writer, and its words start the same way. */
+export function answersMessage(message: Pick<ChatMessage, "who" | "text">, replyTo: NonNullable<ChatMessage["replyTo"]>): boolean {
+  const quoted = flatten(replyTo.text).replace(/…$/, "").slice(0, 60);
+  return message.who.name === replyTo.who && quoted.length > 0 && flatten(message.text).startsWith(quoted);
+}
+
+/** Whether a key opens the focused row's or message's menu: Shift+F10 or the menu key. */
+export const menuKey = (event: { key: string; shiftKey: boolean }): boolean => event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
 
 const writer = (m: ChatMessage): string => (m.who.me ? "\u0000me" : (m.who.personId ?? m.who.email ?? m.who.name));
 
@@ -123,7 +135,8 @@ export function blocksOf(newestFirst: readonly ChatMessage[], since: number | nu
       isNew = prev !== undefined || done;
     }
     const head = !prev || newDay || isNew || writer(prev) !== writer(message) || message.sentAt - prev.sentAt > RUN_GAP_MS;
-    blocks.push({ id: message._id, message, head, day: newDay ? dayWords(message.sentAt, now) : null, isNew });
+    const quote = Boolean(message.replyTo) && !(prev && answersMessage(prev, message.replyTo!));
+    blocks.push({ id: message._id, message, head, day: newDay ? dayWords(message.sentAt, now) : null, isNew, quote });
   }
   return blocks;
 }
@@ -216,16 +229,18 @@ export function markWords(text: string, query: string): [string, boolean][] {
 
 /**
  * A long message's words from a little before the first match, so a hit's
- * line shows what it found: "…the controller fix on the second pad".
+ * line shows what it found: "…the controller fix on the second pad". Cut only
+ * when the match starts past `after` characters; a line that shows it whole
+ * keeps its start.
  */
-export function aroundMatch(text: string, query: string, lead = 24): string {
+export function aroundMatch(text: string, query: string, after = 40, lead = 12): string {
   const flat = text.replace(/\s+/g, " ").trim();
   let at = 0;
   for (const [part, hit] of markWords(flat, query)) {
     if (hit) break;
     at += part.length;
   }
-  if (at >= flat.length || at <= lead) return flat;
+  if (at >= flat.length || at <= after) return flat;
   const space = flat.lastIndexOf(" ", at - lead);
   return `…${flat.slice(space + 1)}`;
 }

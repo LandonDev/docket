@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type MouseEvent } from "react";
+import { memo, useCallback, useEffect, useState, type MouseEvent } from "react";
 import { formatSize } from "work-kit/mail/lib/files";
 import { loadBytes } from "work-kit/mail/lib/bytes";
 import type { CanvasKind } from "@shared/work";
@@ -17,7 +17,7 @@ import { Face } from "../mail/face";
 import { useMessagesData, type FileVerb } from "./data";
 import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
-import { keepTyped } from "./page";
+import { keepTyped, typedIn } from "./page";
 
 /**
  * One message in the conversation's column (docs/agents/work-messages.md):
@@ -48,7 +48,8 @@ export const MessageBlock = memo(function MessageBlock({
 }) {
   const { message, head, day, isNew } = block;
   return (
-    <div data-block={block.id} data-menu-id={block.id} data-head={head || undefined} className={cn(head ? (day || isNew ? "pt-3" : "pt-4") : "pt-1", arrives && "tc-message-arrives")}>
+    // Reached from the column with the arrow keys (one tab stop for the column), so the menu key can open its menu.
+    <div data-block={block.id} data-menu-id={block.id} data-head={head || undefined} tabIndex={-1} className={cn("focus-ring rounded-md", head ? (day || isNew ? "pt-3" : "pt-4") : "pt-1", arrives && "tc-message-arrives")}>
       {day || isNew ? <Divider day={day} isNew={isNew} /> : null}
       <div
         data-found={found}
@@ -58,7 +59,7 @@ export const MessageBlock = memo(function MessageBlock({
           found === "on" ? "bg-muted" : found === "off" ? "transition-[background-color] duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none" : null,
         )}
       >
-        {message.replyTo ? <ReplyLine to={message.replyTo} /> : null}
+        {message.replyTo && block.quote ? <ReplyLine to={message.replyTo} /> : null}
         <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-3">
           {head ? (
             <>
@@ -78,7 +79,7 @@ export const MessageBlock = memo(function MessageBlock({
         </div>
         {onMore ? (
           <span className={cn("absolute end-0 top-0 rounded-md bg-background", reveal("message"))}>
-            <Button variant="ghost" size="icon-xs" aria-label="Message actions" className="text-muted-foreground" onClick={(event) => onMore(block.id, event.currentTarget)}>
+            <Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label="Message actions" className="text-muted-foreground" onClick={(event) => onMore(block.id, event.currentTarget)}>
               <MoreHorizontal />
             </Button>
           </span>
@@ -90,36 +91,47 @@ export const MessageBlock = memo(function MessageBlock({
 
 // ── Pictures and files ──
 
-/** Messages whose listed files were asked for this window's life: each is asked once. */
+/** Messages whose listed files were asked for this window's life, the ask on its way or taken; one LifeOS did not take is forgotten, so it is asked again. */
 const asked = new Set<string>();
 
 /**
- * A message's files: a picture drawn in place at most 360 by 270, in its own
- * shape, from LifeOS's bytes as a blob (the page loads no picture from the
- * web), its shape held by a skeleton while it comes; any other file Mail's
- * 40px chip, whose press shows it beside the conversation or saves it; a file
- * that could not come says why, with the way to it in its app. Files LifeOS
- * only listed are asked for once, as the message comes into view.
+ * A message's files: a picture drawn in place at most 360 by 270 and never
+ * wider than the message, in its own shape, from LifeOS's bytes as a blob
+ * (the page loads no picture from the web), its shape held by a skeleton
+ * while it comes; any other file Mail's 40px chip, whose press shows it
+ * beside the conversation or saves it; a file that could not come says why,
+ * with the way to it in its app. Files LifeOS only listed are asked for as
+ * the message comes into view, once the ask goes through; an ask that fails
+ * says so on each of them and may be made again.
  */
 function Files({ message, chatId, chat }: { message: ChatMessage; chatId: string; chat: Pick<ChatRow, "source" | "link"> }) {
   const data = useMessagesData();
   const wants = message.files.some((file) => file.status === "listed");
-  useEffect(() => {
-    if (!wants || asked.has(message._id)) return;
+  const [refused, setRefused] = useState<string | null>(null);
+  const ask = useCallback(() => {
+    setRefused(null);
     asked.add(message._id);
-    data.requestFiles(message._id);
-  }, [wants, message._id, data]);
+    data.requestFiles(message._id).catch((err: unknown) => {
+      asked.delete(message._id);
+      setRefused(err instanceof Error ? err.message : String(err));
+    });
+  }, [data, message._id]);
+  useEffect(() => {
+    if (wants && !asked.has(message._id)) ask();
+  }, [wants, message._id, ask]);
   const link = message.permalink ?? chat.link;
   const open = (file: ChatFile) => () => data.openFile(chatId, message, file);
+  // An ask LifeOS did not take leaves its files unfetched: each says so.
+  const cannot = (file: ChatFile): boolean => file.status === "failed" || (refused !== null && (file.status === "listed" || file.status === "wanted"));
   // Pictures each on their own line; the other files side by side, as Mail lays out a mail's; the ones that could not come last.
-  const shown = message.files.filter((file) => file.status !== "failed");
+  const shown = message.files.filter((file) => !cannot(file));
   const pictures = shown.filter(isPicture);
   const chips = shown.filter((file) => !isPicture(file));
-  const failed = message.files.filter((file) => file.status === "failed");
+  const failed = message.files.filter(cannot);
   return (
     <div data-files className="mt-1.5 mb-0.5 flex flex-col gap-1.5">
       {pictures.map((file) => (
-        <Picture key={file._id} file={file} onOpen={open(file)} />
+        <Picture key={file._id} file={file} source={chat.source} link={link} onOpen={open(file)} />
       ))}
       {chips.length ? (
         <div className="flex flex-wrap gap-2">
@@ -129,7 +141,7 @@ function Files({ message, chatId, chat }: { message: ChatMessage; chatId: string
         </div>
       ) : null}
       {failed.map((file) => (
-        <FileFailed key={file._id} file={file} source={chat.source} link={link} />
+        <FileFailed key={file._id} file={file} why={file.status === "failed" ? file.error : (refused ?? undefined)} source={chat.source} link={link} onRetry={file.status === "failed" ? undefined : ask} />
       ))}
     </div>
   );
@@ -137,7 +149,18 @@ function Files({ message, chatId, chat }: { message: ChatMessage; chatId: string
 
 /** Pictures read this window's life, by their address in LifeOS's store: a blob to draw, or null for one that did not load. */
 const pictures = new Map<string, string | null>();
+/** The most pictures held at once; past it the oldest is let go (its blob released), and read again if it is drawn again. */
+const PICTURES_HELD = 120;
 const drawable = (url: string): boolean => url.startsWith("data:") || url.startsWith("blob:");
+
+function keepPicture(url: string, blob: string | null): void {
+  pictures.set(url, blob);
+  while (pictures.size > PICTURES_HELD) {
+    const [oldest, held] = pictures.entries().next().value!;
+    pictures.delete(oldest);
+    if (held) URL.revokeObjectURL(held);
+  }
+}
 
 /** A stored picture's bytes as a blob address: undefined while it comes, null when it cannot. */
 function usePictureBytes(url: string | undefined): string | null | undefined {
@@ -146,10 +169,12 @@ function usePictureBytes(url: string | undefined): string | null | undefined {
   useEffect(() => {
     if (!url || drawable(url) || pictures.has(url)) return;
     let live = true;
-    loadBytes(url).then(
-      (blob) => pictures.set(url, URL.createObjectURL(blob)),
-      () => pictures.set(url, null),
-    ).finally(() => live && bump((n) => n + 1));
+    loadBytes(url)
+      .then(
+        (blob) => keepPicture(url, URL.createObjectURL(blob)),
+        () => keepPicture(url, null),
+      )
+      .finally(() => live && bump((n) => n + 1));
     return () => {
       live = false;
     };
@@ -157,12 +182,14 @@ function usePictureBytes(url: string | undefined): string | null | undefined {
   return held;
 }
 
-function Picture({ file, onOpen }: { file: ChatFile; onOpen: () => void }) {
+function Picture({ file, source, link, onOpen }: { file: ChatFile; source: ChatRow["source"]; link: string | undefined; onOpen: () => void }) {
   const box = pictureBox(file);
   const src = usePictureBytes(file.status === "stored" ? file.url : undefined);
-  if (src === null) return <FileChip file={file} verb="view" onOpen={onOpen} />;
+  if (src === null) return <FileFailed file={file} why="This picture could not be read" source={source} link={link} />;
+  // Its own shape, at most 360 by 270, and never wider than the message: the height follows the width.
+  const shape = { width: box.width, aspectRatio: `${box.width} / ${box.height}` };
   return (
-    <Button variant="ghost" aria-label={`View ${file.name}`} onClick={onOpen} style={box} className="h-auto self-start overflow-hidden rounded-lg p-0 hover:bg-transparent active:bg-transparent">
+    <Button variant="ghost" aria-label={`View ${file.name}`} onClick={onOpen} style={shape} className="h-auto max-w-full self-start overflow-hidden rounded-lg p-0 hover:bg-transparent active:bg-transparent">
       {src ? (
         <img src={src} alt={file.name} width={box.width} height={box.height} draggable={false} className="block size-full rounded-lg object-cover outline-1 -outline-offset-1 outline-(--image-outline)" />
       ) : (
@@ -193,16 +220,24 @@ function FileChip({ file, verb, onOpen }: { file: ChatFile; verb: FileVerb; onOp
   );
 }
 
-/** A file that could not come: its name, why in LifeOS's words, and the way to it in its app. */
-function FileFailed({ file, source, link }: { file: ChatFile; source: ChatRow["source"]; link: string | undefined }) {
+/**
+ * A file that could not come: its glyph, its name in ink, why in LifeOS's
+ * words, then 8px on the way back as a quiet control: Try again where the ask
+ * itself failed, else Open in its app.
+ */
+function FileFailed({ file, why, source, link, onRetry }: { file: ChatFile; why: string | undefined; source: ChatRow["source"]; link: string | undefined; onRetry?: () => void }) {
   const opens = link && /^https?:\/\//i.test(link) ? link : undefined;
   return (
     <p data-file-failed className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
       <FileGlyph aria-hidden className="me-1 size-3.5 shrink-0" />
-      <span className="font-medium">{file.name}</span>
-      <span>{file.error ?? "Couldn't load this file"}</span>
-      {opens ? (
-        <Button variant="ghost" size="xs" className="ms-1 text-muted-foreground" onClick={() => void openUrl(opens)}>
+      <span className="font-medium text-foreground">{file.name}</span>
+      <span>{why ?? "Couldn't load this file"}</span>
+      {onRetry ? (
+        <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
+          Try again
+        </Button>
+      ) : opens ? (
+        <Button variant="ghost" size="xs" className="ms-1" onClick={() => void openUrl(opens)}>
           Open in {SOURCE_APP[source]}
         </Button>
       ) : null}
@@ -244,10 +279,12 @@ function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; wor
           variant="ghost"
           size="xs"
           disabled={busy}
-          className="text-muted-foreground"
           onClick={() =>
             act(async () => {
-              keepTyped(workspaceId, chatId, await data.undo(chatId, reply.outboxId));
+              // The words come back into an empty field, or in front of what he has typed since, a line between.
+              const words = await data.undo(chatId, reply.outboxId);
+              const now = typedIn(workspaceId, chatId);
+              keepTyped(workspaceId, chatId, now.trim() ? `${words}\n${now}` : words);
             })
           }
         >
@@ -287,7 +324,7 @@ function ReplyLine({ to }: { to: NonNullable<ChatMessage["replyTo"]> }) {
     <div className="grid h-5 grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 text-xs text-muted-foreground">
       <CornerDownRight aria-hidden className="size-3 justify-self-end" />
       <span className="truncate">
-        <span className="font-medium">{to.who}</span> <span className="text-faint-foreground">{firstWords(to.text, 80)}</span>
+        <span className="font-medium">{to.who}</span> {firstWords(to.text, 80)}
       </span>
     </div>
   );

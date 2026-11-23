@@ -102,8 +102,8 @@ const SEEDS: ChatSeed[] = [
   { id: "c_jordan", name: "Jordan Blake", kind: "direct", source: "imessage", account: "iMessage", who: [person("Jordan Blake")], lastAt: yesterday(9, 40), text: "Running ten minutes late, save me a seat", readAt: yesterday(9, 45) },
   { id: "c_general", name: "#general", kind: "channel", source: "slack", account: "Starboard Games", who: [LUCAS, MIA], lastAt: at(2026, 10, 20, 16, 0), text: "Friday demo is in the big room, snacks provided.", lastWho: "Lucas Gray", readAt: at(2026, 10, 21, 9, 0) },
   { id: "c_theo", name: "Theo Park", kind: "direct", source: "discord", account: "Starboard Community", who: [THEO], lastAt: at(2026, 10, 19, 12, 30), text: "Thanks for the moderator role!", readAt: at(2026, 10, 19, 13, 0) },
-  { id: "c_art", name: "#art", kind: "channel", source: "slack", account: "Starboard Games", who: [ANA], lastAt: at(2026, 10, 12, 15, 10), text: "Key art v3 is in the shared folder.", lastWho: "Ana Ruiz", readAt: at(2026, 10, 12, 16, 0) },
-  { id: "c_lucas", name: "Lucas Gray", kind: "direct", source: "slack", account: "Starboard Games", who: [LUCAS], lastAt: at(2026, 10, 19, 11, 2), text: "starboard-0.9.5-linux.zip", fromMe: false, readAt: at(2026, 10, 19, 12, 0) },
+  { id: "c_art", name: "#art", kind: "channel", source: "slack", account: "Starboard Games", who: [ANA], lastAt: at(2026, 10, 12, 15, 10), text: "The launcher banner, still exporting:", lastWho: "Ana Ruiz", readAt: at(2026, 10, 12, 16, 0) },
+  { id: "c_lucas", name: "Lucas Gray", kind: "direct", source: "slack", account: "Starboard Games", who: [LUCAS], lastAt: at(2026, 10, 19, 11, 2), text: "The build, as promised.", fromMe: false, readAt: at(2026, 10, 19, 12, 0) },
 ];
 
 /** Where each source's conversation opens in its own app; iMessage and Teams give none. */
@@ -134,7 +134,8 @@ function rowOf(seed: ChatSeed): ChatRow {
   };
 }
 
-export const CHATS: ChatRow[] = SEEDS.map(rowOf);
+/** Newest first, as LifeOS lists them. */
+export const CHATS: ChatRow[] = SEEDS.map(rowOf).sort((a, b) => b.lastAt - a.lastAt);
 
 /** A plain conversation's lines, for every one without its own. */
 function filler(row: ChatRow): ChatMessage[] {
@@ -153,7 +154,7 @@ const ART = thread("c_art", [
   [ANA, nov(12, 14, 2), "Key art v3 is in the shared folder. Two frames from the level pass first:"],
   [ANA, nov(12, 14, 3), "[file: level-dusk.png]", { files: [{ _id: "f_level", name: "level-dusk.png", contentType: "image/png", size: 1_840_000, width: 1600, height: 900, status: "stored", url: LEVEL }] }],
   [MIA, nov(12, 14, 20), "The inventory panel on the same palette:\n[file: inventory.png]", { files: [{ _id: "f_inv", name: "inventory.png", contentType: "image/png", size: 920_000, width: 900, height: 1200, status: "stored", url: INVENTORY }] }],
-  [ANA, nov(12, 15, 10), "[file: launcher-banner.png]", { files: [{ _id: "f_banner", name: "launcher-banner.png", contentType: "image/png", size: 2_400_000, width: 1920, height: 640, status: "wanted" }] }],
+  [ANA, nov(12, 15, 10), "The launcher banner, still exporting:\n[file: launcher-banner.png]", { files: [{ _id: "f_banner", name: "launcher-banner.png", contentType: "image/png", size: 2_400_000, width: 1920, height: 640, status: "wanted" }] }],
 ]);
 
 /** Files as chips: two a canvas shows, one only saved. */
@@ -164,7 +165,7 @@ const FILES = thread("c_lucas", [
     { _id: "f_notes", name: "patch-notes-0.9.5.pdf", contentType: "application/pdf", size: 312_000, status: "stored", url: "data:application/octet-stream;base64,AA==" },
   ] }],
   [ME, nov(19, 10, 40), "Thanks. Can you send the build too?"],
-  [LUCAS, nov(19, 11, 2), "[file: starboard-0.9.5-linux.zip]", { files: [{ _id: "f_zip", name: "starboard-0.9.5-linux.zip", contentType: "application/zip", size: 412_000_000, status: "listed" }] }],
+  [LUCAS, nov(19, 11, 2), "The build, as promised.\n[file: starboard-0.9.5-linux.zip]", { files: [{ _id: "f_zip", name: "starboard-0.9.5-linux.zip", contentType: "application/zip", size: 412_000_000, status: "listed" }] }],
 ]);
 
 /** A file LifeOS could not fetch, which says why. */
@@ -239,6 +240,10 @@ export interface FixtureOptions {
   routes?: Record<string, ChatRoute>;
   /** Send refuses, in these words (LifeOS's sentence). */
   refuse?: string;
+  /** Reads that fail, each for its first N mounts (a Retry mounts it again). */
+  fail?: Partial<Record<"chats" | "sources" | "search" | "chat" | "messages", number>>;
+  /** Asks for a message's files that fail, the first N. */
+  requestFails?: number;
   /** Messages that are still loading, for a conversation's bones. */
   messagesLoading?: boolean;
   now?: number;
@@ -261,6 +266,7 @@ export interface FixtureLog {
 
 const ready = <T>(value: T): LifeosQuery<T> => ({ status: "ready", value });
 const LOADING = { status: "loading" } as const;
+const FAILED = { status: "failed", error: "LifeOS did not answer" } as const;
 
 const matches = (row: ChatRow, filter: ChatFilter): boolean =>
   filter === "all" || (filter === "unread" ? row.unread : filter === "direct" ? row.kind === "direct" : row.kind === "channel");
@@ -278,6 +284,25 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
   const log: FixtureLog = { read: [], unread: [], chats: [], searched: [], sent: [], undone: [], retried: [], pressed: [], dropped: [], requested: [], opened: [] };
   let rows = options.empty || options.noSource ? [] : (options.chats ?? CHATS);
   const threads = new Map<string, ChatMessage[]>(Object.entries(options.messages ?? MESSAGES));
+  // Discord silent since Nov 3 holds nothing newer than Nov 3: its conversations move back to before its last sync.
+  if (options.stale) {
+    const synced = STALE.find((source) => source.kind === "discord")!.lastSyncAt!;
+    rows = rows.map((row) => {
+      if (row.source !== "discord" || row.lastAt <= synced) return row;
+      const back = row.lastAt - synced + HOUR;
+      const held = threads.get(row._id) ?? filler(row);
+      threads.set(row._id, held.map((m) => ({ ...m, sentAt: m.sentAt - back })));
+      return { ...row, lastAt: row.lastAt - back, lastInAt: row.lastInAt && row.lastInAt - back, lastForMeAt: row.lastForMeAt && row.lastForMeAt - back, readAt: row.readAt && row.readAt - back };
+    });
+  }
+  const fails = { ...(options.fail ?? {}) };
+  /** Whether this mount of a read fails: true for the first N of each. */
+  const failing = (name: keyof NonNullable<FixtureOptions["fail"]>): boolean => {
+    const left = fails[name] ?? 0;
+    if (left > 0) fails[name] = left - 1;
+    return left > 0;
+  };
+  let requestFails = options.requestFails ?? 0;
   let drafts: Record<string, ThreadDraft[]> = { ...(options.drafts ?? {}) };
   let version = 0;
   const listeners = new Set<() => void>();
@@ -330,6 +355,8 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
       log.chats.push(filter);
       const all = useRows();
       const [count, setCount] = useState(100);
+      const [failed] = useState(() => failing("chats"));
+      if (failed) return FAILED;
       const shown = useMemo(() => all.filter((row) => matches(row, filter)), [all, filter]);
       if (options.loading) return LOADING;
       const page: Paged<ChatRow> = { rows: shown.slice(0, count), done: count >= shown.length, more: () => setCount((c) => c + 100) };
@@ -341,6 +368,8 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
     },
     useChat(id) {
       const all = useRows();
+      const [failed] = useState(() => failing("chat"));
+      if (failed) return FAILED;
       if (options.loading || !id) return LOADING;
       const chat = all.find((row) => row._id === id);
       if (!chat) return ready(null);
@@ -352,12 +381,16 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
     useMessages(chatId) {
       useVersion();
       const [count, setCount] = useState(50);
+      const [failed] = useState(() => failing("messages"));
+      if (failed) return FAILED;
       if (options.loading || options.messagesLoading || !chatId) return LOADING;
       const all = messagesOf(chatId);
       const page: Paged<ChatMessage> = { rows: all.slice(0, count), done: count >= all.length, more: () => setCount((c) => c + 50) };
       return ready(page);
     },
     useSources() {
+      const [failed] = useState(() => failing("sources"));
+      if (failed) return FAILED;
       return options.loading ? LOADING : ready(sources);
     },
     useSearch(text) {
@@ -373,6 +406,8 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
         }
         return found.sort((a, b) => b.at - a.at).slice(0, 50);
       }, [query]);
+      const [failed] = useState(() => failing("search"));
+      if (failed) return FAILED;
       return options.loading ? LOADING : ready(hits);
     },
     useDrafted() {
@@ -423,8 +458,12 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
       const chatId = chatOfDraft(draft.id);
       if (chatId) dropped(chatId, draft.id);
     },
-    requestFiles(messageId) {
+    async requestFiles(messageId) {
       log.requested.push(messageId);
+      if (requestFails > 0) {
+        requestFails--;
+        throw new Error("LifeOS did not answer");
+      }
     },
     fileVerb,
     openFile(chatId, message, file) {

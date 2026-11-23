@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
-import { syncLine, type ChatDetail, type ChatMessage, type ChatRow } from "@shared/work/messages";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from "react";
+import { firstWords, lastHeard, staleOf, syncWhen, type ChatDetail, type ChatMessage, type ChatRow } from "@shared/work/messages";
 import { ArrowLeft, ChevronDown, Copy, MessageSquarePlus, MoreHorizontal } from "../../chrome/icons";
 import { RowsContextMenu, RowsMenu, tidy, type MenuRow } from "../../chrome/menuRows";
 import { Tip } from "../../components/tip";
@@ -12,7 +12,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { useMessagesData, type Paged } from "./data";
 import { Composer } from "./Composer";
 import { MessageBlock } from "./Message";
-import { blocksOf, chatFact, estimateOf, newSince, wantsRead, type Block } from "./model";
+import { blocksOf, chatFact, estimateOf, menuKey, newSince, wantsRead, type Block } from "./model";
 import { dropWanted, keepPlace, placeOf, useWanted } from "./page";
 import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 
@@ -24,15 +24,40 @@ import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows
  * Opening it marks it read, and so does a message that arrives while it is
  * open and the window is in front. The composer sits at its foot.
  */
-export function Conversation({ workspaceId, chatId, narrow, onBack }: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void }) {
+export function Conversation(props: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void }) {
+  // Retry asks LifeOS afresh: the conversation's reads are mounted again.
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  return <ConversationBody key={attempt} {...props} retry={retry} />;
+}
+
+function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void; retry: () => void }) {
   const data = useMessagesData();
   const detail = data.useChat(chatId);
   const messages = data.useMessages(chatId);
   const chat = detail.status === "ready" ? detail.value?.chat : undefined;
 
-  // Opening marks it read; so does his coming back to the window while it is open and something waits.
+  // Where "New" sits is read from the first answer, before any read mark is written, and kept for the visit.
+  const [first, setFirst] = useState<ChatRow | null>(null);
+  if (chat && !first) setFirst(chat);
+  const since = first ? newSince(first) : null;
+
+  // His Mark unread holds: nothing marks the conversation read again until a newer message from someone else comes.
+  const lastIn = chat?.lastInAt ?? 0;
+  const [held, setHeld] = useState<number | null>(null);
+  const before = useRef<{ unread: boolean; lastIn: number } | null>(null);
+  useEffect(() => {
+    if (!chat) return;
+    const was = before.current;
+    before.current = { unread: chat.unread, lastIn };
+    if (was && !was.unread && chat.unread && lastIn <= was.lastIn) setHeld(lastIn);
+  }, [chat, lastIn]);
+  const holding = held !== null && lastIn <= held;
+
+  // Opening marks it read; so does a newer message while it is open and the window is in front, or his coming back to
+  // the window while something waits.
   const markRead = data.markRead;
-  const wants = chat ? wantsRead(chat) : false;
+  const wants = chat && !holding ? wantsRead(chat) : false;
   const marked = useRef(false);
   useEffect(() => {
     if (!wants) return;
@@ -46,33 +71,44 @@ export function Conversation({ workspaceId, chatId, narrow, onBack }: { workspac
     return () => window.removeEventListener("focus", onFocus);
   }, [wants, chatId, markRead]);
 
-  if (detail.status === "failed") return <EmptyState title="This conversation did not load" line={detail.error} />;
-  if (detail.status === "ready" && !detail.value) return <EmptyState title="This conversation is no longer here" action={{ label: "Back to Messages", onClick: onBack }} />;
+  const failed = detail.status === "failed" || messages.status === "failed";
+  const gone = detail.status === "ready" && !detail.value;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Toolbar workspaceId={workspaceId} detail={detail.status === "ready" ? detail.value : undefined} narrow={narrow} onBack={onBack} />
-      {messages.status === "failed" ? (
-        <EmptyState title="The messages did not load" line={messages.error} />
+      {/* The toolbar stays whatever came back, so under 640px the way back is always there. */}
+      <Toolbar workspaceId={workspaceId} detail={detail.status === "ready" ? detail.value : undefined} loading={detail.status === "loading"} narrow={narrow} onBack={onBack} />
+      {failed ? (
+        <EmptyState title={detail.status === "failed" ? "This conversation did not load" : "The messages did not load"} action={{ label: "Retry", onClick: retry }} />
+      ) : gone ? (
+        <EmptyState title="This conversation is no longer here" action={{ label: "Back to Messages", onClick: onBack }} />
       ) : messages.status === "loading" || !chat ? (
         <ColumnBones />
       ) : (
-        <Column workspaceId={workspaceId} chat={chat} since={newSince(chat)} page={messages.value} />
+        <Column workspaceId={workspaceId} chat={chat} since={since} page={messages.value} />
       )}
-      {detail.status === "ready" && detail.value ? <Composer workspaceId={workspaceId} detail={detail.value} /> : null}
+      {detail.status === "ready" && detail.value && !failed ? <Composer workspaceId={workspaceId} detail={detail.value} /> : null}
     </div>
   );
 }
 
 // ── The toolbar ──
 
-function Toolbar({ workspaceId, detail, narrow, onBack }: { workspaceId: string; detail: ChatDetail | null | undefined; narrow: boolean; onBack: () => void }) {
+function Toolbar({ workspaceId, detail, loading, narrow, onBack }: { workspaceId: string; detail: ChatDetail | null | undefined; loading: boolean; narrow: boolean; onBack: () => void }) {
   const data = useMessagesData();
   const now = data.useNow();
   const start = useStartThread();
   const chat = detail?.chat;
   const link = chat?.link ?? detail?.link;
-  // Under 640px the list and its sync line are hidden: this conversation's own source says it here, once.
-  const line = narrow && detail?.source ? syncLine([detail.source], now) : null;
+  // Under 640px the list and its sync line are hidden: this conversation's own source says it here, once. The source is
+  // named on the line above, so this line says only when.
+  const source = detail?.source;
+  const heard = source ? lastHeard(source) : undefined;
+  const line = narrow && source && staleOf(source, now) ? (heard ? `Last synced ${syncWhen(heard, now)}` : "Has not synced") : null;
+  // Opening a conversation under 640px puts the keys on its way back.
+  const back = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (narrow) back.current?.focus({ preventScroll: true });
+  }, [narrow]);
   // Start thread has its own button; More holds the rest, Mention only while a thread is open.
   const rows = (): MenuRow[] =>
     chat
@@ -96,14 +132,15 @@ function Toolbar({ workspaceId, detail, narrow, onBack }: { workspaceId: string;
       <div className="flex h-11 items-center gap-0.5 px-2">
         {narrow ? (
           <Tip label="Back to Messages">
-            <Button variant="ghost" size="icon-sm" aria-label="Back to Messages" className="text-muted-foreground" onClick={onBack}>
+            <Button ref={back} variant="ghost" size="icon-sm" aria-label="Back to Messages" className="text-muted-foreground" onClick={onBack}>
               <ArrowLeft />
             </Button>
           </Tip>
         ) : null}
-        <div className={cn("flex min-w-0 flex-1 items-baseline gap-2", narrow ? "ps-1" : "ps-2")}>
+        {/* Under 640px the name starts at 44px, where the line under it starts. */}
+        <div className={cn("flex min-w-0 flex-1 items-baseline gap-2", narrow ? "ps-1.5" : "ps-2")}>
           {!chat ? (
-            <Skeleton className="h-3 w-32 self-center" />
+            loading ? <Skeleton className="h-3 w-32 self-center" /> : null
           ) : person ? (
             <Button variant="link" className="h-auto min-w-0 shrink p-0 text-[13px] font-semibold text-foreground" onClick={() => openWorkView({ workspaceId, view: "people", person })}>
               <span className="truncate">{chat.name}</span>
@@ -177,9 +214,7 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
   const now = data.useNow();
   const chatId = chat._id;
   const start = useStartThread();
-  // "New" is fixed as the conversation opens: reading it does not move the line away.
-  const [openedSince] = useState(since);
-  const blocks = useMemo(() => blocksOf(page.rows, openedSince, now, page.done), [page.rows, openedSince, now, page.done]);
+  const blocks = useMemo(() => blocksOf(page.rows, since, now, page.done), [page.rows, since, now, page.done]);
   // Newest first: index 0 sits at the foot, and offsets count up from there.
   const upward = useMemo(() => [...blocks].reverse(), [blocks]);
   const layout = useMemo(() => new RowLayout(), []);
@@ -191,14 +226,22 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   const atFoot = useRef(true);
   const anchor = useRef<RowAnchor | null>(null);
-  /** Opening over "New": the block, until the window's true height places it. */
-  const openOnNew = useRef<number | null>(null);
   const opened = useRef(false);
-  const newest = useRef<string | undefined>(undefined);
-  /** Messages from others that came while he was up the column ("2 new"). */
-  const unseen = useRef(0);
-  /** Messages that came while he was at the foot: they rise in as they are drawn. */
-  const arrived = useRef(new Set<string>());
+  /** Older pages read to reach "New" when it lies above the first page, counted once a page. */
+  const reach = useRef({ asked: -1, pages: 0 });
+
+  // What came at the foot, kept as state and moved on only after a draw: the newest block counted, the ones that rose
+  // in while he was there, how many came from others while he was up the column ("2 new"), and the one line said.
+  const [newest, setNewest] = useState<string | undefined>(() => upward[0]?.id);
+  const [arrived, setArrived] = useState<ReadonlySet<string>>(NONE);
+  const [unseen, setUnseen] = useState(0);
+  const [said, setSaid] = useState("");
+  const top = upward[0];
+  const came = useMemo(() => {
+    if (!top || !newest || top.id === newest) return [];
+    const at = upward.findIndex((block) => block.id === newest);
+    return at > 0 ? upward.slice(0, at) : [];
+  }, [upward, top, newest]);
 
   /** Places the window `up` pixels over the foot. */
   const goTo = (up: number): void => {
@@ -206,32 +249,18 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
     atFoot.current = view.current.up <= AT_FOOT;
     anchor.current = atFoot.current ? null : layout.anchorAt(view.current.up);
   };
-  const overNew = (index: number): number => layout.offsetOf(index + 1) + NEW_AIR - view.current.height;
+  const over = (index: number, air: number): number => layout.offsetOf(index + 1) + air - view.current.height;
 
-  // Where the column opens: over "New", else where he left it, else its foot.
-  if (!opened.current && upward.length) {
-    opened.current = true;
-    newest.current = upward[0]!.id;
-    const fresh = upward.findIndex((block) => block.isNew);
-    const kept = placeOf(workspaceId, chatId);
-    if (fresh >= 0) openOnNew.current = fresh;
-    goTo(fresh >= 0 ? overNew(fresh) : kept ? (layout.scrollTopFor(kept) ?? 0) : 0);
-  }
-
-  // Newer messages at the foot: he sees them rise in if he is there, else they count toward "2 new".
-  const top = upward[0];
-  if (top && newest.current && top.id !== newest.current) {
-    const before = upward.findIndex((block) => block.id === newest.current);
-    const came = before > 0 ? upward.slice(0, before) : [];
-    newest.current = top.id;
-    if (atFoot.current) for (const block of came) arrived.current.add(block.id);
-    else unseen.current += came.filter((block) => !block.message.who.me).length;
-  }
+  const wanted = useWanted(workspaceId, chatId);
+  // "New" above the first page: older pages are read until it is held (a bounded number), and the column opens there.
+  const fresh = upward.findIndex((block) => block.isNew);
+  const unreadAbove = since !== null && fresh < 0 && !page.done && blocks.length > 0 && blocks[0]!.message.sentAt > since && blocks.some((block) => !block.message.who.me && block.message.sentAt > since);
 
   const range = layout.range(view.current.up, view.current.height, OVERSCAN);
   const shown = upward.slice(range.start, range.end);
 
-  // After each draw: measure what is drawn, keep his place against any change under it, and draw again if the window reaches past what is drawn.
+  // After each draw: measure what is drawn, open where it should, count what came, keep his place against any change
+  // under it, and draw again if the window reaches past what is drawn.
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -244,13 +273,31 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
       const change = layout.measure(node.dataset.block!, height);
       if (change) changes.push(change);
     }
-    if (openOnNew.current !== null && el.clientHeight) {
-      goTo(overNew(openOnNew.current));
-      openOnNew.current = null;
+    if (!opened.current && upward.length) {
+      if (unreadAbove && reach.current.pages < FIND_PAGES) {
+        if (reach.current.asked !== page.rows.length) {
+          reach.current = { asked: page.rows.length, pages: reach.current.pages + 1 };
+          page.more();
+        }
+      } else {
+        // Where the column opens: on a message he was sent to (its own effect places it), over "New", else where he
+        // left it, else its foot.
+        opened.current = true;
+        const kept = placeOf(workspaceId, chatId);
+        if (!wanted) goTo(fresh >= 0 ? over(fresh, NEW_AIR) : kept ? (layout.scrollTopFor(kept) ?? 0) : 0);
+      }
     } else if (atFoot.current) view.current.up = 0;
     else if (anchor.current) view.current.up = layout.scrollTopFor(anchor.current) ?? view.current.up + anchorShift(changes, layout.indexOf(anchor.current.key));
     // The column-reverse scroller counts from its foot: 0 there, negative going up.
     if (Math.abs(-el.scrollTop - view.current.up) > 0.5) el.scrollTop = -view.current.up;
+    if (came.length && top) {
+      const others = came.filter((block) => !block.message.who.me);
+      if (atFoot.current) setArrived(new Set(came.map((block) => block.id)));
+      else if (others.length) setUnseen((n) => n + others.length);
+      const last = others[0]?.message;
+      if (last) setSaid(`${last.who.name}: ${firstWords(last.text, 80)}`);
+      setNewest(top.id);
+    }
     const next = layout.range(view.current.up, view.current.height, OVERSCAN);
     if (next.start !== range.start || next.end !== range.end) redraw();
   });
@@ -262,33 +309,32 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
     view.current.height = el.clientHeight || view.current.height;
     goTo(-el.scrollTop);
     keepPlace(workspaceId, chatId, anchor.current);
-    if (!atFoot.current) arrived.current.clear();
-    else if (unseen.current) {
-      unseen.current = 0;
-      redraw();
-    }
+    if (!atFoot.current) {
+      if (arrived.size) setArrived(NONE);
+    } else if (unseen) setUnseen(0);
     if (!page.done && view.current.up + view.current.height > layout.total() - LOAD_AHEAD) page.more();
     const next = layout.range(view.current.up, view.current.height, OVERSCAN / 2);
     if (next.start < range.start || next.end > range.end) redraw();
   };
 
-  // A message he was sent to: read back page by page until it is held (a bounded number of pages), brought into view
-  // with air over it, and marked for a moment.
-  const wanted = useWanted(workspaceId, chatId);
-  const tries = useRef(0);
+  // A message he was sent to: read back page by page until it is held (a bounded number of pages, counted afresh for
+  // each message asked for), brought into view with air over it, and marked for a moment.
+  const finding = useRef({ id: "", asked: -1, pages: 0 });
   const [found, setFound] = useState<{ id: string; on: boolean } | null>(null);
   useEffect(() => {
     if (!wanted) return;
+    if (finding.current.id !== wanted) finding.current = { id: wanted, asked: -1, pages: 0 };
     const index = upward.findIndex((block) => block.id === wanted);
     if (index < 0) {
-      if (!page.done && tries.current < FIND_PAGES) {
-        tries.current++;
+      if (page.done || finding.current.pages >= FIND_PAGES) dropWanted(workspaceId);
+      else if (finding.current.asked !== page.rows.length) {
+        finding.current = { ...finding.current, asked: page.rows.length, pages: finding.current.pages + 1 };
         page.more();
-      } else dropWanted(workspaceId);
+      }
       return;
     }
-    openOnNew.current = null;
-    goTo(layout.offsetOf(index + 1) + FOUND_AIR - view.current.height);
+    opened.current = true;
+    goTo(over(index, FOUND_AIR));
     keepPlace(workspaceId, chatId, anchor.current);
     setFound({ id: wanted, on: true });
     dropWanted(workspaceId);
@@ -300,7 +346,8 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
     return () => clearTimeout(timer);
   }, [found]);
 
-  // A message's menu, from a right-click or its ⋯: a thread about it (its words ride on the chip), Copy text, its link.
+  // A message's menu, from a right-click, its ⋯, or the menu key on a focused message: a thread about it (its words ride
+  // on the chip), Copy text, its link.
   const menuAt = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
   const byId = useMemo(() => new Map(blocks.map((block) => [block.id, block.message])), [blocks]);
   const messageRows = (id: string | null): MenuRow[] | null => {
@@ -322,6 +369,23 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
       },
     [],
   );
+  // The keys on the column: up and down from message to message, and the menu key opens the focused one's menu.
+  const keys = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const at = (event.target as HTMLElement).closest<HTMLElement>("[data-block]");
+    if (menuKey(event)) {
+      if (!at) return;
+      event.preventDefault();
+      menuAt.current?.({ x: 0, y: 0, id: at.dataset.block! });
+      return;
+    }
+    const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    const all = [...event.currentTarget.querySelectorAll<HTMLElement>("[data-block]")];
+    const next = at ? all[all.indexOf(at) + step] : all[step > 0 ? 0 : all.length - 1];
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
+  };
 
   // A conversation shorter than its window asks for older messages at once.
   useEffect(() => {
@@ -331,7 +395,7 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
   const toFoot = (): void => {
     goTo(0);
     keepPlace(workspaceId, chatId, null);
-    unseen.current = 0;
+    setUnseen(0);
     redraw();
   };
 
@@ -340,7 +404,9 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
     <div className="relative min-h-0 flex-1">
       <div ref={scroller} onScroll={onScroll} data-column className="flex h-full flex-col-reverse overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
         <RowsContextMenu lazyMount label="Message" rowsFor={messageRows} onPick={pickMessage} openRef={menuAt}>
-          <div className={cn(COLUMN, "pt-4 pb-5")} role="log" aria-label="Messages">
+          {/* A log that pages upward says nothing of itself: an older page drawn on the way up is not news. What comes at
+              the foot is said once, in the status under it. */}
+          <div className={cn(COLUMN, "focus-ring pt-4 pb-5")} role="log" aria-label="Messages" aria-live="off" tabIndex={0} onKeyDown={keys}>
             <div aria-hidden style={{ height: layout.total() - layout.offsetOf(range.end) }} />
             {shown
               .slice()
@@ -349,7 +415,7 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
                 <MessageBlock
                   key={block.id}
                   block={block}
-                  arrives={arrived.current.has(block.id)}
+                  arrives={arrived.has(block.id) || (atFoot.current && came.includes(block))}
                   found={found?.id === block.id ? (found.on ? "on" : "off") : undefined}
                   workspaceId={workspaceId}
                   chatId={chatId}
@@ -361,7 +427,10 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
           </div>
         </RowsContextMenu>
       </div>
-      {unseen.current > 0 ? (
+      <p role="status" aria-live="polite" className="sr-only">
+        {said}
+      </p>
+      {unseen > 0 ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
           {/* It floats over the column, so its fills stay opaque: muted on hover, foreground/12 over that on a press. */}
           <Button
@@ -371,7 +440,7 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
             onClick={toFoot}
             className="pointer-events-auto border border-border bg-popover ps-3 pe-2.5 text-muted-foreground shadow-overlay hover:bg-muted hover:text-foreground active:bg-muted active:bg-linear-to-b active:from-foreground/12 active:to-foreground/12"
           >
-            {unseen.current} new
+            {unseen} new
             <ChevronDown />
           </Button>
         </div>
@@ -379,6 +448,8 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
     </div>
   );
 }
+
+const NONE: ReadonlySet<string> = new Set();
 
 /** While the messages load: runs in their own shape, at the column's foot where they will land. */
 export function ColumnBones() {

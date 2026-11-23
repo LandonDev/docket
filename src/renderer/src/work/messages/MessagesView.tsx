@@ -12,7 +12,7 @@ import { ChatList } from "./ChatList";
 import { Conversation } from "./Conversation";
 import { MessagesDataProvider } from "./data";
 import { liveData } from "./live";
-import { patchPage, usePage, wantMessage } from "./page";
+import { patchPage, returnTo, usePage, wantMessage } from "./page";
 import { StartThreadProvider } from "./threads";
 
 /**
@@ -116,8 +116,12 @@ export function MessagesScreen({
   }, [forced]);
   const narrow = forced ?? measured;
   const open = (chatId: string, messageId?: string): void => (messageId ? wantMessage(workspaceId, chatId, messageId) : patchPage(workspaceId, { chatId }));
-  const back = (): void => patchPage(workspaceId, { chatId: null });
-  const list = <ChatList workspaceId={workspaceId} job={job} onOpen={open} />;
+  const back = (): void => {
+    // Under 640px the list comes back in the conversation's place: the keys go back to the row he left.
+    if (page.chatId) returnTo(workspaceId, page.chatId);
+    patchPage(workspaceId, { chatId: null });
+  };
+  const list = <ChatList workspaceId={workspaceId} job={job} narrow={narrow} onOpen={open} />;
   // Keyed by the conversation: another one starts with its own place and its own pages.
   const conversation = page.chatId ? <Conversation key={page.chatId} workspaceId={workspaceId} chatId={page.chatId} narrow={narrow} onBack={back} /> : null;
   // A file opened from a message shows in the view's own pane beside the conversation, as Mail seats its reader.
@@ -141,7 +145,7 @@ function NothingOpen() {
   return (
     <Empty className="h-full">
       <EmptyHeader>
-        <EmptyTitle className="font-normal text-muted-foreground">No conversation open</EmptyTitle>
+        <EmptyTitle>No conversation open</EmptyTitle>
       </EmptyHeader>
     </Empty>
   );

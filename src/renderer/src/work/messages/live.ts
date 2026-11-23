@@ -173,9 +173,10 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
         void loadCopyDrafts(env, workspaceId);
       }
     },
-    requestFiles: (messageId) => {
+    requestFiles: async (messageId) => {
       const client = session.client;
-      if (client) void client.mutation(makeFunctionReference<"mutation">("chats:requestFiles"), { messageId }).catch(() => {});
+      if (!client) throw new Error("LifeOS is not connected");
+      await client.mutation(makeFunctionReference<"mutation">("chats:requestFiles"), { messageId });
     },
     fileVerb,
     openFile: (chatId, message, file) => {

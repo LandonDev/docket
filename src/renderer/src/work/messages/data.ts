@@ -67,8 +67,8 @@ export interface MessagesData {
   sendDraft(draft: ThreadDraft, text: string): Promise<void>;
   /** Discards a held draft, or drops a copy-only one. */
   dropDraft(draft: ThreadDraft): Promise<void>;
-  /** Asks LifeOS's worker to fetch a message's files it only listed. */
-  requestFiles(messageId: string): void;
+  /** Asks LifeOS's worker to fetch a message's files it only listed; rejects when LifeOS did not take the ask. */
+  requestFiles(messageId: string): Promise<void>;
   /** What a press on a file does here. */
   fileVerb(file: ChatFile): FileVerb;
   /** Opens a stored file beside the conversation, or saves it. */
@@ -97,7 +97,7 @@ export const WAITING: MessagesData = {
   useDrafts: () => NO_DRAFTS,
   sendDraft: () => Promise.reject(new Error("LifeOS is not connected")),
   dropDraft: () => Promise.resolve(),
-  requestFiles: () => {},
+  requestFiles: () => Promise.reject(new Error("LifeOS is not connected")),
   fileVerb: () => "save",
   openFile: () => {},
 };

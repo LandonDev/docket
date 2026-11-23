@@ -24,3 +24,19 @@
     transition: none;
   }
 }
+
+/* A row's fill, list and search alike, as Mail's rows draw theirs: the page at rest, the foreground at 5% under the
+   pointer and 9% on the open row, at once. One variable, so a group's lapped face rings itself in the row's own fill
+   in every state. */
+.tc-messages .tc-row {
+  --row-fill: var(--background);
+  background: var(--row-fill);
+}
+.tc-messages .tc-row[aria-selected="true"] {
+  --row-fill: color-mix(in srgb, var(--foreground) 9%, var(--background));
+}
+@media (hover: hover) {
+  .tc-messages .tc-row:not([aria-selected="true"]):hover {
+    --row-fill: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  }
+}

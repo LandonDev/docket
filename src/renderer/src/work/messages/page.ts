@@ -48,8 +48,19 @@ const places = new Map<string, RowAnchor>();
 const typed = new Map<string, string>();
 const key = (workspaceId: string, chatId: string): string => `${workspaceId}\u0000${chatId}`;
 
-export const listTopOf = (workspaceId: string): number => listTops.get(workspaceId) ?? 0;
-export const keepListTop = (workspaceId: string, top: number): void => void listTops.set(workspaceId, top);
+/** Where the list was scrolled, each filter its own place. */
+export const listTopOf = (workspaceId: string, filter: ChatFilter): number => listTops.get(`${workspaceId}\u0000${filter}`) ?? 0;
+export const keepListTop = (workspaceId: string, filter: ChatFilter, top: number): void => void listTops.set(`${workspaceId}\u0000${filter}`, top);
+
+/** The row the list gives the keys back to when he comes back from a conversation under 640px. */
+const returns = new Map<string, string>();
+export const returnTo = (workspaceId: string, chatId: string): void => void returns.set(workspaceId, chatId);
+/** Taken once: the row to stand on, if he just came back. */
+export function takeReturn(workspaceId: string): string | undefined {
+  const chatId = returns.get(workspaceId);
+  returns.delete(workspaceId);
+  return chatId;
+}
 
 export const placeOf = (workspaceId: string, chatId: string): RowAnchor | undefined => places.get(key(workspaceId, chatId));
 export function keepPlace(workspaceId: string, chatId: string, anchor: RowAnchor | null): void {
@@ -117,5 +128,6 @@ export function resetPages(): void {
   places.clear();
   typed.clear();
   wanted.clear();
+  returns.clear();
   for (const listener of listeners) listener();
 }

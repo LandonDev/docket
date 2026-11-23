@@ -147,10 +147,10 @@ describe("a search's lit words", () => {
       [" is in", false],
     ]);
   });
-  it("starts a long message's line a little before what it found", () => {
-    const text = "Seeing a spike of save sync failures on the new build, and the controller fix is still pending";
-    expect(aroundMatch(text, "controller")).toBe("…the new build, and the controller fix is still pending");
-    expect(aroundMatch("The controller fix", "controller")).toBe("The controller fix");
+  it("starts a long message's line a little before what it found, and only past 40 characters", () => {
+    const text = "Seeing a spike of save sync failures on the new build after the patch, and the controller fix is still pending";
+    expect(aroundMatch(text, "controller")).toBe("…patch, and the controller fix is still pending");
+    expect(aroundMatch("I'll take the controller bug, no worries.", "controller")).toBe("I'll take the controller bug, no worries.");
     expect(aroundMatch("nothing here", "zebra")).toBe("nothing here");
   });
   it("leaves a word's middle alone", () => {

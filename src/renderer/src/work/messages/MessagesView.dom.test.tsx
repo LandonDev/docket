@@ -191,7 +191,9 @@ describe("a conversation", () => {
 
   it("quotes what a thread reply answers", () => {
     mount({}, { chatId: "c_design" });
-    expect(block("c_design_m2").textContent).toMatch(/^Ana Ruiz Love the rarity sort/);
+    // m2 answers the message right above it, so it quotes nothing; m6 answers one further up.
+    expect(block("c_design_m2").textContent).not.toContain("Love the rarity sort");
+    expect(block("c_design_m6").textContent).toMatch(/^Mia Chen It's 400ms right now/);
   });
 });
 
@@ -208,8 +210,8 @@ describe("the sync line", () => {
     mount({ stale: true }, { chatId: "c_playtest" }, true);
     expect(screen.queryByRole("listbox", { name: "Conversations" })).toBeNull();
     expect(lines()).toHaveLength(1);
-    expect(lines()[0]!.textContent).toMatch(/^Discord last synced/);
-    expect(lines()[0]!.textContent).not.toContain("iMessage");
+    // The source is named on the line above it: this one says only when.
+    expect(lines()[0]!.textContent).toMatch(/^Last synced /);
     expect(screen.getByRole("button", { name: "Back to Messages" })).toBeTruthy();
   });
 

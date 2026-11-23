@@ -1,4 +1,4 @@
-import { memo, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { syncLine, type ChatHit, type ChatRow } from "@shared/work/messages";
 import { useWindowed } from "work-kit/mail/lib/window";
 import { ChevronDown, Circle, Check, CircleDot, Search, X } from "../../chrome/icons";
@@ -14,9 +14,9 @@ import { Face } from "../mail/face";
 import { Hash } from "../icons";
 import { openConnections } from "../shell/open";
 import { useMessagesData } from "./data";
-import { aroundMatch, CHAT_FILTERS, FILTER_EMPTY, FILTER_LABEL, FILTER_ROW, firstName, markWords, rowLine, rowTime, type ChatFilter } from "./model";
+import { aroundMatch, CHAT_FILTERS, FILTER_EMPTY, FILTER_LABEL, FILTER_ROW, firstName, markWords, menuKey, rowLine, rowTime, type ChatFilter } from "./model";
 import { chatChip, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
-import { keepListTop, listTopOf, patchPage, usePage } from "./page";
+import { keepListTop, listTopOf, patchPage, takeReturn, usePage } from "./page";
 
 /**
  * The list of a job's conversations (docs/agents/work-messages.md "The
@@ -40,16 +40,27 @@ const FACE_CELL = "row-span-2 flex h-8 items-end self-start";
 /** An empty list's words, at the middle of the whole column (its head and search included), level with the pane's. */
 const LIST_EMPTY = "pointer-events-none absolute inset-0 max-w-none";
 
-export function ChatList({ workspaceId, job, onOpen }: { workspaceId: string; job: string; onOpen: (chatId: string, messageId?: string) => void }) {
+export function ChatList({ workspaceId, job, narrow, onOpen }: { workspaceId: string; job: string; narrow: boolean; onOpen: (chatId: string, messageId?: string) => void }) {
+  // Retry asks LifeOS afresh: the list's reads are mounted again.
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  return <ListBody key={attempt} workspaceId={workspaceId} job={job} narrow={narrow} onOpen={onOpen} retry={retry} />;
+}
+
+/** Whether the job has a chat source: yes, no, not known yet, or the sources did not load. */
+type Linked = boolean | null | "failed";
+
+function ListBody({ workspaceId, job, narrow, onOpen, retry }: { workspaceId: string; job: string; narrow: boolean; onOpen: (chatId: string, messageId?: string) => void; retry: () => void }) {
   const data = useMessagesData();
   const page = usePage(workspaceId);
   const sources = data.useSources();
   const now = data.useNow();
   const line = sources.status === "ready" ? syncLine(sources.value, now) : null;
   const query = useDeferredValue(page.query.trim());
+  const linked: Linked = sources.status === "ready" ? sources.value.length > 0 : sources.status === "failed" ? "failed" : null;
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <ListHead filter={page.filter} onFilter={(filter) => patchPage(workspaceId, { filter })} />
+      <ListHead filter={page.filter} searching={query !== ""} onFilter={(filter) => patchPage(workspaceId, { filter })} />
       <SearchField workspaceId={workspaceId} query={page.query} />
       {line ? (
         <p data-sync-line className="shrink-0 px-4 pb-2 text-xs text-muted-foreground">
@@ -57,20 +68,27 @@ export function ChatList({ workspaceId, job, onOpen }: { workspaceId: string; jo
         </p>
       ) : null}
       {query ? (
-        <SearchHits workspaceId={workspaceId} query={query} openId={page.chatId} onOpen={onOpen} />
+        <SearchHits workspaceId={workspaceId} query={query} narrow={narrow} onOpen={onOpen} retry={retry} />
       ) : (
         // Keyed by the filter: another filter is another list, its own place and its own pages.
-        <ChatRows key={page.filter} workspaceId={workspaceId} job={job} filter={page.filter} openId={page.chatId} linked={sources.status === "ready" ? sources.value.length > 0 : null} onOpen={onOpen} />
+        <ChatRows key={page.filter} workspaceId={workspaceId} job={job} filter={page.filter} openId={page.chatId} linked={linked} narrow={narrow} onOpen={onOpen} retry={retry} />
       )}
     </div>
   );
 }
 
+/** A failure's one action. */
+const retryOf = (retry: () => void) => ({ label: "Retry", onClick: retry });
+
 // ── The head ──
 
-function ListHead({ filter, onFilter }: { filter: ChatFilter; onFilter: (filter: ChatFilter) => void }) {
+function ListHead({ filter, searching, onFilter }: { filter: ChatFilter; searching: boolean; onFilter: (filter: ChatFilter) => void }) {
   const unread = useMessagesData().useUnread();
   const rows = (): MenuRow[] => CHAT_FILTERS.map((f) => ({ kind: "item", id: f, label: FILTER_ROW[f], checked: f === filter }));
+  // A search reads the whole job, so the head says "Messages" while it runs. The job's unread count stands only where it
+  // counts what is listed: beside All and Unread.
+  const shown = searching ? "all" : filter;
+  const count = shown === "all" || shown === "unread" ? unread : null;
   return (
     <div className="flex h-11 shrink-0 items-center px-2">
       <RowsMenu
@@ -81,8 +99,8 @@ function ListHead({ filter, onFilter }: { filter: ChatFilter; onFilter: (filter:
         onPick={(id) => onFilter(id as ChatFilter)}
         trigger={
           <Button variant="ghost" size="sm" className="gap-1.5 px-2 font-semibold aria-expanded:bg-foreground/5">
-            {FILTER_LABEL[filter]}
-            {unread ? <span className="font-normal text-muted-foreground tabular-nums">{unread}</span> : null}
+            {FILTER_LABEL[shown]}
+            {count ? <span className="font-normal text-muted-foreground tabular-nums">{count}</span> : null}
             <ChevronDown className="size-3 text-muted-foreground" />
           </Button>
         }
@@ -142,38 +160,99 @@ function SearchField({ workspaceId, query }: { workspaceId: string; query: strin
 
 // ── The rows ──
 
-function ChatRows({ workspaceId, job, filter, openId, linked, onOpen }: { workspaceId: string; job: string; filter: ChatFilter; openId: string | null; linked: boolean | null; onOpen: (chatId: string) => void }) {
+function ChatRows({
+  workspaceId,
+  job,
+  filter,
+  openId,
+  linked,
+  narrow,
+  onOpen,
+  retry,
+}: {
+  workspaceId: string;
+  job: string;
+  filter: ChatFilter;
+  openId: string | null;
+  linked: Linked;
+  narrow: boolean;
+  onOpen: (chatId: string) => void;
+  retry: () => void;
+}) {
   const data = useMessagesData();
   const chats = data.useChats(filter);
-  if (chats.status === "failed") return <ListEmpty title="Messages did not load" />;
-  // Held until the sources answer too, so an empty job says its true cause the first time.
-  if (chats.status === "loading" || (chats.value.rows.length === 0 && linked === null)) return <RowBones />;
+  if (chats.status === "failed") return <ListEmpty title="Messages did not load" action={retryOf(retry)} />;
+  if (chats.status === "loading") return <RowBones />;
   const { rows } = chats.value;
   if (rows.length === 0) {
     if (filter !== "all") return <ListEmpty title={FILTER_EMPTY[filter]} action={{ label: "Clear filter", onClick: () => patchPage(workspaceId, { filter: "all" }) }} />;
+    // Held until the sources answer too, so an empty job says its true cause the first time; sources that did not load
+    // leave the cause unknown, which is a list that did not load.
+    if (linked === null) return <RowBones />;
+    if (linked === "failed") return <ListEmpty title="Messages did not load" action={retryOf(retry)} />;
     if (!linked) return <ListEmpty title={`No chat is linked to ${job}`} action={{ label: "Open Connections", onClick: openConnections }} />;
     return <ListEmpty title={`No messages in ${job} yet`} />;
   }
-  return <RowsWindow workspaceId={workspaceId} rows={rows} done={chats.value.done} more={chats.value.more} openId={openId} onOpen={onOpen} />;
+  return <RowsWindow workspaceId={workspaceId} filter={filter} rows={rows} done={chats.value.done} more={chats.value.more} openId={openId} narrow={narrow} onOpen={onOpen} />;
 }
 
-function RowsWindow({ workspaceId, rows, done, more, openId, onOpen }: { workspaceId: string; rows: readonly ChatRow[]; done: boolean; more: () => void; openId: string | null; onOpen: (chatId: string) => void }) {
+function RowsWindow({
+  workspaceId,
+  filter,
+  rows,
+  done,
+  more,
+  openId,
+  narrow,
+  onOpen,
+}: {
+  workspaceId: string;
+  filter: ChatFilter;
+  rows: readonly ChatRow[];
+  done: boolean;
+  more: () => void;
+  openId: string | null;
+  narrow: boolean;
+  onOpen: (chatId: string) => void;
+}) {
   const data = useMessagesData();
   const now = data.useNow();
   const drafted = data.useDrafted();
   const scroller = useRef<HTMLDivElement>(null);
+  const listbox = useRef<HTMLDivElement>(null);
   const range = useWindowed(scroller, SLOT, rows.length);
-  // Back where he left the list.
+  const byId = useMemo(() => new Map(rows.map((row) => [row._id, row])), [rows]);
+  // The row the keys stand on. Beside the conversation it is the open one; under 640px, where opening hides the
+  // list, the arrows move it and Enter opens it.
+  const [active, setActive] = useState<string | null>(openId);
+  useEffect(() => {
+    if (!narrow) setActive(openId);
+  }, [openId, narrow]);
+  const show = (id: string): void => {
+    const el = scroller.current;
+    const index = rows.findIndex((row) => row._id === id);
+    if (!el || index < 0) return;
+    if (index * SLOT < el.scrollTop) el.scrollTop = index * SLOT;
+    else if ((index + 1) * SLOT > el.scrollTop + el.clientHeight) el.scrollTop = (index + 1) * SLOT - el.clientHeight;
+  };
+  // Back where he left this list; and, come back from a conversation under 640px, the keys on the row he left.
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollTop = listTopOf(workspaceId);
-  }, [workspaceId]);
+    if (el) el.scrollTop = listTopOf(workspaceId, filter);
+    const back = takeReturn(workspaceId);
+    if (back && rows.some((row) => row._id === back)) {
+      setActive(back);
+      show(back);
+      listbox.current?.focus({ preventScroll: true });
+    }
+    // biome-ignore lint/correctness/useExhaustiveDependencies: once a mount
+  }, [workspaceId, filter]);
   // The next page, as he nears the end of this one.
   useEffect(() => {
     if (!done && range.end >= rows.length - 20) more();
   }, [done, range.end, rows.length, more]);
-  const byId = useMemo(() => new Map(rows.map((row) => [row._id, row])), [rows]);
   const start = useStartThread();
+  const menuAt = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
   const menu = (id: string | null): MenuRow[] | null => {
     const row = id ? byId.get(id) : undefined;
     if (!row) return null;
@@ -193,27 +272,44 @@ function RowsWindow({ workspaceId, rows, done, more, openId, onOpen }: { workspa
     else pickThreadVerb(pick, chatChip(row), start, row.link);
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (menuKey(event)) {
+      if (!active) return;
+      event.preventDefault();
+      menuAt.current?.({ x: 0, y: 0, id: active });
+      return;
+    }
+    if (event.key === "Enter" && active) {
+      event.preventDefault();
+      onOpen(active);
+      return;
+    }
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!step) return;
     event.preventDefault();
-    const at = openId ? rows.findIndex((row) => row._id === openId) : -1;
+    const at = active ? rows.findIndex((row) => row._id === active) : -1;
     const next = rows[Math.max(0, Math.min(rows.length - 1, at + step))];
     if (!next) return;
-    onOpen(next._id);
-    const el = scroller.current;
-    if (!el) return;
-    const index = rows.indexOf(next);
-    if (index * SLOT < el.scrollTop) el.scrollTop = index * SLOT;
-    else if ((index + 1) * SLOT > el.scrollTop + el.clientHeight) el.scrollTop = (index + 1) * SLOT - el.clientHeight;
+    setActive(next._id);
+    if (!narrow) onOpen(next._id);
+    show(next._id);
   };
+  const standing = active !== null && byId.has(active);
   return (
-    <div ref={scroller} onScroll={(event) => keepListTop(workspaceId, event.currentTarget.scrollTop)} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-      <RowsContextMenu lazyMount label="Conversation" rowsFor={menu} onPick={pick}>
-        {/* One tab stop: the arrow keys move the open conversation, which the list names as its active row. */}
-        <div role="listbox" tabIndex={0} aria-label="Conversations" aria-activedescendant={openId && byId.has(openId) ? rowId(openId) : undefined} onKeyDown={keys} className="group/list px-1.5 pb-1.5 outline-none">
+    <div ref={scroller} onScroll={(event) => keepListTop(workspaceId, filter, event.currentTarget.scrollTop)} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+      <RowsContextMenu lazyMount label="Conversation" rowsFor={menu} onPick={pick} openRef={menuAt}>
+        {/* One tab stop: the keys move the active row, which the list names; until one is, the list wears the ring itself. */}
+        <div
+          ref={listbox}
+          role="listbox"
+          tabIndex={0}
+          aria-label="Conversations"
+          aria-activedescendant={standing ? rowId(active) : undefined}
+          onKeyDown={keys}
+          className={cn("group/list px-1.5 pb-1.5", standing ? "outline-none" : "focus-ring")}
+        >
           <div aria-hidden style={{ height: range.start * SLOT }} />
           {rows.slice(range.start, range.end).map((row) => (
-            <ChatRowView key={row._id} row={row} open={row._id === openId} drafted={drafted.has(row._id)} now={now} onOpen={onOpen} onRead={data.markRead} onUnread={data.markUnread} />
+            <ChatRowView key={row._id} row={row} open={row._id === openId} active={row._id === active} drafted={drafted.has(row._id)} now={now} onOpen={onOpen} onRead={data.markRead} onUnread={data.markUnread} />
           ))}
           <div aria-hidden style={{ height: (rows.length - range.end) * SLOT }} />
         </div>
@@ -236,10 +332,11 @@ function RowFace({ row }: { row: Pick<ChatRow, "kind" | "name" | "faces"> }) {
   if (row.kind === "group" && row.faces.length > 1) {
     const [a, b] = row.faces;
     return (
-      // Lapped side by side by 6px, as Mail's fold row laps them, level with a 24px face; the first leans 4px into the gutter, so the words keep their edge.
+      // Lapped side by side by 4px, as Mail's fold row laps them "so each keeps its initial", level with a 24px face; the
+      // first leans 4px into the gutter, so the words keep their edge. The ring is the row's own fill in each state.
       <span aria-hidden className="relative mb-[3px] h-[18px] w-6">
         <Face name={a!.name} picture={a!.picture} size="chip" className="absolute -start-1 top-0" />
-        <Face name={b!.name} picture={b!.picture} size="chip" className="absolute start-2 top-0 ring-2 ring-background" />
+        <Face name={b!.name} picture={b!.picture} size="chip" className="absolute start-2.5 top-0 ring-2 ring-(--row-fill)" />
       </span>
     );
   }
@@ -256,7 +353,26 @@ const rowLabel = (row: ChatRow, time: string, drafted: boolean): string => [row.
  * pointer the time gives way to Mark read or Mark unread. Memoised: a list
  * re-renders only the rows that changed.
  */
-const ChatRowView = memo(function ChatRowView({ row, open, drafted, now, onOpen, onRead, onUnread }: { row: ChatRow; open: boolean; drafted: boolean; now: number; onOpen: (id: string) => void; onRead: (id: string) => void; onUnread: (id: string) => void }) {
+const ChatRowView = memo(function ChatRowView({
+  row,
+  open,
+  active,
+  drafted,
+  now,
+  onOpen,
+  onRead,
+  onUnread,
+}: {
+  row: ChatRow;
+  open: boolean;
+  /** The row the list's keys stand on: it carries the ring while the list has the keyboard. */
+  active: boolean;
+  drafted: boolean;
+  now: number;
+  onOpen: (id: string) => void;
+  onRead: (id: string) => void;
+  onUnread: (id: string) => void;
+}) {
   const time = rowTime(row.lastAt, now);
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the list's keys move the open row
@@ -270,9 +386,9 @@ const ChatRowView = memo(function ChatRowView({ row, open, drafted, now, onOpen,
       onClick={() => onOpen(row._id)}
       style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }}
       className={cn(
-        "group/row relative cursor-default rounded-md select-none",
+        "tc-row group/row relative cursor-default rounded-md select-none",
         ROW_GRID,
-        open ? "bg-foreground/9 group-focus-visible/list:outline-2 group-focus-visible/list:-outline-offset-2 group-focus-visible/list:outline-accent" : "hover:bg-foreground/5",
+        active && "group-focus-visible/list:outline-2 group-focus-visible/list:-outline-offset-2 group-focus-visible/list:outline-accent",
       )}
     >
       <span className="row-span-2 grid h-5 w-4 place-items-center self-start">{row.unread ? <i aria-hidden className="size-1.5 rounded-full bg-foreground" /> : null}</span>
@@ -367,53 +483,95 @@ function Lit({ text, query }: { text: string; query: string }): ReactNode {
   );
 }
 
-/** The messages that hold the words: the conversation's name and the time, then who wrote and the words, lit. */
-function SearchHits({ workspaceId, query, openId, onOpen }: { workspaceId: string; query: string; openId: string | null; onOpen: (chatId: string, messageId?: string) => void }) {
+/**
+ * The messages that hold the words: the conversation's name and the time,
+ * then who wrote and the words, lit. One list as the rows are: one tab stop,
+ * the arrows move the active hit (and open it beside the list; under 640px
+ * Enter opens it), the fill on the message he opened.
+ */
+function SearchHits({ workspaceId, query, narrow, onOpen, retry }: { workspaceId: string; query: string; narrow: boolean; onOpen: (chatId: string, messageId?: string) => void; retry: () => void }) {
   const data = useMessagesData();
   const now = data.useNow();
   const hits = data.useSearch(query);
-  // A hit's conversation, where the list already holds it, lends the hit its face.
+  // A hit's conversation, where the list already holds it, lends the hit its face and its ink.
   const chats = data.useChats("all");
   const known = useMemo(() => new Map((chats.status === "ready" ? chats.value.rows : []).map((row) => [row._id, row])), [chats]);
-  if (hits.status === "failed") return <ListEmpty title="The search did not run" />;
+  const [active, setActive] = useState<string | null>(null);
+  const [opened, setOpened] = useState<string | null>(null);
+  if (hits.status === "failed") return <ListEmpty title="The search did not run" action={retryOf(retry)} />;
   if (hits.status === "loading") return <RowBones />;
-  if (hits.value.length === 0) return <ListEmpty title="No matches" action={{ label: "Clear search", onClick: () => patchPage(workspaceId, { query: "" }) }} />;
+  const list = hits.value;
+  if (list.length === 0) return <ListEmpty title="No matches" action={{ label: "Clear search", onClick: () => patchPage(workspaceId, { query: "" }) }} />;
+  const open = (hit: ChatHit): void => {
+    setActive(hit.messageId);
+    setOpened(hit.messageId);
+    onOpen(hit.chatId, hit.messageId);
+  };
+  const keys = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const at = active ? list.findIndex((hit) => hit.messageId === active) : -1;
+    if (event.key === "Enter" && at >= 0) {
+      event.preventDefault();
+      open(list[at]!);
+      return;
+    }
+    const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = list[Math.max(0, Math.min(list.length - 1, at + step))]!;
+    if (narrow) setActive(next.messageId);
+    else open(next);
+    document.getElementById(hitId(next.messageId))?.scrollIntoView({ block: "nearest" });
+  };
+  const standing = active !== null && list.some((hit) => hit.messageId === active);
   return (
     <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-      <div role="listbox" aria-label="Search results" className="px-1.5 pb-1.5">
-        {hits.value.map((hit) => (
-          <HitRow key={hit.messageId} hit={hit} row={known.get(hit.chatId)} query={query} open={hit.chatId === openId} now={now} onOpen={onOpen} />
+      <div
+        role="listbox"
+        tabIndex={0}
+        aria-label="Search results"
+        aria-activedescendant={standing ? hitId(active) : undefined}
+        onKeyDown={keys}
+        className={cn("group/list px-1.5 pb-1.5", standing ? "outline-none" : "focus-ring")}
+      >
+        {list.map((hit) => (
+          <HitRow key={hit.messageId} hit={hit} row={known.get(hit.chatId)} query={query} open={hit.messageId === opened} active={hit.messageId === active} now={now} onOpen={() => open(hit)} />
         ))}
       </div>
     </div>
   );
 }
 
-function HitRow({ hit, row, query, open, now, onOpen }: { hit: ChatHit; row: ChatRow | undefined; query: string; open: boolean; now: number; onOpen: (id: string, messageId: string) => void }) {
+const hitId = (messageId: string): string => `chat-hit-${messageId}`;
+
+function HitRow({ hit, row, query, open, active, now, onOpen }: { hit: ChatHit; row: ChatRow | undefined; query: string; open: boolean; active: boolean; now: number; onOpen: () => void }) {
   const kind = row?.kind ?? (hit.chat.startsWith("#") ? "channel" : "direct");
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: a result opens on a press, as a row does
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the list's keys move and open the active hit
     <div
       role="option"
+      id={hitId(hit.messageId)}
       aria-selected={open}
-      tabIndex={0}
       data-hit={hit.messageId}
-      onClick={() => onOpen(hit.chatId, hit.messageId)}
-      onKeyDown={(event) => event.key === "Enter" && onOpen(hit.chatId, hit.messageId)}
+      onClick={onOpen}
       style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }}
-      className={cn("relative cursor-default rounded-md select-none", ROW_GRID, open ? "bg-foreground/9" : "hover:bg-foreground/5")}
+      className={cn(
+        "tc-row relative cursor-default rounded-md select-none",
+        ROW_GRID,
+        active && "group-focus-visible/list:outline-2 group-focus-visible/list:-outline-offset-2 group-focus-visible/list:outline-accent",
+      )}
     >
       <span className="row-span-2" />
       <span className={FACE_CELL}>
         <RowFace row={row ?? { kind, name: hit.chat, faces: [{ name: hit.who }] }} />
       </span>
       <span className="flex h-5 min-w-0 items-center text-[13px]">
-        <span className="min-w-0 truncate text-foreground">{hit.chat}</span>
+        {/* The ink a row gives its name: in ink and semibold while the conversation is unread, else muted. */}
+        <span className={cn("min-w-0 truncate", row?.unread ? "font-semibold text-foreground" : "text-muted-foreground")}>{hit.chat}</span>
         <time className="ms-auto shrink-0 ps-2 text-xs text-muted-foreground tabular-nums">{rowTime(hit.at, now)}</time>
       </span>
       <span dir="auto" className="h-5 truncate text-start text-xs leading-5 text-muted-foreground">
         {`${firstName(hit.who)}: `}
-        <Lit text={aroundMatch(hit.text, query, 8)} query={query} />
+        <Lit text={aroundMatch(hit.text, query)} query={query} />
       </span>
     </div>
   );
