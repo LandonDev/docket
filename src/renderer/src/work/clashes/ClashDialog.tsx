@@ -1,6 +1,6 @@
 import { makeFunctionReference } from "convex/server";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { clashTitle, driveLine, timeNear, type Clash, type ClashSide, type ClashWay } from "@shared/work/clashes";
+import { clashTitle, driveLine, timeNear, type Clash, type ClashAnswered, type ClashSide, type ClashWay } from "@shared/work/clashes";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
 import { formatDayHeading } from "work-kit/views/lib/format";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -288,8 +288,8 @@ function Body({
           setRefused(null);
           setPending(true);
           link.request("work.clashes.answer", { eventId: step.eventId, way: step.way, ...params }, { lane: "ui" }).then(
-            () => {
-              done(doneWords(step.way, clash[side].title));
+            (reply: unknown) => {
+              done(doneWords(step.way, clash[side].title, (reply as ClashAnswered | null)?.queued ?? true));
             },
             (err: unknown) => {
               setPending(false);

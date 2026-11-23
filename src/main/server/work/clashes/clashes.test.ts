@@ -186,7 +186,8 @@ describe('his answer', () => {
 
   it("moves a calendar's event on its calendar", async () => {
     answers['events:get'] = () => ({ _id: 'e_game', source: 'gcal', startsAt: at(17, 30) })
-    await call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(18), end: at(20) })
+    // Handed to LifeOS's sender for the calendar: queued, not yet done.
+    expect(await call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(18), end: at(20) })).toEqual({ queued: true })
     expect(calls.slice(1)).toEqual([
       { fn: 'calendarOps:save', args: { kind: 'update', eventId: 'e_game', payload: { startsAt: at(18), endsAt: at(20) } } },
       { fn: 'calendarOps:send', args: { id: 'op_1', cause: 'press' } }
@@ -195,7 +196,8 @@ describe('his answer', () => {
 
   it('moves an event that lives only in LifeOS there, with nothing sent', async () => {
     answers['events:get'] = () => ({ _id: 'e_game', source: 'manual', startsAt: at(17, 30) })
-    await call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(18), end: at(20) })
+    // Written in LifeOS itself: done when it answers.
+    expect(await call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(18), end: at(20) })).toEqual({ queued: false })
     expect(calls).toEqual([
       { fn: 'events:get', args: { id: 'e_game' } },
       { fn: 'events:update', args: { id: 'e_game', patch: { startsAt: at(18), endsAt: at(20) } } }

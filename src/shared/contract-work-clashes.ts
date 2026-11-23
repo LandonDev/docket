@@ -23,7 +23,8 @@ export const ClashesRequestSchemas = [
   /** → null: on, the clash is fine and goes quiet until either event's time or place changes; off takes that back */
   request('work.clashes.waive', z.object({ id, on: z.boolean() })),
   /**
-   * → null: his own answer to one event of a clash, sent at once as his press: a decline, a proposed time, or a move.
+   * → ClashAnswered (`{queued}`): his own answer to one event of a clash, sent at once as his press: a decline, a proposed time, or a move.
+   * `queued` says a calendar's act is with LifeOS's sender and not yet on the calendar; a move of an event that lives in LifeOS is written and done.
    * Never a thread's: an agent drafts the same act with its held tools and it waits in the Outbox.
    */
   request(

@@ -1,5 +1,5 @@
 import type { ClashLeave, ClashMiles } from '@shared/contract-work-clashes'
-import { clashFrom, leaveFrom, listFrom, milesOf, type Clash, type ClashList, type ClashStop, type LifeosClash, type LifeosRange } from '@shared/work/clashes'
+import { clashFrom, leaveFrom, listFrom, milesOf, type Clash, type ClashAnswered, type ClashList, type ClashStop, type LifeosClash, type LifeosRange } from '@shared/work/clashes'
 
 export type { LifeosClash, LifeosLeave, LifeosRange, LifeosSide } from '@shared/work/clashes'
 import { errorText, type SectorKey } from '@shared/work/ids'
@@ -108,15 +108,16 @@ export const NOT_HIS = 'Only the owner answers a clash, from the Clash dialog. D
  * New event sends (agenda/NewEventDialog.tsx). A thread's call is refused
  * whatever its key may do: its way out is the held tools.
  */
-export async function answer(ctx: WorkCtx, a: Answer, by: Caller): Promise<null> {
+export async function answer(ctx: WorkCtx, a: Answer, by: Caller): Promise<ClashAnswered> {
   if (by.kind === 'model' || !by.caps.includes('approve')) throw new Error(NOT_HIS)
   workOn(ctx)
   const owner = ctx.lifeos.owner()
   const comment = a.comment?.trim() ? { comment: a.comment.trim() } : {}
-  const send = async (kind: string, payload: Record<string, unknown>): Promise<null> => {
+  // A calendar's act is handed to LifeOS's sender, which takes it to the calendar after this answers: queued, not yet done.
+  const send = async (kind: string, payload: Record<string, unknown>): Promise<ClashAnswered> => {
     const id = await asked(() => owner.mutation<string>('calendarOps:save', { kind, eventId: a.eventId, payload }))
     await asked(() => owner.mutation('calendarOps:send', { id, cause: 'press' }))
-    return null
+    return { queued: true }
   }
   if (a.way === 'decline') return send('decline', comment)
   const { start, end } = a
@@ -127,9 +128,9 @@ export async function answer(ctx: WorkCtx, a: Answer, by: Caller): Promise<null>
   if (!event) throw new Error('That event is no longer in LifeOS.')
   // A calendar's own event moves on its calendar; one that lives only in LifeOS moves there, with nothing sent.
   if (event.source === 'gcal' || event.source === 'ics') return send('update', { startsAt: start, endsAt: end })
-  // Its arrive-by and a leave-by he set by hand are times before its start, and move with it by as much, as LifeOS's own event sheet moves them: the time he was offered left the arrive-by's lead, and a leave-by left behind would be refused (it must come before the start) or tell him to leave at the old time.
+  // A leave-by he set by hand is a time before its start and moves with it by as much, as LifeOS's own event sheet moves it, and so does its arrive-by: the time he was offered left the arrive-by's lead, and a leave-by left behind would be refused (it must come before the start) or tell him to leave at the old time.
   const shift = event.startsAt === undefined ? 0 : start - event.startsAt
   const moved = (at: number | undefined, key: string): Record<string, number> => (at === undefined || event.startsAt === undefined ? {} : { [key]: at + shift })
   await asked(() => owner.mutation('events:update', { id: a.eventId, patch: { startsAt: start, endsAt: end, ...moved(event.arriveByAt, 'arriveByAt'), ...moved(event.leaveByAt, 'leaveByAt') } }))
-  return null
+  return { queued: false }
 }

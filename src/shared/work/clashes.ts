@@ -61,6 +61,11 @@ export interface Leave {
   measured: boolean
 }
 
+/** `work.clashes.answer`'s reply: `queued` when the act was handed to LifeOS's sender for a calendar (it has not reached the calendar yet), false when the change was written in LifeOS itself and is done. */
+export interface ClashAnswered {
+  queued: boolean
+}
+
 export interface ClashList {
   clashes: Clash[]
   leaves: Leave[]

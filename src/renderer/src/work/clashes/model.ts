@@ -84,15 +84,20 @@ export const WAY_LABEL: Record<ClashWay, string> = { decline: "Decline", propose
 /** What a way out does and who hears of it, under the event it is for (so the event is not named again). A move of an event with guests is mailed to them by its calendar. */
 export function wayWords(way: Exclude<ClashWay, "late">, guests = false): string {
   if (way === "decline") return "Its organizer is told you declined.";
-  if (way === "propose") return "Its organizer is asked for this time. Nothing moves until they agree.";
+  if (way === "propose") return "Your reply turns to Maybe and its organizer is asked for this time. Nothing moves until they agree.";
   return guests ? "It moves on your calendar, and its guests are told the new time." : "It moves on your calendar.";
 }
 
-/** What the toast says once a way out went. */
-export function doneWords(way: Exclude<ClashWay, "late">, title: string): string {
-  if (way === "decline") return `Declined ${title}`;
-  if (way === "propose") return `New time proposed for ${title}`;
-  return `Moved ${title}`;
+/**
+ * What the toast says once the host has answered a way out. A calendar's act
+ * is queued with LifeOS's sender then, not yet on the calendar, so it is said
+ * as under way; only a move written in LifeOS itself is said as done. A host
+ * that says neither is read as queued, the smaller claim.
+ */
+export function doneWords(way: Exclude<ClashWay, "late">, title: string, queued = true): string {
+  if (way === "decline") return `Declining ${title}…`;
+  if (way === "propose") return `Proposing a new time for ${title}…`;
+  return queued ? `Moving ${title}…` : `Moved ${title}`;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");

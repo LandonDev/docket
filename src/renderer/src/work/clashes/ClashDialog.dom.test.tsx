@@ -11,7 +11,7 @@ const HOUR = 3_600_000;
 /** A day far ahead of any clock this runs on, 1:00 PM. */
 const T0 = new Date(2031, 10, 26, 13, 0).getTime();
 
-const wire = vi.hoisted(() => ({ calls: [] as { method: string; params: unknown }[], fail: null as string | null, hold: null as (() => void) | null }));
+const wire = vi.hoisted(() => ({ calls: [] as { method: string; params: unknown }[], fail: null as string | null, hold: null as (() => void) | null, reply: null as unknown }));
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
@@ -20,8 +20,8 @@ vi.mock("../../lib/connection", async (original) => ({
         wire.calls.push({ method, params });
         if (wire.fail) return Promise.reject(new Error(wire.fail));
         return new Promise<null>((resolve) => {
-          if (wire.hold === null) resolve(null);
-          else wire.hold = () => resolve(null);
+          if (wire.hold === null) resolve(wire.reply as null);
+          else wire.hold = () => resolve(wire.reply as null);
         });
       },
     }),
@@ -69,6 +69,7 @@ beforeEach(() => {
   wire.calls.length = 0;
   wire.fail = null;
   wire.hold = null;
+  wire.reply = null;
   toasts.said.length = 0;
   mail.drafts.length = 0;
   lifeos.attendees = [];
@@ -161,7 +162,7 @@ describe("the Clash dialog", () => {
     expect(said.textContent).toBe("It moves on your calendar.");
     await act(async () => wire.hold?.());
     await settle();
-    expect(toasts.said[0]?.words).toBe("Moved Varsity Basketball");
+    expect(toasts.said[0]?.words).toBe("Moving Varsity Basketball…");
   });
 
   it("holds an open step once its event is over, as the list gives such an event no way out", async () => {
@@ -279,7 +280,7 @@ describe("the Clash dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await settle();
     expect(wire.calls).toEqual([{ method: "work.clashes.answer", params: { eventId: "ev_a", way: "decline", comment: "At a game then" } }]);
-    expect(toasts.said.map((t) => t.words)).toEqual(["Declined Staff meeting"]);
+    expect(toasts.said.map((t) => t.words)).toEqual(["Declining Staff meeting…"]);
     await settle();
     expect(onClose).toHaveBeenCalled();
   });
@@ -295,7 +296,7 @@ describe("the Clash dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await settle();
     expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "propose", start: T0 - 105 * 60_000, end: T0 + 15 * 60_000 } });
-    expect(toasts.said[0]?.words).toBe("New time proposed for Staff meeting");
+    expect(toasts.said[0]?.words).toBe("Proposing a new time for Staff meeting…");
   });
 
   it("fills a move of the later event with the first quarter hour after the earlier one that the drive allows, and takes a span past midnight", async () => {
@@ -324,6 +325,25 @@ describe("the Clash dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
     expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 5 * HOUR, end: T0 + 6.5 * HOUR } });
+  });
+
+  it("says a move is done only when the host wrote it in LifeOS; one handed to a calendar's sender is under way", async () => {
+    wire.reply = { queued: false };
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Move…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await settle();
+    expect(toasts.said[0]?.words).toBe("Moved Varsity Basketball");
+    cleanup();
+    toasts.said.length = 0;
+    wire.reply = { queued: true };
+    show(overlap());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Move…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await settle();
+    expect(toasts.said[0]?.words).toBe("Moving Varsity Basketball…");
   });
 
   it("refuses times that cannot be, in words, before asking anything", async () => {

@@ -61,9 +61,13 @@ Every call runs on the owner session, so it reads every job.
   event from a calendar (`source` `gcal` or `ics`), and `events:update {id,
   patch: {startsAt, endsAt}}` with nothing sent for one that lives only in
   LifeOS. Refused for a thread's call whatever its key holds, and for any key
-  without approve. A LifeOS refusal comes back in its own words. A move of an event
-  that lives only in LifeOS moves its arrive-by, and a leave-by he set by
-  hand, by as much, as LifeOS's own event sheet does: the lead the offer
+  without approve. A LifeOS refusal comes back in its own words. It answers
+  `{queued}` (`ClashAnswered`): true when the act was handed to LifeOS's
+  sender for a calendar, which has not reached the calendar yet, false when
+  the move was written in LifeOS itself. The toast words follow it
+  (`doneWords`: "Declining…", "Moving…", and "Moved" only when written). A move of an event
+  that lives only in LifeOS moves a leave-by he set by hand by as much, as
+  LifeOS's own event sheet does, and its arrive-by too: the lead the offer
   left is kept, and LifeOS does not refuse the move for a leave-by after
   the new start (a calendar's own event is moved on its calendar, and its
   arrive-by and leave-by are LifeOS's sync's to keep).

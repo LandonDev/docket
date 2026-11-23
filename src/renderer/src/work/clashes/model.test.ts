@@ -135,16 +135,19 @@ describe("running late", () => {
 describe("the step's words", () => {
   it("says what goes and to whom, without naming the event it stands under", () => {
     expect(wayWords("decline")).toBe("Its organizer is told you declined.");
-    expect(wayWords("propose")).toBe("Its organizer is asked for this time. Nothing moves until they agree.");
+    expect(wayWords("propose")).toBe("Your reply turns to Maybe and its organizer is asked for this time. Nothing moves until they agree.");
     expect(wayWords("move")).toBe("It moves on your calendar.");
     // A calendar mails a move to the event's guests: the step says so.
     expect(wayWords("move", true)).toBe("It moves on your calendar, and its guests are told the new time.");
   });
 
   it("answers the press", () => {
-    expect(doneWords("decline", "Staff meeting")).toBe("Declined Staff meeting");
-    expect(doneWords("propose", "Staff meeting")).toBe("New time proposed for Staff meeting");
-    expect(doneWords("move", "Dinner")).toBe("Moved Dinner");
+    // A calendar's act is queued with LifeOS's sender when the host answers: under way, not done.
+    expect(doneWords("decline", "Staff meeting")).toBe("Declining Staff meeting…");
+    expect(doneWords("propose", "Staff meeting")).toBe("Proposing a new time for Staff meeting…");
+    expect(doneWords("move", "Dinner")).toBe("Moving Dinner…");
+    // Only a move written in LifeOS itself is done.
+    expect(doneWords("move", "Dinner", false)).toBe("Moved Dinner");
   });
 });
 

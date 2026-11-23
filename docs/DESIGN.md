@@ -1899,7 +1899,8 @@ Around the canvas:
   has "This is fine" (ghost) at its start and Close at its end.
   A way out swaps the body for its one step: the event, one 13px muted
   sentence of what goes and to whom (the event stands above it and is not
-  named again; a move of an event with guests says they are told the new
+  named again; a proposal says his reply turns to Maybe, as the calendar
+  makes it; a move of an event with guests says they are told the new
   time), then Day, From and To (New event's fields) for a proposal
   or a move, and a Note for a decline or a proposal; the foot is Back and
   Send (Move for a move). The times start filled: the earlier event with
@@ -1921,7 +1922,11 @@ Around the canvas:
   gone is refused too. Send
   holds its width and spins, and the step's fields are locked while it
   is out; a toast answers the press and the dialog closes on the clash it
-  showed, though his own press is what ended it; a refusal stays in the
+  showed, though his own press is what ended it. The toast says what is
+  true when the host answers: a calendar's act is with LifeOS's sender
+  then, not yet on the calendar ("Declining Staff meeting…", "Proposing a
+  new time for Staff meeting…", "Moving Dinner…"), and only a move
+  written in LifeOS itself is done ("Moved Dinner"); a refusal stays in the
   step in LifeOS's words, in `destructive`, as an alert. Back puts focus on the way it came from, or on Close when that way is gone. While the dialog
   reads a clash it was not handed, it draws the two events' bones with the
   hairline between them (and says "Reading the clash…" to a screen
