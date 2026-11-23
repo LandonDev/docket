@@ -67,7 +67,8 @@ async function scrollThrough(page: Page, selector: string, direction: 1 | -1): P
     window.__ticking = true;
     requestAnimationFrame(tick);
   })()`);
-  const at = await page.centre(selector);
+  // The wheel turns over the scroller's own middle: a windowed column's first row in the document may be off the screen.
+  const at = await page.eval<{ x: number; y: number } | null>(`(() => { const r = ${SCROLLER}?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; })()`);
   const wheels = 400;
   // 1,200px a turn of the wheel, a turn each frame: three quarters of the way out, then back three times as fast.
   for (let i = 0; i < wheels; i++) {
