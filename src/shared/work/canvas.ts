@@ -48,8 +48,11 @@ export type CanvasSource =
   /**
    * A mail's attachment in LifeOS's file store: the host fetches its bytes into the item's own
    * folder, inside the pane's sector (work-mail.md "Attachments"). Never a copy in his folder.
+   * With `from: 'chat'` it is a chat message's file instead (work-messages.md "Files"): `threadId` is
+   * the conversation, `messageId` its message and `partId` LifeOS's `chatFiles` row. Every kind reads
+   * it as it reads a mail's file; only the fetcher differs.
    */
-  | { at: 'mail'; threadId: string; messageId: string; partId: string; name: string; contentType?: string; size?: number }
+  | { at: 'mail'; threadId: string; messageId: string; partId: string; name: string; contentType?: string; size?: number; from?: 'chat' }
 
 export const CanvasSourceSchema = z.discriminatedUnion('at', [
   z.object({ at: z.literal('lifeos'), table: z.enum(['docs', 'sheets', 'outbox', 'calendarOps', 'projectDocs']), id: z.string() }),
@@ -73,7 +76,8 @@ export const CanvasSourceSchema = z.discriminatedUnion('at', [
     partId: z.string().min(1).max(200),
     name: z.string().min(1).max(500),
     contentType: z.string().max(200).optional(),
-    size: z.number().int().nonnegative().optional()
+    size: z.number().int().nonnegative().optional(),
+    from: z.literal('chat').optional()
   })
 ])
 
@@ -95,8 +99,18 @@ export const FILES_PANE_PREFIX = 'filespane_'
 export const filesPaneOf = (workspaceId: string): string => `${FILES_PANE_PREFIX}${workspaceId}`
 /** The workspace a Files pane belongs to; null for a thread or another pane. */
 export const filesPaneWorkspace = (owner: string): string | null => (owner.startsWith(FILES_PANE_PREFIX) && owner.length > FILES_PANE_PREFIX.length ? owner.slice(FILES_PANE_PREFIX.length) : null)
-/** The workspace a pane owner (the Mail view's or the Files place's) belongs to; null for a thread. A pane owner is no session: it has no scope row, and whoever acts on its items is his own window. */
-export const paneWorkspace = (owner: string): string | null => mailPaneWorkspace(owner) ?? filesPaneWorkspace(owner)
+/**
+ * The pane of a workspace's Messages view (docs/agents/work-messages.md "Files"): the owner of a chat's picture or
+ * file opened beside its conversation, as the Mail view's pane owns an attachment.
+ */
+export const MESSAGES_PANE_PREFIX = 'msgpane_'
+export const messagesPaneOf = (workspaceId: string): string => `${MESSAGES_PANE_PREFIX}${workspaceId}`
+/** The workspace a Messages view's pane belongs to; null for a thread or another pane. */
+export const messagesPaneWorkspace = (owner: string): string | null => (owner.startsWith(MESSAGES_PANE_PREFIX) && owner.length > MESSAGES_PANE_PREFIX.length ? owner.slice(MESSAGES_PANE_PREFIX.length) : null)
+/** Every pane owner's prefix: what a list of threads' items leaves out. */
+export const PANE_PREFIXES: readonly string[] = [MAIL_PANE_PREFIX, FILES_PANE_PREFIX, MESSAGES_PANE_PREFIX]
+/** The workspace a pane owner (the Mail view's, the Files place's or the Messages view's) belongs to; null for a thread. A pane owner is no session: it has no scope row, and whoever acts on its items is his own window. */
+export const paneWorkspace = (owner: string): string | null => mailPaneWorkspace(owner) ?? filesPaneWorkspace(owner) ?? messagesPaneWorkspace(owner)
 
 /** The file path a source names on a host's disk, if it names one: what the path fence checks. */
 export function canvasSourcePath(source: CanvasSource): string | null {

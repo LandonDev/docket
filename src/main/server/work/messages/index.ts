@@ -1,6 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { ActKindDef, WorkModule } from '../modules'
+import { registerCanvasFetcher } from '../canvas/fetch'
+import { chatFileFetcher } from './file'
 import { messagesHealth } from './health'
 import { chatReplyKind } from './held'
 import { searchChats, unanswered, unread, workSector } from './lifeos'
@@ -67,7 +69,15 @@ export const messages: WorkModule = {
   acts: [chatReplyKind as unknown as ActKindDef],
   mentions: [chatMentions],
   preamble: (scope) => (readsChat(scope) ? PREAMBLE : null),
-  start: startWatch,
+  start(ctx) {
+    // A chat's picture or file opened beside its conversation is fetched here (file.ts).
+    const offFetch = registerCanvasFetcher(chatFileFetcher)
+    const offWatch = startWatch(ctx)
+    return () => {
+      offFetch()
+      offWatch()
+    }
+  },
   workspaceCreated(_workspaceId, ctx) {
     watchOf(ctx)?.follow()
   },

@@ -36,6 +36,8 @@ export function openerOf(chip: SentChip, at: { environmentId: string; sessionId:
   if (head === "LifeOS" && table === "people" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "people", person: id });
   // A mail opens in Mail's reader, on that mail.
   if (head === "LifeOS" && table === "mailThreads" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "mail", mail: id });
+  // A conversation opens in Messages, on that conversation.
+  if (head === "LifeOS" && table === "chats" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "messages", chat: id });
   if (head === "LifeOS" && VIEW_OF_TABLE[table] && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: VIEW_OF_TABLE[table] });
   if (head === "canvas" && table === "item") return () => openItem(at.environmentId, at.sessionId, { itemId: id });
   if (head === "Work" && table === "outbox") return () => openHeld({ at: "host", id }, at.environmentId);

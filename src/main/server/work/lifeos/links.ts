@@ -39,10 +39,10 @@ export interface LinksDeps {
 }
 
 /** The LifeOS row a chip names, or null for a chip that is not LifeOS's (a selection, a file). */
-export function entityOf(about: ContextChip): { table: 'tasks' | 'mailThreads' | 'events'; id: string } | null {
+export function entityOf(about: ContextChip): { table: 'tasks' | 'mailThreads' | 'events' | 'chats'; id: string } | null {
   const ref = about.ref as { at?: string; table?: string; id?: string }
   if (ref.at !== 'lifeos' || !ref.id) return null
-  return ref.table === 'tasks' || ref.table === 'mailThreads' || ref.table === 'events' ? { table: ref.table, id: ref.id } : null
+  return ref.table === 'tasks' || ref.table === 'mailThreads' || ref.table === 'events' || ref.table === 'chats' ? { table: ref.table, id: ref.id } : null
 }
 
 const TITLE_MAX = 200

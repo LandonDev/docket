@@ -235,11 +235,14 @@ export interface OpenWorkView {
   person?: string;
   /** Docs alone: the LifeOS document to open in place (a person's page). Taken once, then cleared. */
   doc?: { id: string; title: string };
+  /** Messages alone: the LifeOS conversation to open (a sent conversation chip, a search hit, a tell), and the message in it to stand on. Taken once, then cleared. */
+  chat?: string;
+  message?: string;
 }
 let openView: OpenWorkView | null = null;
 
 export function openWorkView(next: OpenWorkView | null): void {
-  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project && openView?.task === next?.task && openView?.mail === next?.mail && openView?.event === next?.event && openView?.person === next?.person && openView?.doc === next?.doc) return;
+  if (openView?.workspaceId === next?.workspaceId && openView?.view === next?.view && openView?.project === next?.project && openView?.task === next?.task && openView?.mail === next?.mail && openView?.event === next?.event && openView?.person === next?.person && openView?.doc === next?.doc && openView?.chat === next?.chat && openView?.message === next?.message) return;
   openView = next;
   for (const listener of listeners) listener();
 }

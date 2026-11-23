@@ -186,14 +186,16 @@ public struct MailSource: Codable, Hashable, Sendable {
     public let name: String
     public let contentType: String?
     public let size: Int?
+    public let from: String?
 
-    public init(threadId: String, messageId: String, partId: String, name: String, contentType: String? = nil, size: Int? = nil) {
+    public init(threadId: String, messageId: String, partId: String, name: String, contentType: String? = nil, size: Int? = nil, from: String? = nil) {
         self.threadId = threadId
         self.messageId = messageId
         self.partId = partId
         self.name = name
         self.contentType = contentType
         self.size = size
+        self.from = from
     }
 }
 

@@ -25,7 +25,7 @@ import { Facts } from "../../surfaces/settings/hosts/Facts";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ActView } from "../acts/ActView";
 import { kindHeading } from "../acts/kindRows";
-import { Calendar, File, Mail } from "../icons";
+import { Calendar, Chat, File, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
 import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
@@ -113,6 +113,7 @@ const KIND_GLYPH: Partial<Record<ActKind, ComponentType<{ className?: string }>>
   "addon.call": Plug,
   "computer.act": SquareMousePointer,
   "portal.submit": Globe,
+  "chat.reply": Chat,
 };
 /** A held act's glyph by its kind (Today's held rows lead with it too). */
 export function KindGlyph({ kind, className }: { kind: ActKind; className?: string }) {

@@ -5,7 +5,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { CanvasPush } from '@shared/contract-work-canvas'
 import type { PushTo } from '../modules'
 import type { SessionMeta } from '@shared/events'
-import { CanvasKindSchema, CanvasSourceSchema, canvasSourcePath, FILES_PANE_PREFIX, filesPaneWorkspace, MAIL_PANE_PREFIX, paneWorkspace, sessionScopeOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
+import { CanvasKindSchema, CanvasSourceSchema, canvasSourcePath, filesPaneWorkspace, PANE_PREFIXES, paneWorkspace, sessionScopeOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
 import { SEATS_FULL } from '@shared/work/files'
 
 /**
@@ -86,7 +86,7 @@ export function fencedItem(item: CanvasItem, reaches: (path: string) => boolean)
 }
 
 /** `session_id` of no pane owner: what a list of a workspace's threads' items asks for. */
-const NOT_A_PANE = `session_id NOT LIKE '${MAIL_PANE_PREFIX.replace('_', '\\_')}%' ESCAPE '\\' AND session_id NOT LIKE '${FILES_PANE_PREFIX.replace('_', '\\_')}%' ESCAPE '\\'`
+const NOT_A_PANE = PANE_PREFIXES.map((prefix) => `session_id NOT LIKE '${prefix.replace('_', '\\_')}%' ESCAPE '\\'`).join(' AND ')
 
 /** What an open asks: a known item again, or a kind, source and title. */
 export interface CanvasOpen {

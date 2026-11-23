@@ -18,19 +18,29 @@ import { canvasItemDir } from './store'
 
 export interface CanvasFetcher {
   at: CanvasSource['at']
+  /** Whose file a `mail` source is, when not a mail's own: `chat` for a chat message's (work-messages.md "Files"). */
+  from?: 'chat'
   /** Writes the item's bytes to `dest`, saying how far it got; refuses (throws a sentence) what the owner may not read. */
   fetch(item: CanvasItem, ctx: WorkCtx, to: { dest: string; progress(received: number, total: number | null): void; signal: AbortSignal }): Promise<void>
 }
 
-const fetchers = new Map<CanvasSource['at'], CanvasFetcher>()
+const fetchers = new Map<string, CanvasFetcher>()
 
-/** Registers a fetcher; a second for the same `at` replaces it. Returns its off. */
+/** A fetcher's place: its source's `at`, and for a mail source whose file it is (`from ?? 'mail'`). */
+const placeOf = (at: CanvasSource['at'], from: string | undefined): string => (at === 'mail' ? `mail:${from ?? 'mail'}` : at)
+const fetcherFor = (source: CanvasSource): CanvasFetcher | undefined => fetchers.get(placeOf(source.at, source.at === 'mail' ? source.from : undefined))
+
+/** Registers a fetcher; a second for the same place replaces it. Returns its off. */
 export function registerCanvasFetcher(fetcher: CanvasFetcher): () => void {
-  fetchers.set(fetcher.at, fetcher)
+  const place = placeOf(fetcher.at, fetcher.from)
+  fetchers.set(place, fetcher)
   return () => {
-    if (fetchers.get(fetcher.at) === fetcher) fetchers.delete(fetcher.at)
+    if (fetchers.get(place) === fetcher) fetchers.delete(place)
   }
 }
+
+/** Where a fetched file comes from, in a sentence's words: "the mail", or "the conversation" for a chat's file. */
+const cameFrom = (source: CanvasSource): string => (source.at === 'mail' && source.from === 'chat' ? 'the conversation' : 'the mail')
 
 /** Whether an item's bytes are fetched rather than read where they are. */
 export const isFetched = (source: CanvasSource): boolean => source.at === 'mail'
@@ -44,7 +54,7 @@ export const fetchedFile = (dataDir: string, item: CanvasItem): string => join(c
 /** The fetched item's file, which must be here: a kind asks after the pane has fetched it. */
 export function fetchedPath(dataDir: string, item: CanvasItem): string {
   const path = fetchedFile(dataDir, item)
-  if (!existsSync(path)) throw new Error(`${item.title} has not come from the mail yet.`)
+  if (!existsSync(path)) throw new Error(`${item.title} has not come from ${cameFrom(item.source)} yet.`)
   return path
 }
 
@@ -62,8 +72,8 @@ const PROGRESS_MS = 150
 export function ensureFetched(ctx: WorkCtx, item: CanvasItem): Promise<{ size: number }> {
   const dest = fetchedFile(ctx.dataDir, item)
   if (existsSync(dest)) return Promise.resolve({ size: statSync(dest).size })
-  const fetcher = fetchers.get(item.source.at)
-  if (!fetcher) return Promise.reject(new Error(isFetched(item.source) ? 'Attachments cannot be fetched on this host while Work is off.' : `${item.title} is not fetched: it is read where it is.`))
+  const fetcher = fetcherFor(item.source)
+  if (!fetcher) return Promise.reject(new Error(isFetched(item.source) ? 'Files cannot be fetched on this host while Work is off.' : `${item.title} is not fetched: it is read where it is.`))
   const known = running.get(item.id)
   if (known) return known
   const run = (async () => {
