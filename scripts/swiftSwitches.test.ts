@@ -6,7 +6,7 @@ import { CHIP_KINDS } from '../src/shared/work/canvas'
 import { PILLAR_IDS } from '../src/shared/work/ids'
 
 /**
- * The phone's switches over the contract's names, held on the box. A build that adds a held act kind, a chip kind or
+ * The phone's switches over the contract's names, and its type names, held on the box. A build that adds a held act kind, a chip kind or
  * a pillar regenerates the Swift contract, and every Swift `switch` over that enum with no `default` stops compiling;
  * only the Mac's publish gate would notice. This reads each such switch as text and names the case it lacks and the
  * file to add it to.
@@ -77,6 +77,23 @@ describe('the phone switches over the contract stay whole', () => {
       }
     }
     expect(missing, `Add each case to its switch, once:\n${missing.join('\n')}`).toEqual([])
+  })
+
+  it('names no top-level type twice in one Swift target', () => {
+    // Two builds each adding a `struct FileRow` to the app stops it compiling, which only the Mac's build would see.
+    const twice: string[] = []
+    for (const target of [join(IOS, 'TempCode'), join(IOS, 'TempCodeClient', 'Sources'), join(IOS, 'TempCodeContract', 'Sources')]) {
+      const seen = new Map<string, string>()
+      for (const file of swiftFiles(target)) {
+        for (const m of readFileSync(file, 'utf8').matchAll(/^(?:public |internal |final |@MainActor )*(?:struct|class|enum|actor|protocol)\s+([A-Z]\w*)/gm)) {
+          const at = `${relative(ROOT, file)}`
+          const was = seen.get(m[1]!)
+          if (was && was !== at) twice.push(`${m[1]} in ${was} and ${at}`)
+          else seen.set(m[1]!, at)
+        }
+      }
+    }
+    expect(twice, `Rename one of each pair:\n${twice.join('\n')}`).toEqual([])
   })
 
   it('reads a switch at its own level, and its default', () => {
