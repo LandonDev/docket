@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { confirmAction } from "../../chrome/ConfirmDialog";
 import type { FileTab } from "@shared/contract-work-files";
 import { filesPaneOf, type CanvasItem, type CanvasKind, type ContextChip } from "@shared/work";
 import { kindOfEntry } from "@shared/work/files";
@@ -18,8 +19,9 @@ import { KindGlyph } from "./KindGlyph";
 import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
 import { dockShape, type ActRow, type EntryAct } from "./model";
-import { useDock, useDockWidth } from "./store";
+import { sendCopyBack, useDock, useDockWidth } from "./store";
 import { NameField, useSideOver } from "./rowParts";
+import { copyBackDue, copyLine, type HeaderLine } from "./fileText";
 import { SaveActions, SaveLine } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
 
@@ -47,6 +49,46 @@ export interface CopyWords {
   host: string;
   /** opens the file itself on that computer; absent where it cannot be asked */
   openThere?(): void;
+  /** a copy that saves back (`tab.back`): send it to its file, read the file into it again, keep his beside the file */
+  send?(): Promise<unknown>;
+  reload?(): Promise<void>;
+  keepBoth?(): Promise<void>;
+}
+
+/**
+ * The header's line for a copy that saves back: the words `copyLine` writes, with the presses its state needs (at
+ * most two): Reload and Keep Both over a file that changed there, Keep Both over one that went, Retry where its
+ * computer did not answer or refused. Reload drops what was not sent, so it asks first.
+ */
+function savingCopyLine(kind: SavedLine | null, tab: FileTab, copy: CopyWords, reloaded: () => void): HeaderLine {
+  const line = copyLine(kind, tab.back!, copy.host);
+  if (line.words === undefined) return line;
+  const retry = copy.send ? [{ id: "retry", label: "Retry", run: () => copy.send!().then(() => undefined) }] : [];
+  const keep = copy.keepBoth ? [{ id: "keep", label: "Keep Both", run: copy.keepBoth }] : [];
+  const reload = copy.reload
+    ? [
+        {
+          id: "reload",
+          label: "Reload",
+          run: async () => {
+            if (!(await confirmAction({ title: `Reload ${tab.name}?`, body: `Your changes that have not reached ${copy.host} are dropped.`, action: "Reload", danger: true }))) return;
+            await copy.reload!();
+            reloaded();
+          },
+        },
+      ]
+    : [];
+  switch (tab.back!.is) {
+    case "changed":
+      return { ...line, actions: [...reload, ...keep] };
+    case "gone":
+      return { ...line, actions: keep };
+    case "away":
+    case "refused":
+      return { ...line, actions: retry };
+    default:
+      return line;
+  }
 }
 
 /**
@@ -210,8 +252,29 @@ export function FileTabView({
   const sideOver = !!tab.side && sideW === 0 && room > 0;
   const dropSide = useSideOver() === tab.id;
   const name = tab.name || item?.title || "File";
-  // What saved means: the kind's own word where it says one; else the frame's, for a copy and a mail's file.
-  const line: SavedLine | null = feeds.saved ?? frameLine(copy, item, workspace.environmentId);
+  // Reload read the file into the copy: the kind draws it again from the start.
+  const [fresh, setFresh] = useState(0);
+  // What saved means: the kind's own word where it says one; else the frame's, for a copy and a mail's file. A copy's
+  // kind saves into the copy: for one that saves back the line says where its file stands; for one that does not,
+  // its saving and saved say nothing of the file, and the frame's line says the changes stay here.
+  const kindLine = feeds.saved;
+  const line: HeaderLine | null =
+    copy && tab.back
+      ? savingCopyLine(kindLine, tab, copy, () => setFresh((n) => n + 1))
+      : copy
+        ? kindLine && kindLine.state !== "saved" && kindLine.state !== "saving"
+          ? kindLine
+          : frameLine(copy, item, workspace.environmentId)
+        : (kindLine ?? frameLine(null, item, workspace.environmentId));
+  // Once a copy's kind has saved, the host sends the copy to its file (one send at a time there, the newest bytes).
+  const saving = !!(copy && tab.back);
+  const lastLine = useRef<SavedLine | null>(null);
+  useEffect(() => {
+    const was = lastLine.current;
+    lastLine.current = kindLine;
+    if (!saving || !copyBackDue(was, kindLine)) return;
+    void sendCopyBack(workspace.environmentId, workspace.id, tab.id).catch((err: unknown) => sayError(err, "The changes did not go back"));
+  }, [kindLine, saving, workspace.environmentId, workspace.id, tab.id]);
   const [running, setRunning] = useState<string | null>(null);
   const runAction = (action: SavedAction): void => {
     if (running) return;
@@ -290,7 +353,7 @@ export function FileTabView({
         <div inert={(docked && shape.over) || sideOver || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col">
           {item ? (
             <CanvasPane
-              key={item.id}
+              key={`${item.id}:${fresh}`}
               item={item}
               environmentId={workspace.environmentId}
               feeds={feeds}

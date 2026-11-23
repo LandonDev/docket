@@ -1,3 +1,4 @@
+import type { CopyBack } from "@shared/contract-work-files";
 import { extOf, FILE_TEXT_MAX, kindOfEntry, PROSE_EXTS } from "@shared/work/files";
 import type { SavedLine } from "../canvas/kind";
 
@@ -93,3 +94,42 @@ export function savedWords(line: SavedLine, where: string | null, now = Date.now
 
 /** The line reads as trouble: drawn in the foreground, not muted, so it is not missed. Only a conflict and waiting changes are. */
 export const savedNeedsHim = (line: SavedLine): boolean => line.state === "conflict" || (line.state === "offline" && (line.pending ?? 0) > 0);
+
+/** A header line whose words the frame wrote itself (a copy's), and whether it needs him when its state alone would not say. */
+export type HeaderLine = SavedLine & { words?: string; needs?: boolean };
+
+/**
+ * The line of a copy that saves back to its file on another computer (docs/DESIGN.md "The Files place"): where the
+ * file is and whether it holds his changes, in the computer's own name. What the kind says of the copy itself
+ * comes first where it is trouble here (its own conflict, read only, offline); its saving and saved are about the
+ * copy, so the line says the file's instead. The presses are the frame's (FileTabView.tsx).
+ */
+export function copyLine(kind: SavedLine | null, back: CopyBack, host: string, now = Date.now()): HeaderLine {
+  if (kind && kind.state !== "saved" && kind.state !== "saving" && kind.state !== "copy") return kind;
+  if (kind?.state === "saving" || back.is === "sending") return { state: "saving", words: `Saving to ${host}…` };
+  switch (back.is) {
+    case "changed":
+      return { state: "conflict", words: `This file changed on ${host}` };
+    case "gone":
+      return { state: "conflict", words: `This file was moved or deleted on ${host}` };
+    case "away":
+      return { state: "offline", words: `${host} is not answering. Changes wait here`, needs: true };
+    case "refused": {
+      const why = back.detail?.trim().replace(/\.$/, "");
+      return { state: "conflict", words: why ? `${host} refused the save. ${why[0]!.toUpperCase()}${why.slice(1)}` : `${host} refused the save` };
+    }
+    default:
+      return { state: "saved", words: back.at ? `Saved to ${host} ${whenWords(back.at, now)}` : `On ${host}` };
+  }
+}
+
+/**
+ * Whether a copy's kind has just saved, so its tab asks the host to send the copy back: it went from saving to
+ * saved, or it says a newer save time. A line read at open (a file's own change time) is no save of his.
+ */
+export function copyBackDue(was: SavedLine | null, now: SavedLine | null): boolean {
+  if (now?.state !== "saved") return false;
+  if (was?.state === "saving") return true;
+  return was?.state === "saved" && !!was.at && !!now.at && now.at !== was.at;
+}
+

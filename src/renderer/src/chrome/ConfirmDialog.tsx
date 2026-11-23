@@ -102,6 +102,8 @@ export function ConfirmDialog({
   note,
   confirmLabel,
   danger,
+  otherLabel,
+  onOther,
   onCancel,
   onConfirm,
   onDone,
@@ -112,6 +114,9 @@ export function ConfirmDialog({
   note?: ReactNode;
   confirmLabel: string;
   danger?: boolean;
+  /** A second answer beside the verb (Discard beside Keep trying): secondary, between Cancel and the verb. */
+  otherLabel?: string;
+  onOther?: () => void;
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
   /** The confirm landed: the dialog plays its exit, then this runs. The
@@ -150,6 +155,19 @@ export function ConfirmDialog({
         <ErrorLine error={error} />
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          {otherLabel ? (
+            <Button
+              data-confirm-other
+              variant="secondary"
+              disabled={pending}
+              onClick={() => {
+                onOther?.();
+                closeThen(onDone);
+              }}
+            >
+              {otherLabel}
+            </Button>
+          ) : null}
           <AlertDialogAction variant={danger ? "destructive" : "default"} disabled={pending} onClick={() => void confirm()}>
             <BusyLabel busy={pending} label={confirmLabel} />
           </AlertDialogAction>
@@ -161,7 +179,7 @@ export function ConfirmDialog({
 
 export type ConfirmRequest = { title: string; body?: string; action: string; danger?: boolean };
 
-type Pending = ConfirmRequest & { id: number; resolve: (ok: boolean) => void };
+type Pending = ConfirmRequest & { id: number; other?: string; resolve: (answer: boolean | "other") => void };
 
 let queue: Pending[] = [];
 let nextId = 0;
@@ -174,7 +192,12 @@ const publish = (next: Pending[]) => {
 /** Ask before an irreversible step; resolves true on the verb, false on
  *  Cancel, Escape or the backdrop. Requests queue and show one at a time. */
 export function confirmAction(request: ConfirmRequest): Promise<boolean> {
-  return new Promise((resolve) => publish([...queue, { ...request, id: nextId++, resolve }]));
+  return new Promise((resolve) => publish([...queue, { ...request, id: nextId++, resolve: (answer) => resolve(answer === true) }]));
+}
+
+/** The same confirm with a second answer (`other`): resolves "action" on the verb, "other" on the second, null on Cancel, Escape or the backdrop. */
+export function confirmChoice(request: ConfirmRequest & { other: string }): Promise<"action" | "other" | null> {
+  return new Promise((resolve) => publish([...queue, { ...request, id: nextId++, resolve: (answer) => resolve(answer === true ? "action" : answer === "other" ? "other" : null) }]));
 }
 
 export function useConfirm() {
@@ -201,6 +224,7 @@ export function ConfirmHost() {
       body={head.body}
       confirmLabel={head.action}
       danger={head.danger}
+      {...(head.other ? { otherLabel: head.other, onOther: () => head.resolve("other") } : {})}
       onCancel={() => {
         drop();
         head.resolve(false);

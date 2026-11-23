@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
-import type { SavedAction, SavedLine } from "../canvas/kind";
-import { savedNeedsHim, savedWords } from "./fileText";
+import type { SavedAction } from "../canvas/kind";
+import { savedNeedsHim, savedWords, type HeaderLine } from "./fileText";
 
 /**
  * The one line under a file's name that says what saved means now (docs/DESIGN.md "The Files place"). There is no
@@ -9,10 +9,11 @@ import { savedNeedsHim, savedWords } from "./fileText";
  * him (the file changed somewhere else, changes wait here). The folder in "Saved 1:52 PM in Events" is a press
  * that shows it.
  */
-export function SaveLine({ line, where, onShowFolder }: { line: SavedLine; where: string | null; onShowFolder?(): void }) {
-  const words = savedWords(line, where);
-  const place = line.state === "saved" ? (line.where ?? where) : null;
-  const needs = savedNeedsHim(line);
+export function SaveLine({ line, where, onShowFolder }: { line: HeaderLine; where: string | null; onShowFolder?(): void }) {
+  // A copy's line is the frame's own words (fileText.ts `copyLine`): it names the computer, and no folder of this one.
+  const words = line.words ?? savedWords(line, where);
+  const place = line.state === "saved" && line.words === undefined ? (line.where ?? where) : null;
+  const needs = !!line.needs || savedNeedsHim(line);
   let text: ReactNode = words;
   if (place && onShowFolder && words.endsWith(place)) {
     text = (

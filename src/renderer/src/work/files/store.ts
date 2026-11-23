@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import type { FileCrumb, FilePage, FileSearchFilter, FilesHome, FilesListing, FilesOpened, FilesPlaces, FilesTabs, FileTab, SavedFileSearch } from "@shared/contract-work-files";
+import type { CopyBack, FileCrumb, FilePage, FileSearchFilter, FilesHome, FilesListing, FilesOpened, FilesPlaces, FilesTabs, FileTab, SavedFileSearch } from "@shared/contract-work-files";
 import type { TeamsEntry, TeamsLibrariesAnswer } from "@shared/contract-work-office";
 import type { CanvasSource } from "@shared/work";
 import { DEFAULT_SORT, PLACE, refKey, sortEntries, type FileEntry, type FileSort, type FolderRef } from "@shared/work/files";
@@ -500,8 +500,8 @@ export async function openPageTab(link: string, workspaceId: string, page: FileP
   await change(link, workspaceId, null, "work.files.tabOpen", { page, ...(after ? { after } : {}) }, (answer) => answer.tabId);
 }
 
-/** Closes a tab at once; the last one closed becomes the workspace's folder. */
-export async function closeTab(link: string, workspaceId: string, tabId: string, last: FilePage): Promise<void> {
+/** Closes a tab at once; the last one closed becomes the workspace's folder. `discard`: a copy's changes that have not reached its file go with it. */
+export async function closeTab(link: string, workspaceId: string, tabId: string, last: FilePage, discard = false): Promise<void> {
   const entry = tabsOf(link, workspaceId);
   const rest = entry.tabs.filter((t) => t.id !== tabId);
   if (entry.local) {
@@ -509,7 +509,20 @@ export async function closeTab(link: string, workspaceId: string, tabId: string,
     entry.history.delete(tabId);
     return writeTabs(entry, { tabs, selected: selectedAfter(entry.tabs, tabs, entry.selected) });
   }
-  await change(link, workspaceId, rest.length ? rest : null, "work.files.tabClose", { tabId });
+  await change(link, workspaceId, rest.length ? rest : null, "work.files.tabClose", { tabId, ...(discard ? { discard: true } : {}) });
+}
+
+/** A copy's kind saved: the workspace's host sends the copy to the file it is a copy of, when the two differ (files/copies.ts). Its tab says how that stands. */
+export const sendCopyBack = (link: string, workspaceId: string, tabId: string): Promise<CopyBack> => ask<CopyBack>(link, "work.files.copyBack", { workspaceId, tabId });
+
+/** Reload: the file as it is on its computer now, in the copy's place; what was not sent is dropped. */
+export async function reloadCopy(link: string, workspaceId: string, tabId: string): Promise<void> {
+  putTabs(link, workspaceId, await ask<FilesTabs>(link, "work.files.copyReload", { workspaceId, tabId }));
+}
+
+/** Keep Both: his copy saved beside the file on its computer under the keep-both name, and the tab shows that file. */
+export async function keepBothCopy(link: string, workspaceId: string, tabId: string): Promise<void> {
+  putTabs(link, workspaceId, await ask<FilesTabs>(link, "work.files.copyKeep", { workspaceId, tabId }));
 }
 
 /** A tab that was closed, as it can be opened again: the page it stood on, or the file it held. */

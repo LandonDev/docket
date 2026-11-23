@@ -54,6 +54,7 @@ vi.mock("../../lib/connection", async (original) => {
         Object.assign(file, { text: params.text, version: file.version + 1, changed: file.changed + 60_000 });
         return { version: `v${file.version}`, changed: file.changed } satisfies FileSaved;
       }
+      if (method === "work.files.copyBack") return { is: "ok" };
       if (method === "work.files.archive") return { entries: [{ name: "art/", size: 0, dir: true }, { name: "art/poster.png", size: 2048, dir: false }], more: true };
       if (method === "work.canvas.keep") return { path: "/w/kept.pdf", name: "kept.pdf" };
       throw new Error(`unexpected ${method}`);
@@ -81,7 +82,7 @@ const tab = (name: string, over: Partial<FileTab> = {}): FileTab => ({ id: "t1",
 const line = (): string | null => document.querySelector("[data-files-save-line]")?.textContent ?? null;
 const writes = (): Record<string, unknown>[] => disk.calls.filter((c) => c.method === "work.files.write").map((c) => c.params);
 
-function show(path: string, over: { tab?: Partial<FileTab>; item?: Partial<CanvasItem>; copy?: { host: string; openThere?(): void } | null; onShowFolder?(): void } = {}) {
+function show(path: string, over: { tab?: Partial<FileTab>; item?: Partial<CanvasItem>; copy?: { host: string; openThere?(): void; send?(): Promise<unknown>; reload?(): Promise<void>; keepBoth?(): Promise<void> } | null; onShowFolder?(): void } = {}) {
   const name = path.split("/").pop()!;
   return render(<FileTabView tab={tab(name, over.tab)} item={item(path, over.item)} panelId="p" workspace={workspace} where="Events" copy={over.copy ?? null} onClose={() => undefined} onShowFolder={over.onShowFolder} />);
 }
@@ -264,5 +265,62 @@ describe("the frame's own lines", () => {
     await waitFor(() => expect(openThere).toHaveBeenCalledTimes(1));
     // The read named the tab's own item, since a copy lies in no place.
     expect(disk.calls.find((c) => c.method === "work.files.read")!.params).toMatchObject({ itemId: "i1" });
+  });
+});
+
+describe("a copy that saves back to its file", () => {
+  const COPY = "/data/copies/Agenda.md";
+  const copyOf = { host: "env_mac", path: "/Users/l/OneDrive/Agenda.md" };
+  beforeEach(() => disk.files.set(COPY, { text: "team text\n", version: 1, changed: AT } satisfies Kept));
+  const header = (): HTMLElement => document.querySelector("[data-files-header]")!;
+
+  it("says the file is on its computer, saves into the copy, then asks the host to send it back", async () => {
+    show(COPY, { tab: { copyOf, back: { is: "ok" } }, copy: { host: "MacBook" } });
+    const field = await screen.findByRole("textbox", { name: "Agenda.md" });
+    await waitFor(() => expect(line()).toBe("On MacBook"));
+    // Nothing is sent for the line read at open.
+    expect(disk.calls.some((c) => c.method === "work.files.copyBack")).toBe(false);
+    fireEvent.change(field, { target: { value: "team text\nmore\n" } });
+    expect(line()).toBe("Saving to MacBook…");
+    await waitFor(() => expect(disk.calls.filter((c) => c.method === "work.files.copyBack").map((c) => c.params)).toEqual([{ workspaceId: "w1", tabId: "t1" }]), { timeout: 5000 });
+    expect(writes()[0]).toMatchObject({ ref: { at: "file", host: "env_box", path: COPY }, text: "team text\nmore\n" });
+  });
+
+  it("says when its file last took his changes, muted, with no press", async () => {
+    show(COPY, { tab: { copyOf, back: { is: "ok", at: AT } }, copy: { host: "MacBook" } });
+    await waitFor(() => expect(line()).toBe("Saved to MacBook 1:52 PM"));
+    expect(header().querySelector("[data-files-save-line]")!.className).toContain("text-muted-foreground");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("says a file that changed there in the foreground, with Reload and Keep Both", async () => {
+    const keepBoth = vi.fn(async () => undefined);
+    show(COPY, { tab: { copyOf, back: { is: "changed", at: AT } }, copy: { host: "MacBook", keepBoth, reload: async () => undefined } });
+    await waitFor(() => expect(line()).toBe("This file changed on MacBook"));
+    expect(header().querySelector("[data-files-save-line]")!.className).toContain("text-foreground");
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep Both" }));
+    await waitFor(() => expect(keepBoth).toHaveBeenCalledTimes(1));
+  });
+
+  it("says its computer is not answering, with Retry, which sends again", async () => {
+    const send = vi.fn(async () => ({ is: "ok" }));
+    show(COPY, { tab: { copyOf, back: { is: "away" } }, copy: { host: "MacBook", send } });
+    await waitFor(() => expect(line()).toBe("MacBook is not answering. Changes wait here"));
+    expect(header().querySelector("[data-files-save-line]")!.getAttribute("role")).toBe("status");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+  });
+
+  it("says its computer refused, in that computer's words", async () => {
+    show(COPY, { tab: { copyOf, back: { is: "refused", detail: "this host's bridge is off for that host (Settings → Hosts)" } }, copy: { host: "MacBook", send: async () => undefined } });
+    await waitFor(() => expect(line()).toBe("MacBook refused the save. This host's bridge is off for that host (Settings → Hosts)"));
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("keeps the copy's own line where its kind saves into the copy alone: changes stay here", async () => {
+    show(COPY, { tab: { copyOf }, copy: { host: "MacBook" } });
+    await screen.findByRole("textbox", { name: "Agenda.md" });
+    await waitFor(() => expect(line()).toBe("A copy from MacBook. Changes stay here"));
   });
 });

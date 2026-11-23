@@ -3,6 +3,7 @@ import type { FilePage, FileTab, SavedFileSearch } from "@shared/contract-work-f
 import { canvasSourcePath, filesPaneOf, type CanvasItem, type CanvasSource } from "@shared/work";
 import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, refusal, type FileEntry, type FolderRef } from "@shared/work/files";
 import { ChevronRight, Clock, Folder, Search, Star, Trash2, Users } from "../../chrome/icons";
+import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
 import { Button } from "../../components/ui/button";
 import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { ItemButton } from "../../components/ui/item";
@@ -31,7 +32,8 @@ import "./bindings";
 import { FILES_KEYS } from "./chords";
 import { fetchHere, fileOf, openEntry, openInApp, type Busy } from "./open";
 import { ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
-import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, moveTabs, openPageTab, selectTab, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type ListFrom, type Reach } from "./store";
+import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, teamRows, useDock, useListing, usePageLook, useReach, useSidebarFolded, useTabs, type ListFrom, type Reach } from "./store";
+import { closeCopyTab } from "./copyClose";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
 import { filesPanelId, TabRow } from "./TabRow";
 
@@ -369,15 +371,19 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
     if (ref) rememberClosed(link, workspace.id, { file: { ref, name: gone.name, ...(gone.key ? { key: gone.key } : {}) } });
     closedNow((n) => n + 1);
   };
-  const close = (tabId: string): void => {
-    remember(tabId);
-    void closeTab(link, workspace.id, tabId, first).catch((err: unknown) => say("The tab did not close", err));
+  // A copy whose changes have not reached its file asks once before its tab closes (copyClose.ts).
+  const closeOne = async (tabId: string): Promise<void> => {
+    const gone = view.tabs.find((t) => t.id === tabId);
+    const done = (discard: boolean): Promise<void> => {
+      remember(tabId);
+      return closeTab(link, workspace.id, tabId, first, discard);
+    };
+    if (!gone?.copyOf || !gone.back) return done(false);
+    await closeCopyTab(gone, copyHostOf(gone, reach), { choose: confirmChoice, confirm: confirmAction, close: done, keepBoth: () => keepBothCopy(link, workspace.id, tabId) });
   };
+  const close = (tabId: string): void => void closeOne(tabId).catch((err: unknown) => say("The tab did not close", err));
   const closeMany = async (tabIds: readonly string[]): Promise<void> => {
-    for (const id of tabIds) {
-      remember(id);
-      await closeTab(link, workspace.id, id, first).catch((err: unknown) => say("The tab did not close", err));
-    }
+    for (const id of tabIds) await closeOne(id).catch((err: unknown) => say("The tab did not close", err));
   };
   const reopen = (): void => {
     const was = takeClosed(link, workspace.id);
@@ -907,6 +913,10 @@ function SearchTab({
   );
 }
 
+/** The computer a copy's file is on, as he names it: "MacBook", "the Windows VM". */
+const copyHostOf = (tab: Pick<FileTab, "copyOf">, reach: Reach): string =>
+  tab.copyOf?.vm ? "the Windows VM" : (reach.reads.find((r) => r.answer?.host === tab.copyOf?.host)?.name ?? "another computer");
+
 function OpenFile({
   tab,
   workspace,
@@ -933,10 +943,15 @@ function OpenFile({
   const where = path ? (path.replace(/[\\/]+$/, "").split(/[\\/]/).slice(-2, -1)[0] ?? null) : null;
   const far = tab.copyOf ? reach.reads.find((r) => r.answer?.host === tab.copyOf!.host) : undefined;
   const farCopy = far && tab.copyOf ? reach.sidebar.rows.flatMap((r) => r.copies).find((c) => c.link === far.link && !!c.place.vm === !!tab.copyOf!.vm) : undefined;
+  const link = workspace.environmentId;
   const copy = tab.copyOf
     ? {
-        host: tab.copyOf.vm ? "the Windows VM" : (far?.name ?? "another computer"),
+        host: copyHostOf(tab, reach),
         ...(farCopy ? { openThere: () => void openInApp({ name: tab.name, key: tab.key ?? tab.id, ref: { at: "file", host: tab.copyOf!.host, path: tab.copyOf!.path } }, farCopy, { busy: () => undefined }) } : {}),
+        // A copy that saves back: its line's presses, each asked of the workspace's host (files/copies.ts).
+        ...(tab.back
+          ? { send: () => sendCopyBack(link, workspace.id, tab.id), reload: () => reloadCopy(link, workspace.id, tab.id), keepBoth: () => keepBothCopy(link, workspace.id, tab.id) }
+          : {}),
       }
     : null;
   // The folder a file of this host is kept in opens beside it; a copy's folder is on another computer, shown from its place.
