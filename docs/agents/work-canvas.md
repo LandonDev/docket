@@ -236,6 +236,12 @@ What a kind should know:
   same source; `ask(chip)` puts a chip in the thread's composer, unfolding
   the thread first, as the selection bar's Ask does; `held(ref)` opens a held act where held acts are shown
   (`onOpenHeld` in work/canvas/held.ts, which the Outbox registers).
+- An item of a kind this build does not know (a host a release ahead made
+  it) is never a crash: every lookup by an item's kind goes through
+  `kindDefOf` (registry.ts), which stands a plain file in for it. The tab row
+  draws it by its name with the file glyph, and the pane says "Update
+  TempCode to open this" with no bar and no History; the tabs beside it work
+  as before.
 - A kind's own pillar tells Files three more things on the host, through
   registries that are empty until something registers and are kept whenever
   it does (src/main/server/work/files/hooks.ts, which imports only types):

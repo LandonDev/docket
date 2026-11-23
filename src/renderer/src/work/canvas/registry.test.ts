@@ -137,3 +137,28 @@ describe("the act views", () => {
     }
   });
 });
+
+describe("a kind this build does not know", () => {
+  it("answers a known kind's own definition", async () => {
+    const { kindDefOf, knowsKind } = await import("./registry");
+    for (const kind of CANVAS_KINDS) expect(kindDefOf(CANVAS, kind)).toBe(CANVAS[kind]);
+    expect(knowsKind(CANVAS, "sheet")).toBe(true);
+  });
+
+  it("stands a plain file in for one a newer host made: one definition per kind, claiming nothing, with a body", async () => {
+    const { kindDefOf, knowsKind } = await import("./registry");
+    const stand = kindDefOf(CANVAS, "hologram" as never);
+    expect(knowsKind(CANVAS, "hologram" as never)).toBe(false);
+    // A name every object has is no kind either.
+    expect(knowsKind(CANVAS, "toString" as never)).toBe(false);
+    expect(stand.kind).toBe("hologram");
+    expect(stand.label).toBe("File");
+    expect(stand.opens).toEqual({});
+    expect(stand.history).toBeUndefined();
+    expect(kindDefOf(CANVAS, "hologram" as never)).toBe(stand);
+    expect(kindDefOf(CANVAS, "other" as never)).not.toBe(stand);
+    const module = await stand.chunk.load();
+    expect(typeof module.Body).toBe("function");
+    expect(module.Bar).toBeUndefined();
+  });
+});

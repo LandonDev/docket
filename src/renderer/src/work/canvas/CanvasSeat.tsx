@@ -13,7 +13,7 @@ import { CanvasMore, CanvasTabs } from "./CanvasTabs";
 import { sayError, useFrame } from "./frame";
 import type { CanvasKindDef, CanvasSelection } from "./kind";
 import { useOpening, type Opening } from "./fileDrop";
-import { CANVAS } from "./registry";
+import { CANVAS, kindDefOf } from "./registry";
 import { closeItem, reorderItems, selectItem, setFolded, useCanvas, useKeptState } from "./store";
 
 /** Google's Picker, loaded when asked for (work/google). */
@@ -68,7 +68,7 @@ export function CanvasSeat({
     requestAnimationFrame(() => split.rootRef.current?.querySelector<HTMLElement>("[data-chat] [data-composer-input]")?.focus());
   };
   const { feeds, shell } = useFrame(environmentId, sessionId, shown, putChip);
-  const module = useKindModule((shown ? kinds[shown.kind] : kinds.document).chunk);
+  const module = useKindModule((shown ? kindDefOf(kinds, shown.kind) : kinds.document).chunk);
   const TabEnd = shown ? module?.TabEnd : undefined;
   const [kept, keep] = useKeptState(shown?.id ?? "");
   const [picking, setPicking] = useState(false);

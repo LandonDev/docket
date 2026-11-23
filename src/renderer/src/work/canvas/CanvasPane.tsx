@@ -11,7 +11,7 @@ import type { Feeds } from "./frame";
 import { canvasPanelId, canvasTabId } from "./CanvasTabs";
 import { KindBar } from "./KindBar";
 import type { CanvasBodyProps, CanvasKindDef, CanvasKindModule, CanvasSelection, CanvasShell, StatusLine } from "./kind";
-import { CANVAS } from "./registry";
+import { CANVAS, kindDefOf } from "./registry";
 import { SelectionBar } from "./SelectionBar";
 import { FetchState, kindNoun } from "./FetchState";
 import { downloadItem, keepItem, useItemFetch } from "./fetched";
@@ -151,7 +151,7 @@ export function CanvasPane({
   /** The pane sits under a row of tabs (more than one item open). */
   tabbed?: boolean;
 }) {
-  const def = kinds[item.kind];
+  const def = kindDefOf(kinds, item.kind);
   const module = useKindModule(def.chunk);
   const [state, setState] = useKeptState(item.id);
   const Body = def.chunk.surface("Body", <ItemSkeleton />, bodyFailed(def.kind));

@@ -345,6 +345,39 @@ describe("a Work thread's canvas", () => {
   });
 });
 
+describe("an item of a kind this build does not know", () => {
+  // A host a release ahead holds an item of a kind added since; this window's registry has no row for it.
+  const NEWER = canvasItem("newer", { kind: "hologram" as never, title: "Stage plot.holo" });
+
+  it("draws it as a tab by its name beside the others, and the pane says to update", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { container } = await seat([DOC, NEWER]);
+    const tabs = within(screen.getByRole("tablist")).getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Run of show", "Stage plot.holo"]);
+    expect(tabs[1].querySelector("svg")).not.toBeNull();
+    fireEvent.pointerDown(tabs[1], { button: 0 });
+    await waitFor(() => expect(container.querySelector("[data-canvas-pane]")?.getAttribute("data-kind")).toBe("hologram"));
+    await waitFor(() => expect(container.querySelector("[data-canvas-body]")?.textContent).toBe("Update TempCode to open this"));
+    // No bar of its own, no History, no failure line: one quiet line and nothing else.
+    expect(container.querySelector("[data-canvas-bar]")).toBeNull();
+    expect(container.querySelector("[data-canvas-state]")).toBeNull();
+    expect(quiet).not.toHaveBeenCalled();
+    quiet.mockRestore();
+    // The tab it sits beside still opens.
+    fireEvent.pointerDown(within(screen.getByRole("tablist")).getAllByRole("tab")[0], { button: 0 });
+    await waitFor(() => expect(container.querySelector("[data-canvas-pane]")?.getAttribute("data-kind")).toBe("document"));
+  });
+
+  it("names it alone as a title, and it closes from More like any other", async () => {
+    const { container } = await seat([NEWER]);
+    expect(container.querySelector("[data-view-title]")?.textContent).toBe("Stage plot.holo");
+    await waitFor(() => expect(container.querySelector("[data-canvas-body]")?.textContent).toBe("Update TempCode to open this"));
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Close" }));
+    await waitFor(() => expect(host.current!.calls.some((c) => c.method === "work.canvas.close" && c.params.itemId === "newer")).toBe(true));
+  });
+});
+
 describe("the frame a kind drives through its shell", () => {
   const review = (over: Partial<ReviewAdapter> = {}): ReviewAdapter => ({
     groups: [{ id: "g1", label: "Venue for the spring LAN", by: "agent:box:t1", count: 6 }],

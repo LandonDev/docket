@@ -1,5 +1,7 @@
 import { CANVAS_KINDS, type CanvasKind, type CanvasSource } from "@shared/work";
 import type { CanvasKindDef } from "./kind";
+import { defineChunk } from "../../lib/lazyChunk";
+import { File } from "../icons";
 import { mailCanvas } from "../mail/canvas";
 import { documentCanvas } from "../docs/canvas";
 import { sheetCanvas } from "../sheets/canvas";
@@ -39,6 +41,31 @@ export const CANVAS: Record<CanvasKind, CanvasKindDef> = {
   form: formCanvas,
   dashboard: dashboardCanvas,
 };
+
+/**
+ * What stands in for a kind this build does not know. A host a release ahead may hold an item of a kind added
+ * since (its window made it, and the list is the host's): the tab row draws it as a file by its name and the pane
+ * says to update, so the other tabs stay usable. It claims nothing, has no bar and no History.
+ */
+const UNKNOWN_KIND: Omit<CanvasKindDef, "kind"> = {
+  label: "File",
+  icon: File,
+  opens: {},
+  phone: "native",
+  guestable: false,
+  chunk: defineChunk("work-canvas-unknown", () => import("./UnknownKind")),
+};
+const unknown = new Map<string, CanvasKindDef>();
+
+/** The kind's definition, or the stand-in for one this build does not know: every lookup by an item's kind goes through here. */
+export function kindDefOf(kinds: Record<CanvasKind, CanvasKindDef>, kind: CanvasKind): CanvasKindDef {
+  if (knowsKind(kinds, kind)) return kinds[kind];
+  let stand = unknown.get(kind);
+  if (!stand) unknown.set(kind, (stand = { ...UNKNOWN_KIND, kind }));
+  return stand;
+}
+/** Whether this build draws the kind. */
+export const knowsKind = (kinds: Record<CanvasKind, CanvasKindDef>, kind: CanvasKind): boolean => Object.hasOwn(kinds, kind);
 
 /** What is known of a thing to open, beyond its source. */
 export interface OpenHint {
