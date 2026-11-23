@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, realpathSync } from 'node:fs'
+import { join, sep } from 'node:path'
 import type { MoneyHits, MoneyOwed, MoneyRate, MoneyRead, MoneySums } from '@shared/contract-work-money'
 import {
   byCategory,
@@ -102,7 +102,17 @@ export async function mileageRows(ctx: Svc, books: Books): Promise<MileageRow[]>
 /** A job's books when both the row and the ledger's file are there; null otherwise (he has none yet, or deleted the file). */
 export function booksHere(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Books | null {
   const books = booksOf(ctx, workspaceId)
-  return books && existsSync(books.ledger) ? books : null
+  if (!books || !existsSync(books.ledger)) return null
+  // A ledger that is a link out of the job's folder is not this job's: it is neither read nor written.
+  const ws = workspaces(ctx).find((w) => w.id === workspaceId)
+  if (!ws) return null
+  try {
+    const root = realpathSync(ws.path)
+    const real = realpathSync(books.ledger)
+    return real.startsWith(root + sep) ? books : null
+  } catch {
+    return null
+  }
 }
 
 /** The mileage rate for a year: his own when he set one, else the last we are sure of. */
@@ -176,7 +186,7 @@ export async function owedFor(ctx: Pick<WorkCtx, 'db' | 'service'>, workspaceId?
   const rows: MoneyOwed['rows'] = []
   for (const { ws, books } of jobsFor(ctx, workspaceId)) {
     const ledger = await ledgerOf(ctx, books)
-    for (const o of owedOf(ledger.rows)) rows.push({ workspaceId: ws.id, sector: ws.sector, row: o.row, who: o.who, amount: o.amount, since: o.since, way: o.way })
+    for (const o of owedOf(ledger.rows)) rows.push({ workspaceId: ws.id, sector: ws.sector, row: o.row, who: o.who, what: o.what, amount: o.amount, since: o.since, way: o.way, reimburse: o.reimburse })
   }
   rows.sort((a, b) => (a.since ?? '9999').localeCompare(b.since ?? '9999'))
   return { rows, toConfirm: waiting(ctx, workspaceId) }

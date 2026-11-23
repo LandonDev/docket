@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { z } from 'zod'
 import type { InvoiceFromSchema, InvoiceSchema, KeepParamsSchema, MoneyActed, MoneyExport, MoneyInvoiceNext, MoneyInvoicePage, MoneyKept } from '@shared/contract-work-money'
 import { errorText } from '@shared/work/ids'
 import { csvOf, daysBetween, fileWord, INVOICE_DUE_DAYS, invoiceHtml, invoiceTotal, nextInvoiceNumber, payCategory, taxSummaryHtml } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
-import { appendRow, MONEY_FOLDER, openBooks } from './book'
+import { appendRow, moneyFolder, openBooks } from './book'
 import { keepFile } from './inbox'
 import { takePart } from './parts'
 import { booksHere, ledgerOf, mileageRows, MoneyError } from './read'
@@ -27,7 +27,8 @@ type Invoice = z.infer<typeof InvoiceSchema>
 type From = z.infer<typeof InvoiceFromSchema>
 type KeepParams = z.infer<typeof KeepParamsSchema>
 
-const taxFolder = (ws: Workspace, year: number): string => join(ws.path, MONEY_FOLDER, `Tax ${year}`)
+/** The year's folder, made where it is missing and held inside the job's own folder. */
+const taxFolder = (ws: Workspace, year: number): string => moneyFolder(ws, `Tax ${year}`)
 
 /** Writes a file of Money's own making whole or not at all: a second export replaces the first's. */
 function writeWhole(path: string, data: string | Uint8Array): void {
@@ -43,7 +44,7 @@ export async function exportYear(ctx: Ctx, ws: Workspace, o: { year: number; csv
   const [ledger, trips] = await Promise.all([ledgerOf(ctx, books), mileageRows(ctx, books)])
   if (ledger.missing.length) throw new MoneyError("The ledger's columns changed. Restore them, then export.")
   const dir = taxFolder(ws, o.year)
-  mkdirSync(dir, { recursive: true })
+  const replaced = [`Ledger ${o.year}.csv`, `Ledger ${o.year}.xlsx`, `Summary ${o.year}.pdf`].some((name) => existsSync(join(dir, name)))
   const files: string[] = []
   const warnings: string[] = []
   const text = csvOf(ledger.rows, trips, o.year)
@@ -79,17 +80,28 @@ export async function exportYear(ctx: Ctx, ws: Workspace, o: { year: number; csv
     folder: { at: 'file', host: ctx.host, path: dir },
     files,
     summary: o.pdf ? { name: `Summary ${o.year}.pdf`, html: taxSummaryHtml(ledger.rows, trips, { year: o.year, job: ws.name }) } : null,
-    warnings
+    warnings,
+    replaced
   }
 }
 
-/** What the books remember of invoices: his details, the terms he last used, and the last number of each kind. */
+/**
+ * What the books remember of invoices, each kind by itself: a purchase
+ * request has no "how to pay" and its own dates, and neither may overwrite
+ * what he last gave an invoice.
+ */
 interface Kept {
-  from?: From
-  dueDays?: number
+  from?: Partial<Record<Invoice['kind'], From>>
+  dueDays?: Partial<Record<Invoice['kind'], number>>
   last?: Partial<Record<Invoice['kind'], string>>
 }
-const keptOf = (ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Kept => (booksOf(ctx, workspaceId)?.invoice as Kept | null) ?? {}
+function keptOf(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Kept {
+  const raw = (booksOf(ctx, workspaceId)?.invoice ?? {}) as Kept & { from?: unknown; dueDays?: unknown }
+  // Books written before each kind kept its own: what was there was an invoice's.
+  const from = raw.from && typeof (raw.from as From).name === 'string' ? { invoice: raw.from as From } : ((raw.from as Kept['from']) ?? {})
+  const dueDays = typeof raw.dueDays === 'number' ? { invoice: raw.dueDays } : ((raw.dueDays as Kept['dueDays']) ?? {})
+  return { from, dueDays, last: raw.last ?? {} }
+}
 
 const TITLE: Record<Invoice['kind'], string> = { invoice: 'Invoice', request: 'Purchase request' }
 /** "Invoice 1042 Rivera Dental.pdf": the file's name, from the number and the first line of who it goes to. */
@@ -108,7 +120,10 @@ export async function invoiceNext(ctx: Ctx, ws: Workspace, kind: Invoice['kind']
       if (n) used.push(n)
     }
   }
-  return { number: String(nextInvoiceNumber(used)), from: kept.from ?? null, dueDays: kept.dueDays ?? INVOICE_DUE_DAYS }
+  // His own details for this kind; else who he is from the other kind, with how to pay left for him to give.
+  const other = kept.from?.[kind === 'invoice' ? 'request' : 'invoice']
+  const from = kept.from?.[kind] ?? (other ? { name: other.name, address: other.address, pay: '' } : null)
+  return { number: String(nextInvoiceNumber(used)), from, dueDays: kept.dueDays?.[kind] ?? INVOICE_DUE_DAYS }
 }
 
 /** Checks an invoice, remembers his details and terms for the next one, and answers its page. Nothing is filed until the printed page comes back. */
@@ -117,7 +132,11 @@ export async function invoicePage(ctx: Ctx, ws: Workspace, inv: Invoice): Promis
   if (inv.due && inv.due < inv.date) throw new MoneyError('It is due before its date.')
   await openBooks(ctx, ws)
   const kept = keptOf(ctx, ws.id)
-  setInvoice(ctx, ws.id, { ...kept, from: inv.from, ...(inv.due ? { dueDays: daysBetween(inv.date, inv.due) } : {}), last: { ...kept.last, [inv.kind]: inv.number } } satisfies Kept)
+  setInvoice(ctx, ws.id, {
+    from: { ...kept.from, [inv.kind]: inv.from },
+    dueDays: { ...kept.dueDays, ...(inv.due ? { [inv.kind]: daysBetween(inv.date, inv.due) } : {}) },
+    last: { ...kept.last, [inv.kind]: inv.number }
+  } satisfies Kept)
   return { name: invoiceFile(inv), html: invoiceHtml(inv) }
 }
 
@@ -130,7 +149,18 @@ const keeping = (ctx: Pick<WorkCtx, 'dataDir'>, key: string): string => join(ctx
  * Requested, which is not his cost). The sender's key makes a repeat answer
  * the first.
  */
-export async function keep(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKept> {
+export function keep(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKept> {
+  // One filing a key at a time: the same part sent twice while the first is being filed answers the first.
+  const claim = `${p.key}:${p.part}`
+  const running = inFlight.get(claim)
+  if (running) return running
+  const run = keepOnce(ctx, ws, p).finally(() => inFlight.delete(claim))
+  inFlight.set(claim, run)
+  return run
+}
+const inFlight = new Map<string, Promise<MoneyKept>>()
+
+async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKept> {
   const done = ctx.db.prepare("SELECT ref FROM work_money_inbox WHERE key = ? AND source = 'kept'").get(`kept:${p.key}`) as { ref: string } | undefined
   if (done) return JSON.parse(done.ref) as MoneyKept
   if (p.what === 'summary' && p.year === undefined) throw new MoneyError('A summary names its year.')
@@ -142,7 +172,6 @@ export async function keep(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<Mone
   try {
     if (p.what === 'summary') {
       const folder = taxFolder(ws, p.year!)
-      mkdirSync(folder, { recursive: true })
       const name = `Summary ${p.year}.pdf`
       copyFileSync(whole, join(folder, `${name}.tmp`))
       renameSync(join(folder, `${name}.tmp`), join(folder, name))

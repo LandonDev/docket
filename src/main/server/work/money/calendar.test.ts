@@ -122,6 +122,29 @@ describe('adding a trip', () => {
     expect(await offered()).toEqual([])
   })
 
+  it('adds once for two presses at once, and a retry after the trip failed writes only the trip', async () => {
+    b.lifeos.events = [game('Harrison', 2, { amount: { cents: 7500, currency: 'USD' } }), game('West Side', 3, { amount: { cents: 8000, currency: 'USD' } })]
+    const [west, harrison] = await offered()
+    const [x, y] = await Promise.all([trip(harrison, { miles: 24 }), trip(harrison, { miles: 24 })])
+    expect(x).toEqual(y)
+    expect(b.sheets.grid(ledger())).toHaveLength(2)
+    expect(b.sheets.grid(mileage())).toHaveLength(2)
+    // The mileage log cannot be written (he renamed its Miles header): the pay lands, the trip does not.
+    b.sheets.type(mileage(), 'D1', 'Distance')
+    await expect(trip(west, { miles: 60 })).rejects.toThrow("mileage log's columns changed")
+    expect(b.sheets.grid(ledger())).toHaveLength(3)
+    // It is offered still, and the second try writes the trip alone: the pay is not in the ledger twice.
+    expect((await offered()).map((o) => o.eventId)).toEqual(['West Side'])
+    b.sheets.type(mileage(), 'D1', 'Miles')
+    const again = await trip(west, { miles: 60 })
+    expect(again.pay).toBeNull()
+    expect(again.trip).toMatchObject({ row: 3 })
+    expect(b.sheets.grid(ledger())).toHaveLength(3)
+    expect(await offered()).toEqual([])
+    // What it learned of the fee for that role is kept through the retry.
+    expect(b.db.prepare("SELECT state, fee FROM work_money_events WHERE event_id = 'West Side'").get()).toEqual({ state: 'added', fee: 8000 })
+  })
+
   it('never offers a skipped one again, and a skip does not undo an added one', async () => {
     b.lifeos.events = [game('Harrison', 2), game('West Side', 3)]
     await call('work.money.skip', { workspaceId: 'ws-ref', eventId: 'Harrison' })

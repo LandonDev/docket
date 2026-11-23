@@ -4440,9 +4440,10 @@ public enum Methods {
             public let file: CanvasSource?
             public let lines: [Line]?
             public let fields: Fields?
+            public let seen: Bool?
             public let source: Source?
 
-            public init(key: String, workspaceId: String? = nil, sector: String? = nil, name: String, mime: String? = nil, part: Int? = nil, parts: Int? = nil, dataBase64: String? = nil, file: CanvasSource? = nil, lines: [Line]? = nil, fields: Fields? = nil, source: Source? = nil) {
+            public init(key: String, workspaceId: String? = nil, sector: String? = nil, name: String, mime: String? = nil, part: Int? = nil, parts: Int? = nil, dataBase64: String? = nil, file: CanvasSource? = nil, lines: [Line]? = nil, fields: Fields? = nil, seen: Bool? = nil, source: Source? = nil) {
                 self.key = key
                 self.workspaceId = workspaceId
                 self.sector = sector
@@ -4454,6 +4455,7 @@ public enum Methods {
                 self.file = file
                 self.lines = lines
                 self.fields = fields
+                self.seen = seen
                 self.source = source
             }
         }

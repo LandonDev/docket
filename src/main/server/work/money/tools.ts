@@ -75,8 +75,8 @@ const keyOf = (ctx: ToolCtx, what: unknown): string => `agent:${ctx.sessionId}:$
 
 /**
  * A file a thread may hand to Money: one of this host, in its job's own
- * folder or among the files the app keeps for its threads (an attachment a
- * canvas item fetched). A thread names no other file of his.
+ * folder or among the files the canvas keeps for this thread's own pane (an
+ * attachment one of its items fetched). A thread names no other file of his.
  */
 function fileFor(ctx: ToolCtx, ws: Workspace, path: string): string {
   if (!isAbsolute(path)) throw new MoneyError('Name the file by its full path on this computer.')
@@ -87,7 +87,9 @@ function fileFor(ctx: ToolCtx, ws: Workspace, path: string): string {
     throw new MoneyError('There is no file at that path on this computer.')
   }
   const inside = (root: string): boolean => existsSync(root) && real.startsWith(realpathSync(root) + sep)
-  if (!inside(ws.path) && !inside(ctx.dataDir)) throw new MoneyError("A thread files a receipt from its job's own folder or from an item in its canvas.")
+  // Its own pane's fetched files and no other's: not another job's waiting receipts, another thread's canvas, or anything else the app keeps.
+  const pane = join(ctx.dataDir, 'canvas', ctx.canvas.paneOf(ctx.sessionId))
+  if (!inside(ws.path) && !inside(pane)) throw new MoneyError("A thread files a receipt from its job's own folder or from an item in its own canvas.")
   return real
 }
 

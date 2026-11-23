@@ -231,8 +231,8 @@ export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])
   return { rows, columns, missing: [] }
 }
 
-/** What a row was when the window last saw it: its date, name and amounts. A row that no longer reads so has changed. */
-export const sigOf = (row: Pick<LedgerRow, 'date' | 'who' | 'in' | 'out'>): string => `${row.date ?? ''}|${row.who}|${row.in}|${row.out}`
+/** What a row was when the window last saw it: its date, name, amounts and status. A row that no longer reads so has changed. */
+export const sigOf = (row: Pick<LedgerRow, 'date' | 'who' | 'in' | 'out' | 'status'>): string => `${row.date ?? ''}|${row.who}|${row.in}|${row.out}|${row.status}`
 
 /** How the window names a row to act on: by `ref` when Money wrote it, else by number and what it read. */
 export interface RowAt {
@@ -241,11 +241,16 @@ export interface RowAt {
   sig: string
 }
 
-/** The row an act names, in a fresh read: by Ref first, else by its number when it still reads the same. Null: the ledger changed. */
+/**
+ * The row an act names, in a fresh read: by Ref wherever it now stands
+ * (he may have sorted the sheet), else by its number; either way only while
+ * it still reads as the window saw it. Null: the ledger changed, and
+ * nothing is written over what he changed.
+ */
 export function findRow(rows: readonly LedgerRow[], at: RowAt): LedgerRow | null {
   if (at.ref) {
     const byRef = rows.filter((r) => r.ref === at.ref)
-    if (byRef.length === 1) return byRef[0]
+    if (byRef.length === 1) return sigOf(byRef[0]) === at.sig ? byRef[0] : null
   }
   const same = rows.find((r) => r.row === at.row)
   return same && sigOf(same) === at.sig ? same : null
@@ -323,15 +328,13 @@ export interface CategorySum {
   category: string
   /** signed cents: money in is above nothing, money out below */
   amount: number
-  /** its part of all the money going its way in the period, 0 to 1 */
+  /** its size beside the largest category of the period, 0 to 1: one scale for the whole list, so equal bars are equal dollars */
   share: number
 }
 
 /** The period's money by category, the largest first. A row with no category counts under "Other". */
 export function byCategory(rows: readonly LedgerRow[], period: Period): CategorySum[] {
   const sums = new Map<string, { name: string; amount: number }>()
-  let totalIn = 0
-  let totalOut = 0
   for (const row of rows) {
     if (!inPeriod(row.date, period)) continue
     const c = countOf(row)
@@ -340,13 +343,10 @@ export function byCategory(rows: readonly LedgerRow[], period: Period): Category
     const sum = sums.get(name.toLowerCase()) ?? { name, amount: 0 }
     sum.amount += c.income - c.cost
     sums.set(name.toLowerCase(), sum)
-    totalIn += c.income
-    totalOut += c.cost
   }
-  return [...sums.values()]
-    .filter((s) => s.amount !== 0)
-    .map((s) => ({ category: s.name, amount: s.amount, share: Math.abs(s.amount) / ((s.amount > 0 ? totalIn : totalOut) || 1) }))
-    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount) || a.category.localeCompare(b.category))
+  const list = [...sums.values()].filter((s) => s.amount !== 0)
+  const largest = Math.max(1, ...list.map((s) => Math.abs(s.amount)))
+  return list.map((s) => ({ category: s.name, amount: s.amount, share: Math.abs(s.amount) / largest })).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount) || a.category.localeCompare(b.category))
 }
 
 export interface MonthSum {
@@ -379,6 +379,8 @@ export interface OwedRow {
   /** the row's date: what the wait is counted from */
   since: string | null
   way: 'toHim' | 'byHim'
+  /** a cost he paid that is to be paid back: `who` is who he paid, not who owes him */
+  reimburse: boolean
 }
 
 /** Every open row, the oldest first: what is owed to him, and what he owes. */
@@ -387,8 +389,8 @@ export function owedOf(rows: readonly LedgerRow[]): OwedRow[] {
   for (const row of rows) {
     const c = countOf(row)
     const base = { row: row.row, ref: row.ref, sig: sigOf(row), who: row.who, what: row.what, since: row.date }
-    if (c.owedToHim) out.push({ ...base, amount: c.owedToHim, way: 'toHim' })
-    if (c.heOwes) out.push({ ...base, amount: c.heOwes, way: 'byHim' })
+    if (c.owedToHim) out.push({ ...base, amount: c.owedToHim, way: 'toHim', reimburse: row.out > 0 })
+    if (c.heOwes) out.push({ ...base, amount: c.heOwes, way: 'byHim', reimburse: false })
   }
   return out.sort((a, b) => (a.since ?? '9999').localeCompare(b.since ?? '9999') || a.row - b.row)
 }
@@ -628,6 +630,11 @@ export function knownSellers(rows: readonly LedgerRow[]): Record<string, string>
 }
 
 // ── names of files ───────────────────────────────────────────────────
+
+/** What Money files, by a file's extension: a picture or a PDF. The one list, for the host and the window. */
+export const RECEIPT_EXTS = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'tif', 'tiff', 'webp', 'gif', 'bmp', 'pdf'] as const
+export const receiptExt = (name: string): string => (/\.([A-Za-z0-9]+)$/.exec(name)?.[1] ?? '').toLowerCase()
+export const isReceiptName = (name: string): boolean => (RECEIPT_EXTS as readonly string[]).includes(receiptExt(name))
 
 /** A word safe in a file's name on every system, with nothing that could leave its folder. */
 export const fileWord = (text: string, max = 60): string =>

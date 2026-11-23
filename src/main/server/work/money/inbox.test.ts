@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MONEY_PART_BYTES, type MoneyActed, type MoneyPicture, type MoneyRead, type MoneyReceived } from '@shared/contract-work-money'
@@ -130,6 +130,16 @@ describe('a receipt comes in', () => {
     expect((await view()).toConfirm[0].fields).toMatchObject({ amount: 5099, date: '2026-09-30', who: 'Ref Gear', category: 'Uniform and gear' })
   })
 
+  it('keeps empty what he saw and left empty: the reading does not fill it back in', async () => {
+    const lines = linesOf(FIXTURES.find((f) => f.file === 'gear.png')!)
+    // He was shown the parse on the phone, cleared the seller and the category, and sent it with no amount.
+    await send('gear.png', { key: 'seen-key-01', more: { source: 'phone', lines, seen: true, fields: { amount: null, date: '2026-09-30', who: null, category: null } } })
+    expect((await view()).toConfirm[0].fields).toMatchObject({ amount: null, date: '2026-09-30', who: null, category: null })
+    // The phone never got a parse (no host answered in time): what is empty there is filled here.
+    await send('gear.png', { key: 'seen-key-02', more: { source: 'phone', lines, fields: { amount: null, date: null, who: null, category: null } } })
+    expect((await view()).toConfirm[1].fields).toMatchObject({ amount: 5099, who: 'Ref Gear Outlet' })
+  })
+
   it('files at once what he accepted where he sent it from: an amount and a date', async () => {
     const got = await send('fuel.jpg', { more: { source: 'phone', lines: [], fields: { amount: 4817, date: '2026-11-14', who: 'Northside Fuel Stop', category: 'Travel' } } })
     expect(got.state).toBe('filed')
@@ -247,14 +257,66 @@ describe('his accept', () => {
     expect((await view()).toConfirm).toHaveLength(1)
   })
 
-  it('drops a waiting one and its file; a dropped one cannot be accepted, and a retry does not bring it back', async () => {
+  it('drops a waiting one; a dropped one cannot be accepted, a retry does not bring it back, and Undo does, as it was', async () => {
     const got = await send('coffee.png', { key: 'to-drop-01' })
     await settle()
     expect(await call('work.money.drop', { id: got.id })).toBeNull()
     expect((await view()).toConfirm).toEqual([])
-    expect(existsSync(join(b.root, 'data', 'work-money', 'incoming', got.id))).toBe(false)
     await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('not waiting any more')
     expect((await send('coffee.png', { key: 'to-drop-01' })).state).toBe('dropped')
+    // The file is kept (a phone's scan is the only copy), so the discard can be undone.
+    expect(readFileSync(join(b.root, 'data', 'work-money', 'incoming', got.id, 'coffee.png')).equals(bytes('coffee.png'))).toBe(true)
+    await call('work.money.drop', { id: got.id, undo: true })
+    expect((await view()).toConfirm).toMatchObject([{ id: got.id, state: 'ready', picture: true, fields: { amount: 1043 } }])
+    // Undo of one that was never dropped, or was filed, changes nothing.
+    await call('work.money.accept', { id: got.id, fields: fields() })
+    await call('work.money.drop', { id: got.id, undo: true })
+    expect((await view()).toConfirm).toEqual([])
+  })
+
+  it('lets a discarded receipt’s file go after a week, and its row after a month', async () => {
+    const got = await send('coffee.png', { key: 'old-drop-01' })
+    await settle()
+    await call('work.money.drop', { id: got.id })
+    const day = 24 * 3600_000
+    resume(b.ctx, Date.now() + 6 * day)()
+    expect(existsSync(join(b.root, 'data', 'work-money', 'incoming', got.id))).toBe(true)
+    resume(b.ctx, Date.now() + 8 * day)()
+    expect(existsSync(join(b.root, 'data', 'work-money', 'incoming', got.id))).toBe(false)
+    expect((await send('coffee.png', { key: 'old-drop-01' })).state).toBe('dropped')
+    resume(b.ctx, Date.now() + 40 * day)()
+    expect(b.db.prepare('SELECT COUNT(*) AS n FROM work_money_inbox').get()).toEqual({ n: 0 })
+  })
+
+  it('files one row for two accepts at once, and a discard during the filing is left alone', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    const [x, y] = await Promise.all([call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() }), call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() }), call('work.money.drop', { id: got.id })])
+    expect(x).toEqual(y)
+    expect(b.sheets.grid(ledger())).toHaveLength(2)
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toHaveLength(1)
+    expect(b.db.prepare('SELECT state FROM work_money_inbox WHERE id = ?').get(got.id)).toEqual({ state: 'filed' })
+  })
+
+  it('never brings a discarded receipt back when its reading ends late', async () => {
+    const got = await send('coffee.png')
+    await call('work.money.drop', { id: got.id })
+    await settle()
+    expect(b.db.prepare('SELECT state FROM work_money_inbox WHERE id = ?').get(got.id)).toEqual({ state: 'dropped' })
+    expect((await view()).toConfirm).toEqual([])
+  })
+
+  it('writes nothing through a Money folder that is a link out of the job’s folder', async () => {
+    const outside = join(b.root, 'elsewhere', 'Stolen')
+    mkdirSync(outside, { recursive: true })
+    symlinkSync(outside, join(b.ref, 'Money'))
+    const got = await send('coffee.png')
+    await settle()
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow("leads outside this job's folder")
+    await expect(call('work.money.entry', { workspaceId: 'ws-ref', fields: fields() })).rejects.toThrow("leads outside this job's folder")
+    expect(readdirSync(outside)).toEqual([])
+    // The receipt still waits.
+    expect((await view()).toConfirm).toHaveLength(1)
   })
 
   it('is his alone: a thread’s own call may neither receive, accept nor drop', async () => {
@@ -383,6 +445,12 @@ describe('what a thread may leave', () => {
 
   it('refuses a file outside the job’s folder, a file that is none, and both or neither of file and item', async () => {
     expect((await run('money_receipt', { file: fixture('fuel.jpg') })).text).toContain("its job's own folder")
+    // Not another thread's canvas, another job's waiting receipts, or anything else the app keeps.
+    for (const other of [join(b.root, 'data', 'canvas', 't-purdue', 'item-9', 'file'), join(b.root, 'data', 'work-money', 'incoming', 'someone')]) {
+      mkdirSync(other, { recursive: true })
+      copyFileSync(fixture('fuel.jpg'), join(other, 'fuel.jpg'))
+      expect((await run('money_receipt', { file: join(other, 'fuel.jpg') })).text).toContain('its own canvas')
+    }
     expect((await run('money_receipt', { file: join(b.ref, 'gone.jpg') })).isError).toBe(true)
     expect((await run('money_receipt', {})).text).toContain('one of the two')
     expect((await run('money_receipt', { item: 'nope' })).text).toContain('no item nope')

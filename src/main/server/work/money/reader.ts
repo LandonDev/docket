@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, extname, join } from 'node:path'
-import type { ReceiptLine } from '@shared/work/money'
+import { isReceiptName, type ReceiptLine } from '@shared/work/money'
 import type { Converter } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
 
@@ -107,10 +107,9 @@ const linesConverter = (from: string): Converter => ({
 
 export const MONEY_CONVERTERS: Converter[] = ['jpg', 'png'].map(linesConverter)
 
-/** What Money files: a picture or a PDF, by the file's extension. */
-export const RECEIPT_EXTS = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'tif', 'tiff', 'webp', 'gif', 'bmp', 'pdf'] as const
 export const extOf = (name: string): string => extname(name).slice(1).toLowerCase()
-export const isReceiptFile = (name: string): boolean => (RECEIPT_EXTS as readonly string[]).includes(extOf(name))
+/** What Money files: a picture or a PDF, by the file's extension (the one list, `RECEIPT_EXTS`). */
+export const isReceiptFile = (name: string): boolean => isReceiptName(name)
 
 /** Pictures Chromium cannot show and the reader cannot open: made a JPEG first, by the media pillar's converter. */
 const TO_JPG = new Set(['heic', 'heif', 'tif', 'tiff'])

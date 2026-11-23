@@ -144,7 +144,7 @@ export async function offers(ctx: Ctx, ws: Workspace, books: Books | null, now =
   const rule = books?.calendar ?? 'games'
   if (rule === 'off') return []
   const marks = eventMarks(ctx, ws.id)
-  const list = (await endedEvents(ctx, ws, now)).filter((e) => !marks.has(e._id) && (rule === 'all' || !!e.role || usd(e) !== null)).map((e) => offerOf(ctx, ws, e))
+  const list = (await endedEvents(ctx, ws, now)).filter((e) => (marks.get(e._id)?.state ?? 'adding') === 'adding' && (rule === 'all' || !!e.role || usd(e) !== null)).map((e) => offerOf(ctx, ws, e))
   return withDrives(ctx, ws, list)
 }
 

@@ -147,12 +147,15 @@ describe('the ledger', () => {
 
   it('finds a row to act on by Ref, else by its number while it reads the same', () => {
     const rows = read(line('2026-11-01', 'A', 1, '', '', { ref: 'aaa111' }), line('2026-11-02', 'B', '', 5))
-    // He sorted the sheet: the Ref still finds it.
-    expect(findRow(rows, { ref: 'aaa111', row: 9, sig: 'x' })?.who).toBe('A')
+    // He sorted the sheet: the Ref still finds it, wherever it stands now.
+    expect(findRow(rows, { ref: 'aaa111', row: 9, sig: sigOf(rows[0]) })?.who).toBe('A')
     expect(findRow(rows, { row: 3, sig: sigOf(rows[1]) })?.who).toBe('B')
     // The row at that number is no longer the one the window saw.
-    expect(findRow(rows, { row: 3, sig: sigOf({ date: '2026-11-02', who: 'B', in: 0, out: 900 }) })).toBeNull()
+    expect(findRow(rows, { row: 3, sig: sigOf({ date: '2026-11-02', who: 'B', in: 0, out: 900, status: 'Paid' }) })).toBeNull()
     expect(findRow(rows, { ref: 'gone', row: 7, sig: 'x' })).toBeNull()
+    // A Ref alone is not enough: a row he changed since the window read it is not written over, amount or status.
+    expect(findRow(rows, { ref: 'aaa111', row: 2, sig: sigOf({ ...rows[0], in: 999 }) })).toBeNull()
+    expect(findRow(rows, { ref: 'aaa111', row: 2, sig: sigOf({ ...rows[0], status: 'Unpaid' }) })).toBeNull()
   })
 
   const year = read(
@@ -172,11 +175,12 @@ describe('the ledger', () => {
     expect(sumsOf(year, monthPeriod(2025, 12)).in).toBe(4000)
   })
 
-  it('splits the period by category with each one’s share of the money going its way', () => {
+  it('splits the period by category, each one’s bar on the one scale of the largest', () => {
+    // One scale for the list, the largest category's: equal bars are equal dollars, money in or out.
     expect(byCategory(year, yearPeriod(2026))).toEqual([
       { category: 'Game fees', amount: 7500, share: 1 },
-      { category: 'Uniform and gear', amount: -5099, share: 5099 / 9916 },
-      { category: 'Travel', amount: -4817, share: 4817 / 9916 }
+      { category: 'Uniform and gear', amount: -5099, share: 5099 / 7500 },
+      { category: 'Travel', amount: -4817, share: 4817 / 7500 }
     ])
   })
 
@@ -188,10 +192,11 @@ describe('the ledger', () => {
   })
 
   it('lists what is owed, the oldest first, each way', () => {
-    expect(owedOf(year).map((o) => [o.who, o.amount, o.way, o.since])).toEqual([
-      ['West Side HS', 8000, 'toHim', '2026-11-07'],
-      ['Ref Gear Outlet', 5099, 'toHim', '2026-11-15'],
-      ['IHSAA', 6000, 'byHim', '2026-11-16']
+    // A cost to be paid back says so: the shop he paid does not owe him.
+    expect(owedOf(year).map((o) => [o.who, o.amount, o.way, o.since, o.reimburse])).toEqual([
+      ['West Side HS', 8000, 'toHim', '2026-11-07', false],
+      ['Ref Gear Outlet', 5099, 'toHim', '2026-11-15', true],
+      ['IHSAA', 6000, 'byHim', '2026-11-16', false]
     ])
   })
 

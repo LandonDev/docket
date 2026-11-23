@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, realpathSync } from 'node:fs'
+import { join, sep } from 'node:path'
 import type { EntryFields, MoneyActed } from '@shared/contract-work-money'
 import {
   columnLetter,
@@ -36,6 +36,35 @@ export const MONEY_FOLDER = 'Money'
 /** Who a write is credited to in the sheet's history. */
 const BY = 'money'
 const COLUMNS_CHANGED = "The ledger's columns changed. Restore them, then try again."
+
+const OUTSIDE = "The Money folder leads outside this job's folder, so Money writes nothing there."
+
+/** Whether a path that exists lies, by its real spelling, inside the job's own folder: a link out of it does not. */
+export function insideJob(ws: Pick<Workspace, 'path'>, path: string): boolean {
+  try {
+    const root = realpathSync(ws.path)
+    const real = realpathSync(path)
+    return real === root || real.startsWith(root + sep)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A folder under the job's `Money`, made where it is missing, one level at
+ * a time, each checked by its real spelling before the next is made: a
+ * `Money` (or a folder under it) that is a link out of the job's folder is
+ * refused, and nothing is written through it.
+ */
+export function moneyFolder(ws: Pick<Workspace, 'path'>, ...sub: string[]): string {
+  let dir = ws.path
+  for (const part of [MONEY_FOLDER, ...sub]) {
+    dir = join(dir, part)
+    if (!existsSync(dir)) mkdirSync(dir)
+    if (!insideJob(ws, dir)) throw new MoneyError(OUTSIDE)
+  }
+  return dir
+}
 
 const sheet = (path: string): { tcsheet: string } => ({ tcsheet: path })
 export type A1 = { at: string; v?: string | number | boolean | null; f?: string }
@@ -100,13 +129,14 @@ async function make(ctx: Ctx, path: string, title: string, headers: readonly str
  */
 export function openBooks(ctx: Ctx, ws: Workspace): Promise<Books> {
   return locked(ws.id, async () => {
-    const dir = join(ws.path, MONEY_FOLDER)
-    mkdirSync(dir, { recursive: true })
+    const dir = moneyFolder(ws)
     const kept = booksOf(ctx, ws.id)
     const place = async (was: string | undefined, name: string, title: string, headers: readonly string[]): Promise<string> => {
-      if (was && existsSync(was)) return was
+      // A kept path is trusted only while it still lies in the job's own folder.
+      if (was && existsSync(was) && insideJob(ws, was)) return was
       const path = join(dir, name)
       if (!existsSync(path)) await make(ctx, path, title, headers)
+      else if (!insideJob(ws, path)) throw new MoneyError(OUTSIDE)
       forgetGrid(path)
       return path
     }
@@ -131,6 +161,10 @@ export function restoreColumns(ctx: Ctx, ws: Workspace, books: Books): Promise<v
     )
   })
 }
+
+/** Rows suggested since a sheet's revision last moved, so two suggestions never name one row. */
+const suggestedAt = new Map<string, { rev: number; n: number }>()
+const suggestedRows = (path: string, rev: number): number => (suggestedAt.get(path)?.rev === rev ? suggestedAt.get(path)!.n : 0)
 
 type Values = Partial<Record<LedgerColumn, Cell>>
 
@@ -161,9 +195,12 @@ export function appendRow(ctx: Ctx, ws: Workspace, books: Books, values: Values)
   return locked(ws.id, async () => {
     const ledger = await ledgerOf(ctx, books)
     if (ledger.missing.length) throw new MoneyError(COLUMNS_CHANGED)
-    const row = ledger.grid.last + 1
+    // On a sheet others can open the row waits as a suggestion and the sheet's last row does not move: each one waiting takes the next row down.
+    const waits = ledger.grid.shared ? suggestedRows(books.ledger, ledger.grid.rev) : 0
+    const row = ledger.grid.last + 1 + waits
     const ref = ledger.columns.Ref === undefined ? null : newRef()
     const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row, { ...values, ...(ref ? { Ref: ref } : {}) }), ledger.grid.shared)
+    if (suggested) suggestedAt.set(books.ledger, { rev: ledger.grid.rev, n: waits + 1 })
     return { ref, row, suggested }
   })
 }

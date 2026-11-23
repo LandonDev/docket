@@ -37,25 +37,42 @@ async function appendTrip(ctx: Ctx, ws: Workspace, books: Books, t: { date: stri
  * A trip, and the pay that went with it. Miles go to the mileage log at the
  * year's rate and are remembered for the place; a fee goes to the ledger as
  * money in, unpaid; the calendar event it came from is marked added, so it
- * is offered no more. An event already added adds nothing again.
+ * is offered no more. An event already added adds nothing again, and one
+ * whose pay was written before its trip failed writes only the trip.
  */
-export async function addTrip(ctx: Ctx, ws: Workspace, p: TripParams): Promise<MoneyTripped> {
-  if (p.eventId && eventMarks(ctx, ws.id).get(p.eventId)?.state === 'added') return { pay: null, trip: null }
+export function addTrip(ctx: Ctx, ws: Workspace, p: TripParams): Promise<MoneyTripped> {
+  if (!p.eventId) return addOnce(ctx, ws, p)
+  // One add an event at a time: a second press while the first is being written answers the first.
+  const key = `${ws.id}:${p.eventId}`
+  const running = adding.get(key)
+  if (running) return running
+  const run = addOnce(ctx, ws, p).finally(() => adding.delete(key))
+  adding.set(key, run)
+  return run
+}
+const adding = new Map<string, Promise<MoneyTripped>>()
+
+async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams): Promise<MoneyTripped> {
+  const mark = p.eventId ? eventMarks(ctx, ws.id).get(p.eventId) : undefined
+  if (mark?.state === 'added') return { pay: null, trip: null }
   const miles = p.miles ?? 0
   const fee = p.fee ?? 0
   if (!(miles > 0) && !(fee > 0)) throw new MoneyError('A trip has miles, pay, or both.')
   const books = await openBooks(ctx, ws)
+  const role = p.eventId ? roleOf(ws.id, p.eventId) : null
   let pay: MoneyActed | null = null
-  if (fee > 0) {
+  // Its pay is in the ledger already when an earlier add wrote it and then failed on the trip: it is not written twice.
+  if (fee > 0 && mark?.state !== 'adding') {
     const got = await appendRow(ctx, ws, books, { Date: p.date, Who: p.place, For: p.title, Category: payCategory(ws.sector), In: fee / 100, Status: 'Unpaid' })
     pay = { ok: true, ref: got.ref, row: got.row, ...(got.suggested ? { suggested: true as const } : {}) }
+    if (p.eventId) markEvent(ctx, ws.id, p.eventId, { state: 'adding', role, fee })
   }
   let trip: MoneyTripped['trip'] = null
   if (miles > 0) {
     trip = await appendTrip(ctx, ws, books, { date: p.date, title: p.title, place: p.place, miles, rate: rateFor(Number(p.date.slice(0, 4)), books.rates) })
     if (p.place) keepMiles(ctx, p.place, miles)
   }
-  if (p.eventId) markEvent(ctx, ws.id, p.eventId, { state: 'added', role: roleOf(ws.id, p.eventId), fee: fee > 0 ? fee : null })
+  if (p.eventId) markEvent(ctx, ws.id, p.eventId, { state: 'added', role: role ?? mark?.role ?? null, fee: fee > 0 ? fee : (mark?.fee ?? null) })
   return { pay, trip }
 }
 

@@ -103,12 +103,13 @@ describe('adding', () => {
     expect(b.sheets.grid(ledger())[1]).toEqual([10.43, '', 'Blue Heron Coffee', '', '2026-11-21'])
   })
 
-  it('suggests on a sheet others can open, and writes nothing', async () => {
+  it('suggests on a sheet others can open, writes nothing, and gives each waiting suggestion a row of its own', async () => {
     await call('work.money.open', { workspaceId: 'ws-ref' })
     b.sheets.sheets.get(ledger())!.shared = true
-    expect(await entry({})).toMatchObject({ ok: true, suggested: true })
+    expect(await entry({})).toMatchObject({ ok: true, suggested: true, row: 2 })
+    expect(await entry({ who: 'Second' })).toMatchObject({ ok: true, suggested: true, row: 3 })
     expect(b.sheets.grid(ledger())).toHaveLength(1)
-    expect(b.sheets.sheets.get(ledger())!.suggested).toHaveLength(1)
+    expect(b.sheets.sheets.get(ledger())!.suggested).toHaveLength(2)
   })
 
   it('appends one at a time: two at once take two rows', async () => {
@@ -161,6 +162,19 @@ describe('acting on a row', () => {
     expect(row).toMatchObject({ ref: null, date: '2026-11-20', out: 1200 })
     expect(await entry({ date: '2026-11-20', who: 'By hand', amount: 1200, category: 'Other' }, atOf(row))).toEqual({ ok: true, ref: null, row: 2 })
     expect(b.sheets.grid(ledger())[1]).toEqual(['11/20/2026', 'By hand', '', 'Other', '', 12])
+  })
+
+  it('does not write over a row of Money’s own that he changed in the sheet since the window read it', async () => {
+    await entry({ who: 'Harrison HS', way: 'in', amount: 7500, status: 'Unpaid' })
+    const row = (await read()).rows[0]
+    // He corrects the amount in the sheet; the dialog still holds the old one and he edits only For.
+    b.sheets.type(ledger(), 'E2', 80)
+    const rev = b.sheets.sheets.get(ledger())!.rev
+    expect(await entry({ who: 'Harrison HS', way: 'in', amount: 7500, status: 'Unpaid', what: 'Varsity' }, atOf(row))).toEqual({ changed: true })
+    // Paid on the balance the window showed is refused too: it would settle a figure he never saw.
+    expect(await call('work.money.paid', { workspaceId: 'ws-ref', at: atOf(row) })).toEqual({ changed: true })
+    expect(b.sheets.sheets.get(ledger())!.rev).toBe(rev)
+    expect((await read()).rows[0]).toMatchObject({ in: 8000, what: '', status: 'Unpaid' })
   })
 
   it('answers that the ledger changed, and writes nothing, when the row no longer reads as the window saw it', async () => {

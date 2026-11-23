@@ -142,12 +142,13 @@ export function keepMiles(ctx: Db, place: string, miles: number, now = Date.now(
 }
 
 export interface EventMark {
-  state: 'added' | 'skipped'
+  /** `adding`: its pay is in the ledger and its trip is not yet in the log (a write failed between the two): offered still, and a retry writes only what is missing */
+  state: 'added' | 'skipped' | 'adding'
   role: string | null
   fee: number | null
 }
 export function eventMarks(ctx: Db, workspaceId: string): Map<string, EventMark> {
-  const rows = ctx.db.prepare('SELECT event_id, state, role, fee FROM work_money_events WHERE workspace_id = ?').all(workspaceId) as { event_id: string; state: 'added' | 'skipped'; role: string | null; fee: number | null }[]
+  const rows = ctx.db.prepare('SELECT event_id, state, role, fee FROM work_money_events WHERE workspace_id = ?').all(workspaceId) as { event_id: string; state: EventMark['state']; role: string | null; fee: number | null }[]
   return new Map(rows.map((r) => [r.event_id, { state: r.state, role: r.role, fee: r.fee }]))
 }
 export function markEvent(ctx: Db, workspaceId: string, eventId: string, mark: EventMark, now = Date.now()): void {

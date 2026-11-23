@@ -90,6 +90,8 @@ export const ReceiveParamsSchema = z.object({
   lines: z.array(ReceiptLineSchema).max(RECEIPT_LINES_MAX).optional(),
   /** what he accepted where he sent it from: with an amount and a date it is filed at once, else it waits in To confirm */
   fields: ReceiptFieldsSchema.optional(),
+  /** the sender showed him what the parser read before he sent it: a field he left empty stays empty, and nothing read here fills it */
+  seen: z.boolean().optional(),
   source: z.enum(['drop', 'phone', 'mail']).default('drop')
 })
 export type ReceiveParams = z.infer<typeof ReceiveParamsSchema>
@@ -162,8 +164,8 @@ export const MoneyRequestSchemas = [
   request('work.money.receive', ReceiveParamsSchema),
   /** → MoneyActed: his accept. The file is kept under Money/Receipts/<year>/, the row appended, the waiting one filed; `workspaceId` sends it to another job */
   request('work.money.accept', z.object({ id: z.string().min(1).max(100), fields: EntryFieldsSchema, workspaceId: workspaceId.optional() })),
-  /** → null: a waiting one is dropped, and its file with it */
-  request('work.money.drop', z.object({ id: z.string().min(1).max(100) })),
+  /** → null: a waiting one is dropped; its file is kept a while, so `undo` puts it back in To confirm as it was */
+  request('work.money.drop', z.object({ id: z.string().min(1).max(100), undo: z.boolean().optional() })),
   /** → MoneyPicture: a waiting receipt's picture (`id`) or a filed row's (`workspaceId` and the Receipt cell), a part at a time; a PDF is drawn as its first page */
   request('work.money.picture', z.object({ id: z.string().min(1).max(100).optional(), workspaceId: workspaceId.optional(), receipt: z.string().min(1).max(600).optional(), part: z.number().int().min(0).max(63).default(0) })),
   /** → MoneyEvents: the job's ended calendar events of the last 60 days that name a place, for Add → Trip… */
@@ -271,6 +273,8 @@ export interface MoneyExport {
   summary: { name: string; html: string } | null
   /** one line each for what could not be made */
   warnings: string[]
+  /** the year's folder already held an export, and these files took its place */
+  replaced: boolean
 }
 export interface MoneyInvoiceNext {
   number: string
@@ -337,7 +341,7 @@ export interface MoneySums {
   rows: { workspaceId: string; sector: SectorKey | null; in: number; out: number; owedToHim: number; heOwes: number; miles: number; currency: 'USD' }[]
 }
 export interface MoneyOwed {
-  rows: { workspaceId: string; sector: SectorKey | null; row: number; who: string; amount: number; since: string | null; way: 'toHim' | 'byHim' }[]
+  rows: { workspaceId: string; sector: SectorKey | null; row: number; who: string; what: string; amount: number; since: string | null; way: 'toHim' | 'byHim'; reimburse: boolean }[]
   toConfirm: number
 }
 export interface MoneyHits {

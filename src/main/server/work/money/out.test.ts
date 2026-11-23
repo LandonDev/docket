@@ -46,6 +46,7 @@ describe('export for tax time', () => {
     expect(got.folder).toEqual({ at: 'file', host: 'env_box', path: tax() })
     expect(got.files).toEqual(['Ledger 2026.csv', 'Ledger 2026.xlsx'])
     expect(got.warnings).toEqual([])
+    expect(got.replaced).toBe(false)
     const csv = readFileSync(join(tax(), 'Ledger 2026.csv'), 'utf8')
     expect(csv).toContain('2026-03-01,"Rivera, Dental",,Sales,1200.00,,Paid')
     expect(csv).not.toContain('Last year')
@@ -59,6 +60,8 @@ describe('export for tax time', () => {
     expect(got.summary?.html).toContain('Clinic')
     expect(got.summary?.html).toContain('30 mi · $21.00 at $0.70')
     expect(readdirSync(tax()).sort()).toEqual(['Ledger 2026.csv', 'Ledger 2026.xlsx'])
+    // A second export takes the first's place, and says so.
+    expect((await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026 })).replaced).toBe(true)
   })
 
   it('makes only what was asked for, and the Excel file with no CSV left behind', async () => {
@@ -109,6 +112,22 @@ describe('an invoice', () => {
     expect((await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref', kind: 'request' })).number).toBe('1001')
     // The page alone files nothing.
     expect((await view()).rows).toEqual([])
+  })
+
+  it('keeps each kind’s details and terms by itself: a purchase request never overwrites how he is paid or when an invoice is due', async () => {
+    await call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ due: '2026-12-23' }) })
+    // First request: who he is carries over, how to pay does not apply.
+    expect(await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref', kind: 'request' })).toEqual({ number: '1001', from: { name: 'Unify Platforms', address: '1 Main St', pay: '' }, dueDays: 14 })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', invoice: invoice({ kind: 'request', number: '7', due: '2026-11-26', from: { name: 'Esports', address: 'Rec Center', pay: '' } }) })
+    expect(await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref' })).toEqual({ number: '1043', from: { name: 'Unify Platforms', address: '1 Main St', pay: 'Check or ACH' }, dueDays: 30 })
+    expect(await call<MoneyInvoiceNext>('work.money.invoiceNext', { workspaceId: 'ws-ref', kind: 'request' })).toEqual({ number: '8', from: { name: 'Esports', address: 'Rec Center', pay: '' }, dueDays: 3 })
+  })
+
+  it('files one invoice for the same key sent twice at once', async () => {
+    const [x, y] = await Promise.all([keep({ what: 'invoice', invoice: invoice() }), keep({ what: 'invoice', invoice: invoice() })])
+    expect(x).toEqual(y)
+    expect((await view()).rows).toHaveLength(1)
+    expect(readdirSync(join(b.ref, 'Money', 'Invoices'))).toHaveLength(1)
   })
 
   it('reads the highest number from the ledger too, so a number he typed by hand counts', async () => {

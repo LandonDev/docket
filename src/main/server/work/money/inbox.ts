@@ -8,7 +8,7 @@ import { errorText, type SectorKey } from '@shared/work/ids'
 import { fileWord, knownSellers, parseReceipt, receiptName, type ReceiptFields, type ReceiptLine } from '@shared/work/money'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
-import { appendRow, MONEY_FOLDER, openBooks, valuesOf } from './book'
+import { appendRow, MONEY_FOLDER, moneyFolder, openBooks, valuesOf } from './book'
 import { partOf, takePart } from './parts'
 import { booksHere, ledgerOf, MoneyError, waiting } from './read'
 import { extOf, isReceiptFile, pdfPicture, readReceipt, shownPicture } from './reader'
@@ -118,16 +118,25 @@ export async function parseFor(ctx: Ctx, lines: readonly ReceiptLine[], at: { wo
   return parseReceipt(lines, { sector: ws?.sector ?? at.sector ?? null, known: ws ? await knownOf(ctx, ws.id) : {} })
 }
 
-/** What he typed where he sent it from wins over what was read; a field he left empty takes the reading. */
-const merged = (read: ReceiptFields, typed?: Partial<Waiting>): Waiting => ({
-  ...typed,
-  amount: typed?.amount ?? read.amount,
-  date: typed?.date ?? read.date,
-  who: typed?.who || read.who,
-  category: typed?.category || read.category
-})
+/**
+ * What he typed where he sent it from wins over what was read. A field he
+ * left empty takes the reading, unless the sender had already shown him
+ * what was read (`seen`): then empty is his own word, and stays empty.
+ */
+const merged = (read: ReceiptFields, typed?: Partial<Waiting>, seen = false): Waiting =>
+  seen && typed
+    ? { amount: null, date: null, who: null, category: null, ...typed }
+    : {
+        ...typed,
+        amount: typed?.amount ?? read.amount,
+        date: typed?.date ?? read.date,
+        who: typed?.who || read.who,
+        category: typed?.category || read.category
+      }
 
 const reading = new Map<string, AbortController>()
+/** How long a discarded receipt's file is kept, so a discard can be undone. */
+export const DROPPED_KEEP_MS = 7 * 24 * 3600_000
 
 /** Reads a waiting file in the background and makes it ready, with whatever could be read. A file that cannot be read is ready with empty fields. */
 export function read(ctx: Ctx, id: string): Promise<void> {
@@ -149,7 +158,11 @@ export function read(ctx: Ctx, id: string): Promise<void> {
     if (!now || now.state !== 'reading') return
     const ws = workspaceOf(ctx, now.workspace_id)
     const fields = merged(parseReceipt(lines, { sector: ws?.sector ?? null, known: await knownOf(ctx, now.workspace_id) }), fieldsOf(now))
-    set(ctx, id, { state: 'ready', lines: JSON.stringify(lines), fields: JSON.stringify(fields), error })
+    // His discard or accept during the read stands: only a row still being read is made ready.
+    const made = ctx.db
+      .prepare("UPDATE work_money_inbox SET state = 'ready', lines = ?, fields = ?, error = ?, updated_at = ? WHERE id = ? AND state = 'reading'")
+      .run(JSON.stringify(lines), JSON.stringify(fields), error, Date.now(), id)
+    if (!made.changes) return
     announce(ctx, now.workspace_id)
     tell(ctx, now, fields)
   })().finally(() => reading.delete(id))
@@ -161,6 +174,11 @@ export function resume(ctx: Ctx, now = Date.now()): () => void {
   for (const { id } of stale) {
     rmSync(folderOf(ctx, id), { recursive: true, force: true })
     ctx.db.prepare('DELETE FROM work_money_inbox WHERE id = ?').run(id)
+  }
+  // A discarded receipt's file is kept a week, for Undo; after that only its row stays.
+  for (const { id } of ctx.db.prepare("SELECT id FROM work_money_inbox WHERE state = 'dropped' AND file IS NOT NULL AND updated_at < ?").all(now - DROPPED_KEEP_MS) as { id: string }[]) {
+    rmSync(folderOf(ctx, id), { recursive: true, force: true })
+    ctx.db.prepare('UPDATE work_money_inbox SET file = NULL WHERE id = ?').run(id)
   }
   // Filed and dropped rows are kept a month, so a late retry still answers the first.
   ctx.db.prepare("DELETE FROM work_money_inbox WHERE state IN ('filed', 'dropped') AND updated_at < ?").run(now - 30 * 24 * 3600_000)
@@ -212,7 +230,7 @@ export async function receive(ctx: Ctx, p: ReceiveParams, by: Caller, admit: (wo
 
   const typed = p.fields ? { ...p.fields, way: 'out' as const } : undefined
   if (p.lines) {
-    const fields = merged(await parseFor(ctx, receiptLines(p.lines), { workspaceId: ws.id }), typed)
+    const fields = merged(await parseFor(ctx, receiptLines(p.lines), { workspaceId: ws.id }), typed, p.seen === true)
     set(ctx, id, { state: 'ready', file: whole, lines: JSON.stringify(p.lines), fields: JSON.stringify(fields) })
   } else {
     set(ctx, id, { state: 'reading', file: whole, ...(typed ? { fields: JSON.stringify(typed) } : {}) })
@@ -274,8 +292,7 @@ function freeName(dir: string, name: string): string {
  * `Money/` as the Receipt column holds it.
  */
 export async function keepFile(ws: Workspace, from: string, sub: readonly string[], name: string): Promise<{ path: string; receipt: string }> {
-  const dir = join(ws.path, MONEY_FOLDER, ...sub)
-  mkdirSync(dir, { recursive: true })
+  const dir = moneyFolder(ws, ...sub)
   for (let tries = 0; ; tries++) {
     const free = freeName(dir, name)
     try {
@@ -294,7 +311,17 @@ export async function keepFile(ws: Workspace, from: string, sub: readonly string
  * and the waiting one is filed. `to` sends it to another job. A second
  * accept of the same one answers the first.
  */
-export async function accept(ctx: Ctx, id: string, fields: EntryFields, to?: Workspace): Promise<MoneyActed> {
+export function accept(ctx: Ctx, id: string, fields: EntryFields, to?: Workspace): Promise<MoneyActed> {
+  // One accept a receipt at a time: a second press while the first is being filed answers the first, and files nothing twice.
+  const running = accepting.get(id)
+  if (running) return running
+  const run = acceptOnce(ctx, id, fields, to).finally(() => accepting.delete(id))
+  accepting.set(id, run)
+  return run
+}
+const accepting = new Map<string, Promise<MoneyActed>>()
+
+async function acceptOnce(ctx: Ctx, id: string, fields: EntryFields, to?: Workspace): Promise<MoneyActed> {
   const row = byId(ctx, id)
   if (!row || row.state === 'dropped' || row.state === 'partial') throw new MoneyError('That one is not waiting any more.')
   if (row.state === 'filed') return row.ref ? (JSON.parse(row.ref) as MoneyActed) : { changed: true }
@@ -323,13 +350,23 @@ export async function accept(ctx: Ctx, id: string, fields: EntryFields, to?: Wor
   return acted
 }
 
-/** A waiting one is dropped, and its file with it. */
-export function drop(ctx: Ctx, id: string): void {
+/**
+ * A waiting one is dropped. Its file is kept (a phone's scan is the only
+ * copy once the phone has let go of its draft), so `undo` puts it back in
+ * To confirm as it was. One that is being filed right now is left alone.
+ */
+export function drop(ctx: Ctx, id: string, undo = false): void {
   const row = byId(ctx, id)
-  if (!row || row.state === 'filed' || row.state === 'dropped') return
+  if (!row || accepting.has(id)) return
+  if (undo) {
+    if (row.state !== 'dropped') return
+    set(ctx, id, { state: 'ready' })
+    announce(ctx, row.workspace_id)
+    return
+  }
+  if (row.state === 'filed' || row.state === 'dropped' || row.state === 'partial') return
   reading.get(id)?.abort()
-  set(ctx, id, { state: 'dropped', file: null })
-  rmSync(folderOf(ctx, id), { recursive: true, force: true })
+  set(ctx, id, { state: 'dropped' })
   announce(ctx, row.workspace_id)
   told(ctx, id)
 }
