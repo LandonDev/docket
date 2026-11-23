@@ -32,7 +32,7 @@ vi.mock("../../lib/connection", async (original) => ({
     }),
   },
 }));
-const toast = Object.assign(vi.fn(), { error: vi.fn() });
+const toast = Object.assign(vi.fn(), { error: vi.fn(), loading: vi.fn(() => "t"), dismiss: vi.fn() });
 vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original<object>()), loadToast: async () => toast }));
 
 const { Head, View, setMoneyPeriod } = await import("./MoneyView");
@@ -129,7 +129,7 @@ describe("trips and pay from the calendar", () => {
       fireEvent.click(pick);
     });
     await settle();
-    expect((within(dialog).getByLabelText("Trip") as HTMLInputElement).value).toBe("JV at Millbrook");
+    expect((within(dialog).getByLabelText("Name") as HTMLInputElement).value).toBe("JV at Millbrook");
     expect((within(dialog).getByLabelText("Miles there and back") as HTMLInputElement).value).toBe("31");
     fireEvent.change(within(dialog).getByLabelText("Fee"), { target: { value: "60" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
@@ -145,7 +145,7 @@ describe("trips and pay from the calendar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Trip" });
     await settle();
     const add = within(dialog).getByRole("button", { name: "Add" }) as HTMLButtonElement;
-    fireEvent.change(within(dialog).getByLabelText("Trip"), { target: { value: "Clinic at Oak Ridge" } });
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Clinic at Oak Ridge" } });
     fireEvent.change(within(dialog).getByLabelText("Fee"), { target: { value: "0" } });
     expect(add.disabled).toBe(true);
     fireEvent.change(within(dialog).getByLabelText("Miles there and back"), { target: { value: "18" } });
@@ -163,7 +163,7 @@ describe("trips and pay from the calendar", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Mileage rate…" }));
     const dialog = await screen.findByRole("dialog", { name: "Mileage rate for 2026" });
     expect(within(dialog).getByText("Used for every later year until you set that year's.")).toBeTruthy();
-    const rate = within(dialog).getByLabelText("Dollars a mile") as HTMLInputElement;
+    const rate = within(dialog).getByLabelText("Per mile") as HTMLInputElement;
     expect(rate.value).toBe("0.70");
     const save = within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement;
     // A lone "$", an empty field and zero keep Save off.

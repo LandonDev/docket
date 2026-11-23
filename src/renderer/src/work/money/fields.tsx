@@ -1,4 +1,4 @@
-import { forwardRef, type ComponentProps } from "react";
+import { forwardRef, type ComponentProps, type KeyboardEvent } from "react";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 
 /**
@@ -12,3 +12,8 @@ export const AmountInput = forwardRef<HTMLInputElement, ComponentProps<"input">>
     </InputGroup>
   );
 });
+
+/** A form's keys: a held Return (a repeating keydown) never submits again; each save is pressed afresh. */
+export function noHeldReturn(e: KeyboardEvent<HTMLFormElement>): void {
+  if (e.key === "Enter" && e.repeat) e.preventDefault();
+}

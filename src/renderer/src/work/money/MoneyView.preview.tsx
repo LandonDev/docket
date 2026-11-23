@@ -13,7 +13,7 @@ import "./itemVerb";
 import { registry, type Link } from "../../lib/connection";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { Head, View, openMoneyDialog, setMoneyPeriod } from "./MoneyView";
-import { ALL_ROWS, EMPTY_READ, NOVEMBER, RECEIPT_SVG, readOf } from "./money.fixtures";
+import { ALL_ROWS, BOTH_WAYS, EMPTY_READ, NOVEMBER, RECEIPT_SVG, readOf } from "./money.fixtures";
 
 /**
  * The Money view over one fixed host, for `bun run ui:preview
@@ -24,11 +24,12 @@ import { ALL_ROWS, EMPTY_READ, NOVEMBER, RECEIPT_SVG, readOf } from "./money.fix
  * changed (`columns`), the entry dialog open on a row (`dialog`), receipts and the
  * calendar's offers waiting (`confirm`), offers alone (`confirm-offers`), a file held
  * over the view (`drop`), each dialog (`dialog-*`, `picture-failed`), the header's
- * menus (`menu-add`, `menu-more`) and a canvas item's More (`item-verb`).
+ * menus (`menu-add`, `menu-more`), a canvas item's More (`item-verb`) and a row
+ * with money both ways, read only (`dialog-both-ways`).
  * Made-up data; rendered by nothing in the app.
  */
 
-type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb" | "picture-failed" | "confirm-offers";
+type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb" | "picture-failed" | "confirm-offers" | "dialog-both-ways";
 let state: State = "month";
 let reads = 0;
 
@@ -175,6 +176,7 @@ function MoneyFrame({ s, height }: { s: State; height?: number }) {
   if (s === "dialog-request") openMoneyDialog({ kind: "invoice", as: "request" });
   if (s === "dialog-rate") openMoneyDialog({ kind: "rate" });
   if (s === "dialog-new") openMoneyDialog({ kind: "entry" });
+  if (s === "dialog-both-ways") openMoneyDialog({ kind: "row", row: BOTH_WAYS });
   usePress(s === "menu-add" ? "[data-money-head] [aria-haspopup=menu]:not([aria-label=More])" : s === "menu-more" ? "[data-money-head] [aria-label=More]" : null);
   usePortalCopy(portals, s.startsWith("dialog") || s.startsWith("menu") || s === "picture-failed", s === "menu-add" || s === "menu-more" ? MENU_PLACE[s] : undefined);
   useEffect(() => {

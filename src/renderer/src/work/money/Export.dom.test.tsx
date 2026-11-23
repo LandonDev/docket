@@ -21,7 +21,7 @@ vi.mock("../../lib/connection", async (original) => ({
     }),
   },
 }));
-const toast = Object.assign(vi.fn(), { error: vi.fn() });
+const toast = Object.assign(vi.fn(), { error: vi.fn(), loading: vi.fn(() => "t"), dismiss: vi.fn() });
 vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original<object>()), loadToast: async () => toast }));
 
 const { ExportDialog } = await import("./ExportDialog");
@@ -58,6 +58,18 @@ describe("Export", () => {
     expect(exportYears(2025, 2026)).toEqual({ years: [2026, 2025, 2024, 2023, 2022], first: 2025 });
     expect(exportYears(2019, 2026).first).toBe(2022);
     expect(exportYears(2031, 2026).first).toBe(2022);
+  });
+
+  it("says replaced only when a file it wrote, or the summary it kept, took an earlier one's place", async () => {
+    const answer = host.answer;
+    host.answer = (method, params) => (method === "work.money.keep" ? { ...(answer(method, params) as object), replaced: true } : answer(method, params));
+    await exportWith();
+    expect(toast).toHaveBeenLastCalledWith(`Exported ${year} for tax time`, expect.objectContaining({ description: "Replaced the earlier export." }));
+    cleanup();
+    toast.mockClear();
+    host.answer = answer;
+    await exportWith();
+    expect(toast).toHaveBeenLastCalledWith(`Exported ${year} for tax time`, expect.not.objectContaining({ description: expect.anything() }));
   });
 
   it("stays open with the error when nothing landed", async () => {

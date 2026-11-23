@@ -74,6 +74,9 @@ describe("File as receipt", () => {
     expect(offered(item("media", { at: "file", host: "box", path: "/home/ref/scan.png" }))).toEqual(["File as receipt"]);
     expect(offered(item("media", mail("game.mp4", "video/mp4")))).toEqual([]);
     expect(offered(item("sheet", mail("budget.xlsx")))).toEqual([]);
+    // By the host's own rule: an attachment with no extension is a receipt by its type, and one with neither is not.
+    expect(offered(item("media", mail("scan", "image/jpeg")))).toEqual(["File as receipt"]);
+    expect(offered(item("pdf", mail("scan", "application/octet-stream")))).toEqual([]);
     // Only in a job's pane: a code workspace's or a jobless pane has no ledger.
     expect(offered({ ...item("pdf", mail("invoice.pdf")), workspaceId: "code" })).toEqual([]);
     expect(offered({ ...item("pdf", mail("invoice.pdf")), workspaceId: null })).toEqual([]);
@@ -99,6 +102,13 @@ describe("File as receipt", () => {
     expect(toast).toHaveBeenCalledWith("Filed to confirm in Money", expect.objectContaining({ id: "t1", action: expect.objectContaining({ label: "Open Money" }) }));
     (toast.mock.calls[0][1] as { action: { onClick: () => void } }).action.onClick();
     expect(opened).toHaveBeenCalledWith({ workspaceId: "ws", view: "money" });
+  });
+
+  it("sends an attachment with no extension under its type's name", async () => {
+    host.file = Uint8Array.from([1, 2, 3]);
+    host.asked.length = 0;
+    await fileItem(item("media", mail("scan", "image/jpeg")), "box");
+    expect(host.asked.filter((a) => a.method === "work.money.receive").map((a) => a.params.name)).toEqual(["scan.jpg"]);
   });
 
   it("sends a file of the host by its place, for the host to copy", async () => {

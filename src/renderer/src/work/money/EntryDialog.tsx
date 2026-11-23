@@ -8,9 +8,10 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle } from "../../components/choice-toggle";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/cn";
-import { atOf, saveEntry } from "./api";
+import { atOf, openBook, saveEntry, withToast } from "./api";
+import { Button } from "../../components/ui/button";
 import { AmountInput } from "./fields";
-import { blankForm, canSave, fieldsOfForm, formOfRow, statusChoices, type EntryForm } from "./model";
+import { blankForm, bothWays, canSave, fieldsOfForm, formOfRow, rowMoney, statusChoices, type EntryForm } from "./model";
 import { sigOf } from "@shared/work/money";
 
 /**
@@ -113,6 +114,8 @@ function EntryBody({
 
   const ready = canSave(form);
   const finish = (fn: () => void) => (close ? close(fn) : fn());
+  // A row with money both in and out does not fit the one-way form: it is shown, not edited, and the ledger is the way to change it.
+  const locked = mode === "edit" && bothWays(row);
 
   const submit = () => {
     if (pending || busy) return;
@@ -141,6 +144,8 @@ function EntryBody({
     if (e.key !== "Enter" || e.nativeEvent.isComposing || !(e.target instanceof HTMLInputElement)) return;
     if (e.target.type === "checkbox") return;
     e.preventDefault();
+    // Return pressed afresh for each save: a held key never files the next receipt unseen.
+    if (e.repeat || locked) return;
     submit();
   };
 
@@ -150,10 +155,11 @@ function EntryBody({
   const showJob = mode === "confirm" && (jobs?.length ?? 0) > 1;
 
   const fields = (
-    <>
+    <fieldset disabled={locked} className="contents">
+      {locked ? <p className="text-xs text-muted-foreground">This row has money in and money out. Edit it in the ledger.</p> : null}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Amount">
-          <AmountInput ref={amount} value={form.amount} placeholder="0.00" onChange={(e) => patch({ amount: e.target.value })} />
+          {locked ? <Input value={rowMoney(row!)} readOnly className="tabular-nums" /> : <AmountInput ref={amount} value={form.amount} placeholder="0.00" onChange={(e) => patch({ amount: e.target.value })} />}
         </Field>
         <Field label="Date">
           <Input type="date" value={form.date} onChange={(e) => patch({ date: e.target.value })} className="tabular-nums" />
@@ -189,10 +195,12 @@ function EntryBody({
           <option key={s} value={s} />
         ))}
       </datalist>
+      {locked ? null : (
       <div className="flex min-h-7 items-center gap-4">
         <ChoiceToggle label="Spent or received" value={form.way} options={WAYS} onChange={(way) => patch({ way, status: form.status === "To reimburse" ? "Paid" : form.status })} />
         {form.way === "out" ? <CheckRow label="To be paid back" checked={form.reimburse} onCheckedChange={(reimburse) => patch({ reimburse })} /> : null}
       </div>
+      )}
       <div className={cn("grid gap-3", showStatus ? "grid-cols-2" : "grid-cols-1")}>
         {showStatus ? (
           <Field label="Status">
@@ -209,7 +217,7 @@ function EntryBody({
         </Field>
       ) : null}
       <ErrorLine error={error} />
-    </>
+    </fieldset>
   );
 
   return (
@@ -228,7 +236,15 @@ function EntryBody({
       ) : (
         <ModalBody>{fields}</ModalBody>
       )}
-      <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} busy={busy} disabled={!ready} start={typeof footerStart === "function" ? footerStart(pending) : footerStart} />
+      {locked ? (
+        <DialogFooter confirmLabel="Open ledger" closeOnConfirm onConfirm={() => withToast(() => openBook(env, workspaceId, "ledger"))}>
+          <Button variant="secondary" onClick={() => finish(onClose)}>
+            Close
+          </Button>
+        </DialogFooter>
+      ) : (
+        <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} busy={busy} disabled={!ready} start={typeof footerStart === "function" ? footerStart(pending) : footerStart} />
+      )}
     </form>
   );
 }

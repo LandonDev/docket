@@ -3,7 +3,7 @@ import type { CanvasItem } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
 import { openWorkView } from "../../lib/workSwitch";
 import { request } from "./api";
-import { inJob, itemName } from "./itemVerb";
+import { inJob, itemName, receiptNameOf } from "./itemVerb";
 import { bytesOfBase64, receiveFile } from "./receive";
 
 /**
@@ -42,7 +42,7 @@ export async function fileItem(item: CanvasItem, env: string): Promise<void> {
   }
   const id = toast.loading("Filing to Money…");
   try {
-    const name = itemName(item);
+    const name = receiptNameOf(item) ?? itemName(item);
     if (item.source.at === "file") {
       await request<MoneyReceived>(env, "work.money.receive", { key: crypto.randomUUID(), workspaceId, name, file: item.source, source: "drop" });
     } else {

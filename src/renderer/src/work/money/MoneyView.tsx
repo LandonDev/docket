@@ -20,11 +20,11 @@ import { Facts, splitFacts } from "../../surfaces/settings/hosts/Facts";
 import { shared, useShared } from "../tasks/store";
 import { ViewStateLine } from "../views/ViewStateLine";
 import type { WorkViewProps } from "../views/registry";
-import { atOf, markPaid, openBook, openBooks, openReceipt, useMoney, withToast } from "./api";
+import { atOf, heard, markPaid, openBook, openBooks, openReceipt, saySuggested, useMoney, withToast } from "./api";
 import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
 import { CATEGORY_GRID, ENTRIES_TAIL, OWED_GRID } from "./layout";
-import { receiveFiles, sortFiles } from "./receive";
+import { filingToast, receiveFiles, sortFiles, takesFile } from "./receive";
 import { ExportDialog } from "./ExportDialog";
 import { InvoiceDialog, invoiceTitle, type InvoiceKind } from "./InvoiceDialog";
 import { sendInvoice, sentAs } from "./send";
@@ -49,17 +49,19 @@ const SPANS = [
 export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string } | { kind: "trip"; offer: CalendarOffer | null } | { kind: "rate" } | { kind: "export" } | { kind: "invoice"; as: InvoiceKind };
 
 /** What the header and the body share: the period, and the dialog open. */
-const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null; bare: boolean }>({ period: periodNow(), dialog: null, bare: false });
+const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null; bare: Record<string, boolean> }>({ period: periodNow(), dialog: null, bare: {} });
 const set = (patch: Partial<ReturnType<typeof ui.get>>) => ui.set({ ...ui.get(), ...patch });
 /** Each visit opens on this month. */
-export const resetMoneyView = () => ui.set({ period: periodNow(), dialog: null, bare: false });
+export const resetMoneyView = () => ui.set({ ...ui.get(), period: periodNow(), dialog: null });
 /** Opens a dialog from outside the header (the preview, a later verb). */
 export const openMoneyDialog = (dialog: MoneyDialog) => set({ dialog });
 /** Puts the view on a period (the preview, the tests). */
 export const setMoneyPeriod = (period: PeriodState) => set({ period });
 
 export function Head({ env, workspace, sector }: WorkViewProps) {
-  const { period, bare } = useShared(ui);
+  // Whether this job was bare when last read: a job known to have no money opens with no period to step through, never flashing one.
+  const { period, bare: bareOf } = useShared(ui);
+  const bare = bareOf[workspace.id] === true;
   const unit = period.span;
   const addRows: MenuRow[] = [
     { kind: "item", id: "receipt", label: "Receipt…" },
@@ -141,10 +143,15 @@ export function View({ env, workspace }: WorkViewProps) {
   const picker = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const columns = read?.problems.find((p) => p.kind === "columns") ?? null;
+  const [restoreWaits, setRestoreWaits] = useState(false);
+  // Once the headers are back (he accepted them), a later fault starts afresh.
+  useEffect(() => {
+    if (read && !columns && restoreWaits) setRestoreWaits(false);
+  }, [read, columns, restoreWaits]);
   const bare = read !== null && !columns && isEmpty(read);
   useEffect(() => {
-    if (ui.get().bare !== bare) set({ bare });
-  }, [bare]);
+    if (read !== null && ui.get().bare[workspace.id] !== bare) set({ bare: { ...ui.get().bare, [workspace.id]: bare } });
+  }, [bare, read, workspace.id]);
 
   // Add → Receipt…: the system's picker, for several at once.
   useEffect(() => {
@@ -158,10 +165,9 @@ export function View({ env, workspace }: WorkViewProps) {
     const { taken, left } = sortFiles(files);
     if (left) void loadToast().then((toast) => toast(left));
     if (!taken.length) return;
-    void receiveFiles({ env, workspaceId: workspace.id, host: read?.root.host ?? null }, taken).then((refused) => {
-      void reload();
-      if (refused.length) void loadToast().then((toast) => toast.error(refused.join("\n")));
-    });
+    void filingToast(taken.length, () => receiveFiles({ env, workspaceId: workspace.id, host: read?.root.host ?? null }, taken), (refused) => refused)
+      .then(() => reload())
+      .catch(() => {});
   };
   const receiveRef = useRef(receive);
   receiveRef.current = receive;
@@ -172,7 +178,7 @@ export function View({ env, workspace }: WorkViewProps) {
       const target = event.target as Node | null;
       const mine = target === document.body || (target !== null && root.current?.contains(target));
       if (!mine || (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false]), [role=dialog]"))) return;
-      const files = Array.from(event.clipboardData?.files ?? []).filter((f) => /^image\//.test(f.type));
+      const files = Array.from(event.clipboardData?.files ?? []).filter(takesFile);
       if (!files.length) return;
       event.preventDefault();
       receiveRef.current(files);
@@ -223,7 +229,27 @@ export function View({ env, workspace }: WorkViewProps) {
   return (
     <div ref={root} data-money-view className="flex h-full min-h-0 flex-col">
       {load.error ? <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} /> : null}
-      {columns ? <ProblemLine word="The ledger's columns changed" detail={missingWords(columns.missing)} action="Restore columns" onPress={() => openBooks(env, workspace.id, true).then(reload)} /> : null}
+      {columns ? (
+        restoreWaits ? (
+          // The headers wait as a suggestion in the sheet: the press is where he accepts them, not Restore again.
+          <ProblemLine word="The ledger's columns changed" detail="Restored as a suggestion: accept it in the ledger" action="Open ledger" onPress={() => openBook(env, workspace.id, "ledger")} />
+        ) : (
+          <ProblemLine
+            word="The ledger's columns changed"
+            detail={missingWords(columns.missing)}
+            action="Restore columns"
+            onPress={() =>
+              openBooks(env, workspace.id, true).then((books) => {
+                if (books.suggested) {
+                  setRestoreWaits(true);
+                  saySuggested(env, workspace.id, RESTORE_WORDS);
+                }
+                return reload();
+              })
+            }
+          />
+        )
+      ) : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {body}
         {over ? (
@@ -273,6 +299,8 @@ export function View({ env, workspace }: WorkViewProps) {
           onCreated={(kept, invoice) => {
             void reload();
             const title = invoiceTitle(invoice.kind, invoice.number);
+            // The PDF is kept either way; on a ledger others can open, its row waits there for his accept.
+            heard(env, workspace.id, kept.acted, `${title} is kept. Its row waits in the ledger for you to accept.`);
             const file = kept.source;
             const receipt = kept.receipt ?? `${title}.pdf`;
             void loadToast().then((toast) =>
@@ -286,6 +314,8 @@ export function View({ env, workspace }: WorkViewProps) {
     </div>
   );
 }
+
+const RESTORE_WORDS = "The columns wait in the ledger for you to accept.";
 
 /** The picker offers what Money files: the one list, as extensions. */
 const RECEIPT_ACCEPT = ["image/*", "application/pdf", ...RECEIPT_EXTS.map((e) => `.${e}`)].join(",");
@@ -317,8 +347,8 @@ function SendRow({ env, workspaceId, read, row, onSent }: { env: string; workspa
 /** Something waits for his accept: receipts, or the calendar's offers. */
 const waits = (read: MoneyRead): boolean => read.toConfirm.length > 0 || read.calendar.length > 0;
 
-/** "No money yet": no ledger, or one with nothing in it at all, and nothing waits either (the first drop on a new job is seen). */
-export const isEmpty = (read: MoneyRead): boolean => !waits(read) && (!read.made || (read.sellers.length === 0 && read.rows.length === 0 && read.owed.length === 0 && read.miles.miles === 0));
+/** "No money yet": the job has never had money (`any`: a row or a trip in any period), and nothing waits either (the first drop on a new job is seen). */
+export const isEmpty = (read: MoneyRead): boolean => !waits(read) && !read.any;
 
 /** The view's one column, scrolling. */
 function Column({ children }: { children: ReactNode }) {
@@ -504,7 +534,7 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
               return (
                 <li key={key} data-owed-row={r.row} className={cn("grid min-h-10 items-center gap-4 border-b border-border text-[13px] last:border-0", OWED_GRID)}>
                   <span className="flex min-w-0 items-baseline gap-1">
-                    <span className="shrink-0 truncate text-foreground">{words.lead}</span>
+                    <span className="max-w-full shrink-0 truncate text-foreground">{words.lead}</span>
                     {words.after ? <span className="min-w-0 truncate text-muted-foreground">{words.after}</span> : null}
                   </span>
                   <span className="text-end text-xs text-muted-foreground tabular-nums">{sinceWords(r.since)}</span>
@@ -554,7 +584,17 @@ function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: s
             </TableCell>
             <TableCell className="max-w-0 truncate">{row.who}</TableCell>
             <TableCell className="max-w-0 truncate text-muted-foreground">{row.category}</TableCell>
-            <TableCell className="text-end">{rowMoney(row)}</TableCell>
+            <TableCell className="text-end">
+              {row.in && row.out ? (
+                // Money both ways: both figures, the In first.
+                <span className="inline-flex gap-2">
+                  <span>{`+${formatMoney(row.in)}`}</span>
+                  <span>{formatMoney(row.out)}</span>
+                </span>
+              ) : (
+                rowMoney(row)
+              )}
+            </TableCell>
             <TableCell className="last:pr-2 text-end">
               {row.receipt ? (
                 <Button variant="ghost" size="icon-xs" aria-label="Open receipt" className="relative z-10 text-muted-foreground" onClick={() => withToast(() => openReceipt(env, workspaceId, read, row.receipt))}>

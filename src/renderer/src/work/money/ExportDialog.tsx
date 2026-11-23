@@ -8,6 +8,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { loadToast } from "../../components/ui/toaster";
 import { openWorkView } from "../../lib/workSwitch";
 import { request } from "./api";
+import { noHeldReturn } from "./fields";
 import { keepPrinted, newKey, printPage } from "./print";
 
 /**
@@ -36,18 +37,21 @@ export async function runExport(env: string, workspaceId: string, choice: Export
   const made = await request<MoneyExport>(env, "work.money.export", { workspaceId, ...choice });
   const warnings = [...made.warnings];
   const files = [...made.files];
+  // Replaced: a file this export wrote, or the summary it kept, took an earlier one's place.
+  let replaced = made.replaced;
   if (made.summary) {
     try {
       const printed = await printPage(env, made.summary.name, made.summary.html);
       warnings.push(...printed.warnings);
       const kept = await keepPrinted(env, { workspaceId, what: "summary", year: choice.year }, printed.data, key);
+      if (kept.replaced) replaced = true;
       files.push(kept.receipt?.split(/[\\/]/).pop() ?? `${made.summary.name}.pdf`);
     } catch (err) {
       warnings.push(`The summary was not made: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   if (!files.length) throw new Error(warnings.join(", ") || "Nothing was made");
-  return { folder: made.folder, files, warnings, replaced: made.replaced };
+  return { folder: made.folder, files, warnings, replaced };
 }
 
 /** The toast's second line: that an earlier export was replaced, and what could not be made, as one comma run. */
@@ -118,6 +122,7 @@ function Body({ env, workspaceId, year, onClose, pending, setPending }: { env: s
 
   return (
     <form
+      onKeyDown={noHeldReturn}
       onSubmit={(e) => {
         e.preventDefault();
         submit();

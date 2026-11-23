@@ -8,7 +8,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
-import { heard, request, withToast } from "./api";
+import { heardTrip, request, withToast } from "./api";
 import { Facts } from "../../surfaces/settings/hosts/Facts";
 import { TO_CONFIRM_GRID } from "./layout";
 import { offerDay } from "./model";
@@ -45,13 +45,21 @@ export async function dropWaiting(env: string, item: Pick<Waiting, "id" | "name"
   );
 }
 
-/** Skips an offer: it is not offered again. */
-export const skipOffer = (env: string, workspaceId: string, offer: CalendarOffer): Promise<unknown> => request(env, "work.money.skip", { workspaceId, eventId: offer.eventId });
+/** Skips an offer: it is not offered again, and a toast says so with Undo. */
+export async function skipOffer(env: string, workspaceId: string, offer: CalendarOffer, reload: () => Promise<void>): Promise<void> {
+  await request(env, "work.money.skip", { workspaceId, eventId: offer.eventId });
+  void reload();
+  void loadToast().then((toast) =>
+    toast(`Skipped ${offer.title}`, {
+      action: { label: "Undo", onClick: () => withToast(() => request(env, "work.money.skip", { workspaceId, eventId: offer.eventId, undo: true }).then(reload)) },
+    }),
+  );
+}
 
 /** Adds an offer, saying a pay row that waits as a suggestion. */
 async function addOne(env: string, workspaceId: string, offer: CalendarOffer): Promise<void> {
   const tripped: MoneyTripped | null = await addOffer(env, workspaceId, offer);
-  heard(env, workspaceId, tripped?.pay);
+  heardTrip(env, workspaceId, tripped);
 }
 
 /** Add all: every whole offer, one after another. */
@@ -75,7 +83,7 @@ export function ToConfirmSection({ env, workspaceId, read, reload, onReview, onR
         </ul>
       ) : null}
       {read.calendar.length ? (
-        <div role="group" aria-label="From the calendar" className={cn("flex flex-col gap-1", read.toConfirm.length > 0 && "mt-4")}>
+        <div role="group" aria-label="From the calendar" className={cn("flex flex-col gap-1", read.toConfirm.length > 0 && "mt-2")}>
           <div className="flex min-h-6 items-center justify-between gap-2">
             <h3 className="text-xs font-medium text-muted-foreground">From the calendar</h3>
             {whole >= 2 ? (
@@ -158,8 +166,9 @@ function ReceiptRow({ env, item, onReview, onDiscard }: { env: string; item: Wai
 function Thumb({ env, item }: { env: string; item: Waiting }) {
   const picture = usePicture(env, item.picture && item.state === "ready" ? { id: item.id } : null);
   return (
-    <span aria-hidden className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-muted text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)">
-      {picture.state === "ready" ? <img src={picture.url} alt="" draggable={false} className="size-full object-cover" /> : <Receipt className="size-3.5" />}
+    // The image outline is a picture's: a glyph tile has none, as the calendar's tiles.
+    <span aria-hidden className={cn("grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-muted text-muted-foreground", picture.state === "ready" && "outline-1 -outline-offset-1 outline-(--image-outline)")}>
+      {picture.state === "ready" ? <img src={picture.url} alt="" draggable={false} className="size-full object-cover" onError={picture.broken} /> : <Receipt className="size-3.5" />}
     </span>
   );
 }
@@ -170,13 +179,13 @@ export function ReceiptPicture({ env, of, name }: { env: string; of: { id: strin
   if (picture.state === "ready") {
     return (
       <div data-receipt-picture className="max-h-[420px] overflow-x-hidden overflow-y-auto rounded-lg outline-1 -outline-offset-1 outline-(--image-outline) [--scrollbar-inset:var(--radius-lg)]">
-        <img src={picture.url} alt={name} draggable={false} className="block h-auto w-full" />
+        <img src={picture.url} alt={name} draggable={false} className="block h-auto w-full" onError={picture.broken} />
       </div>
     );
   }
   if (picture.state === "failed") {
     return (
-      <div data-receipt-picture="failed" className="flex h-[240px] w-full flex-col items-center justify-center gap-2 rounded-lg bg-muted text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)">
+      <div data-receipt-picture="failed" className="flex h-[420px] w-full flex-col items-center justify-center gap-2 rounded-lg bg-muted text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)">
         <Receipt className="size-4" />
         <p className="text-xs">The picture did not load</p>
         <Button variant="ghost" size="xs" onClick={picture.retry}>
@@ -232,7 +241,7 @@ function CalendarRows({ env, workspaceId, read, adding, onReview, reload }: { en
                 label={`${offer.title} menu`}
                 align="end"
                 rows={[{ kind: "item", id: "skip", label: "Skip" }]}
-                onPick={(id) => id === "skip" && withToast(() => skipOffer(env, workspaceId, offer).then(reload))}
+                onPick={(id) => id === "skip" && withToast(() => skipOffer(env, workspaceId, offer, reload))}
                 trigger={
                   <Button variant="ghost" size="icon-sm" aria-label={`More for ${offer.title}`} className="text-muted-foreground">
                     <MoreHorizontal />

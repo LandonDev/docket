@@ -5,8 +5,8 @@ import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
 import { Input } from "../../components/ui/input";
-import { request } from "./api";
-import { AmountInput } from "./fields";
+import { heardTrip, request } from "./api";
+import { AmountInput, noHeldReturn } from "./fields";
 import { amountText, offerDay, parseAmount } from "./model";
 
 /**
@@ -97,9 +97,11 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
     if (!params || pending) return;
     setError(null);
     setPending(true);
-    request(env, "work.money.trip", params).then(
-      () => {
+    request<MoneyTripped>(env, "work.money.trip", params).then(
+      (tripped) => {
         setPending(false);
+        // Its pay row or its log row may only wait as a suggestion: said, never shown as saved.
+        heardTrip(env, workspaceId, tripped);
         onSaved();
         close ? close(onClose) : onClose();
       },
@@ -112,6 +114,7 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
 
   return (
     <form
+      onKeyDown={noHeldReturn}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -136,7 +139,7 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
         <Field label="Date">
           <Input type="date" value={form.date} onChange={(e) => patch({ date: e.target.value })} className="tabular-nums" />
         </Field>
-        <Field label="Trip">
+        <Field label="Name">
           <Input value={form.title} autoComplete="off" onChange={(e) => patch({ title: e.target.value })} />
         </Field>
         <Field label="Place">

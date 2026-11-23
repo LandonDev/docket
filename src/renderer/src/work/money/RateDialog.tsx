@@ -3,7 +3,7 @@ import type { MoneyRate } from "@shared/contract-work-money";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
-import { AmountInput } from "./fields";
+import { AmountInput, noHeldReturn } from "./fields";
 import { request } from "./api";
 
 /** The mileage rate (More → Mileage rate…): his own dollars a mile for the period's year. */
@@ -14,6 +14,12 @@ export function parseRate(text: string): number | null {
   if (!/^(\d+\.?\d*|\.\d+)$/.test(bare)) return null;
   const n = Number(bare);
   return n > 0 && n <= 100 ? n : null;
+}
+
+/** The stored rate as he sees it: never rounded, padded to two places at least ("0.70", "0.7251"), so Save with no edit sends the same number. */
+export function rateText(rate: number): string {
+  const [whole, part = ""] = String(rate).split(".");
+  return `${whole}.${part.padEnd(2, "0")}`;
 }
 
 export function RateDialog({ env, workspaceId, rate, onClose, onSaved }: { env: string; workspaceId: string; rate: MoneyRate; onClose: () => void; onSaved: () => void }) {
@@ -29,7 +35,7 @@ function Body({ env, workspaceId, rate, onClose, onSaved, pending, setPending }:
   const close = useModalClose();
   // Bound to the year it opened for: that year's rate seeds it, and that year is what it saves.
   const [bound] = useState(rate);
-  const [text, setText] = useState(bound.rate.toFixed(bound.rate * 100 === Math.round(bound.rate * 100) ? 2 : 3));
+  const [text, setText] = useState(rateText(bound.rate));
   const [error, setError] = useState<string | null>(null);
   const value = parseRate(text);
   const submit = () => {
@@ -50,13 +56,14 @@ function Body({ env, workspaceId, rate, onClose, onSaved, pending, setPending }:
   };
   return (
     <form
+      onKeyDown={noHeldReturn}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
     >
       <ModalBody>
-        <Field label="Dollars a mile" hint="Used for every later year until you set that year's.">
+        <Field label="Per mile" hint="Used for every later year until you set that year's.">
           <AmountInput value={text} placeholder="0.70" onChange={(e) => setText(e.target.value)} />
         </Field>
         <ErrorLine error={error} />

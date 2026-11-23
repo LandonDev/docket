@@ -10,7 +10,7 @@ import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { request } from "./api";
-import { AmountInput } from "./fields";
+import { AmountInput, noHeldReturn } from "./fields";
 import { parseAmount } from "./model";
 import { keepPrinted, newKey, printPage } from "./print";
 
@@ -104,6 +104,7 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
   const onLineKey = (i: number) => (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
     e.preventDefault();
+    if (e.repeat) return;
     setForm((f) => (f ? { ...f, lines: [...f.lines.slice(0, i + 1), { ...BLANK_LINE }, ...f.lines.slice(i + 1)] } : f));
     setFocusLine(i + 1);
   };
@@ -154,6 +155,7 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
 
   return (
     <form
+      onKeyDown={noHeldReturn}
       onSubmit={(e) => {
         e.preventDefault();
         submit();

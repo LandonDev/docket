@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { MONEY_PART_BYTES, type MoneyPicture, type MoneyReceived } from "@shared/contract-work-money";
-import { isReceiptName, receiptExt } from "@shared/work/money";
+import { receiptFileName } from "@shared/work/money";
 import { registry } from "../../lib/connection";
 import { getPathForFile } from "../../lib/native";
 import { request } from "./api";
+import { loadToast } from "../../components/ui/toaster";
 
 /**
  * Receipts into To confirm (`work.money.receive`): a file of the window's own
@@ -75,7 +76,9 @@ export interface ReceiveTarget {
 }
 
 /** One receipt into To confirm; answers the host's last word on it. */
-export async function receiveFile(target: ReceiveTarget, file: Blob & { name?: string }, name = file.name ?? "Receipt"): Promise<MoneyReceived> {
+export async function receiveFile(target: ReceiveTarget, file: Blob & { name?: string }, given = file.name ?? "Receipt"): Promise<MoneyReceived> {
+  // The name the host files it under, by the one rule (a picture with no extension takes its type's).
+  const name = receiptFileName(given, file.type) ?? given;
   const base = { key: newKey(), workspaceId: target.workspaceId, name, ...(file.type ? { mime: file.type } : {}), source: target.source ?? "drop" };
   const path = typeof File !== "undefined" && file instanceof File && target.host && onHost(target.env) ? pathOf(file) : undefined;
   if (path) return request<MoneyReceived>(target.env, "work.money.receive", { ...base, file: { at: "file", host: target.host, path } });
@@ -98,8 +101,8 @@ export async function receiveFiles(target: ReceiveTarget, files: readonly File[]
   return refused;
 }
 
-/** A picture or a PDF, by the one list Money files (`isReceiptName`); a file with no extension by its type. */
-export const takesFile = (file: { type: string; name: string }): boolean => (receiptExt(file.name) ? isReceiptName(file.name) : /^image\//.test(file.type) || file.type === "application/pdf");
+/** A picture or a PDF, by the host's own rule (`receiptFileName`): a name Money takes, else a picture's or a PDF's type. */
+export const takesFile = (file: { type: string; name: string }): boolean => receiptFileName(file.name, file.type) !== null;
 
 /** What a batch of files leaves for Money: the ones it takes, and in words what it left out (null when nothing was left). */
 export function sortFiles(files: readonly File[]): { taken: File[]; left: string | null } {
@@ -113,7 +116,7 @@ export const LEFT_WORDS = "Money files pictures and PDFs.";
 
 export type PictureOf = { id: string } | { workspaceId: string; receipt: string };
 
-export type Picture = { state: "none" } | { state: "loading" } | { state: "ready"; url: string } | { state: "failed"; retry: () => void };
+export type Picture = { state: "none" } | { state: "loading" } | { state: "ready"; url: string; broken: () => void } | { state: "failed"; retry: () => void };
 
 /** A waiting receipt's picture, or a filed row's, as a URL: loading, ready, or failed with a way to ask again. The URL goes with the component. */
 export function usePicture(env: string, of: PictureOf | null): Picture {
@@ -127,6 +130,7 @@ export function usePicture(env: string, of: PictureOf | null): Picture {
     }
     let live = true;
     let made: string | null = null;
+    const failed = (): Picture => ({ state: "failed", retry: () => setAttempt((n) => n + 1) });
     setPicture({ state: "loading" });
     const ask = (part: number) => request<MoneyPicture>(env, "work.money.picture", { ...of, part });
     void (async () => {
@@ -134,8 +138,9 @@ export function usePicture(env: string, of: PictureOf | null): Picture {
       const rest = await Promise.all(Array.from({ length: Math.max(0, first.parts - 1) }, (_, i) => ask(i + 1)));
       if (!live) return;
       made = URL.createObjectURL(new Blob([bytesOfBase64([first, ...rest].map((p) => p.dataBase64))], { type: first.mime }));
-      setPicture({ state: "ready", url: made });
-    })().catch(() => live && setPicture({ state: "failed", retry: () => setAttempt((n) => n + 1) }));
+      // The bytes came, but the browser may still not draw them: the image's error comes back to the failed state.
+      setPicture({ state: "ready", url: made, broken: () => live && setPicture(failed()) });
+    })().catch(() => live && setPicture(failed()));
     return () => {
       live = false;
       if (made) URL.revokeObjectURL(made);
@@ -143,4 +148,20 @@ export function usePicture(env: string, of: PictureOf | null): Picture {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [env, key, attempt]);
   return picture;
+}
+
+/** "Filing 2 receipts…" from the moment files are taken until the host has them all: dismissed when they reach To confirm, or settled to the refusal. */
+export async function filingToast<T>(count: number, run: () => Promise<T>, refusedOf: (result: T) => string[]): Promise<T> {
+  const toast = await loadToast();
+  const id = toast.loading(count === 1 ? "Filing a receipt…" : `Filing ${count} receipts…`);
+  try {
+    const result = await run();
+    const refused = refusedOf(result);
+    if (refused.length) toast.error(refused.join("\n"), { id });
+    else toast.dismiss(id);
+    return result;
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err), { id });
+    throw err;
+  }
 }

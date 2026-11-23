@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { EntryFields, MoneyActed, MoneyBooks, MoneyRead, MoneyState } from "@shared/contract-work-money";
+import type { EntryFields, MoneyActed, MoneyBooks, MoneyRead, MoneyState, MoneyTripped } from "@shared/contract-work-money";
 import { receiptSource } from "@shared/contract-work-money";
 import type { CanvasSource } from "@shared/work/canvas";
 import type { Period, RowAt } from "@shared/work/money";
@@ -90,14 +90,27 @@ export const SUGGESTED_WORDS = "Suggested in the ledger. Accept it there.";
  * ledger others can open the write waits as a suggestion, which he accepts in the sheet. Answers false when
  * nothing was written.
  */
-export function heard(env: string, workspaceId: string, acted: MoneyActed | null | undefined): boolean {
+export function heard(env: string, workspaceId: string, acted: MoneyActed | null | undefined, words: string = SUGGESTED_WORDS): boolean {
   if (!acted) return true;
   if ("changed" in acted) {
     sayChanged();
     return false;
   }
-  if (acted.suggested) void loadToast().then((toast) => toast(SUGGESTED_WORDS, { action: { label: "Open ledger", onClick: () => withToast(() => openBook(env, workspaceId, "ledger")) } }));
+  if (acted.suggested) saySuggested(env, workspaceId, words);
   return true;
+}
+
+/** The one toast for a write that waits as a suggestion, with the way to accept it. */
+export function saySuggested(env: string, workspaceId: string, words: string = SUGGESTED_WORDS, book: "ledger" | "mileage" = "ledger"): void {
+  void loadToast().then((toast) => toast(words, { action: { label: book === "ledger" ? "Open ledger" : "Open mileage log", onClick: () => withToast(() => openBook(env, workspaceId, book)) } }));
+}
+
+/** A trip's answer: its pay row in the ledger and its row in the mileage log; one toast when either only waits as a suggestion. */
+export function heardTrip(env: string, workspaceId: string, tripped: MoneyTripped | null | undefined): void {
+  if (!tripped) return;
+  if (tripped.pay && "changed" in tripped.pay) return sayChanged();
+  const pay = !!tripped.pay && "suggested" in tripped.pay && !!tripped.pay.suggested;
+  if (pay || tripped.trip?.suggested) saySuggested(env, workspaceId, SUGGESTED_WORDS, pay ? "ledger" : "mileage");
 }
 
 /** Adds a row, or with `at` changes that one. True when it was written (or suggested); false when the ledger changed (the toast is said). */

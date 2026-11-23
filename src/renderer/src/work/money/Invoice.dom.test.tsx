@@ -26,7 +26,7 @@ vi.mock("../../lib/connection", async (original) => ({
 }));
 const written: unknown[] = [];
 vi.mock("../mail/mailto", () => ({ writeMail: (draft: unknown) => written.push(draft) }));
-const toast = Object.assign(vi.fn(), { error: vi.fn() });
+const toast = Object.assign(vi.fn(), { error: vi.fn(), loading: vi.fn(() => "t"), dismiss: vi.fn() });
 vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original<object>()), loadToast: async () => toast }));
 const opened = vi.fn();
 vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object>()), openWorkView: opened }));

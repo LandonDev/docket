@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { EntryFields, MoneyActed, MoneyRead, ToConfirm } from "@shared/contract-work-money";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { Button } from "../../components/ui/button";
 import { heard, moneyState, request, withToast } from "./api";
 import { EntryDialog } from "./EntryDialog";
 import { formOfReceipt, type EntryForm } from "./model";
@@ -82,9 +82,9 @@ export function ConfirmFlow({ env, workspaceId, read, first, onClose, reload }: 
       busy={dropping}
       title={waiting > 1 ? `Confirm receipt ${place} of ${waiting}` : undefined}
       footerStart={(saving) => (
-        // The word lines up with the picture's edge; it waits while Save is in flight.
+        // The word starts on the picture's edge (plain words: a busy label would centre it in the spinner's room); it waits while Save is in flight.
         <Button variant="ghost" className="-ms-2.5" disabled={dropping || saving} onClick={discard}>
-          <BusyLabel busy={dropping} label="Discard" />
+          {dropping ? "Discarding…" : "Discard"}
         </Button>
       )}
       onSave={save}
