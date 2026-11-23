@@ -44,8 +44,11 @@ export function changeWords(find: string, replace: string, max = 60): string {
   // Words that differ only in spaces or in characters that cannot be seen show whole, with those escaped, so the
   // summary never reads "a" to "a".
   if (looksAlike(find, replace)) {
-    const [p, q] = sides(find, replace, cut)
-    return `${visible(p)} to ${visible(q)}`
+    // every space shown as "·" and every unseen character by its escape, then cut where they differ: the line is one
+    // line, where runs of spaces would fold together
+    const inner = (v: string) => visible(v).slice(1, -1).replace(/ /g, '\u00b7')
+    const [p, q] = sides(inner(find), inner(replace), cut)
+    return `"${p}" to "${q}"`
   }
   const [p, q] = x === y || !x || !y ? sides(find, replace, cut) : sides(x, y, cut)
   // a side with nothing to see reads by its escapes, never as empty quotes or a bare cut: judged on the whole side
@@ -91,5 +94,8 @@ export const counted = (n: number, unit: 'place' | 'box'): string => `${n} ${n =
 export const reachWords = (words: string, now: number, shown: number, unit: 'place' | 'box'): string =>
   `${quoted(words)} stands in ${counted(now, unit)} now, not the ${counted(shown, unit)} shown`
 
-/** What a press says when the file moved after the change was held, though every change still stood as shown. */
-export const MOVED_SINCE = 'The file had changed since it was held; every change still stood as shown'
+/** A stale press's reason when the words are gone, in his words: ""Q1" is no longer in the deck". */
+export const goneWords = (words: string, from: string): string => `${quoted(words)} is no longer in ${from}`
+
+/** A stale press's reason when the words stand elsewhere than he was shown: other slides, or other boxes. */
+export const elsewhereWords = (words: string, what: 'slides' | 'boxes'): string => `${quoted(words)} stands in other ${what} now than the ones shown`

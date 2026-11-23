@@ -285,7 +285,7 @@ describe("an agent's change to a shared file, as he approves it", () => {
     expect(kindRows("google.edit", p)!.fields).toEqual([
       { label: "In", value: "Google Slides" },
       { label: "Account", value: "landon@purdue.edu" },
-      { label: "Where", value: "3 boxes on slides 2 and 5", gap: true },
+      { label: "Where", value: "3 places on slides 2 and 5", gap: true },
       { label: "Replace", value: "2025" },
       { label: "With", value: "2026" },
       { label: "Where", value: "Slide 3", gap: true },
@@ -328,6 +328,15 @@ describe("an agent's change to a shared file, as he approves it", () => {
     // a long clause is shown around, not again
     const clause = "after the regional qualifiers on the third weekend of March";
     expect(sentenceAround(`We play ${clause} and rest after the finals.`, clause)).toBe("We play […] and rest after the finals.");
+    // brackets are not words, and a single word beside the change says too little to show
+    expect(addsWords("(Bring IDs.)", "Bring IDs.")).toBe(false);
+    expect(addsWords("The [the words].", "the words")).toBe(false);
+    expect(addsWords("We leave at noon.", "noon")).toBe(true);
+    // a deck's reach in places, two in one box counted twice
+    expect(kindRows("google.edit", { app: "slides", edits: [{ find: "March", replace: "May", boxes: 1, count: 2, on: [1] }] })!.fields[1]).toEqual({ label: "Where", value: "2 places on slide 1", gap: true });
+    // an earlier "[…]" in the text never pulls the window away from the change
+    const far = `[…] ${"pad ".repeat(30)}we play ${clause} at home.`;
+    expect(sentenceAround(far, clause).includes("we play […] at home.")).toBe(true);
     // only the first place the words stand is marked, and a "…" the sentence holds already is left as it was
     const twice = sentenceAround(`Wait… we play ${clause}, then ${clause}.`, clause);
     expect(twice.split("[\u2026]").length - 1).toBe(1);

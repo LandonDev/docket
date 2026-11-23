@@ -342,7 +342,7 @@ describe('the google tools', () => {
     expect(text(got)).toMatch(/^Held for the owner/)
     expect(JSON.stringify([...fake.files])).toBe(before)
     expect(fake.calls.filter((c) => c.startsWith('POST') && !c.includes('/google/token'))).toEqual([])
-    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026', boxes: 1, on: [1], count: 1 }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2026' }] }) })])
+    expect(held).toMatchObject([{ kind: 'google.edit', payload: { app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026', boxes: 1, on: [1], count: 1, spots: expect.any(String) }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2026' }] } }])
     expect(results).toEqual([])
     const done = await googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)
     expect(done.summary).toBe('Made 2 changes in Pitch')
@@ -357,7 +357,7 @@ describe('the google tools', () => {
     expect(held[0]).toMatchObject({ payload: { edits: [{ find: 'Q1', replace: 'Q2', boxes: 1 }] } })
     fake.files.get('deck2')!.deck!.slides[0].texts[1].text = 'Q1 budget'
     fake.files.get('deck2')!.deck!.rev++
-    await expect(googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('stands in 2 boxes now, not the 1')
+    await expect(googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('"Q1" stands in 2 places now, not the 1 place shown')
     expect(fake.files.get('deck2')!.deck!.slides[0].texts.map((t) => t.text)).toEqual(['Q1 goals', 'Q1 budget'])
   })
 
@@ -378,6 +378,17 @@ describe('the google tools', () => {
       { objectId: 'tb:0:0', text: 'Q1 cost' },
       { objectId: 'tb:0:1', text: 'Q2' },
     ])
+  })
+
+  it('leaves a deck stale when its words moved to another box though every total is the same', async () => {
+    fake.addDeck(ME, 'deck6', 'Moved', [{ objectId: 's1', texts: [{ objectId: 'a', text: 'Q1 plan' }, { objectId: 'b', text: 'Budget' }] }])
+    const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck6' })
+    await run('google_slides_revise', { item: itemId, edits: [{ find: 'Q1', replace: 'Q2' }] })
+    const deck = fake.files.get('deck6')!.deck!
+    deck.slides[0].texts[0].text = 'Plan'
+    deck.slides[0].texts[1].text = 'Q1 budget'
+    deck.rev++
+    await expect(googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('"Q1" stands in other boxes now than the ones shown')
   })
 
   it('leaves a deck stale when a box already counted holds the words a second time', async () => {

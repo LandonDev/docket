@@ -1,4 +1,5 @@
-import { quoted, reachWords } from '@shared/work/changeWords'
+import { createHash } from 'node:crypto'
+import { elsewhereWords, quoted, reachWords } from '@shared/work/changeWords'
 import { GoogleError, type GoogleDeckJson } from './client'
 import type { Google } from './google'
 
@@ -48,7 +49,7 @@ export function deckText(d: { title: string; slides: TextShape[][] }): string {
 
 export type DeckEdit = { find: string; replace: string } | { shape: string; text: string }
 /** An edit as it waits: a replace with how many boxes held the words, a shape's with its slide and the words it held, so the press can tell it moved. */
-export type HeldDeckEdit = { find: string; replace: string; boxes?: number; on?: number[]; count?: number } | { shape: string; text: string; slide: number; was: string }
+export type HeldDeckEdit = { find: string; replace: string; boxes?: number; on?: number[]; count?: number; spots?: string } | { shape: string; text: string; slide: number; was: string }
 
 /**
  * Where a deck stands for these edits, run in order on a copy of its words as Google runs a batch: each replace-all
@@ -72,7 +73,9 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
       // how many times the words stand in all, so a second match inside a box already counted is seen too
       const count = state.flat().reduce((n, x) => n + x.text.split(e.find).length - 1, 0)
       if (!boxes) return { error: `"${e.find}" is on no slide.`, owner: `${quoted(e.find)} is on no slide now` }
-      held.push({ find: e.find, replace: e.replace, boxes, on, count })
+      // which boxes hold the words and how often each, as one short digest: totals alike but moved are told apart
+      const spots = createHash('sha256').update(state.flat().map((x) => `${x.objectId}:${x.text.split(e.find).length - 1}`).filter((t) => !t.endsWith(':0')).join(',')).digest('hex').slice(0, 16)
+      held.push({ find: e.find, replace: e.replace, boxes, on, count, spots })
       for (const x of state.flat()) x.text = x.text.split(e.find).join(e.replace)
       continue
     }
@@ -121,18 +124,19 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
   const moved = edits.findIndex((e, i) => 'slide' in e && (now.held[i] as { slide?: number }).slide !== e.slide)
   if (moved >= 0) return { stale: `a box on slide ${(edits[moved] as { slide: number }).slide} is on slide ${(now.held[moved] as { slide: number }).slide} now` }
   // Replace-all reaches every box with the words: more or fewer, or other slides, than he was shown is not what he approved.
-  type Reach = { boxes?: number; on?: number[]; count?: number }
+  type Reach = { boxes?: number; on?: number[]; count?: number; spots?: string }
   const spread = edits.findIndex((e, i) => {
     if (!('find' in e)) return false
     const n = now.held[i] as Reach
-    return (e.boxes !== undefined && n.boxes !== e.boxes) || (e.on !== undefined && JSON.stringify(n.on) !== JSON.stringify(e.on)) || (e.count !== undefined && n.count !== e.count)
+    return (e.boxes !== undefined && n.boxes !== e.boxes) || (e.on !== undefined && JSON.stringify(n.on) !== JSON.stringify(e.on)) || (e.count !== undefined && n.count !== e.count) || (e.spots !== undefined && n.spots !== e.spots)
   })
   if (spread >= 0) {
     const e = edits[spread] as { find: string } & Reach
     const n = now.held[spread] as Reach
-    if (e.boxes !== undefined && n.boxes !== e.boxes) return { stale: reachWords(e.find, n.boxes ?? 0, e.boxes, 'box') }
+    // places first, as the card counts them; then slides; then boxes, for words that moved with the totals alike
     if (e.count !== undefined && n.count !== e.count) return { stale: reachWords(e.find, n.count ?? 0, e.count, 'place') }
-    return { stale: `${quoted(e.find)} stands on other slides now than the ones shown` }
+    if (e.on !== undefined && JSON.stringify(n.on) !== JSON.stringify(e.on)) return { stale: elsewhereWords(e.find, 'slides') }
+    return { stale: elsewhereWords(e.find, 'boxes') }
   }
   await api.deckUpdate(fileId, requestsOf(edits), { requiredRevisionId: d.revisionId })
   return { moved: d.revisionId !== judgedOn }

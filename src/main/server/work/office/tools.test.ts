@@ -420,12 +420,13 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     const p = held[0]!.payload as OfficeEdit
     // someone added a line: the words still stand once, so it is written, and he is told the file moved
     office.docs.get(DOC)!.paragraphs.push('A co-author wrote this.')
-    await expect(press(p)).resolves.toMatchObject({ summary: expect.stringContaining('The file had changed since it was held') })
+    // the words still stand where he saw them: written, with nothing more to say
+    await expect(press(p)).resolves.toEqual({ summary: 'Changed Brief.docx' })
     expect(office.docs.get(DOC)!.paragraphs[0]).toBe('Draft two.')
     // the words are gone: stale, nothing written
     office.docs.set(DOC, { paragraphs: ['Draft three.'], tracked: [] })
     await expect(press(p)).rejects.toThrow(ActStale)
-    await expect(press(p)).rejects.toThrow('no longer in it')
+    await expect(press(p)).rejects.toThrow('Brief.docx changed since: "one" is no longer in the document. Nothing was changed.')
     // the words stand in more places than he was shown: stale, nothing written
     office.docs.set(DOC, { paragraphs: ['one and one'], tracked: [] })
     await expect(press(p)).rejects.toThrow('"one" stands in 2 places now, not the 1 place shown')

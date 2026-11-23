@@ -13,7 +13,8 @@ describe('changeWords: the words a replace changes', () => {
     expect(changeWords('very tight budget', 'tight budget')).toBe('"very tight" to "tight"')
   })
   it('shows both whole when they differ only in their spaces, and cuts each side to its limit', () => {
-    expect(changeWords('a b', 'a  b')).toBe('"a b" to "a  b"')
+    // spaces as "·" in the one-line list, so two never fold into one
+    expect(changeWords('a b', 'a  b')).toBe('"a·b" to "a··b"')
     // a character that cannot be seen is written as its escape
     expect(changeWords('ab', 'a\u200bb')).toBe('"ab" to "a\\u200bb"')
     // a side with nothing to see is never empty quotes

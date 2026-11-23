@@ -468,9 +468,10 @@ public extension OutboxModel {
                 let within: String? = if case .string(let w)? = e["within"], !w.isEmpty { w } else { nil }
                 if let within, addsWords(sentenceOf(within, find), find) { rows.append(("Where", sentenceAround(within, find))) }
                 else if !on.isEmpty {
-                    // a deck's replace by its slides, with how far it reaches: Slides counts boxes, PowerPoint places
-                    let many = boxes ?? count
-                    rows.append(("Where", (many ?? 1) > 1 ? "\(Int(many!)) \(boxes != nil ? "boxes" : "places") on \(slidesWords(on))" : (on.count == 1 ? "Slide \(on[0])" : "S" + slidesWords(on).dropFirst())))
+                    // a deck's replace by its slides, and how far it reaches in places, as both apps count them
+                    let spots: Double? = if case .number(let n)? = e["count"] { n } else { nil }
+                    let many = spots ?? count ?? boxes
+                    rows.append(("Where", (many ?? 1) > 1 ? "\(Int(many!)) places on \(slidesWords(on))" : (on.count == 1 ? "Slide \(on[0])" : "S" + slidesWords(on).dropFirst())))
                 }
                 else if let many = boxes ?? count, many > 1 { rows.append(("Where", "\(Int(many)) \(boxes != nil ? "boxes" : "places")")) }
             } else if case .string? = e["shape"] {
@@ -488,15 +489,17 @@ public extension OutboxModel {
         return (rows, starts)
     }
 
-    /// Whether a sentence says more than the words it holds: not when only stops, quotes, spaces or a cut's "…"
-    /// remain (the desktop's `addsWords`).
+    /// Whether a sentence says more than the words it holds: two words at least beside them, past stops, quotes and
+    /// brackets (the desktop's `addsWords`).
     nonisolated static func addsWords(_ sentence: String, _ words: String) -> Bool {
+        // two words at least beside the change: stops, quotes, brackets and a cut's "…" are not words
         let trimmed = words.trimmingCharacters(in: .whitespaces)
-        // the first place the words stand, as the desktop's `replace` takes it
-        let rest = trimmed.isEmpty ? sentence : sentence.range(of: trimmed).map { sentence.replacingCharacters(in: $0, with: "") } ?? sentence
-        let quiet: Set<Character> = [".", "!", "?", ",", ";", ":", "\"", "'", "\u{2018}", "\u{2019}", "\u{201C}", "\u{201D}", "\u{2026}"]
-        return rest.contains { !$0.isWhitespace && !quiet.contains($0) }
+        let rest = trimmed.isEmpty ? sentence : sentence.range(of: trimmed).map { sentence.replacingCharacters(in: $0, with: " ") } ?? sentence
+        let quiet: Set<Character> = [".", "!", "?", ",", ";", ":", "\"", "'", "(", ")", "[", "]", "\u{2018}", "\u{2019}", "\u{201C}", "\u{201D}", "\u{2026}"]
+        let words = rest.map { quiet.contains($0) ? " " : $0 }.split(whereSeparator: { $0.isWhitespace }).filter { $0.contains { $0.isLetter || $0.isNumber } }
+        return words.count >= 2
     }
+
 
     /// "slide 4", "slides 2 and 5", "slides 1, 3 and 6" (the desktop's `slidesWords`).
     nonisolated static func slidesWords(_ on: [Int]) -> String {
@@ -544,6 +547,8 @@ public extension OutboxModel {
     /// shown as "[…]" in it, since Replace shows them in full below.
     nonisolated static func sentenceAround(_ paragraph: String, _ words: String, max: Int = 120) -> String {
         var text = paragraph.contains(words) ? sentenceOf(paragraph, words) : paragraph
+        // where the words stand, kept through the "[…]": an earlier "[…]" of the text never moves the window
+        let at = text.range(of: words).map { text.distance(from: text.startIndex, to: $0.lowerBound) } ?? 0
         var key = words
         // the first place the words stand, as "[…]" with the sentence's own spacing; a bare "…" only marks a cut
         if words.count > 40, let r = text.range(of: words) {
@@ -552,7 +557,6 @@ public extension OutboxModel {
         }
         let s = Array(text)
         if s.count <= max { return text }
-        let at = text.range(of: key).map { text.distance(from: text.startIndex, to: $0.lowerBound) } ?? 0
         var from = Swift.max(0, at - Swift.max(0, (max - key.count) / 2))
         var to = Swift.min(s.count, from + max)
         // near the end: the window moves back so it is used whole

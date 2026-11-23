@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { changeWords, MOVED_SINCE, quoted } from '@shared/work/changeWords'
+import { changeWords, quoted } from '@shared/work/changeWords'
 import type { ActKindDef } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
 import { GoogleError, GOOGLE_MIME } from './client'
@@ -72,7 +72,7 @@ const Replace = z.object({ find: z.string().min(1).max(5_000), replace: z.string
 /** A Doc's replace, with the paragraph that held the words when it was suggested. */
 const DocReplace = Replace.extend({ within: z.string().max(200_000).optional() })
 /** A deck's replace-all, with how many boxes held the words then. */
-const DeckReplace = Replace.extend({ boxes: z.number().int().min(1).optional(), on: z.array(z.number().int().min(1)).max(500).optional(), count: z.number().int().min(1).optional() })
+const DeckReplace = Replace.extend({ boxes: z.number().int().min(1).optional(), on: z.array(z.number().int().min(1)).max(500).optional(), count: z.number().int().min(1).optional(), spots: z.string().max(100).optional() })
 
 /**
  * An agent's change to a Google file, kept on his host until he approves it (the owner's ruling of 2026-11-23):
@@ -93,8 +93,12 @@ export const GoogleEditSchema = z.discriminatedUnion('app', [
 ])
 export type GoogleEdit = z.infer<typeof GoogleEditSchema>
 
-/** How far a replace-all reaches, first, when it is more than one box: "3 boxes, ". */
-const reach = (e: GoogleEdit['edits'][number]): string => ('boxes' in e && e.boxes && e.boxes > 1 ? `${e.boxes} boxes, ` : '')
+/** How far a replace-all reaches, first, when it is more than one place: "3 places, ". */
+const reach = (e: GoogleEdit['edits'][number]): string => {
+  // places, as PowerPoint counts them: every time the words stand, two in one box counted twice
+  const n = 'count' in e && e.count ? e.count : 'boxes' in e && e.boxes ? e.boxes : 1
+  return n > 1 ? `${n} places, ` : ''
+}
 const editWords = (e: GoogleEdit['edits'][number]): string =>
   'find' in e ? reach(e) + (e.replace ? changeWords(e.find, e.replace) : `take out ${quoted(e.find)}`) : e.text ? `slide ${e.slide}'s ${changeWords(e.was, e.text)}` : `take out slide ${e.slide}'s ${quoted(e.was)}`
 
@@ -124,7 +128,7 @@ export const googleEdit: ActKindDef<GoogleEdit> = {
     // the reason is written in his words where it is found; one sentence after the colon, and a stop at its end
     if ('stale' in got) throw new ActStale(`${p.name} changed since: ${got.stale}. Nothing was changed.`)
     const n = p.edits.length
-    return { summary: `Made ${n === 1 ? 'the change' : `${n} changes`} in ${p.name}${got.moved ? `. ${MOVED_SINCE}` : ''}`, ref: { at: 'google', fileId: p.fileId } }
+    return { summary: `Made ${n === 1 ? 'the change' : `${n} changes`} in ${p.name}`, ref: { at: 'google', fileId: p.fileId } }
   },
   wayBack: () => null
 }

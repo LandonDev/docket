@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
 import { eventById, OfficeError, type OfficeCarrier } from './carrier'
-import { changeWords, counted, MOVED_SINCE, quoted, reachWords } from '@shared/work/changeWords'
+import { changeWords, counted, elsewhereWords, goneWords, quoted, reachWords } from '@shared/work/changeWords'
 import { fileKey } from './shared'
 
 /**
@@ -254,12 +254,11 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       const key = await fileKey({ carrier: c }, p.app === 'word' ? 'document' : 'deck', p.key)
       if (key === null) throw new ActNotSent(`${p.name} is not open in ${app} on this computer: open it, then press again. Nothing was changed.`)
       const { texts, on: slidesOf } = await fileRead(c, p.app, key)
-      const moved = textHash(texts) !== p.base
       if ('find' in p.edit && p.on && JSON.stringify(slidesOf(p.edit.find)) !== JSON.stringify(p.on))
-        throw new ActStale(`${p.name} changed since: the words now stand on other slides than the ones shown. Nothing was changed.`)
+        throw new ActStale(`${p.name} changed since: ${elsewhereWords(p.edit.find, 'slides')}. Nothing was changed.`)
       if ('find' in p.edit) {
         const now = placesOf(texts, p.edit.find)
-        if (now === 0) throw new ActStale(`${p.name} changed since: the words this replaces are no longer in it. Nothing was changed.`)
+        if (now === 0) throw new ActStale(`${p.name} changed since: ${goneWords(p.edit.find, p.app === 'word' ? 'the document' : 'the deck')}. Nothing was changed.`)
         if (now !== p.places) throw new ActStale(`${p.name} changed since: ${reachWords(p.edit.find, now, p.places, 'place')}. Nothing was changed.`)
       }
       let n: number
@@ -268,7 +267,7 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
       else throw new ActStale('PowerPoint takes only a find and replace')
       // What the app says it changed, when that is not what he was shown.
       const short = 'find' in p.edit && p.app === 'word' && n !== p.places ? `. ${app} changed ${n} of the ${counted(p.places, 'place')}` : ''
-      return { summary: `Changed ${p.name}${short}${moved ? `. ${MOVED_SINCE}` : ''}` }
+      return { summary: `Changed ${p.name}${short}` }
     },
     wayBack: () => null
   }

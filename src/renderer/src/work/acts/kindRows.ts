@@ -213,13 +213,14 @@ const LONG_WORDS = 40;
  */
 export function sentenceAround(paragraph: string, words: string, max = 120): string {
   let s = paragraph.includes(words) ? sentenceOf(paragraph, words) : paragraph;
+  // where the words stand in the sentence, kept through the "[…]": an earlier "[…]" of the text never moves the window
+  const at = Math.max(0, s.indexOf(words));
   let key = words;
   if (words.length > LONG_WORDS && s.includes(words)) {
-    s = s.replace(words, () => "[\u2026]");
+    s = s.slice(0, at) + "[\u2026]" + s.slice(at + words.length);
     key = "[\u2026]";
   }
   if (s.length <= max) return s;
-  const at = Math.max(0, s.indexOf(key));
   let from = Math.max(0, at - Math.max(0, Math.floor((max - key.length) / 2)));
   let to = Math.min(s.length, from + max);
   // near the end: the window moves back so it is used whole
@@ -231,8 +232,10 @@ export function sentenceAround(paragraph: string, words: string, max = 120): str
   return `${from > 0 ? "\u2026" : ""}${s.slice(from, to).trim()}${to < s.length ? "\u2026" : ""}`;
 }
 
-/** Whether a sentence says more than the words it holds: not when only stops, quotes, spaces or a cut's "…" remain. */
-export const addsWords = (sentence: string, words: string): boolean => sentence.replace(words.trim(), "").replace(/[\s.!?,;:"'\u2018\u2019\u201c\u201d\u2026]/g, "") !== "";
+/** Whether a sentence says more than the words it holds: two words at least beside them, past stops, quotes and brackets. */
+export const addsWords = (sentence: string, words: string): boolean =>
+  // two words at least beside the change: stops, quotes, brackets and a cut's "…" are not words
+  (sentence.replace(words.trim(), " ").replace(/[.!?,;:"'()[\]\u2018\u2019\u201c\u201d\u2026]/g, " ").match(/[\p{L}\p{N}][\p{L}\p{N}'\u2019$%-]*/gu) ?? []).length >= 2;
 
 const slidesWords = (on: number[]): string => (on.length === 1 ? `slide ${on[0]}` : `slides ${on.slice(0, -1).join(", ")} and ${on.at(-1)}`);
 
@@ -259,9 +262,9 @@ export function editRows(edits: unknown, places?: unknown): { label: string; val
     // the sentence the words stand in, unless it is the words themselves
     else if (whole !== null && addsWords(whole, from)) rows.push({ label: "Where", value: sentenceAround(e.within as string, from) });
     else if (on.length) {
-      // a deck's replace by its slides, with how far it reaches: Slides counts boxes, PowerPoint places
-      const many = boxes ?? count;
-      rows.push({ label: "Where", value: many !== null && many > 1 ? `${many} ${boxes !== null ? "boxes" : "places"} on ${slidesWords(on)}` : slidesWords(on).replace(/^s/, "S") });
+      // a deck's replace by its slides, and how far it reaches in places, as both apps count them: two in one box are two
+      const many = num(e.count) ?? count ?? boxes;
+      rows.push({ label: "Where", value: many !== null && many > 1 ? `${many} places on ${slidesWords(on)}` : slidesWords(on).replace(/^s/, "S") });
     }
     else if (boxes !== null && boxes > 1) rows.push({ label: "Where", value: `${boxes} boxes` });
     else if (count !== null && count > 1) rows.push({ label: "Where", value: `${count} places` });
