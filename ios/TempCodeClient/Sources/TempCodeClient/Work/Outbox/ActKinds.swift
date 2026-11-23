@@ -12,7 +12,7 @@ public extension OutboxModel {
         guard case .object(let o)? = payload else { return nil }
         var rows: [(String, String)] = []
         var body: String?
-        /// the rows that start a group of their own: a held change's second change and on
+        /// the rows that start a group of their own: each change of a held file change
         var gaps = Set<Int>()
         let addEdits = { (edits: [JSONValue], places: JSONValue?) in
             let (got, starts) = editRows(edits, places: places)
@@ -66,10 +66,14 @@ public extension OutboxModel {
             if let app = editApp[word(o["app"]) ?? ""] { rows.append(("In", o["vm"] == .bool(true) ? "\(app) in the Windows VM" : app)) }
             if case .object(let e)? = o["edit"] {
                 if case .string(let insert)? = e["insert"] {
-                    rows.append(("Adds at", word(e["at"]) == "start" ? "The start" : "The end"))
+                    // An insert is a change of its own group like any other: where it goes, its words the body.
+                    gaps.insert(rows.count)
+                    rows.append(("Where", word(e["at"]) == "start" ? "At the start" : "At the end"))
                     body = insert
                 } else {
-                    addEdits([.object(e)], o["places"])
+                    var withSlides = e
+                    if let on = o["on"] { withSlides["on"] = on }
+                    addEdits([.object(withSlides)], o["places"])
                 }
             }
         case .googleEdit:
@@ -440,7 +444,8 @@ public extension OutboxModel {
     nonisolated static func editRows(_ edits: [JSONValue], places: JSONValue? = nil) -> (rows: [(String, String)], starts: [Int]) {
         var rows: [(String, String)] = []
         var starts: [Int] = []
-        let shown = { (v: String) in v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? exactQuote(v) : v }
+        // nothing to see (spaces, breaks, a zero-width space): its escapes
+        let shown = { (v: String) in String(String.UnicodeScalarView(v.unicodeScalars.filter { $0.properties.generalCategory != .format })).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? exactQuote(v) : v }
         // What reads alike on screen: spaces squeezed, characters that cannot be seen dropped (the desktop's `looksAlike`).
         let seen = { (v: String) in String(String.UnicodeScalarView(v.unicodeScalars.filter { $0.properties.generalCategory != .format })).split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") }
         let count: Double? = if case .number(let n)? = places { n } else { nil }
@@ -455,8 +460,13 @@ public extension OutboxModel {
                 let boxes: Double? = if case .number(let n)? = e["boxes"] { n } else { nil }
                 let on: [Int] = if case .array(let a)? = e["on"] { a.compactMap { if case .number(let n) = $0 { Int(n) } else { nil } } } else { [] }
                 // Where: a Doc's sentence the words stand in, the slides a replace-all reaches, or how many places.
-                if case .string(let within)? = e["within"], !within.isEmpty, within != find { rows.append(("Where", sentenceAround(within, find))) }
-                else if !on.isEmpty { rows.append(("Where", (boxes ?? 1) > 1 ? "\(Int(boxes!)) boxes on \(slidesWords(on))" : "Slide \(on[0])")) }
+                let sentence: String? = if case .string(let within)? = e["within"], !within.isEmpty { sentenceAround(within, find) } else { nil }
+                if let sentence, sentence != find.trimmingCharacters(in: .whitespaces) { rows.append(("Where", sentence)) }
+                else if !on.isEmpty {
+                    // a deck's replace by its slides, with how far it reaches: Slides counts boxes, PowerPoint places
+                    let many = boxes ?? count
+                    rows.append(("Where", (many ?? 1) > 1 ? "\(Int(many!)) \(boxes != nil ? "boxes" : "places") on \(slidesWords(on))" : (on.count == 1 ? "Slide \(on[0])" : "S" + slidesWords(on).dropFirst())))
+                }
                 else if let many = boxes ?? count, many > 1 { rows.append(("Where", "\(Int(many)) \(boxes != nil ? "boxes" : "places")")) }
             } else if case .string? = e["shape"] {
                 from = if case .string(let w)? = e["was"] { w } else { "" }
@@ -489,9 +499,13 @@ public extension OutboxModel {
             if enders.contains(paragraph[prev]) && start < hit.lowerBound && paragraph[start].isWhitespace { break }
             start = prev
         }
+        // It ends at ".", "!" or "?" with a space or the paragraph's end after it, never at "$4.50"'s point.
         var end = hit.upperBound
-        while end < paragraph.endIndex, !enders.contains(paragraph[end]) { end = paragraph.index(after: end) }
-        if end < paragraph.endIndex { end = paragraph.index(after: end) }
+        while end < paragraph.endIndex {
+            let next = paragraph.index(after: end)
+            if enders.contains(paragraph[end]) && (next == paragraph.endIndex || paragraph[next].isWhitespace) { end = next; break }
+            end = next
+        }
         let sentence = paragraph[start..<end].trimmingCharacters(in: .whitespaces)
         if sentence.count <= max { return sentence }
         let chars = Array(sentence)

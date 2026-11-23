@@ -188,15 +188,15 @@ export function stepRows(args: Rec, targets: unknown): { label: string; value: s
 
 const EDIT_APP: Record<string, string> = { word: "Word", powerpoint: "PowerPoint", doc: "Google Docs", slides: "Google Slides" };
 
-/** Words as they go: a value that is only spaces or breaks is quoted with its escapes, so it never reads as nothing. */
-const shown = (v: string): string => (v.trim() ? v : exactQuote(v));
+/** Words as they go: a value with nothing to see (spaces, breaks, a zero-width space) is quoted with its escapes, so it never reads as nothing. */
+const shown = (v: string): string => (v.replace(/\p{Cf}/gu, "").trim() ? v : visible(v));
 
 /** The sentence of a paragraph that holds the words, cut to about 120 characters around them. */
 export function sentenceAround(paragraph: string, words: string, max = 120): string {
   const at = paragraph.indexOf(words);
   if (at < 0) return paragraph.length > max ? `${paragraph.slice(0, max - 1)}…` : paragraph;
-  const before = paragraph.slice(0, at).search(/[.!?]\s+[^.!?]*$/);
-  const start = before < 0 ? 0 : paragraph.slice(0, at).search(/[^.!?\s][^.!?]*$/);
+  // The sentence starts after the last ".", "!" or "?" and its space before the words, else at the paragraph's start.
+  const start = /^[\s\S]*[.!?]\s+/.exec(paragraph.slice(0, at))?.[0].length ?? 0;
   const tail = paragraph.slice(at + words.length).search(/[.!?](\s|$)/);
   const end = tail < 0 ? paragraph.length : at + words.length + tail + 1;
   let s = paragraph.slice(start, end).trim();
@@ -227,9 +227,15 @@ export function editRows(edits: unknown, places?: unknown): { label: string; val
     const on = Array.isArray(e.on) ? (e.on as unknown[]).filter((n): n is number => typeof n === "number") : [];
     const boxes = num(e.boxes);
     const count = num(places);
+    const sentence = str(e.within) !== null ? sentenceAround(e.within as string, from) : null;
     if (typeof e.shape === "string") rows.push(...row("Where", num(e.slide) === null ? null : `Slide ${e.slide}`));
-    else if (str(e.within) !== null && e.within !== from) rows.push({ label: "Where", value: sentenceAround(e.within as string, from) });
-    else if (on.length) rows.push({ label: "Where", value: boxes !== null && boxes > 1 ? `${boxes} boxes on ${slidesWords(on)}` : slidesWords(on).replace(/^s/, "S") });
+    // the sentence the words stand in, unless it is the words themselves
+    else if (sentence !== null && sentence !== from.trim()) rows.push({ label: "Where", value: sentence });
+    else if (on.length) {
+      // a deck's replace by its slides, with how far it reaches: Slides counts boxes, PowerPoint places
+      const many = boxes ?? count;
+      rows.push({ label: "Where", value: many !== null && many > 1 ? `${many} ${boxes !== null ? "boxes" : "places"} on ${slidesWords(on)}` : slidesWords(on).replace(/^s/, "S") });
+    }
     else if (boxes !== null && boxes > 1) rows.push({ label: "Where", value: `${boxes} boxes` });
     else if (count !== null && count > 1) rows.push({ label: "Where", value: `${count} places` });
     const alike = typeof to === "string" && to !== "" && looksAlike(from, to);
@@ -384,8 +390,12 @@ export function kindRows(kind: string, payload: unknown): KindRows | null {
       const insert = typeof e.insert === "string" ? e.insert : null;
       const app = EDIT_APP[str(p.app) ?? ""] ?? null;
       return {
-        // Held through Office in the Windows VM: his press goes there, so the row says so.
-        fields: [...row("In", app && p.vm === true ? `${app} in the Windows VM` : app), ...(insert === null ? editRows([e], p.places) : row("Adds at", e.at === "start" ? "The start" : "The end"))],
+        // Held through Office in the Windows VM: his press goes there, so the row says so. An insert is a change of
+        // its own group like any other: where it goes, its words the body.
+        fields: [
+          ...row("In", app && p.vm === true ? `${app} in the Windows VM` : app),
+          ...(insert === null ? editRows([{ ...e, ...(Array.isArray(p.on) ? { on: p.on } : {}) }], p.places) : [{ label: "Where", value: e.at === "start" ? "At the start" : "At the end", gap: true as const }]),
+        ],
         body: insert,
       };
     }

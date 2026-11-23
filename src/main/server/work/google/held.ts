@@ -94,10 +94,10 @@ export const GoogleEditSchema = z.discriminatedUnion('app', [
 export type GoogleEdit = z.infer<typeof GoogleEditSchema>
 
 const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
-/** Where a replace-all lands, when it reaches more than one box: " in 3 boxes". */
-const reach = (e: GoogleEdit['edits'][number]): string => ('boxes' in e && e.boxes && e.boxes > 1 ? ` in ${e.boxes} boxes` : '')
+/** How far a replace-all reaches, first, when it is more than one box: "3 boxes, ". */
+const reach = (e: GoogleEdit['edits'][number]): string => ('boxes' in e && e.boxes && e.boxes > 1 ? `${e.boxes} boxes, ` : '')
 const editWords = (e: GoogleEdit['edits'][number]): string =>
-  'find' in e ? (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) + reach(e) : e.text ? `slide ${e.slide}'s ${changeWords(e.was, e.text)}` : `take out slide ${e.slide}'s "${clip(e.was)}"`
+  'find' in e ? reach(e) + (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : e.text ? `slide ${e.slide}'s ${changeWords(e.was, e.text)}` : `take out slide ${e.slide}'s "${clip(e.was)}"`
 
 /** No matcher: no grant covers an agent's change to a file others can open, and no Away releases it. */
 export const googleEdit: ActKindDef<GoogleEdit> = {

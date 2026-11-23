@@ -90,10 +90,11 @@ export async function writeDeckEdits(g: Google, account: string, fileId: string,
   const edited = edits.find((e, i) => 'was' in e && (now.held[i] as { was?: string }).was !== e.was)
   if (edited) return { stale: `A shape on slide ${'slide' in edited ? edited.slide : '?'} holds other words than it did.` }
   // Replace-all reaches every box with the words: more or fewer than he was shown is not what he approved.
-  const spread = edits.findIndex((e, i) => 'find' in e && e.boxes !== undefined && (now.held[i] as { boxes?: number }).boxes !== e.boxes)
+  const spread = edits.findIndex((e, i) => 'find' in e && ((e.boxes !== undefined && (now.held[i] as { boxes?: number }).boxes !== e.boxes) || (e.on !== undefined && JSON.stringify((now.held[i] as { on?: number[] }).on) !== JSON.stringify(e.on))))
   if (spread >= 0) {
     const e = edits[spread] as { find: string; boxes: number }
-    return { stale: `"${e.find}" stands in ${(now.held[spread] as { boxes: number }).boxes} boxes now, not the ${e.boxes} it was suggested for.` }
+    const was = now.held[spread] as { boxes: number; on?: number[] }
+    return { stale: was.boxes !== e.boxes ? `"${e.find}" stands in ${was.boxes} boxes now, not the ${e.boxes} it was suggested for.` : `"${e.find}" stands on other slides now than the ones it was suggested for.` }
   }
   await api.deckUpdate(fileId, requestsOf(edits), { requiredRevisionId: d.revisionId })
   return { moved: d.revisionId !== judgedOn }

@@ -17,5 +17,8 @@ describe('changeWords: the words a replace changes', () => {
     // a character that cannot be seen is written as its escape
     expect(changeWords('ab', 'a\u200bb')).toBe('"ab" to "a\\u200bb"')
     expect(changeWords('x', 'y'.repeat(80))).toBe(`"x" to "${'y'.repeat(59)}…"`)
+    // one long word changed past the cut reads where it differs
+    const url = `https://purdue0.sharepoint.com/sites/esports/Shared%20Documents/Budgets/spring-lan-budget-`
+    expect(changeWords(`${url}draft`, `${url}final`)).toBe('"…s/spring-lan-budget-draft" to "…s/spring-lan-budget-final"')
   })
 })

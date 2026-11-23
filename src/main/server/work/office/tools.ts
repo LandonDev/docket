@@ -346,9 +346,11 @@ export const OFFICE_TOOLS: OfficeTool[] = [
 async function held(env: Env, app: OfficeEdit['app'], key: string, asked: string, edit: OfficeEdit['edit']): Promise<WorkToolResult> {
   const texts = await fileText(env.carrier, app, key)
   const places = 'find' in edit ? placesOf(texts, edit.find) : 0
+  // a deck's slides that hold the words, so the card can name them
+  const on = app === 'powerpoint' && 'find' in edit ? (await env.carrier.readSlides(key)).filter((s) => s.texts.some((t) => t.includes(edit.find))).map((s) => s.index) : undefined
   if ('find' in edit && places === 0) return workText('Nothing matched.')
   const name = fileName(key) || asked
-  const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts), ...(env.vm ? { vm: true as const } : {}) } satisfies OfficeEdit })
+  const item = env.ctx.held.create({ kind: 'office.edit', sessionId: env.sessionId, payload: { host: env.ctx.host, app, key, name, edit, places, base: textHash(texts), ...(on ? { on } : {}), ...(env.vm ? { vm: true as const } : {}) } satisfies OfficeEdit })
   return workText(`Others can open ${name}, so nothing in it changed: "${item.summary}" waits for the owner, and nobody else sees it. It is written only when he approves it.`)
 }
 

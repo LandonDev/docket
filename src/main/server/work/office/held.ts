@@ -100,6 +100,8 @@ export const OfficeEditSchema = z.object({
   places: z.number().int().min(0),
   /** `textHash` of the file's text then */
   base: z.string().max(100),
+  /** a PowerPoint replace's slides that held the words then, for the card */
+  on: z.array(z.number().int().min(1)).max(500).optional(),
   /** held through Office in the Windows VM: his press goes there, never to this host's desktop Office */
   vm: z.literal(true).optional()
 })
@@ -225,8 +227,9 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
     payload: OfficeEditSchema,
     words(p) {
       const e = p.edit
-      const many = p.places > 1 ? ` in ${p.places} places` : ''
-      const what = 'find' in e ? (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) + many : `add "${clip(e.insert)}" at its ${e.at}`
+      // how far it reaches first, so a cut line never loses it
+      const many = p.places > 1 ? `${p.places} places, ` : ''
+      const what = 'find' in e ? many + (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : `add "${clip(e.insert)}" at its ${e.at}`
       return { summary: `Make the change in ${p.name}: ${what}`, verb: 'Make the change' }
     },
     async execute(p, ctx) {
