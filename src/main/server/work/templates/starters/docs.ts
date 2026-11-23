@@ -96,10 +96,8 @@ export const DOCS: Record<string, () => DocFixture> = {
       blocks: [
         d.h1('{{Incident}}'),
         d.facts([
-          ['Status', 'Resolved, monitoring, or open'],
-          ['Severity', 'Sev 1, 2 or 3'],
-          ['Started', 'Date and time'],
-          ['Resolved', 'Date and time'],
+          ['Status and severity', 'Resolved, monitoring, or open · Sev 1, 2 or 3'],
+          ['Started and resolved', 'Date and time · date and time'],
           ['Written by', '{{Name}}, {{Date}}']
         ]),
         d.h2('Summary'),
@@ -111,16 +109,14 @@ export const DOCS: Record<string, () => DocFixture> = {
           [120, 504],
           [
             ['Time', 'What happened'],
-            ['00:00', 'First alert or report.'],
-            ['00:00', 'Investigation started; who was on it.'],
+            ['00:00', 'First alert or report, and who picked it up.'],
             ['00:00', 'Cause found.'],
             ['00:00', 'Fix deployed and confirmed.']
           ]
         ),
-        d.h2('Root cause'),
-        d.p('What went wrong, and why it was able to. Facts, not blame.'),
-        d.h2('Resolution'),
-        d.p('What was done to stop it, and anything restored or given back.'),
+        d.h2('Cause and fix'),
+        d.p('**Cause:** what went wrong, and why it was able to. Facts, not blame.'),
+        d.p('**Fix:** what was done to stop it, and anything restored or given back.'),
         d.h2('Follow-up actions'),
         d.table(
           [300, 124, 100, 100],
@@ -260,11 +256,8 @@ export const DOCS: Record<string, () => DocFixture> = {
       blocks: [
         d.h1('{{Event}}'),
         d.facts([
-          ['Event date', 'Date'],
-          ['Venue', 'Room or space, and its address'],
-          ['Event lead', '{{Name}}'],
-          ['Doors, start, end', '00:00 · 00:00 · 00:00'],
-          ['Updated', '{{Date}}']
+          ['When', 'Event date · doors 00:00 · start 00:00 · end 00:00'],
+          ['Venue', 'Room or space, and its address']
         ]),
         d.h2('Contacts'),
         d.table(
@@ -277,6 +270,8 @@ export const DOCS: Record<string, () => DocFixture> = {
             ['Safety and first aid', 'Person three', '']
           ]
         ),
+        d.h2('If something goes wrong'),
+        ...d.bullets(['**Someone is hurt:** the first-aid point and the number to call.', '**Power or network fails:** who calls whom, and what we do meanwhile.', '**We run late:** which segment gets shorter.']),
         d.h2('Run of show'),
         d.table(
           [64, 152, 248, 160],
@@ -293,9 +288,7 @@ export const DOCS: Record<string, () => DocFixture> = {
           ]
         ),
         d.h2('Equipment'),
-        ...d.checks(['Screens and cables', 'Microphones and batteries', 'Network and power strips', 'Signs and check-in sheets']),
-        d.h2('If something goes wrong'),
-        ...d.bullets(['**Power or network fails:** who calls whom, and what we do meanwhile.', '**Someone is hurt:** the first-aid point and the number to call.', '**We run late:** which segment gets shorter.'])
+        ...d.checks(['Screens, cables and adapters', 'Microphones and spare batteries', 'Network, power strips, signs and check-in sheets'])
       ]
     }
   },
@@ -309,11 +302,11 @@ export const DOCS: Record<string, () => DocFixture> = {
         d.h1('{{Home}} vs {{Away}}'),
         d.facts([
           ['Home', '{{Home}}'],
-          ['Visitor', '{{Away}}'],
+          ['Away', '{{Away}}'],
           ['Site', '{{Site}}'],
-          ['Game date', '{{Date}}'],
+          ['Game date', 'Date played'],
           ['Sport and level', 'Varsity, junior varsity, or other'],
-          ['Final score', 'Home 0, Visitor 0']
+          ['Final score', 'Home 0, Away 0']
         ]),
         d.h2('Crew'),
         d.table(

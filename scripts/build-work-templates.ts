@@ -56,6 +56,8 @@ async function deck(s: Starter, scratch: string): Promise<string> {
   const ctx = {
     host: 'env_build',
     sessionId: 's1',
+    // The scratch folder stands for the app's own data: a deck saved there is his and shared with no one (files/policy.ts sharedOf).
+    dataDir: scratch,
     scope,
     signal: new AbortController().signal,
     log: () => {},

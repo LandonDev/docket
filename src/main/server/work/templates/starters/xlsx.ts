@@ -53,7 +53,8 @@ export const CELL_STYLES = [
   'cellCenter',
   'cellCurrency',
   'cellNumber',
-  'cellDate'
+  'cellDate',
+  'inputTerms'
 ] as const
 export type CellStyle = (typeof CELL_STYLES)[number]
 
@@ -83,7 +84,11 @@ export interface SheetIn {
   heights?: Record<number, number>
   /** pick lists: a range and its choices */
   lists?: { range: string; values: string[] }[]
-  /** the page header and footer, in Excel's own codes (`&L`, `&C`, `&R`, `&P`, `&N`) */
+  /**
+   * The page header and footer, in Excel's own codes (`&L`, `&C`, `&R`, `&P`,
+   * `&N`). The header prints from page two on: page one's own title says it
+   * already. The footer prints on every page.
+   */
   header?: string
   footer?: string
 }
@@ -150,7 +155,9 @@ const NUM_FMTS: Record<number, string> = {
   167: 'mmmm yyyy',
   168: '#,##0_)',
   /** text set right, one bracket's width from the rule */
-  169: '@_)'
+  169: '@_)',
+  /** payment terms as a number of days that reads "Net 30" */
+  170: '"Net "0'
 }
 /** Excel's named styles: [name, builtinId, the style's own format]. */
 const NAMED: [string, number, string][] = [
@@ -206,7 +213,8 @@ const XFS: Record<CellStyle, Xf> = {
   cellCenter: { style: 'Normal', border: 6, align: CENTER },
   cellCurrency: { style: 'Currency', border: 6, fmt: 164 },
   cellNumber: { style: 'Normal', border: 6, fmt: 168 },
-  cellDate: { style: 'Normal', border: 6, fmt: 165, align: LEFT }
+  cellDate: { style: 'Normal', border: 6, fmt: 165, align: LEFT },
+  inputTerms: { style: 'Input', fill: 2, border: 4, fmt: 170, align: LEFT }
 }
 const STYLE_INDEX = new Map(CELL_STYLES.map((s, i) => [s, i]))
 
@@ -342,9 +350,16 @@ function sheetXml(sheet: SheetIn, shared: Strings, tab: number): string {
       : '') +
     '<pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>' +
     `<pageSetup paperSize="1" orientation="${sheet.landscape ? 'landscape' : 'portrait'}" fitToWidth="1" fitToHeight="0"/>` +
-    `<headerFooter>${sheet.header ? `<oddHeader>${esc(sheet.header)}</oddHeader>` : ''}<oddFooter>${esc(sheet.footer ?? '&CPage &P of &N')}</oddFooter></headerFooter>` +
+    headerFooter(sheet) +
     '</worksheet>'
   )
+}
+
+/** A header from page two on (`differentFirst`, page one's header left empty), the footer on every page. */
+function headerFooter(sheet: SheetIn): string {
+  const footer = `<oddFooter>${esc(sheet.footer ?? '&CPage &P of &N')}</oddFooter>`
+  if (!sheet.header) return `<headerFooter>${footer}</headerFooter>`
+  return `<headerFooter differentFirst="1"><oddHeader>${esc(sheet.header)}</oddHeader>${footer}<firstFooter>${esc(sheet.footer ?? '&CPage &P of &N')}</firstFooter></headerFooter>`
 }
 
 const quoteSheet = (name: string): string => `'${name.replace(/'/g, "''")}'`

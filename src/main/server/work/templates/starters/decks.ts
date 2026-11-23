@@ -44,7 +44,8 @@ export const DECKS: Record<string, NewDeck> = {
     title: 'Review deck',
     slides: [
       { layout: 'title', title: '{{Video}}', subtitle: 'Review · {{Name}} · {{Date}}' },
-      { layout: 'bullets', title: 'Where we are', bullets: ['Cut: first, second, or final', 'Running time against the target', 'What changed since the last review'] },
+      { layout: 'bullets', title: 'Where we are', bullets: ['Cut: first, second, or final', 'What changed since the last review'] },
+      { layout: 'bullets', title: 'Watch', bullets: ['Link to the cut: add it here', 'Password: add it here', 'Running time: 0:00, against a target of 0:00'] },
       {
         layout: 'table',
         title: 'Notes from the last review',
@@ -55,8 +56,7 @@ export const DECKS: Record<string, NewDeck> = {
           ['0:00', 'Note three: what to change, and why', 'No']
         ]
       },
-      { layout: 'bullets', title: 'What we want feedback on', bullets: ['The hook in the first five seconds', 'Pacing through the middle', 'The thumbnail and title'] },
-      { layout: 'bullets', title: 'Decisions needed', bullets: ['Decision one', 'Decision two'] },
+      { layout: 'bullets', title: 'What we want feedback on', bullets: ['The hook in the first five seconds', 'Pacing through the middle', 'The thumbnail and title', 'Decisions needed: each one, and who makes it'] },
       {
         layout: 'table',
         title: 'Next steps',
@@ -77,17 +77,17 @@ export const DECKS: Record<string, NewDeck> = {
       { layout: 'bullets', title: 'Highlights', bullets: ['Highlight one, with its number', 'Highlight two, with its number', 'Highlight three, with its number'] },
       {
         layout: 'chart',
-        title: 'Participation',
-        chart: { type: 'bar', categories: ['Month one', 'Month two', 'Month three', 'Month four'], series: [{ name: 'Participants', values: [40, 55, 62, 70] }] }
+        title: 'Participation: people each month',
+        chart: { type: 'bar', categories: ['Month one', 'Month two', 'Month three', 'Month four'], series: [{ name: 'People taking part', values: [40, 55, 62, 70] }] }
       },
       {
         layout: 'table',
         title: 'Goals',
         table: [
           ['Goal', 'Target', 'Result', 'Status'],
-          ['Goal one', '0', '0', 'On track'],
-          ['Goal two', '0', '0', 'Behind'],
-          ['Goal three', '0', '0', 'Done']
+          ['Goal one', '100', '104', 'Done'],
+          ['Goal two', '50', '38', 'On track'],
+          ['Goal three', '20', '6', 'Behind']
         ]
       },
       { layout: 'bullets', title: 'Challenges', bullets: ['Challenge one, and what we are doing about it', 'Challenge two, and what we are doing about it'] },
@@ -123,7 +123,7 @@ export const DECKS: Record<string, NewDeck> = {
         ]
       },
       { layout: 'bullets', title: 'Why {{Job}}', bullets: ['Relevant work', 'The team', 'How we stay in touch'] },
-      { layout: 'section', title: 'Next steps', subtitle: '{{Name}} · {{Job}}' }
+      { layout: 'bullets', title: 'Next steps', bullets: ['Reply with questions or changes', 'Sign the proposal to accept', 'We schedule the kickoff', 'Talk to {{Name}}, {{Job}}'] }
     ]
   }
 }

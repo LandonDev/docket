@@ -117,3 +117,94 @@ describe('the checked-in starters', () => {
     expect(scanOffice(s.form, filled.bytes)).toEqual([])
   })
 })
+
+const partOf = (file: string, name: string): string => partText(readZip(bytesOf(file)).find((p) => p.name === name)!)
+const docxFiles = STARTERS.filter((s) => s.form === 'docx').map(starterFile)
+const xlsxFiles = STARTERS.filter((s) => s.form === 'xlsx').map(starterFile)
+const BODY = /<w:tbl>[\s\S]*?<\/w:tbl>|<w:p\/>|<w:p>[\s\S]*?<\/w:p>/g
+const isList = (p: string): boolean => p.includes('<w:pStyle w:val="ListParagraph"/>')
+
+describe('the starter documents on paper', () => {
+  it.each(docxFiles)('%s: every paragraph in a cell, an empty one too, has no space after it', (file) => {
+    const xml = partOf(file, 'word/document.xml')
+    for (const cell of xml.match(/<w:tc>[\s\S]*?<\/w:tc>/g) ?? []) {
+      expect(cell, file).not.toContain('<w:p/>')
+      for (const p of cell.match(/<w:p>[\s\S]*?<\/w:p>/g) ?? []) expect(p, file).toMatch(/<w:pPr>[\s\S]*<w:spacing w:after="0"\/>[\s\S]*<\/w:pPr>/)
+    }
+  })
+
+  it.each(docxFiles)('%s: no list or table is cut from what leads into it, nor split', (file) => {
+    const parts = partOf(file, 'word/document.xml').match(BODY) ?? []
+    parts.forEach((part, i) => {
+      const next = parts[i + 1] ?? ''
+      if (part.startsWith('<w:tbl>')) {
+        const rows = part.match(/<w:tr>[\s\S]*?<\/w:tr>/g) ?? []
+        rows.forEach((row, r) => {
+          expect(row, file).toContain('<w:cantSplit/>')
+          // Every row but the last keeps with the next, so the table moves whole.
+          if (r < rows.length - 1) for (const p of row.match(/<w:p>[\s\S]*?<\/w:p>/g) ?? []) expect(p, file).toContain('<w:keepNext/>')
+        })
+      } else if (isList(part) && isList(next)) expect(part, `${file}: a list item`).toContain('<w:keepNext/>')
+      else if (!isList(part) && (next.startsWith('<w:tbl>') || isList(next))) {
+        // A heading keeps with the next by its style; any other line that leads into a list or a table does so itself.
+        if (!/<w:pStyle w:val="Heading\d"\/>/.test(part)) expect(part, `${file}: a lead line`).toContain('<w:keepNext/>')
+      }
+    })
+    expect(partOf(file, 'word/styles.xml')).toMatch(/w:styleId="Heading2">[\s\S]*?<w:keepNext\/>/)
+  })
+
+  it('Game report says Away as its field does, and leaves the game date for the day played', () => {
+    const xml = partOf('ref/Game report.docx', 'word/document.xml')
+    expect(xml).not.toContain('Visitor')
+    expect(xml).toContain('Date played')
+    expect(xml).toContain('Submitted by {{Name}} on {{Date}}.')
+  })
+})
+
+describe('the starter sheets', () => {
+  it.each(xlsxFiles)('%s: the page header prints from page two on, the footer on every page', (file) => {
+    for (const p of readZip(bytesOf(file)).filter((x) => /^xl\/worksheets\/sheet\d+\.xml$/.test(x.name))) {
+      const hf = /<headerFooter\b[^>]*>[\s\S]*?<\/headerFooter>/.exec(partText(p))![0]
+      expect(hf).not.toContain('<firstHeader>')
+      if (hf.includes('<oddHeader>')) {
+        expect(hf).toContain('differentFirst="1"')
+        expect(/<firstFooter>([\s\S]*?)<\/firstFooter>/.exec(hf)?.[1]).toBe(/<oddFooter>([\s\S]*?)<\/oddFooter>/.exec(hf)?.[1])
+      }
+    }
+  })
+
+  it.each(xlsxFiles)('%s: no formula reads an entered zero as nothing entered', (file) => {
+    for (const f of partOf(file, 'xl/worksheets/sheet1.xml').match(/<f>[^<]*<\/f>/g) ?? []) expect(f, file).not.toMatch(/\b[A-Z]{1,2}\$?\d+=0\b/)
+  })
+
+  it('the checklist and the shot list count a Yes only on a row that holds a task, and pick lists sit on task rows only', () => {
+    const tasks = (file: string, column: string): Set<number> => {
+      const xml = partOf(file, 'xl/worksheets/sheet1.xml')
+      return new Set([...xml.matchAll(new RegExp(`<c r="${column}(\\d+)"[^>]*t="s"`, 'g'))].map((m) => +m[1]!))
+    }
+    const checklist = partOf('cosmic/Release checklist.xlsx', 'xl/worksheets/sheet1.xml')
+    expect(checklist).toContain('<f>COUNTIFS(B6:B40,"&lt;&gt;",E6:E40,"Yes")&amp;" of "&amp;COUNTA(B6:B40)&amp;" steps done"</f>')
+    // The Done list covers the step rows and no phase row (a phase's name is in column A, its B empty).
+    const steps = tasks('cosmic/Release checklist.xlsx', 'B')
+    const sqref = /<dataValidation [^>]*sqref="([^"]+)"/.exec(checklist)![1]!
+    const listed = sqref.split(' ').flatMap((r) => {
+      const [, a, b] = /^E(\d+):E(\d+)$/.exec(r)!
+      return Array.from({ length: +b! - +a! + 1 }, (_, i) => +a! + i)
+    })
+    expect(listed.every((r) => steps.has(r))).toBe(true)
+    expect(listed.length).toBe(16)
+    const shots = partOf('hypixel/Shot list.xlsx', 'xl/worksheets/sheet1.xml')
+    expect(shots).toContain('<f>COUNTIFS(C7:C26,"&lt;&gt;",H7:H26,"Yes")&amp;" of "&amp;COUNTA(C7:C26)&amp;" shots done"</f>')
+  })
+
+  it('the invoice has a sender to write, and one terms value drives the due date', () => {
+    const sheet = partOf('unify/Invoice.xlsx', 'xl/worksheets/sheet1.xml')
+    const strings = partOf('unify/Invoice.xlsx', 'xl/sharedStrings.xml')
+    expect(strings).toContain('Email or phone')
+    expect(sheet).toContain('<f>IF(ISNUMBER(D8),D8+N(D10),"")</f>'.replace(/"/g, '&quot;').replace(/&quot;/g, '"'))
+    expect(sheet).toMatch(/<c r="D10" s="\d+"><v>30<\/v><\/c>/)
+    // The payment note names no number of days: the terms cell is the one place it lives.
+    const note = /<t>(Pay by bank transfer[^<]*)<\/t>/.exec(strings)![1]!
+    expect(note).not.toMatch(/\d/)
+  })
+})

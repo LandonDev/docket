@@ -149,8 +149,13 @@ function themeBody(xml: string): string {
       .replace(/<w:(top|left|bottom|right|insideH|insideV) w:val="single" w:color="auto" w:sz="4"\/>/g, TABLE_LINE)
       // A table's cells breathe: a little room above and below their words.
       .replace(/<\/w:tblPr>/g, '<w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr>')
-      // A cell's own paragraph needs no space after it: the cell's margins give it.
-      .replace(/(<w:tc>[\s\S]*?<\/w:tc>)/g, (cell) => cell.replace(/<w:p>/g, '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr>').replace(/<w:p><w:pPr>([\s\S]*?)<\/w:pPr><w:pPr>/g, '<w:p><w:pPr>$1'))
+      // A cell's own paragraph needs no space after it: the cell's margins give it. An empty cell's is `<w:p/>`.
+      .replace(/(<w:tc>[\s\S]*?<\/w:tc>)/g, (cell) =>
+        cell
+          .replace(/<w:p\/>/g, '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>')
+          .replace(/<w:p>(?!<w:pPr><w:spacing w:after="0"\/><\/w:pPr><\/w:p>)/g, '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr>')
+          .replace(/<w:p><w:pPr><w:spacing w:after="0"\/><\/w:pPr><w:pPr>/g, '<w:p><w:pPr><w:spacing w:after="0"/>')
+      )
       // A row that is no head says nothing: the writer's `<w:tblHeader w:val="off"/>` is read as a head by readers that look only for the tag (work-kit's readDocx among them).
       .replace(/<w:trPr><w:tblHeader w:val="(?:off|false|0)"\/><\/w:trPr>/g, '')
       .replace(/<w:tblHeader w:val="(?:off|false|0)"\/>/g, '')
@@ -161,6 +166,48 @@ function themeBody(xml: string): string {
       .replace(/(<w:pStyle w:val="ListParagraph"\/>(?:(?!<\/w:p>).)*<\/w:p>)<w:p><w:r>/g, '$1<w:p><w:pPr><w:spacing w:before="160"/></w:pPr><w:r>')
       .replace(/<w:tr>\s*<w:trPr>\s*<w:tblHeader\/>\s*<\/w:trPr>([\s\S]*?)<\/w:tr>/g, (row) => row.replace(/<\/w:tcPr>/g, `${HEAD_SHADE}</w:tcPr>`))
   )
+}
+
+/** A paragraph that stays on the page of the one after it. `w:keepNext` stands right after the paragraph's style, as the schema orders a paragraph's properties. */
+export function keepNext(p: string): string {
+  if (p.includes('<w:keepNext/>')) return p
+  if (p === '<w:p/>') return '<w:p><w:pPr><w:keepNext/></w:pPr></w:p>'
+  if (!p.startsWith('<w:p><w:pPr>')) return p.replace(/^<w:p>/, '<w:p><w:pPr><w:keepNext/></w:pPr>')
+  return /^<w:p><w:pPr><w:pStyle [^>]*\/>/.test(p) ? p.replace(/^(<w:p><w:pPr><w:pStyle [^>]*\/>)/, '$1<w:keepNext/>') : p.replace(/^<w:p><w:pPr>/, '<w:p><w:pPr><w:keepNext/>')
+}
+
+const BODY_PART = /<w:tbl>[\s\S]*?<\/w:tbl>|<w:p\/>|<w:p>[\s\S]*?<\/w:p>/g
+const isList = (p: string): boolean => p.includes('<w:pStyle w:val="ListParagraph"/>')
+const isHeading = (p: string): boolean => /<w:pStyle w:val="Heading\d"\/>/.test(p)
+
+/**
+ * Nothing short is cut from what it belongs to. A heading keeps with what
+ * follows by its style; here a list keeps whole (each item but its last
+ * keeps with the next), a table keeps whole (every row but its last keeps
+ * with the next, and no row splits), and a line that leads into a list or a
+ * table keeps with it. So a heading, its lead line, a list or a table of up
+ * to a page move to the next page together, or not at all.
+ */
+export function keepTogether(xml: string): string {
+  const parts = [...xml.matchAll(BODY_PART)].map((m) => ({ at: m.index, text: m[0] }))
+  let out = ''
+  let at = 0
+  parts.forEach((part, i) => {
+    const next = parts[i + 1]?.text ?? ''
+    let text = part.text
+    if (text.startsWith('<w:tbl>')) {
+      const rows = (text.match(/<w:tr>[\s\S]*?<\/w:tr>/g) ?? []).length
+      let r = 0
+      text = text.replace(/<w:tr>[\s\S]*?<\/w:tr>/g, (row) => {
+        let kept = row.replace(/^<w:tr>(?!<w:trPr>)/, '<w:tr><w:trPr><w:cantSplit/></w:trPr>').replace(/^<w:tr><w:trPr>(?!<w:cantSplit\/>)/, '<w:tr><w:trPr><w:cantSplit/>')
+        if (r++ < rows - 1) kept = kept.replace(/<w:p\/>|<w:p>[\s\S]*?<\/w:p>/g, keepNext)
+        return kept
+      })
+    } else if (!isHeading(text) && ((isList(text) && isList(next)) || (!isList(text) && (next.startsWith('<w:tbl>') || isList(next))))) text = keepNext(text)
+    out += xml.slice(at, part.at) + text
+    at = part.at! + part.text.length
+  })
+  return out + xml.slice(at)
 }
 
 /** The literal colours in a part: what starters.test.ts refuses outside the theme. `auto` is no colour. */
@@ -179,7 +226,7 @@ export function themeDocx(bytes: Uint8Array): Uint8Array {
   for (const part of readZip(bytes)) {
     const name = part.name
     if (name === 'word/styles.xml') files[name] = themeStyles(partText(part))
-    else if (name === 'word/document.xml') files[name] = themeBody(partText(part))
+    else if (name === 'word/document.xml') files[name] = keepTogether(themeBody(partText(part)))
     else if (/^word\/(header|footer)\d+\.xml$/.test(name)) files[name] = partText(part).replace(/<w:r>(?!<w:rPr>)/g, `<w:r>${HEAD_FOOT_RUN}`)
     // Calibri for headings too: a reader without Calibri Light (LibreOffice) sets them in a serif.
     else if (name === 'word/theme/theme1.xml') files[name] = partText(part).replace(/(<a:majorFont><a:latin typeface=")Calibri Light(" panose=")[0-9A-F]+"/, '$1Calibri$2020F0502020204030204"')
