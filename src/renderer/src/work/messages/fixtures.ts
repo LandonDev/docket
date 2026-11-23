@@ -3,6 +3,7 @@ import { CHAT_ROUTES, SOURCE_NAME, type ChatDetail, type ChatFace, type ChatHit,
 import type { LifeosQuery } from "../shell/lifeos";
 import type { FileVerb, MessagesData, Paged, ThreadDraft } from "./data";
 import { fileVerb } from "./files";
+import { INVENTORY, LEVEL } from "./pictures.fixtures";
 import { firstName, type ChatFilter } from "./model";
 
 /**
@@ -145,6 +146,32 @@ function filler(row: ChatRow): ChatMessage[] {
   ]);
 }
 
+const nov = (d: number, h: number, mi = 0) => at(2026, 10, d, h, mi);
+
+/** Pictures in place: two stored, one LifeOS has still to fetch. */
+const ART = thread("c_art", [
+  [ANA, nov(12, 14, 2), "Key art v3 is in the shared folder. Two frames from the level pass first:"],
+  [ANA, nov(12, 14, 3), "[file: level-dusk.png]", { files: [{ _id: "f_level", name: "level-dusk.png", contentType: "image/png", size: 1_840_000, width: 1600, height: 900, status: "stored", url: LEVEL }] }],
+  [MIA, nov(12, 14, 20), "The inventory panel on the same palette:\n[file: inventory.png]", { files: [{ _id: "f_inv", name: "inventory.png", contentType: "image/png", size: 920_000, width: 900, height: 1200, status: "stored", url: INVENTORY }] }],
+  [ANA, nov(12, 15, 10), "[file: launcher-banner.png]", { files: [{ _id: "f_banner", name: "launcher-banner.png", contentType: "image/png", size: 2_400_000, width: 1920, height: 640, status: "wanted" }] }],
+]);
+
+/** Files as chips: two a canvas shows, one only saved. */
+const FILES = thread("c_lucas", [
+  [LUCAS, nov(19, 10, 12), "Here's the runner budget for next quarter and the patch notes draft."],
+  [LUCAS, nov(19, 10, 13), "[file: runner-budget.xlsx] [file: patch-notes-0.9.5.pdf]", { files: [
+    { _id: "f_budget", name: "runner-budget.xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", size: 48_200, status: "stored", url: "data:application/octet-stream;base64,AA==" },
+    { _id: "f_notes", name: "patch-notes-0.9.5.pdf", contentType: "application/pdf", size: 312_000, status: "stored", url: "data:application/octet-stream;base64,AA==" },
+  ] }],
+  [ME, nov(19, 10, 40), "Thanks. Can you send the build too?"],
+  [LUCAS, nov(19, 11, 2), "[file: starboard-0.9.5-linux.zip]", { files: [{ _id: "f_zip", name: "starboard-0.9.5-linux.zip", contentType: "application/zip", size: 412_000_000, status: "listed" }] }],
+]);
+
+/** A file LifeOS could not fetch, which says why. */
+export const FILE_FAILED: ChatMessage[] = FILES.map((m) =>
+  m.files.some((f) => f._id === "f_zip") ? { ...m, files: m.files.map((f) => ({ ...f, status: "failed" as const, error: "Slack didn't let LifeOS read this file" })) } : m,
+);
+
 /** A conversation with his reply at its foot, on its way or failed, as LifeOS answers it. */
 export function withReply(id: string, status: "queued" | "failed", text: string, error?: string): ChatMessage[] {
   const own: ChatMessage = { _id: `${id}_mine`, who: { name: ME.name, me: true }, text, sentAt: NOW - MIN, files: [], reply: { outboxId: `${id}_out`, status, ...(status === "queued" ? { sendAt: NOW + 4_000 } : {}), ...(error ? { error } : {}) } };
@@ -155,7 +182,7 @@ export function withReply(id: string, status: "queued" | "failed", text: string,
 export const HELD_DRAFT: ThreadDraft = { id: "held_1", held: true, text: "Thursday works. I'll have the key art in the launcher by Wednesday night so the art team can check it first.", threadId: "t_keyart", thread: "Key art for the launcher" };
 export const COPY_DRAFT: ThreadDraft = { id: "copy_1", held: false, text: "Thanks Theo! I'll post the patch notes in #announcements once wave two is in.", threadId: "t_wave", thread: "Playtest wave two" };
 
-export const MESSAGES: Record<string, ChatMessage[]> = { c_dana: DIRECT, c_builds: CHANNEL, c_design: REPLIES, c_playtest: PLAYTEST };
+export const MESSAGES: Record<string, ChatMessage[]> = { c_dana: DIRECT, c_builds: CHANNEL, c_design: REPLIES, c_playtest: PLAYTEST, c_art: ART, c_lucas: FILES };
 
 const WORDS = ["build", "the", "playtest", "controller", "lobby", "shader", "save", "art", "store", "review", "crash", "launcher", "menu", "patch", "sound"];
 /** Made-up conversations past counting: the list's speed. */

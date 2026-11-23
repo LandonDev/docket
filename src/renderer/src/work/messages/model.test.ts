@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "@shared/work/messages";
-import { aroundMatch, blocksOf, chatFact, dayWords, linkParts, markWords, newSince, opensOutside, rowLine, rowTime, wantsRead } from "./model";
+import { aroundMatch, blocksOf, isPicture, pictureBox, chatFact, dayWords, linkParts, markWords, newSince, opensOutside, rowLine, rowTime, wantsRead } from "./model";
 import { unreadFact } from "./facts";
 
 const at = (d: number, h: number, mi = 0): number => new Date(2026, 10, d, h, mi).getTime();
@@ -154,5 +154,19 @@ describe("a search's lit words", () => {
   });
   it("leaves a word's middle alone", () => {
     expect(markWords("recontrol", "control")).toEqual([["recontrol", false]]);
+  });
+});
+
+describe("pictures", () => {
+  it("draws a picture in its own shape inside 360 by 270, never larger than it is", () => {
+    expect(pictureBox({ width: 1600, height: 900 })).toEqual({ width: 360, height: 203 });
+    expect(pictureBox({ width: 900, height: 1200 })).toEqual({ width: 203, height: 270 });
+    expect(pictureBox({ width: 120, height: 80 })).toEqual({ width: 120, height: 80 });
+    expect(pictureBox({})).toEqual({ width: 270, height: 270 });
+  });
+  it("knows a picture by its type, else by its name", () => {
+    expect(isPicture({ name: "a.bin", contentType: "image/heic" })).toBe(true);
+    expect(isPicture({ name: "IMG_2041.HEIC" })).toBe(true);
+    expect(isPicture({ name: "budget.xlsx", contentType: "application/vnd.ms-excel" })).toBe(false);
   });
 });

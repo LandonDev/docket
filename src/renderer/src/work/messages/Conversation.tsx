@@ -353,6 +353,7 @@ function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat:
                   found={found?.id === block.id ? (found.on ? "on" : "off") : undefined}
                   workspaceId={workspaceId}
                   chatId={chatId}
+                  chat={chat}
                   onMore={onMore}
                 />
               ))}

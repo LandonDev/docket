@@ -1,4 +1,4 @@
-import { SOURCE_NAME, type ChatMessage, type ChatRow } from "@shared/work/messages";
+import { SOURCE_NAME, type ChatFile, type ChatMessage, type ChatRow } from "@shared/work/messages";
 import { clockTime } from "../../lib/duration";
 
 /**
@@ -125,11 +125,25 @@ export function blocksOf(newestFirst: readonly ChatMessage[], since: number | nu
   return blocks;
 }
 
-/** A block's height before it is measured: its run's head, its day line, its quote and its lines of words at the column's measure. */
+/** A picture, drawn in place in the conversation. */
+export const isPicture = (file: Pick<ChatFile, "contentType" | "name">): boolean =>
+  file.contentType ? file.contentType.startsWith("image/") : /\.(png|jpe?g|gif|webp|heic|avif)$/i.test(file.name);
+
+/** A picture's drawn box: its own shape inside 360 by 270, never larger than it is; a square when its size is unknown. */
+export function pictureBox(file: Pick<ChatFile, "width" | "height">): { width: number; height: number } {
+  const w = file.width ?? 0;
+  const h = file.height ?? 0;
+  if (w <= 0 || h <= 0) return { width: 270, height: 270 };
+  const scale = Math.min(1, 360 / w, 270 / h);
+  return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) };
+}
+
+/** A block's height before it is measured: its run's head, its day line, its quote, its lines of words at the column's measure and its files. */
 export function estimateOf(block: Block): number {
   const text = block.message.text;
   const lines = text.split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 84)), 0);
-  return (block.head ? 36 : 4) + lines * 22 + (block.day || block.isNew ? 40 : 0) + (block.message.replyTo ? 20 : 0);
+  const files = block.message.files.reduce((sum, file) => sum + 6 + (isPicture(file) && file.status !== "failed" ? pictureBox(file).height : file.status === "failed" ? 24 : 40), 0);
+  return (block.head ? 36 : 4) + lines * 22 + (block.day || block.isNew ? 40 : 0) + (block.message.replyTo ? 20 : 0) + files;
 }
 
 /** The schemes a message's link may open with, outside the app. */

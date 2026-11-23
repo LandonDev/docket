@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { ContextChip } from "@shared/work";
+import { messagesPaneOf, type ContextChip } from "@shared/work";
 import "./messages.css";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
+import { MessageMultiple } from "../../chrome/icons";
+import { CanvasSeat } from "../canvas/CanvasSeat";
 import { sectorName } from "../shell/actions";
 import { sessionWaits } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
@@ -22,6 +24,9 @@ import { StartThreadProvider } from "./threads";
  * take turns, and the conversation's toolbar leads with the way back. The
  * list's head is the view's head (`ownHead`).
  */
+
+/** The toggle over the conversation when a file shares the pane with it. */
+const PANE_TOGGLE = { label: "Messages", icon: MessageMultiple };
 
 /** The list's width: its default, its bounds, and where the app keeps it. */
 export const LIST_WIDTH = { base: 296, min: 260, max: 480, key: "tc.messages.listWidth" } as const;
@@ -46,13 +51,14 @@ export function View(props: WorkViewProps) {
   const workspaceId = props.workspace.id;
   const data = useMemo(() => (lifeos.client ? liveData(lifeos, sector, props.env, workspaceId) : null), [lifeos, sector, props.env, workspaceId]);
   const start = useCallback((chip: ContextChip) => startThread(chip), [startThread]);
+  const seat = useMemo(() => ({ env: props.env, onAsk: start }), [props.env, start]);
   useOpened(workspaceId);
   // A failed session is the frame's to say (its sign-in or its line), with nothing pulsing under it.
   if (!data && !sessionWaits(lifeos)) return null;
   return (
     <MessagesDataProvider value={data ?? WAITING}>
       <StartThreadProvider value={start}>
-        <MessagesScreen workspaceId={workspaceId} job={sectorName(sector)} />
+        <MessagesScreen workspaceId={workspaceId} job={sectorName(sector)} seat={seat} />
       </StartThreadProvider>
     </MessagesDataProvider>
   );
@@ -82,7 +88,18 @@ export function useOpened(workspaceId: string): void {
  * rule for a render that measures nothing (the preview); left out, the view's
  * own width decides.
  */
-export function MessagesScreen({ workspaceId, job, narrow: forced }: { workspaceId: string; job: string; narrow?: boolean }) {
+export function MessagesScreen({
+  workspaceId,
+  job,
+  narrow: forced,
+  seat,
+}: {
+  workspaceId: string;
+  job: string;
+  narrow?: boolean;
+  /** Where a file opens beside the conversation: the host of the view's own pane, and what Ask there does. Absent (the preview, the tests), no pane is seated. */
+  seat?: { env: string; onAsk(chip: ContextChip): void };
+}) {
   const page = usePage(workspaceId);
   const root = useRef<HTMLDivElement>(null);
   const [measured, setMeasured] = useState(false);
@@ -101,9 +118,18 @@ export function MessagesScreen({ workspaceId, job, narrow: forced }: { workspace
   const list = <ChatList workspaceId={workspaceId} job={job} onOpen={open} />;
   // Keyed by the conversation: another one starts with its own place and its own pages.
   const conversation = page.chatId ? <Conversation key={page.chatId} workspaceId={workspaceId} chatId={page.chatId} narrow={narrow} onBack={back} /> : null;
+  // A file opened from a message shows in the view's own pane beside the conversation, as Mail seats its reader.
+  const seated = (pane: ReactNode): ReactNode =>
+    seat ? (
+      <CanvasSeat session={{ id: messagesPaneOf(workspaceId), environmentId: seat.env }} onAsk={seat.onAsk} chatToggle={PANE_TOGGLE}>
+        {pane}
+      </CanvasSeat>
+    ) : (
+      pane
+    );
   return (
     <div ref={root} data-messages={workspaceId} data-narrow={narrow || undefined} className="tc-messages h-full min-h-0">
-      {narrow ? (conversation ?? list) : <ListFrame list={list} pane={conversation ?? <NothingOpen />} />}
+      {narrow ? (conversation ? seated(conversation) : list) : <ListFrame list={list} pane={seated(conversation ?? <NothingOpen />)} />}
     </div>
   );
 }

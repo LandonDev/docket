@@ -1,6 +1,12 @@
-import { memo, useState, type MouseEvent } from "react";
-import { firstWords, type ChatMessage, type ChatReplyState } from "@shared/work/messages";
-import { CornerDownRight, MoreHorizontal } from "../../chrome/icons";
+import { memo, useEffect, useState, type MouseEvent } from "react";
+import { formatSize } from "work-kit/mail/lib/files";
+import { loadBytes } from "work-kit/mail/lib/bytes";
+import type { CanvasKind } from "@shared/work";
+import { fileMarkers, firstWords, SOURCE_APP, type ChatFile, type ChatMessage, type ChatReplyState, type ChatRow } from "@shared/work/messages";
+import { CornerDownRight, MoreHorizontal, type IconComponent } from "../../chrome/icons";
+import { Tip } from "../../components/tip";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Doc, File as FileGlyph, Media, Pdf, Slides, Table } from "../icons";
 import { reveal } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
 import { clockTime } from "../../lib/duration";
@@ -8,7 +14,8 @@ import { openUrl } from "../../lib/native";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { StatusMark } from "../../components/ui/status";
 import { Face } from "../mail/face";
-import { useMessagesData } from "./data";
+import { useMessagesData, type FileVerb } from "./data";
+import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
 import { keepTyped } from "./page";
 
@@ -25,6 +32,7 @@ export const MessageBlock = memo(function MessageBlock({
   found,
   workspaceId,
   chatId,
+  chat,
   onMore,
 }: {
   block: Block;
@@ -33,6 +41,8 @@ export const MessageBlock = memo(function MessageBlock({
   found?: "on" | "off";
   workspaceId: string;
   chatId: string;
+  /** The conversation's source and link, for a file that could not come. */
+  chat: Pick<ChatRow, "source" | "link">;
   /** Opens the message's menu under its ⋯. */
   onMore?: (id: string, button: HTMLElement) => void;
 }) {
@@ -60,9 +70,9 @@ export const MessageBlock = memo(function MessageBlock({
             </>
           ) : null}
           <div className="col-start-2 min-w-0">
-            <Words text={message.text} />
-            {/* A message's pictures and files are drawn here once LifeOS keeps them (the plan's MSG4): in place, at
-                most 360 by 270, or Mail's 40px chip. Until then its words say what it held, as LifeOS stored them. */}
+            {/* Once its files are listed beside it, the names LifeOS's readers folded into its words go. */}
+            <Words text={message.files.length ? fileMarkers(message.text, message.files) : message.text} />
+            {message.files.length ? <Files message={message} chatId={chatId} chat={chat} /> : null}
             {message.reply && message.reply.status !== "sent" ? <ReplyState reply={message.reply} workspaceId={workspaceId} chatId={chatId} /> : null}
           </div>
         </div>
@@ -77,6 +87,117 @@ export const MessageBlock = memo(function MessageBlock({
     </div>
   );
 });
+
+// ── Pictures and files ──
+
+/** Messages whose listed files were asked for this window's life: each is asked once. */
+const asked = new Set<string>();
+
+/**
+ * A message's files: a picture drawn in place at most 360 by 270, in its own
+ * shape, from LifeOS's bytes as a blob (the page loads no picture from the
+ * web), its shape held by a skeleton while it comes; any other file Mail's
+ * 40px chip, whose press shows it beside the conversation or saves it; a file
+ * that could not come says why, with the way to it in its app. Files LifeOS
+ * only listed are asked for once, as the message comes into view.
+ */
+function Files({ message, chatId, chat }: { message: ChatMessage; chatId: string; chat: Pick<ChatRow, "source" | "link"> }) {
+  const data = useMessagesData();
+  const wants = message.files.some((file) => file.status === "listed");
+  useEffect(() => {
+    if (!wants || asked.has(message._id)) return;
+    asked.add(message._id);
+    data.requestFiles(message._id);
+  }, [wants, message._id, data]);
+  const link = message.permalink ?? chat.link;
+  return (
+    <div data-files className="mt-1.5 mb-0.5 flex flex-col gap-1.5">
+      {message.files.map((file) =>
+        file.status === "failed" ? (
+          <FileFailed key={file._id} file={file} source={chat.source} link={link} />
+        ) : isPicture(file) ? (
+          <Picture key={file._id} file={file} onOpen={() => data.openFile(chatId, message, file)} />
+        ) : (
+          <FileChip key={file._id} file={file} verb={data.fileVerb(file)} onOpen={() => data.openFile(chatId, message, file)} />
+        ),
+      )}
+    </div>
+  );
+}
+
+/** Pictures read this window's life, by their address in LifeOS's store: a blob to draw, or null for one that did not load. */
+const pictures = new Map<string, string | null>();
+const drawable = (url: string): boolean => url.startsWith("data:") || url.startsWith("blob:");
+
+/** A stored picture's bytes as a blob address: undefined while it comes, null when it cannot. */
+function usePictureBytes(url: string | undefined): string | null | undefined {
+  const [, bump] = useState(0);
+  const held = !url ? undefined : drawable(url) ? url : pictures.get(url);
+  useEffect(() => {
+    if (!url || drawable(url) || pictures.has(url)) return;
+    let live = true;
+    loadBytes(url).then(
+      (blob) => pictures.set(url, URL.createObjectURL(blob)),
+      () => pictures.set(url, null),
+    ).finally(() => live && bump((n) => n + 1));
+    return () => {
+      live = false;
+    };
+  }, [url]);
+  return held;
+}
+
+function Picture({ file, onOpen }: { file: ChatFile; onOpen: () => void }) {
+  const box = pictureBox(file);
+  const src = usePictureBytes(file.status === "stored" ? file.url : undefined);
+  if (src === null) return <FileChip file={file} verb="view" onOpen={onOpen} />;
+  return (
+    <Button variant="ghost" aria-label={`View ${file.name}`} onClick={onOpen} style={box} className="h-auto self-start overflow-hidden rounded-lg p-0 hover:bg-transparent active:bg-transparent">
+      {src ? (
+        <img src={src} alt={file.name} width={box.width} height={box.height} draggable={false} className="block size-full rounded-lg object-cover outline-1 -outline-offset-1 outline-(--image-outline)" />
+      ) : (
+        <Skeleton aria-label={`Loading ${file.name}`} className="size-full rounded-lg" />
+      )}
+    </Button>
+  );
+}
+
+/** A file's glyph, by the canvas kind that shows it. */
+const GLYPH: Partial<Record<CanvasKind, IconComponent>> = { pdf: Pdf, sheet: Table, slides: Slides, media: Media, document: Doc };
+
+/** Mail's 40px chip: a 28px tile with the file's glyph, its name, its size; the press views or downloads it. */
+function FileChip({ file, verb, onOpen }: { file: ChatFile; verb: FileVerb; onOpen: () => void }) {
+  const kind = viewKind(file);
+  const Glyph = (kind && GLYPH[kind]) || FileGlyph;
+  const said = `${verb === "view" ? "View" : "Download"} ${file.name}`;
+  return (
+    <Tip label={said}>
+      <Button variant="ghost" aria-label={said} onClick={onOpen} className="h-10 max-w-72 min-w-0 shrink justify-start gap-2 self-start rounded-lg border border-border ps-1.5 pe-3 font-normal">
+        <span className="grid size-7 shrink-0 place-items-center rounded-sm bg-muted text-muted-foreground">
+          <Glyph className="size-3.5" />
+        </span>
+        <span className="min-w-0 truncate font-medium text-foreground">{file.name}</span>
+        {file.size !== undefined ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatSize(file.size)}</span> : null}
+      </Button>
+    </Tip>
+  );
+}
+
+/** A file that could not come: its name, why in LifeOS's words, and the way to it in its app. */
+function FileFailed({ file, source, link }: { file: ChatFile; source: ChatRow["source"]; link: string | undefined }) {
+  const opens = link && /^https?:\/\//i.test(link) ? link : undefined;
+  return (
+    <p data-file-failed className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+      <span className="font-medium">{file.name}</span>
+      <span>{file.error ?? "Couldn't load this file"}</span>
+      {opens ? (
+        <Button variant="ghost" size="xs" className="ms-1 text-muted-foreground" onClick={() => void openUrl(opens)}>
+          Open in {SOURCE_APP[source]}
+        </Button>
+      ) : null}
+    </p>
+  );
+}
 
 /**
  * His reply on its way: "Sending" and Undo inside its undo time, which puts

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { MessagesDataProvider } from "./data";
 import { ReplyBody } from "./ChatReplyAct";
-import { CHATS, COPY_DRAFT, fixtureData, HELD_DRAFT, JOB, manyChats, manyMessages, MESSAGES, withReply, type FixtureOptions } from "./fixtures";
+import { CHATS, COPY_DRAFT, FILE_FAILED, fixtureData, HELD_DRAFT, JOB, manyChats, manyMessages, MESSAGES, withReply, type FixtureOptions } from "./fixtures";
 import { MessagesScreen } from "./MessagesView";
 import { patchPage, type MessagesPage } from "./page";
 import { StartThreadProvider } from "./threads";
@@ -15,7 +15,8 @@ const startNothing = (): void => {};
  * Scenes: `list`, `list-unread`, `list-loading`, `list-empty`, `list-no-source`, `list-stale`,
  * `open-direct`, `open-channel`, `open-thread-reply`, `search`, `narrow-list`, `narrow-open`, the
  * composer's `sending`, `not-sent`, `no-route`, `mac-offline`, `held-draft`, `copy-draft`, the
- * Outbox's `outbox-reply` (a held reply's body as the Outbox shows it), and
+ * Outbox's `outbox-reply` (a held reply's body as the Outbox shows it), `open-pictures`,
+ * `open-files`, `open-file-failed`, and
  * `heavy-list` (2,000 conversations) and `heavy-open` (5,000 messages) for the speed proof. `width`
  * is the view's (1280 or 640; at and under 640 the list and the conversation take turns). Rendered
  * by nothing in the app.
@@ -45,6 +46,9 @@ const SCENES: Record<string, () => Scene> = {
   "mac-offline": () => ({ data: { routes: { c_jordan: { can: false, why: "Your Mac isn't running LifeOS" } } }, page: { chatId: "c_jordan" } }),
   "held-draft": () => ({ data: { drafts: { c_dana: [HELD_DRAFT] } }, page: { chatId: "c_dana" } }),
   "copy-draft": () => ({ data: { drafts: { c_playtest: [COPY_DRAFT] } }, page: { chatId: "c_playtest" } }),
+  "open-pictures": () => ({ page: { chatId: "c_art" } }),
+  "open-files": () => ({ page: { chatId: "c_lucas" } }),
+  "open-file-failed": () => ({ data: { messages: { ...MESSAGES, c_lucas: FILE_FAILED } }, page: { chatId: "c_lucas" } }),
   "heavy-list": () => ({ data: { chats: manyChats(HEAVY_CHATS) } }),
   "heavy-open": () => {
     const chats = manyChats(HEAVY_CHATS);
