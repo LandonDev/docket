@@ -7,7 +7,8 @@
  * named here falls back to `payloadView`.
  */
 
-export type KindRows = { fields: { label: string; value: string }[]; body: string | null };
+/** `gap`: the row starts a group of its own (a held file change's second change and on): space above it, as between groups. */
+export type KindRows = { fields: { label: string; value: string; gap?: true }[]; body: string | null };
 
 type Rec = Record<string, unknown>;
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
@@ -193,18 +194,25 @@ const shown = (v: string): string => (v.trim() ? v : exactQuote(v));
  * box's slide, or how many places the words stand in), then the words it replaces and what takes their place
  * (`Replace`, `With`), or the words it removes (`Take out`).
  */
-export function editRows(edits: unknown, places?: unknown): { label: string; value: string }[] {
-  const rows: { label: string; value: string }[] = [];
+export function editRows(edits: unknown, places?: unknown): { label: string; value: string; gap?: true }[] {
+  const rows: { label: string; value: string; gap?: true }[] = [];
   for (const raw of Array.isArray(edits) ? edits : []) {
     const e = (raw ?? {}) as Rec;
     const many = num(e.boxes) ?? num(places);
     const from = typeof e.find === "string" ? e.find : typeof e.shape === "string" ? (typeof e.was === "string" ? e.was : "") : null;
     const to = typeof e.find === "string" ? e.replace : e.text;
     if (from === null) continue;
+    const first = rows.length;
+    // Where: a box's slide, a Doc's paragraph the words stand in, or how many places or boxes a replace reaches.
     if (typeof e.shape === "string") rows.push(...row("Where", num(e.slide) === null ? null : `Slide ${e.slide}`));
+    else if (str(e.within) !== null && e.within !== from) rows.push({ label: "Where", value: e.within as string });
     else if (many !== null && many > 1) rows.push({ label: "Where", value: `${many} ${typeof e.boxes === "number" ? "boxes" : "places"}` });
+    // Words alike but for their spaces are both quoted, so the difference shows.
+    const alike = typeof to === "string" && to !== "" && to !== from && to.replace(/\s+/g, " ").trim() === from.replace(/\s+/g, " ").trim();
+    const say = (v: string) => (alike ? exactQuote(v) : shown(v));
     if (typeof to !== "string" || to === "") rows.push({ label: "Take out", value: shown(from) });
-    else rows.push({ label: "Replace", value: shown(from) }, { label: "With", value: shown(to) });
+    else rows.push({ label: "Replace", value: say(from) }, { label: "With", value: say(to) });
+    if (first > 0) rows[first] = { ...rows[first]!, gap: true };
   }
   return rows;
 }

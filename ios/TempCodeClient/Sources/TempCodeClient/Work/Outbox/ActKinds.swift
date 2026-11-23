@@ -12,6 +12,13 @@ public extension OutboxModel {
         guard case .object(let o)? = payload else { return nil }
         var rows: [(String, String)] = []
         var body: String?
+        /// the rows that start a group of their own: a held change's second change and on
+        var gaps = Set<Int>()
+        let addEdits = { (edits: [JSONValue], places: JSONValue?) in
+            let (got, starts) = editRows(edits, places: places)
+            gaps.formUnion(starts.map { $0 + rows.count })
+            rows += got
+        }
         switch kind {
         case .formPublish:
             // The form's name is the heading's (`kindHeading`), said once.
@@ -62,19 +69,19 @@ public extension OutboxModel {
                     rows.append(("Adds at", word(e["at"]) == "start" ? "The start" : "The end"))
                     body = insert
                 } else {
-                    rows += editRows([.object(e)], places: o["places"])
+                    addEdits([.object(e)], o["places"])
                 }
             }
         case .googleEdit:
             if let app = editApp[word(o["app"]) ?? ""] { rows.append(("In", app)) }
             if let account = word(o["account"]) { rows.append(("Account", account)) }
-            if case .array(let edits)? = o["edits"] { rows += editRows(edits) }
+            if case .array(let edits)? = o["edits"] { addEdits(edits, nil) }
         default:
             return nil
         }
         // Each row its own id (its label and place): a batch's steps and a comment's marks share labels, and a
         // list keyed by the label alone draws one of them in each of their places.
-        var view = PayloadView(fields: rows.enumerated().map { i, row in Field(key: row.0.lowercased(), path: [row.0, String(i)], label: row.0, value: row.1, edit: nil) })
+        var view = PayloadView(fields: rows.enumerated().map { i, row in Field(key: row.0.lowercased(), path: [row.0, String(i)], label: row.0, value: row.1, edit: nil, gap: gaps.contains(i)) })
         if let body { view.body = .init(path: ["body"], text: body, readOnly: true) }
         return view
     }
@@ -430,10 +437,13 @@ public extension OutboxModel {
     /// Each change as he approves it, in full and in one grammar (the desktop's `editRows`): where, when it is
     /// not the whole file once (a box's slide, or how many places or boxes the words stand in), then Replace and
     /// With, or Take out. Words of spaces alone are quoted with their escapes, so they never read as nothing.
-    nonisolated static func editRows(_ edits: [JSONValue], places: JSONValue? = nil) -> [(String, String)] {
+    nonisolated static func editRows(_ edits: [JSONValue], places: JSONValue? = nil) -> (rows: [(String, String)], starts: [Int]) {
         var rows: [(String, String)] = []
+        var starts: [Int] = []
         let shown = { (v: String) in v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? exactQuote(v) : v }
+        let squeeze = { (v: String) in v.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") }
         for case .object(let e) in edits {
+            if !rows.isEmpty { starts.append(rows.count) }
             let from: String
             var to: String?
             if case .string(let find)? = e["find"] {
@@ -441,15 +451,23 @@ public extension OutboxModel {
                 if case .string(let r)? = e["replace"] { to = r }
                 let boxes: Double? = if case .number(let n)? = e["boxes"] { n } else { nil }
                 let count: Double? = if case .number(let n)? = places { n } else { nil }
-                if let many = boxes ?? count, many > 1 { rows.append(("Where", "\(Int(many)) \(boxes != nil ? "boxes" : "places")")) }
+                // Where: a Doc's paragraph the words stand in, or how many places or boxes a replace reaches.
+                if case .string(let within)? = e["within"], !within.isEmpty, within != find { rows.append(("Where", within)) }
+                else if let many = boxes ?? count, many > 1 { rows.append(("Where", "\(Int(many)) \(boxes != nil ? "boxes" : "places")")) }
             } else if case .string? = e["shape"] {
                 from = if case .string(let w)? = e["was"] { w } else { "" }
                 if case .string(let t)? = e["text"] { to = t }
                 if case .number(let n)? = e["slide"] { rows.append(("Where", "Slide \(Int(n))")) }
-            } else { continue }
-            if let to, !to.isEmpty { rows += [("Replace", shown(from)), ("With", shown(to))] } else { rows.append(("Take out", shown(from))) }
+            } else {
+                if starts.last == rows.count { starts.removeLast() }
+                continue
+            }
+            // Words alike but for their spaces are both quoted, so the difference shows.
+            let alike = to.map { $0 != from && !$0.isEmpty && squeeze($0) == squeeze(from) } ?? false
+            let say = { (v: String) in alike ? exactQuote(v) : shown(v) }
+            if let to, !to.isEmpty { rows += [("Replace", say(from)), ("With", say(to))] } else { rows.append(("Take out", shown(from))) }
         }
-        return rows
+        return (rows, starts)
     }
 
     private nonisolated static func word(_ value: JSONValue?) -> String? {

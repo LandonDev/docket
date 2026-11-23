@@ -288,10 +288,10 @@ describe("an agent's change to a shared file, as he approves it", () => {
       { label: "Where", value: "3 boxes" },
       { label: "Replace", value: "2025" },
       { label: "With", value: "2026" },
-      { label: "Where", value: "Slide 3" },
+      { label: "Where", value: "Slide 3", gap: true },
       { label: "Replace", value: "Hello" },
       { label: "With", value: "Hi" },
-      { label: "Where", value: "Slide 4" },
+      { label: "Where", value: "Slide 4", gap: true },
       { label: "Take out", value: "Old" },
     ]);
     expect(noise(kindRows("google.edit", p))).not.toMatch(/1AbC|r9|t4/);
@@ -304,6 +304,17 @@ describe("an agent's change to a shared file, as he approves it", () => {
       { label: "Where", value: "4 places" },
       { label: "Replace", value: "Q1" },
       { label: "With", value: '" "' },
+    ]);
+  });
+
+  it("names a Doc's paragraph as Where, and quotes words that differ only in their spaces", () => {
+    const p = { app: "doc", account: "a@b.edu", name: "Brief", edits: [{ find: "March", replace: "May", within: "We ship in March." }, { find: "a  b", replace: "a b" }] };
+    expect(kindRows("google.edit", p)!.fields.slice(2)).toEqual([
+      { label: "Where", value: "We ship in March." },
+      { label: "Replace", value: "March" },
+      { label: "With", value: "May" },
+      { label: "Replace", value: '"a  b"', gap: true },
+      { label: "With", value: '"a b"' },
     ]);
   });
 

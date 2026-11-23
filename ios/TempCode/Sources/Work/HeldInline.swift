@@ -93,6 +93,8 @@ struct HeldInline: View {
                     Text(field.label).textStep(.meta).frame(width: 56, alignment: .leading)
                     Text(field.value).font(.footnote).fixedSize(horizontal: false, vertical: true)
                 }
+                // A held change's next change starts a group: 8pt more over the stack's own 8.
+                .padding(.top, field.gap ? 8 : 0)
             }
             if let body = view.body {
                 // The whole body, as it will go: Send is pressed on what was read, never on a cut.

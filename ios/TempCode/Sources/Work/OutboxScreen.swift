@@ -235,9 +235,9 @@ private struct OutboxRow: View {
         let title = OutboxModel.pressWord(item, fallback: "Send")
         return Group {
             if OutboxModel.sendsFromDetailOnly(item.kind) {
-                Button("\(title)…", systemImage: "paperplane") { navigator.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) }
+                Button("\(title)…", systemImage: OutboxModel.pressGlyph(item.kind)) { navigator.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) }
             } else {
-                Button(title, systemImage: "paperplane") { OutboxPresses.shared.send(entry) }
+                Button(title, systemImage: OutboxModel.pressGlyph(item.kind)) { OutboxPresses.shared.send(entry) }
             }
         }
     }

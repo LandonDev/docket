@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { ActKindDef, WorkCtx } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
 import { eventById, OfficeError, type OfficeCarrier } from './carrier'
+import { changeWords } from '@shared/work/changeWords'
 import { fileKey } from './shared'
 
 /**
@@ -224,7 +225,7 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
     payload: OfficeEditSchema,
     words(p) {
       const e = p.edit
-      const what = 'find' in e ? (e.replace ? `"${clip(e.find)}" to "${clip(e.replace)}"` : `take out "${clip(e.find)}"`) : `add "${clip(e.insert)}" at its ${e.at}`
+      const what = 'find' in e ? (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : `add "${clip(e.insert)}" at its ${e.at}`
       return { summary: `Make the change in ${p.name}: ${what}`, verb: 'Make the change' }
     },
     async execute(p, ctx) {

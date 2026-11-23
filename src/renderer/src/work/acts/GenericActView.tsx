@@ -24,8 +24,9 @@ export function GenericActView({ item }: ActViewProps) {
         <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
           {fields.map((field) => (
             <div key={field.key} className="contents">
-              <dt className="truncate text-muted-foreground">{field.label}</dt>
-              <dd className="min-w-0 break-words whitespace-pre-wrap text-foreground">{field.value}</dd>
+              {/* A row that starts a group of its own (a held change's next change): 16px above it, as between groups. */}
+              <dt className={cn("truncate text-muted-foreground", "gap" in field && field.gap && "mt-2.5")}>{field.label}</dt>
+              <dd className={cn("min-w-0 break-words whitespace-pre-wrap text-foreground", "gap" in field && field.gap && "mt-2.5")}>{field.value}</dd>
             </div>
           ))}
         </dl>

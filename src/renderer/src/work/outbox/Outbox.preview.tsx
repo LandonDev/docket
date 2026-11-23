@@ -68,7 +68,7 @@ const EDITS = [
   edit(
     8,
     "office.edit",
-    'Make the change in Spring LAN budget.docx: "$4,180" to "$4,320"',
+    'Make the change in Spring LAN budget.docx: "$4,180" to "$4,320, with $140 more for prizes"',
     "Make the change",
     { host: "local", app: "word", key: "/Users/landon/Library/CloudStorage/OneDrive-Purdue/Spring LAN budget.docx", name: "Spring LAN budget.docx", edit: { find: "The Spring LAN comes to $4,180", replace: "The Spring LAN comes to $4,320, with $140 more for prizes" }, places: 1, base: "x" },
     at(20, 10, 12),
@@ -76,7 +76,7 @@ const EDITS = [
   edit(
     7,
     "google.edit",
-    'Make 2 changes in Nationals travel: "Thursday at 7 AM" to "Thursday at 6:30 AM" and 1 more',
+    'Make 2 changes in Nationals travel: "7" to "6:30" and 1 more',
     "Make 2 changes",
     {
       app: "slides",
@@ -84,7 +84,7 @@ const EDITS = [
       fileId: "1AbC",
       name: "Nationals travel",
       edits: [
-        { find: "Thursday at 7 AM", replace: "Thursday at 6:30 AM" },
+        { find: "Thursday at 7 AM", replace: "Thursday at 6:30 AM", boxes: 1 },
         { shape: "t4", text: "Six players, two staff, one van", slide: 3, was: "Six players and two staff" },
       ],
       revisionId: "r1",

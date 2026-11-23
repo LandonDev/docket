@@ -363,6 +363,8 @@ describe("the Outbox", () => {
     expect(batchVerb([{ verb: "Post" }, { verb: "Send" }])).toBe("Sent");
     expect(batchVerb([{ verb: "Post" }, { verb: "Post" }])).toBe("Posted");
     expect(batchVerb([{ verb: "Send" }])).toBe("Sent");
+    // a verb of several words counts on its first: "Made 3", never "Made the change 3"
+    expect(batchVerb([{ verb: "Make the change", kind: "office.edit" }, { verb: "Make the change", kind: "office.edit" }])).toBe("Made");
   });
 
   it("offers Edit only where something can change", async () => {

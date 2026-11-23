@@ -33,6 +33,11 @@ public enum OutboxModel {
         kind == .mailSend || kind == .officeMailSend || kind == .computerAct
     }
 
+    /// The press's glyph: a held change to a shared file is made, not sent.
+    public nonisolated static func pressGlyph(_ kind: OutboxItem.Kind) -> String {
+        kind == .officeEdit || kind == .googleEdit ? "checkmark" : "paperplane"
+    }
+
     /// The press's word: an agent's change to a shared file sends nothing, so it says its own verb ("Make the
     /// change") and "Try Again" once failed; every other act keeps `fallback` ("Send") and "Send Again".
     public nonisolated static func pressWord(_ item: OutboxItem, fallback: String) -> String {
@@ -201,6 +206,8 @@ public enum OutboxModel {
         /// The address under a named one ("events@purdue.edu" under "Events booking"); nil otherwise.
         public var detail: String?
         public var edit: Edit?
+        /// The row starts a group of its own (a held change's next change): space above it, as between groups.
+        public var gap = false
         public var id: String { path.joined(separator: ".") }
     }
 

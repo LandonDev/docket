@@ -68,7 +68,8 @@ export function canEdit(item: Pick<HostItem, "payload" | "state" | "kind">): boo
 export function batchVerb(items: readonly (Pick<HostItem, "verb"> & { kind?: string })[]): string {
   const verbs = new Set(items.map((i) => i.verb));
   const kinds = new Set(items.map((i) => i.kind));
-  return verbs.size === 1 ? pastOf([...verbs][0]!, kinds.size === 1 ? [...kinds][0] : undefined) : "Sent";
+  // One verb's first word with the count after it: "Made 3", "Sent 2", never "Made the change 3".
+  return verbs.size === 1 ? pastOf([...verbs][0]!.split(" ")[0]!, kinds.size === 1 ? [...kinds][0] : undefined) : "Sent";
 }
 /** Where he looks to see whether a send that may have gone went. */
 const checkWords = (item: HostItem): string => (item.kind === "mail.send" || item.kind === "office.mail.send" ? "Check Sent first" : "Check whether it went first");
@@ -82,7 +83,7 @@ const checkWords = (item: HostItem): string => (item.kind === "mail.send" || ite
 export function rowWords(item: Pick<HostItem, "kind" | "summary" | "verb" | "payload"> & { state?: HostItem["state"] }): { act: string; about: string | null } {
   // An agent's change to a shared file: the file leads ("Change Brief.docx"), so a long verb never cuts its name off,
   // and the line is the change, read after the file's own name (which may hold ": " itself), its count first.
-  const changed = item.kind === "office.edit" || item.kind === "google.edit" ? kindHeading(item.kind, item.payload, item.state === "sent") : null;
+  const changed = changeKind(item.kind) ? kindHeading(item.kind, item.payload, item.state === "sent") : null;
   if (changed) {
     const p = (item.payload ?? {}) as { name?: unknown; edits?: unknown };
     const lead = typeof p.name === "string" ? item.summary.indexOf(` in ${p.name}: `) : -1;
@@ -97,6 +98,8 @@ export function rowWords(item: Pick<HostItem, "kind" | "summary" | "verb" | "pay
   }
   return splitSummary(item.summary);
 }
+/** An agent's change to a shared file: it sends nothing, so its words are the change's own. */
+const changeKind = (kind: string): boolean => kind === "office.edit" || kind === "google.edit";
 /** "Send to Dana Lee: Re: budget" → the act and what it is about. */
 export function splitSummary(summary: string): { act: string; about: string | null } {
   const at = summary.indexOf(": ");
@@ -645,7 +648,8 @@ export function HeldDetail({
       const after = which === "discard" ? await discardItem(item) : which === "grant" ? await grantAndSend(item, grant!) : await sendItem(item, { again: which === "again" });
       if (which !== "discard" && !wentOut(after)) return void toastError(notSentWords(after));
       onPressed(item);
-      const done = which === "discard" ? "Discarded" : `${pastOf(item.verb, item.kind)}${about ? `: ${about}` : ""}`;
+      // A held file change names its file ("Changed Brief.docx"): its summary's first ": " may be in the file's own name.
+      const done = which === "discard" ? "Discarded" : (changeKind(item.kind) ? kindHeading(item.kind, item.payload, true) : null) ?? `${pastOf(item.verb, item.kind)}${about ? `: ${about}` : ""}`;
       // A plain press may have completed a run: the host makes the offer before it answers.
       const earned = which === "send" || which === "again" ? await offerAfterPress(item) : null;
       if (earned) toastEarned(done, earned, () => onReview(item));
@@ -699,12 +703,12 @@ export function HeldDetail({
         ) : null}
         {item.outcomeUnknown && waiting ? (
           <Button variant="secondary" size="sm" disabled={!ready || busy !== null} onClick={() => void press("again")}>
-            <BusyLabel busy={busy === "send"} label={`${item.verb} again`} />
+            <BusyLabel busy={busy === "send"} label={changeKind(item.kind) ? "Try again" : `${item.verb} again`} />
           </Button>
         ) : (
           <span className="flex items-center">
             <Button size="sm" disabled={!waiting || !ready || busy !== null} className={cn(grant && "rounded-e-none")} onClick={() => void press("send")}>
-              <BusyLabel busy={busy === "send" || busy === "grant"} label={item.state === "failed" ? `${item.verb} again` : item.verb} />
+              <BusyLabel busy={busy === "send" || busy === "grant"} label={item.state === "failed" ? (changeKind(item.kind) ? "Try again" : `${item.verb} again`) : item.verb} />
             </Button>
             {grant ? (
               <DropdownMenu>

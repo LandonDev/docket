@@ -138,7 +138,8 @@ struct OutboxItemScreen: View {
                 .padding(.bottom, 12)
 
                 ForEach(view.fields) { field in
-                    Hairline()
+                    // A held change's next change starts a group: 16pt of space in place of the hairline.
+                    if field.gap { Color.clear.frame(height: 16) } else { Hairline() }
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(field.label)
                             .textStep(.meta, tint: Color(.label))

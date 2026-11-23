@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { changeWords } from '@shared/work/changeWords'
 import type { ActKindDef } from '../modules'
 import { ActNotSent, ActStale } from '../outbox/kinds'
 import { GoogleError, GOOGLE_MIME } from './client'
@@ -94,7 +95,7 @@ export type GoogleEdit = z.infer<typeof GoogleEditSchema>
 
 const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const editWords = (e: GoogleEdit['edits'][number]): string =>
-  'find' in e ? (e.replace ? `"${clip(e.find)}" to "${clip(e.replace)}"` : `take out "${clip(e.find)}"`) : e.text ? `slide ${e.slide}'s "${clip(e.was)}" to "${clip(e.text)}"` : `take out slide ${e.slide}'s "${clip(e.was)}"`
+  'find' in e ? (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : e.text ? `slide ${e.slide}'s ${changeWords(e.was, e.text)}` : `take out slide ${e.slide}'s "${clip(e.was)}"`
 
 /** No matcher: no grant covers an agent's change to a file others can open, and no Away releases it. */
 export const googleEdit: ActKindDef<GoogleEdit> = {
