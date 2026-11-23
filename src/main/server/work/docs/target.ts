@@ -1,11 +1,13 @@
 import { existsSync } from 'node:fs'
 import { basename, dirname, extname, join, relative, isAbsolute } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
-import type { CanvasItem, CanvasSource } from '@shared/work'
+import { canvasSourcePath, type CanvasItem, type CanvasSource } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { canonicalPath } from '../service/ctx'
 import { fetchedFile } from '../canvas/fetch'
+import { importsRoot } from '../files/imports'
+import { sharedOf } from '../files/policy'
 
 /**
  * What a source names, as the Work service and LifeOS know it
@@ -68,6 +70,25 @@ export async function lifeosRow(ctx: WorkCtx, t: DocTarget): Promise<LifeosDocRo
   if (!row) throw new Error('LifeOS has no such document')
   return row
 }
+
+/**
+ * Whether a document is, or was made from, a file others can open: a source
+ * `sharedOf` says is shared (a Teams or OneDrive library, the cloud folder,
+ * another host, the Windows VM), or the `.tcdoc` the importer wrote under
+ * `work-files/imports` for a file in a library (it writes there for no
+ * other). An agent only suggests on such a document, and what is made of it
+ * (a converted copy, a preview's render) never leaves this host.
+ */
+export function madeFromShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, source: CanvasSource): boolean {
+  if (sharedOf(ctx, source)) return true
+  const path = canvasSourcePath(source)
+  if (!path) return false
+  return isInside(path, importsRoot(ctx.dataDir))
+}
+
+/** Whether anyone but the owner can open it: its LifeOS row is shared (a guest link), or the file lies where others reach it. */
+export const othersOpen = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, t: DocTarget, row: LifeosDocRow | null): boolean =>
+  !!row?.shared || (t.at === 'file' && madeFromShared(ctx, t.source))
 
 /** Its title: LifeOS's, or the file's name without `.tcdoc`. */
 export const titleOf = (t: DocTarget, row: LifeosDocRow | null): string => row?.title ?? basename(t.at === 'file' ? t.path : t.doc).replace(/\.tcdoc$/i, '')

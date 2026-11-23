@@ -173,8 +173,10 @@ export async function previewDoc(ctx: WorkCtx, by: Caller, params: PreviewParams
   const got = await serviceExport(ctx, t, 'docx')
   const docx = Buffer.from(got.data ?? '', 'base64')
   const rev = revOf(format, ...wordContent(docx))
+  // An agent's suggestions stay out of the file (formats/serviceRoutes.ts): counted afresh each time, never kept with the render.
+  const held = (answer: PreviewAnswer): PreviewAnswer => (got.held ? { ...answer, heldSuggestions: got.held } : answer)
   const kept = keptRender(dir, format, rev)
-  if (kept) return kept
+  if (kept) return held(kept)
   const shared = madeFromShared(ctx, params.source)
   const warnings = new Set(droppedWords(got.dropped ?? {}))
   const scratch: string[] = []
@@ -192,7 +194,7 @@ export async function previewDoc(ctx: WorkCtx, by: Caller, params: PreviewParams
     const drawn = await ctx.convert({ from: format, to: 'pdf', input: file, shared })
     scratch.push(drawn.output)
     drawn.warnings.forEach((w) => warnings.add(w))
-    return await keep(dir, format, rev, readFileSync(drawn.output), `${safeName(got.title)}.${format}`, 'libreoffice', [...warnings])
+    return held(await keep(dir, format, rev, readFileSync(drawn.output), `${safeName(got.title)}.${format}`, 'libreoffice', [...warnings]))
   } finally {
     for (const f of scratch) rmSync(f, { force: true })
   }

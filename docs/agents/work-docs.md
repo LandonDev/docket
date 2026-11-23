@@ -71,7 +71,9 @@ place for a LifeOS document). What it tells the pane:
   colour (the two palettes are one, in order).
 - **Mode**: "Agent writes" or "Agent suggests", switched in the bar on his
   own document (`work.docs.mode`, kept per document in `work_docs_mode`);
-  on a shared document it suggests and cannot be switched.
+  on a shared document it suggests and cannot be switched. Shared is a
+  LifeOS document a guest link marks, or a `.tcdoc` others can open where
+  it lies (`othersOpen`, docs/target.ts: "Agent suggestions stay private").
 - **The state line**: the editor's own sentence when it is offline, waiting,
   read only or did not open.
 - **The agent's last write**: "Wrote 1 section, 2:04 PM" with Undo, which
@@ -145,7 +147,7 @@ for as long as the document is the same one:
 
   | Format | Lines |
   |---|---|
-  | Word, OpenDocument | "3 suggestions go as tracked changes" (comments go whole) |
+  | Word, OpenDocument | "3 suggestions go as tracked changes" for people's, "2 suggestions stay out until you accept them" for an agent's (the host's `heldSuggestions`); comments go whole |
   | Rich Text | the same, and "2 comments lose their replies" (counted from the threads someone answered) |
   | PDF, Web page | "2 comments stay behind", "3 suggestions stay out until you accept them", "1 footnote moves to the end" (every colour is kept: the page writes it inline) |
   | Markdown | comments and suggestions as a PDF's, "Colours stay behind", "Underlines stay behind" |
@@ -264,6 +266,41 @@ service is told the thread's sectors, not "all" (a Work Chat reaches every
 sector). And the words Ask quotes into a message (a chip's head and its
 `> ` lines) are not the owner's words: `ownerSaid` reads only what he typed
 (`typedWords`, work/threads.ts).
+
+## Agent suggestions stay private
+
+The owner's ruling (2026-11-23): an agent's pending suggestion on a
+document anyone else can open is kept on his host and shown only to him.
+Nothing of it enters the live document others sync, a guest's page, the
+file, its sync folder or an exported file until he accepts it; then it is
+written as an ordinary edit. A change he asked for in so many words is
+still written at once; a routine's is written at once only where nobody
+else reads.
+
+- **Who else can open it** (`othersOpen`, `madeFromShared` in
+  docs/target.ts, asked by the tools and by `work.docs.open`): a LifeOS
+  document whose row is shared (a guest link, or a project link that lists
+  it); a `.tcdoc` `sharedOf` says lies where others reach it (a Teams or
+  OneDrive library, the cloud folder, another host, the Windows VM); the
+  `.tcdoc` the importer wrote under `work-files/imports` for a file in a
+  library. On these an agent's own idea is always a branch.
+- **Where a pending agent branch lives**: a LifeOS document's in LifeOS's
+  `docBranches`, read with the owner's key only; never in the live room, so
+  a guest's socket, `/g/<id>/item`, `/g/<id>/threads` and another window
+  sync none of it (guests/private.test.ts). A `.tcdoc`'s, for every
+  `.tcdoc`, under this host's data
+  (`<userData>/work-service/private-branches/<sha256 of the path>/`, 0700),
+  never in the zip (history/privateBranches.ts): a path's sharing can change
+  with no write. An older file's agent branches move out at the first touch;
+  a decided one is removed. A Word author's and his own restore's stay in
+  the file. Keyed by path: a moved `.tcdoc` leaves them behind.
+- **Exports leave every agent suggestion out**, on any document, shared or
+  not: Word, OpenDocument, Rich Text, Markdown and Preview's render. The
+  answer counts them (`heldSuggestions`) and Preview says "3 suggestions
+  stay out until you accept them"; a person's still go as tracked changes
+  (`EXPORT_HOLDS_AGENT_SUGGESTIONS`, formats/serviceRoutes.ts).
+- A Google Doc's mirror holds only Google's own suggestions; an agent's go
+  to Google through the google pillar (work-google.md).
 
 ## LifeOS desktop
 

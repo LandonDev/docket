@@ -17,6 +17,7 @@ import {
   type TrustedIssuer
 } from 'work-kit/collab-server'
 import { WebSocketServer } from 'ws'
+import { PrivateBranchStore } from '../history/privateBranches'
 import { notServedWords } from './config'
 import { INTERNAL_ROUTES, routeFor } from './routes'
 import { refuseUpgrade, RouteError, sendJson, sendText, type RouteCtx } from './routes/route'
@@ -156,9 +157,10 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     presenceName: (c) => (c.link ? ((links.get(c.link) as { guest?: { name?: string } } | undefined)?.guest?.name ?? 'A guest') : null),
     log: io.log
   })
-  // Versions and branches are kept where the document is: LifeOS's rows, or inside the .tcdoc (milestone 19).
+  // Versions and branches are kept where the document is: LifeOS's rows, or inside the .tcdoc (milestone 19),
+  // but an agent's branch of a .tcdoc on this host's own disk, never in the file (history/privateBranches.ts).
   const lifeosVersions = new ConvexVersionStore(convex)
-  const fileVersions = new FileVersionStore()
+  const fileVersions = new PrivateBranchStore(new FileVersionStore(), join(config.dataDir, 'private-branches'))
   const history = createHistory({
     collab,
     versionsFor: (name) => (name.startsWith('file:') ? fileVersions : (notServed ?? lifeosVersions)),

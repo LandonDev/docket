@@ -14,7 +14,7 @@ runs in; the engine's own account is work-kit's
 |---|---|
 | The block diff | `work-kit/formats/diff`: `diffBlocks(base, target)` → `{stats, rows, lines}`, `diffWords`, `inlineSegments`, `applyRows`. Pure JSON, no Yjs or DOM: the service, main and the renderer all run it |
 | Versions, compare, restore, branches, compaction | `work-kit/collab-server` `createHistory({collab, versionsFor, storeFor})` (history.ts), beside the collab server, reaching the live gc-off Y.Doc through a direct connection, `collab.edit` and a Hocuspocus extension of its own |
-| Where versions are kept | `ConvexVersionStore` (LifeOS's `docVersions` and `docBranches`, M17), `FileVersionStore` (`versions/` and `branches/` inside the `.tcdoc`), `MemoryVersionStore` (tests) |
+| Where versions are kept | `ConvexVersionStore` (LifeOS's `docVersions` and `docBranches`, M17), `FileVersionStore` (`versions/` and `branches/` inside the `.tcdoc`) behind `PrivateBranchStore` (an agent's branches under `<userData>/work-service/private-branches/`), `MemoryVersionStore` (tests) |
 | The service's routes | `src/main/server/work/history/serviceRoutes.ts`: `/internal/history/{list,compare,cut,restore,branches,decide}` on the Unix socket, behind the secret, listed in `service/routes/index.ts`. `/internal/doc/write` (routes/internal.ts) chooses direct or branch through `ctx.history.write` |
 | The wire | `src/shared/contract-work-history.ts`: `work.history.{versions,compare,cut,restore,branches,decide}` |
 | Main's module | `src/main/server/work/history/index.ts`: checks the source and the caller, calls the service, names the principals |
@@ -81,7 +81,11 @@ TempCode's own agents write through `/internal/docs/write`, which takes
 main's verdict ([work-docs.md](work-docs.md) "The tools").
 
 - A branch is a fork of the live state, with the same item ids, kept as a
-  Yjs state (a Convex file, or `branches/<id>.yjs` in the `.tcdoc`).
+  Yjs state (a Convex file, or `branches/<id>.yjs` in the `.tcdoc`). An
+  agent's branch of a `.tcdoc` (`agent:`, `lifeos:bot:`) is kept on this
+  host instead, never in the file (`PrivateBranchStore`,
+  history/privateBranches.ts; work-docs.md "Agent suggestions stay
+  private"), and no export carries one.
 - What it suggests is `diffBlocks(live, live ⊕ fork)`: the fork merged into
   a copy of the live document. Edits the live document took since the fork
   stay in the merge, so they never show as the branch undoing them.

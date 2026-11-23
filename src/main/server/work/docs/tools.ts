@@ -3,7 +3,7 @@ import { agentPrincipal, workText, type CanvasSource, type WorkToolResult } from
 import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { docsOf, modeOf, wrote } from './state'
-import { attachmentDoc, ATTACHMENT_READ_ONLY, lifeosRow, pathOf, serviceTarget, targetOf, type DocTarget } from './target'
+import { attachmentDoc, ATTACHMENT_READ_ONLY, lifeosRow, othersOpen, pathOf, serviceTarget, targetOf, type DocTarget } from './target'
 import { fetchedItemOfPath } from '../canvas/fetch'
 import { changeThread } from './threads'
 import { EDITED_WITHIN, FIND_BY, FIND_KINDS, FIND_KIND_WORDS, FIND_SORTS, FIND_WHERE, FIND_WHERE_WORDS, findIn, type FindEntry, type FindFilter } from '@shared/work/docFind'
@@ -72,7 +72,8 @@ async function resolve(ctx: ToolCtx, a: TargetArgs, write = false): Promise<{ t:
   const fence = sectorsOf(ctx)
   // A document of another sector is not this thread's to see, whatever id it was handed.
   if (row && fence !== 'all' && !fence.includes(row.sector)) throw new Error('LifeOS has no such document')
-  return { t, shared: !!row?.shared || ctx.scope.shared(t.source), fence }
+  // A .tcdoc in a synced library or cloud folder is shared as surely as a guest-linked LifeOS document: an agent's own idea there only suggests.
+  return { t, shared: othersOpen(ctx, t, row) || ctx.scope.shared(t.source), fence }
 }
 
 function ownerSaid(ctx: ToolCtx, quote: string | undefined): boolean {

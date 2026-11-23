@@ -52,6 +52,8 @@ export interface DocFacts {
   replied: number;
   /** suggestions waiting on him */
   suggestions: number;
+  /** of those, an agent's, which the host leaves out of the file until he accepts them (`heldSuggestions`) */
+  held?: number;
   footnotes: number;
   /** runs and blocks with any colour, text or background */
   colours: number;
@@ -98,7 +100,8 @@ const some = (n: number, one: string, many: string): string | null => (n > 0 ? (
  * What a format drops of this document, one plain line each, counted from
  * the document. Each line says what happens to the thing. Only what is true
  * of today's writers is said: Word and OpenDocument take comments and
- * suggestions whole; Rich Text takes a comment without its replies; a PDF
+ * people's suggestions whole, and an agent's stay out until he accepts them
+ * (the host counts them, `heldSuggestions`); Rich Text takes a comment without its replies; a PDF
  * and a web page gather footnotes at the end (and keep every colour, which
  * the page writes inline); Markdown has no colour and no underline.
  */
@@ -106,7 +109,9 @@ export function docDrops(format: DocFormat, facts: DocFacts): string[] {
   const lines: (string | null)[] = [];
   const paper = format === "pdf" || format === "print" || format === "html";
   if (format === "docx" || format === "odt" || format === "rtf") {
-    lines.push(some(facts.suggestions, "1 suggestion goes as a tracked change", "{n} suggestions go as tracked changes"));
+    const held = Math.min(facts.held ?? 0, facts.suggestions);
+    lines.push(some(facts.suggestions - held, "1 suggestion goes as a tracked change", "{n} suggestions go as tracked changes"));
+    lines.push(some(held, "1 suggestion stays out until you accept it", "{n} suggestions stay out until you accept them"));
     if (format === "rtf") lines.push(some(facts.replied, "1 comment loses its replies", "{n} comments lose their replies"));
   } else {
     lines.push(some(facts.comments, "1 comment stays behind", "{n} comments stay behind"));
@@ -214,7 +219,7 @@ export function docPreviewSource(deps: DocPreviewDeps): PreviewSource {
     const made = await render(format, signal);
     return {
       picture: { kind: "paged", pdf: bytesOf(made.env, made.home, made.answer), pages: made.answer.pages, drawnBy: made.answer.drawnBy },
-      drops: unique([...docDrops(format, facts()), ...made.answer.warnings.map(asLine)]),
+      drops: unique([...docDrops(format, { ...facts(), held: made.answer.heldSuggestions ?? 0 }), ...made.answer.warnings.map(asLine)]),
     };
   };
 

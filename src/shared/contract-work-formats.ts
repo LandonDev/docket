@@ -118,6 +118,8 @@ export interface PreviewAnswer {
   name: string
   /** what the file could not carry, one line each, a person's words */
   warnings: string[]
+  /** an agent's suggestions left out of the file until he accepts them, counted as the canvas counts them (Word, OpenDocument, Rich Text) */
+  heldSuggestions?: number
 }
 
 /** What `work.formats.import` answers: the document it made, and what the file held that the document could not. */
@@ -137,6 +139,8 @@ export interface ExportAnswer {
   name: string
   data: string
   warnings: string[]
+  /** an agent's suggestions left out of the file until he accepts them (Word, OpenDocument, Rich Text) */
+  heldSuggestions?: number
 }
 
 /** The formats a document is exported to, in the order the Export dialog lists them. */

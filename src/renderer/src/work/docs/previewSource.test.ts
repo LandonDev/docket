@@ -50,6 +50,14 @@ describe("In this format", () => {
     expect(docDrops("docx", { ...NONE, comments: 5 })).toEqual([]);
   });
 
+  it("an agent's suggestions stay out of Word, OpenDocument and Rich Text until he accepts them; a person's still go as tracked changes", () => {
+    expect(docDrops("docx", { ...full, held: 2 })).toEqual(["1 suggestion goes as a tracked change", "2 suggestions stay out until you accept them"]);
+    expect(docDrops("odt", { ...full, held: 3 })).toEqual(["3 suggestions stay out until you accept them"]);
+    expect(docDrops("rtf", { ...NONE, suggestions: 1, held: 1 })).toEqual(["1 suggestion stays out until you accept it"]);
+    // The host's count never says more stayed out than the canvas holds.
+    expect(docDrops("docx", { ...NONE, suggestions: 1, held: 4 })).toEqual(["1 suggestion stays out until you accept it"]);
+  });
+
   it("Rich Text takes a comment without its replies: said of the comments someone answered, never of one that stands alone", () => {
     expect(docDrops("rtf", full)).toEqual(["3 suggestions go as tracked changes", "1 comment loses its replies"]);
     expect(docDrops("rtf", { ...NONE, comments: 4, replied: 2 })).toEqual(["2 comments lose their replies"]);
@@ -83,7 +91,7 @@ function host() {
   const fileBytes = new Uint8Array([80, 75, 3, 4, 9, 9, 9, 9, 9, 9]);
   const renders = new Map<string, Uint8Array>();
   let n = 0;
-  const state = { servedBy: null as string | null, gone: false, warnings: [] as string[], drawable: true, text: "v1" };
+  const state = { servedBy: null as string | null, gone: false, warnings: [] as string[], drawable: true, text: "v1", held: 0 };
   const request = async <T,>(env: string, method: string, params: unknown): Promise<T> => {
     const p = params as Record<string, unknown>;
     calls.push({ env, method, params: p });
@@ -94,7 +102,7 @@ function host() {
       if (!state.drawable && p.format !== "pdf") throw new Error("libreoffice is not installed on env_box, and no linked host converts docx to pdf");
       const rev = `${"0".repeat(31)}${++n}`;
       renders.set(rev, new TextEncoder().encode(`%PDF-1.7 ${state.text}\n1 0 obj\n<<>>\nendobj\n%%EOF\n`));
-      return { rev, size: renders.get(rev)!.length, pages: 3, drawnBy: p.format === "pdf" ? "tempcode" : "libreoffice", name: `Plan.${String(p.format)}`, warnings: state.warnings } as T;
+      return { rev, size: renders.get(rev)!.length, pages: 3, drawnBy: p.format === "pdf" ? "tempcode" : "libreoffice", name: `Plan.${String(p.format)}`, warnings: state.warnings, ...(state.held ? { heldSuggestions: state.held } : {}) } as T;
     }
     if (method === "work.formats.previewRead") {
       const got = state.gone ? undefined : renders.get(String(p.rev));
@@ -158,6 +166,13 @@ describe("the document's Preview source", () => {
       ["odt", "OpenDocument", true, "Export"],
       ["rtf", "Rich Text", true, "Export"],
     ]);
+  });
+
+  it("Word's lines say the agent's suggestion the host left out of the file stays out", async () => {
+    const h = host();
+    h.state.held = 1;
+    const drawn = await source(h).source.draw("docx", { signal: signal() });
+    expect(drawn.drops).toEqual(["1 suggestion stays out until you accept it"]);
   });
 
   it("Word is exported and drawn on the host, under the item, and read by range at its rev", async () => {

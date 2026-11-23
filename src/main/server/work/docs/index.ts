@@ -4,7 +4,7 @@ import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { ServedElsewhere, TOKEN_SECONDS } from '../service/ctx'
 import { dismissWritten, docsOf, ensureModeTable, modeOf, setMode, stopDocs } from './state'
-import { lifeosRow, pathOf, targetOf, titleOf, type DocTarget } from './target'
+import { lifeosRow, othersOpen, pathOf, targetOf, titleOf, type DocTarget } from './target'
 import { changeThread, ensureThreadTables, readThreads } from './threads'
 import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, listViews, saveView, workspaceOf } from './find'
 import { docTools } from './tools'
@@ -56,7 +56,7 @@ export function namesFor(ctx: WorkCtx, principals: Iterable<string>): Record<str
 
 async function opened(ctx: WorkCtx, by: Caller, t: DocTarget): Promise<DocOpen> {
   const row = await lifeosRow(ctx, t)
-  const shared = !!row?.shared
+  const shared = othersOpen(ctx, t, row)
   return {
     doc: t.doc,
     source: t.source,

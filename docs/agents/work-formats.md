@@ -283,9 +283,13 @@ follows to the document.
 base64): main reads the thread rows and names and asks the Work service's
 `/internal/formats/export`, which reads the live state, the pending branches
 (`history.branches`) and the threads' marks and writes Word
-(`documentForExport`, `writeDocx`: branches as `w:ins`/`w:del` with their
-authors, threads as Word comments, a `.tcdoc`'s stored sidecar for notes and
-the page) or markdown. OpenDocument and RTF are that Word file through
+(`documentForExport`, `writeDocx`: people's branches as `w:ins`/`w:del`
+with their authors, threads as Word comments, a `.tcdoc`'s stored sidecar for
+notes and the page) or markdown. An agent's pending branch (`agent:`,
+`lifeos:bot:`) never goes into an exported file, on any document: it is left
+out and counted, and `ExportAnswer` and `PreviewAnswer` carry the count as
+`heldSuggestions` (`EXPORT_HOLDS_AGENT_SUGGESTIONS`, formats/serviceRoutes.ts;
+work-docs.md "Agent suggestions stay private"). OpenDocument and RTF are that Word file through
 LibreOffice (RTF keeps no comment replies). HTML is made in the window
 (`htmlDocument`, from the editor's blocks); PDF is the same page laid out for
 paper (A4, or Letter in a US-style locale) and printed by
