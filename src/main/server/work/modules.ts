@@ -91,10 +91,10 @@ export interface WorkModule {
   sessionsRemoved?(sessionIds: string[], ctx: WorkCtx): void
   /**
    * Canvas items were deleted outright (a Files tab closed, or a deleted workspace's panes went): drop the rows and
-   * files the module kept for them by item. Called Work on or off. A deleted thread's items are not said here:
-   * `sessionsRemoved` covers them.
+   * files the module kept for them by item. Each item is as it was just before it went. Called Work on or off. A
+   * deleted thread's items are not said here: `sessionsRemoved` covers them.
    */
-  itemsRemoved?(itemIds: string[], ctx: WorkCtx): void
+  itemsRemoved?(items: CanvasItem[], ctx: WorkCtx): void
   /** A Work workspace was just made: store the module's own defaults for it (a stored choice, so turning one off sticks). */
   workspaceCreated?(workspaceId: string, ctx: WorkCtx): void
   /** A workspace was deleted: drop what the module kept for it. Called Work on or off. */

@@ -33,7 +33,7 @@ beforeEach(() => {
     workWorkspace: (id) => id === 'w1',
     push: (p, to) => void pushes.push({ p, to }),
     remoteReaches: (path) => path.startsWith(join(dir, 'shared')),
-    itemsRemoved: (ids) => void removed.push(ids),
+    itemsRemoved: (items) => void removed.push(items.map((i) => i.id)),
     log: () => {}
   })
 })

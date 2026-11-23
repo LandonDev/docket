@@ -46,7 +46,7 @@ export interface Rig {
   canvas: CanvasStore
   pushes: { p: WorkPush; to?: PushTo }[]
   /** the items every pillar was told were deleted */
-  removed: string[][]
+  removed: CanvasItem[][]
   /** the threads the registry knows, by id */
   scopes: Map<string, Partial<WorkScope>>
   settings: Map<string, Partial<WorkspaceWorkSettings>>
@@ -98,7 +98,7 @@ export function makeRig(): Rig {
   forgetLibraries(db)
 
   const pushes: Rig['pushes'] = []
-  const removed: string[][] = []
+  const removed: CanvasItem[][] = []
   const scopes = new Map<string, Partial<WorkScope>>([['t1', { workspaceId: WS }], ['t2', { workspaceId: 'w2' }], ['chat', { workspaceId: null }]])
   const settings = new Map<string, Partial<WorkspaceWorkSettings>>()
   const roots = [folder]
@@ -110,7 +110,7 @@ export function makeRig(): Rig {
     workWorkspace: (id) => id === WS || id === 'w2',
     push: (p, to) => void pushes.push({ p, to }),
     remoteReaches: (path) => reaches({ kind: 'remote', caps: [] }, path),
-    itemsRemoved: (ids) => void removed.push(ids),
+    itemsRemoved: (items) => void removed.push(items),
     log: () => {}
   })
   setCanvasStore(db, canvas)

@@ -27,10 +27,10 @@ export const canvasPart: CtxPart<'canvas'> = (ctx, deps) => {
     },
     log: (line) => ctx.log(line),
     // Every pillar that loaded, one after another: one's fault leaves the others told.
-    itemsRemoved: (ids) => {
+    itemsRemoved: (items) => {
       for (const module of WORK_MODULES) {
         try {
-          module.itemsRemoved?.(ids, ctx)
+          module.itemsRemoved?.(items, ctx)
         } catch (err) {
           ctx.log(`${module.id} did not clear deleted items: ${err instanceof Error ? err.message : String(err)}`)
         }

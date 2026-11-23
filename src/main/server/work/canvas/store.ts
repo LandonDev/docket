@@ -62,8 +62,8 @@ export interface CanvasStoreDeps {
   session(id: string): Pick<SessionMeta, 'id' | 'workspaceId' | 'scope' | 'parentId'> | null
   /** Whether this host has a Work workspace by this id: a pane owner (the Mail view's `mailPaneOf`, the Files place's `filesPaneOf`) owns items only for one. */
   workWorkspace?(id: string): boolean
-  /** Items were deleted outright (a Files tab closed, a workspace removed): every pillar drops the rows and files it kept for them. */
-  itemsRemoved?(itemIds: string[]): void
+  /** Items were deleted outright (a Files tab closed, a workspace removed): every pillar drops the rows and files it kept for them. Each item is as it was just before it went. */
+  itemsRemoved?(items: CanvasItem[]): void
   push(p: CanvasPush, to?: PushTo): void
   /** Whether a remote key could name this path (the listener's fence, `ctx.reaches`); absent, it names none. */
   remoteReaches?(path: string): boolean
@@ -280,22 +280,29 @@ export class CanvasStore {
   }
 
   /**
-   * Deletes items outright: their rows, what every pillar kept for them (`itemsRemoved`), and their folders. An
-   * id that names no item is passed over. Each owner's list is pushed once.
+   * Deletes items outright: their rows, what every pillar kept for them (`itemsRemoved`, told each item as it
+   * was), and their folders. An id that names no item is passed over. Each owner's list is pushed once.
    */
   remove(itemIds: readonly string[]): void {
-    const find = this.db.prepare(`SELECT id, session_id FROM work_canvas_items WHERE id = ?`)
-    const rows = itemIds.flatMap((id) => (find.get(id) as { id: string; session_id: string } | undefined) ?? [])
+    const find = this.db.prepare(`SELECT * FROM work_canvas_items WHERE id = ?`)
+    const rows = itemIds.flatMap((id) => (find.get(id) as Row | undefined) ?? [])
     if (!rows.length) return
+    const items = this.items(rows)
     const drop = this.db.prepare(`DELETE FROM work_canvas_items WHERE id = ?`)
     for (const row of rows) drop.run(row.id)
+    this.tellRemoved(items)
+    for (const row of rows) if (SAFE_ID.test(row.session_id) && SAFE_ID.test(row.id)) rmSync(canvasItemDir(this.deps.dataDir, row.session_id, row.id), { recursive: true, force: true })
+    for (const owner of new Set(rows.map((r) => r.session_id))) this.announce(owner)
+  }
+
+  /** Every pillar hears of deleted items; one's fault never keeps a row. */
+  private tellRemoved(items: CanvasItem[]): void {
+    if (!items.length) return
     try {
-      this.deps.itemsRemoved?.(rows.map((r) => r.id))
+      this.deps.itemsRemoved?.(items)
     } catch (err) {
       this.deps.log(`canvas: a pillar did not clear deleted items: ${err instanceof Error ? err.message : String(err)}`)
     }
-    for (const row of rows) if (SAFE_ID.test(row.session_id) && SAFE_ID.test(row.id)) rmSync(canvasItemDir(this.deps.dataDir, row.session_id, row.id), { recursive: true, force: true })
-    for (const owner of new Set(rows.map((r) => r.session_id))) this.announce(owner)
   }
 
   /**
@@ -371,15 +378,8 @@ export class CanvasStore {
    * pillar is told of their items (`itemsRemoved`) as it is of a deleted thread's.
    */
   removePanes(owners: readonly string[]): void {
-    const of = this.db.prepare(`SELECT id FROM work_canvas_items WHERE session_id = ?`)
-    const items = owners.flatMap((owner) => (of.all(owner) as { id: string }[]).map((r) => r.id))
-    if (items.length) {
-      try {
-        this.deps.itemsRemoved?.(items)
-      } catch (err) {
-        this.deps.log(`canvas: a pillar did not clear a deleted workspace's items: ${err instanceof Error ? err.message : String(err)}`)
-      }
-    }
+    const of = this.db.prepare(`SELECT * FROM work_canvas_items WHERE session_id = ?`)
+    this.tellRemoved(owners.flatMap((owner) => this.items(of.all(owner) as unknown as Row[])))
     this.removeSessions(owners)
   }
 }
