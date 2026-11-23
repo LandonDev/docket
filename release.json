@@ -1,5 +1,5 @@
 {
-  "n": 363,
-  "notes": "Work, Nov 23 (363): FIX for 1.0.362, where opening a document could empty it (a document's first copy is never lost). Also: the ten new Work features in their finished state (Today, one search, Messages, meeting prep, templates, Money, the weekly review, calendar clashes, files and editors on the phone, the daily digest), Files after its review fixes, slides complete (export and preview, other deck formats, the PowerPoint switch, the phone clicker, fade builds), sheets rules, find and replace in documents, agent suggestions on shared files kept private.",
-  "ts": 1795467978445
+  "n": 364,
+  "notes": "Work, Nov 23 (364): Pages for documents (a styled document as sheets of its own paper while you edit, and what you see is what prints); a value typed into a workbook opened from Files is saved again; a copy of a file on another computer (your Mac's OneDrive, the Windows VM) saves back to where the file lies; sheets gain tables, rich text and notes, charts and pictures, page breaks and set-up, and moving cells, rows and columns in an Excel file; a deck's edits answered faster; an old window can no longer write into a document; Messages after its last fixes.",
+  "ts": 1795472159276
 }
