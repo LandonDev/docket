@@ -151,8 +151,11 @@ function themeBody(xml: string): string {
       .replace(/<\/w:tblPr>/g, '<w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr>')
       // A cell's own paragraph needs no space after it: the cell's margins give it.
       .replace(/(<w:tc>[\s\S]*?<\/w:tc>)/g, (cell) => cell.replace(/<w:p>/g, '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr>').replace(/<w:p><w:pPr>([\s\S]*?)<\/w:pPr><w:pPr>/g, '<w:p><w:pPr>$1'))
+      // A row that is no head says nothing: the writer's `<w:tblHeader w:val="off"/>` is read as a head by readers that look only for the tag (work-kit's readDocx among them).
+      .replace(/<w:trPr><w:tblHeader w:val="(?:off|false|0)"\/><\/w:trPr>/g, '')
+      .replace(/<w:tblHeader w:val="(?:off|false|0)"\/>/g, '')
       // A check item is its box and its words: the list's bullet would be a second mark before the box.
-      .replace(/<w:pPr><w:pStyle w:val="ListParagraph"\/><w:numPr>(?:(?!<\/w:numPr>).)*<\/w:numPr><\/w:pPr><w:r><w:t xml:space="preserve">([☐☒]) <\/w:t><\/w:r>/g, '<w:pPr><w:pStyle w:val="ListParagraph"/><w:ind w:left="720" w:hanging="360"/></w:pPr><w:r><w:t>$1</w:t><w:tab/></w:r>')
+      .replace(/<w:pPr><w:pStyle w:val="ListParagraph"\/><w:numPr>(?:(?!<\/w:numPr>).)*<\/w:numPr><\/w:pPr><w:r><w:t xml:space="preserve">([☐☒]) <\/w:t><\/w:r>/g, '<w:pPr><w:pStyle w:val="ListParagraph"/><w:ind w:left="720" w:hanging="360"/></w:pPr><w:r><w:t xml:space="preserve">$1 </w:t></w:r>')
       // Words that follow a table or a list get a little room above them; a heading has its own.
       .replace(/<\/w:tbl><w:p><w:r>/g, '</w:tbl><w:p><w:pPr><w:spacing w:before="160"/></w:pPr><w:r>')
       .replace(/(<w:pStyle w:val="ListParagraph"\/>(?:(?!<\/w:p>).)*<\/w:p>)<w:p><w:r>/g, '$1<w:p><w:pPr><w:spacing w:before="160"/></w:pPr><w:r>')

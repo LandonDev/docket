@@ -16,7 +16,8 @@ const SHEET: SheetIn = {
     [{ v: 'Date', s: 'label' }, { v: '{{Date}}', s: 'inputDate' }],
     [{ v: 'Number', s: 'label' }, { v: '{{Invoice number}}', s: 'input' }],
     [{ v: 'Item one', s: 'input' }, { v: 2, s: 'inputNumber' }, { v: 10.5, s: 'inputCurrency' }],
-    [{ v: 'Total', s: 'total' }, null, { f: 'B4*C4', s: 'totalCurrency' }]
+    [{ v: 'Total', s: 'total' }, null, { f: 'B4*C4', s: 'totalCurrency', v: 21 }],
+    [{ f: 'IF(C4="","",C4)', s: 'normal', v: '' }]
   ],
   freeze: 3,
   printTitles: [3, 3],
@@ -58,6 +59,12 @@ describe('the starters’ sheet writer', () => {
     const fonts = /<fonts\b[^>]*>([\s\S]*?)<\/fonts>/.exec(part(bytes, 'xl/styles.xml'))![1]!
     const each = fonts.match(/<font>[\s\S]*?<\/font>/g)!
     expect(each.every((f) => /<scheme val="(major|minor)"\/>/.test(f))).toBe(true)
+  })
+
+  it("writes a formula's result with it, a text result as a string", () => {
+    const sheet = part(writeXlsx([SHEET]), 'xl/worksheets/sheet1.xml')
+    expect(sheet).toContain('<c r="C5" s="4"><f>B4*C4</f><v>21</v></c>')
+    expect(sheet).toContain('<c r="A6" t="str"><f>IF(C4=&quot;&quot;,&quot;&quot;,C4)</f><v></v></c>'.replace(/&quot;/g, '"'))
   })
 
   it('is the same bytes when written twice', () => {

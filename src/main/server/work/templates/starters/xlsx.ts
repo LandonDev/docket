@@ -57,7 +57,12 @@ export const CELL_STYLES = [
 ] as const
 export type CellStyle = (typeof CELL_STYLES)[number]
 
-/** A cell: text, a number, or a formula (no `=`) with a style; null for an empty cell. */
+/**
+ * A cell: text, a number, or a formula (no `=`) with a style; null for an
+ * empty cell. A formula may carry `v`, its result as the file is written: a
+ * reader with no calculator (a CSV export, a preview, the phone) shows it,
+ * and Excel works every formula out again when the file opens.
+ */
 export type CellIn = string | number | null | { v?: string | number; f?: string; s?: CellStyle }
 
 export interface SheetIn {
@@ -308,7 +313,10 @@ function sheetXml(sheet: SheetIn, shared: Strings, tab: number): string {
       const ref = `${colName(ci)}${r}`
       const s = STYLE_INDEX.get(style)!
       const sAttr = s ? ` s="${s}"` : ''
-      if (c.f !== undefined) cells.push(`<c r="${ref}"${sAttr}><f>${esc(c.f)}</f></c>`)
+      if (c.f !== undefined) {
+        const cached = c.v === undefined ? '' : `<v>${typeof c.v === 'number' ? c.v : esc(c.v)}</v>`
+        cells.push(`<c r="${ref}"${sAttr}${typeof c.v === 'string' ? ' t="str"' : ''}><f>${esc(c.f)}</f>${cached}</c>`)
+      }
       else if (typeof c.v === 'number') cells.push(`<c r="${ref}"${sAttr}><v>${c.v}</v></c>`)
       else if (typeof c.v === 'string' && c.v !== '') cells.push(`<c r="${ref}"${sAttr} t="s"><v>${shared.index(c.v)}</v></c>`)
       else cells.push(`<c r="${ref}"${sAttr}/>`)
@@ -366,7 +374,7 @@ export function writeXlsx(sheets: readonly SheetIn[]): Uint8Array {
       `${XML}<workbook ${NS} ${R_NS}><workbookPr defaultThemeVersion="164011"/><bookViews><workbookView activeTab="0"/></bookViews>` +
       `<sheets>${sheets.map((s, i) => `<sheet name="${attr(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>` +
       (names ? `<definedNames>${names}</definedNames>` : '') +
-      // No cached results are written: every formula is worked out when the file opens.
+      // Every formula is worked out again when the file opens; the results written with it are for readers with no calculator.
       '<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>',
     'xl/_rels/workbook.xml.rels':
       `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +

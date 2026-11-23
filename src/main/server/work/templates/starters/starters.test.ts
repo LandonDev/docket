@@ -93,6 +93,9 @@ describe('the checked-in starters', () => {
     const text = (b: (typeof blocks)[number]): string => (Array.isArray(b.content) ? b.content.map((x) => (x.type === 'text' ? x.text : '')).join('') : '')
     const headings = (bs: typeof blocks): string[] => bs.filter((b) => b.type === 'heading').map(text)
     expect(headings(blocks)).toEqual(headings(DOCS[starterKey(s)]!().blocks).map((h) => h.replace(/\*\*/g, '')))
+    // A table's head rows read back as the fixture set them: no row the writer marked "not a head" counts as one.
+    const heads = (bs: typeof blocks): number[] => bs.filter((b) => b.type === 'table').map((b) => (b.content as { headerRows?: number }).headerRows ?? 0)
+    expect(heads(blocks)).toEqual(heads(DOCS[starterKey(s)]!().blocks))
   })
 
   it.each(STARTERS.filter((s) => s.form === 'xlsx').map((s) => [starterFile(s), s] as const))('%s reads back in our sheet reader', (file, s) => {
@@ -101,6 +104,11 @@ describe('the checked-in starters', () => {
     expect(sheets.map((x) => x.name)).toEqual(SHEETS[starterKey(s)]!().map((x) => x.name))
     const first = sheets[0]!.cellData?.[0]?.[0]
     expect(typeof first?.v === 'string' && first.v.length > 0).toBe(true)
+    // Every formula carries its result, so a reader with no calculator (a CSV export, a preview) shows the totals.
+    type Cell = { f?: string; v?: unknown }
+    for (const sheet of sheets)
+      for (const row of Object.values(sheet.cellData ?? {}) as Record<string, Cell>[])
+        for (const cell of Object.values(row ?? {})) if (cell?.f) expect(cell.v, `${file} ${cell.f}`).not.toBeUndefined()
   })
 
   it.each(STARTERS.filter((s) => s.form !== 'pptx').map((s) => [starterFile(s), s] as const))('%s fills every field, its own and the three filled without asking', (file, s) => {
