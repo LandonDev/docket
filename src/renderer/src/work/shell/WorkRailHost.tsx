@@ -163,7 +163,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       {/* The Clash dialog, from an Agenda row or a Today row (work/clashes/ClashHost.tsx). */}
       <ClashHost />
       {/* The day's digest and what cannot wait, told once across hosts (work/digest). */}
-      <DigestHost onOpenWorkspace={onOpenWorkspace} />
+      <DigestHost />
       {naming && home ? (
         <NameWorkspaceDialog
           environmentId={home}

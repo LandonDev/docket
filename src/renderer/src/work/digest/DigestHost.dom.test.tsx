@@ -35,14 +35,15 @@ vi.mock("../../components/ui/toaster", async (original) => {
 });
 const bridge = vi.hoisted(() => ({ show: vi.fn(async () => {}), close: vi.fn(async () => {}), onOpen: vi.fn(() => () => {}) }));
 vi.mock("../../lib/native", async (original) => ({ ...(await original<object>()), systemNotice: bridge }));
-const workspaces = vi.hoisted(() => ({ list: [] as unknown[], selected: [] as string[] }));
+const workspaces = vi.hoisted(() => ({ list: [] as unknown[], entered: [] as string[] }));
 vi.mock("../../lib/tcserver/workspaces", async (original) => ({ ...(await original<object>()), useWorkspaces: () => workspaces.list }));
-vi.mock("../../stores/project", async (original) => ({ ...(await original<object>()), useSelectedWorkspaceIds: () => workspaces.selected }));
+vi.mock("../../stores/project", async (original) => ({ ...(await original<object>()), project: { enterWorkspace: (path: string) => void workspaces.entered.push(path) } }));
 
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
 import { digestOpensPort, setWorkOn, workOpenPort, workSwitch, workViewNow } from "../../lib/workSwitch";
-import { shellStore } from "../../stores/shell";
-import { DigestHost, resetDismissed } from "./DigestHost";
+import { shell, shellStore } from "../../stores/shell";
+import { WORK_PLACE_ROWS } from "../../lib/workPlaces";
+import { DigestHost, digestOpens, resetDismissed } from "./DigestHost";
 import { loadDigest, resetDigestStore } from "./store";
 import { push, resetWorld, tell, type World } from "./world.testkit";
 
@@ -51,10 +52,10 @@ const shown = (): Shown[] => [...toasts.shown.values()] as Shown[];
 const at = (day: number, h: number, m = 0): number => new Date(2026, 10, day, h, m).getTime();
 
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-async function mount(onOpenWorkspace: (path: string) => void = () => {}) {
+async function mount() {
   // As when the chunk lands: each host with Work on is read.
   await loadDigest();
-  const view = render(<DigestHost onOpenWorkspace={onOpenWorkspace} />);
+  const view = render(<DigestHost />);
   await settle();
   await settle();
   return view;
@@ -68,7 +69,10 @@ beforeEach(() => {
   resetDismissed();
   toasts.shown.clear();
   workspaces.list = [];
-  workspaces.selected = [];
+  workspaces.entered = [];
+  WORK_PLACE_ROWS.length = 0;
+  shell.openWorkPlace(null);
+  shell.closeOutbox();
   bridge.show.mockClear();
   bridge.close.mockClear();
   bridge.onOpen.mockClear();
@@ -113,6 +117,15 @@ describe("the digest's toast", () => {
     expect(bridge.close).toHaveBeenCalledWith("digest:2026-11-24");
   });
 
+  it("opens Today once its row is on the rail, though nobody registered a page, and the list until then", async () => {
+    await mount();
+    expect(digestOpens()).toBeNull();
+    WORK_PLACE_ROWS.push({ id: "today", label: "Today", order: 10, icon: (() => null) as never });
+    await act(async () => shown()[0]!.action());
+    expect(shellStore.getState().workPlace).toBe("today");
+    expect(screen.queryByRole("heading", { name: "Digest" })).toBeNull();
+  });
+
   it("opens Today once Today has registered its page, and not the list", async () => {
     const today = vi.fn();
     digestOpensPort.set(today);
@@ -144,6 +157,24 @@ describe("the digest's toast", () => {
   });
 });
 
+describe("a page above the workspaces", () => {
+  it("opens when its row is on the rail, and is the list until then", async () => {
+    w().rows.set("box", [tell({ key: "review:2026-11-16", title: "This week's review is ready", how: "now", toldAt: at(24, 9), open: { place: "review" } })]);
+    await mount();
+    await act(async () => shown()[0]!.action());
+    // no such page in this build: the list opens instead
+    expect(shellStore.getState().workPlace ?? null).toBeNull();
+    expect(await screen.findByRole("heading", { name: "Digest" })).toBeTruthy();
+  });
+  it("opens the page once it is there", async () => {
+    WORK_PLACE_ROWS.push({ id: "review", label: "Review", order: 20, icon: (() => null) as never });
+    w().rows.set("box", [tell({ key: "review:2026-11-16", title: "This week's review is ready", how: "now", toldAt: at(24, 9), open: { place: "review" } })]);
+    await mount();
+    await act(async () => shown()[0]!.action());
+    expect(shellStore.getState().workPlace).toBe("review");
+  });
+});
+
 describe("an interrupt's toast", () => {
   const meeting = () => tell({ key: "prep:ev1", sector: "purdue", workspaceId: "ws-purdue", title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", how: "now", toldAt: at(24, 9, 50), by: at(24, 14), open: { view: "agenda", workspaceId: "ws-purdue", at: "ev1" } });
 
@@ -158,15 +189,9 @@ describe("an interrupt's toast", () => {
   it("its press moves the window to the job and opens the view on the thing, and the toast is gone for good", async () => {
     w().rows.set("box", [meeting()]);
     workspaces.list = [{ id: "ws-purdue", path: "/work/Purdue", environmentId: "box", kind: "work", sector: "purdue" }];
-    const moved: string[] = [];
-    const view = await mount((path) => moved.push(path));
+    await mount();
     await act(async () => shown()[0]!.action());
-    expect(moved).toEqual(["/work/Purdue"]);
-    // the window has not moved yet: the view waits for it
-    expect(workViewNow()).toBeNull();
-    workspaces.selected = ["ws-purdue"];
-    view.rerender(<DigestHost onOpenWorkspace={(path) => moved.push(path)} />);
-    await settle();
+    expect(workspaces.entered).toEqual(["/work/Purdue"]);
     expect(workViewNow()).toEqual({ workspaceId: "ws-purdue", view: "agenda", event: "ev1" });
     await waitFor(() => expect(shown()).toEqual([]));
     // a reload does not bring it back

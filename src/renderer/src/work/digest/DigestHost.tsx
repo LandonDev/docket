@@ -4,14 +4,16 @@ import { useToastSync } from "../../chrome/toastSync";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { systemNotice } from "../../lib/native";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { digestOpensPort, openWorkView, workOpenPort, type OpenWorkView } from "../../lib/workSwitch";
-import { useSelectedWorkspaceIds } from "../../stores/project";
+import { normalizeProjectPath } from "../../lib/recents";
+import { workPlaceRow } from "../../lib/workPlaces";
+import { digestOpensPort, openWorkView, workOpenPort } from "../../lib/workSwitch";
+import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
 import { DIGEST_TOAST, digestNotice, nameOf, nowToasts, openInterrupts, systemNotices, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
-import { markSeen, openDigestSheet, useDigest, useDigestSheetOpen } from "./store";
+import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
 
 /**
  * The digest on the desktop, mounted once while Work is on (WorkRailHost;
@@ -45,16 +47,16 @@ function writeDismissed(names: ReadonlySet<string>): void {
 }
 
 
-type Props = {
-  /** Moves the window to a workspace by its folder (App's own). */
-  onOpenWorkspace: (path: string) => void;
-};
+/** Today's id among the pages above the workspaces (work/today/open.ts). */
+const TODAY = "today";
 
-export function DigestHost({ onOpenWorkspace }: Props) {
+/** What the digest's notice opens: the page Today registered (`digestOpensPort`), else Today itself once its row is on the rail, else null: the digest's own list. */
+export const digestOpens = (): (() => void) | null => digestOpensPort.get() ?? (workPlaceRow(TODAY) ? () => shell.openWorkPlace(TODAY) : null);
+
+export function DigestHost() {
   const view = useDigest();
   const sheetOpen = useDigestSheetOpen();
   const workspaces = useWorkspaces();
-  const selected = useSelectedWorkspaceIds();
   const [dismissed, setDismissed] = useState(readDismissed);
   // The minute hand: an interrupt a day old leaves on its own.
   const [now, setNow] = useState(() => Date.now());
@@ -79,29 +81,21 @@ export function DigestHost({ onOpenWorkspace }: Props) {
     });
   }, []);
 
-  // A view of a workspace the window is not in: the window moves there first, and the view opens once it has.
-  const [pending, setPending] = useState<OpenWorkView | null>(null);
-  useEffect(() => {
-    if (!pending || !selected?.includes(pending.workspaceId)) return;
-    openWorkView(pending);
-    setPending(null);
-  }, [pending, selected]);
-
   const routes = useMemo<Routes>(
     () => ({
       thread: (sessionId) => workOpenPort.get()?.(sessionId),
+      // The window moves to the job's workspace and opens the view on the thing, as a row of Today does (work/today/open.ts `goTo`).
       view: (wanted) => {
         const workspace = workspaces.find((w) => w.id === wanted.workspaceId);
         if (!workspace) return;
-        if (selected?.includes(workspace.id)) return openWorkView(wanted);
-        setPending(wanted);
-        onOpenWorkspace(workspace.path);
+        shell.closeViews();
+        project.enterWorkspace(normalizeProjectPath(workspace.path));
+        openWorkView(wanted);
       },
+      // A page above the workspaces, once its row is on the rail: until then there is no such page.
       place: (id) => {
-        // Today's frame (`shell.openWorkPlace`), once it is on master: until then there is no such page.
-        const open = (shell as { openWorkPlace?: (id: string) => void }).openWorkPlace;
-        if (!open) return false;
-        open(id);
+        if (!workPlaceRow(id)) return false;
+        shell.openWorkPlace(id);
         return true;
       },
       outbox: (item) => {
@@ -110,7 +104,7 @@ export function DigestHost({ onOpenWorkspace }: Props) {
       },
       settings: (section) => requestSettings(section),
     }),
-    [onOpenWorkspace, selected, workspaces],
+    [workspaces],
   );
   const routesRef = useRef(routes);
   routesRef.current = routes;
@@ -124,14 +118,19 @@ export function DigestHost({ onOpenWorkspace }: Props) {
     },
     [dismiss],
   );
-  /** The digest's press: Today when it is registered, else the list. Every unseen day is seen. */
+  /** The digest's press: Today once it is there, else the list. Every unseen day is seen. */
   const digest = useMemo(() => digestNotice(view), [view]);
   const openDigest = useCallback(() => {
     if (digest) markSeen(digest.days);
-    const today = digestOpensPort.get();
+    const today = digestOpens();
     if (today) today();
     else openDigestSheet(true);
   }, [digest]);
+  // Today's own rows of the digest open through the same routes (today.ts).
+  useEffect(() => {
+    setTellOpener(openRow);
+    return () => setTellOpener(null);
+  }, [openRow]);
 
   const toasts = useMemo(() => nowToasts(openInterrupts(view, dismissed, now)), [view, dismissed, now]);
   const openToast = useCallback(

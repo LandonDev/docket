@@ -187,6 +187,18 @@ export function useDigestSheetOpen(): boolean {
   );
 }
 
+// ── a row's press, from outside the host component ────────────────────────
+
+let opener: ((row: TellRow) => void) | null = null;
+/** `DigestHost` hands over its row press while it is mounted. */
+export function setTellOpener(next: ((row: TellRow) => void) | null): void {
+  opener = next;
+}
+/** Opens a tell's target through the digest's own routes: what Today's rows of the digest press. */
+export function openTell(row: TellRow): void {
+  opener?.(row);
+}
+
 /** Test seam. */
 export function resetDigestStore(): void {
   hosts.clear();
