@@ -356,7 +356,7 @@ edits none of these.
 | Phone wire | the Work rows of `SUBSET` (scripts/gen-swift-contract.ts) | none: the phone's Work methods and pushes are rows there |
 
 Pillar ids, in mount order: `outbox, canvas, lifeos, routines, rules, mail,
-tasks, agenda, docs, history, formats, sheets, office, google, guests, pdf,
+messages, tasks, agenda, docs, history, formats, sheets, office, google, guests, pdf,
 slides, media, frameio, meetings, forms, dashboards, browser, projects,
 winvm, capture, files, prep, money, search, clashes, templates` (the Windows VM's keeper: [work-winvm.md](work-winvm.md); capture from anywhere,
 [work-capture.md](work-capture.md); the Files place, [work-files.md](work-files.md); one search for everything,

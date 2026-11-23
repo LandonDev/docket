@@ -59,7 +59,7 @@ import {
 describe('the names', () => {
   it('lists the 34 pillars once, in mount order, each with the milestone that builds it', () => {
     expect([...PILLAR_IDS]).toEqual([
-      'outbox', 'canvas', 'lifeos', 'routines', 'rules', 'mail', 'tasks', 'agenda', 'docs', 'history', 'formats', 'sheets',
+      'outbox', 'canvas', 'lifeos', 'routines', 'rules', 'mail', 'messages', 'tasks', 'agenda', 'docs', 'history', 'formats', 'sheets',
       'office', 'google', 'guests', 'pdf', 'slides', 'media', 'frameio', 'meetings', 'forms', 'dashboards', 'browser', 'projects', 'winvm', 'capture', 'files', 'prep', 'money', 'search',
       'review', 'clashes', 'templates', 'digest'
     ])

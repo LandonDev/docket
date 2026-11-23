@@ -26,6 +26,7 @@ export const PILLAR_IDS = [
   'routines',
   'rules',
   'mail',
+  'messages',
   'tasks',
   'agenda',
   'docs',
@@ -67,6 +68,8 @@ export const PILLAR_MILESTONE: Record<PillarId, number> = {
   routines: 32,
   rules: 39,
   mail: 23,
+  /** chat in Work, a Messages view beside Mail (plan-80VsimogREJv), round 3's row 3 */
+  messages: 56,
   tasks: 25,
   agenda: 25,
   docs: 20,

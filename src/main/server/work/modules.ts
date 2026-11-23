@@ -310,6 +310,7 @@ export const PILLAR_LOADERS: PillarLoaders = {
   routines: () => import('./routines').then((m) => m.routines),
   rules: () => import('./rules').then((m) => m.rules),
   mail: () => import('./mail').then((m) => m.mail),
+  messages: () => import('./messages').then((m) => m.messages),
   tasks: () => import('./tasks').then((m) => m.tasks),
   agenda: () => import('./agenda').then((m) => m.agenda),
   docs: () => import('./docs').then((m) => m.docs),

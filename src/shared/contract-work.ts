@@ -9,6 +9,7 @@ import { LIFEOS_CAPS, LIFEOS_RELAY, LifeosRequestSchemas, type LifeosPush } from
 import { ROUTINES_CAPS, ROUTINES_RELAY, RoutinesRequestSchemas, type RoutinesPush } from './contract-work-routines'
 import { RULES_CAPS, RULES_RELAY, RulesRequestSchemas, type RulesPush } from './contract-work-rules'
 import { MAIL_CAPS, MAIL_RELAY, MailRequestSchemas, type MailPush } from './contract-work-mail'
+import { MESSAGES_CAPS, MESSAGES_RELAY, MessagesRequestSchemas, type MessagesPush } from './contract-work-messages'
 import { TASKS_CAPS, TASKS_RELAY, TasksRequestSchemas, type TasksPush } from './contract-work-tasks'
 import { AGENDA_CAPS, AGENDA_RELAY, AgendaRequestSchemas, type AgendaPush } from './contract-work-agenda'
 import { DOCS_CAPS, DOCS_RELAY, DocsRequestSchemas, type DocsPush } from './contract-work-docs'
@@ -104,6 +105,7 @@ export const WorkRequestSchemas = [
   ...RoutinesRequestSchemas,
   ...RulesRequestSchemas,
   ...MailRequestSchemas,
+  ...MessagesRequestSchemas,
   ...TasksRequestSchemas,
   ...AgendaRequestSchemas,
   ...DocsRequestSchemas,
@@ -142,6 +144,7 @@ export type WorkPush =
   | RoutinesPush
   | RulesPush
   | MailPush
+  | MessagesPush
   | TasksPush
   | AgendaPush
   | DocsPush
@@ -179,6 +182,7 @@ export const WORK_CAPS = {
   ...ROUTINES_CAPS,
   ...RULES_CAPS,
   ...MAIL_CAPS,
+  ...MESSAGES_CAPS,
   ...TASKS_CAPS,
   ...AGENDA_CAPS,
   ...DOCS_CAPS,
@@ -217,6 +221,7 @@ export const WORK_PILLAR_CONTRACTS: Record<PillarId, { requests: readonly z.ZodT
   routines: { requests: RoutinesRequestSchemas, caps: ROUTINES_CAPS, relay: ROUTINES_RELAY },
   rules: { requests: RulesRequestSchemas, caps: RULES_CAPS, relay: RULES_RELAY },
   mail: { requests: MailRequestSchemas, caps: MAIL_CAPS, relay: MAIL_RELAY },
+  messages: { requests: MessagesRequestSchemas, caps: MESSAGES_CAPS, relay: MESSAGES_RELAY },
   tasks: { requests: TasksRequestSchemas, caps: TASKS_CAPS, relay: TASKS_RELAY },
   agenda: { requests: AgendaRequestSchemas, caps: AGENDA_CAPS, relay: AGENDA_RELAY },
   docs: { requests: DocsRequestSchemas, caps: DOCS_CAPS, relay: DOCS_RELAY },
