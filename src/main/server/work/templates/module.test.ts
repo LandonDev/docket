@@ -17,14 +17,15 @@ import { docx, HOST, makeRig, OTHER, phone, window, WS, type Rig } from './testk
 const methods = TemplatesRequestSchemas.map((s) => s.shape.method.value)
 
 describe('the wire', () => {
-  it('declares the seven methods, each the pillar\'s own', () => {
-    expect(methods).toEqual(['work.templates.list', 'work.templates.make', 'work.templates.save', 'work.templates.rename', 'work.templates.move', 'work.templates.remove', 'work.templates.unhide'])
+  it('declares the eight methods, each the pillar\'s own', () => {
+    expect(methods).toEqual(['work.templates.list', 'work.templates.make', 'work.templates.save', 'work.templates.rename', 'work.templates.move', 'work.templates.remove', 'work.templates.unhide', 'work.templates.fields'])
     for (const m of methods) expect(pillarOfMethod(m)).toBe('templates')
   })
 
   it('reads with read and changes with operate', () => {
     expect(requiredCapability({ method: 'work.templates.list' })).toBe('read')
-    for (const m of methods.slice(1)) expect(TEMPLATES_CAPS[m as keyof typeof TEMPLATES_CAPS]).toBe('operate')
+    expect(requiredCapability({ method: 'work.templates.fields' })).toBe('read')
+    for (const m of methods.slice(1, -1)) expect(TEMPLATES_CAPS[m as keyof typeof TEMPLATES_CAPS]).toBe('operate')
   })
 
   it('carries every method to the workspace\'s host', () => {
@@ -73,8 +74,15 @@ describe('the handlers', () => {
     expect(await call('work.templates.remove', { workspaceId: WS, template: 'all:Note.docx', confirmed: true })).toEqual({})
     expect(await call('work.templates.remove', { workspaceId: WS, template: 'Season log' })).toEqual({})
     expect(await call('work.templates.list', { workspaceId: WS })).toMatchObject({ hidden: 1 })
+    expect(await call('work.templates.remove', { workspaceId: WS, template: 'Game report' })).toEqual({})
+    expect(await call('work.templates.list', { workspaceId: WS })).toMatchObject({ hidden: 2 })
+    // The undo of one Hide shows that starter alone.
+    expect(await call('work.templates.unhide', { workspaceId: WS, template: 'starter:ref/game-report' })).toEqual({})
+    expect(await call('work.templates.list', { workspaceId: WS })).toMatchObject({ hidden: 1 })
     expect(await call('work.templates.unhide', { workspaceId: WS })).toEqual({})
     expect(await call('work.templates.list', { workspaceId: WS })).toMatchObject({ hidden: 0 })
+    // What a file would ask for, read before it is saved.
+    expect(await call('work.templates.fields', { workspaceId: WS, source: { at: 'file', host: HOST, path: source } })).toEqual({ fields: ['To'] })
   })
 
   it('push the shelf after each change and never after a read', async () => {

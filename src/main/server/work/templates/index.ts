@@ -1,11 +1,11 @@
 import type { z } from 'zod'
 import type { ClientRequest } from '@shared/contract'
-import { TemplatesRequestSchemas } from '@shared/contract-work-templates'
+import { TemplatesRequestSchemas, type TemplateFields } from '@shared/contract-work-templates'
 import { handled, NOT_HANDLED, type Handled } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { makeFromShelf } from './make'
 import { OUT_OF_REACH } from './place'
-import { moveTemplate, removeTemplate, renameTemplate, saveTemplate, unhideTemplates } from './save'
+import { fieldsOfSource, moveTemplate, removeTemplate, renameTemplate, saveTemplate, unhideTemplates } from './save'
 import { jobDir, listTemplates, workspaceOf } from './shelf'
 import { ensureTemplatesTables, TemplatesStore } from './store'
 import { templateTools } from './tools'
@@ -57,8 +57,12 @@ export async function templatesHandle(req: ClientRequest, ctx: WorkCtx, by: Call
     }
     case 'work.templates.unhide': {
       const p = params(req, 'work.templates.unhide')
-      unhideTemplates(ctx, by, p.workspaceId)
+      unhideTemplates(ctx, by, p.workspaceId, p.template)
       return handled({})
+    }
+    case 'work.templates.fields': {
+      const p = params(req, 'work.templates.fields')
+      return handled({ fields: fieldsOfSource(ctx, by, p.workspaceId, p.source) } satisfies TemplateFields)
     }
   }
   return NOT_HANDLED

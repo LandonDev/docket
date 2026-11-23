@@ -200,6 +200,8 @@ export interface Shelf {
   entries: ShelfEntry[]
   /** the starters hidden in this workspace that would otherwise show */
   hiddenEntries: ShelfEntry[]
+  /** the starters one of his own of the same name stands in for */
+  replacedEntries: ShelfEntry[]
 }
 
 /** A workspace's shelf, read now. */
@@ -215,11 +217,16 @@ export function shelfOf(ctx: ShelfCtx, workspaceId: string): Shelf {
   // An editor's own of a name one of the job's starters has is shown once, in the job's group.
   const taken = new Set(jobStarters.map((e) => e.id.slice(e.id.indexOf('/') + 1)))
   const anyStarters = startersOf(ctx, store, ANY_SECTOR).filter((e) => !taken.has(e.id.slice(e.id.indexOf('/') + 1)))
+  // His own of a name takes our starter's place on the shelf, as it does for a caller that names it: "Edit a copy"
+  // leaves one tile, his. The starter comes back when his is renamed or removed.
+  const mine = new Set([...own, ...all].map((e) => fieldKey(e.name)))
+  const replaced = (e: ShelfEntry): boolean => mine.has(fieldKey(e.name))
   const starters = [...jobStarters, ...anyStarters]
   return {
     workspace,
-    entries: [...own, ...jobStarters.filter((e) => !isHidden(e)), ...all, ...anyStarters.filter((e) => !isHidden(e))],
-    hiddenEntries: starters.filter(isHidden)
+    entries: [...own, ...jobStarters.filter((e) => !isHidden(e) && !replaced(e)), ...all, ...anyStarters.filter((e) => !isHidden(e) && !replaced(e))],
+    hiddenEntries: starters.filter(isHidden),
+    replacedEntries: starters.filter((e) => !isHidden(e) && replaced(e))
   }
 }
 
@@ -246,7 +253,7 @@ export class NoTemplateError extends Error {}
  */
 export function resolveTemplate(ctx: ShelfCtx, workspaceId: string, ref: string): { shelf: Shelf; entry: ShelfEntry } {
   const shelf = shelfOf(ctx, workspaceId)
-  const every = [...shelf.entries, ...shelf.hiddenEntries]
+  const every = [...shelf.entries, ...shelf.hiddenEntries, ...shelf.replacedEntries]
   const said = ref.trim()
   const id = parseTemplateId(said) ? said : STARTER_KEY.test(said) ? templateId('starter', said) : null
   if (id) {
@@ -269,8 +276,10 @@ function starterElsewhere(ctx: ShelfCtx, id: string): ShelfEntry | null {
   return startersOf(ctx, new TemplatesStore(ctx.db), sector).find((e) => e.id === id) ?? null
 }
 
-/** A `.tcdoc`'s asked fields, from the markdown preview it carries: what Save as template reads to pick how it is kept. */
-export const tcdocFields = (path: string): string[] => {
+/** Every field a `.tcdoc` holds, Date, Name and Job among them, from the markdown preview it carries: what Save as template reads to pick how it is kept. */
+export const tcdocEveryField = (path: string): string[] => {
   const preview = existsSync(path) ? tcdocPreview(new Uint8Array(readFileSync(path))) : null
-  return preview ? askedFields(fieldsOf(preview)) : []
+  return preview ? fieldsOf(preview) : []
 }
+/** A `.tcdoc`'s asked fields. */
+export const tcdocFields = (path: string): string[] => askedFields(tcdocEveryField(path))

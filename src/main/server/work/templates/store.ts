@@ -48,8 +48,10 @@ export class TemplatesStore {
     this.db.prepare('INSERT OR IGNORE INTO work_templates_hidden (workspace_id, starter) VALUES (?, ?)').run(workspaceId, starter)
   }
 
-  unhide(workspaceId: string): void {
-    this.db.prepare('DELETE FROM work_templates_hidden WHERE workspace_id = ?').run(workspaceId)
+  /** Shows every starter hidden in a workspace again, or `starter` alone. */
+  unhide(workspaceId: string, starter?: string): void {
+    if (starter === undefined) this.db.prepare('DELETE FROM work_templates_hidden WHERE workspace_id = ?').run(workspaceId)
+    else this.db.prepare('DELETE FROM work_templates_hidden WHERE workspace_id = ? AND starter = ?').run(workspaceId, starter)
   }
 
   /** A workspace was deleted: its hidden rows go, and the index rows of its own Templates folder. */

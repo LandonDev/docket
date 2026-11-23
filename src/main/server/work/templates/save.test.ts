@@ -6,7 +6,7 @@ import type { CanvasItem } from '@shared/work'
 import { handled } from '@shared/work'
 import type { WorkModule } from '../modules'
 import { OUT_OF_REACH } from './place'
-import { ELSEWHERE, moveTemplate, NOT_A_TEMPLATE, removeTemplate, renameTemplate, saveTemplate, STARTER_FIXED, unhideTemplates } from './save'
+import { ELSEWHERE, fieldsOfSource, moveTemplate, NOT_A_TEMPLATE, removeTemplate, renameTemplate, saveTemplate, STARTER_FIXED, unhideTemplates } from './save'
 import { listTemplates, sharedDir } from './shelf'
 import { docx, HOST, makeRig, OTHER, phone, window, WS, xlsx, type Rig } from './testkit'
 import { makeZip } from './zip'
@@ -83,6 +83,13 @@ describe('save', () => {
     expect(existsSync(source)).toBe(true)
   })
 
+  it('keeps our own document as Word when its only field is one filled without asking, so a make fills it', async () => {
+    const source = rig.put(join(rig.folder, 'Dated.tcdoc'), makeZip({ 'preview.md': 'Written {{Date}}\n' }))
+    const formats: WorkModule = { id: 'formats', ensure() {}, handle: async () => handled({ name: 'Dated.docx', data: Buffer.from(docx('Written {{Date}}')).toString('base64'), warnings: [] }) }
+    const saved = await saveTemplate(rig.ctx, window, { workspaceId: WS, source: file(source) }, { pillars: () => [formats] })
+    expect(saved).toMatchObject({ id: 'job:Dated.docx', form: 'docx', fields: [] })
+  })
+
   it('keeps our own sheet as Excel through the sheets pillar\'s export when the sheet is open, and what the export wrote beside it goes', async () => {
     const source = rig.put(join(rig.folder, 'Log.tcsheet'), 'sheet state')
     rig.items.push({ id: 'item_9', sessionId: 't1', kind: 'sheet', title: 'Log', source: file(source) } as unknown as CanvasItem)
@@ -123,6 +130,25 @@ describe('save', () => {
     const source = rig.put(join(rig.outside, 'Private.docx'), docx('x'))
     await expect(saveTemplate(rig.ctx, phone, { workspaceId: WS, source: file(source) }, { pillars: none })).rejects.toThrow(OUT_OF_REACH)
     expect(shelfFiles()).toEqual([])
+  })
+})
+
+describe('the fields of a file, read before it is saved', () => {
+  it('are the asked fields of an Office file and of our own document, and none for any other', () => {
+    const word = rig.put(join(rig.folder, 'a.docx'), docx('{{Home}} v {{Away}} on {{Date}}'))
+    const ours = rig.put(join(rig.folder, 'b.tcdoc'), makeZip({ 'preview.md': '{{Client}} {{Job}}' }))
+    const sheet = rig.put(join(rig.folder, 'c.tcsheet'), 'state')
+    const broken = rig.put(join(rig.folder, 'd.xlsx'), 'not a zip')
+    expect(fieldsOfSource(rig.ctx, window, WS, file(word))).toEqual(['Home', 'Away'])
+    expect(fieldsOfSource(rig.ctx, window, WS, file(ours))).toEqual(['Client'])
+    expect(fieldsOfSource(rig.ctx, window, WS, file(sheet))).toEqual([])
+    expect(fieldsOfSource(rig.ctx, window, WS, file(broken))).toEqual([])
+    expect(shelfFiles()).toEqual([])
+  })
+
+  it('are refused for what is no template and for a key that may not reach the file', () => {
+    expect(() => fieldsOfSource(rig.ctx, window, WS, file(rig.put(join(rig.folder, 'scan.pdf'), 'pdf')))).toThrow(NOT_A_TEMPLATE)
+    expect(() => fieldsOfSource(rig.ctx, phone, WS, file(rig.put(join(rig.outside, 'x.docx'), docx('{{A}}'))))).toThrow(OUT_OF_REACH)
   })
 })
 

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { copyFile, link, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
@@ -7,11 +7,12 @@ import type { ExportAnswer } from '@shared/contract-work-formats'
 import type { TemplateRemoved } from '@shared/contract-work-templates'
 import type { CanvasSource } from '@shared/work'
 import { splitName } from '@shared/work/files'
-import { fileStem, parseTemplateId, templateFormOf, type Template, type TemplateForm } from '@shared/work/templates'
+import { askedFields, fileStem, parseTemplateId, templateFormOf, type Template, type TemplateForm } from '@shared/work/templates'
 import { sharedOf } from '../files/policy'
 import { WORK_MODULES, type Caller, type WorkCtx } from '../modules'
+import { isOfficeForm, scanOffice } from './ooxml'
 import { askFilesVerb, copyNoReplace, folderCan, OUT_OF_REACH, type Pillars } from './place'
-import { jobDir, resolveTemplate, sharedDir, shelfOf, tcdocFields, toTemplate, workspaceOf, type ShelfEntry, type WorkspaceRow } from './shelf'
+import { jobDir, resolveTemplate, sharedDir, shelfOf, tcdocEveryField, tcdocFields, toTemplate, workspaceOf, type ShelfEntry, type WorkspaceRow } from './shelf'
 import { TemplatesStore } from './store'
 
 /**
@@ -70,8 +71,8 @@ async function ask<T>(ctx: WorkCtx, by: Caller, pillars: Pillars, method: string
  */
 async function shelfFile(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, source: CanvasSource, path: string, form: TemplateForm, deps: SaveDeps): Promise<{ from: string; form: TemplateForm; drop?: string }> {
   const pillars = deps.pillars ?? registry
-  if (form === 'tcdoc' && tcdocFields(path).length) {
-    // Our document with fields is kept as Word: the fill reads and writes Word.
+  if (form === 'tcdoc' && tcdocEveryField(path).length) {
+    // Our document with any field, one filled without asking among them, is kept as Word: the fill reads and writes Word.
     const out = await ask<ExportAnswer>(ctx, by, pillars, 'work.formats.export', { source, format: 'docx' }, deps.signal)
     const dir = join(ctx.dataDir, 'work-templates', 'scratch')
     await mkdir(dir, { recursive: true })
@@ -218,9 +219,36 @@ export async function removeTemplate(ctx: WorkCtx, by: Caller, workspaceId: stri
   return {}
 }
 
-export function unhideTemplates(ctx: WorkCtx, by: Caller, workspaceId: string): void {
+/** Shows the workspace's hidden starters again: every one, or the one named (the undo of one Hide). */
+export function unhideTemplates(ctx: WorkCtx, by: Caller, workspaceId: string, ref?: string): void {
   const workspace = workspaceOf(ctx, workspaceId)
   if (by.kind === 'remote' && !by.peer && !ctx.reaches(by, workspace.path)) throw new Error(OUT_OF_REACH)
-  new TemplatesStore(ctx.db).unhide(workspaceId)
+  const store = new TemplatesStore(ctx.db)
+  if (ref === undefined) store.unhide(workspaceId)
+  else {
+    const { entry } = resolveTemplate(ctx, workspaceId, ref)
+    if (entry.where !== 'starter') return
+    store.unhide(workspaceId, parseTemplateId(entry.id)!.key)
+  }
   ctx.push({ push: 'work.templates', workspaceId })
+}
+
+/**
+ * The fields a file would ask for as a template, read where it lies:
+ * nothing is copied or written. Our own document is read from the preview it
+ * carries; our own sheet names none until it is kept as Excel.
+ */
+export function fieldsOfSource(ctx: WorkCtx, by: Caller, workspaceId: string, source: CanvasSource): string[] {
+  const workspace = workspaceOf(ctx, workspaceId)
+  const path = pathOf(ctx, source)
+  if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, path) || !ctx.reaches(by, workspace.path))) throw new Error(OUT_OF_REACH)
+  const formed = templateFormOf(path)
+  if (!formed) throw new Error(NOT_A_TEMPLATE)
+  if (formed.form === 'tcdoc') return tcdocFields(path)
+  if (!isOfficeForm(formed.form)) return []
+  try {
+    return askedFields(scanOffice(formed.form, new Uint8Array(readFileSync(path))))
+  } catch {
+    return [] // a file that is no zip, or is gone: a plain copy asks for nothing
+  }
 }

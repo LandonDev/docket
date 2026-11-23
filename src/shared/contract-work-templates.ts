@@ -39,8 +39,10 @@ export const TemplatesRequestSchemas = [
    * asked him and says so (`confirmed`): the first call answers `confirm`.
    */
   request('work.templates.remove', z.object({ workspaceId: Workspace, template: TemplateRef, confirmed: z.boolean().optional() })),
-  /** → {}: every starter he hid in this workspace is shown again. */
-  request('work.templates.unhide', z.object({ workspaceId: Workspace }))
+  /** → {}: every starter he hid in this workspace is shown again; with `template`, that one alone (the undo of one Hide). */
+  request('work.templates.unhide', z.object({ workspaceId: Workspace, template: TemplateRef.optional() })),
+  /** → TemplateFields: the fields a file would ask for as a template, read before it is saved; nothing is copied. */
+  request('work.templates.fields', z.object({ workspaceId: Workspace, source: CanvasSourceSchema }))
 ] as const
 
 export type { Template, TemplateMade } from './work/templates'
@@ -49,6 +51,11 @@ export interface TemplatesList {
   templates: Template[]
   /** starters hidden in this workspace */
   hidden: number
+}
+
+/** What `work.templates.fields` answers: the asked fields, in the file's order. */
+export interface TemplateFields {
+  fields: string[]
 }
 
 /** What a remove did: nothing yet (`confirm`: ask him, then say `confirmed`), a move to Files' Trash (`trashed`), or it is done. */
@@ -67,7 +74,8 @@ export const TEMPLATES_CAPS = {
   'work.templates.rename': 'operate',
   'work.templates.move': 'operate',
   'work.templates.remove': 'operate',
-  'work.templates.unhide': 'operate'
+  'work.templates.unhide': 'operate',
+  'work.templates.fields': 'read'
 } satisfies CapsOf<typeof TemplatesRequestSchemas>
 
 // Every method is carried to the workspace's host, so a Mac window reaches a shelf on the box.

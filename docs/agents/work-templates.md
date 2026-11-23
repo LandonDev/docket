@@ -28,7 +28,7 @@ The shelf's order: the job's own by name, the job's starters, all jobs' own, the
 
 `startersRoot()` is `resources/work-templates` under `appRoot()`: the checkout in a dev tree, the build's folder on the box, the app's own folder in a packed app (the app is packed with `asar: false`, so the files are plain files there). `TEMP_CODE_WORK_TEMPLATES` names another folder; a test uses `setStartersRoot`.
 
-`resolveTemplate(ctx, workspaceId, ref)` takes an id, a starter's key, or a name. By name it looks in the job's own, then all jobs', then the job's starters, then every job's; names match without case. So a template he saved as "Meeting notes" takes ours' place for every caller. A starter he hid is still found by a caller that names it. A starter of another sector is found by its id or key (Money in a job with no sector asks for `unify/invoice`).
+`resolveTemplate(ctx, workspaceId, ref)` takes an id, a starter's key, or a name. By name it looks in the job's own, then all jobs', then the job's starters, then every job's; names match without case. So a template he saved as "Meeting notes" takes ours' place for every caller. A starter he hid is still found by a caller that names it. One of his own with a starter's name (in the job's folder or for all jobs) takes that starter's place on the shelf too, so "Edit a copy" leaves one tile; the starter is still found by its id or key, and comes back when his is renamed or removed. A starter of another sector is found by its id or key (Money in a job with no sector asks for `unify/invoice`).
 
 `registerStarterTemplates(kind, entries)` puts an editor's own starter files in the All jobs group. It is the file's own state, so a pillar may call it when it loads, before or after this module starts. One with the name of one of ours takes ours' place and its key, and is shown once.
 
@@ -73,7 +73,7 @@ The fill always runs on a scratch copy.
 |---|---|---|
 | `.docx`, `.xlsx`, `.pptx` | a copy, as it is | nothing is lost |
 | `.tcdoc` with no field (the markdown preview inside the file is scanned) | a copy, as it is | nothing is lost |
-| `.tcdoc` with fields | `.docx`, through `work.formats.export` | one fill, in one place |
+| `.tcdoc` with any field, Date, Name and Job among them | `.docx`, through `work.formats.export` | one fill, in one place |
 | `.tcsheet` that is open in a canvas item and is his own | `.xlsx`, through `work.sheets.export` | Excel is where sheets are going |
 | any other `.tcsheet` | a copy, as it is | its export is by item |
 
@@ -106,7 +106,8 @@ A remote key makes, saves and lists only for a workspace whose folder it may rea
 | `work.templates.rename { workspaceId, template, name }` | operate | `Template` |
 | `work.templates.move { workspaceId, template, everywhere }` | operate | `Template` |
 | `work.templates.remove { workspaceId, template, confirmed? }` | operate | `{ trashed?, confirm? }` |
-| `work.templates.unhide { workspaceId }` | operate | `{}` |
+| `work.templates.unhide { workspaceId, template? }` | operate | `{}`; with `template`, that starter alone (the undo of one Hide) |
+| `work.templates.fields { workspaceId, source }` | read | `{ fields }`: what a file would ask for as a template, read where it lies |
 
 - The push `work.templates { workspaceId | null }` follows every change; null means every workspace's shelf (a template for all jobs was saved, moved or removed).
 - Every method is carried to the workspace's host, so a Mac window reaches a shelf on the box. The phone has no rows.

@@ -197,10 +197,10 @@ try {
       run.check('the dialog asks for each field', typed === (starter?.fields.length ?? 3), `${typed} inputs`)
       await sleep(300)
       await run.shot('07-fields-typed')
-      const before = readdirSync(folder).length
       await run.press('Create')
-      const there = await run.until('the file is made', 20_000, () => readdirSync(folder).length > before)
-      run.check('Create makes the file from the window', there, readdirSync(folder).join(', '))
+      // The named file, whole: a count of the folder would pass on the hidden file a copy is written to first.
+      const there = await run.until('the file is made', 20_000, () => readdirSync(folder).some((n) => n.startsWith(`${tile} - Window 1`) && !n.startsWith('.')))
+      run.check('Create makes the file from the window, named for its first field', there && !readdirSync(folder).some((n) => n.endsWith('.tmp')), readdirSync(folder).join(', '))
       await sleep(2500)
       const tabs = await run.call<{ tabs: { kind: string; name: string }[] }>('work.files.tabs', { workspaceId: ws.id })
       run.check('the made file is open in a Files tab of the workspace', tabs.tabs.some((t) => t.kind === 'file' && t.name.includes('Window 1')), tabs.tabs.map((t) => `${t.kind}:${t.name}`).join(', '))

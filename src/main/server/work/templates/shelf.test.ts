@@ -152,6 +152,21 @@ describe('resolve', () => {
   })
 })
 
+describe('his own of a starter\'s name', () => {
+  it("takes the starter's place on the shelf, in the job's folder or for all jobs, and gives it back when it goes", () => {
+    const path = own('game REPORT.docx', docx('Mine: {{Teams}}'))
+    all('Meeting notes.docx')
+    expect(ids()).toEqual(['job:game REPORT.docx', 'starter:ref/season-log', 'all:Meeting notes.docx'])
+    // Not hidden: he hid nothing.
+    expect(listTemplates(rig.ctx, WS).hidden).toBe(0)
+    // A caller that names ours by its id or key still finds it.
+    expect(resolveTemplate(rig.ctx, WS, 'ref/game-report').entry.where).toBe('starter')
+    expect(resolveTemplate(rig.ctx, WS, 'Game report').entry.id).toBe('job:game REPORT.docx')
+    rmSync(path)
+    expect(ids()).toEqual(['starter:ref/game-report', 'starter:ref/season-log', 'all:Meeting notes.docx'])
+  })
+})
+
 describe("an editor's own starters", () => {
   it('stand in the All jobs group, whether registered before or after the shelf was first read', () => {
     const budget = rig.put(join(rig.outside, 'budget.xlsx'), xlsx('{{Year}} budget'))

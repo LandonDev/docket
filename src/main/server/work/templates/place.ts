@@ -143,8 +143,9 @@ export async function copyNoReplace(from: string, dir: string, wanted: string): 
   await mkdir(dir, { recursive: true })
   // Written whole beside its place under a hidden name, then given its name with a link, which never replaces a file.
   const temp = join(dir, `.${randomUUID()}.tmp`)
-  await copyFile(from, temp)
   try {
+    // Inside the try: a copy cut short (a full disk) leaves no hidden file in his folder.
+    await copyFile(from, temp)
     for (let tries = 0; tries < 20; tries++) {
       const name = freeName(wanted, (n) => existsSync(join(dir, n)))
       const path = join(dir, name)
