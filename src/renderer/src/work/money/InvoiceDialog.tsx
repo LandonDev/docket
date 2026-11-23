@@ -227,7 +227,7 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
           </div>
           {askFrom ? (
             <div role="group" aria-label="From" className="flex flex-col gap-4">
-              <Field label="Business name">
+              <Field label={kind === "invoice" ? "Business name" : "From"}>
                 <Input value={form.from.name} autoComplete="organization" onChange={(e) => patch({ from: { ...form.from, name: e.target.value } })} />
               </Field>
               <Field label="Address">

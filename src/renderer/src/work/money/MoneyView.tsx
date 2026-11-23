@@ -489,14 +489,14 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
             {g.rows.map((r) => {
               const key = `${r.row}:${r.way}`;
               return (
-                <li key={key} className="grid min-h-8 grid-cols-[minmax(0,1fr)_7rem_5rem_auto] items-center gap-4 border-b border-border text-[13px] last:border-0">
+                <li key={key} className="grid min-h-10 grid-cols-[minmax(0,1fr)_6rem_5rem_4rem] items-center gap-4 border-b border-border text-[13px] last:border-0">
                   <span className="flex min-w-0 items-baseline gap-1">
                     <span className="shrink-0 truncate">{r.who || "Someone"}</span>
                     {r.what ? <span className="min-w-0 truncate text-muted-foreground">{r.what}</span> : null}
                   </span>
                   <span className="text-end tabular-nums">{formatMoney(r.amount)}</span>
                   <span className="text-end text-xs text-muted-foreground tabular-nums">{sinceWords(r.since)}</span>
-                  <Button variant="ghost" size="xs" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${r.who}`}>
+                  <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${r.who}`}>
                     <BusyLabel busy={paying === key} label="Paid" />
                   </Button>
                 </li>

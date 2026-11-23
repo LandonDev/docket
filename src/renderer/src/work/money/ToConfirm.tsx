@@ -20,6 +20,9 @@ import { addOffer, offerWhole } from "./TripDialog";
  * Review. Discard is in the row's menu, said back in a toast.
  */
 
+/** A To confirm row: the picture, the words, the amount, the verb and the menu, each on its own column so the rows line up. */
+const TO_CONFIRM_ROW = "grid min-h-12 grid-cols-[2rem_minmax(0,1fr)_6rem_4.5rem_1.75rem] items-center gap-3 border-b border-border text-[13px] last:border-0";
+
 export function ToConfirmSection({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section aria-label={title} className="flex flex-col gap-2">
@@ -53,22 +56,24 @@ function ReceiptRow({ env, item, onReview, onDiscard }: { env: string; item: Wai
   const reading = item.state === "reading";
   const name = item.fields.who || item.name || "Receipt";
   return (
-    <li data-to-confirm={item.id} className="flex min-h-12 items-center gap-3 border-b border-border text-[13px] last:border-0">
+    <li data-to-confirm={item.id} className={TO_CONFIRM_ROW}>
       <Thumb env={env} item={item} />
       {reading ? (
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-muted-foreground">
+        <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
           <Spinner aria-hidden className="size-3.5" />
           Reading
         </span>
       ) : (
-        <span className="flex min-w-0 flex-1 items-baseline gap-1">
-          <span className="min-w-0 truncate">{name}</span>
+        <span className="flex min-w-0 items-baseline gap-1">
+          <span className="min-w-0 truncate text-foreground">{name}</span>
           {item.fields.date ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatDay(item.fields.date)}</span> : null}
         </span>
       )}
-      {!reading && item.fields.amount ? <span className="shrink-0 tabular-nums">{formatMoney(item.fields.amount)}</span> : null}
-      {reading ? null : (
-        <Button variant="ghost" size="sm" onClick={onReview} aria-label={`Review ${name}`}>
+      <span className="text-end tabular-nums">{!reading && item.fields.amount ? formatMoney(item.fields.amount) : null}</span>
+      {reading ? (
+        <span />
+      ) : (
+        <Button variant="ghost" size="sm" className="justify-self-end" onClick={onReview} aria-label={`Review ${name}`}>
           Review
         </Button>
       )}
@@ -100,10 +105,13 @@ function Thumb({ env, item }: { env: string; item: Waiting }) {
 /** A receipt's picture beside the dialog's fields: the whole page at the column's width. */
 export function ReceiptPicture({ env, of, name }: { env: string; of: { id: string } | { workspaceId: string; receipt: string }; name: string }) {
   const url = usePicture(env, of);
+  // The picture at its own height in the 320px column, 420px at most; a taller one scrolls inside the column.
   return url ? (
-    <img src={url} alt={name} draggable={false} className="max-h-[520px] w-full rounded-lg object-contain object-top outline-1 -outline-offset-1 outline-(--image-outline)" />
+    <div data-receipt-picture className="max-h-[420px] overflow-x-hidden overflow-y-auto rounded-lg outline-1 -outline-offset-1 outline-(--image-outline) [--scrollbar-inset:var(--radius-lg)]">
+      <img src={url} alt={name} draggable={false} className="block h-auto w-full" />
+    </div>
   ) : (
-    <div aria-busy="true" aria-label="Loading the picture" className="grid aspect-[3/4] w-full place-items-center rounded-lg bg-muted outline-1 -outline-offset-1 outline-(--image-outline)">
+    <div aria-busy="true" aria-label="Loading the picture" className="grid h-[420px] w-full place-items-center rounded-lg bg-muted outline-1 -outline-offset-1 outline-(--image-outline)">
       <Spinner aria-hidden className="text-muted-foreground" />
     </div>
   );
@@ -133,21 +141,22 @@ export function CalendarRows({ env, workspaceId, read, adding, onReview, reload 
           );
         };
         return (
-          <li key={offer.eventId} data-calendar-offer={offer.eventId} className="flex min-h-12 items-center gap-3 border-b border-border text-[13px] last:border-0">
+          <li key={offer.eventId} data-calendar-offer={offer.eventId} className={TO_CONFIRM_ROW}>
             <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
               <Calendar className="size-3.5" />
             </span>
-            <span className="flex min-w-0 flex-1 items-baseline gap-1">
+            <span className="flex min-w-0 items-baseline gap-1">
               <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{offerDay(offer.date)}</span>
               <span className="min-w-0 truncate">{offer.title}</span>
               <Facts className="shrink-0 text-xs text-muted-foreground" parts={[offer.fee !== null ? formatMoney(offer.fee).replace(/\.00$/, "") : null, offer.miles !== null ? `${offer.miles.toLocaleString("en-US")} mi` : null]} />
             </span>
+            <span />
             {whole ? (
-              <Button variant="ghost" size="sm" disabled={busy !== null || adding} onClick={add} aria-label={`Add ${offer.title}`}>
+              <Button variant="ghost" size="sm" className="justify-self-end" disabled={busy !== null || adding} onClick={add} aria-label={`Add ${offer.title}`}>
                 <BusyLabel busy={busy === offer.eventId} label="Add" />
               </Button>
             ) : (
-              <Button variant="ghost" size="sm" onClick={() => onReview(offer)} aria-label={`Review ${offer.title}`}>
+              <Button variant="ghost" size="sm" className="justify-self-end" onClick={() => onReview(offer)} aria-label={`Review ${offer.title}`}>
                 Review
               </Button>
             )}

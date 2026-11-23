@@ -97,6 +97,9 @@ describe("an invoice", () => {
     expect(within(dialog).queryByLabelText("To")).toBeNull();
     expect(within(dialog).getByLabelText("Reason")).toBeTruthy();
     expect(within(dialog).queryByLabelText("How to pay")).toBeNull();
+    // A request comes from a department, not a business.
+    expect(within(dialog).getByRole("textbox", { name: "From" })).toBeTruthy();
+    expect(within(dialog).queryByLabelText("Business name")).toBeNull();
   });
 
   it("creates in three calls, in order, and sends nothing", async () => {

@@ -1575,8 +1575,9 @@ Around the canvas:
   the 8px `chart-neutral` bar of its share and the amount at the end, `+`
   before money in; a row's press narrows Entries to it, and the heading
   then names the category beside a Clear. Owed is two groups, Owed to you
-  and You owe: who, what for in muted, the amount, how long ("32 days")
-  and one ghost Paid that spins while it lands. Entries is the flat
+  and You owe: 40px rows of who, what for in muted, then the amount, how
+  long ("32 days") and one ghost Paid that spins while it lands, each on a
+  fixed column so the rows line up. Entries is the flat
   `Table` (Date, Who, Category, Amount, and a paperclip where a receipt
   is kept); the whole row is one press, reached by Tab, that opens the
   entry dialog, and it takes a `muted` fill in hand, the table's one row
@@ -1595,11 +1596,13 @@ Around the canvas:
   Status beside For. Return in any field saves; Save waits for an amount
   and a date. To confirm leads the column while anything waits: a row
   each, a 32px picture (6px corners on the image outline, the receipt
-  glyph where there is none), who or the file's name, the date, the
-  amount and Review; a receipt still being read shows the spinner and
+  glyph where there is none), who or the file's name in foreground with
+  the date 4px after it in 12px muted, the amount and Review, the amount,
+  the verb and the menu each on a fixed column; a receipt still being read shows the spinner and
   "Reading" and nothing to press; Discard is in the row's menu and is said
   back in a toast, never asked about. Review opens the entry dialog wide,
-  the picture in a 320px column at the left and what was read in the
+  the picture in a 320px column at the left (at its own height, 420px at
+  most, a taller one scrolling inside the column) and what was read in the
   fields, empty where nothing was, with no mark of how sure the reading
   was; Discard sits at the footer's start, and Save shows the next waiting
   receipt in the same dialog, Amount selected again. A file held over the
