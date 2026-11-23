@@ -478,6 +478,18 @@ describe("an agent's change to a shared document or deck, held (the owner's ruli
     expect(words({ insert: 'x', at: 'end' }).summary).toBe('Make the change in Brief.docx: add at the end: "x"')
   })
 
+  it("takes the host's own judgement of sharing when given one, as a Windows PC judges its C:\\ files", async () => {
+    const PC = 'C:\\Users\\owner\\Documents\\Notes.docx'
+    office.docs.set(PC, { paragraphs: ['Mine.'], tracked: [] })
+    const tools = workTools({ here: () => ({ carrier: office, excel: new ExcelHelper(office, db, suggestions), suggestions }), judgeShared: (key) => key === null || sharedKey(key) })
+    await tools.find((t) => t.name === 'office_doc_edit')!.run({ document: PC, insert: ' More.', at: 'end', because: 'own' }, ctx())
+    expect(office.docs.get(PC)!.paragraphs).toEqual(['Mine.', ' More.'])
+    expect(held).toEqual([])
+    // without it, the box reads a C:\\ path as the Windows VM's, and so as shared: the change waits
+    await run('office_doc_edit', { document: PC, insert: ' Again.', at: 'end', because: 'own' })
+    expect(held).toMatchObject([{ kind: 'office.edit' }])
+  })
+
   it('names a file by its key', () => {
     expect(fileName('https://contoso.sharepoint.com/sites/t/Q3%20Plan.docx?web=1')).toBe('Q3 Plan.docx')
     expect(fileName('C:\\Users\\o\\OneDrive - Contoso\\Deck.pptx')).toBe('Deck.pptx')

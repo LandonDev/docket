@@ -43,6 +43,8 @@ export interface Env {
   asked: boolean
   /** the carrier is Office in this host's Windows VM */
   vm?: true
+  /** how this host judges whether others can open a file; `fileShared` unless the tools are given another (tools' deps) */
+  judgeShared?: (key: string | null, app: 'excel' | 'word' | 'powerpoint') => boolean
 }
 
 export interface OfficeTool {
@@ -59,7 +61,8 @@ const json = (v: unknown): WorkToolResult => workText(JSON.stringify(v, null, 1)
 async function judged(reason: WriteReason, kind: 'workbook' | 'document' | 'deck', name: string, env: Env): Promise<{ verdict: ReturnType<typeof judgeWrite>; key: string }> {
   const key = await fileKey(env, kind, name)
   const app = kind === 'workbook' ? 'excel' : kind === 'document' ? 'word' : 'powerpoint'
-  return { verdict: judgeWrite(reason, { shared: fileShared(env.ctx, key, app), ownerSaid: () => env.asked }), key: key ?? name }
+  const shared = env.judgeShared ? env.judgeShared(key, app) : fileShared(env.ctx, key, app)
+  return { verdict: judgeWrite(reason, { shared, ownerSaid: () => env.asked }), key: key ?? name }
 }
 
 const Reason = WriteReasonSchema.shape
@@ -404,6 +407,12 @@ export interface ToolDeps {
   here(ctx: WorkCtx): { carrier: OfficeCarrier; excel: ExcelHelper; suggestions: SuggestionStore } | null
   /** `here` is Office in this host's Windows VM: a held change says so, and its press goes there */
   vm?: true
+  /**
+   * How the host whose files these are judges sharing, where this process cannot: a test on the box playing a Windows
+   * PC's own carrier, whose `C:\` paths Files' `sharedOf` reads here as the VM's and so as shared. Production leaves it
+   * out and every write takes `fileShared`.
+   */
+  judgeShared?: Env['judgeShared']
 }
 
 /** The tools as the frame mounts them: here when this host has Office, else on the workspace's desktop host. */
@@ -416,7 +425,7 @@ export function workTools(deps: ToolDeps): WorkTool[] {
     async run(args, ctx: ToolCtx) {
       const asked = !t.readOnly && askedIn(ctx, args)
       const here = deps.here(ctx)
-      if (here) return runHere(t, args, { ctx, ...here, by: `agent:${ctx.host}:${ctx.sessionId}`, sessionId: ctx.sessionId, asked, ...(deps.vm ? { vm: true as const } : {}) })
+      if (here) return runHere(t, args, { ctx, ...here, by: `agent:${ctx.host}:${ctx.sessionId}`, sessionId: ctx.sessionId, asked, ...(deps.vm ? { vm: true as const } : {}), ...(deps.judgeShared ? { judgeShared: deps.judgeShared } : {}) })
       const host = ctx.scope.workspaceId ? ctx.settings.workspace(ctx.scope.workspaceId).mayUseDesktop[0] : undefined
       if (!host) return fail('No Office on this host, and this workspace may use no desktop that has it (Work settings → May use this Mac).')
       try {

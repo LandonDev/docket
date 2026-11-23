@@ -9,8 +9,8 @@ import type { HeldItem, WorkToolResult } from '@shared/work'
 import type { ActCtx, ToolCtx } from '../../modules'
 import { ensureSuggestionTables, SuggestionStore } from '../../sheets/suggestions'
 import { ensureExcelTables, excelStore, ExcelHelper, parseAddress } from '../excel'
-import { officeActs, OfficeCalendarSchema, OfficeMailSchema } from '../held'
-import { workTools } from '../tools'
+import { officeActs, OfficeCalendarSchema, OfficeEditSchema, OfficeMailSchema } from '../held'
+import { sharedKey, workTools } from '../tools'
 import { comCarrier, type ComCarrier } from './carrier'
 
 /**
@@ -108,8 +108,10 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
       scope: { workspaceId: 'w1' },
       sessionId: 't1'
     }) as unknown as ToolCtx
+  // The rig plays a Windows PC's own Office: its C:\ files are his own, as that PC judges them (on the box, Files'
+  // sharedOf reads a C:\ path as the VM's and so as shared); a URL, a OneDrive folder or a share stays shared.
   const run = (name: string, args: unknown): Promise<WorkToolResult> =>
-    workTools({ here: () => ({ carrier, excel, suggestions }) })
+    workTools({ here: () => ({ carrier, excel, suggestions }), judgeShared: (key) => key === null || sharedKey(key) })
       .find((t) => t.name === name)!
       .run(args, ctx())
   const text = (r: WorkToolResult): string => r.content.map((c) => (c.type === 'text' ? c.text : '')).join('')
@@ -258,16 +260,20 @@ describe.skipIf(!RIG)('tc-office.exe over the recorded COM surface (the rig)', (
   })
 
   describe('Word and PowerPoint', () => {
-    it('makes an own idea in a shared document a tracked change, edits his own directly, and puts Track Changes back as it was', async () => {
-      expect(text(await run('office_doc_edit', { document: BRIEF, find: 'one', replace: 'two', because: 'own' }))).toBeTruthy()
+    it("keeps an agent's own idea for a shared document out of Word until his press, edits his own directly, and the press writes it plainly", async () => {
+      // the owner's ruling of 2026-11-23: no tracked change for co-authors; the change waits on this host
+      expect(text(await run('office_doc_edit', { document: BRIEF, find: 'one', replace: 'two', because: 'own' }))).toContain('nobody else sees it')
       await run('office_doc_edit', { document: NOTES, insert: ' More.', at: 'end', because: 'own' })
-      const docs = (await state()).docs
-      expect(docs[0]).toEqual({ key: BRIEF, text: 'Draft two.\rSecond two.\r', tracked: ['-one +two', '-one +two'] })
+      let docs = (await state()).docs
+      expect(docs[0]).toEqual({ key: BRIEF, text: 'Draft one.\rSecond one.\r', tracked: [] })
       // Word keeps the last paragraph mark last: text put at the end joins the last paragraph.
       expect(docs[1]).toEqual({ key: NOTES, text: 'Mine. More.\r', tracked: [] })
+      expect(held).toMatchObject([{ kind: 'office.edit', payload: { app: 'word', key: BRIEF, places: 2 } }])
+      const edit = officeActs({ carrier: () => carrier }).find((a) => a.kind === 'office.edit')!
+      await edit.execute(OfficeEditSchema.parse(held[0]!.payload), actCtx)
+      docs = (await state()).docs
+      expect(docs[0]).toEqual({ key: BRIEF, text: 'Draft two.\rSecond two.\r', tracked: [] })
       expect(await carrier.readDocument(BRIEF)).toEqual(['Draft two.', 'Second two.', ''])
-      // Find ran on the final text with no markup, and the window's markup is back as he had it.
-      expect((await state() as State & { markup: number }).markup).toBe(2)
     })
 
     it("finds a caret as itself, not as one of Word's special codes", async () => {
