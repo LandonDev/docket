@@ -5,6 +5,7 @@ import { SlideOpSchema, type DeckParagraph, type DeckPoint, type DeckShapeKind, 
 import type { Converter, ConvertRun } from '../formats/jobs'
 import { tailOf } from '../formats/tools'
 import type { TimingNode } from './builds'
+import { DeckRefused, DeckResidentUnavailable, deckResidentOf, deckToolHome } from './deckResident'
 import { DECK_PY } from './deckScript'
 
 /**
@@ -12,7 +13,9 @@ import { DECK_PY } from './deckScript'
  * Two converters: `pptx → deckinfo` writes `DeckInfo` as JSON, `pptx →
  * pptxedit` applies `options.ops` and writes the edited deck. The Python is
  * deckScript.ts; after python-pptx saves, it writes the zip itself so every
- * part an edit did not change keeps the input's bytes.
+ * part an edit did not change keeps the input's bytes. An edit is a job of
+ * the tool kept running (deckResident.ts); one run of the tool is the
+ * fallback for whatever that cannot do, and the way of every other verb.
  */
 
 /** The name a file an edit brings goes by in the job: `f0.png`, `f1.mp4`. */
@@ -136,9 +139,27 @@ async function runStep(job: { from: string; input: string; output: string; optio
   return { warnings }
 }
 
+/**
+ * The verbs an edit is made of: these go to the tool kept running first. `TEMP_CODE_DECK_TOOL=once` sends none
+ * there: every job is one run of the tool, to rule the resident out of a fault or to time it against.
+ * (`TEMP_CODE_DECK_TOOL=alone` is the other value: deckResident.ts `slideAlone`.)
+ */
+const EDIT_VERBS = new Set(['apply', 'step', 'unstep'])
+const kept = (verb: string): boolean => EDIT_VERBS.has(verb) && process.env.TEMP_CODE_DECK_TOOL !== 'once'
+
 async function runDeck(run: ConvertRun, args: string[]): Promise<void> {
   const py = run.tools.bin('python-pptx')
   if (!py) throw new Error('python-pptx is not installed here')
+  const home = deckToolHome()
+  if (home && kept(args[0]!)) {
+    try {
+      return void (await deckResidentOf(home, () => run.tools.bin('python-pptx')).run(args, run.signal))
+    } catch (err) {
+      // The tool's own refusal is the answer a run would give; anything else of the resident's, and the job is run the old way.
+      if (err instanceof DeckRefused) throw new Error(tailOf(err.message))
+      if (!(err instanceof DeckResidentUnavailable)) throw err
+    }
+  }
   const script = join(run.tmp, 'deck.py')
   writeFileSync(script, DECK_PY)
   const r = await run.run(py, ['-I', script, ...args], { timeoutMs: TIMEOUT_MS, cwd: run.tmp })

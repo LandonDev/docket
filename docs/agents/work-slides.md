@@ -139,6 +139,45 @@ drops it. Agents suggest; the owner accepts.
   the file is nearly all of it). One slide drawn alone is the same picture
   as that page of a whole export, 0 pixels apart in 24 pairs
   (`resident.test.ts`, behind the gate).
+- **A slide drawn alone can be drawn from a copy that holds it alone: off
+  until proven** (`deckResident.ts` `slideAlone`, the script's `solo`).
+  It runs only with `TEMP_CODE_DECK_TOOL=alone`; without it every slide is
+  drawn from the whole deck, as before. It is off because the copy's
+  picture has not yet been held against the slide's picture in its deck:
+  the first form of the copy printed a wrong slide number (LibreOffice
+  ignored the `firstSlideNum` it set), the form below has not been drawn
+  and compared, and a wrong picture is worse than a slow one. The test
+  that decides it is `deckResident.test.ts` "a slide cut out alone, drawn
+  by LibreOffice", behind the gate; when it passes, the line in
+  `slideAlone` that reads the switch goes. What it is for: the kept
+  LibreOffice opens the whole file for each job, and opening is nearly all
+  of a job. On the box one slide of a 50-slide deck was drawn in 263 to
+  327 ms in its deck and in 34 to 45 ms from its copy, which took 12 to
+  18 ms to cut; in a real window (load 13 to 19, the copy in its first,
+  wrong form) the host answered an edit in a median 402 and 442 ms and
+  the stage showed the picture after 491 and 511 ms. With the switch on,
+  the renderer the module sets (`setSlideRenderer` in `index.ts`) first
+  has the deck tool kept running cut the slide out: `solo <in> <n> <out>` writes a copy of the deck
+  with slide n and no other, its sections and custom shows taken out.
+  LibreOffice prints a slide's place in the file for its number and does
+  not read `firstSlideNum`, so in the copy every slide-number field of the
+  slide, its layout and its master is the number itself, as a run of
+  words with the field's own look; a deck whose `firstSlideNum` is not 1
+  is refused and drawn whole. LibreOffice draws page 1 of the copy, and a
+  copy it does not count one slide in is not used. The copy lies beside the page
+  (`<page>.tmp.solo.pptx`, in the deck's `pages/` folder, so a shared
+  file's copy is in the item's own folder) for the length of the draw and
+  is removed; one left by a crash is swept with the folder's other strays.
+  Where the copy cannot be made or drawn (no kept tool, a tool that is
+  busy for a second, `TEMP_CODE_DECK_TOOL=once`, any failure), the whole
+  deck is opened, as before. The gated test draws a slide cut out alone
+  and the same slide in its deck and wants them 0 pixels apart, on a
+  50-slide deck that prints every slide's number, with a hidden slide and
+  two sections, and on the fixture decks (`TEMP_CODE_SOLO_DECKS` holds any
+  other deck to the same rule); it has not passed yet. The count the renderer answers is the deck tool's own, which is
+  the outline's, so `deckPicture`'s check that both agree on the slides
+  always passes here: the slide is picked by the outline's own order and
+  not by LibreOffice's page number.
 - **One slide's own picture** (`slidePath`, `work.slides.slide`). A client
   that wants one slide reads that slide's one-page PDF by range, named by
   its id in the file or the proposed deck. `DeckSlide.pic` carries its `rev`
@@ -280,13 +319,76 @@ the file.
     size he asks for is the size drawn), a list as PowerPoint's own bullet
     or `arabicPeriod` with its hanging indent, a paragraph taken out of a
     list with `a:buNone` and no indent.
-- **One run of the tool for an edit.** `pptx → pptxstep` applies the edits
+- **One job of the tool for an edit.** `pptx → pptxstep` applies the edits
   under strict (an edit of his that does not go in whole writes nothing),
   makes the pack that reverses them and reads the new deck's outline, all
-  in one Python process; the three come back as one file (`joinStep`,
+  in one job of the deck tool; the three come back as one file (`joinStep`,
   `splitStep`: the conversion runner carries one file each way). The
   outline is kept under the new file's key (`keepOutline`), so the view is
   not read again.
+- **The tool is kept running** (`deckResident.ts`, the script's `serve`
+  verb). One Python a host stays up with python-pptx loaded, and an edit
+  (`apply`, `step`, `unstep`) is one line on its stdin: the tool's own
+  arguments, with one line back. Reading a deck (`inspect`, `layouts`) is
+  still one run of the tool. Between jobs the tool keeps what an edit would
+  otherwise work out again for every slide it did not touch: a part's
+  canonical form (`c14n`, which `finish` compares each part by), a rels
+  file's rows (`rels_of`) and a slide's entry in the outline
+  (`slide_info`). Measured in a real window on the box (a 50-slide deck,
+  load 21 to 24, `landed/slides-fast-edit/`): the edit itself answers in
+  104 to 148 ms once the tool is warm, and `work.slides.edit` in a median
+  642 to 753 ms where one run of the tool an edit gave 1,160; the rest of
+  that answer is the wait for the slide's picture (`viewOf` awaits
+  `drawAhead`: 459 to 603 ms). The first edit after a start pays for the
+  whole deck (about a second).
+  It also cuts a slide out for its picture (`solo`, "A slide drawn alone
+  is drawn from a copy that holds it alone" above).
+  - **Kept by bytes alone.** Each thing is kept under the bytes it was
+    made from, never a path or a time, so a deck another program saved, a
+    restored version or another deck under the same name is simply not
+    found and is read afresh. A slide's entry is kept under its id, its
+    `draws` hash (the slide and every part it reaches, the deck's own
+    settings, its number where one is printed), its own part's and rels'
+    bytes, its notes' bytes, the slide's size, and one hash of the masters
+    in the deck's order with every part they reach, by name, bytes and
+    rels. What a job did not use is dropped at the end of the next job
+    that used any, so no more than two jobs' worth is held, in the tool's
+    memory only: nothing of it is a file.
+  - **The same bytes as one run.** The resident runs the script the
+    one-shot run does, through the same `main`. `deckResident.test.ts`
+    holds it behind the gate: a run of edits, each on the deck the last
+    left and each taken back, gives the deck, the pack and the outline one
+    run of the tool gives, byte for byte.
+  - **One job at a time, in order.** Jobs are short, so a job that meets
+    one in hand waits its turn; one that has waited a second (`WAIT_MS`)
+    is answered `busy` and is done the old way (one run of the tool for an
+    edit, the whole deck for a picture). So his next edit is not sent to a
+    slow run because a picture's copy was being cut. The old way is also
+    the answer to a job with no answer in ten seconds (`JOB_MS`: the tree
+    is killed, and the one-shot run has its five minutes), a crash, a
+    start that fails, and any error that is not the tool's own word (the
+    tool then drops all it kept). A job cancelled while it runs is
+    answered at once and runs out, its answer dropped: Python cannot be
+    stopped mid-job, and a kill would cost the next edit a start and all
+    the tool keeps.
+    The tool's own refusal (`Fail`: `DeckRefused`) is the answer either
+    way and nothing is run twice.
+  - **When it ends.** After thirty idle minutes (`IDLE_MS`), once its peak
+    memory passes 512 MiB (`MEMORY_CAP`, said by the tool with each
+    answer), when Work is turned off (`stopDeckResident`), and with the
+    app: its stdin ends and it ends itself. The first edit of a deck after
+    a start pays for the whole deck, as every edit did before.
+  - **Its script** is `work-tools/run/deck-tool/deck-<16 hex of its own
+    sha256>.py`, in a folder of mode 0700, written once by rename: two
+    builds on one data folder (the app, and a test on its toolchain) never
+    read each other's, and none reads half a file. Another build's script
+    is swept after a day.
+  - **Switches.** `TEMP_CODE_DECK_TOOL=alone` turns the one-slide draw on
+    (above). For chasing a fault: `TEMP_CODE_DECK_TOOL=once`: no
+    resident, every edit is one run of the tool. `TEMP_CODE_DECK_CHECK=1`:
+    the tool reads everything afresh as well as from what it kept and
+    fails the job on a difference, and no failure is quietly run the old
+    way (`deck.test.ts` passes under it).
 - **Undo and Redo walk packs.** A pack (`pack`, `unpack` in the script) is
   what turns one deck back into another, part for part: the first deck's
   order of parts, and the bytes of each part the second changed or lost.
@@ -892,6 +994,13 @@ slide's.
   relationship makes the remove fail with a sentence, and nothing changes.
 - `ctx.convert` reads `WORK_MODULES`, not the list `startWork` got: a test
   puts its converters there.
+- The tool kept running holds a slide's outline entry under a key
+  (`serve`'s `kept_info`). Anything new that `slide_info` reads of the deck
+  must be in that key, or an edit elsewhere leaves the entry stale. Run
+  `deck.test.ts` and `deckResident.test.ts` with `TEMP_CODE_DECK_CHECK=1`
+  after any change to what the outline reads. The same holds for a function
+  the verb wraps (`c14n`, `rels_of`): each must stay a function of its
+  arguments' bytes alone.
 - A deck with sections needs every slide in one; add, move and remove keep
   `p14:sectionLst` in step (tested on a pptxgenjs deck with two sections).
 - `shape_type` raises on a `p:sp` with no geometry, which some exporters
@@ -907,6 +1016,16 @@ slide's.
   failure sentences, a removed slide another slide links to (no name twice,
   LibreOffice opens each result), a custom show, and `finish`'s refusal of
   a repeated name.
+- `deckResident.test.ts`: the kept-running tool's life against a fake
+  process (one start for many jobs, jobs in order, busy after a second's
+  wait, a hang killed at ten seconds, a crash, a failed start, a refusal, a
+  cancel, the idle stop, the memory cap, `stop`); `deck.ts`'s fallback and
+  `slideAlone` against a stand-in for the tool written in shell; behind
+  the gate, a run of fourteen edits and their undos through the real tool
+  under `check`, each against one run of the tool, a deck changed under
+  the same path, a step through the converter, and with LibreOffice a
+  slide cut out alone against the same slide in its deck, pixel for pixel
+  (not yet passed: the one-slide draw stays off until it has).
 - `newDeck.test.ts`: the bytes through jszip; behind the gate, read back
   through `pptx → deckinfo`.
 - `slides.test.ts`: the store, and the module end to end through a real

@@ -16,6 +16,7 @@ import { forgetHands } from './handLine'
 import { deckPreviewer } from './preview'
 import { createResident, type Resident } from './resident'
 import { SLIDES_CONVERTERS } from './deck'
+import { setDeckToolHome, slideAlone, stopDeckResident } from './deckResident'
 import { ensureSlidesTables, SlidesStore } from './store'
 import { slidesTools } from './tools'
 import { registerFileMaker, registerFileMoved, registerFilePreviewer } from '../files/hooks'
@@ -95,9 +96,12 @@ export const slides: WorkModule = {
     void sweepClosedCopies(ctx).catch((err: unknown) => ctx.log(`slides: could not clear closed copies: ${String(err)}`))
     const tools = new Toolchain(ctx.dataDir)
     const resident = residentOf(ctx.dataDir, tools, (line) => ctx.log(line))
+    setDeckToolHome(ctx.dataDir)
     setSlideRenderer({
       here: () => resident.state().phase !== 'unsupported' && tools.bin('libreoffice') !== null,
-      slide: async (input, page, output, signal) => (await resident.slide(input, page, output, signal)).slides,
+      // One slide is drawn from a copy that holds it alone, cut out by the deck tool kept running (deckResident.ts
+      // `slideAlone`): LibreOffice opens one slide where it would open the deck; the whole deck where that fails.
+      slide: (input, page, output, signal) => slideAlone(ctx.dataDir, () => tools.bin('python-pptx'), async (deck, n, out, sig) => (await resident.slide(deck, n, out, sig)).slides, input, page, output, signal),
       deck: async (input, output, signal) => void (await resident.deck(input, output, signal))
     })
     // The toolchain as installed: its state file is rewritten when LibreOffice or a font pack is.
@@ -119,6 +123,9 @@ export const slides: WorkModule = {
       setSlideEngine(null)
       forgetHands()
       void resident.stop()
+      // The deck tool kept running for his edits (deckResident.ts) goes with Work too; the next edit starts it again.
+      setDeckToolHome(null)
+      void stopDeckResident(ctx.dataDir)
     }
   },
   async handle(req, ctx, by, signal) {

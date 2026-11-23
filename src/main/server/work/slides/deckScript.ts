@@ -11,6 +11,8 @@ export const DECK_PY = String.raw`"""The slides pillar's deck tool (src/main/ser
   deck.py layouts <in.pptx> <out.pptx>
   deck.py step <in.pptx> <ops.json> <out.pptx> <warnings.json> <back.pack> <info.json>
   deck.py unstep <now.pptx> <in.pack> <out.pptx> <back.pack> <info.json>
+  deck.py solo <in.pptx> <slide number> <out.pptx>
+  deck.py serve
 
 inspect writes DeckInfo as JSON. apply runs the edits in order, saves with
 python-pptx, then writes the output zip itself so that every part the edits
@@ -21,8 +23,11 @@ and the names it added. unpack applies one to the deck it was made against.
 layouts writes a deck of one slide per layout of the input, each placeholder
 saying what it is, for the layout picker's pictures. step and unstep are one of his own edits, and one taken back or put back, in
 one run: the deck after, the pack that reverses it, and the new deck's
-DeckInfo, so the host starts Python once for an edit. On failure: one
-sentence on stderr, exit 1.
+DeckInfo, so the host starts Python once for an edit. solo writes a copy
+that holds one slide alone, its number printed as it was, for its picture,
+and prints the deck's slide count as JSON. serve is the tool kept running: the other
+verbs as jobs on stdin, one line each (deckResident.ts).
+On failure: one sentence on stderr, exit 1.
 """
 import copy
 import hashlib
@@ -709,6 +714,38 @@ def draws_of(raw, part, number, deck=b''):
     return h.hexdigest()
 
 
+def slide_info(prs, slide, number, raw, part, w, h, theme, deck):
+    """One slide's entry in the outline: 'part' is its part's name in the file, 'number' its place in the deck from 1."""
+    flat = list(walk(slide.shapes))
+    shapes = [shape_info(sh, xf, w, h, group, theme) for sh, xf, group in flat]
+    title = ''
+    t = next((s for s in shapes if s.get('placeholder') == 'title' and s['kind'] == 'text'), None)
+    if t is not None and t['text']:
+        title = t['text']
+    else:
+        first = next((s for s in shapes if s['kind'] == 'text' and s['text']), None)
+        title = first['text'].split('\n')[0] if first else ''
+    notes = ''
+    if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:
+        notes = text_of(slide.notes_slide.notes_text_frame)
+    # The layouts this slide may be given (op_layout's own test), by name.
+    mine = holds_of(slide)
+    fits = [l.name for m in prs.slide_masters for l in m.slide_layouts if l.part is slide.slide_layout.part or all(held.get(i) == k for i, k in mine.items() for held in (holds_of(l),))]
+    return {
+        'fits': fits,
+        'id': slide.slide_id,
+        'hidden': slide._element.get('show') in ('0', 'false'),
+        'layout': slide.slide_layout.name,
+        'title': title[:TEXT_CAP],
+        'notes': notes,
+        'hash': hashlib.sha256(raw.get(part, b'')).hexdigest(),
+        **({'draws': d} if (d := draws_of(raw, part, number, deck)) is not None else {}),
+        'shapes': shapes,
+        **({'transition': tr} if (tr := transition_of(slide)) is not None else {}),
+        **({'timing': tm} if (tm := timing_of(slide)) is not None else {}),
+    }
+
+
 def inspect(src, out):
     prs = Presentation(src)
     with zipfile.ZipFile(src) as z:
@@ -721,34 +758,7 @@ def inspect(src, out):
     deck = deck_draws(raw)
     slides = []
     for slide in prs.slides:
-        flat = list(walk(slide.shapes))
-        shapes = [shape_info(sh, xf, w, h, group, theme) for sh, xf, group in flat]
-        title = ''
-        t = next((s for s in shapes if s.get('placeholder') == 'title' and s['kind'] == 'text'), None)
-        if t is not None and t['text']:
-            title = t['text']
-        else:
-            first = next((s for s in shapes if s['kind'] == 'text' and s['text']), None)
-            title = first['text'].split('\n')[0] if first else ''
-        notes = ''
-        if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:
-            notes = text_of(slide.notes_slide.notes_text_frame)
-        # The layouts this slide may be given (op_layout's own test), by name.
-        mine = holds_of(slide)
-        fits = [l.name for m in prs.slide_masters for l in m.slide_layouts if l.part is slide.slide_layout.part or all(held.get(i) == k for i, k in mine.items() for held in (holds_of(l),))]
-        slides.append({
-            'fits': fits,
-            'id': slide.slide_id,
-            'hidden': slide._element.get('show') in ('0', 'false'),
-            'layout': slide.slide_layout.name,
-            'title': title[:TEXT_CAP],
-            'notes': notes,
-            'hash': hashlib.sha256(raw.get(parts.get(slide.slide_id, ''), b'')).hexdigest(),
-            **({'draws': d} if (d := draws_of(raw, parts.get(slide.slide_id, ''), len(slides) + 1, deck)) is not None else {}),
-            'shapes': shapes,
-            **({'transition': tr} if (tr := transition_of(slide)) is not None else {}),
-            **({'timing': tm} if (tm := timing_of(slide)) is not None else {}),
-        })
+        slides.append(slide_info(prs, slide, len(slides) + 1, raw, parts.get(slide.slide_id, ''), w, h, theme, deck))
     info = {'width': w, 'height': h, 'slides': slides, 'sections': sections_of(prs), 'layouts': layout_names(prs), 'layoutInfo': layouts_of(prs), 'theme': theme}
     looks = layouts_draws(raw, deck)
     if looks is not None:
@@ -2283,6 +2293,175 @@ def unstep(now, packed, dst, pack_path, info_path):
     inspect(dst, info_path)
 
 
+# ── kept running ─────────────────────────────────────────────────────
+
+def solo(src, number, dst):
+    """A copy of the deck that holds slide 'number' (from 1, hidden ones counted) and no other: its picture is
+    the same, and LibreOffice opens one slide where it would open them all. LibreOffice prints a slide's place in
+    the file for its number and reads no other start (firstSlideNum is not imported), so in the copy every
+    slide-number field of the slide, its layout and its master is the number itself, as words. A deck that
+    counts from another number is refused: its whole picture is the one to trust. Says how many slides the deck has."""
+    prs = Presentation(src)
+    pres = prs.part._element
+    if pres.get('firstSlideNum', '1') != '1':
+        raise Fail('the deck counts its slides from %s, so no slide is cut out of it' % pres.get('firstSlideNum'))
+    lst = prs.slides._sldIdLst
+    ids = list(lst)
+    n = int(number)
+    if n < 1 or n > len(ids):
+        raise Fail('the deck has no slide %d' % n)
+    slide = prs.slides[n - 1]
+    for el in (slide._element, slide.slide_layout._element, slide.slide_layout.slide_master._element):
+        for fld in xp(el, './/a:fld[@type="slidenum"]'):
+            r = OxmlElement('a:r')
+            rpr = fld.find(qn('a:rPr'))
+            if rpr is not None:
+                r.append(copy.deepcopy(rpr))
+            t = OxmlElement('a:t')
+            t.text = str(n)
+            r.append(t)
+            fld.getparent().replace(fld, r)
+    for i, el in enumerate(ids):
+        if i != n - 1:
+            rid = el.rId
+            lst.remove(el)
+            prs.part.drop_rel(rid)
+    # what named the slides that are gone: the sections, the custom shows
+    sections = section_list(prs)
+    if sections is not None:
+        ext = sections.getparent()
+        holder = ext.getparent()
+        holder.remove(ext)
+        if len(holder) == 0:
+            holder.getparent().remove(holder)
+    for shows in xp(pres, './p:custShowLst'):
+        pres.remove(shows)
+    prs.save(dst)
+    return {'slides': len(ids)}
+
+
+class Kept(object):
+    """What the tool kept running holds between jobs, each thing under the bytes it was made from and nothing
+    else: a deck that changed is simply not found here and is read afresh. Two ages: what a job did not use is
+    dropped at the end of the next job that used any, so no more than two jobs' worth is ever held."""
+
+    def __init__(self):
+        self.now, self.old = {}, {}
+
+    def get(self, key, make, check=False):
+        hit = self.now.get(key)
+        if hit is None:
+            hit = self.old.get(key)
+            if hit is None:
+                hit = make()
+            elif check and hit != make():
+                raise RuntimeError('what was kept is not what a fresh read gives')
+            self.now[key] = hit
+        return hit
+
+    def turn(self):
+        if self.now:
+            self.old, self.now = self.now, {}
+
+    def drop(self):
+        self.now, self.old = {}, {}
+
+
+def serve(check=False):
+    """The tool kept running (deckResident.ts): a job is one line on stdin, {"id", "argv"} with argv as main()
+    takes it, and one line comes back: {"id", "ok"} (with "said", what the verb answers, where it answers
+    anything), {"id", "refused"} with the sentence a run would have put on stderr, or {"id", "error"} for
+    anything else (the host then does the job the old way). Kept between jobs: a
+    part's canonical form, a rels file's rows and a slide's entry in the outline, so an edit pays for the slide it
+    changed and not for the deck. 'check' reads everything afresh as well and fails the job on a difference."""
+    global c14n, rels_of, slide_info
+    fresh_c14n, fresh_rels, fresh_info = c14n, rels_of, slide_info
+    forms, rows, entries = Kept(), Kept(), Kept()
+    of_deck = [None, None]
+
+    def kept_c14n(data):
+        return forms.get(data, lambda: fresh_c14n(data), check)
+
+    def kept_rels(raw, part):
+        data = raw.get(rels_path(part))
+        return [] if data is None else rows.get((part, data), lambda: fresh_rels(raw, part), check)
+
+    def masters_key(prs, raw):
+        """Everything of the deck but its slides that an entry reads: the masters in the deck's order, and every
+        part they reach with its name, bytes and rels. None when a master is not in the file under its name."""
+        if of_deck[0] is not raw:
+            order = [m.part.partname.lstrip('/') for m in prs.slide_masters]
+            seen, queue = [], list(order)
+            while queue:
+                name = queue.pop()
+                if name in seen or name not in raw:
+                    continue
+                seen.append(name)
+                queue.extend(t for _, ty, t, mode in rels_of(raw, name) if mode != 'External' and not ty.endswith('/notesSlide') and not ty.endswith('/slide'))
+            key = None
+            if all(name in seen for name in order):
+                h = hashlib.sha256(repr(order).encode('utf-8'))
+                for name in sorted(seen):
+                    for piece in (name.encode('utf-8'), raw[name], raw.get(rels_path(name), b'')):
+                        h.update(hashlib.sha256(piece).digest())
+                key = h.digest()
+            of_deck[:] = [raw, key]
+        return of_deck[1]
+
+    def kept_info(prs, slide, number, raw, part, w, h, theme, deck):
+        make = lambda: fresh_info(prs, slide, number, raw, part, w, h, theme, deck)
+        masters = masters_key(prs, raw)
+        draws = draws_of(raw, part, number, deck)
+        if masters is None or draws is None:
+            return make()
+        notes = next((t for _, ty, t, _ in rels_of(raw, part) if ty.endswith('/notesSlide')), None)
+        # draws: the slide and every part it reaches, by their bytes, with the deck's own settings and its number where one is printed
+        key = (slide.slide_id, draws, raw[part], raw.get(rels_path(part)), raw.get(notes) if notes else None, masters, w, h)
+        return entries.get(key, make, check)
+
+    c14n, rels_of, slide_info = kept_c14n, kept_rels, kept_info
+    try:
+        import resource
+        peak = lambda: resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == 'darwin' else 1024)
+    except ImportError:
+        peak = lambda: 0
+    # Answers go out on the real stdout alone: nothing a job prints can pass for one.
+    out = os.fdopen(os.dup(sys.stdout.fileno()), 'w', encoding='utf-8')
+    sys.stdout = sys.stderr
+
+    def say(answer):
+        out.write(json.dumps(answer) + '\n')
+        out.flush()
+
+    say({'ready': True})
+    for line in sys.stdin:
+        try:
+            job = json.loads(line)
+            argv = [str(a) for a in job['argv']]
+        except (ValueError, KeyError, TypeError):
+            continue
+        answer = {'id': job.get('id')}
+        try:
+            if argv[:1] == ['serve']:
+                raise Fail('serve is not a job')
+            said = main(argv)
+            answer['ok'] = True
+            if said is not None:
+                answer['said'] = said
+        except Fail as e:
+            answer['refused'] = str(e).replace('\n', ' ')
+        except Exception as e:
+            # Not the tool's own word: whatever is kept may be part of it.
+            for kept in (forms, rows, entries):
+                kept.drop()
+            answer['error'] = str(e) or type(e).__name__
+        for kept in (forms, rows, entries):
+            kept.turn()
+        of_deck[:] = [None, None]
+        answer['peak'] = peak()
+        say(answer)
+
+
 def main(argv):
     if len(argv) == 3 and argv[0] == 'inspect':
         inspect(argv[1], argv[2])
@@ -2298,13 +2477,19 @@ def main(argv):
         step(*argv[1:])
     elif len(argv) == 6 and argv[0] == 'unstep':
         unstep(*argv[1:])
+    elif len(argv) == 4 and argv[0] == 'solo':
+        return solo(*argv[1:])
+    elif argv in (['serve'], ['serve', 'check']):
+        serve(len(argv) == 2)
     else:
         raise Fail('usage: deck.py inspect <in> <out.json> | apply <in> <ops.json> <out.pptx> <warnings.json> | pack <from> <to> <out> | unpack <now> <pack> <out>')
 
 
 if __name__ == '__main__':
     try:
-        main(sys.argv[1:])
+        said = main(sys.argv[1:])
+        if said is not None:
+            print(json.dumps(said))
     except Exception as e:
         msg = str(e) if isinstance(e, Fail) else 'the deck could not be read or written: %s' % (str(e) or type(e).__name__)
         sys.stderr.write(msg.replace('\n', ' ') + '\n')
