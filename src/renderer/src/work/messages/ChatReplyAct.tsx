@@ -25,15 +25,23 @@ export function replyOf(payload: unknown): ChatReplyPayload | null {
 }
 
 /**
- * What a reply answers: the message it names, or, naming none, the
- * conversation's newest message from someone else, as LifeOS will choose it.
- * Read from the newest page; older than that, it is left unsaid.
+ * What a reply answers, the very message LifeOS's `chats:reply` will choose:
+ * the message it names; else the conversation's newest from someone else
+ * (`lastInId`); else, a conversation with only his own words, his newest
+ * there (`ownIn(...).first()`, newest first), shown as "You: …", since Slack
+ * threads the reply under it. Read from the newest page; older than that,
+ * and with nothing of his on the page, it is left unsaid.
  */
 export function answeredOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: ChatDetail | null | undefined, page: readonly ChatMessage[] | undefined): { who: string; text: string } | null {
   const id = reply.replyTo ?? detail?.chat.lastInId;
   const found = id ? page?.find((m) => m._id === id) : undefined;
   if (found) return { who: found.who.me ? "You" : found.who.name, text: wordsOf(found.text) };
   if (!reply.replyTo && detail && !detail.chat.lastFromMe && detail.chat.lastText) return { who: detail.chat.lastWho, text: detail.chat.lastText };
+  if (!reply.replyTo && detail && !detail.chat.lastInId) {
+    // The page is newest first, as LifeOS's own index for his messages is: the first of his is the one it answers.
+    const mine = page?.find((m) => m.who.me);
+    if (mine) return { who: "You", text: wordsOf(mine.text) };
+  }
   return null;
 }
 

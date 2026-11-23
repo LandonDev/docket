@@ -257,6 +257,8 @@ export interface FixtureOptions {
   messagesLoading?: boolean;
   /** Older pages of messages fail to come: the page asked for past the first turns to a failure. */
   olderFail?: boolean;
+  /** The loaded page stays at its first fifty messages: asking for more brings nothing. */
+  pageFixed?: boolean;
   /** A pressed or discarded draft stays in `useDrafts` after its press resolves, until `catchUp`, as the Outbox's list lags its answer. */
   lingers?: boolean;
   /** A held draft's press fails and the item stays as failed, with these words. */
@@ -298,6 +300,8 @@ export interface FixtureLog {
   saved: { id: string; text: string }[];
   /** The Outbox items asked for by Open in Outbox, by the page's key. */
   outbox: string[];
+  /** Files read by id (`useFile`): asked for while their message is outside the loaded page. */
+  fileReads: string[];
   dropped: string[];
   requested: string[];
   opened: { chatId: string; messageId: string; file: string; verb: FileVerb }[];
@@ -331,11 +335,15 @@ export interface FixtureControls {
   failDraft(id: string, reason: string, unknown?: boolean): void;
   /** LifeOS's worker stores a message's file: its address comes. */
   storeFile(chatId: string, messageId: string, fileId: string, url: string): void;
+  /** LifeOS's worker fails to fetch a message's file, with these words. */
+  failFile(chatId: string, messageId: string, fileId: string, reason: string): void;
+  /** A held item leaves the Outbox's Waiting list from elsewhere (discarded or decided in another window). */
+  dropElsewhere(draftId: string): void;
 }
 
 export function fixtureData(options: FixtureOptions = {}): MessagesData & FixtureControls {
   const now = options.now ?? NOW;
-  const log: FixtureLog = { read: [], unread: [], chats: [], searched: [], sent: [], undone: [], retried: [], pressed: [], saved: [], outbox: [], dropped: [], requested: [], opened: [] };
+  const log: FixtureLog = { read: [], unread: [], chats: [], searched: [], sent: [], undone: [], retried: [], pressed: [], saved: [], outbox: [], fileReads: [], dropped: [], requested: [], opened: [] };
   let rows = options.empty || options.noSource ? [] : (options.chats ?? CHATS);
   const threads = new Map<string, ChatMessage[]>(Object.entries(options.messages ?? MESSAGES));
   // Discord silent since Nov 3 holds nothing newer than Nov 3: its conversations move back to before its last sync.
@@ -424,6 +432,16 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       rows = rows.map((row) => (row._id === chatId ? { ...row, lastAt: sentAt, lastText: text, lastWho: who, lastFromMe: false, lastInAt: sentAt, lastForMeAt: sentAt, unread: true } : row));
       changed();
     },
+    failFile(chatId, messageId, fileId, reason) {
+      putMessages(
+        chatId,
+        messagesOf(chatId).map((m) => (m._id === messageId ? { ...m, files: m.files.map((f) => (f._id === fileId ? { ...f, status: "failed" as const, url: undefined, error: reason } : f)) } : m)),
+      );
+    },
+    dropElsewhere(draftId) {
+      const chatId = chatOfDraft(draftId);
+      if (chatId) dropped(chatId, draftId);
+    },
     storeFile(chatId, messageId, fileId, url) {
       putMessages(
         chatId,
@@ -479,7 +497,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       if (failed) return FAILED;
       if (options.loading || options.messagesLoading || !chatId) return LOADING;
       const all = messagesOf(chatId);
-      const page: Paged<ChatMessage> = { rows: all.slice(0, count), done: count >= all.length, more: () => (options.olderFail ? setFailed(true) : setCount((c) => c + 50)) };
+      const page: Paged<ChatMessage> = { rows: all.slice(0, count), done: count >= all.length, more: () => (options.olderFail ? setFailed(true) : options.pageFixed ? undefined : setCount((c) => c + 50)) };
       return ready(page);
     },
     useSources() {
@@ -596,11 +614,21 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
         requestFails--;
         throw new Error("LifeOS did not answer");
       }
+      // As LifeOS's `chats:requestFiles`: each file only listed, or failed, goes back to wanted with no error.
+      for (const chatId of threads.keys()) {
+        const all = messagesOf(chatId);
+        if (!all.some((m) => m._id === messageId)) continue;
+        putMessages(
+          chatId,
+          all.map((m) => (m._id === messageId ? { ...m, files: m.files.map((f) => (f.status === "listed" || f.status === "failed" ? { ...f, status: "wanted" as const, error: undefined } : f)) } : m)),
+        );
+      }
     },
     fileVerb,
     useFile(fileId) {
       useVersion();
       if (!fileId) return LOADING;
+      if (!log.fileReads.includes(fileId)) log.fileReads.push(fileId);
       for (const chatId of threads.keys()) {
         for (const message of messagesOf(chatId)) {
           const file = message.files.find((f) => f._id === fileId);

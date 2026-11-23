@@ -12,7 +12,7 @@ import { workOpenPort } from "../../lib/workSwitch";
 import { useMessagesData, type ThreadDraft } from "./data";
 import { firstName } from "./model";
 import { fieldOrigin, useWaitingDrafts } from "./drafts";
-import { draftSeen, fieldAsPressed, keepDraftEdit, keepFailedPress, keepPress, seeDraft, keepRefusal, keepTyped, markDraft, pendingPress, stillPressed, typedIn, usePendingPress, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
+import { draftSeen, fieldAsPressed, keepDraftEdit, keepFailedPress, keepLooseWords, useLooseWords, keepPress, seeDraft, keepRefusal, keepTyped, markDraft, pendingPress, stillPressed, typedIn, usePendingPress, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
 import { QUICK_ANSWERS } from "./quick";
 
 /**
@@ -194,6 +194,8 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   const discard = (d: ThreadDraft): Promise<void> => {
     // The field empties if and only if its words are that draft's (edited or not) at the press and unchanged since.
     const pressed = fieldAsPressed(workspaceId, chatId);
+    // His own Discard takes a kept revision with the draft: nothing of it is offered back.
+    keepDraftEdit(workspaceId, chatId, d.id, null);
     return drop(async () => {
       await data.dropDraft(d);
       markDraft(workspaceId, chatId, d.id, { settled: true });
@@ -206,12 +208,26 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     if (mode === "send" && words && !pending && !dropping) void send();
   };
 
-  // A refusal says itself above the line, never in its place: a draft he may want back stays offered under it.
-  const alert = refused ? (
-    <p role="alert" className="text-xs text-destructive">
-      {refused}
-    </p>
-  ) : null;
+  // His words from a refused press whose item has since gone: his own now, put back only on his press, before whatever
+  // the field holds, a line between, as Use draft does; from there they go as his own reply.
+  const loose = useLooseWords(workspaceId, chatId);
+  const putBack = (): void => {
+    if (!loose) return;
+    const now = typedIn(workspaceId, chatId);
+    keepTyped(workspaceId, chatId, now.trim() ? `${loose}\n${now}` : loose, null);
+    keepLooseWords(workspaceId, chatId, null);
+    field.current?.focus();
+  };
+  // A refusal says itself above the line, never in its place: a draft he may want back stays offered under it. Words
+  // whose item has gone say what happened on the line itself, so the same edit never takes two lines.
+  const alert =
+    refused && !loose ? (
+      <p role="alert" className="text-xs text-destructive">
+        {refused}
+      </p>
+    ) : null;
+  // The line for his kept words, while they wait: what happened, and the one way to have them back; Discard drops them.
+  const showsLoose = loose !== undefined && !(draft && failed);
   const note = draft && failed ? (
     <FailedLine
       draft={draft}
@@ -221,6 +237,13 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
         data.openOutbox(draft);
       }}
     />
+  ) : showsLoose ? (
+    <span data-loose-words className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
+      <span className="min-w-0 text-muted-foreground">The draft is gone; your edit is kept</span>
+      <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" onClick={putBack}>
+        Put back my words
+      </Button>
+    </span>
   ) : draft ? (
     // A draft's line ends with why its button is Copy, while it is; a draft he is not using offers itself.
     <DraftLine draft={draft} why={draft.held && sends ? undefined : why} onUse={drafting ? undefined : () => takeDraft(draft)} />
@@ -266,7 +289,11 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
               </div>
             ) : null}
             <span className="flex-1" />
-            {draft && !failed ? (
+            {showsLoose ? (
+              <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => keepLooseWords(workspaceId, chatId, null)}>
+                Discard
+              </Button>
+            ) : draft && !failed ? (
               <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={dropping || pending} onClick={() => void discard(draft)}>
                 <BusyLabel busy={dropping} label="Discard" />
               </Button>

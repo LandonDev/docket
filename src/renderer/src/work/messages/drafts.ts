@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useMessagesData, type ThreadDraft } from "./data";
-import { keepDraftEdit, markDraft, useDraftEdits, useDraftMarks, usePendingPress } from "./page";
+import { draftEditsOf, keepDraftEdit, keepLooseWords, markDraft, useDraftEdits, useDraftMarks, usePendingPress } from "./page";
 
 /**
  * The threads' drafts still waiting in a conversation, as the composer and Undo
@@ -20,12 +20,20 @@ export function useWaitingDrafts(workspaceId: string, chatId: string): readonly 
       const listed = all.find((d) => d.id === id);
       if (!listed || ("failed" in mark && listed.failed !== undefined)) markDraft(workspaceId, chatId, id, null);
     }
-    // A kept revision goes once the item holds it (a save went through) or the draft has gone.
+    // A kept revision goes once the item holds it (a save went through). If the item goes while it is kept (discarded or
+    // decided elsewhere), the words outlive it as his own, offered back by the composer; only an item settled here (sent
+    // or discarded by his own press) takes them with it.
     for (const [id, text] of edits) {
       const listed = all.find((d) => d.id === id);
-      if (!listed || listed.text === text) keepDraftEdit(workspaceId, chatId, id, null);
+      // Every reader runs this in the same commit: act only on what the store holds now, so the words move once.
+      if ((listed && listed.text !== text) || draftEditsOf(workspaceId, chatId).get(id) !== text) continue;
+      // A draft his own press is sending leaves the list as it goes: its words went with it, nothing to keep.
+      if (id === press?.draft) continue;
+      const mark = marks.get(id);
+      if (!listed && !(mark && "settled" in mark)) keepLooseWords(workspaceId, chatId, text);
+      keepDraftEdit(workspaceId, chatId, id, null);
     }
-  }, [all, marks, edits, workspaceId, chatId]);
+  }, [all, marks, edits, press, workspaceId, chatId]);
   return useMemo(
     () =>
       all.flatMap((d): ThreadDraft[] => {

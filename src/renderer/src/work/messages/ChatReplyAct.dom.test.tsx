@@ -9,7 +9,7 @@ import type { HeldItem } from "@shared/work";
 import { ACT_VIEWS } from "../acts/registry";
 import { CHATS, MESSAGES } from "./fixtures";
 
-const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], answer: true, raw: undefined as unknown, pageFails: false, rawFails: false, detailFails: false, pageLoading: false }));
+const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], answer: true, raw: undefined as unknown, pageFails: false, rawFails: false, detailFails: false, pageLoading: false, chat: undefined as unknown, page: undefined as unknown }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
   useLifeosSession: (environmentId: string, sector: string) => ({ environmentId, sector, client: {}, state: "connected" }),
@@ -17,8 +17,9 @@ vi.mock("../shell/lifeos", async (original) => ({
     lifeos.asked.push({ name, args });
     if (!lifeos.answer) return { status: "loading" };
     if (name === "chats:get" && lifeos.detailFails) return { status: "failed", error: "LifeOS did not answer" };
-    if (name === "chats:get") return { status: "ready", value: { chat: CHATS.find((c) => c._id === args.id), source: null, route: { can: true } } };
+    if (name === "chats:get") return { status: "ready", value: { chat: lifeos.chat ?? CHATS.find((c) => c._id === args.id), source: null, route: { can: true } } };
     if (name === "chats:messages" && lifeos.pageLoading) return { status: "loading" };
+    if (name === "chats:messages" && lifeos.page) return { status: "ready", value: { page: lifeos.page } };
     if (name === "chats:messages") return lifeos.pageFails ? { status: "failed", error: "LifeOS did not answer" } : { status: "ready", value: { page: MESSAGES[args.chatId!] ?? [] } };
     if (name === "rawMessages:get") return lifeos.rawFails ? { status: "failed", error: "LifeOS did not answer" } : lifeos.raw === undefined ? { status: "loading" } : { status: "ready", value: lifeos.raw };
     return { status: "loading" };
@@ -36,6 +37,8 @@ afterEach(() => {
   lifeos.rawFails = false;
   lifeos.detailFails = false;
   lifeos.pageLoading = false;
+  lifeos.chat = undefined;
+  lifeos.page = undefined;
 });
 
 const item = (payload: unknown): HeldItem =>
@@ -127,6 +130,19 @@ describe("the held reply's view", () => {
     const line = document.querySelector<HTMLElement>("[data-answers='unreadable']")!;
     expect(line.textContent).toContain("The message it answers could not be read");
     expect(within(line).getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("naming nothing in a conversation of only his own words, quotes his newest there as You, the message LifeOS will answer", () => {
+    const at = Date.now();
+    lifeos.chat = { ...CHATS.find((c) => c._id === "c_design")!, lastInId: undefined, lastFromMe: true };
+    lifeos.page = [
+      { _id: "o2", who: { name: "Alex Kim", me: true }, text: "Ship it Friday?", sentAt: at, files: [] },
+      { _id: "o1", who: { name: "Alex Kim", me: true }, text: "Build is up.", sentAt: at - 60_000, files: [] },
+    ];
+    render(<View env="box" item={item({ chatId: "c_design", source: "slack", chat: "#design-review", text: "Going with Friday." })} />);
+    expect(document.querySelector("[data-answers]")!.textContent).toBe("You: Ship it Friday?");
+    // With nothing of his on the page it is left unsaid.
+    expect(answeredOf({}, { chat: lifeos.chat } as never, [])).toBeNull();
   });
 
   it("keeps the keys in the quote's slot when its Retry, holding them, reads afresh", () => {

@@ -1923,9 +1923,11 @@ Around the canvas:
   build.zip"), and while its bytes are still on their way the same chip with
   a spinner in its tile and its name muted; a file that cannot come is one 12px muted line, its glyph,
   its name in medium `foreground` (a long unbroken name wraps inside the
-  message), why, and 8px on Try again (where asking
-  or reading again may help) and Open in the app as quiet controls; a
-  picture whose bytes do not draw takes the same line. A picture is never wider than its message. The composer sits at the column's foot
+  message), why, and 8px on its quiet controls: Try again, which asks
+  LifeOS again or reads the bytes again (the file then draws as coming, its
+  chip's spinner or its picture's skeleton, once LifeOS marks it wanted);
+  Open in its app where it has an address; a picture whose bytes do not draw
+  takes the same line. A picture is never wider than its message. The composer sits at the column's foot
   on the composer's surface (`card`, a hairline, radius 12), which takes the
   field focus standard at its outer edge (`focus-field`) while the field
   holds the keys, never while a foot-row button does: a field of one
@@ -1948,7 +1950,10 @@ Around the canvas:
   may be cut, its whole shown on hover while it is; no tip repeats the line;
   no Discard, its words never in the field, no amber mark on its row). A refusal in red stands above that line, never in its place. His reply shows as his own message with one 12px line under it:
   "Sending" and Undo (in ink, as Retry), or the red mark, "Not sent.", LifeOS's reason and
-  Retry. The field empties at Send's press, the button turning busy until
+  Retry. Words from a refused press whose held item has since gone take the
+  draft line's place, one line: "The draft is gone; your edit is kept" with
+  one quiet control, "Put back my words", and the foot's Discard; they go
+  as his own reply once put back. The field empties at Send's press, the button turning busy until
   LifeOS answers. A message that arrives at the foot rises 4px and fades in over
   `--dur-fast`; nothing else moves.
 - **People** (the People view, work/people/; docs/agents/work-people.md).

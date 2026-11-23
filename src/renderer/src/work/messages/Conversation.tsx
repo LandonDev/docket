@@ -117,7 +117,9 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   useEffect(() => {
     if (!settled || !document.activeElement?.hasAttribute("data-conversation-pane")) return;
     const pane = document.activeElement as HTMLElement;
-    pane.querySelector<HTMLElement>(failed ? "[data-slot=empty] button" : "[role=log]")?.focus({ preventScroll: true });
+    // A failure's Retry; else the column; else, a conversation with no messages yet, the composer's field.
+    const target = failed ? pane.querySelector<HTMLElement>("[data-slot=empty] button") : (pane.querySelector<HTMLElement>("[role=log]") ?? pane.querySelector<HTMLElement>("[data-composer] textarea"));
+    target?.focus({ preventScroll: true });
   }, [settled, failed]);
   const gone = detail.status === "ready" && !detail.value;
   return (
@@ -206,7 +208,9 @@ function Toolbar({
       target?.focus({ preventScroll: true });
       return;
     }
-    const pane = back.current?.closest("[data-conversation]");
+    // The conversation's region includes Retry's pane, which holds the keys while a read runs: the read's own hand-off
+    // (the column, the next Retry, the composer) takes them from there, not Back.
+    const pane = back.current?.closest("[data-conversation-pane]") ?? back.current?.closest("[data-conversation]");
     if (!pane?.contains(document.activeElement)) back.current?.focus({ preventScroll: true });
     // biome-ignore lint/correctness/useExhaustiveDependencies: on the crossing alone
   }, [narrow]);

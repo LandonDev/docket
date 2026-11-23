@@ -62,7 +62,9 @@ export function ChatList({ workspaceId, job, narrow, shown = true, onOpen }: { w
     if (!fell) return;
     // What landed in this same render takes the keys at once (the rows, a result list, an empty list's action); else the
     // pane holds them, and what lands later takes them from it.
-    const landed = pane.current?.querySelector<HTMLElement>("[role=listbox], [data-slot=empty] button");
+    const find = (selector: string) => pane.current?.querySelector<HTMLElement>(selector) ?? null;
+    // An empty list with no action of its own hands them to the search field.
+    const landed = find("[role=listbox], [data-slot=empty] button") ?? (find("[data-slot=empty]") ? find("input[type=search]") : null);
     (landed ?? pane.current)?.focus({ preventScroll: true });
   }, [attempt]);
   return (
@@ -562,7 +564,9 @@ function ListEmpty({
   const keep = returns?.keep ?? false;
   useLayoutEffect(() => {
     const fell = document.activeElement === null || document.activeElement === document.body;
-    if ((takesKeys?.() && fell) || paneHoldsKeys()) return void button.current?.focus();
+    if (takesKeys?.() && fell) return void button.current?.focus();
+    // A Retry's read landing on an empty list: its action, or the search field when it has none.
+    if (paneHoldsKeys()) return void (button.current ?? document.querySelector<HTMLElement>("[data-list-pane] input[type=search]"))?.focus();
     if (!ws || !shown || !peekReturn(ws)) return;
     if (!keep) takeReturn(ws);
     button.current?.focus();

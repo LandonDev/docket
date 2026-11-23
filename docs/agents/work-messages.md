@@ -20,7 +20,7 @@ through LifeOS's own sector fence:
 
 | Function | Who calls it |
 |---|---|
-| `chats:list {sector, filter?, paginationOpts}`, `chats:get {id}`, `chats:messages {chatId, paginationOpts}`, `chats:unread {sector}`, `chats:search {sector, text, limit?}`, `chats:markRead`, `chats:markUnread`, `chats:requestFiles {messageId}` | the window, on the sector's session |
+| `chats:list {sector, filter?, paginationOpts}`, `chats:get {id}`, `chats:messages {chatId, paginationOpts}`, `chats:file {id}` (a file asked for whose message left the loaded page), `chats:unread {sector}`, `chats:search {sector, text, limit?}`, `chats:markRead`, `chats:markUnread`, `chats:requestFiles {messageId}` | the window, on the sector's session |
 | `chats:get`, `chats:search`, `chats:unanswered {sector}`, `chats:unread`, `chats:find {sector?, text}`, `chats:reply {chatId, replyTo?, text}`, `chats:file {id}`, `chats:requestFiles`, `replies:undo`, `replies:retry`, `sources:list` | the host, as the owner |
 
 `chats:get` answers `route`: `{can: true}` or `{can: false, why}` with
@@ -249,7 +249,17 @@ The look is docs/DESIGN.md "The Messages view".
   answer, a reply over LifeOS's 4,000 characters, which the host checks
   before it saves), are kept with the draft in page.ts (`keepDraftEdit`)
   until a save of them goes through or the draft goes; Use draft brings that
-  revision back, before any words of his own in the field. The field stays
+  revision back, before any words of his own in the field. If the item goes
+  while they are kept (discarded or decided in another window before this one
+  heard), they outlive it as his own words with no held origin
+  (`keepLooseWords`): one line in the draft line's place says so ("The
+  draft is gone; your edit is kept") with one quiet control, "Put back my
+  words", which restores them only on his press, before whatever the field
+  holds, a line between, to go from there as his own reply (`send`, never
+  the gone item); the foot's Discard drops them; the refusal for that edit
+  is not said on a second line. Let go when he puts them back, discards them
+  or leaves the conversation. His own
+  Discard, or a press of his that sends the item, takes them with it. The field stays
   as he has it, and the refusal shows above the draft's line rather than in
   its place. A held draft pressed or discarded here is marked settled in
   page.ts (`markDraft`) and left out of the drafts (`useWaitingDrafts`,
@@ -348,14 +358,22 @@ The look is docs/DESIGN.md "The Messages view".
   asked afresh; the seam needs no verb for it. Retry takes its own button
   away, so when it held the keys the list's or the conversation's pane holds
   them while the read runs (`data-list-pane`, `data-conversation-pane`), and
-  what lands takes them from it: the rows or results, the column, or the next
-  failure's Retry. Sources that did not load make
+  what lands takes them from it: the rows or results, the column, the next
+  failure's Retry, the composer's field (a conversation with no messages yet)
+  or the search field (an empty list with no action). Under 640px the pane
+  counts as inside the conversation, so Back does not take them first. Sources that did not load make
   an empty list say it did not load. A conversation that fails keeps its
   toolbar, so the way back stays under 640px.
 - **Pictures and files.** A message's `listed` files are asked for as it
   mounts (the column draws only what is near the window), once a window's
   life while the ask is on its way or taken; an ask LifeOS did not take says
-  so on each file with Try again. A stored picture's bytes are read with
+  so on each file with Try again. Every failed file offers Try again too,
+  whatever its reason: it asks LifeOS again (`requestFiles` takes a failed
+  row back to wanted and clears its error; the worker fetches only when
+  asked), so the row draws as coming (the chip's spinner, the picture's
+  skeleton) once LifeOS marks it wanted, and a fetch that fails again shows
+  its new reason. The automatic ask is for listed files alone; a failed file
+  is asked again only on his press. A stored picture's bytes are read with
   `loadBytes` into a blob address, never put in the page as a web address,
   one read an address at a time, at most 120 held (the oldest no drawn
   picture uses released, read again when drawn again); a picture never grows
@@ -378,7 +396,11 @@ The look is docs/DESIGN.md "The Messages view".
   files are listed.
 - **The Outbox.** A held reply's quote is read from the newest page, else by
   its id (`rawMessages:get {id}`) on the item's own sector; a line of bones
-  holds its place until LifeOS answers. A reply that names its message is
+  holds its place until LifeOS answers. The message quoted is the one LifeOS's
+  `chats:reply` will answer: the one named, else the newest from someone
+  else (`lastInId`), else, a conversation of only his own words, his newest
+  there, quoted "You: …" (Slack threads the reply under it); with nothing of
+  his on the newest page it is left unsaid. A reply that names its message is
   read by id also when the page did not load; "The message it answers is no
   longer here" only when LifeOS answers that it is absent, "could not be
   read" with Retry when that read failed, or at once, whatever the page is

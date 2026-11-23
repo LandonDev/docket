@@ -196,6 +196,7 @@ export function markUnreadHeld(markUnread: (chatId: string, onFailed?: () => voi
 export function endVisit(workspaceId: string, chatId: string): void {
   visits.delete(key(workspaceId, chatId));
   if (fileWants.delete(key(workspaceId, chatId))) tellWants();
+  if (looseWords.delete(key(workspaceId, chatId))) for (const listener of looseListeners) listener();
   visitPlaces.delete(key(workspaceId, chatId));
   unreadHeld.delete(key(workspaceId, chatId));
 }
@@ -284,6 +285,32 @@ export function useDraftEdits(workspaceId: string, chatId: string): ReadonlyMap<
     },
     () => draftEditsOf(workspaceId, chatId),
     () => draftEditsOf(workspaceId, chatId),
+  );
+}
+
+/**
+ * His words from a refused press whose held item has since gone (discarded or decided in another window before this one
+ * heard): they outlive the item, his own now with no held origin. The composer offers them back on his press
+ * ("Put back my words"), before whatever the field holds, to send as his own reply. Dropped when he puts them back or
+ * leaves the conversation.
+ */
+const looseWords = new Map<string, string>();
+const looseListeners = new Set<() => void>();
+export const looseWordsOf = (workspaceId: string, chatId: string): string | undefined => looseWords.get(key(workspaceId, chatId));
+export function keepLooseWords(workspaceId: string, chatId: string, text: string | null): void {
+  const at = key(workspaceId, chatId);
+  if (text) looseWords.set(at, looseWords.has(at) ? `${looseWords.get(at)}\n${text}` : text);
+  else if (!looseWords.delete(at)) return;
+  for (const listener of looseListeners) listener();
+}
+export function useLooseWords(workspaceId: string, chatId: string): string | undefined {
+  return useSyncExternalStore(
+    (fn) => {
+      looseListeners.add(fn);
+      return () => void looseListeners.delete(fn);
+    },
+    () => looseWordsOf(workspaceId, chatId),
+    () => looseWordsOf(workspaceId, chatId),
   );
 }
 
@@ -411,6 +438,7 @@ export function resetPages(): void {
   failedPresses.clear();
   draftEdits.clear();
   seenDrafts.clear();
+  looseWords.clear();
   visitPlaces.clear();
   unreadHeld.clear();
   presses.clear();

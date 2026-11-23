@@ -110,6 +110,8 @@ function Files({ workspaceId, message, chatId, chat }: { workspaceId: string; me
   const data = useMessagesData();
   const wants = message.files.some((file) => file.status === "listed");
   const [refused, setRefused] = useState<string | null>(null);
+  // The automatic ask is for listed files alone; a failed file is asked for again only on his press (Try again):
+  // LifeOS takes its row back to wanted, so it draws as coming from there, and a fetch that fails again shows its reason.
   const ask = useCallback(() => {
     setRefused(null);
     asked.add(message._id);
@@ -148,7 +150,7 @@ function Files({ workspaceId, message, chatId, chat }: { workspaceId: string; me
         </div>
       ) : null}
       {failed.map((file) => (
-        <FileFailed key={file._id} file={file} why={file.status === "failed" ? file.error : (refused ?? undefined)} source={chat.source} link={link} onRetry={file.status === "failed" ? undefined : ask} />
+        <FileFailed key={file._id} file={file} why={file.status === "failed" ? file.error : (refused ?? undefined)} source={chat.source} link={link} onRetry={ask} />
       ))}
     </div>
   );
@@ -289,8 +291,9 @@ function ChipTile({ glyph: Glyph, pending }: { glyph: IconComponent; pending: bo
 
 /**
  * A file that could not come: its glyph, its name in ink, why in LifeOS's
- * words, then 8px on the ways back as quiet controls: Try again where asking
- * or reading again may help, and Open in its app where it has an address.
+ * words, then 8px on the ways back as quiet controls: Try again, which asks
+ * LifeOS again or reads the bytes again; Open in its app where it has an
+ * address.
  */
 function FileFailed({ file, why, source, link, onRetry }: { file: ChatFile; why: string | undefined; source: ChatRow["source"]; link: string | undefined; onRetry?: () => void }) {
   const opens = link && /^https?:\/\//i.test(link) ? link : undefined;
