@@ -6,9 +6,10 @@ import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutati
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
 import { workspaceHere } from '../files/policy'
-import { registerFileMoved, registerFileWaiting } from '../files/hooks'
+import { registerFileMaker, registerFileMoved, registerFileWaiting, type FileMaker } from '../files/hooks'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
+import { blankWorkbook } from './host/backends'
 import type { SheetRef } from './host/wire'
 import { writeCsv, writeXlsx } from './writer'
 import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Sheets } from './held'
@@ -206,9 +207,12 @@ export const sheets: WorkModule = {
     // Files reads the suggestions waiting in a workbook from here: a count in its row, and Home's Waiting on you.
     const offWaiting = registerFileWaiting(sheetWaiting)
     const offMoved = registerFileMoved(sheetFileMoved)
+    // An .xlsx is edited in place here, whole: Files seats one from a library in this kind (not in Excel), and New makes one.
+    const offMaker = registerFileMaker('sheet', SHEET_MAKER)
     const off = (): void => {
       offWaiting()
       offMoved()
+      offMaker()
     }
     return () => {
       off()
@@ -221,6 +225,19 @@ export const sheets: WorkModule = {
     'A sheet in the canvas is read with `sheet_read` and changed with `sheet_write` or `sheet_suggest`, cells in A1. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a sheet others share, your own idea waits as a suggestion he steps through cell by cell.',
   sessionsRemoved() {},
   workspaceRemoved() {}
+}
+
+/**
+ * What the sheet kind tells Files it writes and then edits in place (files/hooks.ts): an .xlsx. A blank one is a
+ * workbook of one empty sheet in Excel's own default font, written by the model writer.
+ */
+export const SHEET_MAKER: FileMaker = {
+  forms: ['xlsx'],
+  async blank(target) {
+    const wb = blankWorkbook('workbook', 'Sheet1')
+    wb.custom = { ...(wb.custom ?? {}), defaults: { family: 'Calibri', size: 11 } }
+    writeFileSync(target.path, writeXlsx(wb))
+  }
 }
 
 /**

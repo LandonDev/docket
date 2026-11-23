@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 import { basename, dirname, join } from 'node:path'
 import type { SheetCellDiff, SheetMutationJson, SheetRevision } from '@shared/contract-work-sheets'
+import { saveFile, versionWord } from '../files/save'
+import { versionOf } from '../files/write'
 import { cellName, colName, parseA1 } from './a1'
 import type { Inspected, ReadCell } from './jobs'
 import { mutationsOf, NotSaved, type CellWrite } from './mutations'
@@ -83,7 +85,9 @@ export class PackageStore {
     /** a change from outside landed: no suggestion over the file is where the agent saw it for sure */
     private outside: (path: string) => void = () => {},
     /** LibreOffice applying structural ops (structural.ts's converter through `ctx.convert`): answers the package it wrote */
-    private structural: ((input: string, ops: StructuralOp[], kind: 'xlsx' | 'xlsm') => Promise<string>) | null = null
+    private structural: ((input: string, ops: StructuralOp[], kind: 'xlsx' | 'xlsm') => Promise<string>) | null = null,
+    /** the lock a save of this file takes in Files' door: the file's own key there, so a save here and a change made in Files take turns */
+    private keyOf: (path: string) => string | Promise<string> = (path) => `file::${path}`
   ) {}
 
   private dir(path: string): string {
@@ -187,6 +191,8 @@ export class PackageStore {
     extra: { label?: string; writeId?: string; undo?: SheetMutationJson[] } = {}
   ): Promise<{ rev: number; moved?: Moved } | { conflict: true; rev: number }> {
     return this.serial(path, async () => {
+      // A file moved or deleted since it was opened takes no edit: said, not thrown as a raw error.
+      if (!existsSync(path)) throw new NotSaved('This file is not where it was: it was moved or deleted.')
       const row = this.sync(path)
       if (baseRev > row.rev || (baseRev < row.rev && this.reloadSince(path, baseRev))) return { conflict: true as const, rev: row.rev }
       if (!this.inspected.has(path)) await this.open(path)
@@ -199,6 +205,8 @@ export class PackageStore {
         rev = await this.save(path, row, (target, out) => this.write(target, out, steps))
       } catch (err) {
         if (!(err instanceof ChangedOutside)) throw err
+        // The file was moved or deleted while we patched: nothing is made under its old name, and the edit goes back.
+        if (!existsSync(path)) return { conflict: true as const, rev: row.rev }
         // Excel saved it while we patched: its save stands as a revision, and this edit goes back to the editor.
         return { conflict: true as const, rev: this.sync(path).rev }
       }
@@ -251,26 +259,62 @@ export class PackageStore {
 
   private async save(path: string, row: FileRow, write: (target: string, out: string) => Promise<void>): Promise<number> {
     const rev = row.rev + 1
-    // Written beside the file (through a link, beside its target) and moved over it, so a reader never sees half a package.
+    // The new package is made among this host's own files, never beside the file, and its bytes are handed to
+    // Files' one door for replacing a file where it lies (through a link, its target).
     const target = realpathSync(path)
-    const tmp = join(dirname(target), `.${randomUUID()}.tcsave`)
+    const made = join(this.root, 'work', `${randomUUID()}.save`)
+    let stamp: string
     try {
-      await write(target, tmp)
-      chmodSync(tmp, statSync(target).mode & 0o7777)
-      // A save made outside while we patched (Excel, a sync) is not ours to overwrite.
+      mkdirSync(dirname(made), { recursive: true })
+      // The file as the patch read it: the door replaces it only while it is still this.
+      const expect = versionWord(await versionOf(target))
       if (stampOf(path) !== row.stamp) throw new ChangedOutside()
-      renameSync(tmp, target)
+      await write(target, made)
+      stamp = await this.put(path, target, new Uint8Array(readFileSync(made)), expect, rev)
     } catch (err) {
-      rmSync(tmp, { force: true })
       if (err instanceof ChangedOutside || err instanceof NotSaved) throw err
-      const words = err instanceof Error ? err.message : String(err)
+      const words = saveWords(err)
       this.db.prepare('UPDATE work_sheets_files SET save_error = ? WHERE path = ?').run(words, path)
       throw new Error(`The file was not saved: ${words}`)
+    } finally {
+      rmSync(made, { force: true })
     }
-    copyFileSync(path, this.copyOf(path, rev))
-    this.db.prepare('UPDATE work_sheets_files SET rev = ?, stamp = ?, save_error = NULL WHERE path = ?').run(rev, stampOf(path), path)
+    this.db.prepare('UPDATE work_sheets_files SET rev = ?, stamp = ?, save_error = NULL WHERE path = ?').run(rev, stamp, path)
     this.prune(path)
     return rev
+  }
+
+  /**
+   * Replaces the file's bytes through Files' door (files/save.ts `saveFile`): written under a hidden name of the
+   * door's own, synced and renamed over the file, one save of a file at a time, and only while the file is still
+   * `expect`. A file that changed since, or is gone, is a change from outside. The kept copy of revision `rev` is
+   * written first, from the same bytes, and taken back when the door refuses: so once the file holds the save the
+   * store holds its copy, and nothing between the two can fail. Answers the file's stamp as the door left it, not
+   * as a later look finds it (a sync may land in between, and that is the next change from outside).
+   */
+  private async put(path: string, target: string, bytes: Uint8Array, expect: string, rev: number): Promise<string> {
+    const copy = this.copyOf(path, rev)
+    try {
+      mkdirSync(dirname(copy), { recursive: true })
+      writeFileSync(copy, bytes)
+    } catch {
+      // Our own folder, not the workbook's: said as that, so he does not look for the fault beside his file.
+      rmSync(copy, { force: true })
+      throw new Error('TempCode could not keep this version among its own files')
+    }
+    let got: Awaited<ReturnType<typeof saveFile>>
+    try {
+      got = await saveFile({ roots: [dirname(target)] }, await this.keyOf(target), target, bytes, expect)
+    } catch (err) {
+      rmSync(copy, { force: true })
+      throw err
+    }
+    if ('conflict' in got) {
+      rmSync(copy, { force: true })
+      throw new ChangedOutside()
+    }
+    // A version word is `size:mtime:sha`: its first two parts are the stamp.
+    return got.version.split(':').slice(0, 2).join(':')
   }
 
   /** Reads the cells of an A1 range as the package holds them now. */
@@ -349,19 +393,19 @@ export class PackageStore {
       const copy = this.copyOf(path, rev)
       if (!existsSync(copy)) throw new Error('That version of the file is no longer kept.')
       const target = realpathSync(path)
-      const tmp = join(dirname(target), `.${randomUUID()}.tcsave`)
-      copyFileSync(copy, tmp)
-      chmodSync(tmp, statSync(target).mode & 0o7777)
-      if (stampOf(path) !== row.stamp) {
-        rmSync(tmp, { force: true })
-        throw new Error('The file changed outside TempCode just now: open it again and restore.')
-      }
-      renameSync(tmp, target)
+      const expect = versionWord(await versionOf(target))
       const next = row.rev + 1
-      copyFileSync(path, this.copyOf(path, next))
+      let stamp: string
+      try {
+        if (stampOf(path) !== row.stamp) throw new ChangedOutside()
+        stamp = await this.put(path, target, new Uint8Array(readFileSync(copy)), expect, next)
+      } catch (err) {
+        if (err instanceof ChangedOutside) throw new Error('The file changed outside TempCode just now: open it again and restore.')
+        throw new Error(`The file was not restored: ${saveWords(err)}`)
+      }
       const at = new Date(this.history(path).find((h) => h.rev === rev)?.at ?? this.now())
       this.db.prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations) VALUES (?, ?, ?, ?, ?, ?)').run(path, next, by, this.now(), `Restored to ${at.toTimeString().slice(0, 5)}`, 'null')
-      this.db.prepare('UPDATE work_sheets_files SET rev = ?, stamp = ?, save_error = NULL WHERE path = ?').run(next, stampOf(path), path)
+      this.db.prepare('UPDATE work_sheets_files SET rev = ?, stamp = ?, save_error = NULL WHERE path = ?').run(next, stamp, path)
       this.prune(path)
       return { rev: next }
     })
@@ -387,6 +431,17 @@ export class PackageStore {
 }
 
 class ChangedOutside extends Error {}
+
+/** Why a save could not be written, in his words: never a raw error with the door's own hidden path in it. */
+function saveWords(err: unknown): string {
+  const code = (err as { code?: string } | null)?.code
+  if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') return 'this folder is read only'
+  if (code === 'ENOSPC' || code === 'EDQUOT') return 'the disk is full'
+  if (code === 'ENOENT') return 'the file is not there any more'
+  const text = err instanceof Error ? err.message : String(err)
+  // (a path the door made is nothing he named)
+  return text.replace(/'[^']*\.tmp'/g, 'a temporary file')
+}
 
 /** A structural save, for the pillar to move suggestions: the ops, and each sheet's id and name before them. */
 export interface Moved {

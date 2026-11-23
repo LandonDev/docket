@@ -209,6 +209,52 @@ describe('an agent\'s suggestion on an Excel file others can open', () => {
   })
 })
 
+describe('a workbook in a library, from a window that reaches this host with a remote key', () => {
+  let path: string
+  let itemId: string
+  const approve = { kind: 'remote', keyId: 'k2', name: 'His Mac', audience: 'client', caps: ['read', 'operate', 'approve'] } as never
+  const operate = { kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps: ['read', 'operate'] } as never
+  beforeEach(() => {
+    mkdirSync(join(library, 'Budget'), { recursive: true })
+    path = join(library, 'Budget', 'Budget.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+    itemId = open(path, 'Budget.xlsx')
+  })
+
+  it('opens as the full editor, loads the file itself, and saves his edit and his format back into it with nothing written beside it', async () => {
+    const view = await call<SheetView>('work.sheets.open', { itemId }, approve)
+    expect(view).toMatchObject({ store: 'package', shared: true, rev: 0 })
+    // the format row and the Data menu's rows: the host keeps what they make in this file
+    expect(view.row).toEqual(expect.arrayContaining(['bold', 'fill', 'number', 'merge']))
+    const frame = await call<{ data: string; size: number; format: string }>('work.sheets.load', { itemId, rev: 0, offset: 0, length: 4 * 1024 * 1024 }, approve)
+    expect(frame.format).toBe('xlsx')
+    expect(Buffer.from(frame.data, 'base64').equals(readFileSync(path))).toBe(true)
+    const before = Object.keys(folder())
+    const wb = importXlsx(new Uint8Array(readFileSync(path))).workbook
+    const sheet = wb.sheetOrder.find((s) => wb.sheets[s]?.name === 'Data')!
+    const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: sheet, cellValue: { 1: { 0: { v: 4242 } } } } }
+    const bold = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: sheet, cellValue: { 1: { 0: { s: { bl: 1 } } } } } }
+    expect(await call('work.sheets.edit', { itemId, baseRev: 0, mutations: [typed] }, approve)).toEqual({ rev: 1 })
+    expect(await call('work.sheets.edit', { itemId, baseRev: 1, mutations: [bold] }, approve)).toEqual({ rev: 2 })
+    const after = importXlsx(new Uint8Array(readFileSync(path))).workbook
+    const cell = after.sheets[sheet]!.cellData![1]![0]!
+    expect(cell.v).toBe(4242)
+    const style = (typeof cell.s === 'string' ? after.styles?.[cell.s] : cell.s) as { bl?: number }
+    expect(style.bl).toBe(1)
+    // the library's folder holds the workbook and nothing new: no temporary, no sidecar
+    expect(Object.keys(folder())).toEqual(before)
+  })
+
+  it('a key that may not approve reads it and changes nothing', async () => {
+    const before = folder()
+    expect((await call<SheetView>('work.sheets.open', { itemId }, operate)).store).toBe('package')
+    const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]
+    const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: sheet, cellValue: { 1: { 0: { v: 1 } } } } }
+    await expect(call('work.sheets.edit', { itemId, baseRev: 0, mutations: [typed] }, operate)).rejects.toThrow('Others can open this sheet: this key may not change it.')
+    expect(folder()).toEqual(before)
+  })
+})
+
 describe('an agent\'s suggestion on a .tcsheet others can open', () => {
   let path: string
   let itemId: string

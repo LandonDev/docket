@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import { SHEET_ROW, type SheetChart, type SheetMutationJson, type SheetStoreKind, type SheetView } from '@shared/contract-work-sheets'
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
+import { refKey } from '@shared/work/files'
 import { FenceError } from '../../remote/fence'
 import { fetchedFile } from '../canvas/fetch'
 import { sharedOf } from '../files/policy'
@@ -121,13 +122,31 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
         const dir = mkdtempSync(join(tmpdir(), 'tc-sheet-ops-'))
         const done = await ctx.convert({ from: kind, to: `${kind}+ops`, input, output: join(dir, `out.${kind}`), options: { ops } })
         return done.output
-      }
+      },
+      (path) => fileKey(ctx, path)
     ),
     suggestions,
     jobs
   }
   made.set(ctx.db, s)
   return s
+}
+
+/**
+ * The key Files itself locks a file of this host under while it saves or changes it (files/handle.ts): a library's
+ * file by its place and the path inside it, any other by its host and path. A save here takes the same key, so it
+ * and a change made in Files take turns. Files' own code makes the key (`doorPlace`, `libraryKey`), read as his
+ * own window would be: the lock is the file's, whoever saves.
+ */
+export async function fileKey(ctx: WorkCtx, path: string): Promise<string> {
+  const { libraryOf } = await import('../office/files/library')
+  const { librariesHere } = await import('../files/places/libraries')
+  const found = libraryOf(librariesHere(ctx), path)
+  if (!found) return refKey({ at: 'file', host: ctx.host, path })
+  const { doorPlace } = await import('../files/handle')
+  const { libraryKey } = await import('../files/places/teams')
+  const { library } = doorPlace(ctx, { kind: 'local', caps: ['read', 'operate', 'approve', 'admin'] }, { in: 'library', ...found })
+  return library ? libraryKey(library, found.path) : refKey({ at: 'file', host: ctx.host, path })
 }
 
 /** One call to the Work service's sheet host. */

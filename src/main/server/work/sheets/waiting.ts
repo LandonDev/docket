@@ -8,8 +8,8 @@ import { SuggestionStore } from './suggestions'
 /**
  * What the sheets pillar tells Files about waiting suggestions (docs/agents/work-files.md "Home"): an opened
  * .xlsx or .xlsm keeps an agent's suggestions here by its path (`file:<path>`, held.ts `storeKey`), so a count is
- * one indexed query and no byte of the file is read. A `.tcsheet`'s live inside the file and a LifeOS sheet's in
- * LifeOS: neither is counted here.
+ * one indexed query and no byte of the file is read. A `.tcsheet`'s are kept by the Work service in its own
+ * folder and a LifeOS sheet's in LifeOS: neither is counted here.
  */
 const PREFIX = 'file:'
 const storeOf = (s: CanvasSource): string | null => (s.at === 'file' && PACKAGE_EXT.has(extname(s.path).toLowerCase()) ? `${PREFIX}${s.path}` : null)

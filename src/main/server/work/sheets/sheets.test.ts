@@ -22,7 +22,8 @@ import { PACKAGE_UNIT } from './packages'
  * process (the app runs them in the sheet worker).
  */
 const state = vi.hoisted(() => ({ shared: false, routine: null as string | null, said: [] as string[] }))
-vi.mock('../scope', () => ({
+vi.mock('../scope', async (original) => ({
+  ...(await original<typeof import('../scope')>()),
   scopePart: () => ({
     scopeOf: (id: string): WorkScope => ({ sessionId: id, workspaceId: 'w1', sector: null, host: 'env_test', away: false, routineRunId: state.routine, shared: () => state.shared }),
     createWorkspace: async () => {

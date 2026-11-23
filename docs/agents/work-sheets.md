@@ -124,13 +124,57 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   refused whole, the grid says "Couldn't save" with the host's sentence and
   Reload, and Reload makes the grid the file again. Nothing is lost
   silently, but he made the change before he was told.
-- **What a save writes beside the file**: one `.<uuid>.tcsave` temporary,
-  the new package, renamed over the file (or removed when the save fails).
-  Every format press is a save, so it appears and goes with each. In a
-  OneDrive or Teams library that temporary is seen by the sync client for
-  that moment. Files' `saveFile` door (files/save.ts) takes a file's bytes
-  and writes them where the place wants; the package store does not hand
-  its bytes to it yet.
+- **A save goes through Files' door** (`PackageStore.save` and `.restore`,
+  `put`): the new package is made among this host's own files
+  (`sheets/files/work/`), never beside the workbook, and its bytes are
+  handed to `saveFile` (files/save.ts), the one door that replaces a file
+  where it lies. The door writes them under a hidden name of its own,
+  syncs, and renames over the file, and only while the file is still the
+  version the patch read: a file that changed since (Excel saved it, a
+  co-author's save synced down) is a change from outside, which stands as
+  its own revision while the edit answers a conflict; one moved or deleted
+  meanwhile answers a conflict too, and nothing is made under its old
+  name. One save of a file at a time, under the key Files itself locks the
+  file by (`fileKey`, held.ts: a library's file by its place, as
+  `doorPlace` and `libraryKey` make it; `library.test.ts` holds the two
+  equal), so a save here and a change made in Files take turns. The kept
+  copy of the new revision is written first, from the same bytes, and
+  taken back if the door refuses, and the file's stamp is the door's own
+  answer: once the file holds a save the store holds its revision. A
+  folder that cannot be written and a full disk are said in plain words,
+  and a fault in TempCode's own folder is said as that.
+  No file of the sheets pillar's is ever written in the workbook's folder.
+  The door is given the file's real path and that path's folder as its
+  root, so its fence refuses nothing here: what a caller may reach is
+  judged before, by the item's own fence (`fence`, held.ts, which checks
+  the path the item names, not where a link points) and by `approves`; a
+  workbook that is a link is saved through the link, as before. A `.tcsheet` is not saved this way: the Work service writes it,
+  by a `.tcsave` temporary beside the file (`writeTcsheet`,
+  host/backends.ts), since the service reaches none of main's Files.
+- **An .xlsx anywhere is the sheet kind's** (`SHEET_MAKER`,
+  `registerFileMaker('sheet', { forms: ['xlsx'] })` in the module's
+  `start`): Files seats an .xlsx from a Teams or OneDrive library of this
+  host in the sheet editor as the file it is, with no Excel behind it, and
+  New in a library makes a blank one (one empty sheet in Calibri 11, by
+  the model writer; not yet opened in real Excel). `library.test.ts` holds
+  the seat, the blank and the saves on a dummy workbook in a dummy
+  library. What that changes: a library's .xlsx no longer stands desktop
+  Excel behind the canvas, so Excel's own co-authoring is not what he
+  edits in: a co-author's save arrives as a change from outside and the
+  grid reads the file again. The switch is offered where the file holds
+  what our grid cannot reach or cannot be opened here (a password): it
+  opens desktop Excel on a Mac or a PC, the full editor on a host that
+  runs one, and nothing on a host with neither. An .xlsm, a file in the
+  Windows VM, on another host or from his mail open as they did; New in a
+  VM library now offers a sheet too (Files reads the maker), and a file
+  made there opens on the box only as a copy. Who may: his own window edits it; a
+  thread's own idea waits as a suggestion on this host (above); a remote
+  key changes it only with `approve` and reads it only where the
+  listener's fence lets it name the file (`private.test.ts`). Files' own
+  `read` and `write` verbs give a library's bytes to his own window alone
+  (`bytesFence`, files/handle.ts): the sheet kind's wire is wider than
+  that for a key with `approve`, a difference named in SEAMS.md for the
+  two builds to settle.
 - **A renamed file** takes what is kept by its path with it (`moved.ts`,
   Files' `registerFileMoved`, inside the rename's own savepoint): the
   revision row and op log, the kept copies' folder, the suggestions, mode,
