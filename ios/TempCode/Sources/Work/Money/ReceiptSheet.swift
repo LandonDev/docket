@@ -50,6 +50,8 @@ struct ReceiptSheet: View {
                                     .accessibilityIdentifier("receipt-amount")
                             }
                         }
+                        // The "$" is the row's first text: without this the separator would start under it, not the picture.
+                        .separatorAtTextEdge(0)
                         date
                         TextField("Seller", text: $receipt.seller)
                             .textInputAutocapitalization(.words)
