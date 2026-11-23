@@ -2665,6 +2665,26 @@ set by hand.
   row is there only where the sheet's store keeps what it makes; a guest's
   page has no Data menu. Custom sort is a dialog: the range, "My data has a
   header", up to three keys.
+- **Tables.** Insert holds Table (its glyph a plus, the row's the table
+  glyph), which makes a table of the selection's block in Medium 2. While
+  the cell in hand is in a table the data group ends with Table (232px):
+  Style › with the style's name in 12px muted, opening a 264px grid of
+  Excel's styles under "Light", "Medium" and "Dark", seven to a row, 6px
+  apart; Total › on a total row's cell; then Header row, Total row, Banded
+  rows, Banded columns, First column and Last column as checks; under a
+  rule Rename…, Resize to selection and Convert to range. A swatch is the
+  style as a 28 by 20 table of five rows and four columns, in the file's
+  own theme and never themed, every line on whole pixels, on the
+  `image-outline` edge at a 3px radius; the table's own takes the 2px gap
+  and the 1.5px `foreground` ring, the one under the pointer or the keys
+  the same in `muted-foreground`. A row that cannot be had is off, its name
+  and glyph at half, with why on a 12px muted line under the name ("Remove
+  the filter first"). Rename is a 360px dialog: one field, what is wrong
+  with the name in 12px `destructive` under it as he types, Rename off
+  until the name can be taken. A table is drawn in its Excel style and the
+  file's theme; a table's header carries no filter button. Insert is one
+  menu (208px): Chart, Table, Picture, each where the sheet's store keeps
+  it.
 - **Rules, the side sheet.** 320px, docked at the grid's right on
   `background` with a 1px `border` left edge and no scrim: the grid stays
   live, and the open rule's range shows on it in `sel-bg`. Under 560px of

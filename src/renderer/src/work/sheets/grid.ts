@@ -56,7 +56,8 @@ export const univerGrid: SheetGrid = {
     onCommand: (listener) => handle.onCommand(listener),
     style: (id) => (handle.api.getActiveWorkbook()?.getWorkbook().getStyles().get(id) as Record<string, unknown> | null | undefined) ?? null,
     // A list as it stands: what an opened Excel file is sent after a rule changes (sync.ts `forPackage`).
-    rules: (kind, sheet) => (kind === "conditional" ? handle.rules.conditional.list(sheet) : kind === "validation" ? handle.rules.validation.list(sheet) : kind === "names" ? handle.rules.names.list() : handle.rules.filter.get(sheet)),
+    rules: (kind, sheet) =>
+      kind === "conditional" ? handle.rules.conditional.list(sheet) : kind === "validation" ? handle.rules.validation.list(sheet) : kind === "names" ? handle.rules.names.list() : kind === "tables" ? handle.tables.models(sheet) : handle.rules.filter.get(sheet),
   }),
   values: (handle, sheet, a1) => (sheetOf(handle, sheet)?.getRange(a1).getValues() ?? []) as unknown[][],
   place(handle, chart, size, onSlot) {

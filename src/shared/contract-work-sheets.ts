@@ -48,7 +48,7 @@ export type SheetRowControl = SheetFormatControl | SheetDataControl | SheetObjec
 
 const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size', 'bold', 'italic', 'underline', 'colour', 'fill', 'align', 'vertical', 'wrap', 'merge', 'borders', 'number']
 /** The Data menu's rows: held for each store by `sheets/rulesMatrix.test.ts`, `host/rules.test.ts` and `writer.test.ts`. */
-const DATA_KEPT: readonly SheetDataControl[] = ['sort', 'filter', 'validation', 'conditional', 'names']
+const DATA_KEPT: readonly SheetDataControl[] = ['sort', 'filter', 'validation', 'conditional', 'names', 'table']
 
 /**
  * The format row's controls by where a sheet lives, which the host puts in the view (`row`). A
@@ -57,7 +57,8 @@ const DATA_KEPT: readonly SheetDataControl[] = ['sort', 'filter', 'validation', 
  * (`sheets/rowMatrix.test.ts` holds every cell of this table). A store with none draws no row at
  * all. For an opened Excel file the same holds through the patch writer: the press is saved into
  * the file and read back from it. The Data menu's rows are listed by the same rule: a sort, the
- * filter, and the rules its side sheet lists (validations, conditional formats, names). A sheet read from a .csv keeps cell contents only, so it has
+ * filter, the rules its side sheet lists (validations, conditional formats, names), and a table
+ * (`sheets/tablesMatrix.test.ts`). A sheet read from a .csv keeps cell contents only, so it has
  * none; a workbook Excel or Google holds is a `package` in the view with no `row`. The host says
  * it, not the canvas, so a canvas a release ahead of its host draws no control that host could
  * lose.

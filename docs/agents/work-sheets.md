@@ -194,10 +194,21 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   writer for a held sheet's export (`writer.ts` `tableWords`). On a sheet
   the service holds, the engine replays the table mutations (the table
   plugin is mounted with the rules), a cold load has the table, a restore
-  brings it back by its id, name, range and options (`host/rules.ts`; a
-  table's own filter criteria are not carried), and the export writes each
+  brings it back whole with the kit's `putTable` (`host/rules.ts`: its
+  columns' own ids, its filters, its calculated columns, so a total row's
+  functions keep their columns), and the export writes each
   sheet's tables as real table parts, saying "tables on <sheet>" in `left`
-  where the file cannot hold them (`writer.ts` `tablesOf`). A guest sends no
+  where the file cannot hold them (`writer.ts` `tablesOf`, each table through
+  the kit's `tableModel`: the grid keeps Excel's switches and each column's
+  total under `meta.excel`, the writer reads them on the table). **In the
+  window** (work-kit v81): `handle.tables` makes and changes a table, the
+  row's `table` control is listed for a LifeOS sheet, a `.tcsheet` and an
+  opened Excel file (`SHEET_ROW`), the canvas answers the list a save needs
+  from `handle.tables.models` (`grid.ts`), and `tablesMatrix.test.ts` holds
+  the whole way with the kit's own handle on a headless grid: made, styled,
+  a total row, renamed, converted back, each read back from the file. A
+  table's header has no filter button (the writer cannot keep a table's
+  filter criteria). Not proven: any of it in a running window. A guest sends no
   table mutation. Until the grid's own table chrome lands (work-kit, the
   slice sheets-tables-ui) no store lists the `table` control, so a table is
   made here only by a file that already has one.

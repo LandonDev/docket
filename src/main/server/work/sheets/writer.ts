@@ -7,6 +7,7 @@ import { readZip, writeZip } from './patch/zip'
 import { colName, esc, escText } from './patch/xml'
 import { excelColour, TEMPCODE_THEME, themeXml, type OfficeTheme } from 'work-kit/format/theme'
 import { colourOfStyle } from 'work-kit/sheet/colour'
+import { tableModel } from 'work-kit/sheet/tables'
 
 /**
  * The model writer (architecture §9.1): a sheet made here (a LifeOS sheet, a
@@ -360,7 +361,8 @@ export function tablesOf(wb: IWorkbookData, nameOf: (sheetId: string) => string 
   const out: TablesEdit[] = []
   for (const [id, held] of Object.entries(all)) {
     const sheet = nameOf(id)
-    if (sheet && Array.isArray(held?.tables) && held.tables.length) out.push({ kind: 'tables', sheet, tables: held.tables as never })
+    // The grid keeps Excel's switches and each column's total under `meta.excel`; the writer reads them on the table itself (the kit's `tableModel`).
+    if (sheet && Array.isArray(held?.tables) && held.tables.length) out.push({ kind: 'tables', sheet, tables: held.tables.map((table) => tableModel(table as never)) as never })
   }
   return out
 }

@@ -1,4 +1,5 @@
 import type { IWorkbookData } from '@univerjs/core'
+import { putTable } from 'work-kit/sheet/tables'
 import type { SheetMutationJson } from '@shared/contract-work-sheets'
 
 /**
@@ -111,11 +112,8 @@ export function ruleMutations(unitId: string, from: IWorkbookData, to: IWorkbook
     const b = tTo[subUnitId]?.tables ?? []
     if (same(a, b)) continue
     for (const table of a) out.push({ id: 'sheet.mutation.delete-table', params: { unitId, subUnitId, tableId: table.id } })
-    for (const table of b)
-      out.push({
-        id: 'sheet.mutation.add-table',
-        params: { unitId, subUnitId, tableId: table.id, name: table.name, range: table.range, ...(table.options ? { options: table.options } : {}), ...(table.meta ? { meta: table.meta } : {}), ...(table.columns?.length ? { header: table.columns.map((c) => c.displayName ?? '') } : {}) }
-      })
+    // (the kit's `putTable`: the table with its columns' own ids, its filters, its calculated columns and its sort; an add-table with a header alone makes new column ids, and a total row's functions are kept by column id)
+    for (const table of b) for (const m of putTable(unitId, subUnitId, table as never)) out.push({ id: m.id, params: m.params })
   }
 
   const nFrom = resource<DefinedName>(from, RULE_RESOURCES.definedNames)
