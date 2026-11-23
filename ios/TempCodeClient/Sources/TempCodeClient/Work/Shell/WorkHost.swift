@@ -347,3 +347,22 @@ public final class WorkHost: CaptureHost {
         try await socket.request(Methods.WorkOutboxSetRules.self, .init(addonId: card.addonId, rules: [tool: rule]))
     }
 }
+
+// MARK: - Money (docs/agents/work-money.md; the phone's receipt, Work/Money/Receipt.swift)
+
+extension WorkHost: MoneyHost {
+    /// The jobs this host keeps, with their sectors and starting categories.
+    public func moneyState() async throws -> MoneyState {
+        try await socket.request(Methods.WorkMoneyState.self, .init())
+    }
+
+    /// The host's one parser on the phone's own lines.
+    public func parse(lines: [ReceiptTextLine], sector: String?) async throws -> MoneyReceiptFields {
+        try await socket.request(Methods.WorkMoneyParse.self, .init(lines: ReceiptPart.parseLines(lines), sector: sector.map { .set($0) }))
+    }
+
+    /// One part of a receipt, under its one key.
+    public func receive(_ part: ReceiptPart) async throws -> MoneyReceived {
+        try await socket.request(Methods.WorkMoneyReceive.self, part.params)
+    }
+}
