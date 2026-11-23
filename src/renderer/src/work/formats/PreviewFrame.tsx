@@ -430,9 +430,14 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
         <FormatControl formats={source.formats} value={formatId} onPick={pick} tight={tightProp} />
         {paged && !tiny ? <ZoomMenu zoom={zoom} onZoom={setZoom} /> : null}
         {picture?.kind === "paged" && place ? (
-          <span data-preview-count aria-live="off" className="shrink-0 px-2 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-            {countLine(place.page, place.pages, picture, current)}
-          </span>
+          // The count gives way before the verb: on a bar too narrow for both it wraps to a second line the bar never
+          // shows, behind an empty first item that keeps the first line.
+          <div data-bar-yields className="flex h-7 min-w-0 flex-wrap content-start items-center overflow-hidden">
+            <span aria-hidden="true" className="h-7 w-0" />
+            <span data-preview-count aria-live="off" className="shrink-0 px-2 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+              {countLine(place.page, place.pages, picture, current)}
+            </span>
+          </div>
         ) : null}
         <div data-bar-end className="ms-auto flex shrink-0 items-center gap-0.5 ps-2">
           {folded && settings ? (
@@ -496,7 +501,9 @@ function FormatControl({ formats, value, onPick, tight }: { formats: readonly Pr
         const style = getComputedStyle(child);
         // The end group's margin is `auto`: it resolves to whatever room is free, which is the very room being measured.
         const end = (child as HTMLElement).dataset.barEnd !== undefined;
-        others += (child as HTMLElement).offsetWidth + (end ? 0 : parseFloat(style.marginInlineStart || "0")) + parseFloat(style.marginInlineEnd || "0");
+        // The count is measured at its own width, not the room it was left: the format never takes its place.
+        const width = (child as HTMLElement).dataset.barYields !== undefined ? Math.max((child as HTMLElement).offsetWidth, child.scrollWidth) : (child as HTMLElement).offsetWidth;
+        others += width + (end ? 0 : parseFloat(style.marginInlineStart || "0")) + parseFloat(style.marginInlineEnd || "0");
       }
       const style = getComputedStyle(bar);
       const gaps = (bar.children.length - 1) * (parseFloat(style.columnGap) || 0);

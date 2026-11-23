@@ -359,6 +359,38 @@ describe("the frame", () => {
     await waitFor(() => expect(head()).toBe("As LibreOffice draws it"));
     expect(screen.queryByRole("button", { name: /Draw all/ })).toBeNull();
   });
+
+  it("on a bar too narrow for both, the count gives way and the verb stays whole; the format is measured as if the count were there", async () => {
+    // jsdom lays nothing out. The bar is 459 wide (a deck beside its chat on the box); the count, squeezed to nothing,
+    // is 92 at its own width; the verb's group 100; the segmented format 300. Room for the format: 459 - 100 - 92.
+    const observers: Array<() => void> = [];
+    vi.stubGlobal("ResizeObserver", class { constructor(fn: () => void) { observers.push(fn); } observe() {} disconnect() {} });
+    const width = (el: HTMLElement): number =>
+      el.getAttribute("role") === "toolbar" ? 459 : el.dataset.barEnd !== undefined ? 100 : el.parentElement?.dataset.previewFormat !== undefined && el.getAttribute("aria-hidden") === "true" ? 300 : 0;
+    const spies = [
+      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return width(this); }),
+      vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) { return width(this); }),
+      vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) { return this.dataset.barYields !== undefined ? 92 : width(this); }),
+    ];
+    try {
+      const f = fake();
+      await show(f, { width: 459, tight: undefined });
+      await f.answer({ picture: paged("r1"), drops: [] });
+      await waitFor(() => expect(count()).toBe("Page 1 of 3"));
+      act(() => observers.forEach((fn) => fn()));
+      expect(document.querySelector("[data-preview-format]")!.getAttribute("data-preview-format")).toBe("menu");
+      // The count's box may shrink to nothing and shows only its first line, which holds an empty item; the count wraps
+      // under it out of sight. The verb's group never shrinks.
+      const yields = document.querySelector<HTMLElement>("[data-bar-yields]")!;
+      expect(yields.contains(document.querySelector("[data-preview-count]"))).toBe(true);
+      expect(yields.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "flex-wrap", "overflow-hidden", "h-7"]));
+      expect(yields.firstElementChild!.className).toBe("h-7 w-0");
+      expect(document.querySelector<HTMLElement>("[data-bar-end]")!.className.split(" ")).toContain("shrink-0");
+    } finally {
+      spies.forEach((s) => s.mockRestore());
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("the keys", () => {

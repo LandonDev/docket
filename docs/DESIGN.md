@@ -2841,7 +2841,10 @@ opening puts the focus on Edit.
   does; his place holds across a zoom.
 - **The count** is 12px muted tabular, 8px either side: "Page 2 of 5", or
   "Slide 1 of 12" for a deck's own formats. It follows the scroll. None for a
-  file with no pages, while it is drawn, or on a failure.
+  file with no pages, while it is drawn, or on a failure. It is the part of the
+  bar that gives way: on a bar too narrow for it and the verb (a deck beside
+  its chat, about 460px) it is not drawn, and the verb is never cut. The
+  format's fit is measured as if the count were there.
 - **Paper** is the PDF kind's: `paper` on `stage` on `image-outline`, 12px
   between sheets, 16px over the first and 24px under the last, a 24px side
   inset (12px with the column folded). White in both themes: a preview shows
