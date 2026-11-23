@@ -89,6 +89,7 @@ describe("a chip as the model reads it", () => {
   it("is one line that names the thing and where it is", () => {
     expect(chipLine(task)).toBe("About this task: Book the ballroom for April 10 (LifeOS tasks k1)");
     expect(chipLine(mail)).toBe("About this mail: Re: Ballroom for April 10 (LifeOS mailThreads m1)");
+    expect(chipLine({ kind: "chat", label: "Dana Lee in Slack", ref: { at: "lifeos", table: "chats", id: "c1" } })).toBe("About this conversation: Dana Lee in Slack (LifeOS chats c1)");
   });
 
   it("quotes a task's notes under its line when the chip carries them (a code thread that cannot read LifeOS)", () => {

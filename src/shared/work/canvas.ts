@@ -139,10 +139,10 @@ export const CanvasItemSchema = z.object({
  * person, a LifeOS document, a canvas item, a held act, a routine, a
  * project's card). The phone decodes a kind it does not know.
  */
-export const CHIP_KINDS = ['task', 'mail', 'event', 'selection', 'project', 'person', 'doc', 'item', 'held', 'routine', 'card'] as const
+export const CHIP_KINDS = ['task', 'mail', 'event', 'selection', 'project', 'person', 'doc', 'item', 'held', 'routine', 'card', 'chat'] as const
 export type ChipKind = (typeof CHIP_KINDS)[number]
 /** The LifeOS rows a chip may name directly (a LifeOS document is a `CanvasSource`). */
-export const CHIP_LIFEOS_TABLES = ['tasks', 'mailThreads', 'events', 'projects', 'people'] as const
+export const CHIP_LIFEOS_TABLES = ['tasks', 'mailThreads', 'events', 'projects', 'people', 'chats'] as const
 
 /** What a message or a new thread is about: a task, a mail, an event, a selection in an item, or anything `@` offers. */
 export interface ContextChip {
@@ -173,7 +173,8 @@ export const CHIP_NOUN: Record<ChipKind, string> = {
   item: 'item',
   held: 'held act',
   routine: 'routine',
-  card: 'card'
+  card: 'card',
+  chat: 'conversation'
 }
 export const ContextChipSchema = z.object({
   kind: z.enum(CHIP_KINDS),

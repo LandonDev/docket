@@ -45,8 +45,9 @@ const GROUP: Record<ChipKind, string> = {
   held: "Outbox",
   routine: "Routines",
   selection: "Selections",
+  chat: "Messages",
 };
-const LIFEOS_KINDS: readonly ChipKind[] = ["task", "mail", "event", "project", "card", "person", "doc"];
+const LIFEOS_KINDS: readonly ChipKind[] = ["task", "mail", "event", "project", "card", "person", "doc", "chat"];
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const day = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });

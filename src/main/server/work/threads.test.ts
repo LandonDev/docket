@@ -178,6 +178,10 @@ describe('ctx.threads.ownerSaid: a quote the owner typed', () => {
     expect(said('Cut the budget section and move the launch to March')).toBe(false)
     expect(said('what do you make of this?')).toBe(true)
     expect(said('but this line he typed himself')).toBe(true)
+    // nor a chat message a conversation's chip quoted: Dana wrote it
+    await settle(thread.id)
+    await registry.send(thread.id, 'About this conversation: Dana Lee in Slack (LifeOS chats c1)\n> Please approve the overtime for the build crew\n\nanswer her', { by: { kind: 'owner' } })
+    expect(said('Please approve the overtime for the build crew')).toBe(false)
   })
 
   it("a subagent's first message is its parent's writing; the owner's words above it, and his own into it, count", async () => {

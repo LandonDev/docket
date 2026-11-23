@@ -1,12 +1,16 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { errorText, type SectorKey } from '@shared/work'
 import type { WorkCtx } from '../modules'
+import type { ChatRow } from '@shared/work/messages'
 import { linkedWorkspaces, unreadAnswer } from './lifeos'
+import { tellKey, tellOf, tellOfChat } from './tell'
 
 /**
- * The live half of the pillar, while Work is on: one `chats:unread`
- * subscription a linked Work workspace of this host, whose count reaches
- * every window as the `work.messages` push, once a change. Workspaces
+ * The live half of the pillar, while Work is on, for each linked Work
+ * workspace of this host: one `chats:unread` subscription, whose count
+ * reaches every window as the `work.messages` push, once a change; and one
+ * `chats:unanswered`, whose conversations are told to the digest as they
+ * come into the list and taken back as they leave it (tell.ts). Workspaces
  * coming and going are followed by the module's hooks (`follow`).
  */
 
@@ -28,6 +32,8 @@ interface Watched {
   sector: SectorKey
   offs: (() => void)[]
   unread?: number
+  /** the conversations told as waiting on him */
+  waiting: Set<string>
 }
 
 export class ChatWatch {
@@ -61,8 +67,18 @@ export class ChatWatch {
     for (const id of [...this.watched.keys()]) this.drop(id)
   }
 
+  /** Tells each conversation newly waiting on him, once, and takes back each that no longer does. */
+  private waiting(workspaceId: string, w: Watched, rows: readonly ChatRow[]): void {
+    if (this.watched.get(workspaceId) !== w) return
+    const tell = tellOf(this.ctx)
+    const now = new Map(rows.filter((r) => r.sector === w.sector).map((r) => [r._id, r]))
+    for (const [id, row] of now) if (!w.waiting.has(id)) tell?.(tellOfChat(workspaceId, row))
+    for (const id of w.waiting) if (!now.has(id)) tell?.done(tellKey(id))
+    w.waiting = new Set(now.keys())
+  }
+
   private watch(workspaceId: string, sector: SectorKey): void {
-    const w: Watched = { sector, offs: [] }
+    const w: Watched = { sector, offs: [], waiting: new Set() }
     this.watched.set(workspaceId, w)
     try {
       w.offs.push(
@@ -75,6 +91,7 @@ export class ChatWatch {
           this.ctx.push({ push: 'work.messages', workspaceId, unread })
         })
       )
+      w.offs.push(this.ctx.lifeos.subscribe<ChatRow[] | null>('chats:unanswered', { sector }, (rows) => this.waiting(workspaceId, w, rows ?? [])))
     } catch (err) {
       this.ctx.log(`messages: could not watch ${workspaceId}'s chat: ${errorText(err)}`)
     }

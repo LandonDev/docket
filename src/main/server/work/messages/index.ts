@@ -4,6 +4,7 @@ import type { ActKindDef, WorkModule } from '../modules'
 import { messagesHealth } from './health'
 import { chatReplyKind } from './held'
 import { searchChats, unanswered, unread, workSector } from './lifeos'
+import { chatMentions } from './mentions'
 import { draftsOf, dropDraft, dropWorkspaceDrafts, pushDrafts, retryReply, sendReply, undoReply } from './replies'
 import { messagesTools, PREAMBLE, readsChat } from './tools'
 import { startWatch, watchOf } from './watch'
@@ -64,6 +65,7 @@ export const messages: WorkModule = {
   },
   tools: messagesTools,
   acts: [chatReplyKind as unknown as ActKindDef],
+  mentions: [chatMentions],
   preamble: (scope) => (readsChat(scope) ? PREAMBLE : null),
   start: startWatch,
   workspaceCreated(_workspaceId, ctx) {

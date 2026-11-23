@@ -516,6 +516,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
         case held
         case routine
         case card
+        case chat
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -532,6 +533,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case "held": self = .held
             case "routine": self = .routine
             case "card": self = .card
+            case "chat": self = .chat
             default: self = .unknown(rawValue)
             }
         }
@@ -549,6 +551,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case .held: "held"
             case .routine: "routine"
             case .card: "card"
+            case .chat: "chat"
             case .unknown(let value): value
             }
         }
@@ -560,6 +563,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
             case events
             case projects
             case people
+            case chats
             /// A value this build does not know; `rawValue` keeps it.
             case unknown(String)
 
@@ -570,6 +574,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case "events": self = .events
                 case "projects": self = .projects
                 case "people": self = .people
+                case "chats": self = .chats
                 default: self = .unknown(rawValue)
                 }
             }
@@ -581,6 +586,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
                 case .events: "events"
                 case .projects: "projects"
                 case .people: "people"
+                case .chats: "chats"
                 case .unknown(let value): value
                 }
             }
@@ -745,7 +751,7 @@ public struct ContextChip: Codable, Hashable, Sendable {
 
         public init(from decoder: any Decoder) throws {
             let container = try decoder.singleValueContainer()
-            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events", "projects", "people"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }
+            if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events", "projects", "people", "chats"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }
             if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "item", let value = try? container.decode(RefCase2.self) { self = .object2(value); return }
             if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "work", ["outbox", "canvas", "lifeos", "routines", "rules", "mail", "tasks", "agenda", "docs", "history", "formats", "sheets", "office", "google", "guests", "pdf", "slides", "media", "frameio", "meetings", "forms", "dashboards", "browser", "projects", "winvm", "capture", "files", "prep", "money", "search", "review", "clashes", "templates", "digest"].contains(probe["pillar"]?.stringValue ?? ""), let value = try? container.decode(RefCase3.self) { self = .object3(value); return }
             if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }

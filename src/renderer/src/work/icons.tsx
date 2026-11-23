@@ -11,6 +11,7 @@ import DashboardSquare01Icon from "@hugeicons/core-free-icons/DashboardSquare01I
 import Doc01Icon from "@hugeicons/core-free-icons/Doc01Icon";
 import Image01Icon from "@hugeicons/core-free-icons/Image01Icon";
 import Mail01Icon from "@hugeicons/core-free-icons/Mail01Icon";
+import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import News01Icon from "@hugeicons/core-free-icons/News01Icon";
 import Mic01Icon from "@hugeicons/core-free-icons/Mic01Icon";
 import Pdf01Icon from "@hugeicons/core-free-icons/Pdf01Icon";
@@ -47,6 +48,8 @@ const LifeosMark = [
 export const Mail = wrap(Mail01Icon, "Mail");
 /** A sender that is a mailing list or a program, where a face would go (Mail). */
 export const News = wrap(News01Icon, "News");
+/** A chat conversation (Messages): a chip, an `@` row. Not Work Chats' bubbles, which are threads. */
+export const Chat = wrap(Message01Icon, "Chat");
 /** A document in the block editor. */
 export const Doc = wrap(Doc01Icon, "Doc");
 /** A sheet. */

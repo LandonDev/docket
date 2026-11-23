@@ -66,7 +66,7 @@ export function ownerMessages(words: OwnerWords, sessionId: string): string[] {
 }
 
 /** A chip's head as the composer writes it into a message (renderer work/canvas/chips.ts `chipLine`). */
-const CHIP_HEAD = /^About this (task|mail|event|selection): /
+const CHIP_HEAD = /^About this (task|mail|event|selection|conversation): /
 
 /**
  * What the owner typed in a message, without the chips Ask put in it: a chip's head line and the

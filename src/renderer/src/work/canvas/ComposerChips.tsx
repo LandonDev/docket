@@ -4,7 +4,7 @@ import { TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { removeContextChip, useContextChips } from "./chips";
-import { Calendar, Card, Doc, Mail, Person, Project, Selection, Task } from "../icons";
+import { Calendar, Card, Chat, Doc, Mail, Person, Project, Selection, Task } from "../icons";
 
 /** Each kind's 12px glyph, in the chip and in the `@` list's rows. */
 export const CHIP_GLYPH: Record<ChipKind, IconComponent> = {
@@ -19,6 +19,7 @@ export const CHIP_GLYPH: Record<ChipKind, IconComponent> = {
   held: Outbox,
   routine: Clock,
   card: Card,
+  chat: Chat,
 };
 
 /**
