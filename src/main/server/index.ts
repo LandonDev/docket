@@ -1952,7 +1952,8 @@ export async function startServer(
     away,
     notifier: () => workNotifier,
     // One host sends the phone's digest: a headless host always, a desktop only when it has no saved headless host at all.
-    sendsDigest: () => isHeadless() || !listEnvironments(store).some((e) => e.platform === 'linux')
+    sendsDigest: () => isHeadless() || !listEnvironments(store).some((e) => e.platform === 'linux'),
+    uploads
   })
   setAppWork({ tools: work.tools })
   void runDoctor() // warm the cache so the new-session modal opens ready
@@ -2252,7 +2253,9 @@ export async function startServer(
         return
       }
       // `lane: 'ui'` rides beside the method (lane.ts); the schema strips it.
-      const req: ClientRequest = (raw as { lane?: unknown }).lane === 'ui' ? Object.assign(parsed.data, { lane: 'ui' as const }) : parsed.data
+      // Set in place: an intersection of the lane with every request's shape is more than the compiler will spell out.
+      const req: ClientRequest = parsed.data
+      if ((raw as { lane?: unknown }).lane === 'ui') (req as { lane?: 'ui' }).lane = 'ui'
       if (dropAnswers.take(req.method)) dropped.add(req.id)
       if (failAnswers.take(req.method)) return sendFrame({ id: req.id, ok: false, error: FAILED_ANSWER })
       // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.
@@ -2279,6 +2282,12 @@ export async function startServer(
           fenceRequest(req, managedRoots(), [ATTACH_DIR], [computerHistoryRoot], environmentId)
           // the same deny for a file named through a project id or inside a cwd, and for a copy that would carry it out
           fenceDenied(req, requestBases(req, (id) => registry.getProject(id)?.cwd), [computerHistoryRoot])
+          // and a write by path into a library others can open goes through Files, never the generic verbs
+          if (req.method.startsWith('fs.')) {
+            const { fsPathRefusal } = await import('./work/files/policy')
+            const shared = fsPathRefusal({ db, host: environmentId, dataDir: options.dataDir ?? dirname(dbPath) }, req.method, (req as { params?: unknown }).params)
+            if (shared) throw new Error(shared)
+          }
         }
         // The lane gate (lane.ts): interactive and normal run now; bulk waits
         // its turn and a duplicate shares the answer of the one before it.

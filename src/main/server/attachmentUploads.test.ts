@@ -250,6 +250,81 @@ describe('a file kept in the workspace folder', () => {
   })
 })
 
+describe('an upload with a target of its own (beginInto)', () => {
+  const staging = (id: string): string => join(dir, 'staging', id)
+  /** A target that keeps what land saw, and moves the staged file to `out`. */
+  function target(out: string, seen: string[], fail?: Error) {
+    return (id: string) => ({
+      dir: staging(id),
+      land: async (staged: string) => {
+        seen.push(readFileSync(staged, 'utf8'))
+        if (fail) throw fail
+        mkdirSync(out, { recursive: true })
+        writeFileSync(join(out, 'landed.txt'), readFileSync(staged))
+        return { path: join(out, 'landed.txt'), name: 'landed.txt', kind: 'file' as const, size: 5, extra: true }
+      }
+    })
+  }
+  async function send(owner: string, uploadId: string, bytes: Buffer): Promise<void> {
+    await uploads.chunk(owner, { uploadId, index: 0, dataBase64: b64(bytes) })
+  }
+
+  it('stages in its own folder, hands the checked file to land, answers what land answers, and leaves no staging', async () => {
+    const bytes = Buffer.from('hello')
+    const seen: string[] = []
+    const { uploadId } = await uploads.beginInto('key:k1', { name: 'a.txt', size: 5, sha256: sha(bytes) }, target(join(dir, 'out'), seen))
+    expect(readdirSync(staging(uploadId))).toEqual([`.upload-${uploadId}.part`])
+    await send('key:k1', uploadId, bytes)
+    expect(await uploads.commit('key:k1', uploadId)).toEqual({ path: join(dir, 'out', 'landed.txt'), name: 'landed.txt', kind: 'file', size: 5, extra: true })
+    expect(seen).toEqual(['hello'])
+    expect(existsSync(staging(uploadId))).toBe(false)
+    expect(uploads.size).toBe(0)
+  })
+
+  it('never calls land for a wrong hash or size, and leaves no staging', async () => {
+    const seen: string[] = []
+    const bytes = Buffer.from('hello')
+    const wrong = await uploads.beginInto('local', { name: 'a.txt', size: 5, sha256: 'f'.repeat(64) }, target(join(dir, 'out'), seen))
+    await send('local', wrong.uploadId, bytes)
+    await expect(uploads.commit('local', wrong.uploadId)).rejects.toMatchObject({ code: 'sha-mismatch' })
+    const short = await uploads.beginInto('local', { name: 'a.txt', size: 9, sha256: sha(bytes) }, target(join(dir, 'out'), seen))
+    await send('local', short.uploadId, bytes)
+    await expect(uploads.commit('local', short.uploadId)).rejects.toMatchObject({ code: 'size-mismatch' })
+    expect(seen).toEqual([])
+    expect(readdirSync(join(dir, 'staging'))).toEqual([])
+  })
+
+  it("leaves no staging when land refuses, and answers land's sentence", async () => {
+    const bytes = Buffer.from('hello')
+    const { uploadId } = await uploads.beginInto('local', { name: 'a.txt', size: 5, sha256: sha(bytes) }, target(join(dir, 'out'), [], new Error('The folder changed.')))
+    await send('local', uploadId, bytes)
+    await expect(uploads.commit('local', uploadId)).rejects.toThrow('The folder changed.')
+    expect(existsSync(staging(uploadId))).toBe(false)
+  })
+
+  it("is the owner's alone; abort, expiry and close take its staging folder", async () => {
+    const bytes = Buffer.from('hello')
+    const mine = await uploads.beginInto('key:k1', { name: 'a.txt', size: 5, sha256: sha(bytes) }, target(join(dir, 'out'), []))
+    await expect(uploads.chunk('key:k2', { uploadId: mine.uploadId, index: 0, dataBase64: b64(bytes) })).rejects.toMatchObject({ code: 'unknown-upload' })
+    await expect(uploads.commit('local', mine.uploadId)).rejects.toMatchObject({ code: 'unknown-upload' })
+    await uploads.abort('key:k1', mine.uploadId)
+    expect(existsSync(staging(mine.uploadId))).toBe(false)
+    const idle = await uploads.beginInto('local', { name: 'a.txt', size: 5, sha256: sha(bytes) }, target(join(dir, 'out'), []))
+    clock += 11 * 60_000
+    expect(await uploads.sweepExpired()).toBe(1)
+    expect(existsSync(staging(idle.uploadId))).toBe(false)
+    const open = await uploads.beginInto('local', { name: 'a.txt', size: 5, sha256: sha(bytes) }, target(join(dir, 'out'), []))
+    uploads.close()
+    expect(existsSync(staging(open.uploadId))).toBe(false)
+  })
+
+  it("holds to the host's size limit, before anything is staged", async () => {
+    settings.set('attachment.maxBytes', '4')
+    await expect(uploads.beginInto('local', { name: 'a.txt', size: 5, sha256: 'a'.repeat(64) }, target(join(dir, 'out'), []))).rejects.toMatchObject({ code: 'too-large' })
+    expect(existsSync(join(dir, 'staging'))).toBe(false)
+  })
+})
+
 describe('freeName', () => {
   it('counts up past taken names, extensionless too', () => {
     writeFileSync(join(dir, 'notes'), '')

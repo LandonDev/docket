@@ -54,11 +54,16 @@ public final class WorkHost: CaptureHost {
     @ObservationIgnored let socket: TempCodeSocket
     /// A Work thread's items and the Routines counter (Work/Items/WorkCanvas.swift, milestone 47).
     public let canvas: WorkCanvas
+    /// The Files place of this host's Work workspaces (Work/Files/FilesHost.swift, the files pillar's F9).
+    public let files: FilesHost
     @ObservationIgnored private let defaults: UserDefaults
 
     public init(socket: TempCodeSocket, environment: PairedEnvironment, defaults: UserDefaults = .standard) {
         self.socket = socket
         canvas = WorkCanvas(socket: socket)
+        files = FilesHost(wire: SocketFilesWire(socket: socket), environmentId: environment.id, caps: .init(operate: environment.allows(.operate), approve: environment.allows(.approve)))
+        // An original a past launch was showing when it ended goes now.
+        OriginalFiles.sweepAtLaunch()
         self.environment = environment
         self.defaults = defaults
         // The cached paint has the Work band: the switch as last read, until this open's answer.
@@ -111,6 +116,8 @@ public final class WorkHost: CaptureHost {
         switch push {
         case .workCanvas, .workRoutines:
             canvas.apply(push)
+        case .workFiles:
+            files.apply(push)
         case .work(let value):
             let was = isOn
             settings = value.settings

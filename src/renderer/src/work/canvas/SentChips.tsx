@@ -1,4 +1,4 @@
-import { CHIP_NOUN, type ChipKind } from "@shared/work";
+import { CanvasSourceSchema, CHIP_NOUN, type CanvasSource, type ChipKind } from "@shared/work";
 import type { SentChip } from "./sentChipsOf";
 import { sessionStore } from "../../lib/tcserver/store";
 import { useProjects } from "../../lib/tcserver/workspaces";
@@ -17,8 +17,8 @@ import { openItem } from "./store";
  * something this window can show opens it: a canvas item or a LifeOS
  * document in the thread's pane, a held act in the Outbox, a task, mail or
  * event in its workspace's view, a project or a project's card in the Projects
- * view, a person on their page in People. One that names nothing to open (a
- * selection's file) is a label.
+ * view, a person on their page in People, a file in a Files tab. One that
+ * names nothing to open (a selection's file) is a label.
  */
 
 const KIND_OF_NOUN = new Map<string, ChipKind>(Object.entries(CHIP_NOUN).map(([kind, noun]) => [noun, kind as ChipKind]));
@@ -26,6 +26,13 @@ const VIEW_OF_TABLE: Record<string, string> = { tasks: "tasks", mailThreads: "ma
 
 /** What a chip's reference opens, or null for one with nothing to open here. */
 export function openerOf(chip: SentChip, at: { environmentId: string; sessionId: string; workspaceId: string | null }): (() => Promise<unknown> | void) | null {
+  // A file opens in a Files tab of the thread's workspace; its reference is the source `canvas_open` takes, as JSON.
+  if (KIND_OF_NOUN.get(chip.noun) === "file") {
+    const source = fileSourceOf(chip.ref);
+    const workspaceId = at.workspaceId;
+    if (!source || !workspaceId) return null;
+    return () => import("../files/openFrom").then((m) => m.openInFiles({ id: workspaceId, environmentId: at.environmentId }, { ref: source, name: chip.label }));
+  }
   const [head, table, id, ...more] = chip.ref.split(" ");
   if (!id || more.length > 0) return null;
   if (head === "LifeOS" && table === "docs") return () => openItem(at.environmentId, at.sessionId, { kind: "document", source: { at: "lifeos", table: "docs", id }, title: chip.label });
@@ -43,6 +50,16 @@ export function openerOf(chip: SentChip, at: { environmentId: string; sessionId:
   if (head === "Work" && table === "outbox") return () => openHeld({ at: "host", id }, at.environmentId);
   if (head === "Work" && table === "routines" && at.workspaceId) return () => openWorkView({ workspaceId: at.workspaceId!, view: "routines" });
   return null;
+}
+
+/** A file chip's reference read back: the source it was written as, or null for words that are not one. */
+function fileSourceOf(ref: string): CanvasSource | null {
+  try {
+    const got = CanvasSourceSchema.safeParse(JSON.parse(ref));
+    return got.success ? got.data : null;
+  } catch {
+    return null;
+  }
 }
 
 const CHIP = "flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground";

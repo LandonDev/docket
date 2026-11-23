@@ -5,6 +5,8 @@ import { filterKeybindings, KEYBINDING_SCOPE_LABEL, visibleKeybindingGroups } fr
 import { isWebMode } from "../../lib/nativeWeb";
 import { useWorkOn } from "../../lib/workSwitch";
 import { Keys } from "./keys";
+// A lazy place lists its own keys: its table loads with this page, so the list is whole.
+import "../../work/files/bindings";
 
 export function KeybindingsPage() {
   const [query, setQuery] = useState("");

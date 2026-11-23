@@ -1,8 +1,10 @@
 import { basename } from 'node:path'
 import { handled, NOT_HANDLED } from '@shared/work'
+import { moveFileKeys } from '../canvas/fileKey'
+import { registerFileMoved } from '../files/hooks'
 import type { WorkModule } from '../modules'
 import { MEDIA_CONVERTERS } from './prepare'
-import { ensureMediaTables } from './store'
+import { ensureMediaTables, MEDIA_KEYED } from './store'
 import { mediaTools } from './tools'
 import { itemRow, liveOf, mediaItem, ownerOrAgent, preparerOf, pushSoon, stopMedia, viewOf } from './view'
 
@@ -19,7 +21,12 @@ export const media: WorkModule = {
   convert: MEDIA_CONVERTERS,
   start(ctx) {
     liveOf(ctx)
-    return () => stopMedia(ctx)
+    // A file renamed or moved in Files: the rows kept by it follow.
+    const off = registerFileMoved((from, to, at) => moveFileKeys(at.db, MEDIA_KEYED, from, to))
+    return () => {
+      off()
+      stopMedia(ctx)
+    }
   },
   async handle(req, ctx, by) {
     const { store } = liveOf(ctx)
@@ -35,9 +42,9 @@ export const media: WorkModule = {
       }
       case 'work.media.note': {
         const { itemId, kind, anchor, body, parentId } = req.params
-        itemRow(ctx, mediaItem(ctx, itemId))
-        if (parentId && store.note(parentId)?.itemId !== itemId) throw new Error('a reply answers a note on the same item')
-        const note = store.addNote(itemId, { kind, anchor, body, by: ownerOrAgent(ctx, by.kind === 'model' ? by.sessionId : undefined), ...(parentId ? { parentId } : {}) })
+        const kept = itemRow(ctx, mediaItem(ctx, itemId)).itemId
+        if (parentId && store.note(parentId)?.itemId !== kept) throw new Error('a reply answers a note on the same item')
+        const note = store.addNote(kept, { kind, anchor, body, by: ownerOrAgent(ctx, by.kind === 'model' ? by.sessionId : undefined), ...(parentId ? { parentId } : {}) })
         pushSoon(ctx, itemId)
         return handled(note)
       }
@@ -61,44 +68,41 @@ export const media: WorkModule = {
       }
       case 'work.media.decide': {
         const { itemId, which, accept } = req.params
-        const waiting = store.notes(itemId).filter((n) => n.state === 'suggested' && (which === 'all' || n.id === which))
+        const waiting = store.notes(itemRow(ctx, mediaItem(ctx, itemId)).itemId).filter((n) => n.state === 'suggested' && (which === 'all' || n.id === which))
         if (which !== 'all' && waiting.length === 0) throw new Error('that note is not waiting for you')
         // Accepted, an agent's note is the person's: his words on his file from now on.
         for (const n of waiting) accept ? store.editNote(n.id, { state: 'kept', by: 'owner' }) : store.removeNote(n.id)
         return after(itemId)
       }
       case 'work.media.mode': {
-        itemRow(ctx, mediaItem(ctx, req.params.itemId))
-        store.setMode(req.params.itemId, req.params.mode)
+        store.setMode(itemRow(ctx, mediaItem(ctx, req.params.itemId)).itemId, req.params.mode)
         return after(req.params.itemId)
       }
       case 'work.media.undo': {
         const { itemId, writeId } = req.params
         const row = itemRow(ctx, mediaItem(ctx, itemId))
         if (row.lastWrite?.id !== writeId) throw new Error('that write can no longer be taken back')
-        store.removeWrite(itemId, writeId)
-        store.setLastWrite(itemId, null)
+        store.removeWrite(row.itemId, writeId)
+        store.setLastWrite(row.itemId, null)
         return after(itemId)
       }
       case 'work.media.version': {
         const { itemId, source } = req.params
-        itemRow(ctx, mediaItem(ctx, itemId))
+        const kept = itemRow(ctx, mediaItem(ctx, itemId)).itemId
         if (source.at !== 'file') throw new Error('a version is a file on a host')
-        store.addVersion(itemId, { source, name: basename(source.path), by: 'owner' })
+        store.addVersion(kept, { source, name: basename(source.path), by: 'owner' })
         return after(itemId)
       }
       case 'work.media.segment': {
         const { itemId, versionId, index } = req.params
-        mediaItem(ctx, itemId)
-        if (liveOf(ctx).store.version(versionId)?.itemId !== itemId) throw new Error(`no version ${versionId} of this item`)
+        if (store.version(versionId)?.itemId !== store.keptOf(mediaItem(ctx, itemId)).id) throw new Error(`no version ${versionId} of this item`)
         const data = (await preparerOf(ctx)).segment(versionId, index)
         if (!data) throw new Error(`segment ${index} is not there yet`)
         return handled({ data: data.toString('base64') })
       }
       case 'work.media.tile': {
         const { itemId, versionId, level, x, y } = req.params
-        mediaItem(ctx, itemId)
-        if (liveOf(ctx).store.version(versionId)?.itemId !== itemId) throw new Error(`no version ${versionId} of this item`)
+        if (store.version(versionId)?.itemId !== store.keptOf(mediaItem(ctx, itemId)).id) throw new Error(`no version ${versionId} of this item`)
         const data = (await preparerOf(ctx)).tile(versionId, level, x, y)
         if (!data) throw new Error('no such tile')
         return handled({ data: data.toString('base64') })

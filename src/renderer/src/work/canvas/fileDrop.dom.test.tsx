@@ -66,7 +66,7 @@ describe("where a drop opens", () => {
     expect(dropPlaceOf(at("d3-transcript"), look)?.place).toEqual({ at: "draft", sessionId: "d3" });
     expect(dropPlaceOf(at("d1-composer"), look)).toBeNull();
     expect(dropPlaceOf(at("d2-transcript"), look)).toBeNull();
-    // A Work view, the Docs view among them, starts a new thread.
+    // A Work view starts a new thread.
     expect(dropPlaceOf(at("docs-row"), look)).toEqual({ place: { at: "new" }, zone: view });
   });
 });
@@ -139,7 +139,7 @@ describe("the File menu's Open File…", () => {
   it("is Work's while the router is mounted, and lit only with a Work place in front", () => {
     const view = render(<FileDrops look={look} />);
     expect(workFilePort.get()?.can()).toBe(false);
-    openWorkView({ workspaceId: "w-work", view: "docs" });
+    openWorkView({ workspaceId: "w-work", view: "people" });
     expect(workFilePort.get()?.can()).toBe(true);
     openWorkView(null);
     view.unmount();

@@ -102,6 +102,9 @@ enum TestHooks {
     static let workView = env["TC_TEST_WORK_VIEW"].flatMap { $0.isEmpty ? nil : $0 }
     /// The work set: the Item segment's item to show, by kind (`pdf`, `media`, …) or a part of its title.
     static let item = env["TC_TEST_ITEM"].flatMap { $0.isEmpty ? nil : $0 }
+    /// The Files proof (with `TC_TEST_WORK_VIEW=files`): a walk from the Files screen by names, a place first
+    /// ("Dummy Esports/Budgets/Plan.pdf"), each folder pushed and a last file opened.
+    static let files = env["TC_TEST_FILES"].flatMap { $0.isEmpty ? nil : $0 }
     #else
     static let segment: ThreadSegment? = nil
     static let open: String? = nil
@@ -123,6 +126,7 @@ enum TestHooks {
     static let lifeFixtures = false
     static let workView: String? = nil
     static let item: String? = nil
+    static let files: String? = nil
     #endif
     /// True once per key: a hook that several rows read fires on the first.
     static func once(_ key: String) -> Bool {

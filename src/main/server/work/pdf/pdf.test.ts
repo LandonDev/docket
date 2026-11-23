@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib'
@@ -9,7 +9,8 @@ import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
 import type { PdfView } from '@shared/contract-work-pdf'
 import type { SessionMeta } from '@shared/events'
-import type { CanvasSource, WorkScope } from '@shared/work'
+import { filesPaneOf, type CanvasSource, type WorkScope } from '@shared/work'
+import { refKey } from '@shared/work/files'
 import { openDb, Store } from '../../db'
 import type { SessionRegistry } from '../../sessions'
 import { canvasItemDir, canvasStoreOf } from '../canvas/store'
@@ -52,7 +53,9 @@ const thread = (id: string): void => void sessions.set(id, { id, provider: 'clau
 const registry = {
   get: (id: string) => sessions.get(id) ?? null,
   onRemoved: (fn: (ids: string[]) => void) => (removed.push(fn), () => {}),
-  onWorkspaceDeleted: () => () => {}
+  onWorkspaceDeleted: () => () => {},
+  // w1 is a Work workspace here, so its Files pane holds items.
+  listWorkspaces: () => [{ id: 'w1', kind: 'work' }]
 } as unknown as SessionRegistry
 
 const call = async <T = unknown,>(method: string, params: unknown, principal: Principal = LOCAL_PRINCIPAL): Promise<T> => {
@@ -653,6 +656,65 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
     unlinkSync(path)
     for (const f of readdirSync(canvasItemDir(dir, 't1', id))) if (f.startsWith('kept-')) unlinkSync(join(canvasItemDir(dir, 't1', id), f))
     await expect(call('work.pdf.read', { itemId: id, rev: v.rev, offset: 0, length: 10 })).rejects.toThrow('fw9.pdf is not where it was.')
+  })
+})
+
+describe('a Files tab and a thread on one file', () => {
+  const remote: Principal = { kind: 'remote', keyId: 'k1', name: 'Bot', audience: 'mcp', caps: ['read', 'operate'] as never }
+  const tabOf = (path: string): string => canvasStoreOf(db).open(filesPaneOf('w1'), { kind: 'pdf', source: file(path), title: 'fw9.pdf' }).id
+  const heard = (): PdfView[] => pushes.flatMap((p) => (p.push === 'work.pdf' ? [(p as { view: PdfView }).view] : []))
+
+  it('share one set of values and highlights; a change through either is pushed to both; a deleted thread leaves them to the tab', async () => {
+    const path = put('fw9.pdf', W9)
+    const thread = openItem(path)
+    const tab = tabOf(path)
+    await call('work.pdf.setField', { itemId: thread, key: NAME, value: 'Ada' })
+    pushes.length = 0
+    await call('work.pdf.mark', { itemId: tab, page: 1, quads: [[0, 0, 1, 0.1]], text: 'from the tab' })
+    expect(heard().map((v) => v.itemId).sort()).toEqual([thread, tab].sort())
+    for (const view of heard()) {
+      expect(view.marks.map((m) => m.text)).toEqual(['from the tab'])
+      expect(view.fields.find((f) => f.key === NAME)?.value).toBe('Ada')
+    }
+    expect((await call<PdfView>('work.pdf.open', { itemId: thread })).marks).toHaveLength(1)
+    // A thread's tool writes them too, and the tab hears.
+    pushes.length = 0
+    await tool('pdf_fill', { item: thread, fields: [{ key: SSN1, value: '123', source: SOURCE }] })
+    expect(heard().find((v) => v.itemId === tab)?.fields.find((f) => f.key === SSN1)).toMatchObject({ proposed: '123', state: 'proposed' })
+    for (const fn of removed) fn(['t1'])
+    const left = await call<PdfView>('work.pdf.open', { itemId: tab })
+    expect(left.marks.map((m) => m.text)).toEqual(['from the tab'])
+    expect(left.fields.find((f) => f.key === NAME)?.value).toBe('Ada')
+  })
+
+  it('give no caller more than the item it may open: a key outside the roots reads nothing through the tab, a thread of another workspace finds none', async () => {
+    const path = put('tax.pdf', W9)
+    const thread = openItem(path, 'Tax')
+    await call('work.pdf.mark', { itemId: thread, page: 1, quads: [[0, 0, 1, 0.1]], text: 'SECRET' })
+    const tab = tabOf(path)
+    await expect(call('work.pdf.open', { itemId: tab }, remote)).rejects.toThrow('forbidden: work.pdf.open is outside app-managed roots')
+    sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w2', scope: 'work' } as SessionMeta)
+    const other = openItem(path, 'Tax', 't2')
+    const view = await call<PdfView>('work.pdf.open', { itemId: other })
+    expect(view.marks).toEqual([])
+    await call('work.pdf.mark', { itemId: other, page: 1, quads: [[0, 0, 1, 0.1]], text: 'theirs' })
+    expect((await call<PdfView>('work.pdf.open', { itemId: tab })).marks.map((m) => m.text)).toEqual(['SECRET'])
+  })
+
+  it('a rename in Files takes the rows with it', async () => {
+    const { fileMoved } = await import('../files/moved')
+    const { ensureFilesTables } = await import('../files/tables')
+    ensureFilesTables(db)
+    const path = put('fw9.pdf', W9)
+    const thread = openItem(path)
+    const tab = tabOf(path)
+    await call('work.pdf.mark', { itemId: thread, page: 1, quads: [[0, 0, 1, 0.1]], text: 'x' })
+    const next = join(dir, 'W-9 signed.pdf')
+    renameSync(path, next)
+    const ctx = { db, dataDir: dir, host: 'env_test', canvas: { announce: () => {} }, push: () => {}, log: () => {} } as unknown as WorkCtx
+    fileMoved(ctx, { path, key: refKey(file(path)) }, { path: next, key: refKey(file(next)) })
+    expect((await call<PdfView>('work.pdf.open', { itemId: tab })).marks.map((m) => m.text)).toEqual(['x'])
+    expect(db.prepare(`SELECT file_key FROM work_pdf_marks`).all()).toEqual([{ file_key: JSON.stringify(['w1', refKey(file(next))]) }])
   })
 })
 

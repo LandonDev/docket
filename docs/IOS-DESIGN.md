@@ -2577,13 +2577,82 @@ The receipt (Money, docs/agents/work-money.md):
   the phone cannot write is held in memory: the sheet opens on Try Again
   and Discard Scan with the reason as their footer in destructive text, and Home's press
   opens that row again until the scan is kept.
+  camera closes, so Cancel, a failed Save and a quit keep it. A retry keeps
+  the key and goes back to the host that took the last try while it keeps
+  the job, so nothing is filed twice.
+Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
 
-Not on the phone, and why: the Docs row and LifeOS's project cards on a
-Work workspace's screen (no wire lists a workspace's documents yet); a
+- **The way in** is a Files row on a Work workspace's screen, after
+  Projects and before Routines, on the Home row grid (`folder`). The tab bar
+  stays Home, Inbox, Search.
+- **Files** is a plain list: Recent and Starred, then Places under a
+  "Places" header, then From Mail, each only when the host lists it (a
+  remote key is told only what it could name; From Mail arrives with F4). A
+  place two computers hold is one row. A row is the house row: the glyph
+  in the 28 pt mark slot, the name, one fact as the stamp (a place's state
+  while it does not answer, its team, a lens's count). A place that does
+  not answer sits at half strength.
+- **A place, a folder, a lens** pushes a plain list of the host's rows in
+  its order, a page at a time (the next page as the last row shows, a
+  spinner row while one is out). Each row: the kind's glyph, the name (cut
+  in the middle), one fact: what is happening to it ("Esports Staff is in
+  it", "3 suggestions", "A thread is writing", "In the cloud"), else in a
+  lens the place it lives in, else when it changed ("9:41 AM",
+  "Yesterday", "Nov 3"). A file a thread made that he has not opened has
+  its name in semibold. A folder pushes; a file opens. A sleeping
+  machine's list leads with one muted line, "MacBook is asleep. As of 9:41
+  AM."
+- **States**: a spinner while the first read is out; "No Files" (or
+  "Nothing Recent", "Nothing Starred") when empty; a place that is down
+  says its state as the title, the host's sentence under it and Try Again;
+  any other failed read says "Can’t Open <name>" with the reason and Try
+  Again. Pull to refresh.
+- **Presses**: the context menu holds Star (Unstar), Rename… and Delete;
+  swipe leading stars, swipe trailing deletes (never a full swipe). Each is
+  offered only where `FilesRules.offers` says the place does it for this
+  key (a key without operate sees none; a shared place asks approve), and
+  a refusal the host still gives shows in an alert as the host words it.
+  Rename is the system alert with one field. Delete moves to Trash at once
+  and puts the Outbox's undo capsule over the list's foot for five seconds
+  ("Deleted Budget.xlsx", Undo puts it back).
+- **Search** is the system field on every list. It filters the rows the
+  phone already holds at once (every word, case and accents ignored), then
+  shows the host's search across the workspace once it answers (F4); a
+  host that cannot search leaves the first. Nothing on screen says which.
+- **New** (+ in the bar, where the place makes or takes uploads) is a form
+  sheet, "New": the kind as one segmented control (Document, Sheet,
+  Folder), the name field with the kind's "Untitled …" as its placeholder,
+  Cancel and Create; the host's refusal is the section's footer in
+  destructive text. An Upload section holds From Photos and From Files.
+  The sheet goes at the pick; the upload is a row at the head of the list
+  with the name and a linear bar, or its reason in destructive text with
+  Dismiss.
+- **Open**: a LifeOS document or sheet, a PDF, a deck, a picture or a video
+  is seated in the workspace's Files pane (`work.files.open`, or the thread
+  that already shows it) and drawn by its kind's own view, full screen,
+  with the file's name as the title and no Ask (no thread stands beside
+  it). Anything else, and every file for a key without operate, opens in
+  Quick Look.
+- **Quick Look** is the host's preview pages in a paging view (the system
+  page dots past one page); where the host makes no
+  preview (F3) the file's facts stand in the middle: the glyph large, the
+  name (title3 semibold), one meta line "PDF · 2.4 MB · Nov 3", and who
+  saved it. The foot holds one thing: Open the Original (a prominent wide
+  button; Play for sound and video, which plays in AVKit in place) for a
+  workspace-folder file of 50 MB or less; "Edit on your computer" above it
+  for a document or sheet kept as a file; "Over 50 MB. Open it on your
+  computer."; or, for a shared library's file, its facts only and "On
+  MacBook". The original opens in the system's Quick Look and its temp
+  file goes when the preview closes.
+
+Not on the phone, and why: LifeOS's project cards on a Work workspace's
+screen (no wire lists them yet; the desktop's Docs row folded into Files,
+whose phone screens are the Files plan's F9); a
 native review row for a document or sheet (its suggestions live inside
 the hosted editor, which shows its own); the recording player of a
-meeting; a document or sheet that is a file on a computer (view only there, §19,
-not built).
+meeting; editing a document or sheet kept as a file (it opens read only,
+"Edit on your computer": the hosted editor takes only LifeOS rows today);
+Files' Move and Copy, Trash and Empty Trash (the desktop's alone for now).
 
 ## Visual system
 

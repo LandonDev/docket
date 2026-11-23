@@ -38,6 +38,21 @@ export function WorkViewSurface() {
   useEffect(() => {
     if (elsewhere) openWorkView(null);
   }, [elsewhere]);
+  // Docs lives in Files now: a way in that still names it (a window's kept view, a hit or a notice from a host a
+  // release behind) opens the document in a Files tab, or the LifeOS place, and Files shows.
+  const docs = open?.view === "docs" && workspace ? open : null;
+  useEffect(() => {
+    if (!docs || !workspace) return;
+    const at = { id: workspace.id, environmentId: workspace.environmentId };
+    void import("../files/openFrom").then(({ filesOfDocs, openInFiles }) =>
+      openInFiles(at, filesOfDocs(docs.doc)).catch((err: unknown) => {
+        openWorkView({ workspaceId: at.id, view: "files" });
+        void loadToast().then((toast) => toast.error("It did not open", { description: errorText(err) }));
+      }),
+    );
+    // Taken once per way in: the view it names changes as soon as Files shows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docs]);
   if (elsewhere) return null;
   if (!open || !workspace?.sector) return null;
   const def = WORK_VIEWS[open.view as WorkViewId];

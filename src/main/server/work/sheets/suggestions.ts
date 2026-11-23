@@ -136,6 +136,24 @@ export class SuggestionStore {
     this.db.prepare("INSERT INTO work_sheets_prefs (store, written) VALUES (?, ?) ON CONFLICT (store) DO UPDATE SET written = excluded.written").run(store, w ? JSON.stringify(w) : null)
   }
 
+  /** How many suggestions are open in each of these stores: one indexed count, no file read. A store with none is absent. */
+  openCounts(stores: readonly string[]): Map<string, number> {
+    if (!stores.length) return new Map()
+    const rows = this.db
+      .prepare(`SELECT store, COUNT(*) AS n FROM work_sheets_suggestions WHERE state IN ${OPEN} AND store IN (${stores.map(() => '?').join(', ')}) GROUP BY store`)
+      .all(...stores) as { store: string; n: number }[]
+    return new Map(rows.map((r) => [r.store, r.n]))
+  }
+
+  /** The stores whose key starts with `prefix` that hold open suggestions, the latest suggested first, `most` at most. */
+  storesOpen(prefix: string, most: number): { store: string; count: number }[] {
+    const like = `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+    const rows = this.db
+      .prepare(`SELECT store, COUNT(*) AS n, MAX(at) AS last FROM work_sheets_suggestions WHERE state IN ${OPEN} AND store LIKE ? ESCAPE '\\' GROUP BY store ORDER BY last DESC LIMIT ?`)
+      .all(like, most) as { store: string; n: number }[]
+    return rows.map((r) => ({ store: r.store, count: r.n }))
+  }
+
   forget(store: string): void {
     this.db.prepare('DELETE FROM work_sheets_suggestions WHERE store = ?').run(store)
     this.db.prepare('DELETE FROM work_sheets_prefs WHERE store = ?').run(store)

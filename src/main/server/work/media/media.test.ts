@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import { playFor, VIEWER_DEFAULT_PLAYS, type MediaNote, type MediaProbe, type MediaView } from '@shared/contract-work-media'
@@ -17,7 +17,12 @@ import { proxyArgs, proxyFilter, tileLevels, tilesArgs } from './encode'
 import { parsePlaylist } from './prepare'
 import { frameTableOf, parsePacketTimes, parseProbe } from './probe'
 import { frameOf } from './tools'
-import { mediaCacheDir, moveOldMediaCache } from './store'
+import { ensureMediaTables, MEDIA_KEYED, MediaStore, mediaCacheDir, moveOldMediaCache } from './store'
+import { DatabaseSync } from 'node:sqlite'
+import { filesPaneOf, type CanvasSource } from '@shared/work'
+import type { WorkPush } from '@shared/contract-work'
+import { ensureCanvasTables } from '../canvas/store'
+import { fileKeyedMoveModule, fileKeyOf } from '../canvas/fileKey'
 
 // Milestone 6 builds the scope; here a Work thread's scope is the test's.
 vi.mock('../scope', () => ({
@@ -152,7 +157,7 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
   let db: ReturnType<typeof openDb>
   let work: Awaited<ReturnType<typeof import('../ctx').startWork>>
   const sessions = new Map<string, SessionMeta>()
-  const registry = { get: (id: string) => sessions.get(id) ?? null, onRemoved: () => () => {}, onWorkspaceDeleted: () => () => {} } as unknown as SessionRegistry
+  const registry = { get: (id: string) => sessions.get(id) ?? null, onRemoved: () => () => {}, onWorkspaceDeleted: () => () => {}, listWorkspaces: () => [{ id: 'w1', kind: 'work' }] } as unknown as SessionRegistry
   const call = async <T,>(method: string, params: unknown): Promise<T> => {
     const out = await work.handle(ClientRequestSchema.parse({ id: '1', method, params } as ClientRequest), LOCAL_PRINCIPAL)
     if (!out.handled) throw new Error(`${method} was not handled`)
@@ -413,6 +418,117 @@ describe.skipIf(!TOOLS)('the media pillar on a real ffmpeg', () => {
     expect(still.isError).toBeUndefined()
     expect(still.content.filter((c) => c.type === 'image')).toHaveLength(1)
   }, 60_000)
+
+  it('shows a Files tab and a thread on one clip the same versions and notes, and a note through either reaches both', async () => {
+    const path = await make('shared.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=24:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p'])
+    const thread = await open(path, 'Shared')
+    const { canvasStoreOf } = await import('../canvas/store')
+    const tab = canvasStoreOf(db).open(filesPaneOf('w1'), { kind: 'media', source: { at: 'file', host: 'env_test', path }, title: 'shared.mp4' }).id
+    const first = await settled(thread)
+    const heard: WorkPush[] = []
+    const off = work.pushes.onPush((p) => heard.push(p))
+    await call('work.media.note', { itemId: tab, anchor: { versionId: first.versions[0].id, frame: 3 }, body: 'from the tab' })
+    await tool('media_note', { item: thread, at: 5, text: 'from the thread' })
+    await new Promise((r) => setTimeout(r, 800))
+    off()
+    // Earlier items may still be pushing as their proxies finish: both of these are heard.
+    const pushed = heard.flatMap((p) => (p.push === 'work.media' ? [p.itemId] : []))
+    expect(pushed).toContain(thread)
+    expect(pushed).toContain(tab)
+    const [a, b] = [await call<MediaView>('work.media.view', { itemId: thread }), await call<MediaView>('work.media.view', { itemId: tab })]
+    expect(b.itemId).toBe(tab)
+    expect(b.versions.map((v) => v.id)).toEqual(a.versions.map((v) => v.id))
+    expect(a.notes.map((n) => n.body)).toEqual(['from the tab', 'from the thread'])
+    expect(b.notes).toEqual(a.notes)
+    expect(db.prepare(`SELECT COUNT(DISTINCT file_key) AS n FROM work_media_notes WHERE body LIKE 'from the %'`).get()).toEqual({ n: 1 })
+  }, 60_000)
+})
+
+describe('kept by the file: a Files tab and a thread on one clip', () => {
+  const PATH = '/w/Job/Cut.mp4'
+  const fileOf = (path = PATH): CanvasSource => ({ at: 'file', host: 'env_box', path })
+  let db: DatabaseSync
+  let store: MediaStore
+  let n = 0
+  const canvasItem = (id: string, sessionId: string, workspaceId: string, source: CanvasSource) => {
+    n++
+    db.prepare(`INSERT INTO work_canvas_items (id, session_id, workspace_id, kind, title, source, state, position, rev, created_at, updated_at) VALUES (?, ?, ?, 'media', 'Cut.mp4', ?, 'open', 0, 0, ?, ?)`).run(id, sessionId, workspaceId, JSON.stringify(source), n, n)
+    return { id, sessionId, workspaceId, source }
+  }
+  /** What `itemRow` does: the row its rows are kept under, made on first sight. */
+  const rowOf = (item: ReturnType<typeof canvasItem>) => {
+    const k = store.keptOf(item)
+    return store.ensureItem(k.id, k.sessionId, { source: item.source, name: 'Cut.mp4', by: 'owner' }, k.fileKey)
+  }
+  const note = (item: ReturnType<typeof canvasItem>, body: string, parentId?: string) => {
+    const row = rowOf(item)
+    return store.addNote(row.itemId, { anchor: { versionId: store.versions(row.itemId)[0].id, frame: 1 }, body, by: 'owner', ...(parentId ? { parentId } : {}) })
+  }
+  const bodies = (item: ReturnType<typeof canvasItem>): string[] => store.notes(rowOf(item).itemId).map((x) => x.body)
+
+  beforeEach(() => {
+    db = new DatabaseSync(':memory:')
+    ensureCanvasTables(db)
+    ensureMediaTables(db)
+    store = new MediaStore(db)
+  })
+
+  it('reads and writes one set of versions and notes through either item; one with no file or of another workspace keeps its own', () => {
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
+    note(thread, 'from the thread')
+    note(tab, 'from the tab')
+    expect(rowOf(tab).itemId).toBe('i1')
+    expect(store.versions('i1')).toHaveLength(1)
+    expect(bodies(thread)).toEqual(['from the thread', 'from the tab'])
+    store.setMode(rowOf(tab).itemId, 'suggests')
+    expect(rowOf(thread).mode).toBe('suggests')
+    const mail = canvasItem('m1', 't1', 'w1', { at: 'mail', threadId: 'th', messageId: 'x', partId: '2', name: 'Cut.mp4' })
+    expect(store.keptOf(mail)).toEqual({ id: 'm1', sessionId: 't1', fileKey: '' })
+    expect(bodies(canvasItem('o1', 't2', 'w2', fileOf()))).toEqual([])
+    expect(db.prepare(`SELECT DISTINCT file_key FROM work_media_notes`).all()).toEqual([{ file_key: fileKeyOf(thread) }])
+  })
+
+  it('keeps the rows while one item on the clip is left, and drops them, with their prepared copies, with the last', () => {
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
+    note(thread, 'x')
+    const version = store.versions('i1')[0].id
+    db.prepare(`DELETE FROM work_canvas_items WHERE id = 'i1'`).run()
+    expect(store.removeItems(['i1'])).toEqual([])
+    expect(rowOf(tab).itemId).toBe('tab1')
+    expect(store.versions('tab1').map((v) => v.id)).toEqual([version])
+    expect(bodies(tab)).toEqual(['x'])
+    db.prepare(`DELETE FROM work_canvas_items WHERE id = 'tab1'`).run()
+    expect(store.removeItems(['tab1'])).toEqual([version])
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM work_media_notes`).get()).toEqual({ n: 0 })
+  })
+
+  it('fills the key at start for rows made before it', () => {
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    note(thread, 'x')
+    db.exec(`UPDATE work_media_items SET file_key = NULL; UPDATE work_media_versions SET file_key = NULL; UPDATE work_media_notes SET file_key = NULL`)
+    ensureMediaTables(db)
+    for (const t of ['work_media_items', 'work_media_versions', 'work_media_notes']) expect(db.prepare(`SELECT DISTINCT file_key FROM ${t}`).all()).toEqual([{ file_key: fileKeyOf(thread) }])
+    expect(rowOf(canvasItem('tab1', 'files:w1', 'w1', fileOf())).itemId).toBe('i1')
+  })
+
+  it("gives a moving thread's copy of shared notes new ids that still name their version and their parent", () => {
+    canvasItem('tab1', 'files:w1', 'w1', fileOf())
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    const tab = { id: 'tab1', sessionId: 'files:w1', workspaceId: 'w1', source: fileOf() }
+    const top = note(tab, 'top')
+    note(thread, 'reply', top.id)
+    const host = { db } as never
+    const versions = fileKeyedMoveModule('media-versions', 'work_media_versions', MEDIA_KEYED).rows!(host, ['t1']) as Array<Record<string, string>>
+    const notes = fileKeyedMoveModule('media-notes', 'work_media_notes', MEDIA_KEYED).rows!(host, ['t1']) as Array<Record<string, string>>
+    expect(versions.map((v) => v.item_id)).toEqual(['i1'])
+    expect(versions[0].id).not.toBe(store.versions('tab1')[0].id)
+    const [t, r] = notes
+    expect([t.id, r.id]).not.toContain(top.id)
+    expect(r.parent_id).toBe(t.id)
+    expect(JSON.parse(t.anchor).versionId).toBe(versions[0].id)
+  })
 })
 
 describe("the cache an earlier build kept under the attachments", () => {

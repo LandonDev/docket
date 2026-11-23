@@ -17,7 +17,7 @@ import {
 } from '@shared/contract-work-media'
 import { workText, type WorkToolResult } from '@shared/work'
 import type { ToolCtx, WorkTool } from '../modules'
-import { agentWrite, liveOf, mediaItem, preparerOf, viewOf } from './view'
+import { agentWrite, keptId, liveOf, mediaItem, preparerOf, viewOf } from './view'
 
 /**
  * The agent's media tools (docs/agents/work-media.md, "Tools"). An agent
@@ -99,7 +99,7 @@ async function infoText(ctx: ToolCtx, itemId: string): Promise<string> {
 /** The version a call names (the newest when it names none), once the host has read it. */
 async function readVersion(ctx: ToolCtx, id: string, n?: number) {
   const p = await preparerOf(ctx)
-  const rows = liveOf(ctx).store.versions(id)
+  const rows = liveOf(ctx).store.versions(keptId(ctx, id))
   const row = n === undefined ? rows[rows.length - 1] : rows.find((v) => v.n === n)
   if (!row) throw new Error(n === undefined ? 'the item has no version yet' : `there is no v${n}`)
   // Only the probe: a proxy being made for a viewer is no reason to keep the agent waiting.
@@ -122,7 +122,7 @@ export const mediaTools: WorkTool[] = [
       try {
         const id = ownItem(ctx, (args as { item: string }).item)
         const p = await preparerOf(ctx)
-        for (const v of liveOf(ctx).store.versions(id)) await p.ready(v, ctx.signal).catch((err: unknown) => (ctx.signal.aborted ? Promise.reject(err) : undefined))
+        for (const v of liveOf(ctx).store.versions(keptId(ctx, id))) await p.ready(v, ctx.signal).catch((err: unknown) => (ctx.signal.aborted ? Promise.reject(err) : undefined))
         return workText(await infoText(ctx, id))
       } catch (err) {
         return fail(message(err))
@@ -207,7 +207,7 @@ export const mediaTools: WorkTool[] = [
       try {
         const id = ownItem(ctx, a.item)
         if (!isAbsolute(a.file) || !existsSync(a.file)) throw new Error(`there is no file at ${a.file}`)
-        const v = liveOf(ctx).store.addVersion(id, { source: { at: 'file', host: ctx.host, path: a.file }, name: basename(a.file), by: `agent:${ctx.host}:${ctx.sessionId}` })
+        const v = liveOf(ctx).store.addVersion(keptId(ctx, id), { source: { at: 'file', host: ctx.host, path: a.file }, name: basename(a.file), by: `agent:${ctx.host}:${ctx.sessionId}` })
         ;(await preparerOf(ctx)).view(v)
         return workText(`Added v${v.n} ${v.name}.`)
       } catch (err) {

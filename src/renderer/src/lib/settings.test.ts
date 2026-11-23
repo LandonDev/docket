@@ -1,3 +1,4 @@
+import "../work/files/bindings";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   filterKeybindings,
@@ -8,6 +9,7 @@ import {
   SETTINGS_GROUPS,
   SETTINGS_SECTIONS,
   visibleSettingsSections,
+  visibleKeybindingGroups,
   settingsSectionLabel,
   loadMidTurnDefault,
   MID_TURN_DEFAULT,
@@ -129,6 +131,15 @@ describe("keybindings", () => {
     const byGlyph = filterKeybindings(KEYBINDING_GROUPS, "⌘K").flatMap((g) => g.bindings.map((b) => b.name));
     expect([...byKeys, ...byGlyph]).toContain("Search");
     expect(filterKeybindings(KEYBINDING_GROUPS, "nothing like this")).toEqual([]);
+  });
+
+  it("lists the Files place's chords apart from the file tree's, only while Work is on", () => {
+    const titles = (work: boolean) => visibleKeybindingGroups(false, work).map((group) => group.title);
+    expect(titles(false)).not.toContain("Files (Work)");
+    expect(titles(true)).toContain("Files (Work)");
+    expect(titles(true)).toContain("Files");
+    const files = KEYBINDING_GROUPS.find((group) => group.title === "Files (Work)");
+    expect(files?.bindings.map((binding) => binding.name)).toEqual(["New Tab", "Close Tab", "Reopen Closed Tab", "Next Tab", "Previous Tab", "Back", "Forward", "Go to", "Search", "Open", "Quick Look", "Parent Folder", "Rename", "Delete", "Select All", "Leave Full Window"]);
   });
 });
 

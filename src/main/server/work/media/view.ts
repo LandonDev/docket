@@ -61,11 +61,19 @@ export function mediaItem(ctx: WorkCtx, itemId: string): CanvasItem {
   return item
 }
 
-/** The item's media row, made with its first version (the file the canvas item names) on first sight. */
+/**
+ * The item's media row, made with its first version (the file the canvas item names) on first sight. Its
+ * `itemId` is the item whose rows it reads and writes: another's, when a Files tab and a thread show one file.
+ */
 export function itemRow(ctx: WorkCtx, item: CanvasItem): ItemRow {
   const name = item.source.at === 'file' ? nameOf(item.source.path) : item.source.at === 'mail' ? item.source.name : item.title
-  return liveOf(ctx).store.ensureItem(item.id, item.sessionId, { source: item.source, name, by: 'owner' })
+  const { store } = liveOf(ctx)
+  const kept = store.keptOf(item)
+  return store.ensureItem(kept.id, kept.sessionId, { source: item.source, name, by: 'owner' }, kept.fileKey)
 }
+
+/** The id an item's rows are kept under, by the item's id. */
+export const keptId = (ctx: WorkCtx, itemId: string): string => itemRow(ctx, mediaItem(ctx, itemId)).itemId
 
 /** Everything the canvas shows of the item. `start`: begin what the asking viewer (`plays`) needs; else only a version never read is probed. */
 export async function viewOf(ctx: WorkCtx, itemId: string, o: { plays?: readonly string[]; start?: boolean; retry?: boolean } = {}): Promise<MediaView> {
@@ -73,13 +81,13 @@ export async function viewOf(ctx: WorkCtx, itemId: string, o: { plays?: readonly
   const row = itemRow(ctx, item)
   const { store } = liveOf(ctx)
   const preparer = await preparerOf(ctx)
-  const versions = store.versions(item.id).map((v) => preparer.view(v, o))
+  const versions = store.versions(row.itemId).map((v) => preparer.view(v, o))
   const kind = versions.some((v) => v.probe?.kind === 'video') ? 'video' : versions.length && versions.every((v) => v.probe?.kind === 'image') ? 'image' : guessKind(item)
   return {
     itemId: item.id,
     kind,
     versions,
-    notes: store.notes(item.id),
+    notes: store.notes(row.itemId),
     mode: row.mode,
     shared: row.shared,
     ...(row.lastWrite ? { lastWrite: row.lastWrite } : {}),
@@ -93,8 +101,25 @@ const guessKind = (item: CanvasItem): 'video' | 'image' => {
   return name !== null && !VIDEO_EXT.test(name) ? 'image' : 'video'
 }
 
-/** Pushes the item's view, at most twice a second however often it changes. */
+/** Pushes the item's view, and the view of every open item that shares its rows (a Files tab and a thread on one file), each at most twice a second however often it changes. */
 export function pushSoon(ctx: WorkCtx, itemId: string): void {
+  let ids: string[] = [itemId]
+  try {
+    const item = ctx.canvas.get(itemId)
+    if (item?.workspaceId) {
+      const { store } = liveOf(ctx)
+      const kept = store.keptOf(item).id
+      const all = ctx.canvas.forWorkspace(item.workspaceId, { open: true, panes: true }).filter((other) => other.kind === 'media' && store.keptOf(other).id === kept)
+      ids = [...new Set([itemId, ...all.map((other) => other.id)])]
+    }
+  } catch {
+    // A preparer's late word after the host closed its database: nobody is left to tell.
+    return
+  }
+  for (const id of ids) pushOne(ctx, id)
+}
+
+function pushOne(ctx: WorkCtx, itemId: string): void {
   const live = liveOf(ctx)
   if (live.pushed.has(itemId)) return
   const t = setTimeout(() => {
@@ -118,8 +143,8 @@ export function agentWrite(ctx: WorkCtx, itemId: string, sessionId: string, note
   const suggested = row.shared || row.mode === 'suggests'
   const writeId = suggested ? undefined : randomUUID()
   const by = agentPrincipal(ctx.host, sessionId)
-  const made = notes.map((n) => store.addNote(item.id, { ...n, by, state: suggested ? 'suggested' : 'kept', ...(writeId ? { writeId } : {}) }))
-  if (writeId) store.setLastWrite(item.id, { id: writeId, text: what, at: Date.now() })
+  const made = notes.map((n) => store.addNote(row.itemId, { ...n, by, state: suggested ? 'suggested' : 'kept', ...(writeId ? { writeId } : {}) }))
+  if (writeId) store.setLastWrite(row.itemId, { id: writeId, text: what, at: Date.now() })
   pushSoon(ctx, item.id)
   return { notes: made, suggested }
 }

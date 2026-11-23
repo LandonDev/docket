@@ -3,9 +3,10 @@ import { existsSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { MediaAnchor, MediaNote, MediaProbe, MediaVersion, MediaWrite } from '@shared/contract-work-media'
-import type { CanvasSource, Principal } from '@shared/work'
+import type { CanvasItem, CanvasSource, Principal } from '@shared/work'
 import { workMediaRoot } from '../../media'
-import { registerMoveModule, tableMoveModule } from '../../sessionMove'
+import { registerMoveModule } from '../../sessionMove'
+import { dropKept, ensureFileKeys, fileKeyedMoveModule, keptOf, type FileKeyed, type Kept } from '../canvas/fileKey'
 
 /**
  * The media pillar's rows (docs/agents/work-media.md, "The store"): one row
@@ -13,8 +14,24 @@ import { registerMoveModule, tableMoveModule } from '../../sessionMove'
  * and its notes. Every table carries `session_id`, so a thread that moves
  * takes them along. What the host makes from a version (proxies, tiles, a
  * HEIC's JPEG, the frame table) is a cache under `mediaCacheDir`, made again
- * wherever it is missing.
+ * wherever it is missing. Rows are kept by the file (`file_key`,
+ * canvas/fileKey.ts): a Files tab and a thread on one video share its
+ * versions and notes, under the item `keptOf` names.
  */
+
+/** The tables kept by the file. A version's and a note's ids are their own (a note names its version and its parent), so a copy that leaves takes new ones. */
+export const MEDIA_KEYED: FileKeyed = {
+  kind: 'media',
+  items: 'work_media_items',
+  rows: ['work_media_versions', 'work_media_notes'],
+  renumber: {
+    work_media_versions: (row, fresh) => ({ ...row, id: fresh(String(row.id)) }),
+    work_media_notes: (row, fresh) => {
+      const anchor = JSON.parse(String(row.anchor)) as MediaAnchor
+      return { ...row, id: fresh(String(row.id)), parent_id: row.parent_id ? fresh(String(row.parent_id)) : null, anchor: JSON.stringify({ ...anchor, versionId: fresh(anchor.versionId) }) }
+    }
+  }
+}
 
 export function ensureMediaTables(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS work_media_items (
@@ -55,9 +72,10 @@ export function ensureMediaTables(db: DatabaseSync): void {
     updated_at INTEGER NOT NULL
   )`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_media_notes_item ON work_media_notes (item_id)`)
-  registerMoveModule(db, tableMoveModule('media-items', 'work_media_items'))
-  registerMoveModule(db, tableMoveModule('media-versions', 'work_media_versions'))
-  registerMoveModule(db, tableMoveModule('media-notes', 'work_media_notes'))
+  ensureFileKeys(db, MEDIA_KEYED)
+  registerMoveModule(db, fileKeyedMoveModule('media-items', 'work_media_items', MEDIA_KEYED))
+  registerMoveModule(db, fileKeyedMoveModule('media-versions', 'work_media_versions', MEDIA_KEYED))
+  registerMoveModule(db, fileKeyedMoveModule('media-notes', 'work_media_notes', MEDIA_KEYED))
 }
 
 /**
@@ -86,6 +104,8 @@ export function moveOldMediaCache(dataDir: string): void {
 }
 
 type Row = Record<string, string | number | null>
+/** A new row takes the key its item's row holds. */
+const FILE_KEY = `(SELECT file_key FROM work_media_items WHERE item_id = ?)`
 const json = <T>(s: string | number | null | undefined): T | undefined => (typeof s === 'string' ? (JSON.parse(s) as T) : undefined)
 
 export interface ItemRow {
@@ -152,11 +172,16 @@ export class MediaStore {
     return r ? itemOf(r) : null
   }
 
-  /** The item's row, made on first sight with its first version: the file the canvas item names. */
-  ensureItem(itemId: string, sessionId: string, first: { source: CanvasSource; name: string; by: Principal }): ItemRow {
+  /** Where an item's rows are (canvas/fileKey.ts): its own, or those of the item that keeps its file's. Every other method takes `id`. */
+  keptOf(item: Pick<CanvasItem, 'id' | 'sessionId' | 'workspaceId' | 'source'>): Kept {
+    return keptOf(this.db, MEDIA_KEYED, item)
+  }
+
+  /** The item's row, made on first sight with its first version: the file the canvas item names. `fileKey`: the key its rows are found by (`keptOf`). */
+  ensureItem(itemId: string, sessionId: string, first: { source: CanvasSource; name: string; by: Principal }, fileKey = ''): ItemRow {
     const have = this.item(itemId)
     if (have) return have
-    this.db.prepare(`INSERT INTO work_media_items (item_id, session_id) VALUES (?, ?)`).run(itemId, sessionId)
+    this.db.prepare(`INSERT INTO work_media_items (item_id, session_id, file_key) VALUES (?, ?, ?)`).run(itemId, sessionId, fileKey)
     this.addVersion(itemId, first)
     return this.item(itemId)!
   }
@@ -192,8 +217,8 @@ export class MediaStore {
     const n = Number((this.db.prepare(`SELECT COALESCE(MAX(n), 0) AS n FROM work_media_versions WHERE item_id = ?`).get(itemId) as Row).n) + 1
     const id = randomUUID()
     this.db
-      .prepare(`INSERT INTO work_media_versions (id, item_id, session_id, n, name, source, added_at, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(id, itemId, String(item.session_id), n, v.name, JSON.stringify(v.source), Date.now(), v.by)
+      .prepare(`INSERT INTO work_media_versions (id, item_id, session_id, n, name, source, added_at, added_by, file_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${FILE_KEY})`)
+      .run(id, itemId, String(item.session_id), n, v.name, JSON.stringify(v.source), Date.now(), v.by, itemId)
     this.bump(itemId)
     return this.version(id)!
   }
@@ -220,9 +245,9 @@ export class MediaStore {
     const now = Date.now()
     this.db
       .prepare(
-        `INSERT INTO work_media_notes (id, item_id, session_id, kind, anchor, body, by, state, parent_id, external, write_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO work_media_notes (id, item_id, session_id, kind, anchor, body, by, state, parent_id, external, write_id, created_at, updated_at, file_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${FILE_KEY})`
       )
-      .run(id, itemId, item.sessionId, n.kind ?? 'comment', JSON.stringify(n.anchor), n.body, n.by, n.state ?? 'kept', n.parentId ?? null, n.external ? JSON.stringify(n.external) : null, n.writeId ?? null, now, now)
+      .run(id, itemId, item.sessionId, n.kind ?? 'comment', JSON.stringify(n.anchor), n.body, n.by, n.state ?? 'kept', n.parentId ?? null, n.external ? JSON.stringify(n.external) : null, n.writeId ?? null, now, now, itemId)
     this.bump(itemId)
     return this.note(id)!
   }
@@ -253,23 +278,18 @@ export class MediaStore {
     return Number(r.changes)
   }
 
+  /** Deleted threads' rows; what one kept for a file another item still shows passes to that item. Answers the versions that went, whose prepared copies the caller forgets. */
   removeSessions(ids: readonly string[]): string[] {
-    const versions: string[] = []
-    for (const sid of ids) {
-      versions.push(...(this.db.prepare(`SELECT id FROM work_media_versions WHERE session_id = ?`).all(sid) as Row[]).map((r) => String(r.id)))
-      for (const t of ['work_media_items', 'work_media_versions', 'work_media_notes']) this.db.prepare(`DELETE FROM ${t} WHERE session_id = ?`).run(sid)
-    }
-    return versions
+    const was = ids.flatMap((sid) => (this.db.prepare(`SELECT id FROM work_media_versions WHERE session_id = ?`).all(sid) as Row[]).map((r) => String(r.id)))
+    dropKept(this.db, MEDIA_KEYED, { sessions: ids })
+    return was.filter((id) => !this.version(id))
   }
 
-  /** A closed Files tab's rows; answers its versions, whose prepared copies the caller forgets. */
+  /** A closed Files tab's rows, or what passes from it to a thread's item on the same file; answers the versions that went. */
   removeItems(itemIds: readonly string[]): string[] {
-    const versions: string[] = []
-    for (const id of itemIds) {
-      versions.push(...(this.db.prepare(`SELECT id FROM work_media_versions WHERE item_id = ?`).all(id) as Row[]).map((r) => String(r.id)))
-      for (const t of ['work_media_items', 'work_media_versions', 'work_media_notes']) this.db.prepare(`DELETE FROM ${t} WHERE item_id = ?`).run(id)
-    }
-    return versions
+    const was = itemIds.flatMap((id) => (this.db.prepare(`SELECT id FROM work_media_versions WHERE item_id = ?`).all(id) as Row[]).map((r) => String(r.id)))
+    dropKept(this.db, MEDIA_KEYED, { items: itemIds })
+    return was.filter((id) => !this.version(id))
   }
 }
 

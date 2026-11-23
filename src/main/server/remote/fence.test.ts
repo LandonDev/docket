@@ -392,7 +392,9 @@ describe("a file another host of his holds, named by a remote key (F-files-refus
     ['work.files.tabOpen', (page) => ({ workspaceId: 'w', page: { at: page, name: 'P' } })],
     ['work.files.tabSet', (page) => ({ workspaceId: 'w', tabId: 't', page: { at: page, name: 'P' } })],
     ['work.files.star', (ref) => ({ workspaceId: 'w', ref, name: 'P', on: true })],
-    ['work.files.seen', (ref) => ({ workspaceId: 'w', ref, name: 'P' })]
+    ['work.files.seen', (ref) => ({ workspaceId: 'w', ref, name: 'P' })],
+    // A file of another host opens in a Files tab as the copy `filesCopy` makes (work/files/handle.ts `openCopy`): the path is never looked at here.
+    ['work.files.open', (ref) => ({ workspaceId: 'w', ref })]
   ]
 
   it("is that host's to fence in the verbs that send it there or keep it as words: this host's roots say nothing of it", () => {
@@ -431,7 +433,6 @@ describe("a file another host of his holds, named by a remote key (F-files-refus
       ['work.files.list', { workspaceId: 'w', at: claimed }],
       ['work.files.stat', { workspaceId: 'w', refs: [claimed] }],
       ['work.files.fetch', { workspaceId: 'w', ref: claimed }],
-      ['work.files.open', { workspaceId: 'w', ref: claimed }],
       ['work.files.copy', { workspaceId: 'w', refs: [claimed], to: at('/srv/work', BOX) }],
       ['work.files.copyTo', { workspaceId: 'w', refs: [claimed] }],
       ['work.office.filesCopyX', { sessionId: 's', source: claimed }],

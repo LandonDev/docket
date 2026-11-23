@@ -7,11 +7,11 @@ import { entryOfRow, type DiskRow } from './disk'
 /**
  * The workspace's own folder as a place (docs/agents/work-files.md "The model"): the folder on the workspace's
  * host, named for the workspace, with real folders in it. Only he and his threads see it, so every verb runs
- * at once; the verbs themselves land with their milestone, and `can` says which this build carries out.
+ * at once; `can` says which this build carries out (files/verbs.ts).
  */
 
 /** The verbs the folder's adapter carries out today. */
-export const FOLDER_CAN: FilePlace['can'] = []
+export const FOLDER_CAN: FilePlace['can'] = ['make', 'upload', 'rename', 'move', 'copy', 'edit', 'trash', 'restore', 'purge']
 
 export function folderPlace(host: string, workspace: WorkspaceRow): FilePlace {
   return {

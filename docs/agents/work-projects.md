@@ -35,9 +35,9 @@ A task is a LifeOS task. In a project it has a parent, a place among its sibling
 | Link a document or sheet… | `LinkPicker` over the workspace's catalog (`work.docs.find`): LifeOS's documents and sheets this project does not hold |
 | Link a file or item… | the same picker over everything else the workspace lists (a file in its folder, a Google or Microsoft item); never an item only a thread can name |
 
-A pick writes `work.projects.link`; a refusal stays in the picker as its one line. A press on a listed thing (`openItemIn`): a LifeOS document opens here in the shared editor, with the way back and the project's name in the header; a sheet, a legacy note and any other source start a thread in the project's mirror with the item as its chip, as the Docs view does (its opener holds documents only); a link and a file open in the browser.
+A pick writes `work.projects.link`; a refusal stays in the picker as its one line. A press on a listed thing (`openItemIn`): a LifeOS document opens here in the shared editor, with the way back and the project's name in the header; a sheet, a legacy note and any other source start a thread in the project's mirror with the item as its chip; a link and a file open in the browser.
 
-**The description** is a LifeOS document (`projects.docId`), mounted by `Description.tsx` in the shared editor through the Docs view's own `useOpened` and `useDocument`, with no title of its own. While the Work service cannot be reached it is the stored lead, read-only, with the reason and Retry.
+**The description** is a LifeOS document (`projects.docId`), mounted by `Description.tsx` in the shared editor through the document canvas's `useOpened` and `useDocument` (work/docs/DocumentCanvas.tsx), with no title of its own. While the Work service cannot be reached it is the stored lead, read-only, with the reason and Retry.
 
 **Settings from the page.** A project's menu holds Project settings… (`kit.projectMenu`): the mirror is made at the ask if the project has none (`work.project.open {forSettings: true}`, which answers a finished project's mirror too, since the sheet is where he reopens it; a refusal is a toast) and the Work project's sheet opens on it (`ProjectSettingsDialog`, mounted by the view).
 

@@ -9,7 +9,7 @@ import TempCodeContract
 struct PdfItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
-    let ask: (ContextChip) -> Void
+    let ask: ((ContextChip) -> Void)?
 
     var body: some View {
         ItemLoad(read: {
@@ -20,7 +20,7 @@ struct PdfItemView: View {
             guard DeckRender.opens(pageCount: PDFDocument(data: data)?.pageCount) else { throw PdfUnreadable() }
             return data
         }) { data, _ in
-            PdfPages(data: data, filmstrip: false, onAsk: { quote in ask(ChipWords.selection(in: item, quote: quote)) })
+            PdfPages(data: data, filmstrip: false, onAsk: ask.map { ask in { (quote: String) in ask(ChipWords.selection(in: item, quote: quote)) } })
         }
         .accessibilityIdentifier("pdf-item")
     }
@@ -38,7 +38,7 @@ private struct PdfUnreadable: LocalizedError, CustomStringConvertible {
 struct SlidesItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
-    let ask: (ContextChip) -> Void
+    let ask: ((ContextChip) -> Void)?
     @State private var deciding = false
     @State private var error: String?
 
@@ -64,7 +64,7 @@ struct SlidesItemView: View {
                     }
                     Divider()
                 }
-                PdfPages(data: loaded.data, filmstrip: true, onAsk: { quote in ask(ChipWords.selection(in: item, quote: quote)) })
+                PdfPages(data: loaded.data, filmstrip: true, onAsk: ask.map { ask in { (quote: String) in ask(ChipWords.selection(in: item, quote: quote)) } })
                     .id(loaded.key)
             }
         }
@@ -148,7 +148,8 @@ struct DeckReviewRow: View {
 struct PdfPages: View {
     let data: Data
     let filmstrip: Bool
-    let onAsk: (String) -> Void
+    /// nil: no thread beside the PDF, so no Ask.
+    let onAsk: ((String) -> Void)?
     @State private var page = 1
     @State private var pages = 1
     @State private var view = PDFView()
@@ -167,15 +168,17 @@ struct PdfPages: View {
                         .accessibilityIdentifier("pdf-page")
                 }
                 .overlay(alignment: .topTrailing) {
-                    Button("Ask", systemImage: "bubble.left") {
-                        let picked = view.currentSelection?.string?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onAsk(picked?.isEmpty == false ? picked! : "Page \(page)")
+                    if let onAsk {
+                        Button("Ask", systemImage: "bubble.left") {
+                            let picked = view.currentSelection?.string?.trimmingCharacters(in: .whitespacesAndNewlines)
+                            onAsk(picked?.isEmpty == false ? picked! : "Page \(page)")
+                        }
+                        .labelStyle(.iconOnly)
+                        .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: Circle())
+                        .padding(12)
+                        .accessibilityIdentifier("pdf-ask")
                     }
-                    .labelStyle(.iconOnly)
-                    .frame(width: 44, height: 44)
-                    .glassEffect(.regular.interactive(), in: Circle())
-                    .padding(12)
-                    .accessibilityIdentifier("pdf-ask")
                 }
             if filmstrip {
                 Filmstrip(view: view)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { editedBucket, filterCount, findIn, groupRows, kindOfFile, kindOfMime, passes, queryTerms, snippetOf, type FindEntry } from './docFind'
+import { findIn, kindOfFile, kindOfMime, passes, queryTerms, snippetOf, type FindEntry } from './docFind'
 
 const NOW = new Date(2026, 10, 19, 15, 0).getTime()
 const DAY = 86_400_000
@@ -38,12 +38,6 @@ describe('the filters', () => {
     expect(keys({ held: true })).toEqual(['f'])
     expect(keys({ by: ['guest'] })).toEqual([])
   })
-
-  it('count what is set', () => {
-    expect(filterCount({})).toBe(0)
-    expect(filterCount({ kinds: [], shared: false })).toBe(0)
-    expect(filterCount({ kinds: ['pdf'], within: 'day', held: true })).toBe(3)
-  })
 })
 
 describe('a search', () => {
@@ -62,25 +56,6 @@ describe('a search', () => {
     expect(keys('edited')).toEqual(['r', 'f', 'b'])
     expect(keys('created')).toEqual(['f', 'b', 'r'])
     expect(keys('name')).toEqual(['r', 'b', 'f'])
-  })
-})
-
-describe('the groups', () => {
-  const names = new Map([['p1', 'Plans'], ['p2', 'Admin']])
-  const labels = (g: Parameters<typeof groupRows>[1]) => groupRows([budget, brief, scan], g, names, NOW).map((x) => `${x.label}:${x.rows.map((r) => r.key).join('')}`)
-
-  it('go by project with loose rows last, kind, place and span', () => {
-    expect(labels('project')).toEqual(['Admin:r', 'Plans:b', 'No project:f'])
-    expect(labels('kind')).toEqual(['Document:r', 'Sheet:b', 'PDF:f'])
-    expect(labels('where')).toEqual(['LifeOS:br', 'Folder:f'])
-    expect(labels('edited')).toEqual(['Today:r', 'Past week:f', 'Past month:b'])
-    expect(labels('none')).toEqual([':brf'])
-    expect(groupRows([], 'none', names, NOW)).toEqual([])
-  })
-
-  it('name spans by the calendar', () => {
-    expect(editedBucket(NOW - 16 * 3_600_000, NOW).label).toBe('Yesterday')
-    expect(editedBucket(NOW - 400 * DAY, NOW).label).toBe('Older')
   })
 })
 

@@ -130,19 +130,20 @@ export async function viewOf(ctx: Ctx, item: CanvasItem, o: { refresh?: boolean 
   const snap = await snapshot(ctx, item, o)
   const form = await formOf(snap.stamp)
   const store = new PdfStore(ctx.db)
+  const kept = store.keep(item)
   const read = 'error' in form ? null : form
   // First: a signature over another version or other values comes off, and the fields show that.
-  const signed = store.signedOver(item.id, item.sessionId, snap.stamp.rev, read?.fields ?? [])
-  const written = store.written(item.id)
+  const signed = store.signedOver(kept.id, kept.sessionId, snap.stamp.rev, read?.fields ?? [])
+  const written = store.written(kept.id)
   return {
     itemId: item.id,
     sessionId: item.sessionId,
     name: snap.name,
     size: snap.stamp.size,
     rev: snap.stamp.rev,
-    mode: store.mode(item.id),
-    fields: store.fields(item.id, read?.fields ?? [], store.labels(item.id, snap.stamp.rev)),
-    marks: store.marks(item.id),
+    mode: store.mode(kept.id),
+    fields: store.fields(kept.id, read?.fields ?? [], store.labels(kept.id, snap.stamp.rev)),
+    marks: store.marks(kept.id),
     hasSignature: store.signature() !== null,
     signed,
     ...(written ? { written: { id: written.id, text: written.text, at: written.at } } : {}),
@@ -152,12 +153,27 @@ export async function viewOf(ctx: Ctx, item: CanvasItem, o: { refresh?: boolean 
   }
 }
 
-/** Tells every client what is drawn over the item now, and answers it. */
+/** The other open PDF items of the workspace whose rows are the item's (a Files tab and a thread on one file). */
+export function sharing(ctx: Ctx, item: CanvasItem): CanvasItem[] {
+  if (!item.workspaceId) return []
+  const store = new PdfStore(ctx.db)
+  const kept = store.keep(item).id
+  return ctx.canvas.forWorkspace(item.workspaceId, { open: true, panes: true }).filter((other) => other.id !== item.id && other.kind === 'pdf' && store.keep(other).id === kept)
+}
+
+/** Tells every client what is drawn over the item now, and over each item that shares its rows, and answers the item's. */
 export async function announce(ctx: Ctx, item: CanvasItem): Promise<PdfView> {
   const view = await viewOf(ctx, item)
   // A remote key's socket hears of an item only when it could read the item's file: the push can filter by capability
   // alone, so an item outside the remote roots goes only to sockets that hold every capability (this host's window).
   ctx.push({ push: 'work.pdf', sessionId: item.sessionId, view }, pushFor(item))
+  for (const other of sharing(ctx, item)) {
+    try {
+      ctx.push({ push: 'work.pdf', sessionId: other.sessionId, view: await viewOf(ctx, other) }, pushFor(other))
+    } catch {
+      // One whose file cannot be read now hears again when it is opened.
+    }
+  }
   return view
 }
 
@@ -198,9 +214,10 @@ export interface ExportResult {
 export async function exportCopy(ctx: Ctx, item: CanvasItem, flatten: boolean): Promise<ExportResult> {
   const { stamp, form } = await fieldsOfFile(ctx, item)
   const store = new PdfStore(ctx.db)
+  const kept = store.keep(item)
   // His ink goes only on the version and the values he signed.
-  const signature = store.signedOver(item.id, item.sessionId, stamp.rev, form.fields) ? store.signature() : null
-  const fields = store.fields(item.id, form.fields)
+  const signature = store.signedOver(kept.id, kept.sessionId, stamp.rev, form.fields) ? store.signature() : null
+  const fields = store.fields(kept.id, form.fields)
   const overlays: WriteInput['overlays'] = []
   for (const f of fields) {
     if (f.type === 'signature') {
@@ -212,9 +229,9 @@ export async function exportCopy(ctx: Ctx, item: CanvasItem, flatten: boolean): 
     overlays.push(typeof f.value === 'boolean' ? { page: f.page, bbox: f.bbox, check: f.value } : { page: f.page, bbox: f.bbox, text: f.value })
   }
   const out = await writePdf(new Uint8Array(readFileSync(stamp.path)), {
-    values: form.xfaOnly ? [] : store.ownValues(item.id),
+    values: form.xfaOnly ? [] : store.ownValues(kept.id),
     overlays,
-    marks: store.marks(item.id).map((m) => ({ name: `tc:${item.sessionId}:${m.id}`, page: m.page, quads: m.quads, ...(m.note ? { note: m.note } : {}), author: m.by === 'owner' ? 'Owner' : 'Agent' })),
+    marks: store.marks(kept.id).map((m) => ({ name: `tc:${item.sessionId}:${m.id}`, page: m.page, quads: m.quads, ...(m.note ? { note: m.note } : {}), author: m.by === 'owner' ? 'Owner' : 'Agent' })),
     flatten,
     font: await unicodeFont(ctx)
   })
@@ -228,7 +245,7 @@ export async function exportCopy(ctx: Ctx, item: CanvasItem, flatten: boolean): 
   writeFileSync(path, out.bytes)
   for (const old of exportDirs(dir).slice(EXPORTS_KEPT)) rmSync(join(dir, old), { recursive: true, force: true })
   const made = stampOf(path, name)
-  return { path, name, size: made.size, rev: made.rev, warnings: out.warnings, pending: store.pending(item.id) }
+  return { path, name, size: made.size, rev: made.rev, warnings: out.warnings, pending: store.pending(kept.id) }
 }
 
 /** How many exported copies an item keeps. */

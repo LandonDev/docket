@@ -10,7 +10,9 @@ vi.mock('../../sessionMove', async (orig) => ({
   ...(await orig<typeof import('../../sessionMove')>()),
   registerMoveModule: (_db: unknown, m: MoveModule) => (registered.push(m), () => {})
 }))
-const { ensurePdfTables, PdfStore, shortName } = await import('./store')
+const { ensurePdfTables, PDF_KEYED, PdfStore, shortName } = await import('./store')
+const { ensureCanvasTables } = await import('../canvas/store')
+const { fileKeyOf, moveFileKeys } = await import('../canvas/fileKey')
 
 const P1 = 'topmostSubform[0].Page1[0].'
 const field = (over: Partial<FormField> & { key: string }): FormField => ({ label: '', type: 'text', page: 1, bbox: [0.1, 0.1, 0.5, 0.15], value: null, readOnly: false, ...over })
@@ -362,5 +364,174 @@ describe('round three: the hash counts what the copy carries (N2)', () => {
     expect(store.signedOver('i1', 't1', 'rev1', FORM)).toBe(true)
     store.review('i1', [NAME], 'accept')
     expect(store.signedOver('i1', 't1', 'rev1', FORM)).toBe(false)
+  })
+})
+
+describe('kept by the file: a Files tab and a thread on one PDF share its rows', () => {
+  const PATH = '/w/Job/Bracket.pdf'
+  const fileOf = (path = PATH) => ({ at: 'file' as const, host: 'env_box', path })
+  type Source = Parameters<typeof fileKeyOf>[0]['source']
+  let n = 0
+  const canvasItem = (id: string, sessionId: string, workspaceId: string, source: Source, on: DatabaseSync = db) => {
+    n++
+    on.prepare(`INSERT INTO work_canvas_items (id, session_id, workspace_id, kind, title, source, state, position, rev, created_at, updated_at) VALUES (?, ?, ?, 'pdf', 'Bracket.pdf', ?, 'open', 0, 0, ?, ?)`).run(id, sessionId, workspaceId, JSON.stringify(source), n, n)
+    return { id, sessionId, workspaceId, source }
+  }
+  const gone = (id: string): void => void db.prepare(`DELETE FROM work_canvas_items WHERE id = ?`).run(id)
+  const count = (table: string, on: DatabaseSync = db): number => (on.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
+  const keysOf = (table: string, on: DatabaseSync = db): Array<[string, string | null]> => on.prepare(`SELECT item_id, file_key FROM ${table} ORDER BY rowid`).all().map((r) => [String(r.item_id), r.file_key as string | null])
+  const mark = (item: Parameters<typeof store.keep>[0], text: string): string => {
+    const k = store.keep(item)
+    return store.mark(k.id, k.sessionId, { page: 1, quads: [[0, 0, 1, 0.1]], text }, 'owner')
+  }
+  const marksOf = (item: Parameters<typeof store.keep>[0]): string[] => store.marks(store.keep(item).id).map((m) => m.text)
+
+  beforeEach(() => ensureCanvasTables(db))
+
+  it('reads and writes one set of rows through either item, each kept by the file\'s key', () => {
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
+    const a = store.keep(thread)
+    store.fill(a.id, a.sessionId, [{ key: NAME, value: 'Ada', source: src('profile') }], AGENT, FORM, false)
+    mark(thread, 'from the thread')
+    const b = store.keep(tab)
+    expect(b).toEqual(a)
+    expect(store.fields(b.id, FORM).find((f) => f.key === NAME)).toMatchObject({ proposed: 'Ada', state: 'proposed' })
+    // And back: what the tab does, the thread sees.
+    store.review(b.id, 'all', 'accept')
+    mark(tab, 'from the tab')
+    store.setMode(b.id, b.sessionId, 'writes')
+    expect(store.fields(store.keep(thread).id, FORM).find((f) => f.key === NAME)).toMatchObject({ value: 'Ada', state: 'accepted' })
+    expect(marksOf(thread)).toEqual(['from the thread', 'from the tab'])
+    expect(store.mode(store.keep(thread).id)).toBe('writes')
+    // A direct write through the thread is taken back through the tab.
+    const w = store.fill(a.id, a.sessionId, [{ key: BIZ, value: 'Ada LLC', source: src('profile') }], AGENT, FORM, true).written!
+    expect(store.undo(store.keep(tab).id, w.id)).toBe(true)
+    expect(store.fields(a.id, FORM).find((f) => f.key === BIZ)).toMatchObject({ value: 'Acme', state: 'accepted', provenance: [] })
+    const key = fileKeyOf(thread)
+    for (const table of ['work_pdf_items', 'work_pdf_fields', 'work_pdf_marks']) expect(new Set(keysOf(table).map(([, k]) => k))).toEqual(new Set([key]))
+  })
+
+  it('keeps an item with no file, or of another workspace, to its own rows', () => {
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    mark(thread, 'his')
+    const made = canvasItem('m1', 't1', 'w1', { at: 'thread' })
+    const other = canvasItem('o1', 't2', 'w2', fileOf())
+    expect(store.keep(made)).toEqual({ id: 'm1', sessionId: 't1', fileKey: '' })
+    expect(store.keep(other).id).toBe('o1')
+    expect(marksOf(made)).toEqual([])
+    expect(marksOf(other)).toEqual([])
+    mark(made, 'made')
+    expect(marksOf(thread)).toEqual(['his'])
+  })
+
+  it('keeps the rows while one item on the file is left, and drops them with the last', () => {
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
+    mark(thread, 'x')
+    gone('i1')
+    store.removeItems(['i1'])
+    expect(store.keep(tab)).toMatchObject({ id: 'tab1', sessionId: 'files:w1' })
+    expect(marksOf(tab)).toEqual(['x'])
+    // Closing a tab that only reads the rows takes nothing.
+    const again = canvasItem('i2', 't1', 'w1', fileOf())
+    gone('i2')
+    store.removeItems(['i2'])
+    expect(marksOf(tab)).toEqual(['x'])
+    gone('tab1')
+    store.removeItems(['tab1'])
+    for (const table of ['work_pdf_items', 'work_pdf_fields', 'work_pdf_marks']) expect(count(table)).toBe(0)
+    expect(again.id).toBe('i2')
+  })
+
+  it("passes a deleted thread's rows to the tab that shows its file; a thread alone on its file takes them with it", () => {
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
+    mark(thread, 'x')
+    const lone = canvasItem('i3', 't3', 'w1', fileOf('/w/Job/Other.pdf'))
+    mark(lone, 'y')
+    // The thread's canvas rows may still be there when the pillar hears: they are not heirs.
+    store.removeSessions(['t1', 't3'])
+    expect(store.keep(tab)).toMatchObject({ id: 'tab1', sessionId: 'files:w1' })
+    expect(marksOf(tab)).toEqual(['x'])
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM work_pdf_marks WHERE item_id = 'i3'`).get()).toEqual({ n: 0 })
+  })
+
+  it('fills the key at start for rows an older build made, and keeps two items that each had rows apart', () => {
+    const old = new DatabaseSync(':memory:')
+    // The tables as an older build made them: no file key.
+    old.exec(`CREATE TABLE work_pdf_items (item_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'suggests', signed_at INTEGER, signed_rev TEXT, signed_hash TEXT, written TEXT, labels TEXT, updated_at INTEGER NOT NULL)`)
+    old.exec(`CREATE TABLE work_pdf_fields (item_id TEXT NOT NULL, session_id TEXT NOT NULL, key TEXT NOT NULL, origin TEXT NOT NULL, type TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', page INTEGER NOT NULL DEFAULT 1, bbox TEXT, value TEXT, proposed TEXT, state TEXT NOT NULL, provenance TEXT NOT NULL DEFAULT '[]', by TEXT, updated_at INTEGER NOT NULL, PRIMARY KEY (item_id, key))`)
+    old.exec(`CREATE TABLE work_pdf_marks (id TEXT PRIMARY KEY, item_id TEXT NOT NULL, session_id TEXT NOT NULL, page INTEGER NOT NULL, quads TEXT NOT NULL, text TEXT NOT NULL DEFAULT '', note TEXT, by TEXT NOT NULL, at INTEGER NOT NULL)`)
+    ensureCanvasTables(old)
+    const first = canvasItem('i1', 't1', 'w1', fileOf(), old)
+    const second = canvasItem('i2', 't2', 'w1', fileOf(), old)
+    canvasItem('m1', 't1', 'w1', { at: 'thread' }, old)
+    old.prepare(`INSERT INTO work_pdf_items (item_id, session_id, updated_at) VALUES ('i1', 't1', 1)`).run()
+    old.prepare(`INSERT INTO work_pdf_fields (item_id, session_id, key, origin, type, state, updated_at) VALUES ('i1', 't1', ?, 'acroform', 'text', 'proposed', 1)`).run(NAME)
+    const oldMark = old.prepare(`INSERT INTO work_pdf_marks (id, item_id, session_id, page, quads, text, by, at) VALUES (?, ?, ?, 1, '[]', ?, 'owner', 1)`)
+    oldMark.run('k1', 'i1', 't1', 'one')
+    // A highlight with no item row (an older build made those), one on a thread's own file, one of an item that is gone.
+    oldMark.run('k2', 'i2', 't2', 'two')
+    oldMark.run('k3', 'm1', 't1', 'made')
+    oldMark.run('k4', 'gone', 't1', 'gone')
+    ensurePdfTables(old)
+    const s = new PdfStore(old)
+    const key = fileKeyOf(first)
+    // i2's item row was made last (for its highlight), so it keeps the file's rows; i1 keeps its own apart.
+    expect(keysOf('work_pdf_marks', old)).toEqual([['i1', ''], ['i2', key], ['m1', ''], ['gone', '']])
+    expect(keysOf('work_pdf_items', old).sort()).toEqual([['gone', ''], ['i1', ''], ['i2', key], ['m1', '']])
+    expect(keysOf('work_pdf_fields', old)).toEqual([['i1', '']])
+    // Each reads its own as before; a new tab on the file reads the keeper's.
+    expect(s.marks(s.keep(first).id).map((m) => m.text)).toEqual(['one'])
+    expect(s.pending(s.keep(first).id)).toBe(1)
+    expect(s.marks(s.keep(second).id).map((m) => m.text)).toEqual(['two'])
+    expect(s.keep(canvasItem('tab1', 'files:w1', 'w1', fileOf(), old)).id).toBe('i2')
+    // An older build still writes by its own columns; the next start fills the key.
+    oldMark.run('k5', 'i2', 't2', 'later')
+    expect(keysOf('work_pdf_marks', old).at(-1)).toEqual(['i2', null])
+    ensurePdfTables(old)
+    expect(keysOf('work_pdf_marks', old).at(-1)).toEqual(['i2', key])
+    old.close()
+  })
+
+  it('re-points the key when the file is renamed, and a file new at the old name starts with none', () => {
+    const NEW = '/w/Job/Bracket final.pdf'
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
+    mark(thread, 'x')
+    moveFileKeys(db, PDF_KEYED, fileOf(), fileOf(NEW))
+    // As Files does next: the items name the new path.
+    db.prepare(`UPDATE work_canvas_items SET source = ?`).run(JSON.stringify(fileOf(NEW)))
+    const moved = { ...tab, source: fileOf(NEW) }
+    expect(store.keep(moved)).toMatchObject({ id: 'i1', fileKey: fileKeyOf(moved) })
+    expect(marksOf(moved)).toEqual(['x'])
+    expect(marksOf(canvasItem('i9', 't9', 'w1', fileOf()))).toEqual([])
+    expect(keysOf('work_pdf_marks')).toEqual([['i1', fileKeyOf(moved)]])
+  })
+
+  it('lets a moving thread take the rows it shares and leaves the tab its own, with new ids on what stays twice', () => {
+    const host = { db } as never
+    const tab = canvasItem('tab1', 'files:w1', 'w1', fileOf())
+    const thread = canvasItem('i1', 't1', 'w1', fileOf())
+    const id = mark(tab, 'the tab kept it')
+    const rows = Object.fromEntries(registered.map((m) => [m.id, m.rows!(host, ['t1'])]))
+    expect(rows['pdf-items']).toEqual([expect.objectContaining({ item_id: 'i1', session_id: 't1', file_key: null })])
+    expect(rows['pdf-marks']).toEqual([expect.objectContaining({ item_id: 'i1', session_id: 't1', text: 'the tab kept it', file_key: null })])
+    expect((rows['pdf-marks'][0] as { id: string }).id).not.toBe(id)
+    for (const m of registered) m.drop!(host, ['t1'])
+    expect(marksOf(tab)).toEqual(['the tab kept it'])
+    // The tab closes and the thread keeps them; the thread moves, takes them, and they pass to a new tab here.
+    gone('tab1')
+    store.removeItems(['tab1'])
+    expect(store.keep(thread)).toMatchObject({ id: 'i1', sessionId: 't1' })
+    mark(thread, 'the thread kept it')
+    const tab2 = canvasItem('tab2', 'files:w1', 'w1', fileOf())
+    const taken = registered.find((m) => m.id === 'pdf-marks')!.rows!(host, ['t1']) as Array<{ id: string; item_id: string }>
+    expect(taken.map((r) => r.item_id)).toEqual(['i1', 'i1'])
+    for (const m of registered) m.drop!(host, ['t1'])
+    expect(store.keep(tab2)).toMatchObject({ id: 'tab2', sessionId: 'files:w1' })
+    expect(store.marks('tab2').map((m) => m.id).filter((x) => taken.some((t) => t.id === x))).toEqual([])
+    expect(marksOf(tab2)).toEqual(['the tab kept it', 'the thread kept it'])
   })
 })

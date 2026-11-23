@@ -1,8 +1,9 @@
 # Work: documents
 
-Milestone 20 of the Work plan. The document kind of canvas item, the Docs
-view of a linked Work workspace, the agent's document tools, and LifeOS
-desktop's notes on the same editor. Built on the shared block editor
+Milestone 20 of the Work plan. The document kind of canvas item, the agent's
+document tools, and LifeOS desktop's notes on the same editor. The Docs view
+it also built folded into the Files place at the Files plan's F6 ("Where the
+Docs view went", below). Built on the shared block editor
 (work-kit's `editor` and `collab`, M16), the Work service (M18,
 [work-service.md](work-service.md)) and history and branches (M19,
 [work-history.md](work-history.md)). [work.md](work.md) says how the `docs`
@@ -15,7 +16,7 @@ pillar is mounted.
 | The wire | `src/shared/contract-work-docs.ts`: `work.docs.{open,token,connect,send,recv,close,threads,thread,mode,rename,dismiss,create,find,views,saveView,dropView}` and the `work.docs` push |
 | Main's module | `src/main/server/work/docs/`: `index.ts` (the methods), `find.ts` (finding documents, saved views), `target.ts` (what a source names), `relay.ts` (the socket over the link), `threads.ts` (comment rows), `state.ts` (mode, the last write, the relay), `tools.ts` (the agent's tools) |
 | The service's routes | `src/main/server/work/docs/serviceRoutes.ts`: `/internal/docs/{read,write,mark}` on the Unix socket, behind the secret, listed in `service/routes/index.ts` |
-| The canvas and the view | `src/renderer/src/work/docs/`: `canvas.ts`, `DocumentCanvas.tsx`, `DocsView.tsx`, `finder.ts` (the view's state), `view.ts`, `host.ts` (the calls and `RelaySocket`), `threads.ts`, `review.ts` |
+| The canvas | `src/renderer/src/work/docs/`: `canvas.ts`, `DocumentCanvas.tsx`, `host.ts` (the calls and `RelaySocket`), `threads.ts`, `review.ts` |
 | LifeOS desktop | `apps/desktop/src/renderer/src/components/shared-doc.tsx` (lazy), `doc-editor.tsx` (`SharedDocEditor`), `project-sheets.tsx` (the note sheet's choice) |
 
 ## Sources
@@ -25,8 +26,8 @@ LifeOS project note that is one (`table: 'projectDocs'`: `projectDocs.open`
 makes a markdown note a document once LifeOS's `blockDocs` is on, and
 answers null before; the item then says LifeOS keeps it as text), or a
 `.tcdoc` on this host inside the caller's path fence. Every method names the
-source, not a canvas item, so the Docs view opens a document with no
-thread. The kind also claims Word (`.docx`, `.doc`), OpenDocument, RTF,
+source, not a canvas item, so a Files tab and a project's page open a
+document with no thread. The kind also claims Word (`.docx`, `.doc`), OpenDocument, RTF,
 markdown and text files: its body makes such a file a `.tcdoc` beside it and
 the item reopens on that
 (work-formats.md "Import and export"). A Google Doc opens on a mirror
@@ -100,7 +101,7 @@ place for a LifeOS document). What it tells the pane:
   frame (`DocumentFrame`) is marked `data-editor-keys`, `document` when he
   may edit and `read` when he may not, so ⌘B is bold and ⌘K a link there
   and not Sidebar and Search ([work-editors.md](work-editors.md) "Who hears
-  a key"). The Docs view draws the same frame, so the rule holds there too.
+  a key"). A project's page draws the same frame, so the rule holds there too.
 - **Export…** in the pane's More, File → Export… and ⇧⌘E open Preview on
   the format he last used: the body answers the `export` command
   (`useWorkCommands`).
@@ -164,72 +165,74 @@ for as long as the document is the same one:
   Office renderer is registered); headers, footers and columns a Word file
   carried are not counted in the lines.
 
-## The Docs view
+## Where the Docs view went
 
-Everything the workspace holds, one line each (see "Finding documents"),
-grouped by project by default with loose ones under "No project", newest
-edit first. A LifeOS document, a `.tcdoc` or a Google Doc opens right in
-the view, in the same editor, with a Docs control to go back; an item a
-thread holds (a form, a dashboard, a Google or Microsoft file) opens that
-thread; anything else starts a thread about it. The header carries the
-search, Filter, View and New (a LifeOS document called "Untitled", opened
-at once); on a document it carries Ask (a thread about it). Suggestions
-are stepped in a thread's canvas, where the agent works: the view draws the
-text as it stands.
+The Docs row is gone from the column (F6 of the Files plan,
+[work-files.md](work-files.md)). What it did is done in the Files place:
+
+| The Docs view | Now |
+|---|---|
+| the list of LifeOS documents and sheets | the LifeOS place, its projects as folders |
+| the search, titles and words inside | Files' search (`/` or ⌘F, Return), LifeOS among its sources |
+| Filter: kind, edited within, shared | the search's bar: Kind, When it changed (a span kept as its word), Others can open |
+| Filter: place, project, last edited by, needs review | the bar's More: Place, Project, Changed by, Needs review |
+| saved views | saved searches, the same `work_docs_views` rows (work-files.md "Search and Go to") |
+| group, sort, list or table | the page's view options and view switch |
+| a document opened in place | a Files tab of its own |
+| New | New in the LifeOS place |
+| Space or X to pick, ⌘A, Escape | Files' selection; Space is Quick Look |
+| Ask on the picked rows, a chip each, eight at most | the selection bar's Ask, the same |
+
+What it did that Files does not, and why, is in work-files.md "Search and
+Go to" ("What a saved view says that Files does not"). A way in that still
+names the view (`openWorkView({view: 'docs', doc})`, a search hit or a
+window from a release behind) opens the document in a Files tab, or the
+LifeOS place when it names none (work/shell/WorkViewPage.tsx,
+`filesOfDocs` in work/files/openFrom.ts).
 
 ## Finding documents
 
-One list per Work workspace, built by the host (`work.docs.find
-{workspaceId, query?}`, `src/main/server/work/docs/find.ts`) and judged by
-pure rules both sides share (`src/shared/work/docFind.ts`: `FindEntry`,
-`FindFilter`, `findIn`, `groupRows`). Each place is searched where its text
-lives:
+One list per Work workspace, built by the host
+(`src/main/server/work/docs/find.ts`) for `doc_find`, and for a project's
+link picker through `work.docs.find {workspaceId, query?}` (which a window a
+release behind also reads), judged by pure rules both sides share
+(`src/shared/work/docFind.ts`: `FindEntry`, `FindFilter`, `findIn`). Each
+place is searched where its text lives:
 
 | Place | What is listed | What a search reads |
 |---|---|---|
 | LifeOS | the sector's documents and sheets, up to 300 of each, newest edit first (`catalog:list`, one table 50 rows a page so each call stays inside a query's read limits; a row whose project moved to another sector is held to its project's sector), each with who last changed it, its open comment threads and its waiting suggestions; kept on the host 30 s, read afresh on `refresh` | titles here; a document's text through Convex's full-text index over its plain projection (`catalog:search`, index `docs.search_plain`), as the Work service last stored it, keeping only documents that hold every word. A sheet's cells are not searched. |
-| The folder | files under the workspace's folder whose kind a canvas opens, by extension (4 folders deep, 2,000 files or 20,000 entries looked at; hidden folders and `node_modules` skipped; the walk is kept 10 s and shared while on its way) | titles; a `.tcdoc`'s text through the Work service and a `.csv`'s from disk, the newest 200, kept in memory by path and change time, 32 MB at most across the host, least read dropped first |
+| The folder | files under the workspace's folder whose kind a canvas opens, by extension, found by Files' own walk (`walkNames`, files/search.ts: its caps, hidden names and links left out as a listing leaves them; the walk is kept 10 s and shared while on its way) | titles; a `.tcdoc`'s text through the Work service and a `.csv`'s from disk, the newest 200, kept in memory by path and change time, 32 MB at most across the host, least read dropped first |
 | Threads | the workspace's canvas items that live elsewhere: Google, Microsoft, a file outside the folder (listed under Thread), and what a thread made (forms, dashboards) | titles only |
 
 Live guest links mark their LifeOS items `guest`; a held act still waiting
 (or failed) whose payload names an entry's id, path or Google file as a
 whole value counts against it (`held`). A remote key is held to the path
 fence file by file, so a folder the fence denies inside the workspace's
-folder shows nothing. Titles match as he types, in the window;
-the text matches come back once typing rests 150 ms, with the words around
-the first match, which the row shows under its title. Title matches sort
-first. The list is read afresh when the view opens, when the window comes back,
-and when LifeOS's `catalog:stamp` (the sector's newest edited row, held
-live as a cheap signal) moves; a reply older than one already shown is
-dropped, and a row a search or filter hides leaves the pick.
+folder shows nothing. With a query, the text matches come back with the
+words around the first match; title matches sort first.
 
 **Filters**, all optional and combinable (`FindFilter`): kind (document,
 sheet, PDF, deck, media, recording, form, dashboard), project (or none),
 place (LifeOS, Folder, Google, Microsoft, Thread), who last edited (him, an
 agent, a guest), edited within a span (past day to past year) or between
-dates (the tool's), shared or guest-linked, needs review (open comments or
-waiting suggestions), held. The Filter menu offers only the kinds, places
-and projects the list holds. **View**: group by project, kind, date edited,
-place or none; sort by date edited, date created or name; list or table
-(the table drops the column the grouping already names). **Saved views**
-keep the search, filters, grouping, order and layout under a name, with
-the workspace (`work_docs_views`; `work.docs.views`, `saveView`,
-`dropView`; at most 50), named in a dialog from the View menu.
+dates, shared or guest-linked, needs review (open comments or waiting
+suggestions), held. **Saved views** keep a search, its filters and the
+grouping, order and layout the Docs view drew under a name, with the
+workspace (`work_docs_views`, at most 50). Files reads and writes them as
+its saved searches; `work.docs.views`, `saveView` and `dropView` stay for a
+window a release behind.
 
-**Keyboard**: `/` puts the caret in the search; ↓ or Return moves into the
-list; ↑ ↓ move between rows, Return opens, Space or X picks a row (Shift for
-a range), ⌘A picks all shown, Escape clears the pick, then the search.
-**Picking**: the box on a row's hover, Shift-click for a range; the header
-then shows the count, Ask (one new thread with each picked item as a chip,
-up to the composer's eight: `startThread` takes several) and Clear.
-
-The window keeps the spec, saved view and pick per workspace for its life
-(`work/docs/finder.ts`). Another screen that wants a document by name (an
-@ mention) calls `work.docs.find` and `findIn` the same way.
+**The same rows as Files' search.** For the same words `doc_find` and
+`work.files.search` find the same LifeOS rows (the same catalog read,
+`lifeosCatalog`, and the same `catalog:search`) and the same files of the
+workspace's folder (the same walk); `places/lifeos.test.ts` holds them to
+it. `doc_find` keeps what a thread reads beyond that: a `.tcdoc`'s and a
+`.csv`'s text, comments, held acts, and the items threads hold.
 
 ## The tools
 
-`doc_find` is the Docs view's search for the agent ("the budget sheet from
+`doc_find` is the agent's search of the workspace ("the budget sheet from
 last month" is `{query: "budget", kinds: ["sheet"], edited_after:
 "2026-10-01"}`): the same filters, a project by name or id, a sort and a
 limit, each line ending with the source `canvas_open` takes. A workspace's

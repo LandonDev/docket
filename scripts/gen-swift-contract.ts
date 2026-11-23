@@ -88,6 +88,7 @@ import { TurnPassSchema } from '../src/shared/turnpass'
 import { ModelPolicySchema, OrchestrationRulesSchema } from '../src/shared/rules'
 import { MacBridgePolicySchema } from '../src/shared/contract-macbridge'
 import * as W from '../src/shared/wireSchemas'
+import { FolderRefSchema } from '../src/shared/contract-work-files'
 import { FrameTableSchema } from '../src/shared/contract-work-media'
 import { CanvasItemSchema, CanvasSourceSchema, ContextChipSchema } from '../src/shared/work/canvas'
 import { SessionScopeSchema, WorkspaceKindSchema } from '../src/shared/work/ids'
@@ -537,6 +538,36 @@ export const SUBSET: SubsetEntry[] = [
   method('work.money.state', W.MoneyStateSchema),
   method('work.money.parse', W.MoneyReceiptFieldsSchema),
   method('work.money.receive', W.MoneyReceivedSchema),
+  // the Files place on the phone (the files pillar's F9, docs/agents/work-files.md "The phone"): places, folders and
+  // lenses, a file's bytes and previews, the marks, New, rename, Trash and Put back, and an upload into a folder
+  type('FolderRef', FolderRefSchema),
+  type('FilePlace', W.FilePlaceSchema),
+  type('FileEntry', W.FileEntrySchema),
+  type('FilesListing', W.FilesListingSchema),
+  type('FileRead', W.FileReadSchema),
+  type('FilePreview', W.FilePreviewPhoneSchema),
+  type('FileDone', W.FileDoneSchema),
+  type('FilesPlaces', W.FilesPlacesPhoneSchema),
+  type('FilesHome', W.FilesHomeSchema),
+  type('FilesOpened', W.FilesOpenedPhoneSchema),
+  method('work.files.places', W.FilesPlacesPhoneSchema),
+  method('work.files.list', W.FilesListingSchema),
+  method('work.files.stat', W.FilesStatSchema),
+  method('work.files.home', W.FilesHomeSchema),
+  method('work.files.search', W.FilesListingSchema),
+  method('work.files.threads', W.FilesThreadsSchema),
+  method('work.files.read', W.FileReadSchema),
+  method('work.files.preview', W.FilePreviewPhoneSchema),
+  method('work.files.thumbs', W.FilesThumbsSchema),
+  method('work.files.open', W.FilesOpenedPhoneSchema),
+  method('work.files.star', W.FilesStarredSchema),
+  method('work.files.seen', z.null()),
+  method('work.files.make', W.FileDoneSchema),
+  method('work.files.rename', W.FileDoneSchema),
+  method('work.files.move', W.FileDoneSchema),
+  method('work.files.trash', W.FileDoneSchema),
+  method('work.files.restore', W.FileDoneSchema),
+  method('work.files.upload', W.FilesUploadBegunSchema),
   method('away.get', W.AwaySnapshotSchema),
   method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state })),
   // live video of the computer an agent drives (docs/agents/live-video.md): a stream's ticket, and who is driven where

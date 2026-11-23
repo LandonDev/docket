@@ -210,8 +210,9 @@ const madeOf = (ctx: Pick<WorkCtx, 'dataDir' | 'host'>, path: string, file: stri
  * The threads of a Work workspace here whose open items show a Teams file, newest first, each with its item: the file
  * itself (in place, or its Office app's), the copy he allowed in the thread's own folder, or the `.tcdoc` a Word file
  * became beside either. The Files view reopens the first of them that is not archived instead of making another.
+ * `reaches` is the caller's own reach of a path of this host (a remote key's roots).
  */
-export function threadsHolding(ctx: Pick<WorkCtx, 'canvas' | 'dataDir' | 'host'>, workspaceId: string, file: CanvasSource): { sessionId: string; itemId: string; source: CanvasSource }[] {
+export function threadsHolding(ctx: Pick<WorkCtx, 'canvas' | 'dataDir' | 'host'>, workspaceId: string, file: CanvasSource, reaches: (path: string) => boolean = () => true): { sessionId: string; itemId: string; source: CanvasSource }[] {
   if (file.at !== 'file') return []
   const out = new Map<string, { itemId: string; source: CanvasSource }>()
   for (const item of ctx.canvas.forWorkspace(workspaceId, { open: true })) {
@@ -219,7 +220,8 @@ export function threadsHolding(ctx: Pick<WorkCtx, 'canvas' | 'dataDir' | 'host'>
     const s = item.source
     const path = canvasSourcePath(s)
     if (path === null || (s.at !== 'file' && s.at !== 'microsoft')) continue
-    const here = s.host === file.host && (path === file.path || (s.host === ctx.host && madeOf(ctx, path, file.path)))
+    // A document an import made is found by a path this host stored: one the caller could not name itself is never looked at for it.
+    const here = s.host === file.host && (path === file.path || (s.host === ctx.host && reaches(path) && madeOf(ctx, path, file.path)))
     const copy = s.host === ctx.host && s.at === 'file' && dirname(path) === copyFolderOf(ctx.dataDir, item.sessionId, file)
     if (here || copy) out.set(item.sessionId, { itemId: item.id, source: s })
   }
@@ -394,7 +396,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       if (!p.on) dropCopies(ctx, { workspaceId: p.workspaceId as string })
       return handled({ on: copyAllowed(ctx.db, p.workspaceId as string) })
     case 'work.office.filesThreads':
-      return handled({ threads: threadsHolding(ctx, p.workspaceId as string, p.source as CanvasSource) })
+      return handled({ threads: threadsHolding(ctx, p.workspaceId as string, p.source as CanvasSource, (path) => by.kind !== 'remote' || !!by.peer || ctx.reaches(by, path)) })
     case 'work.office.filesCopy': {
       const owner = p.sessionId as string
       // His own window copies into a Files pane as well; a thread copies only into itself.

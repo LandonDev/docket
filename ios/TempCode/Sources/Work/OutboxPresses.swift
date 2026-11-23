@@ -100,8 +100,10 @@ struct OutboxUndoInset: ViewModifier {
     }
 }
 
-private struct UndoCapsule: View {
+/// One line and Undo on glass (the Outbox's Send, the Files place's Delete).
+struct UndoCapsule: View {
     let line: String
+    var identifier = "outbox-undo"
     let undo: () -> Void
 
     var body: some View {
@@ -116,7 +118,7 @@ private struct UndoCapsule: View {
                 .foregroundStyle(.tint)
                 .frame(minHeight: 44)
                 .buttonStyle(.pressable)
-                .accessibilityIdentifier("outbox-undo")
+                .accessibilityIdentifier(identifier)
         }
         .padding(.horizontal, Layout.textEdge)
         .frame(minHeight: 44)

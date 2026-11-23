@@ -7,7 +7,7 @@ import type { Capability } from '@shared/capabilities'
 import { ThreadSpawnArgsSchema, ThreadStartArgsSchema, workAskArgs, type CrossHostCallParams, type CrossHostPeerMethod } from '@shared/contract-crosshost'
 import type { MacBridgePolicy } from '@shared/contract-macbridge'
 import type { SessionMeta } from '@shared/events'
-import { handled, NOT_HANDLED, WORK_SETTING_KEY, type WorkScope } from '@shared/work'
+import { filesPaneOf, handled, mailPaneOf, NOT_HANDLED, WORK_SETTING_KEY, type WorkScope } from '@shared/work'
 import { appStartThread, setAppCrossHost } from '../apptools'
 import { CrossHostAgents } from '../crossHostAgents'
 import { openDb, Store } from '../db'
@@ -414,6 +414,21 @@ describe('ctx.peer: a Work tool on one host calls the same module on another', (
     const detached = box.work.ctx.peer
     await expect(detached(MAC).call('office', 'rangeWrite', {})).rejects.toThrow(/called on a tool's own ctx/)
     expect(seen).toEqual([])
+  })
+
+  it("takes a workspace's Files pane in a thread's place: his window's press, under the same two gates, and no other owner", async () => {
+    const { box, workspaceId } = await setUp()
+    const pane = { scope: { sessionId: filesPaneOf(workspaceId), workspaceId } }
+    const asPane = (scope: { sessionId: string; workspaceId: string | null }) => box.work.ctx.peer.call({ scope }, MAC).call('office', 'rangeRead', { range: 'A1' })
+    // The workspace's own say first, as for a thread.
+    await expect(asPane(pane.scope)).rejects.toThrow(/may not use that host's desktop/)
+    box.work.ctx.settings.set(workspaceId, { mayUseDesktop: [MAC] })
+    expect(await asPane(pane.scope)).toMatchObject({ on: MAC })
+    expect(seen.at(-1)).toMatchObject({ host: MAC, method: 'work.office.rangeRead', by: { kind: 'remote', peer: BOX } })
+    // A pane that names another workspace than its own, a pane of no Work workspace here, and a Mail pane are no caller.
+    await expect(asPane({ sessionId: filesPaneOf(workspaceId), workspaceId: 'another' })).rejects.toThrow(/is not a Work thread/)
+    await expect(asPane({ sessionId: filesPaneOf('nope'), workspaceId: 'nope' })).rejects.toThrow(/is not a Work thread/)
+    await expect(asPane({ sessionId: mailPaneOf(workspaceId), workspaceId })).rejects.toThrow(/is not a Work thread/)
   })
 
   it('the real module list answers a method no pillar has built as not built', async () => {

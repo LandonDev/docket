@@ -4,8 +4,8 @@ import type { FileForm } from '@shared/work/fileForms'
 
 /**
  * What a canvas kind's own pillar tells Files (docs/agents/work-files.md "The seam with the editors"): how to
- * make a new file of its kind, how to draw a file's page as a picture, and what to re-key when a file is
- * renamed or moved. Three registries, each empty until something registers. They are this file's own state
+ * make a new file of its kind, how to draw a file's page as a picture, what to re-key when a file is
+ * renamed or moved, and how many of an agent's suggestions wait in a file. Four registries, each empty until something registers. They are this file's own state
  * and no module's `start` touches them, so a pillar may register when it loads, before or after the files
  * module starts, and is kept either way.
  *
@@ -27,8 +27,12 @@ export interface FileMaker {
   blank(target: FileMakeTarget): Promise<void>
 }
 
-/** One page of a file as a PNG, `width` pixels wide; null when it has no such page or cannot be drawn here. */
-export type FilePreviewer = (source: CanvasSource, opts: { page: number; width: number; signal?: AbortSignal }) => Promise<Uint8Array | null>
+/**
+ * One page of a file as a PNG, `width` pixels wide; null when it has no such page or cannot be drawn here. A render
+ * that knows how many pages the file has says so with `{ png, pages }`, which a preview's pager reads; a bare PNG
+ * is a file of one page.
+ */
+export type FilePreviewer = (source: CanvasSource, opts: { page: number; width: number; signal?: AbortSignal }) => Promise<Uint8Array | { png: Uint8Array; pages: number } | null>
 
 /**
  * A file was renamed or moved: re-key every row and folder this pillar keeps by the file's path. Called inside
@@ -37,9 +41,20 @@ export type FilePreviewer = (source: CanvasSource, opts: { page: number; width: 
  */
 export type FileMoved = (from: CanvasSource, to: CanvasSource, at: { db: DatabaseSync; dataDir: string; host: string }) => void
 
+/**
+ * How many of an agent's suggestions wait in files, from the pillar's own tables and never a file's bytes: `count`
+ * for the rows on screen (an answer in their order, 0 for a file it keeps none for), `files` for Home's Waiting on
+ * you (every file of this host it keeps some for, `most` at most, by its source).
+ */
+export interface FileWaiting {
+  count(sources: readonly CanvasSource[], db: DatabaseSync): number[]
+  files(db: DatabaseSync, host: string, most: number): { source: CanvasSource; count: number }[]
+}
+
 const makers = new Map<CanvasKind, FileMaker>()
 const previewers = new Map<CanvasKind, FilePreviewer>()
 const moved = new Set<FileMoved>()
+const waiting = new Set<FileWaiting>()
 
 /** A kind's maker; a later registration for the kind replaces the earlier. Returns its off. */
 export function registerFileMaker(kind: CanvasKind, maker: FileMaker): () => void {
@@ -59,6 +74,12 @@ export function registerFileMoved(fn: FileMoved): () => void {
   return () => void moved.delete(fn)
 }
 
+/** One more pillar that keeps suggestions by file; every one registered is asked. Returns its off. */
+export function registerFileWaiting(w: FileWaiting): () => void {
+  waiting.add(w)
+  return () => void waiting.delete(w)
+}
+
 /** The registered maker of a kind that writes this form, or null: Files then falls back to its own blank file, if it ships one. */
 export const fileMakerFor = (kind: CanvasKind, form: FileForm): FileMaker | null => {
   const maker = makers.get(kind)
@@ -66,3 +87,4 @@ export const fileMakerFor = (kind: CanvasKind, form: FileForm): FileMaker | null
 }
 export const filePreviewerFor = (kind: CanvasKind): FilePreviewer | null => previewers.get(kind) ?? null
 export const fileMovedHooks = (): readonly FileMoved[] => [...moved]
+export const fileWaitingHooks = (): readonly FileWaiting[] => [...waiting]

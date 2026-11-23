@@ -148,7 +148,7 @@ export function openItemIn(workspaceId: string, item: ProjectItem, project: Pick
     // A LifeOS document opens here, in the editor, with the way back to its project.
     case "doc":
       return openDoc(workspaceId, { source: { at: "lifeos", table: "docs", id: item.id }, project: { id: project.id, name: project.name } });
-    // A sheet, a note and any other source open beside a thread: the press starts one with the item in it, as the Docs view does,
+    // A sheet, a note and any other source open beside a thread: the press starts one with the item in it,
     // in the project's own mirror, where the project's threads live.
     case "sheet":
       return void startIn(workspaceId, project, { kind: "selection", label, ref: { at: "lifeos", table: "sheets", id: item.id } });

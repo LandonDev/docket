@@ -50,7 +50,7 @@ export const canvas: WorkModule = {
         const { sessionId, draft, text, kinds } = req.params
         // The thread's scope is the fence: a thread with no reach (an unlinked code thread) is offered nothing.
         const reach = ctx.mentionReach(sessionId, draft)
-        return handled(reach ? await searchMentions(ctx, reach, text, { modules: WORK_MODULES, kinds }) : { hits: [], failed: [] })
+        return handled(reach ? await searchMentions(ctx, reach, text, { modules: WORK_MODULES, kinds, by }) : { hits: [], failed: [] })
       }
     }
     return NOT_HANDLED

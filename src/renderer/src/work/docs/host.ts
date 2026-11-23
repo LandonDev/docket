@@ -3,7 +3,7 @@ import type { CanvasSource } from "@shared/work";
 import { registry } from "../../lib/connection";
 
 /**
- * The host's side of a document, as the canvas and the Docs view use it
+ * The host's side of a document, as the canvas and a project's page use it
  * (src/shared/contract-work-docs.ts; the host's work/docs). Every call names
  * the source, and goes to the host the thread or view lives on; a LifeOS
  * document another host serves is opened on that host's link instead

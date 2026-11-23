@@ -12,6 +12,8 @@ import type { BuildFacts } from './deployDrift'
 import { NoticeKindSchema, type AgentEvent, type SessionMeta } from './events'
 import { QueueAddResultSchema } from './wireSchemas'
 import * as W from './wireSchemas'
+import type { FileEntry, FilePlace } from './work/files'
+import type { FileBytes as FilesBytes, FileDone, FilesListing } from './contract-work-files'
 
 // Every schema the 2026-10-21/22 features added parses a value typed by its
 // interface and gives it back unchanged: the type-level pins prove the keys,
@@ -309,5 +311,53 @@ describe("an approval's choices", () => {
     const asked: AgentEvent[] = [base, { ...base, choices: 'run-skip' }, { ...base, choices: 'allow-deny' }]
     for (const row of asked) expect(W.WireAgentEventSchema.parse(row)).toEqual(row)
     expect(() => W.WireAgentEventSchema.parse({ ...base, choices: 'yes-no' })).toThrow()
+  })
+})
+
+describe('the Files place on the phone (F9)', () => {
+  const place: FilePlace = {
+    id: 'folder',
+    kind: 'folder',
+    name: 'Dummy Esports',
+    host: 'box',
+    env: 'env_box',
+    shared: false,
+    can: ['make', 'upload', 'rename', 'move', 'copy', 'edit', 'trash', 'restore', 'purge'],
+    state: { state: 'ok' },
+    root: { at: 'place', id: 'folder' }
+  }
+  const folder: FileEntry = { key: 'file:box:/w/Budgets', ref: null, folder: { at: 'file', host: 'box', path: '/w/Budgets' }, name: 'Budgets', kind: 'folder', changed: 1_700_000_000_000 }
+  const file: FileEntry = {
+    key: 'lib:esportsstaff:Budgets/2026.xlsx',
+    ref: { at: 'file', host: 'mac', path: '/Users/x/Esports Staff/Budgets/2026.xlsx' },
+    folder: null,
+    name: '2026.xlsx',
+    kind: 'sheet',
+    size: 48_213,
+    changed: 1_700_000_000_000,
+    shared: true,
+    state: { is: 'present', who: 'Esports Staff' },
+    where: { place: 'teams~1', name: 'Esports Staff', trail: ['Budgets'] },
+    starred: true
+  }
+
+  it('parse a place list, a listing and a change as the host answers them', () => {
+    const asleep: FilePlace = { ...place, id: 'mac~abc', kind: 'teams', name: 'General', host: 'MacBook', env: 'env_mac', shared: true, can: [], state: { state: 'asleep', at: 5 }, root: { at: 'file', host: 'mac', path: '/Users/x/General' }, key: 'esportsstaffgeneral', group: 'Esports Staff', web: null }
+    expect(W.FilesPlacesPhoneSchema.parse({ host: 'box', places: [place, asleep], rev: 3, sources: [] })).toEqual({ host: 'box', places: [place, asleep], rev: 3 })
+    const listing: FilesListing = { entries: [folder, file], next: 'c1', place: 'Dummy Esports', trail: [{ name: 'Dummy Esports', at: { at: 'place', id: 'folder' } }] }
+    expect(W.FilesListingSchema.parse(listing)).toEqual(listing)
+    expect(W.FilesListingSchema.parse({ entries: [], stale: true })).toEqual({ entries: [], stale: true })
+    const done: FileDone = { entries: [file], refused: [{ name: 'Old.pdf', text: 'Delete it in Teams.' }], trashed: ['t1'], op: 'op_12345678' }
+    expect(W.FileDoneSchema.parse(done)).toEqual(done)
+  })
+
+  it('read a preview either way, a read frame, an open and the push', () => {
+    expect(W.FilePreviewPhoneSchema.parse({ png: 'iVBOR', pages: 3, width: 800, height: 1100 })).toEqual({ png: 'iVBOR', pages: 3, width: 800, height: 1100 })
+    expect(W.FilePreviewPhoneSchema.parse({ none: 'No preview for this file.' })).toEqual({ none: 'No preview for this file.' })
+    const frame: FilesBytes = { data: 'aGk=', size: 2, version: 'v1', changed: 10, end: true, locked: 'A remote key cannot change this file.' }
+    expect(W.FileReadSchema.parse(frame)).toEqual(frame)
+    expect(W.FilesOpenedPhoneSchema.parse({ rev: 4, tabs: [], held: { sessionId: 's1', itemId: 'i1' } })).toEqual({ rev: 4, held: { sessionId: 's1', itemId: 'i1' } })
+    expect(W.WorkFilesPushSchema.parse({ push: 'work.files', workspaceId: 'w1', at: 'file:box:/w' })).toEqual({ push: 'work.files', workspaceId: 'w1', at: 'file:box:/w' })
+    expect(W.RemotePushSchema.options.map((o) => o.shape.push.value)).toContain('work.files')
   })
 })

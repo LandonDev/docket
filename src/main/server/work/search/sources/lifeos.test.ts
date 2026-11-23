@@ -199,7 +199,7 @@ describe('documents', () => {
       ['lifeos:docs:d2', 'Run of show', '…a budget line for pizza…', PURDUE],
       ['lifeos:docs:d9', 'Archive 2024', '…old budget notes…', PURDUE]
     ])
-    expect(hits[0].open).toEqual({ to: 'view', view: 'docs', with: { doc: { id: 'd1', title: 'Budget FY27' } } })
+    expect(hits[0].open).toEqual({ to: 'file', ref: { at: 'lifeos', table: 'docs', id: 'd1' }, name: 'Budget FY27' })
     expect(hits[0].chip).toEqual({ kind: 'doc', label: 'Budget FY27', ref: { at: 'lifeos', table: 'docs', id: 'd1' } })
     // one catalog search and one page of titles a sector in reach, and the one title that was not in a page
     expect(rig.asked.map((a) => `${a.fn}:${a.args.sector ?? a.args.id}`).sort()).toEqual(['catalog:search:cosmic', 'catalog:search:purdue', 'docs:get:d9', 'docs:list:cosmic', 'docs:list:purdue'])

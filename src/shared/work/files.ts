@@ -1,4 +1,4 @@
-import type { CanvasKind, CanvasSource } from './canvas'
+import type { CanvasKind, CanvasSource, ContextChip } from './canvas'
 
 /**
  * The Files place's grammar (docs/agents/work-files.md): what a place, a folder and a file are, which canvas
@@ -8,6 +8,9 @@ import type { CanvasKind, CanvasSource } from './canvas'
  */
 
 // ── what a file is ────────────────────────────────────────────────────
+
+/** Text a person writes: a thread's canvas still opens these as a document (`threadCanvasOf`), and a Files tab offers Open as a document. */
+export const PROSE_EXTS = ['md', 'markdown', 'txt'] as const
 
 /** What a row is, as its glyph and its kind's word say it. */
 export const ENTRY_KINDS = ['folder', 'document', 'sheet', 'deck', 'pdf', 'picture', 'video', 'audio', 'text', 'archive', 'other'] as const
@@ -27,9 +30,10 @@ export const ENTRY_KIND_WORDS: Record<EntryKind, string> = {
 }
 
 /**
- * The one table of file types: an extension's kind, and the canvas kind that opens it (null: no canvas shows
- * it, so it opens in its own app). Every other lookup reads this: the canvas registry (`kindForFile`, held to
- * it by registry.test.ts), the Docs finder (`kindOfFile`), the Teams view (`teamsCanvasOf`).
+ * The one table of file types: an extension's kind, and the canvas kind that shows it (null: it has no viewer
+ * of its own). Every other lookup reads this: the canvas registry (`kindForFile`, held to it by
+ * registry.test.ts), the Docs finder (`kindOfFile`), the Teams view (`teamsCanvasOf`). The `file` kind edits
+ * text in place and lists an archive; in a Files tab it also seats what has no viewer, as its facts (`seatOf`).
  */
 const BY_EXT = new Map<string, { kind: EntryKind; canvas: CanvasKind | null }>()
 const row = (kind: EntryKind, canvas: CanvasKind | null, exts: string): void => exts.split(' ').forEach((ext) => void BY_EXT.set(ext, { kind, canvas }))
@@ -44,10 +48,8 @@ row('picture', 'media', 'png jpg jpeg gif webp avif heic heif tif tiff bmp psd')
 row('picture', null, 'svg ico')
 row('video', 'media', 'mp4 m4v mov webm mkv mxf avi mts m2ts ogv')
 row('audio', 'meeting', 'wav mp3 m4a aac flac ogg opus wma aiff amr')
-// Text a person writes opens as a document until the `file` kind lands (F1b), when it is edited in place.
-row('text', 'document', 'md markdown txt')
-row('text', null, 'json xml html htm log tsv yaml yml toml ini css js jsx ts tsx py rb go rs java c h cpp sh sql')
-row('archive', null, 'zip tar gz tgz 7z rar')
+row('text', 'file', `${PROSE_EXTS.join(' ')} json xml html htm log tsv yaml yml toml ini css js jsx ts tsx py rb go rs java c h cpp sh sql`)
+row('archive', 'file', 'zip tar gz tgz 7z rar')
 
 /** A name's extension, lower case, no dot; '' when it has none (a leading dot is a hidden file's name, not an extension). */
 export function extOf(name: string): string {
@@ -67,8 +69,8 @@ function byMime(mime: string): { kind: EntryKind; canvas: CanvasKind | null } | 
   if (m.startsWith('image/')) return { kind: 'picture', canvas: 'media' }
   if (m.startsWith('video/')) return { kind: 'video', canvas: 'media' }
   if (m.startsWith('audio/')) return { kind: 'audio', canvas: 'meeting' }
-  if (m.startsWith('text/')) return { kind: 'text', canvas: null }
-  if (m === 'application/zip') return { kind: 'archive', canvas: null }
+  if (m.startsWith('text/')) return { kind: 'text', canvas: 'file' }
+  if (m === 'application/zip') return { kind: 'archive', canvas: 'file' }
   return null
 }
 
@@ -81,6 +83,20 @@ export function kindOfEntry(name: string, mime?: string): { kind: EntryKind; can
   const ext = extOf(name)
   if (ext) return BY_EXT.get(ext) ?? { kind: 'other', canvas: null }
   return (mime ? byMime(mime) : null) ?? { kind: 'other', canvas: null }
+}
+
+/** What a Files tab seats a file as: its kind's viewer, else the `file` kind, which shows any file (text to edit, its facts for the rest). Every file opens. */
+export const seatOf = (name: string, mime?: string): CanvasKind => kindOfEntry(name, mime).canvas ?? 'file'
+
+/**
+ * What a thread's canvas opens a file as. Only the Files pane makes `file` items until a thread has the tools
+ * for them (F5): till then text a person writes opens beside a thread as a document, as it always has, and
+ * nothing else the `file` kind shows opens there.
+ */
+export function threadCanvasOf(name: string, mime?: string): CanvasKind | null {
+  const { canvas } = kindOfEntry(name, mime)
+  if (canvas !== 'file') return canvas
+  return (PROSE_EXTS as readonly string[]).includes(extOf(name)) ? 'document' : null
 }
 
 /** Every extension the table knows for a kind (the guest's search filters by them). */
@@ -102,8 +118,8 @@ export const isHome = (kind: PlaceKind): boolean => HOMES.includes(kind)
 /** The ids of the places and lenses every workspace has; a library's is its own (`<host>~<hash>`), a Drive's `drive:<account>`, a project's `project:<id>`, a saved search's `search:<id>`. */
 export const PLACE = { folder: 'folder', lifeos: 'lifeos', home: 'home', recent: 'recent', starred: 'starred', mail: 'mail', made: 'made', trash: 'trash' } as const
 
-/** What a hand may ask of a place. */
-export const FILE_VERBS = ['make', 'upload', 'rename', 'move', 'copy', 'trash', 'restore', 'purge'] as const
+/** What a hand may ask of a place. `edit` is a file's own bytes replaced where it lies: an editor's save. */
+export const FILE_VERBS = ['make', 'upload', 'rename', 'move', 'copy', 'edit', 'trash', 'restore', 'purge'] as const
 export type FileVerb = (typeof FILE_VERBS)[number]
 
 /**
@@ -154,7 +170,14 @@ export interface FilePlace {
   web?: string | null
   /** how many files a lens holds, where its row says (From mail) */
   count?: number
+  /** what New offers here, as its host says it: only what opens ready to edit in this place */
+  makes?: MakeKind[]
 }
+
+/** What New makes. */
+export const MAKE_KINDS = ['document', 'sheet', 'deck', 'text', 'folder'] as const
+export type MakeKind = (typeof MAKE_KINDS)[number]
+export const MAKE_WORDS: Record<MakeKind, string> = { document: 'Document', sheet: 'Sheet', deck: 'Deck', text: 'Text file', folder: 'Folder' }
 
 /** The one state a row shows, at most: its bytes are in the cloud, suggestions wait, someone is in it, a thread is writing it. */
 export type EntryState = { is: 'cloud' } | { is: 'suggestions'; count: number } | { is: 'present'; who: string } | { is: 'writing' }
@@ -185,6 +208,8 @@ export interface FileEntry {
   /** a thread made it and he has not opened it */
   fresh?: boolean
   starred?: boolean
+  /** Home's Waiting on you: a thread's change to it waits in the Outbox for his press (a held `file.act`); the row opens that item */
+  held?: { id: string; verb: 'make' | 'rename' | 'move' | 'copy' }
 }
 
 /** One place two computers may both hold: a team or site and a folder or library of it, as either OneDrive layout names it ("RecWell-TeamRecWell" on a Mac is "RecWell" + "Team RecWell" under Windows). */
@@ -199,6 +224,13 @@ const innerPath = (top: string, path: string): string =>
     .normalize('NFC')
 
 /**
+ * A part of a key that is not its last: its `:` (and the `%` that writes it) is written out, so the part ends
+ * where the key's own `:` stands and no two refs share a key (a host named `a:b` with a path can never spell
+ * another host's file). A host's id, a place's key and a table's name hold neither, so their keys read as before.
+ */
+const word = (part: string): string => part.replaceAll('%', '%25').replaceAll(':', '%3A')
+
+/**
  * The one stable key of a file or folder. For a file in a library two computers hold (`lib`: the library's
  * place key and its path on the answering computer) it is the place and the path inside it, so a star is one
  * star whichever copy answers. `{ at: 'thread' }` names no file: an item made in a thread is keyed by its item.
@@ -206,20 +238,21 @@ const innerPath = (top: string, path: string): string =>
 export function refKey(ref: CanvasSource | FolderRef, lib?: { key: string; path: string }): string {
   switch (ref.at) {
     case 'file':
-      return lib ? `lib:${lib.key}:${innerPath(lib.path, ref.path)}` : `file:${ref.host}:${ref.path}`
+      return lib ? `lib:${word(lib.key)}:${innerPath(lib.path, ref.path)}` : `file:${word(ref.host)}:${ref.path}`
     case 'microsoft':
       if (ref.ref.kind === 'url') return `web:${ref.ref.url}`
-      return lib ? `lib:${lib.key}:${innerPath(lib.path, ref.ref.path)}` : `file:${ref.host}:${ref.ref.path}`
+      return lib ? `lib:${word(lib.key)}:${innerPath(lib.path, ref.ref.path)}` : `file:${word(ref.host)}:${ref.ref.path}`
     case 'lifeos':
-      return `lifeos:${ref.table}:${ref.id}`
+      return `lifeos:${word(ref.table)}:${ref.id}`
     case 'google':
       return `google:${ref.fileId}`
     case 'drive':
-      return `google:${ref.folderId}`
+      // Drive's word for the top of My Drive is every account's: the top is keyed by its account.
+      return ref.folderId === 'root' ? `google:root:${word(ref.account.toLowerCase())}` : `google:${ref.folderId}`
     case 'mail':
-      return `mail:${ref.messageId}:${ref.partId}`
+      return `mail:${word(ref.messageId)}:${ref.partId}`
     case 'frameio':
-      return `frameio:${ref.account}:${ref.fileId}`
+      return `frameio:${word(ref.account)}:${ref.fileId}`
     case 'browser':
       return `browser:${ref.host}:${ref.sessionId}`
     case 'project':
@@ -436,20 +469,21 @@ export function refusal(place: AskedOf, verb: FileVerb, entry?: AskedEntry | nul
   return null
 }
 
-const VERB_WORDS: Record<FileVerb, string> = { make: 'made', upload: 'uploaded', rename: 'renamed', move: 'moved', copy: 'copied', trash: 'deleted', restore: 'put back', purge: 'deleted for good' }
-function cannot(place: Pick<FilePlace, 'name' | 'vm'>, verb: FileVerb): Refusal {
-  if (place.vm) return { text: 'Files in the Windows VM cannot be changed from here yet. Open it there.', press: 'open-here' }
+const VERB_WORDS: Record<FileVerb, string> = { make: 'made', upload: 'uploaded', rename: 'renamed', move: 'moved', copy: 'copied', edit: 'changed', trash: 'deleted', restore: 'put back', purge: 'deleted for good' }
+function cannot(place: Pick<FilePlace, 'name' | 'vm' | 'can'>, verb: FileVerb): Refusal {
+  // A helper in the VM that changes nothing (one built before it could) is the VM's own sentence; one that does says what it does not.
+  if (place.vm && !place.can.length) return { text: 'Files in the Windows VM cannot be changed from here yet. Open it there.', press: 'open-here' }
   return { text: `Nothing can be ${VERB_WORDS[verb]} in ${place.name} from here.` }
 }
 
 /** Whether `place` does `verb` (`refusal` is null). */
 export const canDo = (place: AskedOf, verb: FileVerb, entry?: AskedEntry | null, to?: AskedOf | null): boolean => refusal(place, verb, entry, to) === null
 
-/** Who can open what is put in a shared place, as its question says it. */
-export function audienceOf(place: Pick<FilePlace, 'kind' | 'name' | 'group'>): string {
-  if (place.kind === 'teams') return 'Everyone in that team can open it.'
-  if (place.kind === 'onedrive') return 'Whoever you shared that folder with can open it.'
-  if (place.kind === 'drive') return 'Whoever that folder is shared with can open it.'
+/** Who can open what is put in a shared place, as its question says it; `named`: the team or folder by its name, as a held act's sentence says it. */
+export function audienceOf(place: Pick<FilePlace, 'kind' | 'name' | 'group'>, named = false): string {
+  if (place.kind === 'teams') return named ? `Everyone in ${place.group ?? place.name} can open it.` : 'Everyone in that team can open it.'
+  if (place.kind === 'onedrive') return named ? `Whoever you shared ${place.name} with can open it.` : 'Whoever you shared that folder with can open it.'
+  if (place.kind === 'drive') return named ? `Whoever ${place.name} is shared with can open it.` : 'Whoever that folder is shared with can open it.'
   return 'Others can open it.'
 }
 
@@ -464,6 +498,51 @@ export function questionFor(place: AskedOf & Pick<FilePlace, 'group'>, verb: Fil
   if (verb === 'trash' && (place.shared || entry?.shared)) return 'Delete for everyone?'
   return null
 }
+
+// ── a file in a message ───────────────────────────────────────────────
+
+/** The most files one message is about: the composer's own most chips. */
+export const FILE_CHIPS_MOST = 8
+export const TOO_MANY_FILES = `A message can hold ${FILE_CHIPS_MOST} files at most.`
+export const NO_FOLDER_CHIPS = 'Only files go in a message, not folders.'
+
+/** A file's path on its host's disk, where its source names one. */
+const diskPath = (ref: CanvasSource): string | null => (ref.at === 'file' ? ref.path : ref.at === 'microsoft' && ref.ref.kind === 'path' ? ref.ref.path : null)
+
+/** A file's path inside a place in words (`Events/Poster.png`), from the place's top folder; its name alone where the place has no folder on a disk. */
+function pathInPlace(place: Pick<FilePlace, 'root'>, ref: CanvasSource, name: string): string {
+  const top = place.root.at === 'file' ? place.root.path.replace(/[\\/]+$/, '') : null
+  const path = diskPath(ref)
+  if (top === null || path === null || !path.startsWith(top) || !/^[\\/]/.test(path.slice(top.length))) return name
+  return path.slice(top.length).split(/[\\/]+/).filter(Boolean).join('/')
+}
+
+/**
+ * A row as the `file` chip a message is about: its name, its source (what `canvas_open` takes) and, where known, its
+ * place and its path inside it in words (what `files_open` takes): the row's own `where` in a lens, else the place
+ * its page is in. Nothing from inside the file. A folder, and a thread's own item, are no chip.
+ */
+export function fileChipOf(entry: FileEntry, place?: Pick<FilePlace, 'id' | 'name' | 'shared' | 'root'> | null): ContextChip | null {
+  if (!entry.ref || entry.folder || entry.ref.at === 'thread') return null
+  const shared = entry.shared ?? place?.shared
+  const where = entry.where
+    ? { place: entry.where.place, name: entry.where.name, path: [...entry.where.trail, entry.name].join('/') }
+    : place
+      ? { place: place.id, name: place.name, path: pathInPlace(place, entry.ref, entry.name) }
+      : null
+  return { kind: 'file', label: entry.name, ref: entry.ref, ...(where ? { where: { ...where, ...(shared ? { shared: true } : {}) } } : {}) }
+}
+
+/** Rows dragged into a composer, or asked about from the selection bar: a chip each, eight at most; a ninth refuses them all in one sentence, and so does a choice of folders alone (a folder among files is left out). */
+export function chipsOf(entries: readonly FileEntry[], place?: Pick<FilePlace, 'id' | 'name' | 'shared' | 'root'> | null): { chips: ContextChip[] } | { refused: string } {
+  const chips = entries.flatMap((e) => fileChipOf(e, place) ?? [])
+  if (chips.length > FILE_CHIPS_MOST) return { refused: TOO_MANY_FILES }
+  if (!chips.length) return { refused: NO_FOLDER_CHIPS }
+  return { chips }
+}
+
+/** The most a text file may be to be edited in place (its bytes, and so the characters a save carries). */
+export const FILE_TEXT_MAX = 2 * 1024 * 1024
 
 /** The most entries, and bytes, one page of a listing carries. */
 export const LIST_PAGE_MAX = 500

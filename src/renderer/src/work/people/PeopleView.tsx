@@ -12,6 +12,7 @@ import { chordKey } from "../../lib/keys";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { guestsCall, type GuestLinkRow } from "../guests/api";
+import { openDocInFiles } from "../files/openFrom";
 import { Face } from "../mail/face";
 import { mailTo, writeMail } from "../mail/mailto";
 import { sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeos";
@@ -327,9 +328,9 @@ export function PersonPageBody({
   const go = (view: string, target: Record<string, unknown>) => openWorkView({ workspaceId, view, ...target });
   const linkOf = new Map(links.map((l) => [`${l.source.table}:${l.source.id}`, l]));
   const openShared = (table: SharedTable, id: string, title: string) => {
-    if (table === "docs") go("docs", { doc: { id, title } });
+    if (table === "docs") void openDocInFiles(workspaceId, { id, title });
     else if (table === "projects") go("projects", { project: id });
-    // A sheet opens in a thread about it, as the Docs view opens one.
+    // A sheet opens in a thread about it.
     else startThread({ kind: "selection", label: title, ref: { at: "lifeos", table: "sheets", id } });
   };
   const asked = page.tasks.filter((t) => t.relation === "asked");

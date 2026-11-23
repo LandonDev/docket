@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { chipLine } from "./chips";
 import { sentChipsOf } from "./sentChipsOf";
 
 describe("a sent message's chips", () => {
@@ -26,5 +27,14 @@ describe("a sent message's chips", () => {
     for (const text of ["About this task: no reference here", "About this bug: login fails (see logs)\n\nIt started Monday.", "About this task: X (LifeOS tasks k1)\nand words with no blank line", "Hello\n\nAbout this task: X (LifeOS tasks k1)"]) {
       expect(sentChipsOf(text)).toEqual({ chips: [], text });
     }
+  });
+
+  it("read a file chip back as one chip, its place line left out, even with brackets in its name", () => {
+    const line = chipLine({ kind: "file", label: "Plan (v2).docx", ref: { at: "file", host: "box", path: "/w/Plan (v2).docx" }, where: { place: "folder", name: "Dummy Esports", path: "Plan (v2).docx" } });
+    const got = sentChipsOf(`${line}\n\nWhat changed?`);
+    expect(got.text).toBe("What changed?");
+    expect(got.chips).toHaveLength(1);
+    expect(got.chips[0]).toMatchObject({ noun: "file", label: "Plan (v2).docx" });
+    expect(JSON.parse(got.chips[0].ref)).toEqual({ at: "file", host: "box", path: "/w/Plan (v2).docx" });
   });
 });

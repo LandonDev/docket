@@ -987,6 +987,80 @@
   key and the hold's states; `WorkHost.captureState()` and `capture(...)`
   are the wire. The account is docs/agents/work-capture.md "The phone".
 
+## The Files place (the files pillar's F9, 2026-11-23)
+
+- **`FilesHost`** (client package Work/Files/FilesHost.swift, `client.work.files`,
+  one per host, built by `WorkHost` over `SocketFilesWire`): each Work
+  workspace's places (`work.files.places`), each folder or lens shown by
+  `FilesHost.slot(workspace, folder)` as a `WorkRead<Listing>` a page at a
+  time (`list`, `more`; a `stale` page lists again from the top, a failed
+  refresh keeps a shown list), the uploads under way per folder, and every
+  press: `open` (`work.files.open`, or the thread its `held` names through
+  `work.canvas.list`), `seen`, `star`, `rename`, `make`, `trash` (answers the
+  Trash rows) and `restore`, `upload` (`work.files.upload`, then
+  `attachment.chunk` in order and `commit`; `abort` on a failure, whose row
+  keeps the reason), `original` (Open the original), `search` and `preview`.
+  Each change carries an operation id (`FilesRules.op`) and a `FileDone`
+  with a `refused` row throws the host's sentence as it is (`ActionError`).
+  The `work.files` push reads again a shown folder whose key (`FilesRules.key`,
+  the host's `refKey`) it names, and the places on `places`. It talks to the
+  socket through `FilesWire`, one request, so its tests run on a stand-in
+  (`StubFilesWire` in FilesTests.swift).
+- **`FilesRules`** (Work/Files/FilesRules.swift) is the grammar the screens
+  read, held to src/shared/work/files.ts: the Files screen's bands
+  (`sections`: Recent and Starred, the places with one row per `key`, From
+  mail), `refusal` word for word for a change inside one place, `offers`
+  (the place does it and the key may ask: operate, and approve where others
+  can open it), a row's `fact`, `opening` (`.item` seats it, `.quickLook`
+  with `Original`: `allowed`, `readOnly`, `tooBig`, `facts(host:)`), the
+  search field's `filter`, `nameProblem` and `untitled`.
+- **`OriginalFiles`**: Open the original reads a workspace-folder file of
+  50 MB or less through `work.files.read` in 4 MB frames, the first frame's
+  version asked on every later one (a file that changes midway fails), into
+  `<tmp>/files-originals/<uuid>/<name>` through a `.part` file; the folder
+  goes when the preview closes or the screen does, on a cancel or failure,
+  and at the next launch (`sweepAtLaunch`, once a process, from `WorkHost`).
+  `UploadSource` (FilesUpload.swift) is picked bytes or a picked file (its
+  digest read through once, its bytes a range at a time; the app copies a
+  picked file first and removes the copy when the upload ends).
+- **The app** (ios/TempCode/Sources/Work/Files/): `WorkViewRows` draws a
+  Files row after Projects (`.workView(view: "files")`, `FilesScreen`);
+  `FolderScreen` is a place, folder or lens, pushed as `FilesFolderRoute`
+  inside the detail stack (not Codable: a cold launch keeps the Files
+  screen and drops what was over it); `FileRow` and `FilesRowLabel` the
+  row; `FilesSearchList` the search field's list; `FilesNewSheet` New and
+  Upload; `FilesParts.swift` Delete's undo capsule (the Outbox's
+  `UndoCapsule`, now shared). **`FilesOpen.page(client:route:)` is the one
+  place a file is opened**: its `.item` line draws `FileItemScreen` (the
+  kind's `ItemBodyView` with `ask: nil`; `ItemBodyView`, `PdfItemView`,
+  `SlidesItemView` and `HostedItemView` take an optional Ask now and draw
+  none without it), its `.quickLook` line `FileQuickLookScreen` (the preview
+  pager, the facts, Open the original into `.quickLookPreview`, AVKit for
+  sound and video). The phone-files build changes the `.item` line to push
+  its reader. `ItemBody` reads the `file` canvas kind as "This file opens
+  in Files." (a thread's canvas seats none before F5).
+- **What degrades until the host builds it**: `work.files.search` and
+  `names` (F4): the search field filters the rows the phone holds;
+  `work.files.preview` and `thumbs` (F3): Quick Look shows the facts and
+  Open the original; `home` is not read (Recent and Starred are lenses the
+  places list carries). A lens or place the host does not list is not
+  drawn.
+- **The proof's hooks** (DEBUG, Work/Files/FilesProof.swift):
+  `TC_TEST_ROUTE=work-view TC_TEST_WORK_VIEW=files` opens the first Work
+  workspace's Files; `TC_TEST_FILES="<place>/<folder>/…/<file>"` walks it
+  by names (a place's name first, "From Mail" for the mail lens), pushing
+  each folder and opening a last file; `TC_TEST_ACTION=files-folder:<name>`,
+  `files-document:<name>` or `files-upload` (a 600 × 400 PNG the app draws,
+  "Proof picture.png") acts once on the folder the walk ends in, and
+  `files-original` presses Open the original on the Quick Look screen it
+  ends on.
+- **Checked on the box**: the contract package builds and its tests pass
+  on Linux (Swift 6.4.2); FilesTests runs there in a scratch package of
+  FilesRules, OriginalFiles, FilesHost and WorkRead with stand-ins for
+  `ActionError` and `AttachmentUpload` (the rest of the client needs SQLite,
+  Security and `URLSessionWebSocketTask`); the app's files are parse-checked
+  only. `bun run ios:test:client` and the simulator proof are the Mac's.
+
 ## The data path's two contracts (the performance pass, 2026-11)
 
 What a push and a key may re-run is written down in docs/IOS-DESIGN.md

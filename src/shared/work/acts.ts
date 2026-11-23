@@ -22,7 +22,8 @@ export const ACT_KINDS = [
   'portal.submit',
   'computer.act',
   'addon.call',
-  'chat.reply'
+  'chat.reply',
+  'file.act'
 ] as const
 export type ActKind = (typeof ACT_KINDS)[number]
 export const ActKindSchema = z.enum(ACT_KINDS)
@@ -43,7 +44,8 @@ export const ACT_PILLAR: Record<ActKind, PillarId> = {
   'portal.submit': 'browser',
   'computer.act': 'outbox',
   'addon.call': 'outbox',
-  'chat.reply': 'messages'
+  'chat.reply': 'messages',
+  'file.act': 'files'
 }
 
 /** Where a held item's row lives: this host's `work_held_acts`, or LifeOS's own tables. */

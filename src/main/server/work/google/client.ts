@@ -151,6 +151,11 @@ export class GoogleApi {
     return (await (await this.call(method, url, body === undefined ? undefined : { json: body })).json()) as T
   }
 
+  /** One Drive call by its path under `/drive/v3` (google/drive.ts): the Files place's listing and verbs. */
+  driveCall<T>(method: string, path: string, body?: unknown): Promise<T> {
+    return this.json(method, this.url('drive', path), body)
+  }
+
   file(id: string): Promise<DriveFile> {
     return this.json('GET', this.url('drive', `/files/${enc(id)}?fields=id,name,mimeType,version,modifiedTime,webViewLink&supportsAllDrives=true`))
   }

@@ -154,7 +154,7 @@ export class CanvasStore {
   }
 
   /**
-   * The items of a workspace's threads, open and closed, newest change first (the Docs view's finding, docs/find.ts).
+   * The items of a workspace's threads, open and closed, newest change first (the docs pillar's finding, docs/find.ts).
    * A pane owner's items (the Mail view's reader, the Files place's tabs) are no thread's: they are left out in the
    * query itself, before its limit, so a row of open tabs never pushes a thread's item out. `panes`: those too.
    */

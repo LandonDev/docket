@@ -418,6 +418,13 @@ export const fileLocked = (key: string): boolean => queues.has(key)
 
 // ── the journal ───────────────────────────────────────────────────────
 
+/**
+ * A change whose answer was lost on the way back (the Windows VM's link dropped after the request went): what it did
+ * is not known here. `runOp` keeps no row for it, so the same id again runs again, and the other side's own journal
+ * answers what the first did (docs/agents/work-files.md "The Windows VM's verbs").
+ */
+export class OpLost extends Error {}
+
 const inFlight = new Map<string, Promise<unknown>>()
 const failedRow = (e: unknown): string => JSON.stringify({ message: e instanceof Error ? e.message : String(e), code: e instanceof FileRefused ? e.code : undefined })
 const kept = (result: string | null): Error => {
@@ -431,8 +438,8 @@ const kept = (result: string | null): Error => {
  * does nothing twice). `fn` must answer something JSON holds: a later call gets it back through JSON
  * (undefined comes back as null). An id seen with another workspace, verb or refs is refused. A run that
  * threw is kept as failed with its sentence, and the same id again throws that sentence without running
- * (the caller mints a new id to try again). While one is running, the same id again waits for it in this
- * process.
+ * (the caller mints a new id to try again), save an `OpLost`, which keeps no row. While one is running, the same
+ * id again waits for it in this process.
  */
 export function runOp<T>(db: DatabaseSync, op: { id: string; workspaceId: string; verb: string; refs: unknown }, fn: () => Promise<T>): Promise<T> {
   const refs = JSON.stringify(op.refs ?? null)
@@ -454,7 +461,8 @@ export function runOp<T>(db: DatabaseSync, op: { id: string; workspaceId: string
         return value
       },
       (e: unknown) => {
-        db.prepare(`UPDATE work_files_ops SET state = 'failed', result = ? WHERE id = ?`).run(failedRow(e), op.id)
+        if (e instanceof OpLost) db.prepare(`DELETE FROM work_files_ops WHERE id = ? AND state = 'running'`).run(op.id)
+        else db.prepare(`UPDATE work_files_ops SET state = 'failed', result = ? WHERE id = ?`).run(failedRow(e), op.id)
         throw e
       }
     )

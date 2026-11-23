@@ -37,12 +37,31 @@ LifeOS's Google client yet.
 `work.google.open {sessionId, account, fileId}` opens a picked file in the
 thread's canvas by its kind: a Doc as `document`, a Sheet as `sheet`, a deck
 as `slides`, each with the source `{at: 'google', account, fileId, mime}`.
+`sessionId` may be a workspace's Files pane (`filesPaneOf(workspaceId)`):
+the file then opens in a Files tab through `work.files.open`, with no thread
+and never twice, and the answer carries the tab too ("Drive in Files").
 
 The screen: **Open from Google…** in the canvas's ⋯, a dialog with one
 choice (the account; `PickDialog.tsx`), as Export is. It closes as the
 Picker opens; a failure is a toast. Accounts come from
 LifeOS's `calendarOps:accounts` rows; only those whose grant has
 `drive.file` (`files: true`) are offered.
+
+## Drive in Files
+
+`drive.ts` is Drive as the Files place reads and changes it
+(work-files.md "Google Drive"): a folder's children and everything this
+client may see (`files.list`, a thousand a page, 10,000 at most), one item's
+facts with whether others can open it (`othersCan`: Drive's `shared`, a
+shared drive, another owner, or facts that do not say), and the verbs, each
+one call: `files.create` for an empty Doc, Sheet, Slides deck or folder,
+`files.update` for a rename, a move (`addParents`, `removeParents`) and the
+bin (`trashed`). Every call goes with the same `drive.file` token as the
+rest of the pillar; nothing asks for a wider scope, so a Drive place lists
+only what LifeOS's client made and what he picked. Add from Drive is the
+Picker above; a pick drops what Files kept of that account's listings.
+`googleSeatOf` and `googleSeated` are what any opener of a Google file
+shares: its kind and source, then the pillar's row and the version poll.
 
 ## Docs
 
@@ -165,5 +184,8 @@ is not held.
 `fake.ts` is a `fetch` in the shapes of LifeOS's token route, the Picker's
 redirect and the Drive, Docs, Sheets and Slides calls above, keeping
 `drive.file` (a token reaches only picked or made files) and Docs' indexes
-(a Doc held as characters with their suggestions). Tests: `mapper.test.ts`,
-`docs.test.ts`, `grid.test.ts`, `index.test.ts`, `write.test.ts`.
+(a Doc held as characters with their suggestions). Its Drive is a tree:
+folders (`parents`, My Drive's top `myroot`, which `root` names), the bin,
+each file's sharing, and `files.list` a page at a time (`pageMost`). Tests:
+`mapper.test.ts`, `docs.test.ts`, `grid.test.ts`, `index.test.ts`,
+`write.test.ts`, and the Files place's `files/drive.test.ts`.

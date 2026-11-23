@@ -3,7 +3,7 @@ import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import { CROSS_HOST_CALL_MS, CROSS_HOST_OFFER, workAskArgs, type CrossHostCaller, type ThreadWork, type WorkCallResult, type WorkProbeResult } from '@shared/contract-crosshost'
 import type { MacBridgePolicy } from '@shared/contract-macbridge'
 import type { SessionMeta } from '@shared/events'
-import { isPillarId, NotBuilt, PILLAR_MILESTONE, sessionScopeOf, type HostId, type PillarId, type WorkScope } from '@shared/work'
+import { filesPaneWorkspace, isPillarId, NotBuilt, PILLAR_MILESTONE, sessionScopeOf, workspaceKindOf, type HostId, type PillarId, type WorkScope } from '@shared/work'
 import { HostLinks, type HostTransport } from '../remote/hostLinks'
 import type { LinkRequest } from '../remote/peerCalls'
 import { setMovingTo } from '../sessionMove'
@@ -145,8 +145,11 @@ export const peerPart: CtxPart<'peer'> = (ctx, deps) => {
           if (!ctx.enabled()) throw new Error(WORK_OFF)
           if (!scope) throw new Error("ctx.peer is called on a tool's own ctx (ctx.peer(host)), which names the thread and its workspace")
           if (host === deps.environmentId) throw new Error('ctx.peer names another host; call the module here directly')
-          const session = deps.registry.get(scope.sessionId)
-          if (!session || sessionScopeOf(session) !== 'work') throw new Error(`thread ${scope.sessionId} is not a Work thread`)
+          // A workspace's Files pane is no thread: his own window's press there calls for it (a file copied for a tab), under the same two gates.
+          const pane = filesPaneWorkspace(scope.sessionId)
+          const paneOk = pane !== null && pane === scope.workspaceId && facts.workspaces().some((w) => w.id === pane && workspaceKindOf(w) === 'work')
+          const session = paneOk ? null : deps.registry.get(scope.sessionId)
+          if (!paneOk && (!session || sessionScopeOf(session) !== 'work')) throw new Error(`thread ${scope.sessionId} is not a Work thread`)
           // The workspace's own say: "May use this Mac".
           const allowed = scope.workspaceId ? ctx.settings.workspace(scope.workspaceId).mayUseDesktop : []
           if (!allowed.includes(host))
@@ -158,7 +161,8 @@ export const peerPart: CtxPart<'peer'> = (ctx, deps) => {
           // The harness cancelled the tool, or Work was turned off: the call stops waiting (the far host's own deadline ends its side).
           if (signal?.aborted) throw new Error('cancelled')
           const cancelled = new Promise<never>((_, reject) => signal?.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }))
-          const answer = await Promise.race([ask<WorkCallResult>(host, callerOf(session), { kind: 'call', module, verb, args }), cancelled])
+          const caller: CrossHostCaller = session ? callerOf(session) : { environmentId: deps.environmentId, sessionId: scope.sessionId, title: 'Files', permission: 'safe' }
+          const answer = await Promise.race([ask<WorkCallResult>(host, caller, { kind: 'call', module, verb, args }), cancelled])
           if (!answer || typeof answer !== 'object' || !('work' in answer)) throw new Error('that host runs a build from before Work')
           return answer.work.result
         }

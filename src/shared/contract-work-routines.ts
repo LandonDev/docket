@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CHIP_NOUN, ContextChipSchema, type ChipKind, type ContextChip } from './work/canvas'
+import { CHIP_NOUN, chipRefWords, chipUnder, ContextChipSchema, type ChipKind, type ContextChip } from './work/canvas'
 import { TriggerSchema, type Trigger } from './work/triggers'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
@@ -364,11 +364,8 @@ const LONG_DATE = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'lo
 
 /** A chip as the thread reads it: the composer's line (renderer work/canvas/chips.ts `chipLine`). */
 function chipLine(chip: ContextChip): string {
-  const ref = chip.ref as { at: string; table?: string; id?: string; path?: string; pillar?: string }
-  const where =
-    ref.at === 'lifeos' ? `LifeOS ${ref.table} ${ref.id}` : ref.at === 'file' ? String(ref.path) : ref.at === 'item' ? `canvas item ${ref.id}` : ref.at === 'work' ? `Work ${ref.pillar} ${ref.id}` : JSON.stringify(ref)
-  const head = `About this ${CHIP_NOUN[chip.kind] ?? chip.kind}: ${chip.label} (${where})`
-  const under = (chip.quote ?? chip.excerpt)?.trim() ?? ''
+  const head = `About this ${CHIP_NOUN[chip.kind] ?? chip.kind}: ${chip.label} (${chipRefWords(chip)})`
+  const under = chip.kind === 'file' ? chipUnder(chip) : ((chip.quote ?? chip.excerpt)?.trim() ?? '')
   return under ? `${head}\n${under.split('\n').map((line) => `> ${line}`).join('\n')}` : head
 }
 

@@ -14,9 +14,12 @@ import { mkdirSync, truncateSync, writeFileSync } from 'node:fs'
 import { cpus } from 'node:os'
 import { join } from 'node:path'
 import type { FilesListing, FilesPlaces } from '../src/shared/contract-work-files'
+import type { FileEntry } from '../src/shared/work/files'
 import { closeFilesState, filesState } from '../src/main/server/work/files/handle'
 import { files } from '../src/main/server/work/files/index'
+import { putNames, type NameRow } from '../src/main/server/work/files/names'
 import { forgetLibraries } from '../src/main/server/work/files/places/libraries'
+import { forgetSearches } from '../src/main/server/work/files/search'
 import { at, makeRig, window, WS } from '../src/main/server/work/files/testkit'
 import { setVmCall } from '../src/main/server/work/office/vm/link'
 import { setVmState } from '../src/main/server/work/office/vm/office'
@@ -123,6 +126,44 @@ await measure('a look at 100 rows again (stat)', null, async () => {
 await measure(`a folder of ${FOLDERS} folders, cold`, null, async () => {
   cold()
   return (await timed(() => call<FilesListing>('work.files.list', { at: at(many) }))).ms
+})
+
+// Search by name: the 20,000 files across 400 folders and the 5,000 beside them, one name in each folder matching.
+const QUERY = 'doc 00042'
+const emptyNames = (): void => void rig.db.prepare(`DELETE FROM work_files_names`).run()
+await measure(`a search by name over ${BIG + FOLDERS * PER_FOLDER} files, cold (the names table empty)`, 2000, async () => {
+  cold()
+  forgetSearches(rig.db)
+  emptyNames()
+  const got = await timed(() => call<FilesListing>('work.files.search', { query: QUERY }))
+  if (got.value.entries.length !== 100 || !got.value.next) throw new Error(`a search found ${got.value.entries.length}`)
+  return got.ms
+})
+await measure('the same, the names table warm', 2000, async () => {
+  forgetSearches(rig.db)
+  await new Promise((next) => setImmediate(next))
+  if (!(rig.db.prepare(`SELECT count(*) AS n FROM work_files_names`).get() as { n: number }).n) throw new Error('the names table is empty')
+  return (await timed(() => call<FilesListing>('work.files.search', { query: QUERY }))).ms
+})
+await measure('a page after it, from the kept search', 50, async () => {
+  const first = await call<FilesListing>('work.files.search', { query: QUERY })
+  return (await timed(() => call<FilesListing>('work.files.search', { query: QUERY, cursor: first.next }))).ms
+})
+// Go to: every file of the dummy library named in the table.
+emptyNames()
+const general = (await call<FilesPlaces>('work.files.places', {})).places.find((p) => p.name === 'General')!.id
+const named: NameRow[] = []
+const row = (dir: string, name: string, i: number): NameRow => {
+  const path = join(dir, name)
+  return { entry: { key: `lib:esportsstaffgeneral:${path.slice(join(rig.team, 'General').length + 1)}`, ref: at(path), folder: null, name, kind: 'document', changed: 1_700_000_000_000 + i } as FileEntry, place: general }
+}
+for (let i = 0; i < BIG; i++) named.push(row(big, `File ${String(i).padStart(5, '0')}.${EXTS[i % EXTS.length]}`, i))
+for (let f = 0; f < FOLDERS; f++) for (let i = 0; i < PER_FOLDER; i++) named.push(row(join(many, `Folder ${String(f).padStart(3, '0')}`), `Doc ${String(i).padStart(5, '0')}.${EXTS[i % EXTS.length]}`, f * PER_FOLDER + i))
+putNames(rig.db, WS, named)
+await measure(`names (Go to) with ${named.length} names in the table`, 50, async () => {
+  const got = await timed(() => call<{ entries: FileEntry[] }>('work.files.names', { text: 'doc 0004' }))
+  if (got.value.entries.length !== 20) throw new Error(`Go to found ${got.value.entries.length}`)
+  return got.ms
 })
 
 closeFilesState(rig.db)

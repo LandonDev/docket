@@ -93,6 +93,20 @@
   --type-implementation: #34d399;
   --type-orchestration: #cedd59;
   --type-research: #22d3ee;
+  /* A file's kind: one colour per kind, on its glyph in the Files place only,
+     never a canvas tab row, a fill, a chip, text or a border. Each stands 30°
+     of OKLCH hue from amber and red and 20° from the others, and reaches 3:1
+     on every surface a row sits on (lib/kindTint.test.ts). Text and folder
+     are near-neutral. */
+  --kind-doc: oklch(0.72 0.13 258);
+  --kind-sheet: oklch(0.76 0.14 155);
+  --kind-slides: oklch(0.74 0.13 300);
+  --kind-pdf: oklch(0.74 0.13 348);
+  --kind-image: oklch(0.77 0.11 192);
+  --kind-video: oklch(0.74 0.11 225);
+  --kind-audio: oklch(0.8 0.14 125);
+  --kind-text: oklch(0.76 0.015 270);
+  --kind-folder: oklch(0.78 0.035 250);
   /* Floating layers: one shadow, soft. Docked chrome has none. */
   /* Chart series, from the dataviz reference palette, checked on the dark surfaces (A4's plan). */
   --chart-1: #3987e5;
@@ -409,6 +423,15 @@ html.theme-light {
   --type-implementation: #04875f;
   --type-orchestration: #7d6700;
   --type-research: #0784a3;
+  --kind-doc: oklch(0.52 0.16 258);
+  --kind-sheet: oklch(0.53 0.13 155);
+  --kind-slides: oklch(0.52 0.17 300);
+  --kind-pdf: oklch(0.54 0.17 348);
+  --kind-image: oklch(0.54 0.09 192);
+  --kind-video: oklch(0.53 0.1 225);
+  --kind-audio: oklch(0.55 0.13 125);
+  --kind-text: oklch(0.5 0.012 270);
+  --kind-folder: oklch(0.48 0.035 250);
   --chart-1: #2a78d6;
   --chart-2: #de5a26;
   --chart-3: #16966a;
@@ -490,6 +513,15 @@ html.theme-light {
   --color-type-implementation: var(--type-implementation);
   --color-type-orchestration: var(--type-orchestration);
   --color-type-research: var(--type-research);
+  --color-kind-doc: var(--kind-doc);
+  --color-kind-sheet: var(--kind-sheet);
+  --color-kind-slides: var(--kind-slides);
+  --color-kind-pdf: var(--kind-pdf);
+  --color-kind-image: var(--kind-image);
+  --color-kind-video: var(--kind-video);
+  --color-kind-audio: var(--kind-audio);
+  --color-kind-text: var(--kind-text);
+  --color-kind-folder: var(--kind-folder);
   --shadow-overlay: var(--shadow-overlay);
 }
 @source "../../../node_modules/streamdown/dist/*.js";

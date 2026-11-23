@@ -147,6 +147,21 @@ so a moved thread takes them (`tableMoveModule` as `media-items`,
 
 The first version is the file the canvas item names, made on first sight.
 
+Each table also carries `file_key`, so versions and notes belong to the
+file, not the item (work-files.md "Marks kept by the file",
+canvas/fileKey.ts). A Files tab and a thread on one picture or video of one
+workspace see the same versions and notes, and either one's note is the
+other's. `itemRow` answers the row of the item the rows are kept under
+(`MediaStore.keptOf`); every method and tool goes through it, and a
+segment or tile is checked against it. An item with no path (a mail's
+attachment, a Frame.io stack) keeps its rows by item as before. Closing
+one of the two leaves the rows, and the prepared copies, to the other; the
+last takes them away. A move of the thread takes a copy with new version
+and note ids (each note still names its version and its parent) and leaves
+the rows here. A rename or move in Files re-points the key (the module's
+`start` registers `registerFileMoved`). `ensure` fills the key for rows an
+older build wrote.
+
 ## The wire
 
 | Method | Capability | Does |
@@ -163,7 +178,8 @@ The first version is the file the canvas item names, made on first sight.
 | `work.media.tile {itemId, versionId, level, x, y}` | read | `{ data }`: one tile, base64 JPEG |
 
 The push is `{ push: 'work.media', itemId, view }` to sockets holding
-`read`, at most twice a second per item.
+`read`, at most twice a second per item, for the item and for each other
+open item that shares its rows.
 
 ## The agent's tools
 

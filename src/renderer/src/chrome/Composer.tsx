@@ -129,6 +129,8 @@ type Props = {
   branch?: string
   recents?: RecentProject[]
   hideProjectPicker?: boolean
+  /** A draft's row of new-thread picks (DraftRow); false where the place decides them all (the Files dock). */
+  draftRow?: boolean
   context?: ContextUsage
   quoteRequest?: QuoteRequest
   initialDraft?: string
@@ -196,6 +198,7 @@ export function Composer({
   branch,
   recents = [],
   hideProjectPicker = false,
+  draftRow = true,
   context,
   quoteRequest,
   initialDraft,
@@ -1066,7 +1069,7 @@ export function Composer({
             }
           />
           <DraftRow
-            draft={rowOpen}
+            draft={draftRow && rowOpen}
             cwd={cwd}
             recents={recents}
             enabled={enabled}

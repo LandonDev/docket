@@ -185,11 +185,11 @@ export function teamsCanvasOf(entry: Pick<TeamsEntry, 'name' | 'path' | 'kind'>,
   // An Office file in place has its app behind it, whatever its form (an old `.xls` as much as an `.xlsx`).
   const app = teamsAppOf(entry.kind, entry.name)
   if (app && !copy) return { kind: APP_CANVAS[app], source: { at: 'microsoft', host, app, name: entry.name, ref: { kind: 'path', path: entry.path } } }
-  // Else the one table says which canvas kind opens the name (`kindOfEntry`). Two of its answers wait here for a viewer
-  // that fits a library's file: text is edited in place by the `file` kind, not imported as a document, and sound is
-  // played, not transcribed as a meeting; until those land both open in their own app.
+  // Else the one table says which canvas kind opens the name (`kindOfEntry`). Two of its answers are not for a thread
+  // here: the `file` kind's items are the Files pane's alone until a thread has their tools, and a library's sound is
+  // played, not transcribed as a meeting; both open in their own app.
   const { kind: what, canvas } = kindOfEntry(entry.name)
-  if (!canvas || what === 'text' || what === 'audio') return null
+  if (!canvas || canvas === 'file' || what === 'audio') return null
   return { kind: canvas, source: { at: 'file', host, path: entry.path } }
 }
 const APP_CANVAS = { excel: 'sheet', word: 'document', powerpoint: 'slides' } as const

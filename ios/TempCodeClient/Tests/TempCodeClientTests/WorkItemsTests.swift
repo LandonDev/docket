@@ -38,6 +38,8 @@ struct WorkItemsTests {
         #expect(ItemBody.of(try item("dashboard", source: #"{"at":"thread"}"#)) == .dashboard)
         #expect(ItemBody.of(try item("mail", source: #"{"at":"lifeos","table":"outbox","id":"o7"}"#)) == .mail(draftId: "o7"))
         if case .history = ItemBody.of(try item("history", source: #"{"at":"lifeos","table":"docs","id":"d1"}"#)) {} else { Issue.record("history") }
+        // A thread's canvas seats no `file` item yet (F5): the Files place opens one in Quick Look.
+        #expect(ItemBody.of(try item("file", source: file)) == .unavailable("This file opens in Files."))
     }
 
     @Test func theSegmentLabelIsCut() {

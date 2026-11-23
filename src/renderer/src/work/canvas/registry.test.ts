@@ -6,6 +6,7 @@ import { browserActs } from "../browser/act";
 import { formsActs } from "../forms/act";
 import { frameioActs } from "../frameio/act";
 import { messagesActs } from "../messages/act";
+import { filesActs } from "../files/act";
 import { googleActs } from "../google/act";
 import { guestsActs } from "../guests/act";
 import { mailActs } from "../mail/act";
@@ -90,7 +91,10 @@ describe("kindFor", () => {
   });
 
   it("claims nothing it does not know", () => {
-    expect(kindFor(file("/w/archive.zip"))).toBeNull();
+    // An archive and a script are the file kind's by their names; a thread's own lookup (`kindForFile`) never answers it.
+    expect(kindFor(file("/w/archive.zip"))).toBe("file");
+    expect(kindForFile("archive.zip")).toBeNull();
+    expect(kindForFile("main.py")).toBeNull();
     expect(kindFor(file("/w/Makefile"))).toBeNull();
     expect(kindFor({ at: "thread" })).toBeNull();
     expect(kindFor({ at: "lifeos", table: "calendarOps", id: "c" })).toBeNull();
@@ -110,8 +114,10 @@ describe("kindForFile", () => {
     expect(kindForFile("archive.zip", "application/zip")).toBeNull();
   });
 
-  it("the Docs view's list, which the host builds, reads files as the registry does", () => {
+  it("doc_find's list, which the host builds, reads files as the registry does", () => {
     for (const kind of CANVAS_KINDS) {
+      // The file kind's items are the Files pane's alone: beside a thread its text is a document, and the rest is not listed.
+      if (kind === "file") continue;
       for (const ext of CANVAS[kind].opens.ext ?? []) expect([ext, kindOfFile(`f.${ext}`)]).toEqual([ext, kind]);
     }
   });
@@ -140,15 +146,15 @@ describe("the act views", () => {
   });
 
   it("each pillar's file holds the kinds that are its own, and no other", () => {
-    const files = { agenda: agendaActs, browser: browserActs, forms: formsActs, frameio: frameioActs, google: googleActs, guests: guestsActs, mail: mailActs, messages: messagesActs, office: officeActs, outbox: outboxActs };
+    const files = { agenda: agendaActs, browser: browserActs, files: filesActs, forms: formsActs, frameio: frameioActs, google: googleActs, guests: guestsActs, mail: mailActs, messages: messagesActs, office: officeActs, outbox: outboxActs };
     const owned = (pillar: string): ActKind[] => ACT_KINDS.filter((kind) => ACT_PILLAR[kind] === pillar);
     expect(Object.keys(files).sort()).toEqual([...new Set(Object.values(ACT_PILLAR))].sort());
     for (const [pillar, views] of Object.entries(files)) expect(Object.keys(views).sort(), pillar).toEqual(owned(pillar).sort());
   });
 
   it("falls back to the generic view until a pillar gives a kind its own", () => {
-    // Milestone 25 gave calendar.op its own view, milestone 23 mail.send, milestone 31 share.guestLink, milestone 50 office.calendar.op and the messages pillar chat.reply; the rest draw the generic view.
-    const own = new Set<string>(["calendar.op", "mail.send", "share.guestLink", "office.calendar.op", "chat.reply"]);
+    // Milestone 25 gave calendar.op its own view, milestone 23 mail.send, milestone 31 share.guestLink, milestone 50 office.calendar.op, the messages pillar chat.reply and Files' F5 file.act; the rest draw the generic view.
+    const own = new Set<string>(["calendar.op", "mail.send", "share.guestLink", "office.calendar.op", "chat.reply", "file.act"]);
     for (const kind of ACT_KINDS) {
       if (own.has(kind)) expect(ACT_VIEWS[kind].chunk, kind).not.toBeNull();
       else expect(ACT_VIEWS[kind].chunk, kind).toBeNull();

@@ -1,5 +1,5 @@
 import { MENTION_ORDER, MENTION_PER_KIND, mentionMatches, type CanvasKind, type ChipKind, type MentionAnswer, type MentionHit, type MentionReach } from '@shared/work'
-import type { MentionSource, WorkCtx, WorkModule } from '../modules'
+import type { Caller, MentionSource, WorkCtx, WorkModule } from '../modules'
 import { canvasStoreOf } from './store'
 
 /**
@@ -22,7 +22,7 @@ export async function searchMentions(
   ctx: WorkCtx,
   reach: MentionReach,
   text: string,
-  o: { modules: readonly WorkModule[]; kinds?: readonly ChipKind[]; waitMs?: number }
+  o: { modules: readonly WorkModule[]; kinds?: readonly ChipKind[]; waitMs?: number; by?: Caller }
 ): Promise<MentionAnswer> {
   const sources = o.modules
     .flatMap((m) => m.mentions ?? [])
@@ -36,7 +36,7 @@ export async function searchMentions(
         return []
       }
       try {
-        const hits = await within(source.search(text.trim(), reach, ctx), o.waitMs ?? SOURCE_WAIT_MS)
+        const hits = await within(source.search(text.trim(), reach, ctx, o.by), o.waitMs ?? SOURCE_WAIT_MS)
         return hits.slice(0, MENTION_PER_KIND)
       } catch (err) {
         ctx.log(`mentions: ${source.kind} did not answer: ${err instanceof Error ? err.message : String(err)}`)

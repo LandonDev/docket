@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { CANVAS_KINDS } from './canvas'
+import { CANVAS_KINDS, ContextChipSchema } from './canvas'
 import {
   audienceOf,
   canDo,
+  chipsOf,
+  FILE_CHIPS_MOST,
+  fileChipOf,
+  NO_FOLDER_CHIPS,
+  TOO_MANY_FILES,
   compareEntries,
   compareNames,
   COPY_ACROSS_MAX,
@@ -21,7 +26,9 @@ import {
   questionFor,
   refKey,
   refusal,
+  seatOf,
   SEATS_FULL,
+  threadCanvasOf,
   sortEntries,
   splitName,
   type FileEntry,
@@ -47,20 +54,26 @@ describe('the one kind table', () => {
   it('reads the name first, and the type only for a name with no extension', () => {
     expect(kindOfEntry('Q3 Budget.XLSX', 'application/octet-stream')).toEqual({ kind: 'sheet', canvas: 'sheet' })
     expect(kindOfEntry('export.csv', 'application/vnd.ms-excel')).toEqual({ kind: 'sheet', canvas: 'sheet' })
-    expect(kindOfEntry('main.ts', 'video/mp2t')).toEqual({ kind: 'text', canvas: null })
+    expect(kindOfEntry('main.ts', 'video/mp2t')).toEqual({ kind: 'text', canvas: 'file' })
     expect(kindOfEntry('scan', 'application/pdf')).toEqual({ kind: 'pdf', canvas: 'pdf' })
     expect(kindOfEntry('IMG_0042', 'image/heic')).toEqual({ kind: 'picture', canvas: 'media' })
     expect(kindOfEntry('clip', 'video/quicktime')).toEqual({ kind: 'video', canvas: 'media' })
     expect(kindOfEntry('call.m4a')).toEqual({ kind: 'audio', canvas: 'meeting' })
-    expect(kindOfEntry('archive.zip', 'application/zip')).toEqual({ kind: 'archive', canvas: null })
+    expect(kindOfEntry('archive.zip', 'application/zip')).toEqual({ kind: 'archive', canvas: 'file' })
+    expect(kindOfEntry('notes', 'text/plain')).toEqual({ kind: 'text', canvas: 'file' })
     expect(kindOfEntry('Makefile')).toEqual({ kind: 'other', canvas: null })
     expect(kindOfEntry('thing.xyz')).toEqual({ kind: 'other', canvas: null })
     expect(kindOfEntry('', 'application/vnd.google-apps.spreadsheet')).toEqual({ kind: 'sheet', canvas: 'sheet' })
     expect(kindOfEntry('', 'application/vnd.google-apps.folder')).toEqual({ kind: 'folder', canvas: null })
   })
 
-  it('opens text he writes as a document until the file kind lands, and old Office forms in their app', () => {
-    for (const name of ['README.md', 'notes.txt', 'plan.markdown']) expect(kindOfEntry(name)).toEqual({ kind: 'text', canvas: 'document' })
+  it('gives text and archives to the file kind, and seats in a tab what has no viewer of its own', () => {
+    for (const name of ['README.md', 'notes.txt', 'plan.markdown', 'main.ts', 'data.json']) expect(kindOfEntry(name)).toEqual({ kind: 'text', canvas: 'file' })
+    // Every file opens in a Files tab: its kind's viewer, else the file kind.
+    expect(['Budget.xlsx', 'scan.pdf', 'README.md', 'bundle.zip', 'old.xls', 'logo.svg', 'Makefile', 'thing.xyz'].map((n) => seatOf(n))).toEqual(['sheet', 'pdf', 'file', 'file', 'file', 'file', 'file', 'file'])
+    // Beside a thread only what it always opened: text he writes as a document, and nothing else the file kind shows.
+    expect(['README.md', 'notes.txt', 'plan.markdown', 'main.ts', 'bundle.zip', 'Makefile', 'Budget.xlsx', 'old.xls'].map((n) => threadCanvasOf(n))).toEqual(['document', 'document', 'document', null, null, null, 'sheet', null])
+    expect(threadCanvasOf('notes', 'text/plain')).toBeNull()
     for (const name of ['old.xls', 'macro.xlsb', 'talk.ppt', 'form.docm']) expect(kindOfEntry(name).canvas).toBeNull()
     expect(kindOfEntry('old.xls').kind).toBe('sheet')
     expect(kindOfEntry('talk.ppt').kind).toBe('deck')
@@ -100,6 +113,9 @@ describe('refKey', () => {
     expect(refKey({ at: 'lifeos', table: 'docs', id: 'd1' })).toBe('lifeos:docs:d1')
     expect(refKey({ at: 'google', account: 'a@b.c', fileId: 'F1', mime: 'x' })).toBe('google:F1')
     expect(refKey({ at: 'drive', account: 'a@b.c', folderId: 'F2' })).toBe('google:F2')
+    // Drive's `root` is every account's word for its top: the top is keyed by its account.
+    expect(refKey({ at: 'drive', account: 'A@b.c', folderId: 'root' })).toBe('google:root:a@b.c')
+    expect(refKey({ at: 'drive', account: 'x@y.z', folderId: 'root' })).not.toBe(refKey({ at: 'drive', account: 'a@b.c', folderId: 'root' }))
     expect(refKey({ at: 'mail', threadId: 't', messageId: 'm', partId: 'p', name: 'a.pdf' })).toBe('mail:m:p')
     expect(refKey({ at: 'microsoft', host: 'h', app: 'word', name: 'a', ref: { kind: 'url', url: 'https://x/y' } })).toBe('web:https://x/y')
     expect(refKey({ at: 'project', id: 'p1' })).toBe('project:p1')
@@ -276,9 +292,22 @@ describe('the verbs table', () => {
     expect(isHome('teams')).toBe(true)
   })
 
-  it('says a place in the Windows VM cannot be changed from here yet', () => {
+  it('says a place in the Windows VM cannot be changed from here yet while its helper changes nothing', () => {
     expect(refusal(VM, 'rename', FILE)).toEqual({ text: 'Files in the Windows VM cannot be changed from here yet. Open it there.', press: 'open-here' })
     expect(refusal(FOLDER, 'copy', FILE, VM)).toEqual({ text: 'Files in the Windows VM cannot be changed from here yet. Open it there.', press: 'open-here' })
+  })
+
+  it('lets a VM place do what its helper has, and says plainly what it does not', () => {
+    const vm = { ...VM, can: ['make', 'rename', 'move', 'edit'] as FilePlace['can'] }
+    expect(refusal(vm, 'rename', FILE)).toBeNull()
+    expect(refusal(vm, 'move', FILE, vm)).toBeNull()
+    expect(refusal(vm, 'edit', FILE)).toBeNull()
+    expect(refusal(vm, 'copy', FILE, vm)).toEqual({ text: 'Nothing can be copied in RecWell from here.' })
+    // A delete there waits for its bin, as in any place others can open; a move out of it is a team's file leaving.
+    expect(refusal(vm, 'trash', FILE)).toEqual({ text: 'Delete it in Teams.', press: 'open-web' })
+    expect(refusal({ ...vm, can: [...vm.can, 'trash'] }, 'trash', FILE)).toBeNull()
+    expect(refusal(vm, 'move', FILE, FOLDER)).toEqual({ text: 'Teams files stay in Teams.', press: 'open-here' })
+    expect(questionFor({ ...vm, can: [...vm.can, 'trash'] }, 'trash', FILE)).toBe('Delete for everyone?')
   })
 
   it('agrees with itself: canDo is a refusal that is null', () => {
@@ -288,5 +317,44 @@ describe('the verbs table', () => {
 
   it('says the 33rd open in one sentence', () => {
     expect(SEATS_FULL).toBe('32 files are open. Close one to open another.')
+  })
+})
+
+describe('a file in a message', () => {
+  const team = place({ id: 'box~t/general', kind: 'teams', name: 'General', shared: true, root: { at: 'file', host: 'env_box', path: '/cloud/Esports Staff/General' } })
+  const own = place({ id: 'folder', kind: 'folder', name: 'Purdue Esports', root: { at: 'file', host: 'env_box', path: '/w/Purdue Esports/' } })
+  const row = (path: string, over: Partial<FileEntry> = {}): FileEntry => ({ key: `file:env_box:${path}`, ref: { at: 'file', host: 'env_box', path }, folder: null, name: path.split('/').pop()!, kind: 'sheet', ...over })
+
+  it('is a file chip with its source and its path inside its page\'s place in words, and nothing from inside it', () => {
+    const chip = fileChipOf(row('/cloud/Esports Staff/General/Budgets/2026.xlsx'), team)!
+    expect(chip).toEqual({
+      kind: 'file',
+      label: '2026.xlsx',
+      ref: { at: 'file', host: 'env_box', path: '/cloud/Esports Staff/General/Budgets/2026.xlsx' },
+      where: { place: 'box~t/general', name: 'General', path: 'Budgets/2026.xlsx', shared: true }
+    })
+    expect(ContextChipSchema.parse(chip)).toEqual(chip)
+    expect(fileChipOf(row('/w/Purdue Esports/Events/Poster.png'), own)!.where).toEqual({ place: 'folder', name: 'Purdue Esports', path: 'Events/Poster.png' })
+  })
+
+  it("takes a lens row's own place, and its name alone where the path is not under the place", () => {
+    expect(fileChipOf(row('/x/notes.txt', { where: { place: 'folder', name: 'Purdue Esports', trail: ['Events'] } }), team)!.where).toEqual({ place: 'folder', name: 'Purdue Esports', path: 'Events/notes.txt', shared: true })
+    expect(fileChipOf(row('/w/Purdue Esports2/a.xlsx'), own)!.where!.path).toBe('a.xlsx')
+    expect(fileChipOf(row('/w/a.xlsx'))!.where).toBeUndefined()
+  })
+
+  it('is no chip for a folder or a thread\'s own item', () => {
+    expect(fileChipOf({ key: 'f', ref: null, folder: { at: 'file', host: 'env_box', path: '/w/Events' }, name: 'Events', kind: 'folder' }, own)).toBeNull()
+    expect(fileChipOf({ key: 't', ref: { at: 'thread' }, folder: null, name: 'Draft', kind: 'document' })).toBeNull()
+  })
+
+  it('takes eight rows at most, leaves folders among them out, and refuses a ninth or folders alone in one sentence', () => {
+    const rows = Array.from({ length: FILE_CHIPS_MOST }, (_, i) => row(`/w/Purdue Esports/f${i}.xlsx`))
+    const folder: FileEntry = { key: 'f', ref: null, folder: { at: 'file', host: 'env_box', path: '/w/Purdue Esports/Events' }, name: 'Events', kind: 'folder' }
+    const got = chipsOf([...rows, folder], own)
+    expect('chips' in got && got.chips.map((c) => c.label)).toEqual(rows.map((r) => r.name))
+    expect(chipsOf([...rows, row('/w/Purdue Esports/ninth.xlsx')], own)).toEqual({ refused: TOO_MANY_FILES })
+    expect(TOO_MANY_FILES).toBe('A message can hold 8 files at most.')
+    expect(chipsOf([folder], own)).toEqual({ refused: NO_FOLDER_CHIPS })
   })
 })

@@ -51,7 +51,8 @@ export const canvasPart: CtxPart<'canvas'> = (ctx, deps) => {
       forSession: (sessionId) => store.list(sessionId),
       forWorkspace: (workspaceId, opts) => store.forWorkspace(workspaceId, opts),
       get: (itemId) => store.get(itemId),
-      paneOf: (sessionId) => store.paneOf(sessionId)
+      paneOf: (sessionId) => store.paneOf(sessionId),
+      announce: (owner) => void store.announce(owner)
     }
   }
 }

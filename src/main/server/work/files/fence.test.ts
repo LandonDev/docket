@@ -2,11 +2,11 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
-import type { FilesListing, FilesOpened, FilesPlaces, FilesTabs } from '@shared/contract-work-files'
+import type { FileDone, FilesListing, FilesOpened, FilesPlaces, FilesTabs } from '@shared/contract-work-files'
 import type { FileEntry } from '@shared/work/files'
 import { FenceError, fenceRequest, guestPath } from '../../remote/fence'
 import type { Caller } from '../modules'
-import { closeFilesState } from './handle'
+import { closeFilesState, THREADS_BY_TOOLS } from './handle'
 import { files } from './index'
 import { ASK_FIRST, NEEDS_APPROVE, PEER_LIBRARIES, PEER_NO_ORIGIN, setThreadsMayWrite, THREAD_ELSEWHERE, THREADS_NOT_YET } from './policy'
 import { approver, at, makeRig, peer, phone, reader, thread, window, WS, type Rig } from './testkit'
@@ -52,7 +52,8 @@ describe('a remote key', () => {
     await expect(call('work.files.list', { workspaceId: 'w2', at: at(rig.otherFolder) }, phone)).rejects.toThrow(FenceError)
     await expect(call('work.files.open', { ref: theirs }, phone)).rejects.toThrow("That is not in this workspace's folder or a library it may use.")
     expect(names(await call('work.files.stat', { refs: [theirs] }, phone))).toEqual(['(none)'])
-    expect((await call<FilesPlaces>('work.files.places', { workspaceId: 'w2' }, phone)).places.map((p) => p.kind)).toEqual(['recent', 'starred'])
+    // LifeOS is named by its rows, not a path: each row is held to w2's own sector when it is named (places/lifeos.ts).
+    expect((await call<FilesPlaces>('work.files.places', { workspaceId: 'w2' }, phone)).places.map((p) => p.kind)).toEqual(['home', 'recent', 'starred', 'made', 'trash', 'lifeos'])
     await expect(call('work.files.threads', { ref: theirs }, phone)).rejects.toThrow()
   })
 
@@ -107,16 +108,22 @@ describe('a remote key', () => {
       ['work.files.tabOpen', { page: { at: at(guest), name: 'General' } }],
       ['work.files.tabSet', { tabId: 't', page: { at: at(guest), name: 'General' } }],
       ['work.files.star', { ref: at(`${guest}\\Plan.docx`), name: 'Plan.docx', on: true }],
-      ['work.files.seen', { ref: at(`${guest}\\Plan.docx`), name: 'Plan.docx' }]
+      ['work.files.seen', { ref: at(`${guest}\\Plan.docx`), name: 'Plan.docx' }],
+      // the VM's own change verbs: each handler holds the path to OneDrive's mounts and the door (vmVerbs.test.ts)
+      ['work.files.make', { at: at(guest), kind: 'folder', op: OP }],
+      ['work.files.rename', { ref: at(`${guest}\\Plan.docx`), name: 'x', op: OP }],
+      ['work.files.trash', { refs: [at(`${guest}\\Plan.docx`)], op: OP }],
+      ['work.files.move', { refs: [at(`${guest}\\Plan.docx`)], to: at(`${guest}\\Budgets`), op: OP }]
     ] as const) {
       expect(() => fenceRequest(req(method, params), roots), method).not.toThrow()
       expect(guestPath(method, guest), method).toBe(true)
     }
-    // A change carries no guest path until the VM's own verbs are built, and no other pillar's method ever does.
+    // An editor's bytes, a copy, an upload and every other pillar's method carry no guest path.
     for (const [method, params] of [
-      ['work.files.rename', { ref: at(`${guest}\\Plan.docx`), name: 'x', op: OP }],
-      ['work.files.trash', { refs: [at(`${guest}\\Plan.docx`)], op: OP }],
-      ['work.files.move', { refs: [at(join(rig.folder, 'notes.txt'))], to: at(guest), op: OP }],
+      ['work.files.read', { ref: at(`${guest}\\Plan.docx`), offset: 0, length: 10 }],
+      ['work.files.write', { ref: at(`${guest}\\Plan.docx`), text: 'x', version: 'v' }],
+      ['work.files.copy', { refs: [at(`${guest}\\Plan.docx`)], to: at(guest), op: OP }],
+      ['work.files.upload', { at: at(guest), name: 'x.txt', size: 1, sha256: 'a'.repeat(64), op: OP }],
       ['work.canvas.open', { sessionId: 's', kind: 'pdf', source: at(`${guest}\\a.pdf`), title: 'a' }]
     ] as const)
       expect(() => fenceRequest(req(method, params), roots), method).toThrow(FenceError)
@@ -163,11 +170,11 @@ describe('the door stands before every verb', () => {
   const notes = () => at(join(rig.folder, 'notes.txt'))
   const plan = () => at(join(rig.team, 'General', 'Plan.docx'))
   const general = () => at(join(rig.team, 'General'))
-  const NOT_YET = 'arrives with its milestone'
 
   it("admits his window in his own place, and the grammar's refusal comes before the verb is even looked for", async () => {
-    // The folder's adapter carries out no verb yet: the place says so in its own sentence.
-    await expect(call('work.files.rename', { ref: notes(), name: 'kickoff.txt', op: OP })).rejects.toThrow('Nothing can be renamed in Dummy Esports from here.')
+    const done = await call<FileDone>('work.files.rename', { ref: notes(), name: 'kickoff.txt', op: OP })
+    expect(done.entries.map((e) => e.name)).toEqual(['kickoff.txt'])
+    // A place that does not carry out a verb says so in its own sentence, before anything is read.
     await expect(call('work.files.trash', { refs: [plan()], op: OP })).rejects.toThrow('Delete it in Teams.')
     await expect(call('work.files.copy', { refs: [plan()], to: { at: 'place', id: 'folder' }, op: OP })).rejects.toThrow('Teams files stay in Teams.')
   })
@@ -182,8 +189,14 @@ describe('the door stands before every verb', () => {
       ['work.files.upload', { at: general(), name: 'a.txt', size: 1, sha256: 'a'.repeat(64), op: OP }]
     ] as const)
       await expect(call(method, params, thread('t1')), method).rejects.toThrow()
-    await expect(call('work.files.restore', { ids: ['x'], op: OP }, thread('t1'))).rejects.toThrow('the tabs of Files are his own')
-    await expect(call('work.files.purge', {}, thread('t1'))).rejects.toThrow('the tabs of Files are his own')
+    // A thread's change goes through the files_* tools alone (tools.ts), so the wire refuses it outright, with or without the switch.
+    for (const on of [false, true]) {
+      setThreadsMayWrite(on)
+      await expect(call('work.files.rename', { ref: notes(), name: 'a.txt', op: OP }, thread('t1'))).rejects.toThrow(THREADS_BY_TOOLS)
+    }
+    setThreadsMayWrite(false)
+    await expect(call('work.files.restore', { ids: ['x'], op: OP }, thread('t1'))).rejects.toThrow(THREADS_BY_TOOLS)
+    await expect(call('work.files.purge', {}, thread('t1'))).rejects.toThrow(THREADS_BY_TOOLS)
     // And one outside its workspace is refused as that, before any place is read.
     await expect(call('work.files.rename', { ref: at(join(rig.otherFolder, 'Payroll.xlsx')), name: 'a.xlsx', op: OP }, thread('t1'))).rejects.toThrow()
     await expect(call('work.files.rename', { ref: notes(), name: 'a.txt', op: OP }, thread('t2'))).rejects.toThrow(THREAD_ELSEWHERE)
@@ -198,8 +211,10 @@ describe('the door stands before every verb', () => {
 
   it('reads the Trash verbs as the workspace\'s own rows: no peer, no thread', async () => {
     await expect(call('work.files.restore', { ids: ['x'], op: OP }, peer)).rejects.toThrow(PEER_LIBRARIES)
-    await expect(call('work.files.restore', { ids: ['x'], op: OP })).rejects.toThrow(NOT_YET)
-    await expect(call('work.files.purge', {})).rejects.toThrow(NOT_YET)
+    await expect(call('work.files.purge', {}, peer)).rejects.toThrow(PEER_LIBRARIES)
+    // His window is answered: an id that is no row of this workspace is refused by its id, and nothing is purged.
+    expect(await call('work.files.restore', { ids: ['x'], op: OP })).toMatchObject({ entries: [], refused: [{ name: 'x', text: 'That is not in Trash any more.' }] })
+    expect(await call('work.files.purge', {})).toEqual({ purged: 0 })
   })
 
   it('names only strings the door itself made', () => {

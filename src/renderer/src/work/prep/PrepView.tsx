@@ -18,6 +18,7 @@ import { openWorkView, useWorkView, workOpenPort, workViewNow } from "../../lib/
 import { resetAgendaPlace } from "../agenda/place";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { openHeld } from "../canvas/held";
+import { openDocInFiles } from "../files/openFrom";
 import { Lifeos } from "../icons";
 import { Face } from "../mail/face";
 import { faceMap, pictureOf, type FaceRow } from "../people/model";
@@ -625,13 +626,13 @@ function focusMoreIfLost(region: Element | null): void {
   }, 0);
 }
 
-/** What a line's reference opens: its mail, its task, its event's page, its document or its person, each where it lives. */
+/** What a line's reference opens: its mail, its task, its event's page, its person, each where it lives, or its document in a Files tab. */
 function openRef(workspaceId: string, ref: NonNullable<PrepLine["ref"]>): void {
   if (ref.table === "mailThreads") openWorkView({ workspaceId, view: "mail", mail: ref.id });
   else if (ref.table === "tasks") openWorkView({ workspaceId, view: "tasks", task: ref.id });
   else if (ref.table === "events") openWorkView({ workspaceId, view: "prep", event: ref.id });
   else if (ref.table === "people") openWorkView({ workspaceId, view: "people", person: ref.id });
-  else openWorkView({ workspaceId, view: "docs", doc: { id: ref.id, title: "" } });
+  else void openDocInFiles(workspaceId, { id: ref.id });
 }
 
 /** A person's row opens their newest mail, or their page in People when there is none; a name alone opens nothing. */

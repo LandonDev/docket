@@ -89,11 +89,13 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
     ],
   },
   {
-    // A mark is seen, not read: the focus ring, a type's glyph, a chart's series, an agent page's two extra series.
+    // A mark is seen, not read: the focus ring, a type's glyph, a file kind's glyph, a chart's series, an agent page's two extra series.
     name: "mark",
     floor: 3,
     pairs: [
       ...pairs(["--accent", "--ring", "--type-chat", "--type-planning", "--type-project-plan", "--type-implementation", "--type-orchestration", "--type-research"], SURFACES),
+      // A file's kind glyph in the Files place (its hovered rows are lib/kindTint.test.ts's).
+      ...pairs(["doc", "sheet", "slides", "pdf", "image", "video", "audio", "text", "folder"].map((k) => `--kind-${k}`), SURFACES),
       ...pairs(["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-neutral", "--chart-neutral-rest", "--chart-neutral-stale", "--thread-violet", "--thread-cyan"], PAGE),
       // The project screens' stages of work (a state's glyph, a meter's segment) on the page, a lane and the rail's cards.
       ...pairs(["--stage-doing", "--stage-waiting", "--stage-done"], EDGE_GROUNDS),

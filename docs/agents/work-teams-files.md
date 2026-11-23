@@ -105,13 +105,16 @@ in as him, files on demand. The code is `office/vm/` (`link.ts`, `files.ts`,
   `Tenants`, each with the web address it stands for; Office as installed
   and signed in), `files.list`, `files.stat`, `files.search` (the guest walks
   its own disk: names only), `files.read` (pieces of 4 MB), `files.fetch`,
-  `files.free`, `files.open`, `onedrive.signin`, `onedrive.sync`. A
-  connection per call (`vmCall`), so a long download never holds a list.
+  `files.free`, `files.open`, `onedrive.signin`, `onedrive.sync`, and the
+  change verbs below. A connection per call (`vmCall`), so a long download
+  never holds a list.
 - **Fenced twice.** On the box a guest path must lie in a library OneDrive
   syncs there, by name alone (`vmLibraryOf`: a drive and backslashes, no `.`
-  or `..`, no other separator, no trailing dot or space, case-blind). In the
-  guest the helper holds every path to OneDrive's mounts again and refuses a
-  link on the way down (`Admit`). The listener's path fence has nothing to
+  or `..`, no other separator, no trailing dot or space, no stream `:`, no
+  wildcard or control character, no device name such as `CON`,
+  case-blind). In the guest the helper holds every path to OneDrive's mounts
+  again by the same rules (`MountOf`) and refuses a link on the way down
+  (`Admit`). The listener's path fence has nothing to
   say of a guest path, which is no file of the host: only the files verbs
   that name one file may carry one (`guestPath`, remote/fence.ts), and a
   Windows host's own paths stay fenced. So a remote key of his (the Mac's
@@ -176,6 +179,73 @@ in as him, files on demand. The code is `office/vm/` (`link.ts`, `files.ts`,
   a CloudStorage folder, `vm` where it keeps the VM, each with its state
   (`TeamsPlace`): what the Files view and Connections say when nothing is
   listed.
+
+### Changing files there
+
+The helper's change verbs (F8; the box's side is work-files.md "The Windows
+VM's verbs"). `guest.status` lists them as `verbs`, and the box offers a
+change only where they are listed, so a helper built before them is asked
+none.
+
+- `files.mkdir {dir, name, op}` and `files.write {dir, name, data, op}`
+  make a folder or a new file, never over anything: the bytes are written to
+  a hidden `.name.<random>.tmp` beside it, through to the disk, then moved
+  onto the name without replacing; a taken name (case-blind) answers "A file
+  named "x" is already there.".
+- `files.rename {path, name, op}` keeps the folder; `files.move {path, dir,
+  op}` keeps the mount (a move to another mount is refused: that would be one
+  library's file leaving it). The mount's own top is never renamed, moved or
+  deleted.
+- `files.write {path, data, expect, op}` replaces a file's bytes only while
+  it is still the version `expect` names (`size:mtime:sha256` as the box's
+  `versionWord`, the hash for 64 MB or less; `files.read {version: true}`
+  answers the same word). Else it answers the conflict (`{conflict:
+  {version, changed}}`, or `{conflict: {gone: true}}`), as the box's save
+  does. The new bytes are staged beside it, the version looked at once more,
+  then `ReplaceFile` puts them over it, which keeps the file's identity, so
+  OneDrive keeps one file with a new version. 16 MB at most a write.
+- `files.recycle {path, op}` sends a file or folder to the Windows Recycle
+  Bin through the shell's own file operation (`IFileOperation` with
+  `FOF_ALLOWUNDO` and `FOFX_RECYCLEONDELETE`, the class `RecycleBin`), never
+  a delete for good: its progress sink sees each delete first and cancels
+  one Windows would not recycle (no bin on that drive, the bin turned off,
+  too big for it), so nothing is lost, and the answer says where it lies in
+  the bin (`bin`). OneDrive then takes the delete to the library's own
+  recycle bin.
+- **Both ends held.** Every path passes `Admit` (in a mount by name, no link
+  on the way down, the thing itself no link); a name passes `NameProblem`
+  (NTFS: no `<>:"/\|?*` or control character, no trailing dot or space, no
+  device name; OneDrive: no `desktop.ini`, nothing with `_vti_`). While a
+  change runs, the folder it changes is held open as itself (`Held`: no link
+  followed, and without delete sharing, so it cannot be renamed or deleted
+  meanwhile) and its real
+  path, read from that handle (`GetFinalPathNameByHandle`), must lie in the
+  mount's real path, before the change and again after it. A folder
+  something else holds for its own delete is opened shared instead and
+  checked the same way.
+- **The journal.** Every change runs under its `op`, one change at a time,
+  through `Journalled`: a small file per id under
+  `%LOCALAPPDATA%\tc-office\ops` (named by the id's sha256), written
+  `running` before the change and `done` with its answer, or `failed` with
+  its words, after it. The same id with the same change answers what was
+  kept and does nothing; with another change it is refused ("That operation
+  id was used for another change."); a `running` one a stopped helper left is
+  said so, never run again blind. `files.outcome {op}` reads it without doing
+  anything (`done` with the answer, `failed`, `running` or `unknown`).
+  Files go after a week.
+
+Proven in the rig on a dummy mount, 2026-11-23 (`bun scripts/proof-files-vm.ts`
+after `native/tc-office-win/build-in-rig.sh f8`, the helper spoken to as tcuser
+over SSH): a registry row under `HKCU\Software\SyncEngines\Providers\OneDrive`
+names a plain folder as a mount, as OneDrive itself would. A folder and a text
+file made, renamed, moved; a stale write answered as a conflict and the right
+one replacing the bytes, nothing staged left; ten paths out of the mount (by
+name, `..`, a junction, a stream, a device name, the other separator, the mount
+itself) refused by the helper; a lost answer asked again by its id and answered
+as the first; a file and a folder found whole in the Recycle Bin; with the bin
+turned off for the user, a delete refused and the file left. Not proven there:
+OneDrive itself (none is signed in on the rig), so neither its own recycle bin
+nor a cloud-only file, nor the helper on his desktop rather than over SSH.
 
 ### Signing in
 

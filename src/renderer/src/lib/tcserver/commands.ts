@@ -118,6 +118,29 @@ export function draftTitleOf(session: Pick<Session, "draftTitle">): string {
 }
 
 /** Create the draft on the server if needed; returns its meta. */
+const created = new Map<string, () => Promise<void>>();
+
+/**
+ * Work a draft needs done once it is a thread and before its first message
+ * goes, by draft id: the Files dock opens its file on the new thread here, so
+ * the first turn already holds it (work/files/dockThread.ts). Run once; a failure is
+ * the work's own to say, and the message still goes.
+ */
+export const afterCreate = {
+  set(sessionId: string, run: () => Promise<void>): void {
+    created.set(sessionId, run);
+  },
+  clear(sessionId: string): void {
+    created.delete(sessionId);
+  },
+  async run(sessionId: string): Promise<void> {
+    const work = created.get(sessionId);
+    if (!work) return;
+    created.delete(sessionId);
+    await work().catch(() => undefined);
+  },
+};
+
 export async function ensureCreated(session: Session): Promise<SessionMeta> {
   const existing = sessionStore.metaOf(session.id);
   if (existing) return existing;
@@ -155,6 +178,7 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
   sessionStore.adopt(meta, { created: true });
   // A thread made on another host gets this Mac's bridge when this Mac's policy for that host allows it (lib/macBridge.ts).
   await bridgeNewThread(link.environmentId, session.id);
+  await afterCreate.run(session.id);
   if (session.modelSettings.ultrafast === "true") {
     await link.request("session.tune", { sessionId: session.id, ultrafast: true });
   } else if (session.modelSettings.fast === "true") {

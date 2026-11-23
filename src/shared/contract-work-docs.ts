@@ -154,7 +154,7 @@ export const DocsRequestSchemas = [
   request('work.docs.create', z.object({ sector: z.string().min(1).max(32), projectId: z.string().min(1).max(64).optional(), title: z.string().min(1).max(200) })),
   /** → FindAnswer (main/server/work/docs/find.ts): what a Work workspace lists, and with `query` the text matches; `refresh` reads LifeOS's catalog afresh */
   request('work.docs.find', z.object({ workspaceId: id, query: z.string().max(500).optional(), refresh: z.boolean().optional() })),
-  /** → { views: SavedFindView[] } */
+  /** → { views: SavedFindView[] }: the workspace's saved views, which the Files place reads as its saved searches; these three answer a window a release behind */
   request('work.docs.views', z.object({ workspaceId: id })),
   /** → SavedFindView: a new view, or one renamed and rewritten */
   request('work.docs.saveView', z.object({ workspaceId: id, id: id.optional(), name: z.string().trim().min(1).max(80), spec: FindSpecSchema })),

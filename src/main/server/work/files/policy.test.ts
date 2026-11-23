@@ -184,6 +184,34 @@ describe('the door: each cell of the callers\' table', () => {
     expect(admitWrite(thread(), { verb: 'copy', from: OWN, to: TEAM, entry: FILE, asked: true })).toBe('hold')
   })
 
+  it("never runs a thread's own idea in a place others can open, whatever verb it is and whatever the request claims", () => {
+    setThreadsMayWrite(true)
+    const shared: DoorPlace = { ...TEAM, can: ALL }
+    const digest = changeDigest({ verb: 'edit', refs: [at('/lib/General/Spring budget.xlsx')] })
+    const claims = [{}, { asked: true }, { origin: { from: 'window' as const } }, { asked: true, origin: { from: 'act' as const, id: 'h1', digest }, digest }]
+    for (const verb of ALL) {
+      for (const claim of claims) {
+        // In the shared place, into it, and on a file that is shared where it lies in his own place.
+        const tries = [
+          { verb, from: shared, entry: FILE, ...claim },
+          { verb, from: OWN, to: shared, entry: FILE, ...claim },
+          { verb, from: OWN, entry: { ...FILE, shared: true }, ...claim }
+        ]
+        for (const change of tries) {
+          let verdict: string
+          try {
+            verdict = admitWrite(thread(), change)
+          } catch {
+            verdict = 'refused'
+          }
+          expect(verdict, `${verb} ${JSON.stringify(claim)}`).not.toBe('run')
+        }
+      }
+    }
+    // His own place is his thread's to change once its tools land: the rule above is about what others can open.
+    expect(admitWrite(thread(), { verb: 'edit', from: OWN, entry: FILE })).toBe('run')
+  })
+
   it('takes a change from another host of his only with where it began', () => {
     expect(() => admitWrite(peer, { verb: 'rename', from: TEAM, entry: FILE })).toThrow(PEER_NO_ORIGIN)
     expect(() => admitWrite(peer, { verb: 'rename', from: OWN, entry: FILE })).toThrow(PEER_NO_ORIGIN)

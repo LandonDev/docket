@@ -62,6 +62,19 @@
   `CaptureFiled` named (zod in wireSchemas.ts, each a `Mirror` of its
   interface). A nullable param the host requires (`sector`, null for
   Unsorted) is encoded as an explicit `null`, never left out.
+  The Files place (the files pillar's F9) added `work.files.places`,
+  `list`, `stat`, `home`, `search`, `threads`, `read`, `preview`, `thumbs`,
+  `open`, `star`, `seen`, `make`, `rename`, `move`, `trash`, `restore` and
+  `upload`, with `FolderRef`, `FilePlace`, `FileEntry`, `FilesListing`,
+  `FileRead` (`work.files.read`'s frame: named apart from the PDF's and the
+  deck's `FileBytes`), `FilePreview`, `FileDone`, `FilesPlaces`,
+  `FilesHome` and `FilesOpened` named, and the `work.files` push in
+  `RemotePushSchema`. Two are phone views pinned with `Reads`:
+  `FilesPlacesPhoneSchema` leaves out `sources`, `FilesOpenedPhoneSchema`
+  the tabs; `FilePreviewPhoneSchema` is one object with every field
+  optional, so either answer (`{png, pages, width, height}` or `{none}`)
+  decodes. A verb that takes a file or a folder (`FileRef`) has a params
+  enum with `canvasSource` and `folderRef` cases.
 
 **Switches that must stay whole.** A new held act kind, chip kind or pillar id
 regenerates the Swift contract, and every phone `switch` over that enum with

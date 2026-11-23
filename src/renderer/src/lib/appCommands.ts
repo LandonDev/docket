@@ -28,6 +28,10 @@
  *      answers them (`data-editor-answers`); a read-only one
  *      (`data-editor-keys="read"`) owns only the last two, and a document
  *      (`="document"`) also ⌥⌘0 to ⌥⌘3.
+ *   7. Focus inside a mounted Files view (lib/filesKeys.ts): its tab chords
+ *      (⌘T ⌘W ⌘[ ⌘] ⌃Tab ⌃⇧Tab ⌘⇧[ ⌘⇧]) become `files_command` with the
+ *      Files command they name, which runs the view's port. The menu route reads the same overlay through
+ *      `filesOverlay`, so Close Tab there closes a Files tab, never the thread.
  *
  * Keys:
  *   Shift Shift (400 ms)  go_to_file        ⌘P        go_to_file
@@ -38,11 +42,15 @@
  *   ⌘⇧M toggle_message_list
  *   ⌘⌥] next_environment  ⌘⌥[ prev_environment  ⌘⌥1–9 activate_environment
  *   Tab and pane chords: lib/tabKeys.ts (⌘W ⌘D ⌘⇧D ⌘J ⌘[ ⌘] ⌘1–9 ⌃` …)
+ *   In Files (guard 7), files_command with: ⌘T new-tab  ⌘W close-tab  ⌘[ back
+ *   ⌘] forward  ⌃Tab / ⌘⇧] next-tab  ⌃⇧Tab / ⌘⇧[ prev-tab
+ *   ⌘P go-to  ⌘F search  ⌘⇧T reopen-tab
  */
 
 import { chordKey, ctrlOnly, macCommand, modOrCtrl } from "./keys";
 import { insideMonaco, isEditorChord } from "./editorKeys";
 import { tabCommand, type TabCommand } from "./tabKeys";
+import { filesPort, type FilesCommand } from "./filesKeys";
 
 export const APP_COMMANDS = [
   "new_tab",
@@ -99,12 +107,14 @@ export const APP_COMMANDS = [
   "toggle_away",
   "print",
   "export",
+  "files_command",
 ] as const;
 
 export type AppCommandId = (typeof APP_COMMANDS)[number];
 
 /** `index` rides along with `activate_tab` and `activate_environment` (0-based; -1 = last). */
-export type AppCommand = { id: AppCommandId; index?: number };
+/** `files`: the Files place's command, for `files_command` (lib/filesKeys.ts). */
+export type AppCommand = { id: AppCommandId; index?: number; files?: FilesCommand };
 
 export function isAppCommandId(id: string): id is AppCommandId {
   return (APP_COMMANDS as readonly string[]).includes(id);
@@ -221,6 +231,17 @@ function monacoOwns(e: KeyboardEvent): boolean {
   return key === "t" || key === "d" || key === "h";
 }
 
+/**
+ * What a menu command runs: while focus is inside a mounted Files view, the
+ * rows whose keys are the Files place's chords run the Files command instead
+ * (Close Tab closes the Files tab, never the thread or the pane under it).
+ * The native menu and the in-app bar both go through it.
+ */
+export function filesOverlay(id: AppCommandId, focusInFiles: boolean): AppCommand {
+  const files = focusInFiles ? filesPort.menu(id) : undefined;
+  return files ? { id: "files_command", files } : { id };
+}
+
 function fromTabCommand(cmd: TabCommand): AppCommand {
   if (typeof cmd === "object") {
     if ("focus" in cmd) return { id: `focus_${cmd.focus}` as AppCommandId };
@@ -329,6 +350,12 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
 
     const inTerminal = within(target, TERMINAL);
     if (inTerminal && ctrlOnly(e) && isMac()) return null;
+
+    if (!(inTerminal && ctrlOnly(e)) && filesPort.owns(target)) {
+      // One app command carries every Files command (App.tsx runs it through `filesPort.run`).
+      const files = filesPort.chord(e);
+      if (files) return { id: "files_command", files };
+    }
 
     const tab = tabCommand(e);
     if (tab) {

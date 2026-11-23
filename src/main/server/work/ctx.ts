@@ -21,6 +21,7 @@ import {
   type WorkToolResult
 } from '@shared/work'
 import type { AddonStore } from '../addonStore'
+import type { AttachmentUploads } from '../attachmentUploads'
 import type { AddonGrants } from '../addons/addonGrants'
 import type { AddonHost } from '../addons/addonHost'
 import type { AwayService } from '../away'
@@ -106,6 +107,8 @@ export interface WorkDeps {
    * host always and a desktop only when it has no saved headless host. Absent (a test): it does.
    */
   sendsDigest?: () => boolean
+  /** the host's chunked uploads: `ctx.uploads` */
+  uploads?: AttachmentUploads
   log?(line: string): void
 }
 
@@ -157,7 +160,8 @@ export function buildWorkCtx(deps: WorkPartDeps, settings: WorkSettingsStore, pu
     enabled: () => settings.enabled(),
     log: deps.log ?? ((line: string) => console.log(`[work] ${line}`)),
     push,
-    settings: { workspace: (id: string) => settings.workspace(id), set: (id, patch) => settings.setWorkspace(id, patch) }
+    settings: { workspace: (id: string) => settings.workspace(id), set: (id, patch) => settings.setWorkspace(id, patch) },
+    uploads: deps.uploads ?? null
   } as WorkCtx
   /** One part's members. A part that throws while it is made never stops the host: its members answer its fault from then on. */
   const part = <T extends object>(file: string, keys: readonly (keyof T)[], make: () => T): T => {
@@ -234,7 +238,7 @@ export interface Work extends WorkAdmission {
   close(): void
 }
 
-const callerOf = (principal: SocketPrincipal): Caller => (principal.kind === 'local' ? { kind: 'local', caps: CAPABILITIES } : { kind: 'remote', caps: principal.caps })
+const callerOf = (principal: SocketPrincipal): Caller => (principal.kind === 'local' ? { kind: 'local', caps: CAPABILITIES } : { kind: 'remote', caps: principal.caps, keyId: principal.keyId })
 
 export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES): Work {
   // The registry is filled by a load, never by importing it: without one the default list would be silently empty.

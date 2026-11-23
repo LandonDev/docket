@@ -12,7 +12,7 @@ struct HostedItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
     let source: Methods.WorkGuestsTicket.Params.Source
-    let ask: (ContextChip) -> Void
+    let ask: ((ContextChip) -> Void)?
     @State private var url: URL?
     @State private var failed = false
     @State private var round = 0
@@ -28,7 +28,7 @@ struct HostedItemView: View {
                     Button("Try Again") { failed = false; url = nil; round += 1 }
                 }
             } else if let url {
-                HostedWebView(url: url, onFail: { failed = true }, onAsk: { quote in ask(ChipWords.selection(in: item, quote: quote)) })
+                HostedWebView(url: url, onFail: { failed = true }, onAsk: ask.map { ask in { (quote: String) in ask(ChipWords.selection(in: item, quote: quote)) } })
                     .ignoresSafeArea(.container, edges: .bottom)
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -52,7 +52,7 @@ struct HostedItemView: View {
 private struct HostedWebView: UIViewRepresentable {
     let url: URL
     let onFail: () -> Void
-    let onAsk: (String) -> Void
+    let onAsk: ((String) -> Void)?
 
     static let focusGuard = """
     (() => {
@@ -134,8 +134,8 @@ final class AskingWebView: WKWebView {
 
     override func buildMenu(with builder: any UIMenuBuilder) {
         super.buildMenu(with: builder)
-        // The edit menu over a selection is the `.context` system's (iOS 16 and later).
-        guard builder.system == .context else { return }
+        // The edit menu over a selection is the `.context` system's (iOS 16 and later); with no thread beside it, no Ask.
+        guard builder.system == .context, onAsk != nil else { return }
         let ask = UIAction(title: "Ask", image: UIImage(systemName: "bubble.left")) { [weak self] _ in
             self?.evaluateJavaScript("String(getSelection())") { result, _ in
                 guard let quote = result as? String, !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }

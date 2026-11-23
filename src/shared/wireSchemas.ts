@@ -10,7 +10,9 @@ import { AwayDecidedSchema, AwayStateSchema } from './away'
 import type { CaptureFiled, CaptureState } from './contract-work-capture'
 import type { MoneyReceived, MoneyState } from './contract-work-money'
 import type { ReceiptFields } from './work/money'
-import { CanvasItemSchema, type CanvasItem } from './work/canvas'
+import { CanvasItemSchema, CanvasSourceSchema, type CanvasItem } from './work/canvas'
+import { ENTRY_KINDS, FILE_VERBS, MAKE_KINDS, PLACE_KINDS, PLACE_STATES, type FileEntry, type FilePlace } from './work/files'
+import { FolderRefSchema, type FileBytes as FilesReadBytes, type FileDone, type FilePreview, type FilesHome, type FilesListing, type FilesOpened, type FilesPlaces } from './contract-work-files'
 import type { WorkspaceWorkSettings } from './work/scope'
 import type { LifeosJwtAnswer } from './contract-work-lifeos'
 import type { MailSendAnswer } from './contract-work-mail'
@@ -1430,6 +1432,79 @@ export const RoutinesListSchema = z.object({ routines: z.array(RoutinePhoneRowSc
 /** A routine or watch changed on this host. */
 export const WorkRoutinesPushSchema = push('work.routines', { workspaceId: z.string(), id: z.string() })
 
+// ── Files (the files pillar's F9: the phone's Files place, docs/agents/work-files.md "The phone") ──
+
+export const FilePlaceStateSchema = z.object({ state: z.enum(PLACE_STATES), detail: z.string().optional(), at: z.number().optional() })
+export const FilePlaceSchema = z.object({
+  id: z.string(),
+  kind: z.enum(PLACE_KINDS),
+  name: z.string(),
+  host: z.string(),
+  env: z.string(),
+  shared: z.boolean(),
+  can: z.array(z.enum(FILE_VERBS)),
+  state: FilePlaceStateSchema,
+  root: FolderRefSchema,
+  key: z.string().optional(),
+  group: z.string().optional(),
+  vm: z.boolean().optional(),
+  web: z.string().nullable().optional(),
+  count: z.number().optional(),
+  makes: z.array(z.enum(MAKE_KINDS)).optional()
+})
+export const FileEntryStateSchema = z.discriminatedUnion('is', [
+  z.object({ is: z.literal('cloud') }),
+  z.object({ is: z.literal('suggestions'), count: z.number() }),
+  z.object({ is: z.literal('present'), who: z.string() }),
+  z.object({ is: z.literal('writing') })
+])
+export const FileEntrySchema = z.object({
+  key: z.string(),
+  ref: CanvasSourceSchema.nullable(),
+  folder: FolderRefSchema.nullable(),
+  name: z.string(),
+  kind: z.enum(ENTRY_KINDS),
+  size: z.number().optional(),
+  changed: z.number().optional(),
+  by: z.string().optional(),
+  local: z.boolean().optional(),
+  shared: z.boolean().optional(),
+  state: FileEntryStateSchema.optional(),
+  where: z.object({ place: z.string(), name: z.string(), trail: z.array(z.string()) }).optional(),
+  project: z.object({ id: z.string(), name: z.string() }).optional(),
+  madeBy: z.string().optional(),
+  fresh: z.boolean().optional(),
+  starred: z.boolean().optional(),
+  held: z.object({ id: z.string(), verb: z.enum(['make', 'rename', 'move', 'copy']) }).optional()
+})
+/** `work.files.places`, as the phone reads it: `sources` (why a Teams place is not listed) stays the desktop's. */
+export const FilesPlacesPhoneSchema = z.object({ host: z.string(), places: z.array(FilePlaceSchema), rev: z.number() })
+export const FilesListingSchema = z.object({
+  entries: z.array(FileEntrySchema),
+  next: z.string().optional(),
+  stale: z.literal(true).optional(),
+  place: z.string().optional(),
+  trail: z.array(z.object({ name: z.string(), at: FolderRefSchema })).optional(),
+  asOf: z.number().optional(),
+  more: z.literal(true).optional(),
+  asleep: z.array(z.string()).optional()
+})
+export const FilesStatSchema = z.object({ entries: z.array(FileEntrySchema.nullable()) })
+export const FilesHomeSchema = z.object({ waiting: z.array(FileEntrySchema), starred: z.array(FileEntrySchema), recent: z.array(FileEntrySchema) })
+export const FilesThreadsSchema = z.object({ threads: z.array(z.object({ sessionId: z.string(), itemId: z.string(), source: CanvasSourceSchema })) })
+/** `work.files.read`: a frame of a file's own bytes (base64), by version. Named apart from the PDF's and the deck's `FileBytes`. */
+export const FileReadSchema = z.object({ data: z.string(), size: z.number(), version: z.string(), changed: z.number(), end: z.boolean(), locked: z.string().optional() })
+/** `work.files.preview`: a page as a PNG, or the one sentence why there is none. One object, so either answer decodes. */
+export const FilePreviewPhoneSchema = z.object({ png: z.string().optional(), pages: z.number().optional(), width: z.number().optional(), height: z.number().optional(), none: z.string().optional() })
+export const FilesThumbsSchema = z.object({ thumbs: z.array(z.string().nullable()) })
+/** `work.files.open`, as the phone reads it: the item the Files pane now holds, or the thread that already shows the file. The tabs stay the desktop's. */
+export const FilesOpenedPhoneSchema = z.object({ rev: z.number(), tabId: z.string().optional(), item: CanvasItemSchema.optional(), held: z.object({ sessionId: z.string(), itemId: z.string() }).optional() })
+export const FileDoneSchema = z.object({ entries: z.array(FileEntrySchema), refused: z.array(z.object({ name: z.string(), text: z.string() })), trashed: z.array(z.string()).optional(), op: z.string() })
+export const FilesUploadBegunSchema = z.object({ uploadId: z.string() })
+export const FilesStarredSchema = z.object({ starred: z.boolean() })
+/** Something of a workspace's Files changed on its host: a folder (`at`, its key), the tabs, or the places. */
+export const WorkFilesPushSchema = push('work.files', { workspaceId: z.string(), at: z.string().optional(), tabs: z.number().optional(), places: z.literal(true).optional() })
+
 /** Computer use (contract-computer.ts): who is being driven on this host; the phone's Computers row reads it too. */
 export const ComputerPushSchema = push('computer', {
   service: ComputerServiceStateSchema,
@@ -1504,6 +1579,7 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   WorkGuestsPushSchema,
   WorkCanvasPushSchema,
   WorkRoutinesPushSchema,
+  WorkFilesPushSchema,
   ComputerPushSchema
 ])
 
@@ -1622,6 +1698,16 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof WorkGuestsPushSchema, PushOf<'work.guests'>>>,
   Expect<Mirror<typeof WorkCanvasPushSchema, PushOf<'work.canvas'>>>,
   Expect<Mirror<typeof WorkRoutinesPushSchema, PushOf<'work.routines'>>>,
+  Expect<Mirror<typeof WorkFilesPushSchema, PushOf<'work.files'>>>,
+  Expect<Mirror<typeof FilePlaceSchema, FilePlace>>,
+  Expect<Mirror<typeof FileEntrySchema, FileEntry>>,
+  Expect<Reads<typeof FilesPlacesPhoneSchema, FilesPlaces>>,
+  Expect<Mirror<typeof FilesListingSchema, FilesListing>>,
+  Expect<Mirror<typeof FilesHomeSchema, FilesHome>>,
+  Expect<Mirror<typeof FileReadSchema, FilesReadBytes>>,
+  Expect<Reads<typeof FilePreviewPhoneSchema, FilePreview>>,
+  Expect<Reads<typeof FilesOpenedPhoneSchema, FilesOpened>>,
+  Expect<Mirror<typeof FileDoneSchema, FileDone>>,
   Expect<Mirror<typeof CanvasItemSchema, CanvasItem>>,
   Expect<Mirror<typeof MailSendAnswerSchema, MailSendAnswer>>,
   Expect<Mirror<typeof GuestCreatedSchema, GuestCreated>>,

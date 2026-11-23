@@ -30,6 +30,12 @@ import { yieldUntilIdle } from './stalls'
  * nobody touched for ATTACHMENT_UPLOAD_TTL_MS is dropped with its partial.
  * Uploads belong to the principal that began them (a key id, or the local
  * socket); another caller's id answers "unknown upload".
+ *
+ * An internal caller may begin an upload with a target of its own
+ * (`beginInto`, the Files place's `work.files.upload`): the partial is
+ * staged in the target's folder, the same chunks and checks apply, and
+ * commit hands the checked file to `land` instead of renaming it. The
+ * staging folder is the upload's own and goes when it ends, however it ends.
  */
 
 export const MAX_BYTES_KEY = 'attachment.maxBytes'
@@ -64,6 +70,20 @@ interface Upload {
   touchedAt: number
   /** One chunk at a time: a second write while one is in flight is out of order by definition. */
   busy: boolean
+  /** Where an internal caller takes the file at commit; its folder goes with the upload. */
+  target?: UploadTarget
+}
+
+/**
+ * Where an upload goes that an internal caller began (`beginInto`). `dir` is a
+ * folder of the upload's own, outside any place a thread can walk, removed
+ * when the upload ends. `land` runs at commit, after the size and sha256 are
+ * checked, with the staged file's path: it puts the file where it belongs and
+ * answers what commit answers. Whatever it throws, nothing is left staged.
+ */
+export interface UploadTarget {
+  dir: string
+  land(staged: string): Promise<CommittedAttachment>
 }
 
 export interface AttachmentUploadsDeps {
@@ -202,6 +222,42 @@ export class AttachmentUploads {
     return { uploadId: id, chunkBytes: ATTACHMENT_CHUNK_BYTES }
   }
 
+  /**
+   * An upload an internal caller began for `owner` (who then sends the chunks
+   * as `attachment.chunk` on the id): staged in `target(id).dir`, and handed
+   * to its `land` at commit. The host's size limit holds as for any upload.
+   */
+  async beginInto(owner: string, params: { name: string; size: number; sha256: string; mime?: string }, target: (uploadId: string) => UploadTarget): Promise<AttachmentBeginAnswer> {
+    const { maxBytes } = this.settings()
+    if (params.size > maxBytes) {
+      throw new UploadError('too-large', `attachment too large: ${params.size} bytes is over this host's limit of ${maxBytes}`)
+    }
+    const id = nanoid(21)
+    const to = target(id)
+    mkdirSync(to.dir, { recursive: true, mode: 0o700 })
+    const partial = join(to.dir, `.upload-${id}.part`)
+    await writeFile(partial, new Uint8Array(0))
+    this.uploads.set(id, {
+      id,
+      owner,
+      sessionId: '',
+      dir: to.dir,
+      partial,
+      name: params.name,
+      kept: false,
+      mime: params.mime,
+      size: params.size,
+      sha256: params.sha256,
+      received: 0,
+      nextIndex: 0,
+      hash: createHash('sha256'),
+      touchedAt: this.now(),
+      busy: false,
+      target: to
+    })
+    return { uploadId: id, chunkBytes: ATTACHMENT_CHUNK_BYTES }
+  }
+
   private take(owner: string, uploadId: string): Upload {
     const upload = this.uploads.get(uploadId)
     if (!upload || upload.owner !== owner) throw new UploadError('unknown-upload', 'unknown upload (expired, aborted or never begun)')
@@ -244,7 +300,7 @@ export class AttachmentUploads {
     if (upload.busy) throw new UploadError('out-of-order', 'a chunk is still being written')
     this.uploads.delete(upload.id)
     const fail = async (code: UploadErrorCode, message: string): Promise<never> => {
-      await rm(upload.partial, { force: true })
+      await this.clear(upload)
       throw new UploadError(code, message)
     }
     if (upload.received !== upload.size) return fail('size-mismatch', `received ${upload.received} of ${upload.size} bytes`)
@@ -252,6 +308,13 @@ export class AttachmentUploads {
     if (!onDisk || onDisk.size !== upload.size) return fail('size-mismatch', 'the partial file changed under the upload')
     const digest = upload.hash.digest('hex')
     if (digest !== upload.sha256) return fail('sha-mismatch', 'sha256 does not match what begin declared')
+    if (upload.target) {
+      try {
+        return await upload.target.land(upload.partial)
+      } finally {
+        await this.clear(upload)
+      }
+    }
     // existsSync and renameSync back to back: nothing else in this process
     // can take the name in between.
     const name = (upload.kept ? freeKeptName : freeName)(upload.dir, upload.name)
@@ -295,12 +358,17 @@ export class AttachmentUploads {
 
   private async drop(upload: Upload): Promise<void> {
     this.uploads.delete(upload.id)
-    await rm(upload.partial, { force: true }).catch(() => undefined)
+    await this.clear(upload).catch(() => undefined)
+  }
+
+  /** What an upload left on disk: its partial, and a target's whole staging folder. */
+  private async clear(upload: Upload): Promise<void> {
+    await rm(upload.target ? upload.target.dir : upload.partial, { recursive: true, force: true })
   }
 
   close(): void {
     if (this.timer) clearInterval(this.timer)
-    for (const upload of [...this.uploads.values()]) rmSync(upload.partial, { force: true })
+    for (const upload of [...this.uploads.values()]) rmSync(upload.target ? upload.target.dir : upload.partial, { recursive: true, force: true })
     this.uploads.clear()
   }
 }

@@ -41,7 +41,7 @@ thread's preamble.
   host, outside a remote key's fence, or not a file, and for a file whose
   sector (Life for an unsorted one) has no Work workspace here. Files are
   copied into that workspace's folder under kept names (`keptFileName`,
-  `freeKeptName`: "Budget (1).xlsx"), so the Docs view lists them. The task is
+  `freeKeptName`: "Budget (1).xlsx"), so the Files place lists them. The task is
   `tasks:create` with the capture's own `key`; what a capture made is kept
   by its key for a week (`work_capture_filed`), so a repeat answers that
   again and copies and starts nothing twice. Files copied for a task LifeOS

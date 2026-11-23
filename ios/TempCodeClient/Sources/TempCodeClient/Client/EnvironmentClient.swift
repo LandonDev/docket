@@ -1295,7 +1295,7 @@ public final class EnvironmentClient {
             extras.applyPush(push) // iOS 21: devices and the deploy log (Client/HostExtras.swift)
         case .batch(let value):
             applyBatch(value.state) // iOS 16: a master's batch, coalesced (Client/Batches.swift)
-        case .work, .workOutbox, .workOutboxResult, .workLifeos, .away, .workRules, .workGuests, .workCanvas, .workRoutines:
+        case .work, .workOutbox, .workOutboxResult, .workLifeos, .away, .workRules, .workGuests, .workCanvas, .workRoutines, .workFiles:
             work.applyPush(push) // milestone 46: Work on the phone (Work/Shell/WorkHost.swift)
         case .computer(let value):
             computerRows = value.sessions // live video: who is driven on this host (Home's Computers row)

@@ -129,3 +129,32 @@ describe("a chip as the model reads it", () => {
     expect(withContextChips([selection], "/summarize the morning")).toBe(`/summarize the morning\n\n${chipLine(selection)}`);
   });
 });
+
+describe("a file chip's line", () => {
+  const file: ContextChip = {
+    kind: "file",
+    label: "Spring budget (final).xlsx",
+    ref: { at: "file", host: "box", path: "/cloud/Esports Staff/General/Spring budget (final).xlsx" },
+    where: { place: "box~ab12/general", name: "General", path: "Spring budget (final).xlsx", shared: true },
+    // Never sent: a file chip quotes no words from inside its file.
+    excerpt: "Q1 total 4,200",
+    quote: "secret cell",
+  };
+
+  it("names the file's source for canvas_open and its place and path for files_open, and nothing from inside it", () => {
+    const line = chipLine(file);
+    const [head, under, more] = line.split("\n");
+    expect(head).toBe(`About this file: Spring budget (final).xlsx ({"at":"file","host":"box","path":"/cloud/Esports Staff/General/Spring budget \\u0028final\\u0029.xlsx"})`);
+    // The source still parses as itself.
+    expect(JSON.parse(head.slice(head.indexOf("({") + 1, -1))).toEqual(file.ref);
+    expect(under).toBe("> In General (place box~ab12/general) at Spring budget (final).xlsx. Others can open it.");
+    expect(more).toBeUndefined();
+    expect(line).not.toContain("4,200");
+    expect(line).not.toContain("secret");
+  });
+
+  it("says nothing of who else can open a file of his own place, and only the source where no place is known", () => {
+    expect(chipLine({ ...file, excerpt: undefined, quote: undefined, where: { place: "folder", name: "Dummy Esports", path: "Events/Poster.png" } }).split("\n")[1]).toBe("> In Dummy Esports (place folder) at Events/Poster.png.");
+    expect(chipLine({ kind: "file", label: "Poster.png", ref: { at: "file", host: "box", path: "/w/Poster.png" } })).toBe('About this file: Poster.png ({"at":"file","host":"box","path":"/w/Poster.png"})');
+  });
+});

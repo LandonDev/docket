@@ -40,6 +40,7 @@ import { registerCapture } from './capture'
 import { registerPresent } from './present'
 import { queueNextPick, registerDialogs } from './dialogs'
 import { registerDownloads } from './downloads'
+import { dragOutPaths } from './dragOut'
 import {
   activateWindows,
   createWindow,
@@ -320,6 +321,15 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('reveal-in-finder', (_e, path: string) => {
     shell.showItemInFolder(path)
+  })
+  // Files dragged out of the Files place to the desktop (dragOut.ts): the system carries real files of this machine.
+  ipcMain.handle('drag-files-out', async (e, paths: unknown) => {
+    const files = await dragOutPaths(paths)
+    if (!files) return false
+    const icon = await app.getFileIcon(files[0]!).catch(() => null)
+    if (!icon || icon.isEmpty()) return false
+    e.sender.startDrag({ file: files[0]!, files, icon })
+    return true
   })
   // The user's editor (editorLaunch.ts): only where a window can be, so a
   // headless box answers null and the renderer hides the item.

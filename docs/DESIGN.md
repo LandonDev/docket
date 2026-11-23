@@ -290,6 +290,42 @@ a surface above `/10`, with one exception: the window's Close off macOS
 `destructive` on hover, as every Windows and Linux window's close does; the
 platform's convention outranks ours there.
 
+### File kind tints
+
+A file's kind has one colour, and only its glyph takes it, in the Files
+place's rows, tiles and file headers. `KindGlyph` (work/files/KindGlyph.tsx)
+draws it. Never a row's fill, a chip, text or a border, and never on a canvas
+tab row or the sidebar's place rows: there the glyph is `muted-foreground`.
+
+| Token | Kind | Dark | Light |
+| --- | --- | --- | --- |
+| `kind-doc` | document | oklch(0.72 0.13 258) | oklch(0.52 0.16 258) |
+| `kind-sheet` | sheet | oklch(0.76 0.14 155) | oklch(0.53 0.13 155) |
+| `kind-slides` | deck | oklch(0.74 0.13 300) | oklch(0.52 0.17 300) |
+| `kind-pdf` | PDF | oklch(0.74 0.13 348) | oklch(0.54 0.17 348) |
+| `kind-image` | picture | oklch(0.77 0.11 192) | oklch(0.54 0.09 192) |
+| `kind-video` | video | oklch(0.74 0.11 225) | oklch(0.53 0.1 225) |
+| `kind-audio` | audio | oklch(0.8 0.14 125) | oklch(0.55 0.13 125) |
+| `kind-text` | text | oklch(0.76 0.015 270) | oklch(0.5 0.012 270) |
+| `kind-folder` | folder | oklch(0.78 0.035 250) | oklch(0.48 0.035 250) |
+
+Archive and other have no tint: they stay `muted-foreground`. Text and
+folder are near neutral (chroma under 0.04): plain text needs no hue, and a
+folder holds files of every kind, so it must not look like one of them.
+
+Three rules hold in both themes. Each tint stands at least 30° of OKLCH hue
+from `warning` and `destructive`, since amber means the person is needed and
+red means failed or delete; a near-neutral tint reads as no hue and is exempt.
+Each reaches 3:1 on `background`, `card`, `popover`, `sidebar`, a selected
+row (`muted`) and each of those hovered (`foreground` 5%). And no two of the
+seven with a hue stand within 20° of each other.
+
+So a PDF is not red and a deck is not orange here, as they are in Office: both
+would read as a failure or as Needs you. A PDF is rose, 34° from dark's red, and
+a deck is violet. Documents are blue, sheets green, pictures teal and video a
+sky blue. `lib/kindTint.test.ts` holds the rules and the nine names;
+`lib/tokenContrast.test.ts` counts the tints among its marks.
+
 ### Canvas tints
 
 Work's canvas (the pane beside a thread, "The canvas pane") marks content
@@ -1132,7 +1168,7 @@ thread; nothing answers inside the canvas.
 
 - **A file from outside** (a drop from the desktop, Open file… in ⋯, the
   File menu's Open File…): a Work thread's or Work draft's pane takes a drop
-  anywhere but the composer's box, and a Work view (Docs among them) anywhere.
+  anywhere but the composer's box, and a Work view anywhere.
   While a file is over such a place, the place it will show in draws the
   document surface's wash (`muted` 70%, 12px inside, a hairline, 8px radius,
   one 13px muted line, "Drop to open"): the canvas when the thread has items,
@@ -1144,13 +1180,14 @@ thread; nothing answers inside the canvas.
   pane, else a 36px row at the canvas's foot under the item; nothing else says
   it. A file no kind shows is one toast, "No viewer for <name>", whose one
   action is Add to the thread as a file.
-- **A file opened from the Files view** is the item, not a chat: it opens
-  in its viewer with the thread folded away, the conversation toggle one
-  press away, and no empty composer first; opened again, it shows in the
-  thread that already holds it. Before its first message the thread's half
-  is its one muted line over the composer, as any thread with no rows.
-  An item whose viewer fails says so on the state line with Retry
-  ("Couldn't open this document", why), never a blank pane.
+- **A file opened from Files** is the file, not a chat: it opens in a tab
+  of the Files place, in its viewer under its own header, and no thread is
+  made for it until he sends in the chat Ask docks beside it ("The Files
+  place"). Where the workspace's host is a release
+  behind and keeps no tabs, it opens as it did before: the item in a new
+  thread's canvas with the thread folded away, and the thread that already
+  holds it shows it again. An item whose viewer fails says so on the state
+  line with Retry ("Couldn't open this document", why), never a blank pane.
 - **The tab row** is 36px on `sidebar`, as the title bar's strip: tabs
   28px on the strip's chip shape (6px radius, 2px apart, 6px from the
   row's ends), the kind's 14px glyph, the name, no dirty dot; the selected
@@ -1432,6 +1469,175 @@ Around the canvas:
   host on each workspace's page. A section that needs an account the person is
   signed out of shows one muted line naming the sign-in ("Sign in to
   LifeOS to …"), never disabled controls.
+- **The Files place** (`work/files/`, the Files row): the finder with
+  tabs, under the app's strip in the view's own frame. Three regions.
+  The **sidebar** is 200px on `sidebar` with a hairline at its right, 8px
+  inside, its groups 16px apart: Home, Recent and Starred, with his saved
+  searches under Starred; then "Places" (a 12px medium muted label), one
+  28px row a place at radius 6, a 16px muted glyph 8px from its 13px
+  name, the row he stands in `muted`; then Made by threads and Trash. A
+  place's row ends in a quiet chevron, always drawn, that opens its
+  folders under it, 16px a level, kept open per window; a row or a folder
+  of the sidebar takes a drop. A team with
+  several channels is one row, its channels one level in. A place that is
+  down greys its glyph and says why only when opened. With no Teams place
+  listed there is one greyed row, Teams files, whose page says the one
+  cause with its one press. The sidebar folds with the toggle that starts
+  the tab row, and by itself under 640px of view, where the toggle lays it
+  over the list.
+  The **tab row** is the canvas tab row's own: 36px on `sidebar`, 28px
+  chips at radius 6, 2px apart, a 14px kind glyph in `muted-foreground`
+  (never tinted: no tab row's is), the name, the selected tab `muted`; a
+  close control on the tab under the pointer and on the selected one; then
+  a quiet +. A tab is a folder he is browsing or a file open as itself. A
+  folder opens in the tab he is in; a file opens in a tab of its own beside
+  the tab it came from, never twice, and closing it returns there. No dirty
+  dot: nothing is saved by hand. Past what fits the tabs shrink to their
+  glyph and then scroll under a faded edge.
+  A **page's bar** is 44px: Back and Forward for this tab (28px ghost
+  glyphs), then the trail, each step above the folder a ghost press in
+  `muted-foreground` and the folder itself in medium `foreground`, 14px
+  chevrons between; then Go to and Search (28px ghost glyphs), the view
+  switch, the page's options (⋯) and the one primary button, New. A press
+  on the trail's empty part, or ⌘P, turns the trail into **Go to**'s
+  field: a panel under it (the popover's own depth, 32px rows) lists the
+  open tabs and recent files first, then names from every place, then
+  "New sheet called …" when his words start with new; Return takes the
+  first row, the arrows walk, Escape puts the trail back. **Search** (`/`
+  or ⌘F) is a field in the trail's place that filters the folder shown as
+  he types; Return searches every place as a page of results whose second
+  column says where each file lives, under a 36px bar of filters (Kind,
+  When it changed, Others can open, then More, a menu of Place, Project and
+  Changed by as submenus and Needs review, its count in `muted-foreground`
+  beside its name while any is set), each a 24px ghost press whose words
+  are its value and turn `foreground` while set, with Save Search… at its
+  end; a saved search is a row under Starred. The Docs view folded in here:
+  LifeOS is a place, its filters are this bar's and its saved views are
+  saved searches.
+  As the bar narrows the trail gives way first (under 520px of bar it
+  names the folder alone), then the view switch (under 600px of page its
+  five shapes are rows of View options instead); Back, Forward, Go to,
+  Search, View options and New never leave.
+  The **view switch** is one segmented control of glyphs: List, Grid,
+  Columns, Gallery, Beside. A folder he has not shaped is a list; one he
+  has shaped keeps its shape for this window. **View options** (⋯) is one
+  menu: Comfortable or Compact rows (the list), the three tile sizes (the
+  grid), Sort by Name, When Changed, Size or Kind with the way it runs
+  said at the checked row's end (a press on the checked one turns it
+  round), Group by None, Kind or Date (and Place in a lens or a search),
+  and Show Details.
+  The **list** has a 28px head row (12px, a press on Name or Changed
+  sorts, a second turns it round, a 12px chevron says which way) and 36px
+  rows at radius 6 (28px compact), only the rows on screen mounted past
+  80: the kind's 16px glyph in its tint ("File kind tints"), the 13px name
+  (semibold while a thread made it and he has not opened it), then one
+  state at most (a 12px cloud mark, an amber count of suggestions, "Dana
+  is in it", a spinner while a thread writes), then who last changed it
+  (160px) and when (128px, right aligned, tabular), both 12px muted. Who
+  goes first as the list narrows (under 560px of list), then when (under
+  360px). Folders come first. Grouped, each group's first row carries a
+  28px heading over it (12px medium muted), 8px clear of the group above.
+  With Show Details on, a 288px pane at the list's right (past 640px of
+  list) shows the one selected file's picture in a 160px box on `stage`,
+  its name, its facts as a two-column list and Open.
+  **Grid** is tiles at 96, 144 or 208px: the file's own picture where its
+  host draws one, on `stage` inside the image outline with 4px around it,
+  else the kind's glyph large (28, 36, 48px); under it the name on two
+  lines at most, centred, and one 12px muted fact. A picture is asked for
+  only for the tiles on screen, never for a folder, a file kept in the
+  cloud, a sound or an archive, and a tile never waits on it. **Columns**
+  is a 216px column a folder from the place's top down, 28px rows, the
+  folder on the way down held in `muted`, the last column the selected
+  file's picture and facts. **Gallery** is one large read-only preview on
+  `stage`, a 32px line under it with the file's name and one fact, and a
+  76px strip of the folder (60px cells, a small picture or the glyph, the
+  one shown held in `muted`); the arrows walk, Return opens. **Beside** is
+  the list at 280px in two-line 44px rows (the name and when; under it
+  the one state, else who changed it) and the selected file at its right:
+  a read-only preview that follows the arrows after 120 ms, and, on a
+  click or Tab into it, the file as itself, editable, under one 32px line
+  that says where saving stands and Open in a Tab. It is no tab. A walk
+  with the arrow keys never opens, mounts or writes anything.
+  In every shape a click selects (`muted`), a second opens; hover is
+  `foreground` 5%. Shift takes the run, ⌘ adds or takes one, ⌘A all. The
+  arrows walk, Return opens, Space is **Quick Look**: a layer over the
+  page (the popover's depth, radius 12, at most 1000 by 760px) with a
+  44px head (the glyph, the name, where it is kept, Open, Close) and the
+  file read only under it: its pages down the pane, its picture fitted,
+  a video's frame with Play under it, a sound's Play, a zip's listing,
+  else its facts and the one sentence that says why there is no picture.
+  It opens with one scale from 0.96 and a fade over `--dur-base`, follows
+  the arrows with no motion, and closes at once on Space, Escape or a
+  press outside. A file kept in the cloud shows its facts and Download
+  and Look: nothing downloads without that press.
+  **New** is the bar's one primary button: a menu of what the place
+  makes (Document, Sheet, Deck, Text File, Folder), Upload Files…, and a
+  last muted line that says where it is kept. The new thing is selected
+  with its name ready to type. A name is typed in place (F2, a slow
+  second press on the selected name, Rename in the menu): the field
+  stands where the name was with the part before the extension selected.
+  **A row's menu** (a right-click, the same for one or many) is the
+  verbs the place takes, each refused one greyed with its sentence as the
+  tooltip: Open, Open in New Tab, Rename, Move to…, Copy to…, Star,
+  Delete. With two or more selected one bar floats 12px over the list's
+  foot (40px, radius 12, the popover's depth): "3 selected", Move, Copy,
+  Delete, Clear. **Move to… and Copy to…** are one dialog: the places at
+  the left, the folder picked at the right, the place's own sentence where
+  it refuses. Delete goes to Trash and says so in one toast with Undo;
+  Trash is a lens whose rows have Put Back and Delete for Good, with
+  Empty Trash in its bar. **Drag**: nothing moves while a thing is
+  dragged; the target (a folder row, a place or folder of the sidebar, a
+  folder's tab, which comes forward after 600 ms) takes `muted`, and the
+  pointer carries a small label with the verb ("Move to Events", "Copy to
+  General"). A drop inside one place moves and into another copies; ⌥
+  copies, ⌘ moves. Files dropped from the desktop upload into the folder,
+  with one line over the list for the file going, how far, and Cancel.
+  Rows dragged onto the docked chat draw the document surface's wash 12px
+  inside it ("Drop to add to the message") and become a file chip each in
+  its composer, eight at most.
+  **Home** is the page a new tab opens on: three short lists (Waiting on
+  you, Starred, Recent) in a 768px column, 36px rows that open on one
+  press; a list with nothing in it is left out.
+  A **file open as itself** has a 48px header: its kind's glyph in its
+  tint, its name at 14px semibold, and under it one 12px muted line that
+  says where it is kept ("In Events") or whose copy it is ("A copy from
+  MacBook. Changes stay here", with Open on MacBook) or, for a kind that
+  saves, where saving stands ("Saved 1:52 PM in Events"; it takes
+  `foreground` only when it needs him, with at most two presses beside
+  it: Reload, Keep mine as a copy); at the right ⋯ and Ask (secondary,
+  the Ask glyph). The name is a press that renames it in place. ⋯ holds
+  its row's verbs, Download, Full Window and Close Tab. Full Window fills
+  the app's window with the file, its way back in the header and on
+  Escape. Under the header the kind's own bar and body, exactly as beside
+  a thread; the `file` kind shows a text or code file in an editor that
+  saves as he types, a sound with Play, a zip as its facts over the list
+  of what it holds, and anything else as its facts with Download and Open
+  in its app. Opening a file makes no thread, and the thread is never the
+  first thing he sees.
+  **Ask** docks a chat at the file's right, under the header; Ask again or
+  the dock's close takes it away, at once, never a tween. It shows the
+  thread that holds the file, else a draft that is in no rail and on no
+  host until he sends ("New chat"), its composer holding the file's chip
+  and no draft row. The dock is 360px to start (360 to 720, kept per
+  window), the file never under 560px beside it; the canvas split's
+  hairline sash between them (an 8px grab, the arrows, a double-click
+  back to 360). Its head is 32px, level with the kind's bar: the title at
+  13px medium, then Open in its own tab (once it is a thread) and Close,
+  24px ghost glyphs. Under it the transcript and the composer; the
+  transcript's skeleton until the thread is known. Where the tab's body
+  cannot keep the file at 560px beside it, the dock lies over the whole
+  body instead, its head and Close where they were. Under 900px of view
+  the sidebar folds itself while the dock is open and comes back when it
+  closes. A selection's Ask opens the dock with the selection's chip.
+  **States**: loading is the list's own bones (a 16px square and a line a
+  row); an empty folder is one `Empty` ("This folder is empty"); a folder
+  that did not load is `Empty` with why and Retry; a machine asleep is one
+  line over the list it kept ("The Windows VM is asleep", "This is the
+  list from 1:40 PM.", Wake it) in the state line's shape with no failed
+  glyph; a machine that did not answer is the state line with Retry; a
+  host a release behind is one 12px muted line under the tab row ("Update
+  the box to keep tabs here"). Nothing moves between pages: a tab switched
+  by a key changes at once.
 - **The Mail view** (work-kit's mail client, shared with LifeOS, on
   TempCode's scale; docs/agents/work-mail.md). The view has no header of
   its own: the list's 44px head is the page's. The list is 296px (260 to
@@ -1572,7 +1778,7 @@ Around the canvas:
   Retry. A message that arrives at the foot rises 4px and fades in over
   `--dur-fast`; nothing else moves.
 - **People** (the People view, work/people/; docs/agents/work-people.md).
-  The list is the Docs list's shape: a 720px column, one 32px row a
+  The list is a 720px column, one 32px row a
   person, the 24px face, the name in `foreground`, the first address 4px
   after it in 12px `muted-foreground` on one baseline, when they were
   last heard from at the end, tabular. A person's page takes the Projects
@@ -1581,7 +1787,7 @@ Around the canvas:
   face beside the name (the 16px title recipe) and their addresses and
   numbers as one comma line in 12px muted, then the notes at 14/22; then
   each section that has something, 24px apart, under a 12px medium muted
-  heading: rows of the Docs list's shape, a title, a 12px muted second
+  heading: rows of the list's 32px shape, a title, a 12px muted second
   line, a time at the end. A section with nothing is not drawn, and no
   row repeats what its heading says. An Agenda row names the people at
   an event as one muted comma line ("With …"), each name a link on hover.
@@ -2320,8 +2526,11 @@ this line by chrome/icons.test.ts), so no call site writes 1.5; a glyph that
 reads too thin takes the next size up, never a heavier stroke. No icon takes a
 `strokeWidth` prop outside chrome/icons and the charts (the same test refuses one). An icon never carries meaning alone where a word fits; a
 tool row in the transcript keeps its tool icon beside its humanized verb.
-Two glyphs carry colour: `StatusMark`'s, for a state, and the type glyph
-(`TypeGlyph`), in its type's tint ("Type tints"). Every other glyph is
+Three glyphs carry colour: `StatusMark`'s, for a state, the type glyph
+(`TypeGlyph`), in its type's tint ("Type tints"), and a file's kind glyph
+(`KindGlyph`), in its kind's tint ("File kind tints"), in the Files place's
+rows, tiles and file headers only; every canvas tab row draws it muted, so no
+thread's canvas changes. Every other glyph is
 uncoloured: a subagent's role glyph (`AGENT_GLYPHS`), a tool's, the host's.
 The host glyph (chrome/HostGlyph.tsx) stays as it is: 12px, uncoloured, the
 name on hover, drawn only with two or more hosts.

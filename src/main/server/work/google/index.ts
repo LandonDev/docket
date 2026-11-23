@@ -1,5 +1,6 @@
 import type { GoogleAccounts, GoogleFileState, GooglePicked, GoogleWritten } from '@shared/contract-work-google'
-import { handled, NOT_HANDLED, type CanvasItem, type CanvasKind } from '@shared/work'
+import type { FilesOpened } from '@shared/contract-work-files'
+import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type CanvasKind } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
 import { GOOGLE_MIME } from './client'
@@ -11,6 +12,9 @@ import { clientIdOf, pick, setClientId } from './picker'
 import { googleChanges, startPoll, watch } from './poll'
 import { GOOGLE_TOOLS } from './tools'
 import { googleHealth } from './health'
+import { GOOGLE_SEATS } from './drive'
+import { filesHandle } from '../files/handle'
+import { forgetDrive } from '../files/places/drive'
 
 /**
  * The google pillar's server module (docs/agents/work-google.md): Google
@@ -21,11 +25,7 @@ import { googleHealth } from './health'
  * Letting someone into a file is held (`share.google`).
  */
 
-const KIND_OF: Record<string, { canvas: CanvasKind; kind: GooglePicked['kind'] }> = {
-  [GOOGLE_MIME.doc]: { canvas: 'document', kind: 'doc' },
-  [GOOGLE_MIME.sheet]: { canvas: 'sheet', kind: 'sheet' },
-  [GOOGLE_MIME.slides]: { canvas: 'slides', kind: 'slides' }
-}
+const KIND_OF: Record<string, { canvas: CanvasKind; kind: GooglePicked['kind'] }> = GOOGLE_SEATS
 
 let openBrowser: (url: string) => Promise<void> = async (url) => {
   if (!process.versions.electron) throw new Error('This host has no browser to show the Picker in.')
@@ -89,6 +89,8 @@ export const google: WorkModule = {
         const clientId = clientIdOf(ctx.db)
         if (!clientId) throw new Error("This host does not know LifeOS's Google client id yet: set it in Settings → Work.")
         const ids = await pick({ clientId, account: req.params.account, kinds: req.params.kinds, open: openBrowser, signal })
+        // What he picked is now in what this client may see: a Drive place lists it at its next read.
+        if (ids.length) forgetDrive(req.params.account)
         const api = googleOf(ctx).api(req.params.account)
         const files: GooglePicked[] = []
         for (const id of ids) {
@@ -98,6 +100,15 @@ export const google: WorkModule = {
         return handled({ files })
       }
       case 'work.google.open': {
+        // The Files pane is an owner too: the file opens in a Files tab through the files pillar, with no thread.
+        const pane = filesPaneWorkspace(req.params.sessionId)
+        if (pane) {
+          const f = await googleOf(ctx).api(req.params.account).file(req.params.fileId)
+          const got = await filesHandle({ id: req.id, method: 'work.files.open', params: { workspaceId: pane, ref: { at: 'google', account: req.params.account.toLowerCase(), fileId: f.id, mime: f.mimeType } } } as never, ctx, by, signal)
+          const opened = (got as { result: FilesOpened }).result
+          if (!opened.item) throw new Error(`${f.name} is open in a thread already: it is shown there.`)
+          return handled({ itemId: opened.item.id, ...(opened.tabId ? { tabId: opened.tabId } : {}) })
+        }
         if (!ctx.scopeOf(req.params.sessionId)) throw new Error('Google files open in a Work thread.')
         const f = await googleOf(ctx).api(req.params.account).file(req.params.fileId)
         const kind = KIND_OF[f.mimeType]

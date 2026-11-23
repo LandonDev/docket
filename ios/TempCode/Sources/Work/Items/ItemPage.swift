@@ -98,11 +98,11 @@ struct ItemPage: View {
     }
 }
 
-/// The kind's own view.
+/// The kind's own view. `ask` is nil where no thread stands beside the item (a file open from Files): no Ask shows.
 struct ItemBodyView: View {
     let client: EnvironmentClient
     let item: CanvasItem
-    let ask: (ContextChip) -> Void
+    let ask: ((ContextChip) -> Void)?
 
     var body: some View {
         switch ItemBody.of(item) {

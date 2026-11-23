@@ -29,6 +29,8 @@ put /etc/restic/excludes 600 <<'EOF'
 /srv/agents/temp-code-data/*.db-shm
 /srv/agents/temp-code-data/blob_storage
 /srv/agents/temp-code-data/Crashpad
+/srv/agents/temp-code-data/work-files/previews
+/srv/agents/temp-code-data/work-files/preview-scratch
 /srv/agents/home/.npm-global
 /srv/agents/home/.npm
 /srv/agents/home/.bun

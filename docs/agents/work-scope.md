@@ -471,7 +471,11 @@ The text is, in order (work/preamble.ts):
 2. **Each module's part**, in module order (`WorkModule.preamble(scope)`,
    joined by `modulePreambles`; work/threads.ts hands them to the
    registry). A module that throws is left out and logged; the head never
-   depends on a pillar.
+   depends on a pillar. Files' part (`filesPreamble`, a workspace thread
+   only) is the line on files in shared places: change the workspace's
+   files with the `files_*` tools; a change to a file others can open is
+   held for the owner's press, never written at once
+   ([work-files.md](work-files.md) "Agents").
 3. **The project's own preamble**, when it would have applied to a code
    thread.
 

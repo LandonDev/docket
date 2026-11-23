@@ -289,6 +289,20 @@ public struct WorkRoutinesPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct WorkFilesPush: Codable, Hashable, Sendable {
+    public let workspaceId: String
+    public let at: String?
+    public let tabs: Double?
+    public let places: Bool?
+
+    public init(workspaceId: String, at: String? = nil, tabs: Double? = nil, places: Bool? = nil) {
+        self.workspaceId = workspaceId
+        self.at = at
+        self.tabs = tabs
+        self.places = places
+    }
+}
+
 public struct ComputerPush: Codable, Hashable, Sendable {
     public let service: ComputerServiceState
     public let sessions: [ComputerSessionRow]
@@ -329,6 +343,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case workGuests(WorkGuestsPush)
     case workCanvas(WorkCanvasPush)
     case workRoutines(WorkRoutinesPush)
+    case workFiles(WorkFilesPush)
     case computer(ComputerPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
@@ -369,6 +384,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "work.guests": self = .workGuests(try WorkGuestsPush(from: decoder))
         case "work.canvas": self = .workCanvas(try WorkCanvasPush(from: decoder))
         case "work.routines": self = .workRoutines(try WorkRoutinesPush(from: decoder))
+        case "work.files": self = .workFiles(try WorkFilesPush(from: decoder))
         case "computer": self = .computer(try ComputerPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
@@ -405,6 +421,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .workGuests(let value): try Self.encode(tag: "work.guests", value, to: encoder)
         case .workCanvas(let value): try Self.encode(tag: "work.canvas", value, to: encoder)
         case .workRoutines(let value): try Self.encode(tag: "work.routines", value, to: encoder)
+        case .workFiles(let value): try Self.encode(tag: "work.files", value, to: encoder)
         case .computer(let value): try Self.encode(tag: "computer", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }

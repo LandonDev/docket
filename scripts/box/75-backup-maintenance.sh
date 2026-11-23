@@ -20,6 +20,13 @@ if ! grep -qxF /srv/agents/temp-code-builds /etc/restic/excludes; then
   printf '%s\n' /srv/agents/temp-code-builds '/srv/agents/.temp-code-trial-*' >> /etc/restic/excludes
   changed 'excluded release builds and trial scratch data'
 fi
+# Files' previews are pictures made again on demand (docs/agents/work-files.md "Previews"): never backed up.
+for path in /srv/agents/temp-code-data/work-files/previews /srv/agents/temp-code-data/work-files/preview-scratch; do
+  if ! grep -qxF "$path" /etc/restic/excludes; then
+    printf '%s\n' "$path" >> /etc/restic/excludes
+    changed "excluded $path"
+  fi
+done
 for spec in restore-drill:restore-drill restic-check:restic-check; do
   name=${spec%:*}; script=${spec#*:}
   put "/etc/systemd/system/box-$name.service" <<EOF_UNIT

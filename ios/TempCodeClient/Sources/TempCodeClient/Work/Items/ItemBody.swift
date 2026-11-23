@@ -33,6 +33,9 @@ public enum ItemBody: Equatable, Sendable {
         case .mail:
             if case .lifeos(let source) = item.source, source.table == .outbox { return .mail(draftId: source.id) }
             return .unavailable("This mail opens in Mail.")
+        case .file:
+            // A thread's canvas seats no `file` item until it has the tools for them (F5); the Files place opens it in Quick Look.
+            return .unavailable("This file opens in Files.")
         case .unknown:
             return .unavailable("This item opens on the computer.")
         }

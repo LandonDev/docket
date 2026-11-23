@@ -122,20 +122,21 @@ export const pdfTools: WorkTool[] = [
         const item = paneItem(ctx, ctx.sessionId, id, 'pdf')
         const { stamp, form } = await fieldsOfFile(ctx, item)
         const store = new PdfStore(ctx.db)
+        const kept = store.keep(item)
         let note = ''
         // A form with no tooltips (the IRS's have none) is labelled from the words printed beside each field.
-        if (form.fields.some((f) => !f.label) && !store.labels(item.id, stamp.rev)) {
+        if (form.fields.some((f) => !f.label) && !store.labels(kept.id, stamp.rev)) {
           try {
             const pages = [...new Set(form.fields.map((f) => f.page))].sort((x, y) => x - y).slice(0, 40)
             // Without tables: a form's ruled boxes read as tables, and the words printed in them are the labels.
             const x = await extract(ctx, stamp.path, pages.join(','), false)
             const labelled = labelFields(form.fields, x.blocks)
-            store.setLabels(item.id, item.sessionId, stamp.rev, Object.fromEntries(labelled.flatMap((f) => (f.label ? [[f.key, labelOf(f.label)]] : []))))
+            store.setLabels(kept.id, kept.sessionId, stamp.rev, Object.fromEntries(labelled.flatMap((f) => (f.label ? [[f.key, labelOf(f.label)]] : []))))
           } catch (err) {
             note = `\n(The labels could not be read off the page: ${errorText(err)}. Read the page with pdf_extract and match each field by its box.)`
           }
         }
-        const fields = store.fields(item.id, form.fields, store.labels(item.id, stamp.rev))
+        const fields = store.fields(kept.id, form.fields, store.labels(kept.id, stamp.rev))
         if (form.xfaOnly) return fail('This form is XFA only: it has no fields that can be filled here. It opens in Adobe Reader.')
         if (fields.length === 0) return workText('This PDF has no form fields. To fill a flat form, place boxes on its lines with `pdf_fill` (`place`).')
         return { ...workText(`name  kind  label  place  value\n${fields.map(describeField).join('\n')}${note}`), structuredContent: { fields } }
@@ -159,6 +160,7 @@ export const pdfTools: WorkTool[] = [
         const { form } = await fieldsOfFile(ctx, item)
         if (form.xfaOnly) return fail('This form is XFA only: it has no fields that can be filled here.')
         const store = new PdfStore(ctx.db)
+        const kept = store.keep(item)
         const by = agentPrincipal(ctx.host, ctx.sessionId)
         const places: FieldPlace[] = []
         const fills: FieldFill[] = []
@@ -177,12 +179,12 @@ export const pdfTools: WorkTool[] = [
           if (!f.source) return void refused.push(`${n} (${key}): say where the value came from (source)`)
           fills.push({ key, value: f.value, source: f.source as PdfProvenance })
         })
-        const put = store.place(item.id, item.sessionId, places, by, form.fields)
+        const put = store.place(kept.id, kept.sessionId, places, by, form.fields)
         refused.push(...put.refused)
         // A value rides only into a box that was placed, or a field that is there.
         const placedNot = new Set(places.map((p) => p.key).filter((k) => !put.placed.includes(k)))
-        const direct = store.mode(item.id) === 'writes'
-        const done = store.fill(item.id, item.sessionId, fills.filter((f) => !placedNot.has(f.key)), by, form.fields, direct)
+        const direct = store.mode(kept.id) === 'writes'
+        const done = store.fill(kept.id, kept.sessionId, fills.filter((f) => !placedNot.has(f.key)), by, form.fields, direct)
         refused.push(...done.refused)
         await announce(ctx, item)
         const lines = [

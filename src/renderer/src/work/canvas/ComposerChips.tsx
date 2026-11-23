@@ -1,5 +1,5 @@
 import { CHIP_NOUN, type ChipKind } from "@shared/work";
-import { Clock, Layers, Outbox, X, type IconComponent } from "../../chrome/icons";
+import { Clock, File, Layers, Outbox, X, type IconComponent } from "../../chrome/icons";
 import { TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
@@ -20,6 +20,7 @@ export const CHIP_GLYPH: Record<ChipKind, IconComponent> = {
   routine: Clock,
   card: Card,
   chat: Chat,
+  file: File,
 };
 
 /**

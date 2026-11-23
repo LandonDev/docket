@@ -5,8 +5,7 @@ import type { Chunk } from "../../lib/lazyChunk";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { LifeosSession } from "../shell/lifeos";
 import { agendaView } from "../agenda/view";
-import { docsView } from "../docs/view";
-import { filesView } from "../office/view";
+import { filesView } from "../files/view";
 import { mailView } from "../mail/view";
 import { messagesView } from "../messages/view";
 import { peopleView } from "../people/view";
@@ -20,11 +19,11 @@ import { templatesView } from "../templates/view";
 
 /**
  * The rows over a linked Work workspace's projects (architecture §7.3):
- * Mail, Messages (docs/agents/work-messages.md), Tasks, Projects (the project screens, docs/agents/work-projects.md), Agenda, People (docs/agents/work-people.md), Docs and Files (Teams files, docs/agents/work-teams-files.md), Plays (docs/agents/work-plays.md), then Routines (milestone 32). A row opens its view in the main pane under
+ * Mail, Messages (docs/agents/work-messages.md), Tasks, Projects (the project screens, docs/agents/work-projects.md), Agenda, People (docs/agents/work-people.md), Files (the Files place, docs/agents/work-files.md, where the Docs view folded in), Plays (docs/agents/work-plays.md), then Routines (milestone 32). A row opens its view in the main pane under
  * the thread strip. One closed list; each pillar fills its own `view.ts`
- * (milestones 23 and 25, and Docs after them) and edits nothing here.
+ * (milestones 23 and 25, and the rest after them) and edits nothing here.
  */
-export type WorkViewId = "mail" | "messages" | "tasks" | "projects" | "agenda" | "prep" | "people" | "money" | "docs" | "files" | "templates" | "plays" | "routines";
+export type WorkViewId = "mail" | "messages" | "tasks" | "projects" | "agenda" | "prep" | "people" | "money" | "files" | "templates" | "plays" | "routines";
 
 export interface WorkViewProps {
   env: string;
@@ -71,7 +70,6 @@ export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
   prep: prepView,
   people: peopleView,
   money: moneyView,
-  docs: docsView,
   files: filesView,
   templates: templatesView,
   plays: playsView,

@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // These keys are a Mac's (⌘): the suite runs on any machine, so it says which platform it means (lib/keys.ts).
 vi.mock("./platform", () => ({ IS_MAC: true }));
 import { RENDERER_MENU_IDS } from "@shared/menuTree";
-import { createKeyResolver, editorAnswers, editorHeld, editorKeys, isAppCommandId, menuCommandAllowed, pageOwnsKey, workCommands, DOUBLE_SHIFT_MS } from "./appCommands";
+import { createKeyResolver, editorAnswers, editorHeld, editorKeys, filesOverlay, isAppCommandId, menuCommandAllowed, pageOwnsKey, workCommands, DOUBLE_SHIFT_MS } from "./appCommands";
+import { FILES_KEYS } from "../work/files/chords";
+import { filesPort } from "./filesKeys";
 
 type Surface = "dialog" | "monaco" | "terminal" | "codemirror" | "composer" | "driving" | null;
 
@@ -352,5 +354,90 @@ describe("a Work editor holding the caret owns its keys", () => {
     expect(changes).toHaveLength(2);
     unsubscribe();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("the Files place keeps its own tab chords", () => {
+  const resolve = createKeyResolver();
+  /** A target inside each of these selectors' elements and no other. */
+  const within = (e: KeyboardEvent, ...selectors: string[]): KeyboardEvent =>
+    ({
+      ...e,
+      target: { closest: (selector: string) => (selectors.some((s) => selector.includes(s)) ? {} : null) },
+    }) as unknown as KeyboardEvent;
+  const FILES = "[data-files-view]";
+  const bracket = (k: string, mods: Parameters<typeof key>[1]) =>
+    ({ ...key(k, mods), code: k === "[" || k === "{" ? "BracketLeft" : "BracketRight" }) as unknown as KeyboardEvent;
+  const CHORDS: [string, () => KeyboardEvent, string, string][] = [
+    ["⌘T", () => key("t", { meta: true }), "new-tab", "show_hierarchy"],
+    ["⌘W", () => key("w", { meta: true }), "close-tab", "close_tab"],
+    ["⌃Tab", () => key("Tab", { ctrl: true }), "next-tab", "next_tab"],
+    ["⌃⇧Tab", () => key("Tab", { ctrl: true, shift: true }), "prev-tab", "prev_tab"],
+    ["⌘⇧]", () => bracket("}", { meta: true, shift: true }), "next-tab", "next_tab"],
+    ["⌘[", () => bracket("[", { meta: true }), "back", "back_tab"],
+    ["⌘]", () => bracket("]", { meta: true }), "forward", "forward_tab"],
+    ["⌘P", () => key("p", { meta: true }), "go-to", "go_to_file"],
+  ];
+
+  afterEach(() => filesPort.set(null));
+
+  it.each(CHORDS)("%s inside a mounted Files view is %s, and %s elsewhere", (_chord, make, files, app) => {
+    filesPort.set(() => {}, FILES_KEYS);
+    expect(resolve(within(make(), FILES), ctx)).toEqual({ id: "files_command", files });
+    expect(resolve(make(), ctx)).toEqual({ id: app });
+  });
+
+  it("⌘⇧T inside a mounted Files view opens the tab last closed again", () => {
+    filesPort.set(() => {}, FILES_KEYS);
+    expect(resolve(within(key("t", { meta: true, shift: true }), FILES), ctx)).toEqual({ id: "files_command", files: "reopen-tab" });
+    expect(resolve(within(key("T", { meta: true, shift: true }), FILES), ctx)).toEqual({ id: "files_command", files: "reopen-tab" });
+  });
+
+  it("⌘F inside a mounted Files view is its Search; elsewhere this resolver leaves the key to whoever holds it", () => {
+    filesPort.set(() => {}, FILES_KEYS);
+    expect(resolve(within(key("f", { meta: true }), FILES), ctx)).toEqual({ id: "files_command", files: "search" });
+    expect(resolve(key("f", { meta: true }), ctx)).toBeNull();
+  });
+
+  it("with no Files view mounted, a stray mark changes nothing", () => {
+    for (const [, make, , app] of CHORDS) expect(resolve(within(make(), FILES), ctx)).toEqual({ id: app });
+  });
+
+  it("a dialog inside the Files view keeps its own rule", () => {
+    filesPort.set(() => {}, FILES_KEYS);
+    expect(resolve(within(key("w", { meta: true }), FILES, 'role="dialog"'), ctx)).toBeNull();
+    expect(resolve(within(key("t", { meta: true }), FILES, 'role="dialog"'), ctx)).toBeNull();
+  });
+
+  it("a focused Monaco there keeps its chords, and ⌘1–9, ⌘N and ⌘K stay the app's", () => {
+    filesPort.set(() => {}, FILES_KEYS);
+    expect(resolve(within(key("t", { ctrl: true }), FILES, ".monaco-editor"), ctx)).toBeNull();
+    expect(resolve(within(key("1", { meta: true }), FILES), ctx)).toEqual({ id: "activate_tab", index: 0 });
+    expect(resolve(within(key("9", { meta: true }), FILES), ctx)).toEqual({ id: "activate_tab", index: -1 });
+    expect(resolve(within(key("n", { meta: true }), FILES), ctx)).toEqual({ id: "new_tab" });
+    expect(resolve(within(key("k", { meta: true }), FILES), ctx)).toEqual({ id: "open_search" });
+  });
+
+  it("the menu's rows run the Files commands while focus is in Files, and their own otherwise", () => {
+    const rows = {
+      close_tab: "close-tab",
+      next_tab: "next-tab",
+      prev_tab: "prev-tab",
+      back_tab: "back",
+      forward_tab: "forward",
+      show_hierarchy: "new-tab",
+      go_to_file: "go-to",
+      find: "search",
+    } as const;
+    filesPort.set(() => {}, FILES_KEYS);
+    for (const [id, files] of Object.entries(rows)) {
+      expect(filesOverlay(id as keyof typeof rows, true)).toEqual({ id: "files_command", files });
+      expect(filesOverlay(id as keyof typeof rows, false)).toEqual({ id });
+    }
+    expect(filesOverlay("new_tab", true)).toEqual({ id: "new_tab" });
+    expect(filesOverlay("open_search", true)).toEqual({ id: "open_search" });
+    // With no Files view mounted the rows are their own, whatever is said of the focus.
+    filesPort.set(null);
+    expect(filesOverlay("close_tab", true)).toEqual({ id: "close_tab" });
   });
 });

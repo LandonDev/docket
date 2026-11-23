@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { CanvasKindSchema, CanvasSourceSchema, type CanvasItem, type CanvasSource } from './work/canvas'
-import { ENTRY_KINDS, FILE_SORTS, type FileEntry, type FilePlace, type FolderRef } from './work/files'
+import { ENTRY_KINDS, FILE_SORTS, FILE_TEXT_MAX, MAKE_KINDS, type FileEntry, type FilePlace, type FolderRef } from './work/files'
 import type { TeamsPlace } from './contract-work-office'
+import { EDITED_WITHIN, type FindSpec } from './work/docFind'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -35,12 +36,16 @@ export const FileSortSchema = z.object({ by: z.enum(FILE_SORTS), dir: z.enum(['a
 export const FilePageSchema = z.object({ at: FolderRefSchema, name: z.string().max(500), query: z.string().max(200).optional() })
 export type FilePage = z.infer<typeof FilePageSchema>
 
-/** What a search may be narrowed by. `who`: `me`, `agent`, or a name as the file's store says it. */
+/**
+ * What a search may be narrowed by. `who`: `me`, `agent`, or a name as the file's store says it. `within`: changed
+ * in a span before now, kept as its word so a saved search stays current; `after` and `before` are fixed times.
+ */
 export const FileSearchFilterSchema = z.object({
   kinds: z.array(z.enum(ENTRY_KINDS)).max(ENTRY_KINDS.length).optional(),
   places: z.array(z.string().max(200)).max(50).optional(),
   project: z.string().max(200).optional(),
   who: z.string().max(200).optional(),
+  within: z.enum(EDITED_WITHIN).optional(),
   after: z.number().int().nonnegative().optional(),
   before: z.number().int().nonnegative().optional(),
   shared: z.boolean().optional(),
@@ -65,8 +70,48 @@ export type FileOrigin = z.infer<typeof FileOriginSchema>
  */
 
 /** What New makes. */
-export const FILE_MAKE_KINDS = ['document', 'sheet', 'deck', 'text', 'folder'] as const
+export const FILE_MAKE_KINDS = MAKE_KINDS
 export type FileMakeKind = (typeof FILE_MAKE_KINDS)[number]
+
+/** The verbs a thread's change in a place others can open is held as (`file.act`). A delete there is the provider's, refused before any hold. */
+export const FILE_ACT_VERBS = ['make', 'rename', 'move', 'copy'] as const
+export type FileActVerb = (typeof FILE_ACT_VERBS)[number]
+
+/** One thing a held file act names, as it was when the act was held: its key, its name, and its version (`size:changed:`). */
+const FileActThing = z.object({ key: z.string().max(5000), name: Name, version: z.string().max(200) })
+/** Where a thing is or goes, in words: the place's id and name, and the folders inside it. */
+const FileActWhere = z.object({ place: z.string().max(200), name: z.string().max(500), trail: z.array(z.string().max(500)).max(64) })
+
+/**
+ * A held `file.act` (docs/agents/work-files.md "Agents"): a thread's change to a file others can open, exactly
+ * as it will run on his press. `request` is what the verb is sent (its digest is `digest`, `changeDigest` in
+ * files/policy.ts, so the file's own host runs exactly this change for a peer); `things` and `into` bind each
+ * file's and the destination's identity and version, and the press finds them so again or does nothing.
+ */
+export const FileActSchema = z.object({
+  workspaceId: Workspace,
+  /** the host whose disk holds the file: the press runs the verb there */
+  host: z.string().min(1).max(200),
+  verb: z.enum(FILE_ACT_VERBS),
+  /** the operation id the verb runs under */
+  op: Op,
+  request: z.object({
+    refs: z.array(FileRefSchema).min(1).max(100),
+    to: FolderRefSchema.optional(),
+    name: Name.optional(),
+    kind: z.enum(FILE_MAKE_KINDS).optional()
+  }),
+  digest: z.string().min(16).max(128),
+  /** for make, the folder it is made in; for the rest, the things changed */
+  things: z.array(FileActThing).min(1).max(100),
+  /** where they are now */
+  from: FileActWhere,
+  /** where a move or copy puts them, and that folder's key: the press finds the same folder or does nothing */
+  into: FileActWhere.extend({ key: z.string().max(5000) }).optional(),
+  /** who else can open the result: `audienceOf`'s sentence */
+  audience: z.string().max(300)
+})
+export type FileAct = z.infer<typeof FileActSchema>
 
 /** The edge of a picture a thumbnail is asked at: the grid's three tile sizes, at twice their pixels. */
 export const THUMB_SIZES = [192, 288, 416] as const
@@ -90,24 +135,54 @@ export const FilesRequestSchemas = [
   request('work.files.threads', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema })),
   /** → { entry }: downloads a file its place keeps in the cloud, on its own host, and answers it as it is now. */
   request('work.files.fetch', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema })),
-  /** → { data, size, version, end }: base64 bytes of a file in the workspace's own folder only, for the phone's Open the original. `version` is the one the first call answered: a file that changed since fails as stale. */
-  request('work.files.read', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, offset: z.number().int().nonnegative(), length: z.number().int().positive().max(4 * 1024 * 1024), version: z.string().max(200).optional() })),
+  /**
+   * → FileBytes: bytes of a file whose bytes are on its host's disk, for the `file` kind's text and the phone's
+   * Open the original: one in the workspace's own folder for every caller, one in a library of this host for his
+   * own window alone. `version` is the one the first call answered: a file that changed since fails as stale.
+   * `itemId`: the read is of a Files tab's own copy of a file on another computer (`ref` is that item's source),
+   * for his own window alone.
+   */
+  request('work.files.read', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, offset: z.number().int().nonnegative(), length: z.number().int().positive().max(4 * 1024 * 1024), version: z.string().max(200).optional(), itemId: z.string().max(100).optional() })),
   /** → FilePreview: one page of a file as a PNG, made on the file's own host. */
   request('work.files.preview', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, page: z.number().int().min(1).max(20).optional(), width: z.number().int().min(64).max(2048) })),
   /** → { thumbs: (string | null)[] }: a small picture of each file, base64 PNG; null where there is none to show. */
   request('work.files.thumbs', z.object({ workspaceId: Workspace, refs: z.array(CanvasSourceSchema).min(1).max(40), size: z.union([z.literal(THUMB_SIZES[0]), z.literal(THUMB_SIZES[1]), z.literal(THUMB_SIZES[2])]) })),
+  /**
+   * → FileArchive: the entries of a `.zip` as its central directory names them, the first `ARCHIVE_ENTRIES_MAX`
+   * in its order; nothing is extracted and no entry's bytes are read. Read as `read` is: a file of the workspace's
+   * folder for every caller that may read, a shared library's for his own window alone. Another archive type
+   * answers no entries, and nothing of it is read.
+   */
+  request('work.files.archive', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema })),
   /** → FilesTabs: the workspace's open tabs, in order. */
   request('work.files.tabs', z.object({ workspaceId: Workspace })),
   /**
    * → FilesOpened: opens a file in a tab of its own, beside `opener` (the tab it came from), or selects the tab
    * that already holds it: never twice. The host picks the canvas kind by the file's name (`as` overrules it:
-   * Open as a document). `beside`: the file goes in that window's Beside seat instead, which is no tab.
+   * Open as a document). `beside`: the file goes in that window's Beside seat instead, which is no tab. `side`: it
+   * goes at the side of that file tab instead.
+   * A file on another host of his, or in the Windows VM, is no file of this disk: it opens as a read-only copy
+   * made here (`copyOf` on its tab), where the workspace's Copy Teams files allows one, and is refused otherwise.
    */
-  request('work.files.open', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, name: Name.optional(), as: CanvasKindSchema.optional(), opener: z.string().max(100).optional(), beside: z.string().min(1).max(64).optional() })),
-  /** → FilesTabs: a new page tab, after `after` (last when absent). */
-  request('work.files.tabOpen', z.object({ workspaceId: Workspace, page: FilePageSchema, after: z.string().max(100).optional() })),
+  request(
+    'work.files.open',
+    z.object({
+      workspaceId: Workspace,
+      ref: CanvasSourceSchema,
+      name: Name.optional(),
+      as: CanvasKindSchema.optional(),
+      opener: z.string().max(100).optional(),
+      beside: z.string().min(1).max(64).optional(),
+      /** Open to the Side: the file goes at the side of this file tab, in the same tab; a file a tab of its own holds moves there with its item */
+      side: z.string().min(1).max(100).optional(),
+      /** the file's key as its listing gave it, for a file this host cannot key itself (one on another host of his): opening it again then answers its tab */
+      key: z.string().min(1).max(2000).optional()
+    })
+  ),
+  /** → FilesTabs: a new page tab, after `after` (last when absent). `first`: only while the workspace has no tab at all, so two windows that open an empty place at once make one tab between them. */
+  request('work.files.tabOpen', z.object({ workspaceId: Workspace, page: FilePageSchema, after: z.string().max(100).optional(), first: z.boolean().optional() })),
   /** → FilesTabs: closes a tab; a file tab's item goes with it, in the same transaction. */
-  request('work.files.tabClose', z.object({ workspaceId: Workspace, tabId: z.string().max(100) })),
+  request('work.files.tabClose', z.object({ workspaceId: Workspace, tabId: z.string().max(100), /** only the file at the tab's side goes; the tab stays */ side: z.boolean().optional() })),
   /** → FilesTabs: moves a tab before `before` (last when null). */
   request('work.files.tabMove', z.object({ workspaceId: Workspace, tabId: z.string().max(100), before: z.string().max(100).nullable() })),
   /** → FilesTabs: where a page tab stands now. */
@@ -134,6 +209,19 @@ export const FilesRequestSchemas = [
   request('work.files.restore', z.object({ workspaceId: Workspace, ids: z.array(z.string().max(100)).min(1).max(100), op: Op })),
   /** → { uploadId }: a file from a desktop or a phone into a folder; its bytes then go as `attachment.chunk`, `attachment.commit` or `attachment.abort` on that id. */
   request('work.files.upload', z.object({ workspaceId: Workspace, at: FolderRefSchema, name: Name, size: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/), op: Op, asked: z.boolean().optional() })),
+  /**
+   * → FileSaved: replaces a text file's bytes where it lies, when it is still `version` (a read's); a file that
+   * changed since is answered as the conflict and left as it is, and one that is gone is never made again.
+   * `copy`: his text is kept beside the file as "Name (mine)" instead, and the file is left alone.
+   */
+  request('work.files.write', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, text: z.string().max(FILE_TEXT_MAX), version: z.string().max(200), copy: z.boolean().optional(), origin: FileOriginSchema.optional() })),
+  /**
+   * → { projects: { id, name }[] }: Add to a project… (`on`) and Take out of this project. A LifeOS document or
+   * sheet moves into the project (or out of it, to LifeOS's top); any other file is linked to it in LifeOS
+   * (`projectItems`), or its link taken away. Passes the door as an edit of the file's place. Answers the file's
+   * projects after the change.
+   */
+  request('work.files.project', z.object({ workspaceId: Workspace, ref: FileRefSchema, projectId: z.string().min(1).max(200), on: z.boolean() })),
   /** → { purged }: Empty Trash, for the workspace; `ids`: only those rows. */
   request('work.files.purge', z.object({ workspaceId: Workspace, ids: z.array(z.string().max(100)).max(1000).optional() }))
 ] as const
@@ -169,6 +257,8 @@ export interface FilesListing {
   asOf?: number
   /** a search stopped before the end of what it could look through */
   more?: true
+  /** a search left these places out, by name, because their machine sleeps and only his press wakes it (the Windows VM) */
+  asleep?: string[]
 }
 
 /** One open tab. A page tab stands on a folder or a lens; a file tab holds one canvas item of the workspace's Files pane (`filesPaneOf`). */
@@ -184,18 +274,27 @@ export interface FileTab {
   key?: string
   /** the tab it was opened from: closing it returns there */
   opener?: string
+  /** a file tab that shows a copy made on this host: the host the file itself is on (`vm`: in that host's Windows VM) and its path there. Changes stay in the copy. */
+  copyOf?: { host: string; path: string; vm?: boolean }
+  /** a file tab with a second file at its side (Open to the Side): that file's item, key and name. It is in no tab of its own. */
+  side?: { itemId: string; key: string; name: string }
 }
 export interface FilesTabs {
   rev: number
   tabs: FileTab[]
 }
+/** The id of a window's Beside seat on the workspace's host: what `tabClose` takes to let the seat go. It is no tab and is in no list. */
+export const besideSeatId = (window: string): string => `seat:${window}`
+
 export interface FilesOpened extends FilesTabs {
   /** the tab that holds the file now (absent for the Beside seat, and when a thread holds it) */
   tabId?: string
   item?: CanvasItem
   /**
-   * A thread of the workspace already shows this file, and its kind keeps its marks by item (a PDF's, a deck's,
-   * a picture's): no second seat is made, and the window shows that thread's item instead.
+   * A thread of the workspace already shows this file, and its kind keeps its marks by item (a deck's; a PDF's
+   * or a video's when the tab would be a copy of another computer's file): no second seat is made, and the window
+   * shows that thread's item instead. A PDF or a video on this computer keeps its marks by the file, so it opens
+   * in a tab and shares them with the thread.
    */
   held?: { sessionId: string; itemId: string }
 }
@@ -206,11 +305,39 @@ export interface FilesHome {
   recent: FileEntry[]
 }
 
+/**
+ * A saved search: one row of the docs pillar's saved views (`work_docs_views`), read through the mapping in
+ * src/shared/work/fileSearch.ts. `docs` is that view's own spec as Docs keeps it, so its grouping, order,
+ * layout and the filters only Docs can say are kept when Files saves the search again.
+ */
 export interface SavedFileSearch {
   id: string
   name: string
   query: string
   filter?: FileSearchFilter
+  docs?: FindSpec
+}
+
+/** What `work.files.read` answers: `data` is base64, `size` the whole file's, `changed` its change time (epoch ms), `end` whether this read reached its end. */
+export interface FileBytes {
+  data: string
+  size: number
+  version: string
+  changed: number
+  end: boolean
+  /** why this caller cannot change the file where it lies, in one sentence; absent when a save would be taken */
+  locked?: string
+}
+
+/** What a save did: the file's new version; the conflict (what the file is now, or that it is gone); or the copy his text was kept as. */
+export type FileSaved = { version: string; changed: number } | { conflict: { version: string; changed: number } | { gone: true } } | { copy: FileEntry }
+
+/** The most entries `work.files.archive` answers. */
+export const ARCHIVE_ENTRIES_MAX = 2000
+/** What `work.files.archive` answers: each entry's path inside the zip, its size once extracted and whether it is a folder; `more`: the zip holds more than were listed. */
+export interface FileArchive {
+  entries: { name: string; size: number; dir: boolean }[]
+  more: boolean
 }
 
 /** A preview page, or why there is none (`none`: one sentence for the tile's place). */
@@ -248,6 +375,7 @@ export const FILES_CAPS = {
   'work.files.read': 'read',
   'work.files.preview': 'read',
   'work.files.thumbs': 'read',
+  'work.files.archive': 'read',
   'work.files.tabs': 'read',
   'work.files.open': 'operate',
   'work.files.tabOpen': 'operate',
@@ -266,6 +394,8 @@ export const FILES_CAPS = {
   'work.files.trash': 'operate',
   'work.files.restore': 'operate',
   'work.files.upload': 'operate',
+  'work.files.write': 'operate',
+  'work.files.project': 'operate',
   'work.files.purge': 'approve'
 } satisfies CapsOf<typeof FilesRequestSchemas>
 
@@ -283,5 +413,7 @@ export const FILES_RELAY = {
   'work.files.trash': 'screen',
   'work.files.restore': 'screen',
   'work.files.upload': 'screen',
+  'work.files.write': 'screen',
+  'work.files.project': 'screen',
   'work.files.purge': 'never'
 } satisfies RelayOf<typeof FilesRequestSchemas>

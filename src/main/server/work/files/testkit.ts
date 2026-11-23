@@ -124,6 +124,8 @@ export function makeRig(): Rig {
     reaches,
     scopeOf: (id: string) => (scopes.has(id) ? ({ sessionId: id, workspaceId: null, sector: null, host: HOST, away: false, routineRunId: null, shared: () => false, ...scopes.get(id) } as WorkScope) : null),
     settings: { workspace: (id: string) => ({ mayUseDesktop: [], voice: false, ...settings.get(id) }), set: () => {} },
+    // No LifeOS session on this host unless a test stands one in (places/lifeos.test.ts).
+    lifeos: { connected: () => false, owner: () => ({ query: async () => Promise.reject(new Error('LifeOS is not signed in')), mutation: async () => Promise.reject(new Error('LifeOS is not signed in')), action: async () => null }), jwt: async () => '', subscribe: () => () => {} },
     canvas: {
       open: (sessionId: string, kind: CanvasItem['kind'], source: CanvasItem['source'], title: string) => canvas.open(sessionId, { kind, source, title }),
       close: (itemId: string) => canvas.close(itemId),
@@ -134,7 +136,8 @@ export function makeRig(): Rig {
       forSession: (sessionId: string) => canvas.list(sessionId),
       forWorkspace: (workspaceId: string, opts?: { open?: boolean; panes?: boolean }) => canvas.forWorkspace(workspaceId, opts),
       get: (itemId: string) => canvas.get(itemId),
-      paneOf: (sessionId: string) => canvas.paneOf(sessionId)
+      paneOf: (sessionId: string) => canvas.paneOf(sessionId),
+      announce: (owner: string) => void canvas.announce(owner)
     }
   } as unknown as WorkCtx
   return {

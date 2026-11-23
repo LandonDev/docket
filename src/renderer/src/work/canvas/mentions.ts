@@ -46,6 +46,7 @@ const GROUP: Record<ChipKind, string> = {
   routine: "Routines",
   selection: "Selections",
   chat: "Messages",
+  file: "Files",
 };
 const LIFEOS_KINDS: readonly ChipKind[] = ["task", "mail", "event", "project", "card", "person", "doc", "chat"];
 

@@ -174,7 +174,7 @@ const findInput = z.object({
 })
 
 /**
- * `doc_find`: the Docs view's search as a tool. A workspace's thread searches that workspace,
+ * `doc_find`: the docs pillar's finding (find.ts) as a tool, over the folder walk Files' search uses. A workspace's thread searches that workspace,
  * and so its sector alone; a Work Chat searches every Work workspace on this host.
  */
 async function find(ctx: ToolCtx, a: z.infer<typeof findInput>): Promise<WorkToolResult> {

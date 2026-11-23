@@ -122,6 +122,28 @@ code. A key paired at the pairing dialog's default (`operate`) gets no JWT.
 `link` writes the sector through `registry.setWorkspaceSector`, which sends
 the `workspaces` push, so every client's rail and menus see it.
 
+## What Files asks of LifeOS
+
+The Files place reads LifeOS through the host's own session
+(`ctx.lifeos.owner()`) and changes it only after its one door
+([work-files.md](work-files.md) "LifeOS, From mail and Projects"). These
+LifeOS functions were made for it (lifeos main `12929f1`, deployed
+2026-11-23):
+
+| Function | What it is |
+|---|---|
+| `docs:remove`, `sheets:remove` | now a **soft delete**: the row stays with `deletedAt`, and every reader leaves it out (`readDoc`, `readSheet`: the catalog, `docs:list`, `sheets:list`, the project page, the guest view, the MCP tools, People's shared items, collab tokens), so its guest pages stop at once; nothing writes it. A note's document takes its note row with it |
+| `docs:restore {id}`, `sheets:restore {id}` | out of the trash, in its project while the project stands (a note's document as its note again), else loose in its sector |
+| `catalog:trash {sector}` | the sector's trash, newest delete first, each row as `catalog:list` gives it plus `deletedAt` |
+| `catalog:purgeDeleted` | the daily cron: what has been in the trash 30 days goes for good |
+| `mail:attachments {sector, since?, paginationOpts}` | the files of the sector's received mail, newest first, less pictures set in the text and mail in the trash or spam: `{ parts: { threadId, messageId, partId, name, contentType, size, sentAt, from, subject }[], isDone, continueCursor }`. A page looks through 50 threads, so a page may be empty and not the end |
+| `projectItems:bySource {source}` | which projects a file is linked to: `{ id, projectId, name, title }[]` |
+| `projectItems:repoint {from, to, title?}` | every link to `from` names `to`; a link titled by the old name takes `title` |
+
+Until `catalog:trash` answers on a host's LifeOS, Files refuses a LifeOS
+delete in the grammar's sentence ("LifeOS cannot put a document back yet.
+Delete it in LifeOS."); it asks again every 30 seconds.
+
 ## What this does not stop
 
 A Work thread's shell is not fenced (architecture §6.8). On a host, its

@@ -41,7 +41,7 @@ export interface MentionAnswer {
 }
 
 /** The order the kinds' groups read in; a kind not named here follows them. */
-export const MENTION_ORDER: readonly ChipKind[] = ['task', 'mail', 'event', 'project', 'card', 'person', 'doc', 'item', 'held', 'routine']
+export const MENTION_ORDER: readonly ChipKind[] = ['task', 'mail', 'event', 'project', 'card', 'person', 'doc', 'file', 'item', 'held', 'routine']
 
 /** A kind gives at most this many rows: the list is a few of each, not an index. */
 export const MENTION_PER_KIND = 5

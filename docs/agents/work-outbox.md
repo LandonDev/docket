@@ -18,6 +18,7 @@ it: the Outbox, a Work thread's Results and the return from Away
 | computer act the host reads as outward, or the model flagged | kept as a live hold: nothing of the call runs | `computer/run.ts`, `shared/computer/outward.ts` |
 | act of a pillar's own kind (a Teams post, a guest link, …) | held through `ctx.held.create` | the pillar, against `work/outbox/outbox.ts` |
 | change of its own idea to a file others can open (a Word document, a PowerPoint deck, a Google Doc or deck) | held as `office.edit` or `google.edit`; nothing of it reaches the file, its sync folder, its co-authors or Google before his press, which writes it as a plain edit. No grant covers it and Away releases none. Cells wait as suggestions in the grid. Below: "An agent's suggestion stays his" | `office/tools.ts`, `google/tools.ts` |
+| change to a file others can open, through the `files_*` tools (make, rename, move, copy in a Teams or OneDrive place, here or on another host of his) | held as `file.act`: one sentence with every fact, bound to each file's key and version, the destination and the audience; the press checks them again on the file's own host and runs his window's verb there, or reads `stale` and does nothing. No edit, no grant, no earned offer | `work/files/tools.ts`, [work-files.md](work-files.md) "Agents" |
 | `addon_add` | a card for a person with an admin key; never allowed by Away, never by a model | `shared/away.ts`, `sessions.ts` |
 | `addon_remove` | a card over a row a person wrote (none over a thread's own), never allowed by Away; it reaches only rows the thread can see. Nothing leaves by it | `addons/tools.ts` |
 | shell | **not caught.** The owner accepted this; the Work preamble is the rule there | |
@@ -249,7 +250,7 @@ own (`earnedOf`), so it is never wider than any of them:
 | `addon.call` | its server and tool (digests sealed as for any grant) with every argument fixed and none free | a call held without the digests, or held only because the add-on was never reviewed |
 
 Every other kind (a computer act, a Teams post, a form, a guest link,
-Office mail, a Google share) earns nothing. Why five in thirty days: one
+Office mail, a Google share, a file act) earns nothing. Why five in thirty days: one
 press shows nothing; five unedited presses on the same narrow target is a
 habit he has already decided on five times, and a month keeps an old habit
 from counting.
@@ -568,8 +569,8 @@ in place, and shows a thread's Results with Undo.
 
 ## Not built here
 
-A view of its own for every act kind: mail, the calendar and a guest link
-have one, every other kind shows in the generic view. The held line opens the Outbox
+A view of its own for every act kind: mail, the calendar, a guest link and
+a file act have one, every other kind shows in the generic view. The held line opens the Outbox
 but does not select its item. A box thread's computer act
 held on a Mac and pressed from the box. A held row moving with its thread
 to another host: it stays on the host that held it. A card skipped for a

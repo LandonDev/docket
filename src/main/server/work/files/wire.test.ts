@@ -2,11 +2,13 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
-import type { FilesListing, FilesOpened, FilesPlaces, FilesTabs } from '@shared/contract-work-files'
+import { besideSeatId as seatId, type FilesListing, type FilesOpened, type FilesPlaces, type FilesTabs } from '@shared/contract-work-files'
 import { filesPaneOf, type CanvasItem } from '@shared/work'
 import type { FileEntry } from '@shared/work/files'
 import type { Caller } from '../modules'
 import { closeFilesState, filesState } from './handle'
+import { SEATS_MOST } from './tabs'
+import { registerFileMaker } from './hooks'
 import { files } from './index'
 import { at, HOST, makeRig, peer, phone, thread, window, WS, type Rig } from './testkit'
 
@@ -36,12 +38,18 @@ describe('places', () => {
     const got = await call<FilesPlaces>('work.files.places', {})
     expect(got.host).toBe(HOST)
     expect(got.places.map((p) => [p.kind, p.name, p.shared, p.group ?? null])).toEqual([
+      ['home', 'Home', false, null],
       ['recent', 'Recent', false, null],
       ['starred', 'Starred', false, null],
+      ['made', 'Made by threads', false, null],
+      ['trash', 'Trash', false, null],
       ['folder', 'Dummy Esports', false, null],
       ['teams', 'Events', true, 'Esports Staff'],
       ['teams', 'General', true, 'Esports Staff'],
-      ['onedrive', 'My OneDrive', true, null]
+      ['onedrive', 'My OneDrive', true, null],
+      // The workspace is linked to a sector: LifeOS and From mail are listed, greyed while this host has no LifeOS session.
+      ['lifeos', 'LifeOS', false, null],
+      ['mail', 'From mail', false, null]
     ])
     const general = got.places.find((p) => p.name === 'General')!
     expect(general).toMatchObject({ key: 'esportsstaffgeneral', env: HOST, state: { state: 'ok' }, root: { at: 'file', host: HOST, path: join(rig.team, 'General') } })
@@ -52,7 +60,8 @@ describe('places', () => {
   it('gives another host of his the libraries alone, a thread no marks, and a remote key only what it could name', async () => {
     expect((await call<FilesPlaces>('work.files.places', {}, peer)).places.map((p) => p.kind)).toEqual(['teams', 'teams', 'onedrive'])
     expect((await call<FilesPlaces>('work.files.places', {}, thread('t1'))).places.map((p) => p.kind)).toEqual(['folder', 'teams', 'teams', 'onedrive'])
-    expect((await call<FilesPlaces>('work.files.places', {}, phone)).places.map((p) => p.kind)).toEqual(['recent', 'starred', 'folder'])
+    // A key without approve is given no From mail.
+    expect((await call<FilesPlaces>('work.files.places', {}, phone)).places.map((p) => p.kind)).toEqual(['home', 'recent', 'starred', 'made', 'trash', 'folder', 'lifeos'])
     await expect(call('work.files.places', {}, thread('t2'))).rejects.toThrow("A thread reaches only its own workspace's files.")
   })
 
@@ -155,6 +164,17 @@ describe('tabs', () => {
     expect(rig.pushes.filter(({ p }) => p.push === 'work.files').map(({ p }) => (p as { tabs?: number }).tabs)).toEqual([1, 2, 3, 4, 5])
   })
 
+  it('makes the first tab once for two windows that open an empty place together', async () => {
+    const page = { at: { at: 'place', id: 'folder' }, name: 'Dummy Esports' }
+    const a = await call<FilesTabs & { tabId: string }>('work.files.tabOpen', { page, first: true })
+    const b = await call<FilesTabs & { tabId: string }>('work.files.tabOpen', { page, first: true })
+    expect(b.tabId).toBe(a.tabId)
+    expect(b.tabs).toHaveLength(1)
+    expect(b.rev).toBe(1)
+    // Without it a tab is a tab.
+    expect((await call<FilesTabs>('work.files.tabOpen', { page })).tabs).toHaveLength(2)
+  })
+
   it('opens a file in a tab of its own beside the tab it came from, with no thread, and never twice', async () => {
     const from = await call<FilesTabs & { tabId: string }>('work.files.tabOpen', { page: { at: { at: 'place', id: 'folder' }, name: 'Dummy Esports' } })
     await call('work.files.tabOpen', { page: { at: { at: 'place', id: 'starred' }, name: 'Starred' } })
@@ -177,15 +197,32 @@ describe('tabs', () => {
       kinds[item!.title] = item!.kind
       expect(item!.sessionId).toBe(filesPaneOf(WS))
     }
-    expect(kinds).toEqual({ 'Budget.xlsx': 'sheet', 'Bracket.pdf': 'pdf', 'Run of show.tcdoc': 'document', 'Poster.png': 'media', 'notes.txt': 'document' })
+    expect(kinds).toEqual({ 'Budget.xlsx': 'sheet', 'Bracket.pdf': 'pdf', 'Run of show.tcdoc': 'document', 'Poster.png': 'media', 'notes.txt': 'file' })
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs).toHaveLength(5)
   })
 
-  it('opens a library Office file with its app behind it, and says a file no canvas shows opens in its app', async () => {
+  it("opens a library's Office file in the editor itself once that editor's build says it edits the form in place", async () => {
+    const path = join(rig.team, 'General', 'Spring budget.xlsx')
+    const off = registerFileMaker('sheet', { forms: ['tcsheet', 'xlsx'], blank: async () => undefined })
+    try {
+      const { item } = await call<FilesOpened>('work.files.open', { ref: at(path) })
+      expect(item).toMatchObject({ kind: 'sheet', source: at(path) })
+    } finally {
+      off()
+    }
+    // A form no editor has taken keeps its app behind it.
+    await call('work.files.tabClose', { tabId: (await call<FilesTabs>('work.files.tabs', {})).tabs[0]!.id })
+    expect((await call<FilesOpened>('work.files.open', { ref: at(path) })).item).toMatchObject({ kind: 'sheet', source: { at: 'microsoft', app: 'excel' } })
+  })
+
+  it('opens a library Office file with its app behind it, and a file no viewer shows as the file kind: every file opens', async () => {
     const { item } = await call<FilesOpened>('work.files.open', { ref: at(join(rig.team, 'General', 'Spring budget.xlsx')) })
     expect(item).toMatchObject({ kind: 'sheet', source: { at: 'microsoft', app: 'excel', host: HOST, ref: { kind: 'path', path: join(rig.team, 'General', 'Spring budget.xlsx') } } })
     writeFileSync(join(rig.folder, 'bundle.zip'), 'zip')
-    await expect(call('work.files.open', { ref: at(join(rig.folder, 'bundle.zip')) })).rejects.toThrow('bundle.zip opens in its own app.')
+    expect((await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'bundle.zip')) })).item).toMatchObject({ kind: 'file', source: at(join(rig.folder, 'bundle.zip')) })
+    // Text in a library is the file it is, never an import beside it.
+    writeFileSync(join(rig.team, 'General', 'Agenda.md'), 'team text')
+    expect((await call<FilesOpened>('work.files.open', { ref: at(join(rig.team, 'General', 'Agenda.md')) })).item).toMatchObject({ kind: 'file', source: at(join(rig.team, 'General', 'Agenda.md')) })
     await expect(call('work.files.open', { ref: at(join(rig.folder, 'Events')) })).rejects.toThrow('That is a folder: it opens in its tab.')
     // Open as a document overrules the name.
     const as = await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'notes.txt')), as: 'document' })
@@ -238,16 +275,164 @@ describe('tabs', () => {
     expect((await call<FilesTabs>('work.files.tabs', {})).tabs).toEqual([])
   })
 
-  it('opens a file whose marks are kept by item in the thread that already holds it, and makes no second seat', async () => {
-    const pdf = join(rig.folder, 'Events', 'Spring LAN', 'Bracket.pdf')
-    const held = rig.canvas.open('t1', { kind: 'pdf', source: at(pdf), title: 'Bracket.pdf' })
-    const got = await call<FilesOpened>('work.files.open', { ref: at(pdf) })
+  it('opens a deck, whose marks are kept by item, in the thread that already holds it, and makes no second seat', async () => {
+    const deck = join(rig.folder, 'Events', 'Pitch.pptx')
+    writeFileSync(deck, 'deck')
+    const held = rig.canvas.open('t1', { kind: 'slides', source: at(deck), title: 'Pitch.pptx' })
+    const got = await call<FilesOpened>('work.files.open', { ref: at(deck), as: 'slides' })
     expect(got.held).toEqual({ sessionId: 't1', itemId: held.id })
     expect(got.item).toBeUndefined()
     expect(got.tabs).toEqual([])
     // A sheet keeps its state by the file: it opens in a tab even while a thread holds it.
     rig.canvas.open('t1', { kind: 'sheet', source: at(join(rig.folder, 'Budget.xlsx')), title: 'Budget.xlsx' })
     expect((await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'Budget.xlsx')) })).item).toBeDefined()
+  })
+
+  it('opens a PDF or a video a thread holds in a tab of its own: the two share its marks by the file', async () => {
+    const pdf = join(rig.folder, 'Events', 'Spring LAN', 'Bracket.pdf')
+    rig.canvas.open('t1', { kind: 'pdf', source: at(pdf), title: 'Bracket.pdf' })
+    const got = await call<FilesOpened>('work.files.open', { ref: at(pdf) })
+    expect(got.held).toBeUndefined()
+    expect(got.item).toMatchObject({ kind: 'pdf', sessionId: filesPaneOf(WS), source: at(pdf) })
+    expect(got.tabs.map((t) => t.itemId)).toEqual([got.item!.id])
+    const clip = join(rig.folder, 'Events', 'Recap.mp4')
+    writeFileSync(clip, 'mp4')
+    rig.canvas.open('t1', { kind: 'media', source: at(clip), title: 'Recap.mp4' })
+    expect((await call<FilesOpened>('work.files.open', { ref: at(clip) })).item).toMatchObject({ kind: 'media', sessionId: filesPaneOf(WS) })
+  })
+})
+
+describe('the Beside seat', () => {
+  const budget = (): ReturnType<typeof at> => at(join(rig.folder, 'Budget.xlsx'))
+  const notes = (): ReturnType<typeof at> => at(join(rig.folder, 'notes.txt'))
+
+  it("shows a file in the window's one seat with no tab, and re-points it: the file it showed goes", async () => {
+    await call('work.files.tabOpen', { page: { at: { at: 'place', id: 'folder' }, name: 'Dummy Esports' } })
+    const first = await call<FilesOpened>('work.files.open', { ref: budget(), beside: 'w1' })
+    expect(first.tabId).toBeUndefined()
+    expect(first.item).toMatchObject({ sessionId: filesPaneOf(WS), kind: 'sheet', title: 'Budget.xlsx' })
+    expect(first.tabs.map((t) => t.name)).toEqual(['Dummy Esports'])
+    // The same file again is the same item; another file takes the seat and the first item goes.
+    expect((await call<FilesOpened>('work.files.open', { ref: budget(), beside: 'w1' })).item!.id).toBe(first.item!.id)
+    const second = await call<FilesOpened>('work.files.open', { ref: notes(), beside: 'w1' })
+    expect(second.item!.title).toBe('notes.txt')
+    expect(rig.canvas.list(filesPaneOf(WS)).map((i) => i.title)).toEqual(['notes.txt'])
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.map((t) => t.name)).toEqual(['Dummy Esports'])
+    // He opened them there: they are recent.
+    expect(names(await call<FilesListing>('work.files.list', { at: { at: 'place', id: 'recent' } })).sort()).toEqual(['Budget.xlsx', 'notes.txt'])
+  })
+
+  it('never seats a file twice: a tab that holds it is answered, two windows share one item, and a tab takes the seat\'s item', async () => {
+    const tab = await call<FilesOpened>('work.files.open', { ref: budget() })
+    const seated = await call<FilesOpened>('work.files.open', { ref: budget(), beside: 'w1' })
+    expect([seated.tabId, seated.item!.id]).toEqual([tab.tabId, tab.item!.id])
+    // Two windows on one file: one item, kept until the last seat lets go.
+    const a = await call<FilesOpened>('work.files.open', { ref: notes(), beside: 'w1' })
+    const b = await call<FilesOpened>('work.files.open', { ref: notes(), beside: 'w2' })
+    expect(b.item!.id).toBe(a.item!.id)
+    await call('work.files.tabClose', { tabId: seatId('w1') })
+    expect(rig.canvas.get(a.item!.id)).not.toBeNull()
+    // Return on it: the tab is made with the item the seat has, and the seat is gone.
+    const opened = await call<FilesOpened>('work.files.open', { ref: notes() })
+    expect(opened.item!.id).toBe(a.item!.id)
+    expect(opened.tabs.map((t) => t.name)).toEqual(['Budget.xlsx', 'notes.txt'])
+    expect(rig.db.prepare(`SELECT COUNT(*) AS n FROM work_files_tabs WHERE kind = 'seat'`).get()).toEqual({ n: 0 })
+  })
+
+  it('closes with its item, leaves the tabs alone, and is no tab to move or stand somewhere', async () => {
+    const page = await call<FilesTabs & { tabId: string }>('work.files.tabOpen', { page: { at: { at: 'place', id: 'folder' }, name: 'Dummy Esports' } })
+    await call<FilesOpened>('work.files.open', { ref: budget(), beside: 'w1' })
+    await expect(call('work.files.tabMove', { tabId: seatId('w1'), before: page.tabId })).rejects.toThrow('That tab is closed.')
+    const closed = await call<FilesTabs>('work.files.tabClose', { tabId: seatId('w1') })
+    expect(closed.tabs.map((t) => t.id)).toEqual([page.tabId])
+    expect(rig.canvas.list(filesPaneOf(WS))).toEqual([])
+    // Closing it again is nothing.
+    expect((await call<FilesTabs>('work.files.tabClose', { tabId: seatId('w1') })).tabs).toHaveLength(1)
+  })
+
+  it('keeps eight seats a workspace at most, lets go of a file that went to Trash, and none outlives a start of the host', async () => {
+    for (let i = 0; i < SEATS_MOST + 2; i++) {
+      writeFileSync(join(rig.folder, `seat-${i}.txt`), 'x')
+      await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, `seat-${i}.txt`)), beside: `w${i}` })
+    }
+    expect(rig.canvas.list(filesPaneOf(WS))).toHaveLength(SEATS_MOST)
+    await call('work.files.trash', { refs: [at(join(rig.folder, `seat-${SEATS_MOST + 1}.txt`))], op: 'op-seat-trash-0001' })
+    expect(rig.canvas.list(filesPaneOf(WS))).toHaveLength(SEATS_MOST - 1)
+    expect(filesState(rig.ctx).tabs.check()).toEqual({ tabs: 0, items: SEATS_MOST - 1 })
+    expect(rig.canvas.list(filesPaneOf(WS))).toEqual([])
+  })
+
+  it('refuses a file of another host: its copy is a tab\'s', async () => {
+    await expect(call('work.files.open', { ref: { at: 'file', host: 'env_1gP-MhkVVRaMwHbVCysYow', path: '/Users/landon/Team/Plan.docx' }, beside: 'w1' })).rejects.toThrow('A file on another computer opens in a tab of its own.')
+  })
+})
+
+describe('two files in one tab', () => {
+  const budget = (): ReturnType<typeof at> => at(join(rig.folder, 'Budget.xlsx'))
+  const notes = (): ReturnType<typeof at> => at(join(rig.folder, 'notes.txt'))
+  const poster = (): ReturnType<typeof at> => at(join(rig.folder, 'Events', 'Poster.png'))
+
+  it("opens a file at the side of a file tab, in the same tab, and closes it alone", async () => {
+    const main = await call<FilesOpened>('work.files.open', { ref: budget() })
+    const side = await call<FilesOpened>('work.files.open', { ref: notes(), side: main.tabId })
+    expect(side.tabId).toBe(main.tabId)
+    expect(side.item).toMatchObject({ sessionId: filesPaneOf(WS), kind: 'file', title: 'notes.txt' })
+    expect(side.tabs).toHaveLength(1)
+    expect(side.tabs[0]).toMatchObject({ id: main.tabId, itemId: main.item!.id, name: 'Budget.xlsx', side: { itemId: side.item!.id, name: 'notes.txt', key: `file:${HOST}:${join(rig.folder, 'notes.txt')}` } })
+    // He opened it: it is recent.
+    expect(names(await call<FilesListing>('work.files.list', { at: { at: 'place', id: 'recent' } })).sort()).toEqual(['Budget.xlsx', 'notes.txt'])
+    const closed = await call<FilesTabs>('work.files.tabClose', { tabId: main.tabId, side: true })
+    expect(closed.tabs[0]!.side).toBeUndefined()
+    expect(rig.canvas.list(filesPaneOf(WS)).map((i) => i.title)).toEqual(['Budget.xlsx'])
+    // Closing a side that is not there is nothing.
+    expect((await call<FilesTabs>('work.files.tabClose', { tabId: main.tabId, side: true })).tabs).toHaveLength(1)
+  })
+
+  it('never shows a file twice: a tab of its own moves to the side with its item, opening it again answers the tab it is in, and another side takes its place', async () => {
+    const main = await call<FilesOpened>('work.files.open', { ref: budget() })
+    const own = await call<FilesOpened>('work.files.open', { ref: notes() })
+    const moved = await call<FilesOpened>('work.files.open', { ref: notes(), side: main.tabId })
+    expect(moved.item!.id).toBe(own.item!.id)
+    expect(moved.tabs.map((t) => [t.name, t.side?.name ?? null])).toEqual([['Budget.xlsx', 'notes.txt']])
+    // Opened again from a folder: the tab that shows it at its side is answered, and nothing is made.
+    const again = await call<FilesOpened>('work.files.open', { ref: notes() })
+    expect([again.tabId, again.item!.id, again.tabs.length]).toEqual([main.tabId, own.item!.id, 1])
+    // The tab's own file is not put beside itself.
+    expect((await call<FilesOpened>('work.files.open', { ref: budget(), side: main.tabId })).tabs[0]!.side!.name).toBe('notes.txt')
+    // Another file takes the side: the one it showed goes.
+    const next = await call<FilesOpened>('work.files.open', { ref: poster(), side: main.tabId })
+    expect(next.tabs[0]!.side!.name).toBe('Poster.png')
+    expect(rig.canvas.list(filesPaneOf(WS)).map((i) => i.title).sort()).toEqual(['Budget.xlsx', 'Poster.png'])
+  })
+
+  it('closes both with the tab, follows a rename, and lets go of a file that went to Trash or whose item was closed', async () => {
+    const main = await call<FilesOpened>('work.files.open', { ref: budget() })
+    const side = await call<FilesOpened>('work.files.open', { ref: notes(), side: main.tabId })
+    await call('work.files.rename', { ref: notes(), name: 'minutes.txt', op: 'op-side-rename-0001' })
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs[0]!.side).toMatchObject({ itemId: side.item!.id, name: 'minutes.txt', key: `file:${HOST}:${join(rig.folder, 'minutes.txt')}` })
+    await call('work.files.trash', { refs: [at(join(rig.folder, 'minutes.txt'))], op: 'op-side-trash-0001' })
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.map((t) => [t.name, t.side ?? null])).toEqual([['Budget.xlsx', null]])
+    // An item closed from the pane's own menu leaves its tab.
+    const poster2 = await call<FilesOpened>('work.files.open', { ref: poster(), side: main.tabId })
+    rig.canvas.remove([poster2.item!.id])
+    files.itemsRemoved!([poster2.item!], rig.ctx)
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.map((t) => [t.name, t.side ?? null])).toEqual([['Budget.xlsx', null]])
+    // The tab closed: its side's item goes with it.
+    await call<FilesOpened>('work.files.open', { ref: poster(), side: main.tabId })
+    await call('work.files.tabClose', { tabId: main.tabId })
+    expect(rig.canvas.list(filesPaneOf(WS))).toEqual([])
+  })
+
+  it("keeps a side's item through the boot check, refuses a page tab and a file of another host, and tells a key of no side it could not name", async () => {
+    const main = await call<FilesOpened>('work.files.open', { ref: budget() })
+    await call<FilesOpened>('work.files.open', { ref: notes(), side: main.tabId })
+    expect(filesState(rig.ctx).tabs.check()).toEqual({ tabs: 0, items: 0 })
+    expect(rig.canvas.list(filesPaneOf(WS))).toHaveLength(2)
+    const page = await call<FilesTabs & { tabId: string }>('work.files.tabOpen', { page: { at: { at: 'place', id: 'folder' }, name: 'Dummy Esports' } })
+    await expect(call('work.files.open', { ref: poster(), side: page.tabId })).rejects.toThrow('That tab is closed.')
+    await expect(call('work.files.open', { ref: { at: 'file', host: 'env_1gP-MhkVVRaMwHbVCysYow', path: '/Users/landon/Team/Plan.docx' }, side: main.tabId })).rejects.toThrow('A file on another computer opens in a tab of its own.')
+    // The phone's key reaches the workspace's folder: it is told of the side. A key with no reach there is told of neither.
+    expect((await call<FilesTabs>('work.files.tabs', {}, phone)).tabs.find((t) => t.id === main.tabId)?.side?.name).toBe('notes.txt')
   })
 })
 

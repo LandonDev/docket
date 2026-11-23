@@ -39,6 +39,16 @@ import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
 import File01Icon from "@hugeicons/core-free-icons/File01Icon";
 import Link01Icon from "@hugeicons/core-free-icons/Link01Icon";
 import HashtagIcon from "@hugeicons/core-free-icons/HashtagIcon";
+import FolderAddIcon from "@hugeicons/core-free-icons/FolderAddIcon";
+import FolderTransferIcon from "@hugeicons/core-free-icons/FolderTransferIcon";
+import GalleryThumbnailsIcon from "@hugeicons/core-free-icons/GalleryThumbnailsIcon";
+import GridViewIcon from "@hugeicons/core-free-icons/GridViewIcon";
+import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
+import LayoutLeftIcon from "@hugeicons/core-free-icons/LayoutLeftIcon";
+import LayoutThreeColumnIcon from "@hugeicons/core-free-icons/LayoutThreeColumnIcon";
+import ListViewIcon from "@hugeicons/core-free-icons/ListViewIcon";
+import Undo02Icon from "@hugeicons/core-free-icons/Undo02Icon";
+import Upload01Icon from "@hugeicons/core-free-icons/Upload01Icon";
 import { wrap } from "../chrome/icons";
 
 /** LifeOS's mark, as the approved prototypes draw it (`b-lifeos`): a ring with a meridian and two parallels. Hugeicons has no LifeOS, so it is drawn here in the same shape Hugeicons gives, and takes the one stroke. */
@@ -106,3 +116,16 @@ export const File = wrap(File01Icon, "File");
 export const Link = wrap(Link01Icon, "Link");
 /** A chat channel in Messages, where a person would show their face. */
 export const Hash = wrap(HashtagIcon, "Hash");
+
+// The Files place: a page's shapes in its view switch, and the verbs' rows in New and a file's menu.
+/** Home, the first row of the Files place's sidebar. */
+export const Home = wrap(Home01Icon, "Home");
+export const ListShape = wrap(ListViewIcon, "ListShape");
+export const GridShape = wrap(GridViewIcon, "GridShape");
+export const ColumnsShape = wrap(LayoutThreeColumnIcon, "ColumnsShape");
+export const GalleryShape = wrap(GalleryThumbnailsIcon, "GalleryShape");
+export const BesideShape = wrap(LayoutLeftIcon, "BesideShape");
+export const FolderAdd = wrap(FolderAddIcon, "FolderAdd");
+export const MoveTo = wrap(FolderTransferIcon, "MoveTo");
+export const Upload = wrap(Upload01Icon, "Upload");
+export const PutBack = wrap(Undo02Icon, "PutBack");

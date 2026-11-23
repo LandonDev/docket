@@ -72,10 +72,17 @@ mkdirSync(join(library, 'General'), { recursive: true })
 const files = {
   deck: join(library, 'General', 'Kickoff.pptx'),
   pdf: join(library, 'General', 'Budget.pdf'),
-  picture: join(library, 'General', 'Court.png')
+  picture: join(library, 'General', 'Court.png'),
+  sheet: join(library, 'General', 'Travel.xlsx'),
+  // The Files place's own: files no thread holds (a deck or a PDF a thread holds opens in that thread, by its marks).
+  deck2: join(library, 'General', 'Agenda.pptx'),
+  pdf2: join(library, 'General', 'Rules.pdf')
 }
+writeFileSync(files.sheet, Buffer.from('PK\u0003\u0004dummy sheet'))
 writeFileSync(files.deck, Buffer.from('PK\u0003\u0004dummy deck'))
+writeFileSync(files.deck2, Buffer.from('PK\u0003\u0004dummy deck two'))
 writeFileSync(files.pdf, '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n')
+writeFileSync(files.pdf2, '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n')
 // a 1×1 PNG
 writeFileSync(files.picture, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
 
@@ -233,9 +240,47 @@ try {
   const copied = deck.sessionId ? readFileSync(files.deck).equals(readFileSync(join((await rpc<{ items: { source: { path?: string } }[] }>(box, 'work.canvas.list', { sessionId: deck.sessionId })).items[0]?.source.path ?? '/nonexistent'))) : false
   check("the deck's copy on box holds the file's own bytes", copied)
 
+  writeFileSync(join(box.home, 'secret.txt'), 'not for a key\n')
+  // The Files place (work/files): a file opens in a tab of its own with no thread, by one request to the workspace's
+  // host, `work.files.open`, which makes the same copy. A deck, a PDF and a sheet one after another, then the deck again.
+  const tab = async (path: string): Promise<{ tabId?: string; kind?: string; tabs?: number; held?: boolean; error?: string }> => {
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    const got = await fromWindow<{ tabId?: string; item?: { kind: string; sessionId: string }; held?: unknown; tabs: unknown[] }>(boxId, 'work.files.open', { workspaceId: ws.id, ref: { at: 'file', host: macId, path }, name, key: `lib:e2e:${name}` })
+    return got.ok ? { tabId: got.value.tabId, kind: got.value.item?.kind, tabs: got.value.tabs.length, ...(got.value.held ? { held: true } : {}) } : { error: got.error }
+  }
+  const threads = async (): Promise<number> => {
+    const got = await rpc<unknown>(box, 'session.list', {}).catch(() => null)
+    return Array.isArray(got) ? got.length : ((got as { sessions?: unknown[] } | null)?.sessions?.length ?? -1)
+  }
+  const sessionsBefore = await threads()
+  const deckTab = await tab(files.deck2)
+  check('Files: a deck opens in a tab, with no refusal', !!deckTab.tabId && deckTab.kind === 'slides', JSON.stringify(deckTab))
+  const pdfTab = await tab(files.pdf2)
+  check('Files: then a PDF opens in its tab', !!pdfTab.tabId && pdfTab.kind === 'pdf', JSON.stringify(pdfTab))
+  const sheetTab = await tab(files.sheet)
+  check('Files: then the sheet opens in its tab', !!sheetTab.tabId && sheetTab.kind === 'sheet' && sheetTab.tabs === 3, JSON.stringify(sheetTab))
+  const deckAgain = await tab(files.deck2)
+  check("Files: the deck again is the deck's own tab, and no fourth is made", deckAgain.tabId === deckTab.tabId && deckAgain.tabs === 3, JSON.stringify(deckAgain))
+  // The deck a thread already shows keeps its marks by item: it is answered as that thread's, with no refusal and no second seat.
+  const heldDeck = await tab(files.deck)
+  check('Files: a deck a thread holds is answered as that thread\'s, not refused', !heldDeck.error && heldDeck.held === true && heldDeck.tabs === 3, JSON.stringify(heldDeck))
+  const sessionsAfter = await threads()
+  check('Files: opening made no thread', sessionsAfter === sessionsBefore, `${sessionsBefore} before, ${sessionsAfter} after`)
+  for (const [method, params] of [
+    ['work.files.threads', { ref: { at: 'file', host: macId, path: files.deck } }],
+    ['work.files.star', { ref: { at: 'file', host: macId, path: files.deck }, name: 'Kickoff.pptx', on: true }],
+    ['work.files.tabOpen', { page: { at: { at: 'file', host: macId, path: join(library, 'General') }, name: 'General' } }]
+  ] as [string, Record<string, unknown>][]) {
+    const got = await fromWindow(boxId, method, { workspaceId: ws.id, ...params })
+    check(`Files: ${method} naming mac's file passes`, got.ok, got.ok ? '' : got.error)
+  }
+  for (const host of [boxId, macId]) {
+    const got = await fromWindow(boxId, 'work.files.open', { workspaceId: ws.id, ref: { at: 'file', host, path: join(box.home, 'secret.txt') } })
+    check(`Files: an open of box's ${host === boxId ? 'own path' : 'path claimed for mac'} outside the roots makes no tab`, !got.ok, got.ok ? 'opened' : got.error)
+  }
+
   // The fence still holds a path of box's own disk to its roots, however the source names its host.
   const outside = join(box.home, 'secret.txt')
-  writeFileSync(outside, 'not for a key\n')
   for (const host of [boxId, macId, 'env_someone_else']) {
     const got = await fromWindow(boxId, 'work.office.filesCopy', { sessionId: deck.sessionId ?? 'x', source: { at: 'file', host, path: outside } })
     const words = got.ok ? '(copied)' : got.error

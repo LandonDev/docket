@@ -276,8 +276,11 @@ import {
   isAppCommandId,
   menuCommandAllowed,
   workCommands,
+  filesOverlay,
   type AppCommand,
+  type AppCommandId,
 } from "./lib/appCommands";
+import { filesPort } from "./lib/filesKeys";
 import { preparePrompt } from "./lib/promptPreparation";
 import { deriveMentionAttachments } from "./lib/mentionAttachments";
 import {
@@ -299,7 +302,7 @@ import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
 import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
-import { openWorkView, useWorkOn, useWorkView, workHome, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
+import { openWorkView, useWorkOn, useWorkView, workDockPort, workHome, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from "./lib/workSearchPort";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
@@ -2416,6 +2419,15 @@ export default function App() {
     },
     [],
   );
+  // A chat docked beside a file in Files: a draft of the workspace, placed nowhere and recorded nowhere (work/files/dockThread.ts).
+  useEffect(() => {
+    workDockPort.set({
+      draft: (workspace, id) => ({ ...seededSession({ projectId: null, workspaceId: workspace.id, cwd: workspace.path }, workspace.path, undefined), environmentId: workspace.environmentId, ...(id ? { id } : {}) }),
+      openFile: (...args) => (openWorkView(null), onOpenFile(...args)),
+      openDiff: (path) => (openWorkView(null), onOpenDiff(path)),
+    });
+    return () => workDockPort.set(null);
+  }, [seededSession, onOpenFile, onOpenDiff]);
 
   const onFileDirtyChange = editors.setFileDirty;
 
@@ -3298,6 +3310,7 @@ export default function App() {
         case "next_environment": return go(() => a.onStepEnvironment(1));
         case "prev_environment": return go(() => a.onStepEnvironment(-1));
         case "activate_environment": return go(() => a.onActivateEnvironment(cmd.index ?? 0));
+        case "files_command": return go(() => (cmd.files ? filesPort.run(cmd.files) : false));
       }
     },
     [run, onOpenWhatsNew],
@@ -3352,25 +3365,31 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [execute]);
 
+  // A menu pick, from the native menu or the in-app bar: the overlay guard,
+  // then the Files place's overlay (focus inside it turns Close Tab and its
+  // neighbours into the Files commands).
+  const executeMenu = useCallback(
+    (id: AppCommandId) => {
+      if (
+        !menuCommandAllowed(id, {
+          dialogOpen: dialogOpen(),
+          lightboxOpen: isLightboxOpen() || isHtmlRenderOverlayOpen(),
+          workSearchOpen: !!document.querySelector("[data-work-search]"),
+        })
+      ) {
+        return;
+      }
+      execute(filesOverlay(id, filesPort.owns(document.activeElement)));
+    },
+    [execute],
+  );
+
   useEffect(() => {
-    const unlisten = APP_COMMANDS.map((id) =>
-      listen(id, () => {
-        if (
-          !menuCommandAllowed(id, {
-            dialogOpen: dialogOpen(),
-            lightboxOpen: isLightboxOpen() || isHtmlRenderOverlayOpen(),
-            workSearchOpen: !!document.querySelector("[data-work-search]"),
-          })
-        ) {
-          return;
-        }
-        execute({ id });
-      }),
-    );
+    const unlisten = APP_COMMANDS.map((id) => listen(id, () => executeMenu(id)));
     return () => {
       void Promise.all(unlisten).then((fns) => fns.forEach((fn) => fn()));
     };
-  }, [execute]);
+  }, [executeMenu]);
 
   // Every window applies the saved zoom level on boot.
   useEffect(() => {
@@ -3498,7 +3517,7 @@ export default function App() {
         {isWebMode() && !IS_MAC ? (
           <MenuBar
             onCommand={(id) => {
-              if (isAppCommandId(id)) execute({ id });
+              if (isAppCommandId(id)) executeMenu(id);
             }}
           />
         ) : null}

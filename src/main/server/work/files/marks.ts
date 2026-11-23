@@ -87,6 +87,17 @@ export class MarkStore {
     }
   }
 
+  /** A thread made it: its row leads with the thread's name and reads new until he opens it (`seen`). */
+  madeBy(workspaceId: string, key: string, at: Marked, name: string, thread: string): void {
+    this.upsert(workspaceId, key, at, name)
+    this.db.prepare(`UPDATE work_files_marks SET made_by = ?, made_at = ?, seen_at = NULL WHERE workspace_id = ? AND ref_key = ?`).run(thread, this.now(), workspaceId, key)
+  }
+
+  /** What threads made, newest first: the Made by threads lens. */
+  made(workspaceId: string, most = 500): Mark[] {
+    return this.all(`SELECT ${COLUMNS} FROM work_files_marks WHERE workspace_id = ? AND made_by IS NOT NULL ORDER BY made_at DESC LIMIT ?`, workspaceId, most)
+  }
+
   private all(sql: string, ...args: (string | number)[]): Mark[] {
     return (this.db.prepare(sql).all(...args) as unknown as Row[]).flatMap((row) => mark(row) ?? [])
   }

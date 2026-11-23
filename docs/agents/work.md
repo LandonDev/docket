@@ -117,7 +117,7 @@ Settings → Work.
   workspace offers no New project and no Orchestration; a linked one shows
   `WorkColumnHead` (work/shell/WorkColumn.tsx): Mail, Tasks, Projects
   (the project screens, [work-projects.md](work-projects.md)), Agenda,
-  People ([work-people.md](work-people.md)), Docs and Files (Teams files, [work-teams-files.md](work-teams-files.md)), then
+  People ([work-people.md](work-people.md)), Files (the Files place, [work-files.md](work-files.md); the Docs view folded into it, [work-docs.md](work-docs.md) "Where the Docs view went"), then
   Templates (the job's shelf, written but held out of the column by `TEMPLATES_ROW` in views/registry.ts until
   Files' F1b lands; work-templates.md "The row") from `WORK_VIEWS`, then the project cards. A view may stand inside another
   and have no row of its own: `WorkViewDef.inside` names its parent (a

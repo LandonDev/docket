@@ -9,7 +9,8 @@ import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { ensureGuestTables, GuestStore } from '../guests/store'
 import { ensureOutboxTables, HELD_TABLE } from '../outbox/store'
 import { canonicalPath } from '../service/ctx'
-import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, keepText, listViews, saveView, VIEWS_MOST, walkFolder } from './find'
+import { setSearchCaps } from '../files/search'
+import { dropView, dropWorkspaceViews, ensureViewsTable, findDocs, keepText, listViews, saveView, VIEWS_MOST } from './find'
 import { docTools } from './tools'
 
 /* Finding documents: the host's merge of LifeOS's catalog, the workspace folder and the threads' items, and the agent's doc_find. */
@@ -115,7 +116,7 @@ describe('work.docs.find', () => {
     const got = await findDocs(ctx, LOCAL, { workspaceId: 'w1' })
     const byKey = new Map(got.entries.map((e) => [e.key, e]))
     expect([...byKey.keys()].sort()).toEqual(
-      ['google:g1', 'item:i2', 'lifeos:docs:d1', 'lifeos:sheets:s1', `file:${join(folder, 'Plan.tcdoc')}`, `file:${join(folder, 'sub', 'costs.csv')}`, `file:${join(folder, 'sub', 'scan.pdf')}`].sort()
+      ['google:g1', 'item:i2', 'lifeos:docs:d1', 'lifeos:sheets:s1', `file:${join(folder, 'Plan.tcdoc')}`, `file:${join(folder, 'sub', 'costs.csv')}`, `file:${join(folder, 'sub', 'scan.pdf')}`, `file:${join(folder, 'node_modules', 'y.pdf')}`].sort()
     )
     expect(byKey.get('lifeos:docs:d1')).toMatchObject({ kind: 'document', where: 'lifeos', guest: true, comments: 1, lastBy: 'owner' })
     expect(byKey.get('lifeos:sheets:s1')).toMatchObject({ kind: 'sheet', projectId: 'p1', held: 1, waiting: 2 })
@@ -127,6 +128,21 @@ describe('work.docs.find', () => {
     expect(got.projects).toEqual([{ id: 'p1', name: 'Fall Invitational' }])
     expect(got.complete).toBe(true)
     expect(got.hits).toEqual([])
+  })
+
+  it("lists for a window only what Files does not show: no file of the folder, and no file a thread holds from the folder or from Teams", async () => {
+    const { ctx } = rig({
+      items: (folder) => [
+        item({ id: 'i1', kind: 'sheet', title: 'Roster', source: { at: 'google', account: 'a', fileId: 'g1', mime: 'application/vnd.google-apps.spreadsheet' } }),
+        item({ id: 'i2', kind: 'form', title: 'Sign-up', source: { at: 'thread' } }),
+        item({ id: 'i3', kind: 'pdf', title: 'scan', source: { at: 'file', host: 'env_box', path: join(folder, 'sub', 'scan.pdf') } }),
+        item({ id: 'i6', kind: 'sheet', title: 'Budget.xlsx', source: { at: 'microsoft', host: 'env_box', app: 'excel', name: 'Budget.xlsx', ref: { kind: 'path', path: '/cloud/General/Budget.xlsx' } } })
+      ]
+    })
+    const got = await findDocs(ctx, LOCAL, { workspaceId: 'w1', view: true })
+    expect(got.entries.map((e) => e.key).sort()).toEqual(['google:g1', 'item:i2', 'lifeos:docs:d1', 'lifeos:sheets:s1'])
+    // `doc_find` still finds them all: a thread asks by name, wherever the file is shown.
+    expect((await findDocs(ctx, LOCAL, { workspaceId: 'w1' })).entries.length).toBeGreaterThan(got.entries.length)
   })
 
   it('finds what is written inside: LifeOS by its index, a .tcdoc through the service and a .csv from disk, read once per change', async () => {
@@ -150,7 +166,7 @@ describe('work.docs.find', () => {
   it('holds a remote key to the fence file by file, past the folder\'s denied parts', async () => {
     const { ctx, folder } = rig({ reaches: (p) => !p.includes('/sub') })
     const got = await findDocs(ctx, { kind: 'remote', caps: ['read'] }, { workspaceId: 'w1', query: 'venue' })
-    expect(got.entries.filter((e) => e.where === 'folder').map((e) => e.key)).toEqual([`file:${join(folder, 'Plan.tcdoc')}`])
+    expect(got.entries.filter((e) => e.where === 'folder').map((e) => e.key).sort()).toEqual([`file:${join(folder, 'Plan.tcdoc')}`, `file:${join(folder, 'node_modules', 'y.pdf')}`])
     expect(got.hits.some((h) => h.key.includes('/sub'))).toBe(false)
   })
 
@@ -168,13 +184,20 @@ describe('work.docs.find', () => {
     await expect(findDocs(ctx, LOCAL, { workspaceId: 'code' })).rejects.toThrow('no such Work workspace')
   })
 
-  it('walks the folder bounded, past hidden folders and dependencies', async () => {
-    const { folder } = rig()
-    const { files, complete } = await walkFolder(folder)
-    expect(files.map((f) => f.path.slice(folder.length)).sort()).toEqual(['/Plan.tcdoc', '/sub/costs.csv', '/sub/scan.pdf'])
-    expect(complete).toBe(true)
-    // Many entries and few documents: the look stops, and says the list is not whole.
-    expect((await walkFolder(folder, { files: 100, seen: 3 })).complete).toBe(false)
+  it("walks the folder with Files' own walk: its caps, and hidden names left out as a listing leaves them", async () => {
+    const { ctx, folder } = rig()
+    const listed = async () => (await findDocs(ctx, LOCAL, { workspaceId: 'w1', refresh: true })).entries.filter((e) => e.where === 'folder')
+    expect((await listed()).map((e) => e.key.slice(`file:${folder}`.length)).sort()).toEqual(['/Plan.tcdoc', '/node_modules/y.pdf', '/sub/costs.csv', '/sub/scan.pdf'])
+    // The walk stops at Files' cap of folders, and the list says it is not whole.
+    const { ctx: capped } = rig()
+    setSearchCaps({ dirs: 1 })
+    try {
+      const got = await findDocs(capped, LOCAL, { workspaceId: 'w1' })
+      expect(got.entries.filter((e) => e.where === 'folder').map((e) => e.title)).toEqual(['Plan'])
+      expect(got.complete).toBe(false)
+    } finally {
+      setSearchCaps(null)
+    }
   })
 })
 

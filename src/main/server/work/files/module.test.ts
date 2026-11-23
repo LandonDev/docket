@@ -7,6 +7,8 @@ import { CanvasStore, ensureCanvasTables } from '../canvas/store'
 import { PILLAR_LOADERS, type WorkCtx } from '../modules'
 import { fileMakerFor, fileMovedHooks, filePreviewerFor, registerFileMaker, registerFileMoved, registerFilePreviewer } from './hooks'
 import { files } from './index'
+import { admitWrite, setThreadsMayWrite, type DoorPlace } from './policy'
+import { fileActKind } from './tools'
 import { FILES_TABLES } from './tables'
 
 /** A context that is enough to start the module: its tables and the canvas's, and a store behind them. */
@@ -62,7 +64,8 @@ describe('the registries a kind fills (hooks.ts) and the module start', () => {
     const stop = files.start!(startCtx())
     expect(fileMakerFor('document', 'docx')).toBe(before)
     expect(filePreviewerFor('document')).not.toBeNull()
-    expect(fileMovedHooks()).toHaveLength(1)
+    // The start adds its own, which carries a file's LifeOS project links (places/lifeos.ts), and takes it at its stop.
+    expect(fileMovedHooks()).toHaveLength(2)
 
     const after = { forms: ['xlsx'] as const, blank: async () => {} }
     offs.push(registerFileMaker('sheet', after))
@@ -70,7 +73,7 @@ describe('the registries a kind fills (hooks.ts) and the module start', () => {
     offs.push(registerFileMoved(() => {}))
     expect(fileMakerFor('sheet', 'xlsx')).toBe(after)
     expect(filePreviewerFor('sheet')).not.toBeNull()
-    expect(fileMovedHooks()).toHaveLength(2)
+    expect(fileMovedHooks()).toHaveLength(3)
 
     // Work turned off and on again: both are still there.
     stop()
@@ -78,5 +81,22 @@ describe('the registries a kind fills (hooks.ts) and the module start', () => {
     expect(fileMakerFor('document', 'docx')).toBe(before)
     expect(fileMakerFor('sheet', 'xlsx')).toBe(after)
     expect(fileMovedHooks()).toHaveLength(2)
+  })
+})
+
+describe('the agents\' side (F5)', () => {
+  afterEach(() => setThreadsMayWrite(false))
+
+  it('mounts the files_* tools, the file.act kind and a preamble line, and its start lets a thread change files', () => {
+    expect(files.tools!({ workspaceId: 'w1' } as never).map((t) => t.name)).toEqual(['files_places', 'files_list', 'files_search', 'files_open', 'files_make', 'files_move', 'files_copy', 'files_trash', 'files_undo'])
+    expect(files.acts).toEqual([fileActKind])
+    expect(files.preamble!({ workspaceId: 'w1' } as never)).toContain('held for the owner\'s press')
+    const own: DoorPlace = { id: 'folder', kind: 'folder', name: 'Dummy Esports', host: '', env: 'env_box', shared: false, can: ['rename'], state: { state: 'ok' } }
+    const thread = { kind: 'model', caps: [], sessionId: 't1' } as const
+    setThreadsMayWrite(false)
+    expect(() => admitWrite(thread, { verb: 'rename', from: own, entry: { name: 'a.txt', kind: 'text' } })).toThrow()
+    files.start!(startCtx())()
+    expect(admitWrite(thread, { verb: 'rename', from: own, entry: { name: 'a.txt', kind: 'text' } })).toBe('run')
+    expect(admitWrite(thread, { verb: 'rename', from: { ...own, id: 'team', kind: 'teams', shared: true }, entry: { name: 'a.txt', kind: 'text' } })).toBe('hold')
   })
 })

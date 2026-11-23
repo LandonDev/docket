@@ -98,6 +98,7 @@ export const webApi: Api = {
   },
   pickDirectory: () => Promise.resolve(null),
   revealInFinder: () => done(),
+  dragFilesOut: async () => false,
   editor: {
     config: () => Promise.resolve(null),
     setChoice: () => done(),

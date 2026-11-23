@@ -29,6 +29,7 @@ import type {
   WorkToolOf
 } from '@shared/work'
 import type { Tell, TellKind } from '@shared/work/tell'
+import type { AttachmentUploads } from '../attachmentUploads'
 import type { ConvertJob, ConvertResult, Converter } from './formats/jobs'
 import type { LifeosClient, WorkLink } from './lifeos/ctx'
 import type { SearchSource } from './search/source'
@@ -147,7 +148,8 @@ export interface MentionSource {
   kind: ChipKind
   /** read from LifeOS: the only kinds a code thread of a linked workspace is offered, and none while LifeOS is not connected */
   lifeos?: boolean
-  search(text: string, reach: MentionReach, ctx: WorkCtx): Promise<MentionHit[]>
+  /** `by`: who asked, where the router knows it (`work.canvas.mentions`); a kind fenced by the caller (Files) answers nothing without one */
+  search(text: string, reach: MentionReach, ctx: WorkCtx, by?: Caller): Promise<MentionHit[]>
 }
 
 /** Who asked: a person at this host, a remote key, or a thread's own call through the bridge. */
@@ -157,6 +159,8 @@ export interface Caller {
   sessionId?: string
   /** a remote call from another host of his, over the host link (`ctx.peer`), under this host's bridge policy for it: the host's id */
   peer?: string
+  /** a remote key's id: what binds an upload it began to the key that sends its chunks (`attachment.*` answers its owner alone) */
+  keyId?: string
 }
 
 /**
@@ -228,6 +232,8 @@ export interface WorkCtx {
     get(itemId: string): CanvasItem | null
     /** the thread whose pane a thread's items show in: its root thread (a subagent has none of its own) */
     paneOf(sessionId: string): string
+    /** says an owner's open items again, for a caller that changed their rows itself (Files re-points a renamed file's items) */
+    announce(owner: string): void
   }
   /** milestone 10 */
   held: {
@@ -272,6 +278,8 @@ export interface WorkCtx {
     /** this thread started on its own, not on his press: its done, failed and stuck wait for the digest */
     quiet(sessionId: string): void
   }
+  /** the host's chunked uploads (attachmentUploads.ts), for a pillar that takes a file into a place of its own (`beginInto`); null only in a test that has none */
+  uploads: AttachmentUploads | null
 }
 
 /** What a tool's `run` gets: the context, the calling thread and its scope. */

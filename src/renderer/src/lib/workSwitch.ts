@@ -2,6 +2,8 @@ import { useSyncExternalStore } from "react";
 import type { MenuRow } from "../chrome/menuRows";
 import type { Link } from "./connection/link";
 import type { Environment } from "./connection/types";
+import type { OpenFileFn } from "./search";
+import type { Session } from "./session";
 
 /**
  * The Work switch as this window knows it (docs/agents/work.md "The
@@ -219,7 +221,7 @@ export const workColumnPort = {
   },
 };
 
-/** A Work view open in the main pane, under the thread strip (Mail, Tasks, Agenda or Docs of one workspace). */
+/** A Work view open in the main pane, under the thread strip (Mail, Tasks, Agenda or Files of one workspace). */
 export interface OpenWorkView {
   workspaceId: string;
   view: string;
@@ -233,7 +235,7 @@ export interface OpenWorkView {
   event?: string;
   /** People alone: the LifeOS person whose page to open (a sender pressed in Mail, an attendee in Agenda, a sent person chip). Taken once, then cleared. */
   person?: string;
-  /** Docs alone: the LifeOS document to open in place (a person's page). Taken once, then cleared. */
+  /** A way in that still names the Docs view (`view: "docs"`, which folded into Files): the LifeOS document to open in a Files tab; none stands on the LifeOS place. Taken once by work/shell/WorkViewPage.tsx. */
   doc?: { id: string; title: string };
   /** Messages alone: the LifeOS conversation to open (a sent conversation chip, a search hit, a tell), and the message in it to stand on. Taken once, then cleared. */
   chat?: string;
@@ -282,6 +284,26 @@ export const digestOpensPort = {
   get: () => digestOpens,
   set(next: (() => void) | null): void {
     digestOpens = next;
+  },
+};
+
+/**
+ * How a chat docked beside a file gets what only App has (App registers it; work/files/dockThread.ts): `draft` answers a
+ * new thread's draft in the workspace, seeded as New thread seeds one, with `id` when one is given (the dock's draft
+ * from before, so its composer keeps what he typed). It places no tab, records no project draft and leaves the view
+ * where it is; nothing is on the host until the draft's first send. `openFile` and `openDiff` are a pane's own, for
+ * the links in the docked transcript.
+ */
+export interface WorkDockPort {
+  draft(workspace: { id: string; environmentId: string; path: string }, id?: string): Session;
+  openFile: OpenFileFn;
+  openDiff(path?: string): void;
+}
+let dockPort: WorkDockPort | null = null;
+export const workDockPort = {
+  get: (): WorkDockPort | null => dockPort,
+  set(next: WorkDockPort | null): void {
+    dockPort = next;
   },
 };
 

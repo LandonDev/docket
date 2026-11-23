@@ -15,6 +15,8 @@ import type { DatabaseSync } from 'node:sqlite'
  *    `<userData>/work-files/trash/<workspaceId>/<id>/`; a row for a provider's own bin holds none.
  *  - `work_files_ops`: the journal behind operation ids, kept a week.
  *  - `work_files_names`: names this host has listed or found, for Go to.
+ *  - `work_files_kept`: a mail's file he kept (`mail:<message>:<part>`), and where the copy went, so From mail
+ *    and Home's Waiting on you leave it out.
  */
 export function ensureFilesTables(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_tabs (
@@ -42,6 +44,9 @@ export function ensureFilesTables(db: DatabaseSync): void {
     place TEXT NOT NULL, kind TEXT NOT NULL, changed INTEGER,
     PRIMARY KEY (workspace_id, ref_key))`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_names_by_place ON work_files_names (workspace_id, place)`)
+  db.exec(`CREATE TABLE IF NOT EXISTS work_files_kept (
+    workspace_id TEXT NOT NULL, ref_key TEXT NOT NULL, path TEXT NOT NULL, at INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, ref_key))`)
 }
 
-export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names'] as const
+export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept'] as const

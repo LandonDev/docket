@@ -3245,6 +3245,7 @@ public enum Methods {
                 case meeting
                 case form
                 case dashboard
+                case file
                 /// A value this build does not know; `rawValue` keeps it.
                 case unknown(String)
 
@@ -3261,6 +3262,7 @@ public enum Methods {
                     case "meeting": self = .meeting
                     case "form": self = .form
                     case "dashboard": self = .dashboard
+                    case "file": self = .file
                     default: self = .unknown(rawValue)
                     }
                 }
@@ -3278,6 +3280,7 @@ public enum Methods {
                     case .meeting: "meeting"
                     case .form: "form"
                     case .dashboard: "dashboard"
+                    case .file: "file"
                     case .unknown(let value): value
                     }
                 }
@@ -4461,6 +4464,988 @@ public enum Methods {
         }
 
         public typealias Output = MoneyReceived
+    }
+
+    public enum WorkFilesPlaces: ContractMethod {
+        public static let name = "work.files.places"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+
+            public init(workspaceId: String) {
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public typealias Output = FilesPlaces
+    }
+
+    public enum WorkFilesList: ContractMethod {
+        public static let name = "work.files.list"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Sort: Codable, Hashable, Sendable {
+                public enum By: RawRepresentable, Codable, Hashable, Sendable {
+                    case name
+                    case changed
+                    case size
+                    case kind
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "name": self = .name
+                        case "changed": self = .changed
+                        case "size": self = .size
+                        case "kind": self = .kind
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .name: "name"
+                        case .changed: "changed"
+                        case .size: "size"
+                        case .kind: "kind"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+                public enum Dir: RawRepresentable, Codable, Hashable, Sendable {
+                    case asc
+                    case desc
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "asc": self = .asc
+                        case "desc": self = .desc
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .asc: "asc"
+                        case .desc: "desc"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+
+                public let by: By
+                public let dir: Dir
+
+                public init(by: By, dir: Dir) {
+                    self.by = by
+                    self.dir = dir
+                }
+            }
+
+            public let workspaceId: String
+            public let at: FolderRef
+            public let cursor: String?
+            public let sort: Sort?
+            public let foldersOnly: Bool?
+
+            public init(workspaceId: String, at: FolderRef, cursor: String? = nil, sort: Sort? = nil, foldersOnly: Bool? = nil) {
+                self.workspaceId = workspaceId
+                self.at = at
+                self.cursor = cursor
+                self.sort = sort
+                self.foldersOnly = foldersOnly
+            }
+        }
+
+        public typealias Output = FilesListing
+    }
+
+    public enum WorkFilesStat: ContractMethod {
+        public static let name = "work.files.stat"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Ref: Codable, Hashable, Sendable {
+                case canvasSource(CanvasSource)
+                case folderRef(FolderRef)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
+                    if let value = try? container.decode(FolderRef.self) { self = .folderRef(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .canvasSource(let value): try container.encode(value)
+                    case .folderRef(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+
+            public let workspaceId: String
+            public let refs: [Ref]
+
+            public init(workspaceId: String, refs: [Ref]) {
+                self.workspaceId = workspaceId
+                self.refs = refs
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let entries: [FileEntry?]
+
+            public init(entries: [FileEntry?]) {
+                self.entries = entries
+            }
+        }
+    }
+
+    public enum WorkFilesHome: ContractMethod {
+        public static let name = "work.files.home"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+
+            public init(workspaceId: String) {
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public typealias Output = FilesHome
+    }
+
+    public enum WorkFilesSearch: ContractMethod {
+        public static let name = "work.files.search"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Filter: Codable, Hashable, Sendable {
+                public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+                    case folder
+                    case document
+                    case sheet
+                    case deck
+                    case pdf
+                    case picture
+                    case video
+                    case audio
+                    case text
+                    case archive
+                    case other
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "folder": self = .folder
+                        case "document": self = .document
+                        case "sheet": self = .sheet
+                        case "deck": self = .deck
+                        case "pdf": self = .pdf
+                        case "picture": self = .picture
+                        case "video": self = .video
+                        case "audio": self = .audio
+                        case "text": self = .text
+                        case "archive": self = .archive
+                        case "other": self = .other
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .folder: "folder"
+                        case .document: "document"
+                        case .sheet: "sheet"
+                        case .deck: "deck"
+                        case .pdf: "pdf"
+                        case .picture: "picture"
+                        case .video: "video"
+                        case .audio: "audio"
+                        case .text: "text"
+                        case .archive: "archive"
+                        case .other: "other"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+                public enum Within: RawRepresentable, Codable, Hashable, Sendable {
+                    case day
+                    case week
+                    case month
+                    case quarter
+                    case year
+                    /// A value this build does not know; `rawValue` keeps it.
+                    case unknown(String)
+
+                    public init(rawValue: String) {
+                        switch rawValue {
+                        case "day": self = .day
+                        case "week": self = .week
+                        case "month": self = .month
+                        case "quarter": self = .quarter
+                        case "year": self = .year
+                        default: self = .unknown(rawValue)
+                        }
+                    }
+
+                    public var rawValue: String {
+                        switch self {
+                        case .day: "day"
+                        case .week: "week"
+                        case .month: "month"
+                        case .quarter: "quarter"
+                        case .year: "year"
+                        case .unknown(let value): value
+                        }
+                    }
+                }
+
+                public let kinds: [Kind]?
+                public let places: [String]?
+                public let project: String?
+                public let who: String?
+                public let within: Within?
+                public let after: Int?
+                public let before: Int?
+                public let shared: Bool?
+                public let review: Bool?
+
+                public init(kinds: [Kind]? = nil, places: [String]? = nil, project: String? = nil, who: String? = nil, within: Within? = nil, after: Int? = nil, before: Int? = nil, shared: Bool? = nil, review: Bool? = nil) {
+                    self.kinds = kinds
+                    self.places = places
+                    self.project = project
+                    self.who = who
+                    self.within = within
+                    self.after = after
+                    self.before = before
+                    self.shared = shared
+                    self.review = review
+                }
+            }
+
+            public let workspaceId: String
+            public let query: String
+            public let filter: Filter?
+            public let cursor: String?
+
+            public init(workspaceId: String, query: String, filter: Filter? = nil, cursor: String? = nil) {
+                self.workspaceId = workspaceId
+                self.query = query
+                self.filter = filter
+                self.cursor = cursor
+            }
+        }
+
+        public typealias Output = FilesListing
+    }
+
+    public enum WorkFilesThreads: ContractMethod {
+        public static let name = "work.files.threads"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let ref: CanvasSource
+
+            public init(workspaceId: String, ref: CanvasSource) {
+                self.workspaceId = workspaceId
+                self.ref = ref
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public struct Thread: Codable, Hashable, Sendable {
+                public let sessionId: String
+                public let itemId: String
+                public let source: CanvasSource
+
+                public init(sessionId: String, itemId: String, source: CanvasSource) {
+                    self.sessionId = sessionId
+                    self.itemId = itemId
+                    self.source = source
+                }
+            }
+
+            public let threads: [Thread]
+
+            public init(threads: [Thread]) {
+                self.threads = threads
+            }
+        }
+    }
+
+    public enum WorkFilesRead: ContractMethod {
+        public static let name = "work.files.read"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let ref: CanvasSource
+            public let offset: Int
+            public let length: Int
+            public let version: String?
+            public let itemId: String?
+
+            public init(workspaceId: String, ref: CanvasSource, offset: Int, length: Int, version: String? = nil, itemId: String? = nil) {
+                self.workspaceId = workspaceId
+                self.ref = ref
+                self.offset = offset
+                self.length = length
+                self.version = version
+                self.itemId = itemId
+            }
+        }
+
+        public typealias Output = TempCodeContract.FileRead
+    }
+
+    public enum WorkFilesPreview: ContractMethod {
+        public static let name = "work.files.preview"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let ref: CanvasSource
+            public let page: Int?
+            public let width: Int
+
+            public init(workspaceId: String, ref: CanvasSource, page: Int? = nil, width: Int) {
+                self.workspaceId = workspaceId
+                self.ref = ref
+                self.page = page
+                self.width = width
+            }
+        }
+
+        public typealias Output = FilePreview
+    }
+
+    public enum WorkFilesThumbs: ContractMethod {
+        public static let name = "work.files.thumbs"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Size: Codable, Hashable, Sendable {
+                case number(Double)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(Double.self) { self = .number(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .number(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+
+            public let workspaceId: String
+            public let refs: [CanvasSource]
+            public let size: Size
+
+            public init(workspaceId: String, refs: [CanvasSource], size: Size) {
+                self.workspaceId = workspaceId
+                self.refs = refs
+                self.size = size
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let thumbs: [String?]
+
+            public init(thumbs: [String?]) {
+                self.thumbs = thumbs
+            }
+        }
+    }
+
+    public enum WorkFilesOpen: ContractMethod {
+        public static let name = "work.files.open"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum As: RawRepresentable, Codable, Hashable, Sendable {
+                case mail
+                case document
+                case sheet
+                case pdf
+                case slides
+                case media
+                case browser
+                case history
+                case meeting
+                case form
+                case dashboard
+                case file
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "mail": self = .mail
+                    case "document": self = .document
+                    case "sheet": self = .sheet
+                    case "pdf": self = .pdf
+                    case "slides": self = .slides
+                    case "media": self = .media
+                    case "browser": self = .browser
+                    case "history": self = .history
+                    case "meeting": self = .meeting
+                    case "form": self = .form
+                    case "dashboard": self = .dashboard
+                    case "file": self = .file
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .mail: "mail"
+                    case .document: "document"
+                    case .sheet: "sheet"
+                    case .pdf: "pdf"
+                    case .slides: "slides"
+                    case .media: "media"
+                    case .browser: "browser"
+                    case .history: "history"
+                    case .meeting: "meeting"
+                    case .form: "form"
+                    case .dashboard: "dashboard"
+                    case .file: "file"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let workspaceId: String
+            public let ref: CanvasSource
+            public let name: String?
+            public let `as`: As?
+            public let opener: String?
+            public let beside: String?
+            public let side: String?
+            public let key: String?
+
+            public init(workspaceId: String, ref: CanvasSource, name: String? = nil, `as`: As? = nil, opener: String? = nil, beside: String? = nil, side: String? = nil, key: String? = nil) {
+                self.workspaceId = workspaceId
+                self.ref = ref
+                self.name = name
+                self.`as` = `as`
+                self.opener = opener
+                self.beside = beside
+                self.side = side
+                self.key = key
+            }
+        }
+
+        public typealias Output = FilesOpened
+    }
+
+    public enum WorkFilesStar: ContractMethod {
+        public static let name = "work.files.star"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Ref: Codable, Hashable, Sendable {
+                case canvasSource(CanvasSource)
+                case folderRef(FolderRef)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
+                    if let value = try? container.decode(FolderRef.self) { self = .folderRef(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .canvasSource(let value): try container.encode(value)
+                    case .folderRef(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+
+            public let workspaceId: String
+            public let ref: Ref
+            public let name: String
+            public let on: Bool
+
+            public init(workspaceId: String, ref: Ref, name: String, on: Bool) {
+                self.workspaceId = workspaceId
+                self.ref = ref
+                self.name = name
+                self.on = on
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let starred: Bool
+
+            public init(starred: Bool) {
+                self.starred = starred
+            }
+        }
+    }
+
+    public enum WorkFilesSeen: ContractMethod {
+        public static let name = "work.files.seen"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let ref: CanvasSource
+            public let name: String
+
+            public init(workspaceId: String, ref: CanvasSource, name: String) {
+                self.workspaceId = workspaceId
+                self.ref = ref
+                self.name = name
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum WorkFilesMake: ContractMethod {
+        public static let name = "work.files.make"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+                case document
+                case sheet
+                case deck
+                case text
+                case folder
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "document": self = .document
+                    case "sheet": self = .sheet
+                    case "deck": self = .deck
+                    case "text": self = .text
+                    case "folder": self = .folder
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .document: "document"
+                    case .sheet: "sheet"
+                    case .deck: "deck"
+                    case .text: "text"
+                    case .folder: "folder"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+            public enum Origin: Codable, Hashable, Sendable {
+                public struct Case0: Codable, Hashable, Sendable {
+                    public init() {}
+                }
+                public struct Case1: Codable, Hashable, Sendable {
+                    public let id: String
+                    public let digest: String
+
+                    public init(id: String, digest: String) {
+                        self.id = id
+                        self.digest = digest
+                    }
+                }
+
+                case window(Case0)
+                case act(Case1)
+                /// A `from` this build does not know: the whole object, untouched.
+                case unknown(JSONValue)
+
+                private enum Tag: String, CodingKey {
+                    case from
+                }
+
+                public init(from decoder: any Decoder) throws {
+                    let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .from)
+                    switch tag {
+                    case "window": self = .window(try Case0(from: decoder))
+                    case "act": self = .act(try Case1(from: decoder))
+                    default: self = .unknown(try JSONValue(from: decoder))
+                    }
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    switch self {
+                    case .window(let value): try Self.encode(tag: "window", value, to: encoder)
+                    case .act(let value): try Self.encode(tag: "act", value, to: encoder)
+                    case .unknown(let value): try value.encode(to: encoder)
+                    }
+                }
+
+                private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+                    var container = encoder.container(keyedBy: Tag.self)
+                    try container.encode(tag, forKey: .from)
+                    try value.encode(to: encoder)
+                }
+            }
+
+            public let workspaceId: String
+            public let at: FolderRef
+            public let kind: Kind
+            public let name: String?
+            public let from: CanvasSource?
+            public let op: String
+            public let origin: Origin?
+            public let asked: Bool?
+
+            public init(workspaceId: String, at: FolderRef, kind: Kind, name: String? = nil, from: CanvasSource? = nil, op: String, origin: Origin? = nil, asked: Bool? = nil) {
+                self.workspaceId = workspaceId
+                self.at = at
+                self.kind = kind
+                self.name = name
+                self.from = from
+                self.op = op
+                self.origin = origin
+                self.asked = asked
+            }
+        }
+
+        public typealias Output = FileDone
+    }
+
+    public enum WorkFilesRename: ContractMethod {
+        public static let name = "work.files.rename"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Ref: Codable, Hashable, Sendable {
+                case canvasSource(CanvasSource)
+                case folderRef(FolderRef)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
+                    if let value = try? container.decode(FolderRef.self) { self = .folderRef(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .canvasSource(let value): try container.encode(value)
+                    case .folderRef(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+            public enum Origin: Codable, Hashable, Sendable {
+                public struct Case0: Codable, Hashable, Sendable {
+                    public init() {}
+                }
+                public struct Case1: Codable, Hashable, Sendable {
+                    public let id: String
+                    public let digest: String
+
+                    public init(id: String, digest: String) {
+                        self.id = id
+                        self.digest = digest
+                    }
+                }
+
+                case window(Case0)
+                case act(Case1)
+                /// A `from` this build does not know: the whole object, untouched.
+                case unknown(JSONValue)
+
+                private enum Tag: String, CodingKey {
+                    case from
+                }
+
+                public init(from decoder: any Decoder) throws {
+                    let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .from)
+                    switch tag {
+                    case "window": self = .window(try Case0(from: decoder))
+                    case "act": self = .act(try Case1(from: decoder))
+                    default: self = .unknown(try JSONValue(from: decoder))
+                    }
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    switch self {
+                    case .window(let value): try Self.encode(tag: "window", value, to: encoder)
+                    case .act(let value): try Self.encode(tag: "act", value, to: encoder)
+                    case .unknown(let value): try value.encode(to: encoder)
+                    }
+                }
+
+                private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+                    var container = encoder.container(keyedBy: Tag.self)
+                    try container.encode(tag, forKey: .from)
+                    try value.encode(to: encoder)
+                }
+            }
+
+            public let workspaceId: String
+            public let ref: Ref
+            public let name: String
+            public let op: String
+            public let origin: Origin?
+
+            public init(workspaceId: String, ref: Ref, name: String, op: String, origin: Origin? = nil) {
+                self.workspaceId = workspaceId
+                self.ref = ref
+                self.name = name
+                self.op = op
+                self.origin = origin
+            }
+        }
+
+        public typealias Output = FileDone
+    }
+
+    public enum WorkFilesMove: ContractMethod {
+        public static let name = "work.files.move"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Ref: Codable, Hashable, Sendable {
+                case canvasSource(CanvasSource)
+                case folderRef(FolderRef)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
+                    if let value = try? container.decode(FolderRef.self) { self = .folderRef(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .canvasSource(let value): try container.encode(value)
+                    case .folderRef(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+            public enum Origin: Codable, Hashable, Sendable {
+                public struct Case0: Codable, Hashable, Sendable {
+                    public init() {}
+                }
+                public struct Case1: Codable, Hashable, Sendable {
+                    public let id: String
+                    public let digest: String
+
+                    public init(id: String, digest: String) {
+                        self.id = id
+                        self.digest = digest
+                    }
+                }
+
+                case window(Case0)
+                case act(Case1)
+                /// A `from` this build does not know: the whole object, untouched.
+                case unknown(JSONValue)
+
+                private enum Tag: String, CodingKey {
+                    case from
+                }
+
+                public init(from decoder: any Decoder) throws {
+                    let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .from)
+                    switch tag {
+                    case "window": self = .window(try Case0(from: decoder))
+                    case "act": self = .act(try Case1(from: decoder))
+                    default: self = .unknown(try JSONValue(from: decoder))
+                    }
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    switch self {
+                    case .window(let value): try Self.encode(tag: "window", value, to: encoder)
+                    case .act(let value): try Self.encode(tag: "act", value, to: encoder)
+                    case .unknown(let value): try value.encode(to: encoder)
+                    }
+                }
+
+                private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+                    var container = encoder.container(keyedBy: Tag.self)
+                    try container.encode(tag, forKey: .from)
+                    try value.encode(to: encoder)
+                }
+            }
+
+            public let workspaceId: String
+            public let refs: [Ref]
+            public let to: FolderRef
+            public let op: String
+            public let origin: Origin?
+            public let asked: Bool?
+
+            public init(workspaceId: String, refs: [Ref], to: FolderRef, op: String, origin: Origin? = nil, asked: Bool? = nil) {
+                self.workspaceId = workspaceId
+                self.refs = refs
+                self.to = to
+                self.op = op
+                self.origin = origin
+                self.asked = asked
+            }
+        }
+
+        public typealias Output = FileDone
+    }
+
+    public enum WorkFilesTrash: ContractMethod {
+        public static let name = "work.files.trash"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Ref: Codable, Hashable, Sendable {
+                case canvasSource(CanvasSource)
+                case folderRef(FolderRef)
+                /// A shape this build does not know, untouched.
+                case unknown(JSONValue)
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.singleValueContainer()
+                    if let value = try? container.decode(CanvasSource.self) { self = .canvasSource(value); return }
+                    if let value = try? container.decode(FolderRef.self) { self = .folderRef(value); return }
+                    self = .unknown(try container.decode(JSONValue.self))
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.singleValueContainer()
+                    switch self {
+                    case .canvasSource(let value): try container.encode(value)
+                    case .folderRef(let value): try container.encode(value)
+                    case .unknown(let value): try container.encode(value)
+                    }
+                }
+            }
+            public enum Origin: Codable, Hashable, Sendable {
+                public struct Case0: Codable, Hashable, Sendable {
+                    public init() {}
+                }
+                public struct Case1: Codable, Hashable, Sendable {
+                    public let id: String
+                    public let digest: String
+
+                    public init(id: String, digest: String) {
+                        self.id = id
+                        self.digest = digest
+                    }
+                }
+
+                case window(Case0)
+                case act(Case1)
+                /// A `from` this build does not know: the whole object, untouched.
+                case unknown(JSONValue)
+
+                private enum Tag: String, CodingKey {
+                    case from
+                }
+
+                public init(from decoder: any Decoder) throws {
+                    let tag = try decoder.container(keyedBy: Tag.self).decode(String.self, forKey: .from)
+                    switch tag {
+                    case "window": self = .window(try Case0(from: decoder))
+                    case "act": self = .act(try Case1(from: decoder))
+                    default: self = .unknown(try JSONValue(from: decoder))
+                    }
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    switch self {
+                    case .window(let value): try Self.encode(tag: "window", value, to: encoder)
+                    case .act(let value): try Self.encode(tag: "act", value, to: encoder)
+                    case .unknown(let value): try value.encode(to: encoder)
+                    }
+                }
+
+                private static func encode(tag: String, _ value: some Encodable, to encoder: any Encoder) throws {
+                    var container = encoder.container(keyedBy: Tag.self)
+                    try container.encode(tag, forKey: .from)
+                    try value.encode(to: encoder)
+                }
+            }
+
+            public let workspaceId: String
+            public let refs: [Ref]
+            public let op: String
+            public let origin: Origin?
+            public let asked: Bool?
+
+            public init(workspaceId: String, refs: [Ref], op: String, origin: Origin? = nil, asked: Bool? = nil) {
+                self.workspaceId = workspaceId
+                self.refs = refs
+                self.op = op
+                self.origin = origin
+                self.asked = asked
+            }
+        }
+
+        public typealias Output = FileDone
+    }
+
+    public enum WorkFilesRestore: ContractMethod {
+        public static let name = "work.files.restore"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let ids: [String]
+            public let op: String
+
+            public init(workspaceId: String, ids: [String], op: String) {
+                self.workspaceId = workspaceId
+                self.ids = ids
+                self.op = op
+            }
+        }
+
+        public typealias Output = FileDone
+    }
+
+    public enum WorkFilesUpload: ContractMethod {
+        public static let name = "work.files.upload"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+            public let at: FolderRef
+            public let name: String
+            public let size: Int
+            public let sha256: String
+            public let op: String
+            public let asked: Bool?
+
+            public init(workspaceId: String, at: FolderRef, name: String, size: Int, sha256: String, op: String, asked: Bool? = nil) {
+                self.workspaceId = workspaceId
+                self.at = at
+                self.name = name
+                self.size = size
+                self.sha256 = sha256
+                self.op = op
+                self.asked = asked
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let uploadId: String
+
+            public init(uploadId: String) {
+                self.uploadId = uploadId
+            }
+        }
     }
 
     public enum AwayGet: ContractMethod {

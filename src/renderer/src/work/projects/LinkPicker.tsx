@@ -10,7 +10,7 @@ import { registry } from "../../lib/connection";
 /**
  * Link a document, or a file or item, to a project (docs/agents/work-projects.md
  * "Documents"): the go-to picker over what the workspace already lists
- * (`work.docs.find`, the Docs view's own catalog), narrowed to what this row
+ * (`work.docs.find`, the docs pillar's catalog), narrowed to what this row
  * links. A pick writes `work.projects.link` on the workspace's host, which
  * checks the sector and fences a file's path; a refusal stays in the picker
  * as its one line.

@@ -67,18 +67,20 @@ describe('the names', () => {
     expect(Object.keys(PILLAR_MILESTONE).sort()).toEqual([...PILLAR_IDS].sort())
     for (const n of Object.values(PILLAR_MILESTONE)) expect(n).toBeGreaterThan(5)
   })
-  it('maps the eleven canvas kinds to their pillars once', () => {
-    expect([...CANVAS_KINDS]).toEqual(['mail', 'document', 'sheet', 'pdf', 'slides', 'media', 'browser', 'history', 'meeting', 'form', 'dashboard'])
+  it('maps the canvas kinds to their pillars once', () => {
+    expect([...CANVAS_KINDS]).toEqual(['mail', 'document', 'sheet', 'pdf', 'slides', 'media', 'browser', 'history', 'meeting', 'form', 'dashboard', 'file'])
     expect(CANVAS_PILLAR).toEqual({
       mail: 'mail', document: 'docs', sheet: 'sheets', pdf: 'pdf', slides: 'slides', media: 'media',
-      browser: 'browser', history: 'history', meeting: 'meetings', form: 'forms', dashboard: 'dashboards'
+      browser: 'browser', history: 'history', meeting: 'meetings', form: 'forms', dashboard: 'dashboards', file: 'files'
     })
   })
-  it('lists the fifteen act kinds, each with the pillar that shows it', () => {
+  it('lists the sixteen act kinds, each with the pillar that shows it', () => {
     expect([...ACT_KINDS]).toEqual([
       'mail.send', 'calendar.op', 'teams.post', 'office.mail.send', 'office.calendar.op', 'office.edit', 'share.guestLink',
-      'share.google', 'google.edit', 'form.publish', 'frameio.post', 'portal.submit', 'computer.act', 'addon.call', 'chat.reply'
+      'share.google', 'google.edit', 'form.publish', 'frameio.post', 'portal.submit', 'computer.act', 'addon.call', 'chat.reply',
+      'file.act'
     ])
+    expect(ACT_PILLAR['file.act']).toBe('files')
     expect(Object.keys(ACT_PILLAR).sort()).toEqual([...ACT_KINDS].sort())
     for (const pillar of Object.values(ACT_PILLAR)) expect(PILLAR_IDS).toContain(pillar)
     expect(ActKindSchema.safeParse('mail.send').success).toBe(true)

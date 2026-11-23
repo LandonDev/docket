@@ -1,17 +1,19 @@
 import { createHash } from 'node:crypto'
 import { realpathSync } from 'node:fs'
-import { relative, sep } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, dirname, join, relative, sep } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { FileOrigin, FileRef } from '@shared/contract-work-files'
 import type { TeamsLibrary } from '@shared/contract-work-office'
 import { canvasSourcePath, type CanvasSource } from '@shared/work'
-import { questionFor, refusal, type FileEntry, type FilePlace, type FileVerb } from '@shared/work/files'
+import { PLACE, questionFor, refusal, type FileEntry, type FilePlace, type FileVerb } from '@shared/work/files'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { cloudDirOf, libraryOf } from '../office/files/library'
 import { isGuestPath, vmLibraryOf } from '../office/vm/files'
 import { vmAllowed, vmState } from '../office/vm/office'
 import { librariesHere, vmLibrariesHere } from './places/libraries'
+import { accountsHeld } from './places/drive'
 
 /**
  * The one door of the Files place (docs/agents/work-files.md "One door for every change"). Every method that
@@ -62,12 +64,15 @@ export type Located =
   | { in: 'library'; library: TeamsLibrary; path: string }
   /** a place's top, or a lens: one of the workspace's own (`folder`, `home`, `trash`, …) or a library's id */
   | { in: 'place'; id: string }
+  /** in a Google Drive of one of the workspace's accounts: a folder (`folderId`, Drive's `root` for its top) or a file (`mime` set) */
+  | { in: 'drive'; workspace: WorkspaceRow; account: string; id: string; mime?: string }
 
 export const NOT_HERE = 'That file is on another host: ask that host.'
 export const NOT_REACHED = "That is not in this workspace's folder or a library it may use."
 export const NO_WORKSPACE = 'No such Work workspace on this host.'
 export const THREAD_ELSEWHERE = "A thread reaches only its own workspace's files."
 export const PEER_LIBRARIES = "Another host reaches only this host's libraries."
+export const NOT_DRIVE = "That Google account is not one of this workspace's."
 export const NOT_VM = 'This workspace may not use the Windows VM (its Work settings: Computer use on the Windows VM).'
 
 /** Whether the caller may use what is in the Windows VM: a thread only where its workspace turns the VM on; his own windows always. */
@@ -98,12 +103,24 @@ export function admitCaller(ctx: Pick<WorkCtx, 'scopeOf'>, by: Caller, workspace
  *  - a remote key: only what the listener's fence lets it name (`ctx.reaches`, by the real path). A file in
  *    the VM is no path of this host's disk: the listener passes it for the verbs that may carry one, and it
  *    is held to OneDrive's mounts here.
+ * A Drive folder or a Google file must be of a Google account this workspace has (its sector's, as LifeOS files it,
+ * read before by `driveAccounts`); no other host reaches it, and a remote key only when it may name the workspace's
+ * own folder. Whether this client may see the id is Google's to say, with that account's `drive.file` token.
  */
 export function locate(ctx: Pick<WorkCtx, 'db' | 'host' | 'reaches' | 'scopeOf' | 'settings'>, by: Caller, workspaceId: string, ref: FileRef, method: string): Located {
   admitCaller(ctx, by, workspaceId)
   if (ref.at === 'place') {
     if (by.peer) throw new Error(PEER_LIBRARIES)
     return { in: 'place', id: ref.id }
+  }
+  if (ref.at === 'drive' || ref.at === 'google') {
+    if (by.peer) throw new Error(PEER_LIBRARIES)
+    const workspace = workspaceHere(ctx.db, workspaceId)
+    if (!workspace) throw new Error(NO_WORKSPACE)
+    const account = ref.account.toLowerCase()
+    if (!accountsHeld(ctx.db, workspace.sector).includes(account)) throw new Error(NOT_DRIVE)
+    if (by.kind === 'remote' && !ctx.reaches(by, workspace.path)) throw new FenceError(method)
+    return { in: 'drive', workspace, account, ...(ref.at === 'drive' ? { id: ref.folderId } : { id: ref.fileId, mime: ref.mime }) }
   }
   const path = ref.at === 'file' ? ref.path : ref.at === 'microsoft' && ref.ref.kind === 'path' ? ref.ref.path : null
   if (path === null) throw new Error('That place is not read by this build yet.')
@@ -129,9 +146,37 @@ export function locate(ctx: Pick<WorkCtx, 'db' | 'host' | 'reaches' | 'scopeOf' 
   return { in: 'library', ...found }
 }
 
+export const NO_SECTOR = 'This workspace is not linked to a LifeOS sector.'
+export const MAIL_NEEDS_APPROVE = 'Files from his mail are read with approve: this key may not.'
+
+/** A ref the LifeOS adapter answers (files/places/lifeos.ts): a LifeOS row, a project, a mail's file, or one of their places. */
+export function isLifeosRef(ref: FileRef): boolean {
+  if (ref.at === 'lifeos' || ref.at === 'project' || ref.at === 'mail') return true
+  return ref.at === 'place' && (ref.id === PLACE.lifeos || ref.id === PLACE.mail || ref.id.startsWith('project:'))
+}
+
+/**
+ * The door's rows for a LifeOS ref, before the id is looked at: a thread names only its own workspace, another
+ * host of his reaches nothing of LifeOS (each host reads LifeOS with its own session), the workspace must live
+ * here and be linked to a sector, and a remote key reads files of his mail only with `approve`, as reading his
+ * mail needs. Answers the workspace with its sector; the adapter then holds the id to that sector
+ * (`lifeosRow`), for every caller.
+ */
+export function locateLifeos(ctx: Pick<WorkCtx, 'db' | 'scopeOf'>, by: Caller, workspaceId: string, ref: FileRef): WorkspaceRow & { sector: string } {
+  admitCaller(ctx, by, workspaceId)
+  if (by.peer) throw new Error(PEER_LIBRARIES)
+  const workspace = workspaceHere(ctx.db, workspaceId)
+  if (!workspace) throw new Error(NO_WORKSPACE)
+  if (!workspace.sector) throw new Error(NO_SECTOR)
+  const mail = ref.at === 'mail' || (ref.at === 'place' && ref.id === PLACE.mail)
+  if (mail && by.kind === 'remote' && !by.caps.includes('approve')) throw new Error(MAIL_NEEDS_APPROVE)
+  return { ...workspace, sector: workspace.sector }
+}
+
 /**
  * Whether other people can open what a source names: a file in a Teams or OneDrive library (on this host or in
- * its Windows VM), a Microsoft file by its address, a Google file, a file on another host (this one cannot
+ * its Windows VM), a Microsoft file by its address, a Google file (by its source alone the host cannot tell its
+ * sharing, which only Drive says: the Files place asks Drive, `itemShared`), a file on another host (this one cannot
  * tell), and a file in any cloud folder of this computer that is not a listed library (it cannot tell either).
  * A file anywhere else on this disk is his own: the workspace's folder, a copy he allowed, an import, an item's
  * own folder. A LifeOS row is shared while LifeOS says so, which its own pillar reads from the row; by its
@@ -210,4 +255,47 @@ export function admitWrite(by: Caller, change: Change): 'run' | 'hold' {
   if (by.kind === 'remote' && !by.peer && shared && !by.caps.includes('approve')) throw new Error(NEEDS_APPROVE)
   if (questionFor(from, verb, entry, to) !== null && !change.asked) throw new Error(ASK_FIRST)
   return 'run'
+}
+
+/** The generic `fs.*` verbs that change a disk, and every path each one names. */
+const FS_WRITES: Record<string, (p: Record<string, string>) => string[]> = {
+  'fs.createPath': (p) => [p.parent!, join(p.parent!, p.name!)],
+  'fs.renamePath': (p) => [p.path!, join(dirname(p.path!), p.name!)],
+  'fs.deletePath': (p) => [p.path!],
+  'fs.copyPath': (p) => [p.from!, p.destParent!],
+  'fs.movePath': (p) => [p.from!, p.destParent!],
+  'fs.writeText': (p) => [p.path!]
+}
+export const FS_SHARED = 'That is in a place others can open (Teams, OneDrive): change it in Files, where the change is asked first.'
+
+/** A path by its real spelling, where the path itself may not be made yet: its nearest folder that is, and the rest. */
+function realish(path: string): string {
+  const named = path === '~' ? homedir() : path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
+  const rest: string[] = []
+  let at = named
+  for (let i = 0; i < 64; i++) {
+    const found = real(at)
+    if (found) return join(found, ...rest.reverse())
+    const up = dirname(at)
+    if (up === at) break
+    rest.push(basename(at))
+    at = up
+  }
+  return named
+}
+
+/**
+ * The listener's last word on a remote key's `fs.*` write (src/main/server/index.ts, after the root fence): a path
+ * inside a library others can open (`sharedOf`) is refused, wherever the roots let it through (a Work workspace
+ * kept inside a OneDrive folder, a project at the home folder). Files' own verbs are the way to change such a place,
+ * and they ask first or hold. Null for any other method or path.
+ */
+export function fsPathRefusal(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, method: string, params: unknown): string | null {
+  const paths = FS_WRITES[method]
+  if (!paths || !params || typeof params !== 'object') return null
+  for (const path of paths(params as Record<string, string>)) {
+    if (typeof path !== 'string' || !path) continue
+    if (sharedOf(ctx, { at: 'file', host: ctx.host, path: realish(path) })) return FS_SHARED
+  }
+  return null
 }

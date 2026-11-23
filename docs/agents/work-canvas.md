@@ -83,7 +83,7 @@ own `opens`.
 barrel) is the one lookup for a file from outside: a drop, Open file…, a
 mail's attachment. It goes by the extension, and by the mime type only when
 the name has none, since a desktop's or a mail's type is a guess from the
-name (`main.ts` arrives as `video/mp2t`). The Docs view's list, which the
+name (`main.ts` arrives as `video/mp2t`). `doc_find`'s list, which the
 host builds, reads extensions from `kindOfFile` (src/shared/work/docFind.ts);
 registry.test.ts holds the two to the same claims.
 
@@ -413,7 +413,7 @@ shows is uploaded to the thread's host with `attachment.begin {into:
 (`keptFileName`, `Name (1).ext` on a collision), or the thread's attachment
 dir for a Work Chat (which goes with the thread: deleted with it, or 30 days
 after it is archived), and opens as `{ at: 'file', host, path }` like any file item,
-which the Docs view then lists as the folder's. A file already inside the
+which Files and `doc_find` then list as the folder's. A file already inside the
 workspace's folder on the thread's own host opens in place, with no copy. A
 file with a path is read on its own host in ranges (`hostSource`), so a big
 one never sits whole in the window; the host's `attachment.maxBytes` holds
@@ -472,8 +472,8 @@ anything in a Work Chat that needs a workspace's view are labels.
 
 The composer's `@` offers Work's things beside files, threads and notes:
 LifeOS's tasks, mail threads, events, projects, people and documents, the
-thread's own canvas items, the held acts waiting in the Outbox and the
-workspace's routines. A pick becomes a chip, and the message carries its
+workspace's files, the thread's own canvas items, the held acts waiting in
+the Outbox and the workspace's routines. A pick becomes a chip, and the message carries its
 line with a short excerpt quoted under it (`chipLine`), so the model gets a
 reference it can open with its tools and a few words of what it says.
 
@@ -484,7 +484,7 @@ where it will be made (`mentionReachOf`, work/scope.ts, `ctx.mentionReach`):
 
 | Thread | Offered |
 |---|---|
-| a Work workspace's | its sector's LifeOS things; its own pane's items; the workspace's held acts and routines |
+| a Work workspace's | its sector's LifeOS things; the workspace's files; its own pane's items; the workspace's held acts and routines |
 | a Work Chat | every sector's LifeOS things; its own pane's items; the held acts outside every workspace |
 | a code thread of a linked workspace | that sector's LifeOS things, nothing of Work's own |
 | an unlinked code thread, a loose chat, a Work thread with no Work home | nothing |
@@ -518,6 +518,13 @@ to `CHIP_NOUN`; until then it draws with the item glyph and noun. The ref is
 one of the chip's (`{at: 'lifeos', table}`, a `CanvasSource`, `{at:
 'item', id}`, `{at: 'work', pillar, id}`); a sent chip opens only what
 `openerOf` (SentChips.tsx) knows.
+
+**Files.** The files pillar's source (`file`) offers a Work workspace's
+own thread the files of its places by name, his recents first, each a
+`file` chip carrying its source and its place and path in words, never
+words from inside it; it is the one source fenced by the caller as well
+(`MentionSource.search`'s `by`), so a remote key hears only of files it
+could name (work-files.md "Agents").
 
 **The list** (chrome/useWorkMentions.ts, chrome/CommandPopover.tsx): on a
 host with Work on, the text is asked a beat (120 ms) after the last key,

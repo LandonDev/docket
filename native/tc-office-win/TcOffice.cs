@@ -1485,10 +1485,11 @@ public static class Guest {
     return list;
   }
 
-  // The mount a path lies in, by name alone: absolute, no `.` or `..`, no other separator; null when it is in none.
+  // The mount a path lies in, by name alone: absolute, no `.` or `..`, no other separator, no stream (`:`), no
+  // name Windows keeps for a device; null when it is in none.
   static string MountOf(string path) {
     if (path == null || path.Length < 3 || path[1] != ':' || path[2] != '\\' || path.IndexOf('/') >= 0) return null;
-    foreach (var part in path.Substring(3).Split('\\')) if (part == "." || part == ".." || part.EndsWith(" ") || (part.EndsWith(".") && part.Length > 0)) return null;
+    foreach (var part in path.Substring(3).Split('\\')) if (part == "." || part == ".." || part.EndsWith(" ") || (part.EndsWith(".") && part.Length > 0) || (part.Length > 0 && NameProblem(part) != null)) return null;
     foreach (var m in Mounts()) {
       var root = (string)m["path"];
       if (path.Equals(root, StringComparison.OrdinalIgnoreCase) || path.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase)) return root;
@@ -1597,8 +1598,318 @@ public static class Guest {
     return Office.Obj("hits", hits, "more", more);
   }
 
+  // ---- Changes: New, rename, move, write and the Recycle Bin (docs/agents/work-teams-files.md "The Windows VM"). Each
+  // is held to OneDrive's mounts at both ends (Admit, and the parent folder held open while its real path is checked),
+  // never writes over anything but a file `files.write` names by its version, and runs under its operation id: the
+  // same id again answers what the first did and does nothing twice (Journalled).
+
+  // What this helper changes; the host offers a verb only where the helper lists it (`guest.status`'s `verbs`).
+  public static readonly string[] Changes = { "files.mkdir", "files.rename", "files.move", "files.write", "files.recycle", "files.outcome" };
+  public const int WriteMax = 16 * 1024 * 1024;
+  const long HashMax = 64L * 1024 * 1024;
+
+  static readonly System.Text.RegularExpressions.Regex Reserved = new System.Text.RegularExpressions.Regex(@"^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)(\..*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+  // Why NTFS or OneDrive would not take `name` as one part of a path, or null.
+  public static string NameProblem(string name) {
+    if (string.IsNullOrEmpty(name) || name.Trim().Length == 0) return "A name needs at least one letter.";
+    if (name.Length > 255) return "A name can be 255 characters at most.";
+    if (name == "." || name == "..") return "That name is not allowed.";
+    foreach (var c in name) if (c < 32 || c == 127 || "<>:\"/\\|?*".IndexOf(c) >= 0) return "A name cannot hold " + (c < 32 || c == 127 ? "a control character" : c.ToString()) + ".";
+    if (name.EndsWith(" ") || name.EndsWith(".") || name.StartsWith(" ")) return "A name cannot start with a space or end with a space or a dot.";
+    if (Reserved.IsMatch(name)) return "Windows keeps that name for itself.";
+    if (name.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase) || name.IndexOf("_vti_", StringComparison.OrdinalIgnoreCase) >= 0) return "OneDrive does not take that name.";
+    return null;
+  }
+  static void Name(string name) { var p = NameProblem(name); if (p != null) throw new Refusal("refused", p); }
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern uint GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle h, StringBuilder buf, uint len, uint flags);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool CreateDirectoryW(string path, IntPtr security);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool MoveFileExW(string from, string to, uint flags);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool ReplaceFileW(string replaced, string replacement, string backup, uint flags, IntPtr exclude, IntPtr reserved);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool DeleteFileW(string path);
+  const uint MOVEFILE_WRITE_THROUGH = 8, REPLACEFILE_IGNORE_MERGE_ERRORS = 2;
+
+  // A folder's real path, from a handle on it (the volume's own spelling, every link resolved).
+  static string FinalOf(Microsoft.Win32.SafeHandles.SafeFileHandle h) {
+    var buf = new StringBuilder(1024);
+    var n = GetFinalPathNameByHandleW(h, buf, (uint)buf.Capacity, 0);
+    if (n == 0 || n >= buf.Capacity) throw new Refusal("failed", "Windows could not say where a folder is (error " + Marshal.GetLastWin32Error() + ").");
+    return buf.ToString().TrimEnd('\\');
+  }
+
+  // A folder opened as itself (a link is not followed), held against being renamed or deleted while a change runs in it.
+  // Something that holds it for its own delete (a sync engine) leaves it shared; then its real path is checked after too.
+  static Microsoft.Win32.SafeHandles.SafeFileHandle OpenFolder(string dir, bool shareDelete) {
+    // FILE_LIST_DIRECTORY, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT
+    return CreateFileW(Long(dir), 1, shareDelete ? 7u : 3u, IntPtr.Zero, 3, 0x02000000 | 0x00200000, IntPtr.Zero);
+  }
+
+  public sealed class Held : IDisposable {
+    readonly Microsoft.Win32.SafeHandles.SafeFileHandle h;
+    readonly string root, dir;
+    readonly bool shared;
+    public Held(string dir) {
+      this.dir = dir;
+      var mount = MountOf(dir);
+      if (mount == null) throw new Refusal("not-allowed", "That is not in a folder OneDrive syncs on this PC.");
+      using (var m = OpenFolder(mount, true)) {
+        if (m.IsInvalid) throw new Refusal("not-found", "No folder " + mount + ".");
+        root = FinalOf(m);
+      }
+      h = OpenFolder(dir, false);
+      if (h.IsInvalid && Marshal.GetLastWin32Error() == 32) { h = OpenFolder(dir, true); shared = true; }
+      if (h.IsInvalid) {
+        var err = Marshal.GetLastWin32Error();
+        throw new Refusal(err == 2 || err == 3 ? "not-found" : "failed", err == 2 || err == 3 ? "No folder " + dir + "." : "Windows could not open " + dir + " (error " + err + ").");
+      }
+      Check();
+    }
+    // The folder's real path still lies in its mount: a folder swapped for a link, or moved out, is caught here.
+    public void Check() {
+      var at = FinalOf(h);
+      if (!(at.Equals(root, StringComparison.OrdinalIgnoreCase) || at.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase)))
+        throw new Refusal("not-allowed", "That folder now lies outside OneDrive's folder, so nothing was changed in it.");
+    }
+    public bool Shared { get { return shared; } }
+    public void Dispose() { h.Dispose(); }
+  }
+
+  static string ParentOf(string path) { var cut = path.LastIndexOf('\\'); return cut <= 2 ? path.Substring(0, 3) : path.Substring(0, cut); }
+  static string BaseOf(string path) { return path.Substring(path.LastIndexOf('\\') + 1); }
+  static bool IsDir(string path) { var a = GetFileAttributesW(Long(path)); return a != INVALID && (a & DIRECTORY) != 0; }
+  static bool Within(string path, string dir) { return path.Equals(dir, StringComparison.OrdinalIgnoreCase) || path.StartsWith(dir + "\\", StringComparison.OrdinalIgnoreCase); }
+
+  static Exception Failed(string what, string name) { return Failed(what, name, Marshal.GetLastWin32Error()); }
+  static Exception Failed(string what, string name, int err) {
+    if (err == 80 || err == 183) return new Refusal("refused", "A " + (IsDir(name) ? "folder" : "file") + " named \"" + BaseOf(name) + "\" is already there.");
+    if (err == 2 || err == 3) return new Refusal("not-found", BaseOf(name) + " is not there any more.");
+    if (err == 32 || err == 33) return new Refusal("busy", BaseOf(name) + " is open somewhere. Close it and try again.");
+    if (err == 5) return new Refusal("not-allowed", "Windows did not let tc-office " + what + " " + BaseOf(name) + ".");
+    return new Refusal("failed", "Windows could not " + what + " " + BaseOf(name) + " (error " + err + ").");
+  }
+
+  // A thing that is no mount's own top: the place itself is never renamed, moved or deleted.
+  static string Inner(object raw) {
+    var path = Admit(raw);
+    if (path.Equals(MountOf(path), StringComparison.OrdinalIgnoreCase)) throw new Refusal("refused", "A place itself cannot be renamed, moved or deleted.");
+    return path;
+  }
+
+  // A file's version as the host's `versionWord` spells one: its size, its change time and, up to 64 MB, its sha256.
+  public static string VersionOf(string path, out long changed) {
+    var e = Stat(path);
+    if ((bool)e["dir"]) throw new Refusal("refused", "That is a folder, not a file.");
+    var size = (long)e["size"];
+    changed = (long)e["modified"];
+    var hash = "";
+    if (size <= HashMax) using (var f = OpenRead(path)) using (var sha = System.Security.Cryptography.SHA256.Create()) {
+      var sb = new StringBuilder(64);
+      foreach (var b in sha.ComputeHash(f)) sb.Append(b.ToString("x2"));
+      hash = sb.ToString();
+    }
+    return size + ":" + changed + ":" + hash;
+  }
+
+  // Bytes into a new hidden file beside where they go, written through to the disk. Answers its path.
+  static string Staged(string dir, string name, byte[] data) {
+    var temp = dir + "\\." + name + "." + Guid.NewGuid().ToString("N").Substring(0, 12) + ".tmp";
+    // GENERIC_WRITE, no sharing, CREATE_NEW, FILE_ATTRIBUTE_HIDDEN | FILE_FLAG_WRITE_THROUGH
+    var h = CreateFileW(Long(temp), 0x40000000, 0, IntPtr.Zero, 1, 0x2 | 0x80000000, IntPtr.Zero);
+    if (h.IsInvalid) throw Failed("write in", dir + "\\" + name);
+    try {
+      using (var f = new FileStream(h, FileAccess.Write)) { f.Write(data, 0, data.Length); f.Flush(true); }
+    } catch (Exception) { DeleteFileW(Long(temp)); throw; }
+    return temp;
+  }
+
+  static byte[] DataOf(Dictionary<string, object> a) {
+    var data = Convert.FromBase64String(a.ContainsKey("data") && a["data"] != null ? (string)a["data"] : "");
+    if (data.Length > WriteMax) throw new Refusal("refused", "That is over " + (WriteMax / 1024 / 1024) + " MB, too big to write from here.");
+    return data;
+  }
+
+  static object Mkdir(Dictionary<string, object> a) {
+    var dir = Admit(a["dir"]);
+    var name = (string)a["name"];
+    Name(name);
+    var to = dir + "\\" + name;
+    using (var held = new Held(dir)) {
+      if (!CreateDirectoryW(Long(to), IntPtr.Zero)) throw Failed("make", to);
+      held.Check();
+    }
+    return Office.Obj("entry", Stat(to));
+  }
+
+  static object Rename(Dictionary<string, object> a) {
+    var path = Inner(a["path"]);
+    var name = (string)a["name"];
+    Name(name);
+    var dir = ParentOf(path);
+    var to = dir + "\\" + name;
+    if (to == path) return Office.Obj("entry", Stat(to));
+    using (var held = new Held(dir)) {
+      if (!MoveFileExW(Long(path), Long(to), MOVEFILE_WRITE_THROUGH)) throw Failed("rename", to.Equals(path, StringComparison.OrdinalIgnoreCase) ? path : to);
+      held.Check();
+    }
+    return Office.Obj("entry", Stat(to));
+  }
+
+  static object Move(Dictionary<string, object> a) {
+    var path = Inner(a["path"]);
+    var dir = Admit(a["dir"]);
+    if (!IsDir(dir)) throw new Refusal("refused", "That is a file, not a folder.");
+    if (!MountOf(path).Equals(MountOf(dir), StringComparison.OrdinalIgnoreCase)) throw new Refusal("refused", "Files move within one library here.");
+    if (Within(dir, path)) throw new Refusal("refused", "A folder cannot go inside itself.");
+    var to = dir + "\\" + BaseOf(path);
+    if (to.Equals(path, StringComparison.OrdinalIgnoreCase)) return Office.Obj("entry", Stat(path));
+    using (var from = new Held(ParentOf(path)))
+    using (var into = new Held(dir)) {
+      if (!MoveFileExW(Long(path), Long(to), MOVEFILE_WRITE_THROUGH)) { var err = Marshal.GetLastWin32Error(); throw Failed("move", err == 80 || err == 183 ? to : path, err); }
+      from.Check();
+      into.Check();
+    }
+    return Office.Obj("entry", Stat(to));
+  }
+
+  // `{path, data, expect}` replaces a file's bytes while it is still the version `expect` names, beside and then over it
+  // (ReplaceFile keeps the file's identity, so OneDrive keeps it as one file with a new version); otherwise the answer is
+  // the conflict, as the host's save answers one. `{dir, name, data}` makes a new file, never over anything.
+  static object Write(Dictionary<string, object> a) {
+    var data = DataOf(a);
+    if (a.ContainsKey("dir")) {
+      var dir = Admit(a["dir"]);
+      var name = (string)a["name"];
+      Name(name);
+      var to = dir + "\\" + name;
+      using (var held = new Held(dir)) {
+        var temp = Staged(dir, name, data);
+        if (!MoveFileExW(Long(temp), Long(to), MOVEFILE_WRITE_THROUGH)) { var e = Failed("make", to); DeleteFileW(Long(temp)); throw e; }
+        held.Check();
+      }
+      return Office.Obj("entry", Stat(to));
+    }
+    string path;
+    try { path = Inner(a["path"]); } catch (Refusal r) { if (r.Code == "not-found") return Office.Obj("conflict", Office.Obj("gone", true)); throw; }
+    var expect = (string)a["expect"];
+    long changed;
+    var before = VersionOf(path, out changed);
+    if (before != expect) return Office.Obj("conflict", Office.Obj("version", before, "changed", changed));
+    var parent = ParentOf(path);
+    using (var held = new Held(parent)) {
+      var temp = Staged(parent, BaseOf(path), data);
+      try {
+        // Looked at once more just before it is replaced: a writer that came while ours was written wins.
+        long now;
+        var last = (string)null;
+        try { last = VersionOf(path, out now); } catch (Refusal) { return Office.Obj("conflict", Office.Obj("gone", true)); }
+        if (last != before) return Office.Obj("conflict", Office.Obj("version", last, "changed", now));
+        if (!ReplaceFileW(Long(path), Long(temp), null, REPLACEFILE_IGNORE_MERGE_ERRORS, IntPtr.Zero, IntPtr.Zero)) throw Failed("write", path);
+        held.Check();
+      } finally { DeleteFileW(Long(temp)); }
+    }
+    long after;
+    var version = VersionOf(path, out after);
+    return Office.Obj("version", version, "changed", after, "entry", Stat(path));
+  }
+
+  // To the Windows Recycle Bin, never deleted for good: Windows' own file operation, asked to recycle and refused
+  // before anything happens where it would delete the thing outright instead (RecycleBin.Send).
+  static object Recycle(Dictionary<string, object> a) {
+    var path = Inner(a["path"]);
+    var name = BaseOf(path);
+    string bin;
+    using (var held = new Held(ParentOf(path))) {
+      bin = RecycleBin.Send(path);
+      held.Check();
+    }
+    return Office.Obj("name", name, "bin", bin);
+  }
+
+  // ---- The journal: one small file per operation id under %LOCALAPPDATA%\tc-office\ops, named by the id's hash.
+  static readonly object changing = new object();
+  static DateTime pruned = DateTime.MinValue;
+
+  static string OpsDir() {
+    var d = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"tc-office\ops");
+    Directory.CreateDirectory(d);
+    return d;
+  }
+  static string Hex(string s) {
+    using (var sha = System.Security.Cryptography.SHA256.Create()) {
+      var sb = new StringBuilder(64);
+      foreach (var b in sha.ComputeHash(new UTF8Encoding(false).GetBytes(s))) sb.Append(b.ToString("x2"));
+      return sb.ToString();
+    }
+  }
+  static string OpOf(Dictionary<string, object> a) {
+    var op = a.ContainsKey("op") ? a["op"] as string : null;
+    if (string.IsNullOrEmpty(op) || op.Length > 200) throw new Refusal("refused", "A change needs an operation id.");
+    return op;
+  }
+  static Dictionary<string, object> Record(string file) {
+    try { return File.Exists(file) ? new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Deserialize<Dictionary<string, object>>(File.ReadAllText(file)) : null; }
+    catch (Exception) { return null; }
+  }
+  static void Keep(string file, Dictionary<string, object> rec) {
+    var temp = file + ".new";
+    File.WriteAllText(temp, new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(rec));
+    if (File.Exists(file)) File.Replace(temp, file, null); else File.Move(temp, file);
+  }
+  static void Prune(string dir) {
+    if (DateTime.UtcNow - pruned < TimeSpan.FromHours(1)) return;
+    pruned = DateTime.UtcNow;
+    foreach (var f in Directory.GetFiles(dir, "*.json")) try { if (DateTime.UtcNow - File.GetLastWriteTimeUtc(f) > TimeSpan.FromDays(7)) File.Delete(f); } catch (Exception) { }
+  }
+
+  // Runs one change under its operation id, one change at a time. The same id with the same change answers what the
+  // first answered (or its refusal) and does nothing; with another change it is refused. A change a stopped helper left
+  // unfinished is said so, never run again blind.
+  static object Journalled(string verb, Dictionary<string, object> a, Func<object> run) {
+    var op = OpOf(a);
+    var rest = new Dictionary<string, object>(a);
+    rest.Remove("op");
+    var digest = Hex(verb + "\n" + new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Serialize(rest));
+    lock (changing) {
+      var dir = OpsDir();
+      Prune(dir);
+      var file = Path.Combine(dir, Hex(op) + ".json");
+      var was = Record(file);
+      if (was != null) {
+        if (was["digest"] as string != digest) throw new Refusal("refused", "That operation id was used for another change.");
+        var state = was["state"] as string;
+        if (state == "done") return was["value"];
+        if (state == "failed") throw new Refusal(was["code"] as string ?? "failed", was["message"] as string ?? "That change failed.");
+        throw new Refusal("failed", "tc-office stopped before this change was known to be done. Look at the folder before trying again.");
+      }
+      Keep(file, Office.Obj("op", op, "verb", verb, "digest", digest, "state", "running", "at", DateTime.UtcNow.ToString("o")));
+      try {
+        var value = run();
+        Keep(file, Office.Obj("op", op, "verb", verb, "digest", digest, "state", "done", "value", value, "at", DateTime.UtcNow.ToString("o")));
+        return value;
+      } catch (Exception e) {
+        var r = e as Refusal;
+        Keep(file, Office.Obj("op", op, "verb", verb, "digest", digest, "state", "failed", "code", r != null ? r.Code : "failed", "message", e.Message, "at", DateTime.UtcNow.ToString("o")));
+        throw;
+      }
+    }
+  }
+
+  // What became of an operation id, without doing anything: done (with its answer), failed (with its words), running, or unknown.
+  static object Outcome(Dictionary<string, object> a) {
+    var op = OpOf(a);
+    lock (changing) {
+      var was = Record(Path.Combine(OpsDir(), Hex(op) + ".json"));
+      if (was == null) return Office.Obj("state", "unknown");
+      var state = was["state"] as string;
+      if (state == "done") return Office.Obj("state", "done", "verb", was["verb"], "value", was["value"]);
+      if (state == "failed") return Office.Obj("state", "failed", "verb", was["verb"], "code", was["code"], "message", was["message"]);
+      return Office.Obj("state", "running", "verb", was["verb"]);
+    }
+  }
+
   static string OneDriveExe() {
-    var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\OneDrive\OneDrive.exe");
+    var local =Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\OneDrive\OneDrive.exe");
     if (File.Exists(local)) return local;
     foreach (var pf in new[] { Environment.GetEnvironmentVariable("ProgramW6432"), Environment.GetEnvironmentVariable("ProgramFiles"), Environment.GetEnvironmentVariable("ProgramFiles(x86)") }) {
       if (pf == null) continue;
@@ -1724,11 +2035,25 @@ public static class Guest {
   public static object Run(string verb, Dictionary<string, object> a) {
     switch (verb) {
       case "guest.status":
-        return Office.Obj("onedrive", Office.Obj("installed", OneDriveExe() != null, "running", Process.GetProcessesByName("OneDrive").Length > 0, "account", Account()), "mounts", Mounts(), "office", OfficeStatus());
+        return Office.Obj("onedrive", Office.Obj("installed", OneDriveExe() != null, "running", Process.GetProcessesByName("OneDrive").Length > 0, "account", Account()), "mounts", Mounts(), "office", OfficeStatus(), "verbs", Changes);
       case "files.list": return Dir(Admit(a["dir"]));
       case "files.stat": return Stat(Admit(a["path"]));
       case "files.search": return Search(a);
-      case "files.read": return Read(Admit(a["path"]), a.ContainsKey("offset") ? Convert.ToInt64(a["offset"]) : 0, a.ContainsKey("length") ? Convert.ToInt32(a["length"]) : ReadMax);
+      case "files.read": {
+        var path = Admit(a["path"]);
+        // `version`: the file's version as `files.write` checks it, taken before the bytes are read.
+        long changed = 0;
+        var version = a.ContainsKey("version") && Convert.ToBoolean(a["version"]) ? VersionOf(path, out changed) : null;
+        var got = (Dictionary<string, object>)Read(path, a.ContainsKey("offset") ? Convert.ToInt64(a["offset"]) : 0, a.ContainsKey("length") ? Convert.ToInt32(a["length"]) : ReadMax);
+        if (version != null) { got["version"] = version; got["changed"] = changed; }
+        return got;
+      }
+      case "files.mkdir": return Journalled(verb, a, () => Mkdir(a));
+      case "files.rename": return Journalled(verb, a, () => Rename(a));
+      case "files.move": return Journalled(verb, a, () => Move(a));
+      case "files.write": return Journalled(verb, a, () => Write(a));
+      case "files.recycle": return Journalled(verb, a, () => Recycle(a));
+      case "files.outcome": return Outcome(a);
       case "files.fetch": return Fetch(Admit(a["path"]));
       case "files.free": return Free(Admit(a["path"]));
       case "files.open": Shell(Admit(a["path"])); return null;
@@ -1760,6 +2085,133 @@ public static class Guest {
         return null;
     }
     throw new Refusal("failed", "tc-office has no verb " + verb + ".");
+  }
+}
+
+// ---- The Windows Recycle Bin, through the shell's own file operation (IFileOperation), as Explorer's Delete does it.
+// The progress sink sees each delete before it happens: one Windows would do for good (no bin on that drive, the bin
+// turned off, a thing too big for it) is cancelled there, so nothing is ever deleted outright. After it, the thing's
+// place in the bin is answered.
+public static class RecycleBin {
+  [ComImport, Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IShellItem {
+    void BindToHandler(IntPtr pbc, [In] ref Guid bhid, [In] ref Guid riid, out IntPtr ppv);
+    void GetParent(out IShellItem ppsi);
+    void GetDisplayName(uint sigdn, [MarshalAs(UnmanagedType.LPWStr)] out string name);
+    void GetAttributes(uint mask, out uint attrs);
+    void Compare(IShellItem psi, uint hint, out int order);
+  }
+
+  [ComImport, Guid("04b0f1a7-9490-44bc-96e1-4296a31252e2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IFileOperationProgressSink {
+    [PreserveSig] int StartOperations();
+    [PreserveSig] int FinishOperations(int hr);
+    [PreserveSig] int PreRenameItem(uint flags, IShellItem item, [MarshalAs(UnmanagedType.LPWStr)] string newName);
+    [PreserveSig] int PostRenameItem(uint flags, IShellItem item, [MarshalAs(UnmanagedType.LPWStr)] string newName, int hr, IShellItem made);
+    [PreserveSig] int PreMoveItem(uint flags, IShellItem item, IShellItem dest, [MarshalAs(UnmanagedType.LPWStr)] string newName);
+    [PreserveSig] int PostMoveItem(uint flags, IShellItem item, IShellItem dest, [MarshalAs(UnmanagedType.LPWStr)] string newName, int hr, IShellItem made);
+    [PreserveSig] int PreCopyItem(uint flags, IShellItem item, IShellItem dest, [MarshalAs(UnmanagedType.LPWStr)] string newName);
+    [PreserveSig] int PostCopyItem(uint flags, IShellItem item, IShellItem dest, [MarshalAs(UnmanagedType.LPWStr)] string newName, int hr, IShellItem made);
+    [PreserveSig] int PreDeleteItem(uint flags, IShellItem item);
+    [PreserveSig] int PostDeleteItem(uint flags, IShellItem item, int hr, IShellItem made);
+    [PreserveSig] int PreNewItem(uint flags, IShellItem dest, [MarshalAs(UnmanagedType.LPWStr)] string newName);
+    [PreserveSig] int PostNewItem(uint flags, IShellItem dest, [MarshalAs(UnmanagedType.LPWStr)] string newName, [MarshalAs(UnmanagedType.LPWStr)] string template, uint attrs, int hr, IShellItem made);
+    [PreserveSig] int UpdateProgress(uint total, uint soFar);
+    [PreserveSig] int ResetTimer();
+    [PreserveSig] int PauseTimer();
+    [PreserveSig] int ResumeTimer();
+  }
+
+  [ComImport, Guid("947aab5f-0a5c-4c13-b4d6-4bf7836fc9f8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IFileOperation {
+    uint Advise(IFileOperationProgressSink sink);
+    void Unadvise(uint cookie);
+    void SetOperationFlags(uint flags);
+    void SetProgressMessage([MarshalAs(UnmanagedType.LPWStr)] string message);
+    void SetProgressDialog(IntPtr dialog);
+    void SetProperties(IntPtr props);
+    void SetOwnerWindow(IntPtr hwnd);
+    void ApplyPropertiesToItem(IShellItem item);
+    void ApplyPropertiesToItems([MarshalAs(UnmanagedType.IUnknown)] object items);
+    void RenameItem(IShellItem item, [MarshalAs(UnmanagedType.LPWStr)] string newName, IFileOperationProgressSink sink);
+    void RenameItems([MarshalAs(UnmanagedType.IUnknown)] object items, [MarshalAs(UnmanagedType.LPWStr)] string newName);
+    void MoveItem(IShellItem item, IShellItem dest, [MarshalAs(UnmanagedType.LPWStr)] string newName, IFileOperationProgressSink sink);
+    void MoveItems([MarshalAs(UnmanagedType.IUnknown)] object items, IShellItem dest);
+    void CopyItem(IShellItem item, IShellItem dest, [MarshalAs(UnmanagedType.LPWStr)] string newName, IFileOperationProgressSink sink);
+    void CopyItems([MarshalAs(UnmanagedType.IUnknown)] object items, IShellItem dest);
+    void DeleteItem(IShellItem item, IFileOperationProgressSink sink);
+    void DeleteItems([MarshalAs(UnmanagedType.IUnknown)] object items);
+    void NewItem(IShellItem dest, uint attrs, [MarshalAs(UnmanagedType.LPWStr)] string name, [MarshalAs(UnmanagedType.LPWStr)] string template, IFileOperationProgressSink sink);
+    void PerformOperations();
+    [return: MarshalAs(UnmanagedType.Bool)] bool GetAnyOperationsAborted();
+  }
+
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+  static extern void SHCreateItemFromParsingName(string path, IntPtr pbc, [In] ref Guid riid, [MarshalAs(UnmanagedType.Interface)] out IShellItem item);
+
+  const uint FOF_SILENT = 0x4, FOF_NOCONFIRMATION = 0x10, FOF_ALLOWUNDO = 0x40, FOF_NOCONFIRMMKDIR = 0x200, FOF_NOERRORUI = 0x400, FOFX_RECYCLEONDELETE = 0x80000;
+  const uint TSF_DELETE_RECYCLE_IF_POSSIBLE = 0x80, SIGDN_FILESYSPATH = 0x80058000;
+  const int E_ABORT = unchecked((int)0x80004004);
+
+  [ComVisible(true)]
+  public sealed class Sink : IFileOperationProgressSink {
+    public bool WouldNuke;
+    public int Hr;
+    public string Bin;
+    public int PreDeleteItem(uint flags, IShellItem item) {
+      if ((flags & TSF_DELETE_RECYCLE_IF_POSSIBLE) != 0) return 0;
+      WouldNuke = true;
+      return E_ABORT;
+    }
+    public int PostDeleteItem(uint flags, IShellItem item, int hr, IShellItem made) {
+      Hr = hr;
+      if (made != null) { try { string p; made.GetDisplayName(SIGDN_FILESYSPATH, out p); Bin = p; } catch (Exception) { Bin = ""; } }
+      return 0;
+    }
+    public int StartOperations() { return 0; }
+    public int FinishOperations(int hr) { return 0; }
+    public int PreRenameItem(uint flags, IShellItem item, string newName) { return 0; }
+    public int PostRenameItem(uint flags, IShellItem item, string newName, int hr, IShellItem made) { return 0; }
+    public int PreMoveItem(uint flags, IShellItem item, IShellItem dest, string newName) { return 0; }
+    public int PostMoveItem(uint flags, IShellItem item, IShellItem dest, string newName, int hr, IShellItem made) { return 0; }
+    public int PreCopyItem(uint flags, IShellItem item, IShellItem dest, string newName) { return 0; }
+    public int PostCopyItem(uint flags, IShellItem item, IShellItem dest, string newName, int hr, IShellItem made) { return 0; }
+    public int PreNewItem(uint flags, IShellItem dest, string newName) { return 0; }
+    public int PostNewItem(uint flags, IShellItem dest, string newName, string template, uint attrs, int hr, IShellItem made) { return 0; }
+    public int UpdateProgress(uint total, uint soFar) { return 0; }
+    public int ResetTimer() { return 0; }
+    public int PauseTimer() { return 0; }
+    public int ResumeTimer() { return 0; }
+  }
+
+  // Sends one file or folder to the bin on a thread of its own (the shell wants a single-threaded apartment). Answers
+  // where it lies in the bin.
+  public static string Send(string path) {
+    var sink = new Sink();
+    Exception failed = null;
+    var t = new Thread(() => {
+      try {
+        var iid = typeof(IShellItem).GUID;
+        IShellItem item;
+        SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out item);
+        var op = (IFileOperation)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("3ad05575-8857-4850-9277-11b85bdb8e09")));
+        try {
+          op.SetOperationFlags(FOF_ALLOWUNDO | FOFX_RECYCLEONDELETE | FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOCONFIRMMKDIR | FOF_NOERRORUI);
+          op.DeleteItem(item, sink);
+          op.PerformOperations();
+          if (op.GetAnyOperationsAborted() && !sink.WouldNuke) failed = new Refusal("failed", "Windows stopped before " + Path.GetFileName(path) + " reached the Recycle Bin.");
+        } finally { Marshal.ReleaseComObject(op); Marshal.ReleaseComObject(item); }
+      } catch (Exception e) { failed = e; }
+    });
+    t.SetApartmentState(ApartmentState.STA);
+    t.IsBackground = true;
+    t.Start();
+    t.Join();
+    if (sink.WouldNuke) throw new Refusal("refused", "Windows would delete " + Path.GetFileName(path) + " for good rather than keep it in the Recycle Bin, so it was left where it is.");
+    if (failed != null) throw failed as Refusal ?? new Refusal("failed", "Windows could not move " + Path.GetFileName(path) + " to the Recycle Bin: " + failed.Message);
+    if (sink.Hr < 0) throw new Refusal("failed", "Windows could not move " + Path.GetFileName(path) + " to the Recycle Bin (0x" + sink.Hr.ToString("X8") + ").");
+    if (sink.Bin == null) throw new Refusal("failed", "Windows did not say that " + Path.GetFileName(path) + " reached the Recycle Bin. Look in the Recycle Bin before trying again.");
+    return sink.Bin;
   }
 }
 

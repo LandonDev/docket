@@ -63,12 +63,21 @@ function viewOfChip(chip: ContextChip, workspaceId: string): OpenWorkView | null
   const ref = chip.ref;
   if (ref.at === "work") return ref.pillar === "routines" ? { workspaceId, view: "routines" } : null;
   if (ref.at !== "lifeos") return null;
-  if (ref.table === "docs") return { workspaceId, view: "docs", doc: { id: ref.id, title: chip.label } };
   if (ref.table === "tasks") return chip.kind === "card" ? { workspaceId, view: "projects", task: ref.id } : { workspaceId, view: "tasks", task: ref.id };
   if (ref.table === "mailThreads") return { workspaceId, view: "mail", mail: ref.id };
   if (ref.table === "events") return { workspaceId, view: "agenda", event: ref.id };
   if (ref.table === "projects") return { workspaceId, view: "projects", project: ref.id };
   if (ref.table === "people") return { workspaceId, view: "people", person: ref.id };
+  return null;
+}
+
+/** A LifeOS document a hit names, by its chip or by a way into the Docs view: what Files opens it as. */
+function docOf(open: SearchHit["open"]): { ref: unknown; name: string } | null {
+  if (open.to === "chip" && open.chip.ref.at === "lifeos" && open.chip.ref.table === "docs") return { ref: { at: "lifeos", table: "docs", id: open.chip.ref.id }, name: open.chip.label };
+  if (open.to === "view" && open.view === "docs") {
+    const doc = (open.with as { doc?: { id: string; title?: string } } | undefined)?.doc;
+    if (doc) return { ref: { at: "lifeos", table: "docs", id: doc.id }, name: doc.title || "Untitled" };
+  }
   return null;
 }
 
@@ -94,18 +103,21 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
   }
   if (!workspace) return "nothing";
 
+  // A file, a LifeOS document among them (the Docs view folded into Files), and a hit a host a release behind
+  // still sends to Docs: Files' own door.
+  const file = open.to === "file" ? { ref: open.ref, name: open.name } : docOf(open);
   let view: OpenWorkView | null;
-  if (open.to === "view") view = { workspaceId: workspace.id, view: open.view, ...(open.with ?? {}) } as OpenWorkView;
-  else if (open.to === "chip") view = viewOfChip(open.chip, workspace.id);
-  else {
-    // Files' own door: the file opens as a Files tab of the job, then the Files view shows it.
+  if (file) {
+    // The file opens as a Files tab of the job, then the Files view shows it.
     try {
-      await d.request(hostId, "work.files.open", { workspaceId: workspace.id, ref: open.ref as never, name: open.name });
+      await d.request(hostId, "work.files.open", { workspaceId: workspace.id, ref: file.ref as never, name: file.name });
     } catch {
       return "failed";
     }
     view = { workspaceId: workspace.id, view: "files" };
-  }
+  } else if (open.to === "view") view = { workspaceId: workspace.id, view: open.view, ...(open.with ?? {}) } as OpenWorkView;
+  else if (open.to === "chip") view = viewOfChip(open.chip, workspace.id);
+  else view = null;
   if (!view) return "nothing";
   d.clear();
   // A view shows only while its workspace is the window's (WorkViewSurface): the window moves first.

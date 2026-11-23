@@ -86,6 +86,14 @@ describe("opening a hit", () => {
     expect(await openHit(file, "box", refused.deps)).toBe("failed");
     expect(refused.did).toEqual([]);
   });
+  it("a LifeOS document opens as a Files tab, whether its hit names its chip or the Docs view a host a release behind still names", async () => {
+    const ref = { at: "lifeos", table: "docs", id: "d1" };
+    for (const open of [{ to: "chip", chip: { kind: "doc", label: "Plan", ref } }, { to: "view", view: "docs", with: { doc: { id: "d1", title: "Plan" } } }] as SearchHit["open"][]) {
+      const r = rig(["purdue"]);
+      expect(await openHit(hit({ key: "lifeos:docs:d1", open }), "box", r.deps)).toBe("opened");
+      expect(r.did).toEqual([["request", "box", "work.files.open", { workspaceId: "purdue", ref, name: "Plan" }], ["clear"], ["view", { workspaceId: "purdue", view: "files" }], ["opened", "box", "lifeos:docs:d1"]]);
+    }
+  });
   it("a hit that came through a mention source opens as its chip does: a task in Tasks on that task, a card in Projects, a held act in the Outbox, a routine in Routines", async () => {
     const chip = (kind: ContextChip["kind"], ref: ContextChip["ref"]): SearchHit => hit({ open: { to: "chip", chip: { kind, label: "X", ref } } });
     const views: unknown[] = [];
@@ -108,7 +116,7 @@ describe("opening a hit", () => {
       { workspaceId: "purdue", view: "agenda", event: "e1" },
       { workspaceId: "purdue", view: "people", person: "p1" },
       { workspaceId: "purdue", view: "projects", project: "j1" },
-      { workspaceId: "purdue", view: "docs", doc: { id: "d1", title: "X" } },
+      { workspaceId: "purdue", view: "files" },
       { workspaceId: "purdue", view: "routines" },
     ]);
     const held = rig();

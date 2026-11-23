@@ -35,7 +35,7 @@ describe('the previewers', () => {
     expect(filePreviewerFor('slides')).toBeNull()
     const off = registerFilePreviewer('slides', async (_source, { page, width }) => new Uint8Array([page, width]))
     const png = await filePreviewerFor('slides')!({ at: 'thread' }, { page: 2, width: 9 })
-    expect([...png!]).toEqual([2, 9])
+    expect([...(png as Uint8Array)]).toEqual([2, 9])
     off()
     expect(filePreviewerFor('slides')).toBeNull()
   })

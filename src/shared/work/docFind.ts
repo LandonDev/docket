@@ -1,16 +1,17 @@
 import type { CanvasSource } from './canvas'
-import { kindOfEntry } from './files'
+import { threadCanvasOf } from './files'
 
 /**
  * Finding documents in a Work workspace (docs/agents/work-docs.md "Finding
- * documents"): what one entry of the Docs view's list is, and the filters,
- * sorts and groups over it. Pure and zod-free, so the view, the host's
- * `work.docs.find` and the agent's `doc_find` read the same rules, and a
- * first-paint file may import it. The host builds the entries; this file
- * only judges them.
+ * documents"): what one entry of the list `doc_find` reads is, the filters
+ * and sorts over it, and the spec a saved view keeps (the Files place reads
+ * those rows as its saved searches, through src/shared/work/fileSearch.ts).
+ * Pure and zod-free, so the host's `work.docs.find`, the agent's `doc_find`
+ * and a project's link picker read the same rules, and a first-paint file may
+ * import it. The host builds the entries; this file only judges them.
  */
 
-/** The kinds the view lists, in its order: a canvas kind each. */
+/** The kinds the list holds, in its order: a canvas kind each. */
 export const FIND_KINDS = ['document', 'sheet', 'pdf', 'slides', 'media', 'meeting', 'form', 'dashboard'] as const
 export type FindKind = (typeof FIND_KINDS)[number]
 export const FIND_KIND_WORDS: Record<FindKind, string> = {
@@ -32,11 +33,10 @@ export const FIND_WHERE_WORDS: Record<FindWhere, string> = { lifeos: 'LifeOS', f
 /** Who last changed it, as far as its store says. */
 export const FIND_BY = ['owner', 'agent', 'guest'] as const
 export type FindBy = (typeof FIND_BY)[number]
-export const FIND_BY_WORDS: Record<FindBy, string> = { owner: 'You', agent: 'An agent', guest: 'A guest' }
 
-/** The kind that opens a file, by its name: the one table's answer (`kindOfEntry`, files.ts), where it is a kind the view lists. */
+/** The kind that opens a file beside a thread, by its name: the one table's answer (`threadCanvasOf`, files.ts), where it is a kind the list holds. */
 export function kindOfFile(name: string): FindKind | null {
-  const kind = kindOfEntry(name).canvas
+  const kind = threadCanvasOf(name)
   return kind && (FIND_KINDS as readonly string[]).includes(kind) ? (kind as FindKind) : null
 }
 
@@ -52,7 +52,7 @@ export function kindOfMime(mime: string): FindKind | null {
   return null
 }
 
-/** One thing the Docs view lists. */
+/** One thing the list holds. */
 export interface FindEntry {
   /** stable across reads: `lifeos:docs:<id>`, `file:<path>`, `google:<fileId>`, `microsoft:<name>`, `item:<itemId>` */
   key: string
@@ -84,9 +84,9 @@ export interface FindEntry {
 
 export const EDITED_WITHIN = ['day', 'week', 'month', 'quarter', 'year'] as const
 export type EditedWithin = (typeof EDITED_WITHIN)[number]
-export const EDITED_WITHIN_WORDS: Record<EditedWithin, string> = { day: 'Past day', week: 'Past week', month: 'Past month', quarter: 'Past 3 months', year: 'Past year' }
 const DAY = 86_400_000
-const WITHIN_MS: Record<EditedWithin, number> = { day: DAY, week: 7 * DAY, month: 30 * DAY, quarter: 90 * DAY, year: 365 * DAY }
+/** How far back each span reaches: a span is kept as its word, so a saved search stays current. Files' search reads the same. */
+export const WITHIN_MS: Record<EditedWithin, number> = { day: DAY, week: 7 * DAY, month: 30 * DAY, quarter: 90 * DAY, year: 365 * DAY }
 
 /** Every part is optional and they all hold at once; a list part holds when the entry is any one of it. */
 export interface FindFilter {
@@ -113,7 +113,7 @@ export type FindGroup = (typeof FIND_GROUPS)[number]
 export const FIND_SORTS = ['edited', 'created', 'name'] as const
 export type FindSort = (typeof FIND_SORTS)[number]
 
-/** What a saved view keeps: the search, the filters, the grouping, the order and the layout. */
+/** What a saved view keeps: the search, the filters, and the grouping, order and layout the Docs view drew it in (kept, read by no screen now). */
 export interface FindSpec {
   query: string
   filter: FindFilter
@@ -127,13 +127,6 @@ export interface SavedFindView {
   id: string
   name: string
   spec: FindSpec
-}
-
-/** How many filters are set: the Filter control's count. */
-export function filterCount(f: FindFilter): number {
-  let n = 0
-  for (const v of Object.values(f)) if (Array.isArray(v) ? v.length > 0 : v !== undefined && v !== false) n++
-  return n
 }
 
 const has = <T>(list: T[] | undefined, v: T) => !list?.length || list.includes(v)
@@ -193,60 +186,6 @@ export function findIn(entries: FindEntry[], spec: Pick<FindSpec, 'query' | 'fil
     if (title || snippet !== undefined) out.push({ e: snippet ? { ...e, snippet } : e, title })
   }
   return out.sort((a, b) => Number(b.title) - Number(a.title) || order(a.e, b.e)).map((x) => x.e)
-}
-
-export interface FindGroupRows {
-  key: string
-  label: string
-  rows: FindEntry[]
-}
-
-const startOfDay = (t: number) => {
-  const d = new Date(t)
-  d.setHours(0, 0, 0, 0)
-  return d.getTime()
-}
-
-/** The span an edit falls in, by the calendar: Today, Yesterday, then by the past week, month and year. */
-export function editedBucket(t: number, now = Date.now()): { key: string; label: string } {
-  const today = startOfDay(now)
-  if (t >= today) return { key: '0', label: 'Today' }
-  if (t >= today - DAY) return { key: '1', label: 'Yesterday' }
-  if (t >= today - 7 * DAY) return { key: '2', label: 'Past week' }
-  if (t >= today - 30 * DAY) return { key: '3', label: 'Past month' }
-  if (t >= today - 365 * DAY) return { key: '4', label: 'Past year' }
-  return { key: '5', label: 'Older' }
-}
-
-/**
- * Rows in groups, each group keeping the rows' order. Projects go by name with loose rows
- * last; kinds and places in their lists' order; edits newest span first. `none` is one group
- * with no label.
- */
-export function groupRows(rows: FindEntry[], group: FindGroup, projectNames: ReadonlyMap<string, string>, now = Date.now()): FindGroupRows[] {
-  if (group === 'none') return rows.length ? [{ key: '', label: '', rows }] : []
-  const groups = new Map<string, FindGroupRows>()
-  for (const e of rows) {
-    let key: string
-    let label: string
-    if (group === 'project') {
-      const name = e.projectId ? projectNames.get(e.projectId) : undefined
-      key = name ? `p:${e.projectId}` : '~'
-      label = name ?? 'No project'
-    } else if (group === 'kind') {
-      key = String(FIND_KINDS.indexOf(e.kind)).padStart(2, '0')
-      label = FIND_KIND_WORDS[e.kind]
-    } else if (group === 'where') {
-      key = String(FIND_WHERE.indexOf(e.where))
-      label = FIND_WHERE_WORDS[e.where]
-    } else ({ key, label } = editedBucket(e.editedAt, now))
-    let g = groups.get(key)
-    if (!g) groups.set(key, (g = { key, label, rows: [] }))
-    g.rows.push(e)
-  }
-  const list = [...groups.values()]
-  if (group === 'project') return list.sort((a, b) => (a.key === '~' ? 1 : b.key === '~' ? -1 : collator.compare(a.label, b.label)))
-  return list.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
 }
 
 /** The words around the first place any term stands in `text`, cut at word ends and marked where cut; '' when none does. */

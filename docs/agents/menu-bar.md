@@ -30,6 +30,11 @@ its neighbour), and Escape with no menu open, or Alt again, closes it and
 puts the focus back where it was, as a pick does before its command runs. Go to Symbol is ⌘⇧O and
 Open Project ⌘O, in the menu and the renderer's resolver alike; New
 Terminal is ⌃` (⌘` is macOS's window cycle).
+While focus is inside Work's Files place (`[data-files-view]`, with its port
+mounted: lib/filesKeys.ts), Close Tab, Next Tab, Previous Tab, Back, Forward
+and Type Hierarchy's ⌘T run the Files place's tab commands instead, from the
+native menu, the in-app bar and the keyboard alike (`filesOverlay` and guard 7
+in lib/appCommands.ts); the tree keeps its rows.
 Every Node warning the main process raises lands in its log with the site
 that raised it (src/main/warningLog.ts `installWarningLog`, the first thing
 index.ts does after its boot mark): Node prints a warning's name and message

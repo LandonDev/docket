@@ -1322,12 +1322,36 @@ The rail gains Outbox after Inbox (whenever Work is on, with its count) and Work
 Chats after Chats, and a second heading, Work, whose + lists the sectors
 with no workspace yet; a Work workspace's row leads with its sector's
 8px dot where a code workspace's leads with its glyph. The Work column
-gains a first group of five `RailRow`s (Mail, Tasks, Agenda, Docs,
-Routines, one muted trailing fact each, Mail's the sector's unread count; `WORK_VIEWS`) 16px above the
+gains a first group of `RailRow`s (Mail, Tasks, Agenda, Files,
+Routines and the rest, one muted trailing fact each, Mail's the sector's unread count; `WORK_VIEWS`) 16px above the
 project cards; an unlinked Work workspace has no view rows. A LifeOS
 project's card has no branch line. A view opens over the thread panes,
 under the strip, and the strip stays; picking a thread or the row again
 closes it.
+
+The Files view (`work/files/FilesView.tsx`) draws its own head (`ownHead`):
+a 200px sidebar at the left (folded under 640px of view, under 900px while
+a chat is docked, and by its toggle) and to its right a column of the 36px
+tab row, then a page or a file. The sidebar runs Home, Recent, Starred and
+his saved searches; Places (the workspace's folder, LifeOS, each Teams and
+OneDrive place, each Google Drive, a place opening to its folders under
+its row); Projects; then From mail, Made by threads and Trash. A page is
+its 44px bar (Back, Forward, the trail or Go to's or Search's field in its
+place, the view switch, View options, New) over the folder in its shape:
+List, Grid, Columns, Gallery or Beside, with a details pane beside a list
+or a grid where he asks for one, the bar for a selection of two or more
+floating over its foot, and Quick Look as a layer over the page. A file
+is its 48px header over its kind's own pane, with a second file at its
+right where he opened one to the side, and the docked chat last, each
+split by a hairline sash; Full Window lays the file over the app's whole
+window. The root carries `data-files-view`: while focus is inside it the
+app's tab chords (New Tab, Close Tab, Reopen Closed Tab, Next and Previous
+Tab, Back, Forward, Go to, Search) act on the Files tabs (`lib/filesKeys.ts`
+holds the port; the chords are the view's own, `work/files/chords.ts`).
+The tabs are the workspace's, kept on its host; which one is shown, the
+sidebar's fold and open folders, each folder's shape and order and the
+dock's width are this window's (`work.files.view.v1`, by a window id kept
+in `sessionStorage`).
 
 Settings → Work has, in order: the switch (alone while Work is off),
 LifeOS (each host's sign-in, its error on the heading line, then the

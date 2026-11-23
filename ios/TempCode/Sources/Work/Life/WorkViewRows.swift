@@ -5,8 +5,9 @@ import TempCodeContract
 
 /// The head of a Work workspace's screen (milestone 47): Mail, Tasks,
 /// Agenda and Projects (the projects plan's milestone 8) on the Home row
-/// grid, then Routines, each opening its screen. While LifeOS is out of
-/// reach the four LifeOS rows sit at half strength.
+/// grid, then Files (the files pillar's F9), then Routines, each opening its
+/// screen. While LifeOS is out of reach the four LifeOS rows sit at half
+/// strength.
 struct WorkViewRows: View {
     let client: EnvironmentClient
     let workspace: WorkspaceMeta
@@ -18,6 +19,7 @@ struct WorkViewRows: View {
             WorkViewRow(title: view.title, symbol: view.symbol, route: route(view.rawValue), id: "work-view-\(view.rawValue)")
                 .opacity(dimmed ? 0.5 : 1)
         }
+        WorkViewRow(title: "Files", symbol: "folder", route: route("files"), id: "work-view-files")
         WorkViewRow(title: "Routines", symbol: "clock.arrow.circlepath", route: route("routines"), id: "work-view-routines")
     }
 
@@ -60,7 +62,7 @@ struct WorkViewRow: View {
     }
 }
 
-/// Where a view row leads: the workspace's LifeOS screen, or its Routines.
+/// Where a view row leads: the workspace's LifeOS screen, its Files, or its Routines.
 struct WorkViewScreen: View {
     @Environment(AppModel.self) private var model
     let environmentId: String
@@ -71,6 +73,8 @@ struct WorkViewScreen: View {
         if let client = model.registry.client(environmentId), let workspace = client.workspaces.first(where: { $0.id == workspaceId }) {
             if let kind = LifeViewScreen.Kind(rawValue: view) {
                 LifeViewScreen(host: WorkLifeHost.of(client, workspace: workspace), view: kind)
+            } else if view == "files" {
+                FilesScreen(client: client, workspace: workspace)
             } else {
                 RoutinesScreen(client: client, workspace: workspace)
             }

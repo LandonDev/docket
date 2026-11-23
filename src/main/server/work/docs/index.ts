@@ -13,12 +13,14 @@ import { fetchedItemOfPath } from '../canvas/fetch'
 
 /**
  * The docs pillar's server module (docs/agents/work-docs.md): the document
- * kind of canvas item and the Docs view. The live text is the Work service's
+ * kind of canvas item. The live text is the Work service's
  * (M18); its history and branches are history's (M19). This module opens a
  * document for a screen (a token, a socket relayed over the host's own link,
  * its threads, its mode) and gives agents `doc_read`, `doc_write`,
  * `doc_suggest` and `doc_comment` (tools.ts), and finds what a workspace
- * holds for the Docs view and `doc_find` (find.ts).
+ * holds for `doc_find` and a project's link picker (find.ts). The saved
+ * views it keeps are the Files place's saved searches (files/search.ts); the
+ * `work.docs.find` and view methods stay for a window a release behind.
  */
 
 /** A screen at this host or a key that may operate edits; a read-only key views. A mail's attachment read as a document is viewed by everyone until he keeps it. */
@@ -146,7 +148,7 @@ export const docs: WorkModule = {
         return handled({ source: { at: 'lifeos' as const, table: 'docs' as const, id }, title })
       }
       case 'work.docs.find':
-        return handled(await findDocs(ctx, by, req.params))
+        return handled(await findDocs(ctx, by, { ...req.params, view: true }))
       case 'work.docs.views':
         workspaceOf(ctx, req.params.workspaceId)
         return handled({ views: listViews(ctx.db, req.params.workspaceId) })

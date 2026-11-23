@@ -45,6 +45,9 @@ export type ThreadViewProps = ChatSource & {
   /** The view alone: a thread shown inside another pane (a master's open
    *  child), whose pane's panel follows it (`rightPanel.showThread`). */
   bare?: boolean;
+  /** A Work thread's open items beside it (the canvas seat); false where its file is beside the chat already (the
+   *  Files place's dock), so the items stay the thread's and the chat alone shows. */
+  seat?: boolean;
   /** The pane's word in the chat's place while its host holds no rows or they are coming (SessionPane): a Work thread's
    *  items still show beside it. */
   quiet?: ReactNode;
@@ -80,7 +83,7 @@ export function ThreadView(props: ThreadViewProps) {
   const own = props.quiet ? <div className="flex min-h-0 min-w-0 flex-1 flex-col">{props.quiet}</div> : master ? <MasterView {...props} /> : typeView(props);
   // The row decides, never the Work switch: a thread stamped Work shows its canvas beside it.
   const work = useSessionMetaValue(session.id, isWorkThread) === true;
-  const view = work ? (
+  const view = work && props.seat !== false ? (
     <CanvasSeat session={session} held={heldRowOf(props, session)}>
       {own}
     </CanvasSeat>

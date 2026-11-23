@@ -5,6 +5,7 @@ import type { IWorkbookData } from '@univerjs/core'
 import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
+import { registerFileWaiting } from '../files/hooks'
 import { workspaceHere } from '../files/policy'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
@@ -15,6 +16,7 @@ import { ensurePackageTables, type Moved } from './packages'
 import { mapCell, STRUCTURAL_CONVERTERS } from './structural'
 import { ensureSuggestionTables, type Which } from './suggestions'
 import { sheetTools, writeAccepted } from './tools'
+import { sheetWaiting } from './waiting'
 
 /**
  * The sheets pillar's server module (docs/agents/work-sheets.md): the sheet
@@ -199,7 +201,14 @@ export const sheets: WorkModule = {
     return NOT_HANDLED
   },
   // The full editor's docservice stops with Work (fullEditor/).
-  start: (ctx) => () => void fullEditorOf(ctx).stop('Work is off'),
+  start(ctx) {
+    // Files reads the suggestions waiting in a workbook from here: a count in its row, and Home's Waiting on you.
+    const off = registerFileWaiting(sheetWaiting)
+    return () => {
+      off()
+      void fullEditorOf(ctx).stop('Work is off')
+    }
+  },
   tools: () => sheetTools,
   convert: STRUCTURAL_CONVERTERS,
   preamble: () =>

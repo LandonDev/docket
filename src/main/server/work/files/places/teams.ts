@@ -1,9 +1,10 @@
 import type { FileCrumb } from '@shared/contract-work-files'
 import type { TeamsEntry, TeamsLibrary, TeamsPlace } from '@shared/contract-work-office'
-import { compareEntries, DEFAULT_SORT, kindOfEntry, placeKey, refKey, type FileEntry, type FilePlace, type FileSort, type PlaceState } from '@shared/work/files'
+import { compareEntries, DEFAULT_SORT, kindOfEntry, refKey, type FileEntry, type FileSort, type PlaceState } from '@shared/work/files'
+import { placesIn, type LibraryPlace } from '@shared/work/filePlaces'
 import type { Caller, WorkCtx } from '../../modules'
 import { foldersPlace } from '../../office/files/library'
-import { guestWithin, lastReadFailure, readVmBehind, storedStatus, vmList, vmPlace } from '../../office/vm/files'
+import { guestWithin, lastReadFailure, readVmBehind, storedStatus, vmList, vmPlace, vmVerbs } from '../../office/vm/files'
 import { vmState } from '../../office/vm/office'
 import { vmFor } from '../policy'
 import { cutPage, entryOfRow, type DiskPage, type DiskRow } from './disk'
@@ -17,33 +18,10 @@ import { librariesHere, vmLibrariesHere } from './libraries'
  * place here is shared.
  */
 
-/** A place and where it lies: the library and the folder in it that is the place's top. */
-export interface LibraryPlace {
-  place: FilePlace
-  library: TeamsLibrary
-  top: string
-}
+export { LIBRARY_CAN, placesIn, type LibraryPlace } from '@shared/work/filePlaces'
 
 const sepOf = (path: string): string => (path.includes('\\') && !path.includes('/') ? '\\' : '/')
 const joinIn = (dir: string, name: string): string => `${dir.replace(/[\\/]+$/, '')}${sepOf(dir)}${name}`
-
-/** The verbs a library's adapter carries out today: none until F2, and none in the Windows VM until F8. */
-export const LIBRARY_CAN: FilePlace['can'] = []
-
-/** The places one library holds: a team's channels, else the library as one place. */
-export function placesIn(library: TeamsLibrary, state: PlaceState): LibraryPlace[] {
-  const base = { host: library.vm ? 'Windows VM' : '', env: library.host, shared: true, can: [...LIBRARY_CAN], state, web: library.web, ...(library.vm ? { vm: true } : {}) }
-  const one = (id: string, kind: FilePlace['kind'], name: string, top: string, key: string, group?: string): LibraryPlace => ({
-    place: { ...base, id, kind, name, root: { at: 'file', host: library.host, path: top }, key, ...(group ? { group } : {}) },
-    library,
-    top
-  })
-  if (library.kind === 'mine') return [one(library.id, 'onedrive', 'My OneDrive', library.path, 'mine')]
-  if (library.kind === 'folder') return [one(library.id, 'teams', library.library ? `${library.team} ${library.library}` : library.team, library.path, `folder:${library.id}`)]
-  if (library.kind === 'channels' && library.channels.length) return library.channels.map((channel) => one(`${library.id}/${channel}`, 'teams', channel, joinIn(library.path, channel), placeKey(library.team, channel), library.team))
-  // A team's Documents is named so; a library OneDrive named only as one word (its newer layout on a Mac) keeps that name.
-  return [one(library.id, 'teams', library.library ?? (library.kind === 'channels' ? 'Documents' : library.team), library.path, placeKey(library.team, library.library ?? ''), library.team)]
-}
 
 const VM_FRESH_MS = 15_000
 
@@ -82,7 +60,8 @@ export function teamsPlaces(ctx: Pick<WorkCtx, 'db' | 'host' | 'log' | 'push' | 
       // A read behind the answer: one never read is woken for its first, an awake one whose list is old is read again.
       if (!stored || stale) void readVmBehind(ctx, { wake: !stored })
       const vm = vmStateOf(ctx)
-      places.push(...vmLibrariesHere(ctx).flatMap((l) => placesIn(l, vm)))
+      const verbs = vmVerbs(ctx.db)
+      places.push(...vmLibrariesHere(ctx).flatMap((l) => placesIn(l, vm, verbs)))
     }
   }
   return { places, sources }
@@ -110,7 +89,7 @@ export function libraryTrail(at: LibraryPlace, path: string): FileCrumb[] {
   return [{ name: at.place.name, at: at.place.root }, ...parts.map((name) => ({ name, at: { at: 'file' as const, host: at.library.host, path: (dir = joinIn(dir, name)) } }))]
 }
 
-const rowOfGuest = (e: TeamsEntry): DiskRow => ({ name: e.name, dir: e.kind === 'folder', kind: e.kind === 'folder' ? 'folder' : kindOfEntry(e.name).kind, changed: e.modified, ...(e.kind === 'folder' ? {} : { size: e.size, local: e.local }), stated: true })
+export const rowOfGuest = (e: TeamsEntry): DiskRow => ({ name: e.name, dir: e.kind === 'folder', kind: e.kind === 'folder' ? 'folder' : kindOfEntry(e.name).kind, changed: e.modified, ...(e.kind === 'folder' ? {} : { size: e.size, local: e.local }), stated: true })
 
 /** A folder in the VM is listed whole by the guest's helper; what it said is kept a few seconds and cut into pages here. */
 const vmKept = new Map<string, { at: number; version: string; rows: DiskRow[] }>()
@@ -135,3 +114,5 @@ export async function vmPage(library: TeamsLibrary, dir: string, o: { sort?: Fil
 
 /** A test starts with nothing kept. */
 export const forgetVmLists = (): void => vmKept.clear()
+/** A folder in the VM that changed: the next page of it asks the guest again. */
+export const forgetVmList = (libraryId: string, dir: string): void => void vmKept.delete(`${libraryId}\u0000${dir.replace(/\\+$/, '').toLowerCase()}`)

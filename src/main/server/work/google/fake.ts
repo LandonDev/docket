@@ -10,6 +10,9 @@ import { GOOGLE_MIME } from './client'
  * made. A Doc is held as characters, each with the suggestion that inserted
  * or deletes it and, on a paragraph's newline, that paragraph's style; the
  * JSON is drawn from them with the Docs API's indexes (the body starts at 1).
+ *
+ * The Drive is a tree: each file has folders (`parents`, his My Drive's top is `myroot`, which `root` names), a
+ * bin (`trashed`), and its sharing. `files.list` answers only what the asking account reaches, a page at a time.
  */
 
 interface Char {
@@ -48,7 +51,18 @@ interface FakeFile {
   sheet?: FakeSheet
   deck?: FakeDeck
   permissions: { id: string; emailAddress: string; role: string }[]
+  parents: string[]
+  trashed: boolean
+  /** Drive's own `shared`: someone else was let in */
+  shared: boolean
+  modified: number
+  size?: number
+  by?: string
 }
+
+/** The id of his My Drive's top: `root` in a call means it. */
+export const FAKE_ROOT = 'myroot'
+const FOLDER = 'application/vnd.google-apps.folder'
 
 export const FAKE_TOKEN_URL = 'https://lifeos-mcp.test/google/token'
 
@@ -56,6 +70,8 @@ export class FakeGoogle {
   readonly files = new Map<string, FakeFile>()
   /** every API call, as `METHOD path` */
   readonly calls: string[] = []
+  /** the most items one page of `files.list` answers, whatever was asked: a test makes it small to see the pages */
+  pageMost = 1000
   /** accounts and whether each allowed drive.file */
   readonly accounts = new Map<string, boolean>()
   jwt = 'owner-jwt'
@@ -69,7 +85,7 @@ export class FakeGoogle {
   }
 
   private file(id: string, name: string, mimeType: string, owner: string): FakeFile {
-    const f: FakeFile = { id, name, mimeType, version: 1, reach: new Set([owner.toLowerCase()]), permissions: [] }
+    const f: FakeFile = { id, name, mimeType, version: 1, reach: new Set([owner.toLowerCase()]), permissions: [], parents: [FAKE_ROOT], trashed: false, shared: false, modified: Date.parse('2026-11-01T10:00:00Z') }
     this.files.set(id, f)
     return f
   }
@@ -79,6 +95,25 @@ export class FakeGoogle {
     const f = this.file(id, name, GOOGLE_MIME.doc, owner)
     if (opts.picked === false) f.reach.clear()
     f.doc = { chars: paragraphs.flatMap(([style, text]) => [...text.split('').map((c) => ({ c })), { c: '\n', style }]), rev: 1, comments: opts.comments ?? [], commentAnchors: opts.commentAnchors ?? {}, suggestions: [] }
+  }
+
+  /** Any Drive item: a folder, a PDF, a Doc with no body. `picked` false: in his Drive, but not yet seen by this client. */
+  addItem(owner: string, id: string, name: string, mimeType: string, o: { parents?: string[]; shared?: boolean; picked?: boolean; size?: number; by?: string } = {}): void {
+    const f = this.file(id, name, mimeType, owner)
+    if (o.parents) f.parents = o.parents
+    if (o.shared) f.shared = true
+    if (o.picked === false) f.reach.clear()
+    if (o.size !== undefined) f.size = o.size
+    if (o.by) f.by = o.by
+  }
+
+  addFolder(owner: string, id: string, name: string, o: { parents?: string[]; shared?: boolean; picked?: boolean } = {}): void {
+    this.addItem(owner, id, name, FOLDER, o)
+  }
+
+  /** Someone lets another person into a file, as Drive's own share does. */
+  share(id: string): void {
+    this.files.get(id)!.shared = true
   }
 
   addSheet(owner: string, id: string, name: string, tabs: FakeSheet['tabs']): void {
@@ -136,6 +171,7 @@ export class FakeGoogle {
 
   private bump(f: FakeFile): void {
     f.version++
+    f.modified += 60_000
     if (f.doc) f.doc.rev++
     if (f.deck) f.deck.rev++
   }
@@ -157,7 +193,31 @@ export class FakeGoogle {
     let m: RegExpMatchArray | null
     if (url.host === 'www.googleapis.com' && (m = path.match(/^\/drive\/v3\/files\/([^/]+)$/)) && method === 'GET') {
       const f = reach(decodeURIComponent(m[1]))
-      return f ? reply(200, { id: f.id, name: f.name, mimeType: f.mimeType, version: String(f.version), webViewLink: `https://docs.google.com/open?id=${f.id}` }) : notFound()
+      return f ? reply(200, item(f, account)) : notFound()
+    }
+    if (url.host === 'www.googleapis.com' && path === '/drive/v3/files' && method === 'GET') return this.list(url, account)
+    if (url.host === 'www.googleapis.com' && path === '/drive/v3/files' && method === 'POST') {
+      const parent = this.parentOf((body.parents as string[] | undefined)?.[0] ?? 'root', account)
+      if (!parent) return notFound()
+      const f = this.file(`made${++this.n}`, body.name, body.mimeType, account)
+      f.parents = [parent]
+      if (f.mimeType === GOOGLE_MIME.doc) f.doc = { chars: [{ c: '\n', style: 'NORMAL_TEXT' }], rev: 1, comments: [], commentAnchors: {}, suggestions: [] }
+      return reply(200, item(f, account))
+    }
+    if (url.host === 'www.googleapis.com' && (m = path.match(/^\/drive\/v3\/files\/([^/]+)$/)) && method === 'PATCH') {
+      const f = reach(decodeURIComponent(m[1]))
+      if (!f) return notFound()
+      const add = url.searchParams.get('addParents')
+      const remove = (url.searchParams.get('removeParents') ?? '').split(',').filter(Boolean).map((p) => (p === 'root' ? FAKE_ROOT : p))
+      if (add) {
+        const to = this.parentOf(add, account)
+        if (!to) return notFound()
+        f.parents = [...f.parents.filter((p) => !remove.includes(p)), ...(f.parents.includes(to) ? [] : [to])]
+      }
+      if (typeof body?.name === 'string') f.name = body.name
+      if (typeof body?.trashed === 'boolean') f.trashed = body.trashed
+      this.bump(f)
+      return reply(200, item(f, account))
     }
     if ((m = path.match(/^\/drive\/v3\/files\/([^/]+)\/export$/))) {
       const f = reach(decodeURIComponent(m[1]))
@@ -246,6 +306,26 @@ export class FakeGoogle {
     return reply(404, { error: { message: `fake google has no ${method} ${path}` } })
   }
 
+  /** A folder a call names as a parent, as its id: `root` is his My Drive's top; any other must be a folder he reaches. */
+  private parentOf(id: string, account: string): string | null {
+    if (id === 'root' || id === FAKE_ROOT) return FAKE_ROOT
+    const f = this.files.get(id)
+    return f && f.reach.has(account) && f.mimeType === FOLDER && !f.trashed ? f.id : null
+  }
+
+  /** `files.list` with the two queries the Files place asks: everything out of the bin, or a folder's children. */
+  private list(url: URL, account: string): Response {
+    const q = url.searchParams.get('q') ?? ''
+    const inFolder = q.match(/^'([A-Za-z0-9_-]+)' in parents and trashed = false$/)
+    if (!inFolder && q !== 'trashed = false') return reply(400, { error: { message: `fake drive cannot read the query ${q}` } })
+    const folder = inFolder ? (inFolder[1] === 'root' ? FAKE_ROOT : inFolder[1]) : null
+    const all = [...this.files.values()].filter((f) => f.reach.has(account) && !f.trashed && (!folder || f.parents.includes(folder)))
+    const size = Math.min(Number(url.searchParams.get('pageSize') ?? 100), this.pageMost)
+    const from = Number(url.searchParams.get('pageToken') ?? 0)
+    const page = all.slice(from, from + size)
+    return reply(200, { files: page.map((f) => item(f, account)), ...(from + size < all.length ? { nextPageToken: String(from + size) } : {}) })
+  }
+
   private token(auth: string, body: { account?: string; scope?: string }): Response {
     if (auth !== `Bearer ${this.jwt}`) return reply(401, { error: 'unauthorized' })
     if (body.scope !== 'https://www.googleapis.com/auth/drive.file') return reply(400, { error: 'scope-refused' })
@@ -300,6 +380,22 @@ export class FakeGoogle {
     return reply(200, { documentId: f.id, replies: [], writeControl: { requiredRevisionId: `rev${d.rev}` } })
   }
 }
+
+/** A Drive item as Drive answers it. */
+const item = (f: FakeFile, account: string): Record<string, unknown> => ({
+  id: f.id,
+  name: f.name,
+  mimeType: f.mimeType,
+  version: String(f.version),
+  parents: f.parents,
+  modifiedTime: new Date(f.modified).toISOString(),
+  ...(f.size !== undefined ? { size: String(f.size) } : {}),
+  shared: f.shared || f.permissions.length > 0,
+  ownedByMe: [...f.reach][0] === account,
+  trashed: f.trashed,
+  webViewLink: `https://docs.google.com/open?id=${f.id}`,
+  ...(f.by ? { lastModifyingUser: { displayName: f.by, me: false } } : {})
+})
 
 const reply = (status: number, json: unknown): Response => new Response(JSON.stringify(json), { status, headers: { 'Content-Type': 'application/json' } })
 const notFound = (): Response => reply(404, { error: { message: 'File not found.' } })

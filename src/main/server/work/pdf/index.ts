@@ -1,9 +1,11 @@
 import { handled, NOT_HANDLED, type CanvasItem } from '@shared/work'
+import { moveFileKeys } from '../canvas/fileKey'
+import { registerFileMoved } from '../files/hooks'
 import type { WorkModule } from '../modules'
 import { PDF_CONVERTERS } from './extract'
 import { fenceItem, itemDir, ItemFileError, itemOf, readRange } from './file'
 import type { FormRead } from './form'
-import { ensurePdfTables, PdfStore } from './store'
+import { ensurePdfTables, PDF_KEYED, PdfStore } from './store'
 import { pdfTools } from './tools'
 import { announce, exportCopy, formOf, lastExport, signedDate, snapshot, viewOf } from './view'
 
@@ -28,6 +30,8 @@ export const pdf: WorkModule = {
   ensure(db) {
     ensurePdfTables(db)
   },
+  // A file renamed or moved in Files: the rows kept by it follow.
+  start: () => registerFileMoved((from, to, at) => moveFileKeys(at.db, PDF_KEYED, from, to)),
   async handle(req, ctx, by) {
     const store = new PdfStore(ctx.db)
     // Every method that names an item: a remote key gets nothing of an item outside its fence, and writes nothing into it.
@@ -53,33 +57,36 @@ export const pdf: WorkModule = {
       }
       case 'work.pdf.review': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')
-        store.review(item.id, req.params.keys, req.params.verdict)
+        store.review(store.keep(item).id, req.params.keys, req.params.verdict)
         return handled(await announce(ctx, item))
       }
       case 'work.pdf.setField': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')
-        store.setOwn(item.id, item.sessionId, req.params.key, req.params.value, await ownField(ctx, item, req.params.key))
+        const kept = store.keep(item)
+        store.setOwn(kept.id, kept.sessionId, req.params.key, req.params.value, await ownField(ctx, item, req.params.key))
         return handled(await announce(ctx, item))
       }
       case 'work.pdf.mark': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')
         const { itemId: _itemId, ...mark } = req.params
-        store.mark(item.id, item.sessionId, mark, 'owner')
+        const kept = store.keep(item)
+        store.mark(kept.id, kept.sessionId, mark, 'owner')
         return handled(await announce(ctx, item))
       }
       case 'work.pdf.unmark': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')
-        store.unmark(item.id, req.params.markId)
+        store.unmark(store.keep(item).id, req.params.markId)
         return handled(await announce(ctx, item))
       }
       case 'work.pdf.mode': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')
-        store.setMode(item.id, item.sessionId, req.params.mode)
+        const kept = store.keep(item)
+        store.setMode(kept.id, kept.sessionId, req.params.mode)
         return handled(await announce(ctx, item))
       }
       case 'work.pdf.undo': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')
-        if (!store.undo(item.id, req.params.writeId)) throw new Error('That write can no longer be taken back.')
+        if (!store.undo(store.keep(item).id, req.params.writeId)) throw new Error('That write can no longer be taken back.')
         return handled(await announce(ctx, item))
       }
       case 'work.pdf.signature':
@@ -95,7 +102,8 @@ export const pdf: WorkModule = {
         if (req.params.signed && !store.signature()) throw new Error('Draw your signature first.')
         const { stamp } = await snapshot(ctx, item)
         const form = await formOf(stamp)
-        store.sign(item.id, item.sessionId, req.params.signed, 'error' in form ? [] : form.fields, signedDate(), stamp.rev)
+        const kept = store.keep(item)
+        store.sign(kept.id, kept.sessionId, req.params.signed, 'error' in form ? [] : form.fields, signedDate(), stamp.rev)
         return handled(await announce(ctx, item))
       }
       case 'work.pdf.export': {

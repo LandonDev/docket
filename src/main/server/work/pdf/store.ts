@@ -2,8 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { Bbox, PdfField, PdfFieldType, PdfFieldValue, PdfMark, PdfMode, PdfProvenance, PdfSignature, PdfWritten } from '@shared/contract-work-pdf'
 import { PdfSignatureSchema } from '@shared/contract-work-pdf'
-import type { Principal } from '@shared/work'
-import { registerMoveModule, tableMoveModule } from '../../sessionMove'
+import type { CanvasItem, Principal } from '@shared/work'
+import { registerMoveModule } from '../../sessionMove'
+import { dropKept, ensureFileKeys, fileKeyedMoveModule, keptOf, type FileKeyed, type Kept } from '../canvas/fileKey'
 import type { FormField } from './form'
 
 /**
@@ -11,7 +12,17 @@ import type { FormField } from './form'
  * store"): one row per field that has something of ours in it (an agent's
  * value, the owner's, a box placed on a page), his highlights, the item's
  * mode, and his one saved signature. The file itself is never written.
+ * Rows are kept by the file (`file_key`, canvas/fileKey.ts): a Files tab and
+ * a thread on one file read and write one set, under the item `keep` names.
  */
+
+/** The tables kept by the file; a highlight's id is its own, so a copy that leaves takes new ones. */
+export const PDF_KEYED: FileKeyed = {
+  kind: 'pdf',
+  items: 'work_pdf_items',
+  rows: ['work_pdf_fields', 'work_pdf_marks'],
+  renumber: { work_pdf_marks: (row, fresh) => ({ ...row, id: fresh(String(row.id)) }) }
+}
 
 export function ensurePdfTables(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS work_pdf_items (
@@ -36,10 +47,14 @@ export function ensurePdfTables(db: DatabaseSync): void {
   db.exec(`CREATE INDEX IF NOT EXISTS work_pdf_marks_by_item ON work_pdf_marks (item_id, page)`)
   // One row: the owner's drawn signature is this host's, not a thread's, and never rides a move.
   db.exec(`CREATE TABLE IF NOT EXISTS work_pdf_signature (id TEXT PRIMARY KEY CHECK (id = 'owner'), strokes TEXT NOT NULL, updated_at INTEGER NOT NULL)`)
-  // A thread that moves takes what it kept over its PDFs with it.
-  registerMoveModule(db, tableMoveModule('pdf-items', 'work_pdf_items'))
-  registerMoveModule(db, tableMoveModule('pdf-fields', 'work_pdf_fields'))
-  registerMoveModule(db, tableMoveModule('pdf-marks', 'work_pdf_marks'))
+  // A highlight an older build made has no item row: one is made, so the item's rows are found by its file too.
+  db.exec(`INSERT OR IGNORE INTO work_pdf_items (item_id, session_id, updated_at) SELECT item_id, session_id, MAX(at) FROM work_pdf_marks WHERE item_id NOT IN (SELECT item_id FROM work_pdf_items) GROUP BY item_id`)
+  db.exec(`INSERT OR IGNORE INTO work_pdf_items (item_id, session_id, updated_at) SELECT item_id, session_id, MAX(updated_at) FROM work_pdf_fields WHERE item_id NOT IN (SELECT item_id FROM work_pdf_items) GROUP BY item_id`)
+  ensureFileKeys(db, PDF_KEYED)
+  // A thread that moves takes what it kept over its PDFs with it, and what it shared with a tab stays here too.
+  registerMoveModule(db, fileKeyedMoveModule('pdf-items', 'work_pdf_items', PDF_KEYED))
+  registerMoveModule(db, fileKeyedMoveModule('pdf-fields', 'work_pdf_fields', PDF_KEYED))
+  registerMoveModule(db, fileKeyedMoveModule('pdf-marks', 'work_pdf_marks', PDF_KEYED))
 }
 
 interface FieldRow {
@@ -88,6 +103,16 @@ export interface FieldPlace {
 
 export class PdfStore {
   constructor(private readonly db: DatabaseSync) {}
+
+  /**
+   * Where an item's rows are: the id and session every other method takes. Two items of a workspace on one file
+   * answer one keeper; the first to come makes its row, with the file's key.
+   */
+  keep(item: Pick<CanvasItem, 'id' | 'sessionId' | 'workspaceId' | 'source'>): Kept {
+    const kept = keptOf(this.db, PDF_KEYED, item)
+    if (kept.fileKey) this.db.prepare(`INSERT OR IGNORE INTO work_pdf_items (item_id, session_id, file_key, updated_at) VALUES (?, ?, ?, ?)`).run(kept.id, kept.sessionId, kept.fileKey, Date.now())
+    return kept
+  }
 
   // ── the item ──────────────────────────────────────────────────────
 
@@ -140,9 +165,9 @@ export class PdfStore {
   private write(row: FieldRow): void {
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO work_pdf_fields (item_id, session_id, key, origin, type, label, page, bbox, value, proposed, state, provenance, by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO work_pdf_fields (item_id, session_id, key, origin, type, label, page, bbox, value, proposed, state, provenance, by, updated_at, file_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${FILE_KEY})`
       )
-      .run(row.item_id, row.session_id, row.key, row.origin, row.type, row.label, row.page, row.bbox, row.value, row.proposed, row.state, row.provenance, row.by, row.updated_at)
+      .run(row.item_id, row.session_id, row.key, row.origin, row.type, row.label, row.page, row.bbox, row.value, row.proposed, row.state, row.provenance, row.by, row.updated_at, row.item_id)
   }
 
   private drop(itemId: string, key: string): void {
@@ -329,9 +354,11 @@ export class PdfStore {
     const w = this.written(itemId)
     if (!w || w.id !== writeId) return false
     // A field changed since the write (his own correction, a review, a later suggestion) is his now: Undo leaves it.
-    const keys = w.keys.filter((k) => !w.after || w.after[k] === rowKey(this.row(itemId, k)))
+    const keys = w.keys.filter((k) => !w.after || w.after[k] === rowKey(this.row(itemId, k)) || w.after[k] === rowKeyBefore(this.row(itemId, k)))
+    const sessionId = (this.db.prepare(`SELECT session_id FROM work_pdf_items WHERE item_id = ?`).get(itemId) as { session_id: string } | undefined)?.session_id
     for (const key of keys) this.drop(itemId, key)
-    for (const row of w.before) if (keys.includes(row.key)) this.write(row)
+    // A row as it was, under the item that keeps them now: another may have kept them when the write was made.
+    for (const row of w.before) if (keys.includes(row.key)) this.write({ ...row, item_id: itemId, session_id: sessionId ?? row.session_id })
     this.db.prepare(`UPDATE work_pdf_items SET written = NULL WHERE item_id = ?`).run(itemId)
     return true
   }
@@ -445,7 +472,10 @@ export class PdfStore {
 
   mark(itemId: string, sessionId: string, mark: { page: number; quads: Bbox[]; text: string; note?: string }, by: Principal): string {
     const id = randomUUID()
-    this.db.prepare(`INSERT INTO work_pdf_marks (id, item_id, session_id, page, quads, text, note, by, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, itemId, sessionId, mark.page, JSON.stringify(mark.quads), mark.text, mark.note ?? null, by, Date.now())
+    this.touch(itemId, sessionId)
+    this.db
+      .prepare(`INSERT INTO work_pdf_marks (id, item_id, session_id, page, quads, text, note, by, at, file_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${FILE_KEY})`)
+      .run(id, itemId, sessionId, mark.page, JSON.stringify(mark.quads), mark.text, mark.note ?? null, by, Date.now(), itemId)
     return id
   }
 
@@ -468,26 +498,33 @@ export class PdfStore {
 
   // ── deleted threads ───────────────────────────────────────────────
 
+  /** Deleted threads' rows; what one kept for a file another item still shows passes to that item. */
   removeSessions(ids: readonly string[]): void {
-    for (const table of ['work_pdf_items', 'work_pdf_fields', 'work_pdf_marks']) {
-      const st = this.db.prepare(`DELETE FROM ${table} WHERE session_id = ?`)
-      for (const id of ids) st.run(id)
-    }
+    dropKept(this.db, PDF_KEYED, { sessions: ids })
   }
 
-  /** A closed Files tab's rows: the item is gone, its owner is not. Its own folder went with the canvas item. */
+  /** A closed Files tab's rows: the item is gone, its owner is not; what it kept for a file a thread still shows passes to the thread's item. Its own folder went with the canvas item. */
   removeItems(itemIds: readonly string[]): void {
-    for (const table of ['work_pdf_items', 'work_pdf_fields', 'work_pdf_marks']) {
-      const st = this.db.prepare(`DELETE FROM ${table} WHERE item_id = ?`)
-      for (const id of itemIds) st.run(id)
-    }
+    dropKept(this.db, PDF_KEYED, { items: itemIds })
   }
 }
 
 /** The prefix of a box's key: our own ids, apart from every key a form can have. */
 export const BOX = 'box:'
-/** A row as one string, to tell whether it changed. */
-const rowKey = (row: FieldRow | undefined): string => (row ? JSON.stringify({ ...row, updated_at: 0 }) : 'none')
+/** A row as one string, to tell whether it changed: what it holds, not which item keeps it. */
+const rowKey = (row: FieldRow | undefined): string => {
+  if (!row) return 'none'
+  const { item_id: _i, session_id: _s, file_key: _f, ...held } = row as FieldRow & { file_key?: string | null }
+  return JSON.stringify({ ...held, updated_at: 0 })
+}
+/** The same as a write made before the file key wrote it. */
+const rowKeyBefore = (row: FieldRow | undefined): string => {
+  if (!row) return 'none'
+  const { file_key: _f, ...was } = row as FieldRow & { file_key?: string | null }
+  return JSON.stringify({ ...was, updated_at: 0 })
+}
+/** A new row takes the key its item's row holds. */
+const FILE_KEY = `(SELECT file_key FROM work_pdf_items WHERE item_id = ?)`
 
 const isEmpty = (v: PdfFieldValue): boolean => v === null || v === '' || v === false
 

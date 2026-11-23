@@ -32,6 +32,8 @@ const host = vi.hoisted(() => ({ links: [] as unknown[] }));
 vi.mock("../guests/api", async (original) => ({ ...(await original<object>()), guestsCall: async () => ({ env: "box", value: host.links }) }));
 const mail = vi.hoisted(() => ({ drafts: [] as unknown[] }));
 vi.mock("../mail/mailto", async (original) => ({ ...(await original<object>()), writeMail: (d: unknown) => void mail.drafts.push(d) }));
+const files = vi.hoisted(() => ({ docs: [] as unknown[][] }));
+vi.mock("../files/openFrom", () => ({ openDocInFiles: async (...args: unknown[]) => void files.docs.push(args) }));
 
 const { View, Head, Title, placeOf, setPlace } = await import("./PeopleView");
 const { openerOf } = await import("../canvas/SentChips");
@@ -134,7 +136,8 @@ describe("a person's page", () => {
     press("Seat list");
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "tasks", task: "t2" });
     press("Run of show");
-    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "docs", doc: { id: "d1", title: "Run of show" } });
+    // A document opens in a Files tab of its own.
+    expect(files.docs).toEqual([["ws", { id: "d1", title: "Run of show" }]]);
     press("Budget");
     expect(started).toEqual([{ kind: "selection", label: "Budget", ref: { at: "lifeos", table: "sheets", id: "s1" } }]);
   });

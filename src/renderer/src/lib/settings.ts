@@ -304,6 +304,14 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
   },
 ];
 
+/**
+ * A group a lazy place brings with its own chunk (the Files place's, work/files/bindings.ts): it is listed after
+ * the app's own, once. The Keybindings page loads each such table before it draws, so the list is whole there.
+ */
+export function addKeybindingGroup(group: KeybindingGroup): void {
+  if (!KEYBINDING_GROUPS.some((g) => g.title === group.title)) KEYBINDING_GROUPS.push(group);
+}
+
 /** The first chord of a binding as one key cap's text ("⌘W" on macOS,
  *  "Ctrl+W" elsewhere): the only source of a shortcut a menu row or a `Tip`
  *  shows, so a hint never names a key the app does not handle

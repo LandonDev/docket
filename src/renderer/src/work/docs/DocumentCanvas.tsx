@@ -44,7 +44,7 @@ import { ShareButton } from "../guests/Share";
  * comment threads float at their words, and move to the margin once the
  * canvas has room for the text and 296px beside it (the thread folded). The
  * mode, presence, the state line and the agent's last write go to the pane.
- * The Docs view draws the same surface with no pane around it.
+ * A project's page draws the same surface with no pane around it.
  */
 
 export interface DocState {

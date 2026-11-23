@@ -42,6 +42,8 @@ vi.mock("../../lib/attachmentUpload", async (original) => ({
   },
 }));
 const outside = vi.hoisted(() => ({ opened: [] as unknown[] }));
+const files = vi.hoisted(() => ({ docs: [] as unknown[][] }));
+vi.mock("../files/openFrom", () => ({ openDocInFiles: async (...args: unknown[]) => void files.docs.push(args) }));
 vi.mock("../canvas/openOutside", () => ({ openOutside: async (place: unknown, files: unknown) => void outside.opened.push({ place, files }) }));
 const held = vi.hoisted(() => ({ opened: [] as unknown[] }));
 vi.mock("../canvas/held", async (original) => ({ ...(await original<object>()), openHeld: (ref: unknown, env: string) => void held.opened.push({ ref, env }) }));
@@ -135,7 +137,7 @@ const facts = (over: Partial<PrepPage> = {}): PrepPage => ({
     { id: "t2", title: "Staff handbook update" },
   ],
   files: [{ title: "Join", url: "https://school.zoom.us/j/1" }],
-  last: { eventId: "ev0", title: "Staff sync", startsAt: at(14, 0, 16), decided: [{ text: "Scrims move to Thursdays" }], open: [{ text: "Who drives the van", ref: { table: "mailThreads", id: "m9" } }], tasks: [{ id: "t9", title: "Order jerseys" }] },
+  last: { eventId: "ev0", title: "Staff sync", startsAt: at(14, 0, 16), decided: [{ text: "Scrims move to Thursdays" }], open: [{ text: "Who drives the van", ref: { table: "mailThreads", id: "m9" } }, { text: "Fix the run of show", ref: { table: "docs", id: "d4" } }], tasks: [{ id: "t9", title: "Order jerseys" }] },
   doc: emptyPrepDoc(),
   rev: 0,
   state: "none",
@@ -218,7 +220,7 @@ describe("the page of facts", () => {
     expect(section("People").getByText("and 2 more")).toBeTruthy();
     expect(rowsOf("Tasks")).toEqual(["Send the seat listAsked by Maya ChenWed", "Staff handbook update"]);
     expect(rowsOf("Files")).toEqual(["Joinschool.zoom.us"]);
-    expect(rowsOf("Last time, Nov 16")).toEqual(["Scrims move to Thursdays", "Who drives the vanLeft open", "Order jerseysStill to do"]);
+    expect(rowsOf("Last time, Nov 16")).toEqual(["Scrims move to Thursdays", "Who drives the vanLeft open", "Fix the run of showLeft open", "Order jerseysStill to do"]);
 
     cleanup();
     resetPrep();
@@ -247,6 +249,9 @@ describe("the page of facts", () => {
     // last time: a line with a reference opens it, a line without one is plain words, and the label opens that page
     await press("Last time, Nov 16", /Who drives the van/);
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "mail", mail: "m9" });
+    // a document opens in a Files tab of its own
+    await press("Last time, Nov 16", /Fix the run of show/);
+    expect(files.docs).toEqual([["ws", { id: "d4" }]]);
     await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));
     // someone who is not one of the sector's people opens nothing
     expect(section("People").queryByRole("button", { name: /Outside Person/ })).toBeNull();

@@ -97,6 +97,20 @@ each (`pdf-items`, `pdf-fields`, `pdf-marks`), so a thread that moves to
 another host takes them with it, and history import carries them by name.
 The signature is the host's, not a thread's, and never moves.
 
+The first three also carry `file_key`, so the rows belong to the file, not
+the item (work-files.md "Marks kept by the file", canvas/fileKey.ts). A
+Files tab and a thread on one PDF of one workspace read and write one set:
+the values, the highlights, the mode, the signature's place and the last
+write's Undo. `PdfStore.keep(item)` names the item the rows are kept under,
+and every method passes that id to the store; the view still answers the
+item that was asked for. A PDF with no path (a thread's own `file.pdf`, a
+mail's attachment) keeps its rows by item as before. Closing one of the two
+leaves the rows to the other; the last takes them away. A move of the
+thread takes a copy (highlights get new ids) and leaves the rows here for
+the tab. A rename or move in Files re-points the key (the module's `start`
+registers `registerFileMoved`). `ensure` fills the key for rows an older
+build wrote, and makes an item row for a highlight that had none.
+
 What a field shows (`PdfStore.fields`) is the file's own field with our
 row laid over it, then our boxes. Its `state`:
 
@@ -167,7 +181,9 @@ and never taken off by a thread.
 | `work.pdf.export` | operate | the copy's name, size, `rev` and warnings |
 
 Every change pushes `{ push: 'work.pdf', sessionId, view }` (to full-capability
-sockets only, for an item outside the remote roots; see "Reading the file"). There is no
+sockets only, for an item outside the remote roots; see "Reading the file"),
+once for the item and once for each other open item that shares its rows
+(`sharing`, view.ts), each with its own `itemId`. There is no
 `work.pdf.list` (work/ctx.test.ts holds every pillar's `list` to "not
 built").
 

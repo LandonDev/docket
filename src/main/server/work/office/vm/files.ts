@@ -39,8 +39,10 @@ interface GuestStatus {
   onedrive: { installed: boolean; running: boolean; account: string | null }
   mounts: GuestMount[]
   office: { installed: boolean; version: string | null; apps: OfficeApp[]; account: string | null; licensed: boolean | null }
+  /** the change verbs the helper has (`files.mkdir`, …); absent from a helper built before it could change anything */
+  verbs?: string[]
 }
-interface GuestEntry {
+export interface GuestEntry {
   name: string
   path: string
   dir: boolean
@@ -69,6 +71,12 @@ export function storedStatus(db: DatabaseSync): Stored | null {
   }
 }
 
+/** The change verbs the VM's helper said it has when it was last read: none from one that could change nothing. */
+export const vmVerbs = (db: DatabaseSync): string[] => {
+  const verbs = storedStatus(db)?.status.verbs
+  return Array.isArray(verbs) ? verbs.filter((v): v is string => typeof v === 'string') : []
+}
+
 export function wantedLibraries(db: DatabaseSync): VmSyncLibrary[] {
   try {
     const v = JSON.parse(getValue(db, 'vm:wanted') ?? '[]') as VmSyncLibrary[]
@@ -84,13 +92,18 @@ const baseOf = (path: string): string => path.slice(path.lastIndexOf('\\') + 1)
 
 /** A guest path: a drive, backslashes, no step up or sideways. The one spelling a VM library's files are named by. */
 export const isGuestPath = (path: string): boolean => /^[A-Za-z]:\\/.test(path)
+/** A name Windows keeps for a device, whatever follows its dot. */
+const DEVICE = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)(\..*)?$/i
+/** One part of a guest path as NTFS names one: no stream (`:`), no wildcard or control character, no device name, no trailing dot or space. The helper holds every path to the same rule. */
+// eslint-disable-next-line no-control-regex
+const plainPart = (part: string): boolean => part !== '.' && part !== '..' && !/[. ]$/.test(part) && !/[<>:"|?*\u0000-\u001f]/.test(part) && !DEVICE.test(part)
 const plain = (path: string): boolean =>
   isGuestPath(path) &&
   !path.includes('/') &&
   path
     .slice(3)
     .split('\\')
-    .every((part, i, all) => (part === '' ? i === all.length - 1 : part !== '.' && part !== '..' && !/[. ]$/.test(part)))
+    .every((part, i, all) => (part === '' ? i === all.length - 1 : plainPart(part)))
 
 /** Whether `path` is `dir` or under it, as NTFS reads names: case-blind. */
 export const guestWithin = (path: string, dir: string): boolean => {

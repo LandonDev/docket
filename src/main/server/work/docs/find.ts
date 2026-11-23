@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
 import type { CanvasItem, CanvasSource } from '@shared/work'
 import { FIND_KINDS, kindOfFile, kindOfMime, queryTerms, snippetOf, type FindBy, type FindEntry, type FindKind, type FindSpec, type SavedFindView } from '@shared/work/docFind'
@@ -14,16 +14,16 @@ import { fileRows } from './threads'
 
 /**
  * Finding documents (docs/agents/work-docs.md "Finding documents"): one list
- * of what a Work workspace holds, for the Docs view, the agent's `doc_find`
- * and anyone who wants a document by name. Three places, each searched where
+ * of what a Work workspace holds, for the agent's `doc_find`, a project's
+ * link picker and anyone who wants a document by name. Three places, each searched where
  * its text lives:
  *
  * - LifeOS: its `catalog:list` (documents and sheets of the sector with who
  *   last changed each, open threads and waiting suggestions) and
  *   `catalog:search` (Convex's full-text index over a document's plain text).
- * - The workspace's folder: walked here, its files' kinds by extension; a
- *   `.tcdoc`'s text read through the Work service and a `.csv`'s from disk,
- *   kept in memory by path and change time.
+ * - The workspace's folder: walked by Files' own walk (`walkNames`), its
+ *   files' kinds by extension; a `.tcdoc`'s text read through the Work
+ *   service and a `.csv`'s from disk, kept in memory by path and change time.
  * - The canvas items of the workspace's threads that live elsewhere: Google,
  *   Microsoft, and what a thread made (forms, dashboards). Titles only.
  *
@@ -31,10 +31,6 @@ import { fileRows } from './threads'
  * the text matches with the words around each.
  */
 
-/** How deep and how wide the folder walk goes: files listed, and entries looked at on the way. */
-const WALK_DEPTH = 4
-const WALK_MOST = 2000
-const WALK_SEEN_MOST = 20_000
 /** How many files' text a search reads, and how much of each. */
 const TEXT_MOST = 200
 const TEXT_BYTES = 512 * 1024
@@ -42,13 +38,13 @@ const TEXT_BYTES = 512 * 1024
 const WALK_FRESH_MS = 10_000
 /** The text kept for searches, at most, across the host's folders; the least read goes first. */
 const TEXT_CACHE_BYTES = 32 * 1024 * 1024
-/** LifeOS's catalog is kept this long; the view asks afresh (`refresh`) when it opens, comes back, or LifeOS says it changed. */
+/** LifeOS's catalog is kept this long; a window asks afresh (`refresh`) when it opens a list. */
 const CATALOG_FRESH_MS = 30_000
 /** Rows of each LifeOS table the host reads, a page at a time. */
 const CATALOG_MOST = 300
 const CATALOG_PAGE = 50
 
-interface CatalogRow {
+export interface CatalogRow {
   table: 'docs' | 'sheets'
   id: string
   title: string
@@ -79,51 +75,39 @@ const cacheOf = <T>(map: WeakMap<object, Map<string, T>>, key: object): Map<stri
   return m
 }
 
-/** The files under a folder whose kind a canvas opens: hidden folders and dependencies skipped, bounded in depth and count. */
-export async function walkFolder(root: string, most = { files: WALK_MOST, seen: WALK_SEEN_MOST }): Promise<Walk> {
-  const files: FileRow[] = []
-  let complete = true
-  let seen = 0
-  const visit = async (dir: string, depth: number): Promise<void> => {
-    let names: import('node:fs').Dirent[]
-    try {
-      names = await readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const e of names) {
-      // A folder of many directories and few documents (a cloned repo, a photo library) stops here too.
-      if (files.length >= most.files || ++seen > most.seen) {
-        complete = false
-        return
-      }
-      if (e.name.startsWith('.') || e.name.startsWith('~$')) continue
-      const path = join(dir, e.name)
-      if (e.isDirectory()) {
-        if (e.name === 'node_modules') continue
-        if (depth < WALK_DEPTH) await visit(path, depth + 1)
-        continue
-      }
-      const kind = e.isFile() ? kindOfFile(e.name) : null
-      if (!kind) continue
-      try {
-        const s = await stat(path)
-        files.push({ path, kind, editedAt: Math.round(s.mtimeMs), createdAt: Math.round(s.birthtimeMs || s.ctimeMs) })
-      } catch {
-        // Gone between the listing and the look: not there.
-      }
-    }
-  }
-  await visit(root, 0)
-  return { files, complete }
-}
-
-/** The folder's walk: a fresh one kept, and one already on its way shared, so two asks walk once. */
+/**
+ * The files under the workspace's folder whose kind a canvas opens, found by Files' own walk (`walkNames`,
+ * files/search.ts): the same caps, hidden names and links left out as a listing leaves them, a link never
+ * followed. A fresh one is kept, and one already on its way shared, so two asks walk once.
+ */
 function folderFiles(ctx: WorkCtx, root: string): Promise<Walk> {
   const cache = cacheOf(walks, ctx.db)
   const kept = cache.get(root)
   if (kept && Date.now() - kept.at < WALK_FRESH_MS) return kept.walk
-  const walk = walkFolder(root)
+  const walk = (async (): Promise<Walk> => {
+    const { walkNames } = await import('../files/search')
+    const walked = await walkNames(root, [])
+    const found = walked.names.flatMap(({ path, row }) => {
+      const kind = row.dir ? null : kindOfFile(row.name)
+      return kind ? [{ path, kind }] : []
+    })
+    const files: FileRow[] = []
+    for (let i = 0; i < found.length; i += 64) {
+      const looked = await Promise.all(
+        found.slice(i, i + 64).map(async (f): Promise<FileRow | null> => {
+          try {
+            const s = await stat(f.path)
+            return { ...f, editedAt: Math.round(s.mtimeMs), createdAt: Math.round(s.birthtimeMs || s.ctimeMs) }
+          } catch {
+            // Gone between the walk and the look: not there.
+            return null
+          }
+        })
+      )
+      for (const f of looked) if (f) files.push(f)
+    }
+    return { files, complete: !walked.more }
+  })()
   cache.set(root, { at: Date.now(), walk })
   walk.catch(() => cache.delete(root))
   return walk
@@ -143,7 +127,7 @@ export function keepText(cache: Map<string, { mtime: number; text: string }>, pa
 }
 
 /** A sector's LifeOS catalog, read a page at a time up to its cap; kept a short while, and shared while on its way. */
-function lifeosCatalog(ctx: WorkCtx, sector: string, refresh: boolean): Promise<{ rows: CatalogRow[]; complete: boolean }> {
+export function lifeosCatalog(ctx: WorkCtx, sector: string, refresh: boolean): Promise<{ rows: CatalogRow[]; complete: boolean }> {
   const cache = cacheOf(catalogs, ctx.db)
   const kept = cache.get(sector)
   if (kept && !refresh && Date.now() - kept.at < CATALOG_FRESH_MS) return kept.read
@@ -285,9 +269,11 @@ export function workspaceOf(ctx: WorkCtx, workspaceId: string): WorkspaceRow {
 
 /**
  * Everything a Work workspace lists, and with `query` what is written inside that matches.
- * A remote key that cannot reach the folder is shown none of its files.
+ * A remote key that cannot reach the folder is shown none of its files. `view`: the window's list
+ * (`work.docs.find`: a project's link picker, and a window a release behind that still has the Docs
+ * view), which leaves the folder's files and Teams files to the Files place; `doc_find` asks for all.
  */
-export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: string; query?: string; refresh?: boolean }): Promise<FindAnswer> {
+export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: string; query?: string; refresh?: boolean; view?: boolean }): Promise<FindAnswer> {
   const ws = workspaceOf(ctx, o.workspaceId)
   const terms = queryTerms(o.query ?? '')
   const entries = new Map<string, FindEntry>()
@@ -341,6 +327,8 @@ export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: strin
 
   const folder = canonicalPathOr(ws.path)
   const folderPart = (async () => {
+    // The window's list holds no file of the workspace's folder: the Files place shows them, and nothing is listed twice.
+    if (o.view) return
     if (!folder || !ctx.reaches(by, folder)) return
     const all = await folderFiles(ctx, folder)
     complete &&= all.complete
@@ -383,6 +371,8 @@ export async function findDocs(ctx: WorkCtx, by: Caller, o: { workspaceId: strin
   for (const item of ctx.canvas.forWorkspace(o.workspaceId)) {
     const e = itemEntry(item, ctx.host)
     if (!e || entries.has(e.key)) continue
+    // Nor, for the view, a file a thread holds from the folder or from Teams (in place, or its copy): Files shows those too.
+    if (o.view && (item.source.at === 'file' || item.source.at === 'microsoft')) continue
     if (item.source.at === 'file' && !ctx.reaches(by, item.source.path)) continue
     entries.set(e.key, e)
   }

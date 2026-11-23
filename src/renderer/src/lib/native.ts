@@ -108,6 +108,7 @@ export type LocalCommand =
   | "pty_status"
   | "pty_write"
   | "reveal_path"
+  | "drag_files_out"
   | "set_dock_badge"
   | "set_traffic_lights_visible"
   | "set_zoom"
@@ -300,6 +301,7 @@ const serverBacked: Record<ServerCommand, ServerBacked> = {
 const localBacked: Record<LocalCommand, Backed> = {
   sidecar_port: () => getServerPort(),
   reveal_path: (args) => api().revealInFinder(arg<string>(args, "path")),
+  drag_files_out: (args) => api().dragFilesOut(arg<string[]>(args, "paths")),
   default_cwd: () => api().app.defaultCwd(),
   home_dir: () => api().app.homeDir(),
   confirm_quit: () => api().app.confirmQuit(),

@@ -1,5 +1,5 @@
 import { CANVAS_KINDS, type CanvasKind, type CanvasSource } from "@shared/work";
-import { kindOfEntry } from "@shared/work/files";
+import { threadCanvasOf } from "@shared/work/files";
 import type { CanvasKindDef } from "./kind";
 import { defineChunk } from "../../lib/lazyChunk";
 import { File } from "../icons";
@@ -14,13 +14,14 @@ import { historyCanvas } from "../history/canvas";
 import { meetingCanvas } from "../meetings/canvas";
 import { formCanvas } from "../forms/canvas";
 import { dashboardCanvas } from "../dashboards/canvas";
+import { fileCanvas } from "../files/canvas";
 
 export type * from "./kind";
 export { defineCanvasKind } from "./kind";
 
 /**
- * The canvas pane's kinds (docs/agents/work-canvas.md): the eleven kinds of
- * item a thread can hold beside it, one definition each, in the folder of
+ * The canvas pane's kinds (docs/agents/work-canvas.md): the kinds of
+ * item a thread or a Files tab can hold, one definition each, in the folder of
  * the pillar that owns it (`work/<pillar>/canvas.ts`). The pane
  * (CanvasPane.tsx) draws the frame every kind shares, the tab row, the
  * kind's bar and the selection bar, and a kind fills the body and feeds the
@@ -41,6 +42,7 @@ export const CANVAS: Record<CanvasKind, CanvasKindDef> = {
   meeting: meetingCanvas,
   form: formCanvas,
   dashboard: dashboardCanvas,
+  file: fileCanvas,
 };
 
 /**
@@ -110,16 +112,17 @@ export function kindFor(source: CanvasSource, hint: OpenHint = {}, kinds: Record
 }
 
 /**
- * The kind that shows a file, by its extension, or by its mime type when the
- * name has none; null when no kind does. The one lookup for a file from
- * outside: a drop, Open file…, a mail's attachment, a row in Files. It reads
- * the one table of file types (`kindOfEntry`, src/shared/work/files.ts), which
- * every kind's `opens.ext` is held to (registry.test.ts). The type a desktop
- * or a mail gives is a guess from the name (a `.ts` script comes as
- * `video/mp2t`, a `.csv` from Windows as `application/vnd.ms-excel`), so it
- * never overrules one.
+ * The kind that shows a file beside a thread, by its extension, or by its mime
+ * type when the name has none; null when no kind does. The one lookup for a
+ * file from outside: a drop, Open file…, a mail's attachment. It reads the one
+ * table of file types (`kindOfEntry`, src/shared/work/files.ts), which every
+ * kind's `opens.ext` is held to (registry.test.ts), as a thread's canvas takes
+ * it (`threadCanvasOf`: the `file` kind's items are the Files pane's alone
+ * until a thread has their tools). The type a desktop or a mail gives is a
+ * guess from the name (a `.ts` script comes as `video/mp2t`, a `.csv` from
+ * Windows as `application/vnd.ms-excel`), so it never overrules one.
  */
 export function kindForFile(name: string, mime?: string, kinds: Record<CanvasKind, CanvasKindDef> = CANVAS): CanvasKind | null {
-  const kind = kindOfEntry(name, mime).canvas;
+  const kind = threadCanvasOf(name, mime);
   return kind && knowsKind(kinds, kind) ? kind : null;
 }

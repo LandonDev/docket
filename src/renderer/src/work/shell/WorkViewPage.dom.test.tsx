@@ -10,8 +10,12 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({
   useWorkspaces: () => [{ id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" }],
 }));
 vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexReactClient: class {} }));
+vi.mock("../../stores/project", async (original) => ({ ...(await original<object>()), useSelectedWorkspaceIds: () => ["ws"] }));
+const files = vi.hoisted(() => ({ opened: [] as unknown[][] }));
+vi.mock("../files/openFrom", async (original) => ({ ...(await original<object>()), openInFiles: async (...args: unknown[]) => void files.opened.push(args) }));
 
-const { ViewBoundary, ViewFrame } = await import("./WorkViewPage");
+const { ViewBoundary, ViewFrame, WorkViewSurface } = await import("./WorkViewPage");
+const { openWorkView } = await import("../../lib/workSwitch");
 const { WORK_VIEWS } = await import("../views/registry");
 const { defineChunk } = await import("../../lib/lazyChunk");
 
@@ -201,19 +205,19 @@ describe("views outside LifeOS's gate, and a view that did not import", () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: vi.fn(async () => ({})) } as never);
     setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
     let tries = 0;
-    const was = WORK_VIEWS.docs.chunk;
-    WORK_VIEWS.docs.chunk = defineChunk("test-docs", async () => {
+    const was = WORK_VIEWS.people.chunk;
+    WORK_VIEWS.people.chunk = defineChunk("test-people", async () => {
       if (tries++ === 0) throw new Error("chunk missing");
-      return { View: () => <p>The docs</p> };
+      return { View: () => <p>The people</p> };
     }) as never;
     try {
-      render(<ViewFrame view="docs" environmentId="env_box" workspaceId="ws" sector="purdue" />);
-      await vi.waitFor(() => expect(screen.getByText("Docs did not load")).toBeTruthy());
+      render(<ViewFrame view="people" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+      await vi.waitFor(() => expect(screen.getByText("People did not load")).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      await vi.waitFor(() => expect(screen.getByText("The docs")).toBeTruthy());
+      await vi.waitFor(() => expect(screen.getByText("The people")).toBeTruthy());
       expect(tries).toBe(2);
     } finally {
-      WORK_VIEWS.docs.chunk = was;
+      WORK_VIEWS.people.chunk = was;
     }
   });
 });
@@ -246,5 +250,21 @@ describe("a view that draws its own head", () => {
     } finally {
       WORK_VIEWS.mail.chunk = was;
     }
+  });
+});
+
+describe("a way in that still names Docs", () => {
+  it("opens the document in a Files tab, or stands on the LifeOS place, from a view kept or sent before Docs folded into Files", async () => {
+    render(<WorkViewSurface />);
+    await act(async () => openWorkView({ workspaceId: "ws", view: "docs", doc: { id: "d1", title: "Run of show" } }));
+    await vi.waitFor(() => expect(files.opened).toHaveLength(1));
+    await act(async () => openWorkView({ workspaceId: "ws", view: "docs" }));
+    await vi.waitFor(() => expect(files.opened).toHaveLength(2));
+    const at = { id: "ws", environmentId: "env_box" };
+    expect(files.opened).toEqual([
+      [at, { ref: { at: "lifeos", table: "docs", id: "d1" }, name: "Run of show" }],
+      [at, { page: { at: { at: "place", id: "lifeos" }, name: "LifeOS" } }],
+    ]);
+    openWorkView(null);
   });
 });

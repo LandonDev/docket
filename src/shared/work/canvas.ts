@@ -8,7 +8,7 @@ import { PillarIdSchema, type HostId, type PillarId } from './ids'
  * and every pillar's contract read.
  */
 
-export const CANVAS_KINDS = ['mail', 'document', 'sheet', 'pdf', 'slides', 'media', 'browser', 'history', 'meeting', 'form', 'dashboard'] as const
+export const CANVAS_KINDS = ['mail', 'document', 'sheet', 'pdf', 'slides', 'media', 'browser', 'history', 'meeting', 'form', 'dashboard', 'file'] as const
 export type CanvasKind = (typeof CANVAS_KINDS)[number]
 export const CanvasKindSchema = z.enum(CANVAS_KINDS)
 
@@ -24,7 +24,8 @@ export const CANVAS_PILLAR: Record<CanvasKind, PillarId> = {
   history: 'history',
   meeting: 'meetings',
   form: 'forms',
-  dashboard: 'dashboards'
+  dashboard: 'dashboards',
+  file: 'files'
 }
 
 /** Where an item's truth lives. */
@@ -151,9 +152,9 @@ export const CanvasItemSchema = z.object({
  * What a chip can be: a task, a mail, an event or a selection (milestone 25,
  * Ask), and every kind the composer's `@` offers (F-mentions: a project, a
  * person, a LifeOS document, a canvas item, a held act, a routine, a
- * project's card). The phone decodes a kind it does not know.
+ * project's card, a file of the workspace's places). The phone decodes a kind it does not know.
  */
-export const CHIP_KINDS = ['task', 'mail', 'event', 'selection', 'project', 'person', 'doc', 'item', 'held', 'routine', 'card', 'chat'] as const
+export const CHIP_KINDS = ['task', 'mail', 'event', 'selection', 'project', 'person', 'doc', 'item', 'held', 'routine', 'card', 'chat', 'file'] as const
 export type ChipKind = (typeof CHIP_KINDS)[number]
 /** The LifeOS rows a chip may name directly (a LifeOS document is a `CanvasSource`). */
 export const CHIP_LIFEOS_TABLES = ['tasks', 'mailThreads', 'events', 'projects', 'people', 'chats'] as const
@@ -171,8 +172,16 @@ export interface ContextChip {
     | { at: 'work'; pillar: PillarId; id: string }
   /** a selection's text */
   quote?: string
-  /** a few words of what the thing says, for the model beside the reference */
+  /** a few words of what the thing says, for the model beside the reference; never on a `file` chip */
   excerpt?: string
+  /** a `file` chip's place (its id and name, as `files_places` answers) and its path inside it in words, and whether others can open it */
+  where?: FileChipWhere
+}
+export interface FileChipWhere {
+  place: string
+  name: string
+  path: string
+  shared?: boolean
 }
 export const CHIP_EXCERPT_MAX = 600
 /** Each kind in a sentence: "About this held act: …", "Remove the held act". */
@@ -188,7 +197,8 @@ export const CHIP_NOUN: Record<ChipKind, string> = {
   held: 'held act',
   routine: 'routine',
   card: 'card',
-  chat: 'conversation'
+  chat: 'conversation',
+  file: 'file'
 }
 export const ContextChipSchema = z.object({
   kind: z.enum(CHIP_KINDS),
@@ -200,5 +210,35 @@ export const ContextChipSchema = z.object({
     z.object({ at: z.literal('work'), pillar: PillarIdSchema, id: z.string() })
   ]),
   quote: z.string().max(20_000).optional(),
-  excerpt: z.string().max(CHIP_EXCERPT_MAX).optional()
+  excerpt: z.string().max(CHIP_EXCERPT_MAX).optional(),
+  where: z.object({ place: z.string().max(200), name: z.string().max(500), path: z.string().max(4000), shared: z.boolean().optional() }).optional()
 })
+
+/**
+ * Where a chip points, in words a model can act on with its tools (the composer's `chipLine`). A `file` chip's is its
+ * source as JSON, which `canvas_open` takes; its brackets are written as JSON escapes, so a name with brackets in it
+ * still reads back as one chip (renderer work/canvas/sentChipsOf.ts reads the words in the last brackets).
+ */
+export function chipRefWords(chip: Pick<ContextChip, 'kind' | 'ref'>): string {
+  const ref = chip.ref
+  if (chip.kind === 'file') return JSON.stringify(ref).replaceAll('(', '\\u0028').replaceAll(')', '\\u0029')
+  if (ref.at === 'lifeos') return `LifeOS ${ref.table} ${ref.id}`
+  if (ref.at === 'file') return ref.path
+  if (ref.at === 'item') return `canvas item ${ref.id}`
+  if (ref.at === 'work') return `Work ${ref.pillar} ${ref.id}`
+  return JSON.stringify(ref)
+}
+
+/**
+ * What a chip's line quotes under it: a selection's words, a mention's excerpt, a task's notes. A `file` chip quotes
+ * no word from inside its file, only where it is (its place and its path, which `files_open` takes), and says when
+ * others can open it: the thread reads the file with its tools when asked.
+ */
+export function chipUnder(chip: Pick<ContextChip, 'kind' | 'quote' | 'excerpt' | 'where'>): string {
+  if (chip.kind === 'file') {
+    const w = chip.where
+    if (!w) return ''
+    return `In ${w.name} (place ${w.place}) at ${w.path}.${w.shared ? ' Others can open it.' : ''}`
+  }
+  return (chip.kind === 'selection' ? chip.quote : (chip.quote ?? chip.excerpt))?.trim() ?? ''
+}

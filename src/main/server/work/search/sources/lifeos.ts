@@ -239,7 +239,8 @@ export const doc = source<Doc & { snippet?: string }>({
     ...(d.snippet ? { snippet: d.snippet } : {}),
     ...(d.editedAt !== undefined ? { at: d.editedAt } : {}),
     workspaceId,
-    open: view('docs', { doc: { id: d._id, title: d.title || 'Untitled' } }),
+    // A document opens as a Files tab of its job (the Docs view folded into Files).
+    open: { to: 'file', ref: { at: 'lifeos', table: 'docs', id: d._id }, name: d.title || 'Untitled' },
     chip: { kind: 'doc', label: d.title || 'Untitled', ref: { at: 'lifeos', table: 'docs', id: d._id } }
   })
 })

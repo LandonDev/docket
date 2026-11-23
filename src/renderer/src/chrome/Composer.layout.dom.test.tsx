@@ -227,6 +227,12 @@ describe("the empty thread and the docked footer", () => {
 });
 
 describe("the draft row", () => {
+  it("leaves a draft's row out where the place decides its picks (the Files dock)", () => {
+    expect(render(<Composer {...props()} />).container.querySelector("[data-composer-draft-row]")).not.toBeNull();
+    cleanup();
+    expect(render(<Composer {...props({ draftRow: false })} />).container.querySelector("[data-composer-draft-row]")).toBeNull();
+  });
+
   it("the draft row's controls share one 24px box", async () => {
     const { DraftRow } = await import("./Composer");
     const { container } = render(

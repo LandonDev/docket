@@ -128,6 +128,8 @@ type ThreadComposerProps = {
   shell?: boolean;
   recents?: RecentProject[];
   hideProjectPicker?: boolean;
+  /** A draft's row of new-thread picks; false where the place decides them all (the Files dock). */
+  draftRow?: boolean;
   quoteRequest?: QuoteRequest;
   onQuoteRequestConsumed?: (id: number) => void;
   topSlot?: ReactNode;
@@ -153,6 +155,7 @@ export const ThreadComposer = memo(function ThreadComposer({
   shell = false,
   recents,
   hideProjectPicker = false,
+  draftRow = true,
   quoteRequest,
   onQuoteRequestConsumed,
   topSlot,
@@ -204,6 +207,7 @@ export const ThreadComposer = memo(function ThreadComposer({
       projectId={session.projectId ?? null}
       recents={recents}
       hideProjectPicker={hideProjectPicker}
+      draftRow={draftRow}
       context={session.context}
       quoteRequest={quoteRequest}
       initialDraft={session.inboxCard || session.noteCard || session.handoffCard ? undefined : session.composerSeed}
@@ -278,6 +282,8 @@ type ThreadChatArgs = {
   shell?: boolean;
   recents?: RecentProject[];
   hideProjectPicker?: boolean;
+  /** A draft's row of new-thread picks; false where the place decides them all (the Files dock). */
+  draftRow?: boolean;
   /** Where the composer's input is looked up when a new pass arms. */
   rootRef: RefObject<HTMLElement | null>;
   onFocusPane: () => void;
@@ -308,6 +314,7 @@ export function useThreadChat({
   shell = false,
   recents,
   hideProjectPicker,
+  draftRow,
   rootRef,
   onFocusPane,
   onOpenFile,
@@ -399,6 +406,7 @@ export function useThreadChat({
         shell={shell}
         recents={recents}
         hideProjectPicker={hideProjectPicker}
+        draftRow={draftRow}
         quoteRequest={quoteRequest}
         onQuoteRequestConsumed={acknowledgeQuote}
         topSlot={opts?.topSlot}

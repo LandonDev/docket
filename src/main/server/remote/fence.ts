@@ -239,12 +239,14 @@ export function admitsPath(path: string, roots: readonly string[], denied: reado
 
 /**
  * The verbs that may name a file or folder in the Windows VM: the Teams files verbs that name one by a
- * `CanvasSource`, and the Files place's verbs that read, open or mark one (docs/agents/work-files.md "The fence,
- * by caller"). Listed one verb at a time, never a pillar whole: a verb that changes a file is not among them
- * until the VM's own verbs are built, and each handler holds the path to a mount OneDrive names in the guest
- * (work/files/policy.ts `locate`).
+ * `CanvasSource`, the Files place's verbs that read, open or mark one, and the four that change one there (`make`,
+ * `rename`, `move`, `trash`: docs/agents/work-files.md "The Windows VM's verbs"). Listed one verb at a time, never
+ * a pillar whole. Each handler holds the path to a mount OneDrive names in the guest (work/files/policy.ts
+ * `locate`) and a change to the caller's row of the door (`admitWrite`: a key needs `approve` there, since others
+ * can open it) before the guest's helper is asked. An editor's `read` and `write` are not here: a file in the VM
+ * goes to his own window alone.
  */
-const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy|Threads)$|^work\.files\.(list|stat|fetch|open|threads|tabOpen|tabSet|star|seen)$/
+const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy|Threads)$|^work\.files\.(list|stat|fetch|open|threads|tabOpen|tabSet|star|seen|make|rename|move|trash)$/
 
 /**
  * A file in the Windows VM a host keeps (docs/agents/work-teams-files.md "The Windows VM"), named by the guest's own
@@ -264,11 +266,12 @@ export function guestPath(method: string, path: string, platform: NodeJS.Platfor
  * either sends the source to the host it names (`work.office.filesCopy`: the bytes come over the host link, and
  * that host holds the path to a library it syncs, office/files/handle.ts `admitted`) or keeps it as words alone
  * (`filesThreads` and `work.files.threads` match it against the canvas's items; a tab or a mark keeps its address,
- * work/files/handle.ts `admitPage`, `markedOf`), and treats a source as this host's only when its `host` is this
+ * work/files/handle.ts `admitPage`, `markedOf`; `work.files.open` hands it to the same copy `filesCopy` makes,
+ * `openCopy`, and never looks at the path here), and treats a source as this host's only when its `host` is this
  * host's own id. Listed one verb at a time, never a pillar whole; a verb that reads or changes a file here is never
  * among them. docs/agents/work-teams-files.md "Another host's file, from a remote key".
  */
-const ELSEWHERE_METHODS = /^work\.office\.files(Copy|Threads)$|^work\.files\.(threads|tabOpen|tabSet|star|seen)$/
+const ELSEWHERE_METHODS = /^work\.office\.files(Copy|Threads)$|^work\.files\.(threads|open|tabOpen|tabSet|star|seen)$/
 
 /**
  * A file another host holds (his Mac's OneDrive, named by the Mac's own path), in a verb `ELSEWHERE_METHODS` lists:
