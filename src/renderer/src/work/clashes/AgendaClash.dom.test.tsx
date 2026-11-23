@@ -98,6 +98,19 @@ describe("a clash on the Agenda row", () => {
     expect(clashAsk.get()?.id).toBe("ev_meeting-ev_game");
   });
 
+  it("tells two clashes with events of one name apart in the menu, by job and time", async () => {
+    events.rows = [meeting];
+    const twin = side("ev_twin", "life", game.title, now + 3 * HOUR, now + 4 * HOUR);
+    lifeos.range = { clashes: [...overlap.clashes, { ...overlap.clashes[0]!, id: "ev_meeting-ev_twin", b: twin as never }], leaves: [] };
+    render(<View {...props} />);
+    await act(async () => {});
+    fireEvent.contextMenu(screen.getByRole("listitem"));
+    await act(async () => {});
+    expect(await screen.findByRole("menuitem", { name: `Show clash with ${game.title} (Ref, ${clockOf(game.startsAt)})` })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: `Show clash with ${game.title} (Life, ${clockOf(twin.startsAt)})` }));
+    expect(clashAsk.get()?.id).toBe("ev_meeting-ev_twin");
+  });
+
   it("draws no line and no menu row for an event with no clash, or one that is over", async () => {
     const over = { ...meeting, _id: "ev_over", startsAt: now - 3 * HOUR, endsAt: now - HOUR };
     events.rows = [over, { ...meeting, _id: "ev_free" }];

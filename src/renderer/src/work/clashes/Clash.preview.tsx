@@ -86,7 +86,8 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
   const step = state === "decline" || state === "propose" || state === "sending" || state === "refused" || state === "cleared" ? ("a" as const) : state === "move" ? ("b" as const) : null;
   if (step) {
     const clash = state === "move" ? CLASHES.drive! : CLASHES.overlap!;
-    const way = state === "move" ? "move" : state === "propose" ? "propose" : "decline";
+    // The cleared step is a proposal's: its sentence runs to two lines, which the step keeps when the words turn.
+    const way = state === "move" ? "move" : state === "propose" || state === "cleared" ? "propose" : "decline";
     return (
       <Box title={state === "cleared" ? "No longer a clash" : clashTitle(clash)} day={day}>
         <StepForm clash={clash} step={{ side: step, way }} cleared={state === "cleared"} pending={state === "sending"} refused={state === "refused" ? "This calendar's Google account must be connected again before LifeOS may write to it." : null} onBack={noop} onSend={noop} />

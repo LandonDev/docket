@@ -137,11 +137,14 @@ The pillar has no view of its own and no row in the column.
   What a read said for certain holds while a later read is out or fails, so
   a clash seen gone never returns from the opener's copy. A step's time
   field left as offered sends the instant offered, each field on its own
-  (`whenOf`; `model.dst.test.ts` holds it across the clock changes), an
-  offered end only while it is under a day after the start, and a time he
-  types into the hour the clocks skip is refused in words and its field
-  marked invalid (`fieldOf`, `ClashStep.dst.dom.test.tsx`); a move of an
-  event with guests says they are told.
+  (`whenOf`; `model.dst.test.ts` holds it across the clock changes). An
+  offer under a day long stays under a day whatever he edits; one a day
+  long or more keeps the days its end is past its Day (`endHint` names the
+  end's day under To). A To is looked for on the day it falls on, so only
+  that day's skipped hour refuses it, in words and with its field marked
+  invalid (`fieldOf`, `ClashStep.dst.dom.test.tsx`); a To typed into the
+  repeated hour is its first time after the start. A start already gone is
+  refused. A move of an event with guests says they are told.
 - `model.ts` holds the pure parts: the marks, the time a move or a proposal
   starts filled with (the earlier event: the latest quarter hour that ends a
   drive before the later one, while that is ahead and on its day; else the

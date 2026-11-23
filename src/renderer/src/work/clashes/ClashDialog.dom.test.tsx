@@ -309,8 +309,10 @@ describe("the Clash dialog", () => {
     // The title follows the read, so the top and the foot of the step say one thing.
     expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
     // The line that said what would go is the one that now says nothing went, and the day under the title stays.
-    expect(document.querySelector("[data-clash-step] [aria-live=polite]")?.textContent).toBe("Nothing was sent.");
-    expect(document.querySelector("[data-clash-step]")?.textContent).not.toContain("Its organizer is told you declined.");
+    const said = document.querySelector("[data-clash-step] [aria-live=polite]")!;
+    expect(said.querySelector("span:not(.invisible)")?.textContent).toBe("Nothing was sent.");
+    // The first sentence keeps its lines, unseen and unread, so the fields under it do not move.
+    expect(said.querySelector("span.invisible")?.textContent).toBe("Its organizer is told you declined.");
     expect(screen.getByRole("dialog").textContent).toContain(day);
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.submit(document.querySelector("[data-clash-step]")!);

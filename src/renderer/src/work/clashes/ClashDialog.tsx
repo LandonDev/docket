@@ -13,6 +13,7 @@ import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { loadToast } from "../../components/ui/toaster";
+import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 import { openWorkView } from "../../lib/workSwitch";
@@ -20,7 +21,7 @@ import { writeMail } from "../mail/mailto";
 import { sectorName } from "../shell/actions";
 import { sessionFailure, useLifeosSession } from "../shell/lifeos";
 import { useClashes } from "./mark";
-import { doneWords, endsNextDay, fieldOf, formOf, freeAfter, lateDraft, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
+import { doneWords, endHint, fieldOf, formOf, freeAfter, lateDraft, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
 
 /**
@@ -392,9 +393,10 @@ export function StepForm({
     <form onSubmit={submit} data-clash-step={`${step.side}:${step.way}`}>
       <ModalBody>
         <EventBlock side={event} day={startOfDay(clash.b.startsAt)} />
-        {/* One line, always there: what goes and to whom, or that nothing went once the two no longer clash, read out as it turns. */}
-        <p aria-live="polite" className="text-[13px] leading-5 text-muted-foreground">
-          {cleared ? "Nothing was sent." : wayWords(step.way, event.guests)}
+        {/* One place, always there: what goes and to whom, or that nothing went once the two no longer clash, read out as it turns. The first sentence keeps its lines under the second, so the fields below stay where they are. */}
+        <p aria-live="polite" className="grid text-[13px] leading-5 text-muted-foreground">
+          <span className={cn("col-start-1 row-start-1", cleared && "invisible")}>{wayWords(step.way, event.guests)}</span>
+          {cleared ? <span className="col-start-1 row-start-1">Nothing was sent.</span> : null}
         </p>
         {timed ? (
           <div className="grid grid-cols-[minmax(0,1fr)_112px_112px] gap-2">
@@ -404,7 +406,7 @@ export function StepForm({
             <Field label="From">
               <Input type="time" disabled={pending} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
             </Field>
-            <Field label="To" hint={endsNextDay(form, offered) ? "Next day" : undefined}>
+            <Field label="To" hint={endHint(form, offered)}>
               <Input type="time" disabled={pending} aria-invalid={bad === "to" || undefined} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
             </Field>
           </div>

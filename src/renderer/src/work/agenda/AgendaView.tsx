@@ -26,6 +26,7 @@ import { knownAttendees, type DirectoryPerson } from "../people/model";
 import type { Clash } from "@shared/work/clashes";
 import { ClashLines, useClashes } from "../clashes/mark";
 import { openClash } from "../clashes/open";
+import { sectorName } from "../shell/actions";
 import "./agenda.css";
 import type { WorkViewProps } from "../views/registry";
 
@@ -262,13 +263,19 @@ export const EventRow = memo(function EventRow({
 
 function EventMenu({ event, over, onPrepare, clashes = NO_CLASHES, environmentId }: { event: AgendaEvent; over: boolean; onPrepare: (event: AgendaEvent) => void; clashes: readonly Clash[] | undefined; environmentId: string }) {
   const runPlay = playRunner();
+  const other = (clash: Clash) => (clash.a.eventId === event._id ? clash.b : clash.a);
+  // Two events of one name are told apart by job and time.
+  const named = (clash: Clash) => {
+    const { title, sector, startsAt } = other(clash);
+    return clashes.some((c) => c !== clash && other(c).title === title) ? `${title} (${sectorName(sector)}, ${formatTime(startsAt)})` : title;
+  };
   return (
     <ContextMenuContent>
       <ContextMenuItem onClick={() => onPrepare(event)}>{over ? "Follow up" : "Prepare"}</ContextMenuItem>
       {/* One clash is "Show clash"; several are each named by the other event, so every one can be opened from here. */}
       {clashes.map((clash) => (
         <ContextMenuItem key={clash.id} onClick={() => openClash({ id: clash.id, environmentId, clash })}>
-          {clashes.length === 1 ? "Show clash" : `Show clash with ${(clash.a.eventId === event._id ? clash.b : clash.a).title}`}
+          {clashes.length === 1 ? "Show clash" : `Show clash with ${named(clash)}`}
         </ContextMenuItem>
       ))}
       {runPlay ? <ContextMenuItem onClick={() => runPlay(eventChip(event))}>Run a play…</ContextMenuItem> : null}

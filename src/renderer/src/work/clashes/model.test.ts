@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Clash, ClashSide } from "@shared/work/clashes";
-import { doneWords, endsNextDay, formOf, freeAfter, lateDraft, lateMinutes, marksOf, sideOf, spanOf, wayWords, whenOf } from "./model";
+import { doneWords, endHint, formOf, freeAfter, lateDraft, lateMinutes, marksOf, sideOf, spanOf, wayWords, whenOf } from "./model";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -114,9 +114,9 @@ describe("the time fields", () => {
     const late = { start: new Date(2026, 10, 26, 23, 45).getTime(), end: new Date(2026, 10, 27, 1, 15).getTime() };
     const form = formOf(late);
     expect(form).toEqual({ day: "2026-11-26", from: "23:45", to: "01:15" });
-    expect(endsNextDay(form)).toBe(true);
+    expect(endHint(form)).toBe("Next day");
     expect(spanOf(form)).toEqual(late);
-    expect(endsNextDay({ day: "2026-11-26", from: "13:00", to: "14:00" })).toBe(false);
+    expect(endHint({ day: "2026-11-26", from: "13:00", to: "14:00" })).toBeUndefined();
   });
 
   it("keep the instant offered for each field he leaves alone, and read the one he changes", () => {
@@ -134,8 +134,27 @@ describe("the time fields", () => {
   it("read an offer past midnight the plain way once he moves From before it: the To he left is that day's, not a day on", () => {
     const late = { start: new Date(2026, 10, 25, 23, 30).getTime(), end: new Date(2026, 10, 26, 0, 30).getTime() };
     const form = { ...formOf(late), from: "00:00" };
-    expect(endsNextDay(formOf(late), late)).toBe(true);
+    expect(endHint(formOf(late), late)).toBe("Next day");
     expect(whenOf(form, late)).toEqual({ start: new Date(2026, 10, 25, 0, 0).getTime(), end: new Date(2026, 10, 25, 0, 30).getTime() });
-    expect(endsNextDay(form, late)).toBe(false);
+    expect(endHint(form, late)).toBeUndefined();
+  });
+
+  it("keep the days of an event a day long or more, which the one Day field cannot say, and name the end's day when it is further on than the next", () => {
+    // Thu 6:00 PM to Fri 7:00 PM: 25 hours. Left as offered, the whole of it goes.
+    const long = { start: new Date(2026, 10, 26, 18, 0).getTime(), end: new Date(2026, 10, 27, 19, 0).getTime() };
+    const form = formOf(long);
+    expect(form).toEqual({ day: "2026-11-26", from: "18:00", to: "19:00" });
+    expect(whenOf(form, long)).toEqual(long);
+    expect(endHint(form, long)).toBe("Next day");
+    // An edit keeps the end on its own day: To at 5:00 PM is Friday's, From at 8:00 PM still runs to Friday.
+    expect(whenOf({ ...form, to: "17:00" }, long)).toEqual({ start: long.start, end: new Date(2026, 10, 27, 17, 0).getTime() });
+    expect(whenOf({ ...form, from: "20:00" }, long)).toEqual({ start: new Date(2026, 10, 26, 20, 0).getTime(), end: long.end });
+    // Another day moves both.
+    expect(whenOf({ ...form, day: "2026-11-30" }, long)).toEqual({ start: new Date(2026, 10, 30, 18, 0).getTime(), end: new Date(2026, 11, 1, 19, 0).getTime() });
+    // Two days on, the hint is the day itself.
+    const longer = { start: long.start, end: new Date(2026, 10, 28, 9, 0).getTime() };
+    expect(whenOf(formOf(longer), longer)).toEqual(longer);
+    expect(endHint(formOf(longer), longer)).toBe(new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(longer.end));
+    expect(endHint(formOf(longer), longer)).not.toBe("Next day");
   });
 });

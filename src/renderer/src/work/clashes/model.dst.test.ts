@@ -3,7 +3,7 @@
 process.env.TZ = "America/New_York";
 
 import { afterAll, describe, expect, it } from "vitest";
-import { endsNextDay, fieldOf, formOf, spanOf, whenOf } from "./model";
+import { endHint, fieldOf, formOf, spanOf, whenOf } from "./model";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -36,12 +36,29 @@ describe("a step's times when the clocks change", () => {
     expect(whenOf({ ...form, to: "02:15" }, offered)).toEqual({ start: SECOND_1_30, end: SECOND_1_30 + 45 * MINUTE });
   });
 
+  it("reads a To he types into the repeated hour as its first time after the start", () => {
+    // From left at the second 1:30 AM; To typed as 1:45 is the second 1:45, a quarter hour on, not the next day's.
+    const offered = { start: SECOND_1_30, end: SECOND_1_30 + 90 * MINUTE };
+    const form = { ...formOf(offered), to: "01:45" };
+    expect(whenOf(form, offered)).toEqual({ start: SECOND_1_30, end: SECOND_1_30 + 15 * MINUTE });
+    expect(endHint(form, offered)).toBeUndefined();
+  });
+
+  it("takes a To earlier on the clock as the next day's on the day that is 25 hours long", () => {
+    // 12:30 AM on the day the clocks go back to 12:15 AM the next: 24 hours and three quarters, and still under a day by the clock.
+    const form = { day: "2026-11-01", from: "00:30", to: "00:15" };
+    const when = spanOf(form) as { start: number; end: number };
+    expect(when).toEqual({ start: new Date(2026, 10, 1, 0, 30).getTime(), end: new Date(2026, 10, 2, 0, 15).getTime() });
+    expect(when.end - when.start).toBe(24 * HOUR + 45 * MINUTE);
+    expect(endHint(form)).toBe("Next day");
+  });
+
   it("does not call an end in the repeated hour the next day's", () => {
     // From the first 1:45 AM to the second 1:15 AM: half an hour, the same day, though 1:15 is earlier on the clock.
     const offered = { start: FIRST_1_30 + 15 * MINUTE, end: SECOND_1_30 - 15 * MINUTE };
     const form = formOf(offered);
     expect(form).toEqual({ day: "2026-11-01", from: "01:45", to: "01:15" });
-    expect(endsNextDay(form, offered)).toBe(false);
+    expect(endHint(form, offered)).toBeUndefined();
     expect(whenOf(form, offered)).toEqual(offered);
   });
 
@@ -49,7 +66,7 @@ describe("a step's times when the clocks change", () => {
     // 2027-03-14: 2:00 AM does not exist. 11:30 PM the night before to 2:30 AM is read on the 14th, where the clock has skipped.
     const form = { day: "2027-03-13", from: "23:30", to: "03:30" };
     const when = spanOf(form) as { start: number; end: number };
-    expect(endsNextDay(form)).toBe(true);
+    expect(endHint(form)).toBe("Next day");
     expect(new Date(when.end).getHours()).toBe(3);
     expect(new Date(when.end).getDate()).toBe(14);
     // Three clock hours after 11:30 PM are only three real hours here: 12:30, 1:30, then 3:30.
@@ -66,6 +83,10 @@ describe("a step's times when the clocks change", () => {
     const to = whenOf({ ...form, to: "02:15" }, offered);
     expect(to).toBe("To is in the hour the clocks skip that day. Pick another time.");
     expect(spanOf({ day: "2027-03-13", from: "23:00", to: "02:30" })).toBe(to);
+    // The mirror: the evening of the 14th to 2:30 AM on the 15th, a morning that has the time.
+    const night = { day: "2027-03-14", from: "23:00", to: "02:30" };
+    expect(spanOf(night)).toEqual({ start: new Date(2027, 2, 14, 23, 0).getTime(), end: new Date(2027, 2, 15, 2, 30).getTime() });
+    expect(endHint(night)).toBe("Next day");
     // The refusal names its field, for the step to mark.
     expect([fieldOf(from as string), fieldOf(to as string), fieldOf("It must end after it starts"), fieldOf(null)]).toEqual(["from", "to", null, null]);
     // The hours either side of it are times like any other.

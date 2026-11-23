@@ -1805,7 +1805,8 @@ Around the canvas:
   is a link `Button` at the line's own 16px that takes an underline on
   hover and opens that clash's dialog; the row's menu has
   Show clash, or with several "Show clash with Varsity Basketball" for
-  each. An event that is over carries none. The line arrives with its
+  each (two of one name take their job and time: "Show clash with
+  Stand-up (Ref, 9:00 AM)"). An event that is over carries none. The line arrives with its
   read and nothing pulses for it. "Leave 4:35" under the time is from
   where he will be: the event before when that ends within three hours,
   else the day's start.
@@ -1835,9 +1836,11 @@ Around the canvas:
   the later with the first after the earlier ends. A field he leaves as
   offered sends the instant offered, each field on its own. A To before
   the start on the clock is the next day's, and says "Next day" under it;
-  the same minute is no span, and a time the clocks skip that day is
-  refused in words, its field ringed in `destructive` until he edits; a
-  time already gone is refused too. Send
+  the same minute is no span. An event a day long or more keeps the days
+  its end is past its Day, and one that ends further on than the next day
+  names that day under To ("Sat, Nov 28"). A time the clocks skip on the
+  day it falls on is refused in words, its field ringed in `destructive`
+  until he edits; a time already gone is refused too. Send
   holds its width and spins, and the step's fields are locked while it
   is out; a toast answers the press and the dialog closes on the clash it
   showed, though his own press is what ended it; a refusal stays in the
@@ -1846,8 +1849,8 @@ Around the canvas:
   hairline between them (and says "Reading the clash…" to a screen
   reader); a step he is typing in stays when the calendar settles the
   clash meanwhile: the title turns to "No longer a clash", the step's one
-  sentence turns to "Nothing was sent." (read out as it turns), Send is
-  off, and nothing else moves. What a
+  sentence turns to "Nothing was sent." (read out as it turns) in the
+  lines the sentence held, Send is off, and nothing moves. What a
   read said for certain holds while a later read is out or fails: a clash
   seen gone never comes back from an old copy; a read that failed says why in the body; two
   events that no longer clash are the title "No longer a clash" over the
