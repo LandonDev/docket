@@ -43,7 +43,13 @@ const rows = {
   ],
   'projects:list': [{ _id: 'j1', sector: 'unify', name: 'Offsite', description: 'The budget and the venue' }],
   'docs:list': [{ _id: 'd1', sector: 'cosmic', title: 'Budget FY27', editedAt: now - 7 * DAY }],
-  'catalog:search': [{ table: 'docs', id: 'd1', sector: 'cosmic', snippet: 'the budget for FY27' }]
+  'catalog:search': [{ table: 'docs', id: 'd1', sector: 'cosmic', snippet: 'the budget for FY27' }],
+  // Messages' own sources read these (messages/search.ts): made-up chat rows.
+  'chats:search': [
+    { chatId: 'c1', messageId: 'r1', chat: '#launch-crew', who: 'Bea Budgett', text: 'the budget for the booth is approved', at: now - 3 * 3_600_000, source: 'slack', sector: 'cosmic' },
+    { chatId: 'c2', messageId: 'r2', chat: 'Sam Ortiz', who: 'Sam Ortiz', text: 'can we talk budget on Friday?', at: now - DAY, source: 'discord', sector: 'unify' }
+  ],
+  'chats:find': []
 }
 
 /** One key, as a keyboard sends it (Linux: Ctrl is the app's modifier). */
@@ -134,7 +140,7 @@ try {
   await run.until('every source answered', 15_000, settled)
   const rowsNow = await list()
   const headings = rowsNow.filter((r) => r.startsWith('# ')).map((r) => r.slice(2))
-  run.check('groups fill under their headings in the fixed order', headings.join(',') === 'People,Mail,Tasks,Agenda,Documents,Projects,Threads', headings.join(','))
+  run.check('groups fill under their headings in the fixed order, Messages (its own pillar\'s source) among them', headings.join(',') === 'People,Mail,Messages,Tasks,Agenda,Documents,Projects,Threads', headings.join(','))
   run.check('four mails and the row that opens all of them', rowsNow.filter((r) => r.includes('hit:lifeos:mailThreads')).length === 4 && rowsNow.some((r) => r.includes('all:mail')), rowsNow.join(' | '))
   run.check('the highlight is on the first row', rowsNow.find((r) => r.startsWith('> ')) === '> hit:lifeos:people:p1')
   run.check('each row names its job while jobs mix', (await run.page<number>(`document.querySelectorAll('[data-work-search-list] [data-job]').length`)) >= 8)
@@ -157,10 +163,29 @@ try {
   run.check('the Mail view is open there', await run.page<boolean>(`[...document.querySelectorAll('span, h1, h2, h3, div')].some((e) => e.children.length === 0 && e.textContent.trim() === 'Mail' && e.getBoundingClientRect().left > 460 && e.getBoundingClientRect().top < 90)`))
   await run.shot('05-mail-in-other-job')
 
+  // A chat message in the first job: Return opens Messages there, on its conversation.
+  await openSearch()
+  await type('booth')
+  await run.until('every source answered', 15_000, settled)
+  run.check('a chat message is found by its words', await moveTo('hit:lifeos:rawMessages:r1'), (await list()).join(' | '))
+  await key('Enter')
+  await run.until('the window moved', 10_000, async () => (await windowJob()) === 'Cosmic')
+  await sleep(1500)
+  run.check('Return on it opens the Messages view in its job', (await windowJob()) === 'Cosmic' && (await run.page<boolean>(`[...document.querySelectorAll('span, h1, h2, h3, div')].some((e) => e.children.length === 0 && e.textContent.trim() === 'Messages' && e.getBoundingClientRect().left > 460 && e.getBoundingClientRect().top < 90)`)))
+  await run.shot('05b-message-in-its-job')
+  // Back to Unify by the mail again, so what follows stands where it did.
+  await openSearch()
+  await type('Q4')
+  await run.until('every source answered', 15_000, settled)
+  await moveTo('hit:lifeos:mailThreads:m3')
+  await key('Enter')
+  await run.until('the window moved', 10_000, async () => (await windowJob()) === 'Unify')
+  await sleep(800)
+
   // Recent: what he just opened.
   await openSearch()
   await run.until('Recent', 8_000, async () => (await list()).some((r) => r.includes('hit:lifeos:mailThreads:m3')))
-  run.check('nothing typed shows Recent: the mail he opened', (await list()).join(' | ') === '# Recent | > hit:lifeos:mailThreads:m3', (await list()).join(' | '))
+  run.check('nothing typed shows Recent: what he opened, the newest first', (await list()).join(' | ') === '# Recent | > hit:lifeos:mailThreads:m3 |   hit:lifeos:rawMessages:r1', (await list()).join(' | '))
   await run.shot('06-recent')
 
   // The key again narrows to the window's job, and again widens.

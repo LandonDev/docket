@@ -8,13 +8,12 @@ import { runSearch } from '../run'
 import { COSMIC, everywhere, makeRig, onlyPurdue, phone, PURDUE, thread, window } from '../testkit'
 import { fileSources, filesHoldLifeos } from './files'
 import { doc } from './lifeos'
-import { messageSource } from './messages'
 
 /**
  * What is another pillar's to find, asked through that pillar's own wire
- * method with the caller the search was given: Files and Messages, each
- * against a stand-in module. A method that is not built is absent, with no
- * line.
+ * method with the caller the search was given: Files, against a stand-in
+ * module. A method that is not built is absent, with no line. (Messages and
+ * Money list their own sources: sources/others.test.ts.)
  */
 
 type Seen = { method: string; params: Record<string, unknown>; by: Caller }[]
@@ -133,39 +132,5 @@ describe('documents, where Files lists LifeOS', () => {
     lifeos(rig)
     expect(await filesHoldLifeos(rig.ctx, PURDUE, window, [standIn('files', { 'work.files.places': () => ({ places: [{ kind: 'lifeos' }] }) })])).toBe(false)
     expect((await doc.search(ask('budget'), rig.ctx)).map((h) => h.workspaceId)).toEqual([PURDUE, COSMIC])
-  })
-})
-
-describe('messages', () => {
-  const rows = (workspaceId: unknown) =>
-    workspaceId === PURDUE
-      ? [{ chatId: 'c1', messageId: 'm1', chat: '#esports-staff', who: 'Dana Kim', text: 'the pizza budget is approved', at: 50, source: 'slack' }]
-      : workspaceId === COSMIC
-        ? [{ chatId: 'c2', messageId: 'm2', chat: 'Sam Ortiz', who: 'Sam Ortiz', text: 'pizza friday?', at: 90, source: 'discord' }]
-        : []
-  it("are Messages' own search, a job in reach at a time, newest first, opened in the conversation at the message", async () => {
-    const rig = makeRig()
-    const module = standIn('messages', { 'work.messages.search': (p) => ({ hits: rows(p.workspaceId) }) })
-    const source = messageSource([module])
-    const hits = await source.search(ask('pizza'), rig.ctx)
-    expect([source.kind, source.tier]).toEqual(['message', 'network'])
-    expect(hits).toEqual([
-      { key: 'message:m2', kind: 'message', title: 'Sam Ortiz', detail: 'Sam Ortiz', snippet: 'pizza friday?', at: 90, workspaceId: COSMIC, open: { to: 'view', view: 'messages', with: { chat: 'c2', message: 'm2' } } },
-      { key: 'message:m1', kind: 'message', title: '#esports-staff', detail: 'Dana Kim', snippet: 'the pizza budget is approved', at: 50, workspaceId: PURDUE, open: { to: 'view', view: 'messages', with: { chat: 'c1', message: 'm1' } } }
-    ])
-    expect(module.seen[0]).toEqual({ method: 'work.messages.search', params: { workspaceId: PURDUE, query: 'pizza', limit: 5 }, by: window })
-  })
-  it('stay inside the reach, and are absent with no line until Messages answers', async () => {
-    const rig = makeRig()
-    const module = standIn('messages', { 'work.messages.search': (p) => ({ hits: rows(p.workspaceId) }) })
-    expect((await messageSource([module]).search(ask('pizza', onlyPurdue), rig.ctx)).map((h) => h.key)).toEqual(['message:m1'])
-    expect(await runSearch(rig.ctx, { modules: [], own: [messageSource([])], reach: everywhere, text: 'pizza', by: window })).toEqual({ groups: [], pending: [], quiet: [] })
-  })
-  it("stands down once the Messages module lists its own search line", async () => {
-    const rig = makeRig()
-    const own = { kind: 'message', label: 'Messages', tier: 'network' as const, search: async () => [{ key: 'message:theirs', kind: 'message', title: 'Theirs', workspaceId: PURDUE, open: { to: 'view' as const, view: 'messages' } }] }
-    const module = { ...standIn('messages', { 'work.messages.search': (p) => ({ hits: rows(p.workspaceId) }) }), search: [own] }
-    const answer = await runSearch(rig.ctx, { modules: [module], own: [messageSource([module])], reach: everywhere, text: 'pizza', by: window })
-    expect(answer.groups.map((g) => [g.source, g.hits.map((h) => h.key)])).toEqual([['messages.message', ['message:theirs']]])
   })
 })

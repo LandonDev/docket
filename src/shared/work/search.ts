@@ -73,13 +73,14 @@ export interface SearchAnswer {
 }
 
 /** The order the kinds' groups stand in; a kind not named here follows them, in the order it came. */
-export const SEARCH_ORDER: readonly SearchKind[] = ['person', 'mail', 'message', 'task', 'event', 'file', 'doc', 'project', 'thread', 'item', 'held', 'routine', 'card']
+export const SEARCH_ORDER: readonly SearchKind[] = ['person', 'mail', 'message', 'chat', 'task', 'event', 'file', 'doc', 'project', 'thread', 'item', 'held', 'routine', 'card']
 
 /** A group's heading: the `@` list's own words. */
 export const SEARCH_LABELS: Readonly<Record<string, string>> = {
   person: 'People',
   mail: 'Mail',
   message: 'Messages',
+  chat: 'Conversations',
   task: 'Tasks',
   event: 'Agenda',
   file: 'Files',
@@ -90,6 +91,7 @@ export const SEARCH_LABELS: Readonly<Record<string, string>> = {
   held: 'Outbox',
   routine: 'Routines',
   card: 'Cards',
+  money: 'Money',
   recent: 'Recent'
 }
 
@@ -98,6 +100,7 @@ export const SEARCH_NOUNS: Readonly<Record<string, string>> = {
   person: 'people',
   mail: 'mail',
   message: 'messages',
+  chat: 'conversations',
   task: 'tasks',
   event: 'events',
   file: 'files',
@@ -107,7 +110,8 @@ export const SEARCH_NOUNS: Readonly<Record<string, string>> = {
   item: 'items',
   held: 'held acts',
   routine: 'routines',
-  card: 'cards'
+  card: 'cards',
+  money: 'ledger rows'
 }
 
 /** Rows a kind shows among the others. */

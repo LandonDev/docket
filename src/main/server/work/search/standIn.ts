@@ -14,7 +14,7 @@ import { isIsolatedInstance } from '../service/config'
  * environment says.
  */
 
-/** LifeOS's lists by function name (`people:list`, `mail:search`, `tasks:search`, `tasks:list`, `events:range`, `projects:list`, `docs:list`, `catalog:search`). */
+/** LifeOS's lists by function name (`people:list`, `mail:search`, `tasks:search`, `tasks:list`, `events:range`, `projects:list`, `docs:list`, `catalog:search`, `chats:search`, `chats:find`). */
 export type StandInRows = Record<string, Record<string, unknown>[]>
 
 export function standInOf(env: NodeJS.ProcessEnv = process.env): StandInRows | null {
@@ -37,6 +37,8 @@ export function answer(rows: StandInRows, fn: string, args: Record<string, unkno
   if (fn === 'tasks:byKeys') return (rows['tasks:search'] ?? []).filter((t) => ((args.keys as string[] | undefined) ?? []).some((key) => key.toUpperCase() === String(t.key ?? '').toUpperCase()))
   if (fn === 'tasks:list') return (rows['tasks:search'] ?? []).filter((t) => (!sector || t.sector === sector) && !['done', 'dropped'].includes(String(t.status ?? 'todo')))
   if (fn === 'catalog:search') return mine.filter((d) => mentionMatches(text, d.snippet as string))
+  if (fn === 'chats:search') return mine.filter((m) => mentionMatches(text, m.text as string))
+  if (fn === 'chats:find') return mine.filter((c) => mentionMatches(text, c.name as string))
   if (fn === 'docs:list') return { page: mine }
   if (fn === 'docs:get') return (rows['docs:list'] ?? []).find((d) => d._id === args.id) ?? null
   return mine

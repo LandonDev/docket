@@ -8,8 +8,6 @@ import { namesOnlyReachable, runSearch } from './run'
 import type { SearchSource } from './source'
 import { fileSources } from './sources/files'
 import { lifeosSources } from './sources/lifeos'
-import { messageSource } from './sources/messages'
-import { moneySource } from './sources/money'
 import { threadSources } from './sources/threads'
 import { standInOf, withStandIn } from './standIn'
 import { searchPreamble, searchTools } from './tools'
@@ -23,8 +21,8 @@ import { searchPreamble, searchTools } from './tools'
  * sends, posts, shares, books and submits nothing.
  */
 
-/** This pillar's own sources. One stands down for a kind a module lists a `search` source of. */
-export const OWN_SOURCES: SearchSource[] = [...lifeosSources, messageSource(), ...fileSources(), ...threadSources, moneySource()]
+/** This pillar's own sources. One stands down for a kind a module lists a `search` source of. Messages and Money list their own (messages/search.ts, money/borders.ts). */
+export const OWN_SOURCES: SearchSource[] = [...lifeosSources, ...fileSources(), ...threadSources]
 
 /** A proof's made-up LifeOS, on an isolated instance alone (search/standIn.ts); null everywhere else. */
 const STAND_IN = standInOf()

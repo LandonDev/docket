@@ -171,8 +171,8 @@ a deleted job takes its rows with it (`workspaceRemoved`).
 | project | network | `projects:list { sector? }` by name and description | `{ view: 'projects', with: { project } }` |
 | thread | instant by title, network by its words | the host's rows for titles; `Store.searchEvents { query, scope: 'work' }` for words, with the index's own snippet (thread notes among them) | `{ to: 'thread', sessionId, seq? }` |
 | file | instant; a second source `when: 'alone'` | `work.files.names { workspaceId, text }` a job in reach; for "All files", `work.files.search { workspaceId, query }` | `{ to: 'file', ref, name }` |
-| message | network | `work.messages.search { workspaceId, query, limit }` a job in reach | `{ view: 'messages', with: { chat, message } }` |
-| money | network | `work.money.search { workspaceId, query, limit }` a job in reach: the ledger's rows, newest first | `{ view: 'money' }` |
+| message, chat | network | Messages' own sources (`messages/search.ts`, on its module's `search`): messages that hold the words, and conversations by name | `{ view: 'messages', with: { chat, message? } }` |
+| money | instant | Money's own source (`money/borders.ts`): a ledger's rows | `{ view: 'money', with: { row } }` |
 | item, held, routine, card, any later kind | as its mention source | every module's `mentions` with no `search` source of its kind | `{ to: 'chip', chip }` |
 
 LifeOS is asked once for the whole reach where a function allows it
@@ -197,7 +197,7 @@ query itself (`Store.searchEvents` takes `scope`), so a code thread is never
 answered whatever it says. A thread in a project has no `workspace_id` on
 its row; its job is its project's.
 
-**Files, Messages and Money** are theirs to find. `search/ask.ts` finds the pillar
+**Files** are Files' to find. `search/ask.ts` finds the pillar
 that owns a method and calls its module's `handle` with the caller the
 search was given, so that pillar's own fences answer. A method that is not
 built, not known, or whose pillar did not load is absent: the source says
@@ -205,6 +205,11 @@ nothing. Search reads no file, walks no folder, downloads nothing and keeps
 no file index. The Documents source stands down for a job once Files
 answers `work.files.names` and lists a LifeOS place for it
 (`filesHoldLifeos`), since a document is then a file there.
+
+**Messages and Money** list their own sources on their modules, so this
+pillar asks nothing of them by method: their hits come through the frame
+like any other, fenced and capped by it. Any pillar that offers only a wire
+method can be given a small source here on `ask.ts`, as Files is.
 
 ## The window
 
@@ -294,7 +299,8 @@ for it.
 
 - Unit: `search/*.test.ts` and `sources/*.test.ts` on the host (the frame
   with fake sources, each source against a LifeOS in memory, threads on a
-  real database, Files and Messages against stand-in modules, the tool's
+  real database, Files against a stand-in module, Messages' and Money's own
+  sources through the frame, the tool's
   fence with the real reach rule), `work/search/*.test.ts` in the window
   (the model, the controller with a clock the test moves, the opener, the
   picker in jsdom).

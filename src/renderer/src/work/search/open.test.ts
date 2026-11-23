@@ -58,6 +58,13 @@ describe("opening a hit", () => {
     expect(await openHit(hit({ workspaceId: "removed" }), "box", r.deps)).toBe("gone");
     expect(r.did).toEqual([]);
   });
+  it("a message opens the Messages view of its job on its conversation, at the message", async () => {
+    const r = rig(["purdue"]);
+    const message = hit({ key: "lifeos:rawMessages:r1", kind: "message", workspaceId: "cosmic", open: { to: "view", view: "messages", with: { chat: "c1", message: "r1" } } });
+    expect(await openHit(message, "box", r.deps)).toBe("opened");
+    expect(r.did).toEqual([["clear"], ["enter", "/w/cosmic"], ["view", { workspaceId: "cosmic", view: "messages", chat: "c1", message: "r1" }], ["opened", "box", "lifeos:rawMessages:r1"]]);
+  });
+
   it("a thread opens through the app's own door, at the row the words are in: the window follows the thread", async () => {
     const r = rig();
     expect(await openHit(hit({ key: "thread:t1", kind: "thread", workspaceId: null, open: { to: "thread", sessionId: "t1", seq: 14 } }), "box", r.deps)).toBe("opened");

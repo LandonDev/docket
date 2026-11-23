@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { searchLabel, type SearchHit } from "@shared/work/search";
 import { FileTypeIcon } from "../../chrome/FileTypeIcon";
-import { ChevronDown, Clock, Layers, MessageSquare, Outbox, type IconComponent } from "../../chrome/icons";
+import { ChevronDown, Clock, Layers, MessageMultiple, MessageSquare, Outbox, type IconComponent } from "../../chrome/icons";
 import { MatchText } from "../../chrome/MatchText";
 import { RowsContextMenu, RowsMenu, type MenuIcon, type MenuRow } from "../../chrome/menuRows";
 import { PickerDialog, PickerNote, pickerRowClass } from "../../chrome/PickerDialog";
@@ -18,7 +18,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from "../../lib/workSearchPort";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { useSelectedWorkspaceIds } from "../../stores/project";
-import { Calendar, Card, Cloud, Comment, Doc, Mail, Person, Project, Task } from "../icons";
+import { Calendar, Card, Chat, Cloud, Doc, Mail, Person, Project, Table, Task } from "../icons";
 import { liveDeps, SearchController } from "./controller";
 import { holdStill } from "./hold";
 import { askHost, jobOfWorkspace, jobsOf, searchHosts, type Job } from "./hosts";
@@ -35,7 +35,8 @@ import { factOf, timeOf } from "./words";
 const GLYPH: Record<string, IconComponent> = {
   person: Person,
   mail: Mail,
-  message: Comment,
+  message: Chat,
+  chat: MessageMultiple,
   task: Task,
   event: Calendar,
   doc: Doc,
@@ -45,6 +46,8 @@ const GLYPH: Record<string, IconComponent> = {
   held: Outbox,
   routine: Clock,
   card: Card,
+  // a ledger's row: the ledger is a sheet
+  money: Table,
 };
 
 /** A sector's dot as a menu row's glyph, one stable component a sector. */
