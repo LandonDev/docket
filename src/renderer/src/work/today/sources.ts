@@ -10,6 +10,7 @@ import type { TodaySource } from "./types";
  */
 export const TODAY_SOURCES: { id: string; load: () => Promise<{ source: TodaySource }> }[] = [
   { id: "held", load: () => import("./held") },
+  { id: "messages", load: () => import("../messages/today") },
   { id: "clashes", load: () => import("../clashes/today") },
   { id: "money", load: () => import("../money/today") },
   { id: "review", load: () => import("../review/today") },
