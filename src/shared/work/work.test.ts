@@ -74,10 +74,10 @@ describe('the names', () => {
       browser: 'browser', history: 'history', meeting: 'meetings', form: 'forms', dashboard: 'dashboards'
     })
   })
-  it('lists the twelve act kinds, each with the pillar that shows it', () => {
+  it('lists the fourteen act kinds, each with the pillar that shows it', () => {
     expect([...ACT_KINDS]).toEqual([
-      'mail.send', 'calendar.op', 'teams.post', 'office.mail.send', 'office.calendar.op', 'share.guestLink',
-      'share.google', 'form.publish', 'frameio.post', 'portal.submit', 'computer.act', 'addon.call'
+      'mail.send', 'calendar.op', 'teams.post', 'office.mail.send', 'office.calendar.op', 'office.edit', 'share.guestLink',
+      'share.google', 'google.edit', 'form.publish', 'frameio.post', 'portal.submit', 'computer.act', 'addon.call'
     ])
     expect(Object.keys(ACT_PILLAR).sort()).toEqual([...ACT_KINDS].sort())
     for (const pillar of Object.values(ACT_PILLAR)) expect(PILLAR_IDS).toContain(pillar)
