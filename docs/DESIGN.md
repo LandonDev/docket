@@ -1630,7 +1630,11 @@ Around the canvas:
   in a kept invoice's or request's own dialog (at its footer's start),
   fills Mail's composer (no address, the subject, two plain lines) and
   opens the PDF in Files to attach: the composer takes no file from
-  outside, and nothing leaves until his own Send.
+  outside, and nothing leaves until his own Send. A PDF's or a picture's
+  More in the canvas pane, a mail's attachment or a file, holds File as
+  receipt, after the pane's own rows and before Close: it goes to To
+  confirm and one toast says so, "Filed to confirm in Money", with Open
+  Money.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way
