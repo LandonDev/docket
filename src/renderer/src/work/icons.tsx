@@ -37,6 +37,7 @@ import KanbanIcon from "@hugeicons/core-free-icons/KanbanIcon";
 import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
 import File01Icon from "@hugeicons/core-free-icons/File01Icon";
 import Link01Icon from "@hugeicons/core-free-icons/Link01Icon";
+import HashtagIcon from "@hugeicons/core-free-icons/HashtagIcon";
 import { wrap } from "../chrome/icons";
 
 /** LifeOS's mark, as the approved prototypes draw it (`b-lifeos`): a ring with a meridian and two parallels. Hugeicons has no LifeOS, so it is drawn here in the same shape Hugeicons gives, and takes the one stroke. */
@@ -100,3 +101,5 @@ export const Cloud = wrap(CloudIcon, "Cloud");
 export const File = wrap(File01Icon, "File");
 /** A thing linked to a project: Link a document, Link a file or item. */
 export const Link = wrap(Link01Icon, "Link");
+/** A chat channel in Messages, where a person would show their face. */
+export const Hash = wrap(HashtagIcon, "Hash");
