@@ -88,10 +88,21 @@ describe('words for a prep thread', () => {
     expect(text.startsWith(pageWords(page))).toBe(true)
     expect(text).toContain('Use his notes. Call prep_follow_up')
     expect(text).toContain('Never call add_task.')
-    expect(text).toContain('Draft one follow-up mail to the people with addresses using draft_mail.')
-    expect(text).toContain('It waits for his press. Never send it.')
+    expect(text).toContain('If the page lists no follow-up mail already waiting, draft one to the people with addresses using draft_mail. It waits for his press. Never send it.')
     expect(text.endsWith('End with the outcome as your last message.')).toBe(true)
   })
+  it('lists a follow-up mail that already waits, so a second follow-up drafts no second one', () => {
+    const waiting: PrepPage = { ...page, drafts: [{ outboxId: 'ob1', subject: 'Staff sync follow-up', to: ['Maya Chen', 'tom@x.test'] }] }
+    expect(pageWords(waiting)).toContain('Follow-up mail already waiting for his press in the Outbox:\n- “Staff sync follow-up” to Maya Chen, tom@x.test')
+    expect(pageWords(page)).not.toContain('already waiting for his press')
+  })
+
+  it('tells a recording’s thread that prep_read waits for the file, and never to read in a loop', () => {
+    const text = followMessage(page, { recording: true })
+    expect(text).toContain('Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read, which waits while it is transcribed.')
+    expect(text).not.toContain('read again')
+  })
+
   it('asks a stopped follow-up thread again for the meeting beside it, and for a mail only if none waits', () => {
     const recorded: PrepPage = { ...page, notesFile: { kind: 'meeting', itemId: 'it1', title: 'Staff sync.m4a' } }
     const text = followAgainMessage(recorded)
@@ -99,7 +110,7 @@ describe('words for a prep thread', () => {
     expect(text).toContain('open beside this thread as meeting it1. Read it with meeting_read.')
     expect(text).toContain('Read the meeting beside you with meeting_read. Call prep_follow_up')
     expect(text).toContain('never call add_task')
-    expect(text).toContain('If no follow-up mail to the people with addresses waits yet, draft one with draft_mail. It waits for his press. Never send it.')
+    expect(text).toContain('If the page lists no follow-up mail already waiting, draft one to the people with addresses using draft_mail. It waits for his press. Never send it.')
     expect(text.endsWith('End with the outcome as your last message.')).toBe(true)
   })
 })

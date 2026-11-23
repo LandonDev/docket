@@ -39,7 +39,9 @@ export function timeWords(event: Pick<PrepEvent, "startsAt" | "endsAt" | "allDay
  */
 export function whenLine(event: PrepEvent, now: number): string {
   const parts = [dayWords(event.startsAt, now), timeWords(event)];
-  if (event.location?.trim()) parts.push(event.location.trim());
+  const place = event.location?.trim();
+  // A place that is only a link is the call's own, and Files already offers it ("Join the call"): never the same link twice, nor a long URL in the line.
+  if (place && !/^https?:\/\/\S+$/i.test(place)) parts.push(place);
   if (event.leaveAt !== undefined && !event.allDay && now < event.startsAt) parts.push(`leave ${formatLeave(event.leaveAt, event.startsAt)}`);
   return parts.join(", ");
 }
@@ -153,10 +155,12 @@ export function headVerb(
   // A thread this window holds says for itself; one it does not is at work until the host's bound runs out on the window's own clock.
   const works = (sessionId: string | null, status: ThreadStatus, until: number | null, written: boolean): boolean =>
     sessionId !== null && !written && (status === undefined ? until !== null && until > now : threadWorks(status));
-  if (works(page.followSessionId, threads.follow, page.followUntil, wrote(page.followStartedAt, doc.after?.at))) return "following";
+  // A recording this host could not read ends that run for the page, though its thread may still be saying so: the way on shows at once.
+  const unread = !!page.notesFile?.error;
+  if (!unread && works(page.followSessionId, threads.follow, page.followUntil, wrote(page.followStartedAt, doc.after?.at))) return "following";
   if (doc.after) return null;
-  // Notes that are only a recording this host could not read are no notes to follow up from: a press would read the same failure.
-  if (doc.notes && (doc.notes.text.trim() || !page.notesFile?.error)) return "followUp";
+  // Notes that are only that recording are no notes to follow up from (a press would read the same failure); words he typed or a notes document still are.
+  if (doc.notes && (!unread || doc.notes.text.trim() || doc.notes.file)) return "followUp";
   if (isOver(page.event, now)) return "addNotes";
   if (works(page.briefSessionId, threads.brief, page.briefUntil, wrote(page.briefStartedAt, doc.brief?.at))) return "preparing";
   return doc.brief ? null : "brief";
@@ -198,14 +202,27 @@ export const NOTES_FILE_ACCEPT = "audio/*,video/*,.vtt,.srt,.txt,.docx";
 export const uploadPercent = (progress: { sent: number; total: number } | null): number | null => (!progress || progress.total <= 0 ? null : Math.min(100, Math.round((progress.sent / progress.total) * 100)));
 
 /**
- * What a filing LifeOS did not take says: a short word that always fits, and beside it why and the task by its
- * name, which gives way from its end when the window is narrow.
+ * What a filing LifeOS did not take says in the state line: a short word that always fits, and for one task its
+ * name, which gives way when the window is narrow. Why is said on each task's own row under To do (`failedWhy`),
+ * where it wraps and is never cut, so several failures each keep their own cause.
  */
-export function failedWords(failed: readonly { id: string; error: string }[], tasks: readonly Pick<PrepSuggestion, "id" | "title">[]): { word: string; detail: string } {
-  if (failed.length !== 1) return { word: `${failed.length} tasks were not added`, detail: failed[0]?.error ?? "" };
+export function failedWords(failed: readonly { id: string; error: string }[], tasks: readonly Pick<PrepSuggestion, "id" | "title">[]): { word: string; detail?: string } {
+  if (failed.length !== 1) return { word: `${failed.length} tasks were not added` };
   const title = tasks.find((t) => t.id === failed[0]!.id)?.title;
-  // Why leads: the greyed row under To do already shows which task, and the cause is what a narrow window must not lose.
-  return { word: "A task was not added", detail: title ? `${failed[0]!.error}: “${title}”` : failed[0]!.error };
+  return { word: "A task was not added", ...(title ? { detail: `“${title}”` } : {}) };
+}
+
+/** Why a task's filing failed, for its own row; undefined for a task no filing failed on. */
+export const failedWhy = (failed: readonly { id: string; error: string }[], id: string): string | undefined => failed.find((f) => f.id === id)?.error;
+
+/**
+ * Whether what he typed in Add people's search is someone the calendar already lists, by their address or by the
+ * name of one the page draws: an invitee is not his to add by name either.
+ */
+export function namesInvitee(typed: string, page: Pick<PrepPage, "invited" | "people">): boolean {
+  const key = prepFold(typed);
+  if (!key) return false;
+  return page.invited.some((address) => prepFold(address) === key) || page.people.some((p) => !p.added && prepFold(p.name) === key);
 }
 
 /**

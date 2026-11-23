@@ -27,7 +27,7 @@ import { shared, useShared } from "../tasks/store";
 import { useMinute } from "../tasks/minute";
 import type { WorkViewProps } from "../views/registry";
 import { ViewStateLine } from "../views/ViewStateLine";
-import { briefPrep, decidePrepTasks, followUpPrep, loadPrep, openWorkspaceFile, setPrepAhead, usePrep, usePrepHeld } from "./data";
+import { briefPrep, decidePrepTasks, followUpPrep, heldNotes, loadPrep, openWorkspaceFile, setPrepAhead, usePrep, usePrepHeld } from "./data";
 import {
   addTasksLabel,
   briefIsComing,
@@ -46,6 +46,7 @@ import {
   problemWords,
   shownTasks,
   suggestionLine,
+  failedWhy,
   failedWords,
   taskLine,
   threadStopped,
@@ -286,6 +287,7 @@ export function View(props: WorkViewProps) {
   const now = useMinute();
   const offered = useOfferSettled(workspaceId);
   const open = useShared(ui);
+  const failedPage = useRef<HTMLDivElement>(null);
   // A dialog is its own meeting's: one opened on another meeting's page is not drawn here, and it goes with the page.
   const dialog = open.eventId === eventId ? open.dialog : null;
   useEffect(() => closeDialog, [eventId]);
@@ -305,6 +307,8 @@ export function View(props: WorkViewProps) {
     const reopen = (forWorkspace: string, forEvent: string) => {
       if (forWorkspace === workspaceId && forEvent === eventId && ui.get().dialog === null) openDialog("notes", eventId);
     };
+    // Words the host did not take while he was away from this page (he left with the dialog open) wait for him here.
+    if (heldNotes(workspaceId, eventId)?.error) reopen(workspaceId, eventId);
     void dialogs.load().then((m) => (m.reopenNotes.current = reopen), () => {});
     return () => {
       const chunk = dialogs.loaded();
@@ -316,7 +320,25 @@ export function View(props: WorkViewProps) {
   if (!eventId) return <EmptyState title="No meeting is open" action={{ label: "Back to Agenda", onClick: () => openWorkView({ workspaceId, view: "agenda" }) }} />;
   const retry = () => loadPrep(props.env, workspaceId, eventId);
   // With no page to show, a read on its way is the bones: a Retry that draws nothing would look deaf.
-  if (!page) return loaded && error && !reading ? <EmptyState title="This page did not load" line={error} action={{ label: "Retry", onClick: retry }} /> : <PrepSkeleton />;
+  if (!page)
+    return loaded && error && !reading ? (
+      <div ref={failedPage} data-prep-failed className="contents">
+        <EmptyState
+          title="This page did not load"
+          line={error}
+          action={{
+            label: "Retry",
+            onClick: () => {
+              // The button goes while the bones show: its place in the view is kept now, to hand the caret on once the read is in.
+              const region = regionOf(failedPage.current);
+              void retry().then(() => focusAfterRetry(region));
+            },
+          }}
+        />
+      </div>
+    ) : (
+      <PrepSkeleton />
+    );
   const close = closeDialog;
   return (
     <>
@@ -459,6 +481,8 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
     return run;
   };
   const [turningOn, setTurningOn] = useState(false);
+  // A read that worked takes the line and its Retry away: the caret is handed on.
+  const retryRead = () => Promise.resolve(onRetry()).then(() => focusAfterRetry(regionOf(body.current)));
   // One line at a time: a filing that failed is his to try again before a part that did not load.
   const stillFailed = failed.filter((f) => after?.tasks.some((t) => t.id === f.id && t.state === "proposed"));
   const problem = problemWords(page.problems);
@@ -471,9 +495,9 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
         // Retry is the one way to try again: the tasks it names cannot be ticked below, so no second button says the same.
         <ViewStateLine {...failedWords(stillFailed, after?.tasks ?? [])} onRetry={() => decide(stillFailed.map((f) => f.id), "accept")} />
       ) : refreshError ? (
-        <ViewStateLine word="This page did not refresh" detail={refreshError} onRetry={onRetry} />
+        <ViewStateLine word="This page did not refresh" detail={refreshError} onRetry={retryRead} />
       ) : problem ? (
-        <ViewStateLine word={problem} onRetry={onRetry} />
+        <ViewStateLine word={problem} onRetry={retryRead} />
       ) : null}
       <div ref={body} onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] ps-7 pe-6 py-6">
         <header className="flex flex-col gap-0.5">
@@ -495,7 +519,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
                 <LineRow key={i} text={line.text} onOpen={openLine(line)} />
               ))}
             </Section>
-            <ToDo tasks={shownTasks(after.tasks)} now={now} filing={filing} retrying={stillFailed.map((f) => f.id)} onDecide={decide} onOpenTask={(id) => go("tasks", { task: id })} tickedAtFirst={tickedAtFirst} />
+            <ToDo tasks={shownTasks(after.tasks)} now={now} filing={filing} failed={stillFailed} onDecide={decide} onOpenTask={(id) => go("tasks", { task: id })} tickedAtFirst={tickedAtFirst} />
             <Section label="Open questions" show={after.questions.length > 0}>
               {after.questions.map((line, i) => (
                 <LineRow key={i} text={line.text} onOpen={openLine(line)} />
@@ -605,6 +629,21 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
       </div>
     </>
   );
+}
+
+/** The view an element is drawn in: where a caret left on nothing is looked for a new place. */
+const regionOf = (el: Element | null): ParentNode => el?.closest('[role="region"]') ?? document;
+
+/**
+ * A Retry that worked takes its own button away (the state line goes, or the bones take the failed page's place).
+ * A caret left on nothing then lands where the house puts a lost one, on the view's heading; or on Retry again when
+ * the whole page failed once more.
+ */
+function focusAfterRetry(region: ParentNode): void {
+  requestAnimationFrame(() => {
+    if (document.activeElement && document.activeElement !== document.body) return;
+    (region.querySelector<HTMLElement>("[data-prep-failed] button") ?? region.querySelector<HTMLElement>("[data-view-heading]"))?.focus({ preventScroll: true });
+  });
 }
 
 /**
@@ -759,7 +798,7 @@ function ToDo({
   tasks,
   now,
   filing,
-  retrying,
+  failed,
   onDecide,
   onOpenTask,
   tickedAtFirst,
@@ -768,8 +807,8 @@ function ToDo({
   now: number;
   /** a filing is in flight, from Add or from Retry: nothing here changes until it answers */
   filing: boolean;
-  /** the tasks a failed filing left with Retry: they cannot be ticked while it owns them */
-  retrying: readonly string[];
+  /** the tasks a failed filing left with Retry, each with why: they cannot be ticked while it owns them, and each row says its own cause */
+  failed: readonly { id: string; error: string }[];
   onDecide: (ids: string[], decision: "accept" | "reject") => Promise<void>;
   onOpenTask: (lifeosTaskId: string) => void;
   tickedAtFirst?: readonly string[] | undefined;
@@ -778,6 +817,7 @@ function ToDo({
   const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set(tickedAtFirst ?? (TICKED_AT_FIRST ? proposed.map((t) => t.id) : [])));
   const [adding, setAdding] = useState(false);
   if (!tasks.length) return null;
+  const retrying = failed.map((f) => f.id);
   // What he can tick: every suggestion but the ones Retry holds.
   const free = proposed.filter((t) => !retrying.includes(t.id));
   const picked = free.filter((t) => ticked.has(t.id));
@@ -807,10 +847,13 @@ function ToDo({
       <div role="list" className="flex max-w-[65ch] flex-col gap-0.5 text-sm">
         {tasks.map((task) => {
           const line = suggestionLine(task);
+          // Why LifeOS did not take it, on the task's own row: it wraps, so it is whole at any width, and each task keeps its own.
+          const why = task.state === "proposed" ? failedWhy(failed, task.id) : undefined;
           const words = (
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="text-pretty text-foreground">{task.title}</span>
               {line ? <span className="truncate text-xs text-muted-foreground">{line}</span> : null}
+              {why ? <span className="text-xs text-pretty text-muted-foreground select-text">{why}</span> : null}
             </span>
           );
           // When it is due trails the row, as a task's does under Tasks.

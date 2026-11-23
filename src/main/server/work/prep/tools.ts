@@ -12,7 +12,7 @@ import {
 import { errorText, workText, type WorkScope } from '@shared/work'
 import type { ToolCtx, WorkTool } from '../modules'
 import { rewriteTasks } from './after'
-import { eventOf, gather, standing, startDoc, upcoming } from './gather'
+import { eventOf, gather, meetingOf, standing, startDoc, upcoming } from './gather'
 import { writePage } from './page'
 import { pageWords } from './prompts'
 import { changeInOrder } from './serial'
@@ -59,10 +59,40 @@ function tool<T extends z.ZodType>(name: string, description: string, input: T, 
   }
 }
 
-const read = tool('prep_read', 'Read a meeting’s page. Pass its LifeOS event id or use the meeting linked to this thread.', z.object(eventArg), async ({ event }, ctx) => {
+/** How often, and for how long, `prep_read` looks for a recording that is still on its way to the page's follow-up thread. */
+export const fileWait = { everyMs: 1000, forMs: 8 * 60_000 }
+
+/**
+ * A recording goes up after its follow-up thread starts (an upload needs a thread to go to), so that thread's first
+ * read can come before the file. It waits here, in one tool call, until the meetings pillar has the file, the page
+ * has let go of it (it never arrived), or the time is up: never a model turn a look.
+ */
+async function awaitRecording(ctx: ToolCtx, workspaceId: string, eventId: string): Promise<'none' | 'here' | 'dropped' | 'late'> {
+  const store = new PrepStore(ctx.db)
+  const first = store.get(workspaceId, eventId)
+  const itemId = first?.doc.notes?.meetingItemId
+  if (!first || !itemId || first.followSessionId !== ctx.sessionId) return 'none'
+  const end = Date.now() + fileWait.forMs
+  for (;;) {
+    const status = (await meetingOf(ctx, itemId))?.status
+    if (status && status !== 'empty') return 'here'
+    const now = store.get(workspaceId, eventId)
+    if (now?.doc.notes?.meetingItemId !== itemId || now.followSessionId !== ctx.sessionId) return 'dropped'
+    if (ctx.signal.aborted || Date.now() >= end) return 'late'
+    await new Promise((resolve) => setTimeout(resolve, fileWait.everyMs))
+  }
+}
+
+const read = tool('prep_read', 'Read a meeting’s page. Pass its LifeOS event id or use the meeting linked to this thread. For the follow-up thread of a recording that is still being sent, it waits for the file.', z.object(eventArg), async ({ event }, ctx) => {
   const eventId = await toolEvent(ctx, event)
-  const { workspaceId } = toolWorkspace(ctx)
-  return workText(pageWords((await gather(ctx, workspaceId, eventId)).page))
+  const { workspaceId, sector } = toolWorkspace(ctx)
+  // The fence first: nothing is waited on for an event of another sector.
+  await eventOf(ctx, sector, eventId)
+  const recording = await awaitRecording(ctx, workspaceId, eventId)
+  const words = pageWords((await gather(ctx, workspaceId, eventId)).page)
+  if (recording === 'dropped') return workText(`${words}\n\nThe recording this thread was started for never arrived, and the page no longer waits for it. Stop here: write no outcome and draft no mail.`)
+  if (recording === 'late') return workText(`${words}\n\nThe recording is still on its way. Call prep_read again to keep waiting for it.`)
+  return workText(words)
 }, true)
 
 const today = tool('prep_today', 'List the upcoming meetings in this workspace that need a brief, with their facts and event ids.', z.object({}), async (_args, ctx) => {
@@ -118,7 +148,7 @@ const followUp = tool(
       const input = (args.tasks ?? []).map(({ due, ...task }) => ({ ...task, ...(due ? { due: dueAt(due) } : {}) }))
       const { tasks, suggestionSeq } = rewriteTasks(input, doc.after?.tasks ?? [], row?.suggestionSeq ?? 0)
       const at = Date.now()
-      const after = { summary: args.summary ?? [], decisions: args.decisions ?? [], questions: args.questions ?? [], tasks, at }
+      const after = { summary: args.summary ?? [], decisions: args.decisions ?? [], questions: args.questions ?? [], tasks, at, by: ctx.sessionId }
       writePage(ctx, workspaceId, event, last, { ...doc, after }, at, { suggestionSeq })
       return workText(`Kept the outcome for “${event.title}”. Suggested tasks wait for the owner on the meeting’s page.`)
     })

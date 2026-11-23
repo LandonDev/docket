@@ -12,6 +12,7 @@ import { outbox as outboxModule } from '../outbox/index'
 import { adminKey, approveKey, makeRig, readKey, type Rig } from '../outbox/rig'
 import { AHEAD_ROUTINE } from './ahead'
 import { prep } from './index'
+import { fileWait } from './tools'
 import { PrepStore } from './store'
 import { templates as templatesModule } from '../templates/index'
 import { setStartersRoot } from '../templates/shelf'
@@ -53,6 +54,8 @@ function workspace(id: string, sector: string | null): void {
 }
 
 beforeEach(async () => {
+  // A recording's thread waits in prep_read for its file: a moment here, minutes in the app.
+  Object.assign(fileWait, { everyMs: 2, forMs: 10 })
   rig = await makeRig({ modules: [outboxModule, canvasModule, templatesModule, prep] })
   lifeos = new FakeLifeos()
   rig.work.ctx.lifeos = { connected: () => lifeos.connected, owner: () => lifeos, jwt: async () => 'jwt', subscribe: () => () => {} }
@@ -107,6 +110,9 @@ describe('the people he adds', () => {
     const { page: after } = await rig.rpc<{ page: PrepPage }>('work.prep.people', { ...params, people: [{ name: 'Maya Chen', address: 'Maya@X.test', personId: 'p-maya' }, { name: 'Tom Beck' }] })
     expect(after.doc.people).toEqual([{ name: 'Tom Beck' }])
     expect(after.invited).toEqual(['maya@x.test'])
+    // typed in by her address or her name alone, she is that invitee still
+    const typed = await rig.rpc<{ page: PrepPage }>('work.prep.people', { ...params, people: [{ name: 'maya@x.test' }, { name: 'maya  chen' }, { name: 'Dana Reyes' }] })
+    expect(typed.page.doc.people).toEqual([{ name: 'Dana Reyes' }])
   })
 
   it('are his to change: a thread’s own call is refused', async () => {
@@ -541,7 +547,7 @@ describe('a recording or a transcript as the notes', () => {
     expect(got).toMatchObject({ state: 'after', followSessionId: 't-meeting-1' })
     // the thread is told to read the meeting, and to write tasks through prep alone
     const text = starts.mock.calls[0]![0].text
-    expect(text).toContain('Call prep_read: it names the meeting. Then read it with meeting_read')
+    expect(text).toContain('Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read')
     expect(text).toContain('write no actions with meeting_notes')
     expect(text).not.toContain('Use his notes.')
     expect(starts.mock.calls[0]![0]).toMatchObject({ title: 'Follow up: Staff sync', about: { kind: 'event', ref: { at: 'lifeos', table: 'events', id: 'ev1' } } })
@@ -742,6 +748,8 @@ describe('a recording that never arrived', () => {
     expect(again.sessionId).not.toBe(done.sessionId)
     expect(dropped).toMatchObject({ followSessionId: null, followUntil: null })
     expect(dropped.doc.after?.summary).toEqual([{ text: 'The van is settled.' }])
+    // the outcome keeps who wrote it, so that thread's mail stays on the page
+    expect(dropped.doc.after?.by).toBe(done.sessionId)
   })
 
   it('takes nothing else with it: a notes document the recording was to stand beside is still the page’s', async () => {
@@ -757,10 +765,16 @@ describe('a recording that never arrived', () => {
     expect(dropped.notesFile).toMatchObject({ kind: 'document', title: 'Staff sync notes.docx' })
   })
 
-  it('with nothing typed either, asks for notes', async () => {
+  it('with nothing typed either, asks for notes, and the page stops calling the empty meeting notes', async () => {
     fakeStarts()
-    await rig.rpc('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    // the window's word that the file never came did not reach this host (the link was down)
+    const first = await rig.rpc<{ sessionId: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    expect(await page()).toMatchObject({ followSessionId: first.sessionId, doc: { notes: { meetingItemId: expect.any(String) } } })
     await expect(rig.rpc('work.prep.followUp', { ...params, restart: true })).rejects.toThrow('Add notes first.')
+    // so the header asks for notes, not for a follow-up that would refuse on every press
+    const got = await page()
+    expect(got.doc.notes).toBeNull()
+    expect(got).toMatchObject({ followSessionId: null, notesFile: null })
   })
 })
 
@@ -851,6 +865,41 @@ describe('a recording the host could not read', () => {
     })
   })
 
+  it('is waited for inside prep_read by its own thread: one call, not a model turn a look, until the file has arrived', async () => {
+    fakeStarts()
+    Object.assign(fileWait, { everyMs: 2, forMs: 5_000 })
+    const first = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    let done = false
+    const reading = call('prep_read', { event: 'ev1' }, first.sessionId).then((r) => ((done = true), r))
+    await new Promise((r) => setTimeout(r, 30))
+    // the upload is still on its way: the read has not answered
+    expect(done).toBe(false)
+    await withMeetings(meetings('transcribing', null), async () => {
+      const read = words(await reading)
+      expect(read).toContain(`open beside this thread as meeting ${first.itemId}. Read it with meeting_read.`)
+      expect(read).not.toContain('still on its way')
+      expect(read).not.toContain('never arrived')
+    })
+    // any other thread reads the page at once
+    await withMeetings(meetings('empty', null), async () => {
+      expect(words(await call('prep_read', { event: 'ev1' }))).toContain('Meeting: Staff sync')
+    })
+  })
+
+  it('tells its thread to stop when the file never came, and to ask again when it is only late', async () => {
+    fakeStarts()
+    Object.assign(fileWait, { everyMs: 2, forMs: 5_000 })
+    const first = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    const reading = call('prep_read', { event: 'ev1' }, first.sessionId)
+    await new Promise((r) => setTimeout(r, 20))
+    await rig.rpc('work.prep.notes', { ...params, text: '', dropFile: true })
+    expect(words(await reading)).toContain('The recording this thread was started for never arrived, and the page no longer waits for it. Stop here: write no outcome and draft no mail.')
+    // late: the wait is bounded, and says how to go on
+    Object.assign(fileWait, { everyMs: 2, forMs: 10 })
+    const second = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    expect(words(await call('prep_read', { event: 'ev1' }, second.sessionId))).toContain('The recording is still on its way. Call prep_read again to keep waiting for it.')
+  })
+
   it('is not replaced while it is being read: a second file picked beside a thread at work gets no meeting to go to', async () => {
     const starts = fakeStarts()
     const first = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
@@ -882,15 +931,34 @@ describe('a recording the host could not read', () => {
     expect(await page()).toMatchObject({ followSessionId: first.sessionId, followStartedAt: startedAt + 60_000, notesFile: { kind: 'meeting', itemId: first.itemId } })
   })
 
-  it('starts a new thread after all when the stopped one cannot be woken', async () => {
+  it('says so when the stopped thread cannot be woken, and starts no thread that could not read the recording', async () => {
     const starts = fakeStarts()
-    vi.spyOn(rig.work.ctx.threads, 'resume').mockRejectedValue(new Error('no such thread'))
+    vi.spyOn(rig.work.ctx.threads, 'resume').mockRejectedValue(new Error('the thread is archived'))
     const first = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    const before = await page()
     await withMeetings(meetings('ready', null), async () => {
-      const again = await rig.rpc<{ sessionId: string }>('work.prep.followUp', { ...params, restart: true })
-      expect(again.sessionId).not.toBe(first.sessionId)
+      await expect(rig.rpc('work.prep.followUp', { ...params, restart: true })).rejects.toThrow('The follow-up thread could not be started again (the thread is archived). Open it from More.')
+      // nothing moved: the page still names the thread that holds the recording
+      expect(await page()).toMatchObject({ followSessionId: first.sessionId, followStartedAt: before.followStartedAt, rev: before.rev, notesFile: { kind: 'meeting', itemId: first.itemId } })
     })
-    expect(starts).toHaveBeenCalledTimes(2)
+    expect(starts).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes a new file in its place once it could not be read, in a thread and a meeting of its own, whatever the clock says', async () => {
+    const starts = fakeStarts()
+    const first = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    await withMeetings(meetings('failed', 'The transcriber is not installed on env_box.'), async () => {
+      // inside the twenty minutes and with no word from the window: the old thread read the failure, so it is not waited on
+      const second = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.vtt' } })
+      expect(second.sessionId).not.toBe(first.sessionId)
+      expect(second.itemId).toBeTruthy()
+      expect(second.itemId).not.toBe(first.itemId)
+      // the new thread is not told the old meeting is beside it: prep_read names its own
+      const text = starts.mock.calls[1]![0].text
+      expect(text).not.toContain(first.itemId!)
+      expect(text).toContain('Call prep_read first: it waits until the file has arrived and names the meeting.')
+      expect((await page()).doc.notes).toMatchObject({ meetingItemId: second.itemId })
+    })
   })
 
   it('is left behind by a follow-up from typed words once it could not be read: a fresh thread uses his notes, and none is sent to read it again', async () => {

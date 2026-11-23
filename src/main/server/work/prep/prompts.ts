@@ -47,6 +47,7 @@ export function pageWords(page: PrepPage): string {
     lines.push('', page.notesFile.itemId ? `His notes are the document “${page.notesFile.title}”, open beside this thread as item ${page.notesFile.itemId}. Read it with doc_read.` : `His notes are the document “${page.notesFile.title}” in the workspace’s folder.`)
   }
   if (doc.notes?.text) lines.push('', 'His notes:', doc.notes.text)
+  section('Follow-up mail already waiting for his press in the Outbox', page.drafts.map((draft) => `“${draft.subject}”${draft.to.length ? ` to ${draft.to.join(', ')}` : ''}`))
   if (doc.after) {
     lines.push('', 'Outcome:')
     section('Summary', doc.after.summary.map(lineWords))
@@ -69,15 +70,18 @@ export function briefMessage(page: PrepPage): string {
   ].join('\n\n')
 }
 
+/** One mail a meeting: a second follow-up drafts none beside the one the page already lists. */
+const MAIL = 'If the page lists no follow-up mail already waiting, draft one to the people with addresses using draft_mail. It waits for his press. Never send it.'
+
 export function followMessage(page: PrepPage, opts: { recording?: boolean; document?: boolean } = {}): string {
   return [
     pageWords(page),
     opts.document
       ? 'His notes are in a document that is being opened beside you. Call prep_read: it names the item. Read it with doc_read, and change nothing in it. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.'
       : opts.recording
-      ? 'The meeting’s recording or transcript is being opened beside you as a meeting, and transcribed on this host if it is a recording. Call prep_read: it names the meeting. Then read it with meeting_read, which waits while it is transcribed; if it says there is no recording yet, the file is still on its way, so read again. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Write the tasks with prep_follow_up alone: write no actions with meeting_notes, or each task would be suggested twice. Never call add_task.'
+      ? 'The meeting’s recording or transcript is being opened beside you as a meeting, and transcribed on this host if it is a recording. Call prep_read first: it waits until the file has arrived and names the meeting. Then read it with meeting_read, which waits while it is transcribed. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Write the tasks with prep_follow_up alone: write no actions with meeting_notes, or each task would be suggested twice. Never call add_task.'
       : 'Use his notes. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Never call add_task.',
-    'Draft one follow-up mail to the people with addresses using draft_mail. It waits for his press. Never send it.',
+    MAIL,
     'End with the outcome as your last message.'
   ].join('\n\n')
 }
@@ -88,7 +92,7 @@ export function followAgainMessage(page: PrepPage): string {
     'He asked for this meeting’s follow-up again. The page as it stands now:',
     pageWords(page),
     'Read the meeting beside you with meeting_read. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Write the tasks with prep_follow_up alone, and never call add_task.',
-    'If no follow-up mail to the people with addresses waits yet, draft one with draft_mail. It waits for his press. Never send it.',
+    MAIL,
     'End with the outcome as your last message.'
   ].join('\n\n')
 }

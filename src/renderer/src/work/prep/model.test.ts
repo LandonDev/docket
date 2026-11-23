@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyPrepDoc, type PrepEvent, type PrepPage } from "@shared/contract-work-prep";
-import { addedKey, addTasksLabel, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesLines, outcomeIsComing, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, failedWords, returnPicks, samePeople, threadStopped, timeWords, uploadPercent, whenLine } from "./model";
+import { addedKey, addTasksLabel, failedWhy, namesInvitee, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesLines, outcomeIsComing, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, failedWords, returnPicks, samePeople, threadStopped, timeWords, uploadPercent, whenLine } from "./model";
 
 /** A meeting's page in words (docs/agents/work-prep.md "The page"): the comma line, each row's second line and what trails it. */
 
@@ -27,6 +27,9 @@ describe("the line under the title", () => {
 
   it("drops the leave time once the meeting has begun, and a place that is only spaces", () => {
     expect(whenLine(event({ location: "  ", leaveAt: at(13, 40) }), at(14, 10))).toBe("Today, 2:00 to 2:45 PM");
+    // a place that is only the call's link is left to Files, which offers it as Join the call; a place with words stays
+    expect(whenLine(event({ location: "https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc" }), at(14, 10))).toBe("Today, 2:00 to 2:45 PM");
+    expect(whenLine(event({ location: "RecWell 204 or https://zoom.us/j/1" }), at(14, 10))).toBe("Today, 2:00 to 2:45 PM, RecWell 204 or https://zoom.us/j/1");
   });
 });
 
@@ -134,6 +137,17 @@ describe("who Add people can tick", () => {
     expect(returnPicks("Dana Reyes", 0, false)).toBeNull();
   });
 
+  it("knows a typed invitee for who they are: by their address, or by the name of one the page draws", () => {
+    const on = { invited: ["maya@x.test", "p13@x.test"], people: [{ name: "Maya Chen", address: "maya@x.test" }, { name: "Dana Reyes", added: true }] };
+    expect(namesInvitee(" Maya@X.test ", on)).toBe(true);
+    expect(namesInvitee("p13@x.test", on)).toBe(true);
+    expect(namesInvitee("maya  chen", on)).toBe(true);
+    // someone he added himself is not an invitee, and a new name is free
+    expect(namesInvitee("Dana Reyes", on)).toBe(false);
+    expect(namesInvitee("Jordan Ellis", on)).toBe(false);
+    expect(namesInvitee("  ", on)).toBe(false);
+  });
+
   it("knows a person by address, else by folded name, as the host does", () => {
     expect(addedKey({ name: "Dana", address: " Dana@X.test " })).toBe("dana@x.test");
     expect(addedKey({ name: "Dána  Reyes" })).toBe("~dana reyes");
@@ -176,6 +190,13 @@ describe("the header's verb", () => {
     expect(headVerb(page({ notesFile: unread, doc: { ...emptyPrepDoc(), notes: { text: "", at: 2, meetingItemId: "i1" } } }), over, idle)).toBe("addNotes");
     // words typed beside it are notes still
     expect(headVerb(page({ notesFile: unread, doc: { ...emptyPrepDoc(), notes: { text: "Dana drives.", at: 2, meetingItemId: "i1" } } }), over, idle)).toBe("followUp");
+    // so is his notes document, which a follow-up can still read
+    expect(headVerb(page({ notesFile: unread, doc: { ...emptyPrepDoc(), notes: { text: "", at: 2, meetingItemId: "i1", file: { at: "file", host: "box", path: "/w/Notes.docx" } } } }), over, idle)).toBe("followUp");
+    // the failure ends that run for the page at once, though its thread is still saying so
+    const running = page({ followSessionId: "f", followStartedAt: 2, followUntil: over + 60_000, notesFile: unread, doc: { ...emptyPrepDoc(), notes: { text: "", at: 2, meetingItemId: "i1" } } });
+    expect(headVerb(running, over, { ...idle, follow: "running" })).toBe("addNotes");
+    expect(headVerb(running, over, idle)).toBe("addNotes");
+    expect(outcomeIsComing(running, headVerb(running, over, { ...idle, follow: "running" }))).toBe(false);
     // a recording that reads, or is being read, is notes
     expect(headVerb(page({ notesFile: { kind: "meeting", title: "Staff sync.m4a", itemId: "i1" }, doc: { ...emptyPrepDoc(), notes: { text: "", at: 2, meetingItemId: "i1" } } }), over, idle)).toBe("followUp");
   });
@@ -239,12 +260,17 @@ describe("the outcome's words", () => {
     expect(notesLines({ doc: { ...emptyPrepDoc(), notes: { text: "n", at: 1 }, after } })).toBe(2);
   });
 
-  it("says a failed filing in a short word that always fits, with why and then the task beside it", () => {
+  it("says a failed filing in a short word that always fits, names the one task, and leaves why to each task's own row", () => {
     const tasks = [{ id: "s1", title: "Book the van" }, { id: "s2", title: "Order jerseys" }];
     const why = "LifeOS did not answer";
-    expect(failedWords([{ id: "s2", error: why }], tasks)).toEqual({ word: "A task was not added", detail: "LifeOS did not answer: “Order jerseys”" });
-    expect(failedWords([{ id: "gone", error: why }], tasks)).toEqual({ word: "A task was not added", detail: why });
-    expect(failedWords([{ id: "s1", error: why }, { id: "s2", error: "x" }], tasks)).toEqual({ word: "2 tasks were not added", detail: why });
+    expect(failedWords([{ id: "s2", error: why }], tasks)).toEqual({ word: "A task was not added", detail: "“Order jerseys”" });
+    expect(failedWords([{ id: "gone", error: why }], tasks)).toEqual({ word: "A task was not added" });
+    const two = [{ id: "s1", error: why }, { id: "s2", error: "That title is too long" }];
+    expect(failedWords(two, tasks)).toEqual({ word: "2 tasks were not added" });
+    // each row keeps its own cause
+    expect(failedWhy(two, "s1")).toBe(why);
+    expect(failedWhy(two, "s2")).toBe("That title is too long");
+    expect(failedWhy(two, "s3")).toBeUndefined();
   });
 });
 

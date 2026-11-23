@@ -320,12 +320,14 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
           }
         )
       : Promise.resolve(null),
-    row?.followSessionId
-      ? draftsOf(client, sector, row.followSessionId).catch(() => {
-          problems.push('drafts')
-          return []
-        })
-      : Promise.resolve([]),
+    // The mail of the thread that wrote the outcome, and of the page's thread now: a later follow-up hides neither.
+    Promise.all([...new Set([row?.doc.after?.by, row?.followSessionId].filter((id): id is string => !!id))].map((threadId) => draftsOf(client, sector, threadId))).then(
+      (lists) => lists.flat().filter((draft, i, all) => all.findIndex((d) => d.outboxId === draft.outboxId) === i),
+      () => {
+        problems.push('drafts')
+        return [] as PrepDraft[]
+      }
+    ),
     aheadOf(ctx, workspaceId),
     clashLeave(ctx, event._id),
     notesFileOf(ctx, row?.doc.notes ?? null, row?.followSessionId)

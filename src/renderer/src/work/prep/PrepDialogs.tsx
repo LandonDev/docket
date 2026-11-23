@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PrepAddedPerson, PrepPage } from "@shared/contract-work-prep";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Search } from "../../chrome/icons";
@@ -17,7 +17,7 @@ import { Face } from "../mail/face";
 import { findPeople, pictureOf, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import { dropNotes, followUpFromFile, followUpPrep, heldNotes, holdNotes, keepPrepNotes, loadPrep, notesDocPrep, openWorkspaceFile, setPrepPeople } from "./data";
-import { addedKey, NOTES_FILE_ACCEPT, pickable, returnPicks, samePeople, threadStopped, uploadPercent } from "./model";
+import { addedKey, namesInvitee, NOTES_FILE_ACCEPT, pickable, returnPicks, samePeople, threadStopped, uploadPercent } from "./model";
 
 /**
  * The page's dialogs (docs/agents/work-prep.md "Dialogs"), a chunk of their
@@ -78,7 +78,8 @@ export function PeopleForm({
     if (!pending) setPicked((now) => (now.some((p) => addedKey(p) === addedKey(person)) ? now.filter((p) => addedKey(p) !== addedKey(person)) : [...now, person]));
   };
   const typed = query.trim();
-  const canName = typed.length > 0 && !all.some((p) => p.name.toLowerCase() === typed.toLowerCase());
+  // A name he may add: not one the list already holds, and not someone the calendar lists, typed by their name or their address.
+  const canName = typed.length > 0 && !all.some((p) => p.name.toLowerCase() === typed.toLowerCase()) && !namesInvitee(typed, page);
   const addNamed = () => {
     if (pending) return;
     const person = { name: typed };
@@ -193,7 +194,7 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
   const unsaved = heldNotes(workspaceId, eventId);
   const before = page.doc.notes?.text ?? "";
   const [text, setText] = useState(unsaved?.text ?? before);
-  const [pending, setPending] = useState<"follow" | "close" | null>(null);
+  const [pending, setPending] = useState<"follow" | "document" | "close" | null>(null);
   const [upload, setUpload] = useState<{ name: string; progress: { sent: number; total: number } | null } | null>(null);
   const [error, setError] = useState<string | null>(unsaved?.error ?? null);
   // What the host holds: a change from it is what a close has to keep.
@@ -214,10 +215,10 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
     setError(why);
     return why;
   };
-  /** Keeps what he typed, then runs the follow-up; a failure is the dialog's own line. */
-  const run = (work: () => Promise<unknown>, done: () => void) => {
+  /** Keeps what he typed, then runs the follow-up (or makes the document); a failure is the dialog's own line. */
+  const run = (work: () => Promise<unknown>, done: () => void, kind: "follow" | "document" = "follow") => {
     setError(null);
-    setPending("follow");
+    setPending(kind);
     keep()
       .then(work)
       .then(() => {
@@ -243,19 +244,31 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
    * Escape, the backdrop and the corner's close leave at once (the shell plays their exit first). What he typed is
    * sent then; if the host does not take it, it is held for this meeting and the dialog opens again on it.
    */
+  const sendLate = (typed: string) =>
+    void keepPrepNotes(env, workspaceId, eventId, typed).then(
+      () => dropNotes(workspaceId, eventId),
+      (err: unknown) => {
+        holdNotes(workspaceId, eventId, typed, `The notes were not kept: ${refusalWords(err) || "the host did not answer"}`);
+        reopenNotes.current?.(workspaceId, eventId);
+      },
+    );
+  const left = useRef(false);
   const closed = () => {
-    if (changed()) {
-      const typed = text;
-      keepPrepNotes(env, workspaceId, eventId, typed).then(
-        () => dropNotes(workspaceId, eventId),
-        (err: unknown) => {
-          holdNotes(workspaceId, eventId, typed, `The notes were not kept: ${refusalWords(err) || "the host did not answer"}`);
-          reopenNotes.current?.(workspaceId, eventId);
-        },
-      );
-    }
+    if (changed()) sendLate(text);
+    left.current = true;
     onClose();
   };
+  // The page can go from under the dialog (he opens another view, or another meeting) with no close of its own: what
+  // he typed is sent then as a close sends it, and held for this meeting's page if the host does not take it.
+  const latest = useRef(text);
+  useEffect(() => void (latest.current = text));
+  useEffect(
+    () => () => {
+      if (!left.current && latest.current.trim() !== kept.current.trim()) sendLate(latest.current);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the dialog is one meeting's for its whole life (it is keyed by the event)
+    [],
+  );
   return (
     <Modal onClose={closed} title="Notes" size="md" busy={pending !== null} data-prep-dialog="notes">
       <NotesForm
@@ -272,7 +285,7 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
           run(() => followUpFromFile(env, workspaceId, eventId, file, { onProgress: (progress) => setUpload({ name: file.name, progress }), restart, typed: text }), done);
         }}
         // The document is his to write in: it opens beside a new thread, and the page keeps it as the notes.
-        onDocument={(done) => run(async () => openWorkspaceFile(env, await notesDocPrep(env, workspaceId, eventId)), done)}
+        onDocument={(done) => run(async () => openWorkspaceFile(env, await notesDocPrep(env, workspaceId, eventId)), done, "document")}
       />
     </Modal>
   );
@@ -296,8 +309,8 @@ export function NotesForm({
 }: {
   text: string;
   setText: (text: string) => void;
-  /** the work in flight: a follow-up starting (its button spins), or a close that is keeping his words (Cancel spins) */
-  pending: "follow" | "close" | null;
+  /** the work in flight: a follow-up starting (its button spins), the notes document being made (its verb spins), or a close that is keeping his words (Cancel spins) */
+  pending: "follow" | "document" | "close" | null;
   upload: { name: string; progress: { sent: number; total: number } | null } | null;
   error: string | null;
   /** Cancel: keep what he typed, then `done` */
@@ -360,7 +373,7 @@ export function NotesForm({
                 Use a recording or transcript
               </Button>
               <Button variant="ghost" size="xs" className="font-normal text-muted-foreground" disabled={busy} onClick={() => onDocument(done)}>
-                Write in a document
+                <BusyLabel busy={pending === "document"} label="Write in a document" />
               </Button>
             </span>
           )}

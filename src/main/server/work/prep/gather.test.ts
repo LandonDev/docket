@@ -322,6 +322,23 @@ describe('follow-up drafts', () => {
     expect(lifeos.called('compose:send')).toEqual([])
   })
 
+  it('keeps the mail of the thread that wrote the outcome when a later follow-up takes the page’s thread, each draft once', async () => {
+    const { ctx, lifeos, store } = world()
+    const after = { summary: [{ text: 'Settled.' }], decisions: [], questions: [], tasks: [], at: NOW, by: 'follow-1' }
+    store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => ({ ...doc, after }), NOW, { follow: 'follow-2' })
+    const draft = { status: 'draft', sector: 'purdue', message: { subject: 'Staff sync follow-up', to: [{ address: 'tom@x.test' }] } }
+    lifeos.outbox.push({ ...draft, _id: 'first', origin: { threadId: 'follow-1' } }, { ...draft, _id: 'second', origin: { threadId: 'follow-2' } })
+    expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page.drafts.map((d) => d.outboxId)).toEqual(['first', 'second'])
+    // the same thread wrote it and holds the page: asked once
+    store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW, { follow: 'follow-1' })
+    lifeos.calls.length = 0
+    expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page.drafts.map((d) => d.outboxId)).toEqual(['first'])
+    expect(lifeos.called('compose:byOrigin')).toEqual([{ threadId: 'follow-1' }])
+    // and it stays once the page has let go of every thread
+    store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW, { follow: null })
+    expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page.drafts.map((d) => d.outboxId)).toEqual(['first'])
+  })
+
   it('names drafts in problems if LifeOS cannot read them and still shows the page', async () => {
     const { ctx, lifeos, store } = world()
     store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: NOW, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => doc, NOW, { follow: 'follow-1' })

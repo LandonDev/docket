@@ -96,7 +96,9 @@ export const PrepDocSchema = z.object({
       decisions: z.array(PrepLineSchema).max(PREP_LINES_MAX),
       questions: z.array(PrepLineSchema).max(PREP_LINES_MAX),
       tasks: z.array(PrepSuggestionSchema).max(PREP_TASKS_MAX),
-      at: z.number()
+      at: z.number(),
+      /** the thread that wrote it: its follow-up mail stays on the page when a later follow-up takes the page's thread */
+      by: z.string().optional()
     })
     .nullable()
 })
@@ -104,7 +106,7 @@ export interface PrepDoc {
   people: PrepAddedPerson[]
   brief: { matters: PrepLine[]; agreed: PrepLine[]; files: PrepFileRef[]; at: number; by: string } | null
   notes: { text: string; at: number; file?: CanvasSource; meetingItemId?: string } | null
-  after: { summary: PrepLine[]; decisions: PrepLine[]; questions: PrepLine[]; tasks: PrepSuggestion[]; at: number } | null
+  after: { summary: PrepLine[]; decisions: PrepLine[]; questions: PrepLine[]; tasks: PrepSuggestion[]; at: number; by?: string } | null
 }
 export const emptyPrepDoc = (): PrepDoc => ({ people: [], brief: null, notes: null, after: null })
 

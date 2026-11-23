@@ -127,7 +127,7 @@ const FILED: PrepPage = {
 /** The notes are a recording: it is named on the page and opens beside its thread, while the thread still reads it. */
 const RECORDED: PrepPage = { ...FACTS, rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: LATER - 300_000, meetingItemId: "it1" } }, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync 2026-11-23.m4a" } };
 
-/** The same recording once this host could not read it: the row says why, and the header asks for notes again. */
+/** The same recording once this host could not read it: the row says why, and the header asks for notes again at once, though its thread is still saying so. */
 const UNREAD: PrepPage = { ...RECORDED, notesFile: { ...RECORDED.notesFile!, error: "The transcriber is not installed on this host." } };
 
 const none = () => {};
@@ -227,7 +227,7 @@ export function PrepPreview({ state = "facts" }: { state?: string }) {
   const page =
     state === "recording" ? RECORDED : state === "recording-failed" ? UNREAD : state === "nobody" ? NOBODY : state === "partial" ? { ...FACTS, tasks: [], problems: ["tasks" as const] } : state === "preparing" ? PREPARING : state === "briefed" ? BRIEFED : state === "filed" ? FILED : after ? AFTER : FACTS;
   const now = after ? LATER : NOW;
-  const verb = headVerb(page, now, { brief: state === "preparing" ? "running" : "idle", follow: state === "recording" ? "running" : "idle" });
+  const verb = headVerb(page, now, { brief: state === "preparing" ? "running" : "idle", follow: state.startsWith("recording") ? "running" : "idle" });
   return (
     <Frame
       title={page.event.title}

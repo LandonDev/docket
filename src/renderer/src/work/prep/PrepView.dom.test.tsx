@@ -62,6 +62,7 @@ vi.mock("../../lib/connection", async (original) => ({
         if (method === "work.prep.people") host.page = { ...(host.page as PrepPage), rev: (host.page as PrepPage).rev + 1, doc: { ...emptyPrepDoc(), people: params.people } };
         if (method === "work.prep.followUp" && params.recording) return host.busyFollow ? { sessionId: "t-follow" } : { sessionId: "t-follow", itemId: "it1" };
         if (method === "work.meetings.start") return { meeting: host.meeting };
+        if (method === "work.prep.notesDoc" && host.slow) await host.slow;
         if (method === "work.prep.notesDoc") {
           const was = host.page as PrepPage;
           const source = { at: "file" as const, host: "box", path: "/work/purdue/Staff sync notes.docx" };
@@ -162,7 +163,8 @@ const mount = async () => {
   openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" });
   const view = render(
     <>
-      <div data-testid="title">
+      {/* The frame's own heading, where it puts a caret left on nothing (WorkViewPage). */}
+      <div data-testid="title" data-view-heading="" tabIndex={-1}>
         <Title {...props()} />
       </div>
       <div data-testid="head">
@@ -323,6 +325,36 @@ describe("what does not load", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Staff sync");
   });
 
+  it("hands the caret on after a Retry takes its own button away: to the view's heading when the read worked, to Retry when the whole page failed again", async () => {
+    vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => (fn(0), 0));
+    host.fails = "The host did not answer in time";
+    await mount();
+    // the whole page fails again: the bones took the button's place, and Retry is back under the caret
+    const first = screen.getByRole("button", { name: "Retry" });
+    first.focus();
+    await act(async () => fireEvent.click(first));
+    await act(async () => {});
+    expect(screen.getByText("This page did not load")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Retry" }));
+    // it works: the page is there, and the caret is on the view's heading, never on nothing
+    host.fails = null;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await act(async () => {});
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Staff sync");
+    expect(document.activeElement).toBe(screen.getByTestId("title"));
+    // the same for the state line's Retry over a page still shown
+    host.fails = "The host did not answer in time";
+    await push({ push: "work.prep", workspaceId: "ws", eventId: "ev1", rev: 4 });
+    const line = screen.getByRole("button", { name: "Retry" });
+    line.focus();
+    host.fails = null;
+    await act(async () => fireEvent.click(line));
+    await act(async () => {});
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId("title"));
+    vi.unstubAllGlobals();
+  });
+
   it("says a refresh failed while the page it had still shows, and Retry spins until the read is in", async () => {
     await mount();
     host.fails = "The host did not answer in time";
@@ -468,6 +500,21 @@ describe("Add people", () => {
     const dialog = await open();
     expect(dialog.getByRole("checkbox", { name: "Dana Reyes" })).toBeTruthy();
     expect(screen.getByRole("dialog", { name: "Add people" }).querySelector("[aria-busy]")).not.toBeNull();
+  });
+
+  it("offers no Add by name for someone the calendar already lists, typed by their address or their name", async () => {
+    const dialog = await open();
+    const search = dialog.getByLabelText("Search people");
+    for (const typed of ["maya@x.test", "Maya Chen", "out@elsewhere.test"]) {
+      fireEvent.change(search, { target: { value: typed } });
+      expect(dialog.queryByRole("button", { name: /by name/ }), typed).toBeNull();
+      expect(dialog.getByText("No matches")).toBeTruthy();
+      // and Return adds nothing
+      fireEvent.keyDown(search, { key: "Enter" });
+      expect(dialog.queryAllByRole("checkbox"), typed).toHaveLength(0);
+    }
+    fireEvent.change(search, { target: { value: "Jordan Ellis" } });
+    expect(dialog.getByRole("button", { name: "Add “Jordan Ellis” by name" })).toBeTruthy();
   });
 
   it("holds the list still while Save is on its way: no tick and no typed name moves it, and the search keeps its caret", async () => {
@@ -792,9 +839,12 @@ describe("after the meeting", () => {
     await mount();
     fireEvent.click(section("To do").getByRole("button", { name: "Tick all" }));
     await act(async () => fireEvent.click(section("To do").getByRole("button", { name: "Add 2 tasks" })));
-    // a short word that always fits, then why and the task, which give way from the end in a narrow window
+    // a short word that always fits and the task's name in the line; why is on the task's own row, where it wraps
     expect(screen.getByRole("status").textContent).toContain("A task was not added");
-    expect(screen.getByRole("status").textContent).toContain("LifeOS did not answer: “Send Maya the seat list”");
+    expect(screen.getByRole("status").textContent).toContain("“Send Maya the seat list”");
+    expect(screen.getByRole("status").textContent).not.toContain("LifeOS did not answer");
+    expect(section("To do").getAllByRole("listitem")[0]!.textContent).toContain("LifeOS did not answer");
+    expect(section("To do").getAllByRole("listitem")[1]!.textContent).not.toContain("LifeOS did not answer");
     expect(section("To do").getAllByRole("listitem").map((r) => r.getAttribute("data-task-state"))).toEqual(["proposed", "filed"]);
     // Retry owns it: its tick is spent, it cannot be ticked again, and no second button says the same thing
     const box = () => section("To do").getByRole("checkbox", { name: "Send Maya the seat list" });
@@ -1028,6 +1078,33 @@ describe("after the meeting", () => {
     expect(screen.queryByRole("dialog", { name: "Notes" })).toBeNull();
   });
 
+  it("keeps what he typed when the page goes from under the dialog, and opens it again on his words when the host did not take them", async () => {
+    await mount();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
+    const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: "Dana drives the van." } });
+    // he opens another view with the dialog still open: no close of its own runs
+    await act(async () => openWorkView({ workspaceId: "ws", view: "agenda" }));
+    await act(async () => {});
+    expect(host.asked.at(-1)).toEqual({ method: "work.prep.notes", params: { workspaceId: "ws", eventId: "ev1", text: "Dana drives the van." } });
+    // typed again, and this time the host refuses: the words wait for him on this meeting's page
+    await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));
+    await act(async () => {});
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await more("Edit notes…");
+    const again = within(await screen.findByRole("dialog", { name: "Notes" }));
+    fireEvent.change(again.getByLabelText("Notes"), { target: { value: "Dana drives the van. Tom brings the forms." } });
+    host.fails = "The host did not answer in time";
+    await act(async () => openWorkView({ workspaceId: "ws", view: "agenda" }));
+    await act(async () => {});
+    host.fails = null;
+    await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));
+    await act(async () => {});
+    const back = within(await screen.findByRole("dialog", { name: "Notes" }));
+    expect((back.getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Dana drives the van. Tom brings the forms.");
+    expect(back.getByText(/The notes were not kept/)).toBeTruthy();
+  });
+
   it("never carries a dialog to another meeting's page", async () => {
     await mount();
     await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
@@ -1156,6 +1233,23 @@ describe("notes written in a document", () => {
     // the row opens the document again until a follow-up thread holds it
     fireEvent.click(section("Notes").getByRole("button", { name: /Staff sync notes/ }));
     await vi.waitFor(() => expect(outside.opened).toHaveLength(2));
+  });
+
+  it("spins on Write in a document while the document is made, never on Follow up", async () => {
+    await mount();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
+    const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: "Dana drives the van." } });
+    let answer: () => void = () => {};
+    host.slow = new Promise<void>((resolve) => (answer = resolve));
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Write in a document" })));
+    const busy = (name: string) => dialog.getByRole("button", { name }).querySelector("[data-slot=busy-label]")?.getAttribute("data-busy") ?? null;
+    expect(busy("Write in a document")).toBe("true");
+    expect(busy("Follow up")).toBeNull();
+    expect((dialog.getByRole("button", { name: "Follow up" }) as HTMLButtonElement).disabled).toBe(true);
+    host.slow = null;
+    await act(async () => answer());
+    await act(async () => {});
   });
 
   it("says why in the dialog when the host has no template for it", async () => {

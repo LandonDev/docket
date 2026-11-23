@@ -7,7 +7,7 @@ import { eventOf, fileTitle, gather, meetingOf, notesFileOf, standing, startDoc,
 import { pagePushed, writePage } from './page'
 import { briefMessage, briefTitle, followAgainMessage, followMessage, followTitle } from './prompts'
 import { changeInOrder } from './serial'
-import { personKey } from './series'
+import { foldTitle, personKey } from './series'
 import { ensurePrepTables, PrepStore } from './store'
 import { prepPreamble, prepTools } from './tools'
 import { workspaceSector } from './workspace'
@@ -30,9 +30,13 @@ export function mustBePerson(by: Caller): void {
 async function setPeople(ctx: WorkCtx, workspaceId: string, eventId: string, people: PrepAddedPerson[]): Promise<PrepPage> {
   const event = await eventOf(ctx, workspaceSector(ctx, workspaceId), eventId)
   const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
-  // Someone the calendar itself lists is on the meeting already: never kept as his addition, which would follow the series to a day they are not invited.
-  const seen = new Set<string>((event.attendees ?? []).map((a) => a.address.trim().toLowerCase()).filter(Boolean))
+  // Someone the calendar itself lists is on the meeting already: never kept as his addition, which would follow the
+  // series to a day they are not invited. Typed in by their name or their address alone, they are that invitee still.
+  const attendees = event.attendees ?? []
+  const seen = new Set<string>(attendees.map((a) => a.address.trim().toLowerCase()).filter(Boolean))
+  const invitedNames = new Set(attendees.flatMap((a) => [a.address, a.name ?? '']).map(foldTitle).filter(Boolean))
   const added = people.filter((p) => {
+    if (!p.address && invitedNames.has(foldTitle(p.name))) return false
     const key = personKey(p)
     return !seen.has(key) && Boolean(seen.add(key))
   })
@@ -106,27 +110,34 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
     const notes = kept.text || kept.file ? kept : null
     page = { ...page, notesFile: await notesFileOf(ctx, notes, row?.followSessionId), doc: { ...page.doc, notes } }
   }
-  if (follow && !page.doc.notes && !recording) throw new Error('Add notes first.')
   const existing = follow ? row?.followSessionId : row?.briefSessionId
   const startedAt = follow ? row?.followAt : row?.briefAt
   const writtenAt = follow ? page.doc.after?.at : page.doc.brief?.at
   const now = Date.now()
-  // A thread the window knows has stopped, or one whose recording never arrived, is not waited on.
-  if (!opts.restart && !stale && existing && startedAt != null && now - startedAt < PREP_WORKING_MS && (writtenAt === undefined || writtenAt < startedAt)) {
+  if (follow && !page.doc.notes && !recording) {
+    // An empty meeting was all the notes there were (the window's word that the file never came did not reach this
+    // host): the page stops calling it notes, and lets go of the thread that waits on it, so its header asks for notes.
+    if (stale && heldIs === 'empty') writePage(ctx, workspaceId, event, last, page.doc, now, existing && (writtenAt === undefined || (startedAt != null && writtenAt < startedAt)) ? { follow: null } : undefined)
+    throw new Error('Add notes first.')
+  }
+  // A thread the window knows has stopped, one whose recording never arrived, and one whose recording could not be
+  // read (it has read that failure, and a new file is on its way) are not waited on.
+  const replaced = !!recording && heldIs === 'unread'
+  if (!opts.restart && !stale && !replaced && existing && startedAt != null && now - startedAt < PREP_WORKING_MS && (writtenAt === undefined || writtenAt < startedAt)) {
     // The thread still at work keeps its own meeting. A second file goes there only while that meeting is still empty
     // (the first never arrived): one that holds a file is being read, and nothing is put in its place.
     return { sessionId: existing, ...(held && (!recording || heldIs === 'empty') ? { itemId: held } : {}) }
   }
   if (follow && !recording && existing && held && heldIs === 'reads' && ctx.canvas.get(held)?.sessionId === ctx.canvas.paneOf(existing)) {
     // The notes are a recording beside the thread that stopped. A meeting is read only from its own pane, so the same
-    // thread is asked again; a new one could not read it.
+    // thread is asked again. A new one could not read it, so a thread that cannot be woken is said, and nothing changes.
     try {
       await ctx.threads.resume(existing, followAgainMessage(page))
-      writePage(ctx, workspaceId, event, last, page.doc, now, { follow: existing })
-      return { sessionId: existing, itemId: held }
     } catch (err) {
-      ctx.log(`prep: the follow-up thread did not take its meeting again, so a new one starts: ${errorText(err)}`)
+      throw new Error(`The follow-up thread could not be started again (${errorText(err)}). Open it from More.`)
     }
+    writePage(ctx, workspaceId, event, last, page.doc, now, { follow: existing })
+    return { sessionId: existing, itemId: held }
   }
   const title = page.event.title
   const notesDoc = page.doc.notes?.file
@@ -134,7 +145,8 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
     workspaceId,
     title: follow ? followTitle(title) : briefTitle(title),
     about: { kind: 'event', label: title, ref: { at: 'lifeos', table: 'events', id: eventId } },
-    text: follow ? followMessage(page, { recording: !!recording, document: !recording && notesDoc?.at === 'file' }) : briefMessage(page)
+    // A new recording gets a meeting of its own beside the new thread, which `prep_read` names: the one it takes the place of is not said to be there.
+    text: follow ? followMessage(recording ? { ...page, notesFile: null } : page, { recording: !!recording, document: !recording && notesDoc?.at === 'file' }) : briefMessage(page)
   })
   if (!recording) {
     writePage(ctx, workspaceId, event, last, page.doc, now, { [kind]: sessionId })
