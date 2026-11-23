@@ -75,7 +75,7 @@ Imports are by subpath; there is no root export: `work-kit/ui/<name>`
 ## The guard
 
 scripts/workKitPin.test.ts checks the pin's form and commit against bun.lock,
-the interface version this tree was built for (`WORK_KIT_API` 2), the Swift
+the interface version this tree was built for (`WORK_KIT_API` 3), the Swift
 revision in ios/TempCode/project.yml, the builder
 rule, the exclude, that `work-kit-sources.css` is what the generator writes
 for today's imports, and a render of `KitProbe` from
@@ -88,8 +88,16 @@ runs the same guard on its own lock.
 
 ## Bumping the pin
 
-A bump is one commit that changes package.json and bun.lock and nothing else:
-push and tag (`vN`) the work-kit commit, set the sha, `bun install`. On a rebase
-conflict in bun.lock, take the incoming side and run `bun install` again. While
-iterating, rsync work-kit's `src` into node_modules/work-kit as with aliax-core,
-then commit, bump and install for real.
+A bump is one commit that changes three files: package.json, bun.lock and
+`ios/TempCode/project.yml` (the phone's WorkKit `revision:` is the same commit,
+and the pin test holds them equal). Push and tag (`vN`) the work-kit commit, set
+the sha in both, `bun install`. When the new commit adds a file the renderer's
+imports reach, `bun scripts/gen-work-kit-sources.ts` writes
+`work-kit-sources.css` again and that file rides in the same commit. A bump that
+moves Swift (LifeKit) is parse-checked for the phone on the box
+(`swiftc -parse` from `~/toolchains`) or its commit says it was not. The pin
+moves forward only. On a rebase conflict in bun.lock, take the incoming side and
+run `bun install` again; after the merge, `bun install --frozen-lockfile` in the
+main checkout. While iterating, rsync work-kit's `src` into a node_modules of
+your own (never the main checkout's link) as with aliax-core, then commit, bump
+and install for real.
