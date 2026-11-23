@@ -93,7 +93,6 @@ export const GoogleEditSchema = z.discriminatedUnion('app', [
 ])
 export type GoogleEdit = z.infer<typeof GoogleEditSchema>
 
-const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 /** How far a replace-all reaches, first, when it is more than one box: "3 boxes, ". */
 const reach = (e: GoogleEdit['edits'][number]): string => ('boxes' in e && e.boxes && e.boxes > 1 ? `${e.boxes} boxes, ` : '')
 const editWords = (e: GoogleEdit['edits'][number]): string =>
