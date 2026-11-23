@@ -22,10 +22,19 @@ ctx.tell({
   key: `clash:${id}`              // the same key replaces the same row
 })
 ctx.tell.done(key)                // no longer true: the row goes, a notice of it is withdrawn
+ctx.tell.only(prefix, keys)       // of the rows whose key starts with prefix, only these are still true: the rest are done
 ctx.tell.quiet(sessionId)         // this thread started on its own: its done, failed and stuck wait for the digest
 ```
 
 - A caller states a deadline, never a volume. There is no "loud" flag.
+- A title is a whole sentence with its times written out ("Budget review
+  starts at 2:00 PM", never "in 10 min"): the row is read hours later, in
+  the list. A time is written in the digest's zone (`timeIn`, `dateIn` in
+  clock.ts), never the host's: the box may run in UTC.
+- A kind whose teller names no target is given one on the digest's side
+  where it is known (`defaultOpen` in rule.ts: the weekly review's page on
+  the week its key names), and a kind no sibling lists yet is given its
+  group there too (`DIGEST_TELLS`); a sibling's own listing wins.
 - `WorkModule.tells?: TellKind[]` lists each kind with its group (`held`,
   `ending`, `meetings`, `clashes`, `results`, `people`, `review`,
   `system`). A tell of a kind no module lists is logged once and kept
@@ -221,23 +230,94 @@ same words, so it is not news again.
   notes" (the list names no guest), opens Docs.
 - `capture`: captures waiting in Life's "Unsorted", one row a day,
   `capture-unsorted:<day>`, "4 captures to sort", opening Tasks in the
-  Life workspace. Tells nothing yet: the capture pillar has no method that
-  counts them (`unsortedTell` is the row it will make).
+  Life workspace, at digest time. The capture pillar files and reads
+  nothing back, so the count is read where the captures are: the host's own
+  LifeOS session lists Life's open tasks (`tasks:list {sector: 'life'}`)
+  and counts those whose source channel is "Unsorted", the channel
+  capture/file.ts files them under.
+- `prep.starting` (prep, which tells nothing itself): each minute,
+  `work.prep.upcoming` for the next ten minutes; a meeting that begins
+  within them is "Budget review starts at 2:00 PM" with its start as `by`,
+  so it interrupts; `prep:<eventId>:<startsAt>`, the same on every host
+  that holds the job, opening the meeting's page. Once it has begun it
+  leaves the read, and its row and toast go (`prefix: 'prep:'`).
+- `prep.ready` (prep): at digest time, a brief that is ready for a meeting
+  in the next day, "Prep is ready for Budget review";
+  `prep-ready:<eventId>:<day>`. It waits.
 - `winvm`: a failure only he can fix, from `work.winvm.state` each 5
   minutes, under `winvm:`. Only a setup that failed before it made the disk
   (`none` with an `error`) is told, `winvm:setup`, its reason the detail,
   opening Settings → Work; a later setup step, a restore point and a wake
   that fail leave the same bare `error`, which the state does not place.
 
+## The gate
+
+`work/digest/gate.ts` `makeGate`, handed to the notifier
+(`Notifier.setGate`) at the first look that finds it (the notifier is built
+late in boot) and taken away when Work goes off. For a root Work thread
+that started on its own, `finished`, `failed` and `stuck` are not sent:
+each becomes a tell (`routines.done`, `routines.failed`, `routines.stuck`,
+key `thread:<id>`, `open: {thread}`, the title the thread's and the detail
+the notice's body), group `results`.
+
+- "On its own" is a thread with a `routineRunId` whose run he did not
+  start with Run now, or one in `work_digest_quiet` (`ctx.tell.quiet`). The
+  cause of a run is read through the routines module's own methods
+  (`runPressed`: `work.routines.list` for the thread's workspace, then
+  `work.routines.runs` a routine, each run asked once), so the gate
+  answers a promise; `RUN_NOW_CAUSE` is the engine's own word and a test
+  holds the two together.
+- `needs_you` passes: a question or an approval reaches him at once with
+  Allow and Deny (`ROUTINE_ASKS_WAIT` in rule.ts flips that). A held act's
+  notice is the Outbox's own tell and passes.
+- A code thread, a subagent and a thread he started by hand are never
+  touched. When a run's cause cannot be learned the notice goes through.
+  With Work off, or no gate set, the notifier is as it was.
+
+## What the Outbox tells
+
+docs/agents/work-outbox.md "How he is told": `outbox.held` (waits unless
+its kind has a clock, `ActKindDef.by`), `outbox.failed` (interrupts while
+fresh), `outbox.offer` (waits), kept in step by `ctx.tell.only`.
+
+## Tonight's builds
+
+As found on master at 06:00 EST on 2026-11-23. Clashes (`clashes.new`,
+`by` only for a clash today) and money (`money.confirm`) tell for
+themselves, with their kinds listed. Review tells `review.ready` with no
+target and lists no kind: the digest gives it both. Prep hands a read: the
+two sources above. Messages was not on master; `messages.new` is given its
+group for when it lands.
+
 ## The swap for Today
 
-`digestOpensPort` in `src/renderer/src/lib/workSwitch.ts` is the whole
-seam: the day's notice opens what is registered there, else the digest's
-own list.
+The day's notice opens Today once Today is there, else the digest's own
+list (`digestOpens` in DigestHost.tsx): the page registered in
+`digestOpensPort` (src/renderer/src/lib/workSwitch.ts), else Today itself
+once its row is on the rail (`workPlaceRow('today')`), else the sheet.
+Today reads each pillar itself and does not draw `work.digest.list`. What
+no section of Today reads, the digest adds through Today's own seam:
+`src/renderer/src/work/digest/today.ts` is a `TodaySource` with no section
+of its own, listed in `TODAY_SOURCES`; its rows go in Today's `also`
+section, from today's digest and what was told since, in the groups
+`results`, `ending` and `system` and a guest's edit, less what Money shows
+itself (`money.confirm`); each row's press is the tell's own target
+(`openTell`). The sheet stays as the record of earlier days, opened from
+Settings and Go → Digest. Today has no phone page, so the phone keeps its
+own screen.
 
-## Built so far
+## Proofs
 
-D0: the seam, the rule, the ledger, the day, the wire. D1: the notices to
-the phone. D2: the desktop's toasts, list, settings and system
-notification. Nothing calls `ctx.tell` but tests yet, so the only things
-he sees are the Digest section in Settings → Work and Go → Digest.
+- `bun scripts/proof-bun.ts scripts/proof-digest.ts`: in process, a made-up
+  Monday across two jobs through the real notifier, gate, deliverer,
+  ledger, Outbox tells and lapses source: two held items wait, an invite
+  for 9:30 the next morning interrupts on its thread, a routine's run that
+  ends is kept from the phone while his own thread's Done goes, a sign-in
+  on its last day interrupts as a notice with no thread, and at 8:00 one
+  digest goes out for three things in two jobs; never twice.
+- `env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-digest.ts --out <dir>`
+  (after `electron-vite build`): an isolated instance under xvfb, a fake
+  add-on whose calls are held, the digest set a minute ahead: the day's
+  toast, the list, a row's press landing on that item in the Outbox, a
+  failed send interrupting, the Settings section; pictures in dark and
+  light.

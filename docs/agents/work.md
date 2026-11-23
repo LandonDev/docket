@@ -330,6 +330,8 @@ zod schema beside each type a request carries.
 | `scope.ts` | `WorkScope`, `WorkspaceWorkSettings`, `WorkSettings` and their parsers |
 | `tools.ts` | `WorkToolOf`, `WorkToolResult`, `WorkToolListing`, `workToolId`, `workToolNameProblem` |
 | `wire.ts` | `request`, `MethodsOf`, `CapsOf`, `RelayOf`, `pillarOfMethod`, `pillarMethodProblem`, `isWorkMethod` |
+| `tell.ts` (imported by its own path, not through the barrel) | `Tell`, `TellRow`, `TellOpen`, `TellKind`, `TELL_GROUPS`, `TellGroup`, `TELL_LEVELS`, `TellLevel`, `NoticeWork`: the one way a pillar tells him something ([work-digest.md](work-digest.md)) |
+| `digest.ts` (no zod: the first paint may read it) | the digest's words: `GROUP_NAMES`, `LEVEL_NAMES`, `digestLine`, `nowLine`, `jobsLine` |
 
 The server's own are in `src/main/server/work/modules.ts`, since they hold
 the database: `WorkModule`, `WORK_MODULES`, `Caller`, `WorkCtx`, `ToolCtx`,
@@ -516,6 +518,18 @@ owns (each is built now); its owner fills that file and edits nothing else:
 | `results` | work/outbox/results.ts (and `ensureResults`, which the outbox module's `ensure` calls) | 14 |
 | `convert` | work/formats/jobs.ts (built: [work-formats.md](work-formats.md)) | 15 |
 | `service` | work/service/ctx.ts (built: [work-service.md](work-service.md)) | 18 |
+| `tell` (with `done`, `only`, `quiet`) | work/digest/ctx.ts (built: [work-digest.md](work-digest.md)) | round 3 |
+
+**Telling him.** A pillar never raises a toast, a system notification, a
+phone push, a badge or a sound for news that arrives by itself. It calls
+`ctx.tell({kind, workspaceId, title, detail?, open?, by?, key?})` and lists
+the kind on its module (`tells: TellKind[]`, each with one of the eight
+groups). It states a deadline (`by`), never a volume: the digest's rule
+decides whether the tell interrupts or waits for the day's one notice.
+`ctx.tell.done(key)` takes it back, `ctx.tell.only(prefix, keys)` keeps a
+set in step, and `ctx.tell.quiet(sessionId)` marks a thread the pillar
+started on its own, so its done, failed and stuck wait for the digest too.
+A toast that answers his own press is not news and stays where it is.
 
 One part adds no member: `routines/host.ts` keeps the host handles the
 routines engine needs and the context does not carry (the add-on host's own
