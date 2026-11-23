@@ -435,6 +435,37 @@ describe("Start places", () => {
     expect((within(ref).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("lets an address he changed by a space alone give way to a new one from elsewhere: a switch Save sends the switch alone", async () => {
+    const view = render(<StartPlacesSection environmentId="box" />);
+    const dialog = await open("Change Ref");
+    const field = () => within(screen.getByRole("dialog")).getByLabelText("Address") as HTMLInputElement;
+    // A space after the stored address, as while typing: kept in the field, and no change to save.
+    fireEvent.change(field(), { target: { value: "2 Gym Ln " } });
+    expect(field().value).toBe("2 Gym Ln ");
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    // Another window gives Ref a new start: the draft was never a change, so the field follows.
+    lifeos.places = { ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "ref" ? { ...j, address: "7 Arena Way", state: "looking" as const } : j)) };
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(field().value).toBe("7 Arena Way");
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("switch"));
+    await save(screen.getByRole("dialog"));
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { lookupsFor: { sector: "ref", on: false } } }]);
+  });
+
+  it("keeps an address he really changed when another comes in from elsewhere", async () => {
+    const view = render(<StartPlacesSection environmentId="box" />);
+    await open("Change Ref");
+    const field = () => within(screen.getByRole("dialog")).getByLabelText("Address") as HTMLInputElement;
+    fireEvent.change(field(), { target: { value: "3 Court St" } });
+    lifeos.places = { ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "ref" ? { ...j, address: "7 Arena Way", state: "looking" as const } : j)) };
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(field().value).toBe("3 Court St");
+    await save(screen.getByRole("dialog"));
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "ref", address: "3 Court St" } } }]);
+  });
+
   it("lets a field he has not touched follow the reads, and never offers to send it back", async () => {
     const view = render(<StartPlacesSection environmentId="box" />);
     await open("Change Ref");

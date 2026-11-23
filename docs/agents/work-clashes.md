@@ -61,7 +61,10 @@ Every call runs on the owner session, so it reads every job.
   event from a calendar (`source` `gcal` or `ics`), and `events:update {id,
   patch: {startsAt, endsAt}}` with nothing sent for one that lives only in
   LifeOS. Refused for a thread's call whatever its key holds, and for any key
-  without approve. A LifeOS refusal comes back in its own words.
+  without approve. A LifeOS refusal comes back in its own words. A move of an event
+  that lives only in LifeOS moves its arrive-by by as much, so the lead the
+  offer left is kept (a calendar's own event is moved on its calendar, and
+  its arrive-by is LifeOS's sync's to keep).
 - The push `work.clashes {}`: the list changed; ask again.
 
 With Work off every method refuses, LifeOS is not asked, and the watcher does
@@ -227,7 +230,8 @@ while it reads, the read's error in a red line if it fails.
   kept from the moment Save starts) is the Save done: while it is out the
   dialog closes on that read; after the wait ran out its words go and its
   edits are dropped. An edit set back to what is stored, by him or by a
-  read, is no edit. The dialog stands
+  read, is no edit, and an address he changed by spaces alone gives way
+  when another comes in. The dialog stands
   on what the reads last gave whole, so it and what he typed stay when a
   read fails, the session drops or a read is out; Save waits until the
   reads are current again, so he saves beside what LifeOS holds now. Why LifeOS

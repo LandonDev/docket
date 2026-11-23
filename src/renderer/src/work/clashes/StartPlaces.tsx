@@ -170,10 +170,16 @@ export function StartPlaceForm({
   /** One field as he sets it. Set back to what is stored, it is no edit: the field follows the reads again, and a change made to it elsewhere is never undone by a Save of something else. */
   const edit = <F extends keyof typeof saved>(field: F, value: (typeof saved)[F]): void =>
     setEdits(({ [field]: _was, ...rest }) => (value === saved[field] ? rest : { ...rest, [field]: value }) as Partial<typeof saved>);
-  // The same when a read brings what he had set: an edit that says what is stored is no edit, whoever stored it.
+  // The same when a read brings what he had set: an edit that says what is stored is no edit, whoever stored it. And an edit that differed from what was stored by spaces alone was never a change: when another value comes in for that field, it gives way, so a Save of something else does not send the old address back.
+  const before = useRef(saved);
   useEffect(() => {
+    const was = before.current;
+    before.current = saved;
     setEdits((edits) => {
-      const kept = Object.entries(edits).filter(([field, value]) => value !== saved[field as keyof typeof saved]);
+      const kept = Object.entries(edits).filter(([name, value]) => {
+        const field = name as keyof typeof saved;
+        return value !== saved[field] && !(saved[field] !== was[field] && sameField(value, was[field]));
+      });
       return kept.length === Object.keys(edits).length ? edits : (Object.fromEntries(kept) as Partial<typeof saved>);
     });
   }, [saved.address, saved.lookups]);

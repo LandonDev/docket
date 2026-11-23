@@ -1970,7 +1970,8 @@ Around the canvas:
   answer: while Save is out the dialog closes on it; after the wait ran
   out the words go and what it sent is no longer his edit. An edit is
   what differs from what is stored: a switch flipped back, or a value a
-  read comes to agree with, follows the reads again. An address
+  read comes to agree with, follows the reads again, and an address he
+  changed by spaces alone gives way when another comes in. An address
   is compared and sent as LifeOS keeps it, runs of spaces as one. An open
   dialog keeps what he typed when a read fails or the session drops (a
   field he has not touched follows the reads, and Save is on whenever

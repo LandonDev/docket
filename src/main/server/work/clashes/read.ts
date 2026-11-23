@@ -123,10 +123,12 @@ export async function answer(ctx: WorkCtx, a: Answer, by: Caller): Promise<null>
   if (start === undefined || end === undefined) throw new Error(a.way === 'propose' ? 'A new time needs a start and an end.' : 'A move needs a start and an end.')
   if (end <= start) throw new Error('The end must come after the start.')
   if (a.way === 'propose') return send('propose', { proposedStart: start, proposedEnd: end, ...comment })
-  const event = await asked(() => owner.query<{ source?: string } | null>('events:get', { id: a.eventId }))
+  const event = await asked(() => owner.query<{ source?: string; startsAt?: number; arriveByAt?: number } | null>('events:get', { id: a.eventId }))
   if (!event) throw new Error('That event is no longer in LifeOS.')
   // A calendar's own event moves on its calendar; one that lives only in LifeOS moves there, with nothing sent.
   if (event.source === 'gcal' || event.source === 'ics') return send('update', { startsAt: start, endsAt: end })
-  await asked(() => owner.mutation('events:update', { id: a.eventId, patch: { startsAt: start, endsAt: end } }))
+  // Its arrive-by is a time before its start, and moves with it: the time he was offered left that lead, and a move that kept the old arrive-by would leave him short of it still.
+  const arrive = event.arriveByAt !== undefined && event.startsAt !== undefined ? { arriveByAt: event.arriveByAt + (start - event.startsAt) } : {}
+  await asked(() => owner.mutation('events:update', { id: a.eventId, patch: { startsAt: start, endsAt: end, ...arrive } }))
   return null
 }

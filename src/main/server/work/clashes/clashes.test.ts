@@ -202,6 +202,13 @@ describe('his answer', () => {
     ])
   })
 
+  it('moves its arrive-by with it, by as much, so the lead the offer left is still there after the move', async () => {
+    // An 8:00 PM game that wants him there at 7:45, moved to 8:15: the arrive-by is 8:00.
+    answers['events:get'] = () => ({ _id: 'e_game', source: 'manual', startsAt: at(20), arriveByAt: at(19, 45) })
+    await call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(20, 15), end: at(22, 15) })
+    expect(calls.at(-1)).toEqual({ fn: 'events:update', args: { id: 'e_game', patch: { startsAt: at(20, 15), endsAt: at(22, 15), arriveByAt: at(20) } } })
+  })
+
   it("refuses a thread's call whatever its key holds, and a key without approve, before LifeOS is asked", async () => {
     await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'decline' }, MODEL)).rejects.toThrow('Only the owner answers a clash')
     await expect(call('work.clashes.answer', { eventId: 'e_staff', way: 'decline' }, REMOTE)).rejects.toThrow('Only the owner answers a clash')
