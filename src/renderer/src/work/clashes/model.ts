@@ -96,21 +96,38 @@ export const timeField = (ms: number) => {
 export type TimeForm = { day: string; from: string; to: string };
 export const formOf = (span: { start: number; end: number }): TimeForm => ({ day: dayField(span.start), from: timeField(span.start), to: timeField(span.end) });
 
-/** Whether the form's To is the day after its Day: an end at or before the start's clock runs past midnight. */
-export const endsNextDay = (form: TimeForm): boolean => Boolean(form.from && form.to) && form.to < form.from;
+/** A clock time on a day: the day first, then the clock on it, so a clock change on another day cannot move it. */
+const clockOn = (day: string, clock: string): number => new Date(`${day}T${clock}`).getTime();
+const dayAfter = (day: string): string => {
+  const d = new Date(`${day}T12:00`);
+  d.setDate(d.getDate() + 1);
+  return dayField(d.getTime());
+};
 
 /**
  * The start and end a form names, or the words that say what is wrong with
- * it. A To earlier on the clock than From is the next day's, so an event may
- * run past midnight; the same minute is no span at all.
+ * it. A field he left as it was offered keeps the instant offered, each on
+ * its own: an hour the clocks repeat shows one clock time for two instants,
+ * and reading the field back would pick the wrong one. A To at or before the
+ * start is the next day's, so an event may run past midnight; the same minute
+ * is no span at all.
  */
-export function spanOf(form: TimeForm): { start: number; end: number } | string {
-  const start = new Date(`${form.day}T${form.from}`).getTime();
-  // The end's day first, then its clock on that day: a clock time read on the wrong day lands an hour off when the clocks change.
-  const endDay = new Date(`${form.day}T12:00`);
-  if (endsNextDay(form)) endDay.setDate(endDay.getDate() + 1);
-  const end = Number.isFinite(endDay.getTime()) ? new Date(`${dayField(endDay.getTime())}T${form.to}`).getTime() : Number.NaN;
+export function whenOf(form: TimeForm, offered?: { start: number; end: number }): { start: number; end: number } | string {
+  const was = offered ? formOf(offered) : null;
+  const sameDay = was !== null && form.day === was.day;
+  const start = offered && sameDay && form.from === was?.from ? offered.start : clockOn(form.day, form.from);
+  let end = offered && sameDay && form.to === was?.to ? offered.end : clockOn(form.day, form.to);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return "Pick a day and its times";
-  if (end <= start) return "It must end after it starts";
+  if (end <= start && form.to !== form.from) end = clockOn(dayAfter(form.day), form.to);
+  if (!Number.isFinite(end) || end <= start) return "It must end after it starts";
   return { start, end };
+}
+
+/** The same with nothing offered: every field is read as typed. */
+export const spanOf = (form: TimeForm): { start: number; end: number } | string => whenOf(form);
+
+/** Whether the end the form will send falls on the day after its Day: said under To. */
+export function endsNextDay(form: TimeForm, offered?: { start: number; end: number }): boolean {
+  const when = whenOf(form, offered);
+  return typeof when !== "string" && dayField(when.end) !== form.day;
 }

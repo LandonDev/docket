@@ -41,8 +41,8 @@ setLifeosSession({
 
 const none = (): void => {};
 
-export function StartPlacesPreview({ state = "section" }: { state?: "section" | "dialog" }) {
-  if (state === "dialog") {
+export function StartPlacesPreview({ state = "section" }: { state?: "section" | "dialog" | "blocked" }) {
+  if (state === "dialog" || state === "blocked") {
     const purdue = PLACES.jobs[2]!;
     return (
       <div className="p-6">
@@ -53,7 +53,7 @@ export function StartPlacesPreview({ state = "section" }: { state?: "section" | 
               <X />
             </Button>
           </header>
-          <StartPlaceForm target="purdue" place={purdue} lookups={purdue.lookups} settings={SETTINGS} send={async () => null} onClose={none} pending={null} setPending={none} />
+          <StartPlaceForm target="purdue" place={purdue} lookups={purdue.lookups} settings={SETTINGS} blocked={state === "blocked" ? "LifeOS did not answer" : null} send={async () => null} onClose={none} pending={null} setPending={none} />
         </div>
       </div>
     );

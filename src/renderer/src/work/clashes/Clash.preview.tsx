@@ -11,7 +11,7 @@ import { Empty, Events, StepForm } from "./ClashDialog";
  * Clashes, still, for `bun run ui:preview
  * src/renderer/src/work/clashes/Clash.preview.tsx#ClashDialogPreview --props '{"state":"overlap"}'`
  * (`overlap`, `drive`, `about`, `plain`, `decline`, `propose`, `move`,
- * `sending`, `refused`, `loading`, `gone`) and `#ClashRowsPreview` (a day of
+ * `sending`, `refused`, `cleared`, `loading`, `gone`) and `#ClashRowsPreview` (a day of
  * the Agenda with a clash on two rows, a leave-by, and a row with none) and
  * `#ClashWeekPreview` (the Week with the clash's two events marked). The
  * dialog's own box, head and foot stand around the real parts, since a dialog
@@ -56,7 +56,7 @@ const CLASHES: Record<string, Clash> = {
 };
 
 /** The dialog's box, as `chrome/Modal` draws it at `sm`: title, the day under it, the close, then the body. */
-function Box({ title, day, children }: { title: string; day?: string; children: ReactNode }) {
+function Box({ title, day, children }: { title: string; day?: string | undefined; children: ReactNode }) {
   return (
     <div className="flex w-[448px] flex-col overflow-hidden rounded-2xl bg-popover text-sm leading-[22px] text-popover-foreground shadow-overlay ring-1 ring-border">
       <header className="flex shrink-0 items-start gap-2 px-5 pt-5">
@@ -83,13 +83,13 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
       </Box>
     );
   }
-  const step = state === "decline" || state === "propose" || state === "sending" || state === "refused" ? ("a" as const) : state === "move" ? ("b" as const) : null;
+  const step = state === "decline" || state === "propose" || state === "sending" || state === "refused" || state === "cleared" ? ("a" as const) : state === "move" ? ("b" as const) : null;
   if (step) {
     const clash = state === "move" ? CLASHES.drive! : CLASHES.overlap!;
     const way = state === "move" ? "move" : state === "propose" ? "propose" : "decline";
     return (
-      <Box title={clashTitle(clash)} day={day}>
-        <StepForm clash={clash} step={{ side: step, way }} pending={state === "sending"} refused={state === "refused" ? "This calendar's Google account must be connected again before LifeOS may write to it." : null} onBack={noop} onSend={noop} />
+      <Box title={state === "cleared" ? "No longer a clash" : clashTitle(clash)} day={state === "cleared" ? undefined : day}>
+        <StepForm clash={clash} step={{ side: step, way }} cleared={state === "cleared"} pending={state === "sending"} refused={state === "refused" ? "This calendar's Google account must be connected again before LifeOS may write to it." : null} onBack={noop} onSend={noop} />
       </Box>
     );
   }

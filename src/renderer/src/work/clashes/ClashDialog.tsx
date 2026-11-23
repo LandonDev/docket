@@ -20,7 +20,7 @@ import { writeMail } from "../mail/mailto";
 import { sectorName } from "../shell/actions";
 import { sessionFailure, useLifeosSession } from "../shell/lifeos";
 import { useClashes } from "./mark";
-import { doneWords, endsNextDay, formOf, freeAfter, lateDraft, spanOf, WAY_LABEL, wayWords, type TimeForm } from "./model";
+import { doneWords, endsNextDay, formOf, freeAfter, lateDraft, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
 
 /**
@@ -48,14 +48,19 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   // A way out's step he has open stays too, with what he typed: a calendar that settles the clash meanwhile is said in the step, never by taking the step away.
   const [stepping, setStepping] = useState(false);
   const shown = useRef<Clash | undefined>(undefined);
-  const read = live ?? (marks.ready ? undefined : ask.clash);
+  // What the live read last said for certain: the clash, or that it is gone. A read that is out or has failed says nothing, so it changes neither: a clash seen gone never comes back from the opener's old copy.
+  const known = useRef<{ clash: Clash | undefined } | null>(null);
+  if (marks.ready) known.current = { clash: live };
+  const read = known.current ? known.current.clash : ask.clash;
+  const gone = known.current !== null && !known.current.clash;
   if (read) shown.current = read;
   const clash = read ?? (pending || settled || stepping ? shown.current : undefined);
-  const cleared = !read && marks.ready && !pending && !settled;
-  const day = clash ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
-  const state = marks.ready ? "gone" : marks.failed !== undefined ? "failed" : "loading";
+  // Gone by something other than his press here: the title says so, and an open step sends nothing.
+  const cleared = gone && !pending && !settled;
+  const day = clash && !cleared ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
+  const state = gone ? "gone" : marks.failed !== undefined ? "failed" : "loading";
   return (
-    <Modal onClose={onClose} title={clash ? clashTitle(clash) : state === "gone" ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
+    <Modal onClose={onClose} title={clash && !cleared ? clashTitle(clash) : gone ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
       {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} onSettled={() => setSettled(true)} onStep={setStepping} cleared={cleared} /> : <Empty state={state} error={marks.failed} onClose={onClose} />}
     </Modal>
   );
@@ -370,8 +375,7 @@ export function StepForm({
     e.preventDefault();
     if (pending) return;
     if (cleared) return;
-    const untouched = JSON.stringify(form) === JSON.stringify(formOf(offered));
-    const when = timed ? (untouched ? offered : spanOf(form)) : null;
+    const when = timed ? whenOf(form, offered) : null;
     if (typeof when === "string") return setError(when);
     setError(null);
     onSend({ ...(note.trim() && step.way !== "move" ? { comment: note.trim() } : {}), ...(when ?? {}) });
@@ -389,7 +393,7 @@ export function StepForm({
             <Field label="From">
               <Input type="time" disabled={pending} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
             </Field>
-            <Field label="To" hint={endsNextDay(form) ? "Next day" : undefined}>
+            <Field label="To" hint={endsNextDay(form, offered) ? "Next day" : undefined}>
               <Input type="time" disabled={pending} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
             </Field>
           </div>
@@ -401,7 +405,7 @@ export function StepForm({
         ) : null}
         {cleared ? (
           <p role="status" className="text-xs text-muted-foreground">
-            These two no longer clash. Nothing was sent.
+            Nothing was sent.
           </p>
         ) : null}
         <div role="alert" className="empty:hidden">

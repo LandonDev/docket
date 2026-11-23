@@ -12,6 +12,7 @@ const lifeos = vi.hoisted(() => ({
   settings: null as unknown,
   sent: [] as { name: string; args: unknown }[],
   refuse: null as string | null,
+  failed: null as string | null,
 }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
@@ -32,6 +33,7 @@ vi.mock("../shell/lifeos", async (original) => ({
   }),
   useLifeosQuery: (_session: unknown, name: string) => {
     if (lifeos.loading) return { status: "loading" };
+    if (lifeos.failed) return { status: "failed", error: lifeos.failed };
     if (name === "settings:startPlaces") return { status: "ready", value: lifeos.places };
     if (name === "settings:get") return { status: "ready", value: lifeos.settings };
     if (name === "sectors:list") return { status: "ready", value: SECTORS };
@@ -74,6 +76,7 @@ beforeEach(() => {
   lifeos.settings = SETTINGS;
   lifeos.sent = [];
   lifeos.refuse = null;
+  lifeos.failed = null;
 });
 afterEach(cleanup);
 
@@ -205,6 +208,47 @@ describe("Start places", () => {
     fireEvent.change(within(dialog).getByLabelText("Address"), { target: { value: "12 Oak Ct" } });
     await save(dialog);
     expect(lifeos.sent).toEqual([{ name: "settings:update", args: { homeAddress: "12 Oak Ct" } }]);
+  });
+
+  it("keeps an open dialog and what he typed when a read fails, the session drops or a read is out, with Save waiting", async () => {
+    const view = render(<StartPlacesSection environmentId="box" />);
+    const dialog = await open("Change Purdue");
+    fireEvent.change(within(dialog).getByLabelText("Address"), { target: { value: "12 Oak Ct" } });
+    fireEvent.click(within(dialog).getByRole("switch"));
+    const typed = () => (within(screen.getByRole("dialog")).getByLabelText("Address") as HTMLInputElement).value;
+    const saveOff = () => (within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled;
+    expect(saveOff()).toBe(false);
+
+    lifeos.failed = "LifeOS did not answer";
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(typed()).toBe("12 Oak Ct");
+    expect(within(screen.getByRole("dialog")).getByRole("switch").getAttribute("aria-checked")).toBe("true");
+    expect(saveOff()).toBe(true);
+    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("LifeOS did not answer");
+
+    lifeos.failed = null;
+    lifeos.state = "unreachable";
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(typed()).toBe("12 Oak Ct");
+    expect(saveOff()).toBe(true);
+
+    lifeos.state = "connected";
+    lifeos.loading = true;
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(typed()).toBe("12 Oak Ct");
+    expect(saveOff()).toBe(true);
+
+    // The reads are back: Save sends what he typed, with the switch.
+    lifeos.loading = false;
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(saveOff()).toBe(false);
+    await save(screen.getByRole("dialog"));
+    expect(lifeos.sent).toHaveLength(1);
+    expect(lifeos.sent[0]).toMatchObject({ name: "settings:update", args: { starts: { purdue: "12 Oak Ct" }, placeLookups: { purdue: true } } });
   });
 
   it("a refusal's words stay in the dialog", async () => {

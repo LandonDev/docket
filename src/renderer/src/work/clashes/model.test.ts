@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Clash, ClashSide } from "@shared/work/clashes";
-import { doneWords, endsNextDay, formOf, freeAfter, lateDraft, lateMinutes, marksOf, sideOf, spanOf, wayWords } from "./model";
+import { doneWords, endsNextDay, formOf, freeAfter, lateDraft, lateMinutes, marksOf, sideOf, spanOf, wayWords, whenOf } from "./model";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -117,5 +117,17 @@ describe("the time fields", () => {
     expect(endsNextDay(form)).toBe(true);
     expect(spanOf(form)).toEqual(late);
     expect(endsNextDay({ day: "2026-11-26", from: "13:00", to: "14:00" })).toBe(false);
+  });
+
+  it("keep the instant offered for each field he leaves alone, and read the one he changes", () => {
+    const offered = { start: T0 + 45 * MINUTE, end: T0 + 2 * HOUR };
+    const form = formOf(offered);
+    expect(whenOf(form, offered)).toEqual(offered);
+    // To moved a quarter hour on: From is still the instant offered.
+    expect(whenOf({ ...form, to: "14:15" }, offered)).toEqual({ start: offered.start, end: T0 + 2 * HOUR + 15 * MINUTE });
+    // Another day reads both fields on that day.
+    expect(whenOf({ ...form, day: "2026-11-27" }, offered)).toEqual({ start: offered.start + 24 * HOUR, end: offered.end + 24 * HOUR });
+    // A From moved past the To he left alone runs to the next day's To.
+    expect(whenOf({ ...form, from: "15:00" }, offered)).toEqual({ start: T0 + 3 * HOUR, end: offered.end + 24 * HOUR });
   });
 });

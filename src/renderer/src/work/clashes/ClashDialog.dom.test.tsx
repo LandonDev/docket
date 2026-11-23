@@ -292,11 +292,20 @@ describe("the Clash dialog", () => {
     await settle();
     // What he typed is still there to read or copy.
     expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe("At a game then, sorry");
-    expect(screen.getByRole("status").textContent).toBe("These two no longer clash. Nothing was sent.");
+    // The title follows the read, so the top and the foot of the step say one thing.
+    expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Nothing was sent.");
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.submit(document.querySelector("[data-clash-step]")!);
     await settle();
     expect(wire.calls).toEqual([]);
+    // A read that then fails, or is out again, says nothing new: Send stays off and the old pair does not come back.
+    rerender(view({ ...NO_MARKS, failed: "LifeOS did not answer" }));
+    await settle();
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    rerender(view(NO_MARKS));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     await settle();
     expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
@@ -351,6 +360,24 @@ describe("the Clash dialog", () => {
     expect(document.querySelectorAll("[data-way]")).toHaveLength(0);
     expect(within(dialog).queryByRole("button", { name: "This is fine" })).toBeNull();
     expect(dialog.querySelector("[data-dialog-cancel]")?.textContent).toBe("Close");
+  });
+
+  it("keeps a clash it has seen gone as gone when a later read fails, never bringing back the opener's old copy", async () => {
+    const view = (live: ClashMarks) => {
+      marks.now = live;
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(marksOf({ clashes: [], leaves: [] })));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
+    rerender(view({ ...NO_MARKS, failed: "LifeOS did not answer" }));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
+    expect(document.querySelectorAll("[data-way]")).toHaveLength(0);
+    // A fresh read that holds the pair again brings it back.
+    rerender(view(marksOf({ clashes: [overlap()], leaves: [] })));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Two things at once" })).toBeTruthy();
   });
 
   it("says why when the read failed and the opener handed nothing over, with no bones left waiting", async () => {

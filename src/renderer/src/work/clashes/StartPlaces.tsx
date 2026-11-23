@@ -33,27 +33,37 @@ export function StartPlacesSection({ environmentId }: { environmentId: string })
   // The names the LifeOS section above uses, so a job reads the same on the whole page.
   const sectors = useLifeosQuery<Sector[]>(session, "sectors:list", {});
   const [open, setOpen] = useState<StartTarget | null>(null);
-  if (session.state !== "connected") return null;
+  const connected = session.state === "connected";
   const failed = places.status === "failed" ? places.error : settings.status === "failed" ? settings.error : null;
-  if (failed) {
-    return (
-      <PageSection title="Start places">
-        <PageError>{failed}</PageError>
-      </PageSection>
-    );
-  }
-  if (places.status !== "ready" || settings.status !== "ready" || sectors.status === "loading") {
-    return (
-      <PageSection title="Start places">
-        <PageRowsSkeleton rows={7} description control="none" />
-      </PageSection>
-    );
-  }
+  const ready = connected && places.status === "ready" && settings.status === "ready" && sectors.status !== "loading";
   const names = sectors.status === "ready" ? new Map(sectors.value.map((s) => [s.key, s.label])) : undefined;
   const nameOf = (target: StartTarget): string => (target === "home" ? "Home" : sectorName(target, names));
-  const job = open && open !== "home" ? places.value.jobs.find((j) => j.sector === open) : undefined;
-  return (
-    <PageSection title="Start places">
+  // What the reads last gave whole: an open dialog stands on it while a read is out or has failed, so what he typed is never taken away under him.
+  const good = useRef<{ places: StartPlaces; settings: StartSettings; names: typeof names } | null>(null);
+  if (ready && places.status === "ready" && settings.status === "ready") good.current = { places: places.value, settings: settings.value, names };
+  const held = open ? good.current : null;
+  const job = held && open !== "home" ? held.places.jobs.find((j) => j.sector === open) : undefined;
+  const dialog =
+    open && held ? (
+      <StartPlaceDialog
+        session={session}
+        target={open}
+        title={open === "home" ? "Home" : sectorName(open, held.names)}
+        place={open === "home" ? held.places.home : (job ?? { state: "none" })}
+        lookups={job?.lookups ?? false}
+        settings={held.settings}
+        // Save writes the maps whole from the last read: it waits for a read that is current.
+        blocked={ready ? null : (failed ?? (connected ? "" : sessionFailure(session.state)))}
+        onClose={() => setOpen(null)}
+      />
+    ) : null;
+  // One shape whatever the reads say, so the dialog is the same mounted form through a failed read, a dropped session and a read that is out.
+  const body = failed ? (
+    <PageError>{failed}</PageError>
+  ) : places.status !== "ready" || settings.status !== "ready" || sectors.status === "loading" ? (
+    <PageRowsSkeleton rows={7} description control="none" />
+  ) : (
+    <>
       <PlaceRow title="Home" place={places.value.home} target="home" onOpen={() => setOpen("home")} />
       {places.value.jobs.map((j) => (
         <PlaceRow
@@ -70,18 +80,13 @@ export function StartPlacesSection({ environmentId }: { environmentId: string })
           onOpen={() => setOpen(j.sector)}
         />
       ))}
-      {open ? (
-        <StartPlaceDialog
-          session={session}
-          target={open}
-          title={nameOf(open)}
-          place={open === "home" ? places.value.home : (job ?? { state: "none" })}
-          lookups={job?.lookups ?? false}
-          settings={settings.value}
-          onClose={() => setOpen(null)}
-        />
-      ) : null}
-    </PageSection>
+    </>
+  );
+  return (
+    <>
+      {connected ? <PageSection title="Start places">{body}</PageSection> : null}
+      {dialog}
+    </>
   );
 }
 
@@ -108,6 +113,7 @@ function StartPlaceDialog({
   place,
   lookups,
   settings,
+  blocked,
   onClose,
 }: {
   session: LifeosSession;
@@ -116,13 +122,14 @@ function StartPlaceDialog({
   place: StartPlace | JobStart;
   lookups: boolean;
   settings: StartSettings;
+  blocked: string | null;
   onClose: () => void;
 }) {
   const [pending, setPending] = useState<Pending>(null);
   const send = (patch: StartPatch): Promise<unknown> => (session.client ? session.client.mutation(update, patch) : Promise.reject(new Error(sessionFailure(session.state))));
   return (
     <Modal onClose={onClose} title={title} size="sm" busy={pending !== null}>
-      <StartPlaceForm target={target} place={place} lookups={lookups} settings={settings} send={send} onClose={onClose} pending={pending} setPending={setPending} />
+      <StartPlaceForm target={target} place={place} lookups={lookups} settings={settings} blocked={blocked} send={send} onClose={onClose} pending={pending} setPending={setPending} />
     </Modal>
   );
 }
@@ -139,6 +146,7 @@ export function StartPlaceForm({
   onClose,
   pending,
   setPending,
+  blocked = null,
   error: shownError = null,
 }: {
   target: StartTarget;
@@ -149,6 +157,8 @@ export function StartPlaceForm({
   onClose: () => void;
   pending: Pending;
   setPending: (pending: Pending) => void;
+  /** LifeOS cannot be read just now (why, in words; empty while a read is merely out): the form keeps what he typed and Save waits. */
+  blocked?: string | null;
   /** A refusal to show from the start: the preview's seam. */
   error?: string | null;
 }) {
@@ -163,7 +173,7 @@ export function StartPlaceForm({
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     const patch = savePatch(target, saved, form, settings);
-    if (!patch || pending) return;
+    if (!patch || pending || blocked !== null) return;
     setPending("save");
     setError(null);
     send(patch).then(
@@ -190,7 +200,7 @@ export function StartPlaceForm({
           </FieldRow>
         ) : null}
         <div role="alert" className="empty:hidden">
-          <ErrorLine error={error} />
+          <ErrorLine error={error ?? (blocked || null)} />
         </div>
       </ModalBody>
       <DialogFooter
@@ -214,7 +224,7 @@ export function StartPlaceForm({
         onCancel={onClose}
         confirmLabel="Save"
         pending={pending === "save"}
-        disabled={!formChanged(saved, form)}
+        disabled={!formChanged(saved, form) || blocked !== null}
       />
     </form>
   );

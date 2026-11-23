@@ -1617,8 +1617,9 @@ Around the canvas:
   or a move, and a Note for a decline or a proposal; the foot is Back and
   Send (Move for a move). The times start filled: the earlier event with
   the latest quarter hour that still ends a drive before the later one,
-  the later with the first after the earlier ends. A To earlier on the
-  clock than From is the next day's, and says "Next day" under it. Send
+  the later with the first after the earlier ends. A field he leaves as
+  offered sends the instant offered, each field on its own. A To at or
+  before the start is the next day's, and says "Next day" under it. Send
   holds its width and spins, and the step's fields are locked while it
   is out; a toast answers the press and the dialog closes on the clash it
   showed, though his own press is what ended it; a refusal stays in the
@@ -1626,8 +1627,10 @@ Around the canvas:
   reads a clash it was not handed, it draws the two events' bones with the
   hairline between them (and says "Reading the clash…" to a screen
   reader); a step he is typing in stays when the calendar settles the
-  clash meanwhile, says "These two no longer clash. Nothing was sent." in
-  12px muted, and its Send is off; a read that failed says why in the body; two
+  clash meanwhile: the title turns to "No longer a clash", one 12px muted
+  line under his fields says "Nothing was sent.", and Send is off. What a
+  read said for certain holds while a later read is out or fails: a clash
+  seen gone never comes back from an old copy; a read that failed says why in the body; two
   events that no longer clash are the title "No longer a clash" over the
   foot, with nothing between. Running late… opens Mail's composer in
   that job's workspace with the people on the event and one line; "This
@@ -1651,7 +1654,9 @@ Around the canvas:
   line, "When off, this job's event places never leave your machines.",
   and Use home at the foot's start while the field holds an address: it
   empties the field and leaves focus there, and Save sends that with
-  whatever else changed. The fields are locked while Save is out.
+  whatever else changed. The fields are locked while Save is out. An open
+  dialog keeps what he typed when a read fails or the session drops: it
+  says why in its alert and Save waits for a read that is current.
   Save stays off until something changed, spins, and closes; a refusal
   stays in the dialog, as an alert. No toast: the row is the
   answer. Signed out of LifeOS the section is absent; while it reads,
