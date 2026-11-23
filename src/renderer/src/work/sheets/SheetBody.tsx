@@ -165,6 +165,8 @@ export function Body(props: Props) {
   // The rules' side sheet, opened from the row's Data menu: the lists this store keeps, in the sheet's order.
   const kinds = useMemo(() => RULE_KINDS.filter((kind) => controls.includes(kind)), [controls.join(" ")]); // eslint-disable-line react-hooks/exhaustive-deps
   const [rules, setRules] = useState<RulesView | null>(null);
+  // The Page breaks view: each page's edge and number over the cells he keeps editing (the row's Page menu flips it).
+  const [pageView, setPageView] = useState(false);
   // Shut while the sheet takes no edit (read-only, or reading the file again after a stop), and it stays shut after: a rule made then would be in neither the grid nor the file.
   const still = locked || state.reloading;
   useEffect(() => {
@@ -214,6 +216,8 @@ export function Body(props: Props) {
           confirmMerge={confirmMerge}
           // The Data menu's rules open the side sheet on their lists; a second press of the one open closes it.
           onRules={() => setRules((open) => (open ? null : { view: "lists" }))}
+          pageBreaks={pageView}
+          onPageBreaks={setPageView}
         />
       ) : null}
       {/* A sheet that is the Excel copy of an .xls, .ods or .tsv says so in one quiet line, with its one press. */}
@@ -232,6 +236,9 @@ export function Body(props: Props) {
           filter={controls.includes("filter")}
           // The sort dialog, the filter's menu, a list's drop-down and a validation's refusal are work-kit's own, not Univer's.
           dataChrome
+          // A sheet's page set-up is kept by the grid only where the host keeps it (read once, as the grid is made).
+          pages={controls.includes("page")}
+          pageBreaks={pageView && controls.includes("pageBreaks")}
           marks={marks}
           was={was}
           onReady={setHandle}

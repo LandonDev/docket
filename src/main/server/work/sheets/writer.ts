@@ -1,6 +1,7 @@
 import type { ICellData, IStyleData, IWorkbookData, IWorksheetData } from '@univerjs/core'
 import { toFileFormula } from './patch/formula'
 import { patchRules, RulesRefused, type DefinedName, type RulesEdit, type SheetFilter } from './patch/rules'
+import { PagesRefused, patchPages, type PagesEdit } from './patch/pages'
 import { patchTables, TablesRefused, type TablesEdit } from './patch/tables'
 import { fileReferences, fold } from './patch/tables-model'
 import { readZip, writeZip } from './patch/zip'
@@ -328,7 +329,33 @@ export function writeXlsxWhole(wb: IWorkbookData): { bytes: Uint8Array; left: { 
       if (!(err instanceof TablesRefused)) throw err
       left.push({ what: 'tables', sheet: edit.sheet, why: err.message })
     }
+  // Each sheet's page set-up (patch/pages.ts): paper, margins, breaks, the print area. One the writer refuses is left out, said.
+  for (const edit of pagesOf(wb, (id) => base.names.get(id)))
+    try {
+      bytes = patchPages(bytes, [edit]).bytes
+    } catch (err) {
+      if (!(err instanceof PagesRefused)) throw err
+      left.push({ what: 'page set-up', sheet: edit.sheet, why: err.message })
+    }
   return { bytes, left }
+}
+
+/** Each sheet's page set-up as the grid's pages plugin keeps it in the snapshot (`TEMPCODE_SHEET_PAGES`, by sheet id), named by its tab. */
+export function pagesOf(wb: IWorkbookData, nameOf: (sheetId: string) => string | undefined): PagesEdit[] {
+  const data = wb.resources?.find((r) => r.name === 'TEMPCODE_SHEET_PAGES')?.data
+  if (!data) return []
+  let all: Record<string, unknown>
+  try {
+    all = (JSON.parse(data) ?? {}) as typeof all
+  } catch {
+    return []
+  }
+  const out: PagesEdit[] = []
+  for (const [id, setup] of Object.entries(all)) {
+    const sheet = nameOf(id)
+    if (sheet && setup && typeof setup === 'object') out.push({ sheet, setup: setup as PagesEdit['setup'] })
+  }
+  return out
 }
 
 function laidRules(bytes: Uint8Array, edits: RulesEdit[], opts: { sheetIds: string[] }, left: { what: string; sheet?: string; why: string }[]): Uint8Array {

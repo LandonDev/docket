@@ -5,11 +5,13 @@ import type { SheetCellDiff, SheetMutationJson, SheetReach } from '@shared/contr
 import { RULES_SET, type RulesSetParams } from '@shared/work/sheets'
 import { rangeCells, READ_MAX_CELLS, type A1Range } from './a1'
 import { readThemeXml } from 'work-kit/format/theme'
+import { defaultPageSetup, type SheetPageSetup } from 'work-kit/sheet/pages'
 import { independent } from './patch/depends'
 import { patchFormat, type FormatReport } from './patch/format'
 import { dependsInput } from './patch/package'
 import { patchXlsx, workbookMap, type EditSpec, type Report } from './patch/patch'
 import { patchRules, readRules, type DefinedNames, type RulesEdit, type SheetFilter } from './patch/rules'
+import { patchPages, type PagesEdit } from './patch/pages'
 import { patchTables, readTables, type TablesEdit } from './patch/tables'
 import { formatEditsOf } from './formats'
 import { diffWorkbooks } from './diff'
@@ -156,13 +158,27 @@ export function rulesEditsOf(formats: readonly SheetMutationJson[]): RulesEdit[]
   for (const m of formats) {
     if (m.id !== RULES_SET) continue
     const p = m.params as RulesSetParams
-    if (p.kind === 'tables') continue
+    if (p.kind === 'tables' || p.kind === 'pages') continue
     if (p.kind === 'names') out.push({ kind: 'names', names: (p.list ?? []) as DefinedNames })
     else if (!p.subUnitId) throw new Error('A rule names its sheet.')
     else if (p.kind === 'filter') out.push({ kind: 'filter', sheet: p.subUnitId, filter: (p.list ?? null) as SheetFilter | null })
     else out.push({ kind: p.kind, sheet: p.subUnitId, rules: (Array.isArray(p.list) ? p.list : []) as never })
   }
   return out
+}
+
+/** The page set-ups among a save's formatting mutations (`RULES_SET` of kind `pages`, each named by its tab), as the page writer takes them: the last on a tab stands. */
+export function pagesEditsOf(formats: readonly SheetMutationJson[]): PagesEdit[] {
+  const last = new Map<string, PagesEdit>()
+  for (const m of formats) {
+    if (m.id !== RULES_SET) continue
+    const p = m.params as RulesSetParams
+    if (p.kind !== 'pages') continue
+    if (!p.subUnitId) throw new Error('A page set-up names its sheet.')
+    // A sheet with none of its own prints by Excel's defaults.
+    last.set(p.subUnitId, { sheet: p.subUnitId, setup: (p.list ?? defaultPageSetup()) as SheetPageSetup })
+  }
+  return [...last.values()]
 }
 
 /** The table lists among a save's formatting mutations (`RULES_SET` of kind `tables`, each named by its tab), as the table writer takes them. */
@@ -245,6 +261,13 @@ export async function savePackage(input: string, edits: EditSpec[], ironcalcDir:
     const done = patchTables(bytes, tables)
     bytes = done.bytes
     report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged, ...done.report.partsAdded, ...done.report.partsRemoved])]
+  }
+  const pages = pagesEditsOf(formats)
+  if (pages.length) {
+    // Paper, margins, scale or fit, breaks, the print area and titles: the worksheet's own part and, for an area or titles, the workbook's names.
+    const done = patchPages(bytes, pages)
+    bytes = done.bytes
+    report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged])]
   }
   if (formats.length) {
     const made = formatEditsOf(formats.filter((m) => m.id !== RULES_SET), (tab) => tab, themeOf(zip))

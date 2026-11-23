@@ -31,8 +31,11 @@ export const MOVE_WHY = {
 } as const
 export type MoveRefusal = keyof typeof MOVE_WHY
 
-/** A sheet's rules by kind: its conditional formats, its validations, the workbook's names, its filter, its tables. */
-export type SheetRuleKind = 'conditional' | 'validation' | 'names' | 'filter' | 'tables'
+/** A sheet's rules by kind: its conditional formats, its validations, the workbook's names, its filter, its tables, its page set-up. */
+export type SheetRuleKind = 'conditional' | 'validation' | 'names' | 'filter' | 'tables' | 'pages'
+
+/** The kit's one mutation for a sheet's page set-up (paper, margins, breaks, the print area): the whole set-up as it stands. */
+export const PAGE_SETUP = 'tempcode.sheet.mutation.set-page-setup'
 
 /** The grid's mutations that change a rule, and the list each changes. */
 export const RULE_MUTATIONS: Readonly<Record<string, SheetRuleKind>> = {
@@ -53,7 +56,8 @@ export const RULE_MUTATIONS: Readonly<Record<string, SheetRuleKind>> = {
   'sheet.mutation.delete-table': 'tables',
   'sheet.mutation.set-sheet-table': 'tables',
   'sheet.mutation.set-table-filter': 'tables',
-  'sheet.mutation.move-table': 'tables'
+  'sheet.mutation.move-table': 'tables',
+  [PAGE_SETUP]: 'pages'
 }
 
 /** Sent beside a filter's change, with nothing of its own to keep. */
@@ -126,6 +130,8 @@ export function ruleKinds(row: readonly string[] | undefined): Set<SheetRuleKind
   for (const kind of ["conditional", "validation", "names", "filter"] as const) if (row?.includes(kind)) out.add(kind);
   // (the row's control makes one table; the list is the sheet's tables)
   if (row?.includes("table")) out.add("tables");
+  // (Page set-up is the control that changes it; the view, the print area and a break ride the same set-up)
+  if (row?.includes("page")) out.add("pages");
   return out;
 }
 
@@ -172,6 +178,9 @@ export function forPackage(
   if (RULE_NOISE.has(mutation.id)) return { keep: [] };
   const kind = RULE_MUTATIONS[mutation.id];
   if (kind) {
+    // Rows and columns put in, taken out or moved carry a sheet's breaks, print area and titles as one more mutation of the
+    // same command: where the host keeps no page set-up it is left out and the file's stay as they were, never a reason to stop the insert.
+    if (kind === "pages" && (!opts.rules || !opts.kinds?.has(kind))) return { keep: [] };
     // A rule is saved as the whole list its change left: the file is written a list at a time.
     if (!opts.rules || !opts.kinds?.has(kind)) return { stop: sheetStopWords("other", opts.google) };
     const sheet = kind === "names" ? undefined : (mutation.params as { subUnitId?: string } | null)?.subUnitId;

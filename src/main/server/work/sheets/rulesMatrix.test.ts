@@ -56,7 +56,7 @@ async function opened() {
       const got = forPackage(m, () => null, {
         formats: true,
         kinds,
-        rules: (kind: SheetRuleKind, at?: string) => (kind === 'conditional' ? rules.conditional.list(at) : kind === 'validation' ? rules.validation.list(at) : kind === 'names' ? rules.names.list() : kind === 'tables' ? [] : rules.filter.get(at))
+        rules: (kind: SheetRuleKind, at?: string) => (kind === 'conditional' ? rules.conditional.list(at) : kind === 'validation' ? rules.validation.list(at) : kind === 'names' ? rules.names.list() : kind === 'tables' ? [] : kind === 'pages' ? null : rules.filter.get(at))
       })
       if ('stop' in got) throw new Error(`stopped: ${got.stop} (${m.id})`)
       out.push(...got.keep)
@@ -90,7 +90,7 @@ describe('the Data menu\'s controls, by where a sheet lives', () => {
     const data = ['conditional', 'filter', 'names', 'sort', 'table', 'validation']
     for (const store of ['lifeos', 'tcsheet', 'package'] as SheetStoreKind[]) expect(SHEET_ROW[store].filter((c) => data.includes(c)).sort(), store).toEqual(data)
     expect(SHEET_ROW.csv).toEqual([])
-    expect([...ruleKinds(SHEET_ROW.package)].sort()).toEqual(['conditional', 'filter', 'names', 'tables', 'validation'])
+    expect([...ruleKinds(SHEET_ROW.package)].sort()).toEqual(['conditional', 'filter', 'names', 'pages', 'tables', 'validation'])
   })
 })
 

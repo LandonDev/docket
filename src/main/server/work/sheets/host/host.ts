@@ -28,7 +28,7 @@ type Box = { startRow: number; endRow: number; startColumn: number; endColumn: n
  */
 
 /** Every engine the host makes: with the rule plugins, or their ops would not apply and their rules would leave the snapshot. */
-const ENGINE = { rules: true } as const
+const ENGINE = { rules: true, pages: true } as const
 
 interface Open {
   key: string

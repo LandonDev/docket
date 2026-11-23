@@ -2685,6 +2685,29 @@ set by hand.
   file's theme; a table's header carries no filter button. Insert is one
   menu (208px): Chart, Table, Picture, each where the sheet's store keeps
   it.
+- **Page breaks (the view).** The grid itself, still editable, with the
+  row's Page › Page breaks checked. A page's edge is a 2px `border-strong`
+  line: dashed where the page size makes it, solid where he set it (a
+  manual break, a print area's edge). Each page's number reads "Page 1" in
+  12/16 `muted-foreground`, tabular, on a 16px `background` pill (4px
+  radius, 0 4px), 6px in from the page's bottom-right corner; a page whose
+  corner is out of the window keeps its number at the window's edge, 12px
+  clear of the grid's scrollbars, and a page with less than 64 by 22px in
+  view shows none. Cells outside a print area sit on `muted`, their ink
+  untouched. A break between two pages takes the pointer within 6px of its
+  line (`row-resize` or `col-resize`) and darkens to `muted-foreground`
+  under it. Held, it is a 2px solid `accent` line at the row or column edge
+  it would take, its old place stays at 40%, and a 24px readout (the
+  popover fill, its ring and shadow, 6px radius, 12px tabular) sits 6px off
+  the line beside the pointer: "Above row 25", "Left of column G", "Scale
+  85%" when the page must shrink to hold more, "Remove break" where setting
+  it down removes it. Nothing animates but the line's colour (150ms). With
+  the keyboard on a break it is the same accent line: the arrows move it a
+  line at a time, Delete removes one he set. Under Fit to no line moves and
+  the first page number in view is preceded by the scale ("Scale 73%", the
+  same pill, 4px before it). A read-only sheet shows its pages with nothing
+  to take. **Page set-up** is a dialog from the row's Page menu; its
+  measures are in work-kit's README.
 - **Rules, the side sheet.** 320px, docked at the grid's right on
   `background` with a 1px `border` left edge and no scrim: the grid stays
   live, and the open rule's range shows on it in `sel-bg`. Under 560px of

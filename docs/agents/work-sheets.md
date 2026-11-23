@@ -525,6 +525,53 @@ or onto another), and whole rows or columns dragged (`move-rows`,
   and the order of more than two conditional formats that share cells and
   all move whole.
 
+## Pages
+
+A sheet's page set-up (paper, orientation, margins, scale or Fit to, print
+areas, manual breaks, repeated titles, gridlines, headings, centring, page
+order, header and footer, first page number) is work-kit's
+`SheetPageSetup`, kept by its pages plugin in the snapshot resource
+`TEMPCODE_SHEET_PAGES` and changed by one mutation,
+`tempcode.sheet.mutation.set-page-setup` (`PAGE_SETUP`). The row's Page
+menu holds Page set-up (the kit's dialog), the Page breaks view, the print
+area and a break at the cell in hand; the four controls (`page`,
+`pageBreaks`, `printArea`, `breakHere`) are listed for a LifeOS sheet, a
+`.tcsheet` and an opened Excel file (`SHEET_ROW`), and the canvas gives the
+grid `pages` only where `page` is listed (`SheetBody.tsx`).
+
+- **A sheet the service holds** keeps the set-up in its snapshot: the
+  host's engine mounts the plugin (`ENGINE.pages`, `host/host.ts`), so the
+  mutation replays and a cold load has it. Its Excel export writes each
+  sheet's set-up (`writer.ts` `pagesOf`), saying "page set-up on <sheet>"
+  in `left` where the writer refuses one.
+- **An opened Excel file** takes it as the sheet's whole set-up through the
+  rules set (`RULES_SET` of kind `pages`, `forPackage`; the canvas answers
+  it from `handle.pages.get`), saved by `patch/pages.ts` (`patchPages`,
+  `readPages`) in `savePackage`, one revision labelled "Page set-up": the
+  worksheet's part and, for a print area or titles, the workbook's change,
+  and every other entry keeps its bytes; only the fields that changed are
+  written; a set-up Excel's schema refuses is refused in words before a
+  byte is written.
+- Rows and columns put in, taken out or moved carry the breaks, the print
+  area and the titles as one more mutation in the same command. Where the
+  host keeps no page set-up (a workbook Excel or Google holds) that
+  mutation is left out, never a reason to stop the insert.
+- A guest's page is given no `pages`: it keeps and draws none.
+
+Held by `pagesMatrix.test.ts` with the kit's own `handle.pages` on a
+headless grid: orientation, margins, a manual break and a print area saved
+into a real .xlsx and read back whole, a cold import equal to the grid's
+set-up, no cell moved; the service's engine replaying the mutation, a cold
+load, and the export.
+
+Not proven: any of it in a running window; real Excel reading a file
+`patchPages` wrote (openpyxl, LibreOffice and the schema accept it). The
+page lines in the view are the kit's estimate (a 7px digit); Preview's PDF
+is the exact page. The kit's view refuses a manual break under any Fit to;
+real Excel ignores one only along a side fitted to a page count
+(`harness/corpus/print/excel-truth.json`), so a break across the free side
+of a fitted sheet cannot be set here yet.
+
 ## Writing a sheet out
 
 `work.sheets.export {itemId, format, sheet?}` (writer.ts, the model

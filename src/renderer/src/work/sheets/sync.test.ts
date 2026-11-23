@@ -15,14 +15,15 @@ const lists: Record<string, unknown> = {
   "names:": [{ id: "n", name: "Budget" }],
   "filter:s1": { ref: { startRow: 0, endRow: 9, startColumn: 0, endColumn: 3 } },
   "tables:s1": [{ id: "t", name: "Budget" }],
+  "pages:s1": { orientation: "landscape" },
 };
 const rules = (kind: string, sheet?: string): unknown => lists[`${kind}:${sheet ?? ""}`];
-const all = ruleKinds(["bold", "conditional", "validation", "names", "filter", "sort", "table"]);
+const all = ruleKinds(["bold", "conditional", "validation", "names", "filter", "sort", "table", "page"]);
 const kept = (m: SheetMutationJson, opts: Parameters<typeof forPackage>[2] = { formats: true, rules, kinds: all }) => forPackage(m, noFormula, opts);
 
 describe("the kinds of rule a row lists", () => {
   it("are the Data controls that name a list; a sort and the format controls name none", () => {
-    expect([...all].sort()).toEqual(["conditional", "filter", "names", "tables", "validation"]);
+    expect([...all].sort()).toEqual(["conditional", "filter", "names", "pages", "tables", "validation"]);
     expect([...ruleKinds(["bold", "sort"])]).toEqual([]);
     expect([...ruleKinds(undefined)]).toEqual([]);
   });

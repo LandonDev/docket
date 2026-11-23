@@ -586,7 +586,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       ...(options.commands ? { onCommand: (listener: (id: string) => void) => (commandListeners.add(listener), () => commandListeners.delete(listener)) } : {}),
       style: (id) => grid.styles.get(id) ?? null,
       // (the fake keeps no tables: a test of a table's save drives the store itself)
-      rules: (kind, sheet) => (kind === "names" ? grid.rules.names : kind === "filter" ? (grid.rules.filter[sheet ?? ""] ?? null) : kind === "tables" ? [] : (grid.rules[kind][sheet ?? ""] ?? [])),
+      rules: (kind, sheet) => (kind === "names" ? grid.rules.names : kind === "filter" ? (grid.rules.filter[sheet ?? ""] ?? null) : kind === "tables" ? [] : kind === "pages" ? null : (grid.rules[kind][sheet ?? ""] ?? [])),
     }),
     values(_handle, sheet, a1) {
       const r = parseA1(a1);

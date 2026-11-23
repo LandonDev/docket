@@ -49,6 +49,8 @@ export type SheetRowControl = SheetFormatControl | SheetDataControl | SheetObjec
 const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size', 'bold', 'italic', 'underline', 'colour', 'fill', 'align', 'vertical', 'wrap', 'merge', 'borders', 'number']
 /** The Data menu's rows: held for each store by `sheets/rulesMatrix.test.ts`, `host/rules.test.ts` and `writer.test.ts`. */
 const DATA_KEPT: readonly SheetDataControl[] = ['sort', 'filter', 'validation', 'conditional', 'names', 'table']
+/** The page's controls: held for each store by `sheets/pagesMatrix.test.ts` (an opened Excel file, a sheet the service holds, its export). */
+const PAGE_KEPT: readonly SheetPageControl[] = ['page', 'pageBreaks', 'printArea', 'breakHere']
 
 /**
  * The format row's controls by where a sheet lives, which the host puts in the view (`row`). A
@@ -64,9 +66,9 @@ const DATA_KEPT: readonly SheetDataControl[] = ['sort', 'filter', 'validation', 
  * lose.
  */
 export const SHEET_ROW: Record<SheetStoreKind, readonly SheetRowControl[]> = {
-  lifeos: [...KEPT_WHOLE, ...DATA_KEPT],
-  tcsheet: [...KEPT_WHOLE, ...DATA_KEPT],
-  package: [...KEPT_WHOLE, ...DATA_KEPT],
+  lifeos: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT],
+  tcsheet: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT],
+  package: [...KEPT_WHOLE, ...DATA_KEPT, ...PAGE_KEPT],
   csv: []
 }
 
