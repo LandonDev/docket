@@ -89,8 +89,8 @@ export class SlidesStore {
   }
 
   /** Sets the mode of an item that has taken its seat (`seat`). */
-  setMode(itemId: string, mode: DeckMode): void {
-    this.db.prepare(`UPDATE work_slides_seats SET mode = ? WHERE item_id = ?`).run(mode, itemId)
+  setMode(itemId: string, mode: DeckMode): boolean {
+    return this.db.prepare(`UPDATE work_slides_seats SET mode = ? WHERE item_id = ?`).run(mode, itemId).changes > 0
   }
 
   written(deck: string): DeckWrite | null {

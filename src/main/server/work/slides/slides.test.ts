@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PDFDocument } from 'pdf-lib'
@@ -10,7 +10,8 @@ import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
 import type { DeckVersion, DeckView, ShowDeck, SlideOp } from '@shared/contract-work-slides'
 import type { SessionMeta } from '@shared/events'
-import type { CanvasSource, WorkScope } from '@shared/work'
+import { filesPaneOf, type CanvasSource, type WorkScope } from '@shared/work'
+import { importReadOnly, KEYNOTE_EXPORT, SLIDE_IMPORT_EXTS } from '@shared/work/slideFormats'
 import { openDb, Store } from '../../db'
 import type { SessionRegistry } from '../../sessions'
 import { canvasStoreOf } from '../canvas/store'
@@ -42,9 +43,11 @@ vi.mock('../files/policy', async (original) => {
 const { startWork } = await import('../ctx')
 const { canvas } = await import('../canvas')
 const { slides } = await import('.')
+const { deckPreviewer } = await import('./preview')
 const { SLIDES_CONVERTERS, joinStep, splitStep } = await import('./deck')
 const { hands, HAND_STEPS } = await import('./handLine')
-const { deckBase, deckCache, deckKey, fileKey, fileMoved, RENDER_FILTER, setSlideRenderer } = await import('./view')
+const { deckBase, deckCache, deckKey, tabCache, fileKey, fileMoved, RENDER_FILTER, serial, setSlideRenderer, sweepClosedCopies } = await import('./view')
+const { COPY_HIS_PRESS } = await import('./copyToEdit')
 const { filePreviewerFor } = await import('../files/hooks')
 /** Where a deck keeps its renders and versions: by the file for a file of his own, else in the item's own folder. */
 const folderOf = (item: { id: string; source: CanvasSource }, sub = 'render'): string =>
@@ -252,7 +255,18 @@ const FAKE: Converter[] = [
       writeFileSync(job.output, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
       return {}
     }
-  }
+  },
+  ...SLIDE_IMPORT_EXTS.map((from): Converter => ({
+    from,
+    to: 'pptx',
+    async run(job) {
+      jobs.push({ to: job.to, shared: job.shared })
+      calls.push(`import ${from}`)
+      if (!readFileSync(job.input, 'utf8').includes(`dummy ${from}`)) throw new Error('The converter could not open this file.')
+      writeFileSync(job.output, fakeBytes(FAKE_DECK))
+      return {}
+    }
+  }))
 ]
 
 // ── the host ─────────────────────────────────────────────────────────
@@ -264,6 +278,7 @@ const pushes: WorkPush[] = []
 const sessions = new Map<string, SessionMeta>()
 const registry = {
   get: (id: string) => sessions.get(id) ?? null,
+  listWorkspaces: () => [{ id: 'w1', kind: 'work' }],
   eventsAfter: (id: string) => (typed.get(id) ?? []).map((text, seq) => ({ seq, event: { type: 'user-text', text } })),
   onRemoved: () => () => {},
   onWorkspaceDeleted: () => () => {}
@@ -353,6 +368,289 @@ describe('the module, on a fake deck tool', () => {
     writeFileSync(path, fakeBytes(FAKE_DECK))
   })
   afterEach(close)
+
+  const importsMade = (): number => calls.filter((name) => name.startsWith('import ')).length
+  const workspaceFolder = (): string => {
+    const root = join(dir, 'Job')
+    mkdirSync(root, { recursive: true })
+    db.prepare(`INSERT INTO workspaces (id, name, path, kind, created_at) VALUES ('w1', 'Job', ?, 'work', 1)`).run(root)
+    return root
+  }
+  const asCaller = (method: string, params: unknown, by: Parameters<NonNullable<typeof slides.handle>>[2]) =>
+    slides.handle!(ClientRequestSchema.parse(req(method, params)), work.ctx, by).then((out) => (out as { result: { itemId: string } }).result)
+
+  it.each(SLIDE_IMPORT_EXTS)('opens %s read only: a converted picture of itself that nobody edits', async (ext) => {
+    const original = join(dir, `Legacy.${ext.toUpperCase()}`)
+    writeFileSync(original, ext === 'key' ? `${MAGIC}dummy key` : `dummy ${ext}`)
+    const item = openDeck(fileSource(original))
+    const [first, second] = await Promise.all([call('work.slides.open', { itemId: item.id }), call('work.slides.open', { itemId: item.id })])
+    expect(first).toMatchObject({ name: `Legacy.${ext.toUpperCase()}`, readOnly: { from: ext }, canUpload: true, changes: [], renders: { file: { pages: 4 }, proposed: null } })
+    expect([first.hand, first.mode, first.written]).toEqual([undefined, undefined, undefined])
+    expect(second).toEqual(first)
+    expect(importsMade()).toBe(1)
+    expect((await call<ShowDeck>('work.slides.show', { itemId: item.id })).slides).toHaveLength(4)
+    // The snapshot can be made again, so it lies under `.cache`, never beside the file.
+    expect(readFake(join(deckCache(dir, deckKey(item)), 'converted', 'deck.pptx')).slides).toHaveLength(4)
+    expect(existsSync(join(deckBase(dir, deckKey(item)), 'converted'))).toBe(false)
+    const why = importReadOnly(ext)
+    const edit = await tool('slides_edit', { item: item.id, because: 'asked', quote: 'x', ops: [{ op: 'notes', slide: 256, text: 'No' }] })
+    expect([edit.isError, textOf(edit)]).toEqual([true, why])
+    const writes: Array<[string, Record<string, unknown>]> = [
+      ['work.slides.edit', { ops: [{ op: 'notes', slide: 256, text: 'No' }] }],
+      ['work.slides.mode', { mode: 'writes' }],
+      ['work.slides.review', { changes: 'all', verdict: 'accept' }],
+      ['work.slides.undo', { writeId: 'w' }],
+      ['work.slides.step', { dir: 'undo' }],
+      ['work.slides.restore', { version: 'v' }],
+      ['work.slides.attach', { name: 'a.png', data: '' }]
+    ]
+    for (const [method, params] of writes) await expect(call(method, { itemId: item.id, ...params }), method).rejects.toThrow(why)
+    expect(await call('work.slides.versions', { itemId: item.id })).toEqual([])
+    expect(new SlidesStore(db).pending(deckKey(item))).toEqual([])
+    expect(readFileSync(original, 'utf8')).toContain(`dummy ${ext}`)
+    expect(readdirSync(dir).filter((name) => name.startsWith('Legacy'))).toEqual([`Legacy.${ext.toUpperCase()}`])
+  })
+
+  it('says which format refuses an edit', () => {
+    expect(importReadOnly('ppt')).toBe('This is a PowerPoint 97–2003 file, read only here. Make a copy to edit.')
+    expect(importReadOnly('ppsx')).toBe('This is a PowerPoint show, read only here. Make a copy to edit.')
+    expect(importReadOnly('odp')).toBe('This is an OpenDocument file, read only here. Make a copy to edit.')
+    expect(importReadOnly('key')).toBe('This is a Keynote file, read only here. Make a copy to edit.')
+  })
+
+  it('converts again when the original changed, and only then', async () => {
+    const original = join(dir, 'Budget.odp')
+    writeFileSync(original, 'dummy odp')
+    const item = openDeck(fileSource(original))
+    await call('work.slides.open', { itemId: item.id })
+    expect(importsMade()).toBe(1)
+    // Touched with the same bytes: read again by its hash, not converted.
+    const later = new Date(Date.now() + 5000)
+    utimesSync(original, later, later)
+    await call('work.slides.open', { itemId: item.id })
+    expect(importsMade()).toBe(1)
+    // Saved again elsewhere (LibreOffice, Keynote): a new snapshot, and a new picture of it.
+    writeFileSync(original, 'dummy odp, saved again')
+    const again = await call('work.slides.open', { itemId: item.id })
+    expect(importsMade()).toBe(2)
+    expect(again.readOnly).toEqual({ from: 'odp' })
+    await call('work.slides.open', { itemId: item.id })
+    expect(importsMade()).toBe(2)
+  })
+
+  it('leaves Files previews empty for imported formats', async () => {
+    const original = join(dir, 'Preview.odp')
+    writeFileSync(original, 'dummy odp')
+    expect(await deckPreviewer(work.ctx)(fileSource(original), { page: 1, width: 200 })).toBeNull()
+    expect(calls).toEqual([])
+  })
+
+  it('gives the Keynote export instruction for a Keynote LibreOffice cannot read, and keeps no copy', async () => {
+    const original = join(dir, 'Current.key')
+    writeFileSync(original, `${MAGIC}a Keynote the converter cannot open`)
+    const item = openDeck(fileSource(original))
+    await expect(call('work.slides.open', { itemId: item.id })).rejects.toThrow(KEYNOTE_EXPORT)
+    expect(readdirSync(join(deckCache(dir, deckKey(item)), 'converted'))).toEqual([])
+    expect(readFileSync(original, 'utf8')).toContain('a Keynote the converter cannot open')
+  })
+
+  it('refuses a .key that is not a Keynote deck before any converter sees it', async () => {
+    const original = join(dir, 'server.key')
+    writeFileSync(original, '-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n')
+    jobs.length = 0
+    await expect(call('work.slides.open', { itemId: openDeck(fileSource(original)).id })).rejects.toThrow('This is not a Keynote deck.')
+    expect(jobs).toEqual([])
+  })
+
+  it('draws a library file from a snapshot of its own tab on this host, writes nothing under the library, and drops it with the tab', async () => {
+    const library = join(dir, 'Team')
+    mkdirSync(library)
+    const original = join(library, 'Meeting.pps')
+    writeFileSync(original, 'dummy pps')
+    sharedPaths.add(library)
+    jobs.length = 0
+    try {
+      const store = canvasStoreOf(db)
+      const pane = filesPaneOf('w1')
+      const item = store.open(pane, { kind: 'slides', source: fileSource(original), title: 'Meeting.pps' })
+      const copy = join(tabCache(dir, item.id), 'converted', 'deck.pptx')
+      const view = await call('work.slides.open', { itemId: item.id })
+      expect(view).toMatchObject({ readOnly: { from: 'pps' } })
+      expect([view.canUpload, view.hand, view.mode]).toEqual([undefined, undefined, undefined])
+      expect(readFake(copy).slides).toHaveLength(4)
+      expect(jobs.length).toBeGreaterThan(1)
+      expect(jobs.every((job) => job.shared === true)).toBe(true)
+      expect(readdirSync(library)).toEqual(['Meeting.pps'])
+      WORK_MODULES.push({ id: 'slides', ensure() {}, itemsRemoved: slides.itemsRemoved })
+      store.close(item.id)
+      await vi.waitFor(() => expect(existsSync(tabCache(dir, item.id))).toBe(false))
+      const another = store.open(pane, { kind: 'slides', source: fileSource(original), title: 'Meeting.pps' })
+      await call('work.slides.open', { itemId: another.id })
+      expect(calls.filter((name) => name === 'import pps')).toHaveLength(2)
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+
+  it('sweeps a closed tab’s snapshot of a Teams file once a deck next opens, without making that open wait', async () => {
+    const snapshot = join(dir, 'attachments', 'teams-files', 't1', 'snapshot')
+    mkdirSync(snapshot, { recursive: true })
+    const original = join(snapshot, 'Meeting.ppsx')
+    writeFileSync(original, 'dummy ppsx')
+    const item = openDeck(fileSource(original))
+    expect(await call('work.slides.open', { itemId: item.id })).toMatchObject({ readOnly: { from: 'ppsx' } })
+    expect(existsSync(tabCache(dir, item.id))).toBe(true)
+    await call('work.canvas.close', { itemId: item.id })
+    expect(canvasStoreOf(db).get(item.id)?.state).toBe('closed')
+    expect(existsSync(tabCache(dir, item.id))).toBe(true)
+    await call('work.slides.open', { itemId: openDeck(fileSource(path)).id })
+    await vi.waitFor(() => expect(existsSync(tabCache(dir, item.id))).toBe(false))
+    await expect(call('work.slides.open', { itemId: item.id })).rejects.toThrow('This deck is closed')
+    expect(readFileSync(original, 'utf8')).toBe('dummy ppsx')
+  })
+
+  it('keeps a tab that opened again while its sweep waited on the file’s queue', async () => {
+    const snapshot = join(dir, 'attachments', 'teams-files', 't1', 'snapshot')
+    mkdirSync(snapshot, { recursive: true })
+    const original = join(snapshot, 'Again.ppt')
+    writeFileSync(original, 'dummy ppt')
+    const item = openDeck(fileSource(original))
+    await call('work.slides.open', { itemId: item.id })
+    await call('work.canvas.close', { itemId: item.id })
+    // The file's queue is busy: the sweep waits behind it, and the tab opens again meanwhile.
+    let release!: () => void
+    const busy = serial(work.ctx, item, () => new Promise<void>((res) => (release = res)))
+    const sweep = sweepClosedCopies(work.ctx)
+    await call('work.canvas.open', { sessionId: 't1', kind: 'slides', source: fileSource(original), title: 'Deck' })
+    expect(canvasStoreOf(db).get(item.id)?.state).toBe('open')
+    release()
+    await busy
+    await sweep
+    expect(existsSync(join(tabCache(dir, item.id), 'converted', 'deck.pptx'))).toBe(true)
+  })
+
+  it('a Microsoft seat on an imported file makes every tab draw from its own snapshot, read only', async () => {
+    const original = join(dir, 'Meeting.ppt')
+    writeFileSync(original, 'dummy ppt')
+    const plain = openDeck(fileSource(original))
+    await call('work.slides.open', { itemId: plain.id })
+    const cache = join(deckCache(dir, deckKey(plain)), 'converted', 'deck.pptx')
+    expect(existsSync(cache)).toBe(true)
+    const hosted = openDeck({ at: 'microsoft', host: 'env_test', app: 'powerpoint', name: 'Meeting.ppt', ref: { kind: 'path', path: original } })
+    jobs.length = 0
+    expect(await call('work.slides.open', { itemId: hosted.id })).toMatchObject({ hosted: false, readOnly: { from: 'ppt' } })
+    // The file is now known to be others': what was kept by it goes, and each tab converts its own.
+    expect(existsSync(cache)).toBe(false)
+    expect(await call('work.slides.open', { itemId: plain.id })).toMatchObject({ readOnly: { from: 'ppt' } })
+    expect(jobs.every((job) => job.shared === true)).toBe(true)
+    for (const id of [plain.id, hosted.id]) expect(existsSync(join(tabCache(dir, id), 'converted', 'deck.pptx'))).toBe(true)
+    expect(existsSync(join(dir, 'canvas', 't1', plain.id))).toBe(false)
+    slides.sessionsRemoved!(['t1'], work.ctx)
+    await vi.waitFor(() => expect([existsSync(tabCache(dir, plain.id)), existsSync(tabCache(dir, hosted.id))]).toEqual([false, false]))
+  })
+
+  it('a deck only its item held lets its Undo line go with its thread', async () => {
+    const own = openDeck({ at: 'thread' })
+    writeFileSync(join(dir, 'canvas', 't1', own.id, 'deck.pptx'), fakeBytes(FAKE_DECK))
+    await call('work.slides.edit', { itemId: own.id, ops: [{ op: 'notes', slide: 256, text: 'Mine' }] })
+    expect(hands.has(own.id)).toBe(true)
+    slides.sessionsRemoved!(['t1'], work.ctx)
+    expect(hands.has(own.id)).toBe(false)
+  })
+
+  it('makes a copy to edit beside the original in a Work thread’s workspace, never over a file', async () => {
+    const root = workspaceFolder()
+    mkdirSync(join(root, 'Jobs'))
+    const original = join(root, 'Jobs', 'Pitch.ppt')
+    writeFileSync(original, 'dummy ppt')
+    const item = openDeck(fileSource(original), 'Pitch.ppt')
+    await call('work.slides.open', { itemId: item.id })
+    const made = await call<{ itemId: string }>('work.slides.copyToEdit', { itemId: item.id })
+    const copy = canvasStoreOf(db).get(made.itemId)!
+    expect(copy).toMatchObject({ sessionId: 't1', kind: 'slides', title: 'Pitch.pptx', source: { at: 'file', path: join(root, 'Jobs', 'Pitch.pptx') }, state: 'open' })
+    expect(canvasStoreOf(db).get(item.id)?.state).toBe('open')
+    const editable = await call('work.slides.open', { itemId: copy.id })
+    expect([editable.readOnly, editable.mode, !!editable.hand]).toEqual([undefined, 'suggests', true])
+    // Taken: the next is "Pitch 2.pptx"; the first copy and the original are as they were.
+    const second = canvasStoreOf(db).get((await call<{ itemId: string }>('work.slides.copyToEdit', { itemId: item.id })).itemId)!
+    expect(second.title).toBe('Pitch 2.pptx')
+    expect(readdirSync(join(root, 'Jobs')).sort()).toEqual(['Pitch 2.pptx', 'Pitch.ppt', 'Pitch.pptx'])
+    expect(readFileSync(original, 'utf8')).toBe('dummy ppt')
+    expect(existsSync(join(dir, 'work-slides', 'copies'))).toBe(false)
+  })
+
+  it('makes a library file’s copy at the top of his workspace folder and puts it in the Files tab’s place', async () => {
+    const root = workspaceFolder()
+    const library = join(dir, 'Team')
+    mkdirSync(library)
+    const original = join(library, 'Review.odp')
+    writeFileSync(original, 'dummy odp')
+    sharedPaths.add(library)
+    try {
+      const store = canvasStoreOf(db)
+      const item = store.open(filesPaneOf('w1'), { kind: 'slides', source: fileSource(original), title: 'Review.odp' })
+      await call('work.slides.open', { itemId: item.id })
+      const made = await call<{ itemId: string }>('work.slides.copyToEdit', { itemId: item.id })
+      expect(store.get(made.itemId)).toMatchObject({ sessionId: filesPaneOf('w1'), title: 'Review.pptx', source: { at: 'file', path: join(root, 'Review.pptx') } })
+      expect(store.get(item.id)?.state ?? 'gone').not.toBe('open')
+      expect(readdirSync(library)).toEqual(['Review.odp'])
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+
+  it('makes a chat’s copy the thread’s own deck when the thread has no workspace', async () => {
+    sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: null, scope: 'work' } as SessionMeta)
+    const original = join(dir, 'Loose.pps')
+    writeFileSync(original, 'dummy pps')
+    const item = canvasStoreOf(db).open('t2', { kind: 'slides', source: fileSource(original), title: 'Loose.pps' })
+    await call('work.slides.open', { itemId: item.id })
+    const made = await call<{ itemId: string }>('work.slides.copyToEdit', { itemId: item.id })
+    expect(canvasStoreOf(db).get(made.itemId)).toMatchObject({ sessionId: 't2', title: 'Loose.pptx', source: { at: 'thread' } })
+    expect(readFake(join(dir, 'canvas', 't2', made.itemId, 'deck.pptx')).slides).toHaveLength(4)
+    expect(readdirSync(dir).filter((name) => name.startsWith('Loose'))).toEqual(['Loose.pps'])
+  })
+
+  it('makes a copy on his press alone: his own window anywhere, never a thread or another host', async () => {
+    const root = workspaceFolder()
+    const original = join(root, 'Press.ppt')
+    writeFileSync(original, 'dummy ppt')
+    const item = openDeck(fileSource(original), 'Press.ppt')
+    await call('work.slides.open', { itemId: item.id })
+    await expect(asCaller('work.slides.copyToEdit', { itemId: item.id }, { kind: 'model', caps: [], sessionId: 't1' })).rejects.toThrow(COPY_HIS_PRESS)
+    await expect(asCaller('work.slides.copyToEdit', { itemId: item.id }, { kind: 'remote', caps: ['read', 'operate', 'approve'], peer: 'env_mac' })).rejects.toThrow(COPY_HIS_PRESS)
+    // His Mac's window or his phone, through a key with operate.
+    const made = await asCaller('work.slides.copyToEdit', { itemId: item.id }, { kind: 'remote', caps: ['read', 'operate'], keyId: 'k1' })
+    expect(canvasStoreOf(db).get(made.itemId)?.title).toBe('Press.pptx')
+    await expect(call('work.slides.copyToEdit', { itemId: made.itemId })).rejects.toThrow('can be edited as it is')
+  })
+
+  it('a key without approve takes no copy out of a place others can open, and none lands in it', async () => {
+    const root = workspaceFolder()
+    const library = join(root, 'Team')
+    mkdirSync(library)
+    const original = join(library, 'Shared.ppt')
+    writeFileSync(original, 'dummy ppt')
+    sharedPaths.add(library)
+    try {
+      const item = openDeck(fileSource(original))
+      await call('work.slides.open', { itemId: item.id })
+      await expect(asCaller('work.slides.copyToEdit', { itemId: item.id }, { kind: 'remote', caps: ['read', 'operate'] })).rejects.toThrow('this key may not change it')
+      const made = await asCaller('work.slides.copyToEdit', { itemId: item.id }, { kind: 'remote', caps: ['read', 'operate', 'approve'] })
+      expect(canvasStoreOf(db).get(made.itemId)?.source).toMatchObject({ path: join(root, 'Shared.pptx') })
+      expect(readdirSync(library)).toEqual(['Shared.ppt'])
+    } finally {
+      sharedPaths.clear()
+    }
+  })
+
+  it('a .pptx keeps its hand, its mode and its waiting suggestions', async () => {
+    const item = openDeck(fileSource(path))
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'Waits' }] })
+    const view = await call('work.slides.open', { itemId: item.id })
+    expect([view.readOnly, view.mode, !!view.hand, view.changes.length]).toEqual([undefined, 'suggests', true, 1])
+    await expect(call('work.slides.copyToEdit', { itemId: item.id })).rejects.toThrow('can be edited as it is')
+  })
 
   it('a remote key opens and reads a deck only under the roots it could name itself', async () => {
     const remote = { kind: 'remote', keyId: 'k1', name: 'Bot', audience: 'mcp', caps: ['read', 'operate'] } as never
@@ -700,11 +998,9 @@ describe('the module, on a fake deck tool', () => {
     expect(readFake(path).slides.map((s) => s.id)).toEqual([256, 257, 259])
   })
 
-  it('refuses a deck on the web or in Google with a sentence, and a file that is not a deck', async () => {
+  it('refuses a deck in PowerPoint on the web with a sentence, and a file that is not a deck', async () => {
     const web = openDeck({ at: 'microsoft', host: 'env_test', app: 'powerpoint', name: 'Web.pptx', ref: { kind: 'url', url: 'https://contoso.sharepoint.com/x.pptx' } }, 'Web')
     await expect(call('work.slides.open', { itemId: web.id })).rejects.toThrow('Web lives in PowerPoint on the web. Opening it from there is not built yet.')
-    const g = openDeck({ at: 'google', account: 'a', fileId: 'f', mime: 'application/vnd.google-apps.presentation' }, 'G')
-    await expect(call('work.slides.open', { itemId: g.id })).rejects.toThrow('G lives in Google: open it there.')
     const junk = join(dir, 'junk.pptx')
     writeFileSync(junk, 'hello')
     await expect(call('work.slides.open', { itemId: openDeck(fileSource(junk), 'J').id })).rejects.toThrow('junk.pptx is not a PowerPoint deck.')
@@ -825,9 +1121,14 @@ describe('the module, on a fake deck tool', () => {
     const opening = call('work.slides.open', { itemId: item.id })
     const editing = tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
     await new Promise((res) => setTimeout(res, 20))
-    new SlidesStore(db).setMode(item.id, 'suggests')
-    release()
+    const switching = call('work.slides.mode', { itemId: item.id, mode: 'suggests' })
+    try {
+      await vi.waitFor(() => expect(new SlidesStore(db).mode(item.id)).toBe('suggests'))
+    } finally {
+      release()
+    }
     await opening
+    await switching
     expect(textOf(await editing)).toContain('Suggested 1 revised slide')
     expect(readFake(path).slides[0].notes).toBe('')
   })

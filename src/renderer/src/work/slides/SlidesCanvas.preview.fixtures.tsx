@@ -26,6 +26,10 @@ export default [
   { name: "The Sorter: sections, a hidden slide", props: { moment: "sorter" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "No picture: LibreOffice is not here", props: { moment: "nopicture" } },
+  { name: "An imported .ppt: read only, with Make a copy to edit", props: { moment: "copy" } },
+  { name: "An imported .ppt at 400px", props: { moment: "copy", previewWidth: 400 } },
+  { name: "A Google deck Drive could not be reached for: the copy read before", props: { moment: "google" } },
+  { name: "A Google deck at 400px", props: { moment: "google", previewWidth: 400 } },
 ];
 
 /** The deck's own ground, title ink and point ink (its picture's colours, not the app's). */

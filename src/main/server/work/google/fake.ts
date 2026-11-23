@@ -50,6 +50,8 @@ interface FakeFile {
   doc?: FakeDoc
   sheet?: FakeSheet
   deck?: FakeDeck
+  exported?: { mime: string; bytes: Uint8Array }
+  uploaded?: { mime: string; bytes: Buffer }
   permissions: { id: string; emailAddress: string; role: string }[]
   parents: string[]
   trashed: boolean
@@ -122,6 +124,13 @@ export class FakeGoogle {
 
   addDeck(owner: string, id: string, name: string, slides: FakeDeck['slides']): void {
     this.file(id, name, GOOGLE_MIME.slides, owner).deck = { rev: 1, slides }
+  }
+
+  /** The file Drive exports; changing it changes Drive's version. */
+  setExport(id: string, mime: string, bytes: Uint8Array): void {
+    const f = this.files.get(id)!
+    f.exported = { mime, bytes }
+    this.bump(f)
   }
 
   /** Someone else changes a Doc in Google: text inserted at a document index. */
@@ -221,7 +230,10 @@ export class FakeGoogle {
     }
     if ((m = path.match(/^\/drive\/v3\/files\/([^/]+)\/export$/))) {
       const f = reach(decodeURIComponent(m[1]))
-      return f ? new Response(new Uint8Array(Buffer.from(`%fake ${url.searchParams.get('mimeType')} of ${f.name}`))) : notFound()
+      if (!f) return notFound()
+      const mime = url.searchParams.get('mimeType')
+      if (f.exported) return f.exported.mime === mime ? new Response(new Uint8Array(f.exported.bytes)) : reply(400, { error: { message: 'Wrong export type' } })
+      return new Response(new Uint8Array(Buffer.from(`%fake ${mime} of ${f.name}`)))
     }
     if ((m = path.match(/^\/drive\/v3\/files\/([^/]+)\/copy$/))) {
       const f = reach(decodeURIComponent(m[1]))
@@ -230,6 +242,7 @@ export class FakeGoogle {
       copy.doc = f.doc && structuredClone(f.doc)
       copy.sheet = f.sheet && structuredClone(f.sheet)
       copy.deck = f.deck && structuredClone(f.deck)
+      copy.exported = f.exported && structuredClone(f.exported)
       return reply(200, { id: copy.id, name: copy.name, mimeType: copy.mimeType, version: '1', webViewLink: `https://docs.google.com/open?id=${copy.id}` })
     }
     if ((m = path.match(/^\/drive\/v3\/files\/([^/]+)\/permissions$/)) && method === 'POST') {
@@ -250,6 +263,11 @@ export class FakeGoogle {
       const raw = Buffer.from(init!.body as Uint8Array).toString('latin1')
       const meta = JSON.parse(raw.match(/\r\n\r\n(\{.*?\})\r\n/)![1]) as { name: string; mimeType: string }
       const f = this.file(`up${++this.n}`, meta.name, meta.mimeType, account)
+      const part = /Content-Type: ([^\r\n]+)\r\n\r\n([\s\S]*)\r\n--[^\r\n]+--$/.exec(raw.slice(raw.indexOf('}\r\n') + 3))
+      if (part) {
+        f.uploaded = { mime: part[1], bytes: Buffer.from(part[2], 'latin1') }
+        if (meta.mimeType === GOOGLE_MIME.slides) f.exported = f.uploaded
+      }
       if (meta.mimeType === GOOGLE_MIME.doc) f.doc = { chars: 'Uploaded\n'.split('').map((c) => ({ c, ...(c === '\n' ? { style: 'NORMAL_TEXT' } : {}) })), rev: 1, comments: [], commentAnchors: {}, suggestions: [] }
       return reply(200, { id: f.id, name: f.name, mimeType: f.mimeType, version: '1', webViewLink: `https://docs.google.com/open?id=${f.id}` })
     }

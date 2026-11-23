@@ -73,6 +73,19 @@ describe("his hand on a deck", () => {
     expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(1);
   });
 
+  it("reads theme colours back as hex after format and run edits", async () => {
+    const { host, slide, shape } = setUp();
+    const formatted = await host.edit([{ op: "format", slide: slide.id, shape: shape.id, set: { color: { slot: "tx1" } } }]);
+    expect(formatted.slides[0].shapes[0].paragraphs?.[0].runs[0].color).toBe("000000");
+    const typed = await host.edit([{
+      op: "runs",
+      slide: slide.id,
+      shape: shape.id,
+      paragraphs: [{ runs: [{ text: "New title", color: { slot: "accent1" } }] }],
+    }]);
+    expect(typed.slides[0].shapes[0].paragraphs?.[0].runs[0].color).toBe("4472C4");
+  });
+
   it("walks the box's own undo and redo, a typing burst one step", () => {
     const { session, slide, shape } = setUp();
     session.open(slide, shape, "end");

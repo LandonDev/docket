@@ -388,7 +388,16 @@ export interface DeckView {
   name: string
   /** changes when the file's bytes do */
   rev: string
-  mode: DeckMode
+  /** What an agent may do from this tab; absent on a deck that is read only here. */
+  mode?: DeckMode
+  /**
+   * Read only here: an imported format (`.ppt`, `.pps`, `.ppsx`, `.odp`, `.key`) shown as a converted picture of
+   * itself, or a Google deck's mirror. Such a view has no `hand`, no `mode` and no changes. `offline`: Drive could
+   * not be reached, so the copy read before is shown.
+   */
+  readOnly?: { from: 'google' | 'ppt' | 'pps' | 'ppsx' | 'odp' | 'key'; offline?: true }
+  /** Save to Google Slides is offered: his own saved .pptx. */
+  canUpload?: true
   /** The deck lives in PowerPoint (OneDrive, SharePoint, Teams): the tab row offers the real app. */
   hosted: boolean
   slides: DeckSlide[]
@@ -558,6 +567,8 @@ const opsOnWire = z.array(SlideOpSchema).min(1).max(100) as unknown as z.ZodType
 export const SlidesRequestSchemas = [
   /** → DeckView: reads the deck and renders it (and the proposed deck, when changes wait), which can take seconds the first time */
   request('work.slides.open', z.object({ itemId })),
+  /** → { itemId }: his press only. Writes a .pptx of a read-only deck (an import, a Google deck) he can see in Files, never over a file, and opens it in the same seat. */
+  request('work.slides.copyToEdit', z.object({ itemId })),
   /** → { data: base64, size, rev }: bytes of one of the deck's renders, a PDF. `layouts`: one page per entry of `DeckView.layouts`, each layout as an empty slide that says what goes where (`DeckView.layoutsPic`). */
   request('work.slides.read', z.object({ itemId, which: z.enum(['file', 'proposed', 'layouts']), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
   /** → { data: base64, size, rev }: bytes of one slide's own picture (a one-page PDF), by the slide's id in the file or in the proposed deck; `rev` is the slide's `pic.rev` */
@@ -612,6 +623,7 @@ export type SlidesReadyPush = { push: 'work.slides.ready'; sessionId: string; it
 
 export const SLIDES_CAPS = {
   'work.slides.open': 'read',
+  'work.slides.copyToEdit': 'operate',
   'work.slides.read': 'read',
   'work.slides.show': 'read',
   'work.slides.slide': 'read',

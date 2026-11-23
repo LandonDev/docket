@@ -1,11 +1,16 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientRequest } from '@shared/contract'
+import type { DeckView, ShowDeck } from '@shared/contract-work-slides'
 import type { CanvasItem, WorkToolResult } from '@shared/work'
 import type { Caller, ToolCtx, WorkCtx } from '../modules'
+import { slides } from '../slides'
+import type { DeckInfo } from '../slides/deck'
+import { slidesTools } from '../slides/tools'
+import { cachedSlidesMirror, PPTX_MIME } from './deckMirror'
 import { ensureSuggestionTables } from '../sheets/suggestions'
 import { GOOGLE_MIME } from './client'
 import { FakeGoogle, FAKE_TOKEN_URL } from './fake'
@@ -17,6 +22,7 @@ import { pickerUrl } from './picker'
 import { pollOnce } from './poll'
 import { boxesOf } from './slides'
 import { GOOGLE_TOOLS } from './tools'
+import { registerUploadBytes } from './uploads'
 
 /** The google wire, its tools and its held act, against the fake Google. */
 const ME = 'landon@example.com'
@@ -43,6 +49,7 @@ beforeEach(() => {
   const db = new DatabaseSync(':memory:')
   db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)')
   module.ensure(db)
+  slides.ensure(db)
   ensureSuggestionTables(db)
   items = new Map()
   held = []
@@ -55,6 +62,17 @@ beforeEach(() => {
     dataDir: dir,
     log: () => {},
     push: (p: unknown) => pushes.push(p),
+    reaches: (by: Caller) => by.kind === 'local',
+    convert: async (job: Parameters<WorkCtx['convert']>[0]) => {
+      if (!job.output) throw new Error('missing output')
+      if (job.to === 'deckinfo') {
+        const title = readFileSync(job.input).subarray(4).toString()
+        const outline: DeckInfo = { width: 960, height: 540, sections: [], layouts: ['Title'], slides: [{ id: 256, hidden: false, layout: 'Title', title, notes: '', hash: '', shapes: [] }] }
+        writeFileSync(job.output, JSON.stringify(outline))
+      } else if (job.to === 'pdf') writeFileSync(job.output, '%PDF-1.7')
+      else throw new Error(`unexpected conversion ${job.to}`)
+      return { output: job.output, ranOn: ctx.host, warnings: [] }
+    },
     scopeOf: (id: string) => (id === 's1' ? {} : null),
     lifeos: { jwt: async () => fake.jwt, connected: () => true, owner: () => ({ query: async () => [{ account: ME, files: true, writes: false }, { account: 'work@example.com', files: false }] }) },
     canvas: {
@@ -72,6 +90,7 @@ beforeEach(() => {
   setGoogleDeps({ fetch: fake.fetch, tokenUrl: FAKE_TOKEN_URL, blocksOf: async () => [] })
 })
 afterEach(() => {
+  ctx.db.close()
   resetGoogle()
   unfollowAll()
   rmSync(dir, { recursive: true, force: true })
@@ -113,6 +132,151 @@ describe('the google wire', () => {
     const sheet = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'sh1' })
     expect(items.get(sheet.itemId)?.kind).toBe('sheet')
     await expect(call('work.google.open', { sessionId: 'code-thread', account: ME, fileId: 'sh1' })).rejects.toThrow('Work thread')
+  })
+
+  const openPresentation = async () => items.get((await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck1' })).itemId)!
+  const slidesCall = async <T>(itemId: string, method: string, params: Record<string, unknown> = {}, by = local): Promise<T> => {
+    const out = await slides.handle!({ id: '1', method, params: { itemId, ...params } } as ClientRequest, ctx, by)
+    return (out as { result: T }).result
+  }
+  const fakePptx = (title: string): Buffer => Buffer.concat([Buffer.from([0x50, 0x4b, 3, 4]), Buffer.from(title)])
+
+  it('opens the Drive PPTX export in the slide viewer, presents it, and reads a fresh mirror on Read again', async () => {
+    fake.setExport('deck1', PPTX_MIME, fakePptx('First title'))
+    const item = await openPresentation()
+    const view = await slidesCall<DeckView>(item.id, 'work.slides.open')
+    expect(view.slides.map((slide) => slide.title)).toEqual(['First title'])
+    expect(view.renders.file?.pages).toBe(1)
+    expect(view.hand).toBeUndefined()
+    expect((await slidesCall<ShowDeck>(item.id, 'work.slides.show')).slides).toHaveLength(1)
+    const source = item.source as Extract<CanvasItem['source'], { at: 'google' }>
+    const stored = cachedSlidesMirror(ctx, source)
+    expect(stored).toMatch(/\/google\/[^/]+\/deck\.pptx$/)
+    expect(readFileSync(stored)).toEqual(fakePptx('First title'))
+    expect(fake.calls.filter((call) => call.endsWith('/deck1/export'))).toHaveLength(1)
+    await slidesCall<DeckView>(item.id, 'work.slides.open')
+    expect(fake.calls.filter((call) => call.endsWith('/deck1/export'))).toHaveLength(1)
+    fake.setExport('deck1', PPTX_MIME, fakePptx('Second title'))
+    await call('work.google.reload', { itemId: item.id })
+    expect((await slidesCall<DeckView>(item.id, 'work.slides.open')).slides.map((slide) => slide.title)).toEqual(['Second title'])
+    expect(cachedSlidesMirror(ctx, source)).toBe(stored)
+    expect(fake.calls.filter((call) => call.endsWith('/deck1/export'))).toHaveLength(2)
+    fake.setExport('deck1', PPTX_MIME, Buffer.from('not a PowerPoint deck'))
+    await expect(call('work.google.reload', { itemId: item.id })).rejects.toThrow('Google did not export a PowerPoint deck')
+    expect(readFileSync(stored)).toEqual(fakePptx('Second title'))
+  })
+
+  it('refuses edits to the Google mirror and opens an editable local copy on the owner’s press', async () => {
+    fake.setExport('deck1', PPTX_MIME, fakePptx('Local title'))
+    const item = await openPresentation()
+    await slidesCall<DeckView>(item.id, 'work.slides.open')
+    await expect(slidesCall(item.id, 'work.slides.mode', { mode: 'writes' })).rejects.toThrow('read only')
+    await expect(slidesCall(item.id, 'work.slides.review', { changes: 'all', verdict: 'accept' })).rejects.toThrow('read only')
+    await expect(slidesCall(item.id, 'work.slides.undo', { writeId: 'w' })).rejects.toThrow('read only')
+    for (const verb of ['edit', 'step', 'restore', 'attach']) await expect(slidesCall(item.id, `work.slides.${verb}`)).rejects.toThrow('read only')
+    const edit = await slidesTools.find((t) => t.name === 'slides_edit')!.run({ item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] }, { ...ctx, sessionId: 's1', scope: {} } as unknown as ToolCtx)
+    expect([edit.isError, text(edit)]).toEqual([true, 'This Google deck is read only here. Make a copy to edit.'])
+    await expect(slidesCall(item.id, 'work.slides.copyToEdit', {}, { kind: 'model', caps: [] })).rejects.toThrow('from his own window')
+    await expect(slidesCall(item.id, 'work.slides.copyToEdit', {}, { kind: 'remote', caps: ['read', 'operate', 'approve'], peer: 'env_mac' })).rejects.toThrow('from his own window')
+    // A Google deck is others' place: a key without approve copies nothing out of it.
+    await expect(slidesCall(item.id, 'work.slides.copyToEdit', {}, { kind: 'remote', caps: ['read', 'operate'] })).rejects.toThrow('this key may not change it')
+    // His phone or his Mac's window: a key of his with approve. A thread with no workspace keeps the copy as its own deck.
+    const copy = await slidesCall<{ itemId: string }>(item.id, 'work.slides.copyToEdit', {}, { kind: 'remote', caps: ['read', 'operate', 'approve'], keyId: 'k1' })
+    const localFile = items.get(copy.itemId)!
+    expect(localFile).toMatchObject({ title: 'Pitch.pptx', kind: 'slides', source: { at: 'thread' } })
+    expect((await slidesCall<DeckView>(copy.itemId, 'work.slides.open')).slides.map((slide) => slide.title)).toEqual(['Local title'])
+    expect(readdirSync(dir).includes('work-slides') && readdirSync(join(dir, 'work-slides')).includes('copies')).toBe(false)
+    expect((await slidesCall<DeckView>(copy.itemId, 'work.slides.mode', { mode: 'writes' })).mode).toBe('writes')
+    expect(fake.calls.some((call) => call.startsWith('POST /drive/'))).toBe(false)
+  })
+
+  /** Drive does not answer: offline, or LifeOS's Google session gone. */
+  const unreachable = (): void => {
+    resetGoogle()
+    setGoogleDeps({ fetch: async () => Promise.reject(new Error('getaddrinfo ENOTFOUND www.googleapis.com')), tokenUrl: FAKE_TOKEN_URL, blocksOf: async () => [] })
+  }
+
+  it('opens the mirror read before when Drive cannot be reached, and says so until Drive answers again', async () => {
+    fake.setExport('deck1', PPTX_MIME, fakePptx('Kept title'))
+    const item = await openPresentation()
+    expect((await slidesCall<DeckView>(item.id, 'work.slides.open')).readOnly).toEqual({ from: 'google' })
+    const fetch = fake.fetch
+    unreachable()
+    const offline = await slidesCall<DeckView>(item.id, 'work.slides.open')
+    expect([offline.readOnly, offline.slides.map((slide) => slide.title)]).toEqual([{ from: 'google', offline: true }, ['Kept title']])
+    resetGoogle()
+    setGoogleDeps({ fetch, tokenUrl: FAKE_TOKEN_URL, blocksOf: async () => [] })
+    expect((await slidesCall<DeckView>(item.id, 'work.slides.open')).readOnly).toEqual({ from: 'google' })
+  })
+
+  it('a deck never read fails to open while Drive cannot be reached', async () => {
+    fake.setExport('deck1', PPTX_MIME, fakePptx('Never read'))
+    const item = await openPresentation()
+    unreachable()
+    await expect(slidesCall<DeckView>(item.id, 'work.slides.open')).rejects.toThrow('LifeOS did not answer for a Google token')
+  })
+
+  it('uploads the saved PowerPoint bytes to the owner’s Drive without a hold', async () => {
+    const title = 'For Drive.pptx'
+    const path = join(dir, title)
+    const bytes = fakePptx('For Drive')
+    writeFileSync(path, bytes)
+    const item = ctx.canvas.open('s1', 'slides', { at: 'file', host: ctx.host, path }, title)
+    await expect(call('work.google.upload', { itemId: item.id, account: ME }, { kind: 'model', caps: [], sessionId: 's1' })).rejects.toThrow('Only the owner')
+    await expect(call('work.google.upload', { itemId: item.id, account: ME }, { kind: 'remote', caps: ['operate'] })).rejects.toThrow('outside app-managed roots')
+    await expect(call('work.google.upload', { itemId: item.id, account: ME }, { kind: 'remote', caps: ['operate', 'approve'], peer: 'env_mac' })).rejects.toThrow('Only the owner')
+    expect(fake.calls.filter((call) => call.includes('/upload/'))).toHaveLength(0)
+    const got = await call<{ fileId: string; url: string }>('work.google.upload', { itemId: item.id, account: ME })
+    expect(fake.files.get(got.fileId)).toMatchObject({ name: 'For Drive', mimeType: GOOGLE_MIME.slides, reach: new Set([ME]), uploaded: { mime: PPTX_MIME, bytes } })
+    expect(got.url).toContain(got.fileId)
+    expect(readdirSync(dir)).toEqual([title])
+    const opened = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: got.fileId })
+    expect((await slidesCall<DeckView>(opened.itemId, 'work.slides.open')).slides.map((slide) => slide.title)).toEqual(['For Drive'])
+    expect(results.map((r) => r.kind)).toEqual(['google.slides.upload'])
+    expect(held).toEqual([])
+  })
+
+  it('waits for the sheets pillar to register its saved bytes', async () => {
+    const item = ctx.canvas.open('s1', 'sheet', { at: 'file', host: ctx.host, path: join(dir, 'Budget.xlsx') }, 'Budget.xlsx')
+    await expect(call('work.google.upload', { itemId: item.id, account: ME })).rejects.toThrow('Save to Google Sheets is not built yet.')
+    expect(fake.calls.filter((call) => call.includes('/upload/'))).toHaveLength(0)
+  })
+
+  it('uploads Excel bytes from a registered sheet provider to the owner’s Drive', async () => {
+    const item = ctx.canvas.open('s1', 'sheet', { at: 'file', host: ctx.host, path: join(dir, 'Budget.xlsx') }, 'Budget.xlsx')
+    const bytes = Buffer.from('PK fake xlsx')
+    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    const stop = registerUploadBytes('sheet', async (_ctx, source) => {
+      expect(source.id).toBe(item.id)
+      return { bytes, mime }
+    })
+    try {
+      const got = await call<{ fileId: string; url: string }>('work.google.upload', { itemId: item.id, account: ME })
+      expect(fake.files.get(got.fileId)).toMatchObject({ name: 'Budget', mimeType: GOOGLE_MIME.sheet, reach: new Set([ME]), uploaded: { mime, bytes } })
+      expect(got.url).toContain(got.fileId)
+      expect(results.map((r) => r.kind)).toEqual(['google.sheet.upload'])
+      expect(held).toEqual([])
+    } finally {
+      stop()
+    }
+    await expect(call('work.google.upload', { itemId: item.id, account: ME })).rejects.toThrow('Save to Google Sheets is not built yet.')
+  })
+
+  it('keeps a Teams snapshot out of Google for every kind’s provider', async () => {
+    const snapshot = join(dir, 'attachments', 'teams-files', 's1', 'snapshot')
+    const deck = ctx.canvas.open('s1', 'slides', { at: 'file', host: ctx.host, path: join(snapshot, 'Talk.ppt') }, 'Talk.ppt')
+    await expect(call('work.google.upload', { itemId: deck.id, account: ME })).rejects.toThrow('A file from a shared library stays on this host')
+    const sheet = ctx.canvas.open('s1', 'sheet', { at: 'file', host: ctx.host, path: join(snapshot, 'Budget.xlsx') }, 'Budget.xlsx')
+    let asked = 0
+    const stop = registerUploadBytes('sheet', async () => (asked++, { bytes: Buffer.from('PK'), mime: 'application/octet-stream' }))
+    try {
+      await expect(call('work.google.upload', { itemId: sheet.id, account: ME })).rejects.toThrow('A file from a shared library stays on this host')
+    } finally {
+      stop()
+    }
+    expect(asked).toBe(0)
+    expect(fake.calls.filter((call) => call.includes('/upload/'))).toHaveLength(0)
+    expect(held).toEqual([])
   })
 
   it("an agent may not write a Doc's mirror to Google: that is his", async () => {

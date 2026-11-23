@@ -8,6 +8,7 @@ import { MARGIN_PRESETS, PAPERS, type PaperName, type PreviewFormat } from "../.
 import { PageMenuRow, PageSwitchRow, Preview } from "../../formats/PreviewFrame";
 import { Export } from "../../icons";
 import { deckStoreOf, useDeck } from "../deck";
+import { feedMore } from "../more";
 import { onPreviewAsk, PreviewOpener, type PreviewOn } from "./ask";
 import { deckPreviewSource, type DeckLayout, type DeckOptions } from "./source";
 
@@ -121,8 +122,8 @@ export function DeckPreviewLayer({ env, itemId, shell, request = linkRequest, ch
   const ready = !!view;
   useEffect(() => {
     if (!ready) return;
-    shell.more?.([{ id: "export", label: "Export…", icon: Export, run: () => show("last") }]);
-    return () => shell.more?.(null);
+    feedMore(shell, "export", [{ id: "export", label: "Export…", icon: Export, run: () => show("last") }]);
+    return () => feedMore(shell, "export", null);
   }, [shell, ready, show]);
   useWorkCommands(root, ready ? { export: () => show("last"), print: () => show("print") } : {});
   const open = useCallback(() => show("last"), [show]);

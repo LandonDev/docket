@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Bbox } from "@shared/contract-work-pdf";
 import type { DeckShape, DeckSlide, DeckView, SlideChange } from "@shared/contract-work-slides";
+import { KEYNOTE_EXPORT } from "@shared/work/slideFormats";
 import { formatKeyOf } from "work-kit/format/keys";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -31,8 +32,10 @@ import { Picture } from "./Picture";
 import { Sorter } from "./Sorter";
 import { Strip, type PictureOf, type SlideHand } from "./Strip";
 import { present, presentKey, PresentButton, type PresentAsk } from "./Present";
+import { useOpenShow } from "./openShow";
 import { askPreview, PreviewOpener } from "./preview/ask";
 import { DeckPreviewLayer } from "./preview/DeckPreview";
+import { NoticeLine, useSlideFileActions } from "./slideFileActions";
 
 export { freePage } from "./Picture";
 
@@ -144,7 +147,7 @@ export function startPresenting(host: DeckHost, store: DeckStore, ask: PresentAs
   present((show) =>
     show.startShow({
       host: showHostOf(host),
-      title: view.name.replace(/\.pptx$/i, ""),
+      title: view.name.replace(/\.(pptx|ppt|ppsx|pps|odp|key)$/i, ""),
       from: ask.from === "here" && here ? here.id : "start",
       mode: ask.mode,
       ...(ask.display !== undefined ? { display: ask.display } : {}),
@@ -168,6 +171,7 @@ export function Body(props: CanvasBodyProps<SlidesState> & SlidesDeps) {
 export function SlidesBody({
   item,
   source,
+  env,
   shell,
   host,
   store,
@@ -181,6 +185,7 @@ export function SlidesBody({
   dragging: firstDrag,
 }: CanvasBodyProps<SlidesState> & Omit<SlidesDeps, "host" | "engine"> & { host: DeckHost; store: DeckStore; engine: PdfEngine }) {
   const { view, error, current, side, look, sheet, sheetTab } = useDeck(store);
+  useOpenShow(env, item.id, canPresent(view) && !error, () => startPresenting(host, store, { from: "start", mode: "full" }, engine));
   const session = handOf(item.id, host, store);
   const hand = useSyncExternalStore(session.subscribe, session.get, session.get);
   // A box open when the tab closes, or the item leaves, commits.
@@ -284,6 +289,7 @@ export function SlidesBody({
   const editable = !!view?.hand;
   const slideHand = useMemo<SlideHand | null>(() => (editable ? { session, store, askName: setNaming } : null), [editable, session, store]);
   useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store, hand, session, reload);
+  const file = useSlideFileActions({ env, item, shell, refresh: retry, view: error ? null : view });
 
   // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
   if (error) return null;
@@ -347,6 +353,7 @@ export function SlidesBody({
         if (key && keyAct(key, target, session)) event.preventDefault();
       }}
     >
+      {file.dialog}
       {view.hand ? (
         <DeckRow
           view={view}
@@ -369,6 +376,7 @@ export function SlidesBody({
           mediaSize={mediaSize}
         />
       ) : null}
+      {file.notice && !renderError ? <NoticeLine notice={file.notice} /> : null}
       {look === "sorter" ? (
         <div ref={box} className="flex min-h-0 min-w-0 flex-1">
           <Sorter view={view} current={shown?.key ?? null} width={size.width} pictureOf={pictureOf} pictures={!view.renderError} hand={slideHand} onOpen={(key) => store.set({ current: key, look: "slide" })} />
@@ -438,6 +446,7 @@ function useFeeds(
   reload: () => void,
 ): void {
   const inPowerPoint = side === "powerpoint";
+  // A read-only deck carries no mode: there is nothing an agent may do to it.
   const mode = view?.mode;
   useEffect(() => {
     if (!mode || inPowerPoint) return shell.mode(null);
@@ -450,7 +459,9 @@ function useFeeds(
   useEffect(() => {
     shell.statusLine(
       error
-        ? { tone: "failed", word: "Couldn't open this deck", detail: error, action: { label: "Retry", run: retry } }
+        ? error === KEYNOTE_EXPORT
+          ? { tone: "failed", word: error }
+          : { tone: "failed", word: "Couldn't open this deck", detail: error, action: { label: "Retry", run: retry } }
         : failure?.conflict
           ? { tone: "failed", word: failure.message, detail: "Your words are still in the box", action: failure.message === CONFLICT_WORD ? { label: "Reload", run: reload } : undefined }
           : failure

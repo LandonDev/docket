@@ -1,11 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, sep } from 'node:path'
 import type { Bbox } from '@shared/contract-work-pdf'
 import type { DeckShape, DeckSlide, DeckView, SlideChange, SlideOp } from '@shared/contract-work-slides'
 import { canvasSourcePath, type CanvasItem, type CanvasSource } from '@shared/work'
+import { importReadOnly, slideImportExt, type SlideImportExt } from '@shared/work/slideFormats'
 import { errorText } from '@shared/work/ids'
 import { sharedOf } from '../files/policy'
+import { cachedSlidesMirror, mirrorUnreached } from '../google/deckMirror'
+import { madeFromShared } from '../formats/exporter'
 import { NoConverterError } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
 import { canvasItemDir } from '../canvas/store'
@@ -14,8 +17,10 @@ import { sweepAttached, withAttached } from './attach'
 import { withBuilds } from './builds'
 import { DECK_ITSELF, isNote, type DeckInfo, type ShapeInfo, type SlideInfo } from './deck'
 import { DECK_PY } from './deckScript'
-import { handMoved, handState } from './handLine'
+import { convertedDeck, isTeamsSnapshot } from './formatsIn'
+import { hands, handMoved, handState } from './handLine'
 import { deckPicture, pageName, prunePages, splitPdf, type SlideRenderer } from './pictures'
+import { stopShow } from './show'
 import { rowSession, SlidesStore, type DeckWrite, type PendingOp } from './store'
 
 /**
@@ -66,9 +71,8 @@ export const fileKey = (path: string): string => `file:${realOf(path)}`
 export const filePathOf = (source: CanvasSource): string | null => (source.at === 'file' || (source.at === 'microsoft' && source.ref.kind === 'path') ? canvasSourcePath(source) : null)
 
 /**
- * The deck an item shows (store.ts "Kept by the deck, not the item"): `file:<real path>` for a file on this host,
- * so a thread's canvas and a Files tab on one file are one deck with one queue, one mode and one list of waiting
- * edits; the item's own id for a deck only that item can hold (one a thread made, a mail's attachment).
+ * The source's queue key: `file:<real path>` for a file on this host, or the item's id for a deck only that
+ * item holds. Each seat keeps its own mode.
  */
 export function deckKey(item: CanvasItem): string {
   const path = filePathOf(item.source)
@@ -91,12 +95,26 @@ export const deckBase = (dataDir: string, key: string): string => join(dataDir, 
 export const deckCache = (dataDir: string, key: string): string => join(dataDir, 'work-slides', '.cache', sha(key).slice(0, 32))
 
 /**
+ * The folder of one tab on an imported file others can open: its converted snapshot and its pictures, outside the
+ * canvas tree a thread move carries to another host, named by the item's id so the sweep can find its tab.
+ */
+export const tabCache = (dataDir: string, itemId: string): string => join(tabsRoot(dataDir), canvasSafe(itemId))
+const tabsRoot = (dataDir: string): string => join(dataDir, 'work-slides', '.cache', 'tabs')
+/** The alphabet a canvas item's id is made of (canvas/store.ts): a folder name as it is. */
+const canvasSafe = (id: string): string => {
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`slides: bad item id ${JSON.stringify(id)}`)
+  return id
+}
+
+/**
  * A folder of the deck's. A file of his own keeps its renders, pages and versions by the file (`deckBase`,
  * `deckCache`), so every seat on it shares them and its versions outlive a closed tab. Anything else keeps them in the item's own folder and
  * they go with the item: a deck only the item holds, and a file others can open (the rule for a shared library:
  * nothing made from it outlives its tab).
  */
 export async function deckDir(ctx: Ctx, item: CanvasItem, ...sub: string[]): Promise<string> {
+  // A closed tab's snapshot of a shared file is gone or going (sweepClosedCopies): nothing makes it again.
+  if (tabCopyOf(ctx, item) && ctx.canvas.get(item.id)?.state !== 'open') throw new ItemFileError('This deck is closed.', 'missing')
   const dir = deckFolder(ctx, item, ...sub)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   return dir
@@ -104,8 +122,10 @@ export async function deckDir(ctx: Ctx, item: CanvasItem, ...sub: string[]): Pro
 /** Where a folder of the deck's is, made or not. */
 export function deckFolder(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem, ...sub: string[]): string {
   const key = deckKey(item)
+  if (tabCopyOf(ctx, item)) return join(tabCache(ctx.dataDir, item.id), ...sub)
   if (!key.startsWith('file:') || sharedDeck(ctx, item)) return join(canvasItemDir(ctx.dataDir, item.sessionId, item.id), ...sub)
-  // What cannot be made again (his versions, the files a waiting edit brings) is kept by the file; the rest under `.cache`.
+  // What cannot be made again (his versions, the files a waiting edit brings) is kept by the file; the rest (an
+  // import's snapshot too) under `.cache`.
   return join(sub[0] === 'history' || sub[0] === 'attach' ? deckBase(ctx.dataDir, key) : deckCache(ctx.dataDir, key), ...sub)
 }
 
@@ -143,19 +163,39 @@ export const onDeckOpened = (fn: typeof opened): void => void (opened = fn)
 
 // ── the file ─────────────────────────────────────────────────────────
 
-/** The deck's path on this host. A deck that lives in PowerPoint on the web, or in Google, is refused with a sentence (sourcePath). */
-export async function deckPath(ctx: Ctx, item: CanvasItem): Promise<string> {
+/** The imported format an item's file is in (`.ppt`, `.pps`, `.ppsx`, `.odp`, `.key`), if it is one. */
+export const slideImportOf = (item: CanvasItem): SlideImportExt | undefined => slideImportExt(filePathOf(item.source) ?? (item.source.at === 'mail' ? item.source.name : ''))
+/** An imported file others can open: each tab draws from its own snapshot, kept on this host and gone with the tab. */
+export const tabCopyOf = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): boolean => !!slideImportOf(item) && sharedDeck(ctx, item)
+
+export const GOOGLE_DECK_READ_ONLY = 'This Google deck is read only here. Make a copy to edit.'
+/**
+ * Why nobody may change this deck here, or null: an imported format is a converted picture of itself and a Google
+ * deck a mirror of Drive's, so his hand, an agent and every write method refuse it with this one sentence.
+ */
+export function readOnlyWhy(item: CanvasItem): string | null {
+  if (item.source.at === 'google') return GOOGLE_DECK_READ_ONLY
+  const ext = slideImportOf(item)
+  return ext ? importReadOnly(ext) : null
+}
+
+/** The deck's path on this host. First conversion runs on the source's queue. */
+export async function deckPath(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<string> {
+  if (item.source.at === 'google') return cachedSlidesMirror(ctx, item.source)
   const path = await sourcePath(ctx, item, OWN_FILE)
   if (!existsSync(path)) throw new ItemFileError(`${nameOf(item, path)} is not where it was.`, 'missing')
+  const from = slideImportOf(item)
+  if (from) return convertedDeck(ctx, path, await deckDir(ctx, item, 'converted'), from, sharedJob(ctx, item), signal)
   if (!hasMagic(path, 'zip')) throw new ItemFileError(`${nameOf(item, path)} is not a PowerPoint deck.`)
   return path
 }
 
 export const nameOf = (item: CanvasItem, path: string | null): string => {
   const source = item.source
+  if (source.at === 'google') return item.title
   if (source.at === 'microsoft') return source.name
   if (source.at === 'mail') return source.name
-  if (path && source.at === 'file') return basename(path)
+  if (path && source.at === 'file') return basename(source.path)
   return /\.pptx$/i.test(item.title) ? item.title : `${item.title}.pptx`
 }
 
@@ -164,7 +204,7 @@ export const nameOf = (item: CanvasItem, path: string | null): string => {
  * Teams or OneDrive library or any cloud folder, on another host. For such a deck an agent's own idea is always
  * a suggestion kept on this host, and no copy of it is carried to another host to be read, drawn or edited.
  */
-export const deckShared = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): boolean => item.source.at === 'microsoft' || sharedOf(ctx, item.source)
+export const deckShared = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): boolean => item.source.at === 'microsoft' || sharedOf(ctx, item.source) || isTeamsSnapshot(ctx.dataDir, item.source)
 /**
  * Whether the item's deck is one others can open, as the deck itself: this item's source says so, or any other
  * seat's on the same file does. The deck's state belongs to the file, so two seats that name it differently (a
@@ -408,7 +448,7 @@ const gaveUp = new Set<string>()
  */
 async function predraw(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<void> {
   const todo = await serial(ctx, item, async () => {
-    const path = await deckPath(ctx, item)
+    const path = await deckPath(ctx, item, signal)
     const copy = await scratch(ctx, item, 'live')
     copyWhole(path, copy)
     try {
@@ -422,12 +462,12 @@ async function predraw(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promis
         copyWhole(copy, input)
         out.push({ pdf: join(dir, `${file.key}.pdf`), input, info: file.info, scratch: true })
       }
-      const pending = new SlidesStore(ctx.db).pending(deckKey(item))
+      const pending = readOnlyWhy(item) ? [] : new SlidesStore(ctx.db).pending(deckKey(item))
       const proposed = await proposedBuilt(ctx, item, copy, hash, pending, signal, false)
       if (proposed && !proposed.pdf) out.push({ pdf: join(dir, `${proposed.key}.pdf`), input: join(dir, `${proposed.key}.pptx`), info: proposed.info, scratch: false })
       // The layout picker's picture, where the deck has a picture at all: made once for these layouts.
       const looks = layoutsPdf(dir, file.info)
-      if (looks && !existsSync(looks.path) && !gaveUp.has(looks.path) && !drawing.has(looks.path)) {
+      if (!readOnlyWhy(item) && looks && !existsSync(looks.path) && !gaveUp.has(looks.path) && !drawing.has(looks.path)) {
         const input = await scratch(ctx, item, 'draw')
         copyWhole(copy, input)
         out.push({ pdf: looks.path, input, info: file.info, scratch: true, layouts: true })
@@ -483,13 +523,13 @@ export async function deckOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): 
  * the bytes that were hashed. Call on the item's chain.
  */
 export async function withDeck<T>(ctx: Ctx, item: CanvasItem, signal: AbortSignal | undefined, fn: (deck: Deck & { copy: string }) => Promise<T>): Promise<T> {
-  const path = await deckPath(ctx, item)
+  const path = await deckPath(ctx, item, signal)
   const copy = await scratch(ctx, item, 'live')
   copyWhole(path, copy)
   try {
     const hash = hashFile(copy)
     const file = await build(ctx, item, sha(RENDER_V() + hash), copy, signal)
-    const pending = new SlidesStore(ctx.db).pending(deckKey(item))
+    const pending = readOnlyWhy(item) ? [] : new SlidesStore(ctx.db).pending(deckKey(item))
     return await fn({ path, hash, file, proposed: await proposedBuilt(ctx, item, copy, hash, pending, signal), pending, copy })
   } finally {
     rmSync(copy, { force: true })
@@ -787,8 +827,16 @@ function writtenFor(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasI
   return w && w.item && w.item !== item.id && sharedDeck(ctx, item) ? null : w
 }
 
+/** A read-only deck says what it is: the format it was converted from, or Google (and whether Drive answered). */
+function readOnlyOf(item: CanvasItem): Pick<DeckView, 'readOnly'> {
+  if (item.source.at === 'google') return { readOnly: { from: 'google', ...(mirrorUnreached(item.source) ? { offline: true as const } : {}) } }
+  const from = slideImportOf(item)
+  return from ? { readOnly: { from } } : {}
+}
+
 /** What differs seat by seat in one deck's view: whose item it is, its mode, and the Undo it may offer. */
 function seatFields(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): Pick<DeckView, 'itemId' | 'sessionId' | 'mode' | 'hosted'> & { written?: DeckView['written'] } {
+  if (readOnlyWhy(item)) return { itemId: item.id, sessionId: item.sessionId, hosted: false }
   const written = writtenFor(ctx, item)
   return {
     itemId: item.id,
@@ -806,6 +854,8 @@ export function viewFrom(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: Ca
   const shownInfo = deck.proposed?.info ?? deck.file.info
   return {
     ...seatFields(ctx, item),
+    ...((item.source.at === 'file' || item.source.at === 'thread') && !sharedDeck(ctx, item) && !madeFromShared(ctx, item.source) ? { canUpload: true } : {}),
+    ...readOnlyOf(item),
     name: nameOf(item, deck.path),
     rev: deck.hash.slice(0, 16),
     slides: stripOf(deck.file.info, deck.proposed?.info ?? null, changes, new Set(deck.pending.flatMap((p) => (p.op.op === 'move' ? [p.op.slide] : []))), picOf),
@@ -818,7 +868,7 @@ export function viewFrom(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: Ca
     size: { width: shownInfo.width, height: shownInfo.height },
     ...(shownInfo.layoutInfo ? { layouts: shownInfo.layoutInfo } : {}),
     ...(shownInfo.theme ? { theme: shownInfo.theme } : {}),
-    hand: handState(deckKey(item), deck.hash)
+    ...(readOnlyWhy(item) ? {} : { hand: handState(deckKey(item), deck.hash) })
   }
 }
 
@@ -835,6 +885,8 @@ function pageOf(pages: string, built: Built | null, s: SlideInfo): { path: strin
 }
 
 export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<DeckView> {
+  // Off the way: a closed tab's snapshot waits on its own file's queue, never on this deck's.
+  void sweepClosedCopies(ctx).catch((err: unknown) => console.warn(`slides: could not clear closed copies: ${errorText(err)}`))
   await drawAhead(ctx, item, signal)
   return serial(ctx, item, async () => {
     const deck = await deckOf(ctx, item, signal)
@@ -845,7 +897,7 @@ export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): 
       return page ? { rev: page.rev, size: page.size } : undefined
     })
     // The file's own layouts: a suggested theme shows on the slides it would change, not in the picker.
-    const looks = layoutsPic(await deckDir(ctx, item, 'render'), deck.file.info)
+    const looks = readOnlyWhy(item) ? undefined : layoutsPic(await deckDir(ctx, item, 'render'), deck.file.info)
     return looks ? { ...view, layoutsPic: looks } : view
   })
 }
@@ -1206,8 +1258,11 @@ export function itemsGone(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, items: 
     const key = left.deck
     // Rows still under the item's own id (kept from before decks were kept by the file, and never opened since) go with it.
     store.removeDeck(item.id)
+    void dropTabCopy(ctx, item.id, key, () => false)
     if (!key.startsWith('file:')) {
       store.removeDeck(key)
+      hands.delete(key)
+      stopShow(key)
       continue
     }
     if (store.written(key)?.item === item.id && (shared || left.shared)) store.setWritten(key, '', null)
@@ -1216,16 +1271,57 @@ export function itemsGone(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, items: 
 }
 
 /**
+ * The snapshot of a shared import a tab drew from goes with the tab, on its file's queue (so no conversion is half
+ * way into it) and after every picture still being drawn into it: `open` is asked again on the queue, since a tab
+ * may open again while this waited.
+ */
+function dropTabCopy(ctx: Pick<WorkCtx, 'dataDir'>, itemId: string, key: string, open: () => boolean): Promise<void> {
+  const dir = tabCache(ctx.dataDir, itemId)
+  if (!existsSync(dir)) return Promise.resolve()
+  return chained(key, async () => {
+    if (open()) return
+    stopShow(itemId)
+    await Promise.all([...drawing].filter(([pdf]) => pdf.startsWith(`${dir}${sep}`)).map(([, run]) => run.catch(() => {})))
+    rmSync(dir, { recursive: true, force: true })
+  })
+}
+
+/** A thread's tab closes softly (its item stays, closed): the snapshots of closed tabs go when a deck next opens, and when Work starts. */
+export async function sweepClosedCopies(ctx: Pick<WorkCtx, 'dataDir' | 'canvas'>): Promise<void> {
+  let ids: string[]
+  try {
+    ids = readdirSync(tabsRoot(ctx.dataDir))
+  } catch {
+    return
+  }
+  const open = (id: string): boolean => ctx.canvas.get(id)?.state === 'open'
+  await Promise.all(
+    ids.filter((id) => !open(id)).map((id) => {
+      const item = ctx.canvas.get(id)
+      return dropTabCopy(ctx, id, item ? deckKey(item) : id, () => open(id))
+    })
+  )
+}
+
+/**
  * Threads were deleted. A deleted thread's items are not said through `itemsRemoved`, so the seats they held
  * are let go here, by the same rules: the frame deletes the thread's canvas folder itself.
  */
 export function sessionsGone(ctx: Pick<WorkCtx, 'db' | 'dataDir'>, sessionIds: readonly string[]): void {
   const store = new SlidesStore(ctx.db)
-  const items = new Set((ctx.db.prepare(`SELECT item_id FROM work_slides_seats WHERE session_id IN (${sessionIds.map(() => '?').join(',') || "''"})`).all(...sessionIds) as unknown as Array<{ item_id: string }>).map((r) => r.item_id))
+  const seats = ctx.db.prepare(`SELECT item_id, deck FROM work_slides_seats WHERE session_id IN (${sessionIds.map(() => '?').join(',') || "''"})`).all(...sessionIds) as unknown as Array<{ item_id: string; deck: string }>
+  const items = new Set(seats.map((r) => r.item_id))
+  for (const seat of seats) void dropTabCopy(ctx, seat.item_id, seat.deck, () => false)
   for (const lost of store.removeSessions(sessionIds)) {
     const w = store.written(lost.deck)
     if (w?.item && items.has(w.item) && lost.shared) store.setWritten(lost.deck, '', null)
-    if (lost.left === 0) lastSeatLeft(ctx, lost.deck, lost.shared)
+    if (lost.left !== 0) continue
+    if (!lost.deck.startsWith('file:')) {
+      // A deck only its item held (a thread's own, a mail's file): its Undo line and its show's jobs go too.
+      store.removeDeck(lost.deck)
+      hands.delete(lost.deck)
+      stopShow(lost.deck)
+    } else lastSeatLeft(ctx, lost.deck, lost.shared)
   }
 }
 

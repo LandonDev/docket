@@ -4,6 +4,11 @@ import { handled, NOT_HANDLED } from '@shared/work'
 import type { WorkModule } from '../modules'
 import { statePath, Toolchain } from '../formats/tools'
 import { fenceItem, itemOf, readRange } from '../pdf/file'
+import { openSlidesMirror } from '../google/deckMirror'
+import { registerUploadBytes } from '../google/uploads'
+import { SLIDES_IMPORT_CONVERTERS } from './formatsIn'
+import { copyToEdit } from './copyToEdit'
+import { deckUploadBytes } from './googleDeck'
 import { attachPiece } from './attach'
 import { BLANK_DECK } from './blankDeck'
 import { handEdit, handStep, restoreVersion, versionsOf } from './hand'
@@ -14,7 +19,7 @@ import { SLIDES_CONVERTERS } from './deck'
 import { ensureSlidesTables, SlidesStore } from './store'
 import { slidesTools } from './tools'
 import { registerFileMaker, registerFileMoved, registerFilePreviewer } from '../files/hooks'
-import { accept, announce, ChangedSinceError, deckDir, fileMoved, itemsGone, onDeckOpened, reject, renderPath, seatOf, sessionsGone, setSlideEngine, setSlideRenderer, slidePath, StaleChangesError, undo, viewOf } from './view'
+import { accept, announce, ChangedSinceError, deckDir, fileMoved, itemsGone, onDeckOpened, readOnlyWhy, reject, renderPath, serial, sessionsGone, setSlideEngine, setSlideRenderer, slidePath, StaleChangesError, sweepClosedCopies, undo, viewOf } from './view'
 import { mediaPath, prepareShow, showOf, stepPath, stopShows } from './show'
 import { STEPS_CONVERTERS } from './steps'
 import { deckOut, deckReach, outPath } from './out'
@@ -30,6 +35,7 @@ import { VIDEO_CONVERTERS } from './video'
  */
 const SLIDES_METHODS: ReadonlySet<string> = new Set([
   'work.slides.open',
+  'work.slides.copyToEdit',
   'work.slides.read',
   'work.slides.slide',
   'work.slides.show',
@@ -47,6 +53,10 @@ const SLIDES_METHODS: ReadonlySet<string> = new Set([
   'work.slides.previewRead',
   'work.slides.reach'
 ])
+
+/** Every way the owner changes a deck: an import or a Google deck refuses them all (`readOnlyWhy`). */
+const WRITE_METHODS = new Set(['work.slides.review', 'work.slides.mode', 'work.slides.undo', 'work.slides.edit', 'work.slides.step', 'work.slides.restore', 'work.slides.attach'])
+registerUploadBytes('slides', deckUploadBytes)
 
 // A deck's rows and folder are kept by its file's path: a rename or a move through Files re-keys them in the
 // rename's own savepoint. Registered when the module loads; the files pillar keeps it whenever it starts.
@@ -81,6 +91,7 @@ export const slides: WorkModule = {
   // One LibreOffice kept running while Work is on (resident.ts): an edit's slide is drawn in a fraction of a second.
   // It starts at the first deck drawn, never here, and ends when Work is turned off or after ten idle minutes.
   start(ctx) {
+    void sweepClosedCopies(ctx).catch((err: unknown) => ctx.log(`slides: could not clear closed copies: ${String(err)}`))
     const tools = new Toolchain(ctx.dataDir)
     const resident = residentOf(ctx.dataDir, tools, (line) => ctx.log(line))
     setSlideRenderer({
@@ -115,9 +126,14 @@ export const slides: WorkModule = {
     // file is under the roots the key could name itself (fenceItem, as the pdf pillar does).
     const item = itemOf(ctx, (req as { params: { itemId: string } }).params.itemId, 'slides')
     fenceItem(ctx, by, item, req.method)
+    const readOnly = WRITE_METHODS.has(req.method) ? readOnlyWhy(item) : null
+    if (readOnly) throw new Error(readOnly)
     switch (req.method) {
       case 'work.slides.open':
+        if (item.source.at === 'google') await openSlidesMirror(ctx, item.id, item.title, item.source)
         return handled(await viewOf(ctx, item, signal))
+      case 'work.slides.copyToEdit':
+        return handled({ itemId: (await copyToEdit(ctx, by, item)).id })
       case 'work.slides.read': {
         const { path, rev } = await renderPath(ctx, item, req.params.which, signal)
         return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
@@ -153,8 +169,8 @@ export const slides: WorkModule = {
       case 'work.slides.mode': {
         if (by.kind === 'model') throw new Error('Only the owner sets what an agent may do to a deck.')
         // The mode is this tab's own (store.ts): another seat on the same file keeps its own.
-        seatOf(ctx, item)
-        new SlidesStore(ctx.db).setMode(item.id, req.params.mode)
+        const store = new SlidesStore(ctx.db)
+        if (!store.setMode(item.id, req.params.mode)) await serial(ctx, item, async () => store.setMode(item.id, req.params.mode))
         return handled(await announce(ctx, item, signal))
       }
       case 'work.slides.undo': {
@@ -174,11 +190,11 @@ export const slides: WorkModule = {
         return handled(await announce(ctx, item, signal))
       }
       case 'work.slides.versions':
-        return handled(await versionsOf(ctx, item))
+        // A read-only deck keeps no versions: nobody writes it.
+        return handled(readOnlyWhy(item) ? [] : await versionsOf(ctx, item))
       case 'work.slides.attach': {
         if (by.kind === 'model') throw new Error('Only the owner adds a file by hand; an agent names a path in slides_edit.')
-        seatOf(ctx, item)
-        return handled(attachPiece(await deckDir(ctx, item, 'attach'), { name: req.params.name, ...(req.params.token !== undefined ? { token: req.params.token } : {}), data: Buffer.from(req.params.data, 'base64') }))
+        return handled(await serial(ctx, item, async () => attachPiece(await deckDir(ctx, item, 'attach'), { name: req.params.name, ...(req.params.token !== undefined ? { token: req.params.token } : {}), data: Buffer.from(req.params.data, 'base64') })))
       }
       // Preview and export (out.ts): the deck as a format holds it, read by its rev; PowerPoint's own only on his press.
       case 'work.slides.preview': {
@@ -200,9 +216,9 @@ export const slides: WorkModule = {
     return NOT_HANDLED
   },
   tools: () => slidesTools,
-  convert: [...SLIDES_CONVERTERS, ...STEPS_CONVERTERS, ...VIDEO_CONVERTERS],
+  convert: [...SLIDES_CONVERTERS, ...STEPS_CONVERTERS, ...VIDEO_CONVERTERS, ...SLIDES_IMPORT_CONVERTERS],
   preamble: () =>
-    'A deck in the canvas is a .pptx file. Read it with `slides_read` and look at a slide with `slides_image`. Revise it with `slides_edit`, naming slides and shapes by id: each revised slide is a suggestion the person steps through and accepts. Say `because: "asked"` with the person\'s own words as `quote` when they asked for the edit, and `because: "own"` when it is your idea. Draft a new deck with `slides_new`.',
+    'A deck in the canvas opens as PowerPoint. Use the Google tools for a Google Slides deck. Read other decks with `slides_read` and look at a slide with `slides_image`. Revise it with `slides_edit`, naming slides and shapes by id: each revised slide is a suggestion the person steps through and accepts. Say `because: "asked"` with the person\'s own words as `quote` when they asked for the edit, and `because: "own"` when it is your idea. Draft a new deck with `slides_new`.',
   sessionsRemoved(ids, ctx) {
     sessionsGone(ctx, ids)
   },

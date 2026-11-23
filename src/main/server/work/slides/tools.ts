@@ -12,7 +12,7 @@ import { allocateIds, isNote, slideOfOp, type DeckInfo, type ShapeInfo } from '.
 import { writeNewDeck } from './newDeck'
 import { attachFile } from './attach'
 import { rowSession, SlidesStore } from './store'
-import { announce, applyTo, deckDir, deckKey, deckOf, OWN_FILE, renderPath, scratch, serial, sharedDeck, withDeck, writeInto, comesAs } from './view'
+import { announce, applyTo, deckDir, deckKey, deckOf, OWN_FILE, readOnlyWhy, renderPath, scratch, serial, sharedDeck, withDeck, writeInto, comesAs } from './view'
 
 /**
  * The tools a Work thread reads and revises a deck with
@@ -176,6 +176,9 @@ export const slidesTools: WorkTool[] = [
       if (a.ops.some((op) => op.op === 'builds' && op.replace)) return fail('A builds edit cannot take a slide\'s other animations out: leave out `replace`; the person removes them in the Animate tab.')
       try {
         const it = deckItem(ctx, a.item)
+        // An imported format or a Google deck is read only here: the person makes a copy to edit.
+        const readOnly = readOnlyWhy(it)
+        if (readOnly) return fail(readOnly)
         const store = new SlidesStore(ctx.db)
         // A picture or a video an edit adds is a file on this host the agent names by its path: copied beside the
         // deck now, so the edit still has it when it is accepted, and named from here on by the host's own token.

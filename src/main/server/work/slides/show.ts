@@ -7,7 +7,7 @@ import { transitionChanged } from './builds'
 import { makeMedia, mediaFile, showMedia } from './media'
 import { makeSteps, showSteps, stepJobs } from './steps'
 import { SlidesStore } from './store'
-import { deckDir, deckKey, deckOf, deckPath, deckShared, hashFile, nameOf, RENDER_FILTER, renderOf, scratch, serial, slideRenderer, type Built, type Ctx, type Deck, drawAhead } from './view'
+import { deckDir, deckKey, deckOf, tabCopyOf, sharedJob, hashFile, nameOf, RENDER_FILTER, renderOf, scratch, serial, slideRenderer, type Built, type Ctx, type Deck, drawAhead } from './view'
 
 /**
  * A show as the host serves it (docs/agents/work-slides.md "The show"): the file's own slides in its order, each
@@ -15,8 +15,6 @@ import { deckDir, deckKey, deckOf, deckPath, deckShared, hashFile, nameOf, RENDE
  * after the deck is opened and again after every change to it, off the deck's queue, so a write never waits on
  * them; a show reads what is ready and is told (`work.slides.ready`) when more is.
  */
-
-const shared = (ctx: Ctx, item: CanvasItem): { shared?: true } => (deckShared(ctx, item) ? { shared: true } : {})
 
 /** What a show draws from: the file as it is, in its own order, whatever suggestions wait. */
 export async function showOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<ShowDeck> {
@@ -84,7 +82,8 @@ function lacks(pages: string, media: string, file: Built): boolean {
 /** Tells every seat on the deck that more of its show is ready. */
 function tellReady(ctx: Ctx, item: CanvasItem, hash: string): void {
   const rev = hash.slice(0, 16)
-  const seats = new SlidesStore(ctx.db).seats(deckKey(item))
+  // A tab on a shared import draws from its own snapshot: no other seat shows this revision.
+  const seats = tabCopyOf(ctx, item) ? [] : new SlidesStore(ctx.db).seats(deckKey(item))
   const items = [item, ...seats.filter((s) => s.itemId !== item.id).flatMap((s) => ctx.canvas.get(s.itemId) ?? [])]
   for (const it of items) ctx.push({ push: 'work.slides.ready', sessionId: it.sessionId, itemId: it.id, rev }, pushFor(it))
 }
@@ -93,8 +92,9 @@ function tellReady(ctx: Ctx, item: CanvasItem, hash: string): void {
  * Makes the deck's step pictures and playable media in the background, from a copy of the file as it was hashed.
  * Called when the deck is opened, told again after a change, or shown; a revision already being made is left be.
  */
-export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' | 'file'>): void {
-  const key = deckKey(item)
+export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' | 'file' | 'path'>): void {
+  // One job a deck, or a tab for a shared import, whose pictures are its own.
+  const key = tabCopyOf(ctx, item) ? item.id : deckKey(item)
   const was = running.get(key)
   if (was?.hash === deck.hash) return
   const stop = new AbortController()
@@ -107,7 +107,8 @@ export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' 
     if (!lacks(pages, media, deck.file)) return
     const copy = await scratch(ctx, item, 'show')
     try {
-      copyWhole(await deckPath(ctx, item), copy)
+      stop.signal.throwIfAborted()
+      copyWhole(deck.path, copy)
       // The file moved on since it was read: the next open makes that revision's.
       if (hashFile(copy) !== deck.hash) return
       const tell = (): void => tellReady(ctx, item, deck.hash)
@@ -118,8 +119,8 @@ export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' 
           {
             dir: pages,
             renderer: slideRenderer(),
-            hideCopy: async (input, plan, output, sig) => void (await ctx.convert({ from: 'pptx', to: 'pptxsteps', input, output, options: { plan }, ...shared(ctx, item), ...(sig ? { signal: sig } : {}) })),
-            whole: async (input, output, sig) => void (await ctx.convert({ from: 'pptx', to: 'pdf', input, output, options: { filter: RENDER_FILTER }, ...shared(ctx, item), ...(sig ? { signal: sig } : {}) })),
+            hideCopy: async (input, plan, output, sig) => void (await ctx.convert({ from: 'pptx', to: 'pptxsteps', input, output, options: { plan }, ...sharedJob(ctx, item), ...(sig ? { signal: sig } : {}) })),
+            whole: async (input, output, sig) => void (await ctx.convert({ from: 'pptx', to: 'pdf', input, output, options: { filter: RENDER_FILTER }, ...sharedJob(ctx, item), ...(sig ? { signal: sig } : {}) })),
             log,
             onMade: tell
           },
@@ -128,11 +129,12 @@ export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' 
           signal
         )
       }
+      signal.throwIfAborted()
       await makeMedia(
         {
           dir: media,
-          extract: async (slide, shape, output, sig) => void (await ctx.convert({ from: 'pptx', to: 'slidemedia', input: copy, output, options: { slide, shape }, ...shared(ctx, item), ...(sig ? { signal: sig } : {}) })),
-          playable: async (input, output, sig) => void (await ctx.convert({ from: 'slidemedia', to: 'playable', input, output, ...shared(ctx, item), ...(sig ? { signal: sig } : {}) })),
+          extract: async (slide, shape, output, sig) => void (await ctx.convert({ from: 'pptx', to: 'slidemedia', input: copy, output, options: { slide, shape }, ...sharedJob(ctx, item), ...(sig ? { signal: sig } : {}) })),
+          playable: async (input, output, sig) => void (await ctx.convert({ from: 'slidemedia', to: 'playable', input, output, ...sharedJob(ctx, item), ...(sig ? { signal: sig } : {}) })),
           log,
           onMade: tell
         },
@@ -146,6 +148,11 @@ export function prepareShow(ctx: Ctx, item: CanvasItem, deck: Pick<Deck, 'hash' 
     .catch((err: unknown) => {
       if (!stop.signal.aborted) console.warn(`slides: the show's pictures were not made: ${err instanceof Error ? err.message : String(err)}`)
     })
+}
+
+export function stopShow(key: string): void {
+  running.get(key)?.stop.abort()
+  running.delete(key)
 }
 
 /** Stops every background job (Work turned off). */

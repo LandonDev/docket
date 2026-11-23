@@ -2569,6 +2569,23 @@ set by hand.
   B2:B9"). One whose rows or columns moved since says so there and can
   only be rejected.
 
+**A deck that is read only here** (an imported `.ppt`, `.pps`, `.ppsx`,
+`.odp` or `.key`, or a Google deck). It has no format row and no mode; the
+bar keeps Present. One quiet line sits above the stage: 12px muted words,
+a 12px inset, 4px above and below, a hairline under it, then at most one
+press 8px after the words, a link button in the same 12px with its busy
+label (the spinner in its own reserved place, the press off while it
+runs). An import and a Google deck read "Read only", then "Make a copy to
+edit". A Google deck changed in Drive since it was read reads "Changed in
+Google", then "Read again"; one Drive could not be reached for reads
+"Couldn't reach Google", then "Read again". A mail's file in a Files tab
+keeps the press alone: its header already says Read only. A failed press
+is one toast. More keeps Make a copy to edit, and for Google Read again
+from Google and Open in Google; Save to Google Slides is there for a deck
+of his own, opening the dialog with the same account field as Open from
+Google. A Keynote that cannot be read is the canvas's failed line alone,
+"Export this from Keynote as PowerPoint", with no Retry.
+
 **The show** (`src/renderer/src/work/slides/show/`; the approved page is
 `.temp-code/prototypes/work-editors/present.html`, "Slide and column"). A
 deck presented, in two windows of their own, drawn by the main window

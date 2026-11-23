@@ -74,9 +74,9 @@ describe('the one kind table', () => {
     // Beside a thread only what it always opened: text he writes as a document, and nothing else the file kind shows.
     expect(['README.md', 'notes.txt', 'plan.markdown', 'main.ts', 'bundle.zip', 'Makefile', 'Budget.xlsx', 'old.xls'].map((n) => threadCanvasOf(n))).toEqual(['document', 'document', 'document', null, null, null, 'sheet', null])
     expect(threadCanvasOf('notes', 'text/plain')).toBeNull()
-    for (const name of ['old.xls', 'macro.xlsb', 'talk.ppt', 'form.docm']) expect(kindOfEntry(name).canvas).toBeNull()
+    for (const name of ['old.xls', 'macro.xlsb', 'form.docm']) expect(kindOfEntry(name).canvas).toBeNull()
     expect(kindOfEntry('old.xls').kind).toBe('sheet')
-    expect(kindOfEntry('talk.ppt').kind).toBe('deck')
+    for (const ext of ['ppt', 'pps', 'ppsx', 'odp', 'key']) expect(kindOfEntry(`Talk.${ext.toUpperCase()}`)).toEqual({ kind: 'deck', canvas: 'slides' })
   })
 
   it('reads a hidden file as a name with no extension', () => {
@@ -89,7 +89,7 @@ describe('the one kind table', () => {
     for (const kind of ENTRY_KINDS) for (const ext of extsOfKind(kind)) expect(kindOfEntry(`f.${ext}`).kind).toBe(kind)
     for (const canvas of CANVAS_KINDS) for (const ext of extsOfCanvas(canvas)) expect(kindOfEntry(`f.${ext}`).canvas).toBe(canvas)
     expect(extsOfKind('pdf')).toEqual(['pdf'])
-    expect(extsOfCanvas('slides')).toEqual(['pptx'])
+    expect(extsOfCanvas('slides')).toEqual(['pptx', 'ppt', 'pps', 'ppsx', 'odp', 'key'])
   })
 })
 

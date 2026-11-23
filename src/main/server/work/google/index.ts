@@ -5,6 +5,8 @@ import { errorText } from '@shared/work/ids'
 import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
 import { GOOGLE_MIME } from './client'
 import { rereadDoc, unsentEdits, writeDoc, type GoogleSource } from './docs'
+import { readSlidesMirror } from './deckMirror'
+import { uploadOfficeFile } from './uploads'
 import { ensureGoogleTables, googleOf } from './google'
 import { bump, unfollowAll } from './grid'
 import { googleEdit, googleShare } from './held'
@@ -20,8 +22,8 @@ import { forgetDrive } from '../files/places/drive'
  * The google pillar's server module (docs/agents/work-google.md): Google
  * Docs, Sheets and Slides through LifeOS's Google client. The Picker hands
  * a file to TempCode; a Doc opens on a mirror in the document canvas, a
- * Sheet in the grid, a deck stays in Google and agents revise a copy. The
- * Drive version poll runs while a file is open and is a routine trigger.
+ * Sheet in the grid, and a deck on a read-only mirror. The Drive version
+ * poll runs while a file is open and is a routine trigger.
  * Letting someone into a file is held (`share.google`).
  */
 
@@ -135,6 +137,7 @@ export const google: WorkModule = {
         const g = googleOf(ctx)
         const row = g.files.get(item.source.account, item.source.fileId)
         if (item.source.mime === GOOGLE_MIME.sheet) bump(item.source)
+        else if (item.source.mime === GOOGLE_MIME.slides) await readSlidesMirror(ctx, item.source, true)
         else if (row?.mirror) {
           const state = await stateOf(ctx, item)
           if (state.unsent && !req.params.discard) throw new Error(`${state.unsent} of your edits are not in Google yet: write them first, or read again and drop them.`)
@@ -145,7 +148,10 @@ export const google: WorkModule = {
       }
       case 'work.google.upload': {
         const item = ctx.canvas.get(req.params.itemId)
-        if (!item || item.kind !== 'document') throw new Error('Only a document becomes a Google Doc.')
+        if (!item) throw new Error('There is no file to save to Google.')
+        // A sheet or a deck: the caller, the fence and the library rule are uploadOfficeFile's.
+        if (item.kind === 'sheet' || item.kind === 'slides') return handled(await uploadOfficeFile(ctx, by, item, req.params.account, signal))
+        if (item.kind !== 'document') throw new Error('Only a document, sheet or deck can be saved to Google.')
         if (item.source.at === 'google') throw new Error(`${item.title} is a Google Doc already.`)
         const { exportDoc } = await import('../formats/exporter')
         const out = await exportDoc(ctx, by, { source: item.source, format: 'docx' })
@@ -171,7 +177,7 @@ export const google: WorkModule = {
       for (const id of w.items) {
         const item = ctx.canvas.get(id)
         if (!item || item.source.at !== 'google') continue
-        if (row?.kind === 'doc') g.files.update(w.account, w.fileId, { behind: 'poll' })
+        if (row?.kind === 'doc' || row?.kind === 'slides') g.files.update(w.account, w.fileId, { behind: 'poll' })
         void tell(ctx, item as CanvasItem & { source: GoogleSource }).catch((err) => ctx.log(`google: ${errorText(err)}`))
       }
     })

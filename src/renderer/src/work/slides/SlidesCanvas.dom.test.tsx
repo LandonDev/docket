@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckShape, DeckView } from "@shared/contract-work-slides";
 import type { CanvasItem } from "@shared/work";
+import { KEYNOTE_EXPORT } from "@shared/work/slideFormats";
 import { openMenus } from "../../chrome/menuRows";
 import { defineChunk } from "../../lib/lazyChunk";
 import { CANVAS } from "../canvas/registry";
@@ -49,6 +50,8 @@ vi.mock("./show/Show", () => ({
 
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { resetCanvasStore } from "../canvas/store";
+import { noteSlidesOpenedByHand } from "./openShow";
+import { noticeOf } from "./slideFileActions";
 
 const WIDE = { width: 640 * 0.75, height: 360 * 0.75 };
 const DECK = fakeDoc(Array.from({ length: 12 }, (_, i) => ({ size: WIDE, runs: [{ str: `Slide ${i + 1}`, box: [0.1, 0.1, 0.6, 0.2] as [number, number, number, number] }] })));
@@ -97,9 +100,9 @@ function kinds(width = 800): Record<string, CanvasKindDef> {
 }
 
 let n = 0;
-function open(view: DeckView, opened?: () => Promise<DeckView>, width?: number) {
+function open(view: DeckView, opened?: () => Promise<DeckView>, width?: number, source?: CanvasItem["source"]) {
   // Each test its own item, so the deck's per-item store starts fresh.
-  item = canvasItem(`deck${++n}`, { kind: "slides", title: "Sponsor deck.pptx", source: { at: "file", host: "local", path: "/work/deck.pptx" } });
+  item = canvasItem(`deck${++n}`, { kind: "slides", title: "Sponsor deck.pptx", source: source ?? { at: "file", host: "local", path: "/work/deck.pptx" } });
   deckHost = fakeDeckHost({ ...view, itemId: item.id });
   if (opened) deckHost.open = opened;
   host.current = fakeHost([item], host as never);
@@ -876,6 +879,128 @@ describe("the slides kind", () => {
     expect(written.textContent).toContain("Wrote notes for 12 slides");
     fireEvent.click(within(written).getByRole("button", { name: "Undo" }));
     await waitFor(() => expect(deckHost.calls).toContainEqual(["undo", "w1"]));
+  });
+});
+
+describe("slide imports and Google", () => {
+  const GOOGLE = { at: "google" as const, fileId: "d1", account: "owner@example.test", mime: "application/vnd.google-apps.presentation" };
+  /** Answers the methods a test names, the rest as the fake host does. */
+  const answer = (methods: Record<string, (params?: Record<string, unknown>) => Promise<unknown>>) => {
+    const original = host.current!.link.request;
+    const asked: Array<[string, unknown]> = [];
+    host.current!.link.request = (method, params) => {
+      asked.push([method, params]);
+      return methods[method] ? methods[method](params) : original(method, params);
+    };
+    return asked;
+  };
+  const readOnlyView = (from: NonNullable<DeckView["readOnly"]>["from"], over: Partial<DeckView> = {}) => {
+    const { mode: _mode, ...view } = deckView({ readOnly: { from }, ...over });
+    return view as DeckView;
+  };
+
+  it("an import is read only: one quiet line and its press, with its busy state, and no mode", async () => {
+    open(readOnlyView("ppt", { name: "Pitch.ppt" }), undefined, undefined, { at: "file", host: "local", path: "/work/Pitch.ppt" });
+    let done!: () => void;
+    const asked = answer({ "work.slides.copyToEdit": () => new Promise((res) => (done = () => res({ itemId: "copy" }))) });
+    const line = await found("[data-slide-notice]");
+    expect(line.textContent).toBe("Read onlyMake a copy to edit");
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    const press = within(line).getByRole("button", { name: "Make a copy to edit" }) as HTMLButtonElement;
+    fireEvent.click(press);
+    await waitFor(() => expect(press.disabled).toBe(true));
+    expect(line.querySelector("[data-slot=spinner]")).not.toBeNull();
+    expect(asked).toContainEqual(["work.slides.copyToEdit", { itemId: item.id }]);
+    act(() => done());
+    await waitFor(() => expect(press.disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(await screen.findByRole("menuitem", { name: "Make a copy to edit" })).toBeTruthy();
+  });
+
+  it("says nothing the Files header says: a mail's file keeps the press alone", () => {
+    const mail = { at: "mail" as const, account: "a", messageId: "m", attachmentId: "x", name: "Brief.odp" } as unknown as CanvasItem["source"];
+    expect(noticeOf({ source: mail, sessionId: "filespane_w1" }, { from: "odp" }, false, async () => {}, async () => {})).toMatchObject({ words: null, press: { label: "Make a copy to edit" } });
+    expect(noticeOf({ source: mail, sessionId: "t1" }, { from: "odp" }, false, async () => {}, async () => {})).toMatchObject({ words: "Read only" });
+    expect(noticeOf({ source: { at: "file", host: "local", path: "/w/a.pptx" }, sessionId: "t1" }, undefined, false, async () => {}, async () => {})).toBeNull();
+  });
+
+  it("gives the Keynote export instruction by itself, and any other failure its Retry", async () => {
+    open(deckView(), async () => {
+      throw new Error(KEYNOTE_EXPORT);
+    });
+    const line = await found('[data-canvas-state="failed"]');
+    expect(line.textContent).toBe(KEYNOTE_EXPORT);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    cleanup();
+    open(deckView(), async () => {
+      throw new Error("No host in reach converts key to pptx.");
+    });
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it.each(["pps", "ppsx"])("shows a %s normally until Files supplies the opening press", async (ext) => {
+    shows.asks.length = 0;
+    const source = { at: "file" as const, host: "local", path: `/work/demo.${ext}` };
+    const view = readOnlyView(ext as "pps", { name: `demo.${ext}` });
+    open(view, undefined, undefined, source);
+    await screen.findByRole("button", { name: "Present" });
+    expect(shows.asks).toHaveLength(0);
+    const pushed = canvasItem(`pushed-${ext}`, { kind: "slides", source });
+    act(() => host.current!.push([item, pushed], pushed.id));
+    await found("[data-slides]");
+    expect(shows.asks).toHaveLength(0);
+    act(() => noteSlidesOpenedByHand("local", pushed));
+    await waitFor(() => expect(shows.asks).toHaveLength(1));
+    expect(shows.asks[0]).toMatchObject({ title: "demo", from: "start", mode: "full" });
+  });
+
+  it("keeps Google read only and offers Present, Read again, and a copy to edit", async () => {
+    open(readOnlyView("google"), undefined, undefined, GOOGLE);
+    expect((await found("[data-slide-notice]")).textContent).toBe("Read onlyMake a copy to edit");
+    expect(await screen.findByRole("button", { name: "Present" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(await screen.findByRole("menuitem", { name: "Read again from Google" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Open in Google" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Make a copy to edit" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Save to Google Slides" })).toBeNull();
+  });
+
+  it("hears a change in Drive for its own item: Changed in Google, then Read again", async () => {
+    open(readOnlyView("google"), undefined, undefined, GOOGLE);
+    const asked = answer({ "work.google.watch": async () => ({ behind: false, unsent: 0, url: "u" }), "work.google.reload": async () => ({ behind: false, unsent: 0, url: "u" }) });
+    const line = await found("[data-slide-notice]");
+    const push = (itemId: string) => act(() => host.pushes.forEach((listener) => listener({ push: "work.google", sessionId: "t1", itemId, state: { behind: true, unsent: 0, url: "u" } } as never)));
+    push("another item");
+    expect(line.textContent).toBe("Read onlyMake a copy to edit");
+    push(item.id);
+    await waitFor(() => expect(document.querySelector("[data-slide-notice]")!.textContent).toBe("Changed in GoogleRead again"));
+    fireEvent.click(screen.getByRole("button", { name: "Read again" }));
+    await waitFor(() => expect(document.querySelector("[data-slide-notice]")!.textContent).toBe("Read onlyMake a copy to edit"));
+    expect(asked.map(([method]) => method)).toContain("work.google.reload");
+  });
+
+  it("says when Drive could not be reached and the copy read before is shown", async () => {
+    open({ ...readOnlyView("google"), readOnly: { from: "google", offline: true } }, undefined, undefined, GOOGLE);
+    expect((await found("[data-slide-notice]")).textContent).toBe("Couldn't reach GoogleRead again");
+  });
+
+  it("opens the Google account dialog from an uploadable deck", async () => {
+    open(deckView({ canUpload: true }));
+    const uploads: unknown[] = [];
+    answer({
+      "work.google.accounts": async () => ({ accounts: [{ account: "owner@example.test", files: true }], picker: false }),
+      "work.google.upload": async (params) => (uploads.push(params), { url: "https://docs.google.com/presentation/d/dummy/edit" }),
+    });
+    await found("[data-slides]");
+    expect(document.querySelector("[data-slide-notice]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Save to Google Slides" }));
+    const dialog = await screen.findByRole("dialog", { name: "Save to Google Slides" });
+    expect(await within(dialog).findByText("owner@example.test")).toBeTruthy();
+    const save = within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(uploads).toEqual([{ itemId: item.id, account: "owner@example.test" }]));
   });
 });
 

@@ -5,6 +5,7 @@ import { PDFDocument } from 'pdf-lib'
 import { sharedOf } from '../files/policy'
 import type { FilePreviewer } from '../files/hooks'
 import { copyWhole, hasMagic } from '../pdf/file'
+import { isTeamsSnapshot } from './formatsIn'
 import { SlidesStore } from './store'
 import { fileKey, filePathOf, RENDER_FILTER, renderPath, slideRenderer, type Ctx } from './view'
 
@@ -21,14 +22,16 @@ export function deckPreviewer(ctx: Ctx): FilePreviewer {
   return async (source, { page, width, signal }) => {
     const path = filePathOf(source)
     if (!path || !/\.pptx$/i.test(path) || !existsSync(path) || !hasMagic(path, 'zip')) return null
-    const mark = source.at === 'microsoft' || sharedOf(ctx, source) ? { shared: true as const } : {}
+    const store = new SlidesStore(ctx.db)
+    const key = fileKey(path)
+    const mark = source.at === 'microsoft' || sharedOf(ctx, source) || isTeamsSnapshot(ctx.dataDir, source) || store.sharedDeck(key) ? { shared: true as const } : {}
     const dir = join(ctx.dataDir, 'work-slides', '.cache', 'preview', randomUUID())
     mkdirSync(dir, { recursive: true, mode: 0o700 })
     try {
-      const open = new SlidesStore(ctx.db)
-        .seats(fileKey(path))
+      const open = store
+        .seats(key)
         .map((seat) => ctx.canvas.get(seat.itemId))
-        .find((item) => item !== null && item !== undefined)
+        .find((item) => item?.state === 'open')
       let pdf = join(dir, 'deck.pdf')
       let at = page
       // How many slides the deck has, for the preview's pager, where what drew the slide says.

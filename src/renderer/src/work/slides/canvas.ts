@@ -6,8 +6,7 @@ import type { SlidesState } from "./SlidesCanvas";
 /**
  * The slides kind of canvas item (docs/agents/work-slides.md). The body is
  * its own chunk, with pdf.js behind it: a slide is a page of the PDF the
- * host renders from the deck. A Google deck is milestone 30's: the host
- * refuses it with a sentence.
+ * host renders from the deck, including a read-only mirror from Google.
  */
 export const slidesCanvas: CanvasKindDef = defineCanvasKind<SlidesState>({
   kind: "slides",
@@ -16,7 +15,8 @@ export const slidesCanvas: CanvasKindDef = defineCanvasKind<SlidesState>({
   opens: {
     sources: [{ at: "microsoft", app: "powerpoint" }],
     mime: ["application/vnd.google-apps.presentation", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
-    ext: ["pptx"],
+    // The kind's row is in the first paint, so the list is said here and takes no import: registry.test.ts holds it to `kindOfEntry`, formats.test.ts to SLIDE_IMPORT_EXTS.
+    ext: ["pptx", "ppt", "pps", "ppsx", "odp", "key"],
   },
   phone: "native",
   guestable: false,

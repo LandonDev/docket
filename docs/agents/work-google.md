@@ -152,16 +152,26 @@ them would see it. His press makes the edits in the deck itself, in one
 `batchUpdate` bound to the revision just read (`writeDeckEdits`); words gone,
 words replaced everywhere now standing in more or fewer boxes than he was
 shown (`boxes`), or a shape holding other words than it did, leave the act
-stale. A deck is
-not drawn in our slides canvas: it says it lives in Google.
+stale.
+
+The slides canvas reads Drive's PPTX export from a mirror under
+`<dataDir>/google/<hash>/deck.pptx` (`deckMirror.ts`). Opening checks the
+Drive version; when Drive cannot be reached and a mirror was read before,
+the mirror opens and the view says so (`mirrorUnreached`). Read again from
+Google fetches a fresh export. The host swaps in the complete file after
+checking its header. Present uses those bytes. The deck is read only here:
+to change it, Open in Google, or Make a copy to edit, which writes a
+`.pptx` he can see in Files (work-slides.md "Every format in"). The poll's
+`behind` reaches the slides body through the `work.google` push.
+[Slides pillar](work-slides.md)
 
 ## Changes
 
 `poll.ts`: while an item shows a Google file, its Drive `version` is read
 once a minute (a sheet view and the Doc's minute's check register it; a
 closed item drops it). A version this host's own write made passes quietly;
-any other is someone else's change: a sheet's grids read it again, a Doc's
-item is told it is behind, and a routine's `{on: 'file', source: google}`
+any other is someone else's change: a sheet's grids read it again, a Doc
+or deck's item is told it is behind, and a routine's `{on: 'file', source: google}`
 trigger fires (`googleChanges`, `at: 'google'`). Nothing is polled for a
 file no item has open.
 
@@ -174,10 +184,25 @@ takes no grant and no edit in the Outbox; Away releases none.
 commenter or writer, made by `google_share` and run only after his press or
 a grant (matcher: account, people by address or domain, `upTo` a role). Its
 way back is `google_unshare`, which takes back only a share recorded for
-the asking thread's tree (`work_google_shares`). Making a document of ours a Google Doc
-(`work.google.upload`: our Word export uploaded with conversion, its
-suggestions arriving as Google's) is his and lands in his own Drive, so it
-is not held.
+the asking thread's tree (`work_google_shares`).
+
+## Save to Google
+
+`work.google.upload({ itemId, account })` saves a new file to the owner's
+Drive through Drive's format conversion. A document still uploads its
+Word export, with suggestions arriving as Google's. Slides registers
+its saved PowerPoint bytes with `registerUploadBytes('slides', read)`:
+the file itself, or an import's converted snapshot. The call
+returns the new file's ID and link. Sheets can register its own byte
+provider. Until SHT9 does so, the upload answers that Save to Google
+Sheets is not built yet.
+
+The owner's save goes straight to Drive and records a result. Threads
+have no upload tool. `uploadOfficeFile` checks, for every kind's provider:
+the caller (never a thread, never another host's call through `ctx.peer`),
+the item's file fence, and the library rule: a file from a shared library,
+or a snapshot the Teams view made of one (`isTeamsSnapshot`), stays on its
+host before any bytes are read.
 
 ## Proven against the fake
 
@@ -188,4 +213,8 @@ redirect and the Drive, Docs, Sheets and Slides calls above, keeping
 folders (`parents`, My Drive's top `myroot`, which `root` names), the bin,
 each file's sharing, and `files.list` a page at a time (`pageMost`). Tests:
 `mapper.test.ts`, `docs.test.ts`, `grid.test.ts`, `index.test.ts`,
-`write.test.ts`, and the Files place's `files/drive.test.ts`.
+`write.test.ts`, and the Files place's `files/drive.test.ts`. The wire
+tests check the deck mirror, Read again, the mirror shown when Drive cannot
+be reached, the copy to edit by caller, the exact bytes and MIME type of a
+deck's upload, a peer's upload and a Teams snapshot refused for every kind,
+and the reply for a sheet before the sheets build registers its own.

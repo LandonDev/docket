@@ -20,11 +20,9 @@ drops it. Agents suggest; the owner accepts.
 
 - **The file.** `view.ts` `deckPath`: the item's source through `sourcePath`
   (pdf/file.ts), or `deck.pptx` in the item's own folder for a deck a thread
-  made. A file that is not a zip is refused. A deck in PowerPoint on the web
-  (a Microsoft source with a URL) and a Google file are refused with a
-  sentence: a Google deck opens in Google, and the google tools read it and
-  revise a copy ([work-google.md](work-google.md)); opening one from
-  PowerPoint on the web is not built.
+  made. A `.pptx` must be a PowerPoint package; an imported format is its
+  converted snapshot ("Every format in" below). A PowerPoint web URL is
+  refused: opening it from there is not built. A Google deck is its mirror.
 - **Kept by the deck, not the item** (`deckKey`, `view.ts`). A file on this
   host is one deck whichever canvas items show it: a thread's canvas and a
   Files tab on one file share one list of waiting edits, one last write and
@@ -243,8 +241,8 @@ the file is really edited. For a deck:
 - **Who sees the review.** `work.slides.open`, `read` and the `work.slides`
   push reach only a caller who could name the file itself (`fenceItem`,
   `pushFor`): his own window and his own keys. A deck is not guestable, the
-  PowerPoint side of the switch is not built, and this pillar uploads
-  nothing anywhere.
+  PowerPoint side of the switch is not built. Save to Google Slides sends
+  the saved bytes of a deck of his own on his press.
 - **Accept** writes the change into the file as an ordinary edit; from then
   on it syncs like any save.
 
@@ -497,6 +495,7 @@ thread (`rowSession`):
 | Method | Capability | What it does |
 |---|---|---|
 | `work.slides.open` | read | → `DeckView`: reads and renders the deck and the proposed deck |
+| `work.slides.copyToEdit` | operate | his press: writes a `.pptx` of a read-only deck (an import, a Google deck) into the workspace's folder or the thread's own, never over a file, and opens it in the same seat → `{ itemId }` |
 | `work.slides.read` | read | → `{ data, size, rev }`: bytes of the `file` or `proposed` render by range, at most 4 MB a call |
 | `work.slides.slide` | read | → `{ data, size, rev }`: bytes of one slide's own one-page PDF (`{itemId, which, slide, offset, length}`, the slide by its id in the `file` or the `proposed` deck), at most 4 MB a call; `rev` is the picture's, so it changes only when that slide's picture does |
 | `work.slides.show` | read | → `ShowDeck`: the file's slides in the file's own order (`id`, `number`, `page`, `title`, `notes`, `hidden`, and where they have them `steps`, `transition` and `media`), its render, its `rev` and `changed` (how many effects and transitions the show plays otherwise or leaves out), for a show. A waiting suggestion is never in it: a show presents the deck as it is on disk. The render is read with `work.slides.read {which: 'file'}`. It starts the deck's background work ("Builds", "Video and sound") |
@@ -987,9 +986,96 @@ slide's.
   play; the order by keyboard; each "Edit in PowerPoint" case; Remove
   animations… confirmed; a suggested slide) and `edit/animation.test.ts`.
 
+## Every format in: read only until he makes a copy
+
+Files and the slides canvas open `.ppt`, `.pps`, `.ppsx`, `.odp` and `.key`.
+Such a deck is **read only here**, whoever can open it: it opens as a
+converted picture of itself. He reads it, Presents it, Previews and Exports
+it, and an agent reads it (`slides_read`, `slides_image`); nobody edits it.
+Why: an edit kept in a hidden converted copy was lost when a shared file's
+tab closed, wiped when the file was later found shared, and left behind when
+the original changed. A copy he can see in Files has none of these faults.
+
+- **The snapshot** (`formatsIn.ts` `convertedDeck`). LibreOffice makes a
+  `.pptx` of it on first open: `pps → pptx`, `ppsx → pptx` and `key → pptx`
+  are registered here, the formats pillar supplies `ppt` and `odp`. Beside
+  the snapshot, `source.json` keeps the original's size, time and sha256 as
+  they were before the conversion began. On each open a moved size or time
+  hashes the original again; other bytes convert again (there are no edits
+  to lose), the same bytes keep the snapshot. For a file of his own the
+  snapshot lies under `.cache` by the file (`deckCache/converted`), so it
+  is left out of the backup and made again when needed. For a file others
+  can open each tab has its own (`tabCache`, `work-slides/.cache/tabs/<item>`,
+  outside the canvas tree a thread move carries), every job of it carries
+  `shared: true`, and nothing of it leaves this host. A file found shared
+  later drops what was kept by the file; each tab converts its own.
+- **Gone with the tab.** A removed item (a Files tab closed, a thread
+  deleted) drops its tab's snapshot on the file's queue, after any picture
+  still being drawn into it (`dropTabCopy`). A thread's tab closes softly:
+  `sweepClosedCopies` drops closed tabs' snapshots when Work starts and,
+  not awaited, whenever a deck opens; it asks again on the queue whether
+  the tab opened meanwhile.
+- **Read only** (`view.ts` `readOnlyWhy`). The view carries `readOnly:
+  {from}` and no `hand`, no `mode`, no changes, no Undo. `slides_edit` and
+  every write method (`review`, `mode`, `undo`, `edit`, `step`, `restore`,
+  `attach`) refuse it with one sentence naming the format: "This is a
+  PowerPoint 97–2003 file, read only here. Make a copy to edit." (a
+  PowerPoint show, an OpenDocument file, a Keynote file). `versions` answers
+  none.
+- **Make a copy to edit** (`copyToEdit.ts`, `work.slides.copyToEdit`).
+  His press only: his window here or any of his own remote windows (his
+  Mac, his phone reach the box as `remote`); a thread and another host's
+  call are refused, and a key without `approve` takes nothing out of a place
+  others can open (Files' own rule for his hand). The copy is `<name>.pptx`
+  written through the Files door (`files/write.ts` `makeFile`, never over a
+  file: a taken name tries "<name> 2.pptx", "<name> 3.pptx"). In a Work
+  workspace's pane (a Files tab, a Work thread) it goes in the workspace's
+  own folder: beside the original when that is his own file there, else at
+  the folder's top (never into a library linked inside it). In a chat
+  outside every workspace it is the thread's own deck (`{at: 'thread'}`)
+  and goes with the thread. A Files tab's item is replaced by the copy; a
+  thread opens it beside. A Google deck takes the same press.
+- **Keynote.** Before a `.key` reaches a converter it must be a zip, or a
+  package folder; anything else (a `server.key`) is "This is not a Keynote
+  deck." with no job sent anywhere. A package folder, and a zip LibreOffice
+  cannot read, say "Export this from Keynote as PowerPoint"
+  (`KEYNOTE_EXPORT` in `@shared/work/slideFormats`: the wire carries a
+  failure as its sentence alone, so the one constant is the kind both ends
+  know). A missing converter, a machine asleep, a timeout or a stop keep
+  their own words and the canvas's Retry.
+- **A show file.** A `.pps` or `.ppsx` opens as a deck with Present one press
+  away. `noteSlidesOpenedByHand(env, item)` (`openShow.ts`) starts the show
+  at the first slide once the deck is ready, but nothing calls it yet: the
+  window has no word that an item was just opened by his own press in it,
+  and the hook must never fire from a restore, a push, an agent's open or
+  another window. Files' opener is to call it after his press opens the file.
+- Files previews for these formats give no picture; opening the deck draws
+  the snapshot.
+
+`formatsIn.test.ts` runs the LibreOffice imports with
+`TEMP_CODE_WORK_TOOLS_DATA`. `TEMP_CODE_SLIDES_KEYNOTE_FIXTURES` can point
+to the lab's `formats` folder for the Keynote 5 and 6 tests.
+
+## Google Slides decks
+
+Opening a picked Google Slides deck checks Drive and reads its PPTX
+export if the mirror is missing or out of date (`google/deckMirror.ts`).
+When Drive cannot be reached and a mirror was read before, that mirror
+opens and the view carries `readOnly: {from: 'google', offline: true}`.
+Read again from Google gets a fresh export. The deck is read only as an
+import is, with the Google sentence; it Presents, and its More has Read
+again from Google, Open in Google and Make a copy to edit. The slides body
+asks `work.google.watch` once and hears the `work.google` push for its
+own item: when someone changed it in Drive (`behind`), the notice line says
+so with Read again. [Google pillar](work-google.md)
+
+On a deck of his own, More has Save to Google Slides: a Drive account, then
+Save uploads the saved PowerPoint bytes (an import's snapshot) as a new
+Google presentation. A shared library's deck stays on this host.
+
 ## A mail's attachment
 
-A .pptx from a mail (`{at: 'mail'}`) opens through the PDF pillar's `sourcePath`, which answers the copy the host fetched into the item's own folder (work-canvas.md "Fetched sources").
+A slide deck from a mail (`{at: 'mail'}`) opens through the PDF pillar's `sourcePath`, which answers the copy the host fetched into the item's own folder (work-canvas.md "Fetched sources").
 
 ## The canvas
 

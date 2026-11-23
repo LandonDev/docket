@@ -51,7 +51,9 @@ export type SlidesMoment =
   | "sheetunder"
   | "animate"
   | "animateppt"
-  | "sorter";
+  | "sorter"
+  | "copy"
+  | "google";
 
 void workCanvasChunk.load();
 
@@ -184,6 +186,19 @@ function setUp(moment: SlidesMoment): {
   if (moment === "row") return { view: whoComes(), current: "3", picked: 2, width: 1200 };
   if (moment === "rownarrow") return { view: whoComes(), current: "3", picked: 2, width: 520 };
   if (moment === "history") return { view: whoComes(), current: "3", width: 864 };
+  if (moment === "copy" || moment === "google") {
+    // Read only: an imported .ppt, or a Google deck Drive could not be reached for. No row, no mode.
+    const order = [1, 2, 3, 4, 5, 6, 8];
+    return {
+      view: deckView({
+        mode: undefined,
+        readOnly: moment === "copy" ? { from: "ppt" } : { from: "google", offline: true },
+        slides: order.map((id, i) => slide(id, { number: i + 1, title: title(id), page: i + 1 })),
+        renders: { file: { rev: "f", size: 1, pages: 7 }, proposed: null },
+      }),
+      current: "2",
+    };
+  }
   if (moment === "notes") {
     const order = [1, 2, 3, 4, 5, 6, 8];
     return {
@@ -233,12 +248,15 @@ function AskBar() {
   );
 }
 
-export function SlidesPreview({ moment = "sugg" }: { moment?: SlidesMoment }) {
+export function SlidesPreview({ moment = "sugg", previewWidth }: { moment?: SlidesMoment; previewWidth?: number }) {
   resetCanvasStore();
   const sessionId = `preview-slides-${moment}`;
   const itemId = `${sessionId}-item`;
-  const item: CanvasItem = { id: itemId, sessionId, workspaceId: "ws", kind: "slides" as CanvasKind, title: "Sponsor deck.pptx", source: { at: "file", host: "local", path: "/work/Sponsor deck.pptx" }, state: "open", position: 0, rev: 0, createdAt: 0, updatedAt: 0 };
-  const { view, current, engine, picked, typing, dragging, width, look, sheet, tab } = setUp(moment);
+  const name = moment === "copy" ? "Sponsor deck.ppt" : "Sponsor deck.pptx";
+  const source: CanvasItem["source"] = moment === "google" ? { at: "google", account: "landon@example.com", fileId: "d1", mime: "application/vnd.google-apps.presentation" } : { at: "file", host: "local", path: `/work/${name}` };
+  const item: CanvasItem = { id: itemId, sessionId, workspaceId: "ws", kind: "slides" as CanvasKind, title: moment === "google" ? "Sponsor deck" : name, source, state: "open", position: 0, rev: 0, createdAt: 0, updatedAt: 0 };
+  const { view, current, engine, picked, typing, dragging, width: fixtureWidth, look, sheet, tab } = setUp(moment);
+  const width = previewWidth ?? fixtureWidth;
   // One host a moment, whatever renders the page again: the deck's hand is kept by its host.
   const host = hosts.get(moment) ?? hosts.set(moment, fakeDeckHost({ ...view, itemId })).get(moment)!;
   const store = deckStoreOf(itemId);
