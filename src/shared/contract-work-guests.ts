@@ -22,6 +22,14 @@ export type GuestRole = (typeof GUEST_ROLES)[number]
 export const GuestSourceSchema = z.object({ at: z.literal('lifeos'), table: z.enum(['docs', 'sheets', 'projects']), id: z.string().regex(/^[A-Za-z0-9]{1,64}$/) })
 export type GuestSource = z.infer<typeof GuestSourceSchema>
 
+/**
+ * What the owner's own hosted editor can open: a LifeOS document or sheet, or a document or sheet kept as a
+ * file, named by the canvas item that shows it (a thread's, or a Files tab's). A file never takes a guest
+ * link; only its owner's ticket opens it.
+ */
+export const TicketSourceSchema = z.union([GuestSourceSchema, z.object({ at: z.literal('item'), itemId: z.string().min(1).max(100) })])
+export type TicketSource = z.infer<typeof TicketSourceSchema>
+
 /** Ends: at least an hour away, at most a year. Thirty days unless he picks. */
 export const GUEST_DEFAULT_DAYS = 30
 export const GUEST_MIN_MS = 60 * 60_000
@@ -64,7 +72,7 @@ export const GuestsRequestSchemas = [
   /** Revoked at once: the guest's sockets close within a second. */
   request('work.guests.revoke', z.object({ linkId })),
   /** The owner's own hosted editor (`/w/open#t=<ticket>`), for the phone: a ticket that opens once, within two minutes. */
-  request('work.guests.ticket', z.object({ source: GuestSourceSchema, title: GuestTitleSchema }))
+  request('work.guests.ticket', z.object({ source: TicketSourceSchema, title: GuestTitleSchema }))
 ] as const
 
 export interface GuestCreated {

@@ -51,6 +51,11 @@ public enum ChipWords {
         ContextChip(kind: kind, label: label, ref: .object(.init(at: "lifeos", table: table, id: id)))
     }
 
+    /// A whole file, for Ask with nothing picked in it.
+    public static func item(_ item: CanvasItem) -> ContextChip {
+        ContextChip(kind: .item, label: item.title, ref: .canvasSource(item.source))
+    }
+
     /// Words picked in an item, for Ask.
     public static func selection(in item: CanvasItem, quote: String, label: String? = nil) -> ContextChip {
         ContextChip(kind: .selection, label: label ?? item.title, ref: .canvasSource(item.source), quote: quote)

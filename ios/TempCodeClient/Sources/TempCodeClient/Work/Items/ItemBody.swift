@@ -2,10 +2,12 @@ import Foundation
 import TempCodeContract
 
 /// What the phone draws for a thread's item (milestone 47): the hosted
-/// editor in a web view for a LifeOS document or sheet, the phone's own
-/// view for the rest, and a sentence where neither can open it.
+/// editor in a web view for a document or a sheet (LifeOS's, or one kept as
+/// a file, which its host opens or refuses in its own words), the phone's
+/// own view for the rest, and a sentence where neither can open it.
 public enum ItemBody: Equatable, Sendable {
-    /// `/w/open` on the host that serves LifeOS's documents, through `work.guests.ticket`.
+    /// `/w/open` through `work.guests.ticket`: on the host that serves LifeOS's documents for a LifeOS row, on
+    /// the file's own host for a document or sheet kept as a file (named by its item).
     case hosted(Methods.WorkGuestsTicket.Params.Source)
     case pdf, slides, media, meeting, browser, form, dashboard
     /// A version list and a compare against now.
@@ -18,10 +20,16 @@ public enum ItemBody: Equatable, Sendable {
     public static func of(_ item: CanvasItem) -> ItemBody {
         switch item.kind {
         case .document, .sheet:
-            guard case .lifeos(let source) = item.source, let table = hostedTable(source.table) else {
-                return .unavailable(item.kind == .sheet ? "This sheet opens on the computer that has it." : "This document opens on the computer that has it.")
+            switch item.source {
+            case .lifeos(let source):
+                if let table = hostedTable(source.table) { return .hosted(.object(.init(at: "lifeos", table: table, id: source.id))) }
+            case .file:
+                // Its host says whether the hosted editor opens it (a .tcdoc, a .tcsheet in a place of his own).
+                return .hosted(.object1(.init(at: "item", itemId: item.id)))
+            default:
+                break
             }
-            return .hosted(.init(at: "lifeos", table: table, id: source.id))
+            return .unavailable(elsewhere(item.kind))
         case .pdf: return .pdf
         case .slides: return .slides
         case .media: return .media
@@ -41,7 +49,18 @@ public enum ItemBody: Equatable, Sendable {
         }
     }
 
-    private static func hostedTable(_ table: LifeosSource.Table) -> Methods.WorkGuestsTicket.Params.Source.Table? {
+    /// Where a document or sheet opens when the phone cannot.
+    static func elsewhere(_ kind: CanvasItem.Kind) -> String {
+        kind == .sheet ? "This sheet opens on the computer that has it." : "This document opens on the computer that has it."
+    }
+
+    /// The item is a file its own host opens, not a LifeOS row: it takes no guest link, and a refusal is the host's to word.
+    public var isFileKept: Bool {
+        if case .hosted(.object1) = self { return true }
+        return false
+    }
+
+    private static func hostedTable(_ table: LifeosSource.Table) -> Methods.WorkGuestsTicket.Params.SourceCase0.Table? {
         switch table {
         case .docs: .docs
         case .sheets: .sheets
@@ -51,7 +70,7 @@ public enum ItemBody: Equatable, Sendable {
 
     /// The hosted kinds take a guest link from their More menu.
     public var guestSource: Methods.WorkGuestsCreate.Params.Source? {
-        guard case .hosted(let source) = self else { return nil }
+        guard case .hosted(.object(let source)) = self else { return nil }
         return .init(at: source.at, table: source.table == .sheets ? .sheets : .docs, id: source.id)
     }
 }
@@ -62,5 +81,20 @@ public enum ItemLabel {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > limit else { return trimmed.isEmpty ? "Item" : trimmed }
         return String(trimmed.prefix(limit - 1)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+}
+
+/// Why the hosted editor did not open (the phone-files plan, PF4). A file's host may refuse it in words of
+/// its own (a Word file, a file others can open, a computer no phone reaches): those words stand, and there
+/// is nothing to try again. Anything else is a page that did not answer.
+public enum HostedFailure: Equatable, Sendable {
+    case refused(String)
+    case unreachable
+
+    public static func of(_ error: any Error, item: CanvasItem) -> HostedFailure {
+        guard ItemBody.of(item).isFileKept, case .refused(let message, _) = ActionError.wrap(error) else { return .unreachable }
+        // Another host of his has the file, or a host from before files opened here: the phone says where it opens.
+        if message.hasPrefix("served elsewhere") || message.hasPrefix("bad request") { return .refused(ItemBody.elsewhere(item.kind)) }
+        return .refused(message)
     }
 }

@@ -36,6 +36,8 @@ export interface OpenPassFacts {
   title: string
   token: string
   tokenExp: number
+  /** a sheet kept as a file (`.tcsheet`): its resolved path on this host, which the live socket opens for this pass's token alone */
+  sheetFile?: string
 }
 
 export type GuestServiceLink = ServiceLink & { role: GuestRole } & ({ guest: GuestLinkFacts; pass?: never } | { pass: OpenPassFacts; guest?: never; item: { doc: string } | { sheet: string } })

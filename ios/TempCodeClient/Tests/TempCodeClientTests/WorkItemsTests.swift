@@ -13,18 +13,38 @@ struct WorkItemsTests {
     }
 
     @Test func aLifeosDocumentOrSheetOpensInTheHostedEditor() throws {
-        #expect(ItemBody.of(try item("document", source: #"{"at":"lifeos","table":"docs","id":"d1"}"#)) == .hosted(.init(at: "lifeos", table: .docs, id: "d1")))
+        #expect(ItemBody.of(try item("document", source: #"{"at":"lifeos","table":"docs","id":"d1"}"#)) == .hosted(.object(.init(at: "lifeos", table: .docs, id: "d1"))))
         let sheet = ItemBody.of(try item("sheet", source: #"{"at":"lifeos","table":"sheets","id":"k9"}"#))
-        #expect(sheet == .hosted(.init(at: "lifeos", table: .sheets, id: "k9")))
+        #expect(sheet == .hosted(.object(.init(at: "lifeos", table: .sheets, id: "k9"))))
+        #expect(!sheet.isFileKept)
         #expect(sheet.guestSource == .init(at: "lifeos", table: .sheets, id: "k9"))
     }
 
-    @Test func aFileDocumentSaysWhereItOpens() throws {
-        guard case .unavailable(let words) = ItemBody.of(try item("document", source: #"{"at":"file","host":"mac","path":"/x.tcdoc"}"#)) else {
-            Issue.record("a file document is not hosted")
+    @Test func aDocumentOrSheetKeptAsAFileIsAskedOfItsHostByItsItem() throws {
+        let memo = ItemBody.of(try item("document", source: #"{"at":"file","host":"box","path":"/w/Travel memo.tcdoc"}"#))
+        #expect(memo == .hosted(.object1(.init(at: "item", itemId: "i1"))))
+        #expect(memo.isFileKept)
+        // A file takes no guest link: only its owner's ticket opens it.
+        #expect(memo.guestSource == nil)
+        #expect(ItemBody.of(try item("sheet", source: #"{"at":"file","host":"box","path":"/w/Budget.xlsx"}"#)) == .hosted(.object1(.init(at: "item", itemId: "i1"))))
+        // A document of another kind of source still says where it opens.
+        guard case .unavailable(let words) = ItemBody.of(try item("document", source: #"{"at":"google","account":"a","fileId":"f","mime":"application/vnd.google-apps.document"}"#)) else {
+            Issue.record("a Google Doc is not hosted")
             return
         }
         #expect(words.contains("computer"))
+    }
+
+    @Test func aFilesHostRefusesInItsOwnWordsAndAnythingElseIsAPageThatDidNotAnswer() throws {
+        let memo = try item("document", source: #"{"at":"file","host":"box","path":"/w/Letter.docx"}"#)
+        let word = TransportError.server(method: "work.guests.ticket", message: "This document is a Word file. Edit it on your computer.")
+        #expect(HostedFailure.of(word, item: memo) == .refused("This document is a Word file. Edit it on your computer."))
+        // Another host of his has it, or the host is from before files opened here: where it opens, in the phone's words.
+        #expect(HostedFailure.of(TransportError.server(method: "work.guests.ticket", message: "served elsewhere: env_mac"), item: memo) == .refused("This document opens on the computer that has it."))
+        #expect(HostedFailure.of(TransportError.server(method: "work.guests.ticket", message: #"bad request: [{"code":"invalid_union"}]"#), item: memo) == .refused("This document opens on the computer that has it."))
+        // A host that cannot be reached is not a refusal, and a LifeOS row keeps its one failure with Try Again.
+        #expect(HostedFailure.of(TransportError.notConnected, item: memo) == .unreachable)
+        #expect(HostedFailure.of(word, item: try item("document", source: #"{"at":"lifeos","table":"docs","id":"d1"}"#)) == .unreachable)
     }
 
     @Test func eachNativeKindHasItsBody() throws {

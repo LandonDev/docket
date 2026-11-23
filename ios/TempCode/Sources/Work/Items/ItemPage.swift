@@ -14,7 +14,13 @@ struct ItemPage: View {
     let onAsk: () -> Void
     @State private var asking: ContextChip?
     @State private var sharing: CanvasItem?
+    @State private var previewing: CanvasItem?
     @State private var failure: String?
+    /// More's Find reaches the kind's viewer through these; the viewer keeps its own Ask here.
+    @State private var commands = ReaderCommands(ownsAsk: false)
+    /// The shown item's comments and the changes that wait on it (`ReaderFrame` fills it).
+    @State private var file: ReaderFile?
+    @State private var sheet: ReaderSheet?
 
     private var items: [CanvasItem] { client.work.canvas.items(sessionId) }
     private var item: CanvasItem? { items.first { $0.id == selected } ?? testItem ?? items.first }
@@ -34,25 +40,33 @@ struct ItemPage: View {
             if let item {
                 header(item)
                 Divider()
-                ItemBodyView(client: client, item: item, ask: { asking = $0 })
-                    .id(item.id)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ReaderFrame(client: client, item: item, commands: commands, file: $file, sheet: $sheet) {
+                    ItemBodyView(client: client, item: item, ask: { asking = $0 })
+                        .id(item.id)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .environment(commands)
             } else {
                 ContentUnavailableView("Nothing Open", systemImage: "rectangle.on.rectangle")
             }
         }
         .sheet(item: $asking) { chip in
-            AskSheet(client: client, sessionId: sessionId, chip: chip) { onAsk() }
+            AskSheet(client: client, target: .thread(sessionId), chip: chip) { _ in onAsk() }
         }
         .sheet(item: $sharing) { item in
             if let source = ItemBody.of(item).guestSource {
                 GuestLinkSheet(client: client, source: source, title: item.title)
             }
         }
+        .navigationDestination(item: $previewing) { item in
+            if let source = client.work.canvas.preview(for: item) { PagePreview(client: client, item: item, source: source) }
+        }
         .alert("Couldn’t do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(failure ?? "") }
         .accessibilityIdentifier("item-page")
+        // The hosted editor's ticket is asked the moment an item is the one to show.
+        .onChange(of: item?.id, initial: true) { if let item { client.work.canvas.warmTicket(item) } }
         #if DEBUG
         // The work set's item, as the thread's selection, so the segment bar names it too.
         .onChange(of: items.map(\.id), initial: true) { if selected == nil, let pick = testItem { selected = pick.id } }
@@ -77,14 +91,8 @@ struct ItemPage: View {
             // One item: its name is the segment's label already, so the row holds only its More.
             Spacer(minLength: 8)
             Menu {
-                if ItemBody.of(item).guestSource != nil, client.work.canApprove {
-                    Button("Make a Guest Link", systemImage: "person.badge.plus") { sharing = item }
-                }
-                Button("Close", systemImage: "xmark.square") {
-                    Task {
-                        do { try await client.work.canvas.close(item) } catch { failure = ActionError.wrap(error).message }
-                    }
-                }
+                // The reader page's own rows (Work/Reader): one menu for a file wherever it shows.
+                ReaderMoreRows(verbs: ReaderVerbs.of(item, facts(item))) { run($0, on: item) }
             } label: {
                 Image(systemName: GlassMetrics.moreSymbol)
                     .frame(minWidth: 44, minHeight: 44)
@@ -95,6 +103,33 @@ struct ItemPage: View {
         .padding(.leading, Layout.textEdge)
         .padding(.trailing, Layout.textEdge - 12)
         .frame(minHeight: 44)
+    }
+
+    /// What More can offer for the shown item; the comments and changes count only once they are this item's.
+    private func facts(_ item: CanvasItem) -> ReaderFacts {
+        let file = file?.item.id == item.id ? file : nil
+        return ReaderFacts(
+            canApprove: client.work.canApprove,
+            inThread: true,
+            waiting: file?.waiting ?? 0,
+            previews: client.work.canvas.preview(for: item) != nil,
+            comments: file?.takesComments ?? false
+        )
+    }
+
+    private func run(_ verb: ReaderVerb, on item: CanvasItem) {
+        switch verb {
+        case .find: commands.showFind()
+        case .guestLink: sharing = item
+        case .close:
+            Task {
+                do { try await client.work.canvas.close(item) } catch { failure = ActionError.wrap(error).message }
+            }
+        case .preview: previewing = item
+        case .comments: sheet = .comments
+        case .review: sheet = .review
+        case .share: break
+        }
     }
 }
 
@@ -132,13 +167,20 @@ struct ItemBodyView: View {
     }
 }
 
-/// Ask: what he picked in the item as a chip, then his words; it goes to the thread beside the item.
+/// Where Ask's words go: the thread beside the item, or, for a file open from Files, the thread that holds
+/// it, else a new one in its workspace (`FileAsk`).
+enum AskTarget {
+    case thread(String)
+    case file(workspaceId: String, item: CanvasItem)
+}
+
+/// Ask: what he picked in the item as a chip, then his words; `sent` hears the thread they went to.
 struct AskSheet: View {
     @Environment(\.dismiss) private var dismiss
     let client: EnvironmentClient
-    let sessionId: String
+    let target: AskTarget
     let chip: ContextChip
-    let sent: () -> Void
+    let sent: (_ sessionId: String) -> Void
     @State private var text = ""
     @State private var sending = false
     @State private var error: String?
@@ -184,9 +226,17 @@ struct AskSheet: View {
         sending = true
         defer { sending = false }
         do {
-            try await client.work.ask(sessionId: sessionId, chip: chip, text: text.trimmingCharacters(in: .whitespacesAndNewlines))
+            let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let thread: String
+            switch target {
+            case .thread(let sessionId):
+                try await client.work.ask(sessionId: sessionId, chip: chip, text: words)
+                thread = sessionId
+            case .file(let workspaceId, let item):
+                thread = try await client.work.ask(workspaceId: workspaceId, item: item, chip: chip, text: words) { client.session($0) }
+            }
             dismiss()
-            sent()
+            sent(thread)
         } catch {
             self.error = ActionError.wrap(error).message
         }
@@ -198,6 +248,11 @@ struct ItemLoad<Value, Content: View>: View {
     /// A reload drops what was shown first, so the spinner, then a fresh value or the failure with Try Again, stand
     /// in its place: for a view whose old value must not stay live through a refresh (a deck's review after a decision).
     var dropsOnReload = false
+    /// What to draw before the first read answers: the file as it was last drawn in this run. It gives way to the
+    /// read's answer, or to its failure.
+    var initial: Value? = nil
+    /// What stands in while nothing is known yet, in place of the spinner: the paper's shape with its bar.
+    var loading: (() -> AnyView)? = nil
     let read: () async throws -> Value
     /// Each read that answers, for a view that holds something newer than the last value until the next one lands.
     var onRead: ((Value) -> Void)? = nil
@@ -205,6 +260,8 @@ struct ItemLoad<Value, Content: View>: View {
     var onRefreshFailed: ((String) -> Void)? = nil
     @ViewBuilder let content: (Value, _ reload: @escaping () -> Void) -> Content
     @State private var value: Value?
+    /// The first read has answered or failed: `initial` is spent.
+    @State private var settled = false
     @State private var error: String?
     @State private var round = 0
     /// A read is out: a reload waits for it rather than cancelling it (a poll faster than the host).
@@ -212,7 +269,7 @@ struct ItemLoad<Value, Content: View>: View {
 
     var body: some View {
         Group {
-            if let value {
+            if let value = value ?? (settled ? nil : initial) {
                 content(value) {
                     guard !reading else { return }
                     if dropsOnReload { self.value = nil }
@@ -226,13 +283,15 @@ struct ItemLoad<Value, Content: View>: View {
                 } actions: {
                     Button("Try Again") { self.error = nil; round += 1 }
                 }
+            } else if let loading {
+                loading()
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .task(id: round) {
             reading = true
-            defer { reading = false }
+            defer { reading = false; settled = true }
             do {
                 let next = try await read()
                 value = next

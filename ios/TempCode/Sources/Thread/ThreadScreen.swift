@@ -179,7 +179,10 @@ struct ThreadScreen: View {
         .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: sessionId))
         // A Work thread's items, then each open the host announces shows its item.
         .task(id: session?.scope == .work) {
-            if session?.scope == .work { await client.work.canvas.load(sessionId) }
+            guard session?.scope == .work else { return }
+            await client.work.canvas.load(sessionId)
+            // A document or sheet among them: its web view is made ready before he opens it (HostedItemView.swift).
+            if client.work.canvas.items(sessionId).contains(where: { if case .hosted = ItemBody.of($0) { true } else { false } }) { HostedWebPool.shared.warm() }
         }
         .onChange(of: client.work.canvas.opened[sessionId], initial: true) {
             guard let opened = client.work.canvas.opened[sessionId] else { return }

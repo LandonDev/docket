@@ -115,6 +115,7 @@ socket only: `mac.*`, `macBridge.policy.*`, `macBridge.decide`,
 | `remote.status`, `remote.keys.*`, `remote.pairings.*`, `remote.sessions.*`, `remote.settings.set` | the remote-access rows | admin |
 | `remote.push.register`, `remote.push.unregister`, `remote.push.status`, `remote.push.activity` | `PushStatus`, none | read |
 | `github.inbox`, `github.inboxRefresh`, `github.details`, `github.thread`, `github.prDiff` | the inbox and work-item shapes | read |
+| `work.docs.open`, `work.docs.threads`, `work.docs.thread`, `work.history.branches`, `work.history.decide`, `work.sheets.open`, `work.sheets.review` | `DocOpenPhone`, `DocThreadsPhone`, `DocThreadAnswerPhone`, `HistoryBranchesPhone`, `{ left }`, `SheetPhoneView` (the phone's comments and review, PF2, with the `work.docs` and `work.sheets` pushes) | read (`work.docs.thread`, `work.history.decide`, `work.sheets.review`: operate) |
 
 The pushes (`ServerPush`, one case each, `.unknown(JSONValue)` for the rest):
 `hello`, `workspaces`, `projects`, `events`, `sessions`, `live-edits`,

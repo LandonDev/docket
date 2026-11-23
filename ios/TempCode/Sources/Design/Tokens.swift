@@ -27,6 +27,8 @@ enum Tint {
     /// 5.3:1 there, and more on white. Dark mode keeps the system's own.
     static let warningText = legible(.systemOrange, light: UIColor(red: 0.690, green: 0.290, blue: 0, alpha: 1))
     static let destructiveText = legible(.systemRed, light: UIColor(red: 0.784, green: 0.063, blue: 0.180, alpha: 1))
+    /// Success as text: words a change adds. The system's green is 2.2:1 on white; this reaches 5.1:1 there.
+    static let successText = legible(.systemGreen, light: UIColor(red: 0.098, green: 0.490, blue: 0.220, alpha: 1))
 
     private static func legible(_ base: UIColor, light: UIColor) -> Color {
         Color(UIColor { traits in

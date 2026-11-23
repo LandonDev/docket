@@ -317,6 +317,30 @@ public struct WorkDigestPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct WorkDocsPush: Codable, Hashable, Sendable {
+    public let doc: String
+    public let threads: Bool?
+    public let branches: Bool?
+
+    public init(doc: String, threads: Bool? = nil, branches: Bool? = nil) {
+        self.doc = doc
+        self.threads = threads
+        self.branches = branches
+    }
+}
+
+public struct WorkSheetsPush: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let itemId: String
+    public let rev: Int
+
+    public init(sessionId: String, itemId: String, rev: Int) {
+        self.sessionId = sessionId
+        self.itemId = itemId
+        self.rev = rev
+    }
+}
+
 public struct ComputerPush: Codable, Hashable, Sendable {
     public let service: ComputerServiceState
     public let sessions: [ComputerSessionRow]
@@ -359,6 +383,8 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case workRoutines(WorkRoutinesPush)
     case workFiles(WorkFilesPush)
     case workDigest(WorkDigestPush)
+    case workDocs(WorkDocsPush)
+    case workSheets(WorkSheetsPush)
     case computer(ComputerPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
@@ -401,6 +427,8 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "work.routines": self = .workRoutines(try WorkRoutinesPush(from: decoder))
         case "work.files": self = .workFiles(try WorkFilesPush(from: decoder))
         case "work.digest": self = .workDigest(try WorkDigestPush(from: decoder))
+        case "work.docs": self = .workDocs(try WorkDocsPush(from: decoder))
+        case "work.sheets": self = .workSheets(try WorkSheetsPush(from: decoder))
         case "computer": self = .computer(try ComputerPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
@@ -439,6 +467,8 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .workRoutines(let value): try Self.encode(tag: "work.routines", value, to: encoder)
         case .workFiles(let value): try Self.encode(tag: "work.files", value, to: encoder)
         case .workDigest(let value): try Self.encode(tag: "work.digest", value, to: encoder)
+        case .workDocs(let value): try Self.encode(tag: "work.docs", value, to: encoder)
+        case .workSheets(let value): try Self.encode(tag: "work.sheets", value, to: encoder)
         case .computer(let value): try Self.encode(tag: "computer", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }

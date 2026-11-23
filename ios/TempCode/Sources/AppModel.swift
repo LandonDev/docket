@@ -66,6 +66,7 @@ final class AppModel: PushHandler {
         ready = true
         activities.reconcile(registry)
         followHosts()
+        followShareTargets()
         await refreshPushPermission()
         if registry.push.enabled, registry.push.permission == .granted { UIApplication.shared.registerForRemoteNotifications() }
         let registry = self.registry
@@ -85,10 +86,25 @@ final class AppModel: PushHandler {
         }
     }
 
+    /// Save to TempCode (Work/ShareBridge.swift): the share extension's list of places and its keys follow the
+    /// hosts, and what it queued and could not send goes out whenever a host's state moves.
+    private func followShareTargets() {
+        withObservationTracking {
+            ShareBridge.publish(registry)
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.followShareTargets()
+                await ShareBridge.drain(self.registry)
+            }
+        }
+    }
+
     func scenePhaseChanged(_ phase: ScenePhase) async {
         switch phase {
         case .active:
             await registry.setForeground(true)
+            await ShareBridge.drain(registry)
             settleAfterReturn()
             await refreshPushPermission()
         case .background:

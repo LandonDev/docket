@@ -1761,9 +1761,13 @@ operate, opens in Quick Look: the host's preview pages, else the file's
 facts, and Open the original for a workspace-folder file of 50 MB or less,
 read through `work.files.read` by version into a temp file that goes with
 the preview. A shared library's file shows facts only ("On MacBook"):
-`read` gives a library's bytes to his own window alone. A document or
-sheet kept as a file opens read only ("Edit on your computer"), since the
-hosted editor takes only LifeOS rows.
+`read` gives a library's bytes to his own window alone. A seated file opens
+on the phone-files build's reader page (docs/agents/work-phone-files.md "From
+Files"), where Ask finds the thread that holds it or starts one. A document
+or sheet kept as a file in a place of his own is seated too: the hosted
+editor takes a `.tcdoc` or a `.tcsheet`, and where the host will not open it
+there (a Word or Excel file) Quick Look stands in its place, read only
+("Edit on your computer").
 
 Until F3 and F4 land here the phone degrades: search filters the rows it
 already holds until `work.files.search` answers, and Quick Look shows the

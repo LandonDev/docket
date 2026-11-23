@@ -144,7 +144,7 @@ export const guests: WorkModule = {
         await rt.revoke(req.params.linkId)
         return handled({ ok: true })
       case 'work.guests.ticket':
-        return handled(await rt.ticket(req.params.source, req.params.title))
+        return handled(await rt.ticket(req.params.source, req.params.title, by, req.method))
     }
     return NOT_HANDLED
   },

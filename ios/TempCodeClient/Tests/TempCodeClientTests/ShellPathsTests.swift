@@ -3,6 +3,9 @@ import Testing
 import TempCodeContract
 @testable import TempCodeClient
 
+/// An open file, as its host lists it.
+private let openFile = try! JSONDecoder().decode(CanvasItem.self, from: Data(#"{"id":"i1","sessionId":"s1","workspaceId":"w1","kind":"pdf","title":"Rules","source":{"at":"file","host":"box","path":"/w/rules.pdf"},"state":"open","position":0,"rev":1,"createdAt":1,"updatedAt":1}"#.utf8))
+
 /// One instance of every `Route` case: a new case must be listed here and given a column.
 private let everyRoute: [Route] = [
     .thread(environmentId: "e", sessionId: "s", seq: nil),
@@ -18,21 +21,28 @@ private let everyRoute: [Route] = [
     .outboxItem(environmentId: "e", ref: "host:h1"),
     .workSettings,
     .houseRules(environmentId: "e", workspaceId: "w"),
-    .workView(environmentId: "e", workspaceId: "w", view: "mail")
+    .workView(environmentId: "e", workspaceId: "w", view: "mail"),
+    .file(environmentId: "e", item: openFile, sessionId: nil)
 ]
 
 @Suite struct ShellPathsTests {
     @Test func `every route has a column: the lists in the sidebar, the project's shell and the screens in the detail`() {
-        #expect(everyRoute.count == 14)
+        #expect(everyRoute.count == 15)
         let sidebar = everyRoute.filter { ShellPaths.column(of: $0) == .sidebar }
         let detail = everyRoute.filter { ShellPaths.column(of: $0) == .detail }
         #expect(sidebar.count + detail.count == everyRoute.count)
         #expect(sidebar == [.workspace(key: "w"), .archivedThreads(environmentId: "e", projectId: "p"), .archivedProjects(environmentId: "e", workspaceId: "w"), .outbox, .digest, .computers])
-        #expect(detail.count == 8)
+        #expect(detail.count == 9)
+        #expect(ShellPaths.column(of: .file(environmentId: "e", item: openFile, sessionId: "s1")) == .detail)
         #expect(ShellPaths.column(of: .outboxItem(environmentId: "e", ref: "host:h1")) == .detail)
         #expect(ShellPaths.column(of: .project(key: "p", thread: "e:s")) == .detail)
         #expect(ShellPaths.column(of: .settings) == .detail)
         #expect(ShellPaths.column(of: .hosts) == .detail)
+    }
+
+    @Test func `an open file's page is a route a launch restores`() throws {
+        let route = Route.file(environmentId: "e", item: openFile, sessionId: "s1")
+        #expect(try JSONDecoder().decode(Route.self, from: JSONEncoder().encode(route)) == route)
     }
 
     @Test func `a snapshot round-trips through JSON with a detail open`() throws {

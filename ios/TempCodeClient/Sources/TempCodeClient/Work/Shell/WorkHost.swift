@@ -48,6 +48,10 @@ public final class WorkHost: CaptureHost {
     public private(set) var guestsRev = 0
     /// Moves on each `work.rules` push, per workspace: its rules page reads again.
     public private(set) var rulesRev: [String: Int] = [:]
+    /// Moves on each `work.docs` push, per document (the service's `doc`): its comments and review read again.
+    public private(set) var docsRev: [String: Int] = [:]
+    /// Moves on each `work.sheets` push, per item: its review reads again.
+    public private(set) var sheetsRev: [String: Int] = [:]
     /// Set when this host's Away ended and nobody has reviewed it here yet.
     public private(set) var awayEnd: AwayEnd?
 
@@ -58,11 +62,15 @@ public final class WorkHost: CaptureHost {
     public let files: FilesHost
     /// The digest's ledger and settings on this host (Work/Digest/WorkDigest.swift).
     public let digest: WorkDigest
+    /// The methods this host refused as unknown since its socket opened (Work/Reader/HostCan.swift).
+    public let can: HostCan
     @ObservationIgnored private let defaults: UserDefaults
 
     public init(socket: TempCodeSocket, environment: PairedEnvironment, defaults: UserDefaults = .standard) {
         self.socket = socket
-        canvas = WorkCanvas(socket: socket)
+        let can = HostCan()
+        self.can = can
+        canvas = WorkCanvas(socket: socket, can: can, mayAct: environment.caps.contains(.operate) || environment.caps.contains(.approve) || environment.caps.contains(.admin))
         files = FilesHost(wire: SocketFilesWire(socket: socket), environmentId: environment.id, caps: .init(operate: environment.allows(.operate), approve: environment.allows(.approve)))
         // An original a past launch was showing when it ended goes now.
         OriginalFiles.sweepAtLaunch()
@@ -77,6 +85,8 @@ public final class WorkHost: CaptureHost {
 
     public var isOn: Bool { settings?.enabled == true }
     public var awayOn: Bool { away?.state.enabled == true }
+    /// The key can act: comment, accept a change, save a file in.
+    public var canOperate: Bool { environment.caps.contains(.operate) || canApprove }
     /// The key can press Send, Edit and Discard.
     public var canApprove: Bool { environment.caps.contains(.approve) || environment.caps.contains(.admin) }
     public var canAdmin: Bool { environment.caps.contains(.admin) }
@@ -85,6 +95,7 @@ public final class WorkHost: CaptureHost {
 
     /// A new socket: the switch and Away first, then, with Work on, the Outbox and LifeOS.
     public func connected() async {
+        can.connected()
         async let work = try? socket.request(Methods.WorkGet.self, .init())
         async let awayAnswer = try? socket.request(Methods.AwayGet.self, .init())
         // A host that does not answer (asleep, a timeout) keeps the switch it had: its Work rows stay on Home.
@@ -140,6 +151,10 @@ public final class WorkHost: CaptureHost {
             rulesRev[value.workspaceId, default: 0] += 1
         case .workGuests:
             guestsRev += 1
+        case .workDocs(let value):
+            docsRev[value.doc, default: 0] += 1
+        case .workSheets(let value):
+            sheetsRev[value.itemId, default: 0] += 1
         case .away(let value):
             take(AwaySnapshot(state: value.state, decided: value.decided), live: true)
         default:

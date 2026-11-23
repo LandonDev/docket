@@ -1,5 +1,6 @@
 import SwiftUI
 import TempCodeClient
+import TempCodeContract
 
 /// Three tabs: Home, Inbox, Search. Settings is a button in the Home bar.
 /// Home and Search are each one `ShellSplit` on its own `ShellNavigator`
@@ -140,6 +141,11 @@ struct RootView: View {
             reportVisibility()
             // A Send waiting its five seconds goes now rather than hang while the app is away.
             if scenePhase == .background { OutboxPresses.shared.flush() }
+        }
+        // The reader's renders live in memory alone and go at the first warning (Work/Reader/ReaderCache.swift).
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            ReaderCache.shared.drop()
+            HostedWebPool.shared.drop()
         }
         // Away ended on a host while the app was not in front: one notice on the lock screen (milestone 46).
         .onChange(of: model.registry.ordered.compactMap(\.work.awayEnd)) { _, ends in
@@ -288,6 +294,10 @@ struct RootView: View {
             HouseRulesScreen(environmentId: environmentId, workspaceId: workspaceId)
         case .workView(let environmentId, let workspaceId, let view):
             WorkViewScreen(environmentId: environmentId, workspaceId: workspaceId, view: view)
+        case .file(let environmentId, let item, let sessionId):
+            if let client = model.registry.client(environmentId) {
+                FileReaderPage(client: client, item: item, thread: sessionId)
+            }
         }
     }
 
@@ -363,6 +373,30 @@ struct RootView: View {
                 if case .workspace(let home) = $0.kind { home.members.contains { $0.workspace.id == workspace.id } } else { false }
             }
             if let entry { home.open(.workspace(key: entry.id)) }
+        case "reader":
+            // The reader's set: a Work thread's item (`TC_TEST_THREAD`, `TC_TEST_ITEM`) on its own page. The named thread
+            // and its items can land after the first list: wait for each, as the outbox and computers routes wait, or a
+            // launch that raced them stays on Home.
+            var wanted: SessionMeta?
+            for _ in 0..<100 {
+                let candidates = client.currentSessions.filter { $0.parentId == nil }
+                wanted = model.launchThread.flatMap { needle in candidates.first { $0.title.localizedCaseInsensitiveContains(needle) } }
+                if wanted != nil { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            guard let session = wanted ?? client.currentSessions.first(where: { $0.parentId == nil }) else { return }
+            var items: [CanvasItem] = []
+            for _ in 0..<20 {
+                await client.work.canvas.load(session.id)
+                items = client.work.canvas.items(session.id)
+                if !items.isEmpty { break }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            let pick = TestHooks.item.flatMap { want in items.first { $0.kind.rawValue == want } ?? items.first { $0.title.localizedCaseInsensitiveContains(want) } } ?? items.first
+            if let pick {
+                client.work.canvas.warmTicket(pick)
+                home.open(.file(environmentId: environmentId, item: pick, sessionId: session.id))
+            }
         case "work-chats":
             home.open(.workspace(key: HomeSections.workChatsKey))
         case "work-settings":

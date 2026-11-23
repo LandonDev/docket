@@ -26,7 +26,10 @@ import { FrameTableSchema, type MediaView } from './contract-work-media'
 import type { Meeting } from './contract-work-meetings'
 import type { FormResponses } from './contract-work-forms'
 import type { DashboardView } from './contract-work-dashboards'
-import type { HistoryCompare, HistoryVersions } from './contract-work-history'
+import type { HistoryBranch, HistoryCompare, HistoryVersions } from './contract-work-history'
+import type { DocOpen, DocsPush, DocThreadRow } from './contract-work-docs'
+import type { SheetsPush, SheetView } from './contract-work-sheets'
+import type { PreviewAnswer } from './contract-work-formats'
 import { BROWSER_DRIVERS, PortalSourceSchema, type BrowserState } from './contract-work-browser'
 import { ROUTINE_KINDS, RoutineEndsSchema, type RoutineRow } from './contract-work-routines'
 import type { DraftEdit, EditOp, HouseRule, RuleProposal, RulesPage, VoiceFacts } from './contract-work-rules'
@@ -1321,6 +1324,8 @@ export const DeckPhoneViewSchema = z.object({
       key: z.string(),
       number: z.number().int().nullable(),
       title: z.string(),
+      /** the speaker notes, under the slide in the phone's reader */
+      notes: z.string().optional(),
       hidden: z.boolean(),
       from: z.enum(['file', 'proposed']),
       page: z.number().int(),
@@ -1391,6 +1396,10 @@ export const HistoryVersionsPhoneSchema = z.object({
   names: z.record(z.string(), z.string())
 })
 const InlineOpWireSchema = z.object({ op: z.enum(['=', '-', '+']), text: z.string() })
+/** A document's render for the phone's Page Preview (`work.formats.preview`): which, how large, how many pages. */
+export const PreviewAnswerPhoneSchema = z.object({ rev: z.string(), size: z.number(), pages: z.number().int() })
+/** One range of a render's PDF, base64 (`work.formats.previewRead`). */
+export const PreviewBytesSchema = z.object({ data: z.string() })
 export const HistoryComparePhoneSchema = z.object({
   diff: z.object({
     stats: z.object({ same: z.number().int(), added: z.number().int(), removed: z.number().int(), changed: z.number().int(), moved: z.number().int() }),
@@ -1406,6 +1415,60 @@ export const HistoryComparePhoneSchema = z.object({
     )
   }),
   names: z.record(z.string(), z.string())
+})
+/** A document as the phone's comments and review name it: `doc` is what the `work.docs` push names it by. */
+export const DocOpenPhoneSchema = z.object({ doc: z.string(), title: z.string(), role: z.enum(['edit', 'view']), shared: z.boolean(), mode: z.enum(['suggests', 'writes']) })
+/** A document's comment threads; a body is the editor's blocks as JSON text. */
+export const DocThreadsPhoneSchema = z.object({
+  rows: z.array(
+    z.object({
+      thread: z.object({ publicId: z.string(), quote: z.string().optional(), resolved: z.boolean(), createdAt: z.number(), deletedAt: z.number().nullable() }),
+      comments: z.array(z.object({ publicId: z.string(), body: z.string(), authorMemberId: z.string(), createdAt: z.number(), deletedAt: z.number().nullable() }))
+    })
+  ),
+  names: z.record(z.string(), z.string())
+})
+/** What a thread change answers: the thread made (create), the comment made (reply, `publicId`), or `ok`. */
+export const DocThreadAnswerPhoneSchema = z.object({ ok: z.literal(true).optional(), thread: z.object({ publicId: z.string() }).optional(), publicId: z.string().optional() })
+/** A document's pending branches of suggestions: per block the id to decide by and its words before and after. */
+export const HistoryBranchesPhoneSchema = z.object({
+  branches: z.array(
+    z.object({
+      id: z.string(),
+      authors: z.array(z.string()),
+      label: z.string(),
+      at: z.number(),
+      diff: z.object({
+        rows: z.array(z.object({ kind: z.enum(['added', 'removed', 'changed', 'moved']), id: z.string(), left: z.object({ text: z.string() }).optional(), right: z.object({ text: z.string() }).optional() }))
+      })
+    })
+  ),
+  names: z.record(z.string(), z.string())
+})
+/** A cell as the phone reads it: its value or its formula. */
+export const SheetCellPhoneSchema = z.object({ v: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(), f: z.string().optional() })
+export const SheetPhoneViewSchema = z.object({
+  itemId: z.string(),
+  name: z.string(),
+  rev: z.number().int(),
+  shared: z.boolean(),
+  mode: z.enum(['suggests', 'writes']),
+  readOnly: z.string().optional(),
+  suggestions: z.array(
+    z.object({
+      id: z.string(),
+      changeSet: z.string(),
+      by: z.string(),
+      /** Univer's sheet id, not the tab's name */
+      sheet: z.string(),
+      row: z.number().int(),
+      col: z.number().int(),
+      base: SheetCellPhoneSchema.nullable(),
+      proposed: SheetCellPhoneSchema.nullable(),
+      state: z.enum(['pending', 'conflict', 'orphaned', 'accepted', 'rejected']),
+      reason: z.string().optional()
+    })
+  )
 })
 export const BrowserStateSchema = z.object({
   sessionId: z.string(),
@@ -1431,6 +1494,10 @@ export const RoutinePhoneRowSchema = z.object({
   waiting: z.string().nullable()
 })
 export const RoutinesListSchema = z.object({ routines: z.array(RoutinePhoneRowSchema) })
+/** A document's threads, branches, mode or last write changed: a screen holding it reads again. */
+export const WorkDocsPushSchema = push('work.docs', { doc: z.string(), threads: z.literal(true).optional(), branches: z.literal(true).optional() })
+/** Something landed on a sheet: a screen holding its item reads again. */
+export const WorkSheetsPushSchema = push('work.sheets', { sessionId: z.string(), itemId: z.string(), rev: z.number().int() })
 /** A routine or watch changed on this host. */
 export const WorkRoutinesPushSchema = push('work.routines', { workspaceId: z.string(), id: z.string() })
 
@@ -1631,6 +1698,8 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   WorkRoutinesPushSchema,
   WorkFilesPushSchema,
   WorkDigestPushSchema,
+  WorkDocsPushSchema,
+  WorkSheetsPushSchema,
   ComputerPushSchema
 ])
 
@@ -1783,7 +1852,17 @@ export type WireSchemaPins = [
   Expect<Reads<typeof DashboardPhoneViewSchema, DashboardView>>,
   Expect<Reads<typeof HistoryVersionsPhoneSchema, HistoryVersions>>,
   Expect<Reads<typeof HistoryComparePhoneSchema, HistoryCompare>>,
+  Expect<Reads<typeof PreviewAnswerPhoneSchema, PreviewAnswer>>,
+  Expect<Mirror<typeof PreviewBytesSchema, { data: string }>>,
   Expect<Reads<typeof RoutinePhoneRowSchema, RoutineRow>>,
+  Expect<Reads<typeof DocOpenPhoneSchema, DocOpen>>,
+  Expect<Reads<typeof DocThreadsPhoneSchema, { rows: DocThreadRow[]; names: Record<string, string> }>>,
+  // what docs/threads.ts changeThread answers
+  Expect<Reads<typeof DocThreadAnswerPhoneSchema, DocThreadRow | DocThreadRow['comments'][number] | { ok: true }>>,
+  Expect<Reads<typeof HistoryBranchesPhoneSchema, { branches: HistoryBranch[]; names: Record<string, string> }>>,
+  Expect<Reads<typeof SheetPhoneViewSchema, SheetView>>,
+  Expect<Reads<typeof WorkDocsPushSchema, DocsPush>>,
+  Expect<Reads<typeof WorkSheetsPushSchema, SheetsPush>>,
   // what rules/store.ts proposalsForDraft answers (a draft with no row: no workspace)
   Expect<Mirror<typeof RulesForDraftSchema, { workspaceId: string | null; proposals: RuleProposal[] }>>,
   Expect<Mirror<typeof GuestLinkRowSchema, GuestLinkRow>>,

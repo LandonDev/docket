@@ -16,10 +16,17 @@ public final class WorkCanvas {
     /// Moves on each `work.routines` push, per workspace.
     public private(set) var routinesRev: [String: Int] = [:]
 
-    @ObservationIgnored private let socket: TempCodeSocket
+    @ObservationIgnored let socket: TempCodeSocket
+    @ObservationIgnored private let tickets = HostedTickets()
+    /// The host's `HostCan`, and whether the key may act: `WorkHost` owns both and hands them here.
+    @ObservationIgnored let can: HostCan
+    @ObservationIgnored private let acts: Bool
+    var mayAct: Bool { acts }
 
-    init(socket: TempCodeSocket) {
+    init(socket: TempCodeSocket, can: HostCan = HostCan(), mayAct: Bool = false) {
         self.socket = socket
+        self.can = can
+        acts = mayAct
     }
 
     public func items(_ sessionId: String) -> [CanvasItem] { items[sessionId] ?? [] }
@@ -56,6 +63,17 @@ public final class WorkCanvas {
         try await socket.request(Methods.WorkGuestsTicket.self, .init(source: source, title: title)).url
     }
 
+    /// Asks for an item's ticket now, while its page is still being pushed (`HostedTickets`).
+    public func warmTicket(_ item: CanvasItem) {
+        guard case .hosted(let source) = ItemBody.of(item) else { return }
+        tickets.warm(item.id) { try await self.ticket(source, title: item.title) }
+    }
+
+    /// The ticket asked early for this item, else a new one. Used once.
+    public func ticket(for item: CanvasItem, source: Methods.WorkGuestsTicket.Params.Source) async throws -> String {
+        try await tickets.take(item.id) { try await self.ticket(source, title: item.title) }
+    }
+
     public func makeGuestLink(_ draft: GuestLinkDraft, source: Methods.WorkGuestsCreate.Params.Source, title: String) async throws -> Methods.WorkGuestsCreate.Output {
         try await socket.request(Methods.WorkGuestsCreate.self, .init(source: source, title: title, name: draft.trimmedName, role: draft.role.wire, expiresAt: draft.expiresAtMs))
     }
@@ -64,11 +82,24 @@ public final class WorkCanvas {
         try await socket.request(Methods.WorkPdfOpen.self, .init(itemId: itemId))
     }
 
-    /// The PDF's bytes as the view named them, read in frames.
-    public func pdfData(_ view: PdfPhoneView) async throws -> Data {
-        try await ChunkedRead.all(size: Int(view.size)) { offset, length in
-            try await self.socket.request(Methods.WorkPdfRead.self, .init(itemId: view.itemId, which: .file, rev: view.rev, offset: offset, length: length))
+    /// The PDF's bytes as the view named them, read in frames. `progress` hears the share read after each frame.
+    public func pdfData(_ view: PdfPhoneView, progress: ((Double) -> Void)? = nil) async throws -> Data {
+        let size = Int(view.size)
+        return try await ChunkedRead.all(size: size) { offset, length in
+            let frame = try await self.socket.request(Methods.WorkPdfRead.self, .init(itemId: view.itemId, which: .file, rev: view.rev, offset: offset, length: length))
+            progress?(ChunkedRead.share(read: offset + length, of: size))
+            return frame
         }
+    }
+
+    /// One frame of a PDF at a `rev`.
+    func pdfFrame(_ itemId: String, rev: String, offset: Int, length: Int) async throws -> FileBytes {
+        try await socket.request(Methods.WorkPdfRead.self, .init(itemId: itemId, which: .file, rev: rev, offset: offset, length: length))
+    }
+
+    /// One frame of a deck's own render.
+    func deckFrame(_ itemId: String, offset: Int, length: Int) async throws -> FileBytes {
+        try await socket.request(Methods.WorkSlidesRead.self, .init(itemId: itemId, which: .file, offset: offset, length: length))
     }
 
     public func deck(_ itemId: String) async throws -> DeckPhoneView {
@@ -77,9 +108,11 @@ public final class WorkCanvas {
 
     /// One of a deck's renders (a PDF): `proposed` while changes wait. `rev` is the render's rev as the view advertised
     /// it: a frame of any other render (the changes moved on meanwhile) fails the read, never shows in its place.
-    public func deckData(_ itemId: String, proposed: Bool, size: Int, rev: String) async throws -> Data {
+    public func deckData(_ itemId: String, proposed: Bool, size: Int, rev: String, progress: ((Double) -> Void)? = nil) async throws -> Data {
         try await ChunkedRead.all(size: size, expecting: rev) { offset, length in
-            try await self.socket.request(Methods.WorkSlidesRead.self, .init(itemId: itemId, which: proposed ? .proposed : .file, offset: offset, length: length))
+            let frame = try await self.socket.request(Methods.WorkSlidesRead.self, .init(itemId: itemId, which: proposed ? .proposed : .file, offset: offset, length: length))
+            progress?(ChunkedRead.share(read: offset + length, of: size))
+            return frame
         }
     }
 

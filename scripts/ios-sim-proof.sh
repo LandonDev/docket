@@ -27,7 +27,8 @@
 #           dashboard and history. TC_WORK_ONLY=m47 shoots that part alone. Last, the voice note's
 #           sheet light and dark (w60, w61); TC_WORK_ONLY=capture shoots it alone. Then the receipt's
 #           sheet on the made-up scan light and dark (w62, w63) and one Save to the Unify job (w64,
-#           $OUT/receipt-report.json); TC_WORK_ONLY=money shoots that alone.
+#           $OUT/receipt-report.json); TC_WORK_ONLY=money shoots that alone. The clicker on a fake
+#           show (c01 to c12, c20 under a pose); TC_WORK_ONLY=clicker shoots it alone.
 #           scripts/ios-sim-proof-local.ts then reads back on the host what went
 #           ($OUT/work-report.txt).
 #   digest  The digest (docs/agents/work-digest.md "The phone"), from bun scripts/ios-sim-proof-local.ts, which
@@ -302,6 +303,8 @@ fi
 xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
 xcrun simctl install "$TC_SIM_UDID" "$APP"
 xcrun simctl status_bar "$TC_SIM_UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 >/dev/null 2>&1 || true
+# A fresh simulator shows the keyboard's slide-to-type introduction the first time a field takes focus, in the keys' place.
+xcrun simctl spawn "$TC_SIM_UDID" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true >/dev/null 2>&1 || true
 restore() {
   xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
   # The key lives in the app's keychain on the simulator: remove the app so the proof leaves nothing behind.
@@ -424,6 +427,9 @@ launch_app() {
   SIMCTL_CHILD_TC_TEST_WORK_VIEW="${TC_WORK_VIEW:-}" \
   SIMCTL_CHILD_TC_TEST_LIFE_FIXTURES="${TC_LIFE_FIXTURES:-}" \
   SIMCTL_CHILD_TC_TEST_ITEM="${TC_ITEM:-}" \
+  SIMCTL_CHILD_TC_TEST_CLICKER="${TC_CLICKER:-}" \
+  SIMCTL_CHILD_TC_TEST_SHARE="${TC_SHARE:-}" \
+  SIMCTL_CHILD_TC_TEST_FILES="${TC_FILES:-}" \
   SIMCTL_CHILD_TC_TEST_CONTROL_URL="${TC_PERF_RUN:+${TC_TEST_CONTROL_URL:-}}" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
 }
@@ -1083,11 +1089,153 @@ work_set() {
   # TC_WORK_ONLY=m47 shoots milestone 47's part alone (a hand run while its screens change);
   # TC_WORK_ONLY=capture the voice note alone, TC_WORK_ONLY=money the receipt alone.
   [ "${TC_WORK_ONLY:-}" = capture ] && { work_capture; return; }
+  # TC_WORK_ONLY=reader the reader's part alone (the phone-files plan); TC_WORK_ONLY=share Save to TempCode's sheet alone.
+  [ "${TC_WORK_ONLY:-}" = reader ] && { work_reader; return; }
+  # TC_WORK_ONLY=clicker the clicker alone (PF6), on a fake show: no host has the show's wire yet.
+  [ "${TC_WORK_ONLY:-}" = clicker ] && { work_clicker; return; }
   [ "${TC_WORK_ONLY:-}" = money ] && { work_money; return; }
+  [ "${TC_WORK_ONLY:-}" = share ] && { work_share; return; }
+  # TC_WORK_ONLY=files a file opened from the Files place (PF5): the reader page, Ask with no thread, a refused save.
+  [ "${TC_WORK_ONLY:-}" = files ] && { work_files; return; }
   [ "${TC_WORK_ONLY:-}" = m47 ] || work_m46
   work_m47
   work_capture
   work_money
+  work_reader
+  work_clicker
+  work_share
+  work_files
+}
+
+# A file opened from the Files place (docs/agents/work-phone-files.md "From Files"): the first Work workspace's Files,
+# walked by names from its own folder (TC_TEST_FILES, "@folder" first). A PDF on the reader page with Ask in its bar;
+# the Ask sheet; a document kept as a file, which the test server will not open in the hosted editor, so Quick Look
+# stands in its place; a save the host refused at the head of the Files screen. Then the one press: Ask about a
+# PDF no thread holds, which must land in a new thread with the file as its item (verifyFilesAsk reads it back).
+work_files() {
+  local folder="@folder/Nationals"
+  appearance light
+  ( TC_WORK_VIEW=files TC_FILES="$folder/Tournament rules.pdf" shot f01-files-reader-pdf-light work-view "" "" "" 14 )
+  ( TC_WORK_VIEW=files TC_FILES="$folder/Venue map.pdf" TC_ACTION=files-ask shot f02-files-ask-sheet-light work-view "" "" "" 14 )
+  ( TC_WORK_VIEW=files TC_FILES="@folder/Regional trip/Travel memo.tcdoc" shot f03-files-document-light work-view "" "" "" 16 )
+  ( TC_WORK_VIEW=files TC_ACTION=files-refused shot f04-files-refused-save-light work-view "" "" "" 10 )
+  appearance dark
+  ( TC_WORK_VIEW=files TC_FILES="$folder/Tournament rules.pdf" shot f06-files-reader-pdf-dark work-view "" "" "" 14 )
+  ( TC_WORK_VIEW=files TC_FILES="$folder/Venue map.pdf" TC_ACTION=files-ask shot f07-files-ask-sheet-dark work-view "" "" "" 14 )
+  ( TC_WORK_VIEW=files TC_ACTION=files-refused shot f08-files-refused-save-dark work-view "" "" "" 10 )
+  appearance light
+  ( TC_WORK_VIEW=files TC_FILES="$folder/Venue map.pdf" TC_ACTION="files-ask:Where do the teams check in?" launch_app work-view )
+  sleep 16; snap f05-files-ask-thread-light
+}
+
+# The clicker (docs/IOS-DESIGN.md "The clicker", PF6): the screen over Home on a fake 12-slide show
+# (TC_TEST_CLICKER, Work/Clicker/ClickerFake.swift), since no host has the show's wire yet. Light: slide 4, the
+# first, the last, blanked, ended, a refused press, a slide with no notes; dark: slide 4 and blanked; the largest
+# text size: slide 4. With TC_DUO_POSE set, slide 4 alone, for that pose.
+work_clicker() {
+  appearance light
+  if [ -n "$POSE" ]; then
+    ( TC_CLICKER=show shot c20-clicker home "" "" "" 10 )
+    return
+  fi
+  ( TC_CLICKER=show shot c01-clicker-light home "" "" "" 10 )
+  ( TC_CLICKER=first shot c02-clicker-first-light home "" "" "" 10 )
+  ( TC_CLICKER=last shot c03-clicker-last-light home "" "" "" 10 )
+  ( TC_CLICKER=blank shot c04-clicker-blank-light home "" "" "" 10 )
+  ( TC_CLICKER=ended shot c05-clicker-ended-light home "" "" "" 10 )
+  ( TC_CLICKER=refused shot c06-clicker-refused-light home "" "" "" 10 )
+  ( TC_CLICKER=nonotes shot c07-clicker-no-notes-light home "" "" "" 10 )
+  appearance dark
+  ( TC_CLICKER=show shot c10-clicker-dark home "" "" "" 10 )
+  ( TC_CLICKER=blank shot c11-clicker-blank-dark home "" "" "" 10 )
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  ( TC_CLICKER=show shot c12-clicker-large-type home "" "" "" 10 )
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+}
+
+# Save to TempCode (docs/agents/work-phone-files.md): the share extension's sheet, opened over Home by the app
+# itself (TC_TEST_SHARE, ShareProofSheet) in each of its states, light and dark; then one real save of a picture
+# into the first Work workspace's folder, which work-report.txt reads back by its sha256 (verifyShare).
+work_share() {
+  appearance light
+  ( TC_SHARE=one shot s01-share-one-light home "" "" "" 10 )
+  ( TC_SHARE=several shot s02-share-several-light home "" "" "" 10 )
+  ( TC_SHARE=saving shot s03-share-saving-light home "" "" "" 10 )
+  ( TC_SHARE=saved launch_app home )
+  sleep 6; snap s04-share-saved-light
+  ( TC_SHARE=waiting shot s05-share-waiting-light home "" "" "" 10 )
+  ( TC_SHARE=refused shot s06-share-refused-light home "" "" "" 10 )
+  ( TC_SHARE=earlier shot s07-share-earlier-light home "" "" "" 10 )
+  ( TC_SHARE=empty shot s08-share-empty-light home "" "" "" 10 )
+  appearance dark
+  ( TC_SHARE=one shot s09-share-one-dark home "" "" "" 10 )
+  ( TC_SHARE=earlier shot s10-share-earlier-dark home "" "" "" 10 )
+  appearance light
+  ( TC_SHARE=save shot s11-share-real-save-light home "" "" "" 16 )
+  # What the save left on the phone's side (its name, size, sha256 and how it ended), for verifyShare.
+  local container
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  if [ -n "$container" ] && [ -f "$container/Documents/share-report.json" ]; then
+    cp "$container/Documents/share-report.json" "$OUT/share-report.json"
+    echo "ios-sim-proof: share $(cat "$container/Documents/share-report.json")"
+  else
+    echo "ios-sim-proof: share no report"
+  fi
+}
+
+# The reader (docs/agents/work-phone-files.md, scripts/lib/ios-work-seeds.ts seedReader): one open file on its own
+# page. A deck taken three slides on with its notes under the slide; a PDF taken to page 6, then opened again, which
+# must land on 6 by itself; a picture with the bars hidden by a tap; the deck in dark and at the largest text size.
+# With TC_DUO_POSE set, the deck alone, for that pose. The deck needs LibreOffice.app and TC_PROOF_PPTX_VENV.
+work_reader() {
+  local thread="Nationals kickoff"
+  appearance light
+  if [ -n "$POSE" ]; then
+    ( TC_ITEM=slides TC_ACTION=reader-page:4 shot r20-reader-deck-notes reader "$thread" "" "" 20 )
+    return
+  fi
+  ( TC_ITEM=slides TC_ACTION=reader-page:4 shot r01-reader-deck-notes-light reader "$thread" "" "" 20 )
+  ( TC_ITEM=slides TC_ACTION=reader-page:5 shot r02-reader-deck-hidden-slide-light reader "$thread" "" "" 14 )
+  ( TC_ITEM=pdf TC_ACTION=reader-page:6 shot r03-reader-pdf-page-6-light reader "$thread" "" "" 12 )
+  # No page asked: the place kept by the launch before.
+  ( TC_ITEM=pdf shot r04-reader-pdf-reopened-light reader "$thread" "" "" 12 )
+  ( TC_ITEM="Bracket board" shot r05-reader-picture-light reader "$thread" "" "" 20 )
+  ( TC_ITEM="Bracket board" TC_ACTION=reader-tap shot r06-reader-picture-bars-hidden-light reader "$thread" "" "" 20 )
+  ( TC_ITEM=slides TC_ACTION=reader-tap shot r07-reader-deck-bars-hidden-light reader "$thread" "" "" 16 )
+  # The same deck in the thread's Item segment: the segment bar, the row with More, the viewer's own Ask.
+  ( TC_ITEM=slides shot r09-item-deck-notes-light thread "$thread" item "" 16 )
+  # Page Preview: a PDF as itself and a deck's own render, with Print in the bar.
+  ( TC_ITEM=pdf TC_SHEET=reader-preview shot r14-reader-page-preview-light reader "$thread" "" "" 14 )
+  ( TC_ITEM=slides TC_SHEET=reader-preview shot r15-reader-deck-preview-light reader "$thread" "" "" 16 )
+  # A document's pages are its Word file as the host draws it (LibreOffice on the test server's Mac).
+  ( TC_ITEM="Travel memo" TC_SHEET=reader-preview shot r16-reader-document-preview-light reader "$thread" "" "" 30 )
+  # Comments and review (seedReview): a document kept as a file with a comment thread and a waiting suggestion, and a
+  # sheet with a waiting change set. The test server serves no page a phone can open, so each file's body is its
+  # host's words; the review row, the sheets and what the presses leave on the host are what is proven here.
+  ( TC_ITEM="Travel memo" shot r30-reader-document-review-row-light reader "$thread" "" "" 14 )
+  ( TC_ITEM="Travel memo" TC_SHEET=reader-review shot r31-review-document-light reader "$thread" "" "" 14 )
+  ( TC_ITEM="Travel memo" TC_SHEET=reader-comments shot r32-comments-light reader "$thread" "" "" 14 )
+  ( TC_ITEM="Travel memo" TC_SHEET=reader-comment shot r33-comment-keyboard-light reader "$thread" "" "" 14 )
+  ( TC_ITEM="Travel budget" TC_SHEET=reader-review shot r34-review-sheet-cells-light reader "$thread" "" "" 14 )
+  appearance dark
+  ( TC_ITEM=slides TC_ACTION=reader-page:4 shot r10-reader-deck-notes-dark reader "$thread" "" "" 16 )
+  ( TC_ITEM=pdf shot r11-reader-pdf-dark reader "$thread" "" "" 12 )
+  ( TC_ITEM="Travel memo" TC_SHEET=reader-review shot r35-review-document-dark reader "$thread" "" "" 14 )
+  ( TC_ITEM="Travel memo" TC_SHEET=reader-comments shot r36-comments-dark reader "$thread" "" "" 14 )
+  ( TC_ITEM="Travel budget" TC_SHEET=reader-review shot r37-review-sheet-cells-dark reader "$thread" "" "" 14 )
+  ( TC_ITEM=pdf TC_SHEET=reader-preview shot r38-reader-page-preview-dark reader "$thread" "" "" 14 )
+  appearance light
+  # The presses, read back on the host afterwards (verifyReview): a comment posted, then every change accepted.
+  ( TC_ITEM="Travel memo" TC_SHEET=reader-comments TC_ACTION="comment-post:Booked, both days." shot r39-comment-posted-light reader "$thread" "" "" 16 )
+  ( TC_ITEM="Travel memo" TC_SHEET=reader-review TC_ACTION=review-accept-all launch_app reader "$thread" )
+  sleep 12; snap r40-review-document-accepted-light
+  ( TC_ITEM="Travel budget" TC_SHEET=reader-review TC_ACTION=review-accept-all launch_app reader "$thread" )
+  sleep 12; snap r41-review-sheet-accepted-light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  ( TC_ITEM=slides TC_ACTION=reader-page:4 shot r12-reader-deck-notes-large-type reader "$thread" "" "" 16 )
+  ( TC_ITEM=pdf shot r13-reader-pdf-large-type reader "$thread" "" "" 12 )
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
 }
 
 # The voice note (docs/agents/work-capture.md "The phone"): Home's microphone opens the sheet

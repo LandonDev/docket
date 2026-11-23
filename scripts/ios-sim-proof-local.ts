@@ -7,10 +7,10 @@
  *   bun scripts/ios-sim-proof-local.ts
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { bundleNodeScript } from './lib/bundle-node-script'
-import { seedVideo, seedWork, seedWorkItems, verifyMoney, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
+import { seedReader, seedReview, seedVideo, seedWork, seedWorkItems, verifyFilesAsk, verifyMoney, verifyReview, verifyShare, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
 
 const repo = resolve(import.meta.dir, '..')
 const out = resolve(repo, 'scripts/.out/ios-client-test-server.mjs')
@@ -69,13 +69,25 @@ console.log(`ios-sim-proof-local: server on ${ready.baseUrl}`)
 const work = process.env.TC_PROOF_SET === 'work'
 const proofDir = process.env.TC_PROOF_DIR ?? '/tmp/tc-ios-proof'
 let items: { sessionId: string; lines: string[] } | null = null
+let reader: { sessionId: string; lines: string[] } | null = null
+let review: { lines: string[] } | null = null
 let unify: string | null = null
+let purdue: string | null = null
 if (work) {
   const ids = await seedWork(ready as unknown as WorkSeedReady, repo)
   unify = ids.unify
+  purdue = ids.purdue
   console.log(`ios-sim-proof-local: work seeded (${ids.purdue}, ${ids.unify})`)
   items = await seedWorkItems(ready as unknown as WorkSeedReady & { environmentId: string }, ids.purdue)
   console.log(items.lines.join('\n'))
+  // The reader's thread (the phone-files plan): a deck with notes, a longer PDF and a picture.
+  reader = await seedReader(ready as unknown as WorkSeedReady & { environmentId: string }, ids.purdue).catch((err: unknown) => ({ sessionId: '', lines: [`FAIL reader seeds: ${String(err)}`] }))
+  console.log(reader.lines.join('\n'))
+  // The reader's review (PF2): a memo with a comment thread and a waiting branch, a budget with a waiting change set.
+  if (reader.sessionId) {
+    review = await seedReview(ready as unknown as WorkSeedReady & { environmentId: string }, ids.purdue, reader.sessionId).catch((err: unknown) => ({ lines: [`FAIL review seeds: ${String(err)}`] }))
+    console.log(review.lines.join('\n'))
+  }
 }
 // The video set: Work on, and a Work thread whose browser item plays the box engine's recorded stream.
 if (process.env.TC_PROOF_SET === 'video') {
@@ -116,16 +128,33 @@ const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
 if (work) {
   // What the phone's presses did, read back on the host (the server is still up unless the set quit it).
   // TC_WORK_ONLY=m47 skipped milestone 46's presses, and TC_WORK_ONLY=capture (the voice note's shots alone)
-  // every press, so their read-back would only say they did not happen. TC_WORK_ONLY=money is the receipt alone.
+  // every press, so their read-back would only say they did not happen. TC_WORK_ONLY=money is the receipt alone;
+  // TC_WORK_ONLY=reader shoots neither part.
   const only = process.env.TC_WORK_ONLY
-  const lines = only === 'm47' || only === 'capture' || only === 'money' ? [] : await verifyWork(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the host back: ${String(err)}`])
-  if (items && only !== 'capture' && only !== 'money') {
+  const skipped = only === 'm47' || only === 'capture' || only === 'money' || only === 'reader' || only === 'share' || only === 'files'
+  const lines = skipped ? [] : await verifyWork(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the host back: ${String(err)}`])
+  if (items && only !== 'capture' && only !== 'money' && only !== 'reader' && only !== 'share' && only !== 'files') {
     lines.push(...items.lines)
     lines.push(...(await verifyWorkItems(ready as unknown as WorkSeedReady, items.sessionId).catch((err: unknown) => [`FAIL could not read the items back: ${String(err)}`])))
   }
   // The receipt's one Save (work_money), in the full set and in TC_WORK_ONLY=money.
   if (unify && (only === undefined || only === '' || only === 'money')) {
     lines.push(...(await verifyMoney(ready as unknown as WorkSeedReady, unify).catch((err: unknown) => [`FAIL could not read the receipt back: ${String(err)}`])))
+  }
+  if (reader) lines.push(...reader.lines)
+  // TC_WORK_ONLY=share makes none of the reader's presses either.
+  if (review && reader?.sessionId && only !== 'capture' && only !== 'money' && only !== 'share' && only !== 'files') {
+    lines.push(...review.lines)
+    lines.push(...(await verifyReview(ready as unknown as WorkSeedReady, reader.sessionId).catch((err: unknown) => [`FAIL could not read the review back: ${String(err)}`])))
+  }
+  // Save to TempCode's real save (the full set and TC_WORK_ONLY=share): the first Work workspace is Purdue's.
+  if (purdue && (only === undefined || only === '' || only === 'share')) {
+    const shared = existsSync(resolve(proofDir, 'share-report.json')) ? (JSON.parse(readFileSync(resolve(proofDir, 'share-report.json'), 'utf8')) as Parameters<typeof verifyShare>[2]) : null
+    lines.push(...(await verifyShare(ready as unknown as WorkSeedReady, purdue, shared).catch((err: unknown) => [`FAIL could not read the share back: ${String(err)}`])))
+  }
+  // Ask from a file open in Files (the full set and TC_WORK_ONLY=files): a new thread holds the PDF.
+  if (purdue && reader?.sessionId && (only === undefined || only === '' || only === 'files')) {
+    lines.push(...(await verifyFilesAsk(ready as unknown as WorkSeedReady & { environmentId: string }, purdue, reader.sessionId).catch((err: unknown) => [`FAIL could not read the Files ask back: ${String(err)}`])))
   }
   writeFileSync(resolve(proofDir, 'work-report.txt'), lines.join('\n') + '\n')
   console.log(lines.join('\n'))

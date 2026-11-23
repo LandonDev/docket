@@ -212,8 +212,8 @@ public enum FilesRules {
 
     /// How a file opens on the phone (the design's section 6 "Open").
     public enum Opening: Equatable, Sendable {
-        /// Seated as a Files pane item (`work.files.open`) and drawn by its kind: a LifeOS document or sheet in
-        /// the hosted editor, a PDF, deck, picture or video in the native viewers.
+        /// Seated as a Files pane item (`work.files.open`) and drawn by its kind on the reader page: a document or
+        /// sheet in the hosted editor, a PDF, deck, picture or video in the native viewers.
         case item
         /// The preview pager and its facts; `original` says whether Open the original reads its bytes here.
         case quickLook(Original)
@@ -225,13 +225,17 @@ public enum FilesRules {
         case tooBig
         /// A shared library's file: facts only on the phone, and where it lives ("On MacBook").
         case facts(host: String)
-        /// A document or sheet kept as a file, 50 MB or less: read only here ("Edit on your computer").
+        /// A document or sheet kept as a file, 50 MB or less: read only here ("Edit on your computer"), for a key
+        /// that may not seat it and where its host will not open it in the hosted editor.
         case readOnly
     }
 
     public static func opening(_ entry: FileEntry, place: FilePlace, caps: Caps) -> Opening {
         let original = original(entry, place: place)
         if case .lifeos? = entry.ref, [.document, .sheet].contains(entry.kind) { return caps.operate ? .item : .quickLook(original) }
+        // A document or sheet kept as a file in a place of his own is seated too: the hosted editor takes it
+        // first, and where its host will not open it there the screen shows Quick Look in its place (`.readOnly`).
+        if original == .readOnly, caps.operate { return .item }
         switch entry.kind {
         case .pdf, .deck, .picture, .video:
             // A key that may not seat an item (operate) still reads the file where it may.

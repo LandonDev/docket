@@ -122,7 +122,9 @@ describe('the subset', () => {
     expect(decode.indexOf('self = .object3(value)')).toBeLessThan(decode.indexOf('self = .canvasSource(value)'))
     // the rule touches no other union: a branch with no literal field, and a named one, decode as they did
     const guarded = Object.values(files).join('\n').match(/if let probe = try\? container\.decode\(JSONValue\.self\)/g) ?? []
-    expect(guarded).toHaveLength(3)
+    // three in a chip's ref, and two in a ticket's source (a LifeOS row or a canvas item, `work.guests.ticket`)
+    expect(guarded).toHaveLength(5)
+    expect(files['Methods.swift']).toContain('probe["at"]?.stringValue == "item", let value = try? container.decode(SourceCase1.self) { self = .object1(value); return }')
     const plain = [type('Either', z.union([z.object({ a: z.string() }), z.object({ b: z.number() })]))]
     expect(Object.values(generate(plain)).join('\n')).not.toContain('let probe')
     const pinned = [type('Pinned', z.union([z.object({ kind: z.literal('x'), mode: z.enum(['p', 'q']), note: z.enum(['m', 'n']).optional() }), z.object({ kind: z.string(), other: z.number() })]))]

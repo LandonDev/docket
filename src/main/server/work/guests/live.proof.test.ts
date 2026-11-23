@@ -284,7 +284,7 @@ describe.skipIf(!ON)('the guest page, live on the box listener', () => {
   }, 120_000)
 
   it("the owner's hosted editor opens once from a ticket", async () => {
-    const { url } = await box.rt.ticket(source('docs', DOC), 'Spring LAN run of show')
+    const { url } = await box.rt.ticket(source('docs', DOC), 'Spring LAN run of show', { kind: 'local', caps: [] })
     const page = await Page.open(box.debugPort)
     await page.go(url, 'dark')
     await page.until('the editor', `!!${EDITOR} && ${EDITOR}.isContentEditable`)

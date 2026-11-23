@@ -50,7 +50,7 @@ with a test.
 | `work.guests.create {source, title, name, role, expiresAt}` | approve | his own link; answers `{link, url}`, the only time the address exists |
 | `work.guests.rekey {linkId}` | approve | a new address for a live link, shown once; the one before opens nothing from then on |
 | `work.guests.revoke {linkId}` | operate | at once |
-| `work.guests.ticket {source, title}` | operate | the owner's hosted editor (below) |
+| `work.guests.ticket {source, title}` | operate | the owner's hosted editor (below); `source` is a LifeOS row or `{at: 'item', itemId}` for a document or sheet kept as a file |
 
 A thread's call to any but the two reads is refused: an agent asks with
 `guest_link {docId | sheetId | projectId, name, role, days}`, which checks the item is in
@@ -234,6 +234,41 @@ with a store of its own that keeps nothing (`.nonPersistent()`), so each
 open is a new pass. Make a Guest Link in the item's More calls
 `work.guests.create` (approve) and shows the address once.
 
+### A file in the hosted editor
+
+`work.guests.ticket` also takes a canvas item, `{at: 'item', itemId}`
+(`TicketSourceSchema`): a document or sheet kept as a file, shown by a
+thread's item or a Files tab. A guest link still takes a LifeOS row alone;
+only the owner's ticket opens a file. Main decides what the item opens
+(`GuestRuntime.opensOf`), and refuses in words a screen shows
+(`TICKET_REFUSALS`):
+
+- the item is gone, or is not a document or a sheet;
+- the file is on another host of his (`served elsewhere: <env>`, as a LifeOS
+  row another host serves);
+- the file is outside the caller's reach (`ctx.reaches`, a `FenceError`);
+- others can open the file (`sharedOf`): it never goes to a phone;
+- this host serves no page a phone can open (`servesPublic`: the box behind
+  its tunnel, or a proof that names `TEMP_CODE_WORK_PUBLIC_ORIGIN`);
+- it is a Word or an Excel file: the desktop's own editor saves those, so it
+  says "Edit it on your computer".
+
+A `.tcdoc` then redeems to its own room (`fileDocName(canonicalPath(path))`)
+with an owner token that carries the file's path, as the desktop's editor
+uses; the service's file store writes the `.tcdoc`. A `.tcsheet` redeems to a
+name with no path in it (`fileSheetId`, `tc` and 40 hex digits, of the path as
+the item spells it, which is how the sheets pillar names its workbook, so the
+phone and the desktop are on one); the pass main
+sends the service names the file (`sheetFile`), and the live socket
+(`routes/sheet.ts` `filedSheet`) opens that file for this host's own owner
+token of that name, while the pass stands, through the service's one sheet
+host. A guest's token, LifeOS's token and a name no pass gave a file open
+nothing of it. A file's pass is looked at again at every pass over the list
+(`stillOpens`, every 30 s): once its item is closed, names another file, or
+its place is one others can open, the pass is dropped, the sheet's socket
+closes within a second and the document's token is not renewed (it runs out
+within ten minutes). Tests: guests/fileTicket.test.ts.
+
 ## The screens
 
 - **Share** on a document's and a sheet's bar (`guests/Share.tsx`, mounted
@@ -267,6 +302,16 @@ open is a new pass. Make a Guest Link in the item's More calls
 - `guests/live.proof.test.ts` (opt-in, `M31_PROOF=1 M31_HOSTED=<out/hosted>`):
   the real service on its own listener, the built page in a headless
   Chromium over CDP.
+- `bun run script:e2e-phone-hosted` (scripts/e2e-phone-hosted.ts; through
+  the box's `heavy` queue): a file-kept `.tcdoc` and `.tcsheet` opened from
+  `work.guests.ticket {source: {at: 'item'}}` in headless WebKit at 390×844
+  with touch, against the iOS test server's in-process service serving a
+  hosted build (`TC_TEST_HOSTED_DIR`); typing reaches `doc_read`, the file
+  and `sheet_read`, a Word and an Excel file are refused in words, a used
+  ticket answers 403, and report.md says what the owner's page draws of
+  comments and suggestions (none: DocPage passes no `review`, SheetPage no
+  `marks`, and an owner's session reads no threads). `TC_WEBKIT` and
+  `TC_WEBKIT_MESA` launch a copy with its libraries where the host lacks them.
 - `renderer/work/guests/guests.dom.test.tsx`: Share and its dialog, the
   held view, the list, and a guest's `javascript:` link and hostile paste in
   the owner's editor (the link's `href` is emptied, the paste keeps words

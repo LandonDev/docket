@@ -62,6 +62,7 @@ targets:
         product: LifeKitUI
       - target: TempCodeActivity
       - target: TempCodeNotificationService
+      - target: TempCodeShare
     entitlements:
       path: TempCode.entitlements
       properties:
@@ -163,6 +164,49 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: TempCode
         # UNNotificationServiceExtension's overrides are nonisolated and run off the main thread.
         SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+  # Save to TempCode (docs/agents/work-phone-files.md): the share sheet's way into a Work workspace's own
+  # folder. It queues what was shared in the App Group and uploads it itself with a copy of the host's key
+  # from the group's keychain; the app finishes what it could not. It links the client and the contract
+  # alone, never LifeKit: an extension has about 120 MB.
+  TempCodeShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShareExtension
+      # The sheet, compiled into the app too, where its proofs open it.
+      - path: Sources/Work/Share
+      # The app's tokens and the sector dot.
+      - path: Sources/Design/Tokens.swift
+      - path: Sources/Work/WorkStyles.swift
+    dependencies:
+      - package: TempCodeClient
+        product: TempCodeClient
+      - package: TempCodeContract
+        product: TempCodeContract
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.dev.landon.tempcode
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Save to TempCode
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            # Up to ten files or pictures and three movies at a time; text and links are not files.
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 10
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsMovieWithMaxCount: 3
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios.share
+        INFOPLIST_KEY_CFBundleDisplayName: Save to TempCode
   TempCodeUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -183,6 +227,7 @@ schemes:
         TempCode: all
         TempCodeActivity: all
         TempCodeNotificationService: all
+        TempCodeShare: all
         TempCodeUITests: [test]
     run:
       config: Debug

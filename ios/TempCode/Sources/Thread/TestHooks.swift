@@ -107,6 +107,16 @@ enum TestHooks {
     /// The Files proof (with `TC_TEST_WORK_VIEW=files`): a walk from the Files screen by names, a place first
     /// ("Dummy Esports/Budgets/Plan.pdf"), each folder pushed and a last file opened.
     static let files = env["TC_TEST_FILES"].flatMap { $0.isEmpty ? nil : $0 }
+    /// The reader's set (`TC_TEST_ROUTE=reader`): `TC_TEST_ACTION=reader-page:<n>` takes the open PDF or deck to
+    /// that page two seconds after it shows, as a swipe would; `reader-tap` is the tap that hides the bars.
+    static let readerPage = action.flatMap { $0.hasPrefix("reader-page:") ? Int($0.dropFirst("reader-page:".count)) : nil }
+    static let readerTap = action == "reader-tap"
+    /// `TC_TEST_CLICKER=<state>`: the clicker on a fake show over Home (ClickerFake: show, first, last, blank,
+    /// ended, refused, nonotes).
+    static let clicker = env["TC_TEST_CLICKER"].flatMap { $0.isEmpty ? nil : $0 }
+    /// Save to TempCode's sheet over Home, in one state (`ShareProofSheet`): `one`, `several`, `saving`, `saved`,
+    /// `waiting`, `refused`, `earlier`, `empty`, or `save` for a real save into the first Work workspace's folder.
+    static let share = env["TC_TEST_SHARE"].flatMap { $0.isEmpty ? nil : $0 }
     #else
     static let segment: ThreadSegment? = nil
     static let open: String? = nil
@@ -130,6 +140,10 @@ enum TestHooks {
     static let workView: String? = nil
     static let item: String? = nil
     static let files: String? = nil
+    static let readerPage: Int? = nil
+    static let readerTap = false
+    static let clicker: String? = nil
+    static let share: String? = nil
     #endif
     /// True once per key: a hook that several rows read fires on the first.
     static func once(_ key: String) -> Bool {

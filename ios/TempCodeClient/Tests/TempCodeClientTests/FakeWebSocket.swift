@@ -85,7 +85,10 @@ final class FakeWebSocket: WebSocketConnection {
     }
 
     func refuse(id: String, error: String) {
-        deliver(#"{"id":"\#(id)","ok":false,"error":"\#(error)"}"#)
+        // Escaped as a JSON string: a host's words can hold quotes (zod's `bad request: [{"code":…}]`), and a frame
+        // that does not parse is dropped, leaving the request waiting.
+        let quoted = String(decoding: try! JSONEncoder().encode(error), as: UTF8.self)
+        deliver(#"{"id":"\#(id)","ok":false,"error":\#(quoted)}"#)
     }
 
     /// The server closed with a code (the receive then fails).

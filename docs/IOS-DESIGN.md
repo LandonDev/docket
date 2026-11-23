@@ -2646,10 +2646,17 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   Dismiss.
 - **Open**: a LifeOS document or sheet, a PDF, a deck, a picture or a video
   is seated in the workspace's Files pane (`work.files.open`, or the thread
-  that already shows it) and drawn by its kind's own view, full screen,
-  with the file's name as the title and no Ask (no thread stands beside
-  it). Anything else, and every file for a key without operate, opens in
-  Quick Look.
+  that already shows it) and opens on the reader page ("A file on the
+  phone"). So does a document or sheet kept as a file in a place of his
+  own: the hosted editor takes it first, and where its host will not open
+  it there Quick Look stands in its place under the reader's bar. Anything
+  else, and every file for a key without operate, opens in Quick Look.
+- **A save that failed** (Save to TempCode, a file the host would not take)
+  leads the Files screen of its workspace under a "Not saved" header: the
+  file's name, the host's words in the destructive text ink, Try Again (a
+  spinner while it goes) and a swipe to Discard, with `arrow.up.doc` in the
+  rows' mark slot so the names line up. The section is absent when nothing
+  failed.
 - **Quick Look** is the host's preview pages in a paging view (the system
   page dots past one page); where the host makes no
   preview (F3) the file's facts stand in the middle: the glyph large, the
@@ -2663,13 +2670,181 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   file goes when the preview closes.
 
 Not on the phone, and why: LifeOS's project cards on a Work workspace's
-screen (no wire lists them yet; the desktop's Docs row folded into Files,
-whose phone screens are the Files plan's F9); a
-native review row for a document or sheet (its suggestions live inside
-the hosted editor, which shows its own); the recording player of a
-meeting; editing a document or sheet kept as a file (it opens read only,
-"Edit on your computer": the hosted editor takes only LifeOS rows today);
-Files' Move and Copy, Trash and Empty Trash (the desktop's alone for now).
+screen (no wire lists them yet); the recording player of a meeting; a Word
+or an Excel file in the hosted editor (the desktop's own editor saves those;
+the phone says "Edit it on your computer" and still shows its comments and
+changes); Files' Move and Copy, Trash and Empty Trash (the desktop's alone
+for now).
+
+## A file on the phone
+
+One open file gets one page (`Work/Reader/FileReaderPage.swift`,
+docs/agents/work-phone-files.md), and the same kind's view sits in a Work
+thread's Item segment. The file gets the room; the controls sit where iOS
+puts them.
+
+- **The bar** is the system's, inline: the file's name (without `.tcdoc` or
+  `.tcsheet`, our own two formats). Trailing: Ask (the
+  `bubble.left` item, for a key that may act), then More.
+  No second header, no chip beside the name.
+- **More** lists, in this order and only where each can act: Find… (a PDF, a
+  deck: the system's find bar), Comments, Review Changes (only while
+  something waits), Page Preview, Share…, Make a Guest Link, then Close under
+  a divider. The thread's Item segment shows the same rows in its own More.
+- **The review row** sits under the bar only while an agent's changes wait:
+  44 pt, the deck's own row. "3 changes" with a chevron is tappable and opens
+  Review Changes; Reject, and Accept as the one tinted button, decide them
+  all. A key that may not act reads the count and has no buttons.
+- **The body** runs edge to edge: the hosted editor at full width, PDF
+  pages, a deck one slide to a page, a picture, a video on its black matte.
+  In a wide column a paper kind keeps the 640 pt reading measure, centred;
+  the hosted editor keeps the whole width.
+- **A deck**: the slide at the column's width in its own shape, the glass
+  page stamp ("4 of 12") at the slide's foot, the slide's speaker notes under
+  it (the meta step in the label colour, the 640 pt measure, scrolling on
+  their own; "No notes" in the secondary ink for a slide without any), then
+  the filmstrip: every slide as a 48 pt high thumbnail in one scrolling row,
+  the slide that shows ringed in the accent and kept in view, a slide hidden
+  in a show marked with `eye.slash` at its lower corner; a short deck in a wide
+  column sits centred under the slide. The slide never takes more than 62% of the height while
+  notes show; where fewer than two lines of notes would fit (a phone on its
+  side) the notes give way and the slide takes the room.
+- **A tap** on a slide, a PDF page or a picture hides the navigation bar and
+  the foot (stamp, notes, filmstrip); a tap brings them back. The foot fades
+  on `Motion.base`; the page keeps the bar's room above it and does not
+  move. A double tap still zooms, a tap on a link still follows it. The
+  status bar stays.
+- **Loading** is the paper's shape at once (a letter page, or a slide) with a
+  120 pt determinate bar that follows the bytes read. A file opened again in
+  the same run paints from memory at once. A failure is the system's
+  unavailable view with the host's reason and Try Again.
+- **The place he stopped** (the page, the slide) is kept per file and
+  restored on open and through a fold.
+- **A file the hosted editor cannot open** shows "Opens on Your Computer"
+  under the `desktopcomputer` glyph and its host's words under that, with no
+  Try Again: there is nothing to try. The bar already names the file. Opened
+  from Files, Quick Look stands there instead.
+
+**Ask** is one sheet wherever the file was opened: the file's chip, the
+words picked under it, a field, Cancel and Send. From a thread the words go to
+that thread. From Files they go to the thread that already holds the file, or
+to a new one in the workspace with the file as its item; either way he lands
+in the thread. Nothing is made until he sends.
+
+**Comment** (the hosted editor's edit menu over a selection: Ask, then
+Comment, for a document): a field sheet. The quote, up to four lines, in the
+meta step; a field; Cancel and Post. A post the host refuses keeps his words
+and says why under the field.
+
+**Comments** (a document sheet): open threads first, then the resolved ones
+under a "Resolved" section header. A thread is the words it was left on in
+quotation marks (meta, three lines), then each comment: who (title step,
+semibold) and when (`AgoText`) on one line, the words under it; replies are
+set in by the 16 pt indent and nothing else. The bottom bar holds one field
+("Add a comment"; a tap on a thread turns it to "Reply" with a "Replying to
+…" line and its close) and the 28 pt send mark in a 44 pt target. Swipe:
+Resolve, or Reopen. Empty: one quiet line, "No comments". A key that cannot
+act reads the threads and has no field.
+
+**Review Changes** (a document sheet titled with the count, "3 Changes"): one
+row a change. A document's row is the block's old words struck through in
+`Tint.destructiveText` and its new ones underlined in `Tint.successText`
+(`ChangeText`, which the history compare draws with too); a sheet's row leads
+with the cell ("C4", meta semibold, tabular) over the same two lines. The
+agent's reason heads the cells it changed together, once, as a group header;
+the host's own "Suggestions" label is no reason and heads nothing. Swipe
+trailing: Accept; leading: Reject. The bottom bar holds Reject All (glass) and
+Accept All (the prominent glass button). A decided row leaves on the row
+transition with a light impact, and the last one closes the sheet. A row the
+host refuses stays, with the host's words under it in the destructive text
+ink.
+
+**Page Preview** (a push titled "Page Preview"): the file as it will print in
+the system's viewer, continuous, with the page stamp at its foot and Print
+(`printer`) as the one bar item, which opens the system's print sheet over
+the pages shown. Loading is the paper's shape with its bar and, once the host
+has said how many, "Drawing 5 pages". A PDF prints as itself, a deck as its
+own render, a document as its Word file drawn on the host.
+
+The Duo: the page lays out by its container's size class. Its route, its
+page, an open sheet and typed words hold through a fold. Folded on its side
+the deck shows no notes (the rule above).
+
+Held in dark, and listed for the owner: the glass page stamp over white paper
+reads at about 2:1 in the dark appearance (it did before this page). One line
+flips it: the stamp taking the light scheme where it sits on paper.
+
+## The clicker
+
+A slideshow running on one of his computers, stepped from the phone
+(`Work/Clicker/ClickerScreen.swift`, docs/agents/work-phone-files.md "The
+clicker"). The phone is a remote in his hand: the slide stays on the big
+screen, and the phone carries the notes and the two presses.
+
+- **The bar** is the system's, inline: the deck's name. Trailing: More, with
+  Larger Text and Smaller Text (the notes from 14 to 28 pt, kept across
+  launches), Blank or Unblank, then End Show under a divider, in red.
+- **Upright**, top to bottom: the slide's speaker notes in the document type
+  at the size he chose, the 640 pt measure, scrolling on their own and back at
+  the top on each slide ("No notes" in the meta step for a slide without
+  any); the count line, "4 / 12" in the title step, semibold, and the time
+  since the show began at its trailing end, both in tabular digits, with
+  "Blank" beside the count while the screen shows black; Previous as a 64 pt
+  band across the width; Next as the lower half of the screen, one surface
+  with a chevron over the word. Both are the fill step with the label colour:
+  no gradient, no glow, no tint.
+- **On its side, and on the Duo unfolded**, the notes take the leading pane
+  and the controls the trailing one, half and half, or split on the fold's
+  division band where it leaves each pane 240 pt (`ClickerPanes`).
+- **A press** sends when his finger lifts, with the press's scale (0.96,
+  160 ms) and a light impact, and the count moves under his finger; the
+  screen never waits for the host. Swipes left and right step too. Next on
+  the last slide and Previous on the first do nothing and give the rigid
+  tick. A slide change moves the count's digits and nothing else: he presses
+  Next dozens of times in a talk.
+- **Another device** stepping the show moves the count here too; a press
+  the host refuses puts the count back and says the host's words in one line
+  in the destructive text ink above it, until a press lands.
+- **The show ended** (stopped, or moved to another machine) is the system's
+  unavailable view, "The show ended", with Done.
+- The screen stays awake while it shows.
+- Every press is a 44 pt target or more, Next and Previous read "Next
+  slide" and "Previous slide" to VoiceOver, and the screen holds at the
+  accessibility text sizes in both appearances.
+
+## Save to TempCode
+
+The share extension's one sheet (`Work/Share/ShareSheetView.swift`,
+docs/agents/work-phone-files.md "Save to TempCode"): a file or a photo from
+any app into a Work workspace's own folder.
+
+- **The bar**: "Save to TempCode", Cancel, and Save (semibold) as the one
+  confirm.
+- **What is being saved** is the first group. One file: its picture or the
+  glyph of what it is in a 44 pt mark with the row corner, its name as a
+  field he may change, its size under it in the meta step. Several: "3
+  photos" and their pictures in a row.
+- **Workspace**: his Work workspaces as rows, each led by its sector's 8 pt
+  dot, the name in the label ink, the last used checked with the tinted
+  checkmark and first in the list. With several hosts a row carries its
+  host's name as a meta line. The list is what the app last wrote for the
+  extension, so the sheet is whole in its first frame.
+- **Folder**: one row, the folder glyph and the folder's name (the
+  workspace's own at first, then the last one used there). It pushes a list
+  of folders only, read from the host as he goes; a level on its way is one
+  row with a spinner and "Reading <folder>"; Choose takes the folder shown.
+- **Saving**: Save's place holds a 56 pt determinate bar that follows the
+  bytes of every file together; when the host has them the bar gives way to
+  the tinted checkmark, with the success haptic, and the sheet closes itself.
+- **The host cannot be reached**: one line under the workspaces, "<host>
+  can’t be reached. TempCode will save this when it can.", and Save reads
+  Done. **Refused** (too large, a name already there): the host's words in
+  the destructive text ink under the first group, and Done.
+- **Not saved**: a file an earlier save left refused leads the sheet in a
+  group of its own: its name, the host's words in the destructive text ink,
+  Try Again, and a swipe to Discard.
+- **No Work workspace**: the system's unavailable view, with what to do.
+- It raises no notification, badge or sound.
 
 ## Visual system
 

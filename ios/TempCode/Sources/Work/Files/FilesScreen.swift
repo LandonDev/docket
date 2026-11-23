@@ -66,6 +66,7 @@ struct FilesScreen: View {
             }
         }
         .task {
+            ShareRefused.shared.read(client: client, workspaceId: workspace.id)
             await files.loadPlaces(workspace.id)
             #if DEBUG
             await FilesProof.walk(client: client, workspace: workspace, navigator: navigator)
@@ -87,6 +88,8 @@ struct FilesScreen: View {
                 ContentUnavailableView("No Places", systemImage: "folder", description: Text("\(client.environment.name) lists no place for this workspace."))
             } else {
                 List {
+                    // What Save to TempCode left refused for this workspace (the phone-files build).
+                    ShareRefusedSection(client: client, workspaceId: workspace.id)
                     if !sections.lenses.isEmpty {
                         Section { ForEach(sections.lenses, id: \.id) { PlaceRow(client: client, workspaceId: workspace.id, place: $0) } }
                     }
@@ -302,7 +305,7 @@ struct FolderScreen: View {
     }
 }
 
-/// A file or folder row: a folder pushes its list, a file opens.
+/// A file or folder row: a folder pushes its list, a file opens. Not `FileRow`: Search has that name.
 struct FileRow: View {
     let client: EnvironmentClient
     let workspaceId: String

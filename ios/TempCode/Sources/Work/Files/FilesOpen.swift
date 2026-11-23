@@ -13,20 +13,22 @@ enum FilesOpen {
         let place = files.places[route.workspaceId]?.value?.first { $0.id == route.placeId }
         switch place.map({ FilesRules.opening(route.entry, place: $0, caps: files.caps) }) ?? .quickLook(.facts(host: "")) {
         case .item:
-            FileItemScreen(client: client, workspaceId: route.workspaceId, entry: route.entry)
+            FileItemScreen(client: client, workspaceId: route.workspaceId, entry: route.entry, place: place)
         case .quickLook(let original):
             FileQuickLookScreen(client: client, workspaceId: route.workspaceId, entry: route.entry, original: original, place: place)
         }
     }
 }
 
-/// A file seated in the workspace's Files pane (`work.files.open`), drawn by its kind's own view: a LifeOS
-/// document or sheet in the hosted editor, a PDF, deck, picture or video natively. There is no thread here,
-/// so the views carry no Ask.
+/// A file seated in the workspace's Files pane (`work.files.open`), on the phone's reader page
+/// (`FileReaderPage`, docs/IOS-DESIGN.md "A file on the phone"): a document or sheet in the hosted editor, a
+/// PDF, deck, picture or video natively. No thread stands beside it, so Ask finds or starts one. A document
+/// or sheet kept as a file whose host will not open it in the hosted editor shows Quick Look in its place.
 struct FileItemScreen: View {
     let client: EnvironmentClient
     let workspaceId: String
     let entry: FileEntry
+    let place: FilePlace?
     @State private var item: CanvasItem?
     @State private var error: String?
     @State private var round = 0
@@ -34,14 +36,15 @@ struct FileItemScreen: View {
     var body: some View {
         Group {
             if let item {
-                ItemBodyView(client: client, item: item, ask: nil)
+                FileReaderPage(client: client, item: item, thread: nil, workspaceId: workspaceId)
+                    .environment(\.hostedFallback, fallback)
             } else if let error {
                 FilesFailed(title: "Can’t Open \(entry.name)", message: error) { self.error = nil; round += 1 }
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationTitle(entry.name)
+        .navigationTitle(ReaderVerbs.title(entry.name))
         .navigationBarTitleDisplayMode(.inline)
         .task(id: round) {
             do {
@@ -51,6 +54,12 @@ struct FileItemScreen: View {
             }
         }
         .accessibilityIdentifier("files-item")
+    }
+
+    /// Quick Look for a file-kept document or sheet, read only: what shows where the hosted editor will not.
+    private var fallback: AnyView? {
+        guard let place, FilesRules.original(entry, place: place) == .readOnly else { return nil }
+        return AnyView(FileQuickLookScreen(client: client, workspaceId: workspaceId, entry: entry, original: .readOnly, place: place))
     }
 }
 
@@ -89,7 +98,7 @@ struct FileQuickLookScreen: View {
             }
             foot
         }
-        .navigationTitle(entry.name)
+        .navigationTitle(ReaderVerbs.title(entry.name))
         .navigationBarTitleDisplayMode(.inline)
         .quickLookPreview($shown)
         .onChange(of: shown) { if shown == nil, player == nil { drop() } }

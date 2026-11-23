@@ -1,8 +1,10 @@
 import type { WebSocket } from 'ws'
 import { createCollabVerifier, type VerifiedClaims } from 'work-kit/collab-server'
 import type { SheetMutationJson } from '@shared/contract-work-sheets'
+import { PASS_PREFIX, type GuestServiceLink } from '../../guests/wire'
 import { refKey } from '../../sheets/host/host'
 import { guestCells, refusal } from '../../sheets/host/live'
+import type { SheetRef } from '../../sheets/host/wire'
 import { hostOf } from './internalSheet'
 import { refuseUpgrade, type PublicRoute, type RouteCtx } from './route'
 
@@ -22,6 +24,11 @@ import { refuseUpgrade, type PublicRoute, type RouteCtx } from './route'
  * link 4403, and so does a project link's sheet that left the project. A view link writes nothing; a guest's ops pass `GUEST_OPS`. An
  * edit made on an older revision is moved through the rows and columns it
  * missed, or refused so the client reloads.
+ *
+ * A sheet kept as a file (`.tcsheet`) is live here too, for the owner's hosted
+ * editor alone (the phone): main names the file in the pass it made for his
+ * ticket (`sheetFile`, guests/links.ts), under a name with no path in it, and
+ * only the owner's own token for that name opens it, while the pass stands.
  */
 
 const SHEET = /^\/w\/sheet\/([A-Za-z0-9]{1,64})$/
@@ -50,6 +57,17 @@ function listen(ctx: RouteCtx): void {
   })
 }
 
+/** The file a pass of the owner's names for this sheet name, while the pass stands; null for a LifeOS sheet. */
+function filedSheet(ctx: RouteCtx, sheetId: string): string | null {
+  const now = Date.now()
+  for (const [id, l] of ctx.links()) {
+    if (!id.startsWith(PASS_PREFIX)) continue
+    const p = l as GuestServiceLink
+    if (p.pass?.sheetFile && 'sheet' in p.item && p.item.sheet === sheetId && p.expiresAt > now) return p.pass.sheetFile
+  }
+  return null
+}
+
 function live(claims: VerifiedClaims, ctx: RouteCtx): { code: number; reason: string } | null {
   // `exp` is in milliseconds already (the verifier answers it so).
   if (claims.exp <= Date.now()) return { code: 4401, reason: 'the token ran out' }
@@ -70,10 +88,11 @@ export const sheetRoute: PublicRoute = {
     const m = SHEET.exec((req.url ?? '').split('?')[0])
     if (!m) return refuseUpgrade(socket, 404, 'no such sheet')
     const sheetId = m[1]
-    if (!ctx.config().lifeos.here) return refuseUpgrade(socket, 503, 'this host does not serve LifeOS sheets')
+    const file = filedSheet(ctx, sheetId)
+    if (!file && !ctx.config().lifeos.here) return refuseUpgrade(socket, 503, 'this host does not serve LifeOS sheets')
     listen(ctx)
     const host = hostOf(ctx)
-    const ref = { lifeos: sheetId }
+    const ref: SheetRef = file ? { tcsheet: file } : { lifeos: sheetId }
     const key = refKey(ref)
     const verifier = createCollabVerifier(() => ctx.config().trusted)
     ctx.wss.handleUpgrade(req, socket, head, (ws) => {
@@ -87,6 +106,8 @@ export const sheetRoute: PublicRoute = {
       const sweep = setInterval(() => {
         const gone = claims && live(claims, ctx)
         if (gone) close(gone.code, gone.reason)
+        // A file's socket lasts as long as the pass that named the file.
+        else if (file && filedSheet(ctx, sheetId) !== file) close(4403, 'this page ran out')
       }, 1000)
       const leave = (): void => {
         clearTimeout(hello)
@@ -110,6 +131,8 @@ export const sheetRoute: PublicRoute = {
             try {
               const got = await verifier.verify(msg.token)
               if (got.sheet !== sheetId) return close(4403, 'the token names another sheet')
+              // A file is its owner's alone: this host's own token for him, never a link's or LifeOS's.
+              if (file && (got.principal !== 'owner' || got.link || got.by !== 'host')) return close(4403, 'only the owner opens a file')
               // Reached through a guest link's address: only that link's token opens it.
               const bound = (req as { guestLink?: string }).guestLink
               if (bound && got.link !== bound) return close(4403, 'the token is another link\'s')

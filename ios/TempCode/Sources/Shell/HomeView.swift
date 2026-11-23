@@ -21,6 +21,8 @@ struct HomeView: View {
     @State private var adding = false
     /// New Work workspace, from the Work header's +.
     @State private var addingWork = false
+    /// The proofs' share sheet (`TC_TEST_SHARE`); a release build never sets it.
+    @State private var sharing = false
     /// A voice note (Work/Capture), from the microphone while any host has Work on: the note shown.
     @State private var capturing: VoiceNote?
     /// Made at the first press and kept, so a draft outlives the sheet.
@@ -31,6 +33,10 @@ struct HomeView: View {
     @State private var launched = false
     /// The first body has been on screen: from here on, event rows animate in.
     @State private var painted = false
+    #if DEBUG
+    /// `TC_TEST_CLICKER`: the clicker on a fake show, over Home.
+    @State private var clicker: ClickerModel?
+    #endif
 
     var body: some View {
         let clients = model.registry.ordered
@@ -140,7 +146,12 @@ struct HomeView: View {
         #if DEBUG
         .task(id: model.ready) { if model.ready, TestHooks.sheet == "new-work" { try? await Task.sleep(for: .seconds(2)); addingWork = true } }
         .task(id: model.ready) { if model.ready, TestHooks.sheet == "voice-note" { try? await Task.sleep(for: .seconds(2)); captureVoice() } }
+        .task { if let state = TestHooks.clicker { clicker = ClickerFake.model(state) } }
+        .fullScreenCover(item: $clicker) { shown in NavigationStack { ClickerScreen(model: shown) { clicker = nil } } }
         .task(id: model.ready) { if model.ready, TestHooks.sheet == "receipt" { try? await Task.sleep(for: .seconds(2)); receiptFlow.openForProof() } }
+        // Save to TempCode's sheet, as the share extension shows it (Work/ShareBridge.swift `ShareProofSheet`).
+        .task(id: model.ready) { if model.ready, TestHooks.share != nil { try? await Task.sleep(for: .seconds(3)); sharing = true } }
+        .sheet(isPresented: $sharing) { ShareProofSheet(registry: model.registry, state: TestHooks.share ?? "one") }
         #endif
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
         .onChange(of: router.restoredSheet, initial: true) { restoreSheet() }

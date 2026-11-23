@@ -376,14 +376,14 @@ private struct CompareView: View {
             return inline.reduce(Text("")) { text, op in
                 switch op.op {
                 case .kept, .unknown: text + Text(op.text)
-                case .removed: text + Text(op.text).strikethrough().foregroundStyle(Tint.destructiveText)
-                case .added: text + Text(op.text).underline().foregroundStyle(Tint.success)
+                case .removed: text + ChangeText.removed(op.text)
+                case .added: text + ChangeText.added(op.text)
                 }
             }
         }
         switch row.kind {
-        case .removed: return Text(row.left?.text ?? "").strikethrough().foregroundStyle(Tint.destructiveText)
-        case .added: return Text(row.right?.text ?? "").underline().foregroundStyle(Tint.success)
+        case .removed: return ChangeText.removed(row.left?.text ?? "")
+        case .added: return ChangeText.added(row.right?.text ?? "")
         default: return Text(row.right?.text ?? row.left?.text ?? "")
         }
     }

@@ -12,8 +12,9 @@ import { resolve } from 'node:path'
 type Answer = { ok: boolean; result?: unknown; error?: string }
 export type WorkSeedReady = { baseUrl: string; controlUrl: string; adminKey: string }
 
-export async function socket(ready: WorkSeedReady): Promise<{ call: <T>(method: string, params?: unknown) => Promise<T>; close: () => void }> {
-  const res = await fetch(`${ready.baseUrl}/api/ticket`, { method: 'POST', headers: { Authorization: `Bearer ${ready.adminKey}` } })
+/** A socket as a phone's, by the admin key or another the server made (an `operate` key for the phone's own calls). */
+export async function socket(ready: WorkSeedReady, key = ready.adminKey): Promise<{ call: <T>(method: string, params?: unknown) => Promise<T>; close: () => void }> {
+  const res = await fetch(`${ready.baseUrl}/api/ticket`, { method: 'POST', headers: { Authorization: `Bearer ${key}` } })
   const { ticket } = (await res.json()) as { ticket: string }
   const ws = new WebSocket(`${ready.baseUrl.replace(/^http/, 'ws')}/ws?ticket=${ticket}`)
   const waiting = new Map<string, (a: Answer) => void>()
@@ -514,6 +515,100 @@ p.save(sys.argv[1])
 print(json.dumps(out))
 `
 
+/** The reader's Work thread (docs/agents/work-phone-files.md): a deck with notes, a PDF of eight pages and a picture. */
+export const READER_THREAD_TITLE = 'Nationals kickoff'
+
+/**
+ * The reader's seeds, dummy files in the Purdue workspace's own folder: a six-slide deck whose slides carry speaker
+ * notes (one has none, one is hidden) with nothing waiting, a PDF long enough for a kept place to show, and a picture.
+ */
+export async function seedReader(ready: WorkSeedReady & { environmentId: string }, purdue: string): Promise<{ sessionId: string; lines: string[] }> {
+  const { existsSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const { spawnSync } = await import('node:child_process')
+  const host = ready.environmentId
+  const s = await socket(ready)
+  const lines: string[] = []
+  try {
+    const workspaces = await s.call<{ id: string; path: string }[]>('workspace.list', {})
+    const dir = `${workspaces.find((w) => w.id === purdue)!.path}/Nationals`
+    mkdirSync(dir, { recursive: true })
+    const thread = await s.call<{ id: string }>('session.create', { scope: 'work', workspaceId: purdue, threadType: 'chat', provider: 'claude', model: 'claude-opus-5-5', title: READER_THREAD_TITLE })
+    const sessionId = thread.id
+    const open = async (kind: string, title: string, source: unknown): Promise<string | null> => {
+      try {
+        return (await s.call<{ id: string }>('work.canvas.open', { sessionId, kind, title, source })).id
+      } catch (err) {
+        lines.push(`NOT RUN reader ${kind} "${title}": ${String(err)}`)
+        return null
+      }
+    }
+    const pdfPath = `${dir}/Tournament rules.pdf`
+    writeFileSync(pdfPath, pdfOf(['Tournament rules', 'Eligibility', 'Rosters', 'Match format', 'Seeding', 'Conduct', 'Disputes', 'Prizes'].map((title, i) => [title, `Section ${i + 1} of 8.`, 'Dummy text for the proof.'])))
+    const pdf = await open('pdf', 'Tournament rules', { at: 'file', host, path: pdfPath })
+    // A PDF no thread holds: Ask from Files starts a thread for it (verifyFilesAsk).
+    writeFileSync(`${dir}/${FILES_ASK_PDF}`, pdfOf([['Venue map', 'Check-in is at the north doors.', 'Dummy text for the proof.']]))
+    if (pdf) {
+      const view = await s.call<{ size: number }>('work.pdf.open', { itemId: pdf })
+      lines.push(`OK reader pdf: ${view.size} bytes, 8 pages`)
+    }
+    const picture = `${dir}/Bracket board.png`
+    const made = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=2400x1600', '-frames:v', '1', picture], { encoding: 'utf8' })
+    if (made.status !== 0) lines.push(`NOT RUN reader picture: ffmpeg failed: ${made.stderr}`)
+    else if (await open('media', 'Bracket board', { at: 'file', host, path: picture })) lines.push('OK reader picture: opened')
+
+    const office = ['/Applications', `${process.env.HOME}/Applications`].find((d) => existsSync(`${d}/LibreOffice.app/Contents/MacOS/soffice`))
+    const venv = process.env.TC_PROOF_PPTX_VENV
+    if (!office) lines.push('NOT RUN reader deck: no LibreOffice.app on this Mac, so no deck can be rendered')
+    else if (!venv || !existsSync(`${venv}/bin/python`)) lines.push('NOT RUN reader deck: TC_PROOF_PPTX_VENV names no venv with python-pptx, so no deck can be read')
+    else {
+      const deckPath = `${dir}/Nationals kickoff.pptx`
+      const deckMade = spawnSync(`${venv}/bin/python`, ['-I', '-c', NOTES_DECK_SCRIPT, deckPath], { encoding: 'utf8' })
+      if (deckMade.status !== 0) lines.push(`NOT RUN reader deck: python-pptx could not write the deck: ${deckMade.stderr}`)
+      else {
+        const tools = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows: [], tools: { libreoffice: office, pythonPptx: venv } }) })
+        if (!tools.ok) lines.push(`FAIL /work-held deck tools: ${tools.status}`)
+        const deck = await open('slides', 'Nationals kickoff', { at: 'file', host, path: deckPath })
+        if (deck) {
+          try {
+            const view = await s.call<{ slides: { notes: string; hidden: boolean }[]; changes: unknown[]; renderError?: string; renders: { file?: { pages: number } } }>('work.slides.open', { itemId: deck })
+            const noted = view.slides.filter((x) => x.notes.trim()).length
+            if (view.renderError || !view.renders.file) lines.push(`FAIL reader deck: ${view.renderError ?? 'no render'}`)
+            else lines.push(`OK reader deck: ${view.renders.file.pages} pages, ${noted} slides with notes, ${view.slides.filter((x) => x.hidden).length} hidden, ${view.changes.length} changes waiting`)
+          } catch (err) {
+            lines.push(`FAIL reader deck: work.slides.open: ${String(err)}`)
+          }
+        }
+      }
+    }
+    return { sessionId, lines }
+  } finally {
+    s.close()
+  }
+}
+
+/** Writes a six-slide deck with speaker notes at argv[1]: slide 3 has no notes, slide 5 is hidden in a show. */
+const NOTES_DECK_SCRIPT = `import sys
+from pptx import Presentation
+p = Presentation()
+slides = [
+    (0, "Nationals kickoff", "Friday, March 12 in the CoRec arena", "Welcome the teams. Thank the hosts and the sponsors by name."),
+    (1, "Schedule", "Check-in 8:00\\nPool play 9:00\\nFinals 5:00", "Doors open at 8. Pool play starts on time: a late team forfeits its first map."),
+    (1, "Venue", "Arena A and the east concourse", ""),
+    (1, "Rules", "Best of three in pools\\nBest of five from the semifinals", "Disputes go to the head referee at the stage desk. Screenshots first, then the complaint.\\n\\nRemind captains that rosters lock at check-in."),
+    (1, "Backup plan", "If the east wall loses power", "Hidden: only if the east wall run trips again."),
+    (1, "Thank you", "Questions at the stage desk", "Close by pointing at the check-in table. Keep it under a minute."),
+]
+for index, (layout, title, body, notes) in enumerate(slides):
+    s = p.slides.add_slide(p.slide_layouts[layout])
+    s.shapes.title.text = title
+    s.placeholders[1].text = body
+    if notes:
+        s.notes_slide.notes_text_frame.text = notes
+    if index == 4:
+        s._element.set("show", "0")
+p.save(sys.argv[1])
+`
+
 /** What the work set's item presses left on the host: the video's comment at its frame. */
 export async function verifyWorkItems(ready: WorkSeedReady, sessionId: string): Promise<string[]> {
   const s = await socket(ready)
@@ -548,6 +643,238 @@ export async function seedVideo(ready: WorkSeedReady & { environmentId: string }
     const res = await fetch(`${ready.controlUrl}/video`, { method: 'POST', body: JSON.stringify({ thread: thread.id, window: 'Arena booking' }) })
     if (!res.ok) throw new Error(`video seed: POST /video answered ${res.status}`)
     return { sessionId: thread.id }
+  } finally {
+    s.close()
+  }
+}
+
+/** The memo and budget the review seeds make, and the words the proof's presses leave (docs/agents/work-phone-files.md). */
+export const REVIEW_MEMO_TITLE = 'Travel memo'
+export const REVIEW_SHEET_TITLE = 'Travel budget'
+/** The memo's four paragraphs as the seed writes them. */
+export const REVIEW_MEMO = [
+  'The esports team travels to Columbus for the spring regional on Friday, April 23.',
+  'We leave from the CoRec loading dock at 7:00 AM on both days and ride the charter bus.',
+  'Each player brings a headset, a controller and a packed lunch for the ride.',
+  'Hotel rooms are booked for Friday night, two players to a room.'
+]
+/** The agent's rewrite of the third paragraph, and the fifth it adds. */
+export const REVIEW_MEMO_NEW = ['Each player brings a headset, a controller and enough snacks for both rides.', 'Coach Rivera keeps the emergency contact sheet for the trip.']
+const MEMO_QUOTE = 'the charter bus'
+const MEMO_COMMENT = 'Is the bus booked for both days?'
+const MEMO_REPLY = 'Checking with transport today.'
+/** What the phone posts on the memo. */
+export const REVIEW_PHONE_COMMENT = 'Booked, both days.'
+const BUDGET_CSV = 'Item,Cost,Notes\nCharter bus,1200,Both days\nHotel,960,Two players to a room\nMeals,400,\nRegistration,250,Team entry\nGas card,100,For the coach van\n'
+/** The agent's change set: two costs and a note, with one reason. */
+const BUDGET_CELLS = [
+  { at: 'B2', v: 1450 },
+  { at: 'B4', v: 450 },
+  { at: 'C4', v: 'Lunch on the road both days' }
+]
+const BUDGET_REASON = 'Bus quote came in higher'
+
+/** A comment body as the shared editor stores it (docs/tools.ts `commentBody`), and back to words. */
+const commentBody = (text: string): string => JSON.stringify(text.split(/\n{2,}/).map((para) => ({ type: 'paragraph', content: [{ type: 'text', text: para, styles: {} }] })))
+function plainBody(body: string): string {
+  try {
+    const blocks = JSON.parse(body) as { content?: { text?: string }[] }[]
+    return blocks.map((b) => (b.content ?? []).map((c) => c.text ?? '').join('')).join(' ')
+  } catch {
+    return body
+  }
+}
+
+/** Work tools run as a thread's own bridge runs them (the test server's `workTools` hook): each tool's text, or why it failed. */
+export async function workTools(ready: WorkSeedReady, calls: { sessionId: string; tool: string; args: unknown }[]): Promise<{ text: string; failed: boolean }[]> {
+  const res = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows: [], workTools: calls }) })
+  if (!res.ok) throw new Error(`/work-held workTools answered ${res.status}: ${await res.text()}`)
+  const { ran } = (await res.json()) as { ran: { error?: string; result?: { content?: { text?: string }[]; isError?: boolean } }[] }
+  return ran.map((r) => (r.error ? { text: r.error, failed: true } : { text: (r.result?.content ?? []).map((c) => c.text ?? '').join(''), failed: !!r.result?.isError }))
+}
+
+/**
+ * The review seeds, in the reader's thread: a memo kept as a .tcdoc with one comment thread (the agent's comment and
+ * his reply) and one pending branch (the agent rewords the third paragraph and adds a fifth), and a budget kept as a
+ * .tcsheet set to suggest with one change set of three cells. The agent's parts go through its own tools
+ * (doc_comment, doc_suggest, sheet_suggest) by the thread's bridge door; his through the socket. Each step the
+ * server cannot do is a NOT RUN line, and the next step still runs.
+ */
+export async function seedReview(ready: WorkSeedReady & { environmentId: string }, purdue: string, sessionId: string): Promise<{ lines: string[] }> {
+  const { mkdirSync } = await import('node:fs')
+  const host = ready.environmentId
+  const s = await socket(ready)
+  const lines: string[] = []
+  /** One step; what the server cannot do is a NOT RUN line, and null. */
+  const step = async <T>(what: string, run: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await run()
+    } catch (err) {
+      lines.push(`NOT RUN review ${what}: ${String(err)}`)
+      return null
+    }
+  }
+  const asAgent = async (tool: string, args: unknown): Promise<string> => {
+    const [got] = await workTools(ready, [{ sessionId, tool, args }])
+    if (got.failed) throw new Error(`${tool}: ${got.text}`)
+    return got.text
+  }
+  try {
+    const workspaces = await s.call<{ id: string; path: string }[]>('workspace.list', {})
+    const dir = `${workspaces.find((w) => w.id === purdue)!.path}/Regional trip`
+    mkdirSync(dir, { recursive: true })
+
+    // The memo: a .tcdoc written as an import makes it, opened as the thread's document.
+    const memoPath = `${dir}/${REVIEW_MEMO_TITLE}.tcdoc`
+    const memo = { at: 'file' as const, host, path: memoPath }
+    const memoItem = await step('memo', async () => {
+      const kit = resolve(import.meta.dir, '../../node_modules/work-kit/src/formats')
+      const { readMarkdown } = (await import(`${kit}/markdown/index.ts`)) as { readMarkdown: (text: string) => unknown }
+      const { writeImportedTcdoc } = (await import(`${kit}/tcdoc/index.ts`)) as { writeImportedTcdoc: (path: string, imported: unknown) => Promise<unknown> }
+      await writeImportedTcdoc(memoPath, readMarkdown(REVIEW_MEMO.join('\n\n')))
+      return (await s.call<{ id: string }>('work.canvas.open', { sessionId, kind: 'document', title: REVIEW_MEMO_TITLE, source: memo })).id
+    })
+    if (memoItem) {
+      await step('memo comment', async () => {
+        await asAgent('doc_comment', { item: memoItem, quote: MEMO_QUOTE, body: MEMO_COMMENT })
+        const { rows } = await s.call<{ rows: { thread: { publicId: string; quote?: string } }[] }>('work.docs.threads', { source: memo })
+        const thread = rows.find((r) => r.thread.quote === MEMO_QUOTE)
+        if (!thread) throw new Error("the agent's thread is not on the memo")
+        await s.call('work.docs.thread', { source: memo, change: { op: 'reply', threadId: thread.thread.publicId, body: commentBody(MEMO_REPLY) } })
+        lines.push(`OK review memo: one thread on "${MEMO_QUOTE}", the agent's comment and his reply`)
+      })
+      await step('memo suggestion', async () => {
+        await asAgent('doc_suggest', { item: memoItem, markdown: [REVIEW_MEMO[0], REVIEW_MEMO[1], REVIEW_MEMO_NEW[0], REVIEW_MEMO[3], REVIEW_MEMO_NEW[1]].join('\n\n') })
+        const { branches } = await s.call<{ branches: { diff: { rows: unknown[] } }[] }>('work.history.branches', { source: memo })
+        if (branches.length !== 1) throw new Error(`${branches.length} branches wait, not one`)
+        lines.push(`OK review memo: one branch waits with ${branches[0].diff.rows.length} rows`)
+      })
+    }
+
+    // The budget: a .tcsheet read from its CSV as the pillar reads a dropped one (sheets/held.ts ensureCsvSheet), set to suggest.
+    const sheetPath = `${dir}/${REVIEW_SHEET_TITLE}.tcsheet`
+    const sheetItem = await step('budget', async () => {
+      const { readCsv } = (await import(resolve(import.meta.dir, '../../src/main/server/work/sheets/writer.ts'))) as { readCsv: (text: string, id: string, name: string) => unknown }
+      const { gz, writeTcsheet } = (await import(resolve(import.meta.dir, '../../src/main/server/work/sheets/host/backends.ts'))) as {
+        gz: (wb: unknown) => Uint8Array
+        writeTcsheet: (path: string, t: { meta: { title: string; rev: number; snapRev: number }; snapshots: Map<number, Uint8Array>; ops: unknown[]; suggestions: unknown[] }) => void
+      }
+      writeTcsheet(sheetPath, { meta: { title: REVIEW_SHEET_TITLE, rev: 0, snapRev: 0 }, snapshots: new Map([[0, gz(readCsv(BUDGET_CSV, 'workbook', 'Budget'))]]), ops: [], suggestions: [] })
+      const id = (await s.call<{ id: string }>('work.canvas.open', { sessionId, kind: 'sheet', title: REVIEW_SHEET_TITLE, source: { at: 'file', host, path: sheetPath } })).id
+      await s.call('work.sheets.mode', { itemId: id, mode: 'suggests' })
+      return id
+    })
+    if (sheetItem)
+      await step('budget suggestion', async () => {
+        await asAgent('sheet_suggest', { item: sheetItem, cells: BUDGET_CELLS, reason: BUDGET_REASON })
+        const view = await s.call<{ mode: string; suggestions: { changeSet: string; state: string; reason?: string }[] }>('work.sheets.open', { itemId: sheetItem })
+        const sets = new Set(view.suggestions.map((x) => x.changeSet))
+        const pending = view.suggestions.filter((x) => x.state === 'pending').length
+        lines.push(`${pending === 3 && sets.size === 1 && view.suggestions.every((x) => x.reason === BUDGET_REASON) ? 'OK' : 'FAIL'} review budget: ${view.mode}, ${pending} pending in ${sets.size} change set, reason "${view.suggestions[0]?.reason ?? ''}"`)
+      })
+    return { lines }
+  } finally {
+    s.close()
+  }
+}
+
+/** The PDF the Files proof asks about: in the reader's folder, open in no thread. */
+export const FILES_ASK_PDF = 'Venue map.pdf'
+
+/**
+ * Ask from a file open in Files, read back on the host: a thread of the workspace now holds the PDF as its own item,
+ * and it is not the reader's thread, which never opened it.
+ */
+export async function verifyFilesAsk(ready: WorkSeedReady & { environmentId: string }, workspaceId: string, readerSessionId: string): Promise<string[]> {
+  const s = await socket(ready)
+  try {
+    const workspaces = await s.call<{ id: string; path: string }[]>('workspace.list', {})
+    const folder = workspaces.find((w) => w.id === workspaceId)?.path
+    if (!folder) return [`FAIL files ask: no workspace ${workspaceId} on the host`]
+    const ref = { at: 'file', host: ready.environmentId, path: `${folder}/Nationals/${FILES_ASK_PDF}` }
+    const { threads } = await s.call<{ threads: { sessionId: string; itemId: string }[] }>('work.files.threads', { workspaceId, ref })
+    const held = threads.filter((t) => t.sessionId !== readerSessionId)
+    if (!held.length) return [`FAIL files ask: no thread holds ${FILES_ASK_PDF} (the host names ${threads.length})`]
+    const { items } = await s.call<{ items: { id: string; kind: string; title: string }[] }>('work.canvas.list', { sessionId: held[0].sessionId })
+    const item = items.find((i) => i.id === held[0].itemId)
+    return [`${item?.kind === 'pdf' ? 'PASS' : 'FAIL'} files ask: a new thread (${held[0].sessionId}) holds ${FILES_ASK_PDF} as its item${item ? ` "${item.title}" (${item.kind})` : ', which its canvas does not list'}`]
+  } finally {
+    s.close()
+  }
+}
+
+/**
+ * Save to TempCode's real save, read back on the host: the file the phone says it sent is in the Work workspace's own
+ * folder with the same sha256. `report` is what the app wrote after the save (Documents/share-report.json). A save the
+ * host refused is a line with the host's words, never a pass.
+ */
+export async function verifyShare(ready: WorkSeedReady, workspaceId: string, report: { name: string; size: number; sha256: string; state: string; words?: string | null } | null): Promise<string[]> {
+  if (!report) return ['NOT RUN share: the app wrote no share-report.json']
+  if (report.state !== 'done') return [`${report.state === 'refused' ? 'REFUSED' : 'NOT SAVED'} share: "${report.name}" ended ${report.state}${report.words ? `: ${report.words}` : ''}`]
+  const { createHash } = await import('node:crypto')
+  const { existsSync, readFileSync, readdirSync } = await import('node:fs')
+  const s = await socket(ready)
+  try {
+    const workspaces = await s.call<{ id: string; path: string }[]>('workspace.list', {})
+    const folder = workspaces.find((w) => w.id === workspaceId)?.path
+    if (!folder) return [`FAIL share: no workspace ${workspaceId} on the host`]
+    const file = `${folder}/${report.name}`
+    if (!existsSync(file)) return [`FAIL share: ${report.name} is not in ${folder} (it holds: ${readdirSync(folder).join(', ')})`]
+    const sha = createHash('sha256').update(readFileSync(file)).digest('hex')
+    return [`${sha === report.sha256 ? 'PASS' : 'FAIL'} share: ${report.name} is in the workspace's folder, ${report.size} bytes, sha256 ${sha === report.sha256 ? 'as the phone sent it' : `${sha}, not the phone's ${report.sha256}`}`]
+  } finally {
+    s.close()
+  }
+}
+
+/** What the phone's review presses left on the host: the memo's branch accepted, his comment posted, the budget's change set accepted. */
+export async function verifyReview(ready: WorkSeedReady, sessionId: string): Promise<string[]> {
+  const s = await socket(ready)
+  const lines: string[] = []
+  try {
+    const { items } = await s.call<{ items: { id: string; kind: string; title: string; source: unknown }[] }>('work.canvas.list', { sessionId })
+    const memo = items.find((i) => i.kind === 'document' && i.title === REVIEW_MEMO_TITLE)
+    if (!memo) lines.push(`FAIL review memo: no "${REVIEW_MEMO_TITLE}" open in the thread`)
+    else {
+      try {
+        const { branches } = await s.call<{ branches: unknown[] }>('work.history.branches', { source: memo.source })
+        // The pillar's own reader of the text: doc_read, as the thread reads it.
+        const [read] = await workTools(ready, [{ sessionId, tool: 'doc_read', args: { item: memo.id } }])
+        const holds = !read.failed && REVIEW_MEMO_NEW.every((words) => read.text.includes(words))
+        lines.push(
+          branches.length === 0 && holds
+            ? `PASS the memo's branch is gone and its text holds "${REVIEW_MEMO_NEW.join('" and "')}"`
+            : `FAIL the memo: ${branches.length} branches wait, its text ${read.failed ? `could not be read: ${read.text}` : holds ? 'holds the new words' : `does not hold the new words: ${JSON.stringify(read.text.split('\n---\n')[0])}`}`
+        )
+      } catch (err) {
+        lines.push(`FAIL the memo's branches: ${String(err)}`)
+      }
+      try {
+        const { rows, names } = await s.call<{ rows: { thread: { quote?: string; resolved: boolean; deletedAt: number | null }; comments: { body: string; authorMemberId: string; deletedAt: number | null }[] }[]; names: Record<string, string> }>('work.docs.threads', { source: memo.source })
+        const live = rows.filter((r) => r.thread.deletedAt === null)
+        for (const r of live)
+          lines.push(`INFO memo thread on "${r.thread.quote ?? ''}"${r.thread.resolved ? ' (resolved)' : ''}: ${r.comments.filter((c) => c.deletedAt === null).map((c) => `${names[c.authorMemberId] ?? c.authorMemberId}: ${plainBody(c.body)}`).join(' / ')}`)
+        const found = live.some((r) => r.comments.some((c) => c.deletedAt === null && plainBody(c.body) === REVIEW_PHONE_COMMENT))
+        lines.push(`${found ? 'PASS' : 'FAIL'} the phone's comment "${REVIEW_PHONE_COMMENT}" is on the memo`)
+      } catch (err) {
+        lines.push(`FAIL the memo's threads: ${String(err)}`)
+      }
+    }
+    const sheet = items.find((i) => i.kind === 'sheet' && i.title === REVIEW_SHEET_TITLE)
+    if (!sheet) lines.push(`FAIL review budget: no "${REVIEW_SHEET_TITLE}" open in the thread`)
+    else {
+      try {
+        const view = await s.call<{ suggestions: { state: string }[] }>('work.sheets.open', { itemId: sheet.id })
+        const states = view.suggestions.reduce<Record<string, number>>((n, x) => ({ ...n, [x.state]: (n[x.state] ?? 0) + 1 }), {})
+        const [read] = await workTools(ready, [{ sessionId, tool: 'sheet_read', args: { item: sheet.id, range: 'A1:C6' } }])
+        const cells = read.text.replace(/\n/g, ' ; ')
+        const taken = !read.failed && BUDGET_CELLS.every((c) => new RegExp(`\\b${c.at} ${JSON.stringify(c.v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(read.text))
+        lines.push(`${view.suggestions.length === 0 && taken ? 'PASS' : 'FAIL'} the budget: ${view.suggestions.length} open suggestions ${JSON.stringify(states)}; cells now: ${read.failed ? `could not be read: ${read.text}` : cells}`)
+      } catch (err) {
+        lines.push(`FAIL the budget: ${String(err)}`)
+      }
+    }
+    return lines
   } finally {
     s.close()
   }

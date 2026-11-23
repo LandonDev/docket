@@ -13,6 +13,11 @@ public enum ChunkedRead {
         case short
     }
 
+    /// How much of a file has been read, 0 to 1, for a determinate bar.
+    public static func share(read: Int, of size: Int) -> Double {
+        size > 0 ? min(1, max(0, Double(read) / Double(size))) : 1
+    }
+
     /// Every frame of a file of `size` bytes, in order; one `rev` throughout, and that one `expecting` when the view
     /// that named the file advertised it, so the bytes are the render the view described and no other.
     public static func all(size: Int, frame: Int = ChunkedRead.frame, expecting: String? = nil, read: (_ offset: Int, _ length: Int) async throws -> FileBytes) async throws -> Data {

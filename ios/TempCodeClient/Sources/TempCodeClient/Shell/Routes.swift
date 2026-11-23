@@ -35,6 +35,9 @@ public enum Route: Hashable, Codable, Sendable {
     case houseRules(environmentId: String, workspaceId: String)
     /// A Work workspace's LifeOS view (`mail`, `tasks`, `agenda`) or its `routines` (milestone 47).
     case workView(environmentId: String, workspaceId: String, view: String)
+    /// One open file on its own page (the reader, docs/agents/work-phone-files.md): the canvas item as its
+    /// host listed it, and the thread that holds it when there is one.
+    case file(environmentId: String, item: CanvasItem, sessionId: String?)
 }
 
 /// The three tabs.

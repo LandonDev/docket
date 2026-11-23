@@ -1034,13 +1034,14 @@
   row; `FilesSearchList` the search field's list; `FilesNewSheet` New and
   Upload; `FilesParts.swift` Delete's undo capsule (the Outbox's
   `UndoCapsule`, now shared). **`FilesOpen.page(client:route:)` is the one
-  place a file is opened**: its `.item` line draws `FileItemScreen` (the
-  kind's `ItemBodyView` with `ask: nil`; `ItemBodyView`, `PdfItemView`,
-  `SlidesItemView` and `HostedItemView` take an optional Ask now and draw
-  none without it), its `.quickLook` line `FileQuickLookScreen` (the preview
-  pager, the facts, Open the original into `.quickLookPreview`, AVKit for
-  sound and video). The phone-files build changes the `.item` line to push
-  its reader. `ItemBody` reads the `file` canvas kind as "This file opens
+  place a file is opened**: its `.item` line draws `FileItemScreen`, which
+  seats the file and shows the phone-files build's `FileReaderPage`
+  (docs/agents/work-phone-files.md "From Files"; `ItemBodyView`,
+  `PdfItemView`, `SlidesItemView` and `HostedItemView` take an optional Ask
+  and draw none without it), its `.quickLook` line `FileQuickLookScreen` (the
+  preview pager, the facts, Open the original into `.quickLookPreview`, AVKit
+  for sound and video; also what stands in a file-kept document's place where
+  the hosted editor will not open it). `ItemBody` reads the `file` canvas kind as "This file opens
   in Files." (a thread's canvas seats none before F5).
 - **What degrades until the host builds it**: `work.files.search` and
   `names` (F4): the search field filters the rows the phone holds;
@@ -1063,6 +1064,36 @@
   `ActionError` and `AttachmentUpload` (the rest of the client needs SQLite,
   Security and `URLSessionWebSocketTask`); the app's files are parse-checked
   only. `bun run ios:test:client` and the simulator proof are the Mac's.
+
+## Files and the editors on the phone (2026-11-23)
+
+- **One open file** is `FileReaderPage` (`Route.file`), the page any screen
+  pushes for a canvas item; the thread's Item segment shows the same kind's
+  view. More's rows are `ReaderVerbs.of` for both; `ReaderFrame` adds the
+  review row and the sheets (Comments, Review Changes, Comment) around the
+  kind's view, and `ReaderFile` holds the file's `WorkComments` and
+  `WorkReview`.
+- **The client's Work/Reader**: `ReaderPlaces` (the place he stopped, the
+  last 200 files), `ReaderCache` (three renders in memory by `rev`, nothing
+  on disk), `HostCan` (a method an older host does not know), `DeckPager`
+  (a deck's pages, notes and the slide's share of the height),
+  `HostedTickets` (the hosted editor's ticket asked early, used once),
+  `PagePreviewSource` (print pages read at one `rev`), `ReviewGroup`.
+- **A document or sheet kept as a file** goes to the hosted view
+  (`ItemBody.of`, by its item); its host opens it or refuses in words the
+  phone shows (`HostedFailure`).
+- **From Files** a seated file opens on that page; Ask there finds the
+  thread that holds the file or starts one with it (`FileAsk`,
+  `WorkHost.ask(workspaceId:item:chip:text:session:)`).
+- **Save to TempCode** is the share extension `TempCodeShare`
+  (ios/TempCode/ShareExtension/, the sheet in Sources/Work/Share/): one queue
+  in the App Group (`ShareInbox`), one uploader (`ShareUploader`), the places
+  and keys the app leaves it (`ShareTargets`, `ShareKeys`, `ShareBridge`), and
+  what a host refused at the head of that workspace's Files screen
+  (`ShareRefused`).
+- The account is docs/agents/work-phone-files.md; the look is
+  docs/IOS-DESIGN.md "A file on the phone", "Save to TempCode" and "The
+  clicker".
 
 ## The data path's two contracts (the performance pass, 2026-11)
 

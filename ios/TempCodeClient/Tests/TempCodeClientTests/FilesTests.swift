@@ -89,7 +89,10 @@ struct FilesRulesTests {
         // A read-only key seats nothing: it reads the file in Quick Look where it may.
         #expect(FilesRules.opening(pdf, place: folder, caps: .readOnly) == .quickLook(.allowed))
         #expect(FilesRules.opening(try decode(entry("Notes.txt", kind: "text")), place: folder, caps: full) == .quickLook(.allowed))
-        #expect(FilesRules.opening(try decode(entry("Budget.xlsx", kind: "sheet")), place: folder, caps: full) == .quickLook(.readOnly))
+        // A document or sheet kept as a file is seated for the hosted editor; a key that may not seat it reads it.
+        #expect(FilesRules.opening(try decode(entry("Budget.xlsx", kind: "sheet")), place: folder, caps: full) == .item)
+        #expect(FilesRules.opening(try decode(entry("Memo.tcdoc", kind: "document")), place: folder, caps: full) == .item)
+        #expect(FilesRules.opening(try decode(entry("Memo.tcdoc", kind: "document")), place: folder, caps: .readOnly) == .quickLook(.readOnly))
         #expect(FilesRules.opening(try decode(entry("Roster.xlsx", kind: "sheet")), place: library, caps: full) == .quickLook(.facts(host: "MacBook")))
         #expect(FilesRules.opening(try decode(entry("Cut.mov", kind: "audio", size: 60 * 1024 * 1024)), place: folder, caps: full) == .quickLook(.tooBig))
         let lifeos: FileEntry = try decode(#"{"key":"lifeos:docs:d1","ref":{"at":"lifeos","table":"docs","id":"d1"},"folder":null,"name":"Run of show","kind":"document"}"#)

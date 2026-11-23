@@ -1,12 +1,14 @@
-import { randomBytes } from 'node:crypto'
-import { guestRefusal, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource } from '@shared/contract-work-guests'
+import { createHash, randomBytes } from 'node:crypto'
+import { guestRefusal, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource, type TicketSource } from '@shared/contract-work-guests'
 import { guestProjectionOf, projectionItems, type GuestProjection } from '@shared/work/guestProjection'
-import type { CollabClaims as KitClaims } from 'work-kit/collab-server'
-import type { WorkCtx } from '../modules'
+import { fileDocName, type CollabClaims as KitClaims } from 'work-kit/collab-server'
+import { FenceError } from '../../remote/fence'
+import { sharedOf } from '../files/policy'
+import type { Caller, WorkCtx } from '../modules'
 import { ActNotSent } from '../outbox/kinds'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { isIsolatedInstance } from '../service/config'
-import { serviceOf, ServedElsewhere } from '../service/ctx'
+import { canonicalPath, serviceOf, ServedElsewhere } from '../service/ctx'
 import type { ServiceSupervisor } from '../service/supervisor'
 import type { ServiceProject } from '../service/wire'
 import { GuestStore, hashSecret, isLive, sourceKey, type StoredLink } from './store'
@@ -61,7 +63,40 @@ export function publicOrigin(ctx: Pick<WorkCtx, 'service'>, env: NodeJS.ProcessE
   }
 }
 
+/**
+ * Whether a phone can reach this host's hosted pages at all: the box behind its tunnel, or a proof that
+ * names its origin. Any other host's service answers on loopback alone, which no phone opens.
+ */
+export function servesPublic(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !!env.TEMP_CODE_WORK_PUBLIC_ORIGIN || (process.platform === 'linux' && !isIsolatedInstance(env))
+}
+
 export const guestUrl = (origin: string, id: string, secret: string): string => `${origin}/g/${id}#k=${secret}`
+
+/**
+ * What a ticket opens: a LifeOS row, or a document or sheet kept as a file on this host. A `.tcdoc` is named
+ * by its resolved path, as the docs pillar names its room; a `.tcsheet` by its item's own spelling of the path,
+ * as the sheets pillar names its workbook (sheets/held.ts), so the phone and the desktop are on one workbook.
+ */
+type Opens = { at: 'lifeos'; source: GuestSource } | { at: 'tcdoc'; path: string } | { at: 'tcsheet'; path: string }
+
+/** A file sheet's name on the live socket: no path is ever in an address, and main alone says which file a name is (the pass's `sheetFile`). */
+export const fileSheetId = (path: string): string => `tc${createHash('sha256').update(path).digest('hex').slice(0, 40)}`
+
+/** The item the service is told a ticket opens, and the claims main signs for it. */
+const opensItem = (o: Opens): { doc: string } | { sheet: string } => (o.at === 'lifeos' ? itemOf(o.source) : o.at === 'tcdoc' ? { doc: fileDocName(o.path) } : { sheet: fileSheetId(o.path) })
+const opensClaims = (o: Opens): Pick<KitClaims, 'doc' | 'sheet' | 'file'> => (o.at === 'tcdoc' ? { doc: fileDocName(o.path), file: { path: o.path } } : opensItem(o))
+
+/** Why the hosted editor does not open an item on the phone, in the words its screen shows. */
+export const TICKET_REFUSALS = {
+  gone: 'That item is no longer open.',
+  kind: 'The hosted editor opens a document or a sheet.',
+  shared: 'This file is in a place others can open, so it stays on the computer that has it.',
+  word: 'This document is a Word file. Edit it on your computer.',
+  excel: 'This sheet is an Excel file. Edit it on your computer.',
+  elsewhere: 'This file opens on the computer that has it.',
+  noPage: 'This computer serves no page a phone can open. Edit it on your computer.'
+} as const
 
 type Seen = Record<string, { at: number; open: number }>
 
@@ -71,8 +106,10 @@ interface Pass {
   ticketHash: string
   ticketUntil: number
   until: number
-  source: GuestSource
+  opens: Opens
   title: string
+  /** the canvas item a file was opened by: while the pass stands, the item must still be open, on that file, in a place of his own */
+  itemId?: string
 }
 
 /** What a guests module keeps while Work is on: tickets, and the tokens it has signed. */
@@ -208,13 +245,56 @@ export class GuestRuntime {
     }
   }
 
+  /**
+   * What a canvas item opens in the hosted editor, or why not. A LifeOS row is asked as its row. A file must
+   * be a `.tcdoc` or a `.tcsheet` on this host, within the caller's reach, in a place only he can open: a
+   * file others can open never goes to a phone, and a Word or Excel file is saved by the desktop's own editor.
+   */
+  private opensOf(itemId: string, by: Caller, method: string): Opens {
+    const item = this.ctx.canvas.get(itemId)
+    if (!item) throw new Error(TICKET_REFUSALS.gone)
+    if (item.kind !== 'document' && item.kind !== 'sheet') throw new Error(TICKET_REFUSALS.kind)
+    const s = item.source
+    if (s.at === 'lifeos' && (s.table === 'docs' || s.table === 'sheets')) return { at: 'lifeos', source: { at: 'lifeos', table: s.table, id: s.id } }
+    if (s.at !== 'file') throw new Error(TICKET_REFUSALS.elsewhere)
+    // A file is served by the host it is on (§19): the phone asks that one.
+    if (s.host !== this.ctx.host) throw new Error(`served elsewhere: ${s.host}`)
+    if (!this.ctx.reaches(by, s.path)) throw new FenceError(method)
+    if (sharedOf(this.ctx, s)) throw new Error(TICKET_REFUSALS.shared)
+    if (!servesPublic()) throw new Error(TICKET_REFUSALS.noPage)
+    const path = canonicalPath(s.path)
+    const name = path.toLowerCase()
+    if (item.kind === 'document') {
+      if (name.endsWith('.tcdoc')) return { at: 'tcdoc', path }
+      throw new Error(/\.(docx?|odt|rtf)$/.test(name) ? TICKET_REFUSALS.word : TICKET_REFUSALS.elsewhere)
+    }
+    if (name.endsWith('.tcsheet')) return { at: 'tcsheet', path: s.path }
+    throw new Error(/\.(xlsx?|xlsm|ods|csv)$/.test(name) ? TICKET_REFUSALS.excel : TICKET_REFUSALS.elsewhere)
+  }
+
+  /**
+   * Whether a file's pass may go on: its item is still open on the same file, and the file is still his alone.
+   * Checked at every pass over the list (`TICK_MS`); a pass dropped here opens nothing more: its sheet socket
+   * closes at the next second's check, and its document's token is not renewed.
+   */
+  private stillOpens(p: Pass): boolean {
+    if (!p.itemId || p.opens.at === 'lifeos') return true
+    const s = this.ctx.canvas.get(p.itemId)?.source
+    if (!s || s.at !== 'file' || s.host !== this.ctx.host) return false
+    if ((p.opens.at === 'tcdoc' ? canonicalPath(s.path) : s.path) !== p.opens.path) return false
+    return !sharedOf(this.ctx, s)
+  }
+
   /** A ticket for the owner's hosted editor: the address holds it, once. */
-  async ticket(source: GuestSource, title: string): Promise<{ url: string; expiresAt: number }> {
-    if (source.table === 'projects') throw new Error('The hosted editor opens a document or a sheet.')
-    await this.servedHere(source)
+  async ticket(source: TicketSource, title: string, by: Caller, method = 'work.guests.ticket'): Promise<{ url: string; expiresAt: number }> {
+    const opens: Opens = source.at === 'item' ? this.opensOf(source.itemId, by, method) : { at: 'lifeos', source }
+    if (opens.at === 'lifeos') {
+      if (opens.source.table === 'projects') throw new Error(TICKET_REFUSALS.kind)
+      await this.servedHere(opens.source)
+    }
     const ticket = randomBytes(32).toString('base64url')
     const now = Date.now()
-    const pass: Pass = { id: randomBytes(12).toString('base64url'), issuedAt: now, ticketHash: hashSecret(ticket), ticketUntil: now + TICKET_MS, until: now + PASS_MS, source, title }
+    const pass: Pass = { id: randomBytes(12).toString('base64url'), issuedAt: now, ticketHash: hashSecret(ticket), ticketUntil: now + TICKET_MS, until: now + PASS_MS, opens, title, ...(source.at === 'item' && opens.at !== 'lifeos' ? { itemId: source.itemId } : {}) }
     this.passes.set(pass.id, pass)
     await this.sync()
     return { url: `${publicOrigin(this.ctx)}/w/open#t=${ticket}`, expiresAt: pass.ticketUntil }
@@ -431,21 +511,22 @@ export class GuestRuntime {
       })
     }
     for (const p of this.passes.values()) {
-      if (p.until <= now) {
+      // A file's pass ends with what let it be made: the item closed, the file moved, or its place now one others can open.
+      if (p.until <= now || !this.stillOpens(p)) {
         this.passes.delete(p.id)
         continue
       }
       const key = PASS_PREFIX + p.id
-      const t = await this.sign(key, { ...kitItem(p.source), role: 'edit', principal: 'owner' }).catch(() => null)
+      const t = await this.sign(key, { ...opensClaims(p.opens), role: 'edit', principal: 'owner' }).catch(() => null)
       if (!t) continue
       keep.add(key)
       out.push({
         linkId: key,
-        item: itemOf(p.source),
+        item: opensItem(p.opens),
         role: 'edit',
         expiresAt: p.until,
         revokedAt: null,
-        pass: { ticketHash: p.ticketHash, ticketUntil: p.ticketUntil, issuedAt: p.issuedAt, title: p.title, token: t.token, tokenExp: t.exp }
+        pass: { ticketHash: p.ticketHash, ticketUntil: p.ticketUntil, issuedAt: p.issuedAt, title: p.title, token: t.token, tokenExp: t.exp, ...(p.opens.at === 'tcsheet' ? { sheetFile: p.opens.path } : {}) }
       })
     }
     for (const key of this.tokens.keys()) if (!keep.has(key)) this.tokens.delete(key)

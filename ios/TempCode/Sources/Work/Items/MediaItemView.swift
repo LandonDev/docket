@@ -14,6 +14,8 @@ import TempCodeContract
 struct MediaItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
+    /// On the reader page a tap on a picture hides the bars (Work/Reader/FileReaderPage.swift).
+    @Environment(\.readerTap) private var tap
 
     var body: some View {
         let canRead = client.work.canAdmin
@@ -32,8 +34,12 @@ struct MediaItemView: View {
                             .id(version.id)
                     case .image(let token):
                         TokenPicture(client: client, token: token)
+                            .contentShape(Rectangle())
+                            .onTapGesture { tap?() }
                     case .picture(_, let width, let height, let tile, let overlap, let levels, let minLevel):
                         PictureView(client: client, itemId: item.id, versionId: version.id, grid: TileGrid(width: width, height: height, tile: tile, levels: levels, minLevel: minLevel, maxSide: 2048), tile: Int(tile), overlap: Int(overlap))
+                            .contentShape(Rectangle())
+                            .onTapGesture { tap?() }
                     case .preparing:
                         Preparing(reload: reload)
                     case .none:

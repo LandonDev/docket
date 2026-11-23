@@ -80,6 +80,14 @@
   optional, so either answer (`{png, pages, width, height}` or `{none}`)
   decodes. A verb that takes a file or a folder (`FileRef`) has a params
   enum with `canvasSource` and `folderRef` cases.
+  The phone's comments and review (PF2) added `work.docs.open`,
+  `work.docs.threads`, `work.docs.thread`, `work.history.branches`,
+  `work.history.decide`, `work.sheets.open` and `work.sheets.review` (phone
+  views pinned with `Reads`: `DocOpenPhone`, `DocThreadsPhone`,
+  `DocThreadAnswerPhone`, `HistoryBranchesPhone`, `SheetCellPhone`,
+  `SheetPhoneView`) and the `work.docs` (`{ doc }`) and `work.sheets`
+  (`{ sessionId, itemId, rev }`) pushes, which move `WorkHost.docsRev` and
+  `sheetsRev`.
 
 **Switches that must stay whole.** A new held act kind, chip kind or pillar id
 regenerates the Swift contract, and every phone `switch` over that enum with

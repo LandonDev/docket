@@ -55,6 +55,33 @@ describe('ios/TempCode/project.yml', () => {
     expect(plist).toContain('<key>NSCameraUsageDescription</key>')
   })
 
+  it('builds Save to TempCode as a share extension in the app group, linking the client and the contract and never LifeKit', () => {
+    const share = yml.match(/^  TempCodeShare:\n([\s\S]*?)(?=^  [A-Za-z].*:\n)/m)?.[1] ?? ''
+    expect(share).toContain('type: app-extension')
+    expect(share).toContain('NSExtensionPointIdentifier: com.apple.share-services')
+    expect(share).toContain('PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios.share')
+    expect(share).toMatch(/com\.apple\.security\.application-groups:\n\s+- group\.dev\.landon\.tempcode/)
+    // Ten files or pictures and three movies, and nothing else wakes it.
+    expect(share).toContain('NSExtensionActivationSupportsFileWithMaxCount: 10')
+    expect(share).toContain('NSExtensionActivationSupportsImageWithMaxCount: 10')
+    expect(share).toContain('NSExtensionActivationSupportsMovieWithMaxCount: 3')
+    expect(share).not.toMatch(/SupportsText|SupportsWebURL|SupportsWebPage/)
+    const deps = share.match(/dependencies:\n((?: {6}.*\n)+)/)?.[1] ?? ''
+    expect(deps).toContain('product: TempCodeClient')
+    expect(deps).toContain('product: TempCodeContract')
+    expect(share).not.toMatch(/product: LifeKit/)
+    // Its isolation is the app's: the target sets none of its own.
+    expect(share).not.toContain('SWIFT_DEFAULT_ACTOR_ISOLATION')
+    // The app embeds it and the scheme builds it.
+    expect(yml).toMatch(/- target: TempCodeNotificationService\n\s+- target: TempCodeShare/)
+    expect(yml).toContain('TempCodeShare: all')
+    // The checked-in plist and entitlements say the same.
+    const plist = readFileSync(resolve(import.meta.dirname, '../ios/TempCode/ShareExtension/Info.plist'), 'utf8')
+    expect(plist).toContain('<string>com.apple.share-services</string>')
+    expect(plist).toContain('<key>NSExtensionActivationSupportsMovieWithMaxCount</key>')
+    expect(readFileSync(resolve(import.meta.dirname, '../ios/TempCode/ShareExtension/ShareExtension.entitlements'), 'utf8')).toContain('<string>group.dev.landon.tempcode</string>')
+  })
+
   it('keeps the launch screen the Duo prepare page asks for', () => {
     expect(yml).toContain('UILaunchScreen: {}')
   })

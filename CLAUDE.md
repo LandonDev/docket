@@ -248,6 +248,14 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   (`sessions.read_at`, `SessionMeta.readAt`; `session.markRead` and
   `session.markUnread`), the desktop and the phone lay it over their own maps.
   [docs/agents/read-and-unread.md](docs/agents/read-and-unread.md)
+- **Files and the editors on the phone** — one open file's page (`FileReaderPage`, `Route.file`; More's rows
+  `ReaderVerbs`), a deck with notes and a filmstrip, the place kept (`ReaderPlaces`), renders in memory alone
+  (`ReaderCache`), native Comments and Review Changes over the docs, history and sheets wire (`WorkComments`,
+  `WorkReview`, `ReaderFrame`), Page Preview with Print (`PagePreviewSource`), the hosted editor on a
+  `.tcdoc` or `.tcsheet` kept as a file (`work.guests.ticket {at: 'item'}`, guests/links.ts `opensOf`), a
+  file from the Files place on that page with Ask finding or starting its thread (`FileAsk`), Save to
+  TempCode (the share extension `TempCodeShare`, `ShareInbox`, `ShareUploader`), and the clicker's screen.
+  [docs/agents/work-phone-files.md](docs/agents/work-phone-files.md)
 - **Native chat source research** — what the T3 SwiftUI app and other native
   chat apps do that could carry over to the phone's transcript
   (docs/research/native-chat-rendering.md). [docs/agents/native-chat-source-research.md](docs/agents/native-chat-source-research.md)

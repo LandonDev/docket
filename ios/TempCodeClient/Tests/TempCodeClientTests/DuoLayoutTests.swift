@@ -127,3 +127,26 @@ let table: [Cell] = [
         #expect(ToastMeasure.maxWidth == 440)
     }
 }
+
+@Suite struct ClickerPanesTests {
+    @Test func `a phone held upright stacks; on its side it splits in half`() {
+        #expect(ClickerPanes.of(width: 402, height: 874, regularWidth: false) == .stacked)
+        #expect(ClickerPanes.of(width: 874, height: 402, regularWidth: false) == .split(notes: 437, controls: 437))
+        #expect(ClickerPanes.of(width: 875, height: 402, regularWidth: false) == .split(notes: 437, controls: 438))
+    }
+
+    @Test func `the Duo unfolded splits either way up, on the fold's band when it leaves room each side`() {
+        let band = CGRect(x: 469, y: 0, width: 13, height: 669)
+        #expect(ClickerPanes.of(width: 951, height: 669, regularWidth: true, division: band) == .split(notes: 469, controls: 469))
+        #expect(ClickerPanes.of(width: 669, height: 951, regularWidth: true) == .split(notes: 334, controls: 335))
+        #expect(ClickerPanes.of(width: 951, height: 669, regularWidth: true, division: nil) == .split(notes: 475, controls: 476))
+    }
+
+    @Test func `a band too near an edge, or lying across, changes nothing`() {
+        let near = CGRect(x: 200, y: 0, width: 13, height: 669)
+        #expect(ClickerPanes.of(width: 951, height: 669, regularWidth: true, division: near) == .split(notes: 475, controls: 476))
+        let across = CGRect(x: 0, y: 469, width: 669, height: 13)
+        #expect(ClickerPanes.of(width: 669, height: 951, regularWidth: true, division: across) == .split(notes: 334, controls: 335))
+        #expect(ClickerPanes.of(width: 402, height: 874, regularWidth: false, division: near) == .stacked, "upright on a phone, a band is not asked")
+    }
+}

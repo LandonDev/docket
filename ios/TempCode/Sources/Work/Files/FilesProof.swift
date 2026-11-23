@@ -14,7 +14,8 @@ enum FilesProof {
         let names = path.split(separator: "/").map(String.init)
         guard let first = names.first, let places = await settled({ files.places[workspace.id]?.value }) else { return }
         let sections = FilesRules.sections(places)
-        guard let place = (sections.lenses + sections.places + sections.mail).first(where: { $0.name == first || ($0.kind == .mail && first == "From Mail") }) else { return }
+        // "@folder" is the workspace's own folder, whatever the workspace is called.
+        guard let place = first == "@folder" ? FilesRules.workspaceFolder(places) : (sections.lenses + sections.places + sections.mail).first(where: { $0.name == first || ($0.kind == .mail && first == "From Mail") }) else { return }
         var at = place.root
         var homeId = place.id
         navigator.detailStack.append(FilesFolderRoute(environmentId: client.environment.id, workspaceId: workspace.id, placeId: place.id, at: at, title: place.name))

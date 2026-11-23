@@ -52,6 +52,8 @@
  *                                 `tools: { libreoffice, pythonPptx }` link a deck's tools, `slidesOps` writes a deck's pending edits, and
  *                                 `docWrites` writes a .tcdoc through the Work service as docs_write does (TC_TEST_WORK_SERVICE=1; milestone 49)
  *   POST /work-tells { tells }  → writes tells into the digest's ledger, each waiting for the next digest (the digest set)
+ *                                 `workTools: [{ sessionId, tool, args }]` runs Work tools as that thread's bridge runs them
+ *                                 (`app.workCall` on this host's own socket with the thread's tokens), answering `{ ran }` (PF2's review seeds)
  *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
  *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
  *   POST /hold { seconds }      → the host goes down for that long: every remote socket dropped and every
@@ -128,6 +130,7 @@ import { wirePair } from '../src/main/server/addons/testWire'
 import { heldLine } from '../src/main/server/work/outbox/words'
 import { DigestStore } from '../src/main/server/work/digest/store'
 import type { TellGroup, TellOpen } from '../src/shared/work/tell'
+import { bridgeMcpConfig } from '../src/main/server/apptools'
 import { serviceSeamsFor } from '../src/main/server/work/service/ctx'
 import { servicePaths } from '../src/main/server/work/service/config'
 import { startWorkService, type RunningService } from '../src/main/server/work/service/serve'
@@ -264,10 +267,11 @@ const spawnExecBroker = brokerEntry
   : undefined
 // Milestone 49: TC_TEST_WORK_SERVICE=1 runs the Work service in this process (the seam work/service/ctx.test.ts
 // uses), where the app forks it as an Electron utility process, so the pillars that call it (history, a form's
-// answers) answer under node. Its hosted pages are not built here: nothing hosted is served.
+// answers) answer under node. Its hosted pages are not built here: nothing hosted is served, unless
+// TC_TEST_HOSTED_DIR names a built out/hosted (scripts/e2e-phone-hosted.ts opens the owner's hosted editor).
 if (process.env.TC_TEST_WORK_SERVICE === '1') {
   serviceSeamsFor.current = {
-    hostedDir: join(dirname(dbPath), 'hosted'),
+    hostedDir: process.env.TC_TEST_HOSTED_DIR || join(dirname(dbPath), 'hosted'),
     spawn: (): ServiceChild => {
       const onMessage: ((m: FromService) => void)[] = []
       const onExit: ((code: number | null) => void)[] = []
@@ -2350,6 +2354,9 @@ const control = createServer((req, res) => {
               })
             )
           }
+          // PF2: an agent's comment, suggestion or cell change made as its tool makes it, by the thread's own bridge door.
+          const workTools = Array.isArray(body.workTools) ? (body.workTools as { sessionId: string; tool: string; args: unknown }[]) : []
+          if (workTools.length > 0) return answer(200, { written: rows.length, ran: await runWorkTools(workTools) })
           if (docWrites.length > 0) return answer(200, { written: rows.length, wrote })
           return answer(200, { written: rows.length })
         } finally {
@@ -2579,3 +2586,37 @@ process.stdout.write(
     relayHosts: relayed.map(({ environmentId, name, state }) => ({ environmentId, name, state }))
   }) + '\n'
 )
+
+/** Work tools run as a thread's bridge runs them (scripts/app-mcp-bridge.mjs): one local socket, `app.workCall` with the thread's app and Work tokens. A thread with no Work tools answers why. */
+async function runWorkTools(calls: { sessionId: string; tool: string; args: unknown }[]): Promise<unknown[]> {
+  const ws = new WebSocket(`ws://127.0.0.1:${server.port}`)
+  await new Promise<void>((ok, bad) => {
+    ws.addEventListener('open', () => ok(), { once: true })
+    ws.addEventListener('error', () => bad(new Error('the app socket did not open')), { once: true })
+  })
+  const waiting = new Map<string, (frame: { ok: boolean; result?: unknown; error?: string }) => void>()
+  ws.addEventListener('message', (ev) => {
+    const frame = JSON.parse(String(ev.data)) as { id?: string; ok: boolean; result?: unknown; error?: string }
+    if (frame.id) waiting.get(frame.id)?.(frame)
+  })
+  const ran: unknown[] = []
+  try {
+    for (const [i, c] of calls.entries()) {
+      const env = (bridgeMcpConfig(c.sessionId) as { env?: Record<string, string> } | null)?.env
+      if (!env?.TEMP_CODE_WORK_TOKEN) {
+        ran.push({ tool: c.tool, error: 'that thread has no Work tools' })
+        continue
+      }
+      const id = `tool-${i}`
+      const frame = await new Promise<{ ok: boolean; result?: unknown; error?: string }>((done) => {
+        waiting.set(id, done)
+        ws.send(JSON.stringify({ id, method: 'app.workCall', params: { call: i + 1, tool: c.tool, args: c.args ?? {}, token: env.TEMP_CODE_WORK_TOKEN, sessionId: c.sessionId, appToken: env.TEMP_CODE_APP_TOKEN } }))
+      })
+      waiting.delete(id)
+      ran.push(frame.ok ? { tool: c.tool, result: frame.result } : { tool: c.tool, error: frame.error })
+    }
+  } finally {
+    ws.close()
+  }
+  return ran
+}

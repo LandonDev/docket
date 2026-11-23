@@ -638,7 +638,7 @@ describe("a project's link", () => {
 
   it('has no hosted-editor ticket: that opens a document or a sheet', async () => {
     const r = await rig()
-    await expect(r.rt.ticket(project, 'Spring LAN')).rejects.toThrow('The hosted editor opens a document or a sheet.')
+    await expect(r.rt.ticket(project, 'Spring LAN', { kind: 'local', caps: [] })).rejects.toThrow('The hosted editor opens a document or a sheet.')
   })
 })
 

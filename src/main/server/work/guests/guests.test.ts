@@ -7,7 +7,7 @@ import { WebSocket as WsSocket } from 'ws'
 import { createCollaborationClient, type CollaborationClient } from 'work-kit/collab'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner } from 'work-kit/collab-server'
 import { GUEST_KEEP_MS, guestRefusal, type GuestSource } from '@shared/contract-work-guests'
-import type { WorkCtx } from '../modules'
+import type { Caller, WorkCtx } from '../modules'
 import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { PUBLIC_ROUTES } from '../service/routes'
 import { callerKey, cutDue, guestThreads, LIMITS, plainBody, Window } from '../service/routes/guests'
@@ -25,6 +25,7 @@ import { ensureGuestTables, GuestStore, hashSecret } from './store'
  */
 
 const SECRET = 's'.repeat(43)
+const LOCAL: Caller = { kind: 'local', caps: [] }
 const DOC = 'kdoc1'
 const OTHER = 'kdoc2'
 const open: { dirs: string[]; services: RunningService[]; clients: CollaborationClient[]; convex: FakeConvex[] } = { dirs: [], services: [], clients: [], convex: [] }
@@ -538,7 +539,7 @@ describe('an agent asking', () => {
 describe("the owner's hosted editor", () => {
   it('a ticket opens once, then renews by the key the service made; a used or wrong ticket opens nothing', async () => {
     const r = await rig()
-    const { url } = await r.rt.ticket(doc(), 'Run of show')
+    const { url } = await r.rt.ticket(doc(), 'Run of show', LOCAL)
     const ticket = new URL(url).hash.replace('#t=', '')
     expect((await fetch(`${r.base}/w/open`)).status).toBe(200)
     const first = await post(r, '/w/open/redeem', { ticket })
