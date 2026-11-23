@@ -30,12 +30,17 @@ export interface DigestNotice {
   line: string;
 }
 
-/** The digest's notice: the days not yet seen on any host and what waited in them; null when there is nothing to say. */
+/**
+ * The digest's notice: the days not yet seen on any host and what waited in
+ * them; null when there is nothing to say. A row waited when it was not told
+ * at once before its day was made: one whose clock came due later, and so
+ * interrupted after all, is still part of the day he has not opened.
+ */
 export function digestNotice(view: Pick<DigestView, "days" | "rows">): DigestNotice | null {
   const days = view.days.filter((d) => d.seenAt === null);
   if (days.length === 0) return null;
-  const unseen = new Set(days.map((d) => d.day));
-  const rows = view.rows.filter((r) => r.day !== null && unseen.has(r.day) && r.toldAt === null);
+  const madeAt = new Map(days.map((d) => [d.day, d.madeAt]));
+  const rows = view.rows.filter((r) => r.day !== null && madeAt.has(r.day) && (r.toldAt === null || r.toldAt > madeAt.get(r.day)!));
   if (rows.length === 0) return null;
   return { days, line: digestLine(rows.length, jobsOf(rows)) };
 }
@@ -70,13 +75,13 @@ export interface SystemNotice {
   silent?: boolean;
 }
 
-/** The same two things as system notifications, for a person looking at another app: the digest's is silent. */
+/** The same two things as system notifications, for a person looking at another app: the digest's is silent. A thing's detail is a line of its own, never joined by a colon (most titles hold one already). */
 export function systemNotices(digest: DigestNotice | null, toasts: readonly NowToast[]): SystemNotice[] {
   const out: SystemNotice[] = [];
   if (digest) out.push({ key: `digest:${digest.days[0]!.day}`, title: "Work", body: digest.line, silent: true });
   for (const toast of toasts) {
     const one = toast.rows.length === 1 ? toast.rows[0]! : null;
-    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body: toast.detail ? `${toast.title}: ${toast.detail}` : toast.title });
+    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body: toast.detail ? `${toast.title}\n${toast.detail}` : toast.title });
   }
   return out;
 }
@@ -125,7 +130,10 @@ export function listSections(view: Pick<DigestView, "days" | "rows">, now: numbe
   const since = view.rows.filter((r) => r.day === null);
   const today = localDay(now);
   if (since.length) out.push({ id: "since", title: "Since the digest", day: today, rows: byJob(since) });
-  const yesterday = localDay(now - 24 * 3_600_000);
+  // The calendar day before, not 24 hours back: the night the clocks change, those differ.
+  const before = new Date(now);
+  before.setDate(before.getDate() - 1);
+  const yesterday = localDay(before.getTime());
   const madeAt = new Map(view.days.map((d) => [d.day, d.madeAt]));
   const days = [...new Set(view.rows.flatMap((r) => (r.day ? [r.day] : [])))].sort().reverse();
   for (const day of days) {
@@ -156,5 +164,17 @@ export function rowWhen(row: Pick<TellRow, "by" | "at" | "title" | "detail">, no
 /** The list's one empty line: since when Work has had nothing to tell him (the ledger keeps 30 days). */
 export function emptyLine(now: number, locale?: string): string {
   const since = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(now - 30 * 24 * 3_600_000);
-  return `Work has had nothing to tell you since ${since}.`;
+  return `Nothing since ${since}`;
+}
+
+const named = (names: readonly string[]): string => (names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
+
+/** "The Mac did not answer", "The Mac and the box did not answer". */
+export function unansweredLine(names: readonly string[]): string {
+  return names.length === 0 ? "" : `${named(names)} did not answer`;
+}
+
+/** A setting some hosts would not take: "The Mac did not take it". */
+export function refusedLine(names: readonly string[]): string {
+  return names.length === 0 ? "" : `${named(names)} did not take it`;
 }

@@ -46,15 +46,31 @@ export function digestLine(count: number, jobs: readonly string[]): string {
   return `Digest: ${where ? `${things(count)} in ${where}` : things(count)}`
 }
 
+/** A title in a line of several is cut here, so one long title cannot crowd the others out. */
+const NOW_TITLE_MAX = 60
+const short = (text: string, max: number): string => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`)
+
 /**
  * Every open interrupt in one line, so a banner that replaced another still
  * says everything: the one title alone, else "2 things need you: Budget
- * review starts in 10 min; Sign-in to Frame.io ends today".
+ * review starts in 10 min; Sign-in to Frame.io ends today". Each title is
+ * cut short before they are joined, and what still does not fit is counted
+ * ("and 2 more"): no open thing is left out without a word.
  */
 export function nowLine(titles: readonly string[], max = 200): string {
   if (titles.length <= 1) return titles[0] ?? ''
-  const line = `${titles.length} things need you: ${titles.join('; ')}`
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line
+  const head = `${titles.length} things need you: `
+  const said: string[] = []
+  for (const [i, title] of titles.entries()) {
+    const left = titles.length - i - 1
+    const next = [...said, short(title, NOW_TITLE_MAX)].join('; ')
+    // Room is kept for the count of what would be left out after this one.
+    const tail = left > 0 ? `; and ${left} more` : ''
+    if (said.length > 0 && head.length + next.length + tail.length > max) break
+    said.push(short(title, NOW_TITLE_MAX))
+  }
+  const left = titles.length - said.length
+  return short(`${head}${said.join('; ')}${left > 0 ? `; and ${left} more` : ''}`, max)
 }
 
 /** A sector key as a job's name where no workspace name is at hand: "purdue" reads "Purdue". */

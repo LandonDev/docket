@@ -1,3 +1,4 @@
+import { nowLine } from '@shared/work/digest'
 import { describe, expect, it, vi } from 'vitest'
 import type { DigestDay } from '@shared/contract-work-digest'
 import type { TellRow } from '@shared/work/tell'
@@ -39,7 +40,7 @@ describe('an interrupt', () => {
     const r = row({ key: 'prep:ev1', by: 9_000, detail: 'With Dana Reyes', open: { view: 'agenda', workspaceId: 'ws-purdue', at: 'ev1' } })
     expect(deliverer.now(r, [r])).toBe(true)
     expect(work).toEqual([
-      { title: 'Purdue', body: 'Budget review starts at 2:00 PM: With Dana Reyes', urgent: true, work: { key: NOW_KEY, tell: 'prep:ev1', by: 9_000, open: { view: 'agenda', workspaceId: 'ws-purdue', at: 'ev1' } } }
+      { title: 'Purdue', body: 'Budget review starts at 2:00 PM\nWith Dana Reyes', urgent: true, work: { key: NOW_KEY, tell: 'prep:ev1', by: 9_000, open: { view: 'agenda', workspaceId: 'ws-purdue', at: 'ev1' } } }
     ])
   })
   it('names every one still open when more than one is, so a banner that replaced another says everything, and opens the list', () => {
@@ -48,6 +49,15 @@ describe('an interrupt', () => {
     const b = row({ key: 'lapse:frameio:1', kind: 'connections.ending', sector: null, workspaceId: null, title: 'Sign-in to Frame.io ends today', open: { settings: 'connections' } })
     deliverer.now(b, [a, b])
     expect(work).toEqual([{ title: 'Work', body: '2 things need you: Budget review starts at 2:00 PM; Sign-in to Frame.io ends today', urgent: true, work: { key: NOW_KEY, tell: 'lapse:frameio:1' } }])
+  })
+  it('cuts each title short before joining them and counts what does not fit, so one long title never crowds another out', () => {
+    const long = 'A sign-in that ends today and has a very long name indeed, longer than a banner could ever show in one go'
+    expect(nowLine([long, 'Budget review starts at 2:00 PM'])).toBe(`2 things need you: ${long.slice(0, 59).trimEnd()}…; Budget review starts at 2:00 PM`)
+    const many = nowLine(Array.from({ length: 9 }, (_, i) => `Thing number ${i + 1} cannot wait any longer than this`))
+    expect(many.length).toBeLessThanOrEqual(200)
+    expect(many.startsWith('9 things need you: Thing number 1 cannot wait')).toBe(true)
+    expect(many).toMatch(/; and \d more$/)
+    expect(nowLine(['Only this'])).toBe('Only this')
   })
   it("leaves out of the fold one that went out on its own thread: that banner is its own", () => {
     const { deliverer, work } = rig()

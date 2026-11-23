@@ -197,7 +197,7 @@ describe("an interrupt's toast", () => {
     w().rows.set("mac", [{ ...meeting(), host: "mac" }]);
     await mount();
     expect(shown()).toMatchObject([{ id: "work-now:k:prep:ev1", kind: "warning", text: "Budget review starts at 2:00 PM", description: "With Dana Reyes", sticky: true, label: "Open" }]);
-    expect(bridge.show).toHaveBeenCalledWith({ key: "work-now:k:prep:ev1", title: "Purdue", body: "Budget review starts at 2:00 PM: With Dana Reyes" });
+    expect(bridge.show).toHaveBeenCalledWith({ key: "work-now:k:prep:ev1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes" });
   });
 
   it("its press moves the window to the job and opens the view on the thing, and the toast is gone for good", async () => {
@@ -252,6 +252,26 @@ describe("an interrupt's toast", () => {
     await act(async () => shown()[0]!.action());
     expect(await screen.findByRole("heading", { name: "Digest" })).toBeTruthy();
     expect(screen.getByText("Thing 3")).toBeTruthy();
+  });
+
+  it("a close reads what the toast stands for now: one of four told again under the same words is closed with the rest", async () => {
+    const rows = Array.from({ length: 4 }, (_, i) => tell({ key: `k${i}`, title: `Thing ${i}`, how: "now", toldAt: at(24, 9, i) }));
+    w().rows.set("box", rows);
+    await mount();
+    expect(shown()).toMatchObject([{ id: "work-now", text: "4 things need you now" }]);
+    // Told again later: the same four, the same words, so the toast is not drawn again.
+    await act(async () => push(w(), "box", { row: { ...rows[0]!, toldAt: at(24, 9, 30) } }));
+    await settle();
+    expect(shown()).toHaveLength(1);
+    // He closes it, as sonner's close button does.
+    await act(async () => {
+      const toast = shown()[0]! as unknown as { dismiss: () => void };
+      toasts.shown.clear();
+      toast.dismiss();
+    });
+    await settle();
+    // Every row it stood for is closed, the new telling too: nothing comes back.
+    expect(shown()).toEqual([]);
   });
 
   it("a day after it was told it leaves the window on its own", async () => {

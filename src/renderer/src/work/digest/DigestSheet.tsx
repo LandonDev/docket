@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { sectorName } from "@shared/work/digest";
 import type { TellRow } from "@shared/work/tell";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
-import { TruncateTip } from "../../components/tip";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { Item, ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
@@ -10,7 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/u
 import { Skeleton } from "../../components/ui/skeleton";
 import { useEnvironments } from "../../lib/connection";
 import { cn } from "../../lib/cn";
-import { emptyLine, listSections, rowWhen } from "./notice";
+import { emptyLine, listSections, rowWhen, unansweredLine } from "./notice";
 import { routeOf } from "./open";
 import { loadDigest, type DigestView } from "./store";
 
@@ -21,13 +21,6 @@ import { loadDigest, type DigestView } from "./store";
  * rail. One flat list a day; the job's dot is the only colour.
  */
 
-/** "The Mac did not answer", "The Mac and the box did not answer". */
-export function unansweredLine(names: readonly string[]): string {
-  if (names.length === 0) return "";
-  const said = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `${said} did not answer`;
-}
-
 const ROW = "-mx-2 w-[calc(100%+1rem)] flex-nowrap items-start gap-2 rounded-md px-2 py-1.5";
 
 function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) {
@@ -35,12 +28,14 @@ function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) 
     <>
       {/* On the title's line: a 16px box on a 20px line. */}
       <SectorDot sector={row.sector} className="mt-0.5" />
-      <span className="flex min-w-0 flex-1 flex-col">
-        {/* A title cut by a long clock says itself whole on hover. */}
-        <TruncateTip text={row.title}>
-          <span className="truncate text-[13px] font-medium leading-5 text-foreground">{row.title}</span>
-        </TruncateTip>
-        {row.detail ? <span className="truncate text-xs leading-4 text-muted-foreground">{row.detail}</span> : null}
+      {/* The list is the record: a long title or detail wraps, it is never cut. */}
+      <span className="flex min-w-0 flex-1 flex-col wrap-anywhere">
+        <span className="text-[13px] font-medium leading-5 text-foreground">
+          {/* The dot is the job to the eye alone: a screen reader hears its name. */}
+          {row.sector ? <span className="sr-only">{sectorName(row.sector)}: </span> : null}
+          {row.title}
+        </span>
+        {row.detail ? <span className="text-xs leading-4 text-muted-foreground">{row.detail}</span> : null}
       </span>
       <span className="shrink-0 ps-2 text-xs leading-5 text-muted-foreground tabular-nums">{rowWhen(row, now, undefined, day)}</span>
     </>
@@ -94,8 +89,14 @@ export function DigestList({
   /** "The Mac did not answer", or "" when every host did */
   unanswered: string;
   onOpenRow: (row: TellRow) => void;
-  onRetry: () => void;
+  onRetry: () => Promise<void>;
 }) {
+  // A retry on its way says so, and cannot be pressed twice.
+  const [retrying, setRetrying] = useState(false);
+  const retry = (): void => {
+    setRetrying(true);
+    void onRetry().finally(() => setRetrying(false));
+  };
   if (!view.loaded) return <ListSkeleton />;
   const sections = listSections(view, now);
   if (sections.length === 0) {
@@ -107,16 +108,15 @@ export function DigestList({
           <EmptyDescription>{unanswered}.</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button variant="secondary" size="sm" onClick={onRetry}>
-            Retry
+          <Button variant="secondary" size="sm" disabled={retrying} onClick={retry}>
+            <BusyLabel busy={retrying} label="Retry" />
           </Button>
         </EmptyContent>
       </Empty>
     ) : (
       <Empty>
         <EmptyHeader>
-          <EmptyTitle>Nothing waited</EmptyTitle>
-          <EmptyDescription>{emptyLine(now)}</EmptyDescription>
+          <EmptyTitle>{emptyLine(now)}</EmptyTitle>
         </EmptyHeader>
       </Empty>
     );
@@ -146,8 +146,8 @@ export function DigestList({
       {unanswered ? (
         <div className="flex items-center gap-2">
           <p className="min-w-0 flex-1 text-xs text-muted-foreground">{unanswered}</p>
-          <Button variant="ghost" size="xs" onClick={onRetry}>
-            Retry
+          <Button variant="ghost" size="xs" disabled={retrying} onClick={retry}>
+            <BusyLabel busy={retrying} label="Retry" />
           </Button>
         </div>
       ) : null}
@@ -186,7 +186,7 @@ export function DigestSheet({
           <SheetTitle>Digest</SheetTitle>
         </SheetHeader>
         <div className={DIGEST_BODY}>
-          <DigestList view={view} now={now} unanswered={unanswered} onOpenRow={onOpenRow} onRetry={() => void loadDigest()} />
+          <DigestList view={view} now={now} unanswered={unanswered} onOpenRow={onOpenRow} onRetry={loadDigest} />
         </div>
       </SheetContent>
     </Sheet>

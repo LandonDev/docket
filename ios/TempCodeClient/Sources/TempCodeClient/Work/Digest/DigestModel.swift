@@ -223,10 +223,17 @@ public enum DigestModel {
         return plain("\(row.title) \(row.detail ?? "")").contains(plain(clock))
     }
 
-    /// The empty list's one line: since when Work has had nothing to tell him (the ledger keeps 30 days).
+    /// The empty list's one line, its title: since when Work has had nothing to tell him (the ledger keeps 30 days).
     public nonisolated static func emptyLine(now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
         let since = calendar.date(byAdding: .day, value: -30, to: now) ?? now
-        return "Work has had nothing to tell you since \(format(since, "MMMd", calendar, locale))."
+        return "Nothing Since \(format(since, "MMMd", calendar, locale))"
+    }
+
+    /// What VoiceOver says of a row: the job first (the dot says it to the eye alone), then the row's
+    /// words and its time. A row about no one job starts at its title.
+    public nonisolated static func spoken(_ row: TellRow, when: String) -> String {
+        let job = row.sector.map { $0.prefix(1).uppercased() + $0.dropFirst() }
+        return ([job, row.title, row.detail?.isEmpty == false ? row.detail : nil, when] as [String?]).compactMap { $0 }.joined(separator: ", ")
     }
 
     // MARK: - where a press goes

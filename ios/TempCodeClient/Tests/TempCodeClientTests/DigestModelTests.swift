@@ -179,7 +179,12 @@ import TempCodeContract
     }
 
     @Test func `nothing at all says since when`() {
-        #expect(DigestModel.emptyLine(now: now, calendar: calendar, locale: locale) == "Work has had nothing to tell you since Oct 24.")
+        #expect(DigestModel.emptyLine(now: now, calendar: calendar, locale: locale) == "Nothing Since Oct 24")
+    }
+
+    @Test func `a row is spoken with its job first, which the dot says to the eye alone`() {
+        #expect(DigestModel.spoken(row("r", sector: "cosmic", title: "Morning summary", at: ms(23, 9)), when: "9:00 AM") == "Cosmic, Morning summary, 9:00 AM")
+        #expect(DigestModel.spoken(row("r", sector: nil, title: "4 captures to sort", at: ms(23, 9)), when: "9:00 AM") == "4 captures to sort, 9:00 AM")
     }
 
     // MARK: - where a press goes

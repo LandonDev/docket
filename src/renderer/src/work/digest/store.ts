@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { DigestDay, DigestList, DigestSettings } from "@shared/contract-work-digest";
-import type { TellGroup, TellLevel, TellRow } from "@shared/work/tell";
+import { DEFAULT_LEVEL } from "@shared/work/digest";
+import { TELL_GROUPS, type TellGroup, type TellLevel, type TellRow } from "@shared/work/tell";
 import { registry } from "../../lib/connection";
 import { workSwitch } from "../../lib/workSwitch";
 
@@ -31,7 +32,7 @@ export type DigestView = {
   days: MergedDay[];
   /** newest first; one row a key across hosts */
   rows: HostTell[];
-  /** the first host that answered: the hosts are written alike */
+  /** the host's that were set last: the hosts are written alike, and one that missed a write is brought to these */
   settings: DigestSettings | null;
   /** every host with Work on has answered once, or failed to */
   loaded: boolean;
@@ -76,6 +77,59 @@ export function mergeDays(lists: readonly { environmentId: string; days: readonl
   return [...byDay.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
 }
 
+/** The settings set last; with none ever set, the first host's. */
+export function newestSettings(all: readonly DigestSettings[]): DigestSettings | null {
+  return all.reduce<DigestSettings | null>((best, s) => (!best || (s.setAt ?? 0) > (best.setAt ?? 0) ? s : best), null);
+}
+
+/** What he set, as one string: two hosts written alike say the same. */
+const said = (s: DigestSettings): string => `${s.at} ${TELL_GROUPS.map((g) => s.levels[g] ?? DEFAULT_LEVEL).join(" ")}`;
+
+/**
+ * The hosts whose settings are not the newest, and the write that brings
+ * them to it; null when they agree or none was ever set (nothing says which
+ * is right). A host that missed a write (it was away, or refused) is the case.
+ */
+export function staleSettings(all: readonly { environmentId: string; settings: DigestSettings }[]): { hosts: string[]; patch: { at: string; levels: Record<TellGroup, TellLevel> } } | null {
+  const newest = newestSettings(all.map((h) => h.settings));
+  if (!newest || newest.setAt === undefined) return null;
+  const stale = all.filter((h) => said(h.settings) !== said(newest)).map((h) => h.environmentId);
+  if (stale.length === 0) return null;
+  const levels = Object.fromEntries(TELL_GROUPS.map((g) => [g, newest.levels[g] ?? DEFAULT_LEVEL])) as Record<TellGroup, TellLevel>;
+  return { hosts: stale, patch: { at: newest.at, levels } };
+}
+
+let aligning = false;
+/** Writes of his own on their way: nothing is brought into line under them. */
+let writing = 0;
+/** After a host's settings are read: one that differs from the newest is written to it. A host that refuses is left as it is. */
+async function align(): Promise<void> {
+  if (aligning || writing > 0) return;
+  const on = [...workSwitch.hosts()].flatMap((environmentId) => {
+    const settings = hosts.get(environmentId)?.settings;
+    return settings ? [{ environmentId, settings }] : [];
+  });
+  const stale = staleSettings(on);
+  if (!stale) return;
+  aligning = true;
+  try {
+    await Promise.allSettled(
+      stale.hosts.map((environmentId) =>
+        registry
+          .linkOf(environmentId)
+          .request<DigestSettings>("work.digest.set", stale.patch)
+          .then((settings) => {
+            const state = hosts.get(environmentId);
+            if (state) hosts.set(environmentId, { ...state, settings });
+          }),
+      ),
+    );
+  } finally {
+    aligning = false;
+    changed();
+  }
+}
+
 function view(): DigestView {
   if (snapshot) return snapshot;
   const on = [...workSwitch.hosts()];
@@ -83,7 +137,7 @@ function view(): DigestView {
   snapshot = {
     days: mergeDays(states.map((h) => ({ environmentId: h.environmentId, days: h.state.days }))),
     rows: mergeRows(states.map((h) => h.state.rows)),
-    settings: states.find((h) => h.state.settings)?.state.settings ?? null,
+    settings: newestSettings(states.flatMap((h) => (h.state.settings ? [h.state.settings] : []))),
     loaded: on.length > 0 && on.every((id) => hosts.get(id)?.loaded),
     errors: states.filter((h) => h.state.error).map((h) => ({ environmentId: h.environmentId, error: h.state.error! })),
   };
@@ -107,6 +161,7 @@ export function loadHost(environmentId: string): Promise<void> {
     .finally(() => {
       loading.delete(environmentId);
       changed();
+      void align();
     });
   loading.set(environmentId, load);
   return load;
@@ -144,7 +199,8 @@ export function markSeen(days: readonly MergedDay[]): void {
 /** The time and the levels are written to every host with Work on; answers the hosts that refused, with why. */
 export async function setDigest(patch: { at?: string; levels?: Partial<Record<TellGroup, TellLevel>> }): Promise<{ environmentId: string; error: string }[]> {
   const on = [...workSwitch.hosts()];
-  const answers = await Promise.allSettled(on.map((id) => registry.linkOf(id).request<DigestSettings>("work.digest.set", patch)));
+  writing += 1;
+  const answers = await Promise.allSettled(on.map((id) => registry.linkOf(id).request<DigestSettings>("work.digest.set", patch))).finally(() => (writing -= 1));
   const refused: { environmentId: string; error: string }[] = [];
   answers.forEach((answer, i) => {
     const environmentId = on[i]!;
@@ -207,6 +263,8 @@ export function openTell(row: TellRow): void {
 export function resetDigestStore(): void {
   hosts.clear();
   loading.clear();
+  aligning = false;
+  writing = 0;
   sheetOpen = false;
   changed();
 }

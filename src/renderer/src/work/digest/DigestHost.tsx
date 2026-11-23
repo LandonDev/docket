@@ -142,6 +142,10 @@ export function DigestHost() {
     [dismiss, openRow],
   );
 
+  // A toast is drawn again only when its words change, so its presses read what it stands for now: the same words may
+  // come to mean another telling of the thing, or more rows than when it was drawn.
+  const live = useRef({ toasts, digest, openToast, openDigest });
+  live.current = { toasts, digest, openToast, openDigest };
   // A toast this code takes away is not one he closed.
   const taken = useRef(new Set<string>());
   useToastSync(
@@ -155,9 +159,9 @@ export function DigestHost() {
         description: toast.detail,
         duration: Infinity,
         closeButton: true,
-        action: { label: "Open", onClick: () => openToast(toast) },
+        action: { label: "Open", onClick: () => live.current.openToast(live.current.toasts.find((t) => t.id === id) ?? toast) },
         onDismiss: () => {
-          if (!taken.current.delete(id)) dismiss(toast.rows);
+          if (!taken.current.delete(id)) dismiss((live.current.toasts.find((t) => t.id === id) ?? toast).rows);
         },
       });
       return () => void taken.current.add(id);
@@ -174,10 +178,10 @@ export function DigestHost() {
         id,
         duration: Infinity,
         closeButton: true,
-        action: { label: "Open", onClick: openDigest },
+        action: { label: "Open", onClick: () => live.current.openDigest() },
         // Closed is seen: it does not come back on the next window.
         onDismiss: () => {
-          if (!taken.current.delete(id)) markSeen(notice.days);
+          if (!taken.current.delete(id)) markSeen((live.current.digest ?? notice).days);
         },
       });
       return () => void taken.current.add(id);
@@ -188,8 +192,6 @@ export function DigestHost() {
   // The same two things as system notifications, for a person looking at another app (src/main/notice.ts).
   const system = useMemo(() => systemNotices(digest, toasts), [digest, toasts]);
   const asked = useRef(new Map<string, string>());
-  const actions = useRef({ openDigest, openToast, toasts });
-  actions.current = { openDigest, openToast, toasts };
   useEffect(() => {
     const next = new Map(system.map((n) => [n.key, n.body]));
     for (const key of asked.current.keys()) if (!next.has(key)) void systemNotice.close(key);
@@ -198,9 +200,9 @@ export function DigestHost() {
   }, [system]);
   useEffect(() => {
     const off = systemNotice.onOpen((key) => {
-      if (key.startsWith("digest:")) return actions.current.openDigest();
-      const toast = actions.current.toasts.find((t) => t.id === key);
-      if (toast) actions.current.openToast(toast);
+      if (key.startsWith("digest:")) return live.current.openDigest();
+      const toast = live.current.toasts.find((t) => t.id === key);
+      if (toast) live.current.openToast(toast);
     });
     return () => {
       off();

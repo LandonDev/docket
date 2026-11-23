@@ -167,6 +167,14 @@ interface ThreadState {
 
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 const firstLine = (text: string): string => oneLine(text.split(/\r?\n/).find((l) => l.trim()) ?? '')
+/** At most two lines, each cleaned as one: a notice of Work's says a thing's title and its detail on a line each. */
+const twoLines = (text: string): string =>
+  text
+    .split(/\r?\n/)
+    .map(oneLine)
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('\n')
 const cut = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max - 1)}…`
 
@@ -579,14 +587,14 @@ export class Notifier {
       kind: n.urgent ? 'waiting' : 'finished',
       title: cut(oneLine(n.title) || 'Work', 120),
       ...(n.subtitle ? { subtitle: cut(oneLine(n.subtitle), 80) } : {}),
-      body: cut(oneLine(n.body), BODY_CHARS),
+      body: cut(twoLines(n.body), BODY_CHARS),
       ts: this.now(),
       seq: 0,
       ...(hostName ? { hostName: cut(oneLine(hostName), 80) } : {}),
       ...(present ? { onScreen: true as const } : {}),
       work: n.work
     }
-    this.log(`${notice.event} work ${n.work.key}: ${notice.body}${notice.onScreen ? ' (at a desktop)' : ''}`)
+    this.log(`${notice.event} work ${n.work.key}: ${oneLine(notice.body)}${notice.onScreen ? ' (at a desktop)' : ''}`)
     this.send(notice)
   }
 

@@ -15,7 +15,7 @@ vi.mock("../../lib/connection", async (original) => {
 });
 
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { DigestSheet, unansweredLine } from "./DigestSheet";
+import { DigestSheet } from "./DigestSheet";
 import { digestNow, loadDigest, mergeDays, mergeRows, resetDigestStore, useDigest } from "./store";
 import { push, resetWorld, tell, type World } from "./world.testkit";
 
@@ -51,7 +51,7 @@ describe("the list", () => {
     // Before any host has answered: rows in their shape, no words.
     const waiting = render(<DigestSheet open onOpenChange={() => {}} view={{ days: [], rows: [], settings: null, loaded: false, errors: [] }} now={NOW} onOpenRow={() => {}} />);
     expect(screen.getByLabelText("Loading")).toBeTruthy();
-    expect(screen.queryByText("Nothing waited")).toBeNull();
+    expect(screen.queryByText(/^Nothing since/)).toBeNull();
     waiting.unmount();
     render(<Sheet />);
     await waitFor(() => expect(screen.queryByLabelText("Loading")).toBeNull());
@@ -59,7 +59,11 @@ describe("the list", () => {
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Since the digest", "Today, 8:00 AM", "Yesterday"]);
     const today = within(screen.getByRole("region", { name: "Today, 8:00 AM" }));
     // by job, then newest: Cosmic before Purdue
-    expect(today.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Morning summaryDone in 12m7:30 AM", "Held: Invite Dana Reyes to Budget reviewby Nov 26, 2:00 PM"]);
+    // each row names its job to a screen reader: the dot says it to the eye alone
+    expect(today.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Cosmic: Morning summaryDone in 12m7:30 AM", "Purdue: Held: Invite Dana Reyes to Budget reviewby Nov 26, 2:00 PM"]);
+    expect(today.getAllByRole("listitem").map((li) => li.querySelector(".sr-only")?.textContent)).toEqual(["Cosmic: ", "Purdue: "]);
+    // the list is the record: a long title wraps, it is never cut
+    expect(document.querySelector("[role=dialog] .truncate")).toBeNull();
     // the job's dot is each row's only colour
     expect(today.getAllByRole("listitem").map((li) => li.querySelector("[data-sector]")?.getAttribute("data-sector"))).toEqual(["cosmic", "purdue"]);
     // a row with nowhere to go is not a button
@@ -80,8 +84,9 @@ describe("the list", () => {
 
   it("with nothing told it is one empty state, and no section", async () => {
     render(<Sheet />);
-    expect(await screen.findByText("Nothing waited")).toBeTruthy();
-    expect(screen.getByText("Work has had nothing to tell you since Oct 25.")).toBeTruthy();
+    // one line: nothing is said twice
+    expect(await screen.findByText("Nothing since Oct 25")).toBeTruthy();
+    expect(document.querySelector("[data-slot=empty-description]")).toBeNull();
     expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
@@ -95,6 +100,9 @@ describe("the list", () => {
     w().down.delete("mac");
     w().rows.set("mac", [tell({ host: "mac", title: "Thumbnail review is ready", sector: "hypixel" })]);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    // on its way it says so and takes no second press
+    expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-slot=busy-label][data-busy]")).toBeTruthy();
     expect(await screen.findByText("Thumbnail review is ready")).toBeTruthy();
     expect(screen.queryByText("The Mac did not answer")).toBeNull();
   });
@@ -105,7 +113,7 @@ describe("the list", () => {
     render(<Sheet />);
     expect(await screen.findByText("The digest did not load")).toBeTruthy();
     expect(screen.getByText("The box and The Mac did not answer.")).toBeTruthy();
-    expect(screen.queryByText("Nothing waited")).toBeNull();
+    expect(screen.queryByText(/^Nothing since/)).toBeNull();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 });
@@ -134,10 +142,5 @@ describe("the store", () => {
     expect(digestNow().rows.map((r) => r.title)).toEqual(["Second"]);
     push(w(), "box", { day: { day: "2026-11-24", madeAt: 100, seenAt: 200, count: 1 } });
     expect(digestNow().days[0]!.seenAt).toBe(200);
-  });
-  it("says which hosts did not answer, in words", () => {
-    expect(unansweredLine([])).toBe("");
-    expect(unansweredLine(["The Mac"])).toBe("The Mac did not answer");
-    expect(unansweredLine(["The box", "The Mac", "The PC"])).toBe("The box, The Mac and The PC did not answer");
   });
 });

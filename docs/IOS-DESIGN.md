@@ -2364,7 +2364,7 @@ phone does everything the desktop does. What milestone 46 built:
   not already say, a day that is not today named; else when it was told, its
   day named only when it is not the day of the row's heading). The dot is the only colour; no counts,
   no chips. A row the phone has no screen for is not a button. Loading draws
-  the rows' shape; empty is "Nothing Waited"; a host that did not answer is
+  the rows' shape; empty is one line, "Nothing Since Oct 24"; VoiceOver says a row's job before its title; a host that did not answer is
   one meta line at the foot. Settings → Work has its Digest section after the
   group with the Work switch and LifeOS, only while some host has Work on:
   Time, then Held items, Routine results, Messages and mail and Meetings, each

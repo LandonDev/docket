@@ -1834,7 +1834,8 @@ export type WireSchemaPins = [
   Expect<Equal<z.infer<typeof TellHowSchema>, TellHow>>,
   Expect<Mirror<typeof DigestDayWireSchema, DigestDay>>,
   Expect<Reads<typeof DigestListPhoneSchema, DigestList>>,
-  Expect<Mirror<typeof DigestSettingsWireSchema, DigestSettings>>,
+  // The phone leaves `setAt` out: only a desktop window brings hosts to the newest.
+  Expect<Reads<typeof DigestSettingsWireSchema, DigestSettings>>,
   Expect<Mirror<typeof CanvasItemSchema, CanvasItem>>,
   Expect<Mirror<typeof MailSendAnswerSchema, MailSendAnswer>>,
   Expect<Mirror<typeof GuestCreatedSchema, GuestCreated>>,

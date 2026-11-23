@@ -58,7 +58,7 @@ export function DigestSheetPreview({ state = "full" }: { state?: SheetState }) {
         <h2 className="text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">Digest</h2>
       </div>
       <div className={DIGEST_BODY}>
-        <DigestList view={view} now={NOW} unanswered={state === "hostDown" ? "The Mac did not answer" : ""} onOpenRow={() => {}} onRetry={() => {}} />
+        <DigestList view={view} now={NOW} unanswered={state === "hostDown" ? "The Mac did not answer" : ""} onOpenRow={() => {}} onRetry={async () => {}} />
       </div>
     </div>
   );
@@ -82,11 +82,13 @@ const link = {
 export function DigestSettingsPreview({ state = "default" }: { state?: SettingsState }) {
   if (seeded !== state) {
     seeded = state;
-    Object.assign(registry, { primary: () => link, linkOf: () => link, link: () => link });
+    // The host by name, as the window knows it: a failure names it.
+    const environments = [{ id: "local", name: "The Mac", platform: "darwin" }];
+    Object.assign(registry, { primary: () => link, linkOf: () => link, link: () => link, environmentsSnapshot: () => environments });
     resetDigestStore();
     setWorkOn("local", true);
     if (state === "loading") seedDigestHost("local", { loaded: false });
-    else if (state === "failed") seedDigestHost("local", { settings: null, error: "The Mac did not answer" });
+    else if (state === "failed") seedDigestHost("local", { settings: null, error: "socket closed" });
     else seedDigestHost("local", { settings: state === "changed" ? { ...SETTINGS, at: "07:30", levels: { held: "now", results: "digest" } } : SETTINGS });
   }
   return (

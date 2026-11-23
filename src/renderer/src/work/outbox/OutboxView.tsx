@@ -20,6 +20,7 @@ import { IS_MAC } from "../../lib/platform";
 import { storeTitleOf } from "../../lib/threadMentions";
 import { useEnvironments } from "../../lib/connection";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
+import { registerToastAnchor } from "../../lib/toastAnchor";
 import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import { Facts } from "../../surfaces/settings/hosts/Facts";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -867,10 +868,11 @@ function TickedDetail({ items, onClear, onSend }: { items: HostItem[]; onClear: 
   );
 }
 
-/** The detail's foot: the hairline across the pane, its verbs in the detail's own 640px column so they line up with the text. */
+/** The detail's foot: the hairline across the pane, its verbs in the detail's own 640px column so they line up with the text. The toast stack sits above it (`registerToastAnchor`): a notice that stays never covers Send. */
 function VerbBar({ children }: { children: React.ReactNode }) {
   return (
-    <div className="shrink-0 border-t border-border">
+    // Not inside a sheet (Today's held item): a sheet lies over the toasts, and a stack seated there would show cut by its edge.
+    <div ref={(el) => (el && !el.closest("[role=dialog]") ? registerToastAnchor(el) : undefined)} data-outbox-verbs className="shrink-0 border-t border-border">
       <div className="mx-auto flex min-h-14 w-full max-w-[640px] items-center gap-2 px-8 py-3 @max-[40rem]/outbox:px-4">{children}</div>
     </div>
   );

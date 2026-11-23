@@ -106,6 +106,7 @@ vi.mock("../../lib/connection", async (original) => {
 
 vi.mock("../../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
+import { toastAnchor } from "../../lib/toastAnchor";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { batchVerb, canEdit, OutboxView, rowWords } from "./OutboxView";
 import { loadOutbox, resetOutboxStore, wantOutboxItem } from "./store";
@@ -183,6 +184,14 @@ describe("the Outbox", () => {
     expect(screen.getByText(/About Budget\./)).toBeTruthy();
     fireEvent.click(screen.getByText("Post message with Slack"));
     expect(screen.getByText("staff")).toBeTruthy();
+  });
+
+  it("seats the toast stack above an open item's verbs, so a notice that stays never covers Send", async () => {
+    await open();
+    await waitFor(() => expect(toastAnchor()?.hasAttribute("data-outbox-verbs")).toBe(true), { timeout: 5000 });
+    expect(within(toastAnchor()!).getByRole("button", { name: "Send" })).toBeTruthy();
+    cleanup();
+    expect(toastAnchor()).toBeNull();
   });
 
   it("opens on the item a notice asked for, not the first: even when the lists it mounts with are from before that item was made", async () => {

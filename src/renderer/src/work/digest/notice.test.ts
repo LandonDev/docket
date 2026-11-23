@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, openInterrupts, rowWhen, systemNotices, tellingOf } from "./notice";
+import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, unansweredLine } from "./notice";
 import type { MergedDay } from "./store";
 
 /** What the desktop shows of the digest, as rules over made-up rows. */
@@ -41,9 +41,13 @@ describe("the digest's notice", () => {
   it("is gone once the day is seen anywhere, and says nothing of a day whose rows have all gone", () => {
     expect(digestNotice({ days: [day("2026-11-24", { seenAt: 9 })], rows: [row({ day: "2026-11-24", how: "digest" })] })).toBeNull();
     expect(digestNotice({ days: [day("2026-11-24")], rows: [] })).toBeNull();
-    // one he was told of at once is in the day's list, not in its count
-    expect(digestNotice({ days: [day("2026-11-24")], rows: [row({ day: "2026-11-24", how: "now", toldAt: 5 })] })).toBeNull();
+    // one he was told of at once, before the day was made, is in the day's list, not in its count
+    expect(digestNotice({ days: [day("2026-11-24")], rows: [row({ day: "2026-11-24", how: "now", toldAt: at(24, 7) })] })).toBeNull();
     expect(digestNotice({ days: [], rows: [row()] })).toBeNull();
+  });
+  it("keeps saying a thing that waited and whose clock came due after the day was made: the day is still not opened", () => {
+    const waited = row({ day: "2026-11-24", how: "now", toldAt: at(24, 9), sector: "purdue" });
+    expect(digestNotice({ days: [day("2026-11-24")], rows: [waited] })!.line).toBe("Digest: 1 thing in Purdue");
   });
 });
 
@@ -85,7 +89,8 @@ describe("the system notifications", () => {
     const digest = digestNotice({ days: [day("2026-11-24")], rows: [row({ day: "2026-11-24", how: "digest" })] });
     expect(systemNotices(digest, nowToasts([a]))).toEqual([
       { key: "digest:2026-11-24", title: "Work", body: "Digest: 1 thing in Cosmic", silent: true },
-      { key: "work-now:k:prep:1", title: "Purdue", body: "Budget review starts at 2:00 PM: With Dana Reyes" },
+      // the detail on a line of its own: a title that holds a colon is never joined to it by another
+      { key: "work-now:k:prep:1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes" },
     ]);
     const many = Array.from({ length: 4 }, (_, i) => row({ key: `k${i}`, how: "now", toldAt: i + 1 }));
     expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now", title: "Work", body: "4 things need you now" }]);
@@ -144,7 +149,20 @@ describe("the list", () => {
     // whichever space the host's formatter put before PM
     expect(rowWhen({ title: "Budget review starts at 2:00\u202fPM", at: at(24, 13, 50), by: at(24, 14) }, at(24, 13, 55), "en-US")).toBe("1:50 PM");
   });
-  it("says since when Work has had nothing to tell: the thirty days the ledger keeps", () => {
-    expect(emptyLine(at(24, 10), "en-US")).toBe("Work has had nothing to tell you since Oct 25.");
+  it("says in one line since when Work has had nothing to tell: the thirty days the ledger keeps", () => {
+    expect(emptyLine(at(24, 10), "en-US")).toBe("Nothing since Oct 25");
+  });
+  it("yesterday is the calendar day before, also on the night the clocks go back", () => {
+    // Nov 1, 2026, 11:30 PM in a zone that fell back that morning: 24 hours earlier is still Nov 1 there.
+    const late = new Date(2026, 10, 1, 23, 30).getTime();
+    const view = { days: [day("2026-10-31", { madeAt: new Date(2026, 9, 31, 8).getTime() })], rows: [row({ day: "2026-10-31", how: "digest" })] };
+    expect(listSections(view, late, "en-US").map((s) => s.title)).toEqual(["Yesterday"]);
+  });
+  it("names the hosts that did not answer or did not take a setting, in his words", () => {
+    expect(unansweredLine([])).toBe("");
+    expect(unansweredLine(["The Mac"])).toBe("The Mac did not answer");
+    expect(unansweredLine(["The box", "The Mac", "The PC"])).toBe("The box, The Mac and The PC did not answer");
+    expect(refusedLine([])).toBe("");
+    expect(refusedLine(["The box", "The Mac"])).toBe("The box and The Mac did not take it");
   });
 });

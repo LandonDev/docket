@@ -16,12 +16,12 @@ export interface NoticeWords {
 /** A row's job as a notice names it. */
 export type JobName = (row: Pick<TellRow, 'workspaceId' | 'sector'>) => string | null
 
-/** One row as a line: its title, then its detail. */
-export const rowLine = (row: Pick<TellRow, 'title' | 'detail'>): string => (row.detail ? `${row.title}: ${row.detail}` : row.title)
+/** One row as a notice's body: its title, and its detail on a line of its own (never joined by a colon: most titles hold one already). */
+export const rowLines = (row: Pick<TellRow, 'title' | 'detail'>): string => (row.detail ? `${row.title}\n${row.detail}` : row.title)
 
 /** A thing that cannot wait. One open: the job, then the row. More: "Work", then every open one in a line, so a banner that replaced another still says everything. */
 export function nowWords(open: readonly TellRow[], jobOf: JobName): NoticeWords {
-  if (open.length === 1) return { title: jobOf(open[0]!) ?? 'Work', body: rowLine(open[0]!).slice(0, 200) }
+  if (open.length === 1) return { title: jobOf(open[0]!) ?? 'Work', body: rowLines(open[0]!) }
   return { title: 'Work', body: nowLine(open.map((r) => r.title)) }
 }
 

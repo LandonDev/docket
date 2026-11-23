@@ -90,7 +90,8 @@ struct DigestScreen: View {
         .listStyle(.plain)
         .overlay {
             if sections.isEmpty && !screen.reading && screen.silent.isEmpty {
-                ContentUnavailableView("Nothing Waited", systemImage: Self.glyph, description: Text(DigestModel.emptyLine(now: now)))
+                // One line: the title says since when, and nothing is said twice under it.
+                ContentUnavailableView(DigestModel.emptyLine(now: now), systemImage: Self.glyph)
             }
         }
         .refreshable { await load(hosts) }
@@ -129,6 +130,8 @@ private struct DigestRow: View {
     let now: Date
 
     private var row: TellRow { entry.row }
+    /// The job by name for VoiceOver: on screen the dot alone says it.
+    private var spoken: String { DigestModel.spoken(row, when: DigestModel.when(row, now: now, day: day)) }
 
     var body: some View {
         if let route = DigestModel.route(row.open, environmentId: entry.environmentId) {
@@ -136,11 +139,13 @@ private struct DigestRow: View {
                 .buttonStyle(.pressable)
                 .listRowInsets(Layout.rowInsets)
                 .accessibilityElement(children: .combine)
+                .accessibilityLabel(spoken)
                 .accessibilityIdentifier("digest-row")
         } else {
             content
                 .listRowInsets(Layout.rowInsets)
                 .accessibilityElement(children: .combine)
+                .accessibilityLabel(spoken)
                 .accessibilityIdentifier("digest-row")
         }
     }

@@ -53,7 +53,7 @@ export function linkOf(world: World, env: string) {
         case "work.digest.set": {
           if (world.refuses.has(env)) throw new Error("forbidden: needs admin");
           const before = world.settings.get(env) ?? SETTINGS;
-          const next = { ...before, ...(params.at ? { at: params.at as string } : {}), levels: { ...before.levels, ...((params.levels as object) ?? {}) } };
+          const next = { ...before, ...(params.at ? { at: params.at as string } : {}), levels: { ...before.levels, ...((params.levels as object) ?? {}) }, setAt: Date.now() };
           world.settings.set(env, next);
           return next;
         }

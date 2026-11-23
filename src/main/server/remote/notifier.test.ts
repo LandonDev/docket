@@ -749,11 +749,13 @@ describe("a notice of Work's with no thread", () => {
     expect(notifier.toldWork(digest.work)).toBe(false)
     expect(notifier.toldWork(digest.work)).toBe(false)
   })
-  it('is cut to one line as every notice is', () => {
-    notifier.work({ title: '', body: `Line one\nline two ${'x'.repeat(300)}`, urgent: false, work: digest.work })
+  it("keeps a thing's title and its detail on a line each, cut as every notice is", () => {
+    notifier.work({ title: '', body: `Line  one\n\n  line two\nline three ${'x'.repeat(300)}`, urgent: false, work: digest.work })
     expect(notices[0]!.title).toBe('Work')
-    expect(notices[0]!.body).toHaveLength(200)
-    expect(notices[0]!.body.startsWith('Line one line two')).toBe(true)
+    expect(notices[0]!.body).toBe('Line one\nline two')
+    notifier.work({ title: 'Ref', body: `Not sent: Send to League\n${'x'.repeat(300)}`, urgent: false, work: digest.work })
+    expect(notices[1]!.body).toHaveLength(200)
+    expect(notices[1]!.body.startsWith('Not sent: Send to League\nxxx')).toBe(true)
   })
 })
 

@@ -92,7 +92,8 @@ export class Digest {
     return nextDigest(this.at(), this.zone(), now)
   }
   settings(): DigestSettings {
-    return { at: this.at(), zone: this.zone(), levels: this.levels(), nextAt: this.nextAt() }
+    const setAt = Number(this.store.setting('setAt') ?? NaN)
+    return { at: this.at(), zone: this.zone(), levels: this.levels(), nextAt: this.nextAt(), ...(Number.isFinite(setAt) ? { setAt } : {}) }
   }
   set(patch: { at?: string; levels?: Partial<Record<TellGroup, TellLevel>> }): DigestSettings {
     if (patch.at && patch.at !== this.at()) {
@@ -105,6 +106,8 @@ export class Digest {
       for (const g of TELL_GROUPS) if (next[g] === DEFAULT_LEVEL) delete next[g]
       this.store.setSetting('levels', JSON.stringify(next))
     }
+    // When he last set them here: a window brings a host that missed a write to the newest (the renderer's store).
+    if (patch.at || patch.levels) this.store.setSetting('setAt', String(this.clock()))
     const settings = this.settings()
     this.o.push({ push: 'work.digest', settings })
     return settings

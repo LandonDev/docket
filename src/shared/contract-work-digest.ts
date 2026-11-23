@@ -56,6 +56,8 @@ export interface DigestSettings {
   levels: Partial<Record<TellGroup, TellLevel>>
   /** when the next digest is due */
   nextAt: number
+  /** when the time or a level was last set on this host; absent: never. Hosts are written alike, and one that missed a write is brought to the newest */
+  setAt?: number
 }
 
 /** A day was made or seen, a row was told or replaced, a row went (its id), or the settings changed. */

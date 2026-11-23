@@ -1468,28 +1468,39 @@ Around the canvas:
   fold into one ("4 things need you now") that opens the list. Both are
   also system notifications while no window of the app is in front, and
   only then: the title is the job's name ("Work" for the digest and for a
-  thing about no one job), the body the same words; the digest's is
-  silent. The list is a `Sheet` from the right, 480px, titled "Digest": no
+  thing about no one job), the body the same words, a thing's detail on a
+  line of its own (never joined by a colon: most titles hold one already);
+  the digest's is silent. A toast's presses read what it stands for at the
+  press, and a toast that stays never covers a control: the Outbox seats
+  the stack above an open item's verbs (`registerToastAnchor`). The list is a `Sheet` from the right, 480px, titled "Digest": no
   page, no rail row and no count, since Today owns the day's page.
   Sections by time, newest first, under 12px muted headings in 28px lines,
   16px apart: "Since the digest", "Today, 8:00 AM", "Yesterday", then
   dates. A row is the job's `SectorDot` on the title's line (a muted ring
   for a thing about no one job), the title at 13/20 medium, the detail
   12/16 muted under it, and at the row's end, 12px muted tabular, its clock
-  in words when it has one ("by 2:00 PM") else when it was told. The dot is
-  the only colour; a row he was told of at once reads as the rest. Rows of
+  in words when it has one ("by 2:00 PM") else when it was told. The list
+  is the record, so a long title or detail wraps and is never cut. The dot
+  is the only colour, and a screen reader hears the job's name before the
+  title; a row he was told of at once reads as the rest. Rows of
   a section go by job, then newest. The whole row is the press (`ROW_PRESS`
   on a box 8px past the words each side): it opens its target and the sheet
   closes; a row with nowhere to go is not a button. Loading is skeleton
-  rows in the rows' shape; nothing at all is one `Empty`, "Nothing waited";
-  a host that did not answer is one muted line at the foot with Retry, and
-  with no host answering the empty state says so instead of "Nothing
-  waited". Settings → Work → Digest is one section after Capture: Time (a
-  time field), then Held items, Routine results and Messages and mail,
-  each a select of three levels in his words ("In the digest", "When it
-  can't wait", "Right away"), all starting at the middle one; Open the
-  digest is the section's own verb on its heading line. No line explains a
-  row. A host that refused a change is that row's red line. The Go menu
+  rows in the rows' shape; nothing at all is one `Empty` of one line,
+  "Nothing since Oct 25" (the thirty days the ledger keeps); a host that
+  did not answer is one muted line at the foot with Retry, and with no
+  host answering the empty state says so instead. A Retry on its way is
+  the busy label and takes no second press. Settings → Work → Digest is
+  one section after Capture: Time (a time field, written once he stops
+  typing or leaves it), then Held items, Routine results, Messages and
+  mail and Meetings, each a select of three levels in his words ("In the
+  digest", "When it can't wait", "Right away"), all starting at the middle
+  one; Open the digest is the section's own verb on its heading line. No
+  line explains a row. The hosts that refused a change are that row's red
+  line by name ("The Mac did not take it"), until the row is written
+  everywhere; a failure is said in his words, never the link's own error
+  text. The section shows the settings set last, and a host that missed a
+  write is brought to them when the window reads it. The Go menu
   has Digest, greyed while no host has Work on.
 - **Settings for Work.** The settings list gains a Work heading after
   Threads: the Work page, then each Work workspace led by its sector's

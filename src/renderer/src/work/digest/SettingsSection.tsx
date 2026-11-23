@@ -1,19 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DEFAULT_LEVEL, GROUP_NAMES, LEVEL_NAMES } from "@shared/work/digest";
 import { TELL_LEVELS, type TellGroup, type TellLevel } from "@shared/work/tell";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { cn } from "../../lib/cn";
 import { useEnvironments } from "../../lib/connection";
+import { refusedLine, unansweredLine } from "./notice";
 import { loadDigest, openDigestSheet, setDigest, useDigest } from "./store";
 
 /**
  * Settings → Work → Digest (docs/DESIGN.md "The digest"): the time of the
- * day's one notice, and how loud three groups are. Every select starts at
+ * day's one notice, and how loud four groups are. Every select starts at
  * "When it can't wait"; louder and quieter are one step each way. A change
- * is written to every host with Work on; a host that refused is the row's
- * red line.
+ * is written to every host with Work on; the hosts that refused are named on
+ * the row's red line, which stays until that row is written everywhere.
  */
 
 /** The groups he sets, in the section's order. The rest stay at their clock and have no row. */
@@ -21,27 +23,45 @@ export const SETTING_GROUPS: readonly TellGroup[] = ["held", "results", "people"
 
 const LEVEL_CHOICES = TELL_LEVELS.map((value) => ({ value, label: LEVEL_NAMES[value] }));
 const AT = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** The time field's width and a level select's: the loading rows draw the same. */
+const AT_WIDTH = "w-32";
+const LEVEL_WIDTH = "w-44";
 
-type Refusal = { row: string; line: string };
+/** The time is written once he stops typing: a half-typed hour is not a time he chose. */
+const AT_REST_MS = 600;
 
 export function SettingsSection() {
   const view = useDigest();
   const environments = useEnvironments();
-  const [refused, setRefused] = useState<Refusal | null>(null);
+  const nameOf = (environmentId: string): string => environments.find((e) => e.id === environmentId)?.name ?? "A host";
+  // A row's red line: who refused its last write. It outlives edits to other rows.
+  const [refused, setRefused] = useState<Record<string, string>>({});
+  const [retrying, setRetrying] = useState(false);
   const settings = view.settings;
-  // The field holds what he types; the hosts take it once it is a whole time.
+  // The field holds what he types; the hosts take it once it is a whole time and he has stopped.
   const [at, setAt] = useState<string | null>(null);
+  const rest = useRef<number | null>(null);
   useEffect(() => {
     void loadDigest();
+    return () => {
+      if (rest.current !== null) window.clearTimeout(rest.current);
+    };
   }, []);
   useEffect(() => setAt(null), [settings?.at]);
 
   const write = async (row: string, patch: Parameters<typeof setDigest>[0]): Promise<void> => {
-    setRefused(null);
     const failed = await setDigest(patch);
-    if (failed.length === 0) return;
-    const name = environments.find((e) => e.id === failed[0]!.environmentId)?.name ?? "A host";
-    setRefused({ row, line: `${name} did not take it: ${failed[0]!.error}` });
+    setRefused((prev) => {
+      const next = { ...prev };
+      if (failed.length === 0) delete next[row];
+      else next[row] = refusedLine(failed.map((f) => nameOf(f.environmentId)));
+      return next;
+    });
+  };
+  const writeAt = (next: string): void => {
+    if (rest.current !== null) window.clearTimeout(rest.current);
+    rest.current = null;
+    if (AT.test(next) && next !== settings?.at) void write("at", { at: next });
   };
 
   const open = (
@@ -55,41 +75,55 @@ export function SettingsSection() {
         {view.loaded ? (
           <PageError
             action={
-              <Button variant="ghost" size="sm" onClick={() => void loadDigest()}>
-                Retry
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={retrying}
+                onClick={() => {
+                  setRetrying(true);
+                  void loadDigest().finally(() => setRetrying(false));
+                }}
+              >
+                <BusyLabel busy={retrying} label="Retry" />
               </Button>
             }
           >
-            {view.errors[0]?.error ?? "The digest's settings did not load"}
+            {/* In his words, as the list says it: never the link's own error text. */}
+            {unansweredLine(view.errors.map((e) => nameOf(e.environmentId))) || "The digest's settings did not load"}
           </PageError>
         ) : (
-          <PageRowsSkeleton rows={[{ control: "number" }, { control: "select" }, { control: "select" }, { control: "select" }, { control: "select" }]} />
+          // Each control at the width its row lands with, so nothing moves.
+          <PageRowsSkeleton rows={[{ control: "number", controlClassName: AT_WIDTH }, ...SETTING_GROUPS.map(() => ({ control: "select" as const, controlClassName: LEVEL_WIDTH }))]} />
         )}
       </PageSection>
     );
   }
   return (
     <PageSection title="Digest" action={open}>
-      <PageRow title="Time" error={refused?.row === "at" ? refused.line : undefined}>
+      <PageRow title="Time" error={refused.at}>
         <Input
           type="time"
           aria-label="Time of the digest"
-          className="w-32 tabular-nums"
+          className={cn(AT_WIDTH, "tabular-nums")}
           value={at ?? settings.at}
           onChange={(e) => {
             const next = e.target.value;
             setAt(next);
-            if (AT.test(next) && next !== settings.at) void write("at", { at: next });
+            if (rest.current !== null) window.clearTimeout(rest.current);
+            rest.current = window.setTimeout(() => writeAt(next), AT_REST_MS);
           }}
-          onBlur={() => setAt(null)}
+          onBlur={() => {
+            if (at !== null) writeAt(at);
+            setAt(null);
+          }}
         />
       </PageRow>
       {SETTING_GROUPS.map((group) => (
-        <PageRow key={group} title={GROUP_NAMES[group]} error={refused?.row === group ? refused.line : undefined}>
+        <PageRow key={group} title={GROUP_NAMES[group]} error={refused[group]}>
           <ChoiceSelect<TellLevel>
             size="sm"
             // One width for the column of them: the longest level's, so their edges line up whatever each says.
-            className="w-44"
+            className={LEVEL_WIDTH}
             label={GROUP_NAMES[group]}
             value={settings.levels[group] ?? DEFAULT_LEVEL}
             options={LEVEL_CHOICES}

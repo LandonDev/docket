@@ -266,8 +266,9 @@ const SKELETON_CONTROL: Record<Exclude<SkeletonControl, "none">, string> = {
  *  how many: a second one sits 4px under the first, as a row's facts line
  *  does) and a 16px glyph before its title, and its control; `wide` lays
  *  the control as a `wide` row does, on its own line under 480px of page
- *  content. */
-type SkeletonRow = { description?: boolean | number; media?: boolean; control?: SkeletonControl; wide?: boolean };
+ *  content; `controlClassName` is the control's own width where the row's
+ *  real control is not the stock one (`w-44` for a select made that wide). */
+type SkeletonRow = { description?: boolean | number; media?: boolean; control?: SkeletonControl; wide?: boolean; controlClassName?: string };
 
 const lineCount = (description: boolean | number | undefined): number => (typeof description === "number" ? description : description ? 1 : 0);
 
@@ -311,7 +312,7 @@ function PageRowsSkeleton({
             {end === "none" ? null : (
               <Skeleton
                 data-skeleton-control
-                className={cn("shrink-0", SKELETON_CONTROL[end], shape.wide ? "@max-[30rem]/page:w-full" : null)}
+                className={cn("shrink-0", SKELETON_CONTROL[end], shape.controlClassName, shape.wide ? "@max-[30rem]/page:w-full" : null)}
               />
             )}
           </div>

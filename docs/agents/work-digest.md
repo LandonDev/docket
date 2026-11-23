@@ -103,7 +103,7 @@ said, the host's own zone.
 | Method | Needs | Answers |
 |---|---|---|
 | `work.digest.list {day?, since?}` | read | `{days, rows, waiting, groups}` |
-| `work.digest.get` | read | `{at, zone, levels, nextAt}` |
+| `work.digest.get` | read | `{at, zone, levels, nextAt, setAt?}` (`setAt`: when the time or a level was last set on this host; the phone's schema leaves it out) |
 | `work.digest.set {at?, levels?}` | admin | the settings |
 | `work.digest.here {zone}` | operate | null |
 | `work.digest.seen {day}` | operate | null |
@@ -138,8 +138,13 @@ or `{key, tell, by?, open?}`.
   whose clock had already passed when it was told, a failed send, stays
   open for the day), the body names them all:
   "2 things need you: Budget review starts at 2:00 PM; Sign-in to Frame.io
-  ends today". One open: the title is the job, the body the row, and
-  `work.open` is the row's own target. More: the tap opens the list.
+  ends today". Each title is cut to 60 characters before they are joined
+  and what still does not fit is counted ("; and 2 more"), so one long
+  title never crowds another out (`nowLine`). One open: the title is the
+  job, the body the row's title with its detail on a line of its own (never
+  joined by a colon: `rowLines` in words.ts, kept as two lines by
+  `Notifier.work`), and `work.open` is the row's own target. More: the tap
+  opens the list.
 - **The hub is not changed.** It rebuilds a notice field by field, so `work`
   is lost there and a tap through the hub opens the app, not the target.
   The box's own APNs carries `tc.work`. The host's hub client already sends
@@ -184,8 +189,8 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 
 | File | Holds |
 |---|---|
-| `store.ts` | each Work host's ledger and settings, asked when its link opens and kept by the `work.digest` push; `mergeRows` (one row a key across hosts, the one told at once winning), `mergeDays` (hosts' days of one date are one, seen once any is); `markSeen`, `setDigest` (written to every Work host); `openDigestSheet`; sends `work.digest.here` |
-| `notice.ts` | pure: `digestNotice` (the unseen days and their line), `openInterrupts` (told, a day old at most, not closed here), `nowToasts` (one a row, a fold past three), `systemNotices`, `listSections`, `rowWhen` |
+| `store.ts` | each Work host's ledger and settings, asked when its link opens and kept by the `work.digest` push; `mergeRows` (one row a key across hosts, the one told at once winning), `mergeDays` (hosts' days of one date are one, seen once any is); `markSeen`, `setDigest` (written to every Work host); the settings shown are those set last (`newestSettings`), and after a host is read one whose settings differ is written to them (`staleSettings`, `align`: never under a write of his own, never on a push, and not at all when no host says when it was set); `openDigestSheet`; sends `work.digest.here` |
+| `notice.ts` | pure: `digestNotice` (the unseen days and their line: what waited when each day was made, a row whose clock came due later included), `openInterrupts` (told, a day old at most, not closed here), `nowToasts` (one a row, a fold past three), `systemNotices`, `listSections`, `rowWhen`, `emptyLine`, `unansweredLine`, `refusedLine` |
 | `open.ts` | pure: `routeOf` turns a `TellOpen` into a route (`thread`, `view` with `at` in that view's own field, `place`, `outbox` with the page's item key, `settings`), `go` runs it |
 | `DigestHost.tsx` | the two toasts through `useToastSync`, their system notifications, the routes, the sheet's mount |
 | `DigestSheet.tsx` | the list (`DigestList`) in a 480px `Sheet` |
@@ -195,6 +200,10 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
   (Today), else the sheet. Opening or closing it marks every unseen day
   seen on every host that holds it, so each window's toast goes with the
   push.
+- A toast is drawn again only when its words change, so its Open and its
+  close read what it stands for at the press (`live` in DigestHost.tsx):
+  the same words may have come to mean another telling of a thing, or
+  another host's row of the same day.
 - An interrupt he closed or opened is kept in localStorage by the thing
   and when it was told (`tellingOf`; `work.digest.dismissed`, the newest
   200), so the same thing told again later shows again, and shared across windows by
@@ -208,8 +217,11 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 - **The system notification.** `src/main/notice.ts`: `app:notice {key,
   title, body, silent?}` and `app:notice-close {key}`; main shows an
   Electron `Notification` only while no app window is focused, once per key
-  across windows (`shouldNotify`); a click brings the asking window forward
-  and sends `app:notice-open {key}`. The renderer reaches it through
+  across windows (`shouldNotify`); the body keeps two lines, a thing's
+  title and its detail. Every window asks for the same keys, so main keeps
+  who asks (`Claims`): a window that lets go or closes takes a notification
+  back only once no other window still asks for it. A click brings a
+  window that asks forward and sends `app:notice-open {key}`. The renderer reaches it through
   `systemNotice` in lib/native.ts; a browser at /ui raises none. macOS asks
   once to allow notifications. On Windows the app's AppUserModelID is set
   (src/main/index.ts); the notice there is not proven on the rig.
@@ -294,8 +306,9 @@ rules; nothing about the wire is the phone's own.
   ("Sun 9:14 PM" under "Yesterday", "7:01 AM" for that morning;
   `DigestModel.Section.day`, `when(…, day:)`). A row is a button only where the phone has a route: a
   thread, a held item (over the Outbox) or a Work view it draws (mail, tasks,
-  agenda, projects, routines). The rows' shape while reading; "Nothing
-  Waited" when empty; "The Mac did not answer" at the foot for a host whose
+  agenda, projects, routines). The rows' shape while reading; one line,
+  "Nothing Since Oct 24", when empty; VoiceOver says a row's job before its
+  title (`DigestModel.spoken`); "The Mac did not answer" at the foot for a host whose
   read failed. Opening it sends `work.digest.seen` for every day no host has
   seen, to every host that holds it. Home has a **Digest** row after the
   Outbox, with no count, while any host has Work on.

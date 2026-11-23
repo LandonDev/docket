@@ -368,6 +368,17 @@ describe('what he sets', () => {
     expect(next).toMatchObject({ at: '17:30', nextAt: at(23, '17:30') })
     expect(rig.pushes).toEqual([{ push: 'work.digest', settings: next }])
   })
+  it('keeps when he last set the time or a level, and says nothing of it before he ever did', () => {
+    expect(rig.digest.settings().setAt).toBeUndefined()
+    // The zone a desktop says is not his setting.
+    rig.digest.here('America/Chicago')
+    expect(rig.digest.settings().setAt).toBeUndefined()
+    const first = rig.clock.now
+    expect(rig.digest.set({ levels: { held: 'now' } }).setAt).toBe(first)
+    rig.clock.now += 5_000
+    expect(rig.digest.set({ at: '07:15' }).setAt).toBe(first + 5_000)
+    expect(rig.digest.settings().setAt).toBe(first + 5_000)
+  })
   it('a time moved into the past is not made late: the change misses nothing', () => {
     rig.digest.deliverer = rig.deliverer
     rig.digest.tick()
