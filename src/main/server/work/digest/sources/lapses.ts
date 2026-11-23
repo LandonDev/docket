@@ -26,7 +26,8 @@ export const lapses: Source = {
     return {
       tells: found.flatMap((lapse) => {
         const stage = lapseStage(lapse.until, now)
-        if (stage === null) return []
+        // One that has already ended is Connections' to show (a broken row), not news to ring.
+        if (stage === null || lapse.until <= now) return []
         const last = stage === lastStage
         return [
           {

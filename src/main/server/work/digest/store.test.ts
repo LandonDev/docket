@@ -88,7 +88,9 @@ describe('what waits, what is due and what has a clock', () => {
     store.put(row({ toldAt: 900, by: 950 }))
     store.put(row({ toldAt: 900 }))
     store.put(row())
-    expect(store.openNow(1_000).map((r) => r.id)).toEqual(['t1', 't3'])
+    // a clock already past when it was told (a send that failed) stays open: it is what he must still hear of
+    store.put(row({ toldAt: 900, by: 900 }))
+    expect(store.openNow(1_000).map((r) => r.id)).toEqual(['t1', 't3', 't5'])
     // one told more than a day ago with no clock is no longer open
     expect(store.openNow(900 + DAY + 1)).toEqual([])
   })

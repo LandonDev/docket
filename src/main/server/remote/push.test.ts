@@ -333,9 +333,12 @@ describe('a host with its own APNs sender', () => {
     expect(sent[3].payload).toMatchObject({ aps: { category: 'tc.run-skip' }, tc: { environmentId: 'env_mac', requestId: 'h1' } })
     // a notice of Work's has no thread: every interrupt replaces the last under one id, a day's digest under its own
     await push.deliver({ event: 'needs_you', seq: 0, kind: 'waiting', title: 'Purdue', body: 'Budget review starts at 2:00 PM', work: { key: 'now', tell: 'prep:ev1' }, ts: 9000 })
-    expect(sent[4]).toMatchObject({ collapseId: 'work:now', payload: { aps: { 'thread-id': 'tc.work' }, tc: { work: { key: 'now', tell: 'prep:ev1' } } } })
+    expect(sent[4]).toMatchObject({ collapseId: 'work:env_box:now', payload: { aps: { 'thread-id': 'tc.work' }, tc: { work: { key: 'now', tell: 'prep:ev1' } } } })
     await push.deliver({ event: 'finished', seq: 0, kind: 'finished', title: 'Work', body: 'Digest: 2 things in Cosmic', work: { key: 'digest:2026-11-24', digest: '2026-11-24' }, ts: 9500 })
-    expect(sent[5]).toMatchObject({ collapseId: 'work:digest:2026-11-24', token: 'cd'.repeat(32) })
+    expect(sent[5]).toMatchObject({ collapseId: 'work:env_box:digest:2026-11-24', token: 'cd'.repeat(32) })
+    // a relayed host's interrupt keeps its own banner: the Mac's never erases the box's
+    await push.deliver({ event: 'needs_you', seq: 0, kind: 'waiting', title: 'Purdue', body: 'Budget review starts at 2:00 PM', work: { key: 'now', tell: 'prep:ev1' }, ts: 9600, environmentId: 'env_mac' })
+    expect(sent[6]).toMatchObject({ collapseId: 'work:env_mac:now' })
   })
   it('drops a phone Apple calls gone, records other failures on the row, and pushes activity states to the thread tokens', async () => {
     const { apns, sent } = fakeApns((token) => (token.startsWith('ab') ? { ok: false, error: 'APNs 410 Unregistered', gone: true } : { ok: false, error: 'APNs 500', gone: false }))

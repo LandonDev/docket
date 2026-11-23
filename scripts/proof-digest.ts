@@ -111,6 +111,7 @@ notifier.setGate(
     workspaceOf: (id) => metas.get(id)?.workspaceId ?? null,
     // run-1 fired on its schedule; no run here was started with Run now
     pressed: async () => false,
+    ownerWrote: () => false,
     tell: (t) => void digest.tell(t),
     log: (l) => void logs.push(l)
   })

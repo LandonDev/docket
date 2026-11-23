@@ -106,6 +106,15 @@ export async function moveRefusal(ask: (work: Extract<ThreadWork, { kind: 'probe
   return null
 }
 
+/** A host's own read of another host's module (`hostReadOf`). */
+export interface HostRead {
+  /** every other host with a live link to this one, whichever side dialed */
+  hosts(): string[]
+  read<T>(host: string, module: PillarId, verb: string, args: unknown): Promise<T>
+}
+const hostReads = new WeakMap<WorkCtx, HostRead>()
+export const hostReadOf = (ctx: WorkCtx): HostRead | undefined => hostReads.get(ctx)
+
 export const peerPart: CtxPart<'peer'> = (ctx, deps) => {
   const facts = scopeFactsOf(deps.registry)
   // How another host is reached, whichever way the socket runs: the transport the thread.* calls use.
@@ -121,6 +130,18 @@ export const peerPart: CtxPart<'peer'> = (ctx, deps) => {
     if (refusal) throw new Error(refusal)
     return links.call<T>(host, 'thread.start', { caller, args: workAskArgs(work, workRoot(deps.store).root) }, CROSS_HOST_CALL_MS)
   }
+
+  // A host's own read of another host's module, for the frame's parts (the digest's count across hosts): no thread
+  // and no workspace is behind it, so it never passes for a thread's use of a desktop. The far host answers it under
+  // its bridge policy for this one, as any call, and only a method a read key may call.
+  hostReads.set(ctx, {
+    hosts: () => (links?.reachable() ?? []).map((r) => r.id).filter((id) => id !== deps.environmentId),
+    async read<T>(host: string, module: PillarId, verb: string, args: unknown): Promise<T> {
+      const answer = await ask<WorkCallResult>(host, { environmentId: deps.environmentId, sessionId: 'work', title: 'Work', permission: 'safe' }, { kind: 'call', module, verb, args })
+      if (!answer || typeof answer !== 'object' || !('work' in answer)) throw new Error('that host runs a build from before Work')
+      return answer.work.result as T
+    }
+  })
 
   // The far side: a Work call another host sends is answered here.
   deps.crossHostThreads?.serveWork((from, call) => servePeerWork({ ctx, modules: WORK_MODULES, policyOf: (id) => deps.macBridge?.policyOf(id) ?? 'off' }, from, call))

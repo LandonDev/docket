@@ -549,6 +549,8 @@ export async function startServer(
   const workProjectFacts = workFactsOf(registry)
   // The threads people are looking at (session.focus), widened to their
   // subagents and a focused master's batch: their requests and pushes go first.
+  /** The local sockets (this machine's own windows) that name a focused thread. */
+  const deskFocus = new Set<number>()
   const focus = new FocusSet({ parentOf: (id) => registry.parentOf(id), masterOf: (id) => registry.masterOf(id) })
   // A send on a thread someone is looking at is admitted over the running cap (scheduler.ts).
   registry.scheduler.focused = (id) => focus.isInteractive(id)
@@ -1952,7 +1954,12 @@ export async function startServer(
     away,
     notifier: () => workNotifier,
     // One host sends the phone's digest: a headless host always, a desktop only when it has no saved headless host at all.
-    sendsDigest: () => isHeadless() || !listEnvironments(store).some((e) => e.platform === 'linux'),
+    // Two desktops that save each other and no headless host: the one whose id sorts first sends.
+    sendsDigest: () => {
+      if (isHeadless()) return true
+      const saved = listEnvironments(store)
+      return !saved.some((e) => e.platform === 'linux') && saved.every((e) => environmentId < e.id)
+    },
     uploads
   })
   setAppWork({ tools: work.tools })
@@ -3188,6 +3195,9 @@ export async function startServer(
             break
           }
           case 'session.focus':
+            // A window of this machine's own app with a thread in front: where a Work interrupt's toast shows (notifier `present`).
+            if (principal.kind === 'local' && req.params.sessionId) deskFocus.add(connection)
+            else deskFocus.delete(connection)
             focus.set(connection, req.params.sessionId)
             focus.setShown(connection, req.params.shown ?? null)
             sendFrame({ id: req.id, ok: true, result: null })
@@ -3732,6 +3742,7 @@ export async function startServer(
       socketClosed = true
       coalescer.dispose()
       focus.drop(connection)
+      deskFocus.delete(connection)
       offBootResume()
       offAway()
       offStores()
@@ -3858,8 +3869,9 @@ export async function startServer(
     hostName: () => hostLabel(),
     // A thread a window shows its person right now: the phone hears nothing of it (attention.ts, FocusSignal).
     onScreen: (id) => focus.isNamed(id),
-    // A person is at a window of this host with a thread in front: a Work interrupt shows there.
-    present: () => focus.focused().length > 0
+    // A person is at a window of this machine's own app with a thread in front: a Work interrupt shows there. A phone
+    // reading a thread, or a browser at /ui, is not that: neither shows the toast.
+    present: () => hasDesktop() && deskFocus.size > 0
   })
   workNotifier = notifier
   // The person-facing sinks (the hub, local APNs) skip an onScreen notice; webhooks, the relay (its carrier's webhooks) and the Live Activity take every one.

@@ -40,9 +40,12 @@ export function digestNotice(view: Pick<DigestView, "days" | "rows">): DigestNot
   return { days, line: digestLine(rows.length, jobsOf(rows)) };
 }
 
+/** What a closed or opened interrupt is kept under: the thing and when it was told, so the same thing told again later (a send that fails a second time) shows again. */
+export const tellingOf = (row: Pick<TellRow, "key" | "host" | "id" | "toldAt">): string => `${nameOf(row)}@${row.toldAt ?? 0}`;
+
 /** The interrupts still worth a toast: told at once, within a day, and not dismissed or opened in this window. Oldest first. */
 export function openInterrupts(view: Pick<DigestView, "rows">, dismissed: ReadonlySet<string>, now: number): TellRow[] {
-  return view.rows.filter((r) => r.toldAt !== null && now - r.toldAt < NOW_KEEP_MS && !dismissed.has(nameOf(r))).sort((a, b) => a.toldAt! - b.toldAt!);
+  return view.rows.filter((r) => r.toldAt !== null && now - r.toldAt < NOW_KEEP_MS && !dismissed.has(tellingOf(r))).sort((a, b) => a.toldAt! - b.toldAt!);
 }
 
 export interface NowToast {

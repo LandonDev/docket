@@ -163,9 +163,9 @@ export class DigestStore {
   clocked(now: number): LedgerRow[] {
     return this.all('WHERE by_at IS NOT NULL AND by_at > ? AND told_at IS NULL AND due = 0 ORDER BY by_at', now)
   }
-  /** Rows he was told at once whose clock has not passed: the interrupts still open. */
+  /** Rows he was told at once, a day old at most, whose clock has not passed since: the interrupts still open. A clock already past when it was told (a send that failed) stays open for the day. */
   openNow(now: number): LedgerRow[] {
-    return this.all('WHERE told_at IS NOT NULL AND (by_at IS NULL OR by_at > ?) AND told_at > ? ORDER BY told_at', now, now - DAY_MS)
+    return this.all('WHERE told_at IS NOT NULL AND (by_at IS NULL OR by_at > ? OR by_at <= told_at) AND told_at > ? ORDER BY told_at', now, now - DAY_MS)
   }
   stamp(day: string, ids: readonly string[]): void {
     const set = this.db.prepare('UPDATE work_digest_tells SET day = ? WHERE id = ?')

@@ -257,11 +257,12 @@ describe('the day', () => {
     rig.digest.tick()
     expect(rig.sent.digest).toHaveLength(1)
   })
-  it('an empty day sends nothing and leaves no day', () => {
+  it('an empty day makes no day and sends nothing of its own', () => {
     rig.clock.now = at(24, '08:00')
     rig.digest.tick()
-    expect(rig.sent.digest).toEqual([])
+    expect(rig.sent.digest.filter((d) => d.rows.length > 0)).toEqual([])
     expect(rig.digest.list().days).toEqual([])
+    rig.sent.digest.length = 0
     // what arrives after today's time waits for tomorrow's
     held()
     rig.clock.now = at(24, '09:00')
@@ -312,6 +313,42 @@ describe('the day', () => {
     rig.clock.now += 30_000
     rig.digest.tick()
     expect(rig.sent.now).toHaveLength(1)
+  })
+  it('a day this host has nothing for is still handed to the deliverer: the sender adds what its linked hosts hold', () => {
+    rig.clock.now = at(24, '08:00')
+    rig.digest.tick()
+    // no day of its own, no push, but the deliverer is asked with an empty day
+    expect(rig.digest.list().days).toEqual([])
+    expect(rig.sent.digest).toEqual([{ day: { day: '2026-11-24', madeAt: rig.clock.now, seenAt: null, count: 0 }, rows: [] }])
+    rig.clock.now += 30_000
+    rig.digest.tick()
+    expect(rig.sent.digest).toHaveLength(1)
+  })
+  it('a stop while the sources are read at digest time loses no day: it is made at the next start', async () => {
+    held()
+    let release: () => void = () => {}
+    rig.digest.beforeDay = () => new Promise<void>((done) => (release = done))
+    rig.clock.now = at(24, '08:00')
+    rig.digest.tick()
+    // a second look while the first make waits starts no second one
+    rig.digest.tick()
+    expect(rig.sent.digest).toEqual([])
+    // the host stops here: a new digest on the same database, as after a restart
+    const again = new Digest({ db: rig.db, host: 'env_box', enabled: () => true, log: () => {}, push: () => {}, modules: () => [], now: () => rig.clock.now })
+    const sent: unknown[] = []
+    again.deliverer = { ...rig.deliverer, digest: (day) => void sent.push(day) }
+    rig.clock.now += 60_000
+    again.tick()
+    expect(sent).toHaveLength(1)
+    // the first one, let go at last, finds the day made and makes no second
+    release()
+    await rig.digest.making
+    expect(rig.digest.list().days).toHaveLength(1)
+  })
+  it('a clock long past when it is first told does not ring: it waits for the digest', () => {
+    const row = held({ key: 'old', by: at(21, '09:00') })!
+    expect(row).toMatchObject({ how: 'waiting', due: false })
+    expect(rig.sent.now).toEqual([])
   })
   it('is seen once, and every window hears', () => {
     held()

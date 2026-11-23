@@ -17,7 +17,8 @@ import { ROUTINE_ASKS_WAIT } from './rule'
  * that he did not start with Run now, or one a pillar marked with
  * `ctx.tell.quiet`. A question or an approval from it still reaches him at
  * once, with Allow and Deny, unless `ROUTINE_ASKS_WAIT` says otherwise; a
- * held item's notice is the Outbox's own tell. When the cause of a run
+ * held item's notice is the Outbox's own tell. A thread he has typed in is
+ * his own from then on, whatever started it. When the cause of a run
  * cannot be learned the notice goes through: nothing he needs goes quiet on
  * a doubt. With Work off the gate keeps nothing.
  */
@@ -31,6 +32,8 @@ export interface GateDeps {
   isQuiet(sessionId: string): boolean
   /** the job the thread is in; null: a Work Chat */
   workspaceOf(sessionId: string): string | null
+  /** he typed in the thread himself: it is his own from then on */
+  ownerWrote(sessionId: string): boolean
   /** whether he started this run himself; null: it cannot be learned */
   pressed(runId: string, workspaceId: string | null): Promise<boolean | null>
   tell(t: Tell): void
@@ -55,6 +58,8 @@ export function makeGate(deps: GateDeps): NoticeGate {
     if (!quiet && !runId) return false
     const kind = notice.event === 'needs_you' ? (ROUTINE_ASKS_WAIT ? 'routines.asks' : null) : KIND[notice.event]
     if (!kind) return false
+    // A thread he took over by hand answers him as any thread does.
+    if (deps.ownerWrote(session.id)) return false
     if (quiet) return take(notice, session, kind)
     // A run he started with Run now is his own press, and answers him as any thread does.
     return deps.pressed(runId!, deps.workspaceOf(session.id)).then(

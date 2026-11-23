@@ -16,11 +16,13 @@ let logs: string[]
 let on: boolean
 let quiet: Set<string>
 let pressed: Map<string, boolean | null | Error>
+let wrote: Set<string>
 
 const deps = (): GateDeps => ({
   enabled: () => on,
   isQuiet: (id) => quiet.has(id),
   workspaceOf: () => 'ws-cosmic',
+  ownerWrote: (id) => wrote.has(id),
   pressed: async (runId) => {
     const answer = pressed.get(runId) ?? null
     if (answer instanceof Error) throw answer
@@ -37,6 +39,7 @@ beforeEach(() => {
   logs = []
   on = true
   quiet = new Set()
+  wrote = new Set()
   pressed = new Map([['run-1', false]])
 })
 
@@ -80,6 +83,19 @@ describe('a run he started himself', () => {
     expect(await gate(notice('finished', 'Done'), thread())).toBe(false)
     expect(told).toEqual([])
     expect(logs).toEqual(["digest: a run's cause could not be read, so its notice goes: routines are not running"])
+  })
+})
+
+describe('a thread he took over by hand', () => {
+  it("once he has typed in it, a routine's thread answers him as any thread does", async () => {
+    const gate = makeGate(deps())
+    expect(await gate(notice('finished', 'Done in 12m'), thread())).toBe(true)
+    wrote.add('t1')
+    expect(gate(notice('finished', 'Done in 4m'), thread())).toBe(false)
+    expect(gate(notice('failed', 'Failed'), thread())).toBe(false)
+    quiet.add('t1')
+    expect(gate(notice('stuck', 'No output for 12m'), thread({ routineRunId: null }))).toBe(false)
+    expect(told).toHaveLength(1)
   })
 })
 

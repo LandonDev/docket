@@ -11,7 +11,7 @@ import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
-import { DIGEST_TOAST, digestNotice, nameOf, nowToasts, openInterrupts, systemNotices, type NowToast } from "./notice";
+import { DIGEST_TOAST, digestNotice, nowToasts, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
 import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
 
@@ -75,7 +75,7 @@ export function DigestHost() {
   const dismiss = useCallback((rows: readonly TellRow[]) => {
     setDismissed((prev) => {
       const next = new Set(prev);
-      for (const row of rows) next.add(nameOf(row));
+      for (const row of rows) next.add(tellingOf(row));
       writeDismissed(next);
       return next;
     });
@@ -148,6 +148,8 @@ export function DigestHost() {
     toasts,
     (toast) => toast.id,
     (api, toast, id) => {
+      // Shown again in place (its words changed): nothing was taken away, so his next close is his own.
+      taken.current.delete(id);
       api.warning(toast.title, {
         id,
         description: toast.detail,
@@ -167,6 +169,7 @@ export function DigestHost() {
     digestItems,
     () => DIGEST_TOAST,
     (api, notice, id) => {
+      taken.current.delete(id);
       api(notice.line, {
         id,
         duration: Infinity,

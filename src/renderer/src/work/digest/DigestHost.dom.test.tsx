@@ -149,6 +149,20 @@ describe("the digest's toast", () => {
     expect(w().calls.filter((c) => c.method === "work.digest.seen")).toHaveLength(2);
   });
 
+  it("a toast whose words changed while it was shown still closes for good: a second host's day arrives, then he closes it", async () => {
+    w().days.set("mac", []);
+    w().rows.set("mac", []);
+    await mount();
+    expect(shown()[0]!.text).toBe("Digest: 2 things in Cosmic and Purdue");
+    // the Mac's day lands a moment later: the same toast, new words
+    w().rows.set("mac", [tell({ host: "mac", day: "2026-11-24", how: "digest", sector: "ref" })]);
+    w().days.set("mac", [{ ...day, count: 1 }]);
+    await act(async () => push(w(), "mac", { day: { ...day, count: 1 } }));
+    await waitFor(() => expect(shown()[0]?.text).toBe("Digest: 3 things in Cosmic, Purdue and Ref"));
+    await act(async () => shown()[0]!.dismiss());
+    expect(w().calls.filter((c) => c.method === "work.digest.seen").map((c) => c.env)).toContain("box");
+  });
+
   it("an empty ledger shows nothing at all", async () => {
     resetWorld(w());
     await mount();

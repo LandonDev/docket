@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, openInterrupts, rowWhen, systemNotices } from "./notice";
+import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, openInterrupts, rowWhen, systemNotices, tellingOf } from "./notice";
 import type { MergedDay } from "./store";
 
 /** What the desktop shows of the digest, as rules over made-up rows. */
@@ -55,7 +55,14 @@ describe("an interrupt", () => {
     const old = row({ how: "now", toldAt: at(22, 9) });
     const view = { rows: [a, b, old, row()] };
     expect(openInterrupts(view, new Set(), now).map((r) => r.id)).toEqual([b.id, a.id]);
-    expect(openInterrupts(view, new Set([nameOf(a)]), now).map((r) => r.id)).toEqual([b.id]);
+    expect(openInterrupts(view, new Set([tellingOf(a)]), now).map((r) => r.id)).toEqual([b.id]);
+  });
+  it("closed once, the same thing told again later shows again: a send that fails a second time", () => {
+    const first = row({ key: "unsent:host:h1", how: "now", toldAt: at(23, 10) });
+    const closed = new Set([tellingOf(first)]);
+    expect(openInterrupts({ rows: [first] }, closed, now)).toEqual([]);
+    const again = { ...first, toldAt: at(23, 11, 30) };
+    expect(openInterrupts({ rows: [again] }, closed, now).map((r) => r.id)).toEqual([first.id]);
   });
   it("is one toast a row, its detail the second line", () => {
     const a = row({ key: "prep:1", title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", how: "now", toldAt: 1 });

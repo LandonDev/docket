@@ -87,7 +87,9 @@ day is counted by the rows that waited. A row he was told of at once is in
 the day's list and not in its count. A day with nothing that waited makes
 nothing and sends nothing. A time missed while the host was down or asleep
 is made once at start, late; a day is never made twice
-(`work_digest_days.day`). A change of the time or the zone misses nothing:
+(`work_digest_days.day`), and its time is marked handled only once the day
+is made, so a stop while its sources are read loses none. A tell whose
+clock passed more than a day ago does not interrupt (`LATE_MS`). A change of the time or the zone misses nothing:
 a digest time it puts in the past is not made late.
 
 The time is a wall time in a zone (`clock.ts`, over the routines pillar's
@@ -128,10 +130,14 @@ or `{key, tell, by?, open?}`.
   webhook sinks skip a notice that is not a thread's (`isThreadNotice`);
   `apnsPayload.ts` writes `tc.work` and groups every Work notice under
   `thread-id` `tc.work`; `push.ts` collapses on `work:<key>`.
-- **One banner for what cannot wait.** Every interrupt of a host shares the
-  key `now` (`deliver.ts` `NOW_KEY`), the same as the hub's own collapse id
-  for a notice with no thread (`<host>:needs_you`). So while more than one
-  interrupt is open (told, its `by` not passed), the body names them all:
+- **One banner a host for what cannot wait.** Every interrupt of a host
+  shares the key `now` (`deliver.ts` `NOW_KEY`), collapsed on the phone as
+  `work:<environment>:now` by the box's own sender, the same as the hub's
+  own collapse id for a notice with no thread (`<host>:needs_you`): a Mac's
+  interrupt never erases the box's. So while more than one
+  interrupt is open (told within a day, its `by` not passed since; one
+  whose clock had already passed when it was told, a failed send, stays
+  open for the day), the body names them all:
   "2 things need you: Budget review starts at 2:00 PM; Sign-in to Frame.io
   ends today". One open: the title is the job, the body the row, and
   `work.open` is the row's own target. More: the tap opens the list.
@@ -143,20 +149,27 @@ or `{key, tell, by?, open?}`.
   `Notifier.held` on that thread, as it always did: the phone app of today
   opens the Outbox item from it.
 - **Present at a desktop.** An interrupt is stamped `onScreen` while a
-  window of this host has a thread in front of a present person
-  (`NotifierOptions.present`, the focus set): the phone is skipped, the
-  desktop shows it. If the notifier cannot tell, it sends. The digest
-  always goes.
+  window of this machine's own app has a thread in front
+  (`NotifierOptions.present`: a local socket's focus on a machine with a
+  desktop of its own): the phone is skipped, the desktop shows it. A phone
+  reading a thread, a browser at /ui and another host's window do not
+  count, so a box's interrupt always reaches the phone. The digest always
+  goes.
 - **One thing told once across hosts.** `Notifier.toldWork` keeps the key
   and clock of each interrupt this host sent or carried for a host it
   relays, for an hour: a second one is dropped, whichever came first. A
   clock that moved is news.
 - **One host sends the digest** (`WorkDeps.sendsDigest`, built in index.ts):
-  a headless host always, a desktop only when it has no saved Linux host.
-  Before it sends, it asks each linked host `work.digest.list` over the
-  host link with a five second limit (`PEER_WAIT_MS`) and adds the rows
-  that waited there, a key two hosts hold counted once. A Mac that was
-  asleep makes its day when it wakes and sends no phone digest.
+  a headless host always; a desktop only when it has no saved Linux host
+  and its id sorts before every host it has saved. At its time it asks each
+  host it can reach, whichever side dialed (`hostReadOf` in work/peer.ts:
+  the transport Work's cross-host calls ride, under the far host's bridge
+  policy as a read), for `work.digest.list` with a five second limit
+  (`PEER_WAIT_MS`) and adds the rows that waited there, a key two hosts
+  hold counted once. It asks even on a day it has nothing of its own, so a
+  Mac's jobs are not left unsaid because the box has none. A Mac whose
+  bridge is off for the box is not counted. A Mac that was asleep makes its
+  day when it wakes and sends no phone digest.
 - **The gate.** `Notifier.setGate(gate)`: asked before a thread's notice
   goes out; true keeps it back. With none set, or one that throws, every
   notice is today's (a test compares them field for field).
@@ -183,8 +196,9 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
   (Today), else the sheet. Opening or closing it marks every unseen day
   seen on every host that holds it, so each window's toast goes with the
   push.
-- An interrupt he closed or opened is kept in localStorage
-  (`work.digest.dismissed`, the newest 200) and shared across windows by
+- An interrupt he closed or opened is kept in localStorage by the thing
+  and when it was told (`tellingOf`; `work.digest.dismissed`, the newest
+  200), so the same thing told again later shows again, and shared across windows by
   the storage event, so a reload does not bring it back.
 - A view of a workspace the window is not in: the window moves there
   first (`onOpenWorkspace`), and the view opens once it has.
@@ -219,7 +233,8 @@ same words, so it is not news again.
 
 - `lapses`: a sign-in or licence about to end, from `lapsesOf`, each 6 h;
   `lapse:<pillar>:<id>:<until>:<stage>`; 14 days before it waits, on the
-  last day it carries `by` its end.
+  last day it carries `by` its end; one that has already ended tells
+  nothing (Connections shows it).
 - `waiting` (mail): each linked job's sent mails with no answer that are
   due, read from LifeOS's `mailWaits:list` for the sector as `mail_waiting`
   reads it, at digest time; `mail-waiting:<workspaceId>:<day>`, "3 sent
@@ -267,6 +282,8 @@ the notice's body), group `results`.
   `work.routines.runs` a routine, each run asked once), so the gate
   answers a promise; `RUN_NOW_CAUSE` is the engine's own word and a test
   holds the two together.
+- A thread he has typed in himself is his own from then on
+  (`writtenByOwner`): its notices go as any thread's.
 - `needs_you` passes: a question or an approval reaches him at once with
   Allow and Deny (`ROUTINE_ASKS_WAIT` in rule.ts flips that). A held act's
   notice is the Outbox's own tell and passes.

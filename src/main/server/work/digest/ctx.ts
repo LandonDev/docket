@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { DigestDay, DigestList, DigestPush, DigestSettings } from '@shared/contract-work-digest'
+import { writtenByOwner } from '@shared/events'
 import { errorText } from '@shared/work/ids'
 import { DEFAULT_AT, DEFAULT_LEVEL } from '@shared/work/digest'
 import { DETAIL_MAX, TELL_GROUPS, TELL_LEVELS, TITLE_MAX, tellLine, TellOpenSchema, type Tell, type TellGroup, type TellKind, type TellLevel } from '@shared/work/tell'
 import type { CtxPart } from '../ctx'
 import { WORK_MODULES, type WorkCtx } from '../modules'
+import { hostReadOf } from '../peer'
 import { dayOf, knownZone, lastDigest, nextDigest, zoneOr } from './clock'
 import type { Notifier } from '../../remote/notifier'
 import { makeDeliverer, ofDay } from './deliver'
@@ -63,6 +65,8 @@ export class Digest {
   beforeDay: ((now: number) => Promise<void>) | null = null
   /** The day being made, for a test to wait on. */
   making: Promise<void> = Promise.resolve()
+  /** The digest time whose day is being made now, so a second look starts no second make. */
+  private makingAt: number | null = null
   private readonly unknown = new Set<string>()
   private readonly clock: () => number
 
@@ -193,7 +197,9 @@ export class Digest {
     } else {
       row = { ...said, id: randomUUID(), host: this.o.host, at: now, how: 'waiting', day: null, toldAt: null, due: false }
     }
-    if (again && decide(row, this.levelOf(row.group), this.nextAt(now)) === 'now') row = this.tellNow(row, now)
+    // A clock that passed more than a day ago is no longer worth an interrupt: it waits, as a due row that old does.
+    const stale = row.by != null && row.by < now - LATE_MS
+    if (again && !stale && decide(row, this.levelOf(row.group), this.nextAt(now)) === 'now') row = this.tellNow(row, now)
     else {
       if (again && row.toldAt == null) row = { ...row, how: row.day ? 'digest' : 'waiting', due: false }
       this.store.put(row)
@@ -263,15 +269,19 @@ export class Digest {
     const handled = Number(this.store.setting('handled') ?? NaN)
     // The first look ever: nothing was missed, so nothing is made late.
     if (!Number.isFinite(handled)) return void this.store.setSetting('handled', String(at))
-    if (at <= handled) return
-    this.store.setSetting('handled', String(at))
+    if (at <= handled || this.makingAt === at) return
+    // Marked handled only once the day is made: a stop while its sources are read makes it at the next start, not never.
+    this.makingAt = at
     const day = dayOf(this.zone(), at)
     const make = (): void => {
+      this.store.setSetting('handled', String(at))
+      this.makingAt = null
       const made = makeDay(this.store, day, this.clock())
-      if (!made) return
-      this.o.push({ push: 'work.digest', day: made.day })
+      if (made) this.o.push({ push: 'work.digest', day: made.day })
       try {
-        this.deliverer?.digest(made.day, made.rows)
+        // A day this host has nothing for is still handed on: the host that sends the phone's digest adds what
+        // its linked hosts hold, and a Mac's jobs must not go unsaid because the box has none of its own.
+        this.deliverer?.digest(made?.day ?? { day, madeAt: this.clock(), seenAt: null, count: 0 }, made?.rows ?? [])
       } catch (err) {
         this.o.log(`digest: the day's notice was not sent: ${errorText(err)}`)
       }
@@ -351,8 +361,12 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
     digest.deliverer = makeDeliverer({
       notifier: () => deps.notifier?.() ?? null,
       sendsDigest: () => deps.sendsDigest?.() ?? true,
-      // Each linked Work host's own ledger, over the host link, as Connections asks each for its health.
-      peers: (day) => (deps.peers?.all() ?? []).filter((link) => link.connected).map((link) => link.request<DigestList>('work.digest.list', {}, { timeoutMs: 5_000 }).then((list) => ofDay(list, day))),
+      // Each reachable Work host's own ledger, over the transport Work's cross-host calls ride (work/peer.ts): the
+      // hosts this one dials and the ones that dialed it, so the box reaches a Mac it has not saved.
+      peers: (day) => {
+        const far = hostReadOf(ctx)
+        return (far?.hosts() ?? []).map((host) => far!.read<DigestList>(host, 'digest', 'list', {}).then((list) => ofDay(list, day)))
+      },
       log: (line) => ctx.log(line)
     })
     hosts.set(ctx, digest)
@@ -375,6 +389,8 @@ export const tellPart: CtxPart<'tell'> = (ctx, deps) => {
       isQuiet: (sessionId) => made.store.isQuiet(sessionId),
       workspaceOf: (sessionId) => ctx.scopeOf(sessionId)?.workspaceId ?? null,
       pressed: runPressed(ctx, () => WORK_MODULES),
+      // He wrote in the thread himself: it is his from then on (events.ts `writtenByOwner`).
+      ownerWrote: (sessionId) => deps.registry.eventsAfter(sessionId, 0).some((row) => row.event.type === 'user-text' && !!row.event.by && writtenByOwner(row.event.by)),
       tell: (t) => void made.tell(t),
       log: (line) => ctx.log(line)
     })

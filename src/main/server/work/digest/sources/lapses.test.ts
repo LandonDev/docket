@@ -38,6 +38,10 @@ describe('the lapses source', () => {
     const { tells } = read([evaluation], until - 5 * 3_600_000)
     expect(tells).toEqual([{ kind: 'connections.ending', workspaceId: null, title: 'Windows evaluation ends Dec 5 at 1:22 PM', key: `lapse:winvm:evaluation:${until}:1`, open: { settings: 'connections' }, by: until }])
   })
+  it('one that has already ended is not rung as news: Connections shows it', () => {
+    expect(read([evaluation], until + 1).tells).toEqual([])
+    expect(read([evaluation], until + 9 * DAY).tells).toEqual([])
+  })
   it('read again with nothing changed it says the same words: a re-read is not news', () => {
     expect(read([evaluation], NOW).tells).toEqual(read([evaluation], NOW + 6 * 3_600_000).tells)
   })

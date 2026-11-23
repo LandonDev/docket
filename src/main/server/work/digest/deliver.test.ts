@@ -104,6 +104,16 @@ describe("the day's digest", () => {
     await deliverer.digestSent(DAY, [row({ sector: 'cosmic' }), row({ sector: 'ref', key: 'clash:1', title: 'A clash' })])
     expect(work[0]!.body).toBe('Digest: 3 things in Cosmic, Hypixel and Ref')
   })
+  it('a day this host has nothing for still goes out when a linked host holds something: a Mac\'s jobs are not left unsaid', async () => {
+    const mac: TellRow[] = [row({ host: 'env_mac', sector: 'purdue' }), row({ host: 'env_mac', sector: 'cosmic' })]
+    const { deliverer, work } = rig({ peers: () => [Promise.resolve(mac)] })
+    await deliverer.digestSent({ ...DAY, count: 0 }, [])
+    expect(work).toEqual([{ title: 'Work', body: 'Digest: 2 things in Cosmic and Purdue', urgent: false, work: { key: 'digest:2026-11-24', digest: '2026-11-24' } }])
+    // and with nothing anywhere, nothing is sent
+    const none = rig({ peers: () => [Promise.resolve([])] })
+    await none.deliverer.digestSent({ ...DAY, count: 0 }, [])
+    expect(none.work).toEqual([])
+  })
   it('a linked host that does not answer in five seconds, or refuses, adds nothing and holds nothing up', async () => {
     vi.useFakeTimers()
     try {

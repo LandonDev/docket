@@ -19,7 +19,7 @@ import type { HostTransport } from '../remote/hostLinks'
 import { SessionRegistry } from '../sessions'
 import { startWork, type Work } from './ctx'
 import { loadWorkModules, WORK_MODULES, type ToolCtx, type WorkModule } from './modules'
-import { moveRefusal, peerCaps, servePeerWork } from './peer'
+import { moveRefusal, peerCaps, servePeerWork, hostReadOf } from './peer'
 import { WORK_PREAMBLE_HEADING } from './preamble'
 import { WORK_OFF } from './scope'
 
@@ -382,6 +382,19 @@ describe('ctx.peer: a Work tool on one host calls the same module on another', (
     // a Work Chat has no workspace to be given one
     const chat = await box.registry.create({ scope: 'work', threadType: 'chat', workspaceId: null })
     await expect(call(box, chat, { range: 'A1' })).rejects.toThrow(/a Work Chat may use no other host's desktop/)
+  })
+
+  it("a host's own read (the digest's count across hosts) needs no thread and no workspace, lists the hosts it can reach, and is held to the far host's bridge policy as a read", async () => {
+    const { box, mac } = await setUp()
+    const far = hostReadOf(box.work.ctx)!
+    expect(far.hosts()).toEqual([MAC])
+    expect(await far.read(MAC, 'office', 'rangeRead', { range: 'A1' })).toMatchObject({ on: MAC })
+    expect(seen).toEqual([{ host: MAC, method: 'work.office.rangeRead', by: { kind: 'remote', caps: ['read', 'operate'], peer: BOX }, params: { range: 'A1' } }])
+    // only what the policy allows: read alone still answers a read, off refuses it
+    mac.policy = 'read'
+    expect(await far.read(MAC, 'office', 'rangeRead', { range: 'A1' })).toMatchObject({ on: MAC })
+    mac.policy = 'off'
+    await expect(far.read(MAC, 'office', 'rangeRead', { range: 'A1' })).rejects.toThrow(/bridge is off for that host/)
   })
 
   it('is refused by the far host\'s bridge policy, and never carries the press', async () => {

@@ -289,8 +289,8 @@ export class PushRegistry {
         environment: row.environment,
         payload,
         expiration: Math.floor(notice.ts / 1000) + ALERT_TTL_S,
-        // A notice of Work's replaces the last of its own key: one banner for what cannot wait, one a day's digest.
-        collapseId: notice.work ? `work:${notice.work.key}` : `${notice.threadId ?? hostId}:${notice.event}`
+        // A notice of Work's replaces the last of its own key from its own host: one banner a host for what cannot wait, one a day's digest.
+        collapseId: notice.work ? `work:${environmentId ?? hostId}:${notice.work.key}` : `${notice.threadId ?? hostId}:${notice.event}`
       })
       if (result.ok) {
         delivered += 1
