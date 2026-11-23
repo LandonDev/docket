@@ -2,10 +2,13 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import type { Template, TemplateKind } from "@shared/work/templates";
 import { MoreHorizontal } from "../../chrome/icons";
 import { RowsContextMenu, type MenuRow } from "../../chrome/menuRows";
+import { useTruncated } from "../../components/tip";
 import { Button } from "../../components/ui/button";
+import { ROW_OPEN } from "../../components/ui/press";
 import { reveal } from "../../components/ui/reveal";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
 import { Doc, Slides, Table } from "../icons";
 import type { ShelfGroup } from "./model";
@@ -14,12 +17,14 @@ import type { ShelfGroup } from "./model";
  * The shelf's tiles (docs/agents/work-templates.md "The screens"), one part for
  * the Templates view and the "New from a template" dialog: two groups, each a
  * 12px muted label over a grid of tiles. A tile is the file's picture, then the
- * kind's glyph and the name on one 13px line. It aligns to the grid's edge (6px
- * of padding against a -6px margin), washes 5% on hover, draws the ring inside
- * on focus and takes scale(0.97) while pressed; the glyph turns to a spinner
- * only when a make takes over `SPIN_AFTER_MS`. Arrows walk the tiles, Return
- * makes. On the page a tile also has its menu: a right-click, or the ⋯ that
- * shows on hover and on focus.
+ * kind's glyph 8px from the name on one 13px line, cut to it, the whole name the
+ * press's tip while it is cut. It aligns to the grid's edge (6px of padding
+ * against a -6px margin), washes 5% on hover, draws the ring inside on focus and
+ * takes scale(0.97) while pressed, where motion is allowed; the glyph turns to a
+ * spinner only when a make takes over `SPIN_AFTER_MS`. Arrows walk the tiles,
+ * Return makes. On the page a tile also has its menu: a right-click, or the ⋯
+ * that shows on hover and on focus, takes no pointer until then, and stays while
+ * its menu is open.
  */
 
 /** A make shorter than this shows no spinner: the tile only presses. */
@@ -111,6 +116,7 @@ function Tile({
   making,
   focusable,
   menu,
+  held,
   onPress,
   onFocus,
   onMore,
@@ -119,38 +125,55 @@ function Tile({
   making: boolean;
   focusable: boolean;
   menu: boolean;
+  /** Its menu is open: the ⋯ stays shown. */
+  held: boolean;
   onPress: () => void;
   onFocus: () => void;
   onMore: (button: HTMLElement) => void;
 }) {
   const spin = useLate(making, SPIN_AFTER_MS);
   const Glyph = KIND_GLYPH[template.kind];
+  // The caption is cut to one line; while it is cut, the whole name is the press's tip.
+  const { ref: caption, cut } = useTruncated(template.name);
+  const press = (
+    <Button
+      variant="ghost"
+      data-tile-open=""
+      aria-label={template.name}
+      aria-busy={making || undefined}
+      tabIndex={focusable ? 0 : -1}
+      onFocus={onFocus}
+      onClick={onPress}
+      className={ROW_OPEN}
+    />
+  );
   return (
     <div
       data-menu-id={template.id}
       data-tile={template.id}
-      className="group/item relative -m-1.5 flex min-w-0 flex-col gap-1.5 rounded-xl p-1.5 [transition:background-color_var(--dur-hover)_var(--ease-out),scale_var(--dur-fast)_var(--ease-out)] hover:bg-foreground/5 has-[>[data-tile-open]:active]:scale-[0.97] motion-reduce:transition-none"
+      className="group/item relative -m-1.5 flex min-w-0 flex-col gap-1.5 rounded-xl p-1.5 [transition:background-color_var(--dur-hover)_var(--ease-out),scale_var(--dur-fast)_var(--ease-out)] hover:bg-foreground/5 motion-safe:has-[>[data-tile-open]:active]:scale-[0.97] motion-reduce:transition-none"
     >
       {/* The tile's press, laid over the whole tile so its ring is the tile's edge, inside. */}
-      <button
-        type="button"
-        data-tile-open
-        aria-label={template.name}
-        aria-busy={making || undefined}
-        tabIndex={focusable ? 0 : -1}
-        onFocus={onFocus}
-        onClick={onPress}
-        className="absolute inset-0 rounded-[inherit]"
-      />
+      {cut ? (
+        <Tooltip>
+          <TooltipTrigger render={press} />
+          <TooltipContent>{template.name}</TooltipContent>
+        </Tooltip>
+      ) : (
+        press
+      )}
       <span className="pointer-events-none relative flex min-w-0 flex-col gap-1.5">
         <Plate kind={template.kind} />
-        <span className="flex h-5 min-w-0 items-center gap-1.5 text-[13px] leading-5 text-foreground">
+        <span className="flex h-5 min-w-0 items-center gap-2 text-[13px] leading-5 text-foreground">
           {spin ? <Spinner aria-hidden className="size-3.5" /> : <Glyph aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
-          <span className="min-w-0 truncate">{template.name}</span>
+          <span ref={caption} data-tile-name="" className="min-w-0 truncate">
+            {template.name}
+          </span>
         </span>
       </span>
       {menu ? (
-        <span className={cn("absolute top-3 right-3", reveal("item", { row: true }))}>
+        // Over the plate: no pointer until it shows, and shown while its menu is open.
+        <span data-tile-more="" className={cn("absolute top-3 right-3", held ? "pointer-events-auto opacity-100" : reveal("item", { row: true, overlay: true }))}>
           <Button
             variant="ghost"
             size="icon-xs"
@@ -202,9 +225,12 @@ export function Shelf({
   onPress,
   menuFor,
   onMenu,
+  focusId,
 }: {
   groups: readonly ShelfGroup[];
   layout: ShelfLayout;
+  /** The tile that takes the tab stop first (the one Back returns to); the first tile when absent. */
+  focusId?: string | null;
   /** The template a make is waiting on, or null. */
   making: string | null;
   onPress: (template: Template) => void;
@@ -213,7 +239,8 @@ export function Shelf({
   onMenu?: (pick: string, template: Template) => void;
 }) {
   const all = groups.flatMap((g) => g.templates);
-  const [active, setActive] = useState<string | null>(null);
+  const [active, setActive] = useState<string | null>(focusId ?? null);
+  const [held, setHeld] = useState<string | null>(null);
   const current = all.some((t) => t.id === active) ? active : (all[0]?.id ?? null);
   const root = useRef<HTMLDivElement | null>(null);
   const openMenu = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
@@ -249,6 +276,7 @@ export function Shelf({
                 making={making === t.id}
                 focusable={t.id === current}
                 menu={!!menuFor}
+                held={held === t.id}
                 onPress={() => onPress(t)}
                 onFocus={() => setActive(t.id)}
                 onMore={(button) => {
@@ -276,6 +304,7 @@ export function Shelf({
         if (t) onMenu(pick, t);
       }}
       openRef={openMenu}
+      onOpenChange={(open, id) => setHeld(open ? id : null)}
     >
       {body}
     </RowsContextMenu>

@@ -13,7 +13,10 @@ import { Input } from "../../components/ui/input";
  * Return in one moving to the next and in the last making the file. Create is
  * never greyed: a field left empty stays in the file as written. While the make
  * runs Create spins and the fields are read only; the host's refusal is one red
- * line under them, in its words. `onBack` is there when he came from the tiles.
+ * line under them, in its words, announced as it arrives, the values and focus
+ * left as they are. `onBack` is there when he came from the tiles; its chevron
+ * sits on the content's edge. The body grows to fill a frame the tiles set, so
+ * the footer stays at the bottom.
  */
 export function FieldsForm({
   template,
@@ -53,7 +56,7 @@ export function FieldsForm({
         create();
       }}
     >
-      <ModalBody>
+      <ModalBody className="flex-1">
         {template.fields.map((name, i) => (
           <Field key={name} label={name}>
             <Input
@@ -69,12 +72,16 @@ export function FieldsForm({
             />
           </Field>
         ))}
-        <ErrorLine error={error} />
+        {/* Always there, so a refusal that lands in it is read out. */}
+        <div role="alert" data-fields-error="" className="contents">
+          <ErrorLine error={error} />
+        </div>
       </ModalBody>
       <DialogFooter
         start={
           onBack ? (
-            <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onBack}>
+            // The ghost's own padding is pulled back, so the chevron stands on the labels' edge.
+            <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onBack} className="-ms-3">
               <ChevronLeft />
               Back
             </Button>

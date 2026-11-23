@@ -43,21 +43,56 @@ export function shelfGroups(templates: readonly Template[], jobName: string): Sh
 /** The ids a tile's menu answers. */
 export type TileAction = "make" | "edit" | "rename" | "move" | "remove";
 
-/** A tile's menu: a starter's is New from this, Edit a copy and Hide; his own adds Rename… and the move between this job and all jobs. */
-export function tileMenu(template: Template, jobName: string): { id: TileAction; label: string }[] {
+/** A tile's menu row, as data: its glyph is named here and drawn by the view. */
+export type TileRow =
+  | { kind: "item"; id: TileAction; label: string; glyph: "new" | "edit" | "copy" | "rename" | "everywhere" | "job" | "delete" | "hide"; danger?: true }
+  | { kind: "sep" };
+
+/**
+ * A tile's menu: a starter's is New from this, Edit a copy and Hide; his own adds
+ * Rename… and the move between this job and all jobs, then Remove, set apart as the
+ * one row that deletes. Hide stays plain: it is undone with one press.
+ */
+export function tileMenu(template: Template, jobName: string): TileRow[] {
   if (template.where === "starter")
     return [
-      { id: "make", label: "New from this" },
-      { id: "edit", label: "Edit a copy" },
-      { id: "remove", label: "Hide" },
+      { kind: "item", id: "make", label: "New from this", glyph: "new" },
+      { kind: "item", id: "edit", label: "Edit a copy", glyph: "copy" },
+      { kind: "item", id: "remove", label: "Hide", glyph: "hide" },
     ];
   return [
-    { id: "make", label: "New from this" },
-    { id: "edit", label: "Edit" },
-    { id: "rename", label: "Rename…" },
-    { id: "move", label: template.where === "job" ? "Use in all jobs" : `Only in ${jobName}` },
-    { id: "remove", label: "Remove" },
+    { kind: "item", id: "make", label: "New from this", glyph: "new" },
+    { kind: "item", id: "edit", label: "Edit", glyph: "edit" },
+    { kind: "item", id: "rename", label: "Rename…", glyph: "rename" },
+    template.where === "job"
+      ? { kind: "item", id: "move", label: "Use in all jobs", glyph: "everywhere" }
+      : { kind: "item", id: "move", label: `Only in ${jobName}`, glyph: "job" },
+    { kind: "sep" },
+    { kind: "item", id: "remove", label: "Remove", glyph: "delete", danger: true },
   ];
+}
+
+/** The empty shelf's line: what he hid, when he hid it all. */
+export function hiddenLine(hidden: number): string | null {
+  if (hidden <= 0) return null;
+  return hidden === 1 ? "1 starter is hidden" : `${hidden} starters are hidden`;
+}
+
+/** One message for an Add or a drop that left some files out: each by name, with why. */
+export function refusedLine(refused: readonly { name: string; why: string }[]): { title: string; description?: string } | null {
+  if (refused.length === 0) return null;
+  if (refused.length === 1) return { title: `${refused[0]!.name} was not added`, description: refused[0]!.why };
+  return { title: `${refused.length} files were not added`, description: refused.map((r) => `${r.name}: ${r.why}`).join("\n") };
+}
+
+/** The name a source's file gives the Save dialog: its stem, for a file on disk or a Microsoft file by path or name. */
+export function sourceStem(source: { at: string; path?: string; name?: string; ref?: { kind: string; path?: string } }): string {
+  if (source.at === "file" && source.path) return stemOf(baseName(source.path));
+  if (source.at === "microsoft") {
+    if (source.ref?.kind === "path" && source.ref.path) return stemOf(baseName(source.ref.path));
+    if (source.name) return stemOf(source.name);
+  }
+  return "";
 }
 
 /** "Asks for Client and Game." for a template with fields; null for one with none. */

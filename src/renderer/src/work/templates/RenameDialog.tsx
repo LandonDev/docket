@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import type { Template } from "@shared/work/templates";
-import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { Input } from "../../components/ui/input";
 import { renameTemplate } from "./data";
 
-/** A template of his own under a new name: the name filled and selected, Rename sends it to the host. */
+/** A template of his own under a new name: the name filled and selected, Rename sends it to the host; a blank name or the host's refusal is the Name's own error, and the dialog stays. */
 export function RenameDialog({ env, workspaceId, template, onClose }: { env: string; workspaceId: string; template: Template; onClose: () => void }) {
   const [pending, setPending] = useState(false);
   return (
@@ -38,7 +38,9 @@ function RenameForm({
   const rename = async () => {
     const next = name.trim();
     if (pending) return;
-    if (!next || next === template.name) {
+    // A blank name stays in the form with its error: the host would refuse it.
+    if (!next) return setError("A template needs a name");
+    if (next === template.name) {
       if (close) close(onClose);
       else onClose();
       return;
@@ -64,7 +66,7 @@ function RenameForm({
       }}
     >
       <ModalBody>
-        <Field label="Name">
+        <Field label="Name" error={error}>
           <Input
             autoFocus
             value={name}
@@ -75,10 +77,12 @@ function RenameForm({
               selected.current = true;
               event.currentTarget.select();
             }}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+              setError(null);
+            }}
           />
         </Field>
-        <ErrorLine error={error} />
       </ModalBody>
       <DialogFooter onCancel={onClose} confirmLabel="Rename" pending={pending} />
     </form>

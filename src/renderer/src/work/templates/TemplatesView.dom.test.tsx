@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 /**
- * The Templates view: still tiles while the shelf loads, its error with Retry,
- * the empty state with Add…, a press that makes (or asks the fields through
- * the dialog), the menu's verbs, Remove of his own asking through a confirm
- * when the host has no Trash and offering Undo when it has, Show hidden only
- * with starters hidden, and Add… and a drop that put a file of the workspace's
- * own host on the shelf while no thread starts.
+ * The Templates view: still tiles while the shelf loads, its error as the
+ * frame's state line with Retry and Add… off, an empty shelf he narrowed
+ * saying so with Show hidden (and no second Add…), a press that makes (or asks
+ * the fields through the dialog) and opens a made file again rather than make a
+ * second, the menu's verbs with their glyphs and the delete set apart, Hide
+ * with its Undo, the Delete confirm in the app's words, Show hidden only with
+ * starters hidden and Add… never moving for it, and Add… and a drop that put
+ * files of the workspace's own host on the shelf one add at a time, each file
+ * tried and one message for those left out, while no thread starts.
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,10 +36,10 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
 const picked: { paths: string[] | null } = { paths: null };
 vi.mock("../../lib/fs", async (original) => ({ ...(await original<object>()), pickFiles: async () => picked.paths }));
 vi.mock("../../lib/native", async (original) => ({ ...(await original<object>()), getPathForFile: (f: File) => (f.name === "memory.docx" ? "" : `/w/Desktop/${f.name}`) }));
-const toasts: { kind: string; title: string; options?: { action?: { label: string; onClick: () => void } } }[] = [];
+const toasts: { kind: string; title: string; options?: { description?: string; action?: { label: string; onClick: () => void } } }[] = [];
 vi.mock("../../components/ui/toaster", async (original) => {
   const toast = Object.assign((title: string, options?: never) => toasts.push({ kind: "plain", title, options }), {
-    error: (title: string) => toasts.push({ kind: "error", title }),
+    error: (title: string, options?: never) => toasts.push({ kind: "error", title, ...(options ? { options } : {}) }),
     success: (title: string, options?: never) => toasts.push({ kind: "success", title, options }),
   });
   return { ...(await original<object>()), loadToast: async () => toast };
@@ -94,15 +97,51 @@ describe("the Templates view", () => {
     expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
   });
 
-  it("is No templates, with Add…, when every starter is hidden and he has none", async () => {
+  it("says the shelf did not load as the frame's state line, with Add… off until it does", async () => {
+    host.answer = () => Promise.reject(new Error("refused: the box did not answer"));
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    const line = document.querySelector('[data-view-state="failed"]')!;
+    expect(line.textContent).toContain("Templates did not load");
+    expect(line.textContent).toContain("The box did not answer");
+    expect(screen.queryByText("No templates")).toBeNull();
+    expect(screen.getByRole("button", { name: "Add…" }).hasAttribute("disabled")).toBe(true);
+    host.answer = () => list;
+    fireEvent.click(within(line as HTMLElement).getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.getByRole("button", { name: "Add…" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("is No templates, saying what he hid, with Show hidden said once and no second Add…", async () => {
     list = { templates: [], hidden: 3 };
-    picked.paths = ["/w/Desktop/Budget.xlsx"];
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    // The header's ⋯ stands down: the empty state carries Show hidden.
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Add…" })).toHaveLength(1);
+    expect(screen.getByText("No templates")).toBeTruthy();
+    expect(screen.getByText("3 starters are hidden")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show hidden" }));
+    await settle();
+    expect(asked("work.templates.unhide")).toEqual([{ workspaceId: "ws" }]);
+  });
+
+  it("is No templates alone when nothing was hidden", async () => {
+    list = { templates: [], hidden: 0 };
     render(<View {...props} />);
     await settle();
     expect(screen.getByText("No templates")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
-    await settle();
-    expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", source: { at: "file", host: "box", path: "/w/Desktop/Budget.xlsx" } }]);
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("makes a template with no fields on a press and opens it in Files, and hands one with fields to the dialog", async () => {
@@ -133,7 +172,7 @@ describe("the Templates view", () => {
     expect(asked("work.files.open").map((p) => p.ref)).toContainEqual(MEMO.source);
   });
 
-  it("hides a starter at once, and asks before deleting one of his own while there is no Trash", async () => {
+  it("hides a starter at once with Undo for that one, and asks before deleting one of his own while there is no Trash", async () => {
     render(<View {...props} />);
     await settle();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Season log" }));
@@ -141,15 +180,44 @@ describe("the Templates view", () => {
     await settle();
     expect(asked("work.templates.remove")).toEqual([{ workspaceId: "ws", template: LOG.id }]);
     expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(toasts.map((t) => [t.title, t.options?.action?.label])).toEqual([["Hidden", "Undo"]]);
+    toasts[0]!.options!.action!.onClick();
+    await settle();
+    expect(asked("work.templates.unhide")).toEqual([{ workspaceId: "ws", template: LOG.id }]);
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "Crew memo" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
     await settle();
     const confirm = screen.getByRole("alertdialog");
-    expect(within(confirm).getByText("Remove Crew memo?")).toBeTruthy();
-    fireEvent.click(within(confirm).getByRole("button", { name: "Remove" }));
+    expect(within(confirm).getByRole("heading").textContent).toBe("Delete “Crew memo”?");
+    // A job's template: the title says it all.
+    expect(confirm.querySelector('[data-slot="alert-dialog-description"], [data-slot="dialog-description"]')).toBeNull();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
     await settle();
     expect(asked("work.templates.remove").slice(1)).toEqual([{ workspaceId: "ws", template: MEMO.id }, { workspaceId: "ws", template: MEMO.id, confirmed: true }]);
+  });
+
+  it("says a template of All jobs goes from every job on its host before it is deleted", async () => {
+    const WEEKLY = tpl("all:Weekly.docx", "Weekly");
+    list = { templates: [MEMO, WEEKLY], hidden: 0 };
+    host.answer = (method) => (method === "work.templates.list" ? list : method === "work.templates.remove" ? { confirm: true } : {});
+    render(<View {...props} />);
+    await settle();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Weekly" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    await settle();
+    expect(within(screen.getByRole("alertdialog")).getByText("It goes from every job on this computer.")).toBeTruthy();
+  });
+
+  it("gives each menu row its glyph and sets his own Remove apart as the one red row", async () => {
+    render(<View {...props} />);
+    await settle();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Crew memo" }));
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.every((i) => i.querySelector("svg"))).toBe(true);
+    const remove = screen.getByRole("menuitem", { name: "Remove" });
+    expect(remove.previousElementSibling?.getAttribute("role")).toBe("separator");
+    expect(remove.getAttribute("data-variant") ?? remove.className).toMatch(/destructive/);
   });
 
   it("offers Undo when his own went to Files' Trash, which puts it back", async () => {
@@ -217,7 +285,7 @@ describe("the Templates view", () => {
     expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", source: { at: "file", host: "box", path: "/w/Desktop/Budget.xlsx" } }]);
   });
 
-  it("adds only a file on the workspace's own host, and says so in one line from another machine", async () => {
+  it("adds only a file on the workspace's own host, and says so in one message from another machine", async () => {
     host.primary = "mac";
     picked.paths = ["/Users/sam/Budget.xlsx"];
     render(
@@ -230,6 +298,99 @@ describe("the Templates view", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add…" }));
     await settle();
     expect(asked("work.templates.save")).toEqual([]);
-    expect(toasts).toEqual([{ kind: "error", title: "Only a file on The box can be added for now" }]);
+    expect(toasts).toEqual([{ kind: "error", title: "Budget.xlsx was not added", options: { description: "Only a file on The box can be added for now" } }]);
+  });
+
+  it("tries every file of an add and names the ones left out in one message", async () => {
+    host.answer = (method, params) => {
+      if (method === "work.templates.list") return list;
+      if (method === "work.templates.save" && String((params.source as { path: string }).path).endsWith(".png")) throw new Error("refused: only a document, sheet or deck can be a template");
+      return MEMO;
+    };
+    picked.paths = ["/w/Desktop/Logo.png", "/w/Desktop/Budget.xlsx", "/w/Desktop/Brief.docx"];
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+    await settle();
+    await settle();
+    expect(asked("work.templates.save").map((p) => (p.source as { path: string }).path)).toEqual(["/w/Desktop/Logo.png", "/w/Desktop/Budget.xlsx", "/w/Desktop/Brief.docx"]);
+    expect(toasts).toEqual([{ kind: "error", title: "Logo.png was not added", options: { description: "Only a document, sheet or deck can be a template" } }]);
+  });
+
+  it("runs one add at a time for a workspace, whether from Add… or a drop", async () => {
+    let finish: () => void = () => {};
+    host.answer = (method) => (method === "work.templates.list" ? list : method === "work.templates.save" ? new Promise((done) => (finish = () => done(MEMO))) : {});
+    picked.paths = ["/w/Desktop/Budget.xlsx"];
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+    await settle();
+    expect(screen.getByRole("button", { name: "Add…" }).hasAttribute("disabled")).toBe(true);
+    const view = document.querySelector("[data-templates-view]")!;
+    fireEvent.drop(view, { dataTransfer: { types: ["Files"], files: [new File(["x"], "Other.docx")] } });
+    await settle();
+    expect(asked("work.templates.save")).toHaveLength(1);
+    await act(async () => finish());
+    await settle();
+    fireEvent.drop(view, { dataTransfer: { types: ["Files"], files: [new File(["x"], "Other.docx")] } });
+    await settle();
+    expect(asked("work.templates.save")).toHaveLength(2);
+    await act(async () => finish());
+  });
+
+  it("names a dropped file with no path on this computer among those left out", async () => {
+    render(<View {...props} />);
+    await settle();
+    const view = document.querySelector("[data-templates-view]")!;
+    fireEvent.drop(view, { dataTransfer: { types: ["Files"], files: [new File(["x"], "memory.docx"), new File(["x"], "Budget.xlsx")] } });
+    await settle();
+    await settle();
+    expect(asked("work.templates.save").map((p) => (p.source as { path: string }).path)).toEqual(["/w/Desktop/Budget.xlsx"]);
+    expect(toasts).toEqual([{ kind: "error", title: "memory.docx was not added", options: { description: "Only a file saved on this computer can be added" } }]);
+  });
+
+  it("keeps Add… in its place when the ⋯ for hidden starters comes and goes", async () => {
+    list = { templates: [MEMO], hidden: 2 };
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    const head = screen.getByRole("button", { name: "Add…" }).parentElement!;
+    // Add… is the header's last control; the ⋯ arrives before it, so Add… never shifts.
+    expect(head.lastElementChild).toBe(screen.getByRole("button", { name: "Add…" }));
+    expect(screen.getByRole("button", { name: "More" }).compareDocumentPosition(screen.getByRole("button", { name: "Add…" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("opens a made file again when its open failed, and never makes a second", async () => {
+    let opens = 0;
+    host.answer = (method) => {
+      if (method === "work.templates.list") return list;
+      if (method === "work.templates.make") return { source: { at: "file", host: "box", path: "/w/Dummy Esports/Crew memo.docx" }, kind: "document", title: "Crew memo", unfilled: [] };
+      if (method === "work.files.open" && opens++ === 0) throw new Error("refused: the Files view is busy");
+      return {};
+    };
+    render(<View {...props} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    await settle();
+    expect(toasts.map((t) => [t.kind, t.title, t.options?.description, t.options?.action?.label])).toEqual([["error", "Crew memo was made but did not open", "The Files view is busy", "Open"]]);
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    expect(asked("work.templates.make")).toHaveLength(1);
+    expect(asked("work.files.open")).toHaveLength(2);
   });
 });

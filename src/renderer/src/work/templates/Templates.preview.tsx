@@ -13,9 +13,9 @@ import { Head, View } from "./TemplatesView";
 /**
  * The Templates pillar's screens over one fixed host, for `bun run ui:preview
  * src/renderer/src/work/templates/Templates.preview.tsx#<Export> --props '{"width":560}'`:
- * the view under the frame's 40px header (`state`: shelf, loading, empty,
- * error), New from a template, a template's fields (`state`: rest, pending,
- * error) and Save as template. A dialog draws in a portal a static page cannot
+ * the view under the frame's 40px header (`state`: shelf, hidden, loading,
+ * empty, error), New from a template, a template's fields (`state`: rest,
+ * pending, error) and Save as template (its fields read from the host). A dialog draws in a portal a static page cannot
  * hold, so each is drawn in the Modal's own box (chrome/Modal.tsx) around its
  * real body. `width` sets the box the screen stands in. Rendered by nothing in
  * the app.
@@ -42,8 +42,9 @@ const SHELF: Template[] = [
   tpl("starter:any/meeting-notes", "Meeting notes", "document", ["Meeting"]),
 ];
 
-type ViewState = "shelf" | "loading" | "empty" | "error";
+type ViewState = "shelf" | "hidden" | "loading" | "empty" | "error";
 let viewState: ViewState = "shelf";
+let fileFields: string[] = [];
 
 const link = {
   environmentId: "local",
@@ -53,10 +54,11 @@ const link = {
   onClose: () => () => {},
   onPush: () => () => {},
   request<T>(method: string): Promise<T> {
+    if (method === "work.templates.fields") return Promise.resolve({ fields: fileFields } as T);
     if (method !== "work.templates.list") return Promise.reject(new Error(`no ${method}`));
     if (viewState === "loading") return new Promise(() => {});
     if (viewState === "error") return Promise.reject(new Error("refused: the box did not answer"));
-    return Promise.resolve({ templates: viewState === "empty" ? [] : SHELF, hidden: viewState === "shelf" ? 0 : 3 } as T);
+    return Promise.resolve({ templates: viewState === "empty" ? [] : SHELF, hidden: viewState === "shelf" ? 0 : viewState === "hidden" ? 2 : 3 } as T);
   },
 } as unknown as Link;
 Object.assign(registry, { primary: () => link, linkOf: () => link, link: () => link });
@@ -150,6 +152,8 @@ export function FieldsPreview({ width, state = "rest" }: { width?: number; state
 }
 
 export function SavePreview({ width, fields = true }: { width?: number; fields?: boolean }) {
+  // The fields come from the host's read of the file, as they do for any file saved.
+  fileFields = fields ? ["Home", "Away", "Site"] : [];
   return (
     <Box width={width}>
       <ModalBox title="Save as template" size="sm">
@@ -158,7 +162,6 @@ export function SavePreview({ width, fields = true }: { width?: number; fields?:
           workspaceId="ws"
           source={{ at: "file", host: "local", path: "/w/Dummy Esports/Game report - North.docx" }}
           name="Game report"
-          {...(fields ? { fields: ["Home", "Away", "Site"] } : {})}
           onClose={noop}
           pending={false}
           setPending={noop}

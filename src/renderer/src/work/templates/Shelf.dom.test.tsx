@@ -8,6 +8,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Template } from "@shared/work/templates";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { shelfGroups, tileMenu } from "./model";
 import { nextTile, Shelf, SPIN_AFTER_MS } from "./Shelf";
 
@@ -30,7 +31,7 @@ const TEMPLATES = [
   tpl("all:Pitch.pptx", "Pitch", { kind: "deck", form: "pptx" }),
 ];
 const groups = shelfGroups(TEMPLATES, "Dummy Esports");
-const menuRows = (t: Template) => tileMenu(t, "Dummy Esports").map((row) => ({ kind: "item" as const, ...row }));
+const menuRows = (t: Template) => tileMenu(t, "Dummy Esports").map((row) => (row.kind === "sep" ? row : { kind: "item" as const, id: row.id, label: row.label }));
 const tiles = () => screen.getAllByRole("button").filter((b) => b.hasAttribute("data-tile-open"));
 
 afterEach(() => {
@@ -52,11 +53,48 @@ describe("the shelf", () => {
     expect(tile.textContent).toBe("Season log");
   });
 
-  it("aligns a tile to the grid's edge, washes it on hover and scales it while pressed, never moving it", () => {
+  it("aligns a tile to the grid's edge, washes it on hover and scales it while pressed only where motion is allowed, never moving it", () => {
     render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
     const tile = document.querySelector('[data-tile="job:Crew memo.docx"]')!;
-    for (const cls of ["-m-1.5", "p-1.5", "rounded-xl", "hover:bg-foreground/5", "has-[>[data-tile-open]:active]:scale-[0.97]", "motion-reduce:transition-none"]) expect(tile.className).toContain(cls);
-    expect(document.querySelector('[data-tile="job:Crew memo.docx"] [data-tile-open]')!.className).toContain("rounded-[inherit]");
+    for (const cls of ["-m-1.5", "p-1.5", "rounded-xl", "hover:bg-foreground/5", "motion-safe:has-[>[data-tile-open]:active]:scale-[0.97]", "motion-reduce:transition-none"]) expect(tile.className).toContain(cls);
+    // No scale outside motion-safe: reduced motion has none at all.
+    expect(tile.className.split(" ").filter((c) => c.includes("scale-[") && !c.startsWith("motion-safe:"))).toEqual([]);
+  });
+
+  it("presses through the shared Button laid over the whole tile, its ring inside the tile's edge", () => {
+    render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
+    const press = document.querySelector<HTMLElement>('[data-tile="job:Crew memo.docx"] [data-tile-open]')!;
+    expect(press.tagName).toBe("BUTTON");
+    expect(press.getAttribute("data-slot")).toBe("button");
+    for (const cls of ["absolute", "inset-0", "rounded-[inherit]", "p-0"]) expect(press.className.split(" ")).toContain(cls);
+  });
+
+  it("sets the kind's glyph 8px from the name, on the page and in the dialog", () => {
+    const { rerender } = render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
+    const line = () => document.querySelector('[data-tile="job:Crew memo.docx"] [data-tile-name]')!.parentElement!;
+    expect(line().className.split(" ")).toContain("gap-2");
+    rerender(<Shelf groups={groups} layout="dialog" making={null} onPress={() => {}} />);
+    expect(line().className.split(" ")).toContain("gap-2");
+  });
+
+  it("gives a cut name its whole as the press's tip, and none to a name that fits", async () => {
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    const spy = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.textContent === "Season log" ? 400 : 10;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    try {
+      render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
+      const trigger = (id: string) => document.querySelector(`[data-tile="${id}"] [data-slot="tooltip-trigger"]`);
+      expect(trigger("starter:ref/season-log")).not.toBeNull();
+      expect(trigger("job:Crew memo.docx")).toBeNull();
+    } finally {
+      spy.mockRestore();
+      vi.restoreAllMocks();
+    }
   });
 
   it("lays the dialog's grid in three columns, two under 640px, and the page's by 148px tiles", () => {
@@ -140,11 +178,15 @@ describe("the shelf", () => {
     const onMenu = vi.fn();
     render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} menuFor={menuRows} onMenu={onMenu} />);
     const more = screen.getByRole("button", { name: "More for Crew memo" });
-    // Shown by the hover reveal, at once on keyboard focus: one wrapper, the tile's group.
+    // Shown by the hover reveal, at once on keyboard focus; over the plate it takes no pointer until it shows.
     expect(more.parentElement!.className).toContain("group-hover/item:opacity-100");
+    expect(more.parentElement!.className.split(" ")).toContain("pointer-events-none");
+    expect(more.parentElement!.className).toContain("group-hover/item:pointer-events-auto");
     fireEvent.click(more);
     const items = await screen.findAllByRole("menuitem");
     expect(items.map((i) => i.textContent)).toEqual(["New from this", "Edit", "Rename…", "Use in all jobs", "Remove"]);
+    // Its menu open, the ⋯ stays shown and takes the pointer.
+    expect(more.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["opacity-100", "pointer-events-auto"]));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename…" }));
     expect(onMenu.mock.calls[0]).toEqual(["rename", TEMPLATES[0]]);
   });

@@ -34,7 +34,7 @@ vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object
 
 const { TemplateDialog } = await import("./TemplateDialog");
 
-const tpl = (id: string, name: string, fields: string[] = []): Template => ({ id, name, kind: "document", form: "docx", where: id.startsWith("job:") ? "job" : "starter", fields, source: { at: "file", host: "box", path: `/w/Templates/${name}.docx` } });
+const tpl = (id: string, name: string, fields: string[] = []): Template => ({ id, name, kind: "document", form: "docx", where: id.startsWith("job:") ? "job" : id.startsWith("all:") ? "all" : "starter", fields, source: { at: "file", host: "box", path: `/w/Templates/${name}.docx` } });
 const MEMO = tpl("job:Crew memo.docx", "Crew memo");
 const REPORT = tpl("starter:ref/game-report", "Game report", ["Home", "Away", "Site"]);
 const MADE = { source: { at: "file", host: "box", path: "/w/Dummy Esports/Game report - North.docx" }, kind: "document", title: "Game report - North", unfilled: [] };
@@ -160,5 +160,114 @@ describe("New from a template", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
     expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
+  });
+
+  it("holds Cancel too while a tile's file is made", async () => {
+    let done: (v: unknown) => void = () => {};
+    host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO, REPORT], hidden: 0 } : method === "work.templates.make" ? new Promise((r) => (done = r)) : {});
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    expect(screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    expect(screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(true);
+    await act(async () => done(MADE));
+  });
+
+  it("puts the focus on the first tile when the shelf arrives, so the arrows work at once", async () => {
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    await settle();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Crew memo" }));
+  });
+
+  it("lets a long Kept in folder wrap so it can be read whole", async () => {
+    render(<TemplateDialog env="box" workspaceId="ws" into={{ at: "file", host: "box", path: "/w/Dummy Esports/Season twelve game reports and crew notes" }} onClose={() => {}} />);
+    await settle();
+    const note = screen.getByText(/^Kept in Season twelve/);
+    expect(note.className).toContain("whitespace-normal");
+  });
+
+  it("keeps the tiles' height when it turns to the fields, the footer at the bottom, so the dialog does not jump", async () => {
+    const heights = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.step === "tiles" ? 520 : 0;
+    });
+    try {
+      render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Game report" }));
+      await settle();
+      const step = document.querySelector<HTMLElement>('[data-step="fields"]')!;
+      expect(step.style.minHeight).toBe("520px");
+      // The fields' body grows to fill it, so the footer stands at the bottom.
+      expect(step.querySelector('[data-slot="dialog-footer"]')!.previousElementSibling!.className.split(" ")).toContain("flex-1");
+    } finally {
+      heights.mockRestore();
+    }
+  });
+
+  it("returns the focus to the tile that opened the fields, one in All jobs past the first row", async () => {
+    const VISIT = tpl("all:Visit.docx", "Visit", ["Venue"]);
+    host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO, REPORT, tpl("starter:ref/a", "Another"), tpl("starter:ref/b", "Brief"), VISIT], hidden: 0 } : {});
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Visit" }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await settle();
+    const visit = screen.getByRole("button", { name: "Visit" });
+    expect(document.activeElement).toBe(visit);
+    // It holds the tab stop too, so Tab out and back lands on it.
+    expect(visit.tabIndex).toBe(0);
+  });
+
+  it("opens a made file again when its open failed, and never makes a second", async () => {
+    let opens = 0;
+    const onClose = vi.fn();
+    host.answer = (method) => {
+      if (method === "work.templates.list") return { templates: [MEMO, REPORT], hidden: 0 };
+      if (method === "work.templates.make") return MADE;
+      if (method === "work.files.open" && opens++ === 0) return Promise.reject(new Error("refused: the Files view is busy"));
+      return {};
+    };
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={onClose} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("Game report - North was made but did not open. The Files view is busy");
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    expect(asked("work.templates.make")).toHaveLength(1);
+    expect(asked("work.files.open")).toHaveLength(2);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("announces a refusal under the fields as it arrives, leaving the values and the focus where they were", async () => {
+    host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO, REPORT], hidden: 0 } : method === "work.templates.make" ? Promise.reject(new Error("refused: the workspace's folder is gone")) : {});
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Game report" }));
+    await settle();
+    const [home] = screen.getAllByRole("textbox");
+    // The live region is there before the refusal, so its arrival is read out.
+    const region = screen.getByRole("alert");
+    expect(region.textContent).toBe("");
+    fireEvent.change(home!, { target: { value: "North" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    home!.focus();
+    await settle();
+    expect(region.textContent).toBe("The workspace's folder is gone");
+    expect((home as HTMLInputElement).value).toBe("North");
+    expect(document.activeElement).toBe(home);
+  });
+
+  it("sets Back's chevron on the content's edge", async () => {
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Game report" }));
+    await settle();
+    expect(screen.getByRole("button", { name: "Back" }).className.split(" ")).toContain("-ms-3");
   });
 });

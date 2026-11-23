@@ -71,7 +71,13 @@ export const moveTemplate = (env: string, workspaceId: string, template: string,
 export const removeTemplate = (env: string, workspaceId: string, template: string, confirmed?: boolean): Promise<TemplateRemoved> =>
   ask(env, "work.templates.remove", { workspaceId, template, ...(confirmed ? { confirmed: true } : {}) }, "The host did not remove it");
 
-export const unhideStarters = (env: string, workspaceId: string): Promise<object> => ask(env, "work.templates.unhide", { workspaceId }, "The host did not answer");
+/** Every starter hidden in this workspace shown again, or (`template`) that one alone: the undo of one Hide. */
+export const unhideStarters = (env: string, workspaceId: string, template?: string): Promise<object> =>
+  ask(env, "work.templates.unhide", { workspaceId, ...(template ? { template } : {}) }, "The host did not answer");
+
+/** The fields a file would ask for as a template, read before it is saved. */
+export const fieldsOfFile = (env: string, workspaceId: string, source: CanvasSource): Promise<string[]> =>
+  ask<{ fields: string[] }>(env, "work.templates.fields", { workspaceId, source }, "The host did not read the file").then((r) => r.fields);
 
 /** Puts files Trash took back where they were (a remove's Undo). */
 export const restoreFiles = (env: string, workspaceId: string, ids: readonly string[]): Promise<unknown> =>
