@@ -39,7 +39,11 @@ export type SheetStoreKind = 'package' | 'tcsheet' | 'lifeos' | 'csv'
 export type SheetFormatControl = 'undo' | 'style' | 'font' | 'size' | 'bold' | 'italic' | 'underline' | 'colour' | 'fill' | 'align' | 'vertical' | 'wrap' | 'merge' | 'borders' | 'number'
 /** The Data menu's rows: a sort, the filter, and the rules its side sheet lists. */
 export type SheetDataControl = 'sort' | 'filter' | 'validation' | 'conditional' | 'names' | 'table'
-export type SheetRowControl = SheetFormatControl | SheetDataControl
+/** Insert's rows and what they make (the kit's `ObjectControl`): a chart, a picture, and changing either on the grid. */
+export type SheetObjectControl = 'chart' | 'picture' | 'objects'
+/** The page's controls (the kit's `PageControl`): Page set-up, the Page breaks view, the print area, a break at the cell in hand. */
+export type SheetPageControl = 'page' | 'pageBreaks' | 'printArea' | 'breakHere'
+export type SheetRowControl = SheetFormatControl | SheetDataControl | SheetObjectControl | SheetPageControl
 
 const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size', 'bold', 'italic', 'underline', 'colour', 'fill', 'align', 'vertical', 'wrap', 'merge', 'borders', 'number']
 /** The Data menu's rows: held for each store by `sheets/rulesMatrix.test.ts`, `host/rules.test.ts` and `writer.test.ts`. */

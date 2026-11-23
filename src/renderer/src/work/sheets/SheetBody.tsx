@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { SheetChart, SheetView } from "@shared/contract-work-sheets";
-import { patternProblem, reviewMarks, RulesSheet, SHEET_CONTROLS, SheetToolbar, useGridState, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
+import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, useGridState, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
 import { ChartBar, MoreHorizontal, Trash2 } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { RowsMenu } from "../../chrome/menuRows";
@@ -197,8 +197,8 @@ export function Body(props: Props) {
       {handle && controls.length > 0 ? (
         <SheetToolbar
           sheet={handle}
-          // (the host may list a control this build of the kit does not draw yet: the row takes the ones it knows)
-          controls={controls.filter((c): c is SheetControl => (SHEET_CONTROLS as readonly string[]).includes(c))}
+          // (the host lists them by the kit's own ids; one this build of the kit does not know draws nothing)
+          controls={controls satisfies readonly SheetControl[]}
           boundary={box}
           mac={IS_MAC}
           editorKeys
