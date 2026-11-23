@@ -66,6 +66,28 @@ describe("suggestions as the editor's review", () => {
     expect(decided(changes[1]!)).toEqual({ branchId: "b1", which: "p1#1" });
   });
 
+  it("a block whose style or spacing changed is one change that says so in words; a change of words alone says nothing", () => {
+    const heading = { ...block("h", "Run of show"), type: "heading", props: { level: 1 } };
+    const spaced = { ...block("s", "Doors at nine"), props: { para: JSON.stringify({ lineSpacing: 2 }) } };
+    const { changes } = reviewOf(
+      [
+        branch([
+          { kind: "changed", id: "h", left: heading, right: block("h", "Run of show"), inline: [{ op: "=", text: "Run of show" }], typeChange: ["heading", "paragraph"] },
+          { kind: "changed", id: "s", left: block("s", "Doors at nine"), right: spaced, inline: [{ op: "=", text: "Doors at nine" }], props: { para: ["", spaced.props.para] } },
+          { kind: "changed", id: "w", left: block("w", "8:00"), right: block("w", "7:30"), inline: [{ op: "-", text: "8:00" }, { op: "+", text: "7:30" }] },
+        ] as HistoryBranch["diff"]["rows"]),
+      ],
+      {},
+    );
+    expect(changes.map((c) => [decided(c).which, c.words])).toEqual([
+      ["h", ["Heading 1 becomes Normal text"]],
+      ["s", ["Line spacing set to 2"]],
+      ["w#0", undefined],
+    ]);
+    // The restyled block is tinted whole: its words did not change.
+    expect(changes[0]!.marks).toEqual([{ tone: "add", block: "h" }]);
+  });
+
   it("a block put in follows the live block before it; one taken out, moved, or a table's cells are one change each", () => {
     const { changes } = reviewOf(
       [

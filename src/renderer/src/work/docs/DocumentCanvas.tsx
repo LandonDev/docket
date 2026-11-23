@@ -13,6 +13,7 @@ import {
   type DocumentSelection,
   type DocumentStatus,
   type EditorAdapters,
+  type FindHandle,
   type ReviewChange,
 } from "work-kit/editor";
 import type { DocumentPage } from "work-kit/editor/page";
@@ -136,6 +137,21 @@ function Title({ text }: { text: string }) {
       {text}
     </h1>
   );
+}
+
+const plain = (words: string): string => words.replace(/\s+/g, " ").trim().toLowerCase();
+
+/**
+ * Whether the document opens with its own name (a Word file's Title line, a note's first heading):
+ * the column's title above it would then say the name twice, under the pane's own line that has
+ * said it once. Read from the first block alone, on each change.
+ */
+export function useNamesItself(editor: AnyEditor | null, title: string): boolean {
+  const lead = useSyncExternalStore(
+    useCallback((changed: () => void) => editor?.onChange(changed) ?? (() => undefined), [editor]),
+    () => editor?.prosemirrorState?.doc.firstChild?.firstChild?.firstChild?.textContent ?? "",
+  );
+  return plain(lead) !== "" && plain(lead) === plain(title);
 }
 
 /** A LifeOS document's title, renamed in place: Enter or leaving the field keeps it, Escape puts it back. A refused rename puts it back and says why, once. */
@@ -452,7 +468,10 @@ function Opened({
     shell.more?.([...more, { id: "export", label: "Export…", icon: Export, run: () => showPreview("last") }]);
     return () => shell.more?.(null);
   }, [shell, more, showPreview]);
-  useWorkCommands(root, { export: () => showPreview("last"), print: () => showPreview("print") });
+  // Edit → Find… and ⌘F with the caret in the text open the editor's own find; Replace is in its bar where he may edit.
+  const finder = useRef<FindHandle | null>(null);
+  const onFind = useCallback((handle: FindHandle | null) => void (finder.current = handle), []);
+  useWorkCommands(root, { export: () => showPreview("last"), print: () => showPreview("print"), find: () => finder.current?.open() });
   // The document went (a tab closed, another opened in its place): its Preview goes with it.
   useEffect(() => () => showPreview(false), [showPreview]);
 
@@ -503,6 +522,7 @@ function Opened({
         onReviewPick={review.pick}
         onEditor={setEditor}
         row={{ into: rowSlot, onPreview: () => showPreview("last"), onPage: setPage }}
+        onFind={onFind}
       />
       {preview.on && preview.slot
         ? createPortal(
@@ -648,6 +668,7 @@ export function DocumentFrame({
   onReviewPick,
   onEditor,
   row,
+  onFind,
 }: {
   doc: DocumentHandle;
   open: DocOpen;
@@ -665,16 +686,33 @@ export function DocumentFrame({
    * is no row; the text is still drawn in the document's own styles.
    */
   row?: { into: HTMLElement | null; onPreview(): void; onPage?(page: DocumentPage | null): void };
+  /** Given, the editor has find (and Replace where he may edit) and hands its way to open it; left out, ⌘F stays the app's. */
+  onFind?(handle: FindHandle | null): void;
 }) {
   const scheme = useColorScheme();
+  const [own, setOwn] = useState<AnyEditor | null>(null);
+  const up = useRef(onEditor);
+  up.current = onEditor;
+  const editorCame = useCallback((editor: AnyEditor | null) => {
+    setOwn(editor);
+    up.current?.(editor);
+  }, []);
+  const namesItself = useNamesItself(own, open.title);
   return (
     <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER, fonts: DOC_FONTS }}>
       <EditorAdaptersProvider adapters={doc.adapters}>
         {/* The editor's keys are its own while the caret is here (docs/agents/work-editors.md "Who hears a key"): ⌘B is bold, ⌘K a link. */}
         <div data-editor-keys={open.role === "edit" ? "document" : "read"} className="mx-auto" style={{ maxWidth: GUTTER + MEASURE + (margin ? MARGIN : 0) }}>
-          <div style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }} className="mb-4">
-            {open.role === "edit" && open.source.at === "lifeos" ? <TitleField text={open.title} rename={doc.host.rename} /> : <Title text={open.title} />}
-          </div>
+          {/* A LifeOS document's title is where he renames it, so it stays; a file's name is not said again over a first line that is that name. */}
+          {open.role === "edit" && open.source.at === "lifeos" ? (
+            <div style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }} className="mb-4">
+              <TitleField text={open.title} rename={doc.host.rename} />
+            </div>
+          ) : namesItself ? null : (
+            <div style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }} className="mb-4">
+              <Title text={open.title} />
+            </div>
+          )}
           <div style={{ paddingLeft: GUTTER, paddingRight: margin ? MARGIN : 0 }}>
             {pageReview?.length ? <PageChangeSummary words={pageReview} current /> : null}
             <DocumentEditor
@@ -690,7 +728,8 @@ export function DocumentFrame({
               {...(onAsk ? { onAsk } : {})}
               review={review ?? null}
               {...(onReviewPick ? { onReviewPick } : {})}
-              {...(onEditor ? { onEditor } : {})}
+              onEditor={editorCame}
+              {...(onFind ? { find: true, onFind } : {})}
             />
           </div>
         </div>

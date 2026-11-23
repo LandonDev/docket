@@ -12,7 +12,7 @@ import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, MoreEntry } from "../canvas/kind";
 
 const FILE = { at: "file", host: "box", path: "/w/Run of show.tcdoc" } as const;
-const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", focused: 0, editors: 0, schema: 1 as number | undefined, props: [] as Record<string, unknown>[] }));
+const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", focused: 0, editors: 0, schema: 1 as number | undefined, props: [] as Record<string, unknown>[], lead: "" }));
 
 vi.mock("./host", () => ({
   docHost: (env: string) => ({
@@ -39,7 +39,9 @@ vi.mock("work-kit/editor", async (original) => {
       opened.props.push(props);
       useEffect(() => {
         opened.editors++;
-        onEditor?.({ document: [], domElement: document.createElement("div"), focus: () => void opened.focused++, onChange: () => () => undefined });
+        // The first block's words, as the real editor's state holds them (doc > group > block > content).
+        const lead = { doc: { firstChild: { firstChild: { firstChild: { textContent: opened.lead } } } } };
+        onEditor?.({ document: [], domElement: document.createElement("div"), focus: () => void opened.focused++, onChange: () => () => undefined, prosemirrorState: lead });
         return () => onEditor?.(null);
       }, [onEditor]);
       return <div data-fake-editor contentEditable={editable} tabIndex={0} suppressContentEditableWarning />;
@@ -71,6 +73,7 @@ afterEach(() => {
   opened.props.length = 0;
   opened.focused = 0;
   opened.editors = 0;
+  opened.lead = "";
 });
 
 const ITEM = { id: "d1", sessionId: "t1", kind: "document", title: "Run of show", source: FILE } as CanvasItem;
@@ -126,7 +129,7 @@ describe("Preview, a state of the document", () => {
     // The document answers Print: the menu's row is live, and ⌘P is Print while the caret is in it.
     expect(workCommands.has("print")).toBe(true);
     const root = document.querySelector("[data-editor-answers]")!;
-    expect(root.getAttribute("data-editor-answers")).toBe("export print");
+    expect(root.getAttribute("data-editor-answers")).toBe("export find print");
     expect(root.contains(document.querySelector("[data-editor-keys]"))).toBe(true);
     await act(async () => void workCommands.run("print"));
     expect(previews.at(-1)).toMatchObject({ kind: "document", initial: "print" });
@@ -174,6 +177,33 @@ describe("Preview, a state of the document", () => {
     expect(previews.at(-1)!.initial).toBeUndefined();
     // Under Preview the row is out of sight and reach with the editor.
     expect(row.hasAttribute("inert")).toBe(true);
+  });
+
+  it("Edit → Find… and ⌘F open the editor's own find: the body answers find and hands the command to the editor's handle", async () => {
+    await mount();
+    const props = opened.props.at(-1)!;
+    expect(props.find).toBe(true);
+    // The body says it answers find, so ⌘F is the editor's while the caret is in it (work-editors.md "Who hears a key").
+    expect(document.querySelector("[data-editor-answers]")!.getAttribute("data-editor-answers")!.split(" ")).toContain("find");
+    const asked: (boolean | undefined)[] = [];
+    await act(async () => (props.onFind as (handle: unknown) => void)({ open: (withReplace?: boolean) => void asked.push(withReplace), close: () => {} }));
+    await act(async () => workCommands.run("find"));
+    expect(asked).toEqual([undefined]);
+    // The editor gone (its handle null), the command does nothing and throws nothing.
+    await act(async () => (props.onFind as (handle: unknown) => void)(null));
+    await act(async () => workCommands.run("find"));
+    expect(asked).toHaveLength(1);
+  });
+
+  it("the column says the file's name over the text, unless the text's first line is that name", async () => {
+    opened.lead = "Setup starts at 8:00";
+    const first = await mount();
+    await waitFor(() => expect(first.container.querySelector("h1")?.textContent).toBe("Run of show"));
+    cleanup();
+    // A Word file's own Title line, in any case and spacing: the name is not said twice.
+    opened.lead = "  run of   SHOW ";
+    const second = await mount();
+    await waitFor(() => expect(second.container.querySelector("h1")).toBeNull());
   });
 
   it("a host from before the schema gate says no schema: the editor is told 0 and offers nothing newer", async () => {

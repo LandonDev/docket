@@ -87,6 +87,7 @@ export function GuestApp() {
 
   if (state.at === "failed") return <Ended why={state.why} left={left} owner={session?.mode.kind === "owner"} retry={load} />;
   const opened = state.at === "open" ? state.opened : null;
+  const TitleTag = opened?.kind === "doc" ? "h1" : "span";
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4 text-[13px]">
@@ -99,7 +100,7 @@ export function GuestApp() {
             ) : null}
             {opened.kind === "project" && !child ? <span ref={setLead} data-project-lead className="flex shrink-0 items-center empty:hidden" /> : null}
             <span className="shrink-0 text-muted-foreground">{createElement(GLYPH[child ? (child.table === "docs" ? "doc" : "sheet") : opened.kind], { className: "size-3.5" })}</span>
-            <span className="min-w-0 truncate text-sm font-semibold">{child ? child.title || "Untitled" : opened.title}</span>
+            <TitleTag className="min-w-0 truncate text-sm font-semibold">{child ? child.title || "Untitled" : opened.title}</TitleTag>
             {opened.owner ? <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{opened.owner}</span> : null}
             {opened.kind === "project" && !child ? <span ref={setSlot} data-project-bar className="flex min-w-0 flex-1 items-center justify-between gap-2" /> : null}
             {opened.name ? (

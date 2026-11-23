@@ -53,6 +53,7 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
   );
   const wide = useWide(MEASURE + MARGIN + 64);
   const frame = useRef<HTMLDivElement>(null);
+  const [rowSlot, setRowSlot] = useState<HTMLDivElement | null>(null);
   // Anything wrong with the socket may be a link that went: the page asks once, and shows the end if it is gone.
   const [status, setStatus] = useState<DocumentStatus | null>(null);
   const onStatus = (next: DocumentStatus | null): void => {
@@ -62,7 +63,9 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
   return (
     <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER, fonts: DOC_FONTS }}>
       <EditorAdaptersProvider adapters={adapters}>
-        <div ref={frame} className="relative mx-auto px-4 pt-6 pb-10 sm:px-8" style={{ maxWidth: MEASURE + (wide && threads ? MARGIN : 0) + 64 }}>
+        {/* The format row's place: the page's first row under its header, held while the text scrolls under it, as in the app's pane. */}
+        {opened.role === "edit" ? <div ref={setRowSlot} data-guest-row className="sticky top-0 z-10 w-full min-w-0 flex-none bg-background" /> : null}
+        <div ref={frame} data-guest-document={opened.role} className="relative mx-auto w-full min-w-0 px-4 pt-6 pb-10 sm:px-8" style={{ maxWidth: MEASURE + (wide && threads ? MARGIN : 0) + 64 }}>
           {status ? (
             <div role="status" className="mb-3 flex h-8 items-center gap-2 border-b border-border text-[13px]" style={{ maxWidth: MEASURE }}>
               <span className="min-w-0 truncate text-muted-foreground">{status.message}</span>
@@ -73,9 +76,6 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
               ) : null}
             </div>
           ) : null}
-          <h1 className="mb-4 text-lg leading-[26px] font-semibold tracking-[-0.01em] text-balance" style={{ maxWidth: MEASURE }}>
-            {opened.title}
-          </h1>
           <div className="[--link:var(--accent)]" style={{ paddingRight: wide && threads ? MARGIN : 0 }}>
             <DocumentEditor
               documentName={doc}
@@ -87,6 +87,7 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
               // An Edit link gets the format row; Comment and View get none. The page is built with the service it is
               // served by, so the schema it knows is the service's: it says so, and asks the service to raise a document.
               formatRow={opened.role === "edit"}
+              formatRowInto={rowSlot}
               hostSchema={DOCUMENT_SCHEMA}
             />
           </div>

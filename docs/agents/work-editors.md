@@ -92,8 +92,9 @@ return <div ref={root} data-editor-keys="document">…</div>;
   resolver or App.tsx.
 
 Today the document answers `export` by opening Preview on the format he last
-used and `print` by opening it on Print ("Print" below). `find` and the
-sheet's and the deck's answers come with their milestones.
+used, `print` by opening it on Print ("Print" below) and `find` by opening
+the editor's own find bar (work-docs.md "Find…"). The sheet's and the
+deck's answers come with their milestones.
 
 ## Preview: the contract
 

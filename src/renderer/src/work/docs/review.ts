@@ -1,6 +1,7 @@
 import type { HistoryBranch } from "@shared/contract-work-history";
 import type { DiffRow, InlineOp } from "@shared/contract-work-history";
 import type { ReviewChange, ReviewGroup, ReviewMark } from "work-kit/editor";
+import { changeWords } from "work-kit/formats/diff";
 
 /**
  * A document's pending branches as the editor's review (docs/agents/work-docs.md
@@ -77,7 +78,9 @@ export function reviewOf(branches: readonly HistoryBranch[], names: Record<strin
     const by = branch.authors[0] ?? "owner";
     groups.push({ id: branch.id, label: names[by] ?? "Someone", by });
     for (const row of branch.diff.rows) {
-      const whole = (marks: ReviewMark[]) => changes.push({ id: changeId(branch.id, row.id), group: branch.id, marks });
+      // What the change does beside its words (a style, a size, its spacing) is said over the block: a tint alone cannot say it.
+      const words = changeWords(row);
+      const whole = (marks: ReviewMark[]) => changes.push({ id: changeId(branch.id, row.id), group: branch.id, marks, ...(words.length ? { words } : {}) });
       if (row.kind === "removed") whole([{ tone: "del", block: row.id }]);
       else if (row.kind === "added") whole([{ tone: "add", after: afterOf(branch, row.id), text: row.right?.text ?? "" }]);
       else if (row.kind === "moved") whole([{ tone: "del", block: row.id }, { tone: "add", after: afterOf(branch, row.id), text: row.right?.text ?? "" }]);

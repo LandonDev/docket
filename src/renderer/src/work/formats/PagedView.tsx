@@ -169,7 +169,14 @@ function Pages({ doc, zoom, label, onPage, head, side, dim, width, height }: Pag
   const narrow = box.width > 0 && box.width < FOLD;
   const inset = sideInset(narrow);
   const showSide = !!side && !narrow;
-  const room = Math.max(0, box.width - (rail ? railWidth(box.width) : 0) - inset * 2 - (showSide ? SIDE_WIDTH + SIDE_GAP : 0));
+  // The scroller keeps room for its bar (`scrollbar-gutter: stable`). Where a bar takes room (Windows, Linux) that
+  // room is not the paper's: counted as the paper's, the stage was 15px too wide and scrolled sideways.
+  const [gutter, setGutter] = useState(0);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el) setGutter(Math.max(0, el.offsetWidth - el.clientWidth));
+  }, [box.width, box.height]);
+  const room = Math.max(0, box.width - gutter - (rail ? railWidth(box.width) : 0) - inset * 2 - (showSide ? SIDE_WIDTH + SIDE_GAP : 0));
 
   // The largest page known sets the fit; sizes are learnt as pages are read.
   const [widest, tallest] = useMemo(() => {

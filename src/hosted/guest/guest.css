@@ -16,3 +16,35 @@ body,
 main {
   user-select: text;
 }
+
+/* A View link has no comments: the margin's rail would only widen the page. */
+[data-guest-document="view"] .te-rail {
+  display: none;
+}
+
+/* A finger's target is 44px (the row's controls are 28px for a pointer). The row still folds to
+   Style, Bold, Italic and More at 390px. */
+@media (pointer: coarse) {
+  [data-guest-row] [data-slot="format-row"] {
+    height: 52px;
+  }
+
+  /* work-kit budgets 28px for More. Its extra 16px sit in the end padding. */
+  [data-guest-row] [data-slot="format-row"]:has(> [data-slot="format-more"]) {
+    padding-inline-end: 28px;
+  }
+
+  [data-guest-row] [data-slot="format-more"] {
+    margin-inline-end: -16px;
+  }
+
+  [data-guest-row] [data-slot="format-row"] :is(button, input) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* More's rows keep their names whole beside a key or a value ("Bulleted list", "Ctrl+Shift+8"). */
+  [data-slot="format-menu"] {
+    min-width: min(304px, calc(100vw - 32px));
+  }
+}

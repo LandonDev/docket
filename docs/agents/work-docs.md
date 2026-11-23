@@ -192,8 +192,11 @@ place for a LifeOS document). What it tells the pane:
   becomes 7:30" is one change, taken alone with
   `work.history.decide {which: ['<block>#<n>']}`; a block put in, taken out
   or moved, a change of type or style, and a table's changed cells are one
-  change each, the cells tinted in their cells. Accept all and Reject all
-  are the pane's own.
+  change each, the cells tinted in their cells. A change of style, size or
+  spacing says what it does in one small line over its block ("Heading 1
+  becomes Normal text", `changeWords` of the diff row, the review's
+  `words`), as a compare does. Accept all and Reject all are the pane's
+  own.
 - **Comments** float at their words and sit in the margin (24px + 272px)
   once the canvas has 1104px, which is the thread folded on most windows.
   A `.tcdoc`'s threads are kept here in `work_docs_threads`; a LifeOS
@@ -211,8 +214,17 @@ place for a LifeOS document). What it tells the pane:
   the format he last used: the body answers the `export` command
   (`useWorkCommands`).
 - **Print…** in the File menu, and ⌘P while the caret is in the document,
-  open Preview on Print: the body answers `print` too. It answers no `find`
-  yet, so ⌘F stays the app's.
+  open Preview on Print: the body answers `print` too.
+- **Find…** in the Edit menu, and ⌘F while the caret is in the document,
+  open the editor's own find (work-kit `find`, `onFind`): a small bar at the
+  text's top right with the count ("3 of 17", "No results"), Match case,
+  Whole word, the two arrows, and Replace and Replace all on a document he
+  may edit. Every match is a tint drawn on the text, never written into it;
+  a replace is one step of undo. The body answers `find` and opens the bar
+  through the handle the editor hands it. Enter and ⇧Enter step, Escape
+  closes it and leaves the match in hand chosen. A project's page and a
+  mail's attachment mount the frame without `onFind`, so ⌘F stays the app's
+  there.
 
 ## Preview
 
@@ -435,6 +447,29 @@ else reads.
   (`EXPORT_HOLDS_AGENT_SUGGESTIONS`, formats/serviceRoutes.ts).
 - A Google Doc's mirror holds only Google's own suggestions; an agent's go
   to Google through the google pillar (work-google.md).
+
+## Proofs in a running window
+
+Two scripts open a real page on a real Work service and read what is DRAWN.
+Run both before a change to the editor's schema, the socket or the guest
+page lands (the first-copy fault passed every unit test and failed both):
+
+- `env -u ELECTRON_RUN_AS_NODE heavy bun scripts/proof-doc-window.ts` (after
+  `electron-vite build`): an isolated instance under xvfb (`e2e-work-lib.ts`
+  `Run`), a styled Word file imported into a Work Chat's canvas. It checks
+  that the pane draws the words, the list and the table; that the stored
+  document is whole after the window opened it; the fonts; the format row;
+  find's count and tints; an agent's `doc_format` waiting as a suggestion
+  that says "Heading 1 becomes Heading 2"; Preview's pages; no sideways
+  scroll. Each state is shot in dark and in light (the window is told the
+  theme as the app tells it, class and event, so a styled document's colours
+  are that theme's).
+- `heavy bun scripts/proof-bun.ts scripts/proof-doc-guest-phone.ts` (after
+  the hosted build; its head names the environment it reads): the guests
+  pillar's three links on one styled document, opened in WebKit and Chromium
+  at 390 and 768px, light and dark: the text drawn, the server's bytes
+  untouched by an Edit open, a Bold tap reaching the service, the row's fold,
+  44px targets, no sideways scroll, a clean console. 206 checks.
 
 ## LifeOS desktop
 

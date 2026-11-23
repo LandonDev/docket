@@ -115,6 +115,21 @@ describe("the pages", () => {
     expect(full).toBe(752);
   });
 
+  it("where the scroll bar takes room of its own (Windows, Linux), the paper is that much narrower and nothing scrolls sideways", async () => {
+    // jsdom lays nothing out: the scroller says it is 800 wide with 785 inside its bar.
+    const offset = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) { return this.hasAttribute("data-paged-view") ? 800 : 0; });
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.hasAttribute("data-paged-view") ? 785 : 0; });
+    try {
+      show(1, { side: <span>losses</span>, width: 800 });
+      await waitFor(() => expect(sheets()).toEqual([1]));
+      // 800 - 15 of bar - 48 of inset - 248 of column.
+      await waitFor(() => expect(parseFloat(document.querySelector<HTMLElement>("[data-paged-page='1']")!.style.width)).toBe(489));
+    } finally {
+      offset.mockRestore();
+      client.mockRestore();
+    }
+  });
+
   it("dims the paper while another picture of the same file is drawn", async () => {
     const { view } = show(1);
     await waitFor(() => expect(sheets()).toEqual([1]));
