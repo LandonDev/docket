@@ -2579,8 +2579,10 @@ The receipt (Money, docs/agents/work-money.md):
   colour, the glyph destructive with its words; it asks first). The fields fill when a host's
   parser answers, with no spinner or mark in them; what he typed first
   stands. The parser is the held job's own host, asked for its workspace, so
-  the category is what that job's ledger last gave the seller; another job
-  picked asks again, and the fields he has not touched follow its answer. Cancel keeps the draft; Save is the one confirm, a spinner while
+  the category is what that job's ledger last gave the seller, and the
+  picker lists that job's own words. Another job picked clears a category he
+  did not choose at once and asks again: its answer fills it, and with no
+  answer it stays empty, so Save never files one job under another's guess. Cancel keeps the draft; Save is the one confirm, a spinner while
   the parts go, then a light impact and the app's toast line saying where
   it went: "Filed in Unify", "Suggested in Unify's ledger" when the ledger is
   a sheet others can open and the row only waits there, or "Waiting in Money

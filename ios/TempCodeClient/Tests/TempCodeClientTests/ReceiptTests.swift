@@ -35,9 +35,9 @@ private final class StubHost: MoneyHost {
     /// The host's record by key: a repeat answers the first.
     private var kept: [String: MoneyReceived] = [:]
 
-    init(_ hostId: String = "box", sectors: [String] = ["unify"]) {
+    init(_ hostId: String = "box", sectors: [String] = ["unify"], categories: [String] = ["Meals", "Software", "Travel"]) {
         self.hostId = hostId
-        jobs = sectors.map { MoneyState.Job(workspaceId: "\(hostId)-ws-\($0)", name: $0.capitalized, sector: $0, made: true, categories: ["Meals", "Software", "Travel"]) }
+        jobs = sectors.map { MoneyState.Job(workspaceId: "\(hostId)-ws-\($0)", name: $0.capitalized, sector: $0, made: true, categories: categories) }
     }
 
     func moneyState() async throws -> MoneyState {
@@ -251,7 +251,8 @@ private let scan = Data("a made-up receipt".utf8)
         let receipt = phone.receipt(wait: wait)
         let box = StubHost("box")
         box.categoryIn = ["box-ws-unify": "Meals"]
-        let mac = StubHost("mac")
+        // The Mac's job lists its ledger's own words: "Client coffee" among them.
+        let mac = StubHost("mac", categories: ["Client coffee", "Gear", "Meals"])
         mac.categoryIn = ["mac-ws-unify": "Client coffee"]
         try receipt.add(file: scan, mime: "image/jpeg", pages: [scan])
         await receipt.find([box])
@@ -303,10 +304,11 @@ private let scan = Data("a made-up receipt".utf8)
         mac.parseGated = true
         let asking = Task { await receipt.choose(try #require(receipt.jobs.first { $0.hostId == "mac" }), hosts: [box, mac]) }
         #expect(await eventually { mac.parseHeld })
-        // Back to the box's job while the Mac is still asked: the box's answer still stands.
+        // Back to the box's job while the Mac is still asked: the box is asked again, and its answer stands.
         receipt.pick(boxJob)
         await receipt.read([box, mac])
-        #expect(box.parsed.count == 1)
+        #expect(box.parsed.count == 2)
+        #expect(receipt.category == "Meals")
         mac.answerParse()
         _ = await asking.result
         #expect(receipt.category == "Meals")
@@ -319,12 +321,57 @@ private let scan = Data("a made-up receipt".utf8)
         mac.parseAsleep = true
         await receipt.choose(try #require(receipt.jobs.first { $0.hostId == "mac" }), hosts: [box, mac])
         #expect(receipt.error == Receipt.noReader)
-        // The box's category stays (nothing answered for the Mac's job), and Save says he did not see the Mac's.
-        #expect(receipt.category == "Meals")
+        // Nothing answered for the Mac's job: the box's guess is gone, and Save sends no category and no seen.
+        #expect(receipt.category == nil)
+        #expect(receipt.canSave)
         #expect(await receipt.save([box, mac]) != nil)
         let sent = try #require(mac.received.first)
         #expect(!sent.seen)
+        #expect(sent.fields.category == nil)
+        #expect(sent.fields.amount == 1043)
         #expect(sent.workspaceId == "mac-ws-unify")
+    }
+
+    @Test func `the last job's automatic category is gone the moment another job is picked`() async throws {
+        let phone = Phone()
+        let (receipt, _, _) = try await twoJobs(phone)
+        #expect(receipt.category == "Meals")
+        receipt.pick(try #require(receipt.jobs.first { $0.hostId == "mac" }))
+        // Before any parse for the Mac's job: no category, the receipt's own fields kept.
+        #expect(receipt.category == nil)
+        #expect(receipt.amount == "10.43")
+        #expect(receipt.date == "2026-11-21")
+        #expect(receipt.seller == "Blue Heron Coffee")
+        #expect(!(receipt.current?.parsed ?? true))
+    }
+
+    @Test func `a slow parse for the new job leaves the category empty, and a Save meanwhile sends none`() async throws {
+        let phone = Phone()
+        let (receipt, box, mac) = try await twoJobs(phone, wait: .seconds(30))
+        mac.parseGated = true
+        let asking = Task { await receipt.choose(try #require(receipt.jobs.first { $0.hostId == "mac" }), hosts: [box, mac]) }
+        #expect(await eventually { mac.parseHeld })
+        #expect(receipt.category == nil)
+        #expect(await receipt.save([box, mac]) != nil)
+        let sent = try #require(mac.received.first)
+        #expect(sent.fields.category == nil)
+        #expect(!sent.seen)
+        mac.answerParse()
+        _ = await asking.result
+    }
+
+    @Test func `a category he chose stays through a pick, and the picker offers the picked job's own list`() async throws {
+        let phone = Phone()
+        let (receipt, box, mac) = try await twoJobs(phone)
+        #expect(receipt.categories == ["Meals", "Software", "Travel"])
+        receipt.category = "Travel"
+        receipt.pick(try #require(receipt.jobs.first { $0.hostId == "mac" }))
+        #expect(receipt.category == "Travel")
+        // The Mac's job's list, with his own choice kept as a choice of its own.
+        #expect(receipt.categories == ["Client coffee", "Gear", "Meals", "Travel"])
+        await receipt.read([box, mac])
+        #expect(receipt.category == "Travel")
+        #expect(receipt.categories == ["Client coffee", "Gear", "Meals", "Travel"])
     }
 
     @Test func `a JPEG handed over with no pages is read from its file, a PDF without its pages is not read`() async throws {

@@ -311,9 +311,18 @@ public final class Receipt {
     }
 
     /// The job he picked: its host and workspace are held with the draft, and Save goes there.
+    /// Another job: the category a parse filled for the last one is cleared at
+    /// once (a ledger decides it), so Save never files this job under the last
+    /// job's guess; the new job's parse fills it, or it stays empty. One he
+    /// chose himself stays. The amount, date and seller are the receipt's own.
     public func pick(_ job: ReceiptJob) {
-        guard let key = current?.key, !pinned else { return }
-        update(key) { Self.hold(job, in: &$0) }
+        guard let key = current?.key, !pinned, current?.jobId != job.id else { return }
+        update(key) { draft in
+            Self.hold(job, in: &draft)
+            if !draft.typed.contains(.category) { draft.category = nil }
+            // Asked again for this job, even one he had picked before.
+            draft.parsedFor = nil
+        }
     }
 
     /// He picked a job: the parser is asked again for it, and the fields he has not touched follow its answer.
