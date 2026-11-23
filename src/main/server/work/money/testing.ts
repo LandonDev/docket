@@ -95,6 +95,19 @@ export function standInSheets(): StandIn {
           }
           return { sheet: 'Sheet1', cells }
         }
+        case '/internal/sheet/snapshot': {
+          const s = of(body)
+          if (body.rev !== s.rev) throw new Error('The sheet moved on since it was opened: open it again.')
+          // The workbook as the service holds it: the cells by row and column, counted from 0.
+          const cellData: Record<number, Record<number, { v?: Cell; f?: string }>> = {}
+          for (const [at, v] of s.cells) {
+            const m = A1.exec(at)!
+            ;(cellData[Number(m[2]) - 1] ??= {})[colOf(m[1])] = typeof v === 'string' && v.startsWith('=') ? { f: v } : { v }
+          }
+          const bytes = Buffer.from(JSON.stringify({ sheetOrder: ['sheet1'], sheets: { sheet1: { id: 'sheet1', cellData } } }), 'utf8')
+          const part = bytes.subarray(body.offset as number, (body.offset as number) + (body.length as number))
+          return { rev: s.rev, data: part.toString('base64'), size: bytes.length }
+        }
         case '/internal/sheet/apply': {
           const s = of(body)
           if (body.baseRev !== s.rev) return { conflict: true, rev: s.rev }

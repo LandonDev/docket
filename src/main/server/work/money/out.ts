@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { constants, copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { z } from 'zod'
 import type { InvoiceFromSchema, InvoiceSchema, KeepParamsSchema, MoneyActed, MoneyExport, MoneyInvoiceNext, MoneyInvoicePage, MoneyKept } from '@shared/contract-work-money'
@@ -30,12 +30,24 @@ type KeepParams = z.infer<typeof KeepParamsSchema>
 /** The year's folder, made where it is missing and held inside the job's own folder. */
 const taxFolder = (ws: Workspace, year: number): string => moneyFolder(ws, `Tax ${year}`)
 
-/** Writes a file of Money's own making whole or not at all: a second export replaces the first's. */
-function writeWhole(path: string, data: string | Uint8Array): void {
-  const tmp = `${path}.${randomUUID().slice(0, 8)}.tmp`
-  writeFileSync(tmp, data)
-  renameSync(tmp, path)
+/**
+ * A file of Money's own making, whole or not at all: it is staged beside
+ * its place under a fresh name made exclusively (never through a name that
+ * is already there, so never through a link out of the folder), then
+ * renamed into place, where it replaces an earlier export's.
+ */
+function staged(path: string, write: (tmp: string) => void): void {
+  const tmp = `${path}.${randomUUID()}.tmp`
+  try {
+    write(tmp)
+    renameSync(tmp, path)
+  } catch (err) {
+    rmSync(tmp, { force: true })
+    throw err
+  }
 }
+const writeWhole = (path: string, data: string | Uint8Array): void => staged(path, (tmp) => writeFileSync(tmp, data, { flag: 'wx' }))
+const copyWhole = (from: string, path: string): void => staged(path, (tmp) => copyFileSync(from, tmp, constants.COPYFILE_EXCL))
 
 /** A year for tax time: the CSV, the Excel file made from it, and the summary's page for the window to print. */
 export async function exportYear(ctx: Ctx, ws: Workspace, o: { year: number; csv: boolean; xlsx: boolean; pdf: boolean }, signal?: AbortSignal): Promise<MoneyExport> {
@@ -44,12 +56,15 @@ export async function exportYear(ctx: Ctx, ws: Workspace, o: { year: number; csv
   const [ledger, trips] = await Promise.all([ledgerOf(ctx, books), mileageRows(ctx, books)])
   if (ledger.missing.length) throw new MoneyError("The ledger's columns changed. Restore them, then export.")
   const dir = taxFolder(ws, o.year)
-  const replaced = [`Ledger ${o.year}.csv`, `Ledger ${o.year}.xlsx`, `Summary ${o.year}.pdf`].some((name) => existsSync(join(dir, name)))
+  const xlsxName = `Ledger ${o.year}.xlsx`
+  // What this export will write over: only the files it was asked for and that are there already.
+  let replaced = false
   const files: string[] = []
   const warnings: string[] = []
   const text = csvOf(ledger.rows, trips, o.year)
   const csvName = `Ledger ${o.year}.csv`
   if (o.csv) {
+    replaced ||= existsSync(join(dir, csvName))
     writeWhole(join(dir, csvName), text)
     files.push(csvName)
   }
@@ -64,10 +79,10 @@ export async function exportYear(ctx: Ctx, ws: Workspace, o: { year: number; csv
         writeFileSync(input, text)
       }
       const made = await ctx.convert({ from: 'csv', to: 'xlsx', input, signal })
-      const name = `Ledger ${o.year}.xlsx`
-      copyFileSync(made.output, join(dir, `${name}.tmp`))
-      renameSync(join(dir, `${name}.tmp`), join(dir, name))
-      files.push(name)
+      const there = existsSync(join(dir, xlsxName))
+      copyWhole(made.output, join(dir, xlsxName))
+      replaced ||= there
+      files.push(xlsxName)
       warnings.push(...made.warnings)
     } catch (err) {
       ctx.log(`money: no Excel file for ${o.year} (${errorText(err)})`)
@@ -173,9 +188,9 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
     if (p.what === 'summary') {
       const folder = taxFolder(ws, p.year!)
       const name = `Summary ${p.year}.pdf`
-      copyFileSync(whole, join(folder, `${name}.tmp`))
-      renameSync(join(folder, `${name}.tmp`), join(folder, name))
-      kept = { source: { at: 'file', host: ctx.host, path: join(folder, name) }, receipt: `Tax ${p.year}/${name}` }
+      const there = existsSync(join(folder, name))
+      copyWhole(whole, join(folder, name))
+      kept = { source: { at: 'file', host: ctx.host, path: join(folder, name) }, receipt: `Tax ${p.year}/${name}`, ...(there ? { replaced: true as const } : {}) }
     } else {
       const inv = p.invoice!
       const total = invoiceTotal(inv.lines)

@@ -73,8 +73,8 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
       const p = paramsOf('work.money.open', req)
       const ws = admit(ctx, by, req.method, p.workspaceId)
       const books = await openBooks(ctx, ws)
-      if (p.restore) await restoreColumns(ctx, ws, books)
-      return handled({ ledger: { at: 'file', host: ctx.host, path: books.ledger }, mileage: { at: 'file', host: ctx.host, path: books.mileage } } satisfies MoneyBooks)
+      const restored = p.restore ? await restoreColumns(ctx, ws, books) : null
+      return handled({ ledger: { at: 'file', host: ctx.host, path: books.ledger }, mileage: { at: 'file', host: ctx.host, path: books.mileage }, ...(restored?.suggested ? { suggested: true as const } : {}) } satisfies MoneyBooks)
     }
     case 'work.money.read': {
       const p = paramsOf('work.money.read', req)
@@ -154,7 +154,7 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     }
     case 'work.money.skip': {
       const p = paramsOf('work.money.skip', req)
-      skipEvent(ctx, admit(ctx, by, req.method, p.workspaceId), p.eventId)
+      skipEvent(ctx, admit(ctx, by, req.method, p.workspaceId), p.eventId, p.undo === true)
       return handled(null)
     }
     case 'work.money.rate': {

@@ -148,12 +148,12 @@ export function openBooks(ctx: Ctx, ws: Workspace): Promise<Books> {
 }
 
 /** Writes the headers the ledger lacks at the end of its first row: his own columns and their order stay as they are. */
-export function restoreColumns(ctx: Ctx, ws: Workspace, books: Books): Promise<void> {
+export function restoreColumns(ctx: Ctx, ws: Workspace, books: Books): Promise<{ suggested: boolean }> {
   return locked(ws.id, async () => {
     const grid = await gridOf(ctx, books.ledger)
     const have = columnsOf(grid.header, LEDGER_COLUMNS)
     const missing = LEDGER_COLUMNS.filter((c) => have[c] === undefined)
-    await write(
+    return write(
       ctx,
       books.ledger,
       missing.map((v, i) => ({ at: `${columnLetter(grid.header.length + i)}1`, v })),
@@ -162,9 +162,10 @@ export function restoreColumns(ctx: Ctx, ws: Workspace, books: Books): Promise<v
   })
 }
 
-/** Rows suggested since a sheet's revision last moved, so two suggestions never name one row. */
+/** Rows suggested since a sheet's revision last moved, so two suggestions never name one row. The ledger's and the mileage log's alike. */
 const suggestedAt = new Map<string, { rev: number; n: number }>()
-const suggestedRows = (path: string, rev: number): number => (suggestedAt.get(path)?.rev === rev ? suggestedAt.get(path)!.n : 0)
+export const suggestedRows = (path: string, rev: number): number => (suggestedAt.get(path)?.rev === rev ? suggestedAt.get(path)!.n : 0)
+export const suggestedOne = (path: string, rev: number): void => void suggestedAt.set(path, { rev, n: suggestedRows(path, rev) + 1 })
 
 type Values = Partial<Record<LedgerColumn, Cell>>
 
@@ -200,7 +201,7 @@ export function appendRow(ctx: Ctx, ws: Workspace, books: Books, values: Values)
     const row = ledger.grid.last + 1 + waits
     const ref = ledger.columns.Ref === undefined ? null : newRef()
     const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row, { ...values, ...(ref ? { Ref: ref } : {}) }), ledger.grid.shared)
-    if (suggested) suggestedAt.set(books.ledger, { rev: ledger.grid.rev, n: waits + 1 })
+    if (suggested) suggestedOne(books.ledger, ledger.grid.rev)
     return { ref, row, suggested }
   })
 }
@@ -237,7 +238,13 @@ function act(ctx: Ctx, ws: Workspace, books: Books, at: RowAt, values: (row: Led
   })
 }
 
-export const editRow = (ctx: Ctx, ws: Workspace, books: Books, at: RowAt, fields: EntryFields): Promise<MoneyActed> => act(ctx, ws, books, at, (row) => changed(row, fields))
+/** A row he typed with money both in and out has no one direction: the entry form cannot say it, so it is his to edit in the sheet. */
+export const BOTH_WAYS = 'This row has money in and money out. Edit it in the ledger.'
+export const editRow = (ctx: Ctx, ws: Workspace, books: Books, at: RowAt, fields: EntryFields): Promise<MoneyActed> =>
+  act(ctx, ws, books, at, (row) => {
+    if (row.in && row.out) throw new MoneyError(BOTH_WAYS)
+    return changed(row, fields)
+  })
 
 /** An open row is settled: an unpaid one is Paid, a cost waiting to be paid back is Reimbursed, on that day. A row that is not open is left as it is. */
 export const payRow = (ctx: Ctx, ws: Workspace, books: Books, at: RowAt, on: string = today()): Promise<MoneyActed> =>

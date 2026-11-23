@@ -54,6 +54,37 @@ const range = async (ctx: Svc, path: string, a1: string): Promise<Cell[][]> =>
   ((await ctx.service.internal('/internal/sheet/range', { sheet: sheet(path), range: a1 })) as RangeAnswer).cells.map((line) => line.map((c) => c.v))
 const blank = (line: readonly Cell[]): boolean => line.every((c) => c === undefined || c === null || c === '')
 
+/** The largest sheet Money asks for whole to find its last row: past it, the read falls back to stopping at a blank page. */
+const EXTENT_MAX_BYTES = 32 * 1024 * 1024
+const FRAME = 4 * 1024 * 1024
+
+/**
+ * The number of the last row of a sheet's first tab that holds a value or a
+ * formula in any column, from the workbook as the service holds it; 1 for
+ * none past the header. Null when the workbook is too large to ask for
+ * whole.
+ */
+async function extentOf(ctx: Svc, path: string, rev: number): Promise<number | null> {
+  const chunks: Buffer[] = []
+  for (let offset = 0; ; ) {
+    const frame = (await ctx.service.internal('/internal/sheet/snapshot', { sheet: sheet(path), rev, offset, length: FRAME })) as { data: string; size: number }
+    if (frame.size > EXTENT_MAX_BYTES) return null
+    const part = Buffer.from(frame.data, 'base64')
+    chunks.push(part)
+    offset += part.length
+    if (offset >= frame.size || part.length === 0) break
+  }
+  const book = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { sheetOrder?: string[]; sheets?: Record<string, { cellData?: Record<string, Record<string, { v?: unknown; f?: unknown } | null> | null> }> }
+  const tab = book.sheets?.[book.sheetOrder?.[0] ?? '']
+  let last = 0
+  for (const [row, cells] of Object.entries(tab?.cellData ?? {})) {
+    const n = Number(row)
+    if (n <= last || !cells) continue
+    if (Object.values(cells).some((c) => c && ((c.v !== undefined && c.v !== null && c.v !== '') || !!c.f))) last = n
+  }
+  return last + 1
+}
+
 const grids = new Map<string, Grid>()
 
 /** A sheet as it is now. Answers from memory while its revision has not moved. */
@@ -67,12 +98,14 @@ export async function gridOf(ctx: Svc, path: string): Promise<Grid> {
   const header = first.slice(0, width)
   const body: Cell[][] = []
   if (width > 0) {
+    // How far down the sheet holds anything, so a stretch of blank rows he left never ends the read early.
+    const extent = await extentOf(ctx, path, open.rev).catch(() => null)
     const per = Math.max(1, Math.floor(READ_CELLS / width))
-    for (let start = 2; ; start += per) {
+    for (let start = 2; extent === null || start <= extent; start += per) {
       const page = await range(ctx, path, `A${start}:${columnLetter(width - 1)}${start + per - 1}`)
       body.push(...page)
-      // A whole page with nothing in it: the sheet's rows have ended.
-      if (page.length < per || page.every(blank)) break
+      // With the extent unknown (the sheet could not say), a whole page with nothing in it ends the read.
+      if (extent === null && (page.length < per || page.every(blank))) break
     }
     while (body.length && blank(body[body.length - 1])) body.pop()
   }
@@ -126,7 +159,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
   const root = { at: 'file' as const, host: ctx.host, path: join(ws.path, 'Money') }
   const books = booksHere(ctx, ws.id)
   if (!books) {
-    return { made: false, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(booksOf(ctx, ws.id), year), problems: [] }
+    return { made: false, any: false, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(booksOf(ctx, ws.id), year), problems: [] }
   }
   const [ledger, trips] = await Promise.all([ledgerOf(ctx, books), mileageRows(ctx, books)])
   const rows = ledger.rows
@@ -140,6 +173,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
   }
   return {
     made: true,
+    any: rows.length > 0 || trips.length > 0,
     root,
     period,
     rows: rows.filter((r) => inPeriod(r.date, period)).sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.row - a.row),

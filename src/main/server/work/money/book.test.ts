@@ -253,6 +253,59 @@ describe('reading', () => {
     expect((await read()).problems).toEqual([])
   })
 
+  it('reads past a long stretch of blank rows he left, and appends under the last row that holds anything', async () => {
+    await entry({ who: 'First' })
+    // He pastes a block far down the sheet, more than a whole page of blank rows below the last entry.
+    for (const [at, v] of [
+      ['A2600', '2026-11-22'],
+      ['B2600', 'Far down'],
+      ['F2600', 7]
+    ] as const)
+      b.sheets.type(ledger(), at, v)
+    const got = await read()
+    expect(got.rows.map((r) => [r.row, r.who])).toEqual([
+      [2600, 'Far down'],
+      [2, 'First']
+    ])
+    expect(await entry({ who: 'After it' })).toMatchObject({ row: 2601 })
+  })
+
+  it('says whether the job has any money at all, apart from the period on screen', async () => {
+    expect((await read()).any).toBe(false)
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    expect((await read()).any).toBe(false)
+    // A row with no name, in another year: the job is not empty, though this period and its names are.
+    await entry({ date: '2024-03-01', who: '', amount: 500 })
+    const got = await read()
+    expect([got.any, got.rows.length, got.sellers.length]).toEqual([true, 0, 0])
+  })
+
+  it('leaves a row he typed with money both in and out to the sheet: the form cannot say it', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    for (const [at, v] of [
+      ['A2', '2026-11-20'],
+      ['B2', 'Mixed'],
+      ['E2', 30],
+      ['F2', 20]
+    ] as const)
+      b.sheets.type(ledger(), at, v)
+    const row = (await read()).rows[0]
+    expect([row.in, row.out]).toEqual([3000, 2000])
+    const rev = b.sheets.sheets.get(ledger())!.rev
+    await expect(entry({ date: '2026-11-20', who: 'Mixed', amount: 2000, what: 'A note' }, atOf(row))).rejects.toThrow('money in and money out')
+    expect(b.sheets.sheets.get(ledger())!.rev).toBe(rev)
+  })
+
+  it('says so when restored columns only wait as a suggestion on a sheet others can open', async () => {
+    await entry({})
+    b.sheets.type(ledger(), 'F1', 'Spent')
+    b.sheets.sheets.get(ledger())!.shared = true
+    expect((await call<{ suggested?: true }>('work.money.open', { workspaceId: 'ws-ref', restore: true })).suggested).toBe(true)
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'] }])
+    b.sheets.sheets.get(ledger())!.shared = false
+    expect((await call<{ suggested?: true }>('work.money.open', { workspaceId: 'ws-ref', restore: true })).suggested).toBeUndefined()
+  })
+
   it('sums every job with a ledger, or the one asked for', async () => {
     await entry({ date: '2026-11-14', amount: 4817 })
     await entry({ date: '2026-11-15', who: 'Purdue Catering', amount: 2000, status: 'Unpaid' }, undefined, 'ws-purdue')

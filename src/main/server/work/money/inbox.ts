@@ -5,7 +5,7 @@ import { basename, join, sep } from 'node:path'
 import type { EntryFields, MoneyActed, MoneyPicture, MoneyReceived, MoneySource, ReceiveParams, ToConfirm } from '@shared/contract-work-money'
 import { MONEY_FILE_MAX, receiptLines } from '@shared/contract-work-money'
 import { errorText, type SectorKey } from '@shared/work/ids'
-import { fileWord, knownSellers, parseReceipt, receiptName, type ReceiptFields, type ReceiptLine } from '@shared/work/money'
+import { fileWord, knownSellers, parseReceipt, receiptFileName, receiptName, type ReceiptFields, type ReceiptLine } from '@shared/work/money'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { appendRow, MONEY_FOLDER, moneyFolder, openBooks, valuesOf } from './book'
@@ -188,7 +188,7 @@ export function resume(ctx: Ctx, now = Date.now()): () => void {
   }
 }
 
-const answer = (row: Pick<Row, 'id' | 'state'>): MoneyReceived => ({ id: row.id, state: row.state })
+const answer = (row: Pick<Row, 'id' | 'state' | 'ref'>): MoneyReceived => ({ id: row.id, state: row.state, ...(row.state === 'filed' && row.ref?.includes('"suggested":true') ? { suggested: true } : {}) })
 
 /**
  * A receipt comes in: its bytes in parts, or a file of this host. The whole
@@ -199,7 +199,10 @@ const answer = (row: Pick<Row, 'id' | 'state'>): MoneyReceived => ({ id: row.id,
 export async function receive(ctx: Ctx, p: ReceiveParams, by: Caller, admit: (workspaceId: string) => Workspace): Promise<MoneyReceived> {
   if ((p.file !== undefined) === (p.dataBase64 !== undefined)) throw new MoneyError('A receipt is its bytes or a file, one of the two.')
   if (!p.workspaceId && !p.sector) throw new MoneyError('A receipt names its job.')
-  if (!isReceiptFile(p.name)) throw new MoneyError('Money files pictures and PDFs.')
+  // A file with no extension Money knows is taken by its type (a mail's attachment), under a name that says what it is.
+  const filed = receiptFileName(p.name, p.mime)
+  if (!filed) throw new MoneyError('Money files pictures and PDFs.')
+  p = { ...p, name: filed }
   const ws = admit(jobOf(ctx, p).id)
   const before = byKey(ctx, p.key)
   if (before && before.state !== 'partial') return answer(before)
@@ -239,8 +242,8 @@ export async function receive(ctx: Ctx, p: ReceiveParams, by: Caller, admit: (wo
   // He accepted it where he sent it from: an amount and a date are enough to file it.
   if (p.fields?.amount && p.fields.date) {
     set(ctx, id, { state: 'ready' })
-    await accept(ctx, id, { date: p.fields.date, who: p.fields.who ?? '', what: '', category: p.fields.category ?? '', way: 'out', amount: p.fields.amount, status: 'Paid' }, ws)
-    return { id, state: 'filed' }
+    const acted = await accept(ctx, id, { date: p.fields.date, who: p.fields.who ?? '', what: '', category: p.fields.category ?? '', way: 'out', amount: p.fields.amount, status: 'Paid' }, ws)
+    return { id, state: 'filed', ...('ok' in acted && acted.suggested ? { suggested: true } : {}) }
   }
   announce(ctx, ws.id)
   const row = byId(ctx, id)!

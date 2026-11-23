@@ -172,8 +172,8 @@ export const MoneyRequestSchemas = [
   request('work.money.events', z.object({ workspaceId })),
   /** → MoneyTripped: a trip into the mileage log and its pay into the ledger (Game fees, Unpaid); the event it came from is marked added */
   request('work.money.trip', TripParamsSchema),
-  /** → null: a calendar event he does not want offered again */
-  request('work.money.skip', z.object({ workspaceId, eventId: z.string().min(1).max(200) })),
+  /** → null: a calendar event he does not want offered again; `undo` offers it again */
+  request('work.money.skip', z.object({ workspaceId, eventId: z.string().min(1).max(200), undo: z.boolean().optional() })),
   /** → MoneyRate: his own mileage rate for a year, in dollars a mile */
   request('work.money.rate', z.object({ workspaceId, year: z.number().int().min(1990).max(2100), rate: z.number().min(0).max(100) })),
   /** → MoneyExport: makes Money/Tax <year>/ with the year's CSV and Excel file; with `pdf`, also answers the summary's page for the window to print and hand back with `keep` */
@@ -203,6 +203,8 @@ export interface MoneyState {
 export interface MoneyBooks {
   ledger: CanvasSource
   mileage: CanvasSource
+  /** `restore` on a ledger others can open: the missing headers wait as a suggestion in the sheet, and the columns are not back until he accepts it there */
+  suggested?: true
 }
 
 /** What keeps the view from reading the ledger as money. */
@@ -211,6 +213,8 @@ export type MoneyProblem = { kind: 'columns'; missing: string[] }
 export interface MoneyRead {
   /** false: this job has no ledger yet, and everything below is empty */
   made: boolean
+  /** the job has money at all: a ledger row or a trip, in any period. False: nothing has ever been entered */
+  any: boolean
   /** the job's Money folder on its host: a row's Receipt is a path under it (`receiptSource`) */
   root: Extract<CanvasSource, { at: 'file' }>
   period: Period
@@ -256,8 +260,8 @@ export interface MoneyEvents {
 export interface MoneyTripped {
   /** the ledger's row for the pay, when there was a fee */
   pay: MoneyActed | null
-  /** the mileage log's row, when there were miles */
-  trip: { row: number; ref: string | null; value: number } | null
+  /** the mileage log's row, when there were miles; `suggested`: the log is a sheet others can open, and the row waits there as a suggestion */
+  trip: { row: number; ref: string | null; value: number; suggested?: true } | null
 }
 export interface MoneyRate {
   year: number
@@ -273,7 +277,7 @@ export interface MoneyExport {
   summary: { name: string; html: string } | null
   /** one line each for what could not be made */
   warnings: string[]
-  /** the year's folder already held an export, and these files took its place */
+  /** a file this export wrote took the place of an earlier export's */
   replaced: boolean
 }
 export interface MoneyInvoiceNext {
@@ -296,6 +300,8 @@ export interface MoneyKept {
   receipt?: string
   /** an invoice's row */
   acted?: MoneyActed
+  /** a summary took the place of an earlier one in the year's folder */
+  replaced?: true
 }
 
 /** A row's receipt as a file the window can open: the Receipt cell's path under the job's Money folder, in its host's own spelling. */
@@ -324,6 +330,8 @@ export interface MoneyReceived {
   id: string
   /** `partial`: more parts are expected; `filed`: it is in the ledger already; `dropped`: he discarded it, and a retry does not bring it back */
   state: 'partial' | 'reading' | 'ready' | 'filed' | 'dropped'
+  /** with `filed`: the ledger is a sheet others can open, so the row waits there as a suggestion and is not in the ledger until he accepts it */
+  suggested?: boolean
 }
 
 export interface MoneyPicture {

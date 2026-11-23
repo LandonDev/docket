@@ -145,6 +145,22 @@ describe('adding a trip', () => {
     expect(b.db.prepare("SELECT state, fee FROM work_money_events WHERE event_id = 'West Side'").get()).toEqual({ state: 'added', fee: 8000 })
   })
 
+  it('offers a skipped one again on Undo, and gives two trips suggested on a shared log rows of their own', async () => {
+    b.lifeos.events = [game('Harrison', 2), game('West Side', 3)]
+    await call('work.money.skip', { workspaceId: 'ws-ref', eventId: 'Harrison' })
+    await call('work.money.skip', { workspaceId: 'ws-ref', eventId: 'Harrison', undo: true })
+    expect((await offered()).map((o) => o.eventId)).toEqual(['West Side', 'Harrison'])
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    b.sheets.sheets.get(mileage())!.shared = true
+    const one = await call<MoneyTripped>('work.money.trip', { workspaceId: 'ws-ref', date: '2026-11-20', title: 'One', miles: 10 })
+    const two = await call<MoneyTripped>('work.money.trip', { workspaceId: 'ws-ref', date: '2026-11-21', title: 'Two', miles: 12 })
+    expect([one.trip, two.trip]).toMatchObject([
+      { row: 2, suggested: true },
+      { row: 3, suggested: true }
+    ])
+    expect(b.sheets.grid(mileage())).toHaveLength(1)
+  })
+
   it('never offers a skipped one again, and a skip does not undo an added one', async () => {
     b.lifeos.events = [game('Harrison', 2), game('West Side', 3)]
     await call('work.money.skip', { workspaceId: 'ws-ref', eventId: 'Harrison' })

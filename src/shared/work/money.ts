@@ -231,8 +231,8 @@ export function rowsOf(header: readonly Cell[], body: readonly (readonly Cell[])
   return { rows, columns, missing: [] }
 }
 
-/** What a row was when the window last saw it: its date, name, amounts and status. A row that no longer reads so has changed. */
-export const sigOf = (row: Pick<LedgerRow, 'date' | 'who' | 'in' | 'out' | 'status'>): string => `${row.date ?? ''}|${row.who}|${row.in}|${row.out}|${row.status}`
+/** What a row was when the window last saw it: every cell Money reads of it. A row that no longer reads so has changed, whichever cell he changed. */
+export const sigOf = (row: Omit<LedgerRow, 'row' | 'ref'>): string => [row.date ?? '', row.who, row.what, row.category, row.in, row.out, row.status, row.paidOn ?? '', row.receipt].join('|')
 
 /** How the window names a row to act on: by `ref` when Money wrote it, else by number and what it read. */
 export interface RowAt {
@@ -389,7 +389,8 @@ export function owedOf(rows: readonly LedgerRow[]): OwedRow[] {
   for (const row of rows) {
     const c = countOf(row)
     const base = { row: row.row, ref: row.ref, sig: sigOf(row), who: row.who, what: row.what, since: row.date }
-    if (c.owedToHim) out.push({ ...base, amount: c.owedToHim, way: 'toHim', reimburse: row.out > 0 })
+    // To be paid back by its status alone: a row he typed with money both ways is no reimbursement.
+    if (c.owedToHim) out.push({ ...base, amount: c.owedToHim, way: 'toHim', reimburse: row.status === 'To reimburse' })
     if (c.heOwes) out.push({ ...base, amount: c.heOwes, way: 'byHim', reimburse: false })
   }
   return out.sort((a, b) => (a.since ?? '9999').localeCompare(b.since ?? '9999') || a.row - b.row)
@@ -635,6 +636,30 @@ export function knownSellers(rows: readonly LedgerRow[]): Record<string, string>
 export const RECEIPT_EXTS = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'tif', 'tiff', 'webp', 'gif', 'bmp', 'pdf'] as const
 export const receiptExt = (name: string): string => (/\.([A-Za-z0-9]+)$/.exec(name)?.[1] ?? '').toLowerCase()
 export const isReceiptName = (name: string): boolean => (RECEIPT_EXTS as readonly string[]).includes(receiptExt(name))
+
+const MIME_EXT: Readonly<Record<string, string>> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'image/tiff': 'tif',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/bmp': 'bmp',
+  'application/pdf': 'pdf'
+}
+/**
+ * A receipt's name as Money files it: its own when its extension is one
+ * Money takes; else, for a file whose type says it is a picture or a PDF (a
+ * mail's attachment with no extension), the name with that type's
+ * extension; else null: not a receipt. The one rule, for the window's drop
+ * and menu and for the host.
+ */
+export function receiptFileName(name: string, mime?: string | null): string | null {
+  if (isReceiptName(name)) return name
+  const ext = MIME_EXT[(mime ?? '').split(';')[0].trim().toLowerCase()]
+  return ext ? `${name.replace(/\.+$/, '') || 'Receipt'}.${ext}` : null
+}
 
 /** A word safe in a file's name on every system, with nothing that could leave its folder. */
 export const fileWord = (text: string, max = 60): string =>

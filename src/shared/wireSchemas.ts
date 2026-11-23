@@ -1231,7 +1231,8 @@ export const MoneyReceiptFieldsSchema = z.object({
 })
 export const MoneyReceivedSchema = z.object({
   id: z.string(),
-  state: z.enum(['partial', 'reading', 'ready', 'filed', 'dropped'])
+  state: z.enum(['partial', 'reading', 'ready', 'filed', 'dropped']),
+  suggested: z.boolean().optional()
 })
 /** Away from computer: the state and the stretch's tally, on each change. */
 export const AwayPushSchema = push('away', { state: AwayStateSchema, decided: AwayDecidedSchema })

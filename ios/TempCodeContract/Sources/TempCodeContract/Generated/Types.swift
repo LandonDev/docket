@@ -7791,10 +7791,12 @@ public struct MoneyReceived: Codable, Hashable, Sendable {
 
     public let id: String
     public let state: State
+    public let suggested: Bool?
 
-    public init(id: String, state: State) {
+    public init(id: String, state: State, suggested: Bool? = nil) {
         self.id = id
         self.state = state
+        self.suggested = suggested
     }
 }
 

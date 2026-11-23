@@ -29,6 +29,7 @@ import {
   paidStatus,
   parseReceipt,
   rateFor,
+  receiptFileName,
   receiptName,
   rowsOf,
   sigOf,
@@ -151,11 +152,15 @@ describe('the ledger', () => {
     expect(findRow(rows, { ref: 'aaa111', row: 9, sig: sigOf(rows[0]) })?.who).toBe('A')
     expect(findRow(rows, { row: 3, sig: sigOf(rows[1]) })?.who).toBe('B')
     // The row at that number is no longer the one the window saw.
-    expect(findRow(rows, { row: 3, sig: sigOf({ date: '2026-11-02', who: 'B', in: 0, out: 900, status: 'Paid' }) })).toBeNull()
+    expect(findRow(rows, { row: 3, sig: sigOf({ ...rows[1], out: 900 }) })).toBeNull()
     expect(findRow(rows, { ref: 'gone', row: 7, sig: 'x' })).toBeNull()
     // A Ref alone is not enough: a row he changed since the window read it is not written over, amount or status.
     expect(findRow(rows, { ref: 'aaa111', row: 2, sig: sigOf({ ...rows[0], in: 999 }) })).toBeNull()
     expect(findRow(rows, { ref: 'aaa111', row: 2, sig: sigOf({ ...rows[0], status: 'Unpaid' }) })).toBeNull()
+    // Nor a row whose category, purpose, paid day or receipt he changed: saving one field must not put the others back.
+    for (const change of [{ category: 'Other' }, { what: 'Late fee' }, { paidOn: '2026-11-05' }, { receipt: 'Receipts/2026/x.png' }]) {
+      expect(findRow(rows, { ref: 'aaa111', row: 2, sig: sigOf({ ...rows[0], ...change }) })).toBeNull()
+    }
   })
 
   const year = read(
@@ -197,6 +202,14 @@ describe('the ledger', () => {
       ['West Side HS', 8000, 'toHim', '2026-11-07', false],
       ['Ref Gear Outlet', 5099, 'toHim', '2026-11-15', true],
       ['IHSAA', 6000, 'byHim', '2026-11-16', false]
+    ])
+  })
+
+  it('reads a row he typed with money both ways as unpaid money owed, not as a cost to be paid back', () => {
+    const both = read(line('2026-11-01', 'Mixed', 30, 20, 'Unpaid'))
+    expect(owedOf(both).map((o) => [o.way, o.amount, o.reimburse])).toEqual([
+      ['toHim', 3000, false],
+      ['byHim', 2000, false]
     ])
   })
 
@@ -299,6 +312,15 @@ describe('reading a receipt', () => {
     expect(cleanSeller('  ** BLUE   HERON COFFEE ** ')).toBe('Blue Heron Coffee')
     expect(cleanSeller('Pixelforge Software Inc.')).toBe('Pixelforge Software Inc.')
     expect(cleanSeller('GRANGER HARDWARE & SUPPLY')).toBe('Granger Hardware & Supply')
+  })
+
+  it('takes a file with no extension by its type, under a name that says what it is', () => {
+    expect(receiptFileName('scan.PNG', 'application/octet-stream')).toBe('scan.PNG')
+    expect(receiptFileName('attachment', 'application/pdf')).toBe('attachment.pdf')
+    expect(receiptFileName('IMG_0042', 'image/jpeg; charset=binary')).toBe('IMG_0042.jpg')
+    expect(receiptFileName('notes.docx', 'application/pdf')).toBe('notes.docx.pdf')
+    expect(receiptFileName('notes.docx', 'application/msword')).toBeNull()
+    expect(receiptFileName('movie.mp4', 'video/mp4')).toBeNull()
   })
 
   it('names a kept receipt by its day, seller and amount', () => {

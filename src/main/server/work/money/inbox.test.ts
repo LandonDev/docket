@@ -100,6 +100,12 @@ describe('a receipt comes in', () => {
     }
     expect(refused).toBe('That file is over 25 MB.')
     await expect(send('notes.docx', { data: Buffer.from('x') })).rejects.toThrow('Money files pictures and PDFs.')
+    // A mail's attachment with no extension is taken by its type, under a name that says what it is.
+    const bare = await send('attachment', { key: 'no-ext-0001', data: bytes('invoice.pdf'), more: { mime: 'application/pdf' } })
+    expect(bare.state).toBe('reading')
+    await settle()
+    expect((await view()).toConfirm.at(-1)).toMatchObject({ name: 'attachment.pdf' })
+    await expect(send('attachment', { key: 'no-ext-0002', data: Buffer.from('x'), more: { mime: 'text/plain' } })).rejects.toThrow('Money files pictures and PDFs.')
     await expect(call('work.money.receive', { key: 'no-bytes-1', workspaceId: 'ws-ref', name: 'a.png' })).rejects.toThrow('its bytes or a file')
   })
 
@@ -147,6 +153,16 @@ describe('a receipt comes in', () => {
     expect(now.toConfirm).toEqual([])
     expect(now.rows).toMatchObject([{ who: 'Northside Fuel Stop', out: 4817, category: 'Travel', receipt: 'Receipts/2026/2026-11-14 Northside Fuel Stop 48.17.jpg' }])
     expect(existsSync(join(b.ref, 'Money', 'Receipts', '2026', '2026-11-14 Northside Fuel Stop 48.17.jpg'))).toBe(true)
+  })
+
+  it('says a receipt sent with an amount and a date only waits as a suggestion when the ledger is one others can open', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    b.sheets.sheets.get(ledger())!.shared = true
+    const more = { source: 'phone', lines: [], fields: { amount: 4817, date: '2026-11-14', who: 'Northside Fuel Stop', category: 'Travel' } }
+    expect(await send('fuel.jpg', { key: 'suggest-key1', more })).toMatchObject({ state: 'filed', suggested: true })
+    // A retry answers the same.
+    expect(await send('fuel.jpg', { key: 'suggest-key1', more })).toMatchObject({ state: 'filed', suggested: true })
+    expect(b.sheets.grid(ledger())).toHaveLength(1)
   })
 
   it('gives a seller the category he last gave it in this ledger', async () => {

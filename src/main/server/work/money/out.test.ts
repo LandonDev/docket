@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MONEY_CAPS, MONEY_OWNER_ONLY, MONEY_PART_BYTES, type MoneyExport, type MoneyInvoiceNext, type MoneyInvoicePage, type MoneyKept, type MoneyRead } from '@shared/contract-work-money'
@@ -60,8 +60,25 @@ describe('export for tax time', () => {
     expect(got.summary?.html).toContain('Clinic')
     expect(got.summary?.html).toContain('30 mi · $21.00 at $0.70')
     expect(readdirSync(tax()).sort()).toEqual(['Ledger 2026.csv', 'Ledger 2026.xlsx'])
-    // A second export takes the first's place, and says so.
+    // A second export takes the first's place, and says so; one that writes none of the files already there does not.
     expect((await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026 })).replaced).toBe(true)
+    expect((await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, csv: false, xlsx: false })).replaced).toBe(false)
+    // A staged file is made under a fresh name of its own, never through a name already there.
+    expect(readdirSync(tax()).filter((f) => f.endsWith('.tmp'))).toEqual([])
+  })
+
+  it('never writes an export through a link someone left at its staging name or its place', async () => {
+    await add({})
+    await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, xlsx: false, pdf: false })
+    const outside = join(b.root, 'elsewhere', 'victim.txt')
+    writeFileSync(outside, 'mine')
+    rmSync(join(tax(), 'Ledger 2026.csv'))
+    symlinkSync(outside, join(tax(), 'Ledger 2026.csv'))
+    symlinkSync(outside, join(tax(), 'Ledger 2026.csv.tmp'))
+    await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, xlsx: false, pdf: false })
+    // The file outside is untouched, and the export is a real file in the folder now.
+    expect(readFileSync(outside, 'utf8')).toBe('mine')
+    expect(lstatSync(join(tax(), 'Ledger 2026.csv')).isSymbolicLink()).toBe(false)
   })
 
   it('makes only what was asked for, and the Excel file with no CSV left behind', async () => {
@@ -90,6 +107,8 @@ describe('export for tax time', () => {
     expect(done).toEqual({ source: { at: 'file', host: 'env_box', path: join(tax(), 'Summary 2026.pdf') }, receipt: 'Tax 2026/Summary 2026.pdf' })
     expect(readFileSync(join(tax(), 'Summary 2026.pdf')).equals(data)).toBe(true)
     expect(await part(1)).toEqual(done)
+    // A second summary for the year takes the first's place, and says so.
+    expect((await keep({ key: 'summary-key-2', what: 'summary', year: 2026 })).replaced).toBe(true)
     // What was kept is no waiting receipt.
     expect((await view()).toConfirm).toEqual([])
     await expect(keep({ key: 'no-year-key', what: 'summary' })).rejects.toThrow('names its year')
