@@ -670,6 +670,9 @@
   the simulator build stays ad hoc. DEBUG hook: `TC_TEST_ROUTE=notification`
   with `TC_TEST_NOTIFICATION="title part|seq"` feeds the delegate a
   hub-shaped payload; the proof's `push` set (in `all`) checks the landing.
+  `TC_TEST_ROUTE=payload` with `TC_TEST_PAYLOAD=<json>` hands the delegate a
+  whole payload (`aps` and `tc`) as a tap would; the `digest` set uses it
+  for Work's notices (docs/agents/work-digest.md "The phone").
   Delivery in practice: Cloudflare's fetch speaks HTTP/1.1 to origins and
   Apple refuses it, so the box sends itself (`src/main/server/remote/apns.ts`,
   node http2, the same payloads as the hub's) when `TEMP_CODE_APNS_KEY_PATH`,

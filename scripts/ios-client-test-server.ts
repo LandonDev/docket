@@ -51,6 +51,7 @@
  *                                 `tools: { ffmpeg: <dir> }` links that dir's ffmpeg and ffprobe in as the conversion tool (milestone 47);
  *                                 `tools: { libreoffice, pythonPptx }` link a deck's tools, `slidesOps` writes a deck's pending edits, and
  *                                 `docWrites` writes a .tcdoc through the Work service as docs_write does (TC_TEST_WORK_SERVICE=1; milestone 49)
+ *   POST /work-tells { tells }  → writes tells into the digest's ledger, each waiting for the next digest (the digest set)
  *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
  *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
  *   POST /hold { seconds }      → the host goes down for that long: every remote socket dropped and every
@@ -89,6 +90,7 @@
 import { createServer, request as httpRequest, Server as HttpServer } from 'node:http'
 import { execFileSync, fork, spawn, type Serializable } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { deflateSync } from 'node:zlib'
@@ -124,6 +126,8 @@ import { runAddonChild } from '../src/main/server/addons/addonChild'
 import type { AddonWireMessage } from '../src/main/server/addons/addonWire'
 import { wirePair } from '../src/main/server/addons/testWire'
 import { heldLine } from '../src/main/server/work/outbox/words'
+import { DigestStore } from '../src/main/server/work/digest/store'
+import type { TellGroup, TellOpen } from '../src/shared/work/tell'
 import { serviceSeamsFor } from '../src/main/server/work/service/ctx'
 import { servicePaths } from '../src/main/server/work/service/config'
 import { startWorkService, type RunningService } from '../src/main/server/work/service/serve'
@@ -2347,6 +2351,39 @@ const control = createServer((req, res) => {
             )
           }
           if (docWrites.length > 0) return answer(200, { written: rows.length, wrote })
+          return answer(200, { written: rows.length })
+        } finally {
+          db.close()
+        }
+      }
+      case '/work-tells': {
+        // The digest's proof: tells written into the ledger as `ctx.tell` keeps them (no pillar runs here). Each
+        // waits; the host's own look makes the day at the digest's time.
+        const db = new DatabaseSync(dbPath)
+        try {
+          const store = new DigestStore(db, server.environmentId)
+          const rows = Array.isArray(body.tells) ? (body.tells as Record<string, unknown>[]) : []
+          const now = Date.now()
+          for (const t of rows) {
+            store.put({
+              id: randomUUID(),
+              host: server.environmentId,
+              kind: String(t.kind),
+              group: String(t.group) as TellGroup,
+              workspaceId: t.workspaceId == null ? null : String(t.workspaceId),
+              sector: t.sector == null ? null : String(t.sector),
+              title: String(t.title),
+              ...(t.detail ? { detail: String(t.detail) } : {}),
+              ...(t.open ? { open: t.open as TellOpen } : {}),
+              ...(typeof t.by === 'number' ? { by: t.by } : {}),
+              ...(t.key ? { key: String(t.key) } : {}),
+              at: typeof t.at === 'number' ? t.at : now,
+              how: 'waiting',
+              day: null,
+              toldAt: null,
+              due: false
+            })
+          }
           return answer(200, { written: rows.length })
         } finally {
           db.close()

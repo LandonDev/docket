@@ -82,6 +82,8 @@ enum TestHooks {
     static let sheet = env["TC_TEST_SHEET"].flatMap { $0.isEmpty ? nil : $0 }
     /// With `TC_TEST_ROUTE=notification`: "title part|seq", a payload the delegate routes like a tap.
     static let notification = env["TC_TEST_NOTIFICATION"].flatMap { $0.isEmpty ? nil : $0 }
+    /// With `TC_TEST_ROUTE=payload`: a whole APNs payload as JSON (`aps` and `tc`), routed like a tap on it.
+    static let payload = env["TC_TEST_PAYLOAD"].flatMap { $0.isEmpty ? nil : $0 }
     /// The glide proof: `bottom` or `up` (the reader 700 pt up first). Once the
     /// thread lands, a tool group on screen (the lowest at the bottom, the
     /// highest up) is tapped open and shut three times through the line's own
@@ -120,6 +122,7 @@ enum TestHooks {
     static let action: String? = nil
     static let sheet: String? = nil
     static let notification: String? = nil
+    static let payload: String? = nil
     static let groupGlide: String? = nil
     static let perf: PerfRun? = nil
     static let controlURL: URL? = nil

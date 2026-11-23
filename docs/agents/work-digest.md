@@ -310,8 +310,17 @@ rules; nothing about the wire is the phone's own.
   `work.digest.set` with only that group in `levels`; a host that refused is
   that row's red line.
 - **Tests.** `DigestModelTests.swift`, `PushTargetTests.swift` and
-  `ShellPathsTests.swift` in the client package. The simulator proof (a
-  `xcrun simctl push` of each notice, each tap landing) runs on the Mac.
+  `ShellPathsTests.swift` in the client package. The simulator proof is
+  `TC_PROOF_SET=digest bun scripts/ios-sim-proof-local.ts` on the Mac: the
+  set runs scripts/lib/ios-digest-seed.ts between its shots (Work on and the
+  empty Digest; the work set's seeds, a Cosmic job and tells written into the
+  ledger by the test server's `POST /work-tells`; the digest's time set one
+  minute ahead so the host's own look makes the day; two tells after it),
+  then shoots Home, the Digest, Settings → Work and four notices, each the
+  host's exact `tc.work` payload handed to the delegate by the
+  `TC_TEST_ROUTE=payload` launch route (`TC_TEST_PAYLOAD`), light and dark.
+  `xcrun simctl push` is not used: the simulator refuses it until someone
+  allows the app's notifications by hand.
 
 ## The gate
 

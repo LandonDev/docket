@@ -429,6 +429,11 @@ struct RootView: View {
             if let entry = workspace ?? entries.first {
                 home.open(.workspace(key: entry.id))
             }
+        case "payload":
+            // The digest set's taps: a notice exactly as the host sends it (`tc.work`), through the delegate's one route.
+            guard let data = TestHooks.payload?.data(using: .utf8),
+                  let userInfo = (try? JSONSerialization.jsonObject(with: data)) as? [AnyHashable: Any] else { return }
+            PushDelegate.route(userInfo)
         case "notification":
             // The proof's tap: a payload shaped like the hub's, through the delegate's one route.
             guard let hook = TestHooks.notification else { return }

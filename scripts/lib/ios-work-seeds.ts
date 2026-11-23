@@ -12,7 +12,7 @@ import { resolve } from 'node:path'
 type Answer = { ok: boolean; result?: unknown; error?: string }
 export type WorkSeedReady = { baseUrl: string; controlUrl: string; adminKey: string }
 
-async function socket(ready: WorkSeedReady): Promise<{ call: <T>(method: string, params?: unknown) => Promise<T>; close: () => void }> {
+export async function socket(ready: WorkSeedReady): Promise<{ call: <T>(method: string, params?: unknown) => Promise<T>; close: () => void }> {
   const res = await fetch(`${ready.baseUrl}/api/ticket`, { method: 'POST', headers: { Authorization: `Bearer ${ready.adminKey}` } })
   const { ticket } = (await res.json()) as { ticket: string }
   const ws = new WebSocket(`${ready.baseUrl.replace(/^http/, 'ws')}/ws?ticket=${ticket}`)
@@ -57,7 +57,7 @@ export const WORK_MAIL_EDITED = 'Ballroom for Saturday, April 10'
 /** The Work thread the transcript and Results shots open (TC_TEST_THREAD). */
 export const WORK_THREAD_TITLE = 'Venue for the spring LAN'
 
-export async function seedWork(ready: WorkSeedReady, repo: string): Promise<{ purdue: string; unify: string; addonId: string }> {
+export async function seedWork(ready: WorkSeedReady, repo: string): Promise<{ purdue: string; unify: string; addonId: string; venue: string; invoices: string }> {
   const s = await socket(ready)
   try {
     await s.call('work.set', { enabled: true })
@@ -135,7 +135,7 @@ export async function seedWork(ready: WorkSeedReady, repo: string): Promise<{ pu
     ]
     const written = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows, transcript, results }) })
     if (!written.ok) throw new Error(`work seed: /work-held answered ${written.status}: ${await written.text()}`)
-    return { purdue: purdue.id, unify: unify.id, addonId: addon.id }
+    return { purdue: purdue.id, unify: unify.id, addonId: addon.id, venue: t1.id, invoices: t2.id }
   } finally {
     s.close()
   }

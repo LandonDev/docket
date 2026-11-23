@@ -30,6 +30,14 @@
 #           $OUT/receipt-report.json); TC_WORK_ONLY=money shoots that alone.
 #           scripts/ios-sim-proof-local.ts then reads back on the host what went
 #           ($OUT/work-report.txt).
+#   digest  The digest (docs/agents/work-digest.md "The phone"), from bun scripts/ios-sim-proof-local.ts, which
+#           hands it scripts/lib/ios-digest-seed.ts's state file: the empty Digest with Work on and nothing told;
+#           then the work set's seeds, a Cosmic job and five tells that wait, the digest's time one minute ahead
+#           so the host's own look makes the day, two tells after it; Home with the Digest row, the Digest's
+#           two sections, Settings → Work's Digest section, and four notices exactly as the host sends them
+#           (`tc.work`) through the delegate's route (TC_TEST_ROUTE=payload): the day's digest, and an
+#           interrupt opening a held item, a thread and nothing. Light and dark; each notice's payload and
+#           the layout report after it land in $OUT/payloads/.
 #   shell   Home, a workspace's project cards, the archived list, Inbox,
 #           Search with results, Settings, Hosts, a thread in its project's
 #           shell and a project card's landing (route project), in light and
@@ -407,6 +415,7 @@ launch_app() {
   SIMCTL_CHILD_TC_TEST_ACTION="${TC_ACTION:-}" \
   SIMCTL_CHILD_TC_TEST_SHEET="${TC_SHEET:-}" \
   SIMCTL_CHILD_TC_TEST_NOTIFICATION="${TC_NOTIFY:-}" \
+  SIMCTL_CHILD_TC_TEST_PAYLOAD="${TC_PAYLOAD:-}" \
   SIMCTL_CHILD_TC_TEST_SCROLL_UP="${TC_SCROLL_UP_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_STREAM="${TC_STREAM_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_STREAM_SECONDS="${TC_STREAM_SECONDS:-}" \
@@ -452,6 +461,8 @@ pair() {
 if { [ "$SET" = duo ] || [ "$SET" = perf ]; } && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE; fi
 # The work set presses Send, Edit and Away and reads Settings → Work: it pairs with the admin key.
 if [ "$SET" = work ] && [ -n "${TC_TEST_PAIR_LINK_ADMIN:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_ADMIN; fi
+# The digest set reads Settings → Work's Digest section, whose rows only an admin key may change.
+if [ "$SET" = digest ] && [ -n "${TC_TEST_PAIR_LINK_ADMIN:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_ADMIN; fi
 # The video set opens streams: video.open needs approve, which the acting key has.
 if [ "$SET" = video ] && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE; fi
 if [ -n "${TC_TEST_PAIR_LINK:-}" ]; then
@@ -1792,8 +1803,64 @@ sys.exit(1 if failed else 0)
 PY
 }
 
+# The digest set: each step of the host's side is scripts/lib/ios-digest-seed.ts, run between shots.
+digest_seed() { bun "$here/lib/ios-digest-seed.ts" "$1"; }
+# A notice as the host sends it (src/main/server/remote/apnsPayload.ts): `digest`, or an interrupt `held`, `thread`, `none`.
+digest_payload() {
+  python3 - "$TC_DIGEST_STATE" "$1" <<'PY'
+import json, sys, time
+state, kind = json.load(open(sys.argv[1])), sys.argv[2]
+tc = {"hostId": "local", "environmentId": state["environmentId"], "seq": 0, "ts": int(time.time() * 1000)}
+if kind == "digest":
+    aps = {"alert": {"title": "Work", "body": "Digest: 3 things in Cosmic and Purdue"}, "thread-id": "tc.work", "interruption-level": "active"}
+    tc.update({"event": "finished", "kind": "finished", "work": {"key": "digest:" + state["day"], "digest": state["day"]}})
+else:
+    aps = {"alert": {"title": "Purdue", "body": "Not sent: Send to Dana Reyes: Re: budget"}, "sound": "default", "thread-id": "tc.work", "interruption-level": "time-sensitive"}
+    work = {"key": "now", "tell": "unsent:host:" + state["held"]}
+    if kind == "held":
+        work["open"] = {"held": {"at": "host", "id": state["held"]}, "thread": state["thread"]}
+    elif kind == "thread":
+        work["open"] = {"thread": state["thread"]}
+    tc.update({"event": "needs_you", "kind": "waiting", "work": work})
+print(json.dumps({"aps": aps, "tc": tc}, separators=(",", ":")))
+PY
+}
+# One notice tapped: its payload and the layout report after it kept beside the shot.
+digest_push() {
+  local name=$1 kind=$2 docs
+  mkdir -p "$OUT/payloads"
+  digest_payload "$kind" > "$OUT/payloads/$name.json"
+  TC_PAYLOAD=$(cat "$OUT/payloads/$name.json") shot "$name" payload "" "" "" 14
+  docs=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  [ -n "$docs" ] && cp "$docs/Documents/layout-report.json" "$OUT/payloads/$name.layout.json" 2>/dev/null || true
+}
+digest_set() {
+  [ -n "${TC_DIGEST_STATE:-}" ] || { echo "ios-sim-proof: the digest set runs from scripts/ios-sim-proof-local.ts" >&2; exit 2; }
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  digest_seed on
+  for mode in light dark; do
+    appearance "$mode"
+    shot "digest-empty-$mode" digest
+  done
+  digest_seed seed
+  digest_seed day
+  digest_seed since
+  for mode in light dark; do
+    appearance "$mode"
+    shot "home-$mode" home "" "" "" 12
+    shot "digest-list-$mode" digest
+    shot "digest-settings-$mode" work-settings
+    digest_push "push-digest-$mode" digest
+    digest_push "push-interrupt-held-$mode" held
+    digest_push "push-interrupt-thread-$mode" thread
+    digest_push "push-interrupt-none-$mode" none
+  done
+  appearance light
+}
+
 case "$SET" in
   video) video_set ;;
+  digest) digest_set ;;
   duo) duo_set ;;
   perf) perf_set ;;
   f4) f4_set ;;

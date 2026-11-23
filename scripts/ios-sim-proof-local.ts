@@ -44,8 +44,10 @@ function workEnv(): Record<string, string> {
 if (process.env.TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video') process.env.TC_TEST_WORK_SERVICE ??= '1'
 // The perf set reads what its fixtures and the control panel write: 16,000 seeded rows more, and no CLI behind any thread.
 const perf = process.env.TC_PROOF_SET === 'perf'
-const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, TC_TEST_EXEC_BROKER: broker, ...(perf ? { TC_TEST_PERF_SEEDS: '1', TC_TEST_NO_HARNESS: '1' } : {}), ...(process.env.TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video' ? workEnv() : {}) } })
-const ready = await new Promise<{ baseUrl: string; controlUrl: string; pairingLink: string; pairingLinkOperate: string; adminPairing?: string; second?: { pairingLink: string } }>((ok, bad) => {
+// The digest set seeds between its shots (scripts/lib/ios-digest-seed.ts), on a server with Work's own dirs too.
+const digest = process.env.TC_PROOF_SET === 'digest'
+const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, TC_TEST_EXEC_BROKER: broker, ...(perf ? { TC_TEST_PERF_SEEDS: '1', TC_TEST_NO_HARNESS: '1' } : {}), ...(process.env.TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video' || digest ? workEnv() : {}) } })
+const ready = await new Promise<{ baseUrl: string; controlUrl: string; environmentId: string; adminKey?: string; pairingLink: string; pairingLinkOperate: string; adminPairing?: string; second?: { pairingLink: string } }>((ok, bad) => {
   let buffer = ''
   const timer = setTimeout(() => bad(new Error('the test server did not come up in 120 s')), 120_000)
   server.stdout.on('data', (chunk: Buffer) => {
@@ -98,7 +100,17 @@ const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
     TC_TEST_THREAD: process.env.TC_TEST_THREAD ?? 'Thread A',
     TC_TEST_SEARCH: process.env.TC_TEST_SEARCH ?? 'hello',
     // The last shot wants the host gone: the proof asks the control server to quit.
-    TC_PROOF_KILL_CMD: `curl -s -X POST ${ready.controlUrl}/quit`
+    TC_PROOF_KILL_CMD: `curl -s -X POST ${ready.controlUrl}/quit`,
+    // The digest set's seeds: the server and its admin key in the environment alone, the ids and the day in a file.
+    ...(digest
+      ? {
+          TC_DIGEST_BASE_URL: ready.baseUrl,
+          TC_DIGEST_CONTROL_URL: ready.controlUrl,
+          TC_DIGEST_ADMIN_KEY: ready.adminKey ?? '',
+          TC_DIGEST_ENVIRONMENT_ID: ready.environmentId,
+          TC_DIGEST_STATE: resolve(proofDir, 'digest-state.json')
+        }
+      : {})
   }
 })
 if (work) {
