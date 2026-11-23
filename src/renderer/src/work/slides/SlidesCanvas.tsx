@@ -10,7 +10,8 @@ import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { CSS_PER_POINT, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
-import { deckStoreOf, linkDeckHost, openDeck, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
+import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
+import { present, presentKey, PresentButton, type PresentAsk } from "./Present";
 
 /**
  * The slides kind (docs/agents/work-slides.md; the approved page is
@@ -75,6 +76,26 @@ export function renderDetail(error: string): string {
 export function slideOfChange(view: DeckView, change: SlideChange): DeckSlide | undefined {
   const all = view.slides.filter((s) => s.change === change.id);
   return all.find((s) => s.tint !== "del") ?? all[0];
+}
+
+/** A deck can be presented when the host has a picture of the file. */
+export const canPresent = (view: DeckView | null): view is DeckView => !!view && !!view.renders.file && !view.renderError;
+
+/** Starts a show of the deck's file: from its first slide, or from the slide on the stage when that slide is in the file. */
+export function startPresenting(host: DeckHost, store: DeckStore, ask: PresentAsk, engine?: PdfEngine): void {
+  const { view, current } = store.get();
+  if (!canPresent(view)) return;
+  const here = view.slides.find((s) => s.key === current);
+  present((show) =>
+    show.startShow({
+      host: showHostOf(host),
+      title: view.name.replace(/\.pptx$/i, ""),
+      from: ask.from === "here" && here ? here.id : "start",
+      mode: ask.mode,
+      ...(ask.display !== undefined ? { display: ask.display } : {}),
+      ...(engine ? { engine } : {}),
+    }),
+  );
 }
 
 export function Body(props: CanvasBodyProps<SlidesState> & SlidesDeps) {
@@ -168,7 +189,19 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
   const shown = view.slides.find((s) => s.key === current) ?? view.slides[0];
   const narrow = size.width > 0 && size.width < NARROW;
   return (
-    <div ref={box} data-slides className={`flex min-h-0 min-w-0 flex-1 ${narrow ? "flex-col-reverse" : ""}`} style={fixedHeight ? { height: fixedHeight } : undefined}>
+    <div
+      ref={box}
+      data-slides
+      className={`flex min-h-0 min-w-0 flex-1 ${narrow ? "flex-col-reverse" : ""}`}
+      style={fixedHeight ? { height: fixedHeight } : undefined}
+      onKeyDown={(event) => {
+        // The keys that start a show, while the keyboard is in the deck (PowerPoint's own, and a clicker's F5).
+        const ask = canPresent(view) ? presentKey(event) : null;
+        if (!ask) return;
+        event.preventDefault();
+        startPresenting(host, store, ask, engine);
+      }}
+    >
       <Strip view={view} current={shown?.key ?? null} narrow={narrow} docOf={docOf} pictures={!view.renderError} onPick={select} />
       {shown ? (
         <Main
@@ -672,15 +705,18 @@ export function TabEnd({ item }: CanvasBodyProps<SlidesState>) {
 
 /**
  * While the deck loads the bar holds one bone where the mode will be, so the
- * body does not drop 32px when it lands; in the real PowerPoint the stepper
- * is not there: how many changes wait here, and the way back to them.
+ * body does not drop 32px when it lands. In TempCode it ends with Present
+ * (Present.tsx); in the real PowerPoint the stepper is not there: how many
+ * changes wait here, and the way back to them.
  */
-export function Bar({ item }: CanvasBodyProps<SlidesState>) {
+export function Bar({ item, env, host: given, engine }: CanvasBodyProps<SlidesState> & SlidesDeps) {
   const store = deckStoreOf(item.id);
   const { view, error, side } = useDeck(store);
   if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
   const pending = view.changes.length;
-  if (side !== "powerpoint" || pending === 0) return null;
+  // Present, at the bar's end, wherever the host has a picture of the file to show.
+  if (side !== "powerpoint") return canPresent(view) ? <PresentButton onPresent={(ask) => startPresenting(given ?? hostFor(env, item.id), store, ask, engine)} /> : null;
+  if (pending === 0) return null;
   return (
     <>
       {/* Whole or gone: the narrow bar keeps Review alone rather than a cut sentence. */}

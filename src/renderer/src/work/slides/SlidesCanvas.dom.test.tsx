@@ -37,6 +37,15 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined) } };
 });
 
+/** The show itself is its own chunk (show/Show.dom.test.tsx): here, what Present asks it for. */
+const shows = vi.hoisted(() => ({ asks: [] as Array<Record<string, unknown>> }));
+vi.mock("./show/Show", () => ({
+  startShow: async (ask: Record<string, unknown>) => {
+    shows.asks.push(ask);
+    return { end: () => undefined, done: Promise.resolve() };
+  },
+}));
+
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { resetCanvasStore } from "../canvas/store";
 
@@ -80,7 +89,7 @@ function kinds(width = 800): Record<string, CanvasKindDef> {
   };
   const module = import("./SlidesCanvas").then((m) => ({
     Body: (props: CanvasBodyProps) => <m.Body {...(props as CanvasBodyProps<undefined>)} host={deckHost} engine={engine} width={width} height={700} />,
-    Bar: m.Bar as never,
+    Bar: (props: CanvasBodyProps) => <m.Bar {...(props as CanvasBodyProps<undefined>)} host={deckHost} engine={engine} />,
     TabEnd: m.TabEnd as never,
   }));
   return { ...CANVAS, slides: { ...CANVAS.slides, chunk: defineChunk(`test-slides-${Math.random()}`, () => module) } };
@@ -275,6 +284,74 @@ describe("the slides kind", () => {
     expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     expect(await screen.findByRole("toolbar", { name: "Review changes" })).toBeTruthy();
+  });
+
+  it("Present, at the bar's end, starts a show of the file from the slide on the stage; its menu has the other ways in", async () => {
+    shows.asks.length = 0;
+    open(deckView());
+    await found("[data-slides-stage]");
+    fireEvent.click(thumbs()[3]);
+    const present = await found("[data-present]");
+    expect(present.className).toContain("ms-auto");
+    fireEvent.click(within(present).getByRole("button", { name: "Present" }));
+    await waitFor(() => expect(shows.asks).toHaveLength(1));
+    expect(shows.asks[0]).toMatchObject({ title: "Sponsor deck", from: 4, mode: "full" });
+    // The show reads the file through the deck's own host: its slides, its render, its revision.
+    const showHost = shows.asks[0].host as import("./show/Show").ShowHost;
+    expect((await showHost.show()).slides).toHaveLength(12);
+    fireEvent.click(within(present).getByRole("button", { name: "Ways to present" }));
+    const rows = await screen.findAllByRole("menuitem");
+    // A browser has no second window: In a window is not offered there.
+    expect(rows.map((row) => row.textContent?.replace(/[⌘⇧⌥↩]|Ctrl|Shift|Alt|Enter|Return|\+/g, "").trim())).toEqual(["From the start", "From this slide", "Presenter view"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: /From the start/ }));
+    await waitFor(() => expect(shows.asks).toHaveLength(2));
+    expect(shows.asks[1]).toMatchObject({ from: "start", mode: "full" });
+    fireEvent.click(within(present).getByRole("button", { name: "Ways to present" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Presenter view/ }));
+    await waitFor(() => expect(shows.asks).toHaveLength(3));
+    expect(shows.asks[2]).toMatchObject({ from: 4, mode: "presenter" });
+  });
+
+  it("PowerPoint's own keys and a clicker's F5 start a show while the keyboard is in the deck", async () => {
+    shows.asks.length = 0;
+    open(deckView());
+    await found("[data-slides-stage]");
+    fireEvent.click(thumbs()[1]);
+    // Another slide is another stage: the one on screen now.
+    const stage = await found("[data-slides-stage]");
+    const keys = [
+      { key: "Enter", metaKey: true },
+      { key: "Enter", metaKey: true, shiftKey: true },
+      { key: "Enter", ctrlKey: true, altKey: true },
+      { key: "F5" },
+    ];
+    for (const [i, key] of keys.entries()) {
+      expect(fireEvent.keyDown(stage, key)).toBe(false);
+      await waitFor(() => expect(shows.asks).toHaveLength(i + 1));
+    }
+    // Return alone is the deck's, not a show's.
+    expect(fireEvent.keyDown(stage, { key: "Enter" })).toBe(true);
+    expect(shows.asks.map((a) => [a.from, a.mode])).toEqual([
+      [2, "full"],
+      ["start", "full"],
+      [2, "presenter"],
+      ["start", "full"],
+    ]);
+  });
+
+  it("offers no Present for a deck with no picture, and none while PowerPoint shows it", async () => {
+    shows.asks.length = 0;
+    open(deckView({ renders: { file: null, proposed: null }, renderError: "LibreOffice is not installed on this host" }));
+    const stage = await found("[data-slides-stage]");
+    expect(document.querySelector("[data-present]")).toBeNull();
+    fireEvent.keyDown(stage, { key: "F5" });
+    cleanup();
+    open({ ...revised(), hosted: true });
+    await found("[data-present]");
+    fireEvent.click(within(await screen.findByRole("tablist", { name: "Open in" })).getByRole("tab", { name: "PowerPoint" }));
+    await screen.findByText("Not built yet");
+    expect(document.querySelector("[data-present]")).toBeNull();
+    expect(shows.asks).toHaveLength(0);
   });
 
   it("has no switch for a deck on disk", async () => {

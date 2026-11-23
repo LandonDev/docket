@@ -130,6 +130,10 @@
      black under a video in both themes. */
   --stage: var(--sidebar);
   --matte: #000000;
+  /* The bar over a slideshow (docs/DESIGN.md "The show"): the dark popover at
+     94%, one value in both themes, since it sits on the deck and never on
+     the app. Its window wears the dark theme whatever the app wears. */
+  --present-bar: oklch(0.24 0.004 270 / 0.94);
   /* One series on a canvas: a form's answer bars, a dashboard's bars beside
      its current one (foreground), and that bar while the figures are stale.
      A bar is a mark, 3:1 on the page and on a card: light's steps reach it;

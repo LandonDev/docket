@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { DeckMode, DeckView } from "@shared/contract-work-slides";
+import type { DeckMode, DeckView, ShowDeck } from "@shared/contract-work-slides";
 import { registry } from "../../lib/connection";
 import { fromBase64, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
+import type { ShowHost } from "./show/Show";
 
 /** The host's side of a deck, as its canvas uses it (src/shared/contract-work-slides.ts). */
 export interface DeckHost {
   open(): Promise<DeckView>;
+  /** The file's slides and render, for a show: never the suggestions that wait. */
+  show(): Promise<ShowDeck>;
   /** With `rev`, bytes of a render at another revision (the deck moved on mid-read) are refused (`RENDER_CHANGED`). */
   read(which: "file" | "proposed", offset: number, length: number, rev?: string): Promise<Uint8Array>;
   /** With `rev`, the proposed render the press was made on: the host refuses it once the changes moved on since. */
@@ -23,6 +26,7 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
   const call = <T>(method: string, params: Record<string, unknown> = {}): Promise<T> => link().request<T>(method, { itemId, ...params });
   return {
     open: () => call("work.slides.open"),
+    show: () => call("work.slides.show"),
     read: async (which, offset, length, rev) => {
       const got = await call<{ data: string; rev?: string }>("work.slides.read", { which, offset, length });
       // Every frame of one picture comes from the revision the view advertised, as the phone's reads do.
@@ -38,6 +42,13 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
       }),
   };
 }
+
+/** The deck's host as a show reads it: the file's own slides and render, and the file's revision whenever the deck is told again. */
+export const showHostOf = (host: DeckHost): ShowHost => ({
+  show: () => host.show(),
+  read: (offset, length, rev) => host.read("file", offset, length, rev),
+  onRev: (listener) => host.onView((view) => listener(view.rev)),
+});
 
 /**
  * What the deck's body, its bar and its tab-row switch share for one item:

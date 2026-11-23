@@ -29,8 +29,8 @@ function ratio(theme: Theme, ink: string, ground: string, base = "--background")
   return contrast(over(value(theme, ink), under), under);
 }
 
-/** `only` keeps a pair to the one theme that has it (a name work-kit reads has no value in dark). */
-type Pair = { ink: string; on: string; base?: string; only?: "light" };
+/** `only` keeps a pair to the one theme that has it (a name work-kit reads has no value in dark; a slideshow's window is dark in both). */
+type Pair = { ink: string; on: string; base?: string; only?: "light" | "dark" };
 const wash = (token: string, percent: number): string => `color-mix(in srgb, var(${token}) ${percent}%, transparent)`;
 /** The hover vocabulary (docs/DESIGN.md "Type tints"): foreground at 5% on a hovered row, 7% on a ghost button, 12% pressed. */
 const HOVER_WASHES = [5, 7, 12].map((percent) => wash("--foreground", percent));
@@ -72,6 +72,9 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
       // The ladder's two upper steps (a completion's detail, a signature, a quote): muted-foreground in light.
       ...pairs(["--ink-50", "--ink-55"], [...PAGE, "--popover", "--muted"]),
       { ink: "--background", on: "--foreground" },
+      // A slideshow's bar, on the matte and on a white slide: its window wears the dark theme whatever the app wears
+      // (docs/DESIGN.md "The show"), so these inks are dark's alone.
+      ...["--foreground", "--muted-foreground"].flatMap((ink) => ["--matte", "#ffffff"].map((base) => ({ ink, on: "--present-bar", base, only: "dark" as const }))),
     ],
   },
   // Text that may be missed: a line number, ghost text, a done task, a diff's comment; and the same on a hovered or pressed row.

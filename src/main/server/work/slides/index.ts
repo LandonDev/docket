@@ -4,7 +4,7 @@ import { fenceItem, itemOf, readRange } from '../pdf/file'
 import { SLIDES_CONVERTERS } from './deck'
 import { ensureSlidesTables, SlidesStore } from './store'
 import { slidesTools } from './tools'
-import { accept, announce, ChangedSinceError, reject, renderPath, StaleChangesError, undo, viewOf } from './view'
+import { accept, announce, ChangedSinceError, reject, renderPath, showOf, StaleChangesError, undo, viewOf } from './view'
 
 /**
  * The slides pillar's server module (docs/agents/work-slides.md): a deck
@@ -14,7 +14,7 @@ import { accept, announce, ChangedSinceError, reject, renderPath, StaleChangesEr
  * deck with. The .pptx stays the truth; an edit written into it leaves
  * every part it did not change byte for byte as it was.
  */
-const SLIDES_METHODS: ReadonlySet<string> = new Set(['work.slides.open', 'work.slides.read', 'work.slides.review', 'work.slides.mode', 'work.slides.undo'])
+const SLIDES_METHODS: ReadonlySet<string> = new Set(['work.slides.open', 'work.slides.read', 'work.slides.show', 'work.slides.review', 'work.slides.mode', 'work.slides.undo'])
 
 export const slides: WorkModule = {
   id: 'slides',
@@ -35,6 +35,8 @@ export const slides: WorkModule = {
         const { path, rev } = await renderPath(ctx, item, req.params.which, signal)
         return handled({ ...readRange(path, req.params.offset, req.params.length), rev })
       }
+      case 'work.slides.show':
+        return handled(await showOf(ctx, item, signal))
       case 'work.slides.review': {
         // An agent suggests and the owner accepts: a thread's own call settles nothing.
         if (by.kind === 'model') throw new Error('Only the owner accepts or rejects a suggestion.')

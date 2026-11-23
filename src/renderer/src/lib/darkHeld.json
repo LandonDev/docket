@@ -61,6 +61,7 @@
     "--wave": "color-mix(in srgb, var(--muted-foreground) 55%, transparent)",
     "--run-dot": "color-mix(in srgb, var(--foreground) 55%, transparent)",
     "--stage": "var(--sidebar)",
+    "--present-bar": "oklch(0.24 0.004 270 / 0.94)",
     "--chart-neutral": "color-mix(in srgb, var(--foreground) 30%, transparent)",
     "--chart-neutral-rest": "color-mix(in srgb, var(--foreground) 22%, transparent)",
     "--chart-neutral-stale": "color-mix(in srgb, var(--foreground) 40%, transparent)",

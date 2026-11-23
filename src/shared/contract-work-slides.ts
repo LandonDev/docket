@@ -162,6 +162,34 @@ export interface DeckView {
   renderError?: string
 }
 
+/**
+ * One slide of a show (docs/agents/work-slides.md "The show"): the file's own, in the file's order. A show
+ * presents the deck as it is on disk, never a suggestion that still waits.
+ */
+export interface ShowSlide {
+  id: number
+  /** its place in the file, from 1 */
+  number: number
+  /** its page in the file's render, from 1 (hidden slides are in the render too) */
+  page: number
+  title: string
+  notes: string
+  /** skipped by Next and Previous; a jump by number or from the strip still shows it */
+  hidden: boolean
+}
+
+/** What a show draws from: the file's slides and its render. */
+export interface ShowDeck {
+  itemId: string
+  name: string
+  /** changes when the file's bytes do */
+  rev: string
+  /** read by range with `work.slides.read {which: 'file'}`; null with `renderError` */
+  render: DeckRender | null
+  slides: ShowSlide[]
+  renderError?: string
+}
+
 const itemId = z.string().min(1).max(100)
 
 export const SlidesRequestSchemas = [
@@ -180,6 +208,8 @@ export const SlidesRequestSchemas = [
       rev: z.string().max(64).optional()
     })
   ),
+  /** → ShowDeck: the file's slides in its own order and its render, for a show; pending suggestions are not in it */
+  request('work.slides.show', z.object({ itemId })),
   /** → DeckView: what the agent does to this deck from now on */
   request('work.slides.mode', z.object({ itemId, mode: z.enum(['suggests', 'writes']) })),
   /** → DeckView: puts the file back as it was before the agent's direct write */
@@ -192,6 +222,7 @@ export type SlidesPush = { push: 'work.slides'; sessionId: string; view: DeckVie
 export const SLIDES_CAPS = {
   'work.slides.open': 'read',
   'work.slides.read': 'read',
+  'work.slides.show': 'read',
   'work.slides.review': 'operate',
   'work.slides.mode': 'operate',
   'work.slides.undo': 'operate'

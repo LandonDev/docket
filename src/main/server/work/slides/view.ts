@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { chmodSync, existsSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { Bbox } from '@shared/contract-work-pdf'
-import type { DeckShape, DeckSlide, DeckView, SlideChange, SlideOp } from '@shared/contract-work-slides'
+import type { DeckShape, DeckSlide, DeckView, ShowDeck, SlideChange, SlideOp } from '@shared/contract-work-slides'
 import type { CanvasItem } from '@shared/work'
 import { errorText } from '@shared/work/ids'
 import { NoConverterError } from '../formats/jobs'
@@ -394,6 +394,21 @@ export function viewFrom(ctx: Pick<WorkCtx, 'db'>, item: CanvasItem, deck: Deck)
 
 export async function viewOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<DeckView> {
   return serial(item.id, async () => viewFrom(ctx, item, await deckOf(ctx, item, signal)))
+}
+
+/** What a show draws from: the file as it is, in its own order, whatever suggestions wait. */
+export async function showOf(ctx: Ctx, item: CanvasItem, signal?: AbortSignal): Promise<ShowDeck> {
+  return serial(item.id, async () => {
+    const { path, hash, file } = await deckOf(ctx, item, signal)
+    return {
+      itemId: item.id,
+      name: nameOf(item, path),
+      rev: hash.slice(0, 16),
+      render: renderOf(file),
+      slides: file.info.slides.map((s, i) => ({ id: s.id, number: i + 1, page: i + 1, title: s.title, notes: s.notes, hidden: s.hidden })),
+      ...(file.renderError ? { renderError: file.renderError } : {})
+    }
+  })
 }
 
 /** Tells every client what the deck is now, and answers it. */

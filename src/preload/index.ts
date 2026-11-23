@@ -6,6 +6,7 @@ import { logoAssetUrl } from '../shared/assets'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '../shared/launchMirror'
 import { aliaxApi } from './aliax'
 import type { EditorChoice, EditorConfig, EditorId, EditorTarget } from '../shared/editor'
+import type { ShowAsk, ShowDisplay, ShowFrames } from '../shared/slidesShow'
 
 type DialogKind = 'info' | 'warning' | 'error'
 
@@ -247,11 +248,29 @@ const api = {
 
 export type TempCodeApi = typeof api
 
+/**
+ * A show's windows (src/main/present.ts), under a name of its own: the slides canvas reads it in its own chunk, so
+ * the app's first paint and the browser's stand-in (nativeWeb.ts) carry nothing of it.
+ */
+const show = {
+  displays: (): Promise<ShowDisplay[]> => ipcRenderer.invoke('show:displays'),
+  /** Asks for a show; answers the frame name to open each of its windows under (null: no such window this time). */
+  begin: (ask: ShowAsk): Promise<ShowFrames> => ipcRenderer.invoke('show:begin', ask),
+  end: (): Promise<void> => ipcRenderer.invoke('show:end'),
+  onDisplayGone: (cb: () => void): (() => void) => {
+    const listener = (): void => cb()
+    ipcRenderer.on('show:display-gone', listener)
+    return () => void ipcRenderer.removeListener('show:display-gone', listener)
+  }
+}
+export type ShowApi = typeof show
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
     contextBridge.exposeInMainWorld('aliax', aliaxApi)
+    contextBridge.exposeInMainWorld('tcShow', show)
   } catch (error) {
     console.error(error)
   }
@@ -260,4 +279,6 @@ if (process.contextIsolated) {
   window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
+  // @ts-ignore (define in dts)
+  window.tcShow = show
 }

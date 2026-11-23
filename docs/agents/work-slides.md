@@ -116,6 +116,7 @@ thread's canvas folder.
 |---|---|---|
 | `work.slides.open` | read | → `DeckView`: reads and renders the deck and the proposed deck |
 | `work.slides.read` | read | → `{ data, size, rev }`: bytes of the `file` or `proposed` render by range, at most 4 MB a call |
+| `work.slides.show` | read | → `ShowDeck`: the file's slides in the file's own order (`id`, `number`, `page`, `title`, `notes`, `hidden`), its render and its `rev`, for a show. A waiting suggestion is never in it: a show presents the deck as it is on disk. The render is read with `work.slides.read {which: 'file'}` |
 | `work.slides.review` | operate | accept or reject changes by id, or `all` → `DeckView`; an optional `rev` (the proposed render's, as the view advertised it) binds the press to that preview: when the changes moved on since, nothing is accepted or rejected, every client is told the deck as it is, and the call fails with "The suggestions changed since this preview". The phone always sends it and reads the render's bytes only at that rev; the desktop's strip sends none and is not checked |
 | `work.slides.mode` | operate | `suggests` or `writes` → `DeckView` |
 | `work.slides.undo` | operate | puts the file back before the agent's direct write → `DeckView` |
@@ -126,7 +127,7 @@ change pushes `work.slides` with the view. There is no method named `list`.
 The listener's path fence reads only the paths a request names, and these
 methods name an item id. So `handle` fences the item itself, once, before
 any method runs: `fenceItem` (pdf/file.ts) asks the listener's own fence
-(`ctx.reaches`) and refuses a remote key every one of the five methods on a
+(`ctx.reaches`) and refuses a remote key every one of the six methods on a
 deck whose file it could not name itself, with the fence's own error. The
 key gets nothing of the view and changes nothing. A deck a thread made sits
 in its own folder and passes; this host's own window always passes.
@@ -261,6 +262,8 @@ stage".
 | `canvas.ts` | The kind's def |
 | `SlidesCanvas.tsx` | The chunk: `Body` (the strip and the stage), `Bar` (the line while PowerPoint shows the deck) and `TabEnd` (the TempCode and PowerPoint switch) |
 | `deck.ts` | `DeckHost` (the methods and the push), the per-item store the three parts share (the view, the slide on the stage, which app shows it), and `useRender`, which opens one of the deck's renders in pdf.js |
+| `Present.tsx` | Present, the split button at the end of the deck's bar, its menu, and the keys that start a show while the keyboard is in the deck |
+| `show/` | The show, a chunk of its own loaded when the pointer first reaches Present: `state.ts` (the state and its keys), `timer.ts`, `Show.tsx` (a show running), `places.ts` (the documents it is drawn in), `Audience.tsx` (the slideshow), `Presenter.tsx` (the presenter's view), `pictures.tsx` (a slide painted at a window's size) |
 | `testkit.ts`, `SlidesCanvas.dom.test.tsx`, `SlidesCanvas.preview.tsx` | A host that keeps one view, the tests, the preview |
 
 How it works:
@@ -319,3 +322,104 @@ through the real pdf.js (`src/renderer/src/work/pdf/proof/run.ts` with
 bar with a move tinted where it lands and where it leaves, a shape asked
 about, the push, the PowerPoint switch, a deck with no picture and the
 written line.
+
+## The show
+
+Built by SLD1 of the editors plan (`.temp-code/plans/editors/slides.md`;
+the look and every key are docs/DESIGN.md "The show"). He presses Present on
+a deck and gives a talk from it: the slideshow full screen or in a window,
+a presenter's view with the notes, the next press and a timer, and every
+key a clicker sends.
+
+- **What is shown.** The file as it is, read with `work.slides.show`: its
+  slides in its own order and the file's render. An agent's suggestion that
+  still waits is never presented. When the file changes under a show (an
+  edit lands, a change is accepted) the deck's push names a new `rev`; the
+  show reads the deck again and keeps its place by the slide's id, and the
+  picture on screen stays until the new render has painted that slide
+  (`SlidePicture`), so a save mid-talk never blanks the room's screen. A
+  read that fails is asked again by itself (after 2 s, then twice as long
+  each time, to 30 s): with no deck up yet both windows say why meanwhile;
+  with one up it stays up and the presenter's view says "Reconnecting to
+  the deck…". A read the file moved on from is read again at once.
+- **One state.** `show/state.ts` is a pure reducer: the slide, the build
+  (`Slide.builds`: none yet, the host does not read a deck's timing until
+  SLD6, so every slide is one press), blank, the end, the number being
+  typed, the picker. Hidden slides are passed by Next and Previous; a jump
+  by number or from the strip shows one. `keyAct` maps the keys.
+- **Its windows are drawn by the main window**, as the pop-out is, not
+  pages of their own: the page asks main for a show (`window.tcShow`, the
+  preload's `show:begin`), main answers a frame name for each window, made
+  for that one show (`tc-show-<id>`, so nothing else in the page can ask
+  for a show's window by a name it knows), the page opens each under its
+  name (`showWindowOptions` in `src/main/present.ts`, asked first by the
+  open handler in `windows.ts`, lets it through once), mirrors its
+  stylesheets and theme into it (`mirrorLook`) and fills it through a
+  portal from a React root of its own. The names both sides share are in
+  `src/shared/slidesShow.ts`, which has no zod. So the two
+  windows cannot fall out of step, a show reaches the deck's host as the
+  page does (no second sign-in), and it goes on whatever the main window
+  shows meanwhile. The slideshow's document never takes the light theme's
+  class. A child window has none of the main window's preload.
+- **Main owns what a page cannot** (`createShows`): where each window goes
+  (`planShow`), full screen (taken once the window is shown, never while it
+  is hidden; on a Mac the window is laid over its display with no Space of
+  its own, `setSimpleFullScreen`, since a Space of its own blanks the other
+  displays where they share Spaces), the display kept awake for the show's life (a
+  `prevent-display-sleep` power assertion of its own, let go at the end),
+  the page kept drawing (below), and a display that leaves. Where a show
+  goes:
+
+  | He asks | One display | Two or more |
+  |---|---|---|
+  | Present, From the start, From this slide (`full`) | the slideshow, full screen | the slideshow full screen on the other display (or the one he picked), the presenter's view filling his own display's work area |
+  | Presenter view (`presenter`) | the presenter's view alone, in a window: a rehearsal | as above |
+  | In a window (`windowed`) | the slideshow at 640 by 360 and the presenter's view at 744 by 582 beside it, centred, shrunk together on a smaller screen | the same, on his own display |
+
+  A display removed mid-show: main tells the page (`show:display-gone`),
+  which closes the slideshow's window and keeps the presenter's view with a
+  line saying so; main closes the window itself a second later if the page
+  did not. The page going (a reload, its window closing, its process
+  dying) ends its show in main.
+- **The page must keep drawing behind its own slideshow.** The main
+  window's page is the show: it paints every slide (pdf.js schedules its
+  drawing on that window's animation frames) and keeps the timer. A
+  full-screen slideshow over the main window makes that page hidden, and a
+  hidden page gets no frames at all (the first live run showed a black
+  slideshow for exactly this) and, after five minutes, one timer tick a
+  minute. So for a show's life main turns the asking page's background
+  throttling off (`keepLive`: `setBackgroundThrottling(false)`, which also
+  keeps the page visible to itself) and puts it back at the end.
+- **A show's document waits for its stylesheets** (`held` in `places.ts`):
+  the mirrored `<link>` sheets load a moment after the window opens, and
+  until they have (or 1.5 s pass) its body is unseen, so the room never
+  sees a frame of bare, unstyled words.
+- **In a browser** (`/ui`) there are no child windows: the surface is a
+  frame over the page (`openFramePlace`), and the slideshow takes the
+  page's own full screen, asked for in the press that started the show.
+  Leaving full screen ends the show. In a window is not offered there, and
+  Presenter view is the presenter's view filling the page.
+- **A show ends** on Escape, End, a press past "End of show", either window
+  closed by hand, or a new show. Ending tells main at once and closes its
+  windows; a new show asks for its windows only after the one before it has
+  ended in main, and a second press while a show is starting is that same
+  start.
+- **Whose key it is.** Every key of the table moves the show from either
+  window. Return and Space on a control he tabbed to press that control
+  (End show, Pause, the target's menu); after a press made with the
+  pointer the keyboard goes back to the view, so Space is the next slide
+  and never a second press of the button he last used.
+- **Not built yet** (each is a later milestone of the same plan): builds,
+  transitions and "advance after" (a change of slide is a cut), video and
+  audio on a slide, the phone as a clicker, presenting a PDF, and "In
+  PowerPoint". A menu in a child window cannot use the app's popover or
+  menu components, which mount in the main window's page: the slideshow's
+  picker and the presenter's target menu are panels of their own.
+
+Tests: `show/state.test.ts` (the state, every key, the timer),
+`show/Show.dom.test.tsx` (both surfaces, and a whole show on places that
+stand in for its windows: one state in two places, the file changing under
+it, a window closed, the display leaving, a browser's frame),
+`Present.dom.test.tsx`, `SlidesCanvas.dom.test.tsx` (Present in the bar and
+the keys), `src/main/present.test.ts` (the plan for one, two and three
+displays, the frames, the power assertion, a display removed).

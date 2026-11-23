@@ -37,6 +37,7 @@ import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
 import { clickMenuItem, registerMenu } from './menu'
 import { registerCapture } from './capture'
+import { registerPresent } from './present'
 import { queueNextPick, registerDialogs } from './dialogs'
 import { registerDownloads } from './downloads'
 import {
@@ -276,6 +277,7 @@ app.whenReady().then(async () => {
   registerPty()
   const { store } = server
   registerWindows({ dropSnapshot: (slot) => store.dropWorkspaceSnapshot(slot) })
+  if (!headless) registerPresent()
   registerDialogs()
   registerDownloads()
   if (!headless) {

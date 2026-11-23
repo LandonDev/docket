@@ -1,4 +1,4 @@
-import type { DeckSlide, DeckView, SlideChange } from "@shared/contract-work-slides";
+import type { DeckSlide, DeckView, ShowDeck, SlideChange } from "@shared/contract-work-slides";
 import type { DeckHost } from "./deck";
 
 /** A deck's view for the DOM tests and the preview, and a host that answers the canvas's calls as the host would. */
@@ -38,6 +38,12 @@ export function fakeDeckHost(initial: DeckView): DeckHost & { calls: Array<[stri
     async open() {
       host.calls.push(["open", null]);
       return host.view;
+    },
+    /** The file as it is: the view's slides that are in the file, in the file's order. */
+    async show(): Promise<ShowDeck> {
+      host.calls.push(["show", null]);
+      const slides = host.view.slides.filter((s) => s.from === "file").sort((a, b) => a.page - b.page);
+      return { itemId: host.view.itemId, name: host.view.name, rev: host.view.rev, render: host.view.renders.file, slides: slides.map((s) => ({ id: s.id, number: s.page, page: s.page, title: s.title, notes: s.notes, hidden: s.hidden })) };
     },
     async read() {
       return new Uint8Array();

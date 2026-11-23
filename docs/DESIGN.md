@@ -48,8 +48,10 @@ grid (its formula bar, sheet tabs and chart object), the document editor
 agenda lists (LifeOS's, shared), the project screens (the tracker's,
 shared), the PDF page, the slide stage, the media
 viewer, the meeting view, the live browser, the form canvas, the dashboard
-page, the compare and History views, the Outbox, and the routines' week
-grid. They are built from the components above wherever they have a
+page, the compare and History views, the Outbox, the routines' week
+grid, and a show's two windows (the slideshow and the presenter's view:
+the one surface where the content, not the chrome, fills the screen).
+They are built from the components above wherever they have a
 button, a menu, a field or a status.
 
 ## Tokens
@@ -308,6 +310,7 @@ both themes, unless the table gives two values.
 | `wave` | a recording's wave; the part played is `foreground` | `muted-foreground` 55% |
 | `run-dot` | a routine's planned run in the week grid | `foreground` 55% |
 | `stage` | the ground under a picture: an image, a PDF's sheets, a slide | `sidebar` |
+| `present-bar` | the bar over a slideshow, on the deck and never on the app ("The show") | dark `popover` 94%, in both themes |
 | `chart-neutral` | a form's answer bars | `foreground` 30% dark, 54% light |
 | `chart-neutral-rest` | a dashboard's bars beside the current one, which is `foreground` | `foreground` 22% dark, 48% light |
 | `chart-neutral-stale` | that current bar while the figures are stale | `foreground` 40% dark, 65% light |
@@ -1579,6 +1582,93 @@ set by hand.
   one. A control whose change could not be saved where the file lives is
   not drawn there.
 
+**The show** (`src/renderer/src/work/slides/show/`; the approved page is
+`.temp-code/prototypes/work-editors/present.html`, "Slide and column"). A
+deck presented, in two windows of their own, drawn by the main window
+through a portal as the pop-out is (`src/main/present.ts`): the slideshow
+the room sees, and the presenter's view. One state moves both.
+
+- **Present** is a secondary split button at the end of the deck's bar: a
+  10px play glyph and the word, which goes under 560px of bar. The press
+  starts from the slide on the stage; the chevron's menu (240px or more)
+  has From the start, From this slide, Presenter view, each with its key,
+  and In a window on the desktop. With more than one display it ends with
+  a "Slideshow on" label and a check row a display; the slideshow goes on
+  the other display unless he picks. It is absent while the host has no
+  picture of the file.
+- **The slideshow** is the slide on `matte`, fitted to the window, and
+  nothing else. Its window wears the dark theme whatever the app wears, so
+  its bar keeps one look over every deck. Blank is the matte alone. After
+  the last slide, "End of show" in 15/24 `muted-foreground`, centred; a deck
+  that cannot be drawn says why there in the same type. A press anywhere
+  on the screen is a next press: on the slide, on the black of a blank, on
+  "End of show".
+- **Its bar** comes for a real move of the pointer and never for a key: 40px
+  tall, radius 10, 12px off the foot, centred, on `present-bar` (the dark
+  popover at 94%, one value in both themes) with a `border` ring and the
+  overlay shadow; 28px quiet buttons 2px apart, 4px from its ends:
+  Previous, "4 / 12" (12px tabular, at least 44px wide), Next, a 1 by 16
+  rule, then Slides, Blank and End. It and the pointer go together 2000ms
+  after the last move (`PRESENT_IDLE_MS`), and it stays while the pointer
+  rests on it or its picker is open. Slides opens the picker upward, 8px
+  over the bar: a 296px `popover` panel at radius 12, every slide a 58px
+  picture in the strip's 3px frame, four across with 8px gaps; the arrows
+  move four ways, Return jumps, Escape closes it.
+- **The presenter's view** wears the app's theme. A 40px bar (16px inset
+  left, 8 right, a hairline under it): the elapsed time in the title recipe
+  (16/24 semibold tabular, never bigger), which turns `warning` once he is
+  past his target; the target as a 24px quiet button ("of 20:00", or "Set a
+  target") whose menu has 10:00, 15:00, 20:00, 30:00 and No target; Pause
+  and Restart as 24px icon buttons; a rule; the clock in 13px muted
+  tabular; then, at the end, Previous, the place, Next, a rule, Blank (a
+  28px toggle) and End show (secondary, small). The body has a 16px inset
+  and gap: "Now" over the slide the room sees, as large as the room allows,
+  and a 288px column of "Next" (with "Build 2 of 4" at its line's end when
+  the next press is a build) over the next press's picture, then the notes.
+  Labels are 12px medium muted, 8px over their picture; a picture is a
+  slide at radius 4 on `image-outline`. A press on either picture is a
+  next press. On the last slide Next is the matte with "End of show"; at
+  the end it is a `muted` box, "A press closes the show". While the screen
+  is blank the current slide dims to 45%.
+- **The notes** are the one text in the chrome that may pass 18px: 14/22,
+  16/24, 18/28, 20/30 (the start), 24/34 or 28/40 in `foreground`, set by a
+  − size + stepper in the notes' 24px header and by + and −, and kept for
+  the next show. With none, "None" in 13px muted.
+- **The strip** at the foot is 60px on `sidebar` under a hairline, 12px
+  inset: every slide a 58px picture in the 3px frame at radius 6 with its
+  number 12px tabular before it, the current one on `muted` and kept in the
+  middle, a hidden slide at 45%. A press jumps. G hands it the keyboard:
+  the arrows then move along it and Return jumps; at every other time the
+  arrows are the show's, so a thumbnail is never a Tab stop. With no
+  presenter's view, G opens the slideshow's own picker.
+- **Under 640px** the column stacks under the slide, the clock and the
+  timer's buttons go, the next press is a 176px picture and the notes cap
+  at 220px.
+- **A second display leaving** closes the slideshow that was on it; the
+  presenter's view goes on under one 28px line, "The slideshow's display
+  was disconnected", in 12px muted. The same line says "Reconnecting to the
+  deck…" while a read of the deck is asked again; the slide stays up.
+- **Return and Space on a control he tabbed to** press that control; after
+  a press made with the pointer the keyboard is the show's again.
+- **Keys**, in either window (shared with PowerPoint and with a clicker,
+  which sends PageDown, PageUp, B or a full stop, and Escape or F5):
+
+  | Act | Keys |
+  | --- | --- |
+  | Next (a build first, then the next slide; after the last, the end, then the show closes) | → ↓ Space Return PageDown N, a press on the slide or on the next picture |
+  | Previous (undoes a build first) | ← ↑ PageUp P Backspace |
+  | First, last | Home, End |
+  | That slide, hidden or not | its number, then Return |
+  | The slide picker | G |
+  | Black, and back | B or a full stop; a next or previous press also brings the slide back, and does nothing more |
+  | End the show | Escape (which closes an open picker first), End show, End on the bar, closing either window |
+  | Notes larger, smaller | + and − |
+  | Start, from the deck | ⇧⌘↩ from the start, ⌘↩ from this slide, ⌥⌘↩ presenter view, F5 from the start (⇧F5 from this slide) |
+
+  A key held with ⌘, Ctrl or Alt is the window's own. A video's transport,
+  when a slide has one, is in the presenter's view only: the slideshow has
+  no chrome but the bar the pointer calls.
+
 ## Scrolling
 
 Every scroller is a native element with `overflow-*-auto`, and one rule in
@@ -1741,6 +1831,9 @@ being produced shimmers (`WorkingText`); nothing else does.
 | A step's read text opening | `Collapsible` (`--dur-slow` open, `--dur-base` close) | the same | opacity |
 | The computer cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`FADE_IN`); its words morph (`MorphText`) | at once | the fade |
 | The agent's click on the live viewport (`CLICK_MARK`, a Web Animation on the ring alone, placed at the click's share of the picture) | scale 0.6→1 at full opacity over `--dur-base` `--ease-out`, holds `FOLD_HOLD_MS`, fades over `--dur-slow`; a new click restarts it | — | appears and fades, no scale |
+| A slide or a build changing in a show | a cut to a picture already painted: the page a press shows next is painted under the one shown, and the one shown stays until the new one is whole, so nothing dips to black | — | the same |
+| The slideshow's bar | on a real move of the pointer: opacity 0→1 and a rise of 4px, `--dur-base` `--ease-out` | 2000ms after the last move (`PRESENT_IDLE_MS`), with the pointer hidden at the same moment: opacity →0 and 4px back down, `--dur-base` `--ease-exit`; held while the pointer is on it or its picker is open | opacity alone |
+| The slideshow's picker and the presenter's target menu (panels of their own window, so no portal) | the popover's: fade + scale 0.95→1 from the trigger's side, `--dur-base` `--ease-out` | at once | fade only |
 | The Mac's computer-use banner ("The Mac's computer-use banner" below) | opacity, `--dur-base` `--ease-out` | opacity, `--dur-fast` `--ease-exit`, then the window hides | `--dur-fast` |
 
 Rules: animate `transform` and `opacity` (and height only through the

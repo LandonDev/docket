@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
-import type { DeckView, SlideOp } from '@shared/contract-work-slides'
+import type { DeckView, ShowDeck, SlideOp } from '@shared/contract-work-slides'
 import type { SessionMeta } from '@shared/events'
 import type { CanvasSource, WorkScope } from '@shared/work'
 import { openDb, Store } from '../../db'
@@ -275,6 +275,24 @@ describe('the module, on a fake deck tool', () => {
     expect(got.rev).toBe(view.renders.file!.rev)
     expect(got.size).toBe(view.renders.file!.size)
     await expect(call('work.slides.read', { itemId: item.id, which: 'proposed', offset: 0, length: 10 })).rejects.toThrow('No changes wait on this deck.')
+  })
+
+  it('a show is the file as it is, in its own order, whatever suggestions wait', async () => {
+    const item = openDeck(fileSource(path))
+    const view = await call('work.slides.open', { itemId: item.id })
+    const r = await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'remove', slide: 258 }, { op: 'move', slide: 256, after: 259 }, { op: 'text', slide: 257, shape: 3, paragraphs: ['New words'] }] })
+    expect(r.isError).toBeFalsy()
+    const show = await call<ShowDeck>('work.slides.show', { itemId: item.id })
+    expect(show).toMatchObject({ itemId: item.id, name: 'Show.pptx', rev: view.rev, render: view.renders.file })
+    expect(show.slides.map((s) => [s.id, s.number, s.page, s.title, s.hidden])).toEqual([
+      [256, 1, 1, 'One', false],
+      [257, 2, 2, 'Two', false],
+      [258, 3, 3, 'Three', false],
+      [259, 4, 4, 'Four', false]
+    ])
+    // A remote key gets no show of a deck outside its roots.
+    const remote = { kind: 'remote', keyId: 'k1', name: 'Bot', audience: 'mcp', caps: ['read', 'operate'] } as never
+    await expect(call('work.slides.show', { itemId: item.id }, remote)).rejects.toThrow('forbidden: work.slides.show is outside app-managed roots')
   })
 
   it("shows an agent's revision as changes: tints, ghosts where slides leave, the words before and after", async () => {

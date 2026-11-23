@@ -1,3 +1,4 @@
+import { showWindowOptions } from './present'
 import { POP_OUT_BAR, POP_OUT_FRAME, popOutCreated, readPopOutBounds, windowOpenHandler, type PopOutBounds } from './popOut'
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell, type IpcMainEvent } from 'electron'
 import { randomUUID } from 'node:crypto'
@@ -301,7 +302,12 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
 
   // The page's pop-out opens as a floating child of this window (popOut.ts), where he left it; anything else goes to the
   // system's browser. It goes with this window, and its place is kept.
-  win.webContents.setWindowOpenHandler((details) => windowOpenHandler(details, (url) => void shell.openExternal(url), loadStateFile().popOut ?? null))
+  win.webContents.setWindowOpenHandler((details) => {
+    // A show's windows first (present.ts): the slideshow and the presenter's view, while this page has a show running.
+    const show = showWindowOptions(id, details)
+    if (show) return { action: 'allow', overrideBrowserWindowOptions: show }
+    return windowOpenHandler(details, (url) => void shell.openExternal(url), loadStateFile().popOut ?? null)
+  })
   win.webContents.on('did-create-window', (child, details) => {
     if (details.frameName !== POP_OUT_FRAME) return
     popOuts.set(id, child)
