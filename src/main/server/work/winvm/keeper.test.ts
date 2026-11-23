@@ -119,6 +119,7 @@ class FakeGuest implements VmGuest {
   }
   async fetch() {}
   async send() {}
+  async upload() {}
   async knock(_s: string, token: string) {
     this.knocks++
     return this.doorOpens && token === this.token()

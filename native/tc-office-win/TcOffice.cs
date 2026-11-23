@@ -1275,7 +1275,7 @@ public static class Guest {
         // OneDrive's own first screen, with his address filled in: he goes on from there.
         var exe = OneDriveExe();
         if (exe == null) throw new Refusal("not-installed", "OneDrive is not installed on this PC.");
-        if (Process.GetProcessesByName("OneDrive").Length == 0) { Process.Start(new ProcessStartInfo(exe, "/background") { UseShellExecute = false }).Dispose(); Thread.Sleep(3000); }
+        if (Process.GetProcessesByName("OneDrive").Length == 0) { using (Process.Start(new ProcessStartInfo(exe, "/background") { UseShellExecute = true })) { } Thread.Sleep(3000); }
         Shell("odopen://sync?useremail=" + Q(a, "email"));
         return null;
       }
@@ -1284,7 +1284,7 @@ public static class Guest {
         using (var k = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64).OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\winword.exe")) {
           var exe = k == null ? null : k.GetValue(null) as string;
           if (exe == null) throw new Refusal("not-installed", "Office is not installed on this PC.");
-          if (Process.GetProcessesByName("WINWORD").Length == 0) Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false }).Dispose();
+          if (Process.GetProcessesByName("WINWORD").Length == 0) using (Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true })) { }
         }
         return null;
       }
@@ -1460,6 +1460,10 @@ public static class Program {
 // still run one at a time on the STA thread, the folder verbs on their connection's own thread.
 static class Door {
   static readonly List<Action<string>> clients = new List<Action<string>>();
+  [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
+  // .NET Framework makes sockets inheritable: a program the helper starts (OneDrive, Word, a file's app) kept the
+  // listening socket, so a helper put in its place could not listen until those closed (2026-11-23).
+  static void NoInherit(System.Net.Sockets.Socket s) { SetHandleInformation(s.Handle, 1, 0); }
   static Office office;
   static object com;
   static Control pump;
@@ -1476,10 +1480,12 @@ static class Door {
     var listener = new System.Net.Sockets.TcpListener(ip, port);
     // Another helper already holds the port: that one serves.
     try { listener.Start(); } catch (System.Net.Sockets.SocketException) { return 3; }
+    NoInherit(listener.Server);
     var accept = new Thread(() => {
       for (;;) {
         System.Net.Sockets.TcpClient client;
         try { client = listener.AcceptTcpClient(); } catch (Exception) { break; }
+        NoInherit(client.Client);
         var t = new Thread(() => { try { Serve(client); } catch (Exception) { } finally { try { client.Close(); } catch (Exception) { } } });
         t.IsBackground = true;
         t.Start();

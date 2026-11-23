@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { makePassword, renderAnswerFile, xmlEscape } from './answer'
 import { daemonEnv, instanceName, locksFor, onTheBase, rigConfig, rigPaths, snapshotName } from '../../src/main/server/work/winvm/machine/config'
 import { keepLiveTpm, kvmWrapped, liveTpmIsNewer } from '../../src/main/server/work/winvm/machine/daemons'
-import { encodePowerShell, psQuote, psStdin, runInSessionScript, waitedProgramScript, winQuote } from '../../src/main/server/work/winvm/machine/guest'
+import { encodePowerShell, PS_STDIN_MAX, psQuote, psStdin, runInSessionScript, waitedProgramScript, winQuote } from '../../src/main/server/work/winvm/machine/guest'
 import { qemuArgs, swtpmArgs } from '../../src/main/server/work/winvm/machine/qemu'
 import { Qmp, qmp, screendump, sendKey } from '../../src/main/server/work/winvm/machine/qmp'
 
@@ -292,11 +292,23 @@ describe('guest commands', () => {
     const { command, input } = psStdin(big)
     expect(command.length).toBeLessThan(4000)
     expect(command).toBe(psStdin('other').command)
-    expect(Buffer.from(input, 'base64').toString('utf8')).toBe(big)
+    const [len, b64] = [input.slice(0, input.indexOf(':')), input.slice(input.indexOf(':') + 1)]
+    expect(Number(len)).toBe(b64.length)
+    expect(Buffer.from(b64, 'base64').toString('utf8')).toBe(big)
     // The bootstrap keeps a failure's exit code: the script's own exit, a native program's, else 1 on an error.
     const boot = Buffer.from(command.split(' ').pop()!, 'base64').toString('utf16le')
     expect(boot).toContain('if ($LASTEXITCODE) { exit $LASTEXITCODE } elseif ($global:failed) { exit 1 }')
     expect(boot).toContain('*>&1')
+    // the read stops at the length it was told, never waiting on an end-of-file this guest's sshd can lose
+    expect(boot).not.toContain('ReadToEnd')
+    expect(boot).toContain('while ($want -lt 0 -or $ms.Length -lt $want)')
+  })
+
+  it('refuses a script over the bound on stdin: content goes across as a file', () => {
+    expect(() => psStdin('x'.repeat(PS_STDIN_MAX))).not.toThrow()
+    expect(() => psStdin('x'.repeat(PS_STDIN_MAX + 1))).toThrow(/copy its content across as a file/)
+    // the bound counts bytes, not characters
+    expect(() => psStdin('é'.repeat(PS_STDIN_MAX / 2 + 1))).toThrow()
   })
 
   it('starts a program in the session through an interactive scheduled task, not over ssh', () => {

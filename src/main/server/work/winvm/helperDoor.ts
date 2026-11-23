@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { connect } from 'node:net'
 import type { WinvmState } from '@shared/contract-work-winvm'
 import { STANDARD_USER } from './machine/config'
@@ -14,7 +17,8 @@ import { OFFICE_POLICY, ONEDRIVE_POLICY, SERVICE_DIR, TASK_FOLDER, TOKEN_PATH } 
  *
  * Nothing of it ships as a program: the box carries the helper's C# source, and the guest's own
  * csc.exe compiles it as the admin whenever the guest's copy differs (its sha256 beside it), so the
- * helper is always this build's. tcuser can run it and cannot replace it.
+ * helper is always this build's. tcuser can run it and cannot replace it. The source crosses as a file
+ * over scp, only then; each wake sends the small check alone.
  */
 
 /** The guest's loopback port the helper listens on. */
@@ -23,18 +27,22 @@ export const HELPER_PATH = `${SERVICE_DIR}\\tc-office.exe`
 export const HELPER_SHA_PATH = `${SERVICE_DIR}\\tc-office.sha`
 export const HELPER_TASK = 'office'
 export const NO_HELPER = 'The helper in the Windows VM did not answer.'
+/** No helper runs and another process holds its port, so a new one cannot start (programs an older helper started kept it). */
+export const portHeld = (names: string): string =>
+  `The helper in the Windows VM cannot start while ${names || 'another program'} ${names.includes(',') ? 'hold' : 'holds'} its port ${HELPER_PORT}. Close ${names.includes(',') ? 'them' : 'it'} in the VM, then try again.`
 export const VM_ASLEEP = 'The Windows VM is asleep.'
 
 /** The guest's copy is this build's when this matches: the source and how it is compiled. */
 export const helperHash = (source: string): string => createHash('sha256').update(`uia-1\n${source}`).digest('hex')
 
 /**
- * What makes the helper ready, as the admin, safe to run again: compile it when the guest's differs
- * from `source`, register its logon task (tcuser, on its desktop), and start it unless it runs. A
- * window-less build (`/target:winexe`), so no console shows on his desktop. Prints `compiled` when it built one.
+ * The check at each new awake spell, as the admin, small and safe to run again: machine policies, then `stale` (and
+ * nothing more) when the guest's copy is not this build's, else the helper's logon task (tcuser, on its desktop)
+ * registered with these arguments and the helper started unless it runs, then `ready`. A wake with a current helper
+ * sends this alone, a few KB, never the source (the source rode in this script until 2026-11-22: 111 KB on stdin,
+ * which this guest's sshd now and then never finished: "The helper door's hang on wake" in F-vm-files.md).
  */
-export function helperScript(source: string, port = HELPER_PORT, user = STANDARD_USER): string {
-  const want = helperHash(source)
+export function helperCheckScript(want: string, port = HELPER_PORT, user = STANDARD_USER): string {
   return `
 $ErrorActionPreference = 'Stop'
 # a machine set up before these policies gets them here
@@ -42,28 +50,8 @@ ${ONEDRIVE_POLICY}
 ${OFFICE_POLICY}
 $exe = ${psQuote(HELPER_PATH)}
 $shaFile = ${psQuote(HELPER_SHA_PATH)}
-$want = ${psQuote(want)}
 $have = if (Test-Path -LiteralPath $shaFile) { (Get-Content -Raw -LiteralPath $shaFile).Trim() } else { '' }
-if ($have -ne $want -or -not (Test-Path -LiteralPath $exe)) {
-  $src = Join-Path $env:TEMP "tc-office-$want.cs"
-  $out = Join-Path $env:TEMP "tc-office-$want.exe"
-  [IO.File]::WriteAllText($src, [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(${psQuote(Buffer.from(source, 'utf8').toString('base64'))})), (New-Object Text.UTF8Encoding($false)))
-  $csc = Join-Path $env:SystemRoot 'Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe'
-  $wpf = Join-Path $env:SystemRoot 'Microsoft.NET\\Framework64\\v4.0.30319\\WPF'
-  # /define:UIA: the guest's build alone walks a sign-in window by the words on it (the Ui class in TcOffice.cs)
-  $said = & $csc /nologo /optimize /target:winexe /define:UIA /r:System.Core.dll /r:System.Web.Extensions.dll /r:System.Windows.Forms.dll "/lib:$wpf" /r:UIAutomationClient.dll /r:UIAutomationTypes.dll /r:WindowsBase.dll "/out:$out" $src 2>&1 | Out-String
-  if ($LASTEXITCODE) { throw "csc: $said" }
-  Get-Process tc-office -ErrorAction SilentlyContinue | Stop-Process -Force
-  Start-Sleep -Milliseconds 500
-  # a copy, not a move: a moved file keeps the admin profile's ACL, which tcuser may not run
-  Remove-Item -Force -LiteralPath $exe -ErrorAction SilentlyContinue
-  Copy-Item -LiteralPath $out -Destination $exe
-  icacls $exe /reset /Q | Out-Null
-  if ($LASTEXITCODE) { throw "icacls exited $LASTEXITCODE" }
-  [IO.File]::WriteAllText($shaFile, $want)
-  Remove-Item -Force -LiteralPath $src, $out -ErrorAction SilentlyContinue
-  'compiled'
-}
+if ($have -ne ${psQuote(want)} -or -not (Test-Path -LiteralPath $exe)) { 'stale'; return }
 $account = "$env:COMPUTERNAME\\${user}"
 $svc = New-Object -ComObject Schedule.Service
 $svc.Connect()
@@ -89,8 +77,51 @@ if (-not $task -or $task.Definition.Actions.Item(1).Arguments -ne $helperArgs) {
   $folder.RegisterTaskDefinition(${psQuote(HELPER_TASK)}, $def, 6, $account, $null, 3) | Out-Null
   $task = $folder.GetTask(${psQuote(HELPER_TASK)})
 }
-if (-not (Get-Process tc-office -ErrorAction SilentlyContinue)) { $task.Run($null) | Out-Null }
+if (-not (Get-Process tc-office -ErrorAction SilentlyContinue)) {
+  # a helper started with no helper running exits when another process holds its port: say who, not "no answer"
+  $held = @(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue)
+  if ($held) {
+    $owner = $held[0].OwningProcess
+    # a helper just started by another caller already listens: that one serves
+    if ((Get-Process -Id $owner -ErrorAction SilentlyContinue).Name -eq 'tc-office') { 'ready'; return }
+    "port-held: $(@(Get-CimInstance Win32_Process -Filter "ProcessId=$owner or ParentProcessId=$owner" | ForEach-Object { $_.Name }) -join ', ')"
+    return
+  }
+  $task.Run($null) | Out-Null
+}
 'ready'
+`
+}
+
+/** The name the source takes in the admin's profile on its way in (scp's own home). */
+export const helperSourceName = (want: string): string => `tc-office-${want.slice(0, 16)}.cs`
+
+/**
+ * Compiles the source the host copied into the admin's profile (`helperSourceName`) with the guest's own csc and
+ * puts it in place of the guest's copy, as the admin. A window-less build (`/target:winexe`), so no console shows on
+ * his desktop. Prints `compiled`; the check after it registers the task and starts the new helper.
+ */
+export function helperCompileScript(want: string): string {
+  return `
+$ErrorActionPreference = 'Stop'
+$exe = ${psQuote(HELPER_PATH)}
+$src = Join-Path $env:USERPROFILE ${psQuote(helperSourceName(want))}
+$out = Join-Path $env:TEMP ${psQuote(`tc-office-${want}.exe`)}
+$csc = Join-Path $env:SystemRoot 'Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe'
+$wpf = Join-Path $env:SystemRoot 'Microsoft.NET\\Framework64\\v4.0.30319\\WPF'
+# /define:UIA: the guest's build alone walks a sign-in window by the words on it (the Ui class in TcOffice.cs)
+$said = & $csc /nologo /optimize /target:winexe /define:UIA /r:System.Core.dll /r:System.Web.Extensions.dll /r:System.Windows.Forms.dll "/lib:$wpf" /r:UIAutomationClient.dll /r:UIAutomationTypes.dll /r:WindowsBase.dll "/out:$out" $src 2>&1 | Out-String
+if ($LASTEXITCODE) { throw "csc: $said" }
+Get-Process tc-office -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Milliseconds 500
+# a copy, not a move: a moved file keeps the admin profile's ACL, which tcuser may not run
+Remove-Item -Force -LiteralPath $exe -ErrorAction SilentlyContinue
+Copy-Item -LiteralPath $out -Destination $exe
+icacls $exe /reset /Q | Out-Null
+if ($LASTEXITCODE) { throw "icacls exited $LASTEXITCODE" }
+[IO.File]::WriteAllText(${psQuote(HELPER_SHA_PATH)}, ${psQuote(want)})
+Remove-Item -Force -LiteralPath $src, $out -ErrorAction SilentlyContinue
+'compiled'
 `
 }
 
@@ -121,11 +152,13 @@ export function knockHelper(socket: string, token: string, timeoutMs = 5000): Pr
   })
 }
 
-/** What the door needs of the keeper: its wake, its state and the admin's shell. */
+/** What the door needs of the keeper: its wake, its state, the admin's shell and a copy into the admin's profile. */
 export interface HelperKeeper {
   door(): Promise<{ socket: string; token: string }>
   state(): WinvmState
   admin(script: string, timeoutMs?: number): Promise<string>
+  /** copies `local` into the admin's profile as `name`, over scp */
+  upload(local: string, name: string): Promise<void>
   touch(): void
 }
 
@@ -143,8 +176,12 @@ export interface HelperDoorDeps {
 }
 
 export const WORK_OFF = 'Work is off on this host'
-/** One run of the helper's install script. */
-const SCRIPT_MS = 120_000
+/** One run of the check: it answers in well under a second, so a run past this is a hang, not a slow guest. */
+export const CHECK_MS = 15_000
+/** One compile: csc takes a few seconds on the 80 KB source. */
+const COMPILE_MS = 120_000
+
+const words = (e: unknown): string => (e instanceof Error ? e.message : String(e)).slice(0, 300)
 
 export class HelperDoor {
   /** the keeper's `since` of the awake spell the helper was made ready in: a new wake checks it again */
@@ -186,14 +223,15 @@ export class HelperDoor {
       this.readyFor = spell
       return
     }
-    // The script now and then never returns after a compile (seen twice in ten on 2026-11-22, the helper left as it
-    // was): it gets two minutes and one more run, which has gone through each time.
-    const script = helperScript(this.d.source)
-    const said = await keeper.admin(script, SCRIPT_MS).catch((err) => {
-      this.d.log(`winvm: the helper's install did not finish (${err instanceof Error ? err.message.slice(0, 120) : String(err)}); running it once more`)
-      return keeper.admin(script, SCRIPT_MS)
-    })
-    if (said.includes('compiled')) this.d.log('winvm: compiled the Office helper in the guest')
+    const want = helperHash(this.d.source)
+    let said = await this.check(keeper, want)
+    if (said.includes('stale')) {
+      await this.compile(keeper, want)
+      said = await this.check(keeper, want)
+      if (said.includes('stale')) throw new Error("The helper in the Windows VM was compiled, but the guest's copy still reads as another build.")
+    }
+    const held = /port-held: ?(.*)/.exec(said)
+    if (held) throw new Error(portHeld(held[1]!.trim()))
     const end = Date.now() + (this.d.knockMs ?? 20_000)
     for (;;) {
       if (await knock(this.d.socket, token)) break
@@ -201,5 +239,36 @@ export class HelperDoor {
       await new Promise((r) => setTimeout(r, this.d.knockEvery ?? 500))
     }
     this.readyFor = spell
+  }
+
+  /** The small check, given CHECK_MS and run once more: a hang costs seconds, and the error says which step failed. */
+  private async check(keeper: HelperKeeper, want: string): Promise<string> {
+    const script = helperCheckScript(want)
+    try {
+      return await keeper.admin(script, CHECK_MS)
+    } catch (first) {
+      this.d.log(`winvm: the helper's check did not finish (${words(first)}); running it once more`)
+      return keeper.admin(script, CHECK_MS).catch((e) => {
+        throw new Error(`The helper check in the Windows VM failed twice: ${words(e)}`)
+      })
+    }
+  }
+
+  /** The source across as a file over scp (never on a script's stdin), then the guest's csc. */
+  private async compile(keeper: HelperKeeper, want: string): Promise<void> {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-office-'))
+    try {
+      const local = join(dir, helperSourceName(want))
+      writeFileSync(local, this.d.source)
+      await keeper.upload(local, helperSourceName(want)).catch((e) => {
+        throw new Error(`Copying the helper's source into the Windows VM failed: ${words(e)}`)
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+    await keeper.admin(helperCompileScript(want), COMPILE_MS).catch((e) => {
+      throw new Error(`Compiling the helper in the Windows VM failed: ${words(e)}`)
+    })
+    this.d.log('winvm: compiled the Office helper in the guest')
   }
 }

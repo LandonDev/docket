@@ -11,13 +11,21 @@ export function psCommand(script: string): string {
 
 /**
  * Reads base64 of a UTF-8 script from stdin and runs it, so a script of any length passes cmd.exe's 8191-character
- * line. With its stdin piped, powershell.exe writes errors, warnings and progress to stderr as CLIXML; this writes
+ * line. The input is its length, a colon, then the base64, and the read stops at that length: this guest's sshd
+ * (Windows OpenSSH, cmd.exe as its shell) delivers every byte but now and then loses the end-of-file of a feed over
+ * about 64 KB, and a read to the end then never returns (measured 2026-11-22: a reader to the end hung at 100 KB
+ * three of three and at 64 KB none of three; a reader that stops at the length answered at 150 KB three of three).
+ * With its stdin piped, powershell.exe writes errors, warnings and progress to stderr as CLIXML; this writes
  * errors and warnings as plain lines, drops progress and verbose output, and exits like a script would: with its
  * own `exit` code, else the last native program's failing code, else 1 if an error was written.
  */
 const STDIN_BOOT = [
   "$ProgressPreference = 'SilentlyContinue'; $global:failed = $false;",
-  'try { & ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd())))) *>&1 |',
+  '$in = [Console]::OpenStandardInput(); $buf = New-Object byte[] 65536; $ms = New-Object IO.MemoryStream; $want = -1;',
+  'while ($want -lt 0 -or $ms.Length -lt $want) { $r = $in.Read($buf, 0, $buf.Length); if ($r -le 0) { break }; $ms.Write($buf, 0, $r);',
+  "if ($want -lt 0) { $head = [Text.Encoding]::ASCII.GetString($ms.ToArray()); $i = $head.IndexOf(':'); if ($i -ge 0) { $want = $i + 1 + [int]$head.Substring(0, $i) } } }",
+  "$text = [Text.Encoding]::ASCII.GetString($ms.ToArray()); $body = $text.Substring($text.IndexOf(':') + 1);",
+  'try { & ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($body)))) *>&1 |',
   'ForEach-Object {',
   'if ($_ -is [Management.Automation.ErrorRecord]) { $global:failed = $true; [Console]::Error.WriteLine($_.ToString()) }',
   "elseif ($_ -is [Management.Automation.WarningRecord]) { [Console]::Error.WriteLine('WARNING: ' + $_.Message) }",
@@ -27,9 +35,19 @@ const STDIN_BOOT = [
   'if ($LASTEXITCODE) { exit $LASTEXITCODE } elseif ($global:failed) { exit 1 }'
 ].join(' ')
 
-/** A PowerShell script for ssh: a short fixed command line, the script itself on stdin. */
+/**
+ * The most script the host sends on stdin, in UTF-8 bytes. The length-read above no longer waits on the end-of-file,
+ * but nothing over about 150 KB has been proven, and nothing the host sends needs more: content (the helper's source,
+ * the service) goes across as a file over scp.
+ */
+export const PS_STDIN_MAX = 64 * 1024
+
+/** A PowerShell script for ssh: a short fixed command line, the script itself on stdin behind its length. */
 export function psStdin(script: string): { command: string; input: string } {
-  return { command: psCommand(STDIN_BOOT), input: Buffer.from(script, 'utf8').toString('base64') }
+  const bytes = Buffer.byteLength(script, 'utf8')
+  if (bytes > PS_STDIN_MAX) throw new Error(`a script of ${Math.round(bytes / 1024)} KB is over the ${PS_STDIN_MAX / 1024} KB the host sends on stdin: copy its content across as a file`)
+  const b64 = Buffer.from(script, 'utf8').toString('base64')
+  return { command: psCommand(STDIN_BOOT), input: `${b64.length}:${b64}` }
 }
 
 /** A PowerShell single-quoted literal: nothing inside expands, a quote is doubled. */

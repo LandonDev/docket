@@ -41,7 +41,8 @@ function fakeDeps(ctx: Parameters<Parameters<typeof configureWinvmKeeper>[0] & o
       openDoor: async (): Promise<DoorLink> => ({ close: () => {}, closed: new Promise(() => {}) }),
       knock: async () => true,
       fetch: async () => {},
-      send: async () => {}
+      send: async () => {},
+      upload: async () => {}
     },
     serviceExe: () => '/box/tc-computer.exe',
     hashFile: () => 'h',

@@ -60,6 +60,8 @@ export interface VmGuest {
   fetch(rel: string, local: string): Promise<void>
   /** copies `local` to a file under tcuser's profile (`rel`, forward slashes) over the same connection */
   send(local: string, rel: string): Promise<void>
+  /** copies `local` into the admin's profile as `name`: content too large for a script's stdin */
+  upload(local: string, name: string): Promise<void>
 }
 
 export interface KeeperDeps {
@@ -171,6 +173,11 @@ export class Keeper {
   /** A file into tcuser's profile over the door's connection (files.ts). */
   send(local: string, rel: string): Promise<void> {
     return this.d.guest.send(local, rel)
+  }
+
+  /** A file into the admin's profile: the helper's source on its way to csc (helperDoor.ts). */
+  upload(local: string, name: string): Promise<void> {
+    return this.d.guest.upload(local, name)
   }
 
   /** A PowerShell script as the guest's admin: the file tools' checks (files.ts). */

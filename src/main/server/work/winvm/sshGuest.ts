@@ -9,10 +9,12 @@ import type { DoorLink, VmGuest } from './keeper'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-interface Ran {
+export interface Ran {
   code: number | null
   out: string
   err: string
+  /** killed at its timeout */
+  timedOut?: boolean
 }
 
 /**
@@ -41,7 +43,11 @@ export class SshGuest implements VmGuest {
       const child = spawn(cmd, args, { env: daemonEnv(), stdio: ['pipe', 'pipe', 'pipe'] })
       let out = ''
       let err = ''
-      const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs)
+      let timedOut = false
+      const timer = setTimeout(() => {
+        timedOut = true
+        child.kill('SIGKILL')
+      }, timeoutMs)
       child.stdout.on('data', (d: Buffer) => (out += d.toString()))
       child.stderr.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-4000)))
       child.on('error', (e) => {
@@ -50,7 +56,7 @@ export class SshGuest implements VmGuest {
       })
       child.on('close', (code) => {
         clearTimeout(timer)
-        resolve({ code, out: out.trim(), err: err.trim() })
+        resolve({ code, out: out.trim(), err: err.trim(), timedOut })
       })
       child.stdin.end(input)
     })
@@ -63,7 +69,8 @@ export class SshGuest implements VmGuest {
   async admin(script: string, timeoutMs = 600_000): Promise<string> {
     const { command, input } = psStdin(script)
     const r = await this.ssh(ADMIN_USER, command, input, timeoutMs)
-    if (r.code !== 0) throw new Error(`the guest's script failed (exit ${r.code}): ${(r.err || r.out).slice(-800)}`)
+    const failed = scriptFailure(r, timeoutMs)
+    if (failed) throw new Error(failed)
     return r.out
   }
 
@@ -198,6 +205,17 @@ if ($LASTEXITCODE) { throw "icacls exited $LASTEXITCODE" }
   }
 
   /**
+   * Copies `local` into the admin's profile as `name` (scp's own home): content too large for a script's stdin, the
+   * helper's source (helperDoor.ts). Over the forward's connection while it is up, else a connection of its own.
+   */
+  async upload(local: string, name: string): Promise<void> {
+    const via = this.control ? ['-o', `ControlPath=${this.control}`, '-o', 'ControlMaster=no'] : []
+    const args = ['-q', ...via, ...this.base(ADMIN_USER).slice(0, -1).map((a) => (a === '-p' ? '-P' : a))]
+    const r = await this.run('scp', [...args, local, `${ADMIN_USER}@127.0.0.1:${name}`], '', 120_000)
+    if (r.code !== 0) throw new Error(r.timedOut ? 'scp did not finish within 120 s' : `scp failed: ${r.err.slice(-300)}`)
+  }
+
+  /**
    * Runs a program on tcuser's desktop, started by the admin through a one-off task of tcuser's (its
    * interactive token), and with `wait` its output: the proofs start Notepad and read windows this way.
    */
@@ -237,6 +255,13 @@ if (Test-Path -LiteralPath $out) { Get-Content -Raw -LiteralPath $out; Remove-It
       (timeoutSec + 60) * 1000
     )
   }
+}
+
+/** What an admin script's run says when it failed: a run killed at its timeout says so, not "exit null". */
+export function scriptFailure(r: Ran, timeoutMs: number): string | null {
+  if (r.timedOut) return `the guest's script did not answer within ${Math.round(timeoutMs / 1000)} s${r.err ? `: ${r.err.slice(-300)}` : ''}`
+  if (r.code !== 0) return `the guest's script failed (exit ${r.code}): ${(r.err || r.out).slice(-800)}`
+  return null
 }
 
 /** The id of the knock's one request: an unknown method, which the service answers with an error before `initialize` too. */
