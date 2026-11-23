@@ -202,11 +202,16 @@ describe('his answer', () => {
     ])
   })
 
-  it('moves its arrive-by with it, by as much, so the lead the offer left is still there after the move', async () => {
-    // An 8:00 PM game that wants him there at 7:45, moved to 8:15: the arrive-by is 8:00.
-    answers['events:get'] = () => ({ _id: 'e_game', source: 'manual', startsAt: at(20), arriveByAt: at(19, 45) })
+  it('moves its arrive-by and a leave-by he set by hand with it, by as much, so the lead the offer left is still there and LifeOS takes the move', async () => {
+    // An 8:00 PM game that wants him there at 7:45, with 7:10 set by hand to leave, moved to 8:15: there by 8:00, leave at 7:25.
+    answers['events:get'] = () => ({ _id: 'e_game', source: 'manual', startsAt: at(20), arriveByAt: at(19, 45), leaveByAt: at(19, 10) })
     await call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(20, 15), end: at(22, 15) })
-    expect(calls.at(-1)).toEqual({ fn: 'events:update', args: { id: 'e_game', patch: { startsAt: at(20, 15), endsAt: at(22, 15), arriveByAt: at(20) } } })
+    expect(calls.at(-1)).toEqual({ fn: 'events:update', args: { id: 'e_game', patch: { startsAt: at(20, 15), endsAt: at(22, 15), arriveByAt: at(20), leaveByAt: at(19, 25) } } })
+    // Moved earlier, past where the old leave-by stood: it goes earlier too, never after the new start.
+    calls.length = 0
+    answers['events:get'] = () => ({ _id: 'e_game', source: 'manual', startsAt: at(16), leaveByAt: at(15, 45) })
+    await call('work.clashes.answer', { eventId: 'e_game', way: 'move', start: at(15, 30), end: at(16, 30) })
+    expect(calls.at(-1)).toEqual({ fn: 'events:update', args: { id: 'e_game', patch: { startsAt: at(15, 30), endsAt: at(16, 30), leaveByAt: at(15, 15) } } })
   })
 
   it("refuses a thread's call whatever its key holds, and a key without approve, before LifeOS is asked", async () => {

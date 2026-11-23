@@ -62,9 +62,11 @@ Every call runs on the owner session, so it reads every job.
   patch: {startsAt, endsAt}}` with nothing sent for one that lives only in
   LifeOS. Refused for a thread's call whatever its key holds, and for any key
   without approve. A LifeOS refusal comes back in its own words. A move of an event
-  that lives only in LifeOS moves its arrive-by by as much, so the lead the
-  offer left is kept (a calendar's own event is moved on its calendar, and
-  its arrive-by is LifeOS's sync's to keep).
+  that lives only in LifeOS moves its arrive-by, and a leave-by he set by
+  hand, by as much, as LifeOS's own event sheet does: the lead the offer
+  left is kept, and LifeOS does not refuse the move for a leave-by after
+  the new start (a calendar's own event is moved on its calendar, and its
+  arrive-by and leave-by are LifeOS's sync's to keep).
 - The push `work.clashes {}`: the list changed; ask again.
 
 With Work off every method refuses, LifeOS is not asked, and the watcher does
