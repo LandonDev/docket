@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { ACCOUNT, ANOTHER_WAY, APPROVE, FILE_TAB, FIX_ME, followSignIn, NOT_NOW, NOT_SENT, OFFICE_WORD_LINE, OPEN_FOLDER, PRIVACY, readNumber, SIGN_IN_LINES, THIS_APP_ONLY, walkOfficeSignIn, walkSignIn } from './signin'
+import { describe, expect, it, vi } from 'vitest'
+import { ACCOUNT, ANOTHER_WAY, APPROVE, FILE_TAB, FIX_ME, followSignIn, NOT_NOW, NOT_SENT, OFFICE_WORD_LINE, oneWatchAtATime, OPEN_FOLDER, PRIVACY, readNumber, SIGN_IN_LINES, THIS_APP_ONLY, walkOfficeSignIn, walkSignIn } from './signin'
 
 /** The walk to his phone's number over a fake screen: what is on it after each press, and what is pressed. */
 
@@ -204,6 +204,14 @@ describe('while he answers on his phone', () => {
     expect(after).toBe(1)
   })
 
+  it('an account that shows in the last minute still has the libraries asked', async () => {
+    const w = world(() => [])
+    w.signInAt(55_000, 'him@purdue.edu')
+    let after = 0
+    expect(await followSignIn({ ...w.deps, afterSignIn: async () => void after++ })).toBe('signed-in')
+    expect(after).toBe(1)
+  })
+
   it("watching Office, ends on Office's own state and nothing else", async () => {
     const w = world(() => [])
     w.signInAt(30_000, 'licensed')
@@ -215,5 +223,19 @@ describe('while he answers on his phone', () => {
     const w = world(() => [])
     expect(await followSignIn(w.deps)).toBe('gave-up')
     expect(w.pressed).toEqual([])
+  })
+})
+
+describe('one watch at a time', () => {
+  it("a watch asked for while one runs starts when it ends, the newest only: Office's waits behind OneDrive's tutorial", async () => {
+    const watch = oneWatchAtATime()
+    const ran: string[] = []
+    let endFirst = () => {}
+    watch(() => (ran.push('onedrive'), new Promise<void>((done) => (endFirst = done))))
+    watch(async () => void ran.push('stale'))
+    watch(async () => void ran.push('office'))
+    expect(ran).toEqual(['onedrive'])
+    endFirst()
+    await vi.waitFor(() => expect(ran).toEqual(['onedrive', 'office']))
   })
 })

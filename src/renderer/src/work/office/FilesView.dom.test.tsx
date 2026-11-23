@@ -378,6 +378,21 @@ describe("the Files view", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
+  it("a host that answers after its deadline takes the place of the line that said it did not", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    settings = { mayUseDesktop: ["env_mac"], windowsVm: true };
+    let open = () => {};
+    hold = { box: new Promise<void>((done) => (open = done)) };
+    vmLibs = [VM_LIB];
+    boxPlaces = [{ kind: "vm", state: "ok", account: "landon@purdue.edu" }];
+    await act(async () => void render(<View {...props("box")} />));
+    await act(async () => void vi.advanceTimersByTime(4_000));
+    expect((await screen.findByRole("status")).textContent).toContain("The box did not answer");
+    await act(async () => open());
+    expect(await screen.findByText("RecWell")).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("holds the bones while the VM is read for the first time, and paints what the read found when its host pushes", async () => {
     settings = { mayUseDesktop: [], windowsVm: true };
     boxPlaces = [{ kind: "vm", state: "reading", account: null }];

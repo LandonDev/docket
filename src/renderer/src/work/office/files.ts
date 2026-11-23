@@ -128,10 +128,13 @@ export const SEARCH_DEADLINE_MS = 20_000;
 /** While the VM's first read is under way, the host is asked again this often, in case its push is missed. */
 export const READING_AGAIN_MS = 5_000;
 
+/** What a host past its deadline fails with: it reads as a machine out of reach (`unreachable`). */
+export const deadlineError = (ms: number): Error => Object.assign(new Error(`No answer in ${Math.round(ms / 1000)} s`), { name: "TimeoutError" });
+
 /** `p`, or past `ms` a failure that reads as a machine out of reach (`unreachable`); `p` itself keeps running. */
 export function byDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(Object.assign(new Error(`No answer in ${Math.round(ms / 1000)} s`), { name: "TimeoutError" })), ms);
+    const timer = setTimeout(() => reject(deadlineError(ms)), ms);
     p.then(
       (v) => (clearTimeout(timer), resolve(v)),
       (e) => (clearTimeout(timer), reject(e)),

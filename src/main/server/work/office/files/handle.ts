@@ -14,7 +14,7 @@ import { NOT_SET_UP } from '../../winvm/keeper'
 import { isGuestPath, lastReadFailure, missingLibraries, readVmBehind, refreshVm, resetSyncAsks, setWantedLibraries, storedStatus, vmBytes, vmFetch, vmLibraries, vmLibraryOf, vmList, vmOfficeStatus, vmOpen, vmPlace, vmSearch, vmStat, vmText, wantedLibraries } from '../vm/files'
 import { vmAllowed, vmKey, vmState } from '../vm/office'
 import { vmCall } from '../vm/link'
-import { followSignIn, numberLine, OFFICE_WORD_LINE, readNumber, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn, type SignInReached } from '../vm/signin'
+import { followSignIn, numberLine, OFFICE_WORD_LINE, oneWatchAtATime, readNumber, SIGN_IN_LINES, walkOfficeSignIn, walkSignIn, type SignInReached } from '../vm/signin'
 import type { TeamsLibrariesAnswer, TeamsPlace, VmSignInAnswer, VmSyncLibrary } from '@shared/contract-work-office'
 
 /**
@@ -41,15 +41,15 @@ export interface FilesDeps {
 let pace: { first: number; page: number; list: number } | null = null
 export const setSignInPace = (waits: { first: number; page: number; list: number } | null): void => void (pace = waits)
 
-/** One watch of a sign-in at a time (vm/signin.ts `followSignIn`); none under a test's pace. */
-let following = false
+/** One watch of a sign-in at a time (vm/signin.ts `followSignIn`, `oneWatchAtATime`); none under a test's pace. */
+const watch = oneWatchAtATime()
 function follow(ctx: WorkCtx, account: () => Promise<string | null>, what: string, afterSignIn?: () => Promise<void>): void {
-  if (following || pace) return
-  following = true
-  void followSignIn({ call: vmCall, account, afterSignIn })
-    .then((end) => ctx.log(`office: the Windows VM's ${what} sign-in ${end === 'signed-in' ? 'went through' : 'was not finished in six minutes'}`))
-    .catch((err) => ctx.log(`office: following the sign-in failed: ${err instanceof Error ? err.message : String(err)}`))
-    .finally(() => (following = false))
+  if (pace) return
+  watch(() =>
+    followSignIn({ call: vmCall, account, afterSignIn })
+      .then((end) => ctx.log(`office: the Windows VM's ${what} sign-in ${end === 'signed-in' ? 'went through' : 'was not finished in six minutes'}`))
+      .catch((err) => ctx.log(`office: following the sign-in failed: ${err instanceof Error ? err.message : String(err)}`))
+  )
 }
 
 /** Where a sign-in walk stopped, in words; at the number, the number itself when the page names it. */

@@ -15,6 +15,7 @@ export function psCommand(script: string): string {
  * (Windows OpenSSH, cmd.exe as its shell) delivers every byte but now and then loses the end-of-file of a feed over
  * about 64 KB, and a read to the end then never returns (measured 2026-11-22: a reader to the end hung at 100 KB
  * three of three and at 64 KB none of three; a reader that stops at the length answered at 150 KB three of three).
+ * A feed that ends short of its length exits 3 and runs nothing (where its end-of-file arrives at all).
  * With its stdin piped, powershell.exe writes errors, warnings and progress to stderr as CLIXML; this writes
  * errors and warnings as plain lines, drops progress and verbose output, and exits like a script would: with its
  * own `exit` code, else the last native program's failing code, else 1 if an error was written.
@@ -24,6 +25,7 @@ const STDIN_BOOT = [
   '$in = [Console]::OpenStandardInput(); $buf = New-Object byte[] 65536; $ms = New-Object IO.MemoryStream; $want = -1;',
   'while ($want -lt 0 -or $ms.Length -lt $want) { $r = $in.Read($buf, 0, $buf.Length); if ($r -le 0) { break }; $ms.Write($buf, 0, $r);',
   "if ($want -lt 0) { $head = [Text.Encoding]::ASCII.GetString($ms.ToArray()); $i = $head.IndexOf(':'); if ($i -ge 0) { $want = $i + 1 + [int]$head.Substring(0, $i) } } }",
+  "if ($want -lt 0 -or $ms.Length -lt $want) { [Console]::Error.WriteLine('the script arrived short: ' + $ms.Length + ' of ' + $want + ' bytes'); exit 3 }",
   "$text = [Text.Encoding]::ASCII.GetString($ms.ToArray()); $body = $text.Substring($text.IndexOf(':') + 1);",
   'try { & ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($body)))) *>&1 |',
   'ForEach-Object {',

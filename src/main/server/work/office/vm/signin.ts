@@ -121,6 +121,31 @@ export interface FollowDeps extends Pick<SignInDeps, 'call' | 'sleep'> {
   now?: () => number
 }
 
+/**
+ * One watch at a time: a watch asked for while one runs starts when it ends (the newest only). Office's sign-in is
+ * offered while OneDrive's watch still presses its tutorial, and Office's needs its own watch for the device question.
+ */
+export function oneWatchAtATime(): (start: () => Promise<unknown>) => void {
+  let running = false
+  let next: (() => Promise<unknown>) | null = null
+  const run = (start: () => Promise<unknown>): void => {
+    if (running) {
+      next = start
+      return
+    }
+    running = true
+    void start()
+      .catch(() => undefined)
+      .finally(() => {
+        running = false
+        const n = next
+        next = null
+        if (n) run(n)
+      })
+  }
+  return run
+}
+
 /** OneDrive's tutorial after its sign-in: "Not now" on "Get the mobile app", and its last page's "Open my OneDrive folder". */
 export const NOT_NOW = 'Not now'
 export const OPEN_FOLDER = 'Open my OneDrive folder'
@@ -173,6 +198,11 @@ export async function followSignIn(d: FollowDeps): Promise<'signed-in' | 'gave-u
       }
     }
     await sleep(every)
+  }
+  // the account came in the last minute: what waited on the tutorial still runs
+  if (signedAt !== null) {
+    await d.afterSignIn?.().catch(() => undefined)
+    return 'signed-in'
   }
   return 'gave-up'
 }

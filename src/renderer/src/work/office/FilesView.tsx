@@ -29,7 +29,7 @@ import type { WorkViewProps } from "../views/registry";
 import { SEARCH_FIELD } from "../views/searchField";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { playRunner } from "../routines/plays/runOn";
-import { appVerb, byDeadline, crumbsOf, filesNote, HOST_DEADLINE_MS, openWay, pathIn, placeGroups, placeOf, READING_AGAIN_MS, rowOf, SEARCH_DEADLINE_MS, showsHeading, unreachable, vmReading, type FilesNote, type HostRead, type PlaceCopy, type PlaceGroup, type PlaceRow, type ShownLibrary } from "./files";
+import { appVerb, byDeadline, crumbsOf, deadlineError, filesNote, HOST_DEADLINE_MS, openWay, pathIn, placeGroups, placeOf, READING_AGAIN_MS, rowOf, SEARCH_DEADLINE_MS, showsHeading, unreachable, vmReading, type FilesNote, type HostRead, type PlaceCopy, type PlaceGroup, type PlaceRow, type ShownLibrary } from "./files";
 
 /**
  * The Files view of a Work workspace (docs/agents/work-files.md "The Files view"): the Teams and
@@ -150,8 +150,18 @@ function useReach(workspace: WorkspaceMeta, attempt: number): Reach | null {
         asked.set(env, mine);
         const name = registry.environment(env)?.name ?? env;
         const desktop = desktops.some((d) => d.link === env);
-        void byDeadline(registry.linkOf(env).request<TeamsLibrariesAnswer>("work.office.filesLibraries", {}), HOST_DEADLINE_MS).then(
+        const failed = (err: unknown): void => {
+          if (!live || asked.get(env) !== mine) return;
+          reads.set(env, { env, name, desktop, failed: { words: refusalWords(err) || "No answer.", unreachable: unreachable(err) } });
+          paint();
+        };
+        // Past the deadline the host shows as not answering; an answer that comes later still takes its place.
+        const late = setTimeout(() => (timers.delete(late), failed(deadlineError(HOST_DEADLINE_MS))), HOST_DEADLINE_MS);
+        timers.add(late);
+        const settle = (): void => void (clearTimeout(late), timers.delete(late));
+        void registry.linkOf(env).request<TeamsLibrariesAnswer>("work.office.filesLibraries", {}).then(
           (answer) => {
+            settle();
             if (!live || asked.get(env) !== mine) return;
             reads.set(env, { env, name, desktop, answer });
             paint();
@@ -159,11 +169,7 @@ function useReach(workspace: WorkspaceMeta, attempt: number): Reach | null {
             const timer = setTimeout(() => (timers.delete(timer), ask(env)), READING_AGAIN_MS);
             timers.add(timer);
           },
-          (err: unknown) => {
-            if (!live || asked.get(env) !== mine) return;
-            reads.set(env, { env, name, desktop, failed: { words: refusalWords(err) || "No answer.", unreachable: unreachable(err) } });
-            paint();
-          },
+          (err: unknown) => (settle(), failed(err)),
         );
       };
       for (const env of hosts) {

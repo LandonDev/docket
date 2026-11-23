@@ -302,6 +302,8 @@ describe('guest commands', () => {
     // the read stops at the length it was told, never waiting on an end-of-file this guest's sshd can lose
     expect(boot).not.toContain('ReadToEnd')
     expect(boot).toContain('while ($want -lt 0 -or $ms.Length -lt $want)')
+    // a feed cut short runs nothing: a cut on a whole base64 group would otherwise run part of the script
+    expect(boot).toContain("if ($want -lt 0 -or $ms.Length -lt $want) { [Console]::Error.WriteLine('the script arrived short: '")
   })
 
   it('refuses a script over the bound on stdin: content goes across as a file', () => {

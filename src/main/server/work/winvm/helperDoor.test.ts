@@ -127,6 +127,9 @@ describe('opening the door', () => {
     const { door } = setup({ checks: ['stale'] })
     await expect(door.open()).rejects.toThrow(/was compiled, but the guest's copy still reads as another build/)
   })
+  it('a check that printed no ready line is not taken for ready', async () => {
+    await expect(setup({ checks: [''] }).door.open()).rejects.toThrow('The helper check in the Windows VM did not finish: it printed nothing')
+  })
   it('a port held by programs an older helper started is named in the error', async () => {
     const { door } = setup({ checks: ['port-held: OneDrive.exe, EXCEL.EXE'] })
     await expect(door.open()).rejects.toThrow(`The helper in the Windows VM cannot start while OneDrive.exe, EXCEL.EXE hold its port ${HELPER_PORT}. Close them in the VM, then try again.`)

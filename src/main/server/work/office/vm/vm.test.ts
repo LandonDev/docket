@@ -11,7 +11,7 @@ import { copyDirOf, setSignInPace } from '../files/handle'
 import { setCloudDir } from '../files/library'
 import { teamsTools, twinOf } from '../files/tools'
 import { office as module, setCarrier } from '../index'
-import { forgetAsked, guestWithin, isGuestPath, lastReadFailure, missingLibraries, readingVm, refreshVm, storedStatus, vmLibraries, vmLibraryOf, vmPlace } from './files'
+import { forgetAsked, guestWithin, isGuestPath, lastReadFailure, missingLibraries, readingVm, readVmBehind, refreshVm, storedStatus, vmLibraries, vmLibraryOf, vmPlace } from './files'
 import { setVmCall, VmAsleep, VmUnreachable, type VmCall } from './link'
 import { setVmState } from './office'
 
@@ -229,6 +229,29 @@ describe("the VM's libraries", () => {
     expect(lastReadFailure(box.db)).toBeNull()
     expect(((await call('work.office.filesLibraries', {})) as TeamsLibrariesAnswer).places).toEqual([{ kind: 'vm', state: 'ok', account: 'him@purdue.edu' }])
     expect(pushes).toHaveLength(1)
+  })
+
+  it('an ask that may wake the machine does not settle for a read under way that may not: it reads again after it', async () => {
+    const wakes: boolean[] = []
+    let finish = () => {}
+    setVmCall((verb, _args, opts) => {
+      if (verb === 'guest.status') wakes.push(!!(opts as { wake?: boolean } | undefined)?.wake)
+      return new Promise((_, fail) => void (finish = () => fail(new VmAsleep())))
+    })
+    const quiet = readVmBehind(box, { wake: false })
+    const waking = readVmBehind(box, { wake: true })
+    expect(wakes).toEqual([false])
+    finish()
+    await quiet
+    await vi.waitFor(() => expect(wakes).toEqual([false, true]))
+    finish()
+    await waking
+    // a waking read under way is joined by either kind
+    const again = readVmBehind(box, { wake: true })
+    expect(readVmBehind(box, { wake: false })).toBe(again)
+    expect(readVmBehind(box, { wake: true })).toBe(again)
+    finish()
+    await again
   })
 
   it('pushes nothing when a read finds what was kept', async () => {

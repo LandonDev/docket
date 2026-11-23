@@ -232,6 +232,7 @@ export class HelperDoor {
     }
     const held = /port-held: ?(.*)/.exec(said)
     if (held) throw new Error(portHeld(held[1]!.trim()))
+    if (!/^ready$/m.test(said)) throw new Error(`The helper check in the Windows VM did not finish: ${said.trim().slice(-200) || 'it printed nothing'}`)
     const end = Date.now() + (this.d.knockMs ?? 20_000)
     for (;;) {
       if (await knock(this.d.socket, token)) break

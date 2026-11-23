@@ -178,11 +178,13 @@ export async function refreshVm(db: DatabaseSync, opts: { wake?: boolean; signal
 interface Reading {
   failure: string | null
   running: Promise<void> | null
+  /** whether the running read may wake the machine */
+  wakes: boolean
 }
 const readings = new WeakMap<DatabaseSync, Reading>()
 function readingOf(db: DatabaseSync): Reading {
   let r = readings.get(db)
-  if (!r) readings.set(db, (r = { failure: null, running: null }))
+  if (!r) readings.set(db, (r = { failure: null, running: null, wakes: false }))
   return r
 }
 /** Why the last read of the guest failed (the helper down, a time-out, a wake that did not come), or null. */
@@ -203,7 +205,9 @@ const shownOf = (db: DatabaseSync): string => {
  */
 export function readVmBehind(ctx: Pick<WorkCtx, 'db' | 'log' | 'push'>, opts: { wake: boolean }): Promise<void> {
   const r = readingOf(ctx.db)
-  if (r.running) return r.running
+  // an ask that may wake the machine does not settle for a read that may not: it reads again after it
+  if (r.running) return opts.wake && !r.wakes ? r.running.then(() => readVmBehind(ctx, opts)) : r.running
+  r.wakes = opts.wake
   const before = shownOf(ctx.db)
   const read = refreshVm(ctx.db, { wake: opts.wake })
     .then(
