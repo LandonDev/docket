@@ -224,14 +224,21 @@ export function admitsPath(path: string, roots: readonly string[], denied: reado
   return insideRoots(path, roots) && !insideRoots(path, denied)
 }
 
-/** The Teams files verbs that name one file or folder by a `CanvasSource`. */
-const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy|Threads)$/
+/**
+ * The verbs that may name a file or folder in the Windows VM: the Teams files verbs that name one by a
+ * `CanvasSource`, and the Files place's verbs that read, open or mark one (docs/agents/work-files.md "The fence,
+ * by caller"). Listed one verb at a time, never a pillar whole: a verb that changes a file is not among them
+ * until the VM's own verbs are built, and each handler holds the path to a mount OneDrive names in the guest
+ * (work/files/policy.ts `locate`).
+ */
+const GUEST_METHODS = /^work\.office\.files(List|Fetch|Read|Open|Copy|Threads)$|^work\.files\.(list|stat|fetch|open|threads|tabOpen|tabSet|star|seen)$/
 
 /**
  * A file in the Windows VM a host keeps (docs/agents/work-files.md "The Windows VM"), named by the guest's own
- * path (`C:\Users\…`): no path of this host's disk, so the roots have nothing to say of it. Only the Teams
- * files verbs may carry one, and they hold it to the libraries OneDrive syncs in the guest (work/office/files/
- * handle.ts `admitted`). On a host that is not Windows such a string has no separator in it: at worst it names
+ * path (`C:\Users\…`): no path of this host's disk, so the roots have nothing to say of it. Only the verbs
+ * `GUEST_METHODS` lists may carry one, and they hold it to the libraries OneDrive syncs in the guest
+ * (work/office/files/handle.ts `admitted`, work/files/policy.ts `locate`). Each path is judged alone: in one
+ * request a guest path passes and a path of this host outside the roots still fails. On a host that is not Windows such a string has no separator in it: at worst it names
  * a file of that literal name in the working directory, never a way out of it. A Windows host's own paths look
  * the same and stay fenced.
  */

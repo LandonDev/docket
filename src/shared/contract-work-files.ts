@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { CanvasKindSchema, CanvasSourceSchema, type CanvasItem, type CanvasSource } from './work/canvas'
 import { ENTRY_KINDS, FILE_SORTS, type FileEntry, type FilePlace, type FolderRef } from './work/files'
+import type { TeamsPlace } from './contract-work-office'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -137,11 +138,16 @@ export const FilesRequestSchemas = [
   request('work.files.purge', z.object({ workspaceId: Workspace, ids: z.array(z.string().max(100)).max(1000).optional() }))
 ] as const
 
-/** What `work.files.places` answers. `rev` is the tabs' revision, so a window knows whether its tabs are current. */
+/**
+ * What `work.files.places` answers. `rev` is the tabs' revision, so a window knows whether its tabs are current.
+ * `sources`: what stands between each source of Teams files on this host and him (OneDrive's folders, OneDrive in
+ * the Windows VM), for the one line that says why a place he expects is not listed.
+ */
 export interface FilesPlaces {
   host: string
   places: FilePlace[]
   rev: number
+  sources: TeamsPlace[]
 }
 
 /** One step of a folder's trail: the place first, then each folder down to the one shown. */
@@ -184,9 +190,14 @@ export interface FilesTabs {
   tabs: FileTab[]
 }
 export interface FilesOpened extends FilesTabs {
-  /** the tab that holds the file now (absent for the Beside seat) */
+  /** the tab that holds the file now (absent for the Beside seat, and when a thread holds it) */
   tabId?: string
-  item: CanvasItem
+  item?: CanvasItem
+  /**
+   * A thread of the workspace already shows this file, and its kind keeps its marks by item (a PDF's, a deck's,
+   * a picture's): no second seat is made, and the window shows that thread's item instead.
+   */
+  held?: { sessionId: string; itemId: string }
 }
 
 export interface FilesHome {

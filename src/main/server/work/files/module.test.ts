@@ -3,10 +3,20 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { PILLAR_IDS, PILLAR_MILESTONE } from '@shared/work'
 import { WORK_PILLAR_CONTRACTS } from '@shared/contract-work'
 import { FILES_CAPS, FILES_RELAY } from '@shared/contract-work-files'
+import { CanvasStore, ensureCanvasTables, setCanvasStore } from '../canvas/store'
 import { PILLAR_LOADERS, type WorkCtx } from '../modules'
 import { fileMakerFor, fileMovedHooks, filePreviewerFor, registerFileMaker, registerFileMoved, registerFilePreviewer } from './hooks'
 import { files } from './index'
 import { FILES_TABLES } from './tables'
+
+/** A context that is enough to start the module: its tables and the canvas's, and a store behind them. */
+const startCtx = (): WorkCtx => {
+  const db = new DatabaseSync(':memory:')
+  files.ensure(db)
+  ensureCanvasTables(db)
+  setCanvasStore(db, new CanvasStore({ db, dataDir: '/nowhere', session: () => null, push: () => {}, log: () => {} }))
+  return { db, push: () => {}, log: () => {} } as unknown as WorkCtx
+}
 
 /** The files pillar as the one mount sees it: its id, its tables, its contract rows, and the registries its start leaves alone. */
 
@@ -48,7 +58,7 @@ describe('the registries a kind fills (hooks.ts) and the module start', () => {
     offs.push(registerFileMaker('document', before))
     offs.push(registerFilePreviewer('document', async () => null))
     offs.push(registerFileMoved(() => {}))
-    const stop = files.start!({} as WorkCtx)
+    const stop = files.start!(startCtx())
     expect(fileMakerFor('document', 'docx')).toBe(before)
     expect(filePreviewerFor('document')).not.toBeNull()
     expect(fileMovedHooks()).toHaveLength(1)
@@ -63,7 +73,7 @@ describe('the registries a kind fills (hooks.ts) and the module start', () => {
 
     // Work turned off and on again: both are still there.
     stop()
-    files.start!({} as WorkCtx)()
+    files.start!(startCtx())()
     expect(fileMakerFor('document', 'docx')).toBe(before)
     expect(fileMakerFor('sheet', 'xlsx')).toBe(after)
     expect(fileMovedHooks()).toHaveLength(2)
