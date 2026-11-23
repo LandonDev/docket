@@ -235,7 +235,8 @@ method can be given a small source here on `ask.ts`, as Files is.
   its name. "Nothing for …" is said only of a search that ran (two
   characters or more, a source answering: `searched`). Within a kind the
   rows already standing keep their order and what lands later goes under
-  them (`model.order`, afresh with new words), whichever host answered
+  them (`model.order`; ranked afresh at the first answer to new words,
+  never at the key itself), whichever host answered
   first; Recent alone is sorted by time.
 - `hosts.ts`: every connected host with Work on is asked, the Work home for
   what LifeOS holds and the rest with `own: true`. A job is a sector's Work

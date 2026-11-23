@@ -67,6 +67,8 @@ export interface SearchModel {
   seen: string[];
   /** each kind's rows, by key, in the order they came to stand: what lands later goes under them */
   order: Readonly<Record<string, readonly string[]>>;
+  /** the generation that order was last settled in: the first answer to new words ranks afresh */
+  orderGen: number;
   /** a source searched and answered this generation: only then is there something to say was not found */
   searched: boolean;
   /** he moved the highlight (an arrow, the pointer): it stays on `active` */
@@ -74,7 +76,7 @@ export interface SearchModel {
   active: string | null;
 }
 
-export const emptyModel = (): SearchModel => ({ gen: 0, text: "", kind: null, scope: null, hosts: [], slots: [], out: new Set(), quiet: [], seen: [], order: {}, searched: false, moved: false, active: null });
+export const emptyModel = (): SearchModel => ({ gen: 0, text: "", kind: null, scope: null, hosts: [], slots: [], out: new Set(), quiet: [], seen: [], order: {}, orderGen: 0, searched: false, moved: false, active: null });
 
 const outKey = (host: string, source = "*"): string => `${host}\n${source}`;
 
@@ -106,7 +108,8 @@ export function begin(model: SearchModel, ask: { text: string; kind: string | nu
     slots: scope === model.scope ? model.slots.filter((slot) => ask.hosts.some((h) => h.id === slot.host)) : [],
     out: new Set(ask.hosts.map((h) => outKey(h.id))),
     quiet: (ask.offline ?? []).map((name) => ({ key: `offline:${name}`, line: `${name} is offline.` })),
-    order: same ? model.order : {},
+    // The rows on screen stay as they stand until an answer lands; the same ask again carries their order on.
+    orderGen: same && model.orderGen === model.gen ? model.gen + 1 : model.orderGen,
     searched: false,
     moved: same ? model.moved : false,
     active: same ? model.active : null,
@@ -286,11 +289,16 @@ function groupsOf(model: SearchModel): Group[] {
   return groups;
 }
 
-/** After an answer: each kind's rows as they now stand are the order the next answer goes under. */
+/**
+ * After an answer: each kind's rows as they now stand are the order the
+ * next answer goes under. The first answer to new words ranks afresh: the
+ * list changes then anyway, and what a new search finds stands as it
+ * ranks it.
+ */
 function settled(model: SearchModel): SearchModel {
   const order: Record<string, string[]> = {};
-  for (const group of groupsOf(model)) if (group.kind !== RECENT_KIND) order[group.kind] = group.hits.map((found) => found.hit.key);
-  return { ...model, order };
+  for (const group of groupsOf(model.orderGen === model.gen ? model : { ...model, order: {} })) if (group.kind !== RECENT_KIND) order[group.kind] = group.hits.map((found) => found.hit.key);
+  return { ...model, order, orderGen: model.gen };
 }
 
 /** The list, top to bottom: each kind's heading, its rows up to the cap, the row that opens all of it; then what was not found, and what could not be searched. */

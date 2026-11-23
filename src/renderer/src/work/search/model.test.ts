@@ -97,13 +97,29 @@ describe("the order of the list", () => {
     m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1", "mac-3"])])).model;
     expect(shape(rowsOf(m))).toEqual(["# Thread", "mac-1", "mac-3", "box-1", "box-2", "[All threads for “budget”]"]);
   });
-  it("starts the order afresh with new words: the rows a new search finds stand as it ranks them", () => {
+  it("ranks afresh at the first answer to new words, and not before: the rows on screen stand as they did until then", () => {
     let m = typed("budget", [box, mac]);
     m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1"])])).model;
     m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1"])])).model;
     expect(shape(rowsOf(m))).toEqual(["# Thread", "mac-1", "box-1"]);
-    m = typed("budget for", [box, mac], m);
-    expect(m.order).toEqual({});
+    // a key: nothing has answered, nothing moves
+    m = typed("budget ", [box, mac], m);
+    m = begin(m, { text: "budget 1", kind: null, hosts: [box, mac] });
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "mac-1", "box-1"]);
+    // the first answer to the new words: the fixed order again, the Work home first
+    m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1"])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "box-1", "mac-1"]);
+    // and from there what lands goes under
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["box-0", "box-1"])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "box-1", "mac-1", "box-0"]);
+  });
+  it("carries the order on when the same ask is made again (a host came or went)", () => {
+    let m = typed("budget", [box, mac]);
+    m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1"])])).model;
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1"])])).model;
+    m = begin(m, { text: "budget", kind: null, hosts: [box, mac] });
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1", "box-2"])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "mac-1", "box-1", "box-2"]);
   });
   it("shows a thing once, in the first group that has it, whichever source or host found it", () => {
     let m = typed("budget", [box, mac]);
