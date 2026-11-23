@@ -177,7 +177,7 @@ describe('the google tools', () => {
     expect(text(got)).toMatch(/^Held for the owner/)
     expect(JSON.stringify([...fake.files])).toBe(before)
     expect(fake.calls.filter((c) => c.startsWith('POST') && !c.includes('/google/token'))).toEqual([])
-    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026', boxes: 1 }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2025' }] }) })])
+    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026', boxes: 1, on: [1] }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2025' }] }) })])
     expect(results).toEqual([])
     const done = await googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)
     expect(done.summary).toBe('Made 2 changes in Pitch')

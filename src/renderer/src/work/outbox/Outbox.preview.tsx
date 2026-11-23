@@ -76,7 +76,7 @@ const EDITS = [
   edit(
     7,
     "google.edit",
-    'Make 2 changes in Nationals travel: "7" to "6:30" and 1 more',
+    'Make 2 changes in Nationals travel: "7 AM" to "6:30 AM" and 1 more',
     "Make 2 changes",
     {
       app: "slides",
@@ -84,7 +84,7 @@ const EDITS = [
       fileId: "1AbC",
       name: "Nationals travel",
       edits: [
-        { find: "Thursday at 7 AM", replace: "Thursday at 6:30 AM", boxes: 1 },
+        { find: "Thursday at 7 AM", replace: "Thursday at 6:30 AM", boxes: 1, on: [2] },
         { shape: "t4", text: "Six players, two staff, one van", slide: 3, was: "Six players and two staff" },
       ],
       revisionId: "r1",

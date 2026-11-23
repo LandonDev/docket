@@ -441,33 +441,64 @@ public extension OutboxModel {
         var rows: [(String, String)] = []
         var starts: [Int] = []
         let shown = { (v: String) in v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? exactQuote(v) : v }
-        let squeeze = { (v: String) in v.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") }
+        // What reads alike on screen: spaces squeezed, characters that cannot be seen dropped (the desktop's `looksAlike`).
+        let seen = { (v: String) in String(String.UnicodeScalarView(v.unicodeScalars.filter { $0.properties.generalCategory != .format })).split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") }
+        let count: Double? = if case .number(let n)? = places { n } else { nil }
         for case .object(let e) in edits {
-            if !rows.isEmpty { starts.append(rows.count) }
+            // Every change is a group of its own, apart from the rows above it and the change before.
+            let start = rows.count
             let from: String
             var to: String?
             if case .string(let find)? = e["find"] {
                 from = find
                 if case .string(let r)? = e["replace"] { to = r }
                 let boxes: Double? = if case .number(let n)? = e["boxes"] { n } else { nil }
-                let count: Double? = if case .number(let n)? = places { n } else { nil }
-                // Where: a Doc's paragraph the words stand in, or how many places or boxes a replace reaches.
-                if case .string(let within)? = e["within"], !within.isEmpty, within != find { rows.append(("Where", within)) }
+                let on: [Int] = if case .array(let a)? = e["on"] { a.compactMap { if case .number(let n) = $0 { Int(n) } else { nil } } } else { [] }
+                // Where: a Doc's sentence the words stand in, the slides a replace-all reaches, or how many places.
+                if case .string(let within)? = e["within"], !within.isEmpty, within != find { rows.append(("Where", sentenceAround(within, find))) }
+                else if !on.isEmpty { rows.append(("Where", (boxes ?? 1) > 1 ? "\(Int(boxes!)) boxes on \(slidesWords(on))" : "Slide \(on[0])")) }
                 else if let many = boxes ?? count, many > 1 { rows.append(("Where", "\(Int(many)) \(boxes != nil ? "boxes" : "places")")) }
             } else if case .string? = e["shape"] {
                 from = if case .string(let w)? = e["was"] { w } else { "" }
                 if case .string(let t)? = e["text"] { to = t }
                 if case .number(let n)? = e["slide"] { rows.append(("Where", "Slide \(Int(n))")) }
             } else {
-                if starts.last == rows.count { starts.removeLast() }
                 continue
             }
-            // Words alike but for their spaces are both quoted, so the difference shows.
-            let alike = to.map { $0 != from && !$0.isEmpty && squeeze($0) == squeeze(from) } ?? false
+            starts.append(start)
+            let alike = to.map { $0 != from && !$0.isEmpty && seen($0) == seen(from) } ?? false
             let say = { (v: String) in alike ? exactQuote(v) : shown(v) }
             if let to, !to.isEmpty { rows += [("Replace", say(from)), ("With", say(to))] } else { rows.append(("Take out", shown(from))) }
         }
         return (rows, starts)
+    }
+
+    /// "slide 4", "slides 2 and 5", "slides 1, 3 and 6" (the desktop's `slidesWords`).
+    nonisolated static func slidesWords(_ on: [Int]) -> String {
+        on.count == 1 ? "slide \(on[0])" : "slides \(on.dropLast().map(String.init).joined(separator: ", ")) and \(on.last!)"
+    }
+
+    /// The sentence of a paragraph that holds the words, cut to about 120 characters around them (the desktop's
+    /// `sentenceAround`).
+    nonisolated static func sentenceAround(_ paragraph: String, _ words: String, max: Int = 120) -> String {
+        guard let hit = paragraph.range(of: words) else { return paragraph.count > max ? String(paragraph.prefix(max - 1)) + "…" : paragraph }
+        let enders: Set<Character> = [".", "!", "?"]
+        var start = hit.lowerBound
+        while start > paragraph.startIndex {
+            let prev = paragraph.index(before: start)
+            if enders.contains(paragraph[prev]) && start < hit.lowerBound && paragraph[start].isWhitespace { break }
+            start = prev
+        }
+        var end = hit.upperBound
+        while end < paragraph.endIndex, !enders.contains(paragraph[end]) { end = paragraph.index(after: end) }
+        if end < paragraph.endIndex { end = paragraph.index(after: end) }
+        let sentence = paragraph[start..<end].trimmingCharacters(in: .whitespaces)
+        if sentence.count <= max { return sentence }
+        let chars = Array(sentence)
+        let at = sentence.distance(from: sentence.startIndex, to: sentence.range(of: words)?.lowerBound ?? sentence.startIndex)
+        let from = Swift.max(0, at - Swift.max(0, (max - words.count) / 2))
+        let to = Swift.min(chars.count, from + max)
+        return (from > 0 ? "…" : "") + String(chars[from..<to]) + (to < chars.count ? "…" : "")
     }
 
     private nonisolated static func word(_ value: JSONValue?) -> String? {

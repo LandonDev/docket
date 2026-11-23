@@ -26,11 +26,38 @@ export function changeWords(find: string, replace: string, max = 60): string {
       to = b.slice(start, b.length - end + 2)
     }
   }
+  // One word for one word says little alone ("7" to "6:30"): the shared word after it, else before, goes with it.
+  const one = (t: string[]) => t.length === 1
+  if (one(from) && one(to) && (end >= 2 || start >= 2)) {
+    if (end >= 2) {
+      from = a.slice(start, a.length - end + 2)
+      to = b.slice(start, b.length - end + 2)
+    } else {
+      from = a.slice(start - 2, a.length - end)
+      to = b.slice(start - 2, b.length - end)
+    }
+  }
   const cut = (s: string) => (s.length > max ? `${s.slice(0, max - 1)}…` : s)
   const words = (t: string[]) => t.join('').trim()
   const x = words(from)
   const y = words(to)
-  // Words that differ only in their spaces show whole, so the summary never reads "a" to "a".
+  // Words that differ only in spaces or in characters that cannot be seen show whole, with those escaped, so the
+  // summary never reads "a" to "a".
+  if (looksAlike(find, replace)) return `${visible(cut(find))} to ${visible(cut(replace))}`
   if (x === y || !x || !y) return `"${cut(find)}" to "${cut(replace)}"`
   return `"${cut(x)}" to "${cut(y)}"`
 }
+
+/** Two texts that read alike on screen: the same once spaces are squeezed and invisible characters dropped. */
+export const looksAlike = (a: string, b: string): boolean => {
+  const seen = (s: string) => s.replace(/[\p{Cf}]/gu, '').replace(/\s+/g, ' ').trim()
+  return a !== b && seen(a) === seen(b)
+}
+
+/** A text in quotes with every character that cannot be seen, and every space but U+0020, written as its escape. */
+export const visible = (v: string): string =>
+  JSON.stringify(v).replace(/[\p{Cf}\p{Cc}\p{Zl}\p{Zp}\p{Zs}]/gu, (c) => {
+    if (c === ' ') return c
+    const code = c.codePointAt(0)!
+    return code > 0xffff ? `\\u{${code.toString(16)}}` : `\\u${code.toString(16).padStart(4, '0')}`
+  })

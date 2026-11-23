@@ -225,7 +225,8 @@ export function officeActs(deps: HeldDeps): ActKindDef[] {
     payload: OfficeEditSchema,
     words(p) {
       const e = p.edit
-      const what = 'find' in e ? (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : `add "${clip(e.insert)}" at its ${e.at}`
+      const many = p.places > 1 ? ` in ${p.places} places` : ''
+      const what = 'find' in e ? (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) + many : `add "${clip(e.insert)}" at its ${e.at}`
       return { summary: `Make the change in ${p.name}: ${what}`, verb: 'Make the change' }
     },
     async execute(p, ctx) {

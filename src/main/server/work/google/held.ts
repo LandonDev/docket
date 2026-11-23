@@ -72,7 +72,7 @@ const Replace = z.object({ find: z.string().min(1).max(5_000), replace: z.string
 /** A Doc's replace, with the paragraph that held the words when it was suggested. */
 const DocReplace = Replace.extend({ within: z.string().max(200_000).optional() })
 /** A deck's replace-all, with how many boxes held the words then. */
-const DeckReplace = Replace.extend({ boxes: z.number().int().min(1).optional() })
+const DeckReplace = Replace.extend({ boxes: z.number().int().min(1).optional(), on: z.array(z.number().int().min(1)).max(500).optional() })
 
 /**
  * An agent's change to a Google file, kept on his host until he approves it (the owner's ruling of 2026-11-23):
@@ -94,8 +94,10 @@ export const GoogleEditSchema = z.discriminatedUnion('app', [
 export type GoogleEdit = z.infer<typeof GoogleEditSchema>
 
 const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+/** Where a replace-all lands, when it reaches more than one box: " in 3 boxes". */
+const reach = (e: GoogleEdit['edits'][number]): string => ('boxes' in e && e.boxes && e.boxes > 1 ? ` in ${e.boxes} boxes` : '')
 const editWords = (e: GoogleEdit['edits'][number]): string =>
-  'find' in e ? (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) : e.text ? `slide ${e.slide}'s ${changeWords(e.was, e.text)}` : `take out slide ${e.slide}'s "${clip(e.was)}"`
+  'find' in e ? (e.replace ? changeWords(e.find, e.replace) : `take out "${clip(e.find)}"`) + reach(e) : e.text ? `slide ${e.slide}'s ${changeWords(e.was, e.text)}` : `take out slide ${e.slide}'s "${clip(e.was)}"`
 
 /** No matcher: no grant covers an agent's change to a file others can open, and no Away releases it. */
 export const googleEdit: ActKindDef<GoogleEdit> = {

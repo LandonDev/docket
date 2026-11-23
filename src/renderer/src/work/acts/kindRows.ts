@@ -7,7 +7,9 @@
  * named here falls back to `payloadView`.
  */
 
-/** `gap`: the row starts a group of its own (a held file change's second change and on): space above it, as between groups. */
+import { looksAlike, visible } from "@shared/work/changeWords";
+
+/** `gap`: the row starts a group of its own (each change of a held file change): space above it, as between groups. */
 export type KindRows = { fields: { label: string; value: string; gap?: true }[]; body: string | null };
 
 type Rec = Record<string, unknown>;
@@ -189,30 +191,53 @@ const EDIT_APP: Record<string, string> = { word: "Word", powerpoint: "PowerPoint
 /** Words as they go: a value that is only spaces or breaks is quoted with its escapes, so it never reads as nothing. */
 const shown = (v: string): string => (v.trim() ? v : exactQuote(v));
 
+/** The sentence of a paragraph that holds the words, cut to about 120 characters around them. */
+export function sentenceAround(paragraph: string, words: string, max = 120): string {
+  const at = paragraph.indexOf(words);
+  if (at < 0) return paragraph.length > max ? `${paragraph.slice(0, max - 1)}…` : paragraph;
+  const before = paragraph.slice(0, at).search(/[.!?]\s+[^.!?]*$/);
+  const start = before < 0 ? 0 : paragraph.slice(0, at).search(/[^.!?\s][^.!?]*$/);
+  const tail = paragraph.slice(at + words.length).search(/[.!?](\s|$)/);
+  const end = tail < 0 ? paragraph.length : at + words.length + tail + 1;
+  let s = paragraph.slice(start, end).trim();
+  if (s.length <= max) return s;
+  // Still long: the words with what fits on either side.
+  const pad = Math.max(0, Math.floor((max - words.length) / 2));
+  const from = Math.max(0, at - start - pad);
+  s = `${from > 0 ? "…" : ""}${s.slice(from, from + max)}${from + max < s.length ? "…" : ""}`;
+  return s;
+}
+
+const slidesWords = (on: number[]): string => (on.length === 1 ? `slide ${on[0]}` : `slides ${on.slice(0, -1).join(", ")} and ${on.at(-1)}`);
+
 /**
- * Each change as he approves it, in full and in one grammar: where, when it is not the whole file once (`Where`: a
- * box's slide, or how many places the words stand in), then the words it replaces and what takes their place
- * (`Replace`, `With`), or the words it removes (`Take out`).
+ * Each change as he approves it, in full and in one grammar, each its own group: where, when it is not the whole
+ * file once (a box's slide, the slides a replace-all reaches, the sentence of a Doc it stands in, how many places in
+ * Word or PowerPoint), then the words it replaces and what takes their place (`Replace`, `With`), or the words it
+ * removes (`Take out`). Words that read alike on screen are quoted with their escapes, so the difference shows.
  */
 export function editRows(edits: unknown, places?: unknown): { label: string; value: string; gap?: true }[] {
   const rows: { label: string; value: string; gap?: true }[] = [];
   for (const raw of Array.isArray(edits) ? edits : []) {
     const e = (raw ?? {}) as Rec;
-    const many = num(e.boxes) ?? num(places);
     const from = typeof e.find === "string" ? e.find : typeof e.shape === "string" ? (typeof e.was === "string" ? e.was : "") : null;
     const to = typeof e.find === "string" ? e.replace : e.text;
     if (from === null) continue;
     const first = rows.length;
-    // Where: a box's slide, a Doc's paragraph the words stand in, or how many places or boxes a replace reaches.
+    const on = Array.isArray(e.on) ? (e.on as unknown[]).filter((n): n is number => typeof n === "number") : [];
+    const boxes = num(e.boxes);
+    const count = num(places);
     if (typeof e.shape === "string") rows.push(...row("Where", num(e.slide) === null ? null : `Slide ${e.slide}`));
-    else if (str(e.within) !== null && e.within !== from) rows.push({ label: "Where", value: e.within as string });
-    else if (many !== null && many > 1) rows.push({ label: "Where", value: `${many} ${typeof e.boxes === "number" ? "boxes" : "places"}` });
-    // Words alike but for their spaces are both quoted, so the difference shows.
-    const alike = typeof to === "string" && to !== "" && to !== from && to.replace(/\s+/g, " ").trim() === from.replace(/\s+/g, " ").trim();
-    const say = (v: string) => (alike ? exactQuote(v) : shown(v));
+    else if (str(e.within) !== null && e.within !== from) rows.push({ label: "Where", value: sentenceAround(e.within as string, from) });
+    else if (on.length) rows.push({ label: "Where", value: boxes !== null && boxes > 1 ? `${boxes} boxes on ${slidesWords(on)}` : slidesWords(on).replace(/^s/, "S") });
+    else if (boxes !== null && boxes > 1) rows.push({ label: "Where", value: `${boxes} boxes` });
+    else if (count !== null && count > 1) rows.push({ label: "Where", value: `${count} places` });
+    const alike = typeof to === "string" && to !== "" && looksAlike(from, to);
+    const say = (v: string) => (alike ? visible(v) : shown(v));
     if (typeof to !== "string" || to === "") rows.push({ label: "Take out", value: shown(from) });
     else rows.push({ label: "Replace", value: say(from) }, { label: "With", value: say(to) });
-    if (first > 0) rows[first] = { ...rows[first]!, gap: true };
+    // Every change is a group of its own, apart from the rows above it (In, Account) and from the change before.
+    rows[first] = { ...rows[first]!, gap: true };
   }
   return rows;
 }

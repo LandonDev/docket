@@ -1,6 +1,6 @@
 /** The generic view's own rows for the kinds without a view: what goes in his words, never an id, a revision, a path or JSON. */
 import { describe, expect, it } from "vitest";
-import { exactQuote, kindHeading, kindRows, megabytes } from "./kindRows";
+import { exactQuote, kindHeading, kindRows, megabytes, sentenceAround } from "./kindRows";
 
 const noise = (rows: ReturnType<typeof kindRows>) => JSON.stringify(rows);
 
@@ -267,13 +267,13 @@ describe("an agent's change to a shared file, as he approves it", () => {
     expect(kindRows("office.edit", p)).toEqual({
       fields: [
         { label: "In", value: "Word" },
-        { label: "Replace", value: "We ship in March" },
+        { label: "Replace", value: "We ship in March", gap: true },
         { label: "With", value: "We ship in May, after the review" },
       ],
       body: null,
     });
     expect(noise(kindRows("office.edit", p))).not.toMatch(/OneDrive|env_mac|abc/);
-    expect(kindRows("office.edit", { ...p, edit: { find: "draft", replace: "" } })!.fields.at(-1)).toEqual({ label: "Take out", value: "draft" });
+    expect(kindRows("office.edit", { ...p, edit: { find: "draft", replace: "" } })!.fields.at(-1)).toEqual({ label: "Take out", value: "draft", gap: true });
   });
 
   it("reads an insert as where it goes, its text the body", () => {
@@ -281,11 +281,11 @@ describe("an agent's change to a shared file, as he approves it", () => {
   });
 
   it("reads each of a deck's changes in one grammar, a box by its slide, a replace-all by its boxes, the account after the app", () => {
-    const p = { app: "slides", account: "landon@purdue.edu", fileId: "1AbC", name: "Pitch", revisionId: "r9", edits: [{ find: "2025", replace: "2026", boxes: 3 }, { shape: "t4", text: "Hi", slide: 3, was: "Hello" }, { shape: "t5", text: "", slide: 4, was: "Old" }] };
+    const p = { app: "slides", account: "landon@purdue.edu", fileId: "1AbC", name: "Pitch", revisionId: "r9", edits: [{ find: "2025", replace: "2026", boxes: 3, on: [2, 5] }, { shape: "t4", text: "Hi", slide: 3, was: "Hello" }, { shape: "t5", text: "", slide: 4, was: "Old" }] };
     expect(kindRows("google.edit", p)!.fields).toEqual([
       { label: "In", value: "Google Slides" },
       { label: "Account", value: "landon@purdue.edu" },
-      { label: "Where", value: "3 boxes" },
+      { label: "Where", value: "3 boxes on slides 2 and 5", gap: true },
       { label: "Replace", value: "2025" },
       { label: "With", value: "2026" },
       { label: "Where", value: "Slide 3", gap: true },
@@ -301,21 +301,26 @@ describe("an agent's change to a shared file, as he approves it", () => {
     const p = { app: "word", vm: true, name: "Brief.docx", places: 4, edit: { find: "Q1", replace: " " } };
     expect(kindRows("office.edit", p)!.fields).toEqual([
       { label: "In", value: "Word in the Windows VM" },
-      { label: "Where", value: "4 places" },
+      { label: "Where", value: "4 places", gap: true },
       { label: "Replace", value: "Q1" },
       { label: "With", value: '" "' },
     ]);
   });
 
   it("names a Doc's paragraph as Where, and quotes words that differ only in their spaces", () => {
-    const p = { app: "doc", account: "a@b.edu", name: "Brief", edits: [{ find: "March", replace: "May", within: "We ship in March." }, { find: "a  b", replace: "a b" }] };
+    const p = { app: "doc", account: "a@b.edu", name: "Brief", edits: [{ find: "March", replace: "May", within: "Plans moved twice. We ship in March. Budget is tight." }, { find: "a  b", replace: "a b" }, { find: "ab", replace: "a\u200bb" }] };
     expect(kindRows("google.edit", p)!.fields.slice(2)).toEqual([
-      { label: "Where", value: "We ship in March." },
+      { label: "Where", value: "We ship in March.", gap: true },
       { label: "Replace", value: "March" },
       { label: "With", value: "May" },
       { label: "Replace", value: '"a  b"', gap: true },
       { label: "With", value: '"a b"' },
+      { label: "Replace", value: '"ab"', gap: true },
+      { label: "With", value: '"a\\u200bb"' },
     ]);
+    // a single slide reads as that slide; a long sentence is cut around the words
+    expect(kindRows("google.edit", { app: "slides", edits: [{ find: "Q1", replace: "Q2", boxes: 1, on: [4] }] })!.fields[1]).toEqual({ label: "Where", value: "Slide 4", gap: true });
+    expect(sentenceAround(`${"x".repeat(300)} March ${"y".repeat(300)}`, "March").length).toBeLessThanOrEqual(122);
   });
 
   it("heads the detail with the file, in the past once made", () => {

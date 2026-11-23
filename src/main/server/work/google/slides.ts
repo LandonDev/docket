@@ -35,7 +35,7 @@ export function deckText(d: { title: string; slides: TextShape[][] }): string {
 
 export type DeckEdit = { find: string; replace: string } | { shape: string; text: string }
 /** An edit as it waits: a replace with how many boxes held the words, a shape's with its slide and the words it held, so the press can tell it moved. */
-export type HeldDeckEdit = { find: string; replace: string; boxes?: number } | { shape: string; text: string; slide: number; was: string }
+export type HeldDeckEdit = { find: string; replace: string; boxes?: number; on?: number[] } | { shape: string; text: string; slide: number; was: string }
 
 /**
  * Where a deck stands for these edits: each `find` on some slide, each shape there with what it holds now. An
@@ -47,7 +47,9 @@ function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held
     if ('find' in e) {
       const boxes = d.slides.flat().filter((x) => x.text.includes(e.find)).length
       if (!boxes) return { error: `"${e.find}" is on no slide.` }
-      held.push({ find: e.find, replace: e.replace, boxes })
+      // the slides the words stand on, so the card can say where a replace-all lands
+      const on = d.slides.flatMap((s, i) => (s.some((x) => x.text.includes(e.find)) ? [i + 1] : []))
+      held.push({ find: e.find, replace: e.replace, boxes, on })
       continue
     }
     const slide = d.slides.findIndex((s) => s.some((x) => x.objectId === e.shape))

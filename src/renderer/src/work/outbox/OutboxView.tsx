@@ -66,10 +66,11 @@ export function canEdit(item: Pick<HostItem, "payload" | "state" | "kind">): boo
 }
 /** A list press's past verb: the acts' own when they share one ("Posted 2"), else "Sent", as the list's Send N says; never the first item's alone. */
 export function batchVerb(items: readonly (Pick<HostItem, "verb"> & { kind?: string })[]): string {
-  const verbs = new Set(items.map((i) => i.verb));
+  // Verbs compared by their first word, said with the count after it: "Make the change" and "Make 2 changes" are
+  // both "Made 3", never "Made the change 3" or "Sent".
+  const verbs = new Set(items.map((i) => i.verb.split(" ")[0]!));
   const kinds = new Set(items.map((i) => i.kind));
-  // One verb's first word with the count after it: "Made 3", "Sent 2", never "Made the change 3".
-  return verbs.size === 1 ? pastOf([...verbs][0]!.split(" ")[0]!, kinds.size === 1 ? [...kinds][0] : undefined) : "Sent";
+  return verbs.size === 1 ? pastOf([...verbs][0]!, kinds.size === 1 ? [...kinds][0] : undefined) : "Sent";
 }
 /** Where he looks to see whether a send that may have gone went. */
 const checkWords = (item: HostItem): string => (item.kind === "mail.send" || item.kind === "office.mail.send" ? "Check Sent first" : "Check whether it went first");
