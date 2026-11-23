@@ -47,7 +47,7 @@ try {
   // ── a job with no LifeOS behind it, a thread in it, and an add-on whose every call is held ──
   const ws = await run.call<{ id: string }>('workspace.create', { kind: 'work', name: 'Dummy Officials' })
   run.later('delete the workspace', () => run.call('workspace.delete', { workspaceId: ws.id }))
-  const added = await run.call<{ addon: { id: string } }>('addons.set', { addon: { name: 'league', workspaceId: ws.id, spec: { transport: 'stdio', command: BUN, args: [FAKE, '--stdio'], env: [], auth: 'fields' } } })
+  const added = await run.call<{ addon: { id: string } }>('addons.set', { addon: { name: 'league', workspaceId: ws.id, spec: { transport: 'stdio', command: BUN, args: [FAKE, '--stdio'], env: [], auth: 'none' } } })
   run.later('remove the add-on', () => run.call('addons.remove', { id: added.addon.id }))
   const ready = await run.until('the add-on is ready', 60_000, async () => (await run.call<{ status: Record<string, { state: string }> }>('addons.list', {})).status[added.addon.id]?.state === 'ready')
   run.check('a fake add-on is ready in the job', ready)
