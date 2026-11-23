@@ -10,9 +10,10 @@ import { REPO, Run, sleep, textOf, type Tool } from './e2e-work-lib'
  * One isolated instance under xvfb with Work on and no LifeOS at all. A
  * made-up Work thread calls a fake add-on three times; each call is held.
  * The digest's time is set to the next minute. The job then sees, in the
- * window: the day's one toast, the list it opens, a row's press landing on
- * that held item in the Outbox, a send that fails interrupting at once, and
- * the Digest section of Settings → Work. Pictures of each in dark and light
+ * window: the day's one toast, Today opened by its press, the list opened
+ * from Settings, a row's press landing on that held item in the Outbox, a
+ * send that fails interrupting at once (its toast seated above the item's
+ * verbs), and the Digest section of Settings → Work. Pictures of each in dark and light
  * go to the out folder. Dummy names only; nothing leaves the box.
  */
 const run = new Run('digest')
@@ -82,16 +83,24 @@ try {
   run.check('it is one toast', (await run.page<number>(`[...document.querySelectorAll('[data-sonner-toast]')].filter((t) => t.textContent.includes('Digest:')).length`)) === 1)
   await run.shot('01-digest-toast')
 
-  // ── Open: the list ──
+  // ── Open: Today, the day's page, since its row is on the rail; the day is seen ──
   run.check('Open is pressed', await run.press('Open'))
+  const today = await run.until('Today opens', 10_000, () => run.page<boolean>(`!!document.querySelector('[data-work-place=today]')`))
+  run.check("the press opens Today, the day's page", today)
+  run.check('opening it marks the day seen, and the toast is gone', await run.until('seen', 10_000, async () => (await ledger()).days[0]!.seenAt !== null && !(await run.page<boolean>(`[...document.querySelectorAll('[data-sonner-toast]')].some((t) => t.textContent.includes('Digest:'))`))))
+  await run.shot('01b-today')
+
+  // ── the list, the record of all Work told him: Settings → Work → Digest → Open the digest ──
+  await run.page(`window.dispatchEvent(new CustomEvent('monocode:open-settings', { detail: 'work' }))`)
+  await run.until('the Digest section', 20_000, () => run.page<boolean>(`[...document.querySelectorAll('[data-slot=page-section] h2')].some((h) => h.textContent.trim() === 'Digest')`))
+  run.check('Open the digest is pressed', await run.press('Open the digest'))
   const sheet = await run.until('the list opens', 10_000, () => run.page<boolean>(`!!document.querySelector('[data-slot=sheet-content]') && document.querySelector('[data-slot=sheet-title]')?.textContent === 'Digest'`))
-  run.check('the press opens the list, a sheet titled Digest', sheet)
+  run.check('it opens the list, a sheet titled Digest', sheet)
   await sleep(600)
   const sections = await run.page<string[]>(`[...document.querySelectorAll('[data-slot=sheet-content] h3')].map((h) => h.textContent.trim())`)
   run.check("its one section is today's digest", sections.length === 1 && /^Today, /.test(sections[0] ?? ''), sections.join(' | '))
   const rows = await run.page<string[]>(`[...document.querySelectorAll('[data-slot=sheet-content] li')].map((li) => li.textContent.trim())`)
   run.check('it lists the three held items', rows.length === 3 && rows.every((r) => r.startsWith('Held: ')), rows.join(' | '))
-  run.check('opening it marks the day seen, and the toast is gone', await run.until('seen', 10_000, async () => (await ledger()).days[0]!.seenAt !== null && !(await run.page<boolean>(`[...document.querySelectorAll('[data-sonner-toast]')].some((t) => t.textContent.includes('Digest:'))`))))
   await run.shot('02-digest-list')
 
   // ── a row's press lands on that item in the Outbox ──

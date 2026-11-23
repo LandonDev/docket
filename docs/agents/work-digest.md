@@ -409,6 +409,6 @@ own screen.
 - `env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-work-digest.ts --out <dir>`
   (after `electron-vite build`): an isolated instance under xvfb, a fake
   add-on whose calls are held, the digest set a minute ahead: the day's
-  toast, the list, a row's press landing on that item in the Outbox, a
-  failed send interrupting, the Settings section; pictures in dark and
-  light.
+  toast, Today opened by its press (the swap), the list opened from
+  Settings, a row's press landing on that item in the Outbox, a failed
+  send interrupting, the Settings section; pictures in dark and light.
