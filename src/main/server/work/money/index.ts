@@ -7,13 +7,13 @@ import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { registerFileMoved } from '../files/hooks'
 import { MONEY_TELLS, moneySearch } from './borders'
-import { addRow, editRow, MONEY_FOLDER, openBooks, payRow, restoreColumns } from './book'
+import { addRow, editRow, insideJob, MONEY_FOLDER, openBooks, payRow, restoreColumns } from './book'
 import { offers, placed } from './calendar'
-import { accept, drop, filedPicture, forgetJob, jobOfWaiting, parseFor, receive, resume, toConfirm, waitingPicture, type JobFor } from './inbox'
+import { accept, announce, drop, filedPicture, forgetJob, jobOfWaiting, parseFor, receive, resume, toConfirm, waitingPicture, type JobFor } from './inbox'
 import { addTrip, pruneTrips, setYearRate, skipEvent } from './mileage'
 import { movedHook } from './moved'
 import { exportYear, invoiceNext, invoicePage, keep } from './out'
-import { booksHere, MoneyError, owedFor, readMoney, searchMoney, sumsFor } from './read'
+import { booksHere, LEDGER_OUTSIDE, ledgerOf, ledgerOutside, MoneyError, owedFor, readMoney, searchMoney, sumsFor } from './read'
 import { MONEY_CONVERTERS } from './reader'
 import { booksOf, dropWorkspace, ensureMoneyTables, workspaceOf, workspaces, type Workspace } from './store'
 import { moneyTools } from './tools'
@@ -65,6 +65,18 @@ const reachable = (ctx: WorkCtx, by: Caller, method: string): Workspace[] =>
     }
   })
 
+/** Whether the caller may ask about a job: for a step that would read another job than the one the call named. */
+const mayAsk =
+  (ctx: WorkCtx, by: Caller, method: string) =>
+  (workspaceId: string): boolean => {
+    try {
+      admit(ctx, by, method, workspaceId)
+      return true
+    } catch {
+      return false
+    }
+  }
+
 /** The job a receipt or a parse names: the workspace it names, when the caller may ask about it; else the first job in its sector that the caller may ask about. */
 const jobFor =
   (ctx: WorkCtx, by: Caller, method: string): JobFor =>
@@ -76,15 +88,25 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
   if (by.kind === 'model' && MONEY_OWNER_ONLY.has(req.method)) throw new MoneyError(OWNER_ONLY)
   switch (req.method) {
     case 'work.money.state': {
-      const jobs = reachable(ctx, by, req.method).map((ws) => ({ workspaceId: ws.id, name: ws.name, sector: ws.sector, made: booksHere(ctx, ws.id) !== null, categories: categoriesFor(ws.sector) }))
+      // A job's categories are its starting list and every word its ledger already uses, as the desktop offers them: a
+      // sender that draws a picker (the phone) can then choose any of them.
+      const jobs = await Promise.all(
+        reachable(ctx, by, req.method).map(async (ws) => {
+          const books = booksHere(ctx, ws.id)
+          const used = books ? await ledgerOf(ctx, books).then((l) => l.rows.map((r) => r.category)).catch(() => []) : []
+          return { workspaceId: ws.id, name: ws.name, sector: ws.sector, made: books !== null, categories: categoriesFor(ws.sector, used) }
+        })
+      )
       return handled({ host: ctx.host, jobs } satisfies MoneyState)
     }
     case 'work.money.open': {
       const p = paramsOf('work.money.open', req)
       const ws = admit(ctx, by, req.method, p.workspaceId)
-      const books = await openBooks(ctx, ws)
+      // The ledger is answered whatever state the mileage log is in: one that cannot be opened is null, never a refusal of both.
+      const books = await openBooks(ctx, ws, 'ledger')
       const restored = p.restore ? await restoreColumns(ctx, ws, books) : null
-      return handled({ ledger: { at: 'file', host: ctx.host, path: books.ledger }, mileage: { at: 'file', host: ctx.host, path: books.mileage }, ...(restored?.suggested ? { suggested: true as const } : {}) } satisfies MoneyBooks)
+      const mileage = insideJob(ws, books.mileage) ? { at: 'file' as const, host: ctx.host, path: books.mileage } : null
+      return handled({ ledger: { at: 'file', host: ctx.host, path: books.ledger }, mileage, ...(restored?.suggested ? { suggested: true as const } : {}) } satisfies MoneyBooks)
     }
     case 'work.money.read': {
       const p = paramsOf('work.money.read', req)
@@ -96,15 +118,21 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     case 'work.money.entry': {
       const p = paramsOf('work.money.entry', req)
       const ws = admit(ctx, by, req.method, p.workspaceId)
-      if (!p.at) return handled(await addRow(ctx, ws, p.fields))
+      if (ledgerOutside(ctx, ws.id)) throw new MoneyError(LEDGER_OUTSIDE)
       const books = booksHere(ctx, ws.id)
-      return handled(books ? await editRow(ctx, ws, books, p.at, p.fields) : { changed: true })
+      const acted = !p.at ? await addRow(ctx, ws, p.fields) : books ? await editRow(ctx, ws, books, p.at, p.fields) : { changed: true as const }
+      // Every other window on this job reads again.
+      if ('ok' in acted) announce(ctx, ws.id)
+      return handled(acted)
     }
     case 'work.money.paid': {
       const p = paramsOf('work.money.paid', req)
       const ws = admit(ctx, by, req.method, p.workspaceId)
+      if (ledgerOutside(ctx, ws.id)) throw new MoneyError(LEDGER_OUTSIDE)
       const books = booksHere(ctx, ws.id)
-      return handled(books ? await payRow(ctx, ws, books, p.at, p.on) : { changed: true })
+      const acted = books ? await payRow(ctx, ws, books, p.at, p.on) : { changed: true as const }
+      if ('ok' in acted) announce(ctx, ws.id)
+      return handled(acted)
     }
     case 'work.money.sums': {
       const p = paramsOf('work.money.sums', req)
@@ -125,12 +153,12 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     }
     case 'work.money.receive': {
       const p = paramsOf('work.money.receive', req)
-      return handled(await receive(ctx, p, by, jobFor(ctx, by, req.method)))
+      return handled(await receive(ctx, p, by, jobFor(ctx, by, req.method), mayAsk(ctx, by, req.method)))
     }
     case 'work.money.accept': {
       const p = paramsOf('work.money.accept', req)
       admit(ctx, by, req.method, jobOfWaiting(ctx, p.id))
-      return handled(await accept(ctx, p.id, p.fields, p.workspaceId ? admit(ctx, by, req.method, p.workspaceId) : undefined))
+      return handled(await accept(ctx, p.id, p.fields, p.workspaceId ? admit(ctx, by, req.method, p.workspaceId) : undefined, mayAsk(ctx, by, req.method)))
     }
     case 'work.money.drop': {
       const p = paramsOf('work.money.drop', req)
@@ -153,11 +181,17 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     }
     case 'work.money.trip': {
       const p = paramsOf('work.money.trip', req)
-      return handled(await addTrip(ctx, admit(ctx, by, req.method, p.workspaceId), p))
+      const ws = admit(ctx, by, req.method, p.workspaceId)
+      const tripped = await addTrip(ctx, ws, p)
+      // A trip and its pay change what every window on this job shows.
+      if (!tripped.already) announce(ctx, ws.id)
+      return handled(tripped)
     }
     case 'work.money.skip': {
       const p = paramsOf('work.money.skip', req)
-      skipEvent(ctx, admit(ctx, by, req.method, p.workspaceId), p.eventId, p.undo === true)
+      const ws = admit(ctx, by, req.method, p.workspaceId)
+      skipEvent(ctx, ws, p.eventId, p.undo === true)
+      announce(ctx, ws.id)
       return handled(null)
     }
     case 'work.money.rate': {
@@ -178,7 +212,10 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
     }
     case 'work.money.keep': {
       const p = paramsOf('work.money.keep', req)
-      return handled(await keep(ctx, admit(ctx, by, req.method, p.workspaceId), p))
+      const ws = admit(ctx, by, req.method, p.workspaceId)
+      const kept = await keep(ctx, ws, p)
+      if (kept.acted) announce(ctx, ws.id)
+      return handled(kept)
     }
     default:
       return NOT_HANDLED

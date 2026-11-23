@@ -21,7 +21,7 @@ import {
   type RowAt
 } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
-import { forgetGrid, gridOf, ledgerOf, MoneyError, nextRow, writtenAt, type Ledger } from './read'
+import { forgetGrid, gridOf, headersWait, ledgerOf, MoneyError, nextRow, writtenAt, type Ledger } from './read'
 import { booksOf, putBooks, type Books, type Workspace } from './store'
 
 /**
@@ -103,8 +103,8 @@ export function locked<T>(workspaceId: string, fn: () => Promise<T>): Promise<T>
   return run
 }
 
-/** A row's own id: short, and never one that reads as a number or a word. */
-export const newRef = (): string => `m${randomBytes(4).toString('hex').slice(0, 5)}`
+/** A row's own id: never one that reads as a number or a word, and long enough (96 bits) that two rows never share one. A Ref written before this was five letters, and is read all the same. */
+export const newRef = (): string => `m${randomBytes(12).toString('hex')}`
 
 export async function write(ctx: Ctx, path: string, cells: A1[], shared: boolean): Promise<{ suggested: boolean }> {
   if (!cells.length) return { suggested: false }
@@ -151,13 +151,17 @@ async function make(ctx: Ctx, path: string, title: string, headers: readonly str
  * ledger and the mileage log. A sheet already at its place (a folder copied
  * from another machine) is taken as it is, never written over.
  */
-export function openBooks(ctx: Ctx, ws: Workspace): Promise<Books> {
+export function openBooks(ctx: Ctx, ws: Workspace, need: 'both' | 'ledger' = 'both'): Promise<Books> {
   return locked(ws.id, async () => {
     const dir = moneyFolder(ws)
     const kept = booksOf(ctx, ws.id)
     const place = async (was: string | undefined, name: string, title: string, headers: readonly string[]): Promise<string> => {
-      // A kept path is trusted only while it still lies in the job's own folder.
-      if (was && existsSync(was) && insideJob(ws, was)) return was
+      // A kept path is trusted only while it still lies in the job's own folder. One that is there and leads out of it
+      // is refused: a fresh sheet is never made beside it, as if the job's rows had never been.
+      if (was && existsSync(was)) {
+        if (insideJob(ws, was)) return was
+        throw new MoneyError(OUTSIDE)
+      }
       const path = join(dir, name)
       if (!existsSync(path)) await make(ctx, path, title, headers)
       else if (!insideJob(ws, path)) throw new MoneyError(OUTSIDE)
@@ -165,7 +169,12 @@ export function openBooks(ctx: Ctx, ws: Workspace): Promise<Books> {
       return path
     }
     const ledger = await place(kept?.ledger, 'Ledger.tcsheet', 'Ledger', LEDGER_COLUMNS)
-    const mileage = await place(kept?.mileage, 'Mileage.tcsheet', 'Mileage', MILEAGE_COLUMNS)
+    // With `ledger` asked for alone (an entry, a receipt, an invoice, Open ledger), a mileage log that cannot be
+    // opened is the log's own fault: the ledger is answered, and nothing is read or written through the log's path.
+    const mileage = await place(kept?.mileage, 'Mileage.tcsheet', 'Mileage', MILEAGE_COLUMNS).catch((err) => {
+      if (need === 'both') throw err
+      return kept?.mileage ?? join(dir, 'Mileage.tcsheet')
+    })
     if (!kept || kept.ledger !== ledger || kept.mileage !== mileage) putBooks(ctx, { workspaceId: ws.id, ledger, mileage })
     return booksOf(ctx, ws.id)!
   })
@@ -180,6 +189,10 @@ export function restoreColumns(ctx: Ctx, ws: Workspace, books: Books): Promise<{
     // A column he renamed still holds his figures: an empty column of the old name beside it would read them as nothing.
     const read = rowsOf(grid.header, grid.body)
     if (read.renamed.length) throw new MoneyError(`The ledger has no ${read.missing.join(' or ')} column, and ${read.renamed.join(', ')} may be it. Name it back in the ledger.`)
+    // A sheet too large to be read whole may hold a header past what was read: nothing is written into its first row unseen.
+    if (grid.partial) throw new MoneyError('The ledger is too wide to check whole. Add the missing column in the ledger yourself.')
+    // These very headers already wait in the sheet as a suggestion: his accept there is what is left, not a second one beside it.
+    if (headersWait(grid, missing)) return { suggested: true }
     return write(
       ctx,
       books.ledger,
@@ -223,11 +236,17 @@ function needs(ledger: Ledger, values: Values): void {
     throw new MoneyError(`The ledger has no Status column, so this row could not say it is ${String(values.Status).toLowerCase()}. Add a Status column in the ledger, then save again.`)
 }
 
-/** A row Money wrote before, by the Ref it was given, else by the file it names: in the ledger, or waiting in it as a suggestion. */
+/**
+ * A row Money wrote before and noted (an add taken up again after a stop),
+ * by the Ref it was given, else by the file it names: in the ledger, or
+ * waiting in it as a suggestion. When the note names a file, the row found
+ * by Ref must name that file too: a row that only shares the Ref is not
+ * this add's.
+ */
 export function writtenRow(ledger: Ledger, mark: { ref?: string | null; receipt?: string | null }): { ref: string | null; row: number; suggested: boolean } | null {
-  const byRef = mark.ref ? writtenAt(ledger.grid, 'Ref', mark.ref) : null
-  if (byRef) return { ref: mark.ref!, ...byRef }
   const byFile = mark.receipt ? writtenAt(ledger.grid, 'Receipt', mark.receipt) : null
+  const byRef = mark.ref ? writtenAt(ledger.grid, 'Ref', mark.ref) : null
+  if (byRef && (!mark.receipt || byFile?.row === byRef.row)) return { ref: mark.ref!, ...byRef }
   return byFile ? { ref: null, ...byFile } : null
 }
 
@@ -235,16 +254,15 @@ export function writtenRow(ledger: Ledger, mark: { ref?: string | null; receipt?
  * Adds a row under the last one that holds anything and under every row
  * that waits there as a suggestion. There is no append in the service:
  * under the workspace's lock the ledger is read for its first free row and
- * the row written at once. With `ref` (an add that was begun before and
- * may have been written: a restart came between the write and its note),
- * a row that already carries it is answered and nothing is written twice.
+ * the row written at once. `ref` is the Ref the row carries (an add that
+ * noted it first, so it can be found after a stop). A new row is always a
+ * new row: whether an add taken up again already wrote its row is asked by
+ * that add, of its own note (`writtenRow`), never guessed here.
  */
 export function appendRow(ctx: Ctx, ws: Workspace, books: Books, values: Values, o: { ref?: string } = {}): Promise<{ ref: string | null; row: number; suggested: boolean }> {
   return locked(ws.id, async () => {
     const ledger = await ledgerOf(ctx, books)
     needs(ledger, values)
-    const before = o.ref ? writtenRow(ledger, { ref: o.ref, receipt: typeof values.Receipt === 'string' ? values.Receipt : null }) : null
-    if (before) return before
     const shared = await othersCanOpen(ctx, books.ledger, ledger.grid.shared)
     // On a sheet others can open the row waits as a suggestion and the sheet's last row does not move: it goes under the ones that wait.
     const row = nextRow(ledger.grid)
@@ -283,7 +301,16 @@ function act(ctx: Ctx, ws: Workspace, books: Books, at: RowAt, values: (row: Led
     if (!row) return { changed: true as const }
     const next = values(row)
     needs(ledger, next)
-    const { suggested } = await write(ctx, books.ledger, cellsAt(ledger.columns, row.row, next), await othersCanOpen(ctx, books.ledger, ledger.grid.shared))
+    const cells = cellsAt(ledger.columns, row.row, next)
+    // A change to these cells may already wait in the sheet as a suggestion (the same press in another window, or a
+    // different edit of the row): the same change is answered and not suggested twice; a different one is his to
+    // settle in the sheet first, since accepting both would keep whichever came last.
+    const waits = cells.map((c) => ledger.grid.pending.find((p) => `${columnLetter(p.column)}${p.row}` === c.at))
+    if (waits.some(Boolean)) {
+      if (waits.every((w, i) => w !== undefined && (w.v ?? null) === (cells[i].v ?? null))) return { ok: true as const, ref: row.ref, row: row.row, suggested: true as const }
+      throw new MoneyError('A change to this row already waits in the ledger. Accept or reject it there, then try again.')
+    }
+    const { suggested } = await write(ctx, books.ledger, cells, await othersCanOpen(ctx, books.ledger, ledger.grid.shared))
     return { ok: true as const, ref: row.ref, row: row.row, ...(suggested ? { suggested: true as const } : {}) }
   })
 }
@@ -309,7 +336,7 @@ export const payRow = (ctx: Ctx, ws: Workspace, books: Books, at: RowAt, on: str
   })
 
 export async function addRow(ctx: Ctx, ws: Workspace, fields: EntryFields, more: Values = {}): Promise<MoneyActed> {
-  const books = await openBooks(ctx, ws)
+  const books = await openBooks(ctx, ws, 'ledger')
   const got = await appendRow(ctx, ws, books, { ...valuesOf(fields), ...more })
   return { ok: true, ref: got.ref, row: got.row, ...(got.suggested ? { suggested: true as const } : {}) }
 }

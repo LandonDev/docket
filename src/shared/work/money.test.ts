@@ -21,6 +21,7 @@ import {
   isDay,
   joinLines,
   knownSellers,
+  lineTotal,
   LEDGER_COLUMNS,
   mileageMissing,
   mileageOf,
@@ -407,6 +408,10 @@ describe('what the fourth council round asked of the rules', () => {
     expect(mileageOf(['Date', 'Miles', 'Rate', 'Value'], [['2026-03-01', 1.4, 0.725, '']])[0].value).toBe(102)
     expect(centsFrom(10.43)).toBe(1043)
     expect(centsFrom(0.005)).toBe(1)
+    // An invoice's line by the same rule: 1.15 hours at $32.50 is $37.375, held as 3737.4999…, and is $37.38.
+    expect(1.15 * 3250).toBeLessThan(3737.5)
+    expect(lineTotal({ what: 'Hours', quantity: 1.15, rate: 3250 })).toBe(3738)
+    expect(invoiceTotal([{ what: 'Hours', quantity: 1.15, rate: 3250 }])).toBe(3738)
   })
 
   it('keeps the sign of a figure below nothing: a correction takes away from its column, as it does in the sheet', () => {
@@ -454,14 +459,18 @@ describe('what the fourth council round asked of the rules', () => {
   })
 
   it('says a mileage log with rows and no Date or Miles cannot be read, and one with only its header can', () => {
-    expect(mileageMissing(['Date', 'Trip', 'Place', 'Distance'], [['2026-03-01', 'Game', 'Gym', 24]])).toEqual(['Miles'])
+    expect(mileageMissing(['Date', 'Trip', 'Place', 'Distance', 'Rate'], [['2026-03-01', 'Game', 'Gym', 24, 0.7]])).toEqual(['Miles'])
     expect(mileageMissing(['Date', 'Trip', 'Place', 'Distance'], [])).toEqual([])
-    expect(mileageMissing(['Date', 'Miles'], [['2026-03-01', 24]])).toEqual([])
+    expect(mileageMissing(['Date', 'Miles', 'Rate'], [['2026-03-01', 24, 0.7]])).toEqual([])
+    // Without Rate a trip would read as worth nothing: that is a log that cannot be read, too.
+    expect(mileageMissing(['Date', 'Miles', 'Per mile'], [['2026-03-01', 24, 0.7]])).toEqual(['Rate'])
   })
 
   it('prints a rate as it was given, never short of what the value was worked out with', () => {
     expect([0.7, 0.725, 0.7249, 1].map(rateWords)).toEqual(['0.70', '0.725', '0.7249', '1.00'])
     expect(milesLine({ miles: 1000, value: 72490, rate: 0.7249 })).toBe('1,000 mi · $724.90 at $0.7249')
+    // Never in a scientist's notation, however small: plain decimals, as he typed them.
+    expect([0.0000001, 0.12345678, 12, 0.1234567890125].map(rateWords)).toEqual(['0.0000001', '0.12345678', '12.00', '0.1234567890125'])
   })
 
   it('takes for writing only a day a read would give back', () => {

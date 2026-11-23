@@ -152,7 +152,8 @@ export async function offers(ctx: Ctx, ws: Workspace, books: Books | null, now =
 
 /** An event whose add was begun and not finished is offered as that add meant it: its fee, and the miles he gave it. */
 const begunOffer = (o: CalendarOffer, mark: EventMark | undefined): CalendarOffer =>
-  mark?.state === 'adding' ? { ...o, fee: mark.fee ?? o.fee, ...(mark.intent?.miles ? { miles: mark.intent.miles, measured: true } : {}) } : o
+  // Also one skipped since with its note kept: Add → Trip… lists it, and picking it there finishes that add.
+  mark && mark.state !== 'added' && (mark.state === 'adding' || mark.intent || mark.fee !== null) ? { ...o, fee: mark.fee ?? o.fee, ...(mark.intent?.miles ? { miles: mark.intent.miles, measured: true } : {}) } : o
 
 /** The job's ended events that name a place and are not yet added, the latest first: what Add → Trip… lists. */
 export async function placed(ctx: Ctx, ws: Workspace, now = Date.now()): Promise<CalendarOffer[]> {

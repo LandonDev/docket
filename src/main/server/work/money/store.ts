@@ -53,6 +53,9 @@ export function ensureMoneyTables(db: DatabaseSync): void {
   // What an add in hand means to write (`EventMark.intent`): added after the table first shipped.
   const columns = (db.prepare('PRAGMA table_info(work_money_events)').all() as { name: string }[]).map((c) => c.name)
   if (!columns.includes('intent')) db.exec('ALTER TABLE work_money_events ADD COLUMN intent TEXT')
+  // Each year's newest export (`Books.exports`): added after the table first shipped.
+  const books = (db.prepare('PRAGMA table_info(work_money_books)').all() as { name: string }[]).map((c) => c.name)
+  if (!books.includes('exports')) db.exec("ALTER TABLE work_money_books ADD COLUMN exports TEXT NOT NULL DEFAULT '{}'")
 }
 
 export interface Workspace {
@@ -85,11 +88,13 @@ export interface Books {
   rates: Record<number, number>
   /** what the invoice dialog brings back: his details, and the last number and terms he used */
   invoice: unknown
+  /** the newest export of each year, by its generation: an older export's summary is not kept over a newer one's */
+  exports: Record<number, number>
 }
 
 export function booksOf(ctx: Db, workspaceId: string): Books | null {
   const row = ctx.db.prepare('SELECT * FROM work_money_books WHERE workspace_id = ?').get(workspaceId) as
-    | { workspace_id: string; ledger: string; mileage: string; calendar: string; rates: string; invoice: string | null }
+    | { workspace_id: string; ledger: string; mileage: string; calendar: string; rates: string; invoice: string | null; exports: string | null }
     | undefined
   if (!row) return null
   const json = (text: string | null): unknown => {
@@ -105,8 +110,17 @@ export function booksOf(ctx: Db, workspaceId: string): Books | null {
     mileage: row.mileage,
     calendar: row.calendar === 'all' || row.calendar === 'off' ? row.calendar : 'games',
     rates: (json(row.rates) as Record<number, number> | null) ?? {},
-    invoice: json(row.invoice)
+    invoice: json(row.invoice),
+    exports: (json(row.exports) as Record<number, number> | null) ?? {}
   }
+}
+
+/** Takes the next generation for a year's export: later than every one before it, across restarts. */
+export function nextExport(ctx: Db, workspaceId: string, year: number, now = Date.now()): number {
+  const books = booksOf(ctx, workspaceId)
+  const generation = Math.max(now, (books?.exports[year] ?? 0) + 1)
+  ctx.db.prepare('UPDATE work_money_books SET exports = ? WHERE workspace_id = ?').run(JSON.stringify({ ...books?.exports, [year]: generation }), workspaceId)
+  return generation
 }
 
 export function putBooks(ctx: Db, b: { workspaceId: string; ledger: string; mileage: string }, now = Date.now()): void {

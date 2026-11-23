@@ -4,10 +4,10 @@ import { errorText } from '@shared/work/ids'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
-import { formatMoney, inPeriod, isDay, milesLine, milesOf, moneyWords, sumsOf, today, type LedgerRow } from '@shared/work/money'
+import { centsFrom, formatMoney, inPeriod, isDay, milesLine, milesOf, moneyWords, sumsOf, today, type LedgerRow } from '@shared/work/money'
 import type { ToolCtx, WorkTool } from '../modules'
 import { leave } from './inbox'
-import { booksHere, ledgerOf, mileageLog, mileageWords, MoneyError } from './read'
+import { booksHere, LEDGER_OUTSIDE, ledgerOf, ledgerOutside, mileageLog, mileageWords, MoneyError } from './read'
 import { workspaceOf, type Workspace } from './store'
 
 /**
@@ -42,6 +42,7 @@ const moneyRead: WorkTool = {
     const a = args as { from?: string; to?: string; category?: string }
     const ws = ctx.scope.workspaceId ? workspaceOf(ctx, ctx.scope.workspaceId) : null
     if (!ws) return fail('This thread is not in a job, so it has no ledger to read.')
+    if (ledgerOutside(ctx, ws.id)) return fail(LEDGER_OUTSIDE)
     const books = booksHere(ctx, ws.id)
     if (!books) return workText(`${ws.name} has no ledger yet.`)
     try {
@@ -129,7 +130,9 @@ const moneyAdd: WorkTool = {
     const ws = jobOf(ctx)
     if (!ws) return fail(NO_JOB)
     try {
-      const amount = Math.round(a.amount * 100)
+      // Cents by the ledger's own rule (half a cent goes up), and never an amount that rounds to nothing.
+      const amount = centsFrom(a.amount)
+      if (amount < 1) return fail('The amount is less than a cent.')
       const got = await leave(ctx, {
         key: keyOf(ctx, a),
         ws,

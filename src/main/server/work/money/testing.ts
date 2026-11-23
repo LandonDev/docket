@@ -42,6 +42,8 @@ export interface StandIn {
   review(path: string, verdict: 'accept' | 'reject'): void
   /** set to make the next call it answers true for fail, once: a write that never reached the sheet */
   failing: ((route: string, body: Record<string, unknown>) => boolean) | null
+  /** set to make the next call it answers true for be done and then lose its reply, once: a write that reached the sheet and whose answer never came back */
+  losing: ((route: string, body: Record<string, unknown>) => boolean) | null
 }
 
 export function standInSheets(): StandIn {
@@ -58,6 +60,7 @@ export function standInSheets(): StandIn {
     sheets,
     asked,
     failing: null,
+    losing: null,
     async internal(route, raw) {
       const body = raw as Record<string, unknown>
       asked.push({ route, body })
@@ -65,6 +68,15 @@ export function standInSheets(): StandIn {
         standIn.failing = null
         throw new Error('The Work service did not answer.')
       }
+      const got = await answer(route, body)
+      if (standIn.losing?.(route, body)) {
+        standIn.losing = null
+        throw new Error('The Work service did not answer.')
+      }
+      return got
+    },
+  } as StandIn
+  const answer = async (route: string, body: Record<string, unknown>): Promise<unknown> => {
       switch (route) {
         case '/internal/sheet/create': {
           const path = (body.at as { tcsheet: string }).tcsheet
@@ -79,7 +91,7 @@ export function standInSheets(): StandIn {
           // What waits as a suggestion, a cell each, where it stands: rows and columns counted from 0, as the service answers.
           const suggestions = s.suggested.flat().map((c) => {
             const m = A1.exec(c.at)!
-            return { row: Number(m[2]) - 1, col: colOf(m[1]), proposed: c.f !== undefined ? { f: c.f } : c.v === null || c.v === undefined ? null : { v: c.v }, state: 'pending' }
+            return { sheet: 'sheet1', row: Number(m[2]) - 1, col: colOf(m[1]), proposed: c.f !== undefined ? { f: c.f } : c.v === null || c.v === undefined ? null : { v: c.v }, state: 'pending' }
           })
           return { title: s.title, rev: s.rev, shared: s.shared, suggestions }
         }
@@ -131,8 +143,9 @@ export function standInSheets(): StandIn {
         default:
           throw new Error(`the stand-in serves no ${route}`)
       }
-    },
-    grid(path) {
+  }
+  Object.assign(standIn, {
+    grid(path: string): Cell[][] {
       const s = sheets.get(path)!
       const rows: Cell[][] = []
       for (const [at, v] of s.cells) {
@@ -143,12 +156,12 @@ export function standInSheets(): StandIn {
       }
       return rows.map((row) => Array.from(row, (v) => v ?? ''))
     },
-    type(path, at, v) {
+    type(path: string, at: string, v: Cell): void {
       const s = sheets.get(path)!
       set(s, at, v)
       s.rev++
     },
-    review(path, verdict) {
+    review(path: string, verdict: 'accept' | 'reject'): void {
       const s = sheets.get(path)!
       if (verdict === 'accept') {
         for (const c of s.suggested.flat()) set(s, c.at, c.f !== undefined ? `=${c.f.replace(/^=/, '')}` : c.v)
@@ -156,7 +169,7 @@ export function standInSheets(): StandIn {
       }
       s.suggested = []
     }
-  }
+  })
   return standIn
 }
 

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { constants, copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { z } from 'zod'
@@ -8,9 +8,9 @@ import { csvOf, daysBetween, fileWord, INVOICE_DUE_DAYS, invoiceHtml, invoiceTot
 import type { WorkCtx } from '../modules'
 import { appendRow, insideJob, locked, MONEY_FOLDER, moneyFolder, newRef, openBooks, writtenRow } from './book'
 import { keepFile, keyed } from './inbox'
-import { takePart } from './parts'
-import { booksHere, ledgerOf, mileageLog, mileageWords, MoneyError } from './read'
-import { booksOf, setInvoice, type Workspace } from './store'
+import { pageFolder, takePart } from './parts'
+import { booksHere, LEDGER_OUTSIDE, ledgerOf, ledgerOutside, mileageLog, mileageWords, MoneyError } from './read'
+import { booksOf, nextExport, setInvoice, type Workspace } from './store'
 
 /**
  * What leaves Money (docs/agents/work-money.md "Out"): a year's folder for
@@ -60,6 +60,7 @@ export function exportYear(ctx: Ctx, ws: Workspace, o: { year: number; csv: bool
 }
 
 async function exportOnce(ctx: Ctx, ws: Workspace, o: { year: number; csv: boolean; xlsx: boolean; pdf: boolean }, signal?: AbortSignal): Promise<MoneyExport> {
+  if (ledgerOutside(ctx, ws.id)) throw new MoneyError(LEDGER_OUTSIDE)
   const books = booksHere(ctx, ws.id)
   if (!books) throw new MoneyError(`${ws.name} has no ledger to export yet.`)
   const [ledger, log] = await Promise.all([ledgerOf(ctx, books), mileageLog(ctx, books)])
@@ -68,6 +69,9 @@ async function exportOnce(ctx: Ctx, ws: Workspace, o: { year: number; csv: boole
   if (log.problem) throw new MoneyError(`${mileageWords(log.problem)} Put it right, then export.`)
   const trips = log.trips
   const dir = taxFolder(ws, o.year)
+  // This export's place among the year's: its summary comes back later, printed by the window, and is kept only
+  // while no newer export has been made since.
+  const generation = nextExport(ctx, ws.id, o.year)
   const xlsxName = `Ledger ${o.year}.xlsx`
   // What this export will write over: only the files it was asked for and that are there already.
   let replaced = false
@@ -75,38 +79,52 @@ async function exportOnce(ctx: Ctx, ws: Workspace, o: { year: number; csv: boole
   const warnings: string[] = []
   const text = csvOf(ledger.rows, trips, o.year)
   const csvName = `Ledger ${o.year}.csv`
-  if (o.csv) {
-    replaced ||= existsSync(join(dir, csvName))
-    writeWhole(join(dir, csvName), text)
-    files.push(csvName)
-  }
-  if (o.xlsx) {
-    // The Excel file is made by the conversion runner from this read's own CSV, kept in this host's data folder: never
-    // from the one in the year's folder, which another hand could change before the runner copies it.
-    const scratch = join(ctx.dataDir, 'work-money', 'export', randomUUID())
-    try {
-      mkdirSync(scratch, { recursive: true, mode: 0o700 })
-      const input = join(scratch, csvName)
-      writeFileSync(input, text)
-      const made = await ctx.convert({ from: 'csv', to: 'xlsx', input, signal })
-      const there = existsSync(join(dir, xlsxName))
-      copyWhole(made.output, join(dir, xlsxName))
-      replaced ||= there
-      files.push(xlsxName)
-      warnings.push(...made.warnings)
-    } catch (err) {
-      ctx.log(`money: no Excel file for ${o.year} (${errorText(err)})`)
-      warnings.push('The Excel file could not be made on this computer.')
-    } finally {
-      rmSync(scratch, { recursive: true, force: true })
+  // Everything asked for is made first, in this host's own data folder, and only then put in the year's folder, one
+  // file after the other with nothing between: the folder never holds this read's CSV beside an older read's workbook.
+  const scratch = join(ctx.dataDir, 'work-money', 'export', randomUUID())
+  try {
+    let workbook: string | null = null
+    if (o.xlsx) {
+      try {
+        // The Excel file is made by the conversion runner from this read's own CSV: never from the one in the year's
+        // folder, which another hand could change before the runner copies it.
+        mkdirSync(scratch, { recursive: true, mode: 0o700 })
+        const input = join(scratch, csvName)
+        writeFileSync(input, text)
+        const made = await ctx.convert({ from: 'csv', to: 'xlsx', input, signal })
+        workbook = made.output
+        warnings.push(...made.warnings)
+      } catch (err) {
+        ctx.log(`money: no Excel file for ${o.year} (${errorText(err)})`)
+      }
     }
+    if (o.csv) {
+      replaced ||= existsSync(join(dir, csvName))
+      writeWhole(join(dir, csvName), text)
+      files.push(csvName)
+    }
+    if (o.xlsx) {
+      const there = existsSync(join(dir, xlsxName))
+      if (workbook) {
+        copyWhole(workbook, join(dir, xlsxName))
+        replaced ||= there
+        files.push(xlsxName)
+      } else if (there) {
+        // An older export's workbook would stand beside this one's figures as if it were theirs: it goes, and he is told.
+        rmSync(join(dir, xlsxName), { force: true })
+        warnings.push('The Excel file could not be made on this computer. The older one was removed, so the folder holds one export.')
+      } else warnings.push('The Excel file could not be made on this computer.')
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
   }
   return {
     folder: { at: 'file', host: ctx.host, path: dir },
     files,
     summary: o.pdf ? { name: `Summary ${o.year}.pdf`, html: taxSummaryHtml(ledger.rows, trips, { year: o.year, job: ws.name }) } : null,
     warnings,
-    replaced
+    replaced,
+    generation
   }
 }
 
@@ -122,6 +140,8 @@ interface Kept {
   last?: Partial<Record<Invoice['kind'], string>>
   /** numbers taken by a Create that has not filed its row yet, each by that Create's key: no other Create may print one */
   claims?: Claim[]
+  /** every number Money filed, in the ledger or waiting there as a suggestion: a number is never printed twice, whatever the sheet shows yet */
+  used?: { kind: Invoice['kind']; number: string }[]
 }
 interface Claim {
   kind: Invoice['kind']
@@ -138,19 +158,31 @@ function keptOf(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Kept {
   // Books written before each kind kept its own: what was there was an invoice's.
   const from = raw.from && typeof (raw.from as From).name === 'string' ? { invoice: raw.from as From } : ((raw.from as Kept['from']) ?? {})
   const dueDays = typeof raw.dueDays === 'number' ? { invoice: raw.dueDays } : ((raw.dueDays as Kept['dueDays']) ?? {})
-  return { from, dueDays, last: raw.last ?? {}, claims: Array.isArray(raw.claims) ? raw.claims : [] }
+  return { from, dueDays, last: raw.last ?? {}, claims: Array.isArray(raw.claims) ? raw.claims : [], used: Array.isArray(raw.used) ? raw.used : [] }
 }
 
-/** The numbers of a kind this job has used: in the ledger's rows (the For column, else the kept file's name). */
+/**
+ * The numbers of a kind this job has used: every one Money filed (kept in
+ * the books, so a row that only waits as a suggestion counts), and every
+ * one the ledger's rows show (the For column, else the kept file's name:
+ * a number he typed by hand).
+ */
 async function usedNumbers(ctx: Ctx, ws: Workspace, kind: Invoice['kind']): Promise<string[]> {
+  const filed = (keptOf(ctx, ws.id).used ?? []).filter((u) => u.kind === kind).map((u) => u.number)
   const books = booksHere(ctx, ws.id)
-  if (!books) return []
+  if (!books) return filed
   const named = new RegExp(`^${TITLE[kind]} (\\S+?):?(?: |$)`)
   const ledger = await ledgerOf(ctx, books).catch(() => null)
-  return (ledger?.rows ?? []).flatMap((row) => {
+  const shown = (ledger?.rows ?? []).flatMap((row) => {
     const n = named.exec(row.what)?.[1] ?? named.exec(row.receipt.split('/').pop() ?? '')?.[1]
     return n ? [n] : []
   })
+  // A row that only waits in the sheet as a suggestion names its number too.
+  const waiting = (ledger?.grid.pending ?? []).flatMap((p) => {
+    const n = typeof p.v === 'string' ? (named.exec(p.v)?.[1] ?? named.exec(p.v.split('/').pop() ?? '')?.[1]) : undefined
+    return n ? [n] : []
+  })
+  return [...filed, ...shown, ...waiting]
 }
 
 const TITLE: Record<Invoice['kind'], string> = { invoice: 'Invoice', request: 'Purchase request' }
@@ -183,7 +215,7 @@ export async function invoicePage(ctx: Ctx, ws: Workspace, key: string, inv: Inv
   if (invoiceTotal(inv.lines) <= 0) throw new MoneyError(`${TITLE[inv.kind] === 'Invoice' ? 'An invoice' : 'A purchase request'} needs a line with an amount.`)
   if (inv.due && inv.due < inv.date) throw new MoneyError('It is due before its date.')
   if (!inv.from.name.trim()) throw new MoneyError('Say who it is from.')
-  await openBooks(ctx, ws)
+  await openBooks(ctx, ws, 'ledger')
   // The same Create again after its row was filed (its answer was lost on the way): the number in the ledger is its own.
   const mine = ctx.db.prepare("SELECT state FROM work_money_inbox WHERE key = ? AND source = 'kept' AND workspace_id = ?").get(`kept:${key}`, ws.id) as { state: string } | undefined
   if (mine?.state === 'filed') return { name: invoiceFile(inv), html: invoiceHtml(inv) }
@@ -191,12 +223,16 @@ export async function invoicePage(ctx: Ctx, ws: Workspace, key: string, inv: Inv
     const kept = keptOf(ctx, ws.id)
     const claims = (kept.claims ?? []).filter((c) => now - c.at < CLAIM_MS)
     const mine = numberKey(inv.number)
-    const taken = [...(await usedNumbers(ctx, ws, inv.kind)), ...claims.filter((c) => c.kind === inv.kind && c.key !== key).map((c) => c.number)]
+    // This Create holds this very number already (the same press again, or its keep was begun and stopped half way):
+    // the number is its own, whatever the books have noted of it since.
+    const own = claims.some((c) => c.key === key && c.kind === inv.kind && numberKey(c.number) === mine)
+    const taken = own ? [] : [...(await usedNumbers(ctx, ws, inv.kind)), ...claims.filter((c) => c.kind === inv.kind && c.key !== key).map((c) => c.number)]
     if (taken.some((n) => numberKey(n) === mine)) {
       const free = nextInvoiceNumber([...taken, ...(kept.last?.[inv.kind] ? [kept.last[inv.kind]!] : [])])
       throw new MoneyError(`${TITLE[inv.kind]} ${inv.number} is taken. The next free number is ${free}.`)
     }
     setInvoice(ctx, ws.id, {
+      ...kept,
       from: { ...kept.from, [inv.kind]: inv.from },
       dueDays: { ...kept.dueDays, ...(inv.due ? { [inv.kind]: daysBetween(inv.date, inv.due) } : {}) },
       // The highest stands: a lower number typed by hand never brings the count back down.
@@ -209,7 +245,7 @@ export async function invoicePage(ctx: Ctx, ws: Workspace, key: string, inv: Inv
 }
 
 /** Where a page's parts wait: by the job and the sender's key, so a key sent under another job never finishes this one's upload. */
-const keeping = (ctx: Pick<WorkCtx, 'dataDir'>, workspaceId: string, key: string): string => join(ctx.dataDir, 'work-money', 'keeping', createHash('sha256').update(`${workspaceId}\n${key}`).digest('hex').slice(0, 32))
+const keeping = (ctx: Pick<WorkCtx, 'dataDir'>, workspaceId: string, key: string): string => pageFolder(ctx.dataDir, workspaceId, key)
 
 /**
  * A printed page comes back from the window, in parts. A summary is kept in
@@ -237,36 +273,59 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
   if (noted?.state === 'filed' && noted.ref) return JSON.parse(noted.ref) as MoneyKept
   if (p.what === 'summary' && p.year === undefined) throw new MoneyError('A summary names its year.')
   if (p.what === 'invoice' && !p.invoice) throw new MoneyError('An invoice comes with its fields.')
+  // The key is this job's from its first part on, before anything is put together: the same key under another job is refused at once.
+  if (!noted) {
+    const now = Date.now()
+    ctx.db.prepare("INSERT INTO work_money_inbox (id, key, workspace_id, state, source, created_at, updated_at) VALUES (?, ?, ?, 'partial', 'kept', ?, ?)").run(randomUUID(), `kept:${p.key}`, ws.id, now, now)
+  }
   const dir = keeping(ctx, ws.id, p.key)
   const whole = await takePart(dir, 'page.pdf', p)
   if (!whole) return { partial: true }
   const done = (kept: MoneyKept): MoneyKept => {
-    const now = Date.now()
-    ctx.db
-      .prepare("INSERT INTO work_money_inbox (id, key, workspace_id, state, source, ref, created_at, updated_at) VALUES (?, ?, ?, 'filed', 'kept', ?, ?, ?) ON CONFLICT(key) DO UPDATE SET state = 'filed', ref = excluded.ref, updated_at = excluded.updated_at")
-      .run(randomUUID(), `kept:${p.key}`, ws.id, JSON.stringify(kept), now, now)
+    ctx.db.prepare("UPDATE work_money_inbox SET state = 'filed', ref = ?, updated_at = ? WHERE key = ? AND source = 'kept'").run(JSON.stringify(kept), Date.now(), `kept:${p.key}`)
     return kept
   }
   try {
     if (p.what === 'summary') {
-      const folder = taxFolder(ws, p.year!)
-      const name = `Summary ${p.year}.pdf`
-      const there = existsSync(join(folder, name))
-      copyWhole(whole, join(folder, name))
-      return done({ source: { at: 'file', host: ctx.host, path: join(folder, name) }, receipt: `Tax ${p.year}/${name}`, ...(there ? { replaced: true as const } : {}) })
+      const year = p.year!
+      // Under the year's own lock, with its exports: a summary printed from an older export than the year's newest is
+      // not kept over the newer one's files, however late its window sent it.
+      return await keyed(`export:${ws.id}:${year}`, async () => {
+        // The page must be of the year's newest export, by the generation that export answered: an older one's, or
+        // one that names none or another (a sender that never asked for this export), is not kept over its files.
+        const newest = booksOf(ctx, ws.id)?.exports[year]
+        if (newest !== undefined && p.generation !== newest) throw new MoneyError(`That summary is not of ${year}'s newest export, so it was not kept. Export again.`)
+        const folder = taxFolder(ws, year)
+        const name = `Summary ${year}.pdf`
+        const there = existsSync(join(folder, name))
+        copyWhole(whole, join(folder, name))
+        return done({ source: { at: 'file', host: ctx.host, path: join(folder, name) }, receipt: `Tax ${year}/${name}`, ...(there ? { replaced: true as const } : {}) })
+      })
     }
     const inv = p.invoice!
     const total = invoiceTotal(inv.lines)
     if (total <= 0) throw new MoneyError('An invoice needs a line with an amount.')
-    // The number is this Create's own: one another Create took since the page was asked for is not filed a second time.
-    const other = (keptOf(ctx, ws.id).claims ?? []).find((c) => c.kind === inv.kind && c.key !== p.key && numberKey(c.number) === numberKey(inv.number) && Date.now() - c.at < CLAIM_MS)
-    if (other) throw new MoneyError(`${TITLE[inv.kind]} ${inv.number} is taken. Create it again for the next free number.`)
-    const books = await openBooks(ctx, ws)
+    const books = await openBooks(ctx, ws, 'ledger')
     const fileOf = (receipt: string): string => join(ws.path, MONEY_FOLDER, ...receipt.split('/'))
-    const filed = (receipt: string, at: { ref: string | null; row: number; suggested: boolean }): MoneyKept =>
-      done({ source: { at: 'file', host: ctx.host, path: fileOf(receipt) }, receipt, acted: { ok: true, ref: at.ref, row: at.row, ...(at.suggested ? { suggested: true as const } : {}) } })
+    /** The number is used for good, noted BEFORE the ledger is touched: a stop after the sheet took the row never leaves the number free for another Create. */
+    const use = (): void => {
+      const kept = keptOf(ctx, ws.id)
+      if (!(kept.used ?? []).some((u) => u.kind === inv.kind && numberKey(u.number) === numberKey(inv.number))) setInvoice(ctx, ws.id, { ...kept, used: [...(kept.used ?? []), { kind: inv.kind, number: inv.number }].slice(-5000) } satisfies Kept)
+    }
+    /** The row was never written (the ledger refused it): the number is free again. */
+    const unuse = (): void => {
+      const kept = keptOf(ctx, ws.id)
+      setInvoice(ctx, ws.id, { ...kept, used: (kept.used ?? []).filter((u) => !(u.kind === inv.kind && numberKey(u.number) === numberKey(inv.number))) } satisfies Kept)
+    }
+    /** Filed (also while its row only waits as a suggestion): the claim has done its work. */
+    const filed = (receipt: string, at: { ref: string | null; row: number; suggested: boolean }): MoneyKept => {
+      use()
+      const kept = keptOf(ctx, ws.id)
+      setInvoice(ctx, ws.id, { ...kept, claims: (kept.claims ?? []).filter((c) => c.key !== p.key) } satisfies Kept)
+      return done({ source: { at: 'file', host: ctx.host, path: fileOf(receipt) }, receipt, acted: { ok: true, ref: at.ref, row: at.row, ...(at.suggested ? { suggested: true as const } : {}) } })
+    }
     // A keep of this page was begun and not seen to its end (the host stopped between the ledger's write and this
-    // note): its row is looked for by its Ref, else by its file, and is never written twice.
+    // note): its row is looked for by its Ref and its file, and is never written twice.
     let begun: KeepIntent | null = null
     try {
       begun = noted?.ref ? ((JSON.parse(noted.ref) as { intent?: KeepIntent }).intent ?? null) : null
@@ -279,13 +338,16 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
       // Its row was never written: the file that keep left is no row's, and goes.
       if (begun.receipt && existsSync(fileOf(begun.receipt)) && insideJob(ws, fileOf(begun.receipt))) rmSync(fileOf(begun.receipt), { force: true })
     }
+    // The page is this Create's own: its key took this number of this kind when the page was asked for
+    // (`invoicePage`), and still holds it. A page nobody took a number for is not filed.
+    const held = (keptOf(ctx, ws.id).claims ?? []).some((c) => c.key === p.key && c.kind === inv.kind && numberKey(c.number) === numberKey(inv.number) && Date.now() - c.at < CLAIM_MS)
+    if (!held) throw new MoneyError(`${TITLE[inv.kind]} ${inv.number} is not held for this Create any more. Create it again.`)
     const ref = newRef()
-    const note = (receipt?: string): void => {
-      const now = Date.now()
-      ctx.db
-        .prepare("INSERT INTO work_money_inbox (id, key, workspace_id, state, source, ref, created_at, updated_at) VALUES (?, ?, ?, 'partial', 'kept', ?, ?, ?) ON CONFLICT(key) DO UPDATE SET ref = excluded.ref, updated_at = excluded.updated_at")
-        .run(randomUUID(), `kept:${p.key}`, ws.id, JSON.stringify({ intent: { ref, ...(receipt ? { receipt } : {}) } } satisfies { intent: KeepIntent }), now, now)
-    }
+    const note = (receipt?: string): void =>
+      void ctx.db
+        .prepare("UPDATE work_money_inbox SET ref = ?, updated_at = ? WHERE key = ? AND source = 'kept'")
+        .run(JSON.stringify({ intent: { ref, ...(receipt ? { receipt } : {}) } } satisfies { intent: KeepIntent }), Date.now(), `kept:${p.key}`)
+    use()
     note()
     let file: { path: string; receipt: string } | null = null
     try {
@@ -300,14 +362,20 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
           : { Date: inv.date, Who: inv.to.split('\n')[0], For: `Purchase request ${inv.number}${inv.reason ? `: ${inv.reason.split('\n')[0].slice(0, 200)}` : ''}`, Out: total / 100, Status: 'Requested', Receipt: file.receipt },
         { ref }
       )
-      // Filed: the number is the ledger's now, and the claim has done its work.
-      const kept = keptOf(ctx, ws.id)
-      setInvoice(ctx, ws.id, { ...kept, claims: (kept.claims ?? []).filter((c) => c.key !== p.key) } satisfies Kept)
       return filed(file.receipt, got)
     } catch (err) {
-      // No row, no kept file, no note: the same Create may be pressed again.
+      // The write may have landed though its answer did not: a fresh read settles it, as for a receipt. Landed: filed.
+      // Not readable now: the file, the note and the number stay for the next keep to settle. Not there: no row, no
+      // kept file, no note, the number free again; the same Create may be pressed again, and the key stays this job's.
+      const landed = await ledgerOf(ctx, books).then(
+        (l) => writtenRow(l, { ref, receipt: file?.receipt }),
+        () => undefined
+      )
+      if (landed && file) return filed(file.receipt, landed)
+      if (landed === undefined) throw err
       if (file) rmSync(file.path, { force: true })
-      ctx.db.prepare("DELETE FROM work_money_inbox WHERE key = ? AND source = 'kept' AND state = 'partial'").run(`kept:${p.key}`)
+      unuse()
+      ctx.db.prepare("UPDATE work_money_inbox SET ref = NULL WHERE key = ? AND source = 'kept' AND state = 'partial'").run(`kept:${p.key}`)
       throw err
     }
   } finally {

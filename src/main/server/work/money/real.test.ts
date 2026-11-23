@@ -86,6 +86,20 @@ describe('the ledger on the real sheet host', () => {
   })
 })
 
+describe('the mileage log on the real sheet host', () => {
+  it('rounds each trip to cents in the sheet as Money does, so the column’s total there is the total Money says', async () => {
+    await call('work.money.rate', { workspaceId: 'ws-ref', year: 2026, rate: 0.725 })
+    for (const title of ['One', 'Two']) await call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-11-20', title, miles: 1.4 })
+    const books = await call<{ mileage: { path: string } }>('work.money.open', { workspaceId: 'ws-ref' })
+    const sheet = { tcsheet: books.mileage.path }
+    // 1.4 miles at $0.725 is $1.015: $1.02 a trip, in the sheet's Value cells and in Money.
+    const values = ((await ctx.service.internal('/internal/sheet/range', { sheet, range: 'F2:F3' })) as { cells: { v?: unknown }[][] }).cells.map((line) => line[0].v)
+    expect(values).toEqual([1.02, 1.02])
+    const read = await call<MoneyRead>('work.money.read', { workspaceId: 'ws-ref', from: '2026-11-01', to: '2026-12-01' })
+    expect(read.miles).toMatchObject({ miles: 2.8, value: 204 })
+  })
+})
+
 describe('a job whose folder is a place others can open', () => {
   it('takes a row as a suggestion in the real sheet file, where he accepts it; nothing is written until then', async () => {
     const { setSharedProbe } = await import('./book')

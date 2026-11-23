@@ -140,6 +140,8 @@ export const KeepParamsSchema = z.object({
   what: z.enum(['summary', 'invoice']),
   /** a summary's year */
   year: z.number().int().min(1990).max(2100).optional(),
+  /** a summary's export: the `generation` its `work.money.export` answered. A summary of an older export than the year's newest is refused, so a slow print never replaces a newer one's page */
+  generation: z.number().int().min(0).optional(),
   /** an invoice's own fields: kept with the file as its row in the ledger */
   invoice: InvoiceSchema.optional(),
   part: z.number().int().min(0).max(PARTS_MAX - 1),
@@ -208,7 +210,8 @@ export interface MoneyState {
 
 export interface MoneyBooks {
   ledger: CanvasSource
-  mileage: CanvasSource
+  /** null: the mileage log cannot be opened (its file leads outside the job's folder); the ledger is answered all the same */
+  mileage: CanvasSource | null
   /** `restore` on a ledger others can open: the missing headers wait as a suggestion in the sheet, and the columns are not back until he accepts it there */
   suggested?: true
 }
@@ -221,14 +224,16 @@ export interface MoneyBooks {
  * the sheet: name the column back.
  */
 export type MoneyProblem =
-  | { kind: 'columns'; missing: string[]; renamed: string[] }
+  /** `waits`: the missing headers already wait in the sheet as a suggestion (a restore on a ledger others can open): accepting it there is what is left to do */
+  | { kind: 'columns'; missing: string[]; renamed: string[]; waits?: true }
   /**
    * The mileage log cannot be read, so the miles shown are none and are not
    * the truth: `outside`, its file leads out of the job's folder; `columns`,
-   * it holds rows and lacks Date or Miles (`missing`). An export is refused
-   * until it is right.
+   * it holds rows and lacks Date or Miles (`missing`); `unreadable`, the
+   * sheet could not be opened at all. An export is refused until it is
+   * right. The ledger reads all the same.
    */
-  | { kind: 'mileage'; reason: 'outside' | 'columns'; missing: string[] }
+  | { kind: 'mileage'; reason: 'outside' | 'columns' | 'unreadable'; missing: string[] }
 
 export interface MoneyRead {
   /** false: this job has no ledger yet, and everything below is empty */
@@ -301,6 +306,8 @@ export interface MoneyExport {
   warnings: string[]
   /** a file this export wrote took the place of an earlier export's */
   replaced: boolean
+  /** this export's place among the year's exports, later ones higher: the summary's `keep` sends it back, and the host keeps only the newest export's page */
+  generation: number
 }
 export interface MoneyInvoiceNext {
   number: string
@@ -372,7 +379,8 @@ export interface MoneySums {
   rows: { workspaceId: string; sector: SectorKey | null; in: number; out: number; owedToHim: number; heOwes: number; miles: number; currency: 'USD'; problem?: true }[]
 }
 export interface MoneyOwed {
-  rows: { workspaceId: string; sector: SectorKey | null; row: number; who: string; what: string; amount: number; since: string | null; way: 'toHim' | 'byHim'; reimburse: boolean; both: boolean }[]
+  /** `both`: the row has money both in and out; the host always says it, and a reader that does not care may leave it out */
+  rows: { workspaceId: string; sector: SectorKey | null; row: number; who: string; what: string; amount: number; since: string | null; way: 'toHim' | 'byHim'; reimburse: boolean; both?: boolean }[]
   toConfirm: number
   /** the jobs whose ledger could not be read: what they are owed is not known, which is not nothing */
   problems?: string[]

@@ -42,8 +42,9 @@ pillar. The Excel file is the export.
 Columns: `Date | Who | For | Category | In | Out | Status | Paid on |
 Receipt | Ref`. `In` and `Out` are two columns of dollars, so a plain `SUM`
 works in the sheet. `Receipt` holds the file's path under `Money/` as text.
-`Ref` is a short id Money writes (`m7k2q`); a row he typed has none and is
-read all the same.
+`Ref` is an id Money writes (`m` and 24 hex letters; five in rows written
+before 2026-11-23, read all the same); a row he typed has none and is read
+all the same.
 
 `src/shared/work/money.ts` is pure (no zod, no node): the columns, the
 statuses, the categories, the sums, the receipt parser, the CSV and the two
@@ -55,7 +56,10 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   or amount is a blank line. A missing `Date`, `In` or `Out` header reads no
   rows and answers `problems: [{kind: 'columns', missing, renamed}]`;
   `work.money.open {restore: true}` writes the missing headers at the end
-  of row 1. `renamed` names every column Money does not know that holds
+  of row 1 (`waits` on the problem: those very headers, by name, already
+  wait in the sheet's first tab as a suggestion, and a second restore
+  writes nothing more).
+  `renamed` names every column Money does not know that holds
   cells ("Spent", or "column F" for cells under no header): with any, a
   header was most likely renamed, and the restore is refused, since an
   empty Out beside his figures would read them as nothing. He names it
@@ -88,9 +92,14 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   the workbook itself (`/internal/sheet/snapshot`, `extentOf`), so a
   stretch of blank rows he left, however long, never ends the read or
   misplaces the next append, a row that holds only a formula is a row, and
-  figures under no header are still seen ("column K" in `renamed`). A
-  workbook past 32 MB is not asked for whole: the read then stops at a
-  whole blank page.
+  figures under no header are still seen ("column K" in `renamed`), however
+  far out (past AZ too, up to 1,024 columns). A workbook past 32 MB is not
+  asked for at all: Money reads no such sheet ("too large"). A read is
+  whole or it fails: when the sheet cannot say how far it goes, the read is
+  tried again (three times) and then fails, so no reading that may have
+  stopped short is kept, summed, exported or appended under. A sheet wider
+  than 1,024 columns is read to there (`Grid.partial`) and repairs
+  nothing: Restore is refused on it.
 - **`any`** on the read says whether the job has money at all (a ledger row
   or a trip in any period): the view's empty state hangs on it, not on the
   period on screen.
@@ -116,7 +125,18 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   notes the Ref its row will carry before the ledger is touched. Taken up
   again after a stop between the sheet's write and the note, it looks for
   that Ref in the ledger and among what waits there, and writes nothing
-  twice.
+  twice. Only an add taken up again looks: a new row is always a new row,
+  and a row found by Ref must also name the file the note names. A write
+  that throws is settled by a fresh read at once (the sheet may have taken
+  the row and lost its answer): found, it is filed; not readable, the file
+  and the note stay for the next try; not there, nothing is left behind.
+- **A ledger that leads out of the job** (its file a link) is neither read
+  nor written, and is a fault, never an empty job: the read fails with the
+  sentence, the sums and what is owed say `problem`, and no fresh ledger is
+  made beside it. A mileage log in that state, or one the sheet service
+  cannot open, is the log's own fault: the ledger still reads, an entry is
+  still written, and `work.money.open` answers the ledger with `mileage:
+  null` (`openBooks(…, 'ledger')`).
 - **Inside the job's folder** (`moneyFolder`, `insideJob`): every folder
   Money writes into is made one level at a time and checked by its real
   spelling. A `Money` folder, or a ledger, that is a link out of the job's
@@ -130,6 +150,9 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   window read it answers `{changed: true}` and nothing is written, so an
   edit of one field never puts another cell back and Paid never settles a
   figure he did not see. Only the cells whose reading differs are written.
+  A change that already waits in those cells as a suggestion is not
+  suggested twice: the same one is answered, a different one refused until
+  he settles the first in the sheet.
   A row he typed is never given a `Ref`. A row he typed with money both in
   and out has no one direction, so the form cannot change it: the host
   refuses the edit and the window shows it read only, with Open ledger.
@@ -141,7 +164,8 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   `real.test.ts` holds that both reach an exported Excel file. Currency
   format waits for the sheets build's named styles.
 
-Categories (`CATEGORIES[sector]`, then every word the ledger already uses):
+Categories (`CATEGORIES[sector]`, then every word the ledger already uses;
+`work.money.state` answers each job's the same way, for the phone's picker):
 ref: Game fees, Mileage, Uniform and gear, Dues and registration, Training,
 Travel, Meals, Other. unify: Sales, Software, Hosting, Contractors,
 Equipment, Fees, Travel, Meals, Office, Taxes, Other. purdue: Equipment,
@@ -183,7 +207,8 @@ file it once.
   accept notes what it means to write on the waiting row first (`Intent`:
   the row's Ref, the job, the file it kept): after a stop in the middle
   the next accept finds the row by that Ref and files nothing twice, or
-  finds none and lets go of the file that accept kept. A receipt whose own
+  finds none and lets go of the file that accept kept. The job that accept
+  was filing into is read only for a caller who may ask about it. A receipt whose own
   file is gone from this host is not filed. One accept a receipt at a time: a second press
   while the first is being filed answers the first, and a later one
   answers what was filed.
@@ -205,6 +230,9 @@ file it once.
   The ledger or the mileage log renamed in Files is followed in the books'
   row; a receipt renamed inside the Money folder has its Receipt cell
   rewritten, a moment after the rename's savepoint.
+
+A write tells every window on the job (`work.money`), so one that did not
+make the press reads again.
 
 ### From an agent (`work/money/tools.ts`)
 
@@ -273,8 +301,10 @@ box. About 4 seconds a file.
   for each row, the miles): an add not seen to its end (a write failed,
   the host stopped between the two sheets) stays offered (`adding`), as
   that add meant it, and the next add looks for those rows and writes only
-  what is missing; the fee that was written stands. A trip typed by hand
-  goes by the sender's `key` the same way. A log others can open
+  what is missing; the fee that was written stands, also when he skipped
+  the event since and picks it in Add → Trip…. A trip typed by hand goes by
+  the sender's `key` the same way. The log's Value is `ROUND(miles × rate,
+  2)`, so the column's total in the sheet is the total Money says. A log others can open
   takes the trip as a suggestion on a row of its own, and the answer says
   so. The log is read and written only inside the job's folder, as the
   ledger is. `work.money.events` (Add → Trip…) leaves out an event already
@@ -285,8 +315,10 @@ box. About 4 seconds a file.
   `MILEAGE_RATES` ($0.70 for 2025), else the newest year before it.
   `work.money.rate` sets a year's. A rate is printed as it was given
   (`rateWords`), never short of what the value was worked out with.
-- A log that cannot be read (`mileageLog`: its file leads out of the job's
-  folder, or it holds rows and lacks Date or Miles) is `problems: [{kind:
+- A trip is written only into a log with Date, Miles, Rate and Value. A
+  log that cannot be read (`mileageLog`: its file leads out of the job's
+  folder, the sheet cannot be opened, or it holds rows and lacks Date,
+  Miles or Rate) is `problems: [{kind:
   'mileage', reason, missing}]` on the read: the miles shown are none and
   the view says why; the sums carry `problem`; the export is refused.
 
@@ -299,7 +331,14 @@ box. About 4 seconds a file.
   replaces the first's files and says so (`replaced`, for the files it
   wrote over). One export a job and a year at a time, the Excel file made
   from that read's own CSV in the host's data folder; a year whose mileage
-  log cannot be read is not exported. Each file is staged beside its place under a fresh name
+  log cannot be read is not exported. Each export has a `generation`
+  (kept by year in `work_money_books.exports`); the summary's `keep` sends
+  it back, and a page that is not of the year's newest export (an older
+  one's, or one that names none) is refused, so a slow window never leaves
+  an old summary beside new files. Everything asked for is made first and
+  then put in the folder together; when the Excel file cannot be made, an
+  older export's workbook is removed, with a warning, so the folder holds
+  one export. Each file is staged beside its place under a fresh name
   made exclusively, then renamed in, so nothing is ever written through a
   name that was already there.
 - `work.money.invoiceNext` and `work.money.invoice` number an invoice (from
@@ -312,13 +351,17 @@ box. About 4 seconds a file.
   its row is filed): a number another Create holds, or a row carries, is
   refused with the next free one, so two forms opened together never print
   one number. The highest number used stands when a lower one is typed.
+  Every number Money files is kept in the books (`used`, noted before the
+  ledger is touched), so one whose row only waits as a suggestion, or whose
+  filing stopped half way, is used all the same. `keep` files an
+  invoice only for the key that holds its number.
 - A page is printed by the formats pillar from the window
   (`work.formats.print`) and handed back in parts with `work.money.keep`: a
   summary goes to the year's folder; an invoice goes to `Money/Invoices/`
   and is filed as its row (money in, Unpaid; a request: money out,
   `Requested`). The window sends one key for every try of one Create, and
-  the host files a key once, for the job it first named, and by a note of
-  its own (as an accept's) through a stop in the middle.
+  the host files a key once, for the job its first part named, and by a
+  note of its own (as an accept's) through a stop in the middle.
 - Money declares no act kind. An invoice leaves from Mail's composer, by his
   own Send; an agent's draft is the held `mail.send`.
 
@@ -429,6 +472,15 @@ reaches. A code workspace has no money.
   host stopped before the note names it (one stray file, linked by no
   row), and a ledger with no Ref column and a row with no file (nothing to
   find it by). A plain entry from the form carries no key.
+- A book renamed in Files while rows wait in it as suggestions opens with
+  none under its new name, and a receipt renamed while its row still waits
+  keeps its old name in that waiting cell: the sheet service keeps a file's
+  suggestions by its path, and a waiting suggestion cannot be amended from
+  outside (asked of sheets in SEAMS.md).
+- The weekly review's own line for Money prints only a side above zero and
+  drops `problem` (the review pillar's `words.ts`; asked in SEAMS.md).
+- Books written by builds of 2026-11-23 before the mileage formula was
+  rounded keep `=miles*rate` in their Value cells; nothing rewrites them.
 - An append reads the first empty row and writes it with nothing between,
   under Money's own lock; the sheet's editor does not take that lock, so a
   row he begins in the same instant could be written over. The service

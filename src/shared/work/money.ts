@@ -71,7 +71,9 @@ export const columnLetter = (i: number): string => {
  * is put aside first: 1.4 miles at $0.725 is held as 1.01499…, and is one
  * dollar and two cents wherever Money says it.
  */
-export const centsFrom = (dollars: number): number => Math.round(Number((dollars * 100).toPrecision(14)))
+export const centsFrom = (dollars: number): number => wholeFrom(dollars * 100)
+/** A whole number from a product, half going up, the float's noise put aside first: 1.15 hours at 3250 cents is 3737.4999…, and is 3738. */
+export const wholeFrom = (product: number): number => Math.round(Number(product.toPrecision(14)))
 
 /**
  * Whole cents from a cell: a number of dollars, or text like "$1,204.50" or
@@ -519,10 +521,14 @@ export interface MileageRow {
   value: number
 }
 
+/** Without these the mileage log's trips cannot be read as miles and money. */
+export const MILEAGE_NEEDED: readonly MileageColumn[] = ['Date', 'Miles', 'Rate']
+
 /** The headers the mileage log needs and lacks while it holds anything under its first row: its trips cannot then be read, and are not nothing. */
 export function mileageMissing(header: readonly Cell[], body: readonly (readonly Cell[])[]): MileageColumn[] {
   const columns = columnsOf(header, MILEAGE_COLUMNS)
-  const missing = (['Date', 'Miles'] as const).filter((c) => columns[c] === undefined)
+  // Without Rate a trip's worth cannot be said (it would read as nothing), as without Date or Miles the trip cannot.
+  const missing = MILEAGE_NEEDED.filter((c) => columns[c] === undefined)
   return missing.length && body.some((line) => line.some((c) => c !== undefined && c !== null && c !== '')) ? [...missing] : []
 }
 
@@ -578,7 +584,11 @@ export function milesLine(sum: MilesSum): string {
 
 /** A rate a mile as it was given: "0.70", "0.725", "0.7249". Never rounded short of what the value was worked out with. */
 export function rateWords(rate: number): string {
-  const [whole, part = ''] = rate.toFixed(6).replace(/0+$/, '').split('.')
+  // The number's own shortest spelling, in plain decimals (never "1e-7"), with cents' two places at least: what he typed, as he typed it.
+  let plain = String(rate)
+  const sci = /^(-?\d+)(?:\.(\d+))?e([+-]\d+)$/i.exec(plain)
+  if (sci) plain = rate.toFixed(Math.min(100, Math.max(0, (sci[2] ?? '').length - Number(sci[3]))))
+  const [whole, part = ''] = plain.split('.')
   return `${whole}.${part.padEnd(2, '0')}`
 }
 
@@ -639,7 +649,7 @@ export function joinLines(lines: readonly ReceiptLine[]): string[] {
 const FIGURE = /(?<![\d.,/-])(\$\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?(?![\d/%-]|\.\d)|\$\s?\d+(?:\.\d{2})?(?![\d/%-]|\.\d)|\d{1,3}(?:,\d{3})+\.\d{2}(?![\d/%-]|\.\d)|\d+\.\d{2}(?![\d/%-]|\.\d))/g
 /** Every money figure in a line, in cents: a number with cents, or one after a dollar sign. */
 export function figuresIn(text: string): number[] {
-  return [...text.matchAll(FIGURE)].map((m) => Math.round(Number(m[1].replace(/[$,\s]/g, '')) * 100)).filter((n) => Number.isFinite(n))
+  return [...text.matchAll(FIGURE)].map((m) => centsFrom(Number(m[1].replace(/[$,\s]/g, '')))).filter((n) => Number.isFinite(n))
 }
 
 const TOTAL_WORDS = /\b(grand\s+total|amount\s+due|balance\s+due|total\s+due|balance|total)\b/i
@@ -892,7 +902,7 @@ export interface Invoice {
 export const INVOICE_FIRST = 1001
 export const INVOICE_DUE_DAYS = 14
 
-export const lineTotal = (line: InvoiceLine): number => Math.round(line.quantity * line.rate)
+export const lineTotal = (line: InvoiceLine): number => wholeFrom(line.quantity * line.rate)
 export const invoiceTotal = (lines: readonly InvoiceLine[]): number => lines.reduce((n, l) => n + lineTotal(l), 0)
 
 /** The number after the highest one used: 1001 for the first. */

@@ -16,31 +16,36 @@ import { booksOf, eventMarks, keepMiles, markEvent, setRate, type Books, type Tr
 
 type Ctx = Pick<WorkCtx, 'db' | 'service' | 'log' | 'host' | 'dataDir'>
 
-const LOG_COLUMNS = "The mileage log's columns changed: it needs Date and Miles."
-/** The log as it is now, when it can take a trip: asked before anything of an add is written, so the pay is not left without its trip for a cause known beforehand. */
+const LOG_COLUMNS = "The mileage log's columns changed: it needs Date, Miles, Rate and Value."
+/**
+ * The log as it is now, when it can take a trip: asked before anything of
+ * an add is written, so the pay is not left without its trip for a cause
+ * known beforehand. A trip is written whole or not at all: with no Rate or
+ * Value column its row would be worth nothing in the sheet and in every
+ * figure read from it.
+ */
 async function logOf(ctx: Ctx, books: Books): Promise<Grid> {
   const grid = await gridOf(ctx, books.mileage)
   const at = columnsOf(grid.header, MILEAGE_COLUMNS)
-  if (at.Date === undefined || at.Miles === undefined) throw new MoneyError(LOG_COLUMNS)
+  if (at.Date === undefined || at.Miles === undefined || at.Rate === undefined || at.Value === undefined) throw new MoneyError(LOG_COLUMNS)
   return grid
 }
 
-/** Appends a trip to the mileage log, under the workspace's lock. A trip that already carries `ref` (an add begun before) is answered, not written again. */
+/** Appends a trip to the mileage log, under the workspace's lock, under the Ref its add noted for it. */
 async function appendTrip(ctx: Ctx, ws: Workspace, books: Books, t: { date: string; title: string; place: string; miles: number; rate: number }, ref: string): Promise<NonNullable<MoneyTripped['trip']>> {
   return locked(ws.id, async () => {
     const grid = await logOf(ctx, books)
     const at = columnsOf(grid.header, MILEAGE_COLUMNS)
     const value = centsFrom(t.miles * t.rate)
-    const before = writtenAt(grid, 'Ref', ref)
-    if (before) return { row: before.row, ref, value, ...(before.suggested ? { suggested: true as const } : {}) }
     const shared = await othersCanOpen(ctx, books.mileage, grid.shared)
     // A log others can open takes the trip as a suggestion: it goes under the ones that wait, as in the ledger.
     const row = nextRow(grid)
     const own = at.Ref === undefined ? null : ref
     const cell = (name: MileageColumn, v: Cell): A1[] => (at[name] === undefined ? [] : [{ at: `${columnLetter(at[name]!)}${row}`, v }])
     const cells: A1[] = [...cell('Date', t.date), ...cell('Trip', t.title), ...cell('Place', t.place || null), ...cell('Miles', t.miles), ...cell('Rate', t.rate), ...(own ? cell('Ref', own) : [])]
-    // The value is the sheet's own sum, so a rate he corrects in the row corrects the value.
-    if (at.Value !== undefined && at.Rate !== undefined) cells.push({ at: `${columnLetter(at.Value)}${row}`, f: `${columnLetter(at.Miles!)}${row}*${columnLetter(at.Rate)}${row}` })
+    // The value is the sheet's own sum, so a rate he corrects in the row corrects the value. It is rounded to cents in
+    // the sheet as Money rounds it, so the column's total there is the total Money says.
+    cells.push({ at: `${columnLetter(at.Value!)}${row}`, f: `ROUND(${columnLetter(at.Miles!)}${row}*${columnLetter(at.Rate!)}${row},2)` })
     const { suggested } = await write(ctx, books.mileage, cells, shared)
     return { row, ref: own, value, ...(suggested ? { suggested: true as const } : {}) }
   })
@@ -75,7 +80,9 @@ async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null
   // Already added (a second press, or a list that went stale): nothing is written twice, and the answer says nothing was.
   if (mark?.state === 'added') return { pay: null, trip: null, already: true }
   const books = await openBooks(ctx, ws)
-  const begun = mark?.state === 'adding' ? mark : null
+  // An add that was begun and not finished: still offered (`adding`), or skipped since with its note kept. Either way
+  // it is taken up where it stopped, whichever way he comes back to it (the offer, or Add → Trip… on a skipped one).
+  const begun = mark && (mark.state === 'adding' || mark.intent || mark.fee !== null) ? mark : null
   const was: TripIntent | null = begun?.intent ?? null
   // What the add that was begun already wrote: its rows are looked for by their Refs, in the sheets and among what waits there.
   const paid = was ? writtenRow(await ledgerOf(ctx, books), { ref: was.pay }) : null
@@ -96,8 +103,10 @@ async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null
     pay = { ok: true, ref: got.ref, row: got.row, ...(got.suggested ? { suggested: true as const } : {}) }
   }
   let trip: MoneyTripped['trip'] = null
-  if (miles > 0) {
-    trip = await appendTrip(ctx, ws, books, { date: p.date, title: p.title, place: p.place, miles, rate: rateFor(Number(p.date.slice(0, 4)), books.rates) }, intent.trip)
+  const rate = rateFor(Number(p.date.slice(0, 4)), books.rates)
+  if (logged) trip = { row: logged.row, ref: intent.trip, value: centsFrom(miles * rate), ...(logged.suggested ? { suggested: true as const } : {}) }
+  else if (miles > 0) {
+    trip = await appendTrip(ctx, ws, books, { date: p.date, title: p.title, place: p.place, miles, rate }, intent.trip)
     if (p.place) keepMiles(ctx, ws.id, p.place, miles)
   }
   if (id) markEvent(ctx, ws.id, id, { state: 'added', role, fee: fee > 0 ? fee : null, intent: null })
@@ -123,7 +132,8 @@ export function skipEvent(ctx: Pick<WorkCtx, 'db'>, ws: Workspace, eventId: stri
     else ctx.db.prepare('DELETE FROM work_money_events WHERE workspace_id = ? AND event_id = ?').run(ws.id, eventId)
     return
   }
-  if (mark?.state === 'added') return
+  // Skipped already (a second window, or the same press sent again): nothing changes, and what a begun add noted stays.
+  if (mark?.state === 'added' || mark?.state === 'skipped') return
   const begun = mark?.state === 'adding' ? mark : null
   markEvent(ctx, ws.id, eventId, { state: 'skipped', role: begun?.role ?? roleOf(ws.id, eventId), fee: begun?.fee ?? null, intent: begun?.intent ?? null })
 }

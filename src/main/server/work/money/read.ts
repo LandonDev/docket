@@ -43,12 +43,18 @@ export interface Grid {
   body: Cell[][]
   /** the number of the last row that holds anything, a formula with no result among them; 1 for a sheet with only its header */
   last: number
-  /** the cells that wait in the sheet as suggestions, where they stand now: a new row goes under them, and a row Money already suggested is found among them */
-  pending: { row: number; column: number; v: Cell }[]
+  /** the cells that wait in the first tab as suggestions, where they stand now: a new row goes under them, and a row Money already suggested is found among them; `open`: he can still accept it (not one the sheet marked as in conflict or without its cell) */
+  pending: { row: number; column: number; v: Cell; open: boolean }[]
+  /** the sheet is wider than Money reads (past 1,024 columns): cells may stand past what was read, so nothing is repaired on this reading */
+  partial: boolean
+  /** the first tab's own id in the workbook */
+  tab: string
 }
 
-/** The widest header Money reads: his own columns may stand among Money's. */
+/** The header Money reads when the sheet cannot say how wide it is; a sheet that can is read to its last column that holds anything, however far. */
 const HEADER_MAX = 52
+/** The widest sheet Money reads whole: one with a cell farther out than this is read to here and marked `partial`. */
+const WIDTH_MAX = 1024
 const READ_CELLS = 10_000
 
 type RangeAnswer = { cells: { at: string; v?: string | number | boolean }[][] }
@@ -57,28 +63,31 @@ const range = async (ctx: Svc, path: string, a1: string): Promise<Cell[][]> =>
   ((await ctx.service.internal('/internal/sheet/range', { sheet: sheet(path), range: a1 })) as RangeAnswer).cells.map((line) => line.map((c) => c.v))
 const blank = (line: readonly Cell[]): boolean => line.every((c) => c === undefined || c === null || c === '')
 
-/** The largest sheet Money asks for whole to find its last row: past it, the read falls back to stopping at a blank page. */
+/** The largest sheet Money asks for whole to find its last row: one past it is not read. */
 const EXTENT_MAX_BYTES = 32 * 1024 * 1024
 const FRAME = 4 * 1024 * 1024
+
+/** The sheet's own answer for how far it holds anything was too large to ask for (a workbook past 32 MB): Money reads no such ledger, since it could not know its last row. */
+const TOO_LARGE = 'The sheet is too large for Money to read (over 32 MB).'
 
 /**
  * How far a sheet's first tab holds a value or a formula, from the workbook
  * as the service holds it: the number of its last such row (1 for none past
- * the header) and how many columns across they reach. Null when the
- * workbook is too large to ask for whole.
+ * the header), how many columns across they reach, and the tab's own id.
  */
-async function extentOf(ctx: Svc, path: string, rev: number): Promise<{ rows: number; columns: number } | null> {
+async function extentOf(ctx: Svc, path: string, rev: number): Promise<{ rows: number; columns: number; tab: string }> {
   const chunks: Buffer[] = []
   for (let offset = 0; ; ) {
     const frame = (await ctx.service.internal('/internal/sheet/snapshot', { sheet: sheet(path), rev, offset, length: FRAME })) as { data: string; size: number }
-    if (frame.size > EXTENT_MAX_BYTES) return null
+    if (frame.size > EXTENT_MAX_BYTES) throw new MoneyError(TOO_LARGE)
     const part = Buffer.from(frame.data, 'base64')
     chunks.push(part)
     offset += part.length
     if (offset >= frame.size || part.length === 0) break
   }
   const book = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { sheetOrder?: string[]; sheets?: Record<string, { cellData?: Record<string, Record<string, { v?: unknown; f?: unknown } | null> | null> }> }
-  const tab = book.sheets?.[book.sheetOrder?.[0] ?? '']
+  const id = book.sheetOrder?.[0] ?? ''
+  const tab = book.sheets?.[id]
   let last = 0
   let across = 0
   for (const [row, cells] of Object.entries(tab?.cellData ?? {})) {
@@ -89,42 +98,70 @@ async function extentOf(ctx: Svc, path: string, rev: number): Promise<{ rows: nu
       across = Math.max(across, Number(column) + 1)
     }
   }
-  return { rows: last + 1, columns: across }
+  return { rows: last + 1, columns: across, tab: id }
 }
 
 const grids = new Map<string, Grid>()
+type Opened = { rev: number; shared: boolean; suggestions?: { sheet?: string; row: number; col: number; proposed: { v?: Cell } | null; state?: string }[] }
 
-/** A sheet as it is now. Answers from memory while its revision has not moved. */
+/**
+ * A sheet as it is now. Answers from memory while its revision has not
+ * moved. A read is whole or it fails: how far the sheet holds anything is
+ * asked of the sheet itself, and when that cannot be had (it did not answer,
+ * or the sheet moved on between two asks) the read is tried again and then
+ * fails, so no reading that may have stopped short is ever kept, summed,
+ * exported or appended under.
+ */
 export async function gridOf(ctx: Svc, path: string): Promise<Grid> {
-  const open = (await ctx.service.internal('/internal/sheet/open', { sheet: sheet(path) })) as { rev: number; shared: boolean; suggestions?: { row: number; col: number; proposed: { v?: Cell } | null }[] }
-  // What waits as a suggestion is asked afresh each time: accepting or rejecting one need not move the revision.
-  const pending = (open.suggestions ?? []).map((s) => ({ row: s.row + 1, column: s.col, v: s.proposed?.v }))
+  let failed: unknown
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await readGrid(ctx, path)
+    } catch (err) {
+      if (err instanceof MoneyError) throw err
+      failed = err
+    }
+  }
+  throw failed
+}
+
+async function readGrid(ctx: Svc, path: string): Promise<Grid> {
+  const open = (await ctx.service.internal('/internal/sheet/open', { sheet: sheet(path) })) as Opened
   const held = grids.get(path)
-  if (held && held.rev === open.rev) return { ...held, shared: open.shared === true, pending }
+  // What waits as a suggestion is asked afresh each time: accepting or rejecting one need not move the revision.
+  const pendingOf = (tab: string): Grid['pending'] =>
+    (open.suggestions ?? []).filter((s) => !tab || !s.sheet || s.sheet === tab).map((s) => ({ row: s.row + 1, column: s.col, v: s.proposed?.v, open: (s.state ?? 'pending') === 'pending' }))
+  if (held && held.rev === open.rev) return { ...held, shared: open.shared === true, pending: pendingOf(held.tab) }
   // How far the sheet holds anything, down and across: a stretch of blank rows he left never ends the read early,
   // and figures under no header (a column he moved, its header cleared) are still seen.
-  const extent = await extentOf(ctx, path, open.rev).catch(() => null)
-  const first = (await range(ctx, path, `A1:${columnLetter(HEADER_MAX - 1)}1`))[0] ?? []
+  const extent = await extentOf(ctx, path, open.rev)
+  // Row 1 is read as far as the sheet holds anything: a column he moved past AZ is still seen, under its own header.
+  const across = Math.min(WIDTH_MAX, extent.columns)
+  const first = (await range(ctx, path, `A1:${columnLetter(Math.max(HEADER_MAX, across) - 1)}1`))[0] ?? []
   let named = first.length
   while (named > 0 && blank([first[named - 1]])) named--
-  const width = Math.min(HEADER_MAX, Math.max(named, extent?.columns ?? 0))
+  const width = Math.max(named, across)
   const header = first.slice(0, width)
   const body: Cell[][] = []
   if (width > 0) {
     const per = Math.max(1, Math.floor(READ_CELLS / width))
-    for (let start = 2; extent === null || start <= extent.rows; start += per) {
-      const page = await range(ctx, path, `A${start}:${columnLetter(width - 1)}${start + per - 1}`)
-      body.push(...page)
-      // With the extent unknown (the sheet could not say), a whole page with nothing in it ends the read.
-      if (extent === null && (page.length < per || page.every(blank))) break
-    }
+    for (let start = 2; start <= extent.rows; start += per) body.push(...(await range(ctx, path, `A${start}:${columnLetter(width - 1)}${start + per - 1}`)))
     while (body.length && blank(body[body.length - 1])) body.pop()
   }
   // A row that holds only a formula with no result yet reads as blank, and is a row all the same: nothing is written over it.
-  const grid: Grid = { rev: open.rev, shared: open.shared === true, header, body, last: Math.max(1 + body.length, extent?.rows ?? 1), pending }
+  const grid: Grid = { rev: open.rev, shared: open.shared === true, header, body, last: Math.max(1 + body.length, extent.rows), pending: pendingOf(extent.tab), partial: extent.columns > WIDTH_MAX, tab: extent.tab }
   grids.set(path, grid)
   return grid
 }
+
+/**
+ * Whether these headers already wait in the sheet's first row as
+ * suggestions he can accept (a restore on a ledger others can open): each
+ * by its own name. Another suggestion in row 1, or one on another tab, is
+ * not that.
+ */
+export const headersWait = (grid: Grid, names: readonly string[]): boolean =>
+  names.length > 0 && names.every((name) => grid.pending.some((p) => p.open && p.row === 1 && String(p.v ?? '').trim().toLowerCase() === name.toLowerCase()))
 
 /** The row under everything a sheet holds and everything that waits in it as a suggestion: where an append writes. */
 export const nextRow = (grid: Grid): number => Math.max(grid.last, ...grid.pending.map((p) => p.row)) + 1
@@ -156,7 +193,16 @@ export async function ledgerOf(ctx: Svc, books: Books): Promise<Ledger> {
 }
 
 /** Why a mileage log cannot be read as trips; null when it can. */
-export type MileageProblem = { kind: 'mileage'; reason: 'outside' | 'columns'; missing: string[] }
+export type MileageProblem = { kind: 'mileage'; reason: 'outside' | 'columns' | 'unreadable'; missing: string[] }
+export const LEDGER_OUTSIDE = "The ledger leads outside this job's folder, so Money does not read it."
+
+/** A job's ledger is on record and its file is there, but leads out of the job's folder (a link): it is neither read nor written, and the job is not an empty one. */
+export function ledgerOutside(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): boolean {
+  const books = booksOf(ctx, workspaceId)
+  if (!books || !existsSync(books.ledger)) return false
+  const ws = workspaces(ctx).find((w) => w.id === workspaceId)
+  return !ws || !insideFolder(ws.path, books.ledger)
+}
 export const MILEAGE_OUTSIDE = "The mileage log leads outside this job's folder, so Money does not read it."
 
 /**
@@ -170,14 +216,17 @@ export async function mileageLog(ctx: Svc & Pick<WorkCtx, 'db'>, books: Books): 
   // A log that is a link out of the job's folder is not this job's: its miles are not read, shown or exported.
   const ws = workspaces(ctx).find((w) => w.id === books.workspaceId)
   if (!ws || !insideFolder(ws.path, books.mileage)) return { trips: [], problem: { kind: 'mileage', reason: 'outside', missing: [] } }
-  const grid = await gridOf(ctx, books.mileage)
+  // A log the sheet service cannot open (a damaged file) is the log's own fault: the ledger still reads.
+  const grid = await gridOf(ctx, books.mileage).catch(() => null)
+  if (!grid) return { trips: [], problem: { kind: 'mileage', reason: 'unreadable', missing: [] } }
   const missing = mileageMissing(grid.header, grid.body)
   if (missing.length) return { trips: [], problem: { kind: 'mileage', reason: 'columns', missing } }
   return { trips: mileageOf(grid.header, grid.body), problem: null }
 }
 
 /** A mileage problem as a sentence. */
-export const mileageWords = (p: MileageProblem): string => (p.reason === 'outside' ? MILEAGE_OUTSIDE : `The mileage log has no ${p.missing.join(' or ')} column, so its trips cannot be read.`)
+export const mileageWords = (p: MileageProblem): string =>
+  p.reason === 'outside' ? MILEAGE_OUTSIDE : p.reason === 'unreadable' ? 'The mileage log could not be read.' : `The mileage log has no ${p.missing.join(' or ')} column, so its trips cannot be read.`
 
 export const mileageRows = async (ctx: Svc & Pick<WorkCtx, 'db'>, books: Books): Promise<MileageRow[]> => (await mileageLog(ctx, books)).trips
 
@@ -208,6 +257,8 @@ const EMPTY_SUMS = { in: 0, out: 0, net: 0, owedToHim: 0, heOwes: 0 }
 export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, ws: Workspace, period: Period): Promise<MoneyRead> {
   const year = Number(period.from.slice(0, 4))
   const root = { at: 'file' as const, host: ctx.host, path: join(ws.path, 'Money') }
+  // A ledger that leads out of the job is a fault he must see, never "no money yet".
+  if (ledgerOutside(ctx, ws.id)) throw new MoneyError(LEDGER_OUTSIDE)
   const books = booksHere(ctx, ws.id)
   if (!books) {
     return { made: false, any: false, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(booksOf(ctx, ws.id), year), problems: [] }
@@ -243,15 +294,19 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, w
     toConfirm: [],
     calendar: [],
     rate: rateOf(books, year),
-    problems: [...(ledger.missing.length ? [{ kind: 'columns' as const, missing: ledger.missing, renamed: ledger.renamed }] : []), ...(log.problem ? [log.problem] : [])]
+    problems: [
+      // Headers that wait in the sheet as a suggestion (a restore on a ledger others can open) are said, so the view asks for his accept, not for another restore.
+      ...(ledger.missing.length ? [{ kind: 'columns' as const, missing: ledger.missing, renamed: ledger.renamed, ...(headersWait(ledger.grid, ledger.missing) ? { waits: true as const } : {}) }] : []),
+      ...(log.problem ? [log.problem] : [])
+    ]
   }
 }
 
-/** The jobs a call covers, of the ones the caller may ask about: those that have a ledger. No other job's books are opened. */
-function jobsFor(ctx: Pick<WorkCtx, 'db'>, jobs: readonly Workspace[]): { ws: Workspace; books: Books }[] {
-  return jobs.flatMap((ws) => {
+/** The jobs a call covers, of the ones the caller may ask about: those that have a ledger, one that leads out of its job among them (`books` null: it cannot be read, which is not the same as none). No other job's books are opened. */
+function jobsFor(ctx: Pick<WorkCtx, 'db'>, jobs: readonly Workspace[]): { ws: Workspace; books: Books | null }[] {
+  return jobs.flatMap((ws): { ws: Workspace; books: Books | null }[] => {
     const books = booksHere(ctx, ws.id)
-    return books ? [{ ws, books }] : []
+    return books ? [{ ws, books }] : ledgerOutside(ctx, ws.id) ? [{ ws, books: null }] : []
   })
 }
 
@@ -266,6 +321,7 @@ export async function sumsFor(ctx: Pick<WorkCtx, 'db' | 'service'>, period: Peri
   for (const { ws, books } of jobsFor(ctx, jobs)) {
     const base = { workspaceId: ws.id, sector: ws.sector, currency: 'USD' as const }
     try {
+      if (!books) throw new MoneyError(LEDGER_OUTSIDE)
       const [ledger, log] = await Promise.all([ledgerOf(ctx, books), mileageLog(ctx, books)])
       const sums = sumsOf(ledger.rows, period)
       rows.push({ ...base, in: sums.in, out: sums.out, owedToHim: sums.owedToHim, heOwes: sums.heOwes, miles: milesOf(log.trips, period).miles, ...(ledger.missing.length || log.problem ? { problem: true as const } : {}) })
@@ -281,7 +337,7 @@ export async function owedFor(ctx: Pick<WorkCtx, 'db' | 'service'>, jobs: readon
   const rows: MoneyOwed['rows'] = []
   const problems: string[] = []
   for (const { ws, books } of jobsFor(ctx, jobs)) {
-    const ledger = await ledgerOf(ctx, books).catch(() => null)
+    const ledger = books ? await ledgerOf(ctx, books).catch(() => null) : null
     if (!ledger || ledger.missing.length) {
       problems.push(ws.id)
       continue

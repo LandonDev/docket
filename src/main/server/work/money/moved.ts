@@ -4,7 +4,7 @@ import { columnLetter } from '@shared/work/money'
 import type { FileMoved } from '../files/hooks'
 import type { WorkCtx } from '../modules'
 import { locked, MONEY_FOLDER, othersCanOpen } from './book'
-import { forgetGrid, ledgerOf } from './read'
+import { booksHere, forgetGrid, ledgerOf } from './read'
 import { booksOf, putBooks, workspaces } from './store'
 
 /**
@@ -26,9 +26,11 @@ const under = (root: string, path: string): string | null => {
 /** Rewrites every Receipt cell that held `from` to `to`, both paths under the job's Money folder. */
 export async function relink(ctx: Ctx, workspaceId: string, from: string, to: string): Promise<number> {
   const ws = workspaces(ctx).find((w) => w.id === workspaceId)
-  const books = booksOf(ctx, workspaceId)
-  if (!ws || !books || !existsSync(books.ledger)) return 0
+  if (!ws) return 0
   return locked(workspaceId, async () => {
+    // The ledger as it stands now, and only while it lies in the job's own folder: one he moved out of it is not written.
+    const books = booksHere(ctx, workspaceId)
+    if (!books) return 0
     const ledger = await ledgerOf(ctx, books)
     const col = ledger.columns.Receipt
     if (col === undefined) return 0

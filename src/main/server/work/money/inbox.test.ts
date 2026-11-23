@@ -599,6 +599,26 @@ describe('what the fourth council round asked of receipts', () => {
     expect((await view()).toConfirm).toEqual([])
   })
 
+  it('does not take a row that merely carries the same Ref for the one its accept wrote: the row must name its file', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    // Another row carries the Ref the unfinished accept noted, and names no such file: it is not this receipt's row.
+    for (const [at, v] of [
+      ['A2', '2026-10-01'],
+      ['B2', 'Someone else'],
+      ['F2', 5],
+      ['J2', 'mdone1']
+    ] as const)
+      b.sheets.type(ledger(), at, v)
+    b.db.prepare('UPDATE work_money_inbox SET ref = ? WHERE id = ?').run(JSON.stringify({ intent: { ref: 'mdone1', workspaceId: 'ws-ref', receipt: 'Receipts/2026/gone.png' } }), got.id)
+    const acted = await call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() })
+    expect(acted).toMatchObject({ ok: true, row: 3 })
+    expect((acted as { ref: string }).ref).not.toBe('mdone1')
+    expect((await view()).rows).toHaveLength(2)
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toEqual(['2026-11-21 Blue Heron Coffee 10.43.png'])
+  })
+
   it('lets go of the file an accept kept when its row was never written, and files afresh', async () => {
     const got = await send('coffee.png')
     await settle()
@@ -659,5 +679,86 @@ describe('what the fourth council round asked of receipts', () => {
     expect((await call<{ category: string | null }>('work.money.parse', { lines, sector: 'purdue' })).category).toBe('Events')
     // A receipt by sector goes to the first job in it the caller may ask about, or to none.
     await expect(send('coffee.png', { key: 'sector-key-9', sector: 'purdue', by: REMOTE })).rejects.toThrow('No workspace for that job')
+  })
+})
+
+describe('what the second bug hunt asked of receipts', () => {
+  it('files once a receipt whose row landed though the sheet’s answer was lost: the file stays, and nothing is written twice', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    // The sheet takes the row and its reply never comes back.
+    b.sheets.losing = (route, body) => route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === ledger()
+    expect(await call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() })).toMatchObject({ ok: true, row: 2 })
+    const now = await view()
+    expect(now.rows).toMatchObject([{ who: 'Blue Heron Coffee', receipt: 'Receipts/2026/2026-11-21 Blue Heron Coffee 10.43.png' }])
+    expect(now.toConfirm).toEqual([])
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toEqual(['2026-11-21 Blue Heron Coffee 10.43.png'])
+    // The same press again answers the first.
+    expect(await call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() })).toMatchObject({ ok: true, row: 2 })
+    expect((await view()).rows).toHaveLength(1)
+  })
+
+  it('keeps the file and its note when the sheet cannot be read after a failed write, so the next accept settles it', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    // The write lands, its reply is lost, and the sheet then does not answer at all.
+    const real = b.sheets.internal
+    let down = false
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if (down) throw new Error('The Work service did not answer.')
+      const answer = await real(route, body)
+      if (route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === ledger()) {
+        down = true
+        throw new Error('The Work service did not answer.')
+      }
+      return answer
+    }
+    await expect(call('work.money.accept', { id: got.id, fields: fields() })).rejects.toThrow('did not answer')
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toHaveLength(1)
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    // The sheet is back: the same Save finds the row it wrote and files nothing twice.
+    expect(await call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() })).toMatchObject({ ok: true, row: 2 })
+    expect((await view()).rows).toHaveLength(1)
+    expect(readdirSync(join(b.ref, 'Money', 'Receipts', '2026'))).toHaveLength(1)
+  })
+
+  it('finishes an accept that was filing into another job only for a caller who may ask about that job', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    // His accept was sending it to Purdue and stopped half way: the note names that job and the file it kept there.
+    await call('work.money.open', { workspaceId: 'ws-purdue' })
+    mkdirSync(join(b.purdue, 'Money', 'Receipts', '2026'), { recursive: true })
+    writeFileSync(join(b.purdue, 'Money', 'Receipts', '2026', 'kept.png'), 'kept there')
+    b.db.prepare('UPDATE work_money_inbox SET ref = ? WHERE id = ?').run(JSON.stringify({ intent: { ref: 'mhalf01', workspaceId: 'ws-purdue', receipt: 'Receipts/2026/kept.png' } }), got.id)
+    // A key that reaches the ref job alone: Purdue's ledger is not read for it, and the file there is left alone.
+    await expect(call('work.money.accept', { id: got.id, fields: fields() }, REMOTE)).rejects.toThrow('being filed in another job')
+    expect(existsSync(join(b.purdue, 'Money', 'Receipts', '2026', 'kept.png'))).toBe(true)
+    // The owner at the desk finishes it.
+    expect(await call<MoneyActed>('work.money.accept', { id: got.id, fields: fields() })).toMatchObject({ ok: true })
+  })
+
+  it('does not write a ledger he moved out of the job when a receipt is renamed', async () => {
+    const got = await send('coffee.png')
+    await settle()
+    await call('work.money.accept', { id: got.id, fields: fields() })
+    const outside = join(b.root, 'elsewhere', 'Moved.tcsheet')
+    b.sheets.sheets.set(outside, b.sheets.sheets.get(ledger())!)
+    writeFileSync(outside, '')
+    b.db.prepare("UPDATE work_money_books SET ledger = ? WHERE workspace_id = 'ws-ref'").run(outside)
+    const rev = b.sheets.sheets.get(outside)!.rev
+    expect(await relink(b.ctx, 'ws-ref', 'Receipts/2026/2026-11-21 Blue Heron Coffee 10.43.png', 'Receipts/2026/coffee.png')).toBe(0)
+    expect(b.sheets.sheets.get(outside)!.rev).toBe(rev)
+  })
+
+  it('lets go of a printed page’s parts when nobody finished it in a day', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    await call('work.money.keep', { workspaceId: 'ws-ref', key: 'stale-page-1', what: 'summary', year: 2026, part: 0, parts: 2, dataBase64: Buffer.alloc(8, 1).toString('base64') })
+    const keeping = join(b.root, 'data', 'work-money', 'keeping')
+    expect(readdirSync(keeping)).toHaveLength(1)
+    resume(b.ctx, Date.now() + 25 * 3600_000)
+    expect(readdirSync(keeping)).toEqual([])
+    expect(b.db.prepare("SELECT COUNT(*) AS n FROM work_money_inbox WHERE key = 'kept:stale-page-1'").get()).toEqual({ n: 0 })
   })
 })

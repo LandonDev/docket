@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MONEY_FILE_MAX, MONEY_PART_BYTES } from '@shared/contract-work-money'
@@ -12,6 +13,9 @@ import { MoneyError } from './read'
  */
 
 const partName = (n: number): string => `part-${n}`
+
+/** Where a printed page's parts wait: by the job and the sender's key, so a key sent under another job never finishes this one's upload. */
+export const pageFolder = (dataDir: string, workspaceId: string, key: string): string => join(dataDir, 'work-money', 'keeping', createHash('sha256').update(`${workspaceId}\n${key}`).digest('hex').slice(0, 32))
 
 /**
  * Takes one part. Answers the whole file's path once every part is in,

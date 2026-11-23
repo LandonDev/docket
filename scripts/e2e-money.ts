@@ -263,7 +263,7 @@ try {
   doc.addPage([612, 792]).drawText('Made-up page', { x: 72, y: 720, size: 14 })
   const pdf = Buffer.from(await doc.save())
   const keep = (over: Record<string, unknown>): Promise<MoneyKept> => rpc<MoneyKept>('work.money.keep', { workspaceId: job.id, part: 0, parts: 1, dataBase64: pdf.toString('base64'), ...over })
-  const summary = await keep({ key: 'e2e-money-summary', what: 'summary', year: 2026 })
+  const summary = await keep({ key: 'e2e-money-summary', what: 'summary', year: 2026, generation: out.generation })
   check('the printed summary is kept in the year’s folder', summary.receipt === 'Tax 2026/Summary 2026.pdf' && readFileSync(join(tax, 'Summary 2026.pdf')).equals(pdf))
 
   const number = (await rpc<{ number: string; from: unknown; dueDays: number }>('work.money.invoiceNext', { workspaceId: job.id })).number

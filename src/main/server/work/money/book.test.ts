@@ -1,7 +1,7 @@
-import { existsSync } from 'node:fs'
+import { existsSync, renameSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { MoneyActed, MoneyHits, MoneyOwed, MoneyRead, MoneySums } from '@shared/contract-work-money'
+import type { MoneyActed, MoneyBooks, MoneyHits, MoneyOwed, MoneyRead, MoneyState, MoneySums } from '@shared/contract-work-money'
 import { requiredCapability } from '@shared/capabilities'
 import { MONEY_CAPS, MoneyRequestSchemas } from '@shared/contract-work-money'
 import { LEDGER_COLUMNS, sigOf, type LedgerRow } from '@shared/work/money'
@@ -79,7 +79,7 @@ describe('adding', () => {
     const got = await entry({ category: 'Meals', what: 'Crew coffee' })
     expect(got).toMatchObject({ ok: true, row: 2 })
     const ref = (got as { ref: string }).ref
-    expect(ref).toMatch(/^m[0-9a-f]{5}$/)
+    expect(ref).toMatch(/^m[0-9a-f]{24}$/)
     expect(b.sheets.grid(ledger())[1]).toEqual(['2026-11-21', 'Blue Heron Coffee', 'Crew coffee', 'Meals', '', 10.43, 'Paid', '', '', ref])
     await entry({ who: 'Harrison HS', way: 'in', amount: 7500, status: 'Unpaid' })
     expect(b.sheets.grid(ledger())[2].slice(0, 7)).toEqual(['2026-11-21', 'Harrison HS', '', '', 75, '', 'Unpaid'])
@@ -137,7 +137,7 @@ describe('adding', () => {
   })
 
   it('makes refs that never read as a number', () => {
-    for (let i = 0; i < 50; i++) expect(newRef()).toMatch(/^m[0-9a-f]{5}$/)
+    for (let i = 0; i < 50; i++) expect(newRef()).toMatch(/^m[0-9a-f]{24}$/)
   })
 })
 
@@ -343,14 +343,23 @@ describe('reading', () => {
     expect(b.sheets.sheets.get(ledger())!.rev).toBe(rev)
   })
 
-  it('says so when restored columns only wait as a suggestion on a sheet others can open', async () => {
+  it('says so when restored columns only wait as a suggestion on a sheet others can open, and never suggests them twice', async () => {
     await call('work.money.open', { workspaceId: 'ws-ref' })
     b.sheets.type(ledger(), 'F1', '')
-    b.sheets.sheets.get(ledger())!.shared = true
+    const sheet = b.sheets.sheets.get(ledger())!
+    sheet.shared = true
     expect((await call<{ suggested?: true }>('work.money.open', { workspaceId: 'ws-ref', restore: true })).suggested).toBe(true)
+    // The read says the headers wait in the sheet: his accept there is what is left.
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: [], waits: true }])
+    // A second press writes no second suggestion beside the first.
+    expect((await call<{ suggested?: true }>('work.money.open', { workspaceId: 'ws-ref', restore: true })).suggested).toBe(true)
+    expect(sheet.suggested).toHaveLength(1)
+    // He rejects it in the sheet: nothing waits, and Restore is his to press again.
+    b.sheets.review(ledger(), 'reject')
     expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: [] }])
-    b.sheets.sheets.get(ledger())!.shared = false
+    sheet.shared = false
     expect((await call<{ suggested?: true }>('work.money.open', { workspaceId: 'ws-ref', restore: true })).suggested).toBeUndefined()
+    expect((await read()).problems).toEqual([])
   })
 
   it('sums every job with a ledger, or the one asked for', async () => {
@@ -559,5 +568,138 @@ describe('what the fourth council round asked of the ledger', () => {
     await expect(entry({ date: '2026-02-30' })).rejects.toThrow('That is not a day Money can file: a date that exists, from 1990 to 2100.')
     await expect(entry({ date: '1989-12-31' })).rejects.toThrow('That is not a day Money can file')
     expect(existsSync(join(b.ref, 'Money'))).toBe(false)
+  })
+})
+
+describe('what the fourth council round asked of the books', () => {
+  const type = (cells: Record<string, string | number>): void => {
+    for (const [at, v] of Object.entries(cells)) b.sheets.type(ledger(), at, v)
+  }
+  const mileage = (): string => join(b.ref, 'Money', 'Mileage.tcsheet')
+
+  it('sees a column he moved past AZ under its own header, and never restores over it', async () => {
+    await entry({})
+    // Out moved to BA (the 53rd column) and renamed: its figures are still his.
+    type({ F1: '', F2: '', BA1: 'Spent', BA2: 10.43 })
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: ['Spent'] }])
+    await expect(call('work.money.open', { workspaceId: 'ws-ref', restore: true })).rejects.toThrow('Spent may be it')
+    expect(b.sheets.sheets.get(ledger())!.cells.get('BA1')).toBe('Spent')
+    // Named back where it stands, it reads from there.
+    type({ BA1: 'Out' })
+    expect((await read()).rows[0].out).toBe(1043)
+  })
+
+  it('says a ledger that leads out of its job is a fault, never an empty job, and makes no fresh ledger beside it', async () => {
+    await entry({ amount: 5000 })
+    // The ledger's file is now a link to a sheet outside the job's folder.
+    const outside = join(b.root, 'elsewhere', 'Other.tcsheet')
+    renameSync(ledger(), outside)
+    symlinkSync(outside, ledger())
+    await expect(read()).rejects.toThrow("The ledger leads outside this job's folder, so Money does not read it.")
+    await expect(entry({})).rejects.toThrow("The ledger leads outside this job's folder")
+    await expect(call('work.money.export', { workspaceId: 'ws-ref', year: 2026 })).rejects.toThrow("The ledger leads outside this job's folder")
+    expect((await call<MoneySums>('work.money.sums', { from: '2026-01-01', to: '2027-01-01' })).rows).toMatchObject([{ workspaceId: 'ws-ref', problem: true }])
+    expect((await call<MoneyOwed>('work.money.owed', {})).problems).toEqual(['ws-ref'])
+  })
+
+  it('reads the ledger and opens it whatever state the mileage log is in', async () => {
+    await entry({ amount: 5000 })
+    // A log the sheet service cannot open at all: the ledger still reads, and the miles say why they are none.
+    const real = b.sheets.internal
+    const broken = async (route: string, body: unknown): Promise<unknown> => {
+      if ((body as { sheet?: { tcsheet?: string } }).sheet?.tcsheet === mileage()) throw new Error('The file is not a sheet.')
+      return real(route, body)
+    }
+    ;(b.ctx.service as { internal: unknown }).internal = broken
+    const got = await read()
+    expect(got.rows).toHaveLength(1)
+    expect(got.problems).toEqual([{ kind: 'mileage', reason: 'unreadable', missing: [] }])
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    // A log that is a link out of the job: Open ledger still answers the ledger, the log is null, and an entry is still written.
+    const outside = join(b.root, 'elsewhere', 'Trips.tcsheet')
+    renameSync(mileage(), outside)
+    symlinkSync(outside, mileage())
+    const books = await call<MoneyBooks>('work.money.open', { workspaceId: 'ws-ref' })
+    expect(books.ledger).toMatchObject({ path: ledger() })
+    expect(books.mileage).toBeNull()
+    expect(await entry({ who: 'Second' })).toMatchObject({ ok: true, row: 3 })
+    expect((await read()).problems).toEqual([{ kind: 'mileage', reason: 'outside', missing: [] }])
+    // A trip, which needs the log, is refused before its pay is written.
+    await expect(call('work.money.trip', { workspaceId: 'ws-ref', date: '2026-11-20', title: 'Clinic', miles: 10, fee: 2500 })).rejects.toThrow('leads outside')
+    expect((await read()).rows).toHaveLength(2)
+  })
+
+  it('offers a sender every category the job’s ledger already uses, beside its starting list', async () => {
+    await entry({ category: 'Whistles' })
+    const state = await call<MoneyState>('work.money.state', {})
+    const ref = state.jobs.find((j) => j.workspaceId === 'ws-ref')!
+    expect(ref.categories).toContain('Game fees')
+    expect(ref.categories.slice(-1)).toEqual(['Whistles'])
+    expect(state.jobs.find((j) => j.workspaceId === 'ws-purdue')!.categories).not.toContain('Whistles')
+  })
+
+  it('tells every window on the job when a row is written', async () => {
+    await entry({})
+    expect(b.pushed).toContainEqual({ push: 'work.money', workspaceId: 'ws-ref', toConfirm: 0 })
+  })
+})
+
+describe('what the second bug hunt asked of the books', () => {
+  const sheet = () => b.sheets.sheets.get(ledger())!
+
+  it('reads whole or not at all: a sheet that cannot say how far it goes is asked again, and a reading that may stop short is never kept', async () => {
+    await entry({})
+    b.sheets.type(ledger(), 'B40', 'Far below')
+    b.sheets.type(ledger(), 'F40', 5)
+    b.sheets.type(ledger(), 'A40', '2026-11-22')
+    // One snapshot that does not answer: the read asks again and is whole.
+    b.sheets.failing = (route) => route === '/internal/sheet/snapshot'
+    expect((await read()).rows.map((r) => r.who)).toEqual(['Far below', 'Blue Heron Coffee'])
+    // A sheet that keeps failing to say: the read fails, nothing is summed, and nothing is appended under a guess.
+    b.sheets.type(ledger(), 'B41', 'Later still')
+    const real = b.sheets.internal
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: unknown) => {
+      if (route === '/internal/sheet/snapshot') throw new Error('The Work service did not answer.')
+      return real(route, body)
+    }
+    await expect(read()).rejects.toThrow('did not answer')
+    await expect(entry({ who: 'Never written' })).rejects.toThrow('did not answer')
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    expect(sheet().cells.has('B42')).toBe(false)
+    expect(await entry({ who: 'Under everything' })).toMatchObject({ row: 42 })
+  })
+
+  it('never suggests the same change to a row twice, and leaves a different one for him to settle in the sheet', async () => {
+    await entry({ way: 'in', who: 'West Side HS', amount: 8000, status: 'Unpaid' })
+    sheet().shared = true
+    const row = (await read()).rows[0]
+    // Paid in one window, then in another before the first was accepted: one change set waits, and both presses say so.
+    expect(await call('work.money.paid', { workspaceId: 'ws-ref', at: atOf(row), on: '2026-11-23' })).toMatchObject({ ok: true, suggested: true })
+    expect(await call('work.money.paid', { workspaceId: 'ws-ref', at: atOf(row), on: '2026-11-23' })).toMatchObject({ ok: true, suggested: true })
+    expect(sheet().suggested).toHaveLength(1)
+    // A different change to a cell that waits: accepting both would keep whichever came last, so it is refused.
+    await expect(call('work.money.paid', { workspaceId: 'ws-ref', at: atOf(row), on: '2026-11-30' })).rejects.toThrow('A change to this row already waits in the ledger.')
+    expect(sheet().suggested).toHaveLength(1)
+  })
+
+  it('takes only its own headers for a restore that waits: another suggestion in the first row is not one', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    b.sheets.type(ledger(), 'F1', '')
+    sheet().shared = true
+    // Someone suggested a header of their own in row 1.
+    sheet().suggested.push([{ at: 'L1', v: 'Notes' }])
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: [] }])
+    expect((await call<{ suggested?: true }>('work.money.open', { workspaceId: 'ws-ref', restore: true })).suggested).toBe(true)
+    // Out itself was suggested, beside theirs.
+    expect(sheet().suggested.flat().map((c) => c.v)).toEqual(['Notes', 'Out'])
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: [], waits: true }])
+  })
+
+  it('rounds an agent’s amount by the ledger’s own rule, and takes none that rounds to nothing', async () => {
+    const run = (args: unknown) =>
+      moneyTools[1].run(args, { ...b.ctx, sessionId: 't-ref', scope: b.ctx.scopeOf('t-ref')!, signal: new AbortController().signal } as never).then((r) => ({ text: (r.content[0] as { text: string }).text, isError: r.isError }))
+    expect((await run({ date: '2026-11-07', who: 'Shop', amount: 2.135, way: 'out' })).text).toContain('$2.14')
+    expect((await read()).toConfirm).toMatchObject([{ fields: { amount: 214 } }])
+    expect((await run({ date: '2026-11-07', who: 'Shop', amount: 0.004, way: 'out' })).isError).toBe(true)
   })
 })
