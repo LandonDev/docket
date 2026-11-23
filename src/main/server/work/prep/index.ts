@@ -79,10 +79,14 @@ async function makeNotesDoc(ctx: WorkCtx, by: Caller, workspaceId: string, event
   return { page: (await gather(ctx, workspaceId, eventId, now)).page, source: made.source, title: made.source.at === 'file' ? fileTitle(made.source.path) : made.title }
 }
 
-/** Whether a meeting item holds a file to read; any doubt is no. */
-const meetingHasFile = async (ctx: WorkCtx, itemId: string): Promise<boolean> => {
-  const meeting = await meetingOf(ctx, itemId)
-  return !!meeting && meeting.status !== 'empty'
+/**
+ * How the meeting the notes name stands for a follow-up: `reads` (it holds a file that is read or being read),
+ * `empty` (its file never arrived: the meetings pillar has made nothing of the item, or does not answer), or
+ * `unread` (this host could not read the file).
+ */
+const heldMeeting = async (ctx: WorkCtx, itemId: string): Promise<'reads' | 'empty' | 'unread'> => {
+  const status = (await meetingOf(ctx, itemId))?.status
+  return !status || status === 'empty' ? 'empty' : status === 'failed' ? 'unread' : 'reads'
 }
 
 async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, kind: 'brief' | 'follow', opts: { recording?: { name: string }; restart?: boolean } = {}): Promise<{ sessionId: string; itemId?: string }> {
@@ -91,11 +95,12 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
   let { page } = gathered
   const { recording } = opts
   const follow = kind === 'follow'
-  // The meeting the notes name, and whether it holds a file yet.
+  // The meeting the notes name, and how it stands.
   const held = follow ? page.doc.notes?.meetingItemId : undefined
-  const heldHasFile = held ? await meetingHasFile(ctx, held) : false
-  // A recording that never arrived (its upload failed) is no notes: a follow-up from typed words leaves its empty meeting behind.
-  const stale = held && !recording && !heldHasFile ? page.doc.notes : null
+  const heldIs = held ? await heldMeeting(ctx, held) : null
+  // A recording that never arrived, or that this host could not read, is no notes: a follow-up from typed words (or
+  // from his notes document) leaves that meeting behind and is not sent to read it again.
+  const stale = held && !recording && heldIs !== 'reads' ? page.doc.notes : null
   if (stale) {
     const { meetingItemId: _gone, ...kept } = stale
     const notes = kept.text || kept.file ? kept : null
@@ -110,9 +115,9 @@ async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, k
   if (!opts.restart && !stale && existing && startedAt != null && now - startedAt < PREP_WORKING_MS && (writtenAt === undefined || writtenAt < startedAt)) {
     // The thread still at work keeps its own meeting. A second file goes there only while that meeting is still empty
     // (the first never arrived): one that holds a file is being read, and nothing is put in its place.
-    return { sessionId: existing, ...(held && (!recording || !heldHasFile) ? { itemId: held } : {}) }
+    return { sessionId: existing, ...(held && (!recording || heldIs === 'empty') ? { itemId: held } : {}) }
   }
-  if (follow && !recording && existing && held && heldHasFile && ctx.canvas.get(held)?.sessionId === ctx.canvas.paneOf(existing)) {
+  if (follow && !recording && existing && held && heldIs === 'reads' && ctx.canvas.get(held)?.sessionId === ctx.canvas.paneOf(existing)) {
     // The notes are a recording beside the thread that stopped. A meeting is read only from its own pane, so the same
     // thread is asked again; a new one could not read it.
     try {

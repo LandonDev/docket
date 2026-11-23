@@ -893,6 +893,26 @@ describe('a recording the host could not read', () => {
     expect(starts).toHaveBeenCalledTimes(2)
   })
 
+  it('is left behind by a follow-up from typed words once it could not be read: a fresh thread uses his notes, and none is sent to read it again', async () => {
+    const starts = fakeStarts()
+    const resume = vi.spyOn(rig.work.ctx.threads, 'resume').mockResolvedValue(undefined)
+    const first = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    await withMeetings(meetings('failed', 'The transcriber is not installed on env_box.'), async () => {
+      // nothing typed: the recording was all the notes there were
+      await expect(follow()).rejects.toThrow('Add notes first.')
+      await note('Dana drives the van.')
+      // typed since: the thread that read the failure is not waited on, with or without the window's word
+      const typed = await follow()
+      expect(typed.sessionId).not.toBe(first.sessionId)
+      expect(starts.mock.calls[1]![0].text).toContain('Use his notes.')
+      expect(starts.mock.calls[1]![0].text).not.toContain('meeting_read')
+      const got = await page()
+      expect(got.doc.notes).toEqual({ text: 'Dana drives the van.', at: expect.any(Number) })
+      expect(got).toMatchObject({ notesFile: null, followSessionId: typed.sessionId })
+    })
+    expect(resume).not.toHaveBeenCalled()
+  })
+
   it('still counts as notes for a typed follow-up while it holds a file, and no longer once it never got one', async () => {
     const starts = fakeStarts()
     await note('Dana drives the van.')
