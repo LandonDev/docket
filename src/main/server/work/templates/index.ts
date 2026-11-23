@@ -1,6 +1,6 @@
 import type { z } from 'zod'
 import type { ClientRequest } from '@shared/contract'
-import { TemplatesRequestSchemas, type TemplateFields } from '@shared/contract-work-templates'
+import { TemplatesRequestSchemas } from '@shared/contract-work-templates'
 import { handled, NOT_HANDLED, type Handled } from '@shared/work'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { makeFromShelf } from './make'
@@ -62,7 +62,7 @@ export async function templatesHandle(req: ClientRequest, ctx: WorkCtx, by: Call
     }
     case 'work.templates.fields': {
       const p = params(req, 'work.templates.fields')
-      return handled({ fields: fieldsOfSource(ctx, by, p.workspaceId, p.source) } satisfies TemplateFields)
+      return handled(fieldsOfSource(ctx, by, p.workspaceId, p.source))
     }
   }
   return NOT_HANDLED

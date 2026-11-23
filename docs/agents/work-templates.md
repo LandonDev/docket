@@ -77,7 +77,7 @@ The fill always runs on a scratch copy.
 | `.tcsheet` that is open in a canvas item and is his own | `.xlsx`, through `work.sheets.export` | Excel is where sheets are going |
 | any other `.tcsheet` | a copy, as it is | its export is by item |
 
-`work.sheets.export` writes its file beside the sheet; the save moves that file onto the shelf, so nothing is left beside it. It is never asked for a sheet others can open. A `.tcdoc` or `.tcsheet` he moves into `Templates` by hand is listed and used as a plain copy with no fields, and its state is not opened. The `.tcdoc` to `.docx` path loses what the exporter loses today.
+`work.sheets.export` writes its file among the item's own files, where the sheets pillar keeps its exports; the save copies it from there and leaves it as that pillar left it. It is never asked for a sheet others can open. `work.templates.fields` answers `later` for such a sheet: what it asks for is read from the Excel file the save makes, so the window says it after the save. A `.tcdoc` or `.tcsheet` he moves into `Templates` by hand is listed and used as a plain copy with no fields, and its state is not opened. The `.tcdoc` to `.docx` path loses what the exporter loses today.
 
 ## Making a file (`make.ts`, `place.ts`)
 

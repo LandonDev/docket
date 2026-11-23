@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
 import type { FileDone } from '@shared/contract-work-files'
 import type { ExportAnswer } from '@shared/contract-work-formats'
-import type { TemplateRemoved } from '@shared/contract-work-templates'
+import type { TemplateFields, TemplateRemoved } from '@shared/contract-work-templates'
 import type { CanvasSource } from '@shared/work'
 import { splitName } from '@shared/work/files'
 import { askedFields, fileStem, parseTemplateId, templateFormOf, type Template, type TemplateForm } from '@shared/work/templates'
@@ -64,6 +64,12 @@ async function ask<T>(ctx: WorkCtx, by: Caller, pillars: Pillars, method: string
   return answer.result as T
 }
 
+/** The open canvas item that shows our own sheet, when the sheet is his own: the one a save can export as Excel. Null for any other. */
+function exportableSheet(ctx: WorkCtx, workspace: WorkspaceRow, source: CanvasSource, path: string): { id: string } | null {
+  if (sharedOf(ctx, source)) return null
+  return ctx.canvas.forWorkspace(workspace.id, { panes: true }).find((i) => i.kind === 'sheet' && i.source.at === 'file' && i.source.path === path) ?? null
+}
+
 /**
  * The file that goes on the shelf for a source, as a path to copy and the
  * form it is kept in; `drop` is a file an export made that goes once it is
@@ -80,18 +86,16 @@ async function shelfFile(ctx: WorkCtx, by: Caller, workspace: WorkspaceRow, sour
     await writeFile(made, Buffer.from(out.data, 'base64'))
     return { from: made, form: 'docx', drop: made }
   }
-  if (form === 'tcsheet' && !sharedOf(ctx, source)) {
-    // Our sheet is kept as Excel. Its export is by the item that shows it, and writes beside the file: so only
-    // for a sheet that is open and is his own, and what it wrote goes once it is on the shelf.
-    const item = ctx.canvas.forWorkspace(workspace.id, { panes: true }).find((i) => i.kind === 'sheet' && i.source.at === 'file' && i.source.path === path)
-    if (item) {
-      try {
-        const out = await ask<{ path: string }>(ctx, by, pillars, 'work.sheets.export', { itemId: item.id, format: 'xlsx' }, deps.signal)
-        if (out.path && out.path !== path && existsSync(out.path)) return { from: out.path, form: 'xlsx', drop: out.path }
-      } catch (err) {
-        if (deps.signal?.aborted) throw err
-        ctx.log(`templates: ${basename(path)} is kept as it is: its export did not answer`)
-      }
+  const item = form === 'tcsheet' ? exportableSheet(ctx, workspace, source, path) : null
+  if (item) {
+    // Our sheet is kept as Excel. Its export is by the item that shows it and is written among the item's own
+    // files, where the sheets pillar keeps its exports: it is copied from there and left as that pillar left it.
+    try {
+      const out = await ask<{ path: string }>(ctx, by, pillars, 'work.sheets.export', { itemId: item.id, format: 'xlsx' }, deps.signal)
+      if (out.path && out.path !== path && existsSync(out.path)) return { from: out.path, form: 'xlsx' }
+    } catch (err) {
+      if (deps.signal?.aborted) throw err
+      ctx.log(`templates: ${basename(path)} is kept as it is: its export did not answer`)
     }
   }
   return { from: path, form }
@@ -238,17 +242,19 @@ export function unhideTemplates(ctx: WorkCtx, by: Caller, workspaceId: string, r
  * nothing is copied or written. Our own document is read from the preview it
  * carries; our own sheet names none until it is kept as Excel.
  */
-export function fieldsOfSource(ctx: WorkCtx, by: Caller, workspaceId: string, source: CanvasSource): string[] {
+export function fieldsOfSource(ctx: WorkCtx, by: Caller, workspaceId: string, source: CanvasSource): TemplateFields {
   const workspace = workspaceOf(ctx, workspaceId)
   const path = pathOf(ctx, source)
   if (by.kind === 'remote' && !by.peer && (!ctx.reaches(by, path) || !ctx.reaches(by, workspace.path))) throw new Error(OUT_OF_REACH)
   const formed = templateFormOf(path)
   if (!formed) throw new Error(NOT_A_TEMPLATE)
-  if (formed.form === 'tcdoc') return tcdocFields(path)
-  if (!isOfficeForm(formed.form)) return []
+  if (formed.form === 'tcdoc') return { fields: tcdocFields(path) }
+  // Our own sheet that a save will keep as Excel: what it asks for is read from that Excel file, so it is known only then.
+  if (formed.form === 'tcsheet') return exportableSheet(ctx, workspace, source, path) ? { fields: [], later: true } : { fields: [] }
+  if (!isOfficeForm(formed.form)) return { fields: [] }
   try {
-    return askedFields(scanOffice(formed.form, new Uint8Array(readFileSync(path))))
+    return { fields: askedFields(scanOffice(formed.form, new Uint8Array(readFileSync(path)))) }
   } catch {
-    return [] // a file that is no zip, or is gone: a plain copy asks for nothing
+    return { fields: [] } // a file that is no zip, or is gone: a plain copy asks for nothing
   }
 }

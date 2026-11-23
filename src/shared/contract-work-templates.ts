@@ -56,6 +56,8 @@ export interface TemplatesList {
 /** What `work.templates.fields` answers: the asked fields, in the file's order. */
 export interface TemplateFields {
   fields: string[]
+  /** our own sheet, which is kept as Excel when it is saved: its fields are known only then, from the save's answer */
+  later?: true
 }
 
 /** What a remove did: nothing yet (`confirm`: ask him, then say `confirmed`), a move to Files' Trash (`trashed`), or it is done. */

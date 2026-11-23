@@ -90,7 +90,7 @@ describe('save', () => {
     expect(saved).toMatchObject({ id: 'job:Dated.docx', form: 'docx', fields: [] })
   })
 
-  it('keeps our own sheet as Excel through the sheets pillar\'s export when the sheet is open, and what the export wrote beside it goes', async () => {
+  it("keeps our own sheet as Excel through the sheets pillar's export when the sheet is open, and leaves the export where that pillar wrote it, with any export that was there", async () => {
     const source = rig.put(join(rig.folder, 'Log.tcsheet'), 'sheet state')
     rig.items.push({ id: 'item_9', sessionId: 't1', kind: 'sheet', title: 'Log', source: file(source) } as unknown as CanvasItem)
     const seen: ClientRequest[] = []
@@ -99,13 +99,17 @@ describe('save', () => {
       ensure() {},
       handle: async (req) => {
         seen.push(req)
-        return handled({ path: rig.put(join(rig.folder, 'Log.xlsx'), xlsx('{{Season}} log')) })
+        // As the sheets pillar does: one fixed name among the item's own files, over any earlier export.
+        return handled({ path: rig.put(join(rig.dataDir, 'canvas', 't1', 'item_9', 'Log.xlsx'), xlsx('{{Season}} log')) })
       }
     }
+    expect(fieldsOfSource(rig.ctx, window, WS, file(source))).toEqual({ fields: [], later: true })
     const saved = await saveTemplate(rig.ctx, window, { workspaceId: WS, source: file(source) }, { pillars: () => [sheets] })
     expect(saved).toMatchObject({ id: 'job:Log.xlsx', form: 'xlsx', fields: ['Season'] })
     expect((seen[0] as { params: unknown }).params).toEqual({ itemId: 'item_9', format: 'xlsx' })
+    // His folder gained nothing, and the export he may have made before is still among the item's files.
     expect(readdirSync(rig.folder).sort()).toEqual(['Log.tcsheet', 'Templates'])
+    expect(existsSync(join(rig.dataDir, 'canvas', 't1', 'item_9', 'Log.xlsx'))).toBe(true)
   })
 
   it('keeps our own sheet as it is when no item shows it or its export does not answer', async () => {
@@ -139,10 +143,11 @@ describe('the fields of a file, read before it is saved', () => {
     const ours = rig.put(join(rig.folder, 'b.tcdoc'), makeZip({ 'preview.md': '{{Client}} {{Job}}' }))
     const sheet = rig.put(join(rig.folder, 'c.tcsheet'), 'state')
     const broken = rig.put(join(rig.folder, 'd.xlsx'), 'not a zip')
-    expect(fieldsOfSource(rig.ctx, window, WS, file(word))).toEqual(['Home', 'Away'])
-    expect(fieldsOfSource(rig.ctx, window, WS, file(ours))).toEqual(['Client'])
-    expect(fieldsOfSource(rig.ctx, window, WS, file(sheet))).toEqual([])
-    expect(fieldsOfSource(rig.ctx, window, WS, file(broken))).toEqual([])
+    expect(fieldsOfSource(rig.ctx, window, WS, file(word))).toEqual({ fields: ['Home', 'Away'] })
+    expect(fieldsOfSource(rig.ctx, window, WS, file(ours))).toEqual({ fields: ['Client'] })
+    // A sheet no item shows is kept as it is: it asks for nothing, now or later.
+    expect(fieldsOfSource(rig.ctx, window, WS, file(sheet))).toEqual({ fields: [] })
+    expect(fieldsOfSource(rig.ctx, window, WS, file(broken))).toEqual({ fields: [] })
     expect(shelfFiles()).toEqual([])
   })
 
