@@ -16,7 +16,7 @@ import { openConnections } from "../shell/open";
 import { useMessagesData } from "./data";
 import { aroundMatch, CHAT_FILTERS, FILTER_EMPTY, FILTER_LABEL, FILTER_ROW, firstName, markWords, menuKey, rowLine, rowTime, type ChatFilter } from "./model";
 import { chatChip, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
-import { keepListTop, listTopOf, patchPage, takeReturn, usePage } from "./page";
+import { keepListTop, listTopOf, openedFrom, patchPage, takeReturn, usePage } from "./page";
 
 /**
  * The list of a job's conversations (docs/agents/work-messages.md "The
@@ -185,7 +185,8 @@ function ChatRows({
   if (chats.status === "loading") return <RowBones />;
   const { rows } = chats.value;
   if (rows.length === 0) {
-    if (filter !== "all") return <ListEmpty title={FILTER_EMPTY[filter]} action={{ label: "Clear filter", onClick: () => patchPage(workspaceId, { filter: "all" }) }} />;
+    // Come back to a list his reading emptied, the keys go to Clear filter.
+    if (filter !== "all") return <ListEmpty title={FILTER_EMPTY[filter]} action={{ label: "Clear filter", onClick: () => patchPage(workspaceId, { filter: "all" }) }} takesReturn={workspaceId} />;
     // Held until the sources answer too, so an empty job says its true cause the first time; sources that did not load
     // leave the cause unknown, which is a list that did not load.
     if (linked === null) return <RowBones />;
@@ -239,10 +240,12 @@ function RowsWindow({
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTop = listTopOf(workspaceId, filter);
+    // The row he left, or, gone from this list meanwhile (read, under Unread), the one now in its place.
     const back = takeReturn(workspaceId);
-    if (back && rows.some((row) => row._id === back)) {
-      setActive(back);
-      show(back);
+    const target = back ? (rows.some((row) => row._id === back.chatId) ? back.chatId : rows[Math.min(back.index, rows.length - 1)]?._id) : undefined;
+    if (target) {
+      setActive(target);
+      show(target);
       listbox.current?.focus({ preventScroll: true });
     }
     // biome-ignore lint/correctness/useExhaustiveDependencies: once a mount
@@ -251,6 +254,14 @@ function RowsWindow({
   useEffect(() => {
     if (!done && range.end >= rows.length - 20) more();
   }, [done, range.end, rows.length, more]);
+  // Opening notes where the keys stood, so Back can hand them back there.
+  const open = useCallback(
+    (chatId: string): void => {
+      openedFrom(workspaceId, { chatId, index: Math.max(0, rows.findIndex((row) => row._id === chatId)) });
+      onOpen(chatId);
+    },
+    [workspaceId, rows, onOpen],
+  );
   const start = useStartThread();
   const menuAt = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
   const menu = (id: string | null): MenuRow[] | null => {
@@ -280,7 +291,7 @@ function RowsWindow({
     }
     if (event.key === "Enter" && active) {
       event.preventDefault();
-      onOpen(active);
+      open(active);
       return;
     }
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
@@ -290,10 +301,12 @@ function RowsWindow({
     const next = rows[Math.max(0, Math.min(rows.length - 1, at + step))];
     if (!next) return;
     setActive(next._id);
-    if (!narrow) onOpen(next._id);
+    if (!narrow) open(next._id);
     show(next._id);
   };
-  const standing = active !== null && byId.has(active);
+  // The list names its active row only while that row is drawn; else it wears the ring itself.
+  const activeAt = active ? rows.findIndex((row) => row._id === active) : -1;
+  const standing = activeAt >= range.start && activeAt < range.end;
   return (
     <div ref={scroller} onScroll={(event) => keepListTop(workspaceId, filter, event.currentTarget.scrollTop)} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
       <RowsContextMenu lazyMount label="Conversation" rowsFor={menu} onPick={pick} openRef={menuAt}>
@@ -303,13 +316,13 @@ function RowsWindow({
           role="listbox"
           tabIndex={0}
           aria-label="Conversations"
-          aria-activedescendant={standing ? rowId(active) : undefined}
+          aria-activedescendant={standing && active ? rowId(active) : undefined}
           onKeyDown={keys}
           className={cn("group/list px-1.5 pb-1.5", standing ? "outline-none" : "focus-ring")}
         >
           <div aria-hidden style={{ height: range.start * SLOT }} />
           {rows.slice(range.start, range.end).map((row) => (
-            <ChatRowView key={row._id} row={row} open={row._id === openId} active={row._id === active} drafted={drafted.has(row._id)} now={now} onOpen={onOpen} onRead={data.markRead} onUnread={data.markUnread} />
+            <ChatRowView key={row._id} row={row} open={row._id === openId} active={row._id === active} drafted={drafted.has(row._id)} now={now} onOpen={open} onRead={data.markRead} onUnread={data.markUnread} />
           ))}
           <div aria-hidden style={{ height: (rows.length - range.end) * SLOT }} />
         </div>
@@ -431,16 +444,16 @@ const ChatRowView = memo(function ChatRowView({
 /** Rows of bones in the row's own grid and height, so nothing moves when the list lands. */
 export function RowBones() {
   return (
-    <div aria-hidden data-row-bones className="min-h-0 flex-1 overflow-hidden px-1.5">
+    <div role="status" aria-busy aria-label="Loading conversations" data-row-bones className="min-h-0 flex-1 overflow-hidden px-1.5">
       {Array.from({ length: BONES }, (_, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: fixed bones that never reorder
-        <div key={i} style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }} className={ROW_GRID}>
+        <div key={i} aria-hidden style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }} className={ROW_GRID}>
           <span className="row-span-2" />
           <span className={FACE_CELL}>
             <Skeleton className="size-6 rounded-full" />
           </span>
           <span className="flex h-5 items-center justify-between gap-6">
-            <Skeleton className="h-3" style={{ width: `${[44, 30, 52, 36, 48, 28, 40, 34][i]}%` }} />
+            <Skeleton className="h-3 max-w-40" style={{ width: `${[44, 30, 52, 36, 48, 28, 40, 34][i]}%` }} />
             <Skeleton className="h-2.5 w-9" />
           </span>
           <span className="flex h-5 items-center">
@@ -452,14 +465,18 @@ export function RowBones() {
   );
 }
 
-function ListEmpty({ title, action }: { title: string; action?: { label: string; onClick: () => void } }) {
+function ListEmpty({ title, action, takesReturn }: { title: string; action?: { label: string; onClick: () => void }; takesReturn?: string }) {
+  const button = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (takesReturn && takeReturn(takesReturn)) button.current?.focus();
+  }, [takesReturn]);
   return (
     <Empty className={LIST_EMPTY}>
       <EmptyHeader>
         <EmptyTitle>{title}</EmptyTitle>
       </EmptyHeader>
       {action ? (
-        <Button size="sm" variant="secondary" className="pointer-events-auto" onClick={action.onClick}>
+        <Button ref={button} size="sm" variant="secondary" className="pointer-events-auto" onClick={action.onClick}>
           {action.label}
         </Button>
       ) : null}
@@ -498,13 +515,38 @@ function SearchHits({ workspaceId, query, narrow, onOpen, retry }: { workspaceId
   const known = useMemo(() => new Map((chats.status === "ready" ? chats.value.rows : []).map((row) => [row._id, row])), [chats]);
   const [active, setActive] = useState<string | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
+  // The last answer stays while the next words are asked, as Mail's search keeps its results: typing never flashes bones.
+  const [kept, setKept] = useState<readonly ChatHit[] | null>(null);
+  if (hits.status === "ready" && hits.value !== kept) setKept(hits.value);
+  // Come back from a hit under 640px: the keys on the hit he left, or the one now in its place.
+  const [back] = useState(() => takeReturn(workspaceId));
+  const settled = useRef(false);
+  const listbox = useRef<HTMLDivElement>(null);
+  // How many characters a hit's line holds at this width, so the word it found always shows.
+  const [width, setWidth] = useState(0);
+  const box = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const measure = (): void => setWidth(el.clientWidth);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  const list = hits.status === "ready" ? hits.value : kept;
+  useLayoutEffect(() => {
+    if (!back || settled.current || !list?.length) return;
+    settled.current = true;
+    const target = list.some((hit) => hit.messageId === back.hit) ? back.hit! : list[Math.min(back.index, list.length - 1)]!.messageId;
+    setActive(target);
+    listbox.current?.focus({ preventScroll: true });
+  }, [back, list]);
   if (hits.status === "failed") return <ListEmpty title="The search did not run" action={retryOf(retry)} />;
-  if (hits.status === "loading") return <RowBones />;
-  const list = hits.value;
+  if (!list) return <RowBones />;
   if (list.length === 0) return <ListEmpty title="No matches" action={{ label: "Clear search", onClick: () => patchPage(workspaceId, { query: "" }) }} />;
   const open = (hit: ChatHit): void => {
     setActive(hit.messageId);
     setOpened(hit.messageId);
+    openedFrom(workspaceId, { chatId: hit.chatId, index: list.indexOf(hit), hit: hit.messageId });
     onOpen(hit.chatId, hit.messageId);
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -523,9 +565,12 @@ function SearchHits({ workspaceId, query, narrow, onOpen, retry }: { workspaceId
     document.getElementById(hitId(next.messageId))?.scrollIntoView?.({ block: "nearest" });
   };
   const standing = active !== null && list.some((hit) => hit.messageId === active);
+  // The line's room: the list's width less the row's insets, gutter and face column, at about 6.4px a 12px character.
+  const chars = width > 0 ? Math.floor((width - 78) / 6.4) : 0;
   return (
-    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+    <div ref={box} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
       <div
+        ref={listbox}
         role="listbox"
         tabIndex={0}
         aria-label="Search results"
@@ -534,7 +579,7 @@ function SearchHits({ workspaceId, query, narrow, onOpen, retry }: { workspaceId
         className={cn("group/list px-1.5 pb-1.5", standing ? "outline-none" : "focus-ring")}
       >
         {list.map((hit) => (
-          <HitRow key={hit.messageId} hit={hit} row={known.get(hit.chatId)} query={query} open={hit.messageId === opened} active={hit.messageId === active} now={now} onOpen={() => open(hit)} />
+          <HitRow key={hit.messageId} hit={hit} row={known.get(hit.chatId)} query={query} chars={chars} open={hit.messageId === opened} active={hit.messageId === active} now={now} onOpen={() => open(hit)} />
         ))}
       </div>
     </div>
@@ -543,8 +588,12 @@ function SearchHits({ workspaceId, query, narrow, onOpen, retry }: { workspaceId
 
 const hitId = (messageId: string): string => `chat-hit-${messageId}`;
 
-function HitRow({ hit, row, query, open, active, now, onOpen }: { hit: ChatHit; row: ChatRow | undefined; query: string; open: boolean; active: boolean; now: number; onOpen: () => void }) {
+function HitRow({ hit, row, query, chars, open, active, now, onOpen }: { hit: ChatHit; row: ChatRow | undefined; query: string; chars: number; open: boolean; active: boolean; now: number; onOpen: () => void }) {
   const kind = row?.kind ?? (hit.chat.startsWith("#") ? "channel" : "direct");
+  // A direct chat's name is the other person already: only his own words are led, as a row leads them.
+  const lead = kind === "direct" ? (hit.who === "You" ? "You: " : "") : `${firstName(hit.who)}: `;
+  // Cut the words' start only where the line could not show the match otherwise; never cut the match itself.
+  const room = chars > 0 ? Math.max(4, chars - lead.length - query.length - 6) : 40;
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the list's keys move and open the active hit
     <div
@@ -570,8 +619,8 @@ function HitRow({ hit, row, query, open, active, now, onOpen }: { hit: ChatHit; 
         <time className="ms-auto shrink-0 ps-2 text-xs text-muted-foreground tabular-nums">{rowTime(hit.at, now)}</time>
       </span>
       <span dir="auto" className="h-5 truncate text-start text-xs leading-5 text-muted-foreground">
-        {`${firstName(hit.who)}: `}
-        <Lit text={aroundMatch(hit.text, query)} query={query} />
+        {lead}
+        <Lit text={aroundMatch(hit.text, query, room, Math.min(12, room))} query={query} />
       </span>
     </div>
   );

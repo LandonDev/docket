@@ -9,7 +9,7 @@ import { openUrl } from "../../lib/native";
 import { workOpenPort } from "../../lib/workSwitch";
 import { useMessagesData, type ThreadDraft } from "./data";
 import { firstName } from "./model";
-import { keepRefusal, keepTyped, typedIn, useRefusal, useTyped } from "./page";
+import { keepRefusal, keepTyped, typedIn, useRefusal, useTyped, useTypedFrom } from "./page";
 import { QUICK_ANSWERS } from "./quick";
 
 /**
@@ -39,24 +39,22 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   const setRefused = (words: string | null): void => keepRefusal(workspaceId, chatId, words);
   const field = useRef<HTMLTextAreaElement>(null);
 
-  // Whose words the field holds: the draft's (or his edit of them, started from it), or his own. Send acts on that:
-  // a draft's words press the held item, his own go as his own reply and leave the draft waiting.
-  const [fromDraft, setFromDraft] = useState<string | null>(null);
+  // Whose words the field holds: the draft's (or his edit of them, started from it), or his own. It is kept beside the
+  // words in page.ts, so leaving and coming back, a Retry or the 640px crossing find it as it was. Send acts on that: a
+  // draft's words press the held item, his own go as his own reply and leave the draft waiting. A draft gone meanwhile
+  // (sent or discarded elsewhere) leaves its words as his own: only a fresh choice ties them to another.
+  const fromDraft = useTypedFrom(workspaceId, chatId);
   // A draft arriving fills an empty field once; his own words are never written over.
   const filled = useRef<string | null>(null);
   useEffect(() => {
     if (!draft || filled.current === draft.id) return;
     filled.current = draft.id;
-    if (!typedIn(workspaceId, chatId).trim()) {
-      keepTyped(workspaceId, chatId, draft.text);
-      setFromDraft(draft.id);
-    }
+    if (!typedIn(workspaceId, chatId).trim()) keepTyped(workspaceId, chatId, draft.text, draft.id);
   }, [draft, workspaceId, chatId]);
   const drafting = draft !== null && fromDraft === draft.id && text.trim() !== "";
   // The draft's words, put before his own on his say ("Use draft"), so neither is lost.
   const takeDraft = (d: ThreadDraft): void => {
-    setText(text.trim() ? `${d.text}\n${text}` : d.text);
-    setFromDraft(d.id);
+    keepTyped(workspaceId, chatId, text.trim() ? `${d.text}\n${text}` : d.text, d.id);
     field.current?.focus();
   };
 
@@ -80,10 +78,12 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
       setBusy(null);
     }
   };
-  /** After a send, only the words it took leave the field: what he typed while it went stays. */
-  const settle = (sent: string): void => {
-    const now = typedIn(workspaceId, chatId);
-    setText(now === sent ? "" : now.startsWith(sent) ? now.slice(sent.length).replace(/^\s+/, "") : now);
+  /**
+   * After a send or a discard, the field empties only if it still holds exactly what it held at the press: anything he
+   * typed, changed or replaced while it went stays as he left it.
+   */
+  const settle = (pressed: string): void => {
+    if (typedIn(workspaceId, chatId) === pressed) keepTyped(workspaceId, chatId, "", null);
   };
   const send = (): Promise<void> => {
     const sent = text;
@@ -92,7 +92,6 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
       if (pressing) await data.sendDraft(pressing, sent.trim());
       else await data.send(chatId, sent.trim());
       settle(sent);
-      if (pressing) setFromDraft(null);
       field.current?.focus();
     });
   };
@@ -108,18 +107,17 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     if (drafting && draft && !draft.held) {
       const done = draft;
       settle(text);
-      setFromDraft(null);
       await run("drop", () => data.dropDraft(done));
     }
   };
-  const discard = (d: ThreadDraft): Promise<void> =>
-    run("drop", async () => {
+  const discard = (d: ThreadDraft): Promise<void> => {
+    // The field empties only if it still holds the discarded draft's words as they were at the press.
+    const pressed = fromDraft === d.id && text === d.text ? text : null;
+    return run("drop", async () => {
       await data.dropDraft(d);
-      if (fromDraft === d.id) {
-        setText("");
-        setFromDraft(null);
-      }
+      if (pressed !== null) settle(pressed);
     });
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -151,9 +149,8 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
             value={text}
             onChange={(event) => {
               const next = event.currentTarget.value;
-              setText(next);
-              // Emptied, the field's next words are his own.
-              if (!next.trim()) setFromDraft(null);
+              // An edit keeps whose words they are; emptied, the field's next words are his own.
+              keepTyped(workspaceId, chatId, next.trim() ? next : "", next.trim() ? undefined : null);
               if (refused) setRefused(null);
             }}
             onKeyDown={onKeyDown}
@@ -197,9 +194,10 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
 }
 
 /**
- * Whose draft this is: the amber mark, "Drafted in" and the thread's name, the
- * way to it, Use draft while the field holds his own words, and for a
- * copy-only draft why nothing here can send it.
+ * Whose draft this is: the amber mark, "Drafted in" and the thread's name, for a
+ * copy-only draft why nothing here can send it, then its controls (Use draft
+ * while the field holds his own words, Open thread), so the line ends with
+ * what it offers.
  */
 function DraftLine({ draft, why, onUse }: { draft: ThreadDraft; why?: string; onUse?: () => void }) {
   const open = draft.threadId ? () => workOpenPort.get()?.(draft.threadId!) : undefined;
@@ -208,6 +206,7 @@ function DraftLine({ draft, why, onUse }: { draft: ThreadDraft; why?: string; on
       <CircleDot aria-hidden className="size-3.5 shrink-0 text-warning" />
       <span className="shrink-0 text-muted-foreground">{draft.thread ? "Drafted in" : "Drafted in a thread"}</span>
       {draft.thread ? <span className="min-w-0 truncate font-medium text-foreground">{draft.thread}</span> : null}
+      {why ? <span className="ms-1 min-w-0 truncate text-muted-foreground">{why}</span> : null}
       {onUse ? (
         <Button variant="ghost" size="xs" className="-my-1 ms-1 shrink-0 text-muted-foreground" onClick={onUse}>
           Use draft
@@ -218,7 +217,6 @@ function DraftLine({ draft, why, onUse }: { draft: ThreadDraft; why?: string; on
           Open thread
         </Button>
       ) : null}
-      {why ? <span className="ms-1 min-w-0 truncate text-muted-foreground">{why}</span> : null}
     </span>
   );
 }

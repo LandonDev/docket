@@ -12,7 +12,7 @@ import { ChatList } from "./ChatList";
 import { Conversation } from "./Conversation";
 import { MessagesDataProvider } from "./data";
 import { liveData } from "./live";
-import { patchPage, returnTo, usePage, wantMessage } from "./page";
+import { endVisit, patchPage, returnTo, usePage, wantMessage } from "./page";
 import { StartThreadProvider } from "./threads";
 
 /**
@@ -116,6 +116,12 @@ export function MessagesScreen({
   }, [forced]);
   const narrow = forced ?? measured;
   const open = (chatId: string, messageId?: string): void => (messageId ? wantMessage(workspaceId, chatId, messageId) : patchPage(workspaceId, { chatId }));
+  // Leaving a conversation ends its visit: the next opening reads "New" afresh.
+  const openChat = page.chatId;
+  useEffect(() => {
+    if (!openChat) return;
+    return () => endVisit(workspaceId, openChat);
+  }, [workspaceId, openChat]);
   const back = (): void => {
     // Under 640px the list comes back in the conversation's place: the keys go back to the row he left.
     if (page.chatId) returnTo(workspaceId, page.chatId);

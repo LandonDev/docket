@@ -197,9 +197,11 @@ The look is docs/DESIGN.md "The Messages view".
   (`wantsRead`); so does a message that arrives while it is open and the
   window is in front, or his coming back to the window. His own Mark unread
   holds: nothing marks the conversation read again until he opens it anew or
-  a newer message from someone else comes. "New" is read from the first
-  answer, before any read mark is written, and kept for the visit
-  (`newSince`): over the first message from someone else since his mark, the
+  a newer message from someone else comes. The read mark waits until the
+  column has placed him, so a conversation whose messages did not come is
+  not marked read. "New" is read from the first answer and kept for the
+  visit in page.ts (`visitSince`), so a Retry or a remount finds the same
+  line; leaving the conversation ends the visit (`newSince`): over the first message from someone else since his mark, the
   service's own or his own last word, and only for one he has opened before
   or that is unread. When it lies above the first page the column reads older
   pages until it holds it (at most twenty) and opens there.
@@ -213,8 +215,12 @@ The look is docs/DESIGN.md "The Messages view".
   with the `rev` it now has, anything but sent or sending refused in the
   Outbox's words; his own go as his own reply (`send`, never the draft's
   `replyTo`) and the draft keeps waiting, its line offering Use draft, which
-  puts the draft's words before his. A Send clears only the words it took;
-  what he typed meanwhile stays. A refusal is kept with the conversation
+  puts the draft's words before his. Whose words they are is kept beside them
+  in page.ts (`keepTyped(…, from)`), so leaving and coming back, a Retry or
+  the 640px crossing find a draft still a draft; a draft gone meanwhile
+  leaves its words as his own. A Send or a Discard empties the field only if
+  it still holds exactly what it held at the press (for Discard, the draft's
+  own words); anything he typed or replaced meanwhile stays as he left it. A refusal is kept with the conversation
   (`page.ts`) until he types or sends again. His own reply shows from
   LifeOS's row: `queued` is "Sending" with Undo (the words back into an
   empty field, else before what is there, a line between), `sending`
@@ -231,9 +237,14 @@ The look is docs/DESIGN.md "The Messages view".
   count of older pages starts afresh for each message asked for.
 - **Keys.** The list is one tab stop: the arrows move its active row (beside
   the conversation they open it; under 640px Enter does, and opening puts the
-  keys on Back, which gives them back to the row he left); Shift+F10 or the
-  menu key opens the active row's menu; until a row is active the list wears
-  the focus ring. Search hits are one list the same way. In the column the
+  keys on Back, which gives them back to the row he left, or the one now in
+  its place when reading it took it off an Unread list, or Clear filter when
+  none is left, or in a search the hit he opened); Shift+F10 or the
+  menu key opens the active row's menu; until a row is active and drawn the
+  list wears the focus ring. Search hits are one list the same way; a search
+  keeps its last hits on screen while the next words are asked (bones only
+  before the first answer), and a hit's line is measured so the word it
+  found always shows. In the column the
   arrows move from message to message and the menu key opens one's menu; a
   message's ⋯ is no tab stop. The log says nothing of itself (`aria-live
   off`), so an older page drawn on the way up is not read out; what arrives
@@ -248,23 +259,29 @@ The look is docs/DESIGN.md "The Messages view".
   life while the ask is on its way or taken; an ask LifeOS did not take says
   so on each file with Try again. A stored picture's bytes are read with
   `loadBytes` into a blob address, never put in the page as a web address,
-  at most 120 held (the oldest released); a picture never grows wider than
-  its message, its height from its proportions; one that cannot load says so
-  in a file's failure line. A file a canvas kind shows opens in the view's own pane
+  one read an address at a time, at most 120 held (the oldest no drawn
+  picture uses released, read again when drawn again); a picture never grows
+  wider than its message, its height from its proportions; one whose bytes
+  did not come or do not draw says so in a file's failure line, with Try
+  again and Open in the app. A file a canvas kind shows opens in the view's own pane
   (`openItem(env, messagesPaneOf(ws), {kind, source: chatFileSource(…)})`,
   the host fetching it as the owner); any other is saved to Downloads once
   stored. `fileMarkers` takes the folded names out of the words once the
   files are listed.
 - **The Outbox.** A held reply's quote is read from the newest page, else by
   its id (`rawMessages:get {id}`) on the item's own sector; a line of bones
-  holds its place until LifeOS answers; one it cannot read says "The message
-  it answers is no longer here".
+  holds its place until LifeOS answers. A reply that names its message is
+  read by id also when the page did not load; "The message it answers is no
+  longer here" only when LifeOS answers that it is absent, "could not be
+  read" with Retry when the read failed. The quote is "Writer: words", cut
+  where its line ends; in a direct chat the writer is the To line's, so the
+  quote is the words alone.
 - **Not yet.** One-press answers (`QUICK_ANSWERS` is empty).
 
 Proof: `bun run ui:preview src/renderer/src/work/messages/MessagesView.preview.tsx#MessagesPreview --props '{"scene":"open-direct","width":1280}'`
 (scenes are listed in the file); tests `model.test.ts`, `MessagesView.dom.test.tsx`, `Composer.dom.test.tsx`,
 `ChatReplyAct.dom.test.tsx`, `ways.dom.test.tsx`, `files.dom.test.tsx`, `open.dom.test.tsx`, `cold.dom.test.tsx`,
-`council.dom.test.tsx`.
+`council.dom.test.tsx`, `council2.dom.test.tsx`.
 
 ## Proving it
 

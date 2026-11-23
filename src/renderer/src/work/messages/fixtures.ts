@@ -251,6 +251,8 @@ export interface FixtureOptions {
   requestFails?: number;
   /** His Send waits until the test lets it go (`release`), so he can type while it goes. */
   slow?: boolean;
+  /** A search whose answer is still on its way, for these words. */
+  searchPending?: string;
   /** Messages that are still loading, for a conversation's bones. */
   messagesLoading?: boolean;
   now?: number;
@@ -310,6 +312,8 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       threads.set(row._id, held.map((m) => ({ ...m, sentAt: m.sentAt - back })));
       return { ...row, lastAt: row.lastAt - back, lastInAt: row.lastInAt && row.lastInAt - back, lastForMeAt: row.lastForMeAt && row.lastForMeAt - back, readAt: row.readAt && row.readAt - back };
     });
+    // Newest first again, as LifeOS lists them, once the dates have moved.
+    rows = [...rows].sort((a, b) => b.lastAt - a.lastAt);
   }
   const fails = { ...(options.fail ?? {}) };
   /** Whether this mount of a read fails: true for the first N of each. */
@@ -438,6 +442,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       }, [query]);
       const [failed] = useState(() => failing("search"));
       if (failed) return FAILED;
+      if (options.searchPending && query === options.searchPending.toLowerCase()) return LOADING;
       return options.loading ? LOADING : ready(hits);
     },
     useDrafted() {

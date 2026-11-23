@@ -1,8 +1,8 @@
-import { memo, useCallback, useEffect, useState, type MouseEvent } from "react";
+import { memo, useCallback, useEffect, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { formatSize } from "work-kit/mail/lib/files";
 import { loadBytes } from "work-kit/mail/lib/bytes";
 import type { CanvasKind } from "@shared/work";
-import { fileMarkers, firstWords, SOURCE_APP, type ChatFile, type ChatMessage, type ChatReplyState, type ChatRow } from "@shared/work/messages";
+import { fileMarkers, SOURCE_APP, type ChatFile, type ChatMessage, type ChatReplyState, type ChatRow } from "@shared/work/messages";
 import { CornerDownRight, MoreHorizontal, type IconComponent } from "../../chrome/icons";
 import { Tip } from "../../components/tip";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -147,51 +147,92 @@ function Files({ message, chatId, chat }: { message: ChatMessage; chatId: string
   );
 }
 
-/** Pictures read this window's life, by their address in LifeOS's store: a blob to draw, or null for one that did not load. */
+// ── Picture bytes ──
+// Read this window's life, by their address in LifeOS's store: a blob to draw, or null for one that did not load. One
+// read an address at a time; at most PICTURES_HELD kept, the oldest no drawn picture uses let go and its blob released;
+// one let go is read again when it is drawn again.
 const pictures = new Map<string, string | null>();
-/** The most pictures held at once; past it the oldest is let go (its blob released), and read again if it is drawn again. */
+const reading = new Set<string>();
+const drawing = new Map<string, number>();
+const pictureListeners = new Set<() => void>();
 const PICTURES_HELD = 120;
 const drawable = (url: string): boolean => url.startsWith("data:") || url.startsWith("blob:");
+const toldPictures = (): void => {
+  for (const listener of pictureListeners) listener();
+};
 
-function keepPicture(url: string, blob: string | null): void {
-  pictures.set(url, blob);
-  while (pictures.size > PICTURES_HELD) {
-    const [oldest, held] = pictures.entries().next().value!;
-    pictures.delete(oldest);
-    if (held) URL.revokeObjectURL(held);
+function letGo(): void {
+  for (const [url, blob] of pictures) {
+    if (pictures.size <= PICTURES_HELD) return;
+    if ((drawing.get(url) ?? 0) > 0) continue;
+    pictures.delete(url);
+    if (blob) URL.revokeObjectURL(blob);
   }
+}
+
+function readPicture(url: string): void {
+  if (pictures.has(url) || reading.has(url)) return;
+  reading.add(url);
+  loadBytes(url)
+    .then(
+      (blob) => void pictures.set(url, URL.createObjectURL(blob)),
+      () => void pictures.set(url, null),
+    )
+    .finally(() => {
+      reading.delete(url);
+      letGo();
+      toldPictures();
+    });
+}
+
+/** Try again: a picture that did not load is read afresh. */
+function forgetPicture(url: string | undefined): void {
+  if (!url || !pictures.has(url)) return;
+  const blob = pictures.get(url);
+  pictures.delete(url);
+  if (blob) URL.revokeObjectURL(blob);
+  toldPictures();
 }
 
 /** A stored picture's bytes as a blob address: undefined while it comes, null when it cannot. */
 function usePictureBytes(url: string | undefined): string | null | undefined {
-  const [, bump] = useState(0);
-  const held = !url ? undefined : drawable(url) ? url : pictures.get(url);
+  const held = useSyncExternalStore(
+    (fn) => {
+      pictureListeners.add(fn);
+      return () => void pictureListeners.delete(fn);
+    },
+    () => (!url ? undefined : drawable(url) ? url : pictures.get(url)),
+  );
+  const missing = held === undefined;
   useEffect(() => {
-    if (!url || drawable(url) || pictures.has(url)) return;
-    let live = true;
-    loadBytes(url)
-      .then(
-        (blob) => keepPicture(url, URL.createObjectURL(blob)),
-        () => keepPicture(url, null),
-      )
-      .finally(() => live && bump((n) => n + 1));
+    if (!url || drawable(url)) return;
+    drawing.set(url, (drawing.get(url) ?? 0) + 1);
+    if (missing) readPicture(url);
     return () => {
-      live = false;
+      drawing.set(url, (drawing.get(url) ?? 1) - 1);
+      letGo();
     };
-  }, [url]);
+  }, [url, missing]);
   return held;
 }
 
 function Picture({ file, source, link, onOpen }: { file: ChatFile; source: ChatRow["source"]; link: string | undefined; onOpen: () => void }) {
   const box = pictureBox(file);
-  const src = usePictureBytes(file.status === "stored" ? file.url : undefined);
-  if (src === null) return <FileFailed file={file} why="This picture could not be read" source={source} link={link} />;
+  const url = file.status === "stored" ? file.url : undefined;
+  const src = usePictureBytes(url);
+  // Bytes that came but do not draw (a corrupt or unknown picture) fall to the same line as bytes that did not come.
+  const [broken, setBroken] = useState<string | null>(null);
+  const again = (): void => {
+    setBroken(null);
+    forgetPicture(url);
+  };
+  if (src === null || (src && broken === src)) return <FileFailed file={file} why="This picture could not be read" source={source} link={link} onRetry={again} />;
   // Its own shape, at most 360 by 270, and never wider than the message: the height follows the width.
   const shape = { width: box.width, aspectRatio: `${box.width} / ${box.height}` };
   return (
     <Button variant="ghost" aria-label={`View ${file.name}`} onClick={onOpen} style={shape} className="h-auto max-w-full self-start overflow-hidden rounded-lg p-0 hover:bg-transparent active:bg-transparent">
       {src ? (
-        <img src={src} alt={file.name} width={box.width} height={box.height} draggable={false} className="block size-full rounded-lg object-cover outline-1 -outline-offset-1 outline-(--image-outline)" />
+        <img src={src} alt={file.name} width={box.width} height={box.height} draggable={false} onError={() => setBroken(src)} className="block size-full rounded-lg object-cover outline-1 -outline-offset-1 outline-(--image-outline)" />
       ) : (
         <Skeleton aria-label={`Loading ${file.name}`} className="size-full rounded-lg" />
       )}
@@ -222,8 +263,8 @@ function FileChip({ file, verb, onOpen }: { file: ChatFile; verb: FileVerb; onOp
 
 /**
  * A file that could not come: its glyph, its name in ink, why in LifeOS's
- * words, then 8px on the way back as a quiet control: Try again where the ask
- * itself failed, else Open in its app.
+ * words, then 8px on the ways back as quiet controls: Try again where asking
+ * or reading again may help, and Open in its app where it has an address.
  */
 function FileFailed({ file, why, source, link, onRetry }: { file: ChatFile; why: string | undefined; source: ChatRow["source"]; link: string | undefined; onRetry?: () => void }) {
   const opens = link && /^https?:\/\//i.test(link) ? link : undefined;
@@ -236,8 +277,9 @@ function FileFailed({ file, why, source, link, onRetry }: { file: ChatFile; why:
         <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
           Try again
         </Button>
-      ) : opens ? (
-        <Button variant="ghost" size="xs" className="ms-1" onClick={() => void openUrl(opens)}>
+      ) : null}
+      {opens ? (
+        <Button variant="ghost" size="xs" className={onRetry ? undefined : "ms-1"} onClick={() => void openUrl(opens)}>
           Open in {SOURCE_APP[source]}
         </Button>
       ) : null}
@@ -323,8 +365,9 @@ function ReplyLine({ to }: { to: NonNullable<ChatMessage["replyTo"]> }) {
   return (
     <div className="grid h-5 grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 text-xs text-muted-foreground">
       <CornerDownRight aria-hidden className="size-3 justify-self-end" />
+      {/* "Mia Chen: words", cut where the line ends. */}
       <span className="truncate">
-        <span className="font-medium">{to.who}</span> {firstWords(to.text, 80)}
+        <span className="font-medium">{to.who}:</span> {to.text.replace(/\s+/g, " ").trim()}
       </span>
     </div>
   );

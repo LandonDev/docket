@@ -1766,10 +1766,11 @@ Around the canvas:
   column's middle with its true cause ("No chat is linked to Cosmic" with
   Open Connections, "No messages in Cosmic yet", "Nothing unread" with
   Clear filter; a failure "Messages did not load" with Retry). A search shows the messages that hold its words in the
-  rows' place, the conversation's name and time, then who and the words,
-  cut to start a little before the first match only when it starts past 40
-  characters, lit in `foreground` medium; the conversation's name in a
-  row's ink. Under 640px the conversation's toolbar line reads "Last synced
+  rows' place (the last answer stays while the next words are asked), the
+  conversation's name in a row's ink and the time, then who ("You: " alone in
+  a direct chat) and the words, cut to start a little before the match only
+  where the measured line could not show it otherwise, lit in `foreground`
+  medium. Under 640px the conversation's toolbar line reads "Last synced
   Nov 3" at the name's own left edge.
   The conversation's toolbar is 44px over a hairline: the name 13px
   semibold (a direct chat's opens the person in People when LifeOS knows
@@ -1784,9 +1785,9 @@ Around the canvas:
   over the first unread message, 12px `foreground` medium. It opens over
   "New", else where he left it, else at its foot; while he is up the column
   a quiet pill at its foot says "2 new" and goes down. A Slack thread reply
-  carries one 12px muted line above it: a turned arrow, the writer in
-  medium and the first words of what it answers, none when that is the
-  message right above. A message's menu (a
+  carries one 12px muted line above it: a turned arrow, then "Mia Chen:"
+  in medium and the words of what it answers, cut where the line ends, none
+  when that is the message right above. A message's menu (a
   right-click, or its ⋯ under the pointer at its top right) holds Start
   thread, Mention in a thread while one is open, Copy text and its link; a
   row's holds Mark read or unread, the two thread verbs, Open in the app and
@@ -1797,16 +1798,18 @@ Around the canvas:
   shape while it comes; any other file is Mail's 40px chip with its 28px
   tile, named by its press ("View runner-budget.xlsx", "Download
   build.zip"); a file that cannot come is one 12px muted line, its glyph,
-  its name in medium `foreground`, why, and 8px on Open in the app (or Try
-  again) as a quiet control. A picture is never wider than its message. The composer sits at the column's foot
+  its name in medium `foreground`, why, and 8px on Try again (where asking
+  or reading again may help) and Open in the app as quiet controls; a
+  picture whose bytes do not draw takes the same line. A picture is never wider than its message. The composer sits at the column's foot
   on the composer's surface (`card`, a hairline, radius 12): a field of one
   to eight 14/22 lines, then the foot row, the place for one-press answers
   at its left and the one primary button at its right. Above the box, one
   12px line when there is something to say: LifeOS's reason where nothing
   can send (the button is then Copy, with Open in the app quiet beside it),
   a thread's draft (the amber circle-dot, "Drafted in" and the thread's
-  name in medium, Use draft while the field holds his own words, Open
-  thread, and for a copy-only draft LifeOS's reason at its end; Discard
+  name in medium, for a copy-only draft LifeOS's reason, then its controls
+  so the line ends with them: Use draft while the field holds his own words,
+  Open thread; Discard
   beside the primary), or a refusal in red. His reply shows as his own message with one 12px line under it:
   "Sending" and Undo (in ink, as Retry), or the red mark, "Not sent.", LifeOS's reason and
   Retry. A message that arrives at the foot rises 4px and fades in over

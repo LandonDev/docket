@@ -193,7 +193,7 @@ describe("a conversation", () => {
     mount({}, { chatId: "c_design" });
     // m2 answers the message right above it, so it quotes nothing; m6 answers one further up.
     expect(block("c_design_m2").textContent).not.toContain("Love the rarity sort");
-    expect(block("c_design_m6").textContent).toMatch(/^Mia Chen It's 400ms right now/);
+    expect(block("c_design_m6").textContent).toMatch(/^Mia Chen: It's 400ms right now/);
   });
 });
 

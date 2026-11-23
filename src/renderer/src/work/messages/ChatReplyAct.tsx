@@ -1,5 +1,7 @@
-import { firstWords, SOURCE_NAME, type ChatDetail, type ChatMessage, type ChatRow, type ChatSource } from "@shared/work/messages";
+import { useState } from "react";
+import { SOURCE_NAME, type ChatDetail, type ChatMessage, type ChatRow, type ChatSource } from "@shared/work/messages";
 import { CornerDownRight } from "../../chrome/icons";
+import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import type { ActViewProps } from "../acts/registry";
 import { useLifeosQuery, useLifeosSession, type LifeosQuery } from "../shell/lifeos";
@@ -38,23 +40,26 @@ export function answeredOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Cha
 /** What `rawMessages:get` answers for one message. */
 type RawMessage = { message: { author?: { name?: string }; fromMe?: boolean; text?: string } | null } | null;
 
-/** What the quote's place holds: the message it answers, a line on its way, the word that it is gone, or nothing. */
-export type Answered = { who: string; text: string } | "loading" | "gone" | null;
+/** What the quote's place holds: the message it answers, a line on its way, the word that it is gone or could not be read, or nothing. */
+export type Answered = { who: string; text: string } | "loading" | "gone" | "unreadable" | null;
 
 /**
  * The message a held reply answers, as the quote's place shows it: from the
- * newest page when it is there; else read by its id on the item's own sector;
- * "loading" until LifeOS has answered both, so the words never jump; "gone"
- * when it can no longer be read.
+ * newest page when it is there; else read by its id on the item's own sector
+ * (also when the page itself did not load, if the reply names it); "loading"
+ * until LifeOS has answered, so the words never jump; "gone" only when LifeOS
+ * answers that it is absent; "unreadable" when that read failed.
  */
 export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: LifeosQuery<ChatDetail | null>, page: LifeosQuery<{ page: ChatMessage[] }>, byId: LifeosQuery<RawMessage> | null): Answered {
-  if (detail.status === "loading" || page.status === "loading") return "loading";
-  const inPage = answeredOf(reply, ready(detail), ready(page)?.page);
+  if (detail.status === "loading" && !reply.replyTo) return "loading";
+  if (page.status === "loading") return "loading";
+  const inPage = page.status === "ready" ? answeredOf(reply, ready(detail), page.value.page) : null;
   if (inPage) return inPage;
   const id = reply.replyTo ?? ready(detail)?.chat?.lastInId;
-  if (!id) return null;
+  if (!id) return detail.status === "loading" ? "loading" : null;
   if (!byId || byId.status === "loading") return "loading";
-  const message = byId.status === "ready" ? byId.value?.message : null;
+  if (byId.status === "failed") return "unreadable";
+  const message = byId.value?.message;
   if (!message?.text) return "gone";
   return { who: message.fromMe ? "You" : (message.author?.name ?? "Someone"), text: message.text };
 }
@@ -64,23 +69,31 @@ export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Lifeo
  * goes ("Slack, Starboard Games"), the message it answers as one quoted line,
  * then its words exactly as they go. The conversation is read from LifeOS on
  * the item's own sector; until it answers, the payload's own words stand and a
- * line of bones holds the quote's place.
+ * line of bones holds the quote's place. A quote that could not be read offers
+ * Retry, which reads afresh.
  */
-export function View({ item, env }: ActViewProps) {
+export function View(props: ActViewProps) {
+  const [attempt, setAttempt] = useState(0);
+  return <Reads key={attempt} {...props} retry={() => setAttempt((n) => n + 1)} />;
+}
+
+function Reads({ item, env, retry }: ActViewProps & { retry: () => void }) {
   const reply = replyOf(item.payload);
   const session = useLifeosSession(env, item.sector);
   const detail = useLifeosQuery<ChatDetail | null>(session, "chats:get", { id: reply?.chatId ?? "" });
   const page = useLifeosQuery<{ page: ChatMessage[] }>(session, "chats:messages", { chatId: reply?.chatId ?? "", paginationOpts: { numItems: 50, cursor: null } });
-  // The answered message by its id, asked only when the newest page does not hold it.
+  // The answered message by its id, asked when the newest page does not hold it or did not load.
   const target = reply?.replyTo ?? ready(detail)?.chat?.lastInId;
-  const missing = Boolean(target) && page.status === "ready" && !page.value.page.some((m) => m._id === target);
+  const missing = Boolean(target) && (page.status === "failed" || (page.status === "ready" && !page.value.page.some((m) => m._id === target)));
   const byId = useLifeosQuery<RawMessage>(missing ? session : { ...session, client: null, state: "connecting" }, "rawMessages:get", { id: target ?? "" });
   if (!reply) return <div data-slot="act-payload" className="text-sm text-muted-foreground">This reply could not be read</div>;
-  return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answerOf(reply, detail, page, missing ? byId : null)} />;
+  return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answerOf(reply, detail, page, missing ? byId : null)} onRetry={retry} />;
 }
 
 /** The held reply as he reads it before his press: to whom, where, what it answers, its words. */
-export function ReplyBody({ reply, chat, answered }: { reply: ChatReplyPayload; chat?: Pick<ChatRow, "source" | "accountName">; answered: Answered }) {
+export function ReplyBody({ reply, chat, answered, onRetry }: { reply: ChatReplyPayload; chat?: Pick<ChatRow, "source" | "accountName" | "kind">; answered: Answered; onRetry?: () => void }) {
+  // In a direct chat the writer of what it answers is the one it goes to, named on the To line already.
+  const direct = chat?.kind === "direct";
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-4">
       <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
@@ -95,16 +108,23 @@ export function ReplyBody({ reply, chat, answered }: { reply: ChatReplyPayload; 
             <Skeleton className="size-3 rounded-sm" />
             <Skeleton className="h-2.5 w-[60%]" />
           </div>
-        ) : answered === "gone" ? (
-          <p data-answers="gone" className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        ) : answered === "gone" || answered === "unreadable" ? (
+          <p data-answers={answered} className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <CornerDownRight aria-hidden className="size-3 shrink-0" />
-            The message it answers is no longer here
+            {answered === "gone" ? "The message it answers is no longer here" : "The message it answers could not be read"}
+            {answered === "unreadable" && onRetry ? (
+              <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
+                Retry
+              </Button>
+            ) : null}
           </p>
         ) : answered ? (
           <p data-answers className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <CornerDownRight aria-hidden className="size-3 shrink-0" />
+            {/* "Dana Lee: words", cut where the line ends. */}
             <span className="min-w-0 truncate">
-              <span className="font-medium">{answered.who}</span> {firstWords(answered.text, 80)}
+              {direct ? null : <span className="font-medium">{answered.who}: </span>}
+              {answered.text.replace(/\s+/g, " ").trim()}
             </span>
           </p>
         ) : null}

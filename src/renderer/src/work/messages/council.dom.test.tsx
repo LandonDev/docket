@@ -231,11 +231,11 @@ describe("the composer", () => {
     expect(data.log.pressed).toEqual([{ id: HELD_DRAFT.id, text: `${HELD_DRAFT.text}\nAnd this` }]);
   });
 
-  it("clears only the words a Send took, and Undo puts them back before what was typed since", async () => {
+  it("leaves the field as he left it when he typed while a Send went, and Undo puts the words back before it", async () => {
     const data = mount({ slow: true }, "c_dana");
     fireEvent.change(field(), { target: { value: "First" } });
     fireEvent.click(within(composer()).getByRole("button", { name: "Send" }));
-    fireEvent.change(field(), { target: { value: "First\nSecond" } });
+    fireEvent.change(field(), { target: { value: "Second" } });
     await act(async () => data.release());
     await flush();
     expect(field().value).toBe("Second");

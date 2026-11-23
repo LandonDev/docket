@@ -46,20 +46,38 @@ const listTops = new Map<string, number>();
 /** Where a conversation was scrolled when he left it: a block and how far up from its foot; none at the foot. */
 const places = new Map<string, RowAnchor>();
 const typed = new Map<string, string>();
+/** Whose words the field holds: the draft they came from, kept beside the words. */
+const typedFrom = new Map<string, string>();
 const key = (workspaceId: string, chatId: string): string => `${workspaceId}\u0000${chatId}`;
 
 /** Where the list was scrolled, each filter its own place. */
 export const listTopOf = (workspaceId: string, filter: ChatFilter): number => listTops.get(`${workspaceId}\u0000${filter}`) ?? 0;
 export const keepListTop = (workspaceId: string, filter: ChatFilter, top: number): void => void listTops.set(`${workspaceId}\u0000${filter}`, top);
 
-/** The row the list gives the keys back to when he comes back from a conversation under 640px. */
-const returns = new Map<string, string>();
-export const returnTo = (workspaceId: string, chatId: string): void => void returns.set(workspaceId, chatId);
-/** Taken once: the row to stand on, if he just came back. */
-export function takeReturn(workspaceId: string): string | undefined {
-  const chatId = returns.get(workspaceId);
+/**
+ * Where the list's keys stood when a conversation opened from it: the row (or,
+ * in a search, the hit) and its place in the list. Under 640px Back hands the
+ * keys back there; a row gone meanwhile gives way to the one now in its place.
+ */
+export interface ReturnTarget {
+  chatId: string;
+  index: number;
+  hit?: string;
+}
+const opened = new Map<string, ReturnTarget>();
+const returns = new Map<string, ReturnTarget>();
+/** Notes where a conversation was opened from. */
+export const openedFrom = (workspaceId: string, target: ReturnTarget): void => void opened.set(workspaceId, target);
+/** He came back: the list, mounting again, takes the keys where they stood. */
+export function returnTo(workspaceId: string, chatId: string): void {
+  const from = opened.get(workspaceId);
+  returns.set(workspaceId, from?.chatId === chatId ? from : { chatId, index: 0 });
+}
+/** Taken once: where to stand, if he just came back. */
+export function takeReturn(workspaceId: string): ReturnTarget | undefined {
+  const target = returns.get(workspaceId);
   returns.delete(workspaceId);
-  return chatId;
+  return target;
 }
 
 export const placeOf = (workspaceId: string, chatId: string): RowAnchor | undefined => places.get(key(workspaceId, chatId));
@@ -70,13 +88,33 @@ export function keepPlace(workspaceId: string, chatId: string, anchor: RowAnchor
 
 /** What he typed in a conversation and has not sent; the composer reads it back. */
 export const typedIn = (workspaceId: string, chatId: string): string => typed.get(key(workspaceId, chatId)) ?? "";
+/** The draft whose words the field holds (or his edit of them), if they came from one; else they are his own. */
+export const typedFromDraft = (workspaceId: string, chatId: string): string | null => typedFrom.get(key(workspaceId, chatId)) ?? null;
 const typedListeners = new Set<() => void>();
-export function keepTyped(workspaceId: string, chatId: string, text: string): void {
-  if (text) typed.set(key(workspaceId, chatId), text);
-  else typed.delete(key(workspaceId, chatId));
+/**
+ * Keeps the field's words. `from` says whose they are: a draft's id, null for
+ * his own, or left out to keep what was said before (an edit of a draft's words
+ * stays the draft's). An empty field belongs to no one.
+ */
+export function keepTyped(workspaceId: string, chatId: string, text: string, from?: string | null): void {
+  const at = key(workspaceId, chatId);
+  if (text) typed.set(at, text);
+  else typed.delete(at);
+  if (!text || from === null) typedFrom.delete(at);
+  else if (from !== undefined) typedFrom.set(at, from);
   for (const listener of typedListeners) listener();
 }
 /** What he typed in one conversation, live: an Undo puts a reply's words back here. */
+export function useTypedFrom(workspaceId: string, chatId: string): string | null {
+  return useSyncExternalStore(
+    (fn) => {
+      typedListeners.add(fn);
+      return () => void typedListeners.delete(fn);
+    },
+    () => typedFromDraft(workspaceId, chatId),
+    () => typedFromDraft(workspaceId, chatId),
+  );
+}
 export function useTyped(workspaceId: string, chatId: string): string {
   return useSyncExternalStore(
     (fn) => {
@@ -106,6 +144,15 @@ export function useRefusal(workspaceId: string, chatId: string): string | null {
     () => refusals.get(key(workspaceId, chatId)) ?? null,
   );
 }
+
+/**
+ * Where "New" sat when a conversation opened, kept for the visit: a Retry or a
+ * remount finds the same line, and leaving the conversation ends the visit.
+ */
+const visits = new Map<string, number | null>();
+export const visitSince = (workspaceId: string, chatId: string): number | null | undefined => visits.get(key(workspaceId, chatId));
+export const keepVisitSince = (workspaceId: string, chatId: string, since: number | null): void => void visits.set(key(workspaceId, chatId), since);
+export const endVisit = (workspaceId: string, chatId: string): void => void visits.delete(key(workspaceId, chatId));
 
 // ── A message to bring into view ──
 
@@ -146,6 +193,9 @@ export function resetPages(): void {
   listTops.clear();
   places.clear();
   typed.clear();
+  typedFrom.clear();
+  visits.clear();
+  opened.clear();
   wanted.clear();
   returns.clear();
   refusals.clear();

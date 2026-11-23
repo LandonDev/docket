@@ -139,7 +139,7 @@ export interface ChatMessage {
   editedAt?: number
   permalink?: string
   /** what a Slack thread reply answers: the writer and its first words */
-  replyTo?: { who: string; text: string }
+  replyTo?: { who: string; text: string; id?: string }
   files: ChatFile[]
   reply?: ChatReplyState
 }

@@ -104,10 +104,16 @@ export interface Block {
 }
 
 const flatten = (text: string): string => text.replace(/\s+/g, " ").trim();
-/** Whether a thread reply answers the message right before it: the same writer, and its words start the same way. */
-export function answersMessage(message: Pick<ChatMessage, "who" | "text">, replyTo: NonNullable<ChatMessage["replyTo"]>): boolean {
+/**
+ * Whether a thread reply answers the message right before it: by the answered
+ * message's id where LifeOS names it, else the same writer ("You" for his own)
+ * and words that start the same way.
+ */
+export function answersMessage(message: Pick<ChatMessage, "_id" | "who" | "text">, replyTo: NonNullable<ChatMessage["replyTo"]>): boolean {
+  if (replyTo.id) return message._id === replyTo.id;
   const quoted = flatten(replyTo.text).replace(/…$/, "").slice(0, 60);
-  return message.who.name === replyTo.who && quoted.length > 0 && flatten(message.text).startsWith(quoted);
+  const writer = message.who.name === replyTo.who || (message.who.me && replyTo.who === "You");
+  return writer && quoted.length > 0 && flatten(message.text).startsWith(quoted);
 }
 
 /** Whether a key opens the focused row's or message's menu: Shift+F10 or the menu key. */

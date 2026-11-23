@@ -3,13 +3,13 @@
  * A thread's held chat reply in the Outbox (`chat.reply`): where it goes, the message it answers as
  * one quoted line, then its words exactly as they go, read from LifeOS on the item's own sector.
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeldItem } from "@shared/work";
 import { ACT_VIEWS } from "../acts/registry";
 import { CHATS, MESSAGES } from "./fixtures";
 
-const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], answer: true, raw: undefined as unknown }));
+const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: unknown }[], answer: true, raw: undefined as unknown, pageFails: false, rawFails: false }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
   useLifeosSession: (environmentId: string, sector: string) => ({ environmentId, sector, client: {}, state: "connected" }),
@@ -17,8 +17,8 @@ vi.mock("../shell/lifeos", async (original) => ({
     lifeos.asked.push({ name, args });
     if (!lifeos.answer) return { status: "loading" };
     if (name === "chats:get") return { status: "ready", value: { chat: CHATS.find((c) => c._id === args.id), source: null, route: { can: true } } };
-    if (name === "chats:messages") return { status: "ready", value: { page: MESSAGES[args.chatId!] ?? [] } };
-    if (name === "rawMessages:get") return lifeos.raw === undefined ? { status: "loading" } : { status: "ready", value: lifeos.raw };
+    if (name === "chats:messages") return lifeos.pageFails ? { status: "failed", error: "LifeOS did not answer" } : { status: "ready", value: { page: MESSAGES[args.chatId!] ?? [] } };
+    if (name === "rawMessages:get") return lifeos.rawFails ? { status: "failed", error: "LifeOS did not answer" } : lifeos.raw === undefined ? { status: "loading" } : { status: "ready", value: lifeos.raw };
     return { status: "loading" };
   },
 }));
@@ -30,6 +30,8 @@ afterEach(() => {
   lifeos.asked.length = 0;
   lifeos.answer = true;
   lifeos.raw = undefined;
+  lifeos.pageFails = false;
+  lifeos.rawFails = false;
 });
 
 const item = (payload: unknown): HeldItem =>
@@ -45,7 +47,7 @@ describe("the held reply's view", () => {
     const [to, where] = screen.getAllByRole("definition");
     expect(to!.textContent).toBe("Dana Lee");
     expect(where!.textContent).toBe("Slack, Starboard Games");
-    expect(document.querySelector("[data-answers]")!.textContent).toMatch(/^Dana Lee Also, the art team wants/);
+    expect(document.querySelector("[data-answers]")!.textContent).toMatch(/^Also, the art team wants/);
     expect(screen.getByText(/Thursday works\./).textContent).toBe("Thursday works.\nI'll send it Wednesday.");
     expect(lifeos.asked.find((q) => q.name === "chats:get")?.args).toEqual({ id: "c_dana" });
   });
@@ -53,7 +55,7 @@ describe("the held reply's view", () => {
   it("quotes the message a Slack thread reply names", () => {
     render(<View env="box" item={item({ chatId: "c_design", replyTo: "c_design_m1", source: "slack", chat: "#design-review", to: "Ana Ruiz", text: "Agreed." })} />);
     expect(screen.getAllByRole("definition")[0]!.textContent).toBe("Ana Ruiz");
-    expect(document.querySelector("[data-answers]")!.textContent).toMatch(/^Ana Ruiz Love the rarity sort/);
+    expect(document.querySelector("[data-answers]")!.textContent).toMatch(/^Ana Ruiz: Love the rarity sort/);
   });
 
   it("stands on the payload's own words while LifeOS has not answered", () => {
@@ -83,7 +85,7 @@ describe("the held reply's view", () => {
     expect(document.querySelector("[data-answers]")!.getAttribute("data-answers")).toBe("loading");
     lifeos.raw = { message: { author: { name: "Dana Lee" }, fromMe: false, text: "Can we move the review to Friday?" }, thread: null };
     view.rerender(<View env="box" item={item(payload)} />);
-    expect(document.querySelector("[data-answers]")!.textContent).toMatch(/^Dana Lee Can we move the review to Friday\?/);
+    expect(document.querySelector("[data-answers]")!.textContent).toBe("Can we move the review to Friday?");
   });
 
   it("says the message it answers is no longer here when it cannot be read", () => {
@@ -95,5 +97,23 @@ describe("the held reply's view", () => {
   it("quotes in muted ink, the writer in medium", () => {
     render(<View env="box" item={item({ chatId: "c_dana", source: "slack", chat: "Dana Lee", text: "Yes" })} />);
     expect(document.querySelector("[data-answers]")!.innerHTML).not.toContain("faint");
+  });
+
+  it("reads a named message by its id when the page itself did not load", () => {
+    lifeos.pageFails = true;
+    lifeos.raw = { message: { author: { name: "Ana Ruiz" }, fromMe: false, text: "Ship it Friday?" }, thread: null };
+    render(<View env="box" item={item({ chatId: "c_design", replyTo: "far_1", source: "slack", chat: "#design-review", to: "Ana Ruiz", text: "Yes." })} />);
+    expect(lifeos.asked.some((q) => q.name === "rawMessages:get" && (q.args as { id: string }).id === "far_1")).toBe(true);
+    expect(document.querySelector("[data-answers]")!.textContent).toBe("Ana Ruiz: Ship it Friday?");
+  });
+
+  it("says the message it answers could not be read, with Retry, when that read fails", () => {
+    lifeos.rawFails = true;
+    render(<View env="box" item={item({ chatId: "c_dana", replyTo: "far_2", source: "slack", chat: "Dana Lee", text: "Yes." })} />);
+    const line = document.querySelector<HTMLElement>("[data-answers='unreadable']")!;
+    expect(line.textContent).toContain("The message it answers could not be read");
+    const asked = lifeos.asked.length;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(lifeos.asked.length).toBeGreaterThan(asked);
   });
 });

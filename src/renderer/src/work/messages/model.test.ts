@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "@shared/work/messages";
-import { aroundMatch, blocksOf, isPicture, pictureBox, chatFact, dayWords, linkParts, markWords, newSince, opensOutside, rowLine, rowTime, wantsRead } from "./model";
+import { answersMessage, aroundMatch, blocksOf, isPicture, pictureBox, chatFact, dayWords, linkParts, markWords, newSince, opensOutside, rowLine, rowTime, wantsRead } from "./model";
 import { unreadFact } from "./facts";
 
 const at = (d: number, h: number, mi = 0): number => new Date(2026, 10, d, h, mi).getTime();
@@ -169,5 +169,19 @@ describe("pictures", () => {
     expect(isPicture({ name: "a.bin", contentType: "image/heic" })).toBe(true);
     expect(isPicture({ name: "IMG_2041.HEIC" })).toBe(true);
     expect(isPicture({ name: "budget.xlsx", contentType: "application/vnd.ms-excel" })).toBe(false);
+  });
+});
+
+describe("the quote of the message right above", () => {
+  it("matches by the answered message's id where LifeOS names it, else by writer and words", () => {
+    const above = { _id: "m1", who: { name: "Ana Ruiz", me: false }, text: "Love the rarity sort." };
+    expect(answersMessage(above, { who: "Someone else", text: "x", id: "m1" })).toBe(true);
+    expect(answersMessage(above, { who: "Ana Ruiz", text: "Love the rarity sort.", id: "m0" })).toBe(false);
+    expect(answersMessage(above, { who: "Ana Ruiz", text: "Love the rarity sort." })).toBe(true);
+    expect(answersMessage({ _id: "m2", who: { name: "Alex Kim", me: true }, text: "On it" }, { who: "You", text: "On it" })).toBe(true);
+  });
+  it("shows the match when only a little room is left", () => {
+    const text = "Seeing a spike of save sync failures on the new build, the controller fix is pending";
+    expect(aroundMatch(text, "controller", 10, 10)).toMatch(/^…[^…]{0,24}controller fix/);
   });
 });
