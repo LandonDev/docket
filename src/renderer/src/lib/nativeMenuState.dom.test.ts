@@ -67,7 +67,7 @@ describe("menuStateOf", () => {
   it("greys Open File… with no Work thread, draft or view in front", () => {
     expect(menuStateOf(facts({ workFile: false })).disabled).toEqual(["open_file"]);
     // Search Work… has nothing to search while no host has Work on
-    expect(menuStateOf(facts({ workOn: false })).disabled).toEqual(["search_work"]);
+    expect(menuStateOf(facts({ workOn: false })).disabled).toEqual(["search_work", "open_digest"]);
   });
 
   it("greys Digest while no host has Work on", () => {

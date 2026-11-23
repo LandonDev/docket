@@ -162,8 +162,6 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       <TemplatesHost />
       {/* The Clash dialog, from an Agenda row or a Today row (work/clashes/ClashHost.tsx). */}
       <ClashHost />
-      {/* What Work leans on that ends soon, said once (work/connections/lapseNotice.tsx). */}
-      <LapseNotices />,
       {/* The day's digest and what cannot wait, told once across hosts (work/digest). */}
       <DigestHost onOpenWorkspace={onOpenWorkspace} />
       {naming && home ? (
