@@ -60,7 +60,12 @@
   The voice note (docs/agents/work-capture.md "The phone") added
   `work.capture.state` and `work.capture.file`, with `CaptureState` and
   `CaptureFiled` named (zod in wireSchemas.ts, each a `Mirror` of its
-  interface). A nullable param the host requires (`sector`, null for
+  interface). The digest (docs/agents/work-digest.md "The phone") added
+  `work.digest.list/get/set/seen` and the `work.digest` push, with `TellGroup`,
+  `TellLevel`, `TellOpen`, `TellRow`, `DigestDay` and `DigestSettings` named;
+  `TellOpen` is one flat struct of optional fields on the phone (a `Reads` pin),
+  since an untagged union of objects decodes its first branch whose keys are
+  there. A nullable param the host requires (`sector`, null for
   Unsorted) is encoded as an explicit `null`, never left out.
   The Files place (the files pillar's F9) added `work.files.places`,
   `list`, `stat`, `home`, `search`, `threads`, `read`, `preview`, `thumbs`,

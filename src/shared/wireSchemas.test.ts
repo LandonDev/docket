@@ -14,6 +14,8 @@ import { QueueAddResultSchema } from './wireSchemas'
 import * as W from './wireSchemas'
 import type { FileEntry, FilePlace } from './work/files'
 import type { FileBytes as FilesBytes, FileDone, FilesListing } from './contract-work-files'
+import type { DigestDay, DigestList, DigestPush, DigestSettings } from './contract-work-digest'
+import type { TellOpen, TellRow } from './work/tell'
 
 // Every schema the 2026-10-21/22 features added parses a value typed by its
 // interface and gives it back unchanged: the type-level pins prove the keys,
@@ -359,5 +361,37 @@ describe('the Files place on the phone (F9)', () => {
     expect(W.FilesOpenedPhoneSchema.parse({ rev: 4, tabs: [], held: { sessionId: 's1', itemId: 'i1' } })).toEqual({ rev: 4, held: { sessionId: 's1', itemId: 'i1' } })
     expect(W.WorkFilesPushSchema.parse({ push: 'work.files', workspaceId: 'w1', at: 'file:box:/w' })).toEqual({ push: 'work.files', workspaceId: 'w1', at: 'file:box:/w' })
     expect(W.RemotePushSchema.options.map((o) => o.shape.push.value)).toContain('work.files')
+describe('the digest on the phone', () => {
+  const row: TellRow = {
+    id: 't1',
+    host: 'box',
+    kind: 'outbox.held',
+    group: 'held',
+    workspaceId: 'w_purdue',
+    sector: 'purdue',
+    title: 'Budget review',
+    detail: 'Dana Reyes',
+    open: { held: { at: 'host', id: 'h1' }, thread: 's1' },
+    by: 1_795_464_000_000,
+    key: 'held:h1',
+    at: 1_795_460_000_000,
+    how: 'now',
+    day: null,
+    toldAt: 1_795_460_000_000
+  }
+  it('a told row, a day, the settings and the push parse as the host sends them', () => {
+    expect(W.TellRowPhoneSchema.parse(row)).toEqual(row)
+    const day: DigestDay = { day: '2026-11-23', madeAt: 1, seenAt: null, count: 3 }
+    const settings: DigestSettings = { at: '08:00', zone: 'America/New_York', levels: { held: 'now' }, nextAt: 2 }
+    const list: DigestList = { days: [day], rows: [row], waiting: 0, groups: ['held', 'results'] }
+    expect(W.DigestListPhoneSchema.parse(list)).toEqual(list)
+    expect(W.DigestSettingsWireSchema.parse(settings)).toEqual(settings)
+    const push: DigestPush = { push: 'work.digest', day, row, settings }
+    expect(W.RemotePushSchema.parse(push)).toEqual(push)
+    expect(W.RemotePushSchema.parse({ push: 'work.digest', gone: 't1' })).toEqual({ push: 'work.digest', gone: 't1' })
+  })
+  it("every tell target reads as the phone's one flat object", () => {
+    const opens: TellOpen[] = [{ thread: 's1' }, { view: 'agenda', workspaceId: 'w1', at: 'ev1' }, { place: 'review' }, { held: { at: 'lifeos', table: 'outbox', id: 'ob_1' } }, { settings: 'connections' }]
+    for (const open of opens) expect(W.TellOpenPhoneSchema.parse(open)).toEqual(open)
   })
 })

@@ -95,6 +95,7 @@ import { SessionScopeSchema, WorkspaceKindSchema } from '../src/shared/work/ids'
 import { WorkSettingsSchema } from '../src/shared/work/scope'
 import { OutboxItemSchema } from '../src/shared/contract-work-outbox'
 import { HeldRefSchema } from '../src/shared/work/acts'
+import { TellGroupSchema, TellLevelSchema } from '../src/shared/work/tell'
 import { AwayDecidedSchema, AwayStateSchema } from '../src/shared/away'
 import { ComputerServiceStateSchema, ComputerSessionRowSchema } from '../src/shared/contract-computer'
 
@@ -568,6 +569,17 @@ export const SUBSET: SubsetEntry[] = [
   method('work.files.trash', W.FileDoneSchema),
   method('work.files.restore', W.FileDoneSchema),
   method('work.files.upload', W.FilesUploadBegunSchema),
+  // the digest (docs/agents/work-digest.md "The phone"): the list, the settings, a day opened
+  type('TellGroup', TellGroupSchema),
+  type('TellLevel', TellLevelSchema),
+  type('TellOpen', W.TellOpenPhoneSchema),
+  type('TellRow', W.TellRowPhoneSchema),
+  type('DigestDay', W.DigestDayWireSchema),
+  type('DigestSettings', W.DigestSettingsWireSchema),
+  method('work.digest.list', W.DigestListPhoneSchema),
+  method('work.digest.get', W.DigestSettingsWireSchema),
+  method('work.digest.set', W.DigestSettingsWireSchema),
+  method('work.digest.seen', z.null()),
   method('away.get', W.AwaySnapshotSchema),
   method('away.set', z.object({ state: W.AwaySnapshotSchema.shape.state })),
   // live video of the computer an agent drives (docs/agents/live-video.md): a stream's ticket, and who is driven where

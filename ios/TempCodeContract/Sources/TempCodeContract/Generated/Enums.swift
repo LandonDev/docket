@@ -996,3 +996,70 @@ public enum MacBridgePolicy: RawRepresentable, Codable, Hashable, Sendable {
         }
     }
 }
+
+public enum TellGroup: RawRepresentable, Codable, Hashable, Sendable {
+    case held
+    case ending
+    case meetings
+    case clashes
+    case results
+    case people
+    case review
+    case system
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "held": self = .held
+        case "ending": self = .ending
+        case "meetings": self = .meetings
+        case "clashes": self = .clashes
+        case "results": self = .results
+        case "people": self = .people
+        case "review": self = .review
+        case "system": self = .system
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .held: "held"
+        case .ending: "ending"
+        case .meetings: "meetings"
+        case .clashes: "clashes"
+        case .results: "results"
+        case .people: "people"
+        case .review: "review"
+        case .system: "system"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum TellLevel: RawRepresentable, Codable, Hashable, Sendable {
+    case digest
+    case clock
+    case now
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "digest": self = .digest
+        case "clock": self = .clock
+        case "now": self = .now
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .digest: "digest"
+        case .clock: "clock"
+        case .now: "now"
+        case .unknown(let value): value
+        }
+    }
+}

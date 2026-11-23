@@ -3,6 +3,8 @@ import { StartOnSchema } from './defaults'
 import { SectorKeySchema, SessionScopeSchema, WorkspaceKindSchema } from './work/ids'
 import { WorkSettingsSchema } from './work/scope'
 import { PillarIdSchema } from './work/ids'
+import { TellGroupSchema, type TellHow, type TellOpen, type TellRow } from './work/tell'
+import { DigestLevelsSchema, type DigestDay, type DigestList, type DigestSettings } from './contract-work-digest'
 import { ActKindSchema, HeldRefSchema } from './work/acts'
 import { OutboxItemSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, type OutboxItem, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
 import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStatus } from './contract-work-lifeos'
@@ -1504,6 +1506,54 @@ export const FilesUploadBegunSchema = z.object({ uploadId: z.string() })
 export const FilesStarredSchema = z.object({ starred: z.boolean() })
 /** Something of a workspace's Files changed on its host: a folder (`at`, its key), the tabs, or the places. */
 export const WorkFilesPushSchema = push('work.files', { workspaceId: z.string(), at: z.string().optional(), tabs: z.number().optional(), places: z.literal(true).optional() })
+/**
+ * The digest (contract-work-digest.ts, docs/agents/work-digest.md "The phone"): the ledger a host keeps of what
+ * Work told him, the days it made a digest of, and the time and levels he set. A tell's target is one flat object
+ * on the phone, every field optional, so Swift reads `open.held` without trying the union's branches in order
+ * (`{held, thread}` would decode as a bare `{thread}`); its pin is `Reads`.
+ */
+export const TellOpenPhoneSchema = z.object({
+  thread: z.string().optional(),
+  view: z.string().optional(),
+  workspaceId: z.string().optional(),
+  at: z.string().optional(),
+  place: z.string().optional(),
+  held: HeldRefSchema.optional(),
+  settings: z.string().optional()
+})
+export const TellHowSchema = z.enum(['waiting', 'digest', 'now'])
+export const TellRowPhoneSchema = z.object({
+  id: z.string(),
+  host: z.string(),
+  kind: z.string(),
+  group: TellGroupSchema,
+  workspaceId: z.string().nullable(),
+  sector: SectorKeySchema.nullable(),
+  title: z.string(),
+  detail: z.string().optional(),
+  open: TellOpenPhoneSchema.optional(),
+  by: z.number().optional(),
+  key: z.string().optional(),
+  at: z.number(),
+  how: TellHowSchema,
+  day: z.string().nullable(),
+  toldAt: z.number().nullable()
+})
+export const DigestDayWireSchema = z.object({ day: z.string(), madeAt: z.number(), seenAt: z.number().nullable(), count: z.number().int() })
+export const DigestListPhoneSchema = z.object({
+  days: z.array(DigestDayWireSchema),
+  rows: z.array(TellRowPhoneSchema),
+  waiting: z.number().int(),
+  groups: z.array(TellGroupSchema)
+})
+export const DigestSettingsWireSchema = z.object({ at: z.string(), zone: z.string(), levels: DigestLevelsSchema, nextAt: z.number() })
+/** A day was made or seen, a row told or replaced, a row went (`gone`: its id), or the settings changed. */
+export const WorkDigestPushSchema = push('work.digest', {
+  day: DigestDayWireSchema.optional(),
+  row: TellRowPhoneSchema.optional(),
+  gone: z.string().optional(),
+  settings: DigestSettingsWireSchema.optional()
+})
 
 /** Computer use (contract-computer.ts): who is being driven on this host; the phone's Computers row reads it too. */
 export const ComputerPushSchema = push('computer', {
@@ -1580,6 +1630,7 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   WorkCanvasPushSchema,
   WorkRoutinesPushSchema,
   WorkFilesPushSchema,
+  WorkDigestPushSchema,
   ComputerPushSchema
 ])
 
@@ -1708,6 +1759,13 @@ export type WireSchemaPins = [
   Expect<Reads<typeof FilePreviewPhoneSchema, FilePreview>>,
   Expect<Reads<typeof FilesOpenedPhoneSchema, FilesOpened>>,
   Expect<Mirror<typeof FileDoneSchema, FileDone>>,
+  Expect<Reads<typeof WorkDigestPushSchema, PushOf<'work.digest'>>>,
+  Expect<Reads<typeof TellOpenPhoneSchema, TellOpen>>,
+  Expect<Reads<typeof TellRowPhoneSchema, TellRow>>,
+  Expect<Equal<z.infer<typeof TellHowSchema>, TellHow>>,
+  Expect<Mirror<typeof DigestDayWireSchema, DigestDay>>,
+  Expect<Reads<typeof DigestListPhoneSchema, DigestList>>,
+  Expect<Mirror<typeof DigestSettingsWireSchema, DigestSettings>>,
   Expect<Mirror<typeof CanvasItemSchema, CanvasItem>>,
   Expect<Mirror<typeof MailSendAnswerSchema, MailSendAnswer>>,
   Expect<Mirror<typeof GuestCreatedSchema, GuestCreated>>,
