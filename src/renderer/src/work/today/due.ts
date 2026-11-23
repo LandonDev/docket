@@ -5,7 +5,7 @@ import { isTodayTask, snoozeUntil } from "work-kit/lifeos/tasks";
 import { formatDue } from "work-kit/views/lib/format";
 import { registry } from "../../lib/connection";
 import { useMinute } from "../tasks/minute";
-import { act, mutate, sessionDown, useLifeosRows } from "./lifeos";
+import { act, answerOf, mutate, useLifeosRows } from "./lifeos";
 import { goTo } from "./open";
 import { useStableRows } from "./stable";
 import { comeBack, leave } from "./store";
@@ -20,7 +20,7 @@ import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource, TodayW
  * thread's link. Tomorrow snoozes it to the next morning.
  */
 
-const SECTION: TodaySection = { id: "due", title: "Due", order: 30, empty: "Nothing due today", fold: 7, lifeos: true };
+const SECTION: TodaySection = { id: "due", title: "Due", order: 30, empty: "Nothing due today", fold: 7, lifeos: true, bones: "tick" };
 
 export type DueTask = { _id: string; title: string; sector: SectorKey; status: string; priority?: string; dueAt?: number; pinned?: boolean };
 
@@ -104,14 +104,8 @@ function useDue(env: TodayEnv): TodayAnswer {
       }),
     [read.rows, now, env.workspaceOf, lifeos],
   );
-  const rows = useStableRows(built ?? NONE);
-  const down = sessionDown(lifeos);
-  const host = lifeos.environmentId;
-  return useMemo<TodayAnswer>(() => {
-    if (read.error && !down) return { rows: [], failed: [{ environmentId: host, error: read.error }] };
-    if (!built) return { loading: true };
-    return { rows };
-  }, [built, rows, read.error, down, host]);
+  const rows = useStableRows(built ?? NONE, env.workspaceOf);
+  return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "tasks"), [read, built, rows, lifeos]);
 }
 
 export const source: TodaySource = { id: "due", section: SECTION, use: useDue };

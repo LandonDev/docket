@@ -258,6 +258,11 @@ describe("Today's row in the rail", () => {
     expect(row.textContent?.trim()).toBe("Today");
     await probe!.act(async () => row.click());
     expect(shellStore.getState().workPlace).toBe("today");
+    // Selected, it wears the cards' selected fill: an item's own is a card's fill at rest in light.
+    const wrapper = row.closest("[data-rail-row]")!;
+    expect(row.getAttribute("aria-current")).toBe("true");
+    expect(wrapper.className).toMatch(/(^| )bg-sidebar-group-selected( |$)/);
+    expect(wrapper.className).not.toMatch(/(^| )bg-muted( |$)/);
     await probe!.act(async () => setOutboxWaiting(0));
   });
 

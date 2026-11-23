@@ -19,13 +19,12 @@ export type WorkPlaceRow = {
   label: string;
   order: number;
   icon: IconComponent;
-  /** The chord that opens it (lib/keys.ts form, "mod+shift+T"), shown on the row's hover; the binding itself is the Go menu's. */
-  key?: string;
 };
 
 export const WORK_PLACE_ROWS: WorkPlaceRow[] = [
   // Today: one page across every job (work/today). No count on its row: the Outbox's is beside it.
-  { id: "today", label: "Today", order: 10, icon: Sun, key: "mod+shift+T" },
+  // Its key is the Go menu's; the row's hover reads it from the Work keybindings by this label.
+  { id: "today", label: "Today", order: 10, icon: Sun },
   { id: "review", label: "Review", order: 20, icon: Layers },
 ];
 

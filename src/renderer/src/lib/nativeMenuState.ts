@@ -43,6 +43,8 @@ export type MenuFacts = {
   workFile: boolean;
   /** Some host has Work on: Search Work… has somewhere to look, the digest a list to open, and Work's own rows (Go → Today) are drawn. */
   workOn?: boolean;
+  /** Today is the page on screen: its row reads Close Today, as its key closes it. */
+  today?: boolean;
   /** A Work editor on screen answers Print… and Export… (lib/appCommands.ts `workCommands`). */
   print?: boolean;
   export?: boolean;
@@ -66,6 +68,7 @@ export function menuStateOf(f: MenuFacts): MenuState {
   if (f.dockOpen) open.push("toggle_terminal");
   if (f.messageList) open.push("toggle_message_list");
   if (f.split) open.push("close_tab");
+  if (f.today) open.push("open_today");
   if (!f.dockUsable) disabled.push("toggle_terminal");
   if (f.unread === 0) disabled.push("mark_all_read");
   if (!f.workFile) disabled.push("open_file");
@@ -105,6 +108,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }, caret?: Eve
     away: awayEnabled(),
     workFile: workFilePort.get()?.can() ?? false,
     workOn: workSwitch.anyOn(),
+    today: shellStore.getState().workPlace === "today",
     print: workCommands.has("print"),
     export: workCommands.has("export"),
     editing: caret !== undefined ? editorHeld(caret) : typeof document === "undefined" ? [] : editorHeld(document.activeElement),

@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Sheet, SheetClose, SheetContent } from "../../components/ui/sheet";
+import { cn } from "../../lib/cn";
 import { useEnvironments } from "../../lib/connection";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { workOpenPort } from "../../lib/workSwitch";
@@ -11,7 +12,7 @@ import { WORK_CHATS_KEY } from "../outbox/model";
 import { HeldDetail, rememberOutboxTab } from "../outbox/OutboxView";
 import { outboxNow, useOutbox, type HostItem } from "../outbox/store";
 import { heldKey } from "./held";
-import { leave, openHeld, todayNow, useTodayState } from "./store";
+import { advanceHeld, leave, openHeld, todayNow, useTodayState } from "./store";
 
 /**
  * A held item whole, over Today (docs/DESIGN.md "Today"): a sheet from the
@@ -19,9 +20,11 @@ import { leave, openHeld, todayNow, useTodayState } from "./store";
  * and grant menu and its rule that Send waits until the whole item is on
  * screen. Today adds no way to send. After a press the sheet shows the next
  * held item, so a morning's presses are one run; after the last it closes.
+ * When it closes, focus goes back to the page's list: to the row that
+ * opened it, or the row that took its place.
  */
 export function HeldSheet() {
-  const key = useTodayState().held;
+  const { held: key, heldDone: done } = useTodayState();
   const waiting = useOutbox().waiting;
   const workspaces = useWorkspaces();
   const environments = useEnvironments();
@@ -32,16 +35,21 @@ export function HeldSheet() {
   }, [key]);
   const at = waiting.findIndex((item) => heldKey(item) === (key ?? shownKey));
   const item = waiting[at] ?? null;
+  // The order he sees, kept for the press: the host's list may drop the item before its answer is back.
+  useLayoutEffect(() => {
+    if (at !== -1) runOrder = waiting.map(heldKey);
+  }, [at, waiting]);
   const workspace = (i: HostItem): string =>
     !i.workspaceId || i.workspaceId === WORK_CHATS_KEY ? "Work Chats" : (workspaces.find((w) => w.environmentId === i.environmentId && w.id === i.workspaceId)?.name ?? "A Work workspace");
   const host = (i: HostItem): string => environments.find((e) => e.id === i.environmentId)?.name ?? "A host";
   return (
     <Sheet open={key !== null} onOpenChange={(open) => (open ? undefined : openHeld(null))}>
-      <SheetContent side="right" width={520} showCloseButton={false} aria-label={item ? item.summary : "Held item"} data-today-held>
+      <SheetContent side="right" width={520} showCloseButton={false} aria-label={item ? item.summary : "Held item"} data-today-held finalFocus={listStop}>
         <HeldSheetBody
           item={item}
           at={at}
           count={waiting.length}
+          done={done}
           workspace={item ? workspace(item) : ""}
           host={item ? host(item) : ""}
           close={
@@ -55,16 +63,34 @@ export function HeldSheet() {
   );
 }
 
-/** What the sheet holds: its place in the run and Close over the Outbox's own detail. */
-export function HeldSheetBody({ item, at, count, workspace, host, close }: { item: HostItem | null; at: number; count: number; workspace: string; host: string; close: ReactNode }) {
+/** The page's own stop: where focus goes when the sheet closes. The row that opened it may have left by then. */
+const listStop = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-today] [data-roving-key][tabindex="0"]');
+
+/**
+ * What the sheet holds: its place in the run and Close over the Outbox's own
+ * detail. The run counts forward: `done` items decided since the sheet
+ * opened, then this one, of all there were ("2 of 3"). An item that takes
+ * the sheet after a press fades in and takes the focus, so the Send under
+ * his pointer is seen to be another item's.
+ */
+export function HeldSheetBody({ item, at, count, done = 0, workspace, host, close }: { item: HostItem | null; at: number; count: number; done?: number; workspace: string; host: string; close: ReactNode }) {
+  const body = useRef<HTMLDivElement>(null);
+  const key = item ? heldKey(item) : null;
+  const shown = useRef(key);
+  useLayoutEffect(() => {
+    if (shown.current === key) return;
+    shown.current = key;
+    // Another item took the sheet: the keyboard reads it from its top.
+    if (key && done > 0) body.current?.focus({ preventScroll: true });
+  }, [key, done]);
   return (
     <>
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border ps-8 pe-2">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border ps-8 pe-6">
         {/* Where he is in the run, as a question card says it; one item alone says nothing. */}
-        <span className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">{item && count > 1 ? `${at + 1} of ${count}` : null}</span>
+        <span data-today-run className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">{item && done + count > 1 ? `${done + at + 1} of ${done + count}` : null}</span>
         {close}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div ref={body} tabIndex={-1} aria-label={item?.summary} key={key ?? "none"} className={cn("flex min-h-0 flex-1 flex-col outline-none", done > 0 && "transition-opacity duration-(--dur-base) ease-(--ease-out) starting:opacity-0")}>
         {item ? (
           <HeldDetail
             key={heldKey(item)}
@@ -96,15 +122,25 @@ export function HeldSheetBody({ item, at, count, workspace, host, close }: { ite
  * After his press the item leaves the list: the next one down takes the
  * sheet, else the one before, else the sheet closes. Only while that item is
  * still what the sheet shows: a reply that lands after he closed it, or
- * opened another, moves nothing.
+ * opened another, moves nothing. The order is the one he saw, so a list the
+ * host refreshed while the press was out still hands the sheet on.
  */
 function afterPress(item: HostItem): void {
   const key = heldKey(item);
   // The row leaves by his own act: it fades and the rows under it glide up, whenever the host's list drops it.
   leave(key);
   if (todayNow().held !== key) return;
-  const waiting = outboxNow().waiting;
-  const at = waiting.findIndex((x) => heldKey(x) === key);
-  const next = at === -1 ? null : (waiting[at + 1] ?? waiting[at - 1] ?? null);
-  openHeld(next ? heldKey(next) : null);
+  advanceHeld(nextHeld(key, runOrder, outboxNow().waiting.map(heldKey)));
+}
+
+/** The keys of the held items in the order the sheet last showed them. */
+let runOrder: string[] = [];
+
+/** The item that takes the sheet after `key` is decided: the next still waiting in the order he saw, else the nearest before it. */
+export function nextHeld(key: string, order: readonly string[], waiting: readonly string[]): string | null {
+  const still = new Set(waiting);
+  still.delete(key);
+  const at = order.indexOf(key);
+  if (at === -1) return null;
+  return order.slice(at + 1).find((k) => still.has(k)) ?? order.slice(0, at).reverse().find((k) => still.has(k)) ?? null;
 }

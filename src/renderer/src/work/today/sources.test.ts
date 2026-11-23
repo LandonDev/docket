@@ -83,8 +83,9 @@ describe("meetings", () => {
     const timed = EVENTS.filter((e) => !e.allDay);
     const over = meetingRows(timed, DAY, at(23, 19, 30), ways());
     expect(over.rows.every((r) => r.past)).toBe(true);
-    expect(over.note).toBe("Nothing more today. Tomorrow starts at 9:00 AM with Staff sync.");
-    expect(meetingRows(timed.filter((e) => e.startsAt < DAY.to), DAY, at(23, 19, 30), ways()).note).toBe("Nothing more today");
+    // The "N earlier" line already says today's are over: the note says only what comes next, and nothing with no tomorrow.
+    expect(over.note).toBe("Tomorrow starts at 9:00 AM with Staff sync.");
+    expect(meetingRows(timed.filter((e) => e.startsAt < DAY.to), DAY, at(23, 19, 30), ways()).note).toBeUndefined();
     // No meeting today at all: the section's own empty line says it, with no note.
     expect(meetingRows(timed.filter((e) => e.startsAt >= DAY.to), DAY, at(23, 9), ways())).toEqual({ rows: [] });
   });

@@ -13,11 +13,18 @@ read. It has no phone page.
 ## Reaching it
 
 - The first row under the rail's Work heading, while some host has Work on.
-  It carries no count: the Outbox's is beside it.
+  It carries no count: Today is not a queue. Open, it wears the workspace
+  cards' selected fill, and its hover shows the key, read from the Work
+  keybindings by the row's label (`shortcutFor("Work", label)`).
 - Go → Today, ⇧⌘T (Ctrl+Shift+T off macOS). The key toggles: pressed on
-  Today it closes the page. The row is drawn in the menu only while Work is
-  on (`workOnly` in src/shared/menuTree.ts; the window names it in
-  `MenuState.hidden` otherwise), and the key does nothing while Work is off.
+  Today it closes the page, and the menu's row reads "Close Today" while
+  the page is open (a `toggle` row; the window names `open_today` in
+  `MenuState.open`). The row is drawn in the menu only while Work is on
+  (`workOnly` in src/shared/menuTree.ts; the window names it in
+  `MenuState.hidden` otherwise, and main takes only `WORK_ONLY_IDS` from
+  that list, src/main/menu.ts), and the key does nothing while Work is off.
+  The key is listed in Settings → Keybindings under Work; that page lists
+  keys and changes none.
 - The day's digest notice (`digestOpensPort`, set in lib/workPlaces.ts).
 - It does not open by itself. `localStorage["work.today.opensAtDayStart"] =
   "true"` makes it open at the first focus of each day
@@ -25,8 +32,8 @@ read. It has no phone page.
 
 Back (⌘[) leaves the page as it leaves any page. It does not return to
 Today after a row took him elsewhere: the shell keeps no history of pages.
-⇧⌘T does, and the page is as he left it (its rows, folds and scroll are
-kept for the life of the window).
+⇧⌘T does, and the page is as he left it (its rows, folds, scroll and the
+row the arrows were on are kept for the life of the window).
 
 ## The place above the workspaces
 
@@ -34,8 +41,9 @@ Today is the first of the pages above the Work workspaces; the weekly
 review is the second. Two lines add one:
 
 - `src/renderer/src/lib/workPlaces.ts`: `WORK_PLACE_ROWS`, a row
-  `{id, label, order, icon, key?}`. It is first-paint code, so it is plain
-  data and its icon is one of chrome/icons. Today is `order: 10`.
+  `{id, label, order, icon}`. It is first-paint code, so it is plain
+  data and its icon is one of chrome/icons. Today is `order: 10`. A row
+  whose label is a binding in the Work keybindings shows that key on hover.
 - `src/renderer/src/work/places/registry.ts`: `WORK_PLACES[id] = {chunk}`.
   The chunk exports `View({onClose})` and may export `Head` (the header's
   end), `warm(why)` (read ahead on the row's hover or focus, and once at
@@ -63,9 +71,9 @@ place's label. With Work off the rail is what it was
 
 The Files source is written and tested against a fake wire and is **not**
 in `TODAY_SOURCES`: Files has not built `work.files.changed`. Registering it
-is one line in `today/sources.ts`; it then opens a file with
-`work.files.open` and the job's Files view (`openFile`), which Files' own
-`openInFiles` may replace.
+is one line in `today/sources.ts`; it then opens a file through Files' own
+`openInFiles` (work/files/openFrom.ts), which is on master, and the job's
+Files view (`openFile`).
 
 What a row does:
 
@@ -74,15 +82,22 @@ What a row does:
   the right, 520px, whose body is the Outbox's own `HeldDetail` (exported
   from work/outbox for this), with its Send, Edit, Discard and grant menu
   and its rule that Send waits until the whole item is on screen. After a
-  press the sheet shows the next held item, and closes after the last.
+  press the sheet shows the next held item, and closes after the last. The
+  next is picked from the order he saw (`nextHeld`), so a list the host
+  refreshed while the press was out still hands the sheet on; the head
+  counts the run forward ("2 of 3": `heldDone` in today/store.ts); the item
+  that takes the sheet fades in and takes the focus; and a sheet that
+  closes gives focus back to the list's own stop.
   **Today adds no way to send**, and no Send is ever drawn in a row.
 - **Meetings.** Today's events, all-day first, then by start; the second
   line is the place and the job's people who are there. Events that ended
   fold into "N earlier". The one live line under a time is "Leave 5:10 PM"
   while that is ahead, then "in 25 min" within the hour, then "Now". The
   press opens the event in its job's Agenda; Prepare starts a thread about
-  it there. Once every meeting has ended the section says "Nothing more
-  today" and, where there is one, "Tomorrow starts at 9:00 AM with …".
+  it there. Once every meeting has ended the "N earlier" line says so, and
+  the section's one line under it says what comes next, where there is one:
+  "Tomorrow starts at 9:00 AM with …". A meeting that ended is not left:
+  with nothing else on the page it is "All clear" over that line.
 - **Due.** The most overdue first, then today's by time, then the pinned
   with no date. The tick holds 350ms, then completes through the job's host
   (`work.tasks.done`), so a task a thread worked completes with that
@@ -120,6 +135,17 @@ nothing.
   session lacks is read through a session narrowed to that sector on
   another host that holds the job, and the rows are merged by id
   (`useLifeosRows`, `lackingOf`).
+- A list is whole only once the session has said its cover and every such
+  sector read has answered. Until then it is `pending`: the section shows
+  the rows that came, or bones, and never its empty line, so "All clear" is
+  never said on half an answer. A read LifeOS refused, or a sector read
+  that failed, is one line in the section ("LifeOS could not read tasks")
+  with Retry, which lets go of every read of that list and asks afresh
+  (`answerOf`, today/lifeos.ts).
+- A row's presses close over the session they write through and the job
+  they open in. When either is another (the host changed, a workspace
+  moved), every row is made again (`useStableRows(rows, ways)`), so no row
+  on the page acts through one that is gone.
 - While no host can read LifeOS, its sections give way to one line where the
   first stood: "LifeOS did not answer" with Retry, or "Not signed in to
   LifeOS" with Sign in (Settings → Connections).
@@ -177,7 +203,9 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
   with no row draws nothing. Prep and clashes show on a meeting this way,
   with no second row for it.
 - A **section** of a source's own: `{id, title, order, empty, fold?,
-  lifeos?}`. Today's are `held` 10, `meetings` 20, `due` 30, `waiting` 40,
+  lifeos?, bones?}` (`bones`: `"lines"` where its rows have a second line,
+  `"tick"` where a tick leads them, so its bones stand as tall as its
+  rows). Today's are `held` 10, `meetings` 20, `due` 30, `waiting` 40,
   `files` 50. `also` (title "Also", order 90) is Today's own, drawn only
   while it has a row: a source adds rows to it and declares no section. A
   section whose `empty` is `""` is likewise drawn only while it has a row
@@ -185,7 +213,12 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
 - `use` must be a real hook function assigned as `use: useMine`, so the
   React Compiler treats it as one. Answer the same object while nothing
   changed (`useMemo`), and keep each row the same object while it shows the
-  same (`useStableRows`, today/stable.ts): rows are memoised.
+  same (`useStableRows(rows, ways)`, today/stable.ts; `ways` is whatever
+  the rows' presses close over, or null): rows are memoised.
+- A read that did not come back is a `failed` entry `{environmentId, error,
+  said?, retry?}`: the page says "<host> did not answer", with `error`
+  beside it unless it is the wait running out (`TIMED_OUT`, today/read.ts);
+  `said` is the whole line in its place.
 - `useEachWorkspace(env, method, paramsOf, {push})` (today/read.ts) is the
   read for rows that live on hosts: one call per Work workspace on every
   host with Work on, each on its own, six seconds at most, asked again on
@@ -203,17 +236,19 @@ Row keys Today makes: `held:<environmentId>:<ref.at>:<ref.id>`,
 
 `today/model.ts` is the page with no React: `merge` (one row per key, marks
 laid on, sections by order, rows by `at`), `fold` (the past rows folded at
-the head, "N more" at the foot), `page` (the states below) and `dayBounds`
+the head, "N more" at the foot), `page` (the states below, and `keys`: the
+arrows' stops in page order, rows and fold lines) and `dayBounds`
 (local midnight to the next, by the calendar, so a day of 23 or 25 hours is
 one day). `TodayView.tsx` draws it; `TodayRow.tsx` is the one row grid.
 
 | State | What the page shows |
 |---|---|
-| A section has never answered | its heading and three bones |
+| A section has never answered, or a read some job needs is still out | its heading and three bones in its rows' shape |
 | A section is empty | its heading and one muted line |
-| Everything answered, nothing anywhere | "All clear", "Nothing needs you today." |
-| A host with jobs is offline | one muted line at the foot for each |
-| A host did not answer in time | a line in the section it feeds, with Retry |
+| Everything answered, nothing left | "All clear", over "Nothing needs you today." or what tomorrow starts with |
+| A host with jobs is offline | one muted line at the foot for each ("Mac is offline.") |
+| A host did not answer in time | a line in the section it feeds, on the rows' grid, with Retry |
+| LifeOS refused one read | "LifeOS could not read tasks" in that section, with Retry |
 | No host can reach LifeOS | one line in place of the LifeOS sections |
 | No Work workspace has a sector | "No jobs yet", with Add workspace |
 | Work is off on every host | no rail row, no menu row, the key does nothing |
@@ -221,10 +256,19 @@ one day). `TodayView.tsx` draws it; `TodayRow.tsx` is the one row grid.
 Folds: Waiting on you 5, Due 7, Waiting on others 5, Changed by others 5.
 An unfolded section stays open until the window closes.
 
-Keys: every row on the page is one list, one tab stop. ↑ ↓ Home End move;
-Enter opens the row; Space ticks a task. The row the arrows are on shows
-its verbs, and takes Tab with its own controls. Focus lands on the first
-row when the page opens. Esc closes the page.
+Keys: every row and every fold line on the page is one list, one tab stop.
+↑ ↓ Home End move; Enter opens the row or the fold; Space ticks a task. The
+row the arrows are on shows its verbs, and takes Tab with its own controls.
+A fold he opens hands its focus to the first row it showed. Focus lands on
+the first row when the page opens, and where he left it when he comes back.
+Esc closes the page.
+
+Width: `TodayRow.tsx` holds the grid. In a column under 480px (the window
+at its least beside the rail and the Chats column) the inset, the gaps and
+the two trailing columns narrow together (`@container/today`).
+
+Toasts: the titles' column at the page's foot is the toast anchor
+(lib/toastAnchor.ts), so a toast covers neither a tick nor a verb.
 
 ## Speed
 

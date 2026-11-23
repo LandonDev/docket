@@ -5,10 +5,14 @@ import { Button } from "../../components/ui/button";
 import { registry, type Link } from "../../lib/connection";
 import { workPlaceRow } from "../../lib/workPlaces";
 import { Calendar, Mail } from "../icons";
+import { source as messages, waitingRows as chatRows } from "../messages/today";
+import { owedRows, source as money } from "../money/today";
 import type { HostItem } from "../outbox/store";
 import { PlaceFrame } from "../places/WorkPlacePage";
+import { readyRow } from "../review/today";
 import { HeldSheetBody } from "./HeldSheet";
 import { page, type Fed, type Folds, type LifeosReach } from "./model";
+import { TIMED_OUT } from "./read";
 import { TodayPageView } from "./TodayView";
 import type { TodayAnswer, TodayRow, TodaySection, TodayWorkspace } from "./types";
 
@@ -24,11 +28,11 @@ const glyph = (Glyph: ComponentType<{ className?: string }>): TodayRow["lead"] =
 const tick: TodayRow["lead"] = { kind: "tick", label: "Mark done", run: async () => {} };
 const row = (key: string, section: string, sector: TodayRow["sector"], title: string, more: Partial<TodayRow> = {}): TodayRow => ({ key, section, sector, title, open: noop, ...more });
 
-const HELD: TodaySection = { id: "held", title: "Waiting on you", order: 10, empty: "Nothing waits on your press", fold: 5 };
-const MEETINGS: TodaySection = { id: "meetings", title: "Meetings", order: 20, empty: "No meetings today", lifeos: true };
-const DUE: TodaySection = { id: "due", title: "Due", order: 30, empty: "Nothing due today", fold: 7, lifeos: true };
-const WAITING: TodaySection = { id: "waiting", title: "Waiting on others", order: 40, empty: "No one owes you a reply", fold: 5, lifeos: true };
-const FILES: TodaySection = { id: "files", title: "Changed by others", order: 50, empty: "No one changed your files", fold: 5 };
+const HELD: TodaySection = { id: "held", title: "Waiting on you", order: 10, empty: "Nothing waits on your press", fold: 5, bones: "lines" };
+const MEETINGS: TodaySection = { id: "meetings", title: "Meetings", order: 20, empty: "No meetings today", lifeos: true, bones: "lines" };
+const DUE: TodaySection = { id: "due", title: "Due", order: 30, empty: "Nothing due today", fold: 7, lifeos: true, bones: "tick" };
+const WAITING: TodaySection = { id: "waiting", title: "Waiting on others", order: 40, empty: "No one owes you a reply", fold: 5, lifeos: true, bones: "lines" };
+const FILES: TodaySection = { id: "files", title: "Changed by others", order: 50, empty: "No one changed your files", fold: 5, bones: "lines" };
 
 const HELD_ROWS = [
   row("held:1", "held", "purdue", "Reply to Dana Reyes", { detail: "Spring budget, second draft", when: "7:42 AM", lead: glyph(Mail), at: 1 }),
@@ -58,7 +62,10 @@ const job = (environmentId: string, sector: TodayWorkspace["sector"], open = tru
 const JOBS = (["cosmic", "hypixel", "purdue", "ref", "unify", "life"] as const).map((sector) => job("box", sector));
 const fed = (section: TodaySection, answer: TodayAnswer): Fed => ({ source: { id: section.id, section }, answer });
 
-type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "lifeos-down" | "signed-out" | "clear" | "no-jobs" | "sheet";
+type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "refused" | "lifeos-down" | "signed-out" | "clear" | "evening" | "pillars" | "no-jobs" | "sheet" | "sheet-next";
+
+/** A job by its workspace's name, as the rail says it. */
+const JOB_NAMES: Record<string, string> = { cosmic: "CosmicGames", hypixel: "Hypixel", purdue: "Purdue Esports", ref: "Refereeing", unify: "UnifyPlatforms", life: "Life" };
 
 const FULL = [fed(HELD, { rows: HELD_ROWS }), fed(MEETINGS, { rows: MEETING_ROWS }), fed(DUE, { rows: DUE_ROWS }), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, { rows: FILE_ROWS })];
 const ALL_FOLDS: Folds = { more: new Set(["due"]), earlier: new Set(["meetings"]) };
@@ -71,13 +78,18 @@ function modelOf(state: State) {
     case "unfolded":
       return page(FULL, opts("ok", JOBS, ALL_FOLDS));
     case "bones":
-      return page([fed(HELD, { rows: HELD_ROWS }), fed(MEETINGS, { loading: true }), fed(DUE, { loading: true }), fed(WAITING, { loading: true }), fed(FILES, { loading: true })], opts("waiting"));
+      return page([fed(HELD, { loading: true }), fed(MEETINGS, { loading: true }), fed(DUE, { loading: true }), fed(WAITING, { loading: true }), fed(FILES, { loading: true })], opts("waiting"));
     case "empty":
-      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Nothing more today. Tomorrow starts at 9:00 AM with Staff sync." }), fed(DUE, {}), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, {})], opts());
+      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync." }), fed(DUE, {}), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, {})], opts());
     case "hosts":
       return page(
-        [fed(HELD, { rows: HELD_ROWS.slice(0, 1), failed: [{ environmentId: "box", error: "It did not answer in time", retry: noop }] }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: DUE_ROWS.slice(0, 3) }), fed(WAITING, {}), fed(FILES, {})],
+        [fed(HELD, { rows: HELD_ROWS.slice(0, 1), failed: [{ environmentId: "box", error: TIMED_OUT, retry: noop }] }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: DUE_ROWS.slice(0, 3) }), fed(WAITING, {}), fed(FILES, {})],
         opts("ok", [...JOBS, job("mac", "purdue", false)]),
+      );
+    case "refused":
+      return page(
+        [fed(HELD, { rows: HELD_ROWS.slice(0, 1) }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: [], failed: [{ environmentId: "box", error: "Uncaught Error", said: "LifeOS could not read tasks", retry: noop }] }), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, {})],
+        opts(),
       );
     case "lifeos-down":
       return page(FULL, opts("unreachable"));
@@ -85,12 +97,64 @@ function modelOf(state: State) {
       return page(FULL, opts("signed-out"));
     case "clear":
       return page([fed(HELD, {}), fed(MEETINGS, {}), fed(DUE, {}), fed(WAITING, {}), fed(FILES, {})], opts());
+    case "evening":
+      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync." }), fed(DUE, {}), fed(WAITING, {}), fed(FILES, {})], opts());
+    case "pillars":
+      return page(PILLARS, opts());
     case "no-jobs":
       return page(FULL, opts("ok", []));
     case "sheet":
+    case "sheet-next":
       return page(FULL, opts());
   }
 }
+
+// What the other pillars add (docs/agents/work-today.md "Adding to Today"), each through its own row maker with made-up
+// values: clashes mark two meetings, Messages and Money bring a section each, the review a row under Also.
+const NOON = new Date(2026, 10, 23, 9, 30).getTime();
+const PILLARS = [
+  fed(HELD, { rows: HELD_ROWS.slice(0, 1) }),
+  fed(MEETINGS, { rows: MEETING_ROWS.slice(2).map((r) => ({ ...r, detail: r.key === "event:2" ? undefined : r.detail, detailLate: undefined, whenLine: undefined, acts: [{ label: "Prepare", run: noop }] })) }),
+  {
+    source: { id: "clashes" },
+    answer: {
+      marks: [
+        { key: "event:1", note: "Overlaps Thumbnail review", late: true, act: { label: "Resolve", run: noop } },
+        { key: "event:2", note: "Overlaps Staff sync", late: true, act: { label: "Resolve", run: noop } },
+        { key: "event:3", whenLine: "Leave 5:10 PM" },
+      ],
+    },
+  },
+  fed(DUE, { rows: DUE_ROWS.slice(0, 2) }),
+  fed(WAITING, { rows: WAITING_ROWS.slice(0, 1) }),
+  fed(messages.section!, {
+    rows: chatRows(
+      [
+        {
+          workspace: job("box", "purdue"),
+          value: {
+            rows: [
+              { chatId: "c1", chat: "#esports-staff", who: "Dana Reyes", text: "Can you confirm the ballroom by noon?", at: NOON - 40 * 60_000, source: "teams" },
+              { chatId: "c2", chat: "Marcus Bell", who: "Marcus Bell", text: "Sent the sponsor deck, thoughts?", at: NOON - 3 * 3_600_000, source: "slack" },
+            ],
+          },
+        },
+      ],
+      NOON,
+      noop,
+    ),
+  }),
+  fed(money.section!, {
+    rows: owedRows(
+      [
+        { workspace: job("box", "unify"), value: { rows: [{ workspaceId: "box-unify", sector: "unify", row: 4, who: "Northfield Parks", what: "November hosting", amount: 42_000, since: "2026-11-02", way: "toHim", reimburse: false }], toConfirm: 0 } },
+        { workspace: job("box", "ref"), value: { rows: [{ workspaceId: "box-ref", sector: "ref", row: 9, who: "Shell", what: "Fuel to Harrison", amount: 3_812, since: "2026-11-19", way: "toHim", reimburse: true }], toConfirm: 0 } },
+      ],
+      "2026-11-23",
+    ),
+  }),
+  { source: { id: "review" }, answer: { rows: [readyRow({ from: new Date(2026, 10, 16).getTime(), madeAt: new Date(2026, 10, 20, 16).getTime() }, NOON, "America/Indiana/Indianapolis")] } },
+] satisfies Fed[];
 
 const HOSTS: Record<string, string> = { box: "The box", mac: "Mac" };
 
@@ -143,7 +207,7 @@ const link = {
 } as unknown as Link;
 
 export function TodayPreview({ state = "day" }: { state?: State }) {
-  if (state === "sheet") {
+  if (state === "sheet" || state === "sheet-next") {
     Object.assign(registry, { primary: () => link, linkOf: () => link });
     return (
       // The sheet's own box: 520px, the popover's fill and corners (components/ui/sheet.tsx).
@@ -151,7 +215,8 @@ export function TodayPreview({ state = "day" }: { state?: State }) {
         <HeldSheetBody
           item={{ ...HELD_MAIL, environmentId: "box" } as HostItem}
           at={0}
-          count={3}
+          count={state === "sheet" ? 3 : 2}
+          done={state === "sheet" ? 0 : 1}
           workspace="Purdue Esports"
           host="The box"
           close={
@@ -164,10 +229,10 @@ export function TodayPreview({ state = "day" }: { state?: State }) {
     );
   }
   return (
-    <div className={`flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background ${state === "clear" || state === "no-jobs" ? "h-[360px]" : ""}`}>
+    <div className={`flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background ${state === "clear" || state === "evening" || state === "no-jobs" ? "h-[360px]" : ""}`}>
       <PlaceFrame place="today" label="Today" icon={workPlaceRow("today")?.icon} head={<time className="text-xs tabular-nums text-muted-foreground">Mon, Nov 23</time>} besideRail onClose={noop}>
         <div className="flex min-h-0 flex-1 flex-col">
-          <TodayPageView model={modelOf(state)} hostName={(id) => HOSTS[id] ?? "A host"} hasFiles onRetryLifeos={noop} />
+          <TodayPageView model={modelOf(state)} hostName={(id) => HOSTS[id] ?? "A host"} jobName={(sector) => JOB_NAMES[sector] ?? sector} onRetryLifeos={noop} />
         </div>
       </PlaceFrame>
     </div>

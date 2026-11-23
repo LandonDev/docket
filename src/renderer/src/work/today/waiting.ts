@@ -5,7 +5,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { workOpenPort } from "../../lib/workSwitch";
 import { shell } from "../../stores/shell";
-import { act, mutate, sessionDown, useLifeosRows } from "./lifeos";
+import { act, answerOf, mutate, useLifeosRows } from "./lifeos";
 import { goTo } from "./open";
 import { useStableRows } from "./stable";
 import { comeBack, leave } from "./store";
@@ -19,7 +19,7 @@ import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource, TodayW
  * Undo, as Mail's does. Put off stays in Mail.
  */
 
-const SECTION: TodaySection = { id: "waiting", title: "Waiting on others", order: 40, empty: "No one owes you a reply", fold: 5, lifeos: true };
+const SECTION: TodaySection = { id: "waiting", title: "Waiting on others", order: 40, empty: "No one owes you a reply", fold: 5, lifeos: true, bones: "lines" };
 
 export type Wait = {
   _id: string;
@@ -115,14 +115,8 @@ function useWaiting(env: TodayEnv): TodayAnswer {
       }),
     [read.rows, today, env.workspaceOf, lifeos],
   );
-  const rows = useStableRows(built ?? NONE);
-  const down = sessionDown(lifeos);
-  const host = lifeos.environmentId;
-  return useMemo<TodayAnswer>(() => {
-    if (read.error && !down) return { rows: [], failed: [{ environmentId: host, error: read.error }] };
-    if (!built) return { loading: true };
-    return { rows };
-  }, [built, rows, read.error, down, host]);
+  const rows = useStableRows(built ?? NONE, env.workspaceOf);
+  return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "mail"), [read, built, rows, lifeos]);
 }
 
 export const source: TodaySource = { id: "waiting", section: SECTION, use: useWaiting };

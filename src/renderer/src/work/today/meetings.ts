@@ -6,7 +6,7 @@ import { knownAttendees, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, type LifeosSession } from "../shell/lifeos";
 import { startThreadAbout } from "../shell/WorkColumn";
 import { useMinute } from "../tasks/minute";
-import { sessionDown, useLifeosRows } from "./lifeos";
+import { answerOf, useLifeosRows } from "./lifeos";
 import { dayAfter } from "./model";
 import { goTo } from "./open";
 import { useStableRows } from "./stable";
@@ -20,7 +20,7 @@ import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource, TodayW
  * Prepare starts a thread about it there, as Agenda's Prepare does.
  */
 
-const SECTION: TodaySection = { id: "meetings", title: "Meetings", order: 20, empty: "No meetings today", lifeos: true };
+const SECTION: TodaySection = { id: "meetings", title: "Meetings", order: 20, empty: "No meetings today", lifeos: true, bones: "lines" };
 
 export type MeetingEvent = {
   _id: string;
@@ -95,7 +95,8 @@ export function meetingRows(events: readonly MeetingEvent[], day: { from: number
   });
   if (rows.length === 0 || rows.some((row) => !row.past)) return { rows };
   const next = days.find((d) => d.day === dayAfter(day.from, 1))?.events.find((event) => !event.allDay);
-  return { rows, note: next ? `Nothing more today. Tomorrow starts at ${clockTime(next.startsAt)} with ${next.title}.` : "Nothing more today" };
+  // The fold above already says today's are over ("2 earlier"); the line says only what comes next.
+  return next ? { rows, note: `Tomorrow starts at ${clockTime(next.startsAt)} with ${next.title}.` } : { rows };
 }
 
 /** A slot with nothing to read. */
@@ -133,16 +134,11 @@ function useMeetings(env: TodayEnv): TodayAnswer {
       prepare: (workspace, event) => startThreadAbout(chipOf(event), null, workspace.path),
     });
   }, [read.rows, from, to, now, env.workspaceOf, cosmic, hypixel, purdue, ref, unify, life]);
-  const rows = useStableRows(built?.rows ?? NONE);
+  const rows = useStableRows(built?.rows ?? NONE, env.workspaceOf);
   const note = built?.note;
-  const down = sessionDown(env.lifeos);
-  const host = env.lifeos.environmentId;
-  return useMemo<TodayAnswer>(() => {
-    if (read.error && !down) return { rows: [], failed: [{ environmentId: host, error: read.error }] };
-    // Still to answer: the rows it had stay on the page until it does.
-    if (!built) return { loading: true };
-    return { rows, ...(note ? { note } : {}) };
-  }, [built, rows, note, read.error, down, host]);
+  const lifeos = env.lifeos;
+  // Still to answer: the rows it had stay on the page until it does (store.ts `putAnswer`).
+  return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "meetings", note), [read, built, rows, lifeos, note]);
 }
 
 const NONE: readonly TodayRow[] = [];

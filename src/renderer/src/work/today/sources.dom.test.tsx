@@ -124,7 +124,33 @@ describe("the meetings source", () => {
     act(() => void convex.answer("events:range", () => {
       throw new Error("events:range is gone");
     }));
-    expect(result.current.failed).toEqual([{ environmentId: "box", error: "events:range is gone" }]);
+    // Said in plain words where the read failed, with a Retry of its own: the host is not at fault.
+    expect(result.current.failed).toEqual([{ environmentId: "box", error: "events:range is gone", said: "LifeOS could not read meetings", retry: expect.any(Function) }]);
+    expect(result.current.rows).toEqual([]);
+  });
+
+  it("is not empty while the session has not said which jobs it covers: no section says nothing on half an answer", () => {
+    convex.answer("auth:caller", undefined);
+    convex.answer("events:range", []);
+    const env = envNow();
+    const { result } = renderHook(() => meetings.use(env));
+    expect(result.current).toEqual({ rows: [], loading: true });
+    act(() => void convex.answer("auth:caller", { sectors: "all" }));
+    expect(result.current).toEqual({ rows: [] });
+  });
+
+  it("a row is made again when the session or the jobs it acts through are others, though it shows the same", () => {
+    convex.answer("events:range", EVENTS);
+    const first = envNow();
+    const { result, rerender } = renderHook(({ env }) => meetings.use(env), { initialProps: { env: first } });
+    const before = result.current.rows!;
+    // The same env again: the same rows.
+    rerender({ env: first });
+    expect(result.current.rows![0]).toBe(before[0]);
+    // Another host's session and jobs: no row keeps a press that closes over the old ones.
+    rerender({ env: { ...first, workspaceOf: (sector) => first.workspaceOf(sector) } });
+    expect(result.current.rows!.map((r) => r.title)).toEqual(before.map((r) => r.title));
+    expect(result.current.rows![0]).not.toBe(before[0]);
   });
 
   it("Prepare starts a thread about the event in its job's workspace, and the press opens it in that job's Agenda", () => {

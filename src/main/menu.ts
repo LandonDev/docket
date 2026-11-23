@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, globalShortcut, ipcMain, Menu, shell, type MenuItemConstructorOptions, type WebContents } from 'electron'
-import { EDITOR_KEY_IDS, EMPTY_MENU_STATE, MENU_TREE, resolveMenu, sameMenuState, type MenuNode, type MenuState } from '../shared/menuTree'
+import { EDITOR_KEY_IDS, EMPTY_MENU_STATE, MENU_TREE, resolveMenu, sameMenuState, WORK_ONLY_IDS, type MenuNode, type MenuState } from '../shared/menuTree'
 import { createWindow } from './windows'
 import { hostProfileRunning, profileHost } from './server/doctorProfile'
 
@@ -122,7 +122,15 @@ export function receiveMenuState(contents: WebContents, raw: unknown): void {
     })
   }
   const editing = strings(value.editing).filter((id) => (EDITOR_KEY_IDS as readonly string[]).includes(id))
-  states.set(contents.id, { open: strings(value.open), disabled: strings(value.disabled), checked: ticks(value.checked), ...(editing.length ? { editing } : {}) })
+  // A window may hide Work's own rows and nothing else.
+  const hidden = strings(value.hidden).filter((id) => (WORK_ONLY_IDS as readonly string[]).includes(id))
+  states.set(contents.id, {
+    open: strings(value.open),
+    disabled: strings(value.disabled),
+    checked: ticks(value.checked),
+    ...(editing.length ? { editing } : {}),
+    ...(hidden.length ? { hidden } : {})
+  })
   if (BrowserWindow.getFocusedWindow()?.webContents === contents) applyFocusedMenu()
 }
 

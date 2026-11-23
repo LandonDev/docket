@@ -235,6 +235,22 @@ describe('menu state', () => {
     expect(row('File', 'print').accelerator).toBeUndefined()
   })
 
+  it('leaves Work\'s own rows out for a window that hides them, and hides no other row at a window\'s word', () => {
+    const c = contents(1)
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))
+    const go = (): (string | undefined)[] => {
+      const last = vi.mocked(Menu.buildFromTemplate).mock.calls.at(-1)![0] as MenuItemConstructorOptions[]
+      return (last.find((s) => s.label === 'Go')!.submenu as MenuItemConstructorOptions[]).map((r) => r.id)
+    }
+    expect(go()).toContain('open_today')
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [], hidden: ['open_today', 'open_search', 3] })
+    expect(go()).not.toContain('open_today')
+    expect(go()).toContain('open_search')
+    // Work came on: the row is drawn, and reads Close Today while the page is open
+    menuModule.receiveMenuState(c as never, { open: ['open_today'], disabled: [] })
+    expect(row('Go', 'open_today').label).toBe('Close Today')
+  })
+
   it('goes back to the plain menu when the window closes', () => {
     const c = contents(1)
     vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))

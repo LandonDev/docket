@@ -1,10 +1,10 @@
 import { makeFunctionReference } from "convex/server";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SectorKey } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
-import { sessionWaits, useLifeosQuery, useLifeosSession, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { reopenLifeos, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import type { LifeosReach } from "./model";
-import type { TodayEnv, TodayWorkspace } from "./types";
+import type { TodayAnswer, TodayEnv, TodayFailure, TodayRow, TodayWorkspace } from "./types";
 
 /**
  * How Today reads LifeOS (docs/agents/work-today.md "One LifeOS session"):
@@ -63,24 +63,47 @@ function useSlot<V>(sector: SectorKey, lacking: ReadonlyMap<SectorKey, string>, 
   return host ? query : null;
 }
 
+/** A read some job needs that did not come back: the session's cover (`sector` null), or one sector's narrowed read. */
+export type Lost = { environmentId: string; sector: SectorKey | null; error: string };
+
 export type Rows<T> = {
   /** Null until the all-sector read has answered. */
   rows: T[] | null;
   /** LifeOS refused the read itself, in its words. */
   error: string | null;
+  /** A read some job needs is still out (the session's cover, a sector read on another host): `rows` may not be all of them yet. */
+  pending: boolean;
+  /** The reads beside the first that failed: `rows` lacks what they would have brought. */
+  lost: readonly Lost[];
+  /** Ask again: every read is dropped and made afresh, and a session that failed is opened again. */
+  retry(): Promise<void>;
 };
+
+const NO_LOST: readonly Lost[] = [];
 
 /**
  * A LifeOS list for every job: the all-sector session's rows, with the rows
  * of each sector that session lacks read on another host and merged by id.
- * `pick` takes the rows out of what the query answers.
+ * `pick` takes the rows out of what the query answers. The list is whole
+ * only once the session's cover and every such read have answered too:
+ * until then it is `pending`, and one that failed is `lost`, so the page
+ * never calls a section empty on half an answer.
  */
 export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<string, unknown>, pick: (value: V) => readonly T[], idOf: (row: T) => string): Rows<T> {
-  const main = useLifeosQuery<V>(env.lifeos, name, args);
-  const caller = useLifeosQuery<{ sectors: "all" | string[] }>(env.lifeos, "auth:caller", {});
+  // Retry lets go of every read for one render: a query LifeOS refused is asked again only once no one holds it.
+  // With no cover to go by, the sector reads rest too, and start again when the session says its cover.
+  const [resting, setResting] = useState(false);
+  useEffect(() => {
+    if (resting) setResting(false);
+  }, [resting]);
+  const session = resting ? IDLE : env.lifeos;
+  const main = useLifeosQuery<V>(session, name, args);
+  const caller = useLifeosQuery<{ sectors: "all" | string[] }>(session, "auth:caller", NO_ARGS);
   const cover = caller.status === "ready" ? caller.value.sectors : null;
   const coverKey = cover === null ? "" : cover === "all" ? "all" : cover.join(",");
-  const lacking = useMemo(() => lackingOf(cover, env.workspaces, env.lifeos.environmentId), [coverKey, env.workspaces, env.lifeos.environmentId]);
+  const host = env.lifeos.environmentId;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the cover by its value
+  const lacking = useMemo(() => lackingOf(cover, env.workspaces, host), [coverKey, env.workspaces, host]);
   const slots = [
     useSlot<V>(SLOTS[0]!, lacking, name, args),
     useSlot<V>(SLOTS[1]!, lacking, name, args),
@@ -90,11 +113,19 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
     useSlot<V>(SLOTS[5]!, lacking, name, args),
   ];
   const [a, b, c, d, e, f] = slots;
-  return useMemo(() => {
-    if (main.status !== "ready") return { rows: null, error: main.status === "failed" ? main.error : null };
+  const lostNow = useRef<readonly Lost[]>(NO_LOST);
+  const retry = useCallback(async () => {
+    await Promise.all(lostNow.current.map((lost) => reopenLifeos(lost.environmentId, lost.sector).catch(() => {})));
+    setResting(true);
+  }, []);
+  const read = useMemo<Rows<T>>(() => {
+    if (main.status !== "ready") return { rows: null, error: main.status === "failed" ? main.error : null, pending: false, lost: NO_LOST, retry };
     const seen = new Set<string>();
     const rows: T[] = [];
-    for (const value of [main.value, ...[a, b, c, d, e, f].flatMap((slot) => (slot?.status === "ready" ? [slot.value] : []))]) {
+    const lost: Lost[] = caller.status === "failed" ? [{ environmentId: host, sector: null, error: caller.error }] : [];
+    let pending = caller.status === "loading";
+    const each = [a, b, c, d, e, f];
+    for (const value of [main.value, ...each.flatMap((slot) => (slot?.status === "ready" ? [slot.value] : []))]) {
       for (const row of pick(value)) {
         const id = idOf(row);
         if (seen.has(id)) continue;
@@ -102,10 +133,41 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
         rows.push(row);
       }
     }
-    return { rows, error: null };
+    each.forEach((slot, at) => {
+      const sector = SLOTS[at]!;
+      if (slot?.status === "loading") pending = true;
+      if (slot?.status === "failed") lost.push({ environmentId: lacking.get(sector) ?? host, sector, error: slot.error });
+    });
+    return { rows, error: null, pending, lost: lost.length ? lost : NO_LOST, retry };
     // `pick` and `idOf` are the caller's constants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [main, a, b, c, d, e, f]);
+  }, [main, caller, a, b, c, d, e, f, lacking, host, retry]);
+  useEffect(() => {
+    lostNow.current = read.lost;
+  }, [read.lost]);
+  return read;
+}
+
+const NO_ARGS = {};
+
+/**
+ * What a LifeOS section answers from its read (`rows` null: still to build).
+ * A read LifeOS refused is said in the section with a Retry, in plain words
+ * (`what`: "meetings", "tasks"); a read still out keeps the section from
+ * saying it is empty; one beside the first that failed is said under the
+ * rows that did arrive.
+ */
+export function answerOf(read: Pick<Rows<unknown>, "error" | "pending" | "lost" | "retry">, rows: TodayRow[] | null, lifeos: LifeosSession, what: string, note?: string): TodayAnswer {
+  const failure = (environmentId: string, error: string): TodayFailure => ({ environmentId, error, said: `LifeOS could not read ${what}`, retry: read.retry });
+  // A session that is down is the page's one line (model.ts `page`), never each section's.
+  if (read.error && !sessionDown(lifeos)) return { rows: [], failed: [failure(lifeos.environmentId, read.error)] };
+  if (!rows) return { loading: true };
+  return {
+    rows,
+    ...(read.pending ? { loading: true } : {}),
+    ...(read.lost.length ? { failed: [failure(read.lost[0]!.environmentId, read.lost[0]!.error)] } : {}),
+    ...(note ? { note } : {}),
+  };
 }
 
 /** A write to LifeOS as the session's owner; rejects when the session cannot write. */

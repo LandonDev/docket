@@ -2127,8 +2127,11 @@ Around the canvas:
 One page above the Work workspaces: what waits on his press, today's
 meetings, what is due, the mail no one answered and the files others
 changed, for every job (work/today/, docs/agents/work-today.md). It is the
-first row under the rail's Work heading (a sun, "Today", no count: the
-Outbox's is beside it) and Go → Today, ⇧⌘T, which also closes it.
+first row under the rail's Work heading (a sun, "Today", no count: Today is
+not a queue) and Go → Today, ⇧⌘T, which also closes it: the menu's row
+reads "Close Today" while the page is open. Open, its rail row wears the
+workspace cards' selected fill (`sidebar-group-selected`), since an item's
+own selected fill is a card's fill at rest in light.
 
 - **The frame** is the Outbox page's: a 40px header with the place's 14px
   glyph, its name in 13px medium and, at its end, the date in 12px muted
@@ -2141,23 +2144,39 @@ Outbox's is beside it) and Go → Today, ⇧⌘T, which also closes it.
   on his press comes first; the page is grouped by need, never by job.
 - **One row grid for the whole page**: a 16px lead, the title with an
   optional 12px second line, the job (its sector's dot and its name, 12px
-  muted, a 96px column), then the trailing fact (12px tabular, at the end of
+  muted, a 112px column), then the trailing fact (12px tabular, at the end of
   an 80px column), 12px between columns. Every title on the page starts at
   one left edge, and a fold or an empty line starts there too. A one-line
   row is 32px, a two-line row 48px, rows 2px apart, 6px radius; hover is
-  `foreground/5`, a press `foreground/12`, at once.
+  `foreground/5`, a press `foreground/12`, at once. In a column under 480px
+  (the window at its least, beside the rail and the Chats column) the page's
+  inset is 12px, the gaps 8px and the two trailing columns 64px each, so the
+  title keeps the room (`@container/today`).
 - **The lead** is the row's own control or its kind: a round `Checkbox` on a
   task, the Outbox's kind glyph on a held item, the file's kind on a file,
   nothing on a meeting or a waiting mail.
 - **The job is on every row**, dot and name: the dot is never the only cue,
-  and the column is one the eye can run down to find a job.
+  and the column is one the eye can run down to find a job. The name is the
+  workspace's, as the rail and the held sheet say it, never the sector's
+  own word.
 - **Verbs show on hover and on focus**, in place of the job and the fact
-  (`reveal`, `yields`): at most two ghost `xs` buttons. None is drawn at
-  rest, and Send is never one of them: a held row opens the item whole in a
-  sheet from the right (520px) whose body is the Outbox's own detail, with
-  its Send and its rule. The sheet's 40px head says where he is in the run
-  ("2 of 5", 12px muted tabular) beside Close; after a press it shows the
-  next held item, and closes after the last.
+  (`reveal`, `yields`): at most two ghost `xs` buttons, the last one's
+  label ending on the facts' edge. None is drawn at rest, and Send is never
+  one of them: a held row opens the item whole in a sheet from the right
+  (520px) whose body is the Outbox's own detail, with its Send and its
+  rule. The sheet's 40px head says where he is in the run ("2 of 5", 12px
+  muted tabular: the items decided since it opened, then this one, of all
+  there were, so it counts forward) beside Close, whose glyph ends on the
+  body's edge. After a press it shows the next held item in the order he
+  saw, which fades in over `--dur-base` on `--ease-out` and takes the
+  focus, and closes after the last; closed, it gives focus back to the
+  list's own stop.
+- **A toast sits at the page's foot over the titles** (lib/toastAnchor.ts:
+  the titles' column is the anchor), clear of the ticks before them and the
+  verbs after, so a run of ticks or dismissals never waits on a toast. In
+  the narrow column it takes the row's width. While the held sheet is open
+  the toasts are back in the window's corner, behind it, as under any
+  sheet.
 - **Long sections fold**: Waiting on you shows 5, Due 7, Waiting on others
   5, Changed by others 5, then one muted 12px line ("4 more") that unfolds
   in place and stays unfolded. Meetings that have ended fold into "2
@@ -2169,26 +2188,40 @@ Outbox's is beside it) and Go → Today, ⇧⌘T, which also closes it.
   `destructive`. No amber: held is not Needs you, and a page of asks must
   not read as a page of alarms.
 - **States.** A section that has never answered draws its heading over
-  three bones in its rows' shape; nothing else waits for it. An empty
+  three bones in its rows' shape (two lines where its rows have two, a
+  round bone before a task's), so nothing under it moves when it answers;
+  nothing else waits for it. A section whose rows came while a read some
+  job needs is still out draws bones too, never its empty line. An empty
   section is its heading and one 13px muted line ("Nothing waits on your
   press", "No meetings today", "Nothing due today", "No one owes you a
-  reply", "No one changed your files"). With nothing anywhere the page is
-  one `EmptyState`: "All clear", "Nothing needs you today.", and no
-  headings. A host that did not answer is a state line in the section it
-  feeds, with Retry, and that section never says "nothing" beside it; an
-  offline host is one 12px muted line at the page's foot. While no host can
-  reach LifeOS its sections give way to one line: "LifeOS did not answer"
-  with Retry, or the plain muted "Not signed in to LifeOS" with Sign in.
-- **Keys.** Every row is one list and one tab stop: ↑ ↓ Home End move,
-  Enter opens the row, Space ticks a task; the row the arrows are on shows
-  its verbs. Focus lands on the first row when the page opens.
+  reply", "No one changed your files"). With nothing left the page is one
+  `EmptyState` and no headings: "All clear" over "Nothing needs you
+  today.", or, once the day's meetings are over, over what tomorrow starts
+  with ("Tomorrow starts at 9:00 AM with Staff sync."). A meeting that
+  ended is not left. A read that did not come back is one line in the
+  section it feeds, on the rows' grid: the failed mark in the lead, the
+  words on the titles' edge ("The box did not answer", with the cause
+  beside it only when it is not the wait running out; "LifeOS could not
+  read tasks" for a read LifeOS refused), Retry's label ending on the
+  facts' edge; that section never says "nothing" beside it. An offline host
+  is one 12px muted line at the page's foot ("Mac is offline."). While no
+  host can reach LifeOS its sections give way to one line on the same grid:
+  "LifeOS did not answer" with Retry, or the plain muted "Not signed in to
+  LifeOS" with Sign in.
+- **Keys.** Every row and every fold line is one list and one tab stop: ↑ ↓
+  Home End move, Enter opens the row or the fold, Space ticks a task; the
+  row the arrows are on shows its verbs. A fold he opens hands its focus to
+  the first row it showed. Focus lands on the first row when the page
+  opens, and where he left it when he comes back.
 - **A row that leaves a list by his own act** (a tick, Tomorrow, Dismiss, a
   Send from the sheet) fades where it stands over `--dur-fast`, inert; then
   its place closes over `--dur-base` on `--ease-out` (`glideHeight`), so
   the rows under it glide up by its height; then it is gone, whether or not
   its source has dropped it yet. Under reduced motion it fades and the list
   steps. A task's tick holds 350ms first, its title struck through, as in
-  Tasks. A row that leaves because the world changed just goes. A row that
+  Tasks. A row that comes back while its place closes (Undo, an act that
+  failed) stands whole at once. A row that leaves because the world changed
+  just goes. A row that
   arrives while he is looking lands (`.step-land`); the rows a list opened
   with, and those his own unfold shows, do not move. This is the rule for a
   row leaving any list by his act.

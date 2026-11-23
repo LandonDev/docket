@@ -189,7 +189,7 @@ describe('menu tree', () => {
     const off = go({ ...EMPTY_MENU_STATE, hidden: [...WORK_ONLY_IDS] })
     expect(ids(off)).not.toContain('open_today')
     // The rows beside it are untouched.
-    expect(ids(off).slice(-3)).toEqual(['open_inbox', 'open_computers', 'open_notes'])
+    expect(ids(off)).toEqual(ids(go(EMPTY_MENU_STATE)).filter((id) => id !== 'open_today'))
     expect(sameMenuState(EMPTY_MENU_STATE, { ...EMPTY_MENU_STATE, hidden: ['open_today'] })).toBe(false)
     expect(sameMenuState({ ...EMPTY_MENU_STATE, hidden: [] }, EMPTY_MENU_STATE)).toBe(true)
   })
@@ -212,9 +212,11 @@ describe('menu tree', () => {
   })
 
   it('gives every toggle both labels, and ⌘W its Tab and Pane', () => {
-    const toggles = MENU_COMMANDS.filter((c) => c.toggle && c.id !== 'close_tab')
+    const toggles = MENU_COMMANDS.filter((c) => c.toggle && c.id !== 'close_tab' && c.id !== 'open_today')
     expect(toggles.map((c) => c.id)).toEqual(['toggle_sidebar', 'toggle_panel', 'toggle_terminal', 'toggle_message_list'])
     expect(MENU_COMMANDS.find((c) => c.id === 'close_tab')!.toggle).toEqual({ show: 'Close Tab', hide: 'Close Pane' })
+    // the key closes the page it opened, and the row says so while the page is open
+    expect(MENU_COMMANDS.find((c) => c.id === 'open_today')!.toggle).toEqual({ show: 'Today', hide: 'Close Today' })
     for (const c of toggles) {
       expect(c.toggle!.show).toMatch(/^Show /)
       expect(c.toggle!.hide).toMatch(/^Hide /)

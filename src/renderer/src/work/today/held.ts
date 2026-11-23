@@ -13,7 +13,7 @@ import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource } from 
  * the Outbox's own Send, Edit and Discard are: Today adds no way to send.
  */
 
-const SECTION: TodaySection = { id: "held", title: "Waiting on you", order: 10, empty: "Nothing waits on your press", fold: 5 };
+const SECTION: TodaySection = { id: "held", title: "Waiting on you", order: 10, empty: "Nothing waits on your press", fold: 5, bones: "lines" };
 
 /** A held item's row key: the same on every surface that names it. */
 export const heldKey = (item: Pick<HostItem, "environmentId" | "ref">): string => `held:${item.environmentId}:${item.ref.at}:${item.ref.id}`;

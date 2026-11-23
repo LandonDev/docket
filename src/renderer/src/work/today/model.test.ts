@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ALSO, dayAfter, dayBounds, fold, jobsOf, merge, offlineHosts, page, workspaceFor, type Fed } from "./model";
+import { ALSO, dayAfter, dayBounds, fold, foldKey, foldOf, jobsOf, merge, offlineHosts, page, workspaceFor, type Fed } from "./model";
 import type { TodayAnswer, TodayRow, TodaySection, TodayWorkspace } from "./types";
 
 const HELD: TodaySection = { id: "held", title: "Waiting on you", order: 10, empty: "Nothing waits on your press", fold: 5 };
@@ -142,16 +142,39 @@ describe("page", () => {
     expect(page(empty, { jobs, lifeos: "signed-out" }).kind).toBe("day");
     // A session on its way is not an answer.
     expect(page(empty, { jobs, lifeos: "waiting" }).kind).toBe("day");
-    // Meetings that all ended are not "nothing": the count and the tomorrow line stand.
-    expect(page([empty[0]!, fed("meetings", MEETINGS, { rows: [row("event:1", "meetings", { past: true })] }), empty[2]!], { jobs, lifeos: "ok" }).kind).toBe("day");
   });
 
-  it("lists the visible rows' keys in page order, for the arrow keys", () => {
+  it("a meeting that ended is not left: the evening is all clear, and says what the day's last section said of tomorrow", () => {
+    const over = (answer: TodayAnswer) => [fed("held", HELD, {}), fed("meetings", MEETINGS, { rows: [row("event:1", "meetings", { past: true })], ...answer }), fed("due", DUE, {})];
+    expect(page(over({}), { jobs, lifeos: "ok" })).toEqual({ kind: "clear" });
+    expect(page(over({ note: "Tomorrow starts at 9:00 AM with Staff sync." }), { jobs, lifeos: "ok" })).toEqual({ kind: "clear", line: "Tomorrow starts at 9:00 AM with Staff sync." });
+    // Unfolded, they are rows he asked to see; and a read still out, or one that failed, is not an answer.
+    expect(page(over({}), { jobs, lifeos: "ok", folds: { more: new Set(), earlier: new Set(["meetings"]) } }).kind).toBe("day");
+    expect(page(over({ loading: true }), { jobs, lifeos: "ok" }).kind).toBe("day");
+    expect(page(over({ failed: [{ environmentId: "mac", error: "x" }] }), { jobs, lifeos: "ok" }).kind).toBe("day");
+  });
+
+  it("a section whose rows arrived while a read some job needs is still out is not empty: it draws bones, and the page is not clear", () => {
+    const day = page([fed("held", HELD, {}), fed("due", DUE, { rows: [], loading: true })], { jobs, lifeos: "ok" });
+    expect(day.kind === "day" && day.blocks.map((b) => b.kind === "section" && [b.section.state, b.section.pending])).toEqual([["empty", false], ["bones", true]]);
+  });
+
+  it("lists every stop of the arrows in page order: the rows, and the fold lines between them", () => {
     const day = page(
       [fed("due", DUE, { rows: [row("task:1", "due")] }), fed("held", HELD, { rows: [row("held:1", "held")] }), fed("meetings", MEETINGS, { rows: [row("event:old", "meetings", { past: true, at: 1 }), row("event:1", "meetings", { at: 2 })] })],
       { jobs, lifeos: "ok" },
     );
-    expect(day).toMatchObject({ kind: "day", keys: ["held:1", "event:1", "task:1"] });
+    expect(day).toMatchObject({ kind: "day", keys: ["held:1", "fold:earlier:meetings", "event:1", "task:1"] });
+    const many = page([fed("due", { ...DUE, fold: 2 }, { rows: [1, 2, 3].map((n) => row(`task:${n}`, "due", { at: n })) })], { jobs, lifeos: "ok" });
+    expect(many).toMatchObject({ keys: ["task:1", "task:2", "fold:more:due"] });
+    expect(foldOf("fold:more:due")).toEqual({ which: "more", section: "due" });
+    expect(foldOf(foldKey("earlier", "a:b"))).toEqual({ which: "earlier", section: "a:b" });
+    expect(foldOf("task:1")).toBeNull();
+  });
+
+  it("hands a section the shape of its bones", () => {
+    const day = page([fed("due", { ...DUE, bones: "tick" }, { loading: true }), fed("held", HELD, { loading: true })], { jobs, lifeos: "ok" });
+    expect(day.kind === "day" && day.blocks.map((b) => b.kind === "section" && b.section.bones)).toEqual([undefined, "tick"]);
   });
 
   it("while no host can read LifeOS, its sections give way to one line where the first stood", () => {

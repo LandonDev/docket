@@ -69,6 +69,11 @@ describe("menuStateOf", () => {
     expect(menuStateOf(facts({ workOn: true })).hidden).toBeUndefined();
   });
 
+  it("names Today open while its page is on screen, so the row reads Close Today", () => {
+    expect(menuStateOf(facts({ workOn: true })).open).not.toContain("open_today");
+    expect(menuStateOf(facts({ workOn: true, today: true })).open).toContain("open_today");
+  });
+
   it("greys Open File… with no Work thread, draft or view in front", () => {
     expect(menuStateOf(facts({ workFile: false })).disabled).toEqual(["open_file"]);
     // Search Work… has nothing to search while no host has Work on

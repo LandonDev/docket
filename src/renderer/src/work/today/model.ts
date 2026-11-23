@@ -132,6 +132,10 @@ export type ShownSection = {
   title: string;
   /** `bones`: never answered; `rows`; `empty`: answered, nothing in it. */
   state: "bones" | "rows" | "empty";
+  /** A read that feeds it is still out: what it shows may not be all of it. */
+  pending: boolean;
+  /** The shape of its bones (`TodaySection.bones`). */
+  bones?: TodaySection["bones"];
   empty: string;
   /** Rows that are over, folded at the head: how many, 0 once unfolded or with none. */
   earlier: number;
@@ -156,6 +160,8 @@ export function fold(section: MergedSection, folds: Folds = NO_FOLDS): ShownSect
     id: def.id,
     title: def.title,
     state,
+    pending: section.loading,
+    ...(def.bones ? { bones: def.bones } : {}),
     empty: def.empty,
     earlier: showEarlier ? 0 : past.length,
     rows,
@@ -173,15 +179,27 @@ export type Block = { kind: "section"; section: ShownSection } | { kind: "lifeos
 export type TodayPage =
   /** No Work workspace has a sector. */
   | { kind: "no-jobs" }
-  /** Everything answered, and nothing anywhere. */
-  | { kind: "clear" }
+  /** Everything answered, and nothing left; `line` is what the day's last section said of tomorrow, when it said it. */
+  | { kind: "clear"; line?: string }
+  /** `keys`: every stop of the arrows in page order, the rows and the fold lines between them. */
   | { kind: "day"; blocks: Block[]; offline: string[]; keys: string[] };
+
+/** A fold line's place in the arrows' order: "2 earlier" at a section's head, "4 more" at its foot. */
+export const foldKey = (which: keyof Folds, section: string): string => `fold:${which}:${section}`;
+/** The fold a key names, or null for a row's. */
+export function foldOf(key: string): { which: keyof Folds; section: string } | null {
+  const [lead, which, ...rest] = key.split(":");
+  return lead === "fold" && (which === "more" || which === "earlier") ? { which, section: rest.join(":") } : null;
+}
+
+/** A section with nothing left in it: it answered whole, none of its reads failed, and it holds no row but those that are over. */
+const done = (s: ShownSection): boolean => s.failed.length === 0 && (s.state === "empty" || (s.state === "rows" && !s.pending && s.rows.length === 0 && s.more === 0));
 
 /**
  * The whole page. While no host can read LifeOS, the sections that read it
  * give way to one line in the first one's place. "All clear" is said only
- * when every section answered, none failed, no host is offline and nothing
- * is anywhere.
+ * when every section answered whole, none failed, no host is offline and
+ * nothing is left: a meeting that ended is not left.
  */
 export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[]; lifeos: LifeosReach; folds?: Folds; gone?: ReadonlySet<string> }): TodayPage {
   if (opts.jobs.length === 0) return { kind: "no-jobs" };
@@ -201,7 +219,10 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
   const offline = offlineHosts(opts.jobs);
   const shown = blocks.flatMap((b) => (b.kind === "section" ? [b.section] : []));
   // LifeOS out of reach matters only where a section reads it: `said` is set when one gave way.
-  const settled = !said && offline.length === 0 && shown.every((s) => s.state === "empty" && s.failed.length === 0 && s.earlier === 0 && !s.note);
-  if (settled) return { kind: "clear" };
-  return { kind: "day", blocks, offline, keys: shown.flatMap((s) => s.rows.map((r) => r.key)) };
+  if (!said && offline.length === 0 && shown.every(done)) {
+    const line = shown.find((s) => s.note)?.note;
+    return { kind: "clear", ...(line ? { line } : {}) };
+  }
+  const keys = shown.flatMap((s) => (s.state !== "rows" ? [] : [...(s.earlier > 0 ? [foldKey("earlier", s.id)] : []), ...s.rows.map((r) => r.key), ...(s.more > 0 ? [foldKey("more", s.id)] : [])]));
+  return { kind: "day", blocks, offline, keys };
 }

@@ -36,10 +36,14 @@ export function keepRows(prev: readonly TodayRow[], next: readonly TodayRow[]): 
  * A source's rows, each the same object for as long as it shows the same
  * (docs/agents/renderer-over-time.md): a minute's tick, or a live query
  * that answers again with what it had, redraws only the row that changed.
+ * `ways` is what the rows' presses close over (the session they write
+ * through, the jobs they open in): when it is another, every row is the new
+ * one, so no row on the page acts through a session or a job that is gone.
  */
-export function useStableRows(rows: readonly TodayRow[]): TodayRow[] {
+export function useStableRows(rows: readonly TodayRow[], ways: unknown): TodayRow[] {
   // A box of the hook's own, not a ref: it is read and written while rendering, which a ref may not be.
-  const [kept] = useState<{ rows: readonly TodayRow[] }>(() => ({ rows: [] }));
-  kept.rows = keepRows(kept.rows, rows);
+  const [kept] = useState<{ rows: readonly TodayRow[]; ways: unknown }>(() => ({ rows: [], ways }));
+  kept.rows = kept.ways === ways ? keepRows(kept.rows, rows) : rows;
+  kept.ways = ways;
   return kept.rows as TodayRow[];
 }

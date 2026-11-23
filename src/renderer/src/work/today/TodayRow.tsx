@@ -6,17 +6,23 @@ import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../../components/u
 import { reveal, yields } from "../../components/ui/reveal";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { cn } from "../../lib/cn";
-import { glideHeight } from "../../lib/heightGlide";
+import { glideHeight, stopGlide } from "../../lib/heightGlide";
 import type { TodayAct, TodayRow } from "./types";
 
 /**
  * The page's one row grid (docs/DESIGN.md "Today"): a 16px lead, the title
  * over an optional second line, the job (its dot and its name), then the
- * trailing fact. Every title on the page starts at one left edge.
+ * trailing fact. Every title on the page starts at one left edge. In a
+ * column under 480px (the window at its least beside the rail and the Chats
+ * column) the gaps and the two trailing tracks narrow together, so the
+ * title keeps the room: `TODAY_COLUMN` names the container they measure.
  */
-export const ROW_GRID = "grid grid-cols-[16px_minmax(0,1fr)_96px_80px] gap-x-3";
+export const ROW_GRID = "grid grid-cols-[16px_minmax(0,1fr)_112px_80px] gap-x-3 @max-[30rem]/today:grid-cols-[16px_minmax(0,1fr)_64px_64px] @max-[30rem]/today:gap-x-2";
 /** Where a title starts, for a line that is not a row (a fold, an empty line): the row's inset, the lead and the gap. */
-export const TITLE_EDGE = "ps-10";
+export const TITLE_EDGE = "ps-10 @max-[30rem]/today:ps-9";
+/** The page's column: the container the grid measures, and the inset that narrows with it. */
+export const TODAY_COLUMN = "@container/today";
+export const TODAY_INSET = "mx-auto w-full max-w-[720px] px-6 @max-[30rem]/today:px-3";
 /** A row's place in its list: rows sit 2px apart, each carrying the gap under it, so a place that closes leaves nothing behind. */
 export const ROW_SLOT = "pb-0.5";
 
@@ -41,9 +47,11 @@ export const TodayRowSlot = memo(function TodayRowSlot({ row, job, phase, lands,
   useLayoutEffect(() => {
     if (!closing && box.current) drawn.current = box.current.offsetHeight;
   });
-  // The place closes from that height, once.
+  // The place closes from that height, once. A row that comes back mid-close (Undo, an act that failed) stands whole at once.
   useLayoutEffect(() => {
-    if (closing && box.current) glideHeight(box.current, "base", drawn.current);
+    if (!box.current) return;
+    if (closing) glideHeight(box.current, "base", drawn.current);
+    else stopGlide(box.current);
   }, [closing]);
   return (
     <div ref={box} data-today-slot={phase ?? "in"} inert={phase ? true : undefined} className={cn("overflow-hidden", closing ? "" : ROW_SLOT, lands && !phase && "step-land")}>
@@ -130,7 +138,8 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         {row.whenLine ? <span className="leading-4 font-medium whitespace-nowrap text-foreground">{row.whenLine}</span> : null}
       </span>
       {acts.length > 0 ? (
-        <span className={cn("absolute top-1 right-2 flex items-center gap-1", reveal("row", { row: true, overlay: true }))}>
+        // The last verb's label ends on the facts' edge: the verb lands where the fact stood.
+        <span className={cn("absolute top-1 right-1 flex items-center gap-1", reveal("row", { row: true, overlay: true }))}>
           {acts.map((act) => (
             <Verb key={act.label} act={act} tabIndex={stop} />
           ))}
@@ -156,7 +165,7 @@ function Verb({ act, tabIndex }: { act: TodayAct; tabIndex: number }) {
         void done.catch(() => {}).finally(() => setBusy(false));
       }}
     >
-      <BusyLabel busy={busy} label={act.label} />
+      <BusyLabel busy={busy} label={act.label} align="end" />
     </Button>
   );
 }

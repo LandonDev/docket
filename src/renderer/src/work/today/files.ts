@@ -1,8 +1,9 @@
 import { useMemo, type ComponentType } from "react";
 import type { EntryKind, FileEntry } from "@shared/work/files";
 import { dayTime } from "../../lib/duration";
-import { registry } from "../../lib/connection";
+import { loadToast } from "../../components/ui/toaster";
 import { Doc, File, Media, Pdf, Slides, Table, Video, Volume } from "../icons";
+import { openInFiles } from "../files/openFrom";
 import { goTo } from "./open";
 import { useEachWorkspace } from "./read";
 import { useStableRows } from "./stable";
@@ -64,16 +65,18 @@ export function fileRows(answers: readonly { workspace: TodayWorkspace; value: {
 }
 
 /**
- * The file in a Files tab of its job: the host opens the tab
- * (`work.files.open`), then the window goes to that job's Files view. Files'
- * own `openInFiles` takes this over once it is on master.
+ * The file in a Files tab of its job, through Files' one way in from another
+ * screen (`openInFiles`, work/files/openFrom.ts: the host opens the tab and
+ * Files' own list of tabs learns it); then the window goes to that job as
+ * every row of the page does. A refusal is Files' sentence in one toast.
  */
 export function openFile(workspace: TodayWorkspace, entry: Pick<FileEntry, "ref" | "name">): void {
-  void registry
-    .linkOf(workspace.environmentId)
-    .request("work.files.open", { workspaceId: workspace.workspaceId, ref: entry.ref, name: entry.name })
-    .catch(() => {})
-    .then(() => goTo(workspace, { view: "files" }));
+  // An entry with nothing to open (a place's own row) shows the job's Files view alone.
+  if (!entry.ref) return goTo(workspace, { view: "files" });
+  void openInFiles({ id: workspace.workspaceId, environmentId: workspace.environmentId }, { ref: entry.ref, name: entry.name }).then(
+    () => goTo(workspace, { view: "files" }),
+    (error: unknown) => void loadToast().then((toast) => toast.error("It did not open", { description: error instanceof Error ? error.message : undefined })),
+  );
 }
 
 const paramsOf = (workspace: TodayWorkspace) => ({ workspaceId: workspace.workspaceId });
@@ -83,7 +86,7 @@ function useFiles(env: TodayEnv): TodayAnswer {
   const read = useEachWorkspace<{ entries: FileEntry[] }>(env, "work.files.changed", paramsOf, PUSH);
   const now = env.day.from;
   const built = useMemo(() => fileRows(read.answers, now, { open: openFile }), [read.answers, now]);
-  const rows = useStableRows(built);
+  const rows = useStableRows(built, null);
   return useMemo<TodayAnswer>(() => ({ rows, ...(read.loading && rows.length === 0 ? { loading: true } : {}), ...(read.failed.length ? { failed: read.failed } : {}) }), [rows, read.loading, read.failed]);
 }
 

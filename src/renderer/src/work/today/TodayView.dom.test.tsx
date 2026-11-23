@@ -105,8 +105,11 @@ import { registry } from "../../lib/connection";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { loadOutbox, resetOutboxStore } from "../outbox/store";
 import { source as held } from "./held";
-import { comeBack, leave, putAnswer, resetToday, todayNow } from "./store";
-import { TITLE_EDGE } from "./TodayRow";
+import { toastAnchor } from "../../lib/toastAnchor";
+import { nextHeld } from "./HeldSheet";
+import { TIMED_OUT } from "./read";
+import { comeBack, leave, openHeld, putAnswer, resetToday, todayNow } from "./store";
+import { ROW_GRID, TITLE_EDGE } from "./TodayRow";
 import { View } from "./TodayView";
 import type { TodaySource } from "./types";
 
@@ -173,7 +176,8 @@ describe("Today", () => {
     expect(rowTitles()).toEqual(["Send to Marcus Bell", "Send to Dana Reyes", "Send to Northfield Parks"]);
     const first = document.querySelector<HTMLElement>("[data-today-row]")!;
     expect(first.textContent).toContain("Sponsor deck");
-    expect(first.textContent).toContain("Purdue");
+    // The job is named as the rail names it: its workspace, never the sector's own word.
+    expect(first.textContent).toContain("Purdue Esports");
     expect(first.querySelector('[data-sector="purdue"]')).not.toBeNull();
     expect(section("held").querySelector("h2")?.textContent).toBe("Waiting on you");
     // No verb is drawn on a held row: Send is never in the row.
@@ -225,6 +229,68 @@ describe("Today", () => {
     expect(section("held").querySelector('[data-view-state="failed"]')).toBeNull();
   });
 
+  it("says did not answer once for a host whose wait ran out, on the rows' grid; a read LifeOS refused is said in its own words", async () => {
+    await loadOutbox();
+    const retry = vi.fn();
+    const failing: TodaySource = {
+      id: "money",
+      section: { id: "money", title: "Money", order: 60, empty: "Nothing owed" },
+      use: () => FAILED,
+    };
+    const FAILED = { rows: [], failed: [{ environmentId: "mac", error: TIMED_OUT }, { environmentId: "box", error: "Uncaught Error: gone", said: "LifeOS could not read tasks", retry }] };
+    resetToday([held, failing]);
+    render(<View onClose={() => {}} />);
+    const [late, refused] = [...section("money").querySelectorAll<HTMLElement>('[data-view-state="failed"]')];
+    // The wait running out is what the words already say: nothing is said twice.
+    expect(late!.textContent).toBe("Mac did not answer");
+    // LifeOS's own error is not his to read: the line says what could not be read, with its Retry.
+    expect(refused!.textContent).toBe("LifeOS could not read tasksRetry");
+    for (const cls of ROW_GRID.split(" ")) expect(late!.className).toContain(cls);
+    fireEvent.click(within(refused!).getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws a section's bones in the shape of its rows: two lines, or a tick before one", async () => {
+    await loadOutbox();
+    const waiting = { loading: true };
+    const of = (id: string, bones?: "lines" | "tick"): TodaySource => ({ id, section: { id, title: id, order: 60, empty: "None", ...(bones ? { bones } : {}) }, use: () => waiting });
+    resetToday([held, of("a", "lines"), of("b", "tick"), of("c")]);
+    render(<View onClose={() => {}} />);
+    const bone = (id: string) => section(id).querySelector<HTMLElement>("[data-today-bone]")!;
+    expect(bone("a").getAttribute("data-today-bone")).toBe("lines");
+    expect(bone("a").querySelectorAll('[data-slot="skeleton"]')).toHaveLength(4);
+    expect(bone("b").querySelector(".rounded-full")).not.toBeNull();
+    expect(bone("c").querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
+  });
+
+  it("is all clear once only ended meetings are left, and says what tomorrow starts with", async () => {
+    await loadOutbox();
+    const over = { rows: [{ key: "event:1", section: "meetings", sector: "purdue" as const, title: "Staff sync", past: true, open: () => {} }], note: "Tomorrow starts at 9:00 AM with Crew meeting." };
+    resetToday([held, { id: "meetings", section: { id: "meetings", title: "Meetings", order: 20, empty: "No meetings today" }, use: () => over }]);
+    render(<View onClose={() => {}} />);
+    expect(screen.getByText("All clear")).toBeTruthy();
+    expect(screen.getByText("Tomorrow starts at 9:00 AM with Crew meeting.")).toBeTruthy();
+    expect(screen.queryByText("Nothing needs you today.")).toBeNull();
+  });
+
+  it("seats the toasts at its foot over the titles, clear of the ticks and the verbs, while it is open", async () => {
+    world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
+    await loadOutbox();
+    const { unmount } = render(<View onClose={() => {}} />);
+    const anchor = document.querySelector<HTMLElement>("[data-today-toasts]")!;
+    expect(toastAnchor()).toBe(anchor);
+    // The second cell of the rows' own grid: the titles' column.
+    expect(anchor.previousElementSibling).not.toBeNull();
+    expect(anchor.parentElement!.className).toContain(ROW_GRID.split(" ")[1]!);
+    // The held sheet lies over the toasts: while it is open they go back to the window's corner, behind it.
+    act(() => openHeld("held:box:lifeos:o1"));
+    expect(toastAnchor()).toBeNull();
+    act(() => openHeld(null));
+    expect(toastAnchor()).toBe(anchor);
+    unmount();
+    expect(toastAnchor()).toBeNull();
+  });
+
   it("with every host failed, the section says who did not answer and not that nothing waits", async () => {
     world.listDown.add("mac");
     world.listDown.add("box");
@@ -243,7 +309,7 @@ describe("Today", () => {
     render(<View onClose={() => {}} />);
     const lines = document.querySelectorAll("[data-today-offline]");
     expect(lines).toHaveLength(1);
-    expect(lines[0]!.textContent).toBe("Mac is offline. Its held items show when it is back.");
+    expect(lines[0]!.textContent).toBe("Mac is offline.");
   });
 
   it("folds Waiting on you at five rows; its line unfolds the rest in place and stays unfolded", async () => {
@@ -261,6 +327,42 @@ describe("Today", () => {
     render(<View onClose={() => {}} />);
     expect(rowTitles()).toHaveLength(8);
   });
+
+  it("a fold line is a stop of the list: the arrows reach it, Enter opens it, and the first row it showed takes the focus", async () => {
+    world.items.set("box", Array.from({ length: 8 }, (_, i) => mail(`o${i + 1}`, `Person ${i + 1}`, "A subject")));
+    await loadOutbox();
+    render(<View onClose={() => {}} />);
+    const row = (n: number) => screen.getByRole("button", { name: new RegExp(`^Send to Person ${n},`) });
+    await waitFor(() => expect(document.activeElement).toBe(row(1)));
+    const more = screen.getByRole("button", { name: "3 more" });
+    expect(more.tabIndex).toBe(-1);
+    fireEvent.keyDown(row(1), { key: "End" });
+    await waitFor(() => expect(document.activeElement).toBe(more));
+    // Still one tab stop, and it is the fold line now.
+    expect([...document.querySelectorAll<HTMLElement>("[data-today] [tabindex]")].filter((el) => el.tabIndex === 0)).toEqual([more]);
+    fireEvent.keyDown(more, { key: "ArrowUp" });
+    await waitFor(() => expect(document.activeElement).toBe(row(5)));
+    fireEvent.keyDown(row(5), { key: "ArrowDown" });
+    await waitFor(() => expect(document.activeElement).toBe(more));
+    // Enter on a button is its click; the line goes, and focus is not dropped on the page.
+    more.focus();
+    fireEvent.click(more);
+    await waitFor(() => expect(document.activeElement).toBe(row(6)));
+    expect(row(6).tabIndex).toBe(0);
+  });
+
+  it("comes back with its focus where he left it", async () => {
+    world.items.set("box", Array.from({ length: 3 }, (_, i) => mail(`o${i + 1}`, `Person ${i + 1}`, "A subject")));
+    await loadOutbox();
+    const row = (n: number) => screen.getByRole("button", { name: new RegExp(`^Send to Person ${n},`) });
+    const { unmount } = render(<View onClose={() => {}} />);
+    await waitFor(() => expect(document.activeElement).toBe(row(1)));
+    fireEvent.keyDown(row(1), { key: "ArrowDown" });
+    await waitFor(() => expect(document.activeElement).toBe(row(2)));
+    unmount();
+    render(<View onClose={() => {}} />);
+    await waitFor(() => expect(document.activeElement).toBe(row(2)));
+  });
 });
 
 describe("the held sheet", () => {
@@ -277,7 +379,7 @@ describe("the held sheet", () => {
     // The Outbox's own detail: who it goes to, the job named in its facts, its place in the run.
     expect(sheet.textContent).toContain("Marcus Bell");
     expect(sheet.textContent).toContain("Purdue Esports");
-    expect(sheet.textContent).toContain("1 of 2");
+    expect(sheet.querySelector("[data-today-run]")!.textContent).toBe("1 of 2");
     const send = () => within(sheet).getByRole("button", { name: "Send" }) as HTMLButtonElement;
     // The whole mail is still being read: nothing can be sent on what is not on screen.
     expect(send().disabled).toBe(true);
@@ -301,11 +403,46 @@ describe("the held sheet", () => {
     await waitFor(() => expect(todayNow().held).toBe("held:box:lifeos:o2"));
     expect(world.calls.filter((c) => c.method === "work.outbox.send").map((c) => (c.params.ref as { id: string }).id)).toEqual(["o1"]);
     await waitFor(() => expect(sheet.textContent).toContain("Dana Reyes"));
+    // The run counts forward: the second of the two there were, not the first of one.
+    expect(sheet.querySelector("[data-today-run]")!.textContent).toBe("2 of 2");
+    // The item that took the sheet has the focus, so the keyboard reads it from its top.
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Send to Dana Reyes: Spring budget");
     await waitFor(() => expect(rowTitles()).toEqual(["Send to Dana Reyes"]));
     await waitFor(() => expect(send().disabled).toBe(false));
     fireEvent.click(send());
     await waitFor(() => expect(todayNow().held).toBeNull());
     expect(world.calls.filter((c) => c.method === "work.outbox.send")).toHaveLength(2);
+    // A sheet opened again starts a new run.
+    expect(todayNow().heldDone).toBe(1);
+    openHeld("held:box:lifeos:o9");
+    expect(todayNow().heldDone).toBe(0);
+  });
+
+  it("hands the sheet on in the order he saw, though the host's list dropped the item before its answer was back", () => {
+    const order = ["a", "b", "c"];
+    // The pressed item is already gone from the live list: the next one down still takes the sheet.
+    expect(nextHeld("a", order, ["b", "c"])).toBe("b");
+    expect(nextHeld("b", order, ["a", "b", "c"])).toBe("c");
+    // After the last, the nearest before it; with none left, the sheet closes.
+    expect(nextHeld("c", order, ["a", "b"])).toBe("b");
+    expect(nextHeld("b", order, ["b"])).toBeNull();
+    // An item decided elsewhere meanwhile is passed over.
+    expect(nextHeld("a", order, ["c"])).toBe("c");
+    expect(nextHeld("z", order, ["a"])).toBeNull();
+  });
+
+  it("gives focus back to the page's list when it closes, to the row that took the sent one's place", async () => {
+    world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck"), mail("o2", "Dana Reyes", "Spring budget")]);
+    await loadOutbox();
+    render(<View onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Send to Marcus Bell, Sponsor deck" }));
+    const sheet = await screen.findByRole("dialog");
+    const send = () => within(sheet).getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    await waitFor(() => expect(send().disabled).toBe(false));
+    fireEvent.click(send());
+    await waitFor(() => expect(rowTitles()).toEqual(["Send to Dana Reyes"]));
+    act(() => openHeld(null));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Send to Dana Reyes, Spring budget", hidden: true })));
   });
 
   it("an item another device decided leaves the sheet saying so, never the next item under his Send", async () => {

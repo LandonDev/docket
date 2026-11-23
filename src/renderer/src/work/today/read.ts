@@ -12,6 +12,8 @@ import type { TodayEnv, TodayFailure, TodayWorkspace } from "./types";
  */
 
 export const EACH_TIMEOUT_MS = 6_000;
+/** What a read that ran out of time fails with: the page says "did not answer" for it and adds nothing. */
+export const TIMED_OUT = "It did not answer in time";
 
 export type EachAnswer<T> = {
   /** What has come back, in the jobs' order. A job whose read failed keeps the value it had. */
@@ -59,7 +61,7 @@ export function eachWorkspace<T>(method: string, opts: EachOptions = {}) {
     slot.pending = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("It did not answer in time")), timeoutMs);
+      timer = setTimeout(() => reject(new Error(TIMED_OUT)), timeoutMs);
     });
     let request: Promise<T>;
     try {

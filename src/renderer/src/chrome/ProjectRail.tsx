@@ -731,15 +731,19 @@ export function ProjectRail({
                 // The pages above the workspaces (Today): each a row before them, selected while its page is open.
                 lead={workPlaceRows().map((place) => {
                   const warm = () => warmWorkPlace(place.id, "intent");
+                  const shortcut = shortcutFor("Work", place.label);
+                  const selected = workPlace === place.id;
                   return (
                     <RailRow
                       key={place.id}
                       icon={place.icon}
                       label={place.label}
-                      selected={workPlace === place.id}
+                      selected={selected}
+                      // The cards' selected fill, not an item's: in light an item's is a card's fill at rest, and the open page would read as one more job.
+                      className={selected ? "bg-sidebar-group-selected hover:bg-sidebar-group-selected" : undefined}
                       onClick={() => shell.openWorkPlace(place.id)}
                       intent={{ onPointerEnter: warm, onFocus: warm }}
-                      tooltip={place.key ? <Kbd>{keyHint(place.key)}</Kbd> : undefined}
+                      tooltip={shortcut ? <Kbd>{shortcut}</Kbd> : undefined}
                     />
                   );
                 })}

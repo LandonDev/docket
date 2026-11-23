@@ -88,10 +88,17 @@ export type TodaySection = {
   fold?: number;
   /** It reads LifeOS: when no host can, the page says so once in place of every such section. */
   lifeos?: boolean;
+  /** The shape its rows usually take, for the bones it draws before it answers: two lines, or a tick before one. Left out: one line. */
+  bones?: "lines" | "tick";
 };
 
-/** A host that did not answer a source in time. */
-export type TodayFailure = { environmentId: string; error: string; retry?(): void | Promise<void> };
+/**
+ * A read that did not come back. The page says "<host> did not answer" for
+ * it, with `error` beside that when it names another cause than the wait;
+ * `said` is the whole line in its place, for a read the host is not at fault
+ * for ("LifeOS could not read tasks").
+ */
+export type TodayFailure = { environmentId: string; error: string; said?: string; retry?(): void | Promise<void> };
 
 export type TodayAnswer = {
   rows?: TodayRow[];

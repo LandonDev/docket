@@ -180,7 +180,7 @@ export const MENU_TREE: MenuSection[] = [
       cmd('next_environment', 'Next Host', 'CmdOrCtrl+Alt+]'),
       sep,
       // Today, the page above the Work workspaces (docs/agents/work-today.md): the key opens it, and closes it when it is on screen.
-      cmd('open_today', 'Today', 'CmdOrCtrl+Shift+T', { workOnly: true }),
+      { ...cmd('open_today', 'Today', 'CmdOrCtrl+Shift+T', { workOnly: true }), toggle: { show: 'Today', hide: 'Close Today' } },
       cmd('open_inbox', 'Inbox'),
       cmd('open_computers', 'Computers', 'CmdOrCtrl+Shift+L'),
       cmd('open_notes', 'Notes'),

@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { shell, shellStore } from "../stores/shell";
 import { placeForDayStart } from "../work/places/registry";
+import { shortcutFor } from "./settings";
 import { WORK_PLACE_ROWS, workPlaceLabel, workPlaceRow } from "./workPlaces";
 import { digestOpensPort } from "./workSwitch";
 
@@ -11,8 +12,9 @@ beforeEach(() => localStorage.clear());
 afterEach(() => shell.openWorkPlace(null));
 
 describe("the pages above the Work workspaces, as the first paint lists them", () => {
-  it("lists Today first, with its key for the rail row's hover", () => {
-    expect(WORK_PLACE_ROWS[0]).toMatchObject({ id: "today", label: "Today", order: 10, key: "mod+shift+T" });
+  it("lists Today first, under the name its key is listed by in the Work keybindings", () => {
+    expect(WORK_PLACE_ROWS[0]).toMatchObject({ id: "today", label: "Today", order: 10 });
+    expect(shortcutFor("Work", WORK_PLACE_ROWS[0].label)).toBeTruthy();
     expect(workPlaceRow("today")?.icon).toBeTruthy();
     expect(workPlaceLabel("today")).toBe("Today");
   });

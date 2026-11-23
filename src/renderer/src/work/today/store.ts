@@ -21,6 +21,8 @@ export type TodayState = {
   folds: Folds;
   /** The key of the held row whose sheet is open. */
   held: string | null;
+  /** How many held items he has decided since the sheet opened: the run counts forward ("2 of 3"). */
+  heldDone: number;
   /** Rows on their way out by his own act (a tick, Tomorrow, Dismiss, a Send from the sheet): still drawn, fading. */
   leaving: ReadonlySet<string>;
   /** Rows that have faded: their place closes, so the rows under them glide up. */
@@ -30,8 +32,9 @@ export type TodayState = {
 };
 
 const NONE: ReadonlySet<string> = new Set();
-let state: TodayState = { sources: [], answers: new Map(), folds: NO_FOLDS, held: null, leaving: NONE, closing: NONE, gone: NONE };
+let state: TodayState = { sources: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE };
 let scrollTop = 0;
+let focusKey: string | null = null;
 const listeners = new Set<() => void>();
 
 function set(next: Partial<TodayState>): void {
@@ -166,14 +169,26 @@ export function unfold(which: keyof Folds, section: string): void {
   set({ folds: { ...state.folds, [which]: new Set(state.folds[which]).add(section) } });
 }
 
-/** Open the sheet on a held row, by its key; null closes it. */
+/** Open the sheet on a held row, by its key; null closes it. A sheet that opens starts a run. */
 export function openHeld(key: string | null): void {
-  if (state.held !== key) set({ held: key });
+  if (state.held === key) return;
+  set(state.held === null ? { held: key, heldDone: 0 } : { held: key });
+}
+
+/** His press decided the item the sheet shows: the sheet goes on to `next`, one further into the run, or closes after the last. */
+export function advanceHeld(next: string | null): void {
+  set(next === null ? { held: null } : { held: next, heldDone: state.heldDone + 1 });
 }
 
 export const scrollOfToday = (): number => scrollTop;
 export function keepScroll(top: number): void {
   scrollTop = top;
+}
+
+/** The stop the arrows were on when he left, so the page he comes back to has its focus where it was. */
+export const focusOfToday = (): string | null => focusKey;
+export function keepFocus(key: string | null): void {
+  focusKey = key;
 }
 
 /** What else a reset stops (the root that keeps the sources warm: warm.tsx registers it, since it imports this file). */
@@ -184,8 +199,9 @@ export function resetToday(sources?: readonly TodaySource[]): void {
   for (const hook of resetHooks) hook();
   loading = sources ? Promise.resolve() : null;
   scrollTop = 0;
+  focusKey = null;
   handed.clear();
   for (const timer of timers.values()) clearTimeout(timer);
   timers.clear();
-  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), answers: new Map(), folds: NO_FOLDS, held: null, leaving: NONE, closing: NONE, gone: NONE });
+  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE });
 }
