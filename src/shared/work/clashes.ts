@@ -64,6 +64,92 @@ export interface ClashList {
   leaves: Leave[]
 }
 
+/** One event of a clash as LifeOS answers it (`clashes:range`). */
+export interface LifeosSide {
+  eventId: string
+  sector: SectorKey
+  title: string
+  startsAt: number
+  endsAt: number
+  location?: string
+  place?: string
+  rough?: 'town' | 'start'
+  can: ClashWay[]
+}
+export interface LifeosClash {
+  id: string
+  kind: 'overlap' | 'drive'
+  a: LifeosSide
+  b: LifeosSide
+  minutes?: number
+  metres?: number
+  measured?: boolean
+  shortBy?: number
+}
+export interface LifeosLeave {
+  eventId: string
+  leaveAt: number
+  minutes?: number
+  metres?: number
+  measured: boolean
+  from: 'start' | 'event'
+  fromEventId?: string
+  fromTitle?: string
+}
+export interface LifeosRange {
+  clashes: LifeosClash[]
+  leaves: LifeosLeave[]
+}
+
+/** A job's Work workspace where the reader is, when it has one. */
+type HomeOf = (sector: SectorKey) => string | undefined
+
+const sideFrom = (s: LifeosSide, home: HomeOf | undefined): ClashSide => {
+  const workspaceId = home?.(s.sector)
+  return {
+    eventId: s.eventId,
+    sector: s.sector,
+    ...(workspaceId ? { workspaceId } : {}),
+    title: s.title,
+    startsAt: s.startsAt,
+    endsAt: s.endsAt,
+    ...(s.place !== undefined ? { place: s.place } : {}),
+    ...(s.location !== undefined ? { location: s.location } : {}),
+    ...(s.rough !== undefined ? { rough: s.rough } : {}),
+    can: [...(s.can ?? [])]
+  }
+}
+
+/** LifeOS's clash as every screen and the wire read it: each side's workspace added, metres as miles. */
+export function clashFrom(c: LifeosClash, home?: HomeOf): Clash {
+  return {
+    id: c.id,
+    kind: c.kind,
+    a: sideFrom(c.a, home),
+    b: sideFrom(c.b, home),
+    ...(c.minutes !== undefined ? { minutes: c.minutes } : {}),
+    ...(c.metres !== undefined ? { miles: milesOf(c.metres) } : {}),
+    ...(c.measured !== undefined ? { measured: c.measured } : {}),
+    ...(c.shortBy !== undefined ? { shortBy: c.shortBy } : {})
+  }
+}
+
+export function leaveFrom(l: LifeosLeave): Leave {
+  return {
+    eventId: l.eventId,
+    leaveAt: l.leaveAt,
+    ...(l.minutes !== undefined ? { minutes: l.minutes } : {}),
+    ...(l.metres !== undefined ? { miles: milesOf(l.metres) } : {}),
+    from: l.from,
+    ...(l.fromTitle !== undefined ? { fromTitle: l.fromTitle } : {}),
+    measured: l.measured
+  }
+}
+
+export function listFrom(range: LifeosRange | null | undefined, home?: HomeOf): ClashList {
+  return { clashes: (range?.clashes ?? []).map((c) => clashFrom(c, home)), leaves: (range?.leaves ?? []).map(leaveFrom) }
+}
+
 export interface ClashWordsOpts {
   /** IANA zone the times are read in; absent: this machine's */
   timeZone?: string

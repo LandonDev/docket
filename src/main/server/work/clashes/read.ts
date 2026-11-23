@@ -1,5 +1,7 @@
 import type { ClashLeave, ClashMiles } from '@shared/contract-work-clashes'
-import { milesOf, type Clash, type ClashList, type ClashSide, type ClashStop, type ClashWay, type Leave } from '@shared/work/clashes'
+import { clashFrom, leaveFrom, listFrom, milesOf, type Clash, type ClashList, type ClashStop, type LifeosClash, type LifeosRange } from '@shared/work/clashes'
+
+export type { LifeosClash, LifeosLeave, LifeosRange, LifeosSide } from '@shared/work/clashes'
 import { errorText, type SectorKey } from '@shared/work/ids'
 import type { Caller, WorkCtx } from '../modules'
 
@@ -9,43 +11,6 @@ import type { Caller, WorkCtx } from '../modules'
  * this file maps their answers, adds this host's workspace for each job and
  * turns metres into miles. Every call runs on the owner session.
  */
-
-/** One event of a clash as LifeOS answers it. */
-export interface LifeosSide {
-  eventId: string
-  sector: SectorKey
-  title: string
-  startsAt: number
-  endsAt: number
-  location?: string
-  place?: string
-  rough?: 'town' | 'start'
-  can: ClashWay[]
-}
-export interface LifeosClash {
-  id: string
-  kind: 'overlap' | 'drive'
-  a: LifeosSide
-  b: LifeosSide
-  minutes?: number
-  metres?: number
-  measured?: boolean
-  shortBy?: number
-}
-export interface LifeosLeave {
-  eventId: string
-  leaveAt: number
-  minutes?: number
-  metres?: number
-  measured: boolean
-  from: 'start' | 'event'
-  fromEventId?: string
-  fromTitle?: string
-}
-export interface LifeosRange {
-  clashes: LifeosClash[]
-  leaves: LifeosLeave[]
-}
 
 export const WORK_OFF = 'Work is off on this host.'
 const HOUR = 3600_000
@@ -79,50 +44,9 @@ export function homesOf(ctx: Pick<WorkCtx, 'db'>): Map<SectorKey, string> {
   return homes
 }
 
-const sideOf = (s: LifeosSide, homes: Map<SectorKey, string>): ClashSide => {
-  const workspaceId = homes.get(s.sector)
-  return {
-    eventId: s.eventId,
-    sector: s.sector,
-    ...(workspaceId ? { workspaceId } : {}),
-    title: s.title,
-    startsAt: s.startsAt,
-    endsAt: s.endsAt,
-    ...(s.place !== undefined ? { place: s.place } : {}),
-    ...(s.location !== undefined ? { location: s.location } : {}),
-    ...(s.rough !== undefined ? { rough: s.rough } : {}),
-    can: [...(s.can ?? [])]
-  }
-}
-
-export function clashOf(c: LifeosClash, homes: Map<SectorKey, string>): Clash {
-  return {
-    id: c.id,
-    kind: c.kind,
-    a: sideOf(c.a, homes),
-    b: sideOf(c.b, homes),
-    ...(c.minutes !== undefined ? { minutes: c.minutes } : {}),
-    ...(c.metres !== undefined ? { miles: milesOf(c.metres) } : {}),
-    ...(c.measured !== undefined ? { measured: c.measured } : {}),
-    ...(c.shortBy !== undefined ? { shortBy: c.shortBy } : {})
-  }
-}
-
-export function leaveOf(l: LifeosLeave): Leave {
-  return {
-    eventId: l.eventId,
-    leaveAt: l.leaveAt,
-    ...(l.minutes !== undefined ? { minutes: l.minutes } : {}),
-    ...(l.metres !== undefined ? { miles: milesOf(l.metres) } : {}),
-    from: l.from,
-    ...(l.fromTitle !== undefined ? { fromTitle: l.fromTitle } : {}),
-    measured: l.measured
-  }
-}
-
-export function listOf(range: LifeosRange | null | undefined, homes: Map<SectorKey, string>): ClashList {
-  return { clashes: (range?.clashes ?? []).map((c) => clashOf(c, homes)), leaves: (range?.leaves ?? []).map(leaveOf) }
-}
+export const clashOf = (c: LifeosClash, homes: Map<SectorKey, string>): Clash => clashFrom(c, (sector) => homes.get(sector))
+export const leaveOf = leaveFrom
+export const listOf = (range: LifeosRange | null | undefined, homes: Map<SectorKey, string>): ClashList => listFrom(range, (sector) => homes.get(sector))
 
 export const rangeOf = (ctx: WorkCtx, from: number, to: number): Promise<LifeosRange | null> =>
   asked(() => ctx.lifeos.owner().query<LifeosRange | null>('clashes:range', { from, to }))
