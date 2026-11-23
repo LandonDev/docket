@@ -172,9 +172,8 @@ describe("the Templates view", () => {
     await settle();
     expect(asked("work.templates.make").map((p) => p.template)).toEqual(["job:Crew memo.docx"]);
     await waitFor(() => expect(asked("work.files.open")).toEqual([{ workspaceId: "ws", ref: { at: "file", host: "box", path: "/w/Dummy Esports/Crew memo.docx" } }]));
-    // The make is over once Files has the file: the next press is taken.
-    await settle();
-    await settle();
+    // The make is over once Files has the file and the tile is free again (its opener loads on demand): the next press is taken.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Crew memo" }).getAttribute("aria-busy")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Game report" }));
     await waitFor(() => expect(open).toHaveBeenCalledWith({ workspaceId: "ws", template: REPORT }));
     expect(asked("work.templates.make")).toHaveLength(1);

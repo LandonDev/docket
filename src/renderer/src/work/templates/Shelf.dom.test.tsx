@@ -207,4 +207,23 @@ describe("the shelf", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename…" }));
     expect(onMenu.mock.calls[0]).toEqual(["rename", TEMPLATES[0]]);
   });
+
+  it("tints each kind's glyph as Files does, and nothing else: the plate, the name and the wait stay untinted", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
+    const tints: Record<string, string> = { "job:Crew memo.docx": "text-kind-doc", "starter:ref/season-log": "text-kind-sheet", "all:Pitch.pptx": "text-kind-slides" };
+    for (const [id, tint] of Object.entries(tints)) {
+      const tile = document.querySelector(`[data-tile="${id}"]`)!;
+      const glyph = tile.querySelector("[data-kind-glyph]")!;
+      expect(glyph.getAttribute("class")!.split(" ")).toContain(tint);
+      // One tinted element on the tile: its glyph.
+      expect([...tile.querySelectorAll("*")].filter((el) => /\btext-kind-/.test(el.getAttribute("class") ?? ""))).toEqual([glyph]);
+      expect(tile.querySelector("[data-plate]")!.outerHTML).not.toMatch(/kind-/);
+    }
+    rerender(<Shelf groups={groups} layout="page" making="job:Crew memo.docx" onPress={() => {}} />);
+    act(() => void vi.advanceTimersByTime(SPIN_AFTER_MS));
+    const spinner = document.querySelector('[data-tile="job:Crew memo.docx"] [data-slot="spinner"]')!;
+    expect(spinner.className).toContain("text-muted-foreground");
+    expect(spinner.className).not.toMatch(/kind-/);
+  });
 });

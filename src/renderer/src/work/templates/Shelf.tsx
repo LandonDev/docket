@@ -10,7 +10,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
-import { Doc, Slides, Table } from "../icons";
+import { KindGlyph } from "../files/KindGlyph";
 import type { ShelfGroup } from "./model";
 
 /**
@@ -31,9 +31,6 @@ import type { ShelfGroup } from "./model";
 /** A make shorter than this shows no spinner: the tile only presses. */
 export const SPIN_AFTER_MS = 150;
 
-const KIND_GLYPH: Record<TemplateKind, typeof Doc> = { document: Doc, sheet: Table, deck: Slides };
-/** Each kind's tint (docs/DESIGN.md "File kind tints"): a template's tile is a file's tile, and only its glyph takes the colour. */
-const KIND_TINT: Record<TemplateKind, string> = { document: "text-kind-doc", sheet: "text-kind-sheet", deck: "text-kind-slides" };
 
 /** The widths of a drawn page's lines, as shares of the line: enough of a rhythm to read as writing. */
 const LINES = ["w-[92%]", "w-[78%]", "w-[86%]", "w-[58%]"] as const;
@@ -135,7 +132,6 @@ function Tile({
   onMore: (button: HTMLElement) => void;
 }) {
   const spin = useLate(making, SPIN_AFTER_MS);
-  const Glyph = KIND_GLYPH[template.kind];
   // The caption is cut to one line; while it is cut, the whole name is the press's tip.
   const { ref: caption, cut } = useTruncated(template.name);
   const press = (
@@ -170,7 +166,9 @@ function Tile({
       <span className="pointer-events-none relative flex min-w-0 flex-col gap-1.5">
         <Plate kind={template.kind} />
         <span className="flex h-5 min-w-0 items-center gap-2 text-[13px] leading-5 text-foreground">
-          {spin ? <Spinner aria-hidden className="size-3.5" /> : <Glyph aria-hidden className={cn("size-3.5 shrink-0", KIND_TINT[template.kind])} />}
+          {/* The kind's glyph in its tint, drawn by the one part that draws it (docs/DESIGN.md "File kind tints": a
+              template's tile is a file's tile, and only its glyph takes the colour). The wait is no kind: muted. */}
+          {spin ? <Spinner aria-hidden className="size-3.5 text-muted-foreground" /> : <KindGlyph kind={template.kind} className="size-3.5 shrink-0" />}
           <span ref={caption} data-tile-name="" className="min-w-0 truncate">
             {template.name}
           </span>
