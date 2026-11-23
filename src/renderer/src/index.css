@@ -158,6 +158,10 @@
   --add-bg-dark-pic: color-mix(in srgb, #34d399 26%, transparent);
   --del-bg-dark-pic: color-mix(in srgb, #f87171 22%, transparent);
   --sel-bg-dark-pic: color-mix(in srgb, hsl(211 92% 62%) 30%, transparent);
+  /* The outline, handles and guides of a shape picked on a slide: the dark
+     picture's accent in both themes, since they sit on the deck and never on
+     the app (docs/DESIGN.md "The slide editor"). */
+  --sel-line-dark-pic: hsl(211 92% 62%);
   /* Presence: one hue per other person or agent in a document or a sheet
      (a caret, a cell's outline, the name label on it, their avatar). The
      shared editor's eight cursor hues in its order, so a person wears one

@@ -18,7 +18,7 @@ import * as SlidesCanvas from "./SlidesCanvas";
 import { SPONSOR, sponsorDoc } from "./SlidesCanvas.preview.fixtures";
 import { change, deckView, fakeDeckHost, slide } from "./testkit";
 
-export type SlidesMoment = "sugg" | "notes" | "ppt" | "loading" | "nopicture";
+export type SlidesMoment = "sugg" | "notes" | "ppt" | "loading" | "nopicture" | "picked" | "turned";
 
 void workCanvasChunk.load();
 
@@ -51,7 +51,7 @@ function revised(hosted: boolean): DeckView {
   });
 }
 
-function setUp(moment: SlidesMoment): { view: DeckView; current?: string; engine?: PdfEngine } {
+function setUp(moment: SlidesMoment): { view: DeckView; current?: string; engine?: PdfEngine; picked?: number } {
   if (moment === "notes") {
     const order = [1, 2, 3, 4, 5, 6, 8];
     return {
@@ -62,6 +62,20 @@ function setUp(moment: SlidesMoment): { view: DeckView; current?: string; engine
         renders: { file: { rev: "f", size: 1, pages: 7 }, proposed: null },
       }),
       current: "2",
+    };
+  }
+  if (moment === "picked" || moment === "turned") {
+    // A shape picked on the stage: the title's box, and a box turned 12 degrees, by their own corners.
+    const order = [1, 2, 3, 4, 5, 6, 8];
+    const turned = moment === "turned";
+    const quad = (turned ? [[0.1, 0.33], [0.72, 0.42], [0.69, 0.62], [0.07, 0.53]] : [[0.086, 0.2], [0.72, 0.2], [0.72, 0.31], [0.086, 0.31]]) as never;
+    return {
+      view: deckView({
+        slides: order.map((id, i) => slide(id, { number: i + 1, title: title(id), page: i + 1, shapes: id === 2 ? [{ id: 3, name: "Title 1", bbox: [0.07, 0.2, 0.72, 0.62], text: title(2), kind: "text", quad, ...(turned ? { rot: 12 } : {}) }] : [] })),
+        renders: { file: { rev: "f", size: 1, pages: 7 }, proposed: null },
+      }),
+      current: "2",
+      picked: 3,
     };
   }
   if (moment === "loading") return { view: deckView(), engine: { open: () => new Promise(() => undefined) } };
@@ -77,7 +91,7 @@ export function SlidesPreview({ moment = "sugg" }: { moment?: SlidesMoment }) {
   const sessionId = `preview-slides-${moment}`;
   const itemId = `${sessionId}-item`;
   const item: CanvasItem = { id: itemId, sessionId, workspaceId: "ws", kind: "slides" as CanvasKind, title: "Sponsor deck.pptx", source: { at: "file", host: "local", path: "/work/Sponsor deck.pptx" }, state: "open", position: 0, rev: 0, createdAt: 0, updatedAt: 0 };
-  const { view, current, engine } = setUp(moment);
+  const { view, current, engine, picked } = setUp(moment);
   const host = fakeDeckHost({ ...view, itemId });
   const store = deckStoreOf(itemId);
   if (moment === "loading") host.open = () => new Promise(() => undefined);
@@ -89,7 +103,7 @@ export function SlidesPreview({ moment = "sugg" }: { moment?: SlidesMoment }) {
   const docs = [sponsorDoc([1, 2, 3, 4, 5, 6, 8]), sponsorDoc([1, 2, 3, 6, 4, 7, 5, 8])];
   const fake: PdfEngine = engine ?? { open: async () => docs[Math.min(1, opened++)] };
   const module = {
-    Body: (props: CanvasBodyProps) => <SlidesCanvas.Body {...(props as CanvasBodyProps<undefined>)} host={host} engine={fake} width={454} height={492} />,
+    Body: (props: CanvasBodyProps) => <SlidesCanvas.Body {...(props as CanvasBodyProps<undefined>)} host={host} engine={fake} width={454} height={492} picked={picked} />,
     Bar: SlidesCanvas.Bar as never,
     TabEnd: SlidesCanvas.TabEnd as never,
   };

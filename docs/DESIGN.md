@@ -312,6 +312,7 @@ both themes, unless the table gives two values.
 | `run-dot` | a routine's planned run in the week grid | `foreground` 55% |
 | `stage` | the ground under a picture: an image, a PDF's sheets, a slide | `sidebar` |
 | `present-bar` | the bar over a slideshow, on the deck and never on the app ("The show") | dark `popover` 94%, in both themes |
+| `sel-line-dark-pic` | a picked shape's outline and handle edges on a slide ("The slide editor") | `hsl(211 92% 62%)`, in both themes |
 | `chart-neutral` | a form's answer bars | `foreground` 30% dark, 54% light |
 | `chart-neutral-rest` | a dashboard's bars beside the current one, which is `foreground` | `foreground` 22% dark, 48% light |
 | `chart-neutral-stale` | that current bar while the figures are stale | `foreground` 40% dark, 65% light |
@@ -2264,6 +2265,17 @@ his hands and leaves no trace on what he was searching from.
   be a chip. Right-click gives the same two with their keys ("Open",
   "New thread about this") and moves the highlight to the row it opened
   on.
+
+**The slide editor** (`src/renderer/src/work/slides/SlidesCanvas.tsx`,
+`geometry.ts`). A picked shape is outlined along its own edges, turned with
+it: a 1px line, eight 8px handles (2px radius) at the corners and the
+middles of the sides, and a 10px round turn handle on a 12px stem, 22px
+above the top edge. One look in both themes and on any slide: the line is
+`sel-line-dark-pic` and the handles are `paper` with a 1.5px edge of the
+line's colour, because the selection sits on the deck, not on the app. It
+is drawn at screen size whatever the slide's size, as one SVG over the
+picture that takes no pointer. Nothing animates: a selection is made many
+times a minute. A shape that cannot be picked shows no hover.
 
 ## Scrolling
 

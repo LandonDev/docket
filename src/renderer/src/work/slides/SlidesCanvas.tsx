@@ -5,12 +5,14 @@ import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
+import { bareKey } from "../../lib/keys";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { CSS_PER_POINT, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
 import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
+import { HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, readingOrder, ROTATE_HANDLE, selectionOf, type Quad } from "./geometry";
 import { present, presentKey, PresentButton, type PresentAsk } from "./Present";
 
 /**
@@ -31,6 +33,8 @@ export interface SlidesDeps {
   /** A preview's or a test's fixed size: jsdom lays nothing out. */
   width?: number;
   height?: number;
+  /** A preview's: the shape picked on the stage when it mounts. */
+  picked?: number;
 }
 
 const hosts = new Map<string, DeckHost>();
@@ -105,7 +109,7 @@ export function Body(props: CanvasBodyProps<SlidesState> & SlidesDeps) {
   return <SlidesBody {...props} host={host} store={store} engine={props.engine ?? pdfjsEngine} />;
 }
 
-export function SlidesBody({ item, source, shell, host, store, engine, width: fixedWidth, height: fixedHeight }: CanvasBodyProps<SlidesState> & { host: DeckHost; store: DeckStore; engine: PdfEngine; width?: number; height?: number }) {
+export function SlidesBody({ item, source, shell, host, store, engine, width: fixedWidth, height: fixedHeight, picked: firstPicked }: CanvasBodyProps<SlidesState> & { host: DeckHost; store: DeckStore; engine: PdfEngine; width?: number; height?: number; picked?: number }) {
   const { view, error, current, side } = useDeck(store);
   // A render whose bytes moved on mid-read asks for the view again, whose new revision reads afresh.
   const refresh = useCallback(() => void openDeck(host, store), [host, store]);
@@ -218,6 +222,7 @@ export function SlidesBody({ item, source, shell, host, store, engine, width: fi
           itemTitle={item.title}
           source={source}
           shell={shell}
+          picked={firstPicked}
         />
       ) : null}
     </div>
@@ -407,6 +412,19 @@ function useInView(ref: { current: Element | null }, margin = "200px"): boolean 
  * refuses on the stage says so in the slide's place, with Retry, as a PDF's
  * page does; a thumbnail stays a blank.
  */
+/**
+ * Lets pdf.js free a page it drew. A render that was replaced (the deck changed) is destroyed before the pictures
+ * that drew from it are let go, and pdf.js throws when a destroyed document is asked for a page: there is nothing
+ * left to free, and the throw, from an effect's clean-up, took the whole canvas down ("It could not be shown").
+ */
+export function freePage(doc: PdfDoc | null, page: number): void {
+  try {
+    doc?.release(page);
+  } catch {
+    /* destroyed: nothing to free */
+  }
+}
+
 const Picture = memo(function Picture({
   doc,
   page,
@@ -461,8 +479,8 @@ const Picture = memo(function Picture({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, page, width, thumb && near, tries]);
-  useEffect(() => (doc && thumb && !near ? doc.release(page) : undefined), [doc, page, thumb, near]);
-  useEffect(() => () => doc?.release(page), [doc, page]);
+  useEffect(() => (doc && thumb && !near ? freePage(doc, page) : undefined), [doc, page, thumb, near]);
+  useEffect(() => () => freePage(doc, page), [doc, page]);
   return (
     <span className={`relative block overflow-hidden rounded-[3px] bg-muted outline-1 -outline-offset-1 outline-(--image-outline) ${ghost ? "opacity-45" : ""}`} style={{ width, height: Math.round(width / aspect) }}>
       <span ref={host} aria-hidden="true" className="absolute inset-0" />
@@ -483,8 +501,8 @@ const Picture = memo(function Picture({
 
 /** The tints a slide takes: the dark theme's on a dark picture, paper's on a light one. */
 const TINTS = {
-  dark: { add: "bg-(--add-bg-dark-pic)", sel: "bg-(--sel-bg-dark-pic)" },
-  light: { add: "bg-(--add-bg-paper)", sel: "bg-(--sel-bg-paper)" },
+  dark: { add: "bg-(--add-bg-dark-pic)" },
+  light: { add: "bg-(--add-bg-paper)" },
 } as const;
 
 /** Whether a drawn picture is dark: its mean light over a coarse grid. */
@@ -520,7 +538,10 @@ function Main({
   onPaintFailed,
   onMount,
   onUnmount,
+  picked: firstPicked,
 }: {
+  /** the shape picked when the stage mounts (a preview) */
+  picked?: number;
   view: DeckView;
   slide: DeckSlide;
   doc: PdfDoc | null;
@@ -546,20 +567,46 @@ function Main({
   const aspect = size ? size.width / size.height : 16 / 9;
   const w = width > 0 ? stageWidth(width, height, aspect) : STAGE_MAX;
   const [tone, setTone] = useState<"dark" | "light">("light");
-  const [picked, setPicked] = useState<number | null>(null);
+  const [picked, setPicked] = useState<number | null>(firstPicked ?? null);
   const change = slide.change ? view.changes.find((c) => c.id === slide.change) : undefined;
   const tints = TINTS[tone];
+  // A press takes the keyboard to the shape it picked, so Escape and the arrows answer after a pick by pointer.
+  const byPointer = useRef(false);
   const pick = (shape: DeckShape, el: HTMLElement): void => {
     setPicked(shape.id);
     const words = shape.text.replace(/\s+/g, " ").trim();
     const short = words.length > 40 ? `${words.slice(0, 40).trimEnd()}…` : words;
+    // A shape with no words is named by what it is.
+    const what = words ? `“${short}”` : KIND_WORDS[shape.kind ?? "other"];
     shell.selection({
-      chip: { kind: "selection", label: `“${short}”, slide ${slide.number ?? slide.id}`, ref: source, quote: `${words}\n(${itemTitle}, slide id ${slide.id}, shape ${shape.id} "${shape.name}")` },
+      chip: { kind: "selection", label: `${what}, slide ${slide.number ?? slide.id}`, ref: source, quote: `${words ? `${words}\n` : ""}(${itemTitle}, slide id ${slide.id}, shape ${shape.id} "${shape.name}")` },
       rect: el.getBoundingClientRect(),
     });
   };
+  const unpick = (): void => {
+    setPicked(null);
+    shell.selection(null);
+  };
   useEffect(() => () => shell.selection(null), [shell]);
-  const shapes = slide.tint === "del" ? [] : slide.shapes.filter((s) => s.bbox && s.text.trim());
+  // What a press can pick: every shape of a kind whose box was held to the drawn pixels (geometry.ts), by its own
+  // corners. A host a release behind sends no corners: its shapes with words are picked by their box, as before.
+  const shapes = useMemo(
+    () =>
+      slide.tint === "del"
+        ? []
+        : slide.shapes.flatMap((s): Array<DeckShape & { quad: Quad }> => {
+            if (pickable(s)) return [s];
+            if (s.quad || !s.bbox || !s.text.trim()) return [];
+            const [x0, y0, x1, y1] = s.bbox;
+            return [{ ...s, quad: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] }];
+          }),
+    [slide],
+  );
+  const layer = useRef<HTMLDivElement>(null);
+  const buttonOf = (id: number): HTMLElement | null => layer.current?.querySelector<HTMLElement>(`[data-shape="${id}"]`) ?? null;
+  const h = Math.round(w / aspect);
+  const selected = shapes.find((s) => s.id === picked);
+  const selection = selected ? selectionOf(selected.quad, w, h) : null;
   // A change to the notes is drawn once, in the Notes section; the list above it is the slide's shapes.
   const notesEdit = change?.edits.find((e) => e.where === NOTES_WHERE);
   const edits = change?.edits.filter((e) => e !== notesEdit) ?? [];
@@ -579,22 +626,69 @@ function Main({
             }}
             onFailed={() => onPaintFailed(stage)}
           />
-          <div className="absolute inset-0">
+          <div
+            ref={layer}
+            data-slides-shapes
+            role="group"
+            aria-label="Shapes on this slide"
+            className="absolute inset-0"
+            // A press picks the topmost shape under it, by its own corners (a turned shape's box is wider than it
+            // is); a press on the bare slide lets the selection go.
+            onClick={(event) => {
+              if (event.target !== event.currentTarget) return;
+              const box = event.currentTarget.getBoundingClientRect();
+              const under = box.width > 0 && box.height > 0 ? hit(shapes, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height) : null;
+              const el = under ? buttonOf(under.id) : null;
+              if (under && el) {
+                byPointer.current = true;
+                el.focus({ preventScroll: true });
+                byPointer.current = false;
+                pick(under, el);
+              } else unpick();
+            }}
+            // Tab walks the shapes from the back of the slide to the front; the arrows move the selection in reading order; Escape lets it go.
+            onKeyDown={(event) => {
+              const at = Number((event.target as HTMLElement).dataset.shape);
+              if (!at) return;
+              if (event.key === "Escape") {
+                unpick();
+                return;
+              }
+              // The bare arrows only: with a modifier they are someone else's (a word, a line, the window).
+              const by = !bareKey(event) ? 0 : event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+              if (!by) return;
+              const order = readingOrder(shapes);
+              const next = order[order.findIndex((o) => o.id === at) + by];
+              event.preventDefault();
+              event.stopPropagation();
+              buttonOf(next?.id ?? at)?.focus();
+            }}
+          >
             {slide.changed.map((b: Bbox, i) => (
               <span key={`c${i}`} data-slide-changed style={boxStyle(b)} className={`pointer-events-none absolute rounded-[3px] ${tints.add}`} />
             ))}
-            {shapes.map((shape) => (
-              <button
-                key={shape.id}
-                type="button"
-                data-shape={shape.id}
-                aria-label={shape.name}
-                aria-pressed={picked === shape.id}
-                style={boxStyle(shape.bbox!)}
-                className={`absolute rounded-[4px] transition-[background-color] duration-(--dur-hover) ${picked === shape.id ? tints.sel : ""}`}
-                onClick={(event) => pick(shape, event.currentTarget)}
-              />
-            ))}
+            {shapes.map((shape) => {
+              const xs = shape.quad.map((p) => p[0]);
+              const ys = shape.quad.map((p) => p[1]);
+              return (
+                <button
+                  key={shape.id}
+                  type="button"
+                  data-shape={shape.id}
+                  aria-label={shapeLabel(shape)}
+                  aria-pressed={picked === shape.id}
+                  style={boxStyle([Math.max(0, Math.min(...xs)), Math.max(0, Math.min(...ys)), Math.min(1, Math.max(...xs)), Math.min(1, Math.max(...ys))])}
+                  // The layer takes the press and finds the shape by its corners; the button is the shape for the keyboard and a screen reader.
+                  // Picked, the selection's own outline says where the keyboard is; let go, the focus ring does.
+                  className="pointer-events-none absolute rounded-[4px] aria-pressed:outline-none"
+                  onClick={(event) => pick(shape, event.currentTarget)}
+                  onFocus={(event) => {
+                    if (picked !== shape.id && !byPointer.current) pick(shape, event.currentTarget);
+                  }}
+                />
+              );
+            })}
+            {selection ? <Selection selection={selection} width={w} height={h} /> : null}
           </div>
         </div>
       </div>
@@ -614,6 +708,46 @@ function Main({
         )}
       </div>
     </div>
+  );
+}
+
+/** A shape as a screen reader says it: what it is on its slide ("Title", "Text 2"), then its words. */
+function shapeLabel(shape: DeckShape): string {
+  const what = shape.label ?? KIND_WORDS[shape.kind ?? "other"];
+  const words = shape.text.replace(/\s+/g, " ").trim();
+  return words ? `${what}: ${words.length > 80 ? `${words.slice(0, 80).trimEnd()}…` : words}` : what;
+}
+
+/**
+ * A picked shape's selection (docs/DESIGN.md "The slide editor"): a 1px outline on its corners, eight 8px handles
+ * and a rotate handle over its top edge, drawn at screen size whatever the slide's zoom and turned with the shape.
+ * One look in both themes (`sel-line-dark-pic` on `paper`): it sits on the deck, not on the app.
+ */
+function Selection({ selection, width, height }: { selection: ReturnType<typeof selectionOf>; width: number; height: number }) {
+  const { corners, handles, rotate, stem } = selection;
+  const [tl, tr] = corners;
+  const turn = (Math.atan2(tr.y - tl.y, tr.x - tl.x) * 180) / Math.PI;
+  return (
+    <svg data-slide-selection aria-hidden="true" width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="pointer-events-none absolute inset-0 overflow-visible">
+      <polygon points={corners.map((c) => `${c.x},${c.y}`).join(" ")} fill="none" stroke="var(--sel-line-dark-pic)" strokeWidth={1} />
+      <line x1={stem[0].x} y1={stem[0].y} x2={stem[1].x} y2={stem[1].y} stroke="var(--sel-line-dark-pic)" strokeWidth={1} />
+      <circle data-handle="rotate" cx={rotate.x} cy={rotate.y} r={ROTATE_HANDLE / 2 - HANDLE_EDGE / 2} fill="var(--paper)" stroke="var(--sel-line-dark-pic)" strokeWidth={HANDLE_EDGE} />
+      {handles.map((p, i) => (
+        <rect
+          key={i}
+          data-handle={i}
+          x={p.x - HANDLE / 2 + HANDLE_EDGE / 2}
+          y={p.y - HANDLE / 2 + HANDLE_EDGE / 2}
+          width={HANDLE - HANDLE_EDGE}
+          height={HANDLE - HANDLE_EDGE}
+          rx={2}
+          transform={`rotate(${turn} ${p.x} ${p.y})`}
+          fill="var(--paper)"
+          stroke="var(--sel-line-dark-pic)"
+          strokeWidth={HANDLE_EDGE}
+        />
+      ))}
+    </svg>
   );
 }
 

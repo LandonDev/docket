@@ -16,7 +16,8 @@ import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import { fakeDoc, fakeEngine } from "../pdf/testkit";
-import { changeIndex, renderDetail, slideOfChange, stageWidth } from "./SlidesCanvas";
+import type { PdfDoc } from "../pdf/engine";
+import { changeIndex, freePage, renderDetail, slideOfChange, stageWidth } from "./SlidesCanvas";
 import { RENDER_CHANGED } from "./deck";
 import { change, deckView, fakeDeckHost, slide } from "./testkit";
 
@@ -257,9 +258,85 @@ describe("the slides kind", () => {
     const shape = await found('[data-shape="3"]');
     fireEvent.click(shape);
     expect(shape.getAttribute("aria-pressed")).toBe("true");
-    // Picked is the selection's fill alone; the accent outline is the focus ring's, not a second mark.
+    // Picked is the selection's own outline and handles; the accent outline is the focus ring's, not a second mark.
     expect(shape.className).not.toMatch(/outline-2|outline-\(--accent\)/);
     expect(await screen.findByRole("button", { name: /Ask/ })).toBeTruthy();
+  });
+
+  /** A slide of four shapes with their corners: a title, a picture over part of it turned 30 degrees, a connector, and a diagram. */
+  const QUADS = [
+    { id: 2, name: "Title 1", label: "Title", bbox: [0.1, 0.1, 0.9, 0.3], text: "Who comes", kind: "text", quad: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.3], [0.1, 0.3]] },
+    { id: 4, name: "Picture 3", bbox: [0.3, 0.2, 0.7, 0.8], text: "", kind: "picture", rot: 30, quad: [[0.4, 0.2], [0.7, 0.4], [0.6, 0.8], [0.3, 0.6]] },
+    { id: 5, name: "Straight Connector 4", bbox: [0.1, 0.85, 0.9, 0.9], text: "", kind: "connector", quad: [[0.1, 0.85], [0.9, 0.85], [0.9, 0.9], [0.1, 0.9]] },
+    { id: 6, name: "Diagram 5", bbox: [0.75, 0.5, 0.95, 0.8], text: "", kind: "frame", quad: [[0.75, 0.5], [0.95, 0.5], [0.95, 0.8], [0.75, 0.8]] },
+  ] as never;
+  async function quads() {
+    open(deckView({ slides: [slide(3, { number: 3, shapes: QUADS })], renders: { file: { rev: "f1", size: 10, pages: 1 }, proposed: null } }));
+    const layer = await found("[data-slides-shapes]");
+    // jsdom lays nothing out: the stage is given a box, so a press has a place on the slide.
+    layer.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 500, right: 1000, bottom: 500, x: 0, y: 0, toJSON: () => ({}) });
+    const press = (x: number, y: number): boolean => fireEvent.click(layer, { clientX: x * 1000, clientY: y * 500 });
+    return { layer, press };
+  }
+
+  it("a press picks the topmost shape under it by its own corners, and draws its outline, eight handles and a rotate handle", async () => {
+    const { layer, press } = await quads();
+    // Only what can be picked is a shape here: a connector and a diagram are edited in PowerPoint.
+    expect([...layer.querySelectorAll("[data-shape]")].map((b) => b.getAttribute("data-shape"))).toEqual(["2", "4"]);
+    expect(layer.querySelector("[data-slide-selection]")).toBeNull();
+    // Inside the picture's box but outside its turned corners: the title under it is picked.
+    press(0.32, 0.22);
+    expect(layer.querySelector('[data-shape="2"]')!.getAttribute("aria-pressed")).toBe("true");
+    // Inside the turned picture, which lies over the title.
+    press(0.5, 0.29);
+    expect(layer.querySelector('[data-shape="4"]')!.getAttribute("aria-pressed")).toBe("true");
+    // The press took the keyboard there too: Escape and the arrows answer after a pick by pointer.
+    expect(document.activeElement).toBe(layer.querySelector('[data-shape="4"]'));
+    const selection = layer.querySelector("[data-slide-selection]")!;
+    expect(selection.querySelectorAll("rect[data-handle]")).toHaveLength(8);
+    expect(selection.querySelector('circle[data-handle="rotate"]')).not.toBeNull();
+    expect(selection.querySelector("polygon")!.getAttribute("stroke")).toBe("var(--sel-line-dark-pic)");
+    // The handles turn with the shape.
+    expect(selection.querySelector("rect[data-handle]")!.getAttribute("transform")).toMatch(/^rotate\((?!0 )/);
+    // A shape with no words is named by what it is, with its place for the agent.
+    expect(await screen.findByRole("button", { name: /Ask/ })).toBeTruthy();
+    // A press on the connector, the diagram or the bare slide lets the selection go.
+    press(0.5, 0.87);
+    expect(layer.querySelector("[data-slide-selection]")).toBeNull();
+    press(0.5, 0.29);
+    press(0.85, 0.65);
+    expect(layer.querySelector("[data-slide-selection]")).toBeNull();
+  });
+
+  it("Tab and the arrows move the selection through the shapes, and Escape lets it go", async () => {
+    const { layer } = await quads();
+    const [title, picture] = [layer.querySelector<HTMLElement>('[data-shape="2"]')!, layer.querySelector<HTMLElement>('[data-shape="4"]')!];
+    // Focus is selection: tabbing to a shape picks it.
+    act(() => title.focus());
+    expect(title.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.keyDown(title, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(picture);
+    expect(picture.getAttribute("aria-pressed")).toBe("true");
+    // Past the last shape the selection stays.
+    fireEvent.keyDown(picture, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(picture);
+    fireEvent.keyDown(picture, { key: "ArrowUp" });
+    expect(title.getAttribute("aria-pressed")).toBe("true");
+    // An arrow with a modifier is someone else's key: it moves nothing here and is left to go on.
+    expect(fireEvent.keyDown(title, { key: "ArrowDown", metaKey: true })).toBe(true);
+    expect(fireEvent.keyDown(title, { key: "ArrowDown", shiftKey: true })).toBe(true);
+    expect(document.activeElement).toBe(title);
+    fireEvent.keyDown(title, { key: "Escape" });
+    expect(layer.querySelector("[data-slide-selection]")).toBeNull();
+    expect(title.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("names each shape for a screen reader by what it is on the slide and its words, never PowerPoint's name", async () => {
+    const { layer } = await quads();
+    expect(layer.getAttribute("role")).toBe("group");
+    expect(layer.getAttribute("aria-label")).toBe("Shapes on this slide");
+    // The host's own word for it ("Title"), then its words; a shape with no word from the host by its kind.
+    expect([...layer.querySelectorAll("[data-shape]")].map((b) => b.getAttribute("aria-label"))).toEqual(["Title: Who comes", "Picture"]);
   });
 
   it("follows the host's push when the agent revises the deck", async () => {
@@ -267,6 +344,19 @@ describe("the slides kind", () => {
     await found("[data-slides-stage]");
     act(() => deckHost.push(revised()));
     expect(await screen.findByRole("toolbar", { name: "Review changes" })).toBeTruthy();
+  });
+
+  it("lets a replaced render's pictures go without a fault: pdf.js throws when a destroyed document is asked for a page", async () => {
+    // As the real engine does once its document is destroyed (seen in a real window: the canvas went down on the first edit).
+    const gone: PdfDoc = { ...DECK, release: () => { throw new TypeError("Cannot read properties of null (reading 'sendWithPromise')"); } };
+    expect(() => freePage(gone, 3)).not.toThrow();
+    expect(() => freePage(null, 3)).not.toThrow();
+    open(deckView());
+    await found("[data-slides-stage]");
+    // The deck changes under the open canvas: a new render, the old one let go. The stage is still there.
+    act(() => deckHost.push({ ...deckView(), rev: "r2", renders: { file: { rev: "f2", size: 10, pages: 12 }, proposed: null } }));
+    expect(await found("[data-slides-stage]")).toBeTruthy();
+    expect(screen.queryByText("It could not be shown")).toBeNull();
   });
 
   it("offers PowerPoint in the tab row for a hosted deck, and says there what waits in TempCode", async () => {

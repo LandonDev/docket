@@ -19,7 +19,12 @@ function hold(doc: PdfDoc, page: number): () => void {
     const left = (pages.get(page) ?? 1) - 1;
     if (left > 0) return void pages.set(page, left);
     pages.delete(page);
-    doc.release(page);
+    // A render replaced meanwhile is destroyed, and pdf.js throws when asked for its page: there is nothing to free.
+    try {
+      doc.release(page);
+    } catch {
+      /* destroyed */
+    }
   };
 }
 

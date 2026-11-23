@@ -7,6 +7,8 @@ export default [
   { name: "Suggestions: five changes, the stage on a reworded slide", props: { moment: "sugg" } },
   { name: "Notes, written directly, with Undo", props: { moment: "notes" } },
   { name: "Real PowerPoint", props: { moment: "ppt" } },
+  { name: "A shape picked on the stage: its outline, eight handles and the rotate handle", props: { moment: "picked" } },
+  { name: "A turned shape picked: the selection turns with it", props: { moment: "turned" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "No picture: LibreOffice is not here", props: { moment: "nopicture" } },
 ];
