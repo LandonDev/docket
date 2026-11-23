@@ -176,6 +176,8 @@ try {
   // A file in the job's own folder says its job once: the folder is named for the job, and the row's end already says it.
   const fileRows = await run.page<string[]>(`[...document.querySelectorAll('[data-work-search-list] [data-kind="file"]')].map((el) => el.textContent)`)
   run.check('a file at the top of its job\'s folder names the job once', fileRows.filter((t) => t.includes('.')).every((t) => t.split('Cosmic').length === 2), fileRows.join(' | '))
+  const clear = await run.page<boolean>(`(() => { const list = document.querySelector('[data-work-search-list]'); const l = list.getBoundingClientRect(); const r = list.querySelector('[aria-selected="true"]').getBoundingClientRect(); const below = list.scrollHeight - list.scrollTop - list.clientHeight > 1; return list.scrollTop > 1 && (!below || r.bottom <= l.bottom - 31.5) && r.top >= l.top + 31.5 })()`)
+  run.check('the highlighted row stands clear of the list\'s faded edges', clear)
   await run.shot('04b-further-down')
   for (let i = 0; i < 12; i++) await key('ArrowUp')
   run.check('and the arrows bring the highlight back', (await selected()) === 'hit:lifeos:mailThreads:m2', String(await selected()))

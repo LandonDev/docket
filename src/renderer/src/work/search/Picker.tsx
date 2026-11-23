@@ -76,6 +76,9 @@ export const SAME_PRESS_MS = 80;
 /** The list's cap where the page gives no measure (a test): the class below says the same. */
 const LIST_CAP = 380;
 
+/** A row the arrows bring into view stops clear of the list's faded edges (32px, `OVERFLOW_FADE_Y`): the highlighted row is never the dimmed one. */
+const CLEAR_OF_FADE = "scroll-my-8";
+
 /** The spinner waits this long for an answer before it shows, and once shown stays this long: an answer in a few frames never flickers it. */
 export const SPIN_AFTER_MS = 150;
 export const SPIN_FOR_MS = 300;
@@ -482,7 +485,7 @@ export function Results({
           if (row.type !== "hit") {
             return (
               // A quiet row at rest; the one Return will take reads as any highlighted row does.
-              <div key={row.id} {...common} className={cn(pickerRowClass(highlighted), !highlighted && "text-muted-foreground")}>
+              <div key={row.id} {...common} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE, !highlighted && "text-muted-foreground")}>
                 {/* "All mail for …" stands under its group's titles; "Search all jobs" under the line it answers. */}
                 {row.type === "all" ? <span aria-hidden className="size-4 shrink-0" /> : null}
                 <span className="min-w-0 truncate">{row.label}</span>
@@ -495,7 +498,7 @@ export function Results({
           const time = timeOf(hit, now);
           const job = mixed ? jobOf(hit) : null;
           return (
-            <div key={row.id} {...common} data-menu-id={row.id} data-kind={hit.kind} className={pickerRowClass(highlighted)}>
+            <div key={row.id} {...common} data-menu-id={row.id} data-kind={hit.kind} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE)}>
               {hit.kind === "file" ? (
                 <span className="shrink-0">
                   <FileTypeIcon name={hit.title} isDir={false} />

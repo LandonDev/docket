@@ -2663,7 +2663,8 @@ his hands and leaves no trace on what he was searching from.
   (`scrollbar-gutter: stable`), so the columns do not shift when the list
   first overflows; the strip lies in the frame's own right inset (`-mr-1`),
   so a row ends 10px from the frame's edge. A cut edge fades (`OVERFLOW_FADE_Y`) while more
-  lies past it.
+  lies past it, and a row the arrows bring into view stops 32px clear of
+  it (`scroll-my-8`), so the highlighted row is never the dimmed one.
 - **Nothing typed** shows Recent: the last eight things he opened from
   search, any job. No hint text and no tips.
 - **Nothing found** is one muted row, "Nothing for “q”" (`PickerNote`).

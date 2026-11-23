@@ -385,6 +385,8 @@ describe("Work search", () => {
     await type("budget");
     await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail")], { more: true })]));
     expect(list().querySelector('[data-row="all:mail"]')!.className).toContain("text-muted-foreground");
+    // every row the arrows can bring into view stops clear of the faded edges
+    for (const option of list().querySelectorAll('[role="option"]')) expect(option.className).toContain("scroll-my-8");
   });
 
   it("leaves every key to an input method while he composes a word: Return takes a candidate, never a row", async () => {
