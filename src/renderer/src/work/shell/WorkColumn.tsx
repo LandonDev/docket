@@ -5,7 +5,7 @@ import { RailRow } from "../../chrome/RailRow";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { openWorkView, setLifeosProjects, useWorkView, workColumnPort, workStartPort, type LifeosProjectRow } from "../../lib/workSwitch";
 import { addContextChip, startAboutChip } from "../canvas/chips";
-import { type WorkViewDef, workViewList } from "../views/registry";
+import { rowOfView, type WorkViewDef, workViewRows } from "../views/registry";
 import { openLifeosProject } from "./actions";
 import { useLifeosQuery, useLifeosSession } from "./lifeos";
 
@@ -53,15 +53,15 @@ export function WorkColumnHead({ workspace }: { workspace: WorkspaceMeta }) {
   if (!sector) return null;
   return (
     <div className="flex flex-col gap-1 px-2 pt-2 pb-2">
-      {workViewList().map((view) => (
-        <ViewRow key={view.id} view={view} workspace={workspace} sector={sector} selected={shown?.workspaceId === workspace.id && shown.view === view.id} />
+      {workViewRows().map((view) => (
+        <ViewRow key={view.id} view={view} workspace={workspace} sector={sector} selected={shown?.workspaceId === workspace.id && rowOfView(shown.view) === view.id} on={shown?.workspaceId === workspace.id && shown.view === view.id} />
       ))}
     </div>
   );
 }
 
 /** One view's row; its own component, so a view's live fact (`useFact`) is a hook of its own. */
-function ViewRow({ view, workspace, sector, selected }: { view: WorkViewDef; workspace: WorkspaceMeta; sector: SectorKey; selected: boolean }) {
+function ViewRow({ view, workspace, sector, selected, on }: { view: WorkViewDef; workspace: WorkspaceMeta; sector: SectorKey; selected: boolean; on: boolean }) {
   const fact = view.useFact ? view.useFact(workspace, sector) : view.fact(workspace);
   return (
     <RailRow
@@ -69,8 +69,8 @@ function ViewRow({ view, workspace, sector, selected }: { view: WorkViewDef; wor
       label={view.label}
       trailing={fact}
       selected={selected}
-      // The row again closes it: the threads come back.
-      onClick={() => openWorkView(selected ? null : { workspaceId: workspace.id, view: view.id })}
+      // The row again closes it: the threads come back. From a view that stands inside this one (a meeting's page), the row leads back to it.
+      onClick={() => openWorkView(on ? null : { workspaceId: workspace.id, view: view.id })}
       intent={{ onPointerEnter: view.chunk.preload, onFocus: view.chunk.preload }}
     />
   );

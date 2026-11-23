@@ -1,5 +1,5 @@
 import { ConvexProvider } from "convex/react";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo } from "react";
 import type { ContextChip } from "@shared/work";
 import { AgendaMonth, AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-kit/views";
 import { addDays, endOf, formatPeriod, groupByDay, leaveAt, localeWeekStart, shiftPeriod, startOfDay, viewRange } from "work-kit/views/lib/agenda";
@@ -27,9 +27,9 @@ import type { WorkViewProps } from "../views/registry";
  * A Work workspace's Agenda (prototype workspace.html, "Four rows"): its
  * sector's calendar from LifeOS as a List (two weeks by day, each event at
  * its time with where it is and when to leave), a Week or a Month, the
- * latter two LifeOS's own (work-kit's views). Prepare starts a thread about
- * an event, with the event in the composer as a chip; nothing runs until he
- * sends. New event is a calendar act LifeOS holds until he presses Add.
+ * latter two LifeOS's own (work-kit's views). Prepare opens the meeting's
+ * page (work/prep), which reads its facts and starts nothing; once the event
+ * is over the same verb reads Follow up. New event is a calendar act LifeOS holds until he presses Add.
  */
 
 const DAYS = 14;
@@ -104,7 +104,7 @@ function OpenEvent({ workspaceId, id, lifeos }: { workspaceId: string; id: strin
   return null;
 }
 
-export function View({ env, workspace, sector, lifeos, startThread }: WorkViewProps) {
+export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
   const clients = useMemo(() => viewsClients(env, workspace.id, sector), [env, workspace.id, sector]);
   const { adding } = useShared(state);
   // An invitation's Open in Agenda names its event (`openWorkView {event}`): taken once, then cleared.
@@ -121,7 +121,7 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
     <ConvexProvider client={lifeos.client}>
       {event ? <OpenEvent workspaceId={workspace.id} id={event} lifeos={lifeos} /> : null}
       {/* While the event is read, its bones: today's list never paints before the event's week. */}
-      {event ? <AgendaSkeleton /> : <Agenda client={clients.agenda} startThread={startThread} people={people} workspaceId={workspace.id} />}
+      {event ? <AgendaSkeleton /> : <Agenda client={clients.agenda} people={people} workspaceId={workspace.id} />}
       {adding !== null ? <NewEventDialog sector={sector} startsAt={adding === "now" ? null : adding} onClose={() => go({ adding: null })} /> : null}
     </ConvexProvider>
   );
@@ -136,15 +136,14 @@ const kit: ViewsKit = {
 
 const NO_PEOPLE: DirectoryPerson[] = [];
 
-function Agenda({ client, startThread, people = NO_PEOPLE, workspaceId }: { client: AgendaClient; startThread: (about: ContextChip) => void; people?: readonly DirectoryPerson[]; workspaceId?: string }) {
+function Agenda({ client, people = NO_PEOPLE, workspaceId }: { client: AgendaClient; people?: readonly DirectoryPerson[]; workspaceId?: string }) {
   const { view, day } = useShared(state);
   const now = useMinute();
   const range = view === "list" ? { from: day, to: addDays(day, DAYS) } : viewRange(view, day, weekStart);
   const { from, to } = range;
   const events = client.useEvents(from, to);
-  const latest = useRef(startThread);
-  latest.current = startThread;
-  const prepare = useMemo(() => (event: AgendaEvent) => latest.current(eventChip(event)), []);
+  // The meeting's page (work/prep): before the event it prepares, after it follows up. Opening it starts nothing.
+  const prepare = useMemo(() => (event: AgendaEvent) => void (workspaceId && openWorkView({ workspaceId, view: "prep", event: event._id })), [workspaceId]);
   const days = useMemo(() => (events && view === "list" ? groupByDay(events, from, to) : null), [events, view, from, to]);
   if (!events) return <AgendaSkeleton />;
   // An event or a day picked in the week or month opens that day's list, where Prepare is.
@@ -178,7 +177,7 @@ function Agenda({ client, startThread, people = NO_PEOPLE, workspaceId }: { clie
 
 const eventChip = (event: AgendaEvent): ContextChip => ({ kind: "event", label: event.title, ref: { at: "lifeos", table: "events", id: event._id } });
 
-/** One event: its time (with when to leave under it while that is ahead), its title over where it is, Prepare on hover; its right-click, Prepare and Run a play…. */
+/** One event: its time (with when to leave under it while that is ahead), its title over where it is, and on hover the verb that opens its page (Prepare, or Follow up once it is over); its right-click, the same verb and Run a play…. */
 const EventRow = memo(function EventRow({ event, past, leave, onPrepare, people, workspaceId }: { event: AgendaEvent; past: boolean; leave: number | undefined; onPrepare: (event: AgendaEvent) => void; people: readonly DirectoryPerson[]; workspaceId: string | undefined }) {
   // LifeOS's event carries its attendees; the shared type does not name them.
   const met = knownAttendees((event as AgendaEvent & { attendees?: { address: string }[] }).attendees, people);
@@ -191,29 +190,27 @@ const EventRow = memo(function EventRow({ event, past, leave, onPrepare, people,
           <span>{event.allDay ? "All day" : formatTime(event.startsAt)}</span>
           {leave !== undefined && !past ? <span className="font-medium text-foreground">Leave {formatLeave(leave, event.startsAt)}</span> : null}
         </span>
-        <span className="flex min-w-0 flex-col pr-20">
+        <span className="flex min-w-0 flex-col pr-24">
           <span className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
           {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
           {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}
         </span>
-        {past ? null : (
-          <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>
-            <Button size="xs" variant="ghost" onClick={() => onPrepare(event)}>
-              Prepare
-            </Button>
-          </span>
-        )}
+        <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>
+          <Button size="xs" variant="ghost" onClick={() => onPrepare(event)}>
+            {past ? "Follow up" : "Prepare"}
+          </Button>
+        </span>
       </ContextMenuTrigger>
-      <EventMenu event={event} onPrepare={onPrepare} />
+      <EventMenu event={event} past={past} onPrepare={onPrepare} />
     </ContextMenu>
   );
 });
 
-function EventMenu({ event, onPrepare }: { event: AgendaEvent; onPrepare: (event: AgendaEvent) => void }) {
+function EventMenu({ event, past, onPrepare }: { event: AgendaEvent; past: boolean; onPrepare: (event: AgendaEvent) => void }) {
   const runPlay = playRunner();
   return (
     <ContextMenuContent>
-      <ContextMenuItem onClick={() => onPrepare(event)}>Prepare</ContextMenuItem>
+      <ContextMenuItem onClick={() => onPrepare(event)}>{past ? "Follow up" : "Prepare"}</ContextMenuItem>
       {runPlay ? <ContextMenuItem onClick={() => runPlay(eventChip(event))}>Run a play…</ContextMenuItem> : null}
     </ContextMenuContent>
   );

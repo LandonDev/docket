@@ -229,7 +229,7 @@ export interface OpenWorkView {
   task?: string;
   /** Mail alone: the LifeOS mail thread to open (a sent mail chip). The view takes it once and clears it. */
   mail?: string;
-  /** Agenda alone: the LifeOS event to stand on (an invitation's Open in Agenda): the view opens Week at its day, then clears it. */
+  /** Agenda: the LifeOS event to stand on (an invitation's Open in Agenda): the view opens Week at its day, then clears it. A meeting's page (view `prep`): the event the page is of, kept while it shows. */
   event?: string;
   /** People alone: the LifeOS person whose page to open (a sender pressed in Mail, an attendee in Agenda, a sent person chip). Taken once, then cleared. */
   person?: string;

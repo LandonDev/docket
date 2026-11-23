@@ -9,6 +9,7 @@ import { docsView } from "../docs/view";
 import { filesView } from "../office/view";
 import { mailView } from "../mail/view";
 import { peopleView } from "../people/view";
+import { prepView } from "../prep/view";
 import { projectsView } from "../projects/view";
 import { playsView } from "../routines/plays/view";
 import { routinesView } from "../routines/view";
@@ -20,7 +21,7 @@ import { tasksView } from "../tasks/view";
  * the thread strip. One closed list; each pillar fills its own `view.ts`
  * (milestones 23 and 25, and Docs after them) and edits nothing here.
  */
-export type WorkViewId = "mail" | "tasks" | "projects" | "agenda" | "people" | "docs" | "files" | "plays" | "routines";
+export type WorkViewId = "mail" | "tasks" | "projects" | "agenda" | "prep" | "people" | "docs" | "files" | "plays" | "routines";
 
 export interface WorkViewProps {
   env: string;
@@ -53,6 +54,8 @@ export interface WorkViewDef {
   readsLifeos: boolean;
   /** The view draws its own head (Mail: the list's head and the reader's toolbar), so the frame draws no 40px header over it. The view's region still carries its name, and the header comes back over the sign-in. */
   ownHead?: true;
+  /** The view stands inside another and has no row of its own (a meeting's page, inside Agenda): the column draws none for it, and its parent's row reads as open while it shows. */
+  inside?: WorkViewId;
   chunk: Chunk<WorkViewModule>;
 }
 
@@ -61,6 +64,7 @@ export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
   tasks: tasksView,
   projects: projectsView,
   agenda: agendaView,
+  prep: prepView,
   people: peopleView,
   docs: docsView,
   files: filesView,
@@ -70,3 +74,9 @@ export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
 
 /** The views in their rows' order. */
 export const workViewList = (): WorkViewDef[] => Object.values(WORK_VIEWS).sort((a, b) => a.order - b.order);
+
+/** The views the column draws a row for: every one that does not stand inside another. */
+export const workViewRows = (): WorkViewDef[] => workViewList().filter((view) => !view.inside);
+
+/** The row that reads as open for a view: its own, or the row of the view it stands inside. */
+export const rowOfView = (view: string): string => (WORK_VIEWS as Record<string, WorkViewDef | undefined>)[view]?.inside ?? view;

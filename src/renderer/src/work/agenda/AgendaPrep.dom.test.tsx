@@ -1,0 +1,55 @@
+// @vitest-environment jsdom
+/** An event's row opens its meeting's page (work/prep): Prepare until the event is over, Follow up after, on the row and in its right-click. Opening starts no thread. */
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const now = Date.now();
+vi.mock("../shell/lifeos", async (original) => ({ ...(await original<object>()), useLifeosQuery: () => ({ status: "loading" }) }));
+vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexProvider: ({ children }: { children: unknown }) => children }));
+const events = vi.hoisted(() => ({ rows: [] as unknown[] }));
+vi.mock("../tasks/client", async (original) => ({ ...(await original<object>()), viewsClients: () => ({ agenda: { useEvents: () => events.rows } }) }));
+
+const { View } = await import("./AgendaView");
+const { openWorkView, workViewNow } = await import("../../lib/workSwitch");
+
+if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
+
+afterEach(() => {
+  cleanup();
+  openWorkView(null);
+});
+
+const started: unknown[] = [];
+const props = { env: "box", workspace: { id: "ws", environmentId: "box" }, sector: "purdue", lifeos: { client: {}, state: "connected" }, startThread: (chip: unknown) => void started.push(chip) } as never;
+const HOUR = 3_600_000;
+// Both today: one that ended an hour ago, one that starts in an hour.
+const over = { _id: "ev-over", title: "Staff sync", sector: "purdue", startsAt: now - 2 * HOUR, endsAt: now - HOUR, allDay: false };
+const ahead = { _id: "ev-ahead", title: "Budget review", sector: "purdue", startsAt: now + HOUR, endsAt: now + 2 * HOUR, allDay: false };
+
+describe("Agenda's way to a meeting's page", () => {
+  it("reads Prepare until the event is over and Follow up after, and either opens the page", async () => {
+    events.rows = [over, ahead];
+    render(<View {...props} />);
+    await act(async () => {});
+    const rows = screen.getAllByRole("listitem");
+    const verbOf = (title: string) => rows.find((r) => r.textContent?.includes(title))!.querySelector("button")!;
+    expect(verbOf("Budget review").textContent).toBe("Prepare");
+    expect(verbOf("Staff sync").textContent).toBe("Follow up");
+
+    fireEvent.click(verbOf("Budget review"));
+    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "prep", event: "ev-ahead" });
+    fireEvent.click(verbOf("Staff sync"));
+    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "prep", event: "ev-over" });
+    // Opening the page starts no thread: that is the page's own verb.
+    expect(started).toEqual([]);
+  });
+
+  it("offers the same verb in the row's right-click", async () => {
+    events.rows = [over];
+    render(<View {...props} />);
+    await act(async () => {});
+    await act(async () => fireEvent.contextMenu(screen.getByRole("listitem")));
+    await act(async () => fireEvent.click(await screen.findByRole("menuitem", { name: "Follow up" })));
+    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "prep", event: "ev-over" });
+  });
+});

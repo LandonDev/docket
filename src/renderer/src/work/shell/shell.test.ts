@@ -6,7 +6,7 @@ import { sectorName } from "./actions";
 import { columnProjects } from "./WorkColumn";
 import { keyLine, lifeosLine } from "./settings";
 import { addMenuRows, freeSectors, sectorMenuRows } from "./WorkRailHost";
-import { WORK_VIEWS, workViewList } from "../views/registry";
+import { rowOfView, WORK_VIEWS, workViewList, workViewRows } from "../views/registry";
 
 const ids = (rows: MenuRow[]): string[] => rows.map((r) => (r.kind === "sep" ? "—" : r.kind === "label" ? r.label : r.id));
 
@@ -100,7 +100,7 @@ describe("the column's LifeOS projects", () => {
 
 describe("WORK_VIEWS", () => {
   it("is Mail, Tasks, Projects, Agenda, People, Docs and Files in that order, then Plays and Routines; none of them says a fact it has not read", async () => {
-    expect(workViewList().map((v) => v.label)).toEqual(["Mail", "Tasks", "Projects", "Agenda", "People", "Docs", "Files", "Plays", "Routines"]);
+    expect(workViewRows().map((v) => v.label)).toEqual(["Mail", "Tasks", "Projects", "Agenda", "People", "Docs", "Files", "Plays", "Routines"]);
     for (const view of Object.values(WORK_VIEWS)) {
       expect(view.chunk.name).toBe(`work-${view.id}-view`);
       expect(view.fact({} as WorkspaceMeta)).toBeNull();
@@ -110,6 +110,18 @@ describe("WORK_VIEWS", () => {
 
   it("has every view say whether it reads LifeOS: Files, Plays and Routines read the host alone, so no sign-in or LifeOS line stands over them", () => {
     const reads = Object.fromEntries(Object.values(WORK_VIEWS).map((view) => [view.id, view.readsLifeos]));
-    expect(reads).toEqual({ mail: true, tasks: true, projects: true, agenda: true, people: true, docs: true, files: false, plays: false, routines: false });
+    expect(reads).toEqual({ mail: true, tasks: true, projects: true, agenda: true, prep: true, people: true, docs: true, files: false, plays: false, routines: false });
+  });
+
+  it("draws no row for a view that stands inside another, and reads its parent's row as open while it shows", () => {
+    // A meeting's page is a view of the workspace reached from an event: the column keeps its nine rows.
+    expect(WORK_VIEWS.prep.inside).toBe("agenda");
+    expect(workViewList().map((v) => v.id)).toContain("prep");
+    expect(workViewRows().map((v) => v.id)).not.toContain("prep");
+    expect(rowOfView("prep")).toBe("agenda");
+    // Every other view is its own row, and an id the registry does not know is left as it is.
+    for (const view of workViewRows()) expect(rowOfView(view.id)).toBe(view.id);
+    expect(rowOfView("nowhere")).toBe("nowhere");
+    for (const view of workViewList()) if (view.inside) expect(workViewRows().map((v) => v.id)).toContain(view.inside);
   });
 });
