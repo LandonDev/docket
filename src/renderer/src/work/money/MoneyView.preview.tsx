@@ -31,6 +31,12 @@ const TO_CONFIRM: ToConfirm[] = [
   waiting("c", { state: "reading", name: "scan-0112.pdf" }),
 ];
 
+const CALENDAR = [
+  { eventId: "e1", date: "2026-11-21", title: "Varsity at Harrison HS", place: "Harrison HS", fee: 7500, miles: 24, measured: true },
+  { eventId: "e2", date: "2026-11-22", title: "JV doubleheader at Millbrook", place: "Millbrook HS", fee: 6500, miles: 38, measured: true },
+  { eventId: "e3", date: "2026-11-22", title: "Freshman at Oak Ridge", place: "Oak Ridge MS", fee: null, miles: 41, measured: false },
+];
+
 const paid = ALL_ROWS.map((r) => ({ ...r, status: "Paid" as const }));
 
 function answer(period: Period): Promise<MoneyRead> {
@@ -46,7 +52,7 @@ function answer(period: Period): Promise<MoneyRead> {
       return Promise.resolve(readOf(period, paid, { problems: [{ kind: "columns", missing: ["In", "Out"] }] }));
     case "confirm":
     case "dialog-picture":
-      return Promise.resolve(readOf(period, paid, { toConfirm: TO_CONFIRM }));
+      return Promise.resolve(readOf(period, paid, { toConfirm: TO_CONFIRM, calendar: CALENDAR }));
     case "owed":
     case "dialog":
       return Promise.resolve(readOf(period));

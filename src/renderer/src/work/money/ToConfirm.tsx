@@ -1,13 +1,17 @@
-import type { ReactNode } from "react";
-import type { MoneyRead, ToConfirm as Waiting } from "@shared/contract-work-money";
+import { useState, type ReactNode } from "react";
+import type { CalendarOffer, MoneyRead, ToConfirm as Waiting } from "@shared/contract-work-money";
 import { formatDay, formatMoney } from "@shared/work/money";
 import { MoreHorizontal, Receipt } from "../../chrome/icons";
+import { Calendar } from "../icons";
 import { RowsMenu } from "../../chrome/menuRows";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { request, withToast } from "./api";
+import { Facts } from "../../surfaces/settings/hosts/Facts";
+import { offerDay } from "./model";
 import { usePicture } from "./receive";
+import { addOffer, offerWhole } from "./TripDialog";
 
 /**
  * To confirm (docs/DESIGN.md "The Money view"): what waits for his accept,
@@ -102,5 +106,65 @@ export function ReceiptPicture({ env, of, name }: { env: string; of: { id: strin
     <div aria-busy="true" aria-label="Loading the picture" className="grid aspect-[3/4] w-full place-items-center rounded-lg bg-muted outline-1 -outline-offset-1 outline-(--image-outline)">
       <Spinner aria-hidden className="text-muted-foreground" />
     </div>
+  );
+}
+
+/** Skips an offer: it is not offered again. */
+export const skipOffer = (env: string, workspaceId: string, offer: CalendarOffer): Promise<unknown> => request(env, "work.money.skip", { workspaceId, eventId: offer.eventId });
+
+/** Add all: every whole offer, one after another. */
+export async function addAll(env: string, workspaceId: string, offers: readonly CalendarOffer[]): Promise<void> {
+  for (const offer of offers.filter(offerWhole)) await addOffer(env, workspaceId, offer);
+}
+
+/** The calendar's offers after the receipts: the day, the event, its fee and miles; Add when whole, else Review. */
+export function CalendarRows({ env, workspaceId, read, adding, onReview, reload }: { env: string; workspaceId: string; read: MoneyRead; adding: boolean; onReview: (offer: CalendarOffer) => void; reload: () => Promise<void> }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  return (
+    <>
+      {read.calendar.map((offer) => {
+        const whole = offerWhole(offer);
+        const add = () => {
+          setBusy(offer.eventId);
+          withToast(() =>
+            addOffer(env, workspaceId, offer)
+              .then(reload)
+              .finally(() => setBusy(null)),
+          );
+        };
+        return (
+          <li key={offer.eventId} data-calendar-offer={offer.eventId} className="flex min-h-12 items-center gap-3 border-b border-border text-[13px] last:border-0">
+            <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+              <Calendar className="size-3.5" />
+            </span>
+            <span className="flex min-w-0 flex-1 items-baseline gap-1">
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{offerDay(offer.date)}</span>
+              <span className="min-w-0 truncate">{offer.title}</span>
+              <Facts className="shrink-0 text-xs text-muted-foreground" parts={[offer.fee !== null ? formatMoney(offer.fee).replace(/\.00$/, "") : null, offer.miles !== null ? `${offer.miles.toLocaleString("en-US")} mi` : null]} />
+            </span>
+            {whole ? (
+              <Button variant="ghost" size="sm" disabled={busy !== null || adding} onClick={add} aria-label={`Add ${offer.title}`}>
+                <BusyLabel busy={busy === offer.eventId} label="Add" />
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => onReview(offer)} aria-label={`Review ${offer.title}`}>
+                Review
+              </Button>
+            )}
+            <RowsMenu
+              label={`${offer.title} menu`}
+              align="end"
+              rows={[{ kind: "item", id: "skip", label: "Skip" }]}
+              onPick={(id) => id === "skip" && withToast(() => skipOffer(env, workspaceId, offer).then(reload))}
+              trigger={
+                <Button variant="ghost" size="icon-sm" aria-label={`More for ${offer.title}`} className="text-muted-foreground">
+                  <MoreHorizontal />
+                </Button>
+              }
+            />
+          </li>
+        );
+      })}
+    </>
   );
 }

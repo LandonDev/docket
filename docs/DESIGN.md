@@ -1604,7 +1604,16 @@ Around the canvas:
   was; Discard sits at the footer's start, and Save shows the next waiting
   receipt in the same dialog, Amount selected again. A file held over the
   view lays a quiet wash over the body with the words "File as receipt";
-  the view takes the drop itself, so it never starts a thread.
+  the view takes the drop itself, so it never starts a thread. After the
+  receipts come the calendar's games and paid events: the day ("Sat Nov
+  21") in 12px muted, the event, then its fee and miles as a muted comma
+  run (`Facts`), never a dot between them; Add when both are known and
+  the miles were measured, else Review, which opens the trip dialog
+  (Date, Trip, Place, Miles there and back beside Fee) with "Estimated:
+  check the miles" under an estimate; Add all at the heading's end once
+  two can be added; Skip in the row's menu. Add → Trip… is the same
+  dialog led by From the calendar; More → Mileage rate… is one field,
+  Dollars a mile, for the period's year.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way

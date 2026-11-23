@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
-import type { MoneyRead } from "@shared/contract-work-money";
+import type { CalendarOffer, MoneyRead } from "@shared/contract-work-money";
 import { loadToast } from "../../components/ui/toaster";
-import { formatDay, formatMoney, milesLine, sigOf, type LedgerRow, type OwedRow } from "@shared/work/money";
+import { formatDay, formatMoney, milesLine, sigOf, today, type LedgerRow, type OwedRow } from "@shared/work/money";
 import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID } from "@aliax/charts/chart";
 import { ChartLegend } from "@aliax/charts/legend";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
@@ -24,7 +24,9 @@ import { atOf, markPaid, openBook, openBooks, openReceipt, useMoney, withToast }
 import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
 import { receiveFiles, takesFile } from "./receive";
-import { ReceiptPicture, ReceiptRows, ToConfirmSection } from "./ToConfirm";
+import { RateDialog } from "./RateDialog";
+import { addAll, CalendarRows, ReceiptPicture, ReceiptRows, ToConfirmSection } from "./ToConfirm";
+import { offerWhole, TripDialog } from "./TripDialog";
 import { periodLabel, periodNow, periodOf, rowMoney, shortMoney, signedMoney, sinceWords, stepPeriod, type PeriodState, type Span } from "./model";
 
 /**
@@ -40,7 +42,7 @@ const SPANS = [
 ] as const;
 
 /** A dialog the header or the body opened. */
-export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string };
+export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string } | { kind: "trip"; offer: CalendarOffer | null } | { kind: "rate" };
 
 /** What the header and the body share: the period, and the dialog open. */
 const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null }>({ period: periodNow(), dialog: null });
@@ -58,10 +60,13 @@ export function Head({ env, workspace }: WorkViewProps) {
   const addRows: MenuRow[] = [
     { kind: "item", id: "receipt", label: "Receipt…" },
     { kind: "item", id: "entry", label: "Entry…" },
+    { kind: "item", id: "trip", label: "Trip…" },
   ];
   const moreRows: MenuRow[] = [
     { kind: "item", id: "ledger", label: "Open ledger" },
     { kind: "item", id: "mileage", label: "Open mileage log" },
+    { kind: "sep" },
+    { kind: "item", id: "rate", label: "Mileage rate…" },
   ];
   return (
     <>
@@ -84,6 +89,7 @@ export function Head({ env, workspace }: WorkViewProps) {
         onPick={(id) => {
           if (id === "entry") set({ dialog: { kind: "entry" } });
           else if (id === "receipt") set({ dialog: { kind: "pick" } });
+          else if (id === "trip") set({ dialog: { kind: "trip", offer: null } });
         }}
         trigger={
           <Button variant="ghost" size="sm">
@@ -98,6 +104,7 @@ export function Head({ env, workspace }: WorkViewProps) {
         rows={moreRows}
         onPick={(id) => {
           if (id === "ledger" || id === "mileage") withToast(() => openBook(env, workspace.id, id));
+          else if (id === "rate") set({ dialog: { kind: "rate" } });
         }}
         trigger={
           <Button variant="ghost" size="icon-sm" aria-label="More">
@@ -224,6 +231,10 @@ export function View({ env, workspace }: WorkViewProps) {
           onSaved={() => void reload()}
         />
       ) : null}
+      {read && dialog?.kind === "trip" ? (
+        <TripDialog env={env} workspaceId={workspace.id} offer={dialog.offer} day={today() >= span.from && today() < span.to ? today() : span.from} onClose={close} onSaved={() => void reload()} />
+      ) : null}
+      {read && dialog?.kind === "rate" ? <RateDialog env={env} workspaceId={workspace.id} rate={read.rate} onClose={close} onSaved={() => void reload()} /> : null}
       {read && dialog?.kind === "confirm" ? <ConfirmFlow env={env} workspaceId={workspace.id} read={read} first={dialog.id} onClose={close} reload={reload} /> : null}
     </div>
   );
@@ -241,9 +252,7 @@ function Ledger({ env, workspaceId, read, label, year, reload }: { env: string; 
     <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-4 py-4">
         {read.toConfirm.length || read.calendar.length ? (
-          <ToConfirmSection title="To confirm">
-            <ReceiptRows env={env} read={read} onReview={(id) => set({ dialog: { kind: "confirm", id } })} reload={reload} />
-          </ToConfirmSection>
+          <ToConfirm env={env} workspaceId={workspaceId} read={read} reload={reload} />
         ) : null}
         <Figures read={read} />
         {year ? <ByMonth read={read} /> : null}
@@ -278,6 +287,38 @@ function Ledger({ env, workspaceId, read, label, year, reload }: { env: string; 
         ) : null}
       </div>
     </div>
+  );
+}
+
+function ToConfirm({ env, workspaceId, read, reload }: { env: string; workspaceId: string; read: MoneyRead; reload: () => Promise<void> }) {
+  const [adding, setAdding] = useState(false);
+  const whole = read.calendar.filter(offerWhole).length;
+  return (
+    <ToConfirmSection
+      title="To confirm"
+      action={
+        whole >= 2 ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            disabled={adding}
+            onClick={() => {
+              setAdding(true);
+              withToast(() =>
+                addAll(env, workspaceId, read.calendar)
+                  .then(reload)
+                  .finally(() => setAdding(false)),
+              );
+            }}
+          >
+            <BusyLabel busy={adding} label="Add all" />
+          </Button>
+        ) : null
+      }
+    >
+      <ReceiptRows env={env} read={read} onReview={(id) => set({ dialog: { kind: "confirm", id } })} reload={reload} />
+      <CalendarRows env={env} workspaceId={workspaceId} read={read} adding={adding} onReview={(offer) => set({ dialog: { kind: "trip", offer } })} reload={reload} />
+    </ToConfirmSection>
   );
 }
 
