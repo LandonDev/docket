@@ -92,11 +92,15 @@ export class Run {
   /** The minted session's name: one per run, so the sweep can tell its own from one a run left. */
   sessionName = ''
 
-  constructor(readonly job: string) {
+  /** The built tree the instance runs from: this script's own unless `repo` names another (an older build, scripts/proof-doc-gate.ts). */
+  readonly repo: string
+
+  constructor(readonly job: string, opts: { repo?: string; out?: string } = {}) {
     // A root of its own: two runs of one job never share, wipe or kill each other.
     this.root = realpathSync(mkdtempSync(`/tmp/e2e-work-${job}-`))
+    this.repo = opts.repo ?? REPO
     const flag = process.argv.indexOf('--out')
-    this.out = resolve(flag > 0 ? process.argv[flag + 1]! : join(REPO, '.temp-code/plans/landed/M49', job))
+    this.out = resolve(opts.out ?? (flag > 0 ? process.argv[flag + 1]! : join(REPO, '.temp-code/plans/landed/M49', job)))
     this.data = join(this.root, 'data')
     this.home = join(this.root, 'home')
     this.work = join(this.home, 'work')
@@ -166,11 +170,11 @@ export class Run {
       TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9',
       ...opts.env
     }
-    const electron = join(REPO, 'node_modules', '.bin', 'electron')
+    const electron = join(this.repo, 'node_modules', '.bin', 'electron')
     // Linux draws into xvfb; a Mac opens a real window (a Mac child runs only after the idle gate).
     const argv = process.platform === 'linux' ? ['xvfb-run', '-a', '-s', '-screen 0 1440x900x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.'] : [electron, '.']
     this.proc = spawn(argv[0]!, argv.slice(1), {
-      cwd: REPO,
+      cwd: this.repo,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true
@@ -382,6 +386,21 @@ export class Run {
 
   /** Runs the cleanups, stops the instance, writes the results; exits non-zero on any failure. */
   async finish(err?: unknown): Promise<never> {
+    await this.stop(err)
+    const summary = this.failures ? `${this.failures} FAILED` : 'ALL PASS'
+    this.results.push(summary)
+    writeFileSync(join(this.out, `run-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`), this.results.join('\n') + '\n')
+    console.log(`[${this.job}] ${summary}`)
+    process.exit(this.failures ? 1 : 0)
+  }
+
+  /** The failures so far. */
+  get failed(): number {
+    return this.failures
+  }
+
+  /** Runs the cleanups and stops the instance, with no exit: a job of two instances stops one, then finishes with the other. */
+  async stop(err?: unknown): Promise<void> {
     if (err) this.check('the job ran to its end', false, err instanceof Error ? (err.stack ?? err.message) : String(err))
     // A cleanup that throws, or a tool that answers an error, leaves something behind: that fails the run.
     for (const { label, fn } of this.undo) {
@@ -404,11 +423,6 @@ export class Run {
       /* gone */
     }
     if (!this.failures && process.env.E2E_KEEP !== '1') rmSync(this.root, { recursive: true, force: true })
-    const summary = this.failures ? `${this.failures} FAILED` : 'ALL PASS'
-    this.results.push(summary)
-    writeFileSync(join(this.out, `run-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`), this.results.join('\n') + '\n')
-    console.log(`[${this.job}] ${summary}`)
-    process.exit(this.failures ? 1 : 0)
   }
 
   /** Kills every process of an earlier run of this job, found by its userData in the environ. */
