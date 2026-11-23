@@ -54,6 +54,7 @@ enum WorkGlyph {
         case .portalSubmit: "globe"
         case .computerAct: "macwindow"
         case .addonCall: "puzzlepiece.extension"
+        case .officeEdit, .googleEdit: "doc.text"
         case .unknown: "paperplane"
         }
     }
