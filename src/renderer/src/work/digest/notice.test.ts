@@ -123,6 +123,10 @@ describe("the list", () => {
     expect(rowWhen({ ...held, at: at(24, 9), by: at(24, 14) }, now, "en-US")).toBe("by 2:00 PM");
     expect(rowWhen({ ...held, at: at(23, 9), by: at(26, 14) }, now, "en-US")).toBe("by Nov 26, 2:00 PM");
   });
+  it("a clock already past when it was told is no deadline: a failed send ends with when it failed", () => {
+    expect(rowWhen({ title: "Not sent: Send to Rivera Dental", at: at(24, 5, 17), by: at(24, 5, 17) }, now, "en-US")).toBe("5:17 AM");
+    expect(rowWhen({ title: "Not sent: Send to Rivera Dental", at: at(24, 5, 18), by: at(24, 5, 17) }, now, "en-US")).toBe("5:18 AM");
+  });
   it("never says a clock twice: a row whose words carry its time ends with when it was told", () => {
     expect(rowWhen({ title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", at: at(24, 13, 50), by: at(24, 14) }, at(24, 13, 55), "en-US")).toBe("1:50 PM");
     expect(rowWhen({ title: "Prep is ready for Budget review", detail: "2:00 PM, with Dana Reyes", at: at(24, 8), by: at(24, 14) }, now, "en-US")).toBe("8:00 AM");

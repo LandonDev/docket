@@ -138,10 +138,13 @@ export function listSections(view: Pick<DigestView, "days" | "rows">, now: numbe
  * A row's trailing fact: its clock in words when it has one ("by Thu 2:00
  * PM"), else when it was told, naming the day when that was not today. A
  * clock its own words already say ("Budget review starts at 2:00 PM") is not
- * said twice: that row ends with when it was told.
+ * said twice, and a clock already past when it was told is no deadline:
+ * those rows end with when they were told.
  */
 export function rowWhen(row: Pick<TellRow, "by" | "at" | "title" | "detail">, now: number, locale?: string): string {
-  if (row.by !== undefined && !`${row.title} ${row.detail ?? ""}`.includes(clockTime(row.by, locale))) return `by ${dayTime(row.by, now, locale)}`;
+  // A clock that had already passed when it was told (a send that failed) is no deadline: that row ends with when it was told.
+  const ahead = row.by !== undefined && row.by > row.at;
+  if (ahead && !`${row.title} ${row.detail ?? ""}`.includes(clockTime(row.by!, locale))) return `by ${dayTime(row.by!, now, locale)}`;
   return dayTime(row.at, now, locale);
 }
 
