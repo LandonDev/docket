@@ -37,7 +37,7 @@ export interface SheetJobs {
   csv(path: string, sheet?: string): Promise<string>
   /** a format an agent asked for, as the mutations the row's own press would make (compose.ts) */
   compose(ask: ComposeAsk): Promise<SheetMutationJson[]>
-  /** a table an agent asked for, made by the grid's own handle on the sheet as it stands (acts.ts) */
+  /** a table or a page set-up an agent asked for, made by the grid's own handle on the sheet as it stands (acts.ts) */
   act(ask: ActAsk): Promise<ActAnswer>
   /** the rules a package holds now, as the importer reads them: what one more rule is added to */
   rules(path: string): Promise<PackageRules>
@@ -128,7 +128,7 @@ export async function localJobs(): Promise<SheetJobs> {
     graft: async (original, written, output, ops) => graftPackage(original, written, output, ops),
     csv: async (path, sheet) => packageCsv(path, sheet),
     compose: async (ask) => formatMutations(ask),
-    act: async (ask) => (await import('./acts')).tableAct(ask),
+    act: async (ask) => (await import('./acts')).runAct(ask),
     rules: async (path) => packageRules(path),
     stop() {}
   }

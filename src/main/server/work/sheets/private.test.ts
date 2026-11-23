@@ -14,6 +14,8 @@ import type { SessionRegistry } from '../../sessions'
 import { canvasStoreOf } from '../canvas/store'
 import { readText, readZip } from './patch/zip'
 import { readTables } from './patch/tables'
+import { readPages } from './patch/pages'
+import { PAGES_RESOURCE } from 'work-kit/sheet/pages/access'
 
 /**
  * The owner's ruling (2026-11-23): what an agent proposes on a workbook anyone else can open is
@@ -928,6 +930,63 @@ describe('a table an agent makes or changes', () => {
       // the total row's cells, as the kit fills them: a label under the first column, a sum under the last
       expect(wb.sheets.sheet1!.cellData?.[3]?.[0]?.v).toBe('Total')
       expect(wb.sheets.sheet1!.cellData?.[3]?.[1]?.f).toBe('=SUBTOTAL(109,B2:B3)')
+    } finally {
+      host.close()
+    }
+  })
+})
+
+/** The agent's side of Page Setup and the Page breaks view (sheet_page): the same rule, each read back from the file. */
+describe('a page set-up an agent changes', () => {
+  const pagesIn = (path: string) => readPages(new Uint8Array(readFileSync(path))).find((e) => e.sheet === 'Data')!.setup
+  let path: string
+  let itemId: string
+  beforeEach(() => {
+    mkdirSync(join(library, 'Budget'), { recursive: true })
+    path = join(library, 'Budget', 'Budget.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+    itemId = open(path, 'Budget.xlsx')
+  })
+
+  it('on an Excel file others can open its own idea waits in words, the folder byte for byte; his accept writes the set-up', async () => {
+    const before = folder()
+    const got = await tool('sheet_page', { item: itemId, page: { sheet: 'Data', orientation: 'landscape', paper: 'A4', margins: 'narrow', fit: { wide: 1, tall: 0 }, printArea: 'A1:C21', titleRows: '1' }, because: 'own' })
+    expect(got.isError, got.text).toBeFalsy()
+    expect(got.text).toMatch(/^Suggested: Data's page: landscape, A4, narrow margins, fit to 1 page wide, rows 1 on every page, print area A1:C21\. Others share this sheet/)
+    expect(folder()).toEqual(before)
+    const [change] = (await call<SheetView>('work.sheets.open', { itemId })).changes!
+    expect(change).toMatchObject({ kind: 'page', range: { startRow: 0, endRow: 20, startColumn: 0, endColumn: 2 } })
+    await call('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    const setup = pagesIn(path)
+    expect(setup).toMatchObject({ orientation: 'landscape', paper: { name: 'A4' }, margins: { left: 0.25 }, scaling: { kind: 'fit', wide: 1, tall: 0 }, repeatRows: { start: 0, end: 0 } })
+    expect(setup.printAreas).toMatchObject([{ startRow: 0, endRow: 20, startColumn: 0, endColumn: 2 }])
+  })
+
+  it('asked for in so many words a break and a scale are written at once; what Excel would not take is refused as it is asked', async () => {
+    state.said.push('print it at 80% and break after row 10')
+    const asked = await tool('sheet_page', { item: itemId, page: { sheet: 'Data', scale: 80, breakAfterRow: 10 }, because: 'asked', quote: 'break after row 10' })
+    expect(asked.text).toBe("Data's page: 80%, a page break under row 10.")
+    expect(pagesIn(path)).toMatchObject({ scaling: { kind: 'scale', percent: 80 }, rowBreaks: [9] })
+    const before = folder()
+    for (const page of [{ paper: 'Napkin' }, { scale: 80, fit: { wide: 1, tall: 1 } }, { sheet: 'Nope', orientation: 'portrait' }, { sheet: 'Data', breakAfterRow: 10 }, { sheet: 'Data' }]) {
+      const got = await tool('sheet_page', { item: itemId, page, because: 'asked', quote: 'break after row 10' })
+      expect(got.isError, JSON.stringify(page)).toBe(true)
+    }
+    // past what the schema takes: refused before the sheet is read
+    expect((await tool('sheet_page', { item: itemId, page: { scale: 5 }, because: 'own' })).isError).toBe(true)
+    expect(folder()).toEqual(before)
+  })
+
+  it('on a .tcsheet of his own set to write it is written, and a cold load has it', async () => {
+    const own = join(dir, 'Own.tcsheet')
+    TcsheetBackend.create(own, 'Own')
+    const id = open(own, 'Own')
+    await call('work.sheets.mode', { itemId: id, mode: 'writes' })
+    expect((await tool('sheet_page', { item: id, page: { orientation: 'landscape', titleColumns: 'a:b' }, because: 'own' })).text).toBe('Page: landscape, columns A:B on every page.')
+    const host = new SheetHost(() => new TcsheetBackend(own, join(dir, 'sheets', 'suggestions')))
+    try {
+      const wb = JSON.parse((await host.snapshotJson({ tcsheet: own })).json) as { resources?: { name: string; data: string }[] }
+      expect(wb.resources?.find((r) => r.name === PAGES_RESOURCE)?.data).toMatch(/"orientation":"landscape"/)
     } finally {
       host.close()
     }

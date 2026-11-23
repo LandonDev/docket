@@ -1,12 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { SheetChange } from '@shared/contract-work-sheets'
 import type { Principal } from '@shared/work'
-import type { TableAsk } from './acts'
+import type { PageAsk, TableAsk } from './acts'
 import type { FormatAsk, RuleAsk } from './asks'
 import type { Which } from './suggestions'
 
 /**
- * Formats, rules and tables an agent proposed (sheet_format, sheet_rule, sheet_table), waiting for the owner. Kept in
+ * Formats, rules and tables an agent proposed (sheet_format, sheet_rule, sheet_table, sheet_page), waiting for the owner. Kept in
  * this host's own database for every kind of sheet, a LifeOS sheet and a `.tcsheet` included:
  * nothing of one is written to the file, its folder, the Work service's live route or any store
  * others read until he takes it, and then it is laid as his own ordinary edit (index.ts).
@@ -15,7 +15,7 @@ import type { Which } from './suggestions'
  * sheet as it then stands, so a rule lands in the list as it is that day and not over it.
  */
 
-export type ChangeAsk = { kind: 'format'; range: string; format: FormatAsk } | { kind: 'rule'; rule: RuleAsk } | { kind: 'table'; table: TableAsk }
+export type ChangeAsk = { kind: 'format'; range: string; format: FormatAsk } | { kind: 'rule'; rule: RuleAsk } | { kind: 'table'; table: TableAsk } | { kind: 'page'; page: PageAsk }
 
 export function ensureChangeTables(db: DatabaseSync): void {
   db.exec(`CREATE TABLE IF NOT EXISTS work_sheets_changes (

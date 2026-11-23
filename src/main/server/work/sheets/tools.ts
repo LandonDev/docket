@@ -9,7 +9,7 @@ import { parseA1 } from './a1'
 import { agentFormat, FORMAT_MAX_CELLS, FormatSchema, formatWords, heldOfPackage, place, ruleClash, ruleListMutation, ruleModel, ruleMutations, RuleSchema, ruleWords, where, type FormatAsk, type Placed, type RuleAsk } from './asks'
 import type { RulesHeld } from './host/wire'
 import type { ChangeAsk } from './changes'
-import { TableAskSchema, type ActAnswer, type ActMade, type TableAsk } from './acts'
+import { PageAskSchema, TableAskSchema, type ActAnswer, type ActMade, type PageAsk, type TableAsk } from './acts'
 import { ensureImported } from './formatsIn'
 import { ensureCsvSheet, heldOf, heldOfPath, host, sheetsOf, storeKey, type Held, type Sheets } from './held'
 import type { A1Cell } from './host/wire'
@@ -116,32 +116,35 @@ interface Standing {
   sheets: { id: string; name: string }[]
   rev: number
   rules(): Promise<RulesHeld>
-  /** a table's ask run by the grid's own handle on the sheet as it stands (acts.ts, in the sheet worker); throws `Unplaced` with the words where the sheet has no place for it */
-  act(table: TableAsk): Promise<ActMade>
+  /** a table's or a page's ask run by the grid's own handle on the sheet as it stands (acts.ts, in the sheet worker); throws `Unplaced` with the words where the sheet has no place for it */
+  act(ask: Acted): Promise<ActMade>
 }
 async function standing(s: Sheets, held: Target['held']): Promise<Standing> {
   if (held.at === 'package') {
     const st = await s.packages.open(held.path)
     if (st.inspected.readOnly) throw new Error(st.inspected.readOnly)
-    return { unit: PACKAGE_UNIT, sheets: st.inspected.sheets, rev: st.rev, rules: async () => heldOfPackage(await s.jobs.rules(held.path)), act: once(async (table) => s.jobs.act({ store: 'package', path: held.path, table })) }
+    return { unit: PACKAGE_UNIT, sheets: st.inspected.sheets, rev: st.rev, rules: async () => heldOfPackage(await s.jobs.rules(held.path)), act: once(async (ask) => s.jobs.act({ store: 'package', path: held.path, ...ask })) }
   }
   if (held.csv) throw new Error('A .csv keeps cell contents only: export it as Excel first (Export, then open the .xlsx).')
   const o = await host(s.ctx, 'open', { sheet: held.ref })
-  const act = once(async (table: TableAsk) => {
+  const act = once(async (ask: Acted) => {
     const { workbookOf } = await import('./index')
-    return s.jobs.act({ store: 'service', snapshot: JSON.stringify(await workbookOf(s.ctx, held.ref, o.rev)), table })
+    return s.jobs.act({ store: 'service', snapshot: JSON.stringify(await workbookOf(s.ctx, held.ref, o.rev)), ...ask })
   })
   return { unit: o.unit, sheets: o.sheets, rev: o.rev, rules: async () => o.rules, act }
 }
 
 /** The worker's answer for one ask, asked once for a standing: the words and the mutations come from one run. */
-function once(ask: (table: TableAsk) => Promise<ActAnswer>): (table: TableAsk) => Promise<ActMade> {
+type Acted = { table: TableAsk } | { page: PageAsk }
+/** The ask of a change the sheet worker makes (acts.ts), or null for a format or a rule. */
+const actedOf = (ask: ChangeAsk): Acted | null => (ask.kind === 'table' ? { table: ask.table } : ask.kind === 'page' ? { page: ask.page } : null)
+function once(ask: (acted: Acted) => Promise<ActAnswer>): (acted: Acted) => Promise<ActMade> {
   const seen = new Map<string, Promise<ActMade>>()
-  return (table) => {
-    const key = JSON.stringify(table)
+  return (acted) => {
+    const key = JSON.stringify(acted)
     let got = seen.get(key)
     if (!got) {
-      got = ask(table).then((answer) => {
+      got = ask(acted).then((answer) => {
         if ('refused' in answer) throw new Unplaced(answer.refused)
         return answer
       })
@@ -170,11 +173,11 @@ const placed = <T>(make: () => T): T => {
  * Where a change lies and the words for it; throws what the agent reads when the ask cannot be laid: a rule that
  * cannot be made, or one that would replace what the sheet already holds, is refused as it is asked, not as he takes it.
  */
-async function read(ask: ChangeAsk, now: Standing): Promise<{ at: Placed | null; words: string }> {
+async function read(ask: ChangeAsk, now: Standing): Promise<{ at: Placed | null; words: string; sheet?: string }> {
   const { sheets } = now
-  if (ask.kind === 'table') {
-    const got = await now.act(ask.table)
-    return { at: { sheet: got.sheet, name: sheets.find((x) => x.id === got.sheet)?.name ?? '', range: got.range }, words: got.words }
+  if (ask.kind !== 'format' && ask.kind !== 'rule') {
+    const got = await now.act(actedOf(ask)!)
+    return { at: got.range ? { sheet: got.sheet, name: sheets.find((x) => x.id === got.sheet)?.name ?? '', range: got.range } : null, words: got.words, sheet: got.sheet }
   }
   if (ask.kind === 'format') {
     const at = placed(() => place(ask.range, sheets))
@@ -215,7 +218,7 @@ export async function layChange(s: Sheets, held: Target['held'], ask: ChangeAsk,
 }
 
 async function mutationsFor(s: Sheets, held: Target['held'], ask: ChangeAsk, now: Standing): Promise<SheetMutationJson[]> {
-  if (ask.kind === 'table') return (await now.act(ask.table)).mutations
+  if (ask.kind !== 'format' && ask.kind !== 'rule') return (await now.act(actedOf(ask)!)).mutations
   const { at } = await read(ask, now)
   let mutations: SheetMutationJson[]
   if (ask.kind === 'format') {
@@ -240,10 +243,10 @@ async function mutationsFor(s: Sheets, held: Target['held'], ask: ChangeAsk, now
 /** Keeps a format or a rule for the owner to take or drop: on this host alone (changes.ts). */
 async function propose(s: Sheets, t: Target, ask: ChangeAsk, by: Principal, reason: string | undefined): Promise<string> {
   const now = await standing(s, t.held)
-  const { at, words } = await read(ask, now)
+  const { at, words, sheet } = await read(ask, now)
   // Made once now and thrown away, so one that cannot be made (a format that changes nothing) is refused as it is asked.
   await mutationsFor(s, t.held, ask, now)
-  s.changes.add(storeKey(t.held), { id: randomUUID(), changeSet: randomUUID(), by, ...(reason ? { reason } : {}), sheet: at?.sheet ?? now.sheets[0]!.id, range: at ? at.range : null, words, ask, rev: now.rev })
+  s.changes.add(storeKey(t.held), { id: randomUUID(), changeSet: randomUUID(), by, ...(reason ? { reason } : {}), sheet: at?.sheet ?? sheet ?? now.sheets[0]!.id, range: at ? at.range : null, words, ask, rev: now.rev })
   return words
 }
 
@@ -434,6 +437,18 @@ export const sheetTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; table: TableAsk; because: 'asked' | 'routine' | 'own'; quote?: string; reason?: string }
       return change(ctx, a, { kind: 'table', table: a.table })
+    }
+  },
+  {
+    name: 'sheet_page',
+    description:
+      'Page set-up of one tab: orientation, paper, margins, a scale or a fit to pages, the print area, a manual break, title rows or columns. ' +
+      'Say why, as for `sheet_write`: on a sheet others share your own idea waits in words for the owner.',
+    input: z.object({ ...target, page: PageAskSchema, ...because }),
+    readOnly: false,
+    run: async (args, ctx) => {
+      const a = args as { item?: string; file?: string; page: PageAsk; because: 'asked' | 'routine' | 'own'; quote?: string; reason?: string }
+      return change(ctx, a, { kind: 'page', page: a.page })
     }
   },
   {

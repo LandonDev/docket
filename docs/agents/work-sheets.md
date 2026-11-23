@@ -1060,7 +1060,7 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 ## Agents: the tools and the rule
 
 `sheet_read`, `sheet_write`, `sheet_suggest`, `sheet_format`, `sheet_rule`,
-`sheet_table`, `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
+`sheet_table`, `sheet_page`, `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
 read and 1,000 a write. A read of an opened Excel file ends with one line
 when the file holds what only Excel changes ("This workbook also holds 2
 pivot tables: only Excel changes those…", `waitsNote`), so a thread does
@@ -1115,11 +1115,23 @@ its snapshot at the revision the tool read) into a headless engine and
 runs the kit's own table handle on it (`createTables`, the Table menu's),
 with its own refusals ("A table is already there", "The row below is in
 use", a name Excel would not take); for an Excel file what the grid emitted
-goes through `forPackage`, as a press does, and the store's table writer is
-run once on the file and thrown away, so what it would refuse is said as
-it is asked. A sheet the service holds is sent the grid's own mutations,
+goes through `forPackage`, as a press does. A sheet the service holds is sent the grid's own mutations,
 each cell's style laid whole. The words: "Table Budget on Data!A1:C22,
 Medium 4, total row", "Table Costs: renamed Spend, no banded rows".
+
+**A page set-up** (`sheet_page`, `acts.ts`). One tab's orientation, paper
+by Excel's name ("A4", "Legal"), margins (a preset or sides in inches), a
+scale of 10 to 400% or a fit to pages (not both), the print area, one
+manual break under a row or right of a column, and title rows or columns,
+through the kit's own page handle (`createPages`, the Page Setup dialog's
+and the Page breaks view's), the same way as a table. A break that stands
+already, or one under Fit to (Excel leaves those out), is refused as it is
+asked. The words: "Data's page: landscape, A4, narrow margins, fit to 1 page
+wide, rows 1 on every page, print area A1:C21".
+
+The store's own save is the last check for both: for an Excel file the
+mutations go through `planOf` and `savePackage` in memory, the bytes thrown
+away (`triedOn`), so what any writer refuses is said as it is asked.
 
 Each ask becomes the grid's own data: a format, the mutations the row's own
 code makes (`compose.ts` runs work-kit's `applyFormat` in the sheet worker
