@@ -1559,6 +1559,41 @@ Around the canvas:
   stays in the dialog, as an alert. No toast: the row is the
   answer. Signed out of LifeOS the section is absent; while it reads,
   seven row bones.
+- **The Money view** (work/money/; docs/agents/work-money.md). A job's
+  ledger read as money, one 880px column read top to bottom like a
+  document, 16px from the sides, sections 24px apart under 13px semibold
+  headings. The 40px header holds Month or Year, the stepper (two ghost
+  arrows round the period in 13px tabular, 120px wide so the arrows never
+  move), Add (a menu) and More (a menu). First the figures, as text on one
+  row with a hairline under it and no heading: In, Out and Net for the
+  period, then, at the row's end, Owed to you and You owe, which are not
+  the period's and are drawn only when not nothing; each a 12px muted
+  label over a 16/24 semibold tabular figure, no tiles and no colour on a
+  number. A year adds one chart, In and out by month: paired bars in
+  `chart-1` and `chart-2` with a legend, since it compares two things,
+  money short on the axis ($1.2k). By category is a flat list, the name,
+  the 8px `chart-neutral` bar of its share and the amount at the end, `+`
+  before money in; a row's press narrows Entries to it, and the heading
+  then names the category beside a Clear. Owed is two groups, Owed to you
+  and You owe: who, what for in muted, the amount, how long ("32 days")
+  and one ghost Paid that spins while it lands. Entries is the flat
+  `Table` (Date, Who, Category, Amount, and a paperclip where a receipt
+  is kept); the whole row is one press, reached by Tab, that opens the
+  entry dialog, and it takes a `muted` fill in hand, the table's one row
+  with one, since the row is the control. Mileage, when there was any,
+  is one muted comma line. Loading is bones in the shape of the figures
+  and six rows; a job with no money at all is one `Empty` ("No money
+  yet", "Drop a receipt here.", Add entry); a period with nothing keeps
+  its figures and says "Nothing in November 2026" in the table's place; a
+  failed read is the view's state line over the last read; a ledger whose
+  headers he changed is the same line with its one press, Restore
+  columns. The entry dialog is one form for a new entry, a row and a
+  receipt to confirm: Amount (focused and selected, "$" quiet before it)
+  beside Date, Who (the ledger's names offered) beside Category (the
+  list, then New…), Spent or Received with To be paid back beside it for
+  money spent (ticked, Status is not drawn: the two never disagree),
+  Status beside For. Return in any field saves; Save waits for an amount
+  and a date.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way

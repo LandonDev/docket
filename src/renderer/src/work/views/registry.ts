@@ -11,6 +11,7 @@ import { mailView } from "../mail/view";
 import { messagesView } from "../messages/view";
 import { peopleView } from "../people/view";
 import { prepView } from "../prep/view";
+import { moneyView } from "../money/view";
 import { projectsView } from "../projects/view";
 import { playsView } from "../routines/plays/view";
 import { routinesView } from "../routines/view";
@@ -23,7 +24,7 @@ import { templatesView } from "../templates/view";
  * the thread strip. One closed list; each pillar fills its own `view.ts`
  * (milestones 23 and 25, and Docs after them) and edits nothing here.
  */
-export type WorkViewId = "mail" | "messages" | "tasks" | "projects" | "agenda" | "prep" | "people" | "docs" | "files" | "templates" | "plays" | "routines";
+export type WorkViewId = "mail" | "messages" | "tasks" | "projects" | "agenda" | "prep" | "people" | "money" | "docs" | "files" | "templates" | "plays" | "routines";
 
 export interface WorkViewProps {
   env: string;
@@ -69,6 +70,7 @@ export const WORK_VIEWS: Record<WorkViewId, WorkViewDef> = {
   agenda: agendaView,
   prep: prepView,
   people: peopleView,
+  money: moneyView,
   docs: docsView,
   files: filesView,
   templates: templatesView,
