@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
+import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { formatSize } from "work-kit/mail/lib/files";
 import { loadBytes } from "work-kit/mail/lib/bytes";
 import type { CanvasKind } from "@shared/work";
@@ -19,7 +19,8 @@ import { useMessagesData, type FileVerb } from "./data";
 import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
 import { fieldOrigin, useWaitingDrafts } from "./drafts";
-import { fieldAsPressed, keepTyped, pressSettled, stillPressed, typedIn, wantFile } from "./page";
+import { KeptKeys } from "./keptKeys";
+import { fieldAsPressed, keepRefusal, keepTyped, runGated, stillPressed, typedIn, wantFile } from "./page";
 
 /**
  * One message in the conversation's column (docs/agents/work-messages.md):
@@ -129,26 +130,6 @@ function Files({ workspaceId, message, chatId, chat }: { workspaceId: string; me
   useEffect(() => {
     setRefused(null);
   }, [state]);
-  // A keyboard Try again takes its own line away when the file comes: the message's files hold the keys meanwhile (a
-  // stable target), and whatever takes the line's place (the chip, the picture, or the line again with its Try again)
-  // takes them from there.
-  const box = useRef<HTMLDivElement>(null);
-  const keysFor = useRef<string | null>(null);
-  const retry = (file: ChatFile): void => {
-    if (box.current?.contains(document.activeElement)) {
-      keysFor.current = file._id;
-      box.current.focus({ preventScroll: true });
-    }
-    ask();
-  };
-  useLayoutEffect(() => {
-    const id = keysFor.current;
-    if (!id || document.activeElement !== box.current) return;
-    const target = box.current?.querySelector<HTMLElement>(`[data-file="${id}"]`);
-    if (!target) return;
-    keysFor.current = null;
-    target.focus({ preventScroll: true });
-  });
   const link = message.permalink ?? chat.link;
   // A file whose bytes have not come is asked for by the conversation, which opens it once they do (or lets the ask go if
   // the file fails), wherever its message has scrolled by then.
@@ -158,26 +139,28 @@ function Files({ workspaceId, message, chatId, chat }: { workspaceId: string; me
   );
   // An ask LifeOS did not take leaves its files unfetched: each says so.
   const cannot = (file: ChatFile): boolean => file.status === "failed" || (refused !== null && (file.status === "listed" || file.status === "wanted"));
-  // Pictures each on their own line; the other files side by side, as Mail lays out a mail's; the ones that could not come last.
-  const shown = message.files.filter((file) => !cannot(file));
-  const pictures = shown.filter(isPicture);
-  const chips = shown.filter((file) => !isPicture(file));
-  const failed = message.files.filter(cannot);
+  // Each file in its own wrapper that keeps the keys (keptKeys.tsx), the same element whatever the file shows: its failed
+  // line, its pending chip or skeleton, its picture, across any number of retries. Pictures each on their own line, the
+  // other files side by side, as Mail lays out a mail's, the ones that could not come last: the order is the wrappers'
+  // own (`order`), so a file moving between them keeps its wrapper. Each wrapper is a column, so what it holds is laid out
+  // as a block: a picture's button on a text line of its own would stand 6px off the next message.
   return (
-    <div ref={box} tabIndex={-1} data-files className="mt-1.5 mb-0.5 flex flex-col gap-1.5 outline-none">
-      {pictures.map((file) => (
-        <Picture key={file._id} file={file} source={chat.source} link={link} onOpen={open(file)} />
-      ))}
-      {chips.length ? (
-        <div className="flex flex-wrap gap-2">
-          {chips.map((file) => (
-            <FileChip key={file._id} file={file} verb={data.fileVerb(file)} onOpen={open(file)} />
-          ))}
-        </div>
-      ) : null}
-      {failed.map((file) => (
-        <FileFailed key={file._id} file={file} why={refused ?? (file.status === "failed" ? file.error : undefined)} source={chat.source} link={link} onRetry={() => retry(file)} />
-      ))}
+    <div data-files className="mt-1.5 mb-0.5 flex flex-wrap gap-x-2 gap-y-1.5">
+      {message.files.map((file) => {
+        const failing = cannot(file);
+        const picture = !failing && isPicture(file);
+        return (
+          <KeptKeys key={file._id} className={cn("flex min-w-0 flex-col rounded-lg", failing ? "order-3 basis-full" : picture ? "order-1 basis-full" : "order-2 max-w-full")}>
+            {failing ? (
+              <FileFailed file={file} why={refused ?? (file.status === "failed" ? file.error : undefined)} source={chat.source} link={link} onRetry={ask} />
+            ) : picture ? (
+              <Picture file={file} source={chat.source} link={link} onOpen={open(file)} />
+            ) : (
+              <FileChip file={file} verb={data.fileVerb(file)} onOpen={open(file)} />
+            )}
+          </KeptKeys>
+        );
+      })}
     </div>
   );
 }
@@ -366,43 +349,46 @@ function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; wor
    * has nowhere to be saved), stay behind his, a line between.
    */
   const undo = async (): Promise<void> => {
+    // The recall goes at once on his press, never held for a draft's sake; its own failure stays on this row.
     const words = await data.undo(chatId, reply.outboxId);
-    // A held draft's press on its way holds the field (its words stay until the host has taken them): the recalled words
-    // are placed once it settles, by the rule below, on the field as it then is.
-    await pressSettled(workspaceId, chatId);
-    // The field as he left it when the recall answered. Each save of a held draft's edit awaits, so the field is taken
-    // before it and judged after by its revision (`stillPressed`): words he went on typing under the draft's id meanwhile
-    // are saved too, before the recalled words take the field; words that became his own stay behind them.
-    let pressed = fieldAsPressed(workspaceId, chatId);
-    let saved: string | null = null;
-    for (let round = 0; round < 5; round++) {
-      const at = fieldOrigin(pressed.from, waiting.current);
-      if (at.kind !== "held" || !pressed.text.trim()) break;
-      const edit = pressed.text.trim();
-      if (edit !== (saved ?? at.draft.text)) {
-        try {
-          await data.saveDraft(at.draft, edit);
-          saved = edit;
-        } catch (err) {
-          // Not saved: neither is lost. His words go in front, the field as it is now behind as his own, and the refusal shows.
-          const now = typedIn(workspaceId, chatId);
-          keepTyped(workspaceId, chatId, now.trim() ? `${words}\n${now}` : words, null);
-          throw err;
+    // Placing the words queues on the conversation's gate (page.ts): it waits for whatever holds it (a held draft's
+    // press, his Send, a Discard), then holds it itself, so nothing starts in the composer while it reads and writes.
+    await runGated(workspaceId, chatId, { kind: "undo" }, async () => {
+      // The field as it is now. A held draft's edit there is saved to its item before the recalled words take the field.
+      let pressed = fieldAsPressed(workspaceId, chatId);
+      let saved: string | null = null;
+      for (let round = 0; round < 5; round++) {
+        const at = fieldOrigin(pressed.from, waiting.current);
+        if (at.kind !== "held" || !pressed.text.trim()) break;
+        const edit = pressed.text.trim();
+        if (edit !== (saved ?? at.draft.text)) {
+          try {
+            await data.saveDraft(at.draft, edit);
+            saved = edit;
+          } catch (err) {
+            // Not saved: neither is lost. His words go in front, the edit behind them as his own, and the refusal shows
+            // in the composer's alert (this row has left with the recall, so it could say nothing).
+            const now = typedIn(workspaceId, chatId);
+            keepTyped(workspaceId, chatId, now.trim() ? `${words}\n${now}` : words, null);
+            keepRefusal(workspaceId, chatId, err instanceof Error ? err.message : String(err));
+            return;
+          }
         }
+        if (stillPressed(workspaceId, chatId, pressed)) {
+          keepTyped(workspaceId, chatId, words, null);
+          return;
+        }
+        pressed = fieldAsPressed(workspaceId, chatId);
       }
-      if (stillPressed(workspaceId, chatId, pressed)) {
-        keepTyped(workspaceId, chatId, words, null);
-        return;
-      }
-      pressed = fieldAsPressed(workspaceId, chatId);
-    }
-    // His own words, or a copy-only draft's edit (which has nowhere to be saved), stay behind his recalled words; an
-    // unedited copy-only draft waits behind Use draft.
-    const at = fieldOrigin(pressed.from, waiting.current);
-    const now = pressed.text;
-    const behind = now.trim() && !(at.kind !== "own" && now === at.draft.text) ? now : "";
-    keepTyped(workspaceId, chatId, behind ? `${words}\n${behind}` : words, null);
+      // His own words, or a copy-only draft's edit (which has nowhere to be saved), stay behind his recalled words; an
+      // unedited copy-only draft waits behind Use draft.
+      const at = fieldOrigin(pressed.from, waiting.current);
+      const now = pressed.text;
+      const behind = now.trim() && !(at.kind !== "own" && now === at.draft.text) ? now : "";
+      keepTyped(workspaceId, chatId, behind ? `${words}\n${behind}` : words, null);
+    });
   };
+
 
   const act = (run: () => Promise<void>): void => {
     setBusy(true);

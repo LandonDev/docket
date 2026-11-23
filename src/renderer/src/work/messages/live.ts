@@ -14,6 +14,7 @@ import { openItem } from "../canvas/store";
 import { discardItem, editItem, notSentWords, outboxNow, sendItem, useOutbox, wantOutboxItem, wentOut, type HostItem } from "../outbox/store";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import type { MessagesData, Paged, ThreadDraft } from "./data";
+import { discardRefusal } from "./drafts";
 import { chatFileSource, fileVerb, viewKind } from "./files";
 import type { ChatFilter } from "./model";
 
@@ -183,7 +184,11 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     dropDraft: async (draft) => {
       if (draft.held) {
         const item = heldItem(env, draft.id);
-        if (item) await discardItem(item);
+        if (item) {
+          // Read what the host answered: only a discarded item is settled; one already sending or sent is refused.
+          const refusal = discardRefusal(await discardItem(item));
+          if (refusal) throw new Error(refusal);
+        }
       } else {
         await host("work.messages.dropDraft", { workspaceId, id: draft.id });
         void loadCopyDrafts(env, workspaceId);

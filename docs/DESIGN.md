@@ -1954,7 +1954,14 @@ Around the canvas:
   busy until LifeOS answers. A held draft's words stay in the field until
   the host has taken them: while its press goes the field is read only, Send
   busy, Discard off, the draft's line still naming its thread; refused, the
-  field is as it was, with the refusal in red above the line. A message that arrives at the foot rises 4px and fades in over
+  field is as it was, with the refusal in red above the line. While any of
+  his actions waits on the host (Send, a held press, Discard, Copy, Undo
+  placing its words) the others are off and the field is read only (but
+  during his own Send, which empties it), the one waiting busy; a held
+  press's line and button stay those of the press until it settles. A
+  control he had focused that gives way to another (an attachment's Try
+  again, a pane's Retry) hands the keys to what takes its place, or to its
+  wrapper with the standard ring until something does. A message that arrives at the foot rises 4px and fades in over
   `--dur-fast`; nothing else moves.
 - **People** (the People view, work/people/; docs/agents/work-people.md).
   The list is a 720px column, one 32px row a

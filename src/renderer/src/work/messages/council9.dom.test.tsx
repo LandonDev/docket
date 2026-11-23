@@ -244,6 +244,8 @@ describe("Undo while a held draft's press is on its way", () => {
     await act(async () => data.release());
     await flush();
     expect(field().value).toBe(`My reply\n${EDIT}`);
+    // Round 10: the save's refusal shows in the composer's alert, the recalled row having left.
+    expect(alertText()).toBe("The Outbox did not answer");
     expect(data.log.pressed).toEqual([]);
     expect(data.log.sent).toEqual([{ chatId: "c_dana", text: "My reply" }]);
   });

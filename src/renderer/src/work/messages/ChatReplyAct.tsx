@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { SOURCE_NAME, type ChatDetail, type ChatMessage, type ChatRow, type ChatSource } from "@shared/work/messages";
 import { CornerDownRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import type { ActViewProps } from "../acts/registry";
 import { useLifeosQuery, useLifeosSession, type LifeosQuery } from "../shell/lifeos";
+import { useKeptKeys } from "./keptKeys";
 import { chatFact } from "./model";
 
 /** A held reply's payload, as the host's `chat.reply` holds it. */
@@ -94,17 +95,18 @@ export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Lifeo
  */
 export function View(props: ActViewProps) {
   const [attempt, setAttempt] = useState(0);
-  // Retry mounts the reads afresh and takes its own button away: when that button held the keys, the quote's slot takes
-  // them and keeps them while the quote reads again.
-  const [keys, setKeys] = useState(false);
-  const retry = (): void => {
-    setKeys(document.activeElement?.closest("[data-quote-slot]") != null);
-    setAttempt((n) => n + 1);
-  };
-  return <Reads key={attempt} {...props} retry={retry} focusQuote={keys} />;
+  // Retry mounts the reads afresh and takes its own button away: the body's keeper (keptKeys.tsx), which outlives the
+  // remount, holds the keys meanwhile and hands them to the next control (Retry again, when the quote still cannot be
+  // read).
+  const keeper = useKeptKeys<HTMLDivElement>();
+  return (
+    <div ref={keeper} tabIndex={-1} className="focus-ring rounded-sm">
+      <Reads key={attempt} {...props} retry={() => setAttempt((n) => n + 1)} />
+    </div>
+  );
 }
 
-function Reads({ item, env, retry, focusQuote }: ActViewProps & { retry: () => void; focusQuote: boolean }) {
+function Reads({ item, env, retry }: ActViewProps & { retry: () => void }) {
   const reply = replyOf(item.payload);
   const session = useLifeosSession(env, item.sector);
   const detail = useLifeosQuery<ChatDetail | null>(session, "chats:get", { id: reply?.chatId ?? "" });
@@ -114,7 +116,7 @@ function Reads({ item, env, retry, focusQuote }: ActViewProps & { retry: () => v
   const missing = Boolean(target) && (page.status === "failed" || (page.status === "ready" && !page.value.page.some((m) => m._id === target)));
   const byId = useLifeosQuery<RawMessage>(missing ? session : { ...session, client: null, state: "connecting" }, "rawMessages:get", { id: target ?? "" });
   if (!reply) return <div data-slot="act-payload" className="text-sm text-muted-foreground">This reply could not be read</div>;
-  return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answerOf(reply, detail, page, missing ? byId : null)} onRetry={retry} focusQuote={focusQuote} />;
+  return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answerOf(reply, detail, page, missing ? byId : null)} onRetry={retry} />;
 }
 
 /** The held reply as he reads it before his press: to whom, where, what it answers, its words. */
@@ -123,19 +125,12 @@ export function ReplyBody({
   chat,
   answered,
   onRetry,
-  focusQuote = false,
 }: {
   reply: ChatReplyPayload;
   chat?: Pick<ChatRow, "source" | "accountName" | "kind">;
   answered: Answered;
   onRetry?: () => void;
-  /** The quote's slot takes the keys as it mounts: Retry held them. */
-  focusQuote?: boolean;
 }) {
-  const slot = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (focusQuote) slot.current?.focus({ preventScroll: true });
-  }, [focusQuote]);
   // In a direct chat the writer is left out when it is the one the reply goes to, named on the To line already; his own
   // words still say "You".
   const named = chat?.kind === "direct" && answered !== null && typeof answered === "object" && answered.who === (reply.to ?? reply.chat);
@@ -148,8 +143,8 @@ export function ReplyBody({
         <dd className="min-w-0 break-words text-foreground">{chat ? chatFact(chat) : SOURCE_NAME[reply.source]}</dd>
       </dl>
       <div className="flex flex-col gap-2 border-t border-border pt-4">
-        {/* The quote's slot holds its place through every state, and can hold the keys while it reads again. */}
-        <div ref={slot} data-quote-slot tabIndex={-1} role="group" aria-label="The message it answers" className="focus-ring rounded-sm empty:hidden">
+        {/* The quote's slot holds its place through every state. */}
+        <div data-quote-slot role="group" aria-label="The message it answers" className="empty:hidden">
           {answered === "loading" ? (
             <div data-answers="loading" aria-hidden className="flex h-5 items-center gap-1.5">
               <Skeleton className="size-3 rounded-sm" />

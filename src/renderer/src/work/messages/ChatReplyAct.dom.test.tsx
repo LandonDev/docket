@@ -3,7 +3,7 @@
  * A thread's held chat reply in the Outbox (`chat.reply`): where it goes, the message it answers as
  * one quoted line, then its words exactly as they go, read from LifeOS on the item's own sector.
  */
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeldItem } from "@shared/work";
 import { ACT_VIEWS } from "../acts/registry";
@@ -165,16 +165,27 @@ describe("the held reply's view", () => {
     expect(within(line).getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
-  it("keeps the keys in the quote's slot when its Retry, holding them, reads afresh", () => {
+  // Round 10: the body's keeper (keptKeys.tsx) holds the keys across Retry, in place of the slot's own hand-off.
+  it("keeps the keys in the body's keeper while Retry reads afresh", async () => {
     lifeos.rawFails = true;
     render(<View env="box" item={item({ chatId: "c_dana", replyTo: "far_4", source: "slack", chat: "Dana Lee", text: "Yes." })} />);
     const retry = screen.getByRole("button", { name: "Retry" });
     retry.focus();
     lifeos.rawFails = false;
     lifeos.raw = undefined;
-    fireEvent.click(retry);
-    expect(document.activeElement).toBe(document.querySelector("[data-quote-slot]"));
+    await act(async () => fireEvent.click(retry));
+    expect(document.activeElement).toBe(document.querySelector("[data-kept-keys]"));
     expect(document.querySelector("[data-answers]")!.getAttribute("data-answers")).toBe("loading");
+  });
+
+  it("gives the keys back to Retry when the quote still cannot be read", async () => {
+    lifeos.rawFails = true;
+    render(<View env="box" item={item({ chatId: "c_dana", replyTo: "far_5", source: "slack", chat: "Dana Lee", text: "Yes." })} />);
+    const retry = screen.getByRole("button", { name: "Retry" });
+    retry.focus();
+    await act(async () => fireEvent.click(retry));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Retry" }));
+    expect(document.activeElement).not.toBe(retry);
   });
 
   it("says at once that it could not be read when the conversation failed, the page still loading", () => {

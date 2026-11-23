@@ -44,3 +44,15 @@ export function fieldOrigin(from: string | null, drafts: readonly ThreadDraft[])
   if (!draft) return { kind: "own" };
   return { kind: draft.failed !== undefined ? "failed" : draft.held ? "held" : "copy", draft };
 }
+
+/**
+ * What a Discard's answer from the host means for the composer: nothing (the item was discarded), or why not, in plain
+ * words. The host answers with the item as it now is, and an item another window already claimed comes back sending or
+ * sent, not discarded: that is no success, and its words stay where they are.
+ */
+export function discardRefusal(after: { state: string; error?: string | null }): string | null {
+  if (after.state === "discarded") return null;
+  if (after.state === "sending") return "Already sending from the Outbox";
+  if (after.state === "sent") return "Already sent from the Outbox";
+  return after.error ?? "The Outbox did not discard it";
+}

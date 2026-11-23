@@ -201,43 +201,71 @@ export function endVisit(workspaceId: string, chatId: string): void {
 }
 
 /**
- * A press of Send on its way, per conversation: the words it took and the held
- * draft it pressed, if any. The field empties at the press; while one is
- * pending no other Send goes for that conversation, on any mount.
+ * The conversation's gate: one at a time, every composer action that waits on the host and then touches the field, the
+ * draft marks or the refusal holds it (his own Send until LifeOS answers, a held draft's press, Discard, Copy's drop of a
+ * copy-only draft, and Undo's placement of the recalled words). While it is held nothing else may start (the composer
+ * disables Send, Discard and Copy and ignores Return); Undo's placement, which he did not start from the composer, queues
+ * behind the holder instead. The record says who holds it, and for a held press which draft, so the line can name it
+ * whatever the live list says meanwhile.
  */
-export interface PendingPress {
+export interface GateDraft {
+  id: string;
   text: string;
-  draft: string | null;
+  threadId: string | null;
+  thread?: string;
 }
-const presses = new Map<string, PendingPress>();
-const pressListeners = new Set<() => void>();
-export const pendingPress = (workspaceId: string, chatId: string): PendingPress | undefined => presses.get(key(workspaceId, chatId));
-export function keepPress(workspaceId: string, chatId: string, press: PendingPress | null): void {
-  if (press) presses.set(key(workspaceId, chatId), press);
-  else if (!presses.delete(key(workspaceId, chatId))) return;
-  for (const listener of pressListeners) listener();
+export type Gate = { kind: "send"; text: string } | { kind: "press"; text: string; draft: GateDraft } | { kind: "discard"; draft: GateDraft } | { kind: "drop" } | { kind: "undo" };
+const gates = new Map<string, Gate>();
+/** The end of each conversation's queue: a step waits for it before it holds the gate. */
+const tails = new Map<string, Promise<void>>();
+const gateListeners = new Set<() => void>();
+const tellGate = (): void => {
+  for (const listener of gateListeners) listener();
+};
+export const gateOf = (workspaceId: string, chatId: string): Gate | undefined => gates.get(key(workspaceId, chatId));
+/** Kept for its readers: the gate's record while his Send (or any action) is on its way. */
+export const pendingPress = gateOf;
+function hold<T>(at: string, gate: Gate, step: () => Promise<T>): Promise<T> {
+  const before = tails.get(at);
+  let free!: () => void;
+  const mine = new Promise<void>((resolve) => (free = resolve));
+  const tail = (before ?? Promise.resolve()).then(() => mine);
+  tails.set(at, tail);
+  // Free, it is held at once (the record is there before the press returns); else once the holder before it lets go.
+  const run = async (): Promise<T> => {
+    gates.set(at, gate);
+    tellGate();
+    try {
+      return await step();
+    } finally {
+      gates.delete(at);
+      if (tails.get(at) === tail) tails.delete(at);
+      free();
+      tellGate();
+    }
+  };
+  return before ? before.then(run) : run();
 }
-/** Resolves when no press is pending for the conversation (at once if none is): Undo places its words only after one. */
-export function pressSettled(workspaceId: string, chatId: string): Promise<void> {
+/** Whether nothing holds the gate or waits for it. */
+export const gateFree = (workspaceId: string, chatId: string): boolean => !gates.has(key(workspaceId, chatId)) && !tails.has(key(workspaceId, chatId));
+/** Starts a step holding the gate, or nothing (null) when another holds it or waits for it: nothing starts while one runs. */
+export function startGated<T>(workspaceId: string, chatId: string, gate: Gate, step: () => Promise<T>): Promise<T> | null {
   const at = key(workspaceId, chatId);
-  if (!presses.has(at)) return Promise.resolve();
-  return new Promise((resolve) => {
-    const done = (): void => {
-      if (presses.has(at)) return;
-      pressListeners.delete(done);
-      resolve();
-    };
-    pressListeners.add(done);
-  });
+  if (gates.has(at) || tails.has(at)) return null;
+  return hold(at, gate, step);
 }
-export function usePendingPress(workspaceId: string, chatId: string): PendingPress | undefined {
+/** Runs a step holding the gate once whoever holds it now has finished (Undo's placement): one wait point, the queue. */
+export function runGated<T>(workspaceId: string, chatId: string, gate: Gate, step: () => Promise<T>): Promise<T> {
+  return hold(key(workspaceId, chatId), gate, step);
+}
+export function useGate(workspaceId: string, chatId: string): Gate | undefined {
   return useSyncExternalStore(
     (fn) => {
-      pressListeners.add(fn);
-      return () => void pressListeners.delete(fn);
+      gateListeners.add(fn);
+      return () => void gateListeners.delete(fn);
     },
-    () => pendingPress(workspaceId, chatId),
-    () => pendingPress(workspaceId, chatId),
+    () => gateOf(workspaceId, chatId),
+    () => gateOf(workspaceId, chatId),
   );
 }
 
@@ -396,7 +424,8 @@ export function resetPages(): void {
   seenDrafts.clear();
   visitPlaces.clear();
   unreadHeld.clear();
-  presses.clear();
+  gates.clear();
+  tails.clear();
   opened.clear();
   wanted.clear();
   returns.clear();

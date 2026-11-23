@@ -236,11 +236,21 @@ The look is docs/DESIGN.md "The Messages view".
   puts the draft's words before his. Whose words they are is kept beside them
   in page.ts (`keepTyped(…, from)`), so leaving and coming back, a Retry or
   the 640px crossing find a draft still a draft; a draft gone meanwhile
-  leaves its words as his own. His own words: Send empties the field at
-  the press, the pressed words wait in page.ts as the pending press
-  (`keepPress`) until LifeOS answers, and while it is pending Return and the
-  button do nothing more for that conversation on any mount, so nothing goes
-  twice; a refusal puts his words back before whatever he typed since, a
+  leaves its words as his own. One gate a conversation (page.ts
+  `startGated`, `runGated`, `useGate`) holds every composer action that waits
+  on the host and then touches the field, the draft marks or the refusal: his
+  own Send until LifeOS answers, a held draft's press, Discard, Copy (its
+  clipboard and its drop of a copy-only draft) and Undo's placement of the
+  recalled words. While it is held nothing else starts: Return does nothing,
+  Send, Discard and Copy are off (the holder's own busy), and the field is
+  read only, except during his own Send, which empties it at the press and
+  leaves it his to type in. Undo's recall goes at once on his press; its
+  placement queues on the gate behind whoever holds it, then reads the field
+  as it then is. While a held press holds the gate, the line names the
+  pressed draft from the gate's record and the button stays Send, whatever
+  the live list (which may list the item as sending) or the route says
+  meanwhile; once it settles the latest list and route apply. His own words:
+  Send empties the field at the press, and nothing goes twice on any mount; a refusal puts his words back before whatever he typed since, a
   line between, as his own, and shows. A held draft's words follow one rule:
   they stay in the field until the host has taken them. While its press is
   pending the field is read only (`aria-busy`), Send busy and Discard off,
@@ -254,9 +264,11 @@ The look is docs/DESIGN.md "The Messages view".
   Send presses again. Nothing is kept anywhere else. If the item leaves the
   waiting list while the field holds its words (sent or discarded
   elsewhere), the words stay and are his own now, so Send goes as his own
-  reply. Discard changes nothing before the host answers: the field empties
-  only on success and only if still as pressed, and a refused Discard leaves
-  field, origin and draft as they were. A refusal shows above the line
+  reply. Discard changes nothing before the host answers, and reads what it
+  answered: only an item it discarded is settled and may empty the field (if
+  still as pressed); an item it answers already sending or sent elsewhere is
+  refused in plain words ("Already sending from the Outbox"), and field,
+  origin and draft stay as they were, as on any refused Discard. A refusal shows above the line
   whenever it is set, never hidden by another line, and clears when he types
   or presses again.
   A held draft pressed or discarded here is marked settled in
@@ -303,7 +315,9 @@ The look is docs/DESIGN.md "The Messages view".
   they are saved to the item first when they differ from its own
   (`saveDraft`, the Outbox's edit), and again if he went on editing them
   while the save went, then the field takes his words and the draft waits
-  behind Use draft; words that became his own meanwhile stay behind his.
+  behind Use draft; words that became his own meanwhile stay behind his. A
+  save Undo needs that the Outbox refuses leaves his recalled words in front
+  and the edit behind them, his own, with the refusal above the line.
 - **Threads.** Start thread is the toolbar's 28px button and a row on the
   row's and a message's menus; a message's chip carries its words as
   `quote`. Mention in a thread puts the chip in the thread open in the window
@@ -356,9 +370,9 @@ The look is docs/DESIGN.md "The Messages view".
 - **Failures.** Each failure line (the list, a search, a conversation, its
   messages) has Retry, which mounts the failing reads again, so LifeOS is
   asked afresh; the seam needs no verb for it. Retry takes its own button
-  away, so when it held the keys the list's or the conversation's pane holds
-  them while the read runs (`data-list-pane`, `data-conversation-pane`), and
-  what lands takes them from it: the rows or results, the column, the next
+  away; the list's and the conversation's panes are keepers (keptKeys.tsx:
+  `useKeptKeys`, the one mechanism for a focused control swapped out), which
+  hold the keys while the read runs and hand them to what lands: the rows or results, the column, the next
   failure's Retry, the composer's field (a conversation with no messages yet),
   Back to Messages (the conversation gone) or the search field (an empty list
   with no action). Under 640px the pane
@@ -376,9 +390,11 @@ The look is docs/DESIGN.md "The Messages view".
   its new reason. The automatic ask is for listed files alone; a failed file
   is asked again only on his press. A re-ask LifeOS refuses says that
   refusal on the file's own line until a fresh attempt or a change of state.
-  A keyboard Try again keeps the keys: the message's files hold them while
-  the line gives way, and the chip, the picture or the line's own Try again
-  that takes its place gets them. A stored picture's bytes are read with
+  Each attachment sits in its own wrapper that keeps the keys
+  (keptKeys.tsx): a keyboard Try again, a worker's or a byte retry, a
+  refused re-ask, a second failure, any number of swaps, the keys go to the
+  chip, the picture, the skeleton or the line's own Try again that takes the
+  place of the control that held them. A stored picture's bytes are read with
   `loadBytes` into a blob address, never put in the page as a web address,
   one read an address at a time, at most 120 held (the oldest no drawn
   picture uses released, read again when drawn again); a picture never grows
@@ -410,7 +426,8 @@ The look is docs/DESIGN.md "The Messages view".
   unsaid, and with that page failed it could not be read, with Retry. A reply that names its message is
   read by id also when the page did not load; "The message it answers is no
   longer here" only when LifeOS answers that it is absent, "could not be
-  read" with Retry when that read failed, or at once, whatever the page is
+  read" with Retry when that read failed (the body is a keeper: a Retry
+  that fails again gets the keys back on the new Retry), or at once, whatever the page is
   doing, when the conversation's own read failed and the reply names no
   message. Retry keeps the keys: the quote's slot (`data-quote-slot`) holds
   its place through every state and takes them when Retry held them. A

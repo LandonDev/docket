@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
 import { CHAT_ROUTES, SOURCE_APP, SOURCE_NAME, type ChatDetail } from "@shared/work/messages";
 import { CircleDot } from "../../chrome/icons";
 import { COMPOSER_SURFACE } from "../../chrome/ComposerBar";
@@ -12,7 +12,7 @@ import { workOpenPort } from "../../lib/workSwitch";
 import { useMessagesData, type ThreadDraft } from "./data";
 import { firstName } from "./model";
 import { fieldOrigin, useWaitingDrafts } from "./drafts";
-import { draftSeen, fieldAsPressed, keepFailedPress, keepPress, seeDraft, keepRefusal, keepTyped, markDraft, pendingPress, stillPressed, typedIn, usePendingPress, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
+import { draftSeen, fieldAsPressed, gateFree, keepFailedPress, startGated, useGate, seeDraft, keepRefusal, keepTyped, markDraft, stillPressed, typedIn, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
 import { QUICK_ANSWERS } from "./quick";
 
 /**
@@ -34,12 +34,17 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   const chatId = chat._id;
   const text = useTyped(workspaceId, chatId);
   const setText = (next: string): void => keepTyped(workspaceId, chatId, next);
-  // A Send on its way is kept with the conversation, not this mount: leaving and coming back, a Retry or the 640px
-  // crossing find it pending, and nothing more goes until LifeOS answers it.
-  const press = usePendingPress(workspaceId, chatId);
-  const pending = press !== undefined;
-  // A held draft's press holds the field: its words stay on screen, read only, until the host has taken them.
-  const holding = press?.draft != null;
+  // The conversation's gate (page.ts), kept with the conversation, not this mount: while any action waiting on the host
+  // holds it (his Send, a held press, Discard, Copy's drop, Undo's placement) nothing else starts: Return does nothing
+  // and Send, Discard and Copy are off, the holder's own busy. The field is read only too, except during his own Send,
+  // which empties it at the press and leaves it his to type in.
+  const gate = useGate(workspaceId, chatId);
+  const pending = gate !== undefined;
+  const holding = pending && gate.kind !== "send";
+  // A held draft's press: the line names the pressed draft from the gate's record, whatever the live list says meanwhile
+  // (it may already list the item as sending and drop it), and the button stays Send whatever the route says, until it
+  // settles.
+  const inFlight = gate?.kind === "press" ? gate.draft : null;
   // The drafts still waiting: none sent or discarded here that the list still holds. A draft whose press is on its way
   // stays listed, so its line names its thread while its words are on screen.
   const drafts = useWaitingDrafts(workspaceId, chatId);
@@ -57,11 +62,11 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   }, [failedPress, pressFailed, workspaceId, chatId]);
   // The line's draft: that failed press; else the one the field holds; else a held reply (his press can send it), then
   // one whose press failed, then a copy-only draft.
-  const draft =
-    pressFailed ?? (origin.kind !== "own" ? origin.draft : (drafts.find((d) => d.held && d.failed === undefined) ?? drafts.find((d) => d.failed !== undefined) ?? drafts[0] ?? null));
+  const draft: ThreadDraft | null = inFlight
+    ? { id: inFlight.id, held: true, text: inFlight.text, threadId: inFlight.threadId, ...(inFlight.thread ? { thread: inFlight.thread } : {}) }
+    : (pressFailed ?? (origin.kind !== "own" ? origin.draft : (drafts.find((d) => d.held && d.failed === undefined) ?? drafts.find((d) => d.failed !== undefined) ?? drafts[0] ?? null)));
   // A held reply whose press failed is the Outbox's to send again or check: its words never come into the field.
   const failed = draft?.failed !== undefined;
-  const [dropping, setDropping] = useState(false);
   // A refusal stays with the conversation until he types or sends again.
   const refused = useRefusal(workspaceId, chatId);
   const setRefused = (words: string | null): void => keepRefusal(workspaceId, chatId, words);
@@ -88,7 +93,7 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     const now = typedIn(workspaceId, chatId);
     keepTyped(workspaceId, chatId, now.trim() === failedOrigin.text.trim() ? "" : now, null);
   }, [failedOrigin, workspaceId, chatId]);
-  const drafting = (origin.kind === "held" || origin.kind === "copy") && text.trim() !== "";
+  const drafting = inFlight !== null || ((origin.kind === "held" || origin.kind === "copy") && text.trim() !== "");
   // The draft's words, put before his own on his say ("Use draft"), so neither is lost.
   const takeDraft = (d: ThreadDraft): void => {
     keepTyped(workspaceId, chatId, text.trim() ? `${d.text}\n${text}` : d.text, d.id);
@@ -101,20 +106,17 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   const link = detail.link && /^https?:\/\//i.test(detail.link) ? detail.link : undefined;
   // The route chooses the button. Where it says no, a held draft is copied too, and it and its id stay until the route
   // returns; a copy-only draft is copied whatever the route.
-  const mode: "send" | "copy" = sends && !(drafting && origin.kind === "copy") ? "send" : "copy";
+  const mode: "send" | "copy" = inFlight || (sends && !(drafting && origin.kind === "copy")) ? "send" : "copy";
   const words = text.trim();
   const placeholder = chat.kind === "direct" ? `Reply to ${firstName(chat.name)}` : `Message ${chat.name}`;
 
   const refusalOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
   const drop = async (act: () => Promise<void>): Promise<void> => {
-    setDropping(true);
     setRefused(null);
     try {
       await act();
     } catch (err) {
       setRefused(refusalOf(err));
-    } finally {
-      setDropping(false);
     }
   };
   /**
@@ -136,82 +138,90 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
    * left exactly as it was, words and origin, and the refusal shows above the line: a second Send presses again. Nothing
    * is kept anywhere else.
    */
-  const send = async (): Promise<void> => {
+  const send = (): void => {
     const pressed = fieldAsPressed(workspaceId, chatId);
     const sent = pressed.text.trim();
-    if (!sent || pendingPress(workspaceId, chatId)) return;
+    if (!sent || !gateFree(workspaceId, chatId)) return;
     // The same origin the line reads: a failed item's words are never sent as his own (the cleanup takes them).
     const at = fieldOrigin(pressed.from, drafts);
     if (at.kind === "failed") return;
     const pressing = at.kind === "held" ? at.draft : null;
-    keepPress(workspaceId, chatId, { text: sent, draft: pressing?.id ?? null });
     setRefused(null);
     field.current?.focus();
     if (!pressing) {
+      // His own words leave the field at the press, before anything awaits.
       keepTyped(workspaceId, chatId, "", null);
-      try {
-        await data.send(chatId, sent);
-      } catch (err) {
-        const now = typedIn(workspaceId, chatId);
-        keepTyped(workspaceId, chatId, now.trim() ? `${sent}\n${now}` : sent, null);
-        keepRefusal(workspaceId, chatId, refusalOf(err));
-      } finally {
-        keepPress(workspaceId, chatId, null);
-      }
+      void startGated(workspaceId, chatId, { kind: "send", text: sent }, async () => {
+        try {
+          await data.send(chatId, sent);
+        } catch (err) {
+          const now = typedIn(workspaceId, chatId);
+          keepTyped(workspaceId, chatId, now.trim() ? `${sent}\n${now}` : sent, null);
+          keepRefusal(workspaceId, chatId, refusalOf(err));
+        }
+      });
       return;
     }
-    try {
-      await data.sendDraft(pressing, sent);
-      // Taken: the field the press found empties, before the draft leaves (so its words never stand as his own).
-      settle(pressed);
-      markDraft(workspaceId, chatId, pressing.id, { settled: true });
-    } catch (err) {
-      if ((err as { failed?: boolean }).failed) {
-        // The item failed and stays in the Outbox with these words, for Send again or Check whether it went first there.
+    const record = { id: pressing.id, text: sent, threadId: pressing.threadId, ...(pressing.thread ? { thread: pressing.thread } : {}) };
+    void startGated(workspaceId, chatId, { kind: "press", text: sent, draft: record }, async () => {
+      try {
+        await data.sendDraft(pressing, sent);
+        // Taken: the field the press found empties, before the draft leaves (so its words never stand as his own).
         settle(pressed);
-        markDraft(workspaceId, chatId, pressing.id, { failed: refusalOf(err), ...((err as { unknown?: boolean }).unknown ? { unknown: true } : {}) });
-        keepFailedPress(workspaceId, chatId, pressing.id);
-      } else keepRefusal(workspaceId, chatId, refusalOf(err));
-    } finally {
-      keepPress(workspaceId, chatId, null);
-    }
+        markDraft(workspaceId, chatId, pressing.id, { settled: true });
+      } catch (err) {
+        if ((err as { failed?: boolean }).failed) {
+          // The item failed and stays in the Outbox with these words, for Send again or Check whether it went first there.
+          settle(pressed);
+          markDraft(workspaceId, chatId, pressing.id, { failed: refusalOf(err), ...((err as { unknown?: boolean }).unknown ? { unknown: true } : {}) });
+          keepFailedPress(workspaceId, chatId, pressing.id);
+        } else keepRefusal(workspaceId, chatId, refusalOf(err));
+      }
+    });
   };
-  const copy = async (): Promise<void> => {
-    // Taken before the clipboard is written: the cleanup judges the field by this, not by what it holds by then.
+  const copy = (): void => {
+    // Taken before the clipboard is written: the cleanup judges the field by this, not by what it holds by then. The whole
+    // of it holds the gate, so nothing starts meanwhile and Undo's placement waits.
     const pressed = fieldAsPressed(workspaceId, chatId);
     const at = fieldOrigin(pressed.from, drafts);
-    try {
-      await navigator.clipboard.writeText(pressed.text.trim());
-    } catch {
-      void loadToast().then((toast) => toast.error("Couldn't copy"));
-      return;
-    }
-    void loadToast().then((toast) => toast("Copied"));
-    // A copied copy-only draft has done its work: it goes, and its words with it. His own words stay, for him to paste
-    // again, and so does a held draft copied while the route says no: it waits for the route to return.
-    if (at.kind === "copy" && pressed.text.trim()) {
-      const done = at.draft;
-      await drop(async () => {
-        await data.dropDraft(done);
-        markDraft(workspaceId, chatId, done.id, { settled: true });
-        settle(pressed);
-      });
-    }
-  };
-  const discard = (d: ThreadDraft): Promise<void> => {
-    // The field empties if and only if its words are that draft's (edited or not) at the press and unchanged since.
-    // Nothing here changes before the host answers: a refused Discard leaves field, origin and draft as they were.
-    const pressed = fieldAsPressed(workspaceId, chatId);
-    return drop(async () => {
-      await data.dropDraft(d);
-      markDraft(workspaceId, chatId, d.id, { settled: true });
-      if (pressed.from === d.id) settle(pressed);
+    void startGated(workspaceId, chatId, { kind: "drop" }, async () => {
+      try {
+        await navigator.clipboard.writeText(pressed.text.trim());
+      } catch {
+        void loadToast().then((toast) => toast.error("Couldn't copy"));
+        return;
+      }
+      void loadToast().then((toast) => toast("Copied"));
+      // A copied copy-only draft has done its work: it goes, and its words with it. His own words stay, for him to paste
+      // again, and so does a held draft copied while the route says no: it waits for the route to return.
+      if (at.kind === "copy" && pressed.text.trim()) {
+        const done = at.draft;
+        await drop(async () => {
+          await data.dropDraft(done);
+          markDraft(workspaceId, chatId, done.id, { settled: true });
+          settle(pressed);
+        });
+      }
     });
+  };
+  const discard = (d: ThreadDraft): void => {
+    // The field empties if and only if its words are that draft's (edited or not) at the press and unchanged since, and
+    // only once the host has discarded it: an answer that is not a discard (the item already sending or sent elsewhere)
+    // comes back as a refusal, and field, origin and draft stay as they were.
+    const pressed = fieldAsPressed(workspaceId, chatId);
+    const record = { id: d.id, text: d.text, threadId: d.threadId, ...(d.thread ? { thread: d.thread } : {}) };
+    void startGated(workspaceId, chatId, { kind: "discard", draft: record }, () =>
+      drop(async () => {
+        await data.dropDraft(d);
+        markDraft(workspaceId, chatId, d.id, { settled: true });
+        if (pressed.from === d.id) settle(pressed);
+      }),
+    );
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
-    if (mode === "send" && words && !pending && !dropping) void send();
+    if (mode === "send" && words && !pending) send();
   };
 
   // A refusal says itself above the line whenever it is set, never in its place; it clears when he types or presses again.
@@ -279,8 +289,8 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
             ) : null}
             <span className="flex-1" />
             {draft && !failed ? (
-              <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={dropping || pending} onClick={() => void discard(draft)}>
-                <BusyLabel busy={dropping} label="Discard" />
+              <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={pending} onClick={() => discard(draft)}>
+                <BusyLabel busy={gate?.kind === "discard"} label="Discard" />
               </Button>
             ) : null}
             {mode === "copy" && link ? (
@@ -289,12 +299,12 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
               </Button>
             ) : null}
             {mode === "send" ? (
-              <Button size="sm" disabled={!words || pending || dropping} onClick={() => void send()}>
-                <BusyLabel busy={pending} label="Send" />
+              <Button size="sm" disabled={!words || pending} onClick={send}>
+                <BusyLabel busy={gate?.kind === "send" || gate?.kind === "press"} label="Send" />
               </Button>
             ) : (
-              <Button size="sm" disabled={!words || dropping} onClick={() => void copy()}>
-                Copy
+              <Button size="sm" disabled={!words || pending} onClick={copy}>
+                <BusyLabel busy={gate?.kind === "drop"} label="Copy" />
               </Button>
             )}
           </div>

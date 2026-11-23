@@ -14,6 +14,7 @@ import { Face } from "../mail/face";
 import { Hash } from "../icons";
 import { openConnections } from "../shell/open";
 import { useMessagesData } from "./data";
+import { useKeptKeys } from "./keptKeys";
 import { aroundMatch, CHAT_FILTERS, cutToFit, FILTER_EMPTY, FILTER_LABEL, FILTER_ROW, firstName, markWords, menuKey, rowLine, rowTime, type ChatFilter } from "./model";
 import { chatChip, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 import { keepListTop, listTopOf, markUnreadHeld, openedFrom, patchPage, peekReturn, returnToTop, takeReturn, usePage } from "./page";
@@ -45,28 +46,12 @@ const LIST_EMPTY = "pointer-events-none absolute inset-0 max-w-none";
  * coming back takes the keys where they stood as it shows again rather than as it mounts.
  */
 export function ChatList({ workspaceId, job, narrow, shown = true, onOpen }: { workspaceId: string; job: string; narrow: boolean; shown?: boolean; onOpen: (chatId: string, messageId?: string) => void }) {
-  // Retry asks LifeOS afresh: the list's reads are mounted again. The press takes its own button away, so when it held
-  // the keys the list's pane holds them while the read runs (a stable target, as the Outbox quote's slot), and what
-  // lands takes them from it: the rows, a result list, or an empty list's action.
+  // Retry asks LifeOS afresh: the list's reads are mounted again. The press takes its own button away; the pane's keeper
+  // (keptKeys.tsx) holds the keys while the read runs and hands them to what lands: the rows or results, an empty list's
+  // action, or the search field when an empty list has none.
   const [attempt, setAttempt] = useState(0);
-  const pane = useRef<HTMLDivElement>(null);
-  const keep = useRef(false);
-  const retry = useCallback(() => {
-    keep.current = pane.current?.contains(document.activeElement) ?? false;
-    setAttempt((n) => n + 1);
-  }, []);
-  useLayoutEffect(() => {
-    if (!keep.current) return;
-    keep.current = false;
-    const fell = document.activeElement === null || document.activeElement === document.body;
-    if (!fell) return;
-    // What landed in this same render takes the keys at once (the rows, a result list, an empty list's action); else the
-    // pane holds them, and what lands later takes them from it.
-    const find = (selector: string) => pane.current?.querySelector<HTMLElement>(selector) ?? null;
-    // An empty list with no action of its own hands them to the search field.
-    const landed = find("[role=listbox], [data-slot=empty] button") ?? (find("[data-slot=empty]") ? find("input[type=search]") : null);
-    (landed ?? pane.current)?.focus({ preventScroll: true });
-  }, [attempt]);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const pane = useKeptKeys<HTMLDivElement>(landedIn);
   return (
     <div ref={pane} tabIndex={-1} data-list-pane className="focus-ring flex h-full min-h-0 flex-col">
       <ListBody key={attempt} workspaceId={workspaceId} job={job} narrow={narrow} shown={shown} onOpen={onOpen} retry={retry} />
@@ -74,8 +59,11 @@ export function ChatList({ workspaceId, job, narrow, shown = true, onOpen }: { w
   );
 }
 
-/** Whether the list's pane holds the keys for a Retry's read: what lands takes them. */
-const paneHoldsKeys = (): boolean => document.activeElement?.hasAttribute("data-list-pane") ?? false;
+/** What in the list's pane takes the keys when the control that held them goes: nothing until a read has landed. */
+function landedIn(pane: HTMLElement): HTMLElement | null {
+  const find = (selector: string) => pane.querySelector<HTMLElement>(selector);
+  return find("[role=listbox]") ?? find("[data-slot=empty] button") ?? (find("[data-slot=empty]") ? find("input[type=search]") : null);
+}
 
 /** Whether the job has a chat source: yes, no, not known yet, or the sources did not load. */
 type Linked = boolean | null | "failed";
@@ -305,7 +293,6 @@ function RowsWindow({
   // Back where he left this list as it shows; and, come back from a conversation under 640px, the keys on the row he left.
   useLayoutEffect(() => {
     if (!shown) return;
-    if (paneHoldsKeys()) listbox.current?.focus({ preventScroll: true });
     const el = scroller.current;
     if (el) el.scrollTop = listTopOf(workspaceId, filter);
     // The row he left, or, gone from this list meanwhile (read, under Unread), the one now in its place.
@@ -565,8 +552,6 @@ function ListEmpty({
   useLayoutEffect(() => {
     const fell = document.activeElement === null || document.activeElement === document.body;
     if (takesKeys?.() && fell) return void button.current?.focus();
-    // A Retry's read landing on an empty list: its action, or the search field when it has none.
-    if (paneHoldsKeys()) return void (button.current ?? document.querySelector<HTMLElement>("[data-list-pane] input[type=search]"))?.focus();
     if (!ws || !shown || !peekReturn(ws)) return;
     if (!keep) takeReturn(ws);
     button.current?.focus();
@@ -654,7 +639,6 @@ function SearchHits({
   // for the search Retry brings, its Retry holding the keys meanwhile. Later answers, as he types, take nothing.
   useLayoutEffect(() => {
     if (!shown || !list?.length || hits.status === "failed") return;
-    if (paneHoldsKeys()) listbox.current?.focus({ preventScroll: true });
     const back = peekReturn(workspaceId);
     if (!back) return;
     takeReturn(workspaceId);

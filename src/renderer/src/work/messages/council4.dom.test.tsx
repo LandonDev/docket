@@ -304,14 +304,17 @@ describe("the way back into a search", () => {
 });
 
 describe("Discard by the field's revision", () => {
-  it("leaves the same words typed again as his own while Discard went", async () => {
+  // Round 10: Discard holds the conversation's gate, so nothing can be typed while it goes; it empties the field it found.
+  it("holds the field read only while Discard goes, then empties the field it found", async () => {
     const { data } = mount({ slowDrop: true, drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
     fireEvent.click(inComposer("Discard")!);
+    expect(field().readOnly).toBe(true);
     type("");
-    type(HELD_DRAFT.text);
+    expect(field().value).toBe(HELD_DRAFT.text);
     await act(async () => data.release());
     await flush();
-    expect(field().value).toBe(HELD_DRAFT.text);
+    expect(data.log.dropped).toEqual([HELD_DRAFT.id]);
+    expect(field().value).toBe("");
     expect(typedFromDraft(WS, "c_dana")).toBeNull();
   });
 });

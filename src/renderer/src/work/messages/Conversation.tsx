@@ -11,6 +11,7 @@ import { openWorkView } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { useMessagesData, type Paged } from "./data";
 import { Composer } from "./Composer";
+import { keptWithin, useKeptKeys } from "./keptKeys";
 import { MessageBlock } from "./Message";
 import { blocksOf, chatFact, estimateOf, menuKey, newSince, wantsRead, type Block } from "./model";
 import { dropWanted, heldUnread, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, settleFile, useFileWants, useWanted, type FileWant, visitPlaceOf, visitSince } from "./page";
@@ -24,23 +25,19 @@ import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows
  * Opening it marks it read, and so does a message that arrives while it is
  * open and the window is in front. The composer sits at its foot.
  */
+/** What in the conversation's pane takes the keys when the control that held them goes: nothing until a read has landed. */
+function landedIn(pane: HTMLElement): HTMLElement | null {
+  const find = (selector: string) => pane.querySelector<HTMLElement>(selector);
+  return find("[data-slot=empty] button") ?? find("[role=log]") ?? (find("[data-slot=empty]") ? find("[data-composer] textarea") : null);
+}
+
 export function Conversation(props: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void }) {
-  // Retry asks LifeOS afresh: the conversation's reads are mounted again. The press takes its own button away, so when it
-  // held the keys the conversation's pane holds them while the read runs (a stable target, as the Outbox quote's slot),
-  // and what lands takes them from it: the column, or the next failure's Retry.
+  // Retry asks LifeOS afresh: the conversation's reads are mounted again. The press takes its own button away; the pane's
+  // keeper (keptKeys.tsx) holds the keys while the read runs and hands them to what lands: the next failure's Retry, the
+  // gone conversation's Back to Messages, the column, or the composer's field when there are no messages yet.
   const [attempt, setAttempt] = useState(0);
-  const pane = useRef<HTMLDivElement>(null);
-  const keep = useRef(false);
-  const retry = useCallback(() => {
-    keep.current = pane.current?.contains(document.activeElement) ?? false;
-    setAttempt((n) => n + 1);
-  }, []);
-  useLayoutEffect(() => {
-    if (!keep.current) return;
-    keep.current = false;
-    const fell = document.activeElement === null || document.activeElement === document.body;
-    if (fell) pane.current?.focus({ preventScroll: true });
-  }, [attempt]);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const pane = useKeptKeys<HTMLDivElement>(landedIn);
   return (
     <div ref={pane} tabIndex={-1} data-conversation-pane className="focus-ring h-full min-h-0">
       <ConversationBody key={attempt} {...props} retry={retry} />
@@ -112,17 +109,6 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
   const away = loaded ? fileWants.filter((want) => !loaded.some((m) => m._id === want.messageId)) : [];
 
   const failed = detail.status === "failed" || messages.status === "failed";
-  // A Retry's read landing while the pane holds the keys: the column takes them, or the next failure's Retry does.
-  const settled = failed || (detail.status === "ready" && (messages.status === "ready" || !detail.value));
-  useEffect(() => {
-    if (!settled || !document.activeElement?.hasAttribute("data-conversation-pane")) return;
-    const pane = document.activeElement as HTMLElement;
-    // A failure's Retry; else the column; else, a conversation with no messages yet, the composer's field; else, the
-    // conversation gone, its Back to Messages.
-    const empty = pane.querySelector<HTMLElement>("[data-slot=empty] button");
-    const target = failed ? empty : (pane.querySelector<HTMLElement>("[role=log]") ?? pane.querySelector<HTMLElement>("[data-composer] textarea") ?? empty);
-    target?.focus({ preventScroll: true });
-  }, [settled, failed]);
   const gone = detail.status === "ready" && !detail.value;
   return (
     <div data-conversation className="flex h-full min-h-0 flex-col">
@@ -213,7 +199,8 @@ function Toolbar({
     // The conversation's region includes Retry's pane, which holds the keys while a read runs: the read's own hand-off
     // (the column, the next Retry, the composer) takes them from there, not Back.
     const pane = back.current?.closest("[data-conversation-pane]") ?? back.current?.closest("[data-conversation]");
-    if (!pane?.contains(document.activeElement)) back.current?.focus({ preventScroll: true });
+    if (pane && (pane.contains(document.activeElement) || keptWithin(pane))) return;
+    back.current?.focus({ preventScroll: true });
     // biome-ignore lint/correctness/useExhaustiveDependencies: on the crossing alone
   }, [narrow]);
   // Start thread has its own button; More holds the rest, Mention only while a thread is open.

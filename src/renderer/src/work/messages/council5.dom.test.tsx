@@ -164,44 +164,32 @@ describe("every async step judged by the field as pressed", () => {
     return data;
   }
 
-  it("Undo saves edits typed under the draft while its save went, before the recalled words take the field", async () => {
+  // Round 10: Undo's placement and Copy hold the conversation's gate, so the field is read only while they wait; what
+  // these tests typed meanwhile can no longer be typed.
+  it("Undo saves the draft's edit while the field is held read only, then places his recalled words", async () => {
     const data = await sendThenUseDraft({ slowSave: true });
     type(`${HELD_DRAFT.text} One.`);
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     await flush();
+    expect(field().readOnly).toBe(true);
     type(`${HELD_DRAFT.text} One. Two.`);
     await act(async () => data.release());
     await flush();
-    await act(async () => data.release());
-    await flush();
-    expect(data.log.saved.map((s) => s.text)).toEqual([`${HELD_DRAFT.text} One.`, `${HELD_DRAFT.text} One. Two.`]);
+    expect(data.log.saved.map((s) => s.text)).toEqual([`${HELD_DRAFT.text} One.`]);
     expect(field().value).toBe("My reply");
     expect(typedFromDraft(WS, "c_dana")).toBeNull();
   });
 
-  it("Undo keeps words that became his own during the save, behind the recalled words", async () => {
-    const data = await sendThenUseDraft({ slowSave: true });
-    type(`${HELD_DRAFT.text} One.`);
-    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    await flush();
-    type("");
-    type("Something else entirely");
-    await act(async () => data.release());
-    await flush();
-    expect(field().value).toBe("My reply\nSomething else entirely");
-    expect(typedFromDraft(WS, "c_dana")).toBeNull();
-  });
-
-  it("Copy's cleanup leaves a new reply typed while the clipboard was written", async () => {
+  it("Copy holds the field read only while the clipboard is written, then its cleanup empties the field it found", async () => {
     const { data } = mount({ drafts: { c_playtest: [COPY_DRAFT] } }, "c_playtest");
     clipboard.hold = () => {};
     fireEvent.click(inComposer("Copy")!);
-    type("");
+    expect(field().readOnly).toBe(true);
     type("A new reply of my own");
     await act(async () => clipboard.hold?.());
     await flush();
     expect(data.log.dropped).toEqual([COPY_DRAFT.id]);
-    expect(field().value).toBe("A new reply of my own");
+    expect(field().value).toBe("");
   });
 });
 

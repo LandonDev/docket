@@ -2,6 +2,7 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { CHAT_ROUTES, SOURCE_NAME, type ChatDetail, type ChatFace, type ChatHit, type ChatKind, type ChatMessage, type ChatRoute, type ChatRow, type ChatSource, type ChatSourceState } from "@shared/work/messages";
 import type { LifeosQuery } from "../shell/lifeos";
 import type { FileVerb, MessagesData, Paged, ThreadDraft } from "./data";
+import { discardRefusal } from "./drafts";
 import { fileVerb } from "./files";
 import { INVENTORY, LEVEL } from "./pictures.fixtures";
 import { firstName, type ChatFilter } from "./model";
@@ -277,6 +278,8 @@ export interface FixtureOptions {
   refuseSend?: string;
   /** Discard is refused with these words and the item stays held. */
   discardRefused?: string;
+  /** Discard is answered with the item in this state, not discarded (another window claimed it first). */
+  discardAnswer?: "sending" | "sent";
   /** Saving an edit to a held draft (Undo's save) is refused with these words. */
   saveRefused?: string;
   /** A held draft pressed with words other than its own is refused before anything is saved (the host's check of an edit, a
@@ -347,6 +350,8 @@ export interface FixtureControls {
   failFile(chatId: string, messageId: string, fileId: string, reason: string): void;
   /** A held item leaves the Outbox's Waiting list from elsewhere (discarded or decided in another window). */
   dropElsewhere(draftId: string): void;
+  /** LifeOS's route for a conversation changes (the Mac goes away, comes back). */
+  setRoute(chatId: string, route: ChatRoute): void;
 }
 
 export function fixtureData(options: FixtureOptions = {}): MessagesData & FixtureControls {
@@ -423,6 +428,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
   const chatOfDraft = (id: string): string | undefined => Object.keys(drafts).find((chatId) => drafts[chatId]!.some((d) => d.id === id));
   let letGo: (() => void) | null = null;
   let refusedPresses = 0;
+  const routeNow = new Map<string, ChatRoute>();
   const lingering: (() => void)[] = [];
   const lateUnread: string[] = [];
   /** A settled draft leaves the list at once, or at `catchUp` when the list lags. */
@@ -446,6 +452,10 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
         chatId,
         messagesOf(chatId).map((m) => (m._id === messageId ? { ...m, files: m.files.map((f) => (f._id === fileId ? { ...f, status: "failed" as const, url: undefined, error: reason } : f)) } : m)),
       );
+    },
+    setRoute(chatId, route) {
+      routeNow.set(chatId, route);
+      changed();
     },
     dropElsewhere(draftId) {
       const chatId = chatOfDraft(draftId);
@@ -488,6 +498,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       return options.loading ? null : all.filter((row) => row.unread).length;
     },
     useChat(id) {
+      useVersion();
       const all = useRows();
       const [failed] = useState(() => failing("chat"));
       if (failed) return FAILED;
@@ -495,7 +506,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       const chat = all.find((row) => row._id === id);
       if (!chat) return ready(null);
       const source = sources.find((s) => s.kind === chat.source) ?? null;
-      const route: ChatRoute = options.routes?.[id] ?? (CHAT_ROUTES[chat.source] === "lifeos" ? { can: true } : { can: false, why: copyWhy(chat) });
+      const route: ChatRoute = routeNow.get(id) ?? options.routes?.[id] ?? (CHAT_ROUTES[chat.source] === "lifeos" ? { can: true } : { can: false, why: copyWhy(chat) });
       const detail: ChatDetail = { chat, source, route, ...(chat.kind === "direct" ? { email: `${chat.name.split(" ")[0]!.toLowerCase()}@starboard.games` } : {}), ...(chat.link ? { link: chat.link } : {}) };
       return ready(detail);
     },
@@ -616,6 +627,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     async dropDraft(draft) {
       if (options.slowDrop) await new Promise<void>((go) => (letGo = go));
       if (options.discardRefused) throw new Error(options.discardRefused);
+      if (options.discardAnswer) throw new Error(discardRefusal({ state: options.discardAnswer })!);
       log.dropped.push(draft.id);
       const chatId = chatOfDraft(draft.id);
       if (chatId) settleDraft(chatId, draft.id);
