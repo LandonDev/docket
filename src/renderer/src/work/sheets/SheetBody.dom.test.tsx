@@ -4,7 +4,7 @@
  * view and op log and a table in place of Univer's grid: suggestions laid
  * into their cells and stepped from the bar, edits sent in batches from the
  * revision the grid stands at, a conflict caught up and sent again, another
- * person's op brought in, the written line, a chart, and the switch.
+ * person's op brought in, the written line, charts and pictures, and the switch.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +16,6 @@ import { defineChunk } from "../../lib/lazyChunk";
 import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
 import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
-import { ChartObject, chartWidth } from "./SheetBody";
 import { EDIT_MAX, LOAD_MAX } from "./host";
 import { EDIT_WAIT, resetSheetSyncs } from "./sync";
 import { fakeGrid, fakeSheetHost, sheetView, suggestion, workbookOf, type FakeGrid, type FakeSheetHost } from "./testkit";
@@ -103,7 +102,8 @@ function open(view: SheetView, options: { selection?: string; item?: CanvasItem;
 }
 
 const cell = (a1: string): HTMLElement => document.querySelector<HTMLElement>(`[data-cell="${a1}"]`)!;
-const gridUp = () => waitFor(() => expect(grid.listening()).toBe(true));
+// (the first open in the file loads the grid's code cold: over a second on a busy host)
+const gridUp = () => waitFor(() => expect(grid.listening()).toBe(true), { timeout: 5000 });
 const edits = () => sheetHost.calls.filter((c) => c[0] === "edit").map((c) => c[1] as { baseRev: number; mutations: SheetMutationJson[] });
 
 beforeEach(async () => {
@@ -653,61 +653,19 @@ describe("the sheet kind", () => {
     await waitFor(() => expect(sheetHost.calls).toContainEqual(["undo", "w1"]));
   });
 
-  it("draws a chart's bars from the cells of its range", async () => {
-    open(sheetView({ charts: [{ id: "c1", sheet: "budget", range: "A1:E5", title: "Spend", row: 7, col: 1 }] }));
-    await gridUp();
-    const chart = await waitFor(() => {
-      const el = document.querySelector<HTMLElement>('[data-sheet-chart="c1"]');
-      expect(el).not.toBeNull();
-      return el!;
-    });
-    // A1:E5's first column names the bars and its second sizes them; the header and Ground (no quantity) have no number.
-    expect(chart.querySelectorAll("[data-sheet-bar]")).toHaveLength(3);
-    expect(within(chart).getByText("Flights")).toBeTruthy();
-  });
-
-  it("draws a credit left of a zero line by its size, never as a zero, on a signed axis", () => {
-    const chart = { id: "c2", sheet: "budget", range: "A1:B4", title: "Net", row: 1, col: 4 };
-    const { container, unmount } = render(
-      <ChartObject chart={chart} locked bars={[{ label: "Flights", value: 4000 }, { label: "Refund", value: -2000 }, { label: "Fees", value: 0 }]} remove={() => undefined} />,
-    );
-    const bars = [...container.querySelectorAll<HTMLElement>("[data-sheet-bar]")];
-    // The axis runs -2k to 4k: zero sits a third of the way along, and the credit fills the third left of it.
-    expect([...container.querySelectorAll("[data-sheet-chart] .tabular-nums span")].map((t) => t.textContent)).toEqual(["\u22122k", "0", "2k", "4k"]);
-    const zero = container.querySelector<HTMLElement>("[data-sheet-zero]")!;
-    expect(zero).not.toBeNull();
-    expect(zero.className).toContain("border-border");
-    expect(zero.style.left).toContain("0.3333");
-    expect(parseFloat(bars[0]!.style.left)).toBeCloseTo(33.3, 1);
-    expect(parseFloat(bars[0]!.style.width)).toBeCloseTo(66.7, 1);
-    expect(bars[1]!.getAttribute("data-sign")).toBe("negative");
-    expect(parseFloat(bars[1]!.style.left)).toBeCloseTo(0.0, 1);
-    expect(parseFloat(bars[1]!.style.width)).toBeCloseTo(33.3, 1);
-    // A true zero is a zero: no length.
-    expect(parseFloat(bars[2]!.style.width)).toBeCloseTo(0.0, 1);
-    unmount();
-    // All credits: the bars run left from zero at the right end; the ticks are all signed.
-    const all = render(<ChartObject chart={chart} locked bars={[{ label: "Refund", value: -3000 }, { label: "Credit", value: -1000 }]} remove={() => undefined} />).container;
-    const credit = [...all.querySelectorAll<HTMLElement>("[data-sheet-bar]")];
-    expect(credit.map((b) => b.getAttribute("data-sign"))).toEqual(["negative", "negative"]);
-    expect(parseFloat(credit[0]!.style.left)).toBeCloseTo(0.0, 1);
-    expect(parseFloat(credit[0]!.style.width)).toBeCloseTo(100.0, 1);
-    expect(parseFloat(credit[1]!.style.left)).toBeCloseTo(66.7, 1);
-    expect(parseFloat(credit[1]!.style.width)).toBeCloseTo(33.3, 1);
-    expect(all.querySelector<HTMLElement>("[data-sheet-zero]")!.style.left).toMatch(/84px \+ 1 \*|\* 1\.0000/);
-    // An all-positive chart keeps its look: zero is the bars' start, with no line drawn in the plot.
-    const plain = render(<ChartObject chart={chart} locked bars={[{ label: "Flights", value: 5768 }]} remove={() => undefined} />).container;
-    expect(plain.querySelector("[data-sheet-zero]")).toBeNull();
-  });
-
-  it("makes a chart from a selection two columns wide through More", async () => {
-    open(sheetView(), { selection: "A1:B5" });
+  it("makes a chart from the selection's block through More where the sheet keeps charts, and offers none where it does not", async () => {
+    open(sheetView({ row: [...ROW_ALL, "chart", "picture", "objects"] }), { selection: "A1:B5" });
     await gridUp();
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Chart" }));
-    await waitFor(() => expect(sheetHost.calls.some((c) => c[0] === "chart")).toBe(true));
-    const made = sheetHost.calls.find((c) => c[0] === "chart")![1] as { chart: { range: string; title: string; col: number } };
-    expect(made.chart).toMatchObject({ range: "A1:B5", title: "Qty", col: 3 });
+    await waitFor(() => expect(grid.handle!.objects.list().charts.map((c) => c.id)).toEqual(["chart-selection"]));
+    cleanup();
+    resetSheetSyncs();
+    open(sheetView(), { selection: "A1:B5" });
+    await gridUp();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("menuitem", { name: "Preview…" });
+    expect(screen.queryByRole("menuitem", { name: "Chart" })).toBeNull();
   });
 
   it("offers Preview… in More for every sheet, in place of the export rows", async () => {
@@ -915,7 +873,7 @@ describe("the sheet kind", () => {
       await gridUp();
       const share = await screen.findByRole("button", { name: "Share" });
       fireEvent.click(await screen.findByRole("button", { name: "More" }));
-      await screen.findByRole("menuitem", { name: "Chart" });
+      await screen.findByRole("menuitem", { name: "Preview…" });
       expect(screen.queryByRole("menuitem", { name: "Share" })).toBeNull();
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
       // The bar's narrow form hides Share whole; the bar says so as it resizes.
@@ -1052,12 +1010,6 @@ describe("the sheet kind", () => {
     expect(contextChipsOf("t1")[0]?.label).toBe("A1:B5, Nationals travel budget.xlsx");
   });
 
-  it("fits a chart to a narrow body, never under 200px, and keeps 380px where there is room", () => {
-    expect(chartWidth(0)).toBe(380);
-    expect(chartWidth(1200)).toBe(380);
-    expect(chartWidth(360)).toBe(296);
-    expect(chartWidth(220)).toBe(200);
-  });
 });
 
 describe("the format row", () => {

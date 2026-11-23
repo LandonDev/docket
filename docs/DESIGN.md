@@ -1277,10 +1277,9 @@ The kinds, each a hand-made body built from components/ui:
   its row and column headers take `muted`. Another person's cell is their
   presence hue as a 2px outline with their name on its right edge. A
   change is one cell or one run of neighbours. Columns keep the file's
-  widths and scroll; a number never clips. An Excel file's charts and
-  pictures are its own, in its theme's colours ("Work editors": a sheet's
-  charts and pictures); our old charts on a `.tcsheet` or a LifeOS sheet
-  are plain bars on the neutral. A Microsoft-hosted file has a switch in the tab row
+  widths and scroll; a number never clips. A sheet's charts and pictures
+  wear its theme's colours ("Work editors": a sheet's charts and
+  pictures). A Microsoft-hosted file has a switch in the tab row
   beside ⋯ ("TempCode", "Excel"); the hosted app then fills the body edge
   to edge and our formula bar and sheet tabs go. An opened Excel file that
   holds what only Excel does says so at the end of the kind's own tools
@@ -2746,7 +2745,8 @@ set by hand.
   is said in a small notice by the cell, in the rule's own words when it
   has some. Univer's own panels for these never open.
 - **A sheet's charts and pictures** (work-kit `src/sheet/objects`; on an
-  opened Excel file). A chart's colours are the file's theme, as cell fills
+  opened Excel file, a `.tcsheet` and a LifeOS sheet, and to see on a
+  guest's page). A chart's colours are the file's theme, as cell fills
   are (TempCode's theme for a sheet made here: `chart-1` to `chart-4` as
   accents 1 to 4), and are never themed: they hold in light and dark. The
   frame: 12px in, a 1px `border`, 8px corners, `background`; the title 12px

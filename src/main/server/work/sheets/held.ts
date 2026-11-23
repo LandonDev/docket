@@ -2,8 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, statSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, sep } from 'node:path'
-import { legacyChartSpec } from './patch/charts-legacy'
-import { SHEET_NOTES, SHEET_ROW, type SheetChart, type SheetMutationJson, type SheetStoreKind, type SheetView } from '@shared/contract-work-sheets'
+import type { ChartSpec } from 'work-kit/sheet/xlsx'
+import { legacyChartSpec, type OldChartRow } from './patch/charts-legacy'
+import { SHEET_NOTES, SHEET_ROW, type SheetMutationJson, type SheetStoreKind, type SheetView } from '@shared/contract-work-sheets'
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
 import { refKey } from '@shared/work/files'
 import { FenceError } from '../../remote/fence'
@@ -279,14 +280,9 @@ export function fence(ctx: WorkCtx, by: Caller, item: CanvasItem, method: string
 /** Who did it, as a principal: the owner at a screen, else the thread whose call it is. */
 export const principalOf = (ctx: WorkCtx, by: Caller): Principal => (by.kind === 'model' && by.sessionId ? agentPrincipal(ctx.host, by.sessionId) : 'owner')
 
-export function chartsOf(ctx: WorkCtx, store: string): SheetChart[] {
+export function chartsOf(ctx: WorkCtx, store: string): OldChartRow[] {
   const rows = ctx.db.prepare('SELECT json FROM work_sheets_charts WHERE store = ? ORDER BY rowid').all(store) as { json: string }[]
-  return rows.map((r) => JSON.parse(r.json) as SheetChart)
-}
-
-export function setChart(ctx: WorkCtx, store: string, chart: SheetChart, remove: boolean): void {
-  if (remove) ctx.db.prepare('DELETE FROM work_sheets_charts WHERE store = ? AND id = ?').run(store, chart.id)
-  else ctx.db.prepare('INSERT INTO work_sheets_charts (store, id, json) VALUES (?, ?, ?) ON CONFLICT (store, id) DO UPDATE SET json = excluded.json').run(store, chart.id, JSON.stringify(chart))
+  return rows.map((r) => JSON.parse(r.json) as OldChartRow)
 }
 
 /** An old chart row gone: it became a chart in the file. */
@@ -303,24 +299,28 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   // A Files tab's owner is no thread and has no scope: what others can open is read from the source itself.
   const scope = s.ctx.scopeOf(item.sessionId)
   const shared = sharedOf(s.ctx, item.source) || (scope?.shared(item.source) ?? false)
-  const base = { itemId: item.id, sessionId: item.sessionId, mode: s.suggestions.mode(key), charts: chartsOf(s.ctx, key), ...(offersGoogle(s.ctx, held, item.source) ? { canUpload: true as const } : {}) }
+  const base = { itemId: item.id, sessionId: item.sessionId, mode: s.suggestions.mode(key), ...(offersGoogle(s.ctx, held, item.source) ? { canUpload: true as const } : {}) }
+  // Our old charts (`work_sheets_charts`, plain bars kept beside a sheet before it kept charts of its own) as the charts they
+  // become: drawn on the grid, and kept with the sheet at the next change to that tab's charts (index.ts ends the row then).
+  const rows = chartsOf(s.ctx, key)
+  const legacyOf = (sheets: readonly { id: string; name: string }[]): { legacyCharts?: ChartSpec[] } => {
+    const specs = rows.flatMap((row) => {
+      const tab = sheets.find((x) => x.id === row.sheet)?.name
+      const spec = tab === undefined ? undefined : legacyChartSpec(row, tab)
+      return spec ? [spec] : []
+    })
+    return specs.length ? { legacyCharts: specs } : {}
+  }
   const written = s.suggestions.written(key)
   if (held.at === 'package') {
     const st = await s.packages.open(held.path)
     // A workbook others can open is held by this tab: its copies go when the tab does (index.ts `itemsRemoved`).
     s.packages.hold(held.path, item.id, item.sessionId)
-    // Our old charts of this file, kept beside it before the file could hold one: drawn now as the charts they become,
-    // and written into the file with the next change to that tab's charts (index.ts drops the row then), never before.
-    const legacy = base.charts.flatMap((row) => {
-      const tab = st.inspected.sheets.find((x) => x.id === row.sheet)?.name
-      const spec = tab === undefined ? undefined : legacyChartSpec(row, tab)
-      return spec ? [spec] : []
-    })
     const imported = importedOf(held)
     return {
       ...base,
-      charts: [],
-      ...(legacy.length ? { legacyCharts: legacy } : {}),
+      // (written into the file with his next change to that tab's charts, never before)
+      ...legacyOf(st.inspected.sheets),
       // A copy of another format goes by the name of the file it was made from.
       name: imported?.name ?? basename(held.path),
       ...(imported ? { imported } : {}),
@@ -374,6 +374,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   const store: SheetStoreKind = 'lifeos' in held.ref ? 'lifeos' : held.csv ? 'csv' : 'tcsheet'
   return {
     ...base,
+    ...(store === 'csv' ? {} : legacyOf(st.sheets)),
     name: st.title,
     store,
     // The format row's controls: the ones this store keeps (rowMatrix.test.ts).

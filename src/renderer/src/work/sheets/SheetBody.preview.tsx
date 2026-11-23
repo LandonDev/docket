@@ -14,11 +14,11 @@ import type { CanvasBodyProps, CanvasKindDef } from "../canvas/kind";
 import { CANVAS } from "../canvas/registry";
 import { applyCanvasPush, resetCanvasStore } from "../canvas/store";
 import * as SheetBody from "./SheetBody";
-import { BUDGET, BUDGET_CHANGES, INVOICES, SPEND } from "./SheetBody.preview.fixtures";
+import { BUDGET, BUDGET_CHANGES, INVOICES } from "./SheetBody.preview.fixtures";
 import { resetSheetSyncs, SheetSync, syncOf, type Workbook } from "./sync";
 import { fakeGrid, fakeSheetHost, sheetView, type FakeGrid } from "./testkit";
 
-export type SheetMoment = "suggestions" | "stepped" | "own" | "format" | "proposed" | "chart" | "loading" | "readonly" | "waits";
+export type SheetMoment = "suggestions" | "stepped" | "own" | "format" | "proposed" | "loading" | "readonly" | "waits";
 
 void workCanvasChunk.load();
 
@@ -51,13 +51,6 @@ function setUp(moment: SheetMoment): { view: SheetView; book: Workbook; title: s
         row: [...SHEET_ROW.package],
         changes: [{ id: "f1", changeSet: "turn2", by: "agent:local:t1", kind: "format", sheet: "budget", range: { startRow: 3, endRow: 7, startColumn: 4, endColumn: 4 }, words: "Bold, yellow fill on E4:E8", state: "pending", reason: "the line totals" }],
       }),
-    };
-  if (moment === "chart")
-    return {
-      title: "Nationals travel budget.xlsx",
-      book: SPEND,
-      grid: fakeGrid({ selection: "B3" }),
-      view: sheetView({ shared: true, charts: [{ id: "c1", sheet: "budget", range: "A1:B6", title: "Spend by category", row: 7, col: 0 }] }),
     };
   // An opened Excel file that holds what only Excel does: the bar says what waits there, beside the switch.
   if (moment === "waits")

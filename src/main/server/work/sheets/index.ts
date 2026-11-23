@@ -18,7 +18,7 @@ import { writeCsv, writeXlsx, writeXlsxWhole } from './writer'
 import { ensureChangeTables } from './changes'
 import { dropSharedImports, ensureImported, importAct } from './formatsIn'
 import { SHEET_BACK_CONVERTERS } from './formatsInBack'
-import { afterEdit, chartsOf, dropChart, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setChart, setSharedPath, sheetsOf, storeKey, viewFor, viewOf, type Held, type Sheets } from './held'
+import { afterEdit, chartsOf, dropChart, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setSharedPath, sheetsOf, storeKey, viewFor, viewOf, type Held, type Sheets } from './held'
 import { sheetFileMoved } from './moved'
 import { ensurePackageTables, type Moved } from './packages'
 import { dropSharedPreviews, dropSharedPreviewsOf, exportPreview, previewSheet, readSheetPreview, SHEET_PREVIEW_CONVERTERS, sheetFilePreviewer, sweepPreviewScratch } from './preview'
@@ -74,14 +74,22 @@ async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: She
       // Rows, columns or sheets changed: a waiting format or rule may no longer be where the agent saw it.
       s.changes.orphanAll(storeKey(held))
     } else afterEdit(s, storeKey(held), mutations)
-    // A tab's chart list saved ends its old chart rows (held.ts `legacyCharts`): each was in the list and is now a chart
-    // in the file, or he took it out.
-    const tabs = new Set(mutations.filter((m) => isObjectList(m) && (m.params as RulesSetParams).kind === 'charts').map((m) => (m.params as RulesSetParams).subUnitId))
-    for (const row of tabs.size ? chartsOf(s.ctx, storeKey(held)) : []) if (tabs.has(row.sheet)) dropChart(s.ctx, storeKey(held), row.id)
+    endOldCharts(s, storeKey(held), mutations)
     // The charts and pictures the file now names otherwise: the canvas that sent them takes the file's ids.
     return got.ids ? { rev: got.rev, ids: got.ids } : { rev: got.rev }
   }
-  return host(s.ctx, 'apply', { sheet: held.ref, baseRev, mutations, by: who })
+  const got = await host(s.ctx, 'apply', { sheet: held.ref, baseRev, mutations, by: who })
+  if (!('conflict' in got)) endOldCharts(s, storeKey(held), mutations)
+  return got
+}
+
+/**
+ * A tab's chart list saved ends its old chart rows (held.ts `legacyCharts`): each was in the list and is now a chart the
+ * sheet keeps, or he took it out.
+ */
+function endOldCharts(s: Sheets, key: string, mutations: readonly SheetMutationJson[]): void {
+  const tabs = new Set(mutations.filter((m) => isObjectList(m) && (m.params as RulesSetParams).kind === 'charts').map((m) => (m.params as RulesSetParams).subUnitId))
+  for (const row of tabs.size ? chartsOf(s.ctx, key) : []) if (tabs.has(row.sheet)) dropChart(s.ctx, key, row.id)
 }
 
 /**
@@ -218,11 +226,6 @@ export const sheets: WorkModule = {
       }
       case 'work.sheets.create':
         return handled({ itemId: (await createSheet(s, req.params.sessionId, req.params.title)).id })
-      case 'work.sheets.chart': {
-        setChart(ctx, storeKey(heldOf(item!, ctx.dataDir)), req.params.chart, req.params.remove)
-        await announce(s, item!)
-        return handled(viewFor(await viewOf(s, item!), by))
-      }
       case 'work.sheets.switch': {
         const held = heldOf(item!, ctx.dataDir)
         if (held.at === 'excel') {

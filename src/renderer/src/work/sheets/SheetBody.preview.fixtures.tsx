@@ -10,7 +10,6 @@ export default [
   { name: "His own sheet: the agent wrote, with Undo", props: { moment: "own" } },
   { name: "A sheet TempCode keeps: the format row", props: { moment: "format" } },
   { name: "An agent proposed a format: said in the formula bar, its range marked", props: { moment: "proposed" } },
-  { name: "A chart over the cells", props: { moment: "chart" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "Read only", props: { moment: "readonly" } },
   { name: "An Excel file with what only Excel does: the bar says what waits there", props: { moment: "waits" } },
@@ -54,16 +53,6 @@ export const BUDGET_CHANGES: SheetSuggestion[] = [
   change("me", 6, 3, usd(55), usd(50)),
   change("ct", 9, 3, { v: 0.08, s: "pct" }, { v: 0.06, s: "pct" }),
 ];
-
-export const SPEND: Workbook = workbookOf([
-  {
-    id: "budget",
-    name: "Budget",
-    widths: [132, 88, 72, 72, 72, 72],
-    rows: [[head("Category"), head("Planned")], ["Flights", usd(5768)], ["Hotel", usd(3969)], ["Ground", usd(1240)], ["Meals", usd(2310)], ["Registration", usd(1800)]],
-  },
-  { id: "quotes", name: "Quotes", rows: [] },
-]);
 
 export const INVOICES: Workbook = workbookOf([
   {

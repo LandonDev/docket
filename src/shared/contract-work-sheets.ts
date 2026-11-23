@@ -158,30 +158,6 @@ export interface SheetWritten {
   undo?: false
 }
 
-/**
- * One of our own charts, drawn over a range (architecture §9.1): plain bars
- * on the neutral. A file's own charts stay in its package untouched.
- */
-export interface SheetChart {
-  id: string
-  /** Univer's sheet id */
-  sheet: string
-  /** the data, A1 on that sheet: the first column names the bars, the next holds their values */
-  range: string
-  title: string
-  /** the top-left cell it sits over */
-  row: number
-  col: number
-}
-const ChartSchema = z.object({
-  id: z.string().min(1).max(100),
-  sheet: z.string().min(1).max(200),
-  range: z.string().min(1).max(100),
-  title: z.string().max(200),
-  row: z.number().int().min(0),
-  col: z.number().int().min(0)
-})
-
 /** Everything the canvas needs beside the workbook itself. */
 export interface SheetView {
   itemId: string
@@ -212,8 +188,7 @@ export interface SheetView {
   saveError?: string
   /** the file is not where the item says */
   missing?: boolean
-  charts: SheetChart[]
-  /** an opened Excel file's old charts (`charts` above, kept here before the file could hold one) as the charts they become; written into the file with the next change to that tab's charts */
+  /** our old charts (plain bars kept beside a sheet before it kept charts of its own) as the charts they become: drawn on the grid, and kept with the sheet at the next change to that tab's charts */
   legacyCharts?: ChartSpec[]
   /** the format row's controls this sheet keeps (`SHEET_ROW`); absent or empty, the canvas draws no row */
   row?: SheetRowControl[]
@@ -334,8 +309,6 @@ export const SheetsRequestSchemas = [
   request('work.sheets.restore', z.object({ itemId, rev: z.number().int().min(0) })),
   /** → { itemId }: a new sheet in the thread's canvas: a LifeOS sheet when the thread's workspace is linked to a sector, else a `.tcsheet` file */
   request('work.sheets.create', z.object({ sessionId: z.string().min(1).max(100), title: z.string().min(1).max(200) })),
-  /** → SheetView: adds or moves one of our charts, or with `remove` takes it off */
-  request('work.sheets.chart', z.object({ itemId, chart: ChartSchema, remove: z.boolean().default(false) })),
   /** → { opened: true, url? }: opens the file in the app `SheetView.reach.to` names (desktop Excel for a package; the full editor on the box answers its page's `url`, which the canvas opens); refused where that app is not on this host. `scheme` is the theme the asking window wears: the full editor opens in it, and follows the browser's system where none is sent (the phone) */
   request('work.sheets.switch', z.object({ itemId, scheme: z.enum(['dark', 'light']).optional() })),
   /**
@@ -399,7 +372,6 @@ export const SHEETS_CAPS = {
   'work.sheets.compare': 'read',
   'work.sheets.restore': 'operate',
   'work.sheets.create': 'operate',
-  'work.sheets.chart': 'operate',
   'work.sheets.switch': 'operate',
   'work.sheets.export': 'operate',
   'work.sheets.preview': 'operate',

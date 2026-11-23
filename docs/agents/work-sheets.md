@@ -302,11 +302,12 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   (`legacyCharts`, `patch/charts-legacy.ts` `legacyChartSpec`), the canvas
   lays it on the grid unsent, and the next change to that tab's charts
   writes it into the file with the rest; a tab's list saved ends that tab's
-  rows (index.ts), whether each was written or he took it out. Nothing is
-  written into the file before his own change. A `.tcsheet` and a LifeOS
-  sheet keep the old charts as they were: the service does not keep the
-  grid's charts and pictures yet, so those stores list none of the three
-  controls.
+  rows (index.ts `endOldCharts`), whether each was written or he took it
+  out. Nothing is written into the file before his own change. A `.tcsheet`
+  and a LifeOS sheet take their old rows the same way ("Sheets the service
+  holds"). A workbook desktop Excel or Google holds keeps no objects, so its
+  old rows are no longer drawn; they stay in the table. The old bars,
+  `work.sheets.chart` and `SheetChart` are gone.
 - **What it cannot keep yet is stopped as he makes it** (`forPackage` and
   `stop`, sync.ts): a cell given only a type, a move where the host does
   not save moves, a note removed, and any change with no saved form (a
@@ -779,8 +780,8 @@ Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
   chart of a newer kind (`chartEx`), which LibreOffice does not draw; a web
   page, formulas, conditional formats, validations, filters, charts and
   pictures. A held sheet's Excel adds the notes and what the model writer
-  left out ("The names stay behind"), and every format the charts made
-  here (`work_sheets_charts`), which no file holds.
+  left out ("The names stay behind"), and every old chart row
+  (`work_sheets_charts`) not yet kept with the sheet.
 - **Pairs this pillar adds** (`SHEET_PREVIEW_CONVERTERS`, on the module's
   `convert`): `xlsm` to `pdf`, `ods`, `xls`, `csv` and `html`; `xlsx` to
   `html`; `xlsx` and `xlsm` to `tsv` (LibreOffice's text export with a tab,
@@ -959,7 +960,40 @@ lands in his own Drive, shared with nobody. Threads have no upload tool.
   (`noteMutations`); history labels a note's op "A note" or "Removed a
   note". A rich cell is the cell's own document (`p`) and needs nothing
   more. The view lists `notes: ['edit', 'add', 'remove']` for a `.tcsheet`
-  and a LifeOS sheet. Held by `host/notes.test.ts`.
+  and a LifeOS sheet. Held by `host/notes.test.ts`;
+- the host keeps each sheet's charts and pictures beside its engine
+  (`host/objects.ts`): Univer holds no resource of ours, so a tab's chart or
+  picture list (`RULES_SET` of kind `charts` or `pictures`, the same op an
+  opened Excel file takes, `subUnitId` the sheet's id) is laid there and
+  never run on Univer; rows, columns and a sheet's name moving under them
+  carry them (work-kit's `objectsOpOf`, `moveObjects`, names as they were
+  before the mutation); every snapshot the host serves or cuts carries them
+  as the kit's `TEMPCODE_SHEET_OBJECTS` (`withObjects`), and a cold load
+  reads them back (`readObjectsResource`); a restore lays the revision's
+  lists for each tab that differs (`objectMutations`). A picture made on
+  the grid comes with its bytes once, as base64 on its entry (`data`, part
+  `media:<id>`); the host keeps them by part and lays the ones still drawn
+  into the snapshot as `TEMPCODE_SHEET_MEDIA` (`MEDIA_RESOURCE`), so they
+  live in the sheet's own store (the `.tcsheet` zip, LifeOS's ops and
+  snapshots), reach a guest in the snapshot he loads, and nothing of them
+  stays on the host. A picture that is no PNG, JPEG, GIF or BMP, one over
+  5 MB, or more than 25 MB a sheet, and a part the grid does not give, are
+  refused in words (`listMisfit`). History labels the op "Chart" or
+  "Picture". The canvas sends a turn's lists after its other mutations
+  (sync.ts `pendingObjects`): rows he put in move the objects on the host,
+  and the list his grid then holds is laid over as the truth (an Undo of
+  rows taken out lays back what the pure move cannot). It builds each list
+  as it is sent (`fresh`), so a retry after a catch-up goes as the grid now
+  holds it, and sends a made picture's bytes until the host has them
+  (`sentMedia`). Lists from elsewhere are laid on the grid's objects, never
+  on its cells (`applyFrom`), and what the grid moves under ops from
+  elsewhere is not sent back (`applying`). A guest's route takes no list
+  (`GUEST_OPS`); his page draws the objects from the snapshot and lays
+  lists that arrive on them (`src/hosted/guest/SheetPage.tsx`). The Excel
+  export writes them through `patchCharts` and `patchPictures`, a made
+  picture from the snapshot's bytes, and says in `left` what a writer
+  refused or whose image is not kept (`writer.ts`). Held by
+  `host/objects.test.ts`.
 
 Main reaches it through `ctx.service.internal('/internal/sheet/<op>')` with
 the bodies of `host/wire.ts`. The LifeOS worker's tools reach
@@ -1189,12 +1223,11 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   where it is installed; Full editor opens it in ONLYOFFICE on the box (next
   section), and its side spins until the host answers the page, which opens
   in the browser (`work.sheets.switch` answers `{ opened, url? }`).
-- Charts and pictures on an opened Excel file are the file's own, drawn and
-  edited by work-kit's grid ("Packages" above); More → Chart makes one from
-  the selection's block there, as Insert → Chart does. On a `.tcsheet` and a
-  LifeOS sheet our old charts stay (`work.sheets.chart`,
-  `work_sheets_charts`): plain neutral bars over a range, made from a
-  selection through More.
+- Charts and pictures are drawn and edited by work-kit's grid on every
+  sheet whose store keeps them (an opened Excel file, a `.tcsheet`, a LifeOS
+  sheet: "Packages" and "Sheets the service holds"); More → Chart makes one
+  from the selection's block there, as Insert → Chart does, and is not
+  offered elsewhere.
 - The format row (docs/DESIGN.md "Work editors: The format row"; work-kit's
   `SheetToolbar` on `src/format`) is the Body's first row, above the formula
   bar, on a LifeOS sheet, a `.tcsheet` and an opened Excel file. A
@@ -1503,9 +1536,6 @@ The harness corpus also keeps the workbooks the editors plan measured with
   Check in Excel for a macro workbook, and for a workbook others can open.
 - Excel's own picture of a page range: Check in Excel draws the whole
   workbook.
-- Charts and pictures on a sheet the service holds (`.tcsheet`, LifeOS):
-  the grid's objects are not kept there yet, so those stores list no
-  `chart`, `picture` or `objects` control and keep the old bars.
 - Presence on the canvas.
 - Keeping IronCalc's model in memory between saves: a save that needs the
   engine loads the package afresh (1.3 s on the 100,000-row file, 22 s on

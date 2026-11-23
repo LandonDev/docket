@@ -2,7 +2,18 @@
 // `work_sheets_charts`): each as the spec of the chart it drew, so the same writer makes it a
 // real chart. It drew plain bars across: the range's first column names them, the next holds
 // their values.
-import type { SheetChart } from '@shared/contract-work-sheets'
+/** One row of `work_sheets_charts`: our old chart, plain bars over a range, drawn over a cell. */
+export interface OldChartRow {
+  id: string
+  /** Univer's sheet id */
+  sheet: string
+  /** the data, A1 on that sheet: the first column names the bars, the next holds their values */
+  range: string
+  title: string
+  /** the top-left cell it sat over */
+  row: number
+  col: number
+}
 import type { ChartSpec } from 'work-kit/sheet/xlsx'
 import { colName, parseRange } from './xml'
 
@@ -17,7 +28,7 @@ const heightFor = (bars: number) => 12 + 20 + 8 + Math.max(1, bars) * 22 + 8 + 1
  * Undefined where its range is not a range. Its id is `legacy:<row id>`: the writer gives back
  * the chart part it became, and the row is then done with.
  */
-export function legacyChartSpec(row: SheetChart, tab: string): ChartSpec | undefined {
+export function legacyChartSpec(row: OldChartRow, tab: string): ChartSpec | undefined {
   let box: ReturnType<typeof parseRange>
   try {
     box = parseRange(row.range)

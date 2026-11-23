@@ -1,4 +1,4 @@
-import type { SheetChart, SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
+import type { SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
 import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
 import type { ObjectIds } from "@shared/work/sheets";
 import { isLightScheme } from "../../lib/appearance";
@@ -47,7 +47,6 @@ export interface SheetHost {
   review(which: ReviewWhich, verdict: "accept" | "reject"): Promise<SheetView>;
   mode(mode: "suggests" | "writes"): Promise<SheetView>;
   undo(writeId: string): Promise<SheetView>;
-  chart(chart: SheetChart, remove?: boolean): Promise<SheetView>;
   /** Writes the sheet out on the host (`work.sheets.export`); answers where it went, and what the file could not hold. */
   exportAs(format: "xlsx" | "csv", sheet?: string): Promise<{ path: string; left?: string[] }>;
   /** What he does with the Excel copy of an .xls, .ods or .tsv (`work.sheets.imported`): save it back, save it out as .xlsx, or read the file again. */
@@ -70,7 +69,6 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
     review: (which, verdict) => call("work.sheets.review", { which, verdict }),
     mode: (mode) => call("work.sheets.mode", { mode }),
     undo: (writeId) => call("work.sheets.undo", { writeId }),
-    chart: (chart, remove = false) => call("work.sheets.chart", { chart, remove }),
     exportAs: (format, sheet) => call("work.sheets.export", { format, ...(sheet ? { sheet } : {}) }),
     imported: (act) => call("work.sheets.imported", { act }),
     switchApp: async () => {

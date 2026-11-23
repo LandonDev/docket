@@ -6,6 +6,10 @@ import { patchTables, TablesRefused, type TablesEdit } from './patch/tables'
 import { patchText, TextRefused, type Run, type TextEdit } from './patch/text'
 import { runsOf } from 'work-kit/sheet/xlsx'
 import { NOTES_RESOURCE } from './host/rules'
+import { heldOf } from './host/objects'
+import { patchCharts } from './patch/charts'
+import { ObjectsRefused } from './patch/drawings'
+import { patchPictures } from './patch/pictures'
 import { fileReferences, fold } from './patch/tables-model'
 import { readZip, writeZip } from './patch/zip'
 import { colName, esc, escText } from './patch/xml'
@@ -350,6 +354,36 @@ export function writeXlsxWhole(wb: IWorkbookData): { bytes: Uint8Array; left: { 
       if (!(err instanceof TextRefused)) throw err
       left.push({ what: 'text styles', sheet: edit.sheet, why: err.message })
     }
+  // Each sheet's charts and pictures (patch/charts.ts, pictures.ts) as real parts, a made picture from the bytes the
+  // snapshot keeps (host/objects.ts). A sheet's list a writer refuses is left out, its cells kept, said.
+  const held = heldOf(wb)
+  const tabs = [...base.ids].flatMap((id) => {
+    const sheet = base.names.get(id)
+    return sheet === undefined ? [] : [sheet]
+  })
+  for (const sheet of tabs) {
+    const charts = held.objects.charts.filter((c) => c.sheet === sheet && !c.chartsheet)
+    if (charts.length)
+      try {
+        bytes = patchCharts(bytes, [{ kind: 'charts', sheet, charts }]).bytes
+      } catch (err) {
+        if (!(err instanceof ObjectsRefused)) throw err
+        left.push({ what: 'charts', sheet, why: err.message })
+      }
+    const pictures = held.objects.pictures.filter((p) => p.sheet === sheet)
+    const drawn = pictures.flatMap((p) => {
+      const m = held.media.get(p.part)
+      return m ? [{ ...p, bytes: new Uint8Array(Buffer.from(m.data, 'base64')) }] : []
+    })
+    if (drawn.length < pictures.length) left.push({ what: 'pictures', sheet, why: 'A picture whose image this sheet does not keep is left out.' })
+    if (drawn.length)
+      try {
+        bytes = patchPictures(bytes, [{ kind: 'pictures', sheet, pictures: drawn }]).bytes
+      } catch (err) {
+        if (!(err instanceof ObjectsRefused)) throw err
+        left.push({ what: 'pictures', sheet, why: err.message })
+      }
+  }
   // A new note needs Excel's comments and drawing parts, which no writer here makes yet: the words stay in TempCode.
   const notes = notesResource(wb)
   for (const id of base.ids) if (Object.keys(notes[id] ?? {}).length) left.push({ what: 'notes', sheet: base.names.get(id), why: 'Notes are not written into an Excel file made here yet.' })

@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { createPortal } from "react-dom";
-import type { SheetChart, SheetView } from "@shared/contract-work-sheets";
-import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, useGridState, type ChartSpec, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
-import { ChartBar, MoreHorizontal, Trash2 } from "../../chrome/icons";
+import type { SheetView } from "@shared/contract-work-sheets";
+import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, type ChartSpec, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
+import { ChartBar } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
-import { RowsMenu } from "../../chrome/menuRows";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { BusyLabel } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
@@ -23,7 +21,7 @@ import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
 import { ImportLine } from "./ImportLine";
 import { importRows, runImport } from "./imported";
-import { chartBars, chartFrom, chartTicks, saidLine, savedLine, sheetChanges, tickText, type ChartBar as Bars } from "./model";
+import { saidLine, savedLine, sheetChanges } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
 import { guestSource } from "../guests/api";
 import { useWorkCommands } from "../formats/command";
@@ -139,7 +137,7 @@ export function Body(props: Props) {
   }, []);
   // Save to Google Sheets: offered on the host's word, once the workbook has opened; a file that reads only here, or moved, is not sent.
   const google = useSaveToGoogle({ env: props.env, itemId: item.id, offered: ready && !locked && view?.canUpload === true });
-  useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, act, showPreview, google.row);
+  useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, showPreview, google.row);
   // File → Export… and ⇧⌘E open Preview on the format he last used; File → Print… and ⌘P on Print. Answered once the grid is
   // up, when the root they are offered for is there.
   useWorkCommands(frame, ready ? { export: () => showPreview("last"), print: () => showPreview("print") } : {});
@@ -251,7 +249,7 @@ export function Body(props: Props) {
           was={was}
           // The sheet's charts and pictures, drawn where Excel draws them; each change goes to its store as the tab's list. A
           // sheet that has none yet still gets the layer where its store keeps them, so Insert → Chart draws what it makes.
-          objects={book.objects ?? (controls.includes("objects") ? NO_OBJECTS : undefined)}
+          objects={book.objects ?? (controls.includes("objects") || view.legacyCharts?.length ? NO_OBJECTS : undefined)}
           media={sync.media}
           onObjects={(change) => sync.object(change)}
           onReady={setHandle}
@@ -265,7 +263,6 @@ export function Body(props: Props) {
           </div>
         ) : null}
       </div>
-      {handle ? <Charts charts={view.charts} grid={grid} handle={handle} tick={state.tick} locked={locked} width={chartWidth(width)} remove={(chart) => act(sync.host.chart(chart, true), "Couldn't remove the chart")} /> : null}
       </div>
       {previewing && source ? (
         <div data-sheet-preview="" className="absolute inset-0 z-10">
@@ -503,7 +500,6 @@ function useSelectionFeed(
   locked: boolean,
   pointer: { current: { x: number; y: number } | null },
   frame: { current: HTMLDivElement | null },
-  act: (work: Promise<SheetView>, fallback: string) => Promise<void>,
   showPreview: (on: "last") => void,
   googleRow: MoreEntry | null,
 ): void {
@@ -536,6 +532,7 @@ function useSelectionFeed(
   // Share in More only while the bar's Share has given way, so it is never offered twice.
   const way = shareWayOf(sync);
   const shareGone = useSyncExternalStore(way.subscribe, way.gone, way.gone) && !!guestSource(source);
+  const charts = !!sync.state.view?.row?.includes("chart");
   // The sheet in hand, by its tab name: the one a CSV takes.
   const activeName = useCallback((): string | undefined => {
     if (!handle) return undefined;
@@ -545,24 +542,22 @@ function useSelectionFeed(
   useEffect(() => {
     if (!shell.more) return;
     shell.more([
-      {
-        id: "chart",
-        label: "Chart",
-        icon: ChartBar,
-        disabled: !wide,
-        run: async () => {
-          const picked = held.current;
-          if (!picked || !handle) return;
-          // Where the file keeps charts, a real one from the selection's block, as Insert → Chart makes it.
-          if (sync.state.view?.row?.includes("chart")) {
-            const refusal = handle.objects.refusal();
-            if (refusal || !handle.objects.add({ chart: "selection" })) void loadToast().then((toast) => toast.message(refusal ?? "Couldn't make the chart"));
-            return;
-          }
-          const chart = chartFrom(picked, grid.values(handle, picked.sheet, picked.reference), `chart-${Date.now().toString(36)}`);
-          await act(sync.host.chart(chart), "Couldn't make the chart");
-        },
-      },
+      // A chart from the selection's block, as Insert → Chart makes it: only where the sheet's store keeps charts.
+      ...(charts
+        ? [
+            {
+              id: "chart",
+              label: "Chart",
+              icon: ChartBar,
+              disabled: !wide,
+              run: () => {
+                if (!handle) return;
+                const refusal = handle.objects.refusal();
+                if (refusal || !handle.objects.add({ chart: "selection" })) void loadToast().then((toast) => toast.message(refusal ?? "Couldn't make the chart"));
+              },
+            },
+          ]
+        : []),
       // Every way out is in Preview: each format drawn as it will be, with what it drops. A sheet read from a .csv still
       // saves back over it.
       ...(store ? [{ id: "preview", label: "Preview…", icon: Export, run: () => showPreview("last") }] : []),
@@ -573,7 +568,7 @@ function useSelectionFeed(
       ...(shareGone ? [{ id: "share", label: "Share", icon: Share, run: () => way.ask() }] : []),
     ]);
     return () => shell.more?.(null);
-  }, [shell, sync, wide, handle, grid, act, store, imported, activeName, shareGone, way, showPreview, googleRow]);
+  }, [shell, sync, wide, handle, charts, store, imported, activeName, shareGone, way, showPreview, googleRow]);
 }
 
 const letters = (column: number): string => {
@@ -582,18 +577,6 @@ const letters = (column: number): string => {
   return name;
 };
 const cellRef = (row: number, column: number): string => `${letters(column)}${row + 1}`;
-
-// ── charts ───────────────────────────────────────────────────────────
-
-const CHART_WIDTH = 380;
-const CHART_MIN = 200;
-/** The grid's row numbers and a margin: what a chart leaves of the body's width. */
-const CHART_ROOM = 64;
-
-/** A chart's width in a body this wide: 380px, less where the body is narrower, never under 200. Width 0 is a body not yet measured. */
-export function chartWidth(body: number): number {
-  return body > 0 ? Math.max(CHART_MIN, Math.min(CHART_WIDTH, body - CHART_ROOM)) : CHART_WIDTH;
-}
 
 /** An element's width, kept as it resizes. */
 function useWidth(node: HTMLElement | null): number {
@@ -605,89 +588,6 @@ function useWidth(node: HTMLElement | null): number {
     return () => observer.disconnect();
   }, [node]);
   return width;
-}
-/** The chart's height for its bars: its padding, the title row, 22px a bar, the axis. */
-const chartHeight = (bars: number): number => 12 + 20 + 8 + Math.max(1, bars) * 22 + 8 + 16 + 12 + 2;
-
-function Charts({ charts, grid, handle, tick, locked, width, remove }: { charts: SheetChart[]; grid: SheetGrid; handle: SheetHandle; tick: number; locked: boolean; width: number; remove(chart: SheetChart): Promise<void> }) {
-  const { active } = useGridState(handle.store);
-  return (
-    <>
-      {charts
-        .filter((chart) => chart.sheet === active)
-        .map((chart) => (
-          <PlacedChart key={chart.id} chart={chart} grid={grid} handle={handle} tick={tick} locked={locked} width={width} remove={remove} />
-        ))}
-    </>
-  );
-}
-
-function PlacedChart({ chart, grid, handle, tick, locked, width, remove }: { chart: SheetChart; grid: SheetGrid; handle: SheetHandle; tick: number; locked: boolean; width: number; remove(chart: SheetChart): Promise<void> }) {
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
-  // The values as the cells hold them now, suggestions laid in: a chart over a change shows what it would leave.
-  const bars = useMemo(() => chartBars(grid.values(handle, chart.sheet, chart.range)), [grid, handle, chart.sheet, chart.range, tick]);
-  const height = chartHeight(bars.length);
-  useEffect(() => grid.place(handle, chart, { width, height }, setSlot), [grid, handle, chart, width, height]);
-  if (!slot) return null;
-  return createPortal(<ChartObject chart={chart} bars={bars} locked={locked} width={width} remove={() => void remove(chart)} />, slot);
-}
-
-/** One of our charts: plain bars on the neutral, named by the range's first column, one series, no legend. */
-export function ChartObject({ chart, bars, locked, width = CHART_WIDTH, remove }: { chart: SheetChart; bars: Bars[]; locked: boolean; width?: number; remove(): void }) {
-  // A signed scale: a credit runs left of the zero line by its size, never drawn as a zero.
-  const { top, bottom, ticks } = chartTicks(bars.reduce((m, b) => Math.max(m, b.value), 0), bars.reduce((m, b) => Math.min(m, b.value), 0));
-  const at = (n: number): number => Math.max(0, Math.min(100, ((n - bottom) / (top - bottom)) * 100));
-  const pct = (n: number): string => `${at(n).toFixed(1)}%`;
-  return (
-    <div data-sheet-chart={chart.id} className="flex max-w-full flex-col gap-2 rounded-lg border border-border bg-background p-3" style={{ width }}>
-      <div className="flex h-5 min-w-0 items-center gap-2 text-xs">
-        <span className="min-w-0 flex-1 truncate font-medium text-foreground">{chart.title}</span>
-        {locked ? null : (
-          <RowsMenu
-            label="Chart"
-            align="end"
-            rows={[{ kind: "item", id: "remove", label: "Remove chart", icon: Trash2 }]}
-            onPick={(id) => id === "remove" && remove()}
-            trigger={
-              <Button variant="ghost" size="icon-xs" className="-me-1 size-5" aria-label="Chart actions">
-                <MoreHorizontal />
-              </Button>
-            }
-          />
-        )}
-      </div>
-      {bars.length === 0 ? (
-        <div className="flex h-[22px] items-center text-xs text-muted-foreground">No numbers in {chart.range}</div>
-      ) : (
-        <div className="relative">
-          {/* Zero is the bars' start; with a credit among them it sits inside the plot as a hairline the bars leave from. */}
-          {bottom < 0 ? (
-            <i aria-hidden data-sheet-zero className="pointer-events-none absolute inset-y-0 w-0 border-s border-border" style={{ left: `calc(84px + (100% - 84px) * ${(at(0) / 100).toFixed(4)})` }} />
-          ) : null}
-          {bars.map((bar, i) => (
-            <div key={i} className="flex h-[22px] items-center gap-2 text-xs text-muted-foreground">
-              <span className="w-[76px] flex-none truncate">{bar.label}</span>
-              <span className="relative h-1.5 min-w-0 flex-1">
-                <span
-                  data-sheet-bar
-                  data-sign={bar.value < 0 ? "negative" : undefined}
-                  className="absolute inset-y-0 rounded-[2px] bg-(--chart-neutral)"
-                  style={{ left: pct(Math.min(0, bar.value)), width: `${(at(Math.max(0, bar.value)) - at(Math.min(0, bar.value))).toFixed(1)}%` }}
-                />
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="relative ms-[84px] h-4 text-xs leading-4 text-muted-foreground tabular-nums">
-        {ticks.map((t, i) => (
-          <span key={t} className={i === 0 ? "absolute top-0" : "absolute top-0 -translate-x-1/2"} style={{ left: pct(t) }}>
-            {tickText(t)}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 // ── loading ──────────────────────────────────────────────────────────

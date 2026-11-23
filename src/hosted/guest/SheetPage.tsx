@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { SheetCanvas, SheetToolbar, type SheetHandle } from "work-kit/sheet";
-import { GUEST_ROW } from "@shared/work/sheets";
+import { readObjectsResource, SheetCanvas, SheetToolbar, type SheetHandle } from "work-kit/sheet";
+import { GUEST_ROW, isObjectList, type RulesSetParams } from "@shared/work/sheets";
+import { listChanges, listMedia, snapshotMedia } from "@renderer/work/sheets/objects";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { StatusMark } from "@renderer/components/ui/status";
 import { OpenFailed, type Opened, type Session } from "./session";
@@ -22,6 +23,27 @@ import { OpenFailed, type Opened, type Session } from "./session";
  */
 
 type Mutation = { id: string; params: Record<string, unknown> };
+
+/** Ops from the sheet laid on the guest's grid: a tab's chart or picture list on its objects (its pictures' bytes kept), the rest on its cells. */
+function laidFrom(h: SheetHandle, mutations: Mutation[], media: Map<string, { bytes: Uint8Array; type: string }>): void {
+  let cells: Mutation[] = [];
+  const flush = (): void => {
+    if (cells.length) h.apply(cells as never);
+    cells = [];
+  };
+  for (const m of mutations) {
+    if (!isObjectList(m)) {
+      cells.push(m);
+      continue;
+    }
+    flush();
+    const tab = h.store.get().sheets.find((x) => x.id === (m.params as unknown as RulesSetParams).subUnitId)?.name;
+    if (tab === undefined) continue;
+    for (const [part, got] of listMedia(m)) media.set(part, got);
+    h.objects.apply(listChanges(h.objects.list(), m, tab));
+  }
+  flush();
+}
 type Incoming = { t: "state"; rev: number; snapshot: string | Record<string, unknown> } | { t: "ops"; rev: number; by: string; mutations: Mutation[] } | { t: "ack"; id: number; rev: number } | { t: "refused"; id: number; reason: string };
 
 const EDIT_WAIT = 150;
@@ -82,6 +104,8 @@ export function SheetPage({
   // The socket is down: the grid stays as it was, read only, under one line, until a fresh state comes.
   const [offline, setOffline] = useState(false);
   const handle = useRef<SheetHandle | null>(null);
+  // The bytes of the pictures made on the owner's grid: the snapshot's, and those that came in an op since.
+  const media = useRef(new Map<string, { bytes: Uint8Array; type: string }>());
   // The grid as the row acts on it: state, so the row draws once the grid is up.
   const [grid, setGrid] = useState<SheetHandle | null>(null);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
@@ -121,13 +145,16 @@ export function SheetPage({
           // A reconnect that finds the sheet where the grid stands keeps the grid as it is.
           const snapshot = typeof msg.snapshot === "string" ? (JSON.parse(msg.snapshot) as Record<string, unknown>) : msg.snapshot;
           l.unit = typeof snapshot.id === "string" ? snapshot.id : "";
-          if (msg.rev !== l.rev || !handle.current) setBook({ snapshot, key: msg.rev * 1000 + ++l.n });
+          if (msg.rev !== l.rev || !handle.current) {
+            media.current = snapshotMedia(snapshot as never);
+            setBook({ snapshot, key: msg.rev * 1000 + ++l.n });
+          }
           l.rev = msg.rev;
         } else if (msg.t === "ops") {
           // Our own ops come back too. A guest's principal is its link's alone; the owner has other windows, so his are known by what was sent.
           const at = msg.by === opened.me ? l.sent.indexOf(JSON.stringify(msg.mutations)) : -1;
           if (at >= 0) l.sent.splice(at, 1);
-          if (at < 0 && !(msg.by === opened.me && opened.me.startsWith("guest:"))) handle.current?.apply(msg.mutations as never);
+          if (at < 0 && !(msg.by === opened.me && opened.me.startsWith("guest:")) && handle.current) laidFrom(handle.current, msg.mutations, media.current);
           l.rev = Math.max(l.rev, msg.rev);
         } else if (msg.t === "ack") {
           setRefused(null);
@@ -201,6 +228,13 @@ export function SheetPage({
         readOnly={opened.role !== "edit" || offline}
         // A guest changes no filter: the service takes none from one, so the grid offers none.
         filter={false}
+        // The sheet's charts and pictures, to see: the row offers a guest none of their controls, so he changes none.
+        objects={readObjectsResource(book.snapshot as never) ?? undefined}
+        media={async (part) => {
+          const got = media.current.get(part);
+          if (!got) throw new Error("That picture is not in the sheet.");
+          return new Blob([got.bytes as BlobPart], { type: got.type });
+        }}
         // A list's drop-down and a validation's refusal are drawn in work-kit's own chrome, as in the app.
         dataChrome
         onReady={(h) => {

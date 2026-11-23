@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { importXlsx, readObjects } from 'work-kit/sheet/xlsx'
 import { RULES_SET } from '@shared/work/sheets'
+import { readObjectsResource } from 'work-kit/sheet/engine'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
@@ -70,6 +71,9 @@ const tool = async (name: string, args: unknown): Promise<{ text: string; isErro
   return { text: r.content.map((c) => c.text ?? '').join(''), isError: r.isError }
 }
 const file = (path: string): CanvasSource => ({ at: 'file', host: 'env_test', path })
+/** One of our old charts kept beside a sheet (a row of `work_sheets_charts`), as the app kept them before sheets kept their own. */
+const oldChart = (store: string, chart: { id: string; sheet: string; range: string; title: string; row: number; col: number }): void =>
+  void db.prepare('INSERT INTO work_sheets_charts (store, id, json) VALUES (?, ?, ?)').run(store, chart.id, JSON.stringify(chart))
 let path: string
 let itemId: string
 const valueAt = (sheet: string, row: number, col: number): unknown => {
@@ -101,7 +105,7 @@ afterEach(() => {
 describe('a package in the canvas', () => {
   it('opens with its view and loads its bytes by range at the view\'s rev', async () => {
     const view = await call<SheetView>('work.sheets.open', { itemId })
-    expect(view).toMatchObject({ itemId, sessionId: 't1', name: 'Budget.xlsx', store: 'package', rev: 0, shared: false, mode: 'writes', suggestions: [], charts: [] })
+    expect(view).toMatchObject({ itemId, sessionId: 't1', name: 'Budget.xlsx', store: 'package', rev: 0, shared: false, mode: 'writes', suggestions: [] })
     expect(view.reach).toBeUndefined()
     const size = readFileSync(path).length
     const a = await call<{ data: string; size: number; format: string }>('work.sheets.load', { itemId, rev: 0, offset: 0, length: 1000 })
@@ -230,9 +234,9 @@ describe('a package in the canvas', () => {
     const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]!
     const chart = { id: 'c1', sheet, range: 'A1:B5', title: 'Totals', row: 2, col: 4 }
     const before = readFileSync(path)
-    const view = await call<SheetView>('work.sheets.chart', { itemId, chart })
-    // Drawn as a real chart on the grid, not as our old bars, and nothing is written yet.
-    expect(view.charts).toEqual([])
+    oldChart(`file:${path}`, chart)
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    // Drawn as a real chart on the grid, and nothing is written yet.
     expect(view.legacyCharts).toMatchObject([{ id: 'legacy:c1', sheet: 'Data', kind: 'bar', title: { text: 'Totals' }, series: [{ categories: { ref: "'Data'!$A$1:$A$5" }, values: { ref: "'Data'!$B$1:$B$5" } }] }])
     expect(readFileSync(path).equals(before)).toBe(true)
     // His next change to that tab's charts sends the tab's list, the old chart in it.
@@ -248,7 +252,8 @@ describe('a package in the canvas', () => {
 
   it('ends an old chart row he took off the grid: its tab\'s list was saved without it', async () => {
     const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]!
-    const view = await call<SheetView>('work.sheets.chart', { itemId, chart: { id: 'c1', sheet, range: 'A1:B5', title: 'Totals', row: 2, col: 4 } })
+    oldChart(`file:${path}`, { id: 'c1', sheet, range: 'A1:B5', title: 'Totals', row: 2, col: 4 })
+    const view = await call<SheetView>('work.sheets.open', { itemId })
     await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [{ id: RULES_SET, params: { kind: 'charts', subUnitId: sheet, list: [] } }] })
     expect((await call<SheetView>('work.sheets.open', { itemId })).legacyCharts).toBeUndefined()
     expect(readObjects(new Uint8Array(readFileSync(path))).charts).toEqual([])
@@ -271,6 +276,27 @@ describe('a .csv in the canvas, and the model writer', () => {
       throw new Error(`not in this test: ${op}`)
     }
   }
+
+  it('shows an old chart row of a .tcsheet as the chart it becomes, and keeps it with the sheet at the next change to its tab\'s charts', async () => {
+    await serve()
+    const { TcsheetBackend } = await import('./host/backends')
+    const plan = join(dir, 'Plan.tcsheet')
+    TcsheetBackend.create(plan, 'Plan')
+    const id = canvasStoreOf(db).open('t1', { kind: 'sheet', source: file(plan), title: 'Plan' }).id
+    oldChart(`tcsheet:${plan}`, { id: 'c1', sheet: 'sheet1', range: 'A1:B5', title: 'Totals', row: 2, col: 4 })
+    const view = await call<SheetView>('work.sheets.open', { itemId: id })
+    expect(view.row).toEqual(expect.arrayContaining(['chart', 'picture', 'objects']))
+    expect(view.legacyCharts).toMatchObject([{ id: 'legacy:c1', sheet: 'Sheet1', kind: 'bar', title: { text: 'Totals' } }])
+    const list = { id: RULES_SET, params: { unitId: 'workbook', kind: 'charts', subUnitId: 'sheet1', list: view.legacyCharts } }
+    await call('work.sheets.edit', { itemId: id, baseRev: view.rev, mutations: [list] })
+    // kept with the sheet now, and the row is done with
+    expect((await call<SheetView>('work.sheets.open', { itemId: id })).legacyCharts).toBeUndefined()
+    const { SheetHost } = await import('./host/host')
+    const cold = new SheetHost(() => new TcsheetBackend(plan))
+    const snapshot = JSON.parse((await cold.snapshotJson({ tcsheet: plan })).json) as Parameters<typeof readObjectsResource>[0]
+    cold.close()
+    expect(readObjectsResource(snapshot)?.charts.map((c) => [c.id, c.title?.text])).toEqual([['legacy:c1', 'Totals']])
+  })
 
   it('says which format controls a sheet keeps: every one for a .tcsheet and for an opened Excel file', async () => {
     await serve()

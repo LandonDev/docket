@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useState, type ReactNode } from "react";
-import type { SheetCellJson, SheetChart, SheetMutationJson, SheetSuggestion, SheetView } from "@shared/contract-work-sheets";
+import type { SheetCellJson, SheetMutationJson, SheetSuggestion, SheetView } from "@shared/contract-work-sheets";
 import { TEMPCODE_THEME } from "work-kit/format/theme";
 import type { GridSelection, GridState, ObjectAdd, ObjectChange, ObjectAnchor, ObjectsState, SheetCanvasProps, SheetFormat, SheetHandle, SheetObject, SheetObjects, SheetObjectsAccess } from "work-kit/sheet";
 import { readFormat, styleOf } from "work-kit/sheet/format";
@@ -17,7 +17,7 @@ import type { Workbook } from "./sync";
  */
 
 export function sheetView(over: Partial<SheetView> = {}): SheetView {
-  return { itemId: "s1", sessionId: "t1", name: "Nationals travel budget.xlsx", store: "package", rev: 3, shared: false, mode: "suggests", suggestions: [], charts: [], ...over };
+  return { itemId: "s1", sessionId: "t1", name: "Nationals travel budget.xlsx", store: "package", rev: 3, shared: false, mode: "suggests", suggestions: [], ...over };
 }
 
 export function suggestion(id: string, row: number, col: number, over: Partial<SheetSuggestion> = {}): SheetSuggestion {
@@ -144,11 +144,6 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook | { workboo
       host.view = { ...host.view, written: undefined };
       return host.view;
     },
-    async chart(chart, remove = false) {
-      host.calls.push(["chart", { chart, remove }]);
-      host.view = { ...host.view, charts: remove ? host.view.charts.filter((c) => c.id !== chart.id) : [...host.view.charts.filter((c) => c.id !== chart.id), chart] };
-      return host.view;
-    },
     async exportAs(format: "xlsx" | "csv", sheet?: string) {
       host.calls.push(["export", { format, sheet }]);
       return { path: `/host/files/${host.view.name.replace(/\.[^.]+$/, "")}.${format}`, ...(host.exportLeft ? { left: host.exportLeft } : {}) };
@@ -260,7 +255,6 @@ interface Live {
   cells: Cells;
   setSelection(selection: GridSelection | null): void;
   redraw(): void;
-  slots: Map<string, { chart: SheetChart; onSlot: (slot: HTMLElement | null) => void }>;
   sheet: string;
 }
 
@@ -419,7 +413,6 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       return map;
     }, [book]);
     const [selection, setSelection] = useState<GridSelection | null>(() => (options.selection ? selectionOf(sheetId, options.selection, cells) : null));
-    const [slots] = useState(() => new Map<string, { chart: SheetChart; onSlot: (slot: HTMLElement | null) => void }>());
 
     // A store hands back one object until something changes, as useSyncExternalStore needs.
     const [store] = useState(() => {
@@ -439,7 +432,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     useEffect(() => store.select(selection), [store, selection]);
 
     useEffect(() => {
-      live = { cells, setSelection, redraw, slots, sheet: sheetId };
+      live = { cells, setSelection, redraw, sheet: sheetId };
       const handle = {
         api: null,
         store,
@@ -562,9 +555,6 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
             </tbody>
           </table>
           {current ? <span aria-hidden className="pointer-events-none absolute border-2 border-(--accent)" style={box(current.range)} /> : sel && !current ? <span aria-hidden className="pointer-events-none absolute border-2 border-(--accent)" style={box(sel)} /> : null}
-          {[...slots.values()].map(({ chart, onSlot }) => (
-            <div key={chart.id} ref={onSlot} className="absolute" style={{ top: 24 + chart.row * 28 + 4, left: left(chart.col) }} />
-          ))}
         </div>
         <SheetTabsRow names={(book.sheetOrder ?? []).map((id) => book.sheets[id]?.name ?? id)} />
       </div>
@@ -624,16 +614,7 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
       }
       return out;
     },
-    place(_handle, chart, _size, onSlot) {
-      const target = live;
-      target?.slots.set(chart.id, { chart, onSlot });
-      target?.redraw();
-      return () => {
-        target?.slots.delete(chart.id);
-        target?.redraw();
-        onSlot(null);
-      };
-    },
+
     // A fixture's book is its snapshot, or `{ workbook, objects }` for one that has charts and pictures.
     decode: async (bytes) => {
       const got = JSON.parse(new TextDecoder().decode(bytes)) as Workbook & { workbook?: Workbook; objects?: SheetObjects };
@@ -731,7 +712,12 @@ function fakeObjects(initial: SheetObjects | undefined, tell: (change: ObjectCha
         emit();
         return id;
       }
-      if (what.chart === "selection") return null;
+      // (the selection's block as a chart: the kit makes it from the cells; here one of its shape, named for the test)
+      if (what.chart === "selection") {
+        const chart = { id: "chart-selection", sheet, anchor, kind: "column" as const, grouping: "clustered" as const, groups: [], legend: null, axes: {}, series: [], flags: {} };
+        made({ kind: "add", object: { chart } });
+        return chart.id;
+      }
       made({ kind: "add", object: { chart: what.chart } });
       return what.chart.id;
     },

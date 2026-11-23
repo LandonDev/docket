@@ -27,15 +27,18 @@ class FakeSocket {
 }
 vi.stubGlobal("WebSocket", FakeSocket);
 
-vi.mock("work-kit/sheet", () => ({
-  SheetCanvas: ({ onReady, readOnly, filter, dataChrome }: { onReady?: (h: unknown) => void; readOnly?: boolean; filter?: boolean; dataChrome?: boolean }) => {
+vi.mock("work-kit/sheet", async (original) => ({
+  readObjectsResource: (await original<typeof import("work-kit/sheet")>()).readObjectsResource,
+  SheetCanvas: ({ onReady, readOnly, filter, dataChrome, objects, media }: { onReady?: (h: unknown) => void; readOnly?: boolean; filter?: boolean; dataChrome?: boolean; objects?: unknown; media?: (part: string) => Promise<Blob> }) => {
+    grid.objects = objects;
+    grid.media = media ?? null;
     // as the real canvas: the handle is given once the grid is up, not while it renders
     useEffect(() => onReady?.(grid.handle), []);
     return <div data-grid="" data-readonly={String(!!readOnly)} data-filter={String(filter)} data-chrome={String(!!dataChrome)} />;
   },
   SheetToolbar: ({ sheet, controls, editorKeys }: { sheet: unknown; controls?: readonly string[]; editorKeys?: boolean }) => <div data-row="" data-controls={(controls ?? []).join(" ")} data-keys={String(!!editorKeys)} data-sheet={String(sheet === grid.handle)} />,
 }));
-const grid = vi.hoisted(() => ({ handle: null as unknown, emit: null as ((m: unknown) => void) | null }));
+const grid = vi.hoisted(() => ({ handle: null as unknown, emit: null as ((m: unknown) => void) | null, objects: undefined as unknown, media: null as ((part: string) => Promise<Blob>) | null }));
 const { SheetPage, plainCells, refusedWords } = await import("./SheetPage");
 const { OpenFailed } = await import("./session");
 
@@ -104,6 +107,36 @@ describe("the hosted sheet", () => {
       await flush();
       expect(view.container.querySelector("[data-row]")).toBeNull();
       expect(view.container.querySelector<HTMLElement>("[data-grid]")!.dataset.readonly).toBe("true");
+    } finally {
+      grid.handle = null;
+    }
+  });
+
+  it("draws the sheet's charts and pictures for a guest to see, and lays a list from the sheet on them, never on the cells", async () => {
+    const anchor = { kind: "oneCell", from: { column: 1, row: 1, columnOffset: 0, rowOffset: 0 }, width: 100, height: 100 };
+    const chart = { id: "chart-1", sheet: "Data", anchor, kind: "column", grouping: "clustered", groups: [], legend: null, axes: {}, series: [{ kind: "column", group: 0, values: { ref: "Data!$B$2:$B$4" } }], flags: {} };
+    const picture = { id: "picture-1", sheet: "Data", anchor, part: "media:p1", contentType: "image/png" };
+    const applied: unknown[] = [];
+    const objectChanges: unknown[] = [];
+    grid.handle = {
+      onMutation: () => () => {},
+      apply: (m: unknown) => applied.push(m),
+      store: { get: () => ({ sheets: [{ id: "s1", name: "Data" }] }) },
+      objects: { list: () => ({ charts: [chart], pictures: [], warnings: [] }), apply: (c: unknown) => objectChanges.push(c) },
+    };
+    try {
+      render(<SheetPage session={session} opened={opened} onGone={() => {}} onDown={() => {}} />);
+      await flush();
+      const snapshot = { id: "u1", resources: [{ name: "TEMPCODE_SHEET_OBJECTS", data: JSON.stringify({ v: 1, charts: [chart], pictures: [picture] }) }, { name: "TEMPCODE_SHEET_MEDIA", data: JSON.stringify({ "media:p1": { type: "image/png", data: btoa("\x89PNG") } }) }] };
+      await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot }));
+      await flush();
+      expect(grid.objects).toMatchObject({ charts: [chart], pictures: [picture] });
+      expect((await grid.media!("media:p1")).type).toBe("image/png");
+      // the owner moves the chart: the guest's grid takes the list on its objects
+      const moved = { ...chart, anchor: { ...anchor, from: { ...anchor.from, row: 6 } } };
+      await act(async () => FakeSocket.last!.say({ t: "ops", rev: 2, by: "owner", mutations: [{ id: "tempcode.sheet.rules", params: { unitId: "u1", kind: "charts", subUnitId: "s1", list: [moved] } }] }));
+      expect(objectChanges).toEqual([[{ kind: "set", object: { chart: moved } }]]);
+      expect(applied).toEqual([]);
     } finally {
       grid.handle = null;
     }

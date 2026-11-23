@@ -1,5 +1,5 @@
-import { createElement, type ComponentType } from "react";
-import type { SheetCellJson, SheetChart } from "@shared/contract-work-sheets";
+import type { ComponentType } from "react";
+import type { SheetCellJson } from "@shared/contract-work-sheets";
 import { fontsOfSnapshot, readObjectsResource, SheetCanvas, type SheetCanvasProps, type SheetHandle } from "work-kit/sheet";
 import type { Book, Decode, GridLink, Workbook } from "./sync";
 import { snapshotMedia } from "./objects";
@@ -22,18 +22,10 @@ export interface SheetGrid {
   link(handle: SheetHandle): GridLink;
   /** A range's values, A1 on that sheet, row by row. */
   values(handle: SheetHandle, sheet: string, a1: string): unknown[][];
-  /** Seats a chart over its top-left cell, scrolling with the cells; `onSlot` gets the element to draw it in. What it returns takes it off. */
-  place(handle: SheetHandle, chart: SheetChart, size: { width: number; height: number }, onSlot: (slot: HTMLElement | null) => void): () => void;
   decode: Decode;
 }
 
 let SheetWorker: (new () => Worker) | null = null;
-
-/** The element Univer seats over a cell; the body draws the chart into it through a portal, so the chart keeps the app's context. */
-function ChartSlot({ popup }: { popup?: { extraProps?: { onSlot?: (slot: HTMLElement | null) => void; width?: number; height?: number } } }) {
-  const { onSlot, width, height } = popup?.extraProps ?? {};
-  return createElement("div", { ref: onSlot, "data-sheet-chart-slot": "", style: { width, height } });
-}
 
 const sheetOf = (handle: SheetHandle, sheet: string) => handle.api.getActiveWorkbook()?.getSheetBySheetId(sheet) ?? null;
 
@@ -67,21 +59,7 @@ export const univerGrid: SheetGrid = {
     },
   }),
   values: (handle, sheet, a1) => (sheetOf(handle, sheet)?.getRange(a1).getValues() ?? []) as unknown[][],
-  place(handle, chart, size, onSlot) {
-    const sheet = sheetOf(handle, chart.sheet);
-    if (!sheet) return () => undefined;
-    // As the grid seats a presence label: a popup on the cell to the left opens at its right edge, level with its top.
-    const popup = sheet.getRange(chart.row, Math.max(0, chart.col - 1)).attachPopup({
-      componentKey: ChartSlot,
-      direction: "horizontal",
-      offset: [0, 0],
-      extraProps: { onSlot, ...size },
-    });
-    return () => {
-      popup?.dispose();
-      onSlot(null);
-    };
-  },
+
   async decode(bytes, format): Promise<Book> {
     if (format === "xlsx") {
       // An Excel file's charts and pictures are read with it, and each picture's bytes kept by its part for the grid to draw.

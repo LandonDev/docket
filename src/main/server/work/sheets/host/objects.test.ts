@@ -14,6 +14,8 @@ import { TcsheetBackend } from './backends'
 import { SheetHost } from './host'
 import { GUEST_OPS, refusal } from './live'
 import { MEDIA_RESOURCE, mediaOf } from './objects'
+import { writeXlsxWhole } from '../writer'
+import { readMedia, readObjects } from 'work-kit/sheet/xlsx'
 import type { SheetRef } from './wire'
 
 /**
@@ -179,5 +181,18 @@ describe('charts and pictures on a sheet the service holds', () => {
     expect(refusal([charts([chart()])], 'edit', true)).toBe('a guest cannot tempcode.sheet.rules')
     expect(refusal([pictures([picture(2, PNG.toString('base64'))])], 'edit', true)).toBe('a guest cannot tempcode.sheet.rules')
     expect(refusal([charts([chart()])], 'edit', false)).toBeNull()
+  })
+
+  it('the Excel export writes them as real charts and pictures, a made picture from the bytes the sheet keeps, and says what it leaves out', async () => {
+    const s = store()
+    const host = s.host()
+    await apply(host, s.ref, [charts([chart()]), pictures([picture(3, PNG.toString('base64')), { ...picture(6), id: 'picture-2', part: 'media:gone' }])])
+    const { bytes, left } = writeXlsxWhole(await snapshotOf(host, s.ref))
+    const file = readObjects(bytes)
+    expect(file.charts.map((c) => [c.sheet, c.kind, c.title?.text])).toEqual([['Sheet1', 'column', 'Spending']])
+    expect(file.pictures).toHaveLength(1)
+    expect(Buffer.from(readMedia(bytes, file.pictures[0]!.part)!).equals(PNG)).toBe(true)
+    // the picture whose image the sheet does not keep is said, not written
+    expect(left).toEqual([{ what: 'pictures', sheet: 'Sheet1', why: 'A picture whose image this sheet does not keep is left out.' }])
   })
 })
