@@ -28,9 +28,10 @@ afterEach(() => {
   editors.length = 0;
 });
 
-const session = { socketUrl: () => "ws://127.0.0.1:1/g/ws/L1", refresh: async () => ({ token: "t", tokenExp: 0 }), post: async () => ({}) } as unknown as Session;
+const sessionOf = (mode: Session["mode"]) => ({ mode, socketUrl: () => "ws://127.0.0.1:1/g/ws/L1", refresh: async () => ({ token: "t", tokenExp: 0 }), post: async () => ({}) }) as unknown as Session;
+const session = sessionOf({ kind: "guest", id: "L1", secret: "s" });
 const opened = (role: Opened["role"]): Opened => ({ kind: "doc", role, title: "Run of show", expiresAt: 0, me: "guest:L1", name: "Dana Lee", doc: "kdocrun" }) as Opened;
-const show = (role: Opened["role"]) => render(<main><DocPage session={session} opened={opened(role)} scheme="light" onGone={() => {}} /></main>);
+const show = (role: Opened["role"], on = session) => render(<main><DocPage session={on} opened={opened(role)} scheme="light" onGone={() => {}} /></main>);
 
 describe("a document on the guest's page", () => {
   it("an Edit link has the format row in a held place of its own, before the document's column", async () => {
@@ -53,6 +54,14 @@ describe("a document on the guest's page", () => {
       expect(editors.at(-1)).toMatchObject({ formatRow: false, editable: false });
       cleanup();
     }
+  });
+
+  it("shows its own Comment to a guest who may comment, and never to the owner, whose comments are made in TempCode", () => {
+    show("comment");
+    expect(editors.at(-1)).toMatchObject({ canComment: true });
+    cleanup();
+    show("edit", sessionOf({ kind: "owner", ticket: null }));
+    expect(editors.at(-1)).toMatchObject({ canComment: false, editable: true });
   });
 
   it("says the file's name nowhere of its own: the page's header has it once", () => {
