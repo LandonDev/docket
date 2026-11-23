@@ -215,32 +215,39 @@ export function syncWhen(at: number, now: number): string {
 }
 
 /**
- * The sync line: one sentence naming each stale source of the job once, or
+ * A service's rows as one: in error when any is, else as fresh as its
+ * freshest. A channel's own row that never synced does not make a workspace
+ * that is reading stale; a service whose every row is silent is.
+ */
+export function serviceState(sources: readonly ChatSourceState[], kind: ChatSource, now: number): { stale: boolean; heard?: number } | null {
+  const rows = sources.filter((source) => source.kind === kind)
+  if (rows.length === 0) return null
+  const heard = rows.reduce<number | undefined>((best, row) => {
+    const at = lastHeard(row)
+    return at === undefined ? best : best === undefined ? at : Math.max(best, at)
+  }, undefined)
+  const stale = rows.some((row) => row.status === 'error') || heard === undefined || now - heard > CHAT_SILENT_MS[kind]
+  return { stale, ...(heard !== undefined ? { heard } : {}) }
+}
+
+/**
+ * The sync line: one sentence naming each stale service of the job once, or
  * null when all are fresh. "Discord last synced Nov 3", "Discord last synced
  * Nov 3, iMessage Nov 16", "Teams has not synced".
  */
 export function syncLine(sources: readonly ChatSourceState[], now: number): string | null {
-  const stale = new Map<ChatSource, number | undefined>()
-  for (const source of sources) {
-    if (!staleOf(source, now)) continue
-    const heard = lastHeard(source)
-    // a kind with several rows (a workspace and its channels) is named once, by its newest word
-    const known = stale.get(source.kind)
-    stale.set(source.kind, stale.has(source.kind) ? (known === undefined || heard === undefined ? (known ?? heard) : Math.max(known, heard)) : heard)
-  }
-  if (stale.size === 0) return null
   const parts: string[] = []
   let said = false
   for (const kind of CHAT_SOURCES) {
-    if (!stale.has(kind)) continue
-    const heard = stale.get(kind)
-    if (heard === undefined) parts.push(`${SOURCE_NAME[kind]} has not synced`)
+    const state = serviceState(sources, kind, now)
+    if (!state?.stale) continue
+    if (state.heard === undefined) parts.push(`${SOURCE_NAME[kind]} has not synced`)
     else if (!said) {
-      parts.push(`${SOURCE_NAME[kind]} last synced ${syncWhen(heard, now)}`)
+      parts.push(`${SOURCE_NAME[kind]} last synced ${syncWhen(state.heard, now)}`)
       said = true
-    } else parts.push(`${SOURCE_NAME[kind]} ${syncWhen(heard, now)}`)
+    } else parts.push(`${SOURCE_NAME[kind]} ${syncWhen(state.heard, now)}`)
   }
-  return parts.join(', ')
+  return parts.length > 0 ? parts.join(', ') : null
 }
 
 const escapeRe = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -260,7 +267,9 @@ export function fileMarkers(text: string, files: readonly Pick<ChatFile, 'name'>
     out = out.replace(new RegExp(`[ \\t]*\\[file: ${n}\\]`, 'g'), '')
     out = out.replace(new RegExp(`(^|\\n)${n} https?://\\S+(?=\\n|$)`, 'g'), '$1')
   }
-  out = out.replace(/^Sent an attachment: .*$/m, (line) => (files.every((f) => line.includes(f.name)) ? '' : line))
+  // The line goes only when every name it gives is listed beside the message.
+  const listed = new Set(files.map((f) => f.name))
+  out = out.replace(/^Sent an attachment: (.*)$/m, (line, names: string) => (names.split(', ').every((name) => listed.has(name)) ? '' : line))
   return out.replace(/\n{3,}/g, '\n\n').trim()
 }
 

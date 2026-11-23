@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { MessagesPush } from '@shared/contract-work-messages'
 import { loadWorkModules, PILLAR_LOADERS } from '../modules'
 import { readKey } from '../outbox/rig'
-import { chatRows, chatSourceRow, type ChatSourceRow } from './health'
+import { chatRows, chatSourceRow, foldAccounts, type ChatSourceRow } from './health'
 import { messages } from './index'
 import { NOT_WORK, refusalWords } from './lifeos'
 import { FakeChats } from './fakeChats'
@@ -139,7 +139,7 @@ describe("Connections' rows", () => {
 
   it("reads sources:list for this host's linked sectors, one broken row when it fails, nothing while signed out", async () => {
     t.chats.sources = [src({ _id: 'a' }), src({ _id: 'b', sector: 'purdue' }), src({ _id: 'c', kind: 'email', label: 'Mail' })]
-    expect((await chatRows(t.rig.work.ctx, now)).map((r) => r.id)).toEqual(['messages.source:a'])
+    expect((await chatRows(t.rig.work.ctx, now)).map((r) => r.id)).toEqual(['messages.source:slack:T01:cosmic'])
     t.chats.sources = null as never
     t.chats.query = (() => Promise.reject(new Error('fetch failed'))) as never
     expect(await chatRows(t.rig.work.ctx, now)).toEqual([{ id: 'messages.sources', pillar: 'messages', group: 'Chat', title: 'Chat', state: 'broken', line: 'LifeOS did not list them: fetch failed' }])
@@ -147,10 +147,32 @@ describe("Connections' rows", () => {
     expect(await chatRows(t.rig.work.ctx, now)).toEqual([])
   })
 
+  it('folds a server\'s channel rows into one row: as fresh as its freshest, in error when any is', () => {
+    const discord = (over: Partial<ChatSourceRow>): ChatSourceRow => src({ kind: 'discord', account: 'g1', accountName: 'Starboard Community', label: '#general', channel: 'c1', ...over })
+    const nov3 = new Date(2026, 10, 3, 9).getTime()
+    // Forty channels, most never synced, the freshest silent since Nov 3: one broken row, not forty.
+    const silent = foldAccounts([discord({ _id: 'a', status: 'idle', lastSyncAt: undefined }), discord({ _id: 'b', channel: 'c2', lastSyncAt: nov3 }), discord({ _id: 'c', channel: 'c3', lastSyncAt: nov3 - 1 })])
+    expect(silent).toHaveLength(1)
+    expect(chatSourceRow(silent[0]!, linked, now)).toMatchObject({ id: 'messages.source:discord:g1:cosmic', title: 'Starboard Community Discord', state: 'broken', line: 'No sync since Nov 3' })
+    // One channel reading is the service reading; a channel that never synced beside it changes nothing.
+    const reading = foldAccounts([discord({ _id: 'a', status: 'idle', lastSyncAt: undefined }), discord({ _id: 'b', channel: 'c2' })])
+    expect(chatSourceRow(reading[0]!, linked, now)).toMatchObject({ state: 'working' })
+    const failed = foldAccounts([discord({ _id: 'a' }), discord({ _id: 'b', channel: 'c2', status: 'error', error: 'The bot was removed' })])
+    expect(chatSourceRow(failed[0]!, linked, now)).toMatchObject({ state: 'broken', line: 'The bot was removed' })
+    // The account's own row names the service; a row off, a mail source and another sector's rows stay apart.
+    const mixed = foldAccounts([src({ _id: 'w', label: 'CosmicGames' }), src({ _id: 'x', channel: 'C9', label: '#builds', sector: 'hypixel' }), src({ _id: 'y', enabled: false }), src({ _id: 'z', kind: 'email' })])
+    expect(mixed.map((r) => [r._id, r.label])).toEqual([
+      ['slack:T01:cosmic', 'CosmicGames'],
+      ['slack:T01:hypixel', '']
+    ])
+    // A chat source with no sector is LifeOS's "everything else".
+    expect(foldAccounts([src({ kind: 'imessage', account: 'messages', label: 'Messages', sector: undefined })])[0]).toMatchObject({ sector: 'life' })
+  })
+
   it('shows in work.health with the other pillars', async () => {
     t.chats.sources = [src({ _id: 'a', lastSyncAt: Date.now() })]
     const report = await rpc<{ rows: { id: string; state: string }[] }>('work.health', {})
-    expect(report.rows.filter((r) => r.id.startsWith('messages.'))).toEqual([expect.objectContaining({ id: 'messages.source:a', state: 'working' })])
+    expect(report.rows.filter((r) => r.id.startsWith('messages.'))).toEqual([expect.objectContaining({ id: 'messages.source:slack:T01:cosmic', state: 'working' })])
   })
 })
 

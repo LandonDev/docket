@@ -6,8 +6,9 @@ import { linkedWorkspaces } from './lifeos'
 
 /**
  * Chat's rows in Connections (docs/agents/work-connections.md): one a chat
- * source LifeOS reads for a sector a Work workspace of this host links,
- * from `sources:list`. Mail and calendars are the lifeos pillar's rows; a
+ * service and account LifeOS reads for a sector a Work workspace of this
+ * host links, from `sources:list` (its rows for a server's channels folded
+ * into one, `foldAccounts`). Mail and calendars are the lifeos pillar's rows; a
  * chat source of no linked sector, or one he turned off, has none. Stale is
  * `staleOf`, the one rule the view's sync line also reads.
  */
@@ -51,6 +52,49 @@ export function chatSourceRow(s: ChatSourceRow, sectors: ReadonlySet<string>, no
   return { ...row, state: 'working', line: `Synced ${syncWhen(heard!, now)}` }
 }
 
+/** LifeOS's own rule: a chat source with no sector of its own is "everything else". */
+const UNMAPPED: SectorKey = 'life'
+
+/**
+ * A service's rows for one account and sector as one: a Discord server is a
+ * row a channel in LifeOS, and Connections says "Discord" once. In error when
+ * any row is, stopped when any was stopped with a reason, else as fresh as
+ * the freshest. The account's own row names it; its id is the account's, so
+ * it stays the same row as channels come and go.
+ */
+export function foldAccounts(sources: readonly ChatSourceRow[]): ChatSourceRow[] {
+  const groups = new Map<string, ChatSourceRow[]>()
+  for (const s of sources) {
+    if (!s.enabled || !isChatSource(s.kind)) continue
+    const sector = s.sector ?? UNMAPPED
+    const key = `${s.kind}:${s.account}:${sector}`
+    groups.set(key, [...(groups.get(key) ?? []), { ...s, sector }])
+  }
+  return [...groups].map(([key, rows]) => {
+    const whole = rows.find((r) => r.channel === undefined)
+    const failed = rows.find((r) => r.status === 'error')
+    const stopped = rows.find((r) => r.status === 'idle' && r.error)
+    const newest = (pick: (r: ChatSourceRow) => number | undefined): number | undefined => rows.reduce<number | undefined>((best, r) => (pick(r) === undefined ? best : Math.max(best ?? 0, pick(r)!)), undefined)
+    const lastSyncAt = newest((r) => r.lastSyncAt)
+    const reportedAt = newest((r) => r.reportedAt)
+    const first = rows[0]!
+    return {
+      _id: key,
+      kind: first.kind,
+      account: first.account,
+      ...(first.accountName ? { accountName: first.accountName } : {}),
+      // A channel's own label names the channel, not the service: only the account's row, else the account's name.
+      label: whole?.label ?? first.accountName ?? '',
+      sector: first.sector,
+      enabled: true,
+      status: failed ? 'error' : stopped ? 'idle' : rows.some((r) => r.status === 'ok') ? 'ok' : 'idle',
+      ...(lastSyncAt !== undefined ? { lastSyncAt } : {}),
+      ...(reportedAt !== undefined ? { reportedAt } : {}),
+      ...((failed ?? stopped)?.error ? { error: (failed ?? stopped)!.error } : {})
+    }
+  })
+}
+
 export async function chatRows(ctx: Pick<WorkCtx, 'db' | 'lifeos'>, now: number): Promise<HealthRow[]> {
   // Signed out, the lifeos pillar's sign-in row says so: nothing here hangs on it.
   if (!ctx.lifeos.connected()) return []
@@ -62,7 +106,7 @@ export async function chatRows(ctx: Pick<WorkCtx, 'db' | 'lifeos'>, now: number)
   } catch (err) {
     return [{ id: 'messages.sources', pillar: 'messages', group: GROUP, title: 'Chat', state: 'broken', line: `LifeOS did not list them: ${redactLine(errorText(err))}` }]
   }
-  return sources.flatMap((s) => chatSourceRow(s, sectors, now) ?? [])
+  return foldAccounts(sources).flatMap((s) => chatSourceRow(s, sectors, now) ?? [])
 }
 
 export const messagesHealth: HealthSource = {
