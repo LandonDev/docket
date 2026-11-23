@@ -9,6 +9,7 @@ import { searchChats, unanswered, unread, workSector } from './lifeos'
 import { chatMentions } from './mentions'
 import { draftsOf, dropDraft, dropWorkspaceDrafts, pushDrafts, retryReply, sendReply, undoReply } from './replies'
 import { chatSearch, messageSearch } from './search'
+import { CHAT_TELLS } from './tell'
 import { messagesTools, PREAMBLE, readsChat } from './tools'
 import { startWatch, watchOf } from './watch'
 
@@ -70,6 +71,7 @@ export const messages: WorkModule = {
   acts: [chatReplyKind as unknown as ActKindDef],
   mentions: [chatMentions],
   search: [messageSearch, chatSearch],
+  tells: CHAT_TELLS,
   preamble: (scope) => (readsChat(scope) ? PREAMBLE : null),
   start(ctx) {
     // A chat's picture or file opened beside its conversation is fetched here (file.ts).

@@ -3,7 +3,7 @@ import type { MentionAnswer } from '@shared/work'
 import type { ChatRow } from '@shared/work/messages'
 import { loadWorkModules } from '../modules'
 import { chatHit } from './mentions'
-import type { ChatTell } from './tell'
+import type { Tell as ChatTell } from '@shared/work/tell'
 import { makeChatRig, type ChatRig } from './testRig'
 
 /**
