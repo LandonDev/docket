@@ -108,11 +108,11 @@ describe('the subset', () => {
     expect(files['Types.swift']).toContain('public enum HeldRef')
   })
   it("tries a union's literal-pinned object branch only for the values it lists, so a known shape after it wins", () => {
-    // A chip's ref is a task, mail or event (`{at: 'lifeos', table: 'tasks' | …}`) or a CanvasSource. The enum
+    // A chip's ref is a LifeOS row (`{at: 'lifeos', table: 'tasks' | …}`: a task, mail, event, project, person or conversation) or a CanvasSource. The enum
     // Swift generates keeps unknown values, so unguarded the first branch took `{at: 'lifeos', table: 'docs'}` too.
     const types = files['Types.swift']
     expect(types).toContain(
-      'if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events", "projects", "people"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }'
+      'if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "lifeos", ["tasks", "mailThreads", "events", "projects", "people", "chats"].contains(probe["table"]?.stringValue ?? ""), let value = try? container.decode(RefCase0.self) { self = .object(value); return }'
     )
     // a second and third inline object take their own cases (`object2`, `object3`), so the enum still compiles
     expect(types).toContain('if let probe = try? container.decode(JSONValue.self), probe["at"]?.stringValue == "item", let value = try? container.decode(RefCase2.self) { self = .object2(value); return }')
