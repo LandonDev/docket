@@ -156,17 +156,14 @@ function imported(bytes: Uint8Array, id = 'sheet1'): ITableJson[] {
   const resource = importXlsx(bytes).workbook.resources?.find(
     (r) => r.name === RESOURCE_NAMES.tables
   )
-  return resource ? (JSON.parse(resource.data)[id]?.tables ?? []) : []
+  const tables: ITableJson[] = resource ? (JSON.parse(resource.data)[id]?.tables ?? []) : []
+  // The kit's importer keeps Excel's switches and totals a second time under `meta.excel`, for the grid; the table itself is the same.
+  return tables.map((table) => ({ ...table, meta: {} }))
 }
 
 function importerProjection(tables: TableModel[]): ITableJson[] {
   return tables.map((table) => ({
     ...table,
-    options: {
-      showHeader: table.options.showHeader,
-      showFooter: table.options.showFooter,
-      hasTotalRow: table.options.hasTotalRow
-    },
     columns: table.columns.map(
       ({ totalsRowFormula: _total, formulaIsArray: _array, ...column }) =>
         Object.fromEntries(
