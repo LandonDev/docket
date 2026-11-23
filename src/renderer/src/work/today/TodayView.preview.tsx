@@ -35,9 +35,10 @@ const WAITING: TodaySection = { id: "waiting", title: "Waiting on others", order
 const FILES: TodaySection = { id: "files", title: "Changed by others", order: 50, empty: "No one changed your files", fold: 5, bones: "lines" };
 
 const HELD_ROWS = [
-  row("held:1", "held", "purdue", "Reply to Dana Reyes", { detail: "Spring budget, second draft", when: "7:42 AM", lead: glyph(Mail), at: 1 }),
+  // Oldest first, each with when it was held as a time that names its day (outbox/when.ts `heldWhen`).
+  row("held:3", "held", "unify", "Send invoice 1042 to Northfield Parks", { detail: "November hosting", when: "Sun 4:12 PM", lead: glyph(Mail), at: 1 }),
   row("held:2", "held", "ref", "Accept Crew meeting", { detail: "Thu 6:30 PM, Harrison High School", when: "7:40 AM", lead: glyph(Calendar), at: 2 }),
-  row("held:3", "held", "unify", "Send invoice 1042 to Northfield Parks", { detail: "November hosting", when: "Nov 22", lead: glyph(Mail), at: 3 }),
+  row("held:1", "held", "purdue", "Reply to Dana Reyes", { detail: "Spring budget, second draft", when: "7:42 AM", lead: glyph(Mail), at: 3 }),
 ];
 const MEETING_ROWS = [
   row("event:0", "meetings", "cosmic", "Standup", { when: "8:30 AM", past: true, at: 1 }),

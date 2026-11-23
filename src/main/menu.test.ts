@@ -254,6 +254,25 @@ describe('menu state', () => {
     expect(row('Go', 'open_today').label).toBe('Close Today')
   })
 
+  it('goes back to the rows that need no window when the focused one loses the focus to none of ours', () => {
+    vi.useFakeTimers()
+    try {
+      const c = contents(1)
+      vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))
+      menuModule.receiveMenuState(c as never, { open: ['open_today'], disabled: [] })
+      expect(row('Go', 'open_today').label).toBe('Close Today')
+      // Minimized: no window of ours has the focus a turn later.
+      vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(null)
+      const calls = vi.mocked(app.on).mock.calls as unknown as [string, () => void][]
+      calls.find(([event]) => event === 'browser-window-blur')![1]()
+      vi.runAllTimers()
+      const last = vi.mocked(Menu.buildFromTemplate).mock.calls.at(-1)![0] as MenuItemConstructorOptions[]
+      expect((last.find((s) => s.label === 'Go')!.submenu as MenuItemConstructorOptions[]).map((r) => r.id)).not.toContain('open_today')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('goes back to the plain menu when the window closes', () => {
     const c = contents(1)
     vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))

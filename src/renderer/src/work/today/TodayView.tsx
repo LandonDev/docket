@@ -171,7 +171,15 @@ export function TodayPageView({
       null;
     setFocused(next);
     const on = document.activeElement;
-    if (next && (!on || on === document.body || on.hasAttribute("data-work-place"))) focusRow(next);
+    if (on && on !== document.body && !on.hasAttribute("data-work-place")) return;
+    if (next) {
+      // The stop that takes the focus may be far from the one that left: it is brought into sight with it.
+      focusRow(next);
+      roving.listRef.current?.querySelector<HTMLElement>(`[data-roving-key="${CSS.escape(next)}"]`)?.scrollIntoView?.({ block: "nearest" });
+    } else {
+      // No stop is left (the page turns "All clear"): the page itself takes the focus, so the next key is still Today's.
+      document.querySelector<HTMLElement>('[data-work-place="today"]')?.focus({ preventScroll: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- when the stops change under the focus
   }, [keys]);
   if (model.kind === "no-jobs") return <EmptyState title="No jobs yet" line="Add a Work workspace to see its day here." action={{ label: "Add workspace", onClick: openAddWorkspace }} />;
@@ -285,6 +293,8 @@ function Section({
             <TodayRowSlot key={row.key} row={row} job={row.job ?? (row.sector ? jobName(row.sector) : null)} phase={phaseOf(row.key)} lands={lands(row.key)} current={row.key === stop} />
           ))}
           {section.more > 0 ? <FoldLine which="more" section={section.id} label={`${section.more} more`} stop={stop} /> : null}
+          {/* A read some job needs is still out: the rows that came are usable, and one bone says more may come. */}
+          {section.partial ? <Bones label={`more of ${section.title}`} shape={section.bones} rows={1} /> : null}
         </div>
       )}
       {section.note ? <p className={cn("flex min-h-8 items-center pe-3 text-[13px] text-muted-foreground", TITLE_EDGE)}>{section.note}</p> : null}
@@ -316,10 +326,10 @@ function FoldLine({ which, section, label, stop }: { which: "more" | "earlier"; 
 }
 
 /** A section that has never answered: three rows in the shape of what is coming, so nothing under it moves when it answers. */
-function Bones({ label, shape }: { label: string; shape?: TodaySection["bones"] }) {
+function Bones({ label, shape, rows = 3 }: { label: string; shape?: TodaySection["bones"]; rows?: number }) {
   return (
-    <div role="status" aria-label={`Loading ${label}`} aria-busy className="-mb-0.5 flex flex-col">
-      {["w-1/2", "w-2/5", "w-3/5"].map((width) => (
+    <div role="status" aria-label={`Loading ${label}`} aria-busy className={cn("flex flex-col", rows > 1 && "-mb-0.5")}>
+      {["w-1/2", "w-2/5", "w-3/5"].slice(0, rows).map((width) => (
         <div key={width} data-today-bone={shape ?? "line"} className={cn("mb-0.5 items-start px-3 py-1.5", ROW_GRID)}>
           <span className="flex h-5 items-center justify-center">{shape === "tick" ? <Skeleton className="size-4 rounded-full" /> : null}</span>
           <span className="flex min-w-0 flex-col">

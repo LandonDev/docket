@@ -9,10 +9,9 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { workOpenPort } from "../../lib/workSwitch";
 import { shell } from "../../stores/shell";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
-import { WORK_CHATS_KEY } from "../outbox/model";
 import { HeldDetail, rememberOutboxTab } from "../outbox/OutboxView";
 import { outboxNow, useOutbox, type HostItem } from "../outbox/store";
-import { heldKey } from "./held";
+import { heldKey, placeOf } from "./held";
 import { advanceHeld, leave, openHeld, todayNow, useTodayState } from "./store";
 
 /**
@@ -46,8 +45,8 @@ export function HeldSheet() {
   useLayoutEffect(() => {
     if (at !== -1) runOrder = waiting.map(heldKey);
   }, [at, waiting]);
-  const workspace = (i: HostItem): string =>
-    !i.workspaceId || i.workspaceId === WORK_CHATS_KEY ? "Work Chats" : (workspaces.find((w) => w.environmentId === i.environmentId && w.id === i.workspaceId)?.name ?? "A Work workspace");
+  // The place as the item's row names it (held.ts `placeOf`).
+  const workspace = (i: HostItem): string => placeOf(i, (environmentId, workspaceId) => workspaces.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.name) ?? "A Work workspace";
   const host = (i: HostItem): string => environments.find((e) => e.id === i.environmentId)?.name ?? "A host";
   return (
     <Sheet open={key !== null} onOpenChange={(open) => (open ? undefined : openHeld(null))}>
@@ -122,21 +121,26 @@ export function HeldSheetBody({ item, left, done = 0, workspace, host, close }: 
 
 /**
  * An item's body in the sheet. One that took the sheet after a press
- * (`late`) fades in over `--dur-base`, takes the focus so the keyboard reads
- * it from its top (the ring shows where it went), and takes no pointer
- * until it is whole on screen: the second click of a double click never
- * lands on the next item's Send.
+ * (`late`) fades in over `--dur-base` and takes the focus, so the keyboard
+ * reads it from its top (the ring shows where it went). Until the fade is
+ * over what it holds is inert, to the pointer and to the keys alike: the
+ * second click of a double click, or a key held down, never lands on the
+ * next item's Send. Where no fade runs it is free at once.
  */
 function ItemBody({ label, late, children }: { label: string | undefined; late: boolean; children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   const [arriving, setArriving] = useState(late);
   useLayoutEffect(() => {
-    if (late) box.current?.focus({ preventScroll: true });
+    if (!late) return;
+    box.current?.focus({ preventScroll: true });
+    // No fade to wait for (a browser that runs none): free at once.
+    if (box.current && getComputedStyle(box.current).transitionDuration.split(",").every((d) => parseFloat(d) === 0)) setArriving(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as it takes the sheet
   }, []);
   useEffect(() => {
     if (!late) return;
-    const timer = setTimeout(() => setArriving(false), DUR.base * 1000);
+    // The fade's own end frees it; the timer is for an end that never comes (the sheet hidden mid-fade).
+    const timer = setTimeout(() => setArriving(false), DUR.base * 1000 + 60);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as it takes the sheet
   }, []);
@@ -146,9 +150,13 @@ function ItemBody({ label, late, children }: { label: string | undefined; late: 
       tabIndex={-1}
       aria-label={label}
       data-today-arriving={arriving ? "" : undefined}
-      className={cn("focus-ring flex min-h-0 flex-1 flex-col", late && "transition-opacity duration-(--dur-base) ease-(--ease-out) starting:opacity-0", arriving && "pointer-events-none")}
+      onTransitionEnd={(event) => event.target === box.current && event.propertyName === "opacity" && setArriving(false)}
+      // The ring follows the sheet's own lower corners, which clip it.
+      className={cn("focus-ring flex min-h-0 flex-1 flex-col rounded-b-2xl", late && "transition-opacity duration-(--dur-base) ease-(--ease-out) starting:opacity-0")}
     >
-      {children}
+      <div inert={arriving ? true : undefined} className="flex min-h-0 flex-1 flex-col">
+        {children}
+      </div>
     </div>
   );
 }
@@ -164,8 +172,14 @@ function afterPress(item: HostItem): void {
   const key = heldKey(item);
   // The row leaves by his own act: it fades and the rows under it glide up, whenever the host's list drops it.
   leave(key);
-  if (todayNow().held !== key) return;
-  advanceHeld(nextHeld(key, runOrder, outboxNow().waiting.map(heldKey)));
+  const now = todayNow();
+  if (now.held !== key) return;
+  // What still waits is the host's list without what his presses already took: the list may still hold an item he
+  // sent a moment ago, and the sheet must never go back to it.
+  const still = outboxNow()
+    .waiting.map(heldKey)
+    .filter((k) => !now.leaving.has(k) && !now.closing.has(k) && !now.gone.has(k));
+  advanceHeld(nextHeld(key, runOrder, still));
 }
 
 /** The keys of the held items in the order the sheet last showed them. */

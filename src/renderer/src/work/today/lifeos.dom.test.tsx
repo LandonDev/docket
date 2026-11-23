@@ -118,9 +118,9 @@ describe("useLifeosRows", () => {
     expect(result.current.rows?.map(idOf)).toEqual(["t1"]);
     expect(uncoveredOf(["purdue"], env.workspaces, "box")).toEqual(["ref"]);
     expect(uncoveredOf("all", env.workspaces, "box")).toEqual([]);
-    // In its section it is one line that names the job.
+    // In its section it is one line that names the job and the cause. Asking again would read with the same cover: no Retry.
     const answer = answerOf(result.current, [], env.lifeos, "tasks", undefined, (sector) => (sector === "ref" ? "Refereeing" : undefined));
-    expect(answer.failed?.map((f) => f.said)).toEqual(["LifeOS could not read Refereeing's tasks"]);
+    expect(answer.failed).toEqual([{ environmentId: "box", error: NOT_COVERED, said: "No signed-in host can read Refereeing's tasks" }]);
   });
 
   it("says which session read a sector's rows, so a row is written through the session that read it", async () => {

@@ -17,6 +17,8 @@ type Loaded = { id: string; source: TodaySource };
 export type TodayState = {
   /** The sources that loaded, in the registry's order. */
   sources: readonly Loaded[];
+  /** Sources that threw while they ran: no longer run, and each said on the page, which is never clear without them. */
+  broken: readonly Loaded[];
   answers: ReadonlyMap<string, TodayAnswer>;
   folds: Folds;
   /** The key of the held row whose sheet is open. */
@@ -34,7 +36,7 @@ export type TodayState = {
 };
 
 const NONE: ReadonlySet<string> = new Set();
-let state: TodayState = { sources: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 };
+let state: TodayState = { sources: [], broken: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 };
 let scrollTop = 0;
 let focusKey: string | null = null;
 const listeners = new Set<() => void>();
@@ -58,8 +60,25 @@ export function useTodayState(): TodayState {
 /** A source that has never answered is still to answer: its section draws bones. */
 const WAITING: TodayAnswer = { loading: true };
 
-/** Each loaded source with what it last answered. */
-export const fedOf = (s: TodayState): Fed[] => s.sources.map(({ source }) => ({ source, answer: s.answers.get(source.id) ?? WAITING }));
+/** What a source that threw answers from then on: nothing, and one line that says so. */
+const BROKEN: TodayAnswer = { rows: [], failed: [{ environmentId: "", error: "", said: "Today could not show this" }] };
+
+/** The answers the store kept from before a source read again: their rows are a whole answer, not half of one. */
+const keptAnswers = new WeakSet<TodayAnswer>();
+
+/** Each loaded source with what it last answered, in the registry's order; one that threw answers that it could not be shown. */
+export function fedOf(s: TodayState): Fed[] {
+  const order = TODAY_SOURCES.map((entry) => entry.id);
+  const at = (id: string): number => (order.includes(id) ? order.indexOf(id) : order.length);
+  const fed = [
+    ...s.sources.map(({ source }) => {
+      const answer = s.answers.get(source.id) ?? WAITING;
+      return { source, answer, ...(keptAnswers.has(answer) ? { kept: true } : {}) };
+    }),
+    ...s.broken.map(({ source }) => ({ source, answer: BROKEN })),
+  ];
+  return s.broken.length ? fed.sort((a, b) => at(a.source.id) - at(b.source.id)) : fed;
+}
 
 // ── the sources ────────────────────────────────────────────────────────────
 
@@ -93,12 +112,17 @@ export function loadSources(): Promise<void> {
   return loading;
 }
 
-/** A source that threw while it ran: left out, with what it had answered. */
+/**
+ * A source that threw while it ran: it is run no more, what it had answered
+ * is dropped, and the page says it could not be shown, in its own section or
+ * under Also. The page shows the rest, and is never "All clear" without it.
+ */
 export function dropSource(id: string, error: unknown): void {
   console.warn(`[today] the ${id} source failed and was left out`, error);
+  const dropped = state.sources.find((s) => s.id === id);
   const answers = new Map(state.answers);
   answers.delete(id);
-  set({ sources: state.sources.filter((s) => s.id !== id), answers });
+  set({ sources: state.sources.filter((s) => s.id !== id), broken: dropped ? [...state.broken.filter((s) => s.id !== id), dropped] : state.broken, answers });
 }
 
 /** What each source last handed over, as it handed it: the same answer again wakes no one. */
@@ -114,7 +138,9 @@ export function putAnswer(id: string, answer: TodayAnswer): void {
   if (handed.get(id) === answer) return;
   handed.set(id, answer);
   const had = state.answers.get(id);
-  const kept: TodayAnswer = answer.loading && answer.rows === undefined && had?.rows ? { ...answer, rows: had.rows, ...(had.marks ? { marks: had.marks } : {}), ...(had.note ? { note: had.note } : {}) } : answer;
+  const keeps = !!answer.loading && answer.rows === undefined && !!had?.rows;
+  const kept: TodayAnswer = keeps ? { ...answer, rows: had!.rows!, ...(had!.marks ? { marks: had!.marks } : {}), ...(had!.note ? { note: had!.note } : {}) } : answer;
+  if (keeps) keptAnswers.add(kept);
   const answers = new Map(state.answers).set(id, kept);
   set({ answers, ...(state.gone.size ? { gone: stillGiven(state.gone, answers) } : {}) });
 }
@@ -222,5 +248,5 @@ export function resetToday(sources?: readonly TodaySource[]): void {
   handed.clear();
   for (const timer of timers.values()) clearTimeout(timer);
   timers.clear();
-  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 });
+  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), broken: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 });
 }

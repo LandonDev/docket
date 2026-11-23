@@ -5,7 +5,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { workOpenPort } from "../../lib/workSwitch";
 import { shell } from "../../stores/shell";
-import { act, answerOf, mutate, useLifeosRows } from "./lifeos";
+import { act, answerOf, mutate, shown, useLifeosRows } from "./lifeos";
 import { goTo } from "./open";
 import { useStableRows } from "./stable";
 import { comeBack, leave } from "./store";
@@ -68,14 +68,17 @@ export function waitingRows(waits: readonly Wait[], today: number, ways: Ways): 
 /** The host starts a Work thread that drafts the follow-up, and the thread opens; a refusal says why. */
 export async function startNudge(workspace: TodayWorkspace, threadId: string): Promise<void> {
   const toast = await loadToast();
-  const id = toast.loading("Starting a thread to draft the nudge");
+  // Counted as one of the page's own toasts while it is up, through its failure too (lifeos.ts `shown`).
+  const up = shown();
+  const id = toast.loading("Starting a thread to draft the nudge", up.options);
   try {
     const { sessionId } = await registry.linkOf(workspace.environmentId).request<{ sessionId: string }>("work.mail.nudge", { workspaceId: workspace.workspaceId, threadId });
     toast.dismiss(id);
+    up.down();
     shell.closeViews();
     workOpenPort.get()?.(sessionId);
   } catch (error) {
-    toast.error("The nudge did not start", { id, description: error instanceof Error ? error.message : undefined });
+    toast.error("The nudge did not start", { id, description: error instanceof Error ? error.message : undefined, ...up.options });
   }
 }
 

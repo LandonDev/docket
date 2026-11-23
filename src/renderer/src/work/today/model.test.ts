@@ -182,6 +182,23 @@ describe("page", () => {
     expect(foldOf("task:1")).toBeNull();
   });
 
+  it("says a read that failed in a source with no section under Also, so no failure is dropped and the page is not clear", () => {
+    const failed = { source: { id: "digest" }, answer: { rows: [], failed: [{ environmentId: "box", error: "x" }] } };
+    const day = page([fed("held", HELD, {}), fed("due", DUE, {}), failed], { jobs, lifeos: "ok" });
+    expect(day.kind).toBe("day");
+    expect(day.kind === "day" && day.blocks.map((b) => b.kind === "section" && [b.section.id, b.section.failed.length])).toEqual([["held", 0], ["due", 0], ["also", 1]]);
+  });
+
+  it("a section is partial only when its source answered rows with a read still out, never while it reads again what it had", () => {
+    const rows = [row("task:1", "due")];
+    const of = (extra: object) => page([{ source: { id: "due", section: DUE }, answer: { rows, loading: true }, ...extra }], { jobs, lifeos: "ok" });
+    const partial = (p: ReturnType<typeof page>) => p.kind === "day" && p.blocks.map((b) => b.kind === "section" && b.section.partial);
+    expect(partial(of({}))).toEqual([true]);
+    // Rows the store kept from before (a reopen): they are a whole answer, shown with no cue.
+    expect(partial(of({ kept: true }))).toEqual([false]);
+    expect(partial(page([fed("due", DUE, { rows })], { jobs, lifeos: "ok" }))).toEqual([false]);
+  });
+
   it("hands a section the shape of its bones", () => {
     const day = page([fed("due", { ...DUE, bones: "tick" }, { loading: true }), fed("held", HELD, { loading: true })], { jobs, lifeos: "ok" });
     expect(day.kind === "day" && day.blocks.map((b) => b.kind === "section" && b.section.bones)).toEqual([undefined, "tick"]);

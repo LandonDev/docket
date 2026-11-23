@@ -475,20 +475,40 @@ describe("the held sheet", () => {
     // The reload that follows a Send does not come back yet: the list still holds all three.
     let release!: () => void;
     world.listHeld = new Promise<void>((resolve) => (release = resolve));
+    // The test's document runs no fade of its own: here one runs, as in the window.
+    const styleOf = window.getComputedStyle.bind(window);
+    vi.spyOn(window, "getComputedStyle").mockImplementation((el, pseudo) => {
+      const style = styleOf(el, pseudo);
+      if (!(el as HTMLElement).hasAttribute?.("data-today-arriving")) return style;
+      return new Proxy(style, { get: (target, key) => (key === "transitionDuration" ? "0.18s" : Reflect.get(target, key)) });
+    });
     fireEvent.click(send());
     await waitFor(() => expect(todayNow().held).toBe("held:box:lifeos:o2"));
     // Never "3 of 4": the sent item is counted as done, not as waiting.
     expect(run()).toBe("2 of 3");
+    // What it holds is inert, to the pointer and the keys alike, until its fade is over.
     const body = sheet.querySelector<HTMLElement>("[data-today-arriving]");
     expect(body).not.toBeNull();
-    expect(body!.className).toContain("pointer-events-none");
-    await waitFor(() => expect(sheet.querySelector("[data-today-arriving]")).toBeNull());
+    expect(body!.firstElementChild!.hasAttribute("inert")).toBe(true);
+    expect(document.activeElement).toBe(body);
+    fireEvent.transitionEnd(body!, { propertyName: "opacity" });
+    expect(sheet.querySelector("[data-today-arriving]")).toBeNull();
+    expect(body!.firstElementChild!.hasAttribute("inert")).toBe(false);
+    // The second press, with the list still on its way: the sheet goes on to the third, never back to the first.
+    await waitFor(() => expect(send().disabled).toBe(false));
+    fireEvent.click(send());
+    await waitFor(() => expect(todayNow().held).toBe("held:box:lifeos:o3"));
+    expect(run()).toBe("3 of 3");
+    await waitFor(() => expect(send().disabled).toBe(false));
+    fireEvent.click(send());
+    // The last decision closes the sheet, though the host's list still names all three.
+    await waitFor(() => expect(todayNow().held).toBeNull());
+    expect(world.calls.filter((c) => c.method === "work.outbox.send").map((c) => (c.params.ref as { id: string }).id)).toEqual(["o1", "o2", "o3"]);
     await act(async () => {
       release();
       await world.listHeld;
     });
-    await waitFor(() => expect(rowTitles()).toEqual(["Send to Dana Reyes", "Send to Priya Nair"]));
-    expect(run()).toBe("2 of 3");
+    await waitFor(() => expect(screen.getByText("All clear")).toBeTruthy());
   });
 
   it("a Send the host refuses says so in the sheet itself: a sheet lies over the toasts", async () => {
@@ -571,9 +591,60 @@ describe("a source", () => {
     resetToday([held, broken]);
     render(<View onClose={() => {}} />);
     await waitFor(() => expect(todayNow().sources.map((s) => s.id)).toEqual(["held"]));
+    expect(todayNow().broken.map((s) => s.id)).toEqual(["broken"]);
     expect(rowTitles()).toEqual(["Send to Marcus Bell"]);
-    expect(document.querySelector('[data-today-section="broken"]')).toBeNull();
+    // It is run no more, and its section says so in one line: the page never passes over it in silence.
+    expect(section("broken").querySelector('[data-view-state="failed"]')!.textContent).toBe("Today could not show this");
     expect(warned.mock.calls.some((call) => String(call[0]).includes("broken"))).toBe(true);
+  });
+
+  it("that throws is never passed over by All clear, and one with no section says so under Also", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken: TodaySource = {
+      id: "review",
+      use: () => {
+        throw new Error("a pillar's bug");
+      },
+    };
+    await loadOutbox();
+    resetToday([held, broken]);
+    render(<View onClose={() => {}} />);
+    await waitFor(() => expect(todayNow().broken.map((s) => s.id)).toEqual(["review"]));
+    expect(screen.queryByText("All clear")).toBeNull();
+    expect(section("also").querySelector('[data-view-state="failed"]')!.textContent).toBe("Today could not show this");
+  });
+
+  it("whose read failed with no section of its own says so under Also, with its Retry, and the page is not clear", async () => {
+    const retry = vi.fn();
+    const failed = { rows: [], failed: [{ environmentId: "mac", error: TIMED_OUT, retry }] };
+    await loadOutbox();
+    resetToday([held, { id: "digest", use: () => failed }]);
+    render(<View onClose={() => {}} />);
+    expect(screen.queryByText("All clear")).toBeNull();
+    const line = section("also").querySelector<HTMLElement>('[data-view-state="failed"]')!;
+    expect(line.textContent).toBe("Mac did not answerRetry");
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("with rows and a read some job needs still out keeps its rows usable and draws one bone under them", async () => {
+    await loadOutbox();
+    const opened = vi.fn();
+    const answer = { rows: [{ key: "owed:1", section: "money", sector: "unify" as const, title: "Northfield Parks owes 420", open: opened }], loading: true };
+    const money: TodaySource = { id: "money", section: { id: "money", title: "Money", order: 60, empty: "Nothing owed", bones: "lines" }, use: () => answer };
+    resetToday([held, money]);
+    render(<View onClose={() => {}} />);
+    const bones = () => section("money").querySelectorAll("[data-today-bone]");
+    expect(rowTitles()).toEqual(["Northfield Parks owes 420"]);
+    expect(bones()).toHaveLength(1);
+    expect(section("money").querySelector('[role="status"][aria-busy]')!.getAttribute("aria-label")).toBe("Loading more of Money");
+    fireEvent.click(screen.getByRole("button", { name: "Northfield Parks owes 420" }));
+    expect(opened).toHaveBeenCalledTimes(1);
+    // The read is back: the bone goes, the row stays.
+    act(() => putAnswer("money", { rows: answer.rows }));
+    expect(bones()).toHaveLength(0);
+    expect(rowTitles()).toEqual(["Northfield Parks owes 420"]);
   });
 
   it("adds a section of its own with a tick and two verbs, and a mark on another source's row", async () => {
@@ -682,6 +753,26 @@ describe("the keyboard", () => {
     await waitFor(() => expect(done).toHaveBeenCalledTimes(1), { timeout: 2_000 });
     // A row with no tick leaves Space to the button, which presses it.
     expect(fireEvent.keyDown(open("Second owed"), { key: " " })).toBe(true);
+  });
+
+  it("a tick he made still completes when he leaves the page inside its hold, and one he took back does not", async () => {
+    done.mockClear();
+    world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
+    await loadOutbox();
+    resetToday([held, money]);
+    const first = render(<View onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mark first paid" }));
+    expect(done).not.toHaveBeenCalled();
+    // The page closes at once (a key, another row's press): the task he saw struck through is not left due.
+    first.unmount();
+    expect(done).toHaveBeenCalledTimes(1);
+    // Ticked and unticked inside the hold, then the page closes: nothing runs.
+    const second = render(<View onClose={() => {}} />);
+    const box = screen.getByRole("checkbox", { name: "Mark first paid" });
+    fireEvent.click(box);
+    fireEvent.click(box);
+    second.unmount();
+    expect(done).toHaveBeenCalledTimes(1);
   });
 });
 

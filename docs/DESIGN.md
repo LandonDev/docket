@@ -2305,7 +2305,8 @@ own selected fill is a card's fill at rest in light.
   inset is 12px, the gaps 8px, the job column 56px and the fact's 72px, so the
   title keeps the room (`@container/today`).
 - **The lead** is the row's own control or its kind: a round `Checkbox` on a
-  task, the Outbox's kind glyph on a held item, the file's kind on a file,
+  task (its ring at rest in `muted-foreground`: on the page's own ground
+  the field border is too faint to find), the Outbox's kind glyph on a held item, the file's kind on a file,
   nothing on a meeting or a waiting mail.
 - **The job is on every row**, dot and name: the dot is never the only cue,
   and the column is one the eye can run down to find a job. The name is the
@@ -2324,12 +2325,14 @@ own selected fill is a card's fill at rest in light.
   steps, whenever the host's list catches up) beside Close, whose glyph
   ends on the body's edge. After a press it shows the next held item in
   the order he saw, which fades in over `--dur-base` on `--ease-out`, takes
-  the focus (the ring shows where it went) and takes no pointer until the
-  fade is over, so a double click never sends an item he has not seen; it
-  closes after the last. Closed, it gives focus back to the list's own
+  the focus (the ring shows where it went) and is inert, to the pointer and
+  the keys alike, until the fade is over, so a double click never sends an
+  item he has not seen; it closes after the last, and never goes back to an
+  item his press already took. Closed, it gives focus back to the list's own
   stop, or to the page once no row is left. A press that does not go
-  through is said in the item's own red line, since a sheet lies over the
-  toasts. A held row's fact is when it was held, as a time that names its
+  through is said in the item's own red line, brought into sight, since a
+  sheet lies over the toasts. The sheet's head says the item's time as its
+  row does. A held row's fact is when it was held, as a time that names its
   day ("7:42 AM", "Sun 7:40 PM", the date alone after a week): never a bare
   date for yesterday's, which is what a late task's due date looks like.
 - **A toast sits at the page's foot over the titles** (lib/toastAnchor.ts:
@@ -2355,7 +2358,9 @@ own selected fill is a card's fill at rest in light.
   three bones in its rows' shape (two lines where its rows have two, a
   round bone before a task's), so nothing under it moves when it answers;
   nothing else waits for it. A section whose rows came while a read some
-  job needs is still out draws bones too, never its empty line. An empty
+  job needs is still out keeps them usable and draws one bone under them
+  (three, and never its empty line, where none came); rows it only reads
+  again on a reopen stand with no cue. An empty
   section is its heading and one 13px muted line ("Nothing waits on your
   press", "No meetings today", "Nothing due today", "No one owes you a
   reply", "No one changed your files"). With nothing left the page is one
@@ -2370,7 +2375,11 @@ own selected fill is a card's fill at rest in light.
   beside it only when it is not the wait running out; "LifeOS could not
   read tasks" for a read LifeOS refused, "LifeOS could not read Ref's
   tasks" for a job no signed-in host can read), Retry's label ending on the
-  facts' edge; that section never says "nothing" beside it. An offline host
+  facts' edge; that section never says "nothing" beside it. A job no
+  signed-in host can read says so with no Retry ("No signed-in host can
+  read Ref's tasks"); a read that failed in a source with no section, and a
+  source that broke ("Today could not show this"), are said under Also, and
+  the page is never clear over either. An offline host
   is one 12px muted line at the page's foot ("Mac is offline."). While no
   host can reach LifeOS its sections give way to one line on the same grid:
   "LifeOS did not answer" with Retry, or the plain muted "Not signed in to
@@ -2387,7 +2396,9 @@ own selected fill is a card's fill at rest in light.
   the rows under it glide up by its height; then it is gone, whether or not
   its source has dropped it yet. Under reduced motion it fades and the list
   steps. A task's tick holds 350ms first, its title struck through, as in
-  Tasks. A row that comes back while its place closes (Undo, an act that
+  Tasks; a tick he made still completes if he leaves the page inside the
+  hold. The stop that takes the focus of a row that left is brought into
+  sight, and once no stop is left the page's own region takes it. A row that comes back while its place closes (Undo, an act that
   failed) stands whole at once. A row that leaves because the world changed
   just goes. A row that
   arrives while he is looking lands (`.step-land`); the rows a list opened

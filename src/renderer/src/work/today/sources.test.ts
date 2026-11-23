@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { WORK_CHATS_KEY } from "../outbox/model";
 import type { HostItem } from "../outbox/store";
 import { dueRows, type DueTask } from "./due";
-import { heldRows, heldWhen } from "./held";
+import { heldWhen } from "../outbox/when";
+import { heldRows, placeOf } from "./held";
 import { liveLine, meetingRows, placeAndPeople, type MeetingEvent } from "./meetings";
 import { dayBounds, fold, merge } from "./model";
 import { keepRows } from "./stable";
@@ -214,6 +216,14 @@ describe("waiting on you", () => {
     const names: Record<string, string> = { "box:ws1": "Purdue Esports", "mac:ws9": "Purdue" };
     const rows = heldRows([item("o1", "box", "ws1", at(23, 7)), item("o2", "mac", "ws9", at(23, 8)), item("o3", "mac", "gone", at(23, 9))], at(23, 9, 30), (i) => names[`${i.environmentId}:${i.workspaceId}`]);
     expect(rows.map((r) => r.job)).toEqual(["Purdue Esports", "Purdue", undefined]);
+  });
+
+  it("names an item's place as its sheet does: Work Chats for an item of no workspace", () => {
+    const nameOf = (environmentId: string, workspaceId: string) => (workspaceId === "ws1" ? `${environmentId}'s Purdue` : undefined);
+    expect(placeOf({ environmentId: "box", workspaceId: "ws1" }, nameOf)).toBe("box's Purdue");
+    expect(placeOf({ environmentId: "box", workspaceId: null }, nameOf)).toBe("Work Chats");
+    expect(placeOf({ environmentId: "box", workspaceId: WORK_CHATS_KEY }, nameOf)).toBe("Work Chats");
+    expect(placeOf({ environmentId: "box", workspaceId: "gone" }, nameOf)).toBeUndefined();
   });
 });
 

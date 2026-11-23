@@ -78,7 +78,7 @@ Files view (`openFile`).
 What a row does:
 
 - **Waiting on you.** The Outbox's waiting items, oldest first, words from
-  `rowWords`, time from `timeOf`. A press opens `HeldSheet`: a sheet from
+  `rowWords`, time from `heldWhen` (a time that names its day). A press opens `HeldSheet`: a sheet from
   the right, 520px, whose body is the Outbox's own `HeldDetail` (exported
   from work/outbox for this), with its Send, Edit, Discard and grant menu
   and its rule that Send waits until the whole item is on screen. After a
@@ -92,9 +92,12 @@ What a row does:
   the fade is over; a press that does not go through is said in the item's
   own red line (`HeldDetail`'s `alone`: a sheet lies over the toasts); and
   a sheet that closes gives focus back to the list's own stop, or to the
-  page's region once no row is left. A held row names the workspace its
-  item is in (`TodayRow.job`) and says when it was held as a time that
-  names its day (`heldWhen`).
+  page's region once no row is left. The next item is picked among those
+  that still wait, never one his press already took, and what it holds is
+  inert until its fade is over. A held row names the place its item is in
+  as the sheet does (`TodayRow.job`, `placeOf`: the workspace by host and
+  id, or Work Chats) and says when it was held as a time that names its
+  day (`heldWhen`, work/outbox/when.ts; the sheet's head says the same).
   **Today adds no way to send**, and no Send is ever drawn in a row.
 - **Meetings.** Today's events, all-day first, then by start; the second
   line is the place and the job's people who are there. Events that ended
@@ -150,7 +153,9 @@ nothing.
   with Retry, which lets go of every read of that list and asks afresh
   (`answerOf`, today/lifeos.ts). A job whose sector the session lacks and
   no other open host holds cannot be read at all (`uncoveredOf`): its
-  section says so by the job's name ("LifeOS could not read Ref's tasks").
+  section says so by the job's name, with no Retry ("No signed-in host can
+  read Ref's tasks"). A section that holds rows while such a read is out
+  draws one bone under them (`ShownSection.partial`).
 - A row is written through the session that read it (`Rows.sessionOf`):
   Tomorrow, Dismiss and every Undo of a sector read on another host go
   through that sector's own session, never the first one, which lacks it.
@@ -239,8 +244,11 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
   far; a host whose link is not open is skipped.
 - A row his own act takes off the page calls `leave(key)` (today/store.ts)
   and `comeBack(key)` if the act fails or he undoes it.
-- A source that fails to load, or throws while it runs, is left out and
-  logged; the page shows the rest.
+- A source that fails to load is left out and logged. One that throws
+  while it runs is run no more and said on the page in one line ("Today
+  could not show this", in its section or under Also): the page shows the
+  rest and is never "All clear" over it. A read that failed in a source
+  with no section is said under Also the same way.
 
 Row keys Today makes: `held:<environmentId>:<ref.at>:<ref.id>`,
 `event:<id>`, `task:<id>`, `mail:<id>`, `file:<FileEntry.key>`.

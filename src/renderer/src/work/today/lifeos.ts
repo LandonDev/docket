@@ -195,8 +195,11 @@ export function answerOf(
   jobName?: (sector: SectorKey) => string | undefined,
 ): TodayAnswer {
   const failure = (environmentId: string, error: string, sector?: SectorKey | null): TodayFailure => {
-    const job = sector ? jobName?.(sector) : undefined;
-    return { environmentId, error, said: job ? `LifeOS could not read ${job}'s ${what}` : `LifeOS could not read ${what}`, retry: read.retry };
+    const of = `${sector && jobName?.(sector) ? `${jobName(sector)}'s ` : ""}${what}`;
+    // No session covers the job: asking again reads with the same cover, so the line says the cause and offers no Retry.
+    // It goes by itself when a host that can read the job is back.
+    if (error === NOT_COVERED) return { environmentId, error, said: `No signed-in host can read ${of}` };
+    return { environmentId, error, said: `LifeOS could not read ${of}`, retry: read.retry };
   };
   // A session that is down is the page's one line (model.ts `page`), never each section's.
   if (read.error && !sessionDown(lifeos)) return { rows: [], failed: [failure(lifeos.environmentId, read.error)] };
@@ -215,10 +218,16 @@ export function mutate<T>(session: LifeosSession, name: string, args: Record<str
   return session.client.mutation(makeFunctionReference<"mutation">(name), args) as Promise<T>;
 }
 
-/** A toast of the page's own, counted while it is up (store.ts `toastsUp`): in a narrow column the page gives it a strip of its own. */
-export function shown(): { onDismiss(): void; onAutoClose(): void } {
+/**
+ * A toast of the page's own, counted while it is up (store.ts `toastsUp`):
+ * in a narrow column the page gives it a strip of its own. `options` go to
+ * the toast: they count it down when it is closed or its time runs out.
+ * Sonner calls neither for a press on the toast's own action, nor for a
+ * toast dismissed by code: whoever does either calls `down` itself.
+ */
+export function shown(): { options: { onDismiss(): void; onAutoClose(): void }; down(): void } {
   const down = toastUp();
-  return { onDismiss: down, onAutoClose: down };
+  return { options: { onDismiss: down, onAutoClose: down }, down };
 }
 
 /**
@@ -232,9 +241,15 @@ export async function act<T>({ run, message, failed, undo }: { run: () => Promis
   try {
     result = await run();
   } catch (error) {
-    toast.error(`Couldn't ${failed}`, shown());
+    toast.error(`Couldn't ${failed}`, shown().options);
     throw error;
   }
-  toast(message, { ...shown(), ...(undo ? { action: { label: "Undo", onClick: () => void undo(result).catch(() => toast.error("Couldn't undo", shown())) } } : {}) });
+  const up = shown();
+  const onUndo = (): void => {
+    // The press takes the toast away at once: its place is given back at once too.
+    up.down();
+    void undo!(result).catch(() => toast.error("Couldn't undo", shown().options));
+  };
+  toast(message, { ...up.options, ...(undo ? { action: { label: "Undo", onClick: onUndo } } : {}) });
   return result;
 }

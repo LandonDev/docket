@@ -30,6 +30,7 @@ import { Calendar, Chat, File, Mail } from "../icons";
 import { EditDialog } from "./EditDialog";
 import { GrantsSheet } from "./GrantsSheet";
 import { byWorkspace, dayOf, decidedWords, EDITABLE, grantFor, offerLine, pastOf, payloadView, timeOf, WORK_CHATS_KEY } from "./model";
+import { heldWhen } from "./when";
 import { loadResults, undoResult, useResults } from "./results";
 import { OfferLine } from "./OfferLine";
 import { discardItem, fetchItem, grantAndSend, loadHost, loadOutbox, notSentWords, offerAfterPress, offerFrom, sendItem, sendMany, useOutbox, useWantedOutboxItem, wantOutboxItem, wentOut, type HostItem, type HostOffer } from "./store";
@@ -660,6 +661,11 @@ export function HeldDetail({
   // Alone in a sheet, a press that did not go through is said in the detail itself: a sheet lies over the toasts.
   const [refused, setRefused] = useState<string | null>(null);
   const sayFailed = (line: string): void => (alone ? setRefused(line) : toastError(line));
+  // He may have read to the mail's end before he pressed: the line is brought into sight.
+  const refusedLine = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (refused) refusedLine.current?.scrollIntoView?.({ block: "nearest" });
+  }, [refused]);
   const grant = grantFor(item);
   const { about } = splitSummary(item.summary);
   const press = async (which: "send" | "again" | "discard" | "grant") => {
@@ -687,9 +693,10 @@ export function HeldDetail({
     <>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-8 py-8">
-          <DetailHead item={item} narrowOnly={alone ? [] : [workspace]} facts={[...(alone ? [workspace] : []), threadWords(item) ?? "", timeOf(item.createdAt)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
+          {/* Alone (Today's sheet) the time is said as the row that opened it says it: one fact, one form. */}
+          <DetailHead item={item} narrowOnly={alone ? [] : [workspace]} facts={[...(alone ? [workspace] : []), threadWords(item) ?? "", alone ? heldWhen(item.createdAt) : timeOf(item.createdAt)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
           {refused || item.state === "failed" ? (
-            <div role="alert" className="flex items-start gap-2 text-[13px] leading-5">
+            <div ref={refusedLine} role="alert" className="flex items-start gap-2 text-[13px] leading-5">
               <StatusMark state="failed" word={false} />
               <span className="min-w-0 flex-1 text-destructive">{refused ?? item.error ?? "It couldn't be sent."}</span>
             </div>

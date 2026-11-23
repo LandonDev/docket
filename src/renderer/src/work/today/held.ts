@@ -1,8 +1,10 @@
 import { createElement, useEffect, useMemo } from "react";
 import type { SectorKey } from "@shared/work";
-import { dayTime } from "../../lib/duration";
+import { useWorkspaces } from "../../lib/tcserver/workspaces";
+import { WORK_CHATS_KEY } from "../outbox/model";
 import { KindGlyph, rowWords } from "../outbox/OutboxView";
 import { loadHost, loadOutbox, useOutbox, type HostItem } from "../outbox/store";
+import { heldWhen } from "../outbox/when";
 import { openHeld } from "./store";
 import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource } from "./types";
 
@@ -29,17 +31,13 @@ function leadOf(kind: HostItem["kind"]): TodayRow["lead"] {
   return lead;
 }
 
-const dates = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
-
 /**
- * When an item was held, as a time: "7:42 AM" today, "Sun 7:40 PM" within
- * the last six days, the date alone before that. Never a bare date for
- * yesterday's: in this column a bare date is what a late task's due date
- * looks like.
+ * The place a held item is in, as its row and its sheet both name it: Work
+ * Chats for an item of no workspace, else the workspace's own name
+ * (`nameOf`, by host and id), or none where the window does not know it.
  */
-export function heldWhen(ts: number, now = Date.now()): string {
-  const day = (t: number): number => new Date(t).setHours(0, 0, 0, 0);
-  return Math.round((day(now) - day(ts)) / 86_400_000) < 7 ? dayTime(ts, now) : dates.format(ts);
+export function placeOf(item: Pick<HostItem, "environmentId" | "workspaceId">, nameOf: (environmentId: string, workspaceId: string) => string | undefined): string | undefined {
+  return !item.workspaceId || item.workspaceId === WORK_CHATS_KEY ? "Work Chats" : nameOf(item.environmentId, item.workspaceId);
 }
 
 /**
@@ -75,14 +73,18 @@ function useHeld(env: TodayEnv): TodayAnswer {
   useEffect(() => {
     void loadOutbox();
   }, []);
-  const jobs = env.workspaces;
+  // Every workspace the window knows, as the sheet reads them: the row and the sheet name one place.
+  const catalog = useWorkspaces();
+  // The day is one of the row's inputs: a time held "7:42 AM" names its day once the day has turned.
+  const day = env.day.from;
   return useMemo(
     () => ({
-      rows: heldRows(outbox.waiting, Date.now(), (item) => jobs.find((w) => w.environmentId === item.environmentId && w.workspaceId === item.workspaceId)?.name),
+      rows: heldRows(outbox.waiting, Date.now(), (item) => placeOf(item, (environmentId, workspaceId) => catalog.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.name)),
       loading: !outbox.loaded,
       failed: outbox.errors.map((e) => ({ ...e, retry: () => loadHost(e.environmentId) })),
     }),
-    [outbox, jobs],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `day`: the rows' times are read again when the day turns
+    [outbox, catalog, day],
   );
 }
 

@@ -49,8 +49,8 @@ export function offlineHosts(jobs: readonly TodayWorkspace[]): string[] {
 
 const NO_KEYS: ReadonlySet<string> = new Set();
 
-/** One source and what it last answered. */
-export type Fed = { source: Pick<TodaySource, "id" | "section">; answer: TodayAnswer };
+/** One source and what it last answered. `kept`: the rows are its last whole answer, shown while it reads again (store.ts `putAnswer`). */
+export type Fed = { source: Pick<TodaySource, "id" | "section">; answer: TodayAnswer; kept?: boolean };
 
 /** A row with its marks laid on. */
 function lay(row: TodayRow, marks: readonly TodayMark[]): TodayRow {
@@ -77,6 +77,8 @@ export type MergedSection = {
   rows: TodayRow[];
   /** A source that feeds it has not answered yet. */
   loading: boolean;
+  /** A source that feeds it answered with rows and a read still out: what it shows is not all of it. Not while it only reads again what it had. */
+  partial: boolean;
   failed: TodayFailure[];
   /** One muted line at its foot, from the source that owns it. */
   note?: string;
@@ -86,19 +88,21 @@ export type MergedSection = {
  * Every source's answer as sections of rows. One row per key: the first
  * source to give it wins, in the registry's order. A mark is laid on the row
  * of its key and draws nothing when there is none. A row whose section no
- * source declares is left out (the Files section before Files lands).
+ * source declares is left out (the Files section before Files lands). A
+ * read that failed in a source with no section of its own (rows for Also,
+ * marks) is said under Also: no failure is dropped.
  */
 export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS): MergedSection[] {
   const sections = new Map<string, MergedSection>();
   const add = (def: TodaySection): void => {
-    if (!sections.has(def.id)) sections.set(def.id, { def, rows: [], loading: false, failed: [] });
+    if (!sections.has(def.id)) sections.set(def.id, { def, rows: [], loading: false, partial: false, failed: [] });
   };
   for (const { source } of fed) if (source.section) add(source.section);
   add(ALSO);
   const marks = new Map<string, TodayMark[]>();
   for (const { answer } of fed) for (const mark of answer.marks ?? []) marks.set(mark.key, [...(marks.get(mark.key) ?? []), mark]);
   const seen = new Set<string>();
-  for (const { source, answer } of fed) {
+  for (const { source, answer, kept } of fed) {
     for (const row of answer.rows ?? []) {
       const section = sections.get(row.section);
       // A row his own act took off the page is gone before its source drops it.
@@ -107,9 +111,10 @@ export function merge(fed: readonly Fed[], gone: ReadonlySet<string> = NO_KEYS):
       section.rows.push(lay(row, marks.get(row.key) ?? []));
     }
     const own = source.section ? sections.get(source.section.id) : undefined;
+    if (answer.failed?.length) (own ?? sections.get(ALSO.id)!).failed.push(...answer.failed);
     if (!own) continue;
     if (answer.loading) own.loading = true;
-    if (answer.failed?.length) own.failed.push(...answer.failed);
+    if (answer.loading && answer.rows !== undefined && !kept) own.partial = true;
     if (answer.note) own.note = answer.note;
   }
   const ordered = [...sections.values()].sort((a, b) => a.def.order - b.def.order);
@@ -134,6 +139,8 @@ export type ShownSection = {
   state: "bones" | "rows" | "empty";
   /** A read that feeds it is still out: what it shows may not be all of it. */
   pending: boolean;
+  /** It shows rows and a read some job needs is still out: one bone under them says more may come. */
+  partial: boolean;
   /** The shape of its bones (`TodaySection.bones`). */
   bones?: TodaySection["bones"];
   empty: string;
@@ -161,6 +168,7 @@ export function fold(section: MergedSection, folds: Folds = NO_FOLDS): ShownSect
     title: def.title,
     state,
     pending: section.loading,
+    partial: section.partial && section.rows.length > 0,
     ...(def.bones ? { bones: def.bones } : {}),
     empty: def.empty,
     earlier: showEarlier ? 0 : past.length,

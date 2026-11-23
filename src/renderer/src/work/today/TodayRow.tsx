@@ -29,6 +29,13 @@ export const TODAY_INSET = "mx-auto w-full max-w-[720px] px-6 @max-[30rem]/today
 /** A row's place in its list: rows sit 2px apart, each carrying the gap under it, so a place that closes leaves nothing behind. */
 export const ROW_SLOT = "pb-0.5";
 
+/**
+ * The tick at rest: the circle is the only sign that a Due row has a second
+ * act, and on the page's own ground the field border (`input`) is too faint
+ * to find, so its ring takes the muted ink. Ticked, it is the Checkbox's own.
+ */
+const TICK_REST = "data-unchecked:border-muted-foreground";
+
 /** How long a ticked row holds so the tick reads, before its task completes (the Tasks view's own). */
 export const TICK_HOLD_MS = 350;
 
@@ -75,11 +82,30 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
   const tick = lead?.kind === "tick" ? lead : null;
   const run = useRef(tick?.run);
   run.current = tick?.run;
+  // The tick he made and that has not run yet: it holds a moment so it reads and he may take it back.
+  const pending = useRef<number | null>(null);
+  // He left the page inside the hold (a key, another row's press): the tick he saw struck through still completes.
+  // Declared first, so at unmount its cleanup runs before the hold's own, which then finds nothing left to stop.
+  useEffect(
+    () => () => {
+      if (pending.current === null) return;
+      window.clearTimeout(pending.current);
+      pending.current = null;
+      void run.current?.().catch(() => {});
+    },
+    [],
+  );
   useEffect(() => {
     if (!ticked) return;
     // A tick that failed (its own toast says so) puts the row back as it was.
-    const timer = window.setTimeout(() => void run.current?.().catch(() => setTicked(false)), TICK_HOLD_MS);
-    return () => window.clearTimeout(timer);
+    pending.current = window.setTimeout(() => {
+      pending.current = null;
+      void run.current?.().catch(() => setTicked(false));
+    }, TICK_HOLD_MS);
+    return () => {
+      if (pending.current !== null) window.clearTimeout(pending.current);
+      pending.current = null;
+    };
   }, [ticked]);
   const acts = row.acts?.slice(0, 2) ?? [];
   const gives = acts.length > 0 ? yields("row") : "";
@@ -132,7 +158,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         </TooltipContent>
       </Tooltip>
       <span className={cn("flex h-5 items-center justify-center", tick ? ROW_CONTROLS : ROW_SHOWS)}>
-        {tick ? <Checkbox shape="round" tabIndex={stop} checked={ticked} onCheckedChange={setTicked} aria-label={tick.label} /> : Glyph ? <Glyph className="size-3.5 text-muted-foreground" /> : null}
+        {tick ? <Checkbox shape="round" tabIndex={stop} checked={ticked} onCheckedChange={setTicked} aria-label={tick.label} className={TICK_REST} /> : Glyph ? <Glyph className="size-3.5 text-muted-foreground" /> : null}
       </span>
       <span ref={words.ref} className={cn("flex min-w-0 flex-col", ROW_SHOWS)}>
         <span data-row-title className={cn("truncate text-[13px] leading-5 transition-colors duration-(--dur-fast) motion-reduce:transition-none", ticked ? "text-muted-foreground line-through" : row.past ? "text-muted-foreground" : "text-foreground")}>

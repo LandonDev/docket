@@ -141,6 +141,9 @@ export function registerMenu(): void {
   apply(NO_WINDOW)
   ipcMain.on('menu:state', (event, state: unknown) => receiveMenuState(event.sender, state))
   app.on('browser-window-focus', applyFocusedMenu)
+  // A window that lost the focus to no other window of ours (minimized, the last one hidden): the menu goes back to the
+  // rows that need no window. Asked a turn later, since a blur comes before the next window's focus.
+  app.on('browser-window-blur', () => setTimeout(applyFocusedMenu, 0))
   if (process.platform === 'darwin') registerZoomKeys()
 }
 
