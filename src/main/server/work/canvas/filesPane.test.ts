@@ -148,6 +148,41 @@ describe('a change inside a caller\'s transaction', () => {
   })
 })
 
+describe('one item in another\'s place', () => {
+  it('opens the new item, tells whoever keeps a seat by the old one, then closes the old: one push', () => {
+    const word = store.open(PANE, { kind: 'document', source: file(join(dir, 'shared', 'Plan.docx')), title: 'Plan.docx' })
+    const seen: string[][] = []
+    const off = store.onItemReplaced((old, next) => {
+      // The old item is still there while its seat is moved.
+      expect(store.get(old.id)).not.toBeNull()
+      seen.push([old.id, next.id])
+    })
+    pushes.length = 0
+    const doc = store.replace(PANE, word.id, { kind: 'document', source: file(join(dir, 'shared', 'Plan.tcdoc')), title: 'Plan' })
+    expect(seen).toEqual([[word.id, doc.id]])
+    expect(store.list(PANE).map((i) => i.id)).toEqual([doc.id])
+    expect(store.get(word.id)).toBeNull()
+    expect(pushes).toHaveLength(1)
+    expect(pushes[0].p).toMatchObject({ opened: doc.id })
+    off()
+    store.replace(PANE, doc.id, { kind: 'document', source: file(join(dir, 'shared', 'Plan 2.tcdoc')), title: 'Plan 2' })
+    expect(seen).toHaveLength(1)
+  })
+
+  it("beside a thread it is an open and a close, as before; another owner's item is left alone", () => {
+    const word = store.open('t1', { kind: 'document', source: file('/w/Plan.docx'), title: 'Plan.docx' })
+    const tab = store.open(PANE, { kind: 'pdf', source: file('/w/a.pdf'), title: 'a.pdf' })
+    const doc = store.replace('t1', word.id, { kind: 'document', source: file('/w/Plan.tcdoc'), title: 'Plan' })
+    expect(store.get(word.id)).toMatchObject({ state: 'closed' })
+    expect(store.list('t1').map((i) => i.id)).toEqual([doc.id])
+    store.replace('t1', tab.id, { kind: 'document', source: file('/w/Other.tcdoc'), title: 'Other' })
+    expect(store.get(tab.id)).toMatchObject({ state: 'open', sessionId: PANE })
+    // The same item named as its own replacement is only shown.
+    expect(store.replace('t1', doc.id, { itemId: doc.id }).id).toBe(doc.id)
+    expect(store.get(doc.id)).toMatchObject({ state: 'open' })
+  })
+})
+
 describe("a workspace's threads' items", () => {
   it('leaves every pane owner out in the query, before its limit, and lists them only when asked', () => {
     const mine = store.open('t1', { kind: 'pdf', source: file('/thread.pdf'), title: 'Thread' })

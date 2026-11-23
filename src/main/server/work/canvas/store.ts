@@ -299,6 +299,30 @@ export class CanvasStore {
   }
 
   /**
+   * One item takes another's place in its owner's pane: the new one opens and the old one closes, as one step
+   * (a Word file opened as a document becomes the `.tcdoc` made of it). Whoever keeps a seat by the old item's
+   * id (a Files tab) hears of it first (`onItemReplaced`) and follows. An old item of another owner, or none, is
+   * only an open.
+   */
+  replace(sessionId: string, oldItemId: string | null | undefined, o: CanvasOpen): CanvasItem {
+    return this.inside(() => {
+      const item = this.open(sessionId, o)
+      const old = oldItemId && oldItemId !== item.id ? this.get(oldItemId) : null
+      if (old && old.sessionId === sessionId) {
+        for (const fn of this.replaced) fn(old, item)
+        this.close(old.id)
+      }
+      return item
+    })
+  }
+  private readonly replaced = new Set<(old: CanvasItem, next: CanvasItem) => void>()
+  /** Hears each replacement before the old item closes; a throw stops the replacement. Returns its off. */
+  onItemReplaced(fn: (old: CanvasItem, next: CanvasItem) => void): () => void {
+    this.replaced.add(fn)
+    return () => void this.replaced.delete(fn)
+  }
+
+  /**
    * Runs `fn` with every push held back, and sends them once it has returned: for a caller that changes items
    * inside a savepoint of its own (a Files tab and its item are one transaction), so no socket hears of a change
    * that was then rolled back. A throw sends none.

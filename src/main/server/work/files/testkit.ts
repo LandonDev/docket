@@ -127,6 +127,7 @@ export function makeRig(): Rig {
     canvas: {
       open: (sessionId: string, kind: CanvasItem['kind'], source: CanvasItem['source'], title: string) => canvas.open(sessionId, { kind, source, title }),
       close: (itemId: string) => canvas.close(itemId),
+      replace: (sessionId: string, oldItemId: string | null | undefined, kind: CanvasItem['kind'], source: CanvasItem['source'], title: string) => canvas.replace(sessionId, oldItemId, { kind, source, title }),
       forSession: (sessionId: string) => canvas.list(sessionId),
       forWorkspace: (workspaceId: string, opts?: { open?: boolean; panes?: boolean }) => canvas.forWorkspace(workspaceId, opts),
       get: (itemId: string) => canvas.get(itemId),

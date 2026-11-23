@@ -194,6 +194,8 @@ export interface WorkCtx {
   canvas: {
     open(sessionId: string, kind: CanvasKind, source: CanvasSource, title: string): CanvasItem
     close(itemId: string): void
+    /** opens an item in `sessionId`'s pane in the place of `oldItemId` (closed when it is that pane's own): a Files tab that showed the old one follows to the new */
+    replace(sessionId: string, oldItemId: string | null | undefined, kind: CanvasKind, source: CanvasSource, title: string): CanvasItem
     forSession(sessionId: string): CanvasItem[]
     /** the items of a workspace's threads, open and closed (`open`: open alone), newest change first; a pane owner's (the Mail view's, the Files place's tabs) only with `panes` */
     forWorkspace(workspaceId: string, opts?: { open?: boolean; panes?: boolean }): CanvasItem[]
