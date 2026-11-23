@@ -1,4 +1,4 @@
-import { handled, mailPaneOf, NOT_HANDLED, type CanvasItem } from '@shared/work'
+import { filesPaneOf, handled, mailPaneOf, NOT_HANDLED, type CanvasItem } from '@shared/work'
 import { ensureFetched, isFetched, keepFetched, readFetched } from './fetch'
 import { WORK_MODULES, type WorkModule } from '../modules'
 import { canvasMentions, searchMentions } from './mentions'
@@ -62,8 +62,8 @@ export const canvas: WorkModule = {
     const gone = ctx.db.prepare(`DELETE FROM work_canvas_moved WHERE session_id = ?`)
     for (const id of ids) gone.run(id)
   },
-  // A deleted workspace's threads are removed too, and `sessionsRemoved` clears their items; its Mail pane goes here.
+  // A deleted workspace's threads are removed too, and `sessionsRemoved` clears their items; its Mail pane and its Files pane go here.
   workspaceRemoved(workspaceId, ctx) {
-    canvasStoreOf(ctx.db).removeSessions([mailPaneOf(workspaceId)])
+    canvasStoreOf(ctx.db).removePanes([mailPaneOf(workspaceId), filesPaneOf(workspaceId)])
   }
 }

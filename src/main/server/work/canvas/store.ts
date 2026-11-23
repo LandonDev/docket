@@ -5,7 +5,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { CanvasPush } from '@shared/contract-work-canvas'
 import type { PushTo } from '../modules'
 import type { SessionMeta } from '@shared/events'
-import { CanvasKindSchema, CanvasSourceSchema, canvasSourcePath, mailPaneWorkspace, sessionScopeOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
+import { CanvasKindSchema, CanvasSourceSchema, canvasSourcePath, FILES_PANE_PREFIX, filesPaneWorkspace, MAIL_PANE_PREFIX, paneWorkspace, sessionScopeOf, type CanvasItem, type CanvasKind, type CanvasSource } from '@shared/work'
+import { SEATS_FULL } from '@shared/work/files'
 
 /**
  * A thread's canvas items (`work_canvas_items`, docs/agents/work-canvas.md
@@ -59,22 +60,33 @@ export interface CanvasStoreDeps {
   dataDir: string
   /** The thread's row (the session registry's `get`). */
   session(id: string): Pick<SessionMeta, 'id' | 'workspaceId' | 'scope' | 'parentId'> | null
-  /** Whether this host has a Work workspace by this id: a Mail view's pane (`mailPaneOf`) owns items only for one. */
+  /** Whether this host has a Work workspace by this id: a pane owner (the Mail view's `mailPaneOf`, the Files place's `filesPaneOf`) owns items only for one. */
   workWorkspace?(id: string): boolean
+  /** Items were deleted outright (a Files tab closed, a workspace removed): every pillar drops the rows and files it kept for them. */
+  itemsRemoved?(itemIds: string[]): void
   push(p: CanvasPush, to?: PushTo): void
   /** Whether a remote key could name this path (the listener's fence, `ctx.reaches`); absent, it names none. */
   remoteReaches?(path: string): boolean
   log(line: string): void
 }
 
-/** An item as a caller the path fence does not admit sees it: its source's path cut to the file's name. */
+/**
+ * An item as a caller the path fence does not admit sees it: its source's path cut to the file's name. A Files
+ * pane's item is cut further: its tab was opened by browsing, so its name is a fact about a folder the caller
+ * may not list, and both the name and the title go.
+ */
 export function fencedItem(item: CanvasItem, reaches: (path: string) => boolean): CanvasItem {
   const path = canvasSourcePath(item.source)
   if (path === null || reaches(path)) return item
   const s = item.source
-  const source: CanvasSource = s.at === 'file' ? { ...s, path: basename(path) } : s.at === 'microsoft' ? { ...s, ref: { kind: 'path', path: basename(path) } } : s
-  return { ...item, source }
+  const pane = filesPaneWorkspace(item.sessionId) !== null
+  const name = pane ? '' : basename(path)
+  const source: CanvasSource = s.at === 'file' ? { ...s, path: name } : s.at === 'microsoft' ? { ...s, name: pane ? '' : s.name, ref: { kind: 'path', path: name } } : s
+  return { ...item, source, ...(pane ? { title: '' } : {}) }
 }
+
+/** `session_id` of no pane owner: what a list of a workspace's threads' items asks for. */
+const NOT_A_PANE = `session_id NOT LIKE '${MAIL_PANE_PREFIX.replace('_', '\\_')}%' ESCAPE '\\' AND session_id NOT LIKE '${FILES_PANE_PREFIX.replace('_', '\\_')}%' ESCAPE '\\'`
 
 /** What an open asks: a known item again, or a kind, source and title. */
 export interface CanvasOpen {
@@ -87,6 +99,8 @@ export interface CanvasOpen {
 export class CanvasStore {
   /** Rows already said to be broken, so each is logged once. */
   private readonly broken = new Set<string>()
+  /** While a caller's transaction is open (`inside`): the owners to announce once it has landed, each with the item last opened. */
+  private quiet: Map<string, string | undefined> | null = null
   constructor(private readonly deps: CanvasStoreDeps) {}
 
   private get db(): DatabaseSync {
@@ -139,10 +153,15 @@ export class CanvasStore {
     return row ? this.item(row) : null
   }
 
-  /** A workspace's items, open and closed, newest change first (the Docs view's finding, docs/find.ts). */
-  forWorkspace(workspaceId: string, opts: { open?: boolean; most?: number } = {}): CanvasItem[] {
+  /**
+   * The items of a workspace's threads, open and closed, newest change first (the Docs view's finding, docs/find.ts).
+   * A pane owner's items (the Mail view's reader, the Files place's tabs) are no thread's: they are left out in the
+   * query itself, before its limit, so a row of open tabs never pushes a thread's item out. `panes`: those too.
+   */
+  forWorkspace(workspaceId: string, opts: { open?: boolean; most?: number; panes?: boolean } = {}): CanvasItem[] {
     const open = opts.open ? ` AND state = 'open'` : ''
-    return this.items(this.db.prepare(`SELECT * FROM work_canvas_items WHERE workspace_id = ?${open} ORDER BY updated_at DESC LIMIT ?`).all(workspaceId, opts.most ?? 1000) as unknown as Row[])
+    const threads = opts.panes ? '' : ` AND ${NOT_A_PANE}`
+    return this.items(this.db.prepare(`SELECT * FROM work_canvas_items WHERE workspace_id = ?${open}${threads} ORDER BY updated_at DESC LIMIT ?`).all(workspaceId, opts.most ?? 1000) as unknown as Row[])
   }
 
   /** Every row of these threads, open and closed. */
@@ -167,9 +186,9 @@ export class CanvasStore {
     return id
   }
 
-  /** The owner's row: a Work thread, or a Work workspace's Mail pane (an attachment opened beside the mail). */
+  /** The owner's row: a Work thread, or a Work workspace's pane (the Mail view's, for an attachment opened beside the mail; the Files place's, for a file open in a tab). */
   private workThread(sessionId: string): Pick<SessionMeta, 'id' | 'workspaceId'> {
-    const pane = mailPaneWorkspace(sessionId)
+    const pane = paneWorkspace(sessionId)
     if (pane !== null && !this.deps.session(sessionId)) {
       if (!this.deps.workWorkspace?.(pane)) throw new Error(`not a Work workspace: ${pane}`)
       return { id: sessionId, workspaceId: pane }
@@ -188,6 +207,10 @@ export class CanvasStore {
   /** Pushes the thread's open list (a thread that moved here says its items this way), split for remote keys as every change is. */
   announce(sessionId: string, opened?: string): CanvasItem[] {
     const items = this.list(sessionId)
+    if (this.quiet) {
+      this.quiet.set(sessionId, opened ?? this.quiet.get(sessionId))
+      return items
+    }
     const p: CanvasPush = { push: 'work.canvas', sessionId, items, ...(opened ? { opened } : {}) }
     // A remote key sees the paths its fence admits; the rest are cut to file names, in a push of their own.
     const reaches = this.deps.remoteReaches ?? (() => false)
@@ -222,7 +245,7 @@ export class CanvasStore {
     }
     if (existing?.state !== 'open') {
       const open = (this.db.prepare(`SELECT count(*) AS n FROM work_canvas_items WHERE session_id = ? AND state = 'open'`).get(sessionId) as { n: number }).n
-      if (open >= CANVAS_OPEN_MAX) throw new Error(`This thread already has ${CANVAS_OPEN_MAX} items open; close one first.`)
+      if (open >= CANVAS_OPEN_MAX) throw new Error(filesPaneWorkspace(sessionId) !== null ? SEATS_FULL : `This thread already has ${CANVAS_OPEN_MAX} items open; close one first.`)
     }
     const now = Date.now()
     // An item already open keeps its place in the row: opening it again only shows it. A closed one comes back last.
@@ -246,18 +269,57 @@ export class CanvasStore {
     return this.get(id)!
   }
 
-  /** The item leaves the tab row; its row and its folder stay. */
+  /** The item leaves the tab row; its row and its folder stay. A Files pane's item is deleted instead (`remove`): its tab is all there was of it. */
   close(itemId: string): void {
     const row = this.db.prepare(`SELECT session_id, state FROM work_canvas_items WHERE id = ?`).get(itemId) as { session_id: string; state: string } | undefined
     if (!row) throw new Error(`no canvas item ${itemId}`)
+    if (filesPaneWorkspace(row.session_id) !== null) return this.remove([itemId])
     if (row.state === 'closed') return
     this.db.prepare(`UPDATE work_canvas_items SET state = 'closed', rev = rev + 1, updated_at = ? WHERE id = ?`).run(Date.now(), itemId)
     this.announce(row.session_id)
   }
 
+  /**
+   * Deletes items outright: their rows, what every pillar kept for them (`itemsRemoved`), and their folders. An
+   * id that names no item is passed over. Each owner's list is pushed once.
+   */
+  remove(itemIds: readonly string[]): void {
+    const find = this.db.prepare(`SELECT id, session_id FROM work_canvas_items WHERE id = ?`)
+    const rows = itemIds.flatMap((id) => (find.get(id) as { id: string; session_id: string } | undefined) ?? [])
+    if (!rows.length) return
+    const drop = this.db.prepare(`DELETE FROM work_canvas_items WHERE id = ?`)
+    for (const row of rows) drop.run(row.id)
+    try {
+      this.deps.itemsRemoved?.(rows.map((r) => r.id))
+    } catch (err) {
+      this.deps.log(`canvas: a pillar did not clear deleted items: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    for (const row of rows) if (SAFE_ID.test(row.session_id) && SAFE_ID.test(row.id)) rmSync(canvasItemDir(this.deps.dataDir, row.session_id, row.id), { recursive: true, force: true })
+    for (const owner of new Set(rows.map((r) => r.session_id))) this.announce(owner)
+  }
+
+  /**
+   * Runs `fn` with every push held back, and sends them once it has returned: for a caller that changes items
+   * inside a savepoint of its own (a Files tab and its item are one transaction), so no socket hears of a change
+   * that was then rolled back. A throw sends none.
+   */
+  inside<T>(fn: () => T): T {
+    if (this.quiet) return fn()
+    const held = (this.quiet = new Map())
+    let out: T
+    try {
+      out = fn()
+    } finally {
+      this.quiet = null
+    }
+    for (const [owner, opened] of held) this.announce(owner, opened)
+    return out
+  }
+
   /** The tab order: `order` first, then the open items it left out, in their order; ids that are not open items of the thread are ignored. */
   reorder(sessionId: string, order: readonly string[]): CanvasItem[] {
-    if (!this.deps.session(sessionId) && !(mailPaneWorkspace(sessionId) && this.deps.workWorkspace?.(mailPaneWorkspace(sessionId)!))) throw new Error(`unknown thread: ${sessionId}`)
+    const pane = paneWorkspace(sessionId)
+    if (!this.deps.session(sessionId) && !(pane !== null && this.deps.workWorkspace?.(pane))) throw new Error(`unknown thread: ${sessionId}`)
     const open = this.db.prepare(`SELECT id, position FROM work_canvas_items WHERE session_id = ? AND state = 'open' ORDER BY position, created_at`).all(sessionId) as { id: string; position: number }[]
     const ids = new Set(open.map((r) => r.id))
     const listed = [...new Set(order)].filter((id) => ids.has(id))
@@ -278,6 +340,23 @@ export class CanvasStore {
       st.run(id)
       if (SAFE_ID.test(id)) rmSync(canvasDirOf(this.deps.dataDir, id), { recursive: true, force: true })
     }
+  }
+
+  /**
+   * A deleted workspace's panes: their rows and folders go, and, since no thread was deleted for them, every
+   * pillar is told of their items (`itemsRemoved`) as it is of a deleted thread's.
+   */
+  removePanes(owners: readonly string[]): void {
+    const of = this.db.prepare(`SELECT id FROM work_canvas_items WHERE session_id = ?`)
+    const items = owners.flatMap((owner) => (of.all(owner) as { id: string }[]).map((r) => r.id))
+    if (items.length) {
+      try {
+        this.deps.itemsRemoved?.(items)
+      } catch (err) {
+        this.deps.log(`canvas: a pillar did not clear a deleted workspace's items: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    this.removeSessions(owners)
   }
 }
 

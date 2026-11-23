@@ -86,6 +86,18 @@ export const mailPaneOf = (workspaceId: string): string => `${MAIL_PANE_PREFIX}$
 /** The workspace a Mail view's pane belongs to; null for a thread. */
 export const mailPaneWorkspace = (owner: string): string | null => (owner.startsWith(MAIL_PANE_PREFIX) && owner.length > MAIL_PANE_PREFIX.length ? owner.slice(MAIL_PANE_PREFIX.length) : null)
 
+/**
+ * The pane of a workspace's Files place (docs/agents/work-files.md "A tab"): the owner of the item behind every
+ * file open in a tab there, so opening a file makes no thread. Unlike a thread's, its item is deleted when its
+ * tab closes: nothing is left behind for every file he ever opened.
+ */
+export const FILES_PANE_PREFIX = 'filespane_'
+export const filesPaneOf = (workspaceId: string): string => `${FILES_PANE_PREFIX}${workspaceId}`
+/** The workspace a Files pane belongs to; null for a thread or another pane. */
+export const filesPaneWorkspace = (owner: string): string | null => (owner.startsWith(FILES_PANE_PREFIX) && owner.length > FILES_PANE_PREFIX.length ? owner.slice(FILES_PANE_PREFIX.length) : null)
+/** The workspace a pane owner (the Mail view's or the Files place's) belongs to; null for a thread. A pane owner is no session: it has no scope row, and whoever acts on its items is his own window. */
+export const paneWorkspace = (owner: string): string | null => mailPaneWorkspace(owner) ?? filesPaneWorkspace(owner)
+
 /** The file path a source names on a host's disk, if it names one: what the path fence checks. */
 export function canvasSourcePath(source: CanvasSource): string | null {
   if (source.at === 'file') return source.path

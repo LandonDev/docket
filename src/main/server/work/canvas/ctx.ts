@@ -1,5 +1,6 @@
 import { workspaceKindOf } from '@shared/work'
 import type { CtxPart } from '../ctx'
+import { WORK_MODULES } from '../modules'
 import { registerCanvasMove } from './move'
 import { CanvasStore, setCanvasStore } from './store'
 
@@ -24,7 +25,17 @@ export const canvasPart: CtxPart<'canvas'> = (ctx, deps) => {
         return false
       }
     },
-    log: (line) => ctx.log(line)
+    log: (line) => ctx.log(line),
+    // Every pillar that loaded, one after another: one's fault leaves the others told.
+    itemsRemoved: (ids) => {
+      for (const module of WORK_MODULES) {
+        try {
+          module.itemsRemoved?.(ids, ctx)
+        } catch (err) {
+          ctx.log(`${module.id} did not clear deleted items: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+    }
   })
   setCanvasStore(deps.db, store)
   // Work on or off: the rows may be from a time it was on.

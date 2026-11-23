@@ -89,6 +89,12 @@ export interface WorkModule {
   start?(ctx: WorkCtx): () => void
   /** Threads were deleted (a thread and its subagents): drop what the module kept for them. Called Work on or off. */
   sessionsRemoved?(sessionIds: string[], ctx: WorkCtx): void
+  /**
+   * Canvas items were deleted outright (a Files tab closed, or a deleted workspace's panes went): drop the rows and
+   * files the module kept for them by item. Called Work on or off. A deleted thread's items are not said here:
+   * `sessionsRemoved` covers them.
+   */
+  itemsRemoved?(itemIds: string[], ctx: WorkCtx): void
   /** A Work workspace was just made: store the module's own defaults for it (a stored choice, so turning one off sticks). */
   workspaceCreated?(workspaceId: string, ctx: WorkCtx): void
   /** A workspace was deleted: drop what the module kept for it. Called Work on or off. */
@@ -189,8 +195,8 @@ export interface WorkCtx {
     open(sessionId: string, kind: CanvasKind, source: CanvasSource, title: string): CanvasItem
     close(itemId: string): void
     forSession(sessionId: string): CanvasItem[]
-    /** a workspace's items, open and closed (`open`: open alone), newest change first */
-    forWorkspace(workspaceId: string, opts?: { open?: boolean }): CanvasItem[]
+    /** the items of a workspace's threads, open and closed (`open`: open alone), newest change first; a pane owner's (the Mail view's, the Files place's tabs) only with `panes` */
+    forWorkspace(workspaceId: string, opts?: { open?: boolean; panes?: boolean }): CanvasItem[]
     /** any item by id, open or closed; null when there is none (or its row no longer parses) */
     get(itemId: string): CanvasItem | null
     /** the thread whose pane a thread's items show in: its root thread (a subagent has none of its own) */
