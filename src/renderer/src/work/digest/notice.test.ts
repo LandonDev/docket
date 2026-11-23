@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, unansweredLine } from "./notice";
+import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, unansweredLine } from "./notice";
 import type { MergedDay } from "./store";
 
 /** What the desktop shows of the digest, as rules over made-up rows. */
@@ -49,6 +49,20 @@ describe("the digest's notice", () => {
     const waited = row({ day: "2026-11-24", how: "now", toldAt: at(24, 9), sector: "purdue" });
     expect(digestNotice({ days: [day("2026-11-24")], rows: [waited] })!.line).toBe("Digest: 1 thing in Purdue");
   });
+  it("judges a row by when its own host made the day: a host that made it late told its rows before that", () => {
+    // The box made the day at 8:00, the Mac at 8:20; the Mac told this at once at 8:10, before its own day.
+    const days = [day("2026-11-24", { hosts: ["box", "mac"], madeBy: { box: at(24, 8), mac: at(24, 8, 20) } })];
+    const told = { ...row({ day: "2026-11-24", how: "now", toldAt: at(24, 8, 10) }), environmentId: "mac" };
+    expect(digestNotice({ days, rows: [told] })).toBeNull();
+    expect(digestNotice({ days, rows: [{ ...told, environmentId: "box" }] })!.line).toBe("Digest: 1 thing in Cosmic");
+  });
+  it("opens Today only when the one unseen day is today: Today shows that day alone", () => {
+    const now = at(24, 10);
+    expect(onlyToday([day("2026-11-24")], now)).toBe(true);
+    expect(onlyToday([day("2026-11-24"), day("2026-11-23")], now)).toBe(false);
+    expect(onlyToday([day("2026-11-23")], now)).toBe(false);
+    expect(onlyToday([], now)).toBe(false);
+  });
 });
 
 describe("an interrupt", () => {
@@ -93,7 +107,8 @@ describe("the system notifications", () => {
       { key: "work-now:k:prep:1", title: "Purdue", body: "Budget review starts at 2:00 PM\nWith Dana Reyes" },
     ]);
     const many = Array.from({ length: 4 }, (_, i) => row({ key: `k${i}`, how: "now", toldAt: i + 1 }));
-    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now", title: "Work", body: "4 things need you now" }]);
+    // folded: every open one by name, newest first, as the phone's banner says it
+    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now", title: "Work", body: "4 things need you: Morning summary; Morning summary; Morning summary; Morning summary" }]);
   });
 });
 

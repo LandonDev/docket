@@ -348,8 +348,9 @@ function PageError({ className, children, action, ...rest }: ComponentPropsWitho
         <p role="alert" {...rest} data-slot="page-error" className={cn("min-w-0 flex-1 text-xs whitespace-pre-wrap text-destructive", className)}>
           {children}
         </p>
-        {/* The 28px button overhangs the 16px line evenly. */}
-        <span className="-my-1.5 shrink-0">{action}</span>
+        {/* The 28px button overhangs the 16px line evenly. A flex box, not a line of text: a button whose words are a
+            grid (`BusyLabel`) has no text baseline of its own to sit on, and a line would seat it low. */}
+        <span className="-my-1.5 flex shrink-0">{action}</span>
       </div>
     );
   }

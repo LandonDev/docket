@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
-import type { DigestDay, DigestList, DigestSettings } from "@shared/contract-work-digest";
+import { DIGEST_FIELDS, type DigestDay, type DigestField, type DigestList, type DigestSettings } from "@shared/contract-work-digest";
 import { DEFAULT_LEVEL } from "@shared/work/digest";
-import { TELL_GROUPS, type TellGroup, type TellLevel, type TellRow } from "@shared/work/tell";
+import type { TellGroup, TellLevel, TellRow } from "@shared/work/tell";
 import { registry } from "../../lib/connection";
 import { workSwitch } from "../../lib/workSwitch";
 
@@ -26,13 +26,13 @@ type HostState = {
 };
 
 /** A day across hosts: seen once any host's is. */
-export type MergedDay = { day: string; madeAt: number; seenAt: number | null; hosts: string[] };
+export type MergedDay = { day: string; madeAt: number; seenAt: number | null; hosts: string[]; /** when each host made it: a host that made its day late told its own rows by its own clock */ madeBy?: Record<string, number> };
 
 export type DigestView = {
   days: MergedDay[];
   /** newest first; one row a key across hosts */
   rows: HostTell[];
-  /** the host's that were set last: the hosts are written alike, and one that missed a write is brought to these */
+  /** each field's newest setting across the hosts: they are written alike, and one that missed a write is brought to these */
   settings: DigestSettings | null;
   /** every host with Work on has answered once, or failed to */
   loaded: boolean;
@@ -70,39 +70,73 @@ export function mergeDays(lists: readonly { environmentId: string; days: readonl
   for (const { environmentId, days } of lists) {
     for (const d of days) {
       const had = byDay.get(d.day);
-      if (!had) byDay.set(d.day, { day: d.day, madeAt: d.madeAt, seenAt: d.seenAt, hosts: [environmentId] });
-      else byDay.set(d.day, { day: d.day, madeAt: Math.min(had.madeAt, d.madeAt), seenAt: had.seenAt ?? d.seenAt, hosts: [...had.hosts, environmentId] });
+      if (!had) byDay.set(d.day, { day: d.day, madeAt: d.madeAt, seenAt: d.seenAt, hosts: [environmentId], madeBy: { [environmentId]: d.madeAt } });
+      else byDay.set(d.day, { day: d.day, madeAt: Math.min(had.madeAt, d.madeAt), seenAt: had.seenAt ?? d.seenAt, hosts: [...had.hosts, environmentId], madeBy: { ...had.madeBy, [environmentId]: d.madeAt } });
     }
   }
   return [...byDay.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
 }
 
-/** The settings set last; with none ever set, the first host's. */
-export function newestSettings(all: readonly DigestSettings[]): DigestSettings | null {
-  return all.reduce<DigestSettings | null>((best, s) => (!best || (s.setAt ?? 0) > (best.setAt ?? 0) ? s : best), null);
-}
+type HostSettings = { environmentId: string; settings: DigestSettings };
+type SettingsPatch = { at?: string; levels?: Partial<Record<TellGroup, TellLevel>>; setAt?: Partial<Record<DigestField, number>> };
 
-/** What he set, as one string: two hosts written alike say the same. */
-const said = (s: DigestSettings): string => `${s.at} ${TELL_GROUPS.map((g) => s.levels[g] ?? DEFAULT_LEVEL).join(" ")}`;
+/** A field's value on a host: the time, or a group's level (the default where he set none). */
+const valueOf = (s: DigestSettings, field: DigestField): string => (field === "at" ? s.at : s.levels[field] ?? DEFAULT_LEVEL);
 
 /**
- * The hosts whose settings are not the newest, and the write that brings
- * them to it; null when they agree or none was ever set (nothing says which
- * is right). A host that missed a write (it was away, or refused) is the case.
+ * The settings he sees: each field's newest setting across the hosts, the
+ * first host's where a field was never set anywhere. Hosts are written
+ * alike, so they differ only where one missed a write.
  */
-export function staleSettings(all: readonly { environmentId: string; settings: DigestSettings }[]): { hosts: string[]; patch: { at: string; levels: Record<TellGroup, TellLevel> } } | null {
+export function newestSettings(all: readonly DigestSettings[]): DigestSettings | null {
+  const first = all[0];
+  if (!first) return null;
+  const newest = (field: DigestField): DigestSettings => all.reduce((best, s) => ((s.setAt?.[field] ?? 0) > (best.setAt?.[field] ?? 0) ? s : best), first);
+  const levels: Partial<Record<TellGroup, TellLevel>> = {};
+  const setAt: Partial<Record<DigestField, number>> = {};
+  for (const field of DIGEST_FIELDS) {
+    const from = newest(field);
+    const at = from.setAt?.[field];
+    if (at !== undefined) setAt[field] = at;
+    if (field !== "at" && from.levels[field] && from.levels[field] !== DEFAULT_LEVEL) levels[field] = from.levels[field];
+  }
+  return { ...first, at: newest("at").at, levels, ...(Object.keys(setAt).length ? { setAt } : {}) };
+}
+
+/**
+ * For each host that missed a write: the fields it holds an older setting
+ * of, with the time each was set, so the host stamps them as set then and
+ * never as set now. A field no host says when it was set is left alone
+ * (nothing says which is right). Empty when the hosts agree.
+ */
+export function staleSettings(all: readonly HostSettings[]): { environmentId: string; patch: SettingsPatch }[] {
   const newest = newestSettings(all.map((h) => h.settings));
-  if (!newest || newest.setAt === undefined) return null;
-  const stale = all.filter((h) => said(h.settings) !== said(newest)).map((h) => h.environmentId);
-  if (stale.length === 0) return null;
-  const levels = Object.fromEntries(TELL_GROUPS.map((g) => [g, newest.levels[g] ?? DEFAULT_LEVEL])) as Record<TellGroup, TellLevel>;
-  return { hosts: stale, patch: { at: newest.at, levels } };
+  if (!newest?.setAt) return [];
+  const out: { environmentId: string; patch: SettingsPatch }[] = [];
+  for (const { environmentId, settings } of all) {
+    const patch: SettingsPatch = {};
+    for (const field of DIGEST_FIELDS) {
+      const at = newest.setAt[field];
+      if (at === undefined || (settings.setAt?.[field] ?? 0) >= at || valueOf(settings, field) === valueOf(newest, field)) continue;
+      patch.setAt = { ...patch.setAt, [field]: at };
+      if (field === "at") patch.at = newest.at;
+      else patch.levels = { ...patch.levels, [field]: valueOf(newest, field) as TellLevel };
+    }
+    if (patch.setAt) out.push({ environmentId, patch });
+  }
+  return out;
+}
+
+/** Whether every host that answered holds `value` for a field: a row's refusal is over once they do. */
+export function hostsAgree(field: DigestField, value: string): boolean {
+  const all = [...workSwitch.hosts()].flatMap((id) => hosts.get(id)?.settings ?? []);
+  return all.length > 0 && all.every((s) => valueOf(s, field) === value);
 }
 
 let aligning = false;
 /** Writes of his own on their way: nothing is brought into line under them. */
 let writing = 0;
-/** After a host's settings are read: one that differs from the newest is written to it. A host that refuses is left as it is. */
+/** After a host's settings are read: the fields it missed are written to it, each as set when it was. A host that refuses is left as it is. */
 async function align(): Promise<void> {
   if (aligning || writing > 0) return;
   const on = [...workSwitch.hosts()].flatMap((environmentId) => {
@@ -110,14 +144,14 @@ async function align(): Promise<void> {
     return settings ? [{ environmentId, settings }] : [];
   });
   const stale = staleSettings(on);
-  if (!stale) return;
+  if (stale.length === 0) return;
   aligning = true;
   try {
     await Promise.allSettled(
-      stale.hosts.map((environmentId) =>
+      stale.map(({ environmentId, patch }) =>
         registry
           .linkOf(environmentId)
-          .request<DigestSettings>("work.digest.set", stale.patch)
+          .request<DigestSettings>("work.digest.set", patch)
           .then((settings) => {
             const state = hosts.get(environmentId);
             if (state) hosts.set(environmentId, { ...state, settings });

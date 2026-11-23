@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
-import type { DigestDay, DigestList, DigestPush, DigestSettings } from '@shared/contract-work-digest'
+import { DIGEST_FIELDS, type DigestDay, type DigestField, type DigestList, type DigestPush, type DigestSettings } from '@shared/contract-work-digest'
 import { writtenByOwner } from '@shared/events'
 import { errorText } from '@shared/work/ids'
 import { DEFAULT_AT, DEFAULT_LEVEL } from '@shared/work/digest'
@@ -91,23 +91,49 @@ export class Digest {
   nextAt(now = this.clock()): number {
     return nextDigest(this.at(), this.zone(), now)
   }
-  settings(): DigestSettings {
-    const setAt = Number(this.store.setting('setAt') ?? NaN)
-    return { at: this.at(), zone: this.zone(), levels: this.levels(), nextAt: this.nextAt(), ...(Number.isFinite(setAt) ? { setAt } : {}) }
+  /** When each field was last set here. */
+  private setAt(): Partial<Record<DigestField, number>> {
+    try {
+      const kept = JSON.parse(this.store.setting('setAt') ?? '{}') as Record<string, unknown>
+      return Object.fromEntries(DIGEST_FIELDS.flatMap((f) => (typeof kept?.[f] === 'number' ? [[f, kept[f] as number]] : []))) as Partial<Record<DigestField, number>>
+    } catch {
+      return {}
+    }
   }
-  set(patch: { at?: string; levels?: Partial<Record<TellGroup, TellLevel>> }): DigestSettings {
-    if (patch.at && patch.at !== this.at()) {
+  settings(): DigestSettings {
+    const setAt = this.setAt()
+    return { at: this.at(), zone: this.zone(), levels: this.levels(), nextAt: this.nextAt(), ...(Object.keys(setAt).length ? { setAt } : {}) }
+  }
+  /**
+   * `patch.setAt`: when each field was set, for a write that brings this host to what another already holds. The
+   * field is stamped with that time, and one this host holds a newer setting of is left alone, so such a write can
+   * never undo a change it did not know of. Absent: he set it now.
+   */
+  set(patch: { at?: string; levels?: Partial<Record<TellGroup, TellLevel>>; setAt?: Partial<Record<DigestField, number>> }): DigestSettings {
+    const now = this.clock()
+    const stamps = this.setAt()
+    const takes = (field: DigestField): boolean => {
+      const given = patch.setAt?.[field]
+      if (given !== undefined && (stamps[field] ?? 0) >= given) return false
+      stamps[field] = given ?? now
+      return true
+    }
+    if (patch.at && takes('at') && patch.at !== this.at()) {
       this.store.setSetting('at', patch.at)
       this.settled()
     }
     if (patch.levels) {
       // Only what he changed is kept: a group set back to the default has no row.
-      const next = { ...this.levels(), ...patch.levels }
-      for (const g of TELL_GROUPS) if (next[g] === DEFAULT_LEVEL) delete next[g]
+      const next = { ...this.levels() }
+      for (const g of TELL_GROUPS) {
+        const level = patch.levels[g]
+        if (level === undefined || !takes(g)) continue
+        if (level === DEFAULT_LEVEL) delete next[g]
+        else next[g] = level
+      }
       this.store.setSetting('levels', JSON.stringify(next))
     }
-    // When he last set them here: a window brings a host that missed a write to the newest (the renderer's store).
-    if (patch.at || patch.levels) this.store.setSetting('setAt', String(this.clock()))
+    this.store.setSetting('setAt', JSON.stringify(stamps))
     const settings = this.settings()
     this.o.push({ push: 'work.digest', settings })
     return settings

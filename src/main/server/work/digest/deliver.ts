@@ -89,7 +89,8 @@ export function makeDeliverer(deps: DeliverDeps): Deliverer & { digestSent(day: 
         return true
       }
       // One a thread's own notice carried has its own banner there: this one names only the rest.
-      const here = open.filter((r) => r.id === row.id || !onItsThread(r))
+      // The one that could not wait is named first: where the line runs out of room, it is the older ones that are counted.
+      const here = [row, ...open.filter((r) => r.id !== row.id && !onItsThread(r))]
       const work: NoticeWork = { key: NOW_KEY, tell: nameOf(row), ...(row.by != null ? { by: row.by } : {}), ...(here.length === 1 && row.open ? { open: row.open } : {}) }
       notifier.work({ ...nowWords(here, jobOf), urgent: true, work })
       return true

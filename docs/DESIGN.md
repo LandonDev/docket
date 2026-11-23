@@ -1461,7 +1461,8 @@ Around the canvas:
   in two toasts and one list, and nothing of Work raises a toast for news
   besides. The day's digest is one plain toast, "Digest: 9 things in
   Cosmic, Purdue and Ref", with Open and a close; it stays until he opens
-  or closes it on any device. A thing that cannot wait is one toast a
+  or closes it on any device. Open lands where all it spoke for shows:
+  Today when the one unseen day is today, else the list. A thing that cannot wait is one toast a
   thing in the waiting voice (the amber mark), its title the tell's own
   sentence and its detail the second line, with Open and a close; it goes
   when the thing is done, opened or closed, and past three at once they
@@ -1499,8 +1500,9 @@ Around the canvas:
   line explains a row. The hosts that refused a change are that row's red
   line by name ("The Mac did not take it"), until the row is written
   everywhere; a failure is said in his words, never the link's own error
-  text. The section shows the settings set last, and a host that missed a
-  write is brought to them when the window reads it. The Go menu
+  text. The time field keeps what he typed until the hosts answer. The
+  section shows each setting's newest value, and a host that missed a
+  write is brought to it, field by field, when the window reads it. The Go menu
   has Digest, greyed while no host has Work on.
 - **Settings for Work.** The settings list gains a Work heading after
   Threads: the Work page, then each Work workspace led by its sector's

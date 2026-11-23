@@ -5951,10 +5951,12 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public let at: String?
             public let levels: [String: TellLevel]?
+            public let setAt: [String: Double]?
 
-            public init(at: String? = nil, levels: [String: TellLevel]? = nil) {
+            public init(at: String? = nil, levels: [String: TellLevel]? = nil, setAt: [String: Double]? = nil) {
                 self.at = at
                 self.levels = levels
+                self.setAt = setAt
             }
         }
 

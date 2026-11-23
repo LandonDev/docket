@@ -17,13 +17,23 @@ export const DigestDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
 export const DigestLevelsSchema = z.partialRecord(z.enum(TELL_GROUPS), TellLevelSchema)
 
+/** What he sets, a field each: the time, and each group's level. */
+export type DigestField = 'at' | TellGroup
+export const DIGEST_FIELDS: readonly DigestField[] = ['at', ...TELL_GROUPS]
+/** When each field was last set (ms): fields never set are absent. */
+export const DigestSetAtSchema = z.partialRecord(z.enum(['at', ...TELL_GROUPS]), z.number())
+
 export const DigestRequestSchemas = [
   /** → DigestList: the days kept and their rows, newest first; `day`: that day's rows alone; `since`: rows told at or after it */
   request('work.digest.list', z.object({ day: DigestDaySchema.optional(), since: z.number().optional() })),
   /** → DigestSettings */
   request('work.digest.get', z.object({})),
-  /** → DigestSettings: the time and a level a group, on this host alone; a client writes it to every Work host it is linked to */
-  request('work.digest.set', z.object({ at: DigestAtSchema.optional(), levels: DigestLevelsSchema.optional() })),
+  /**
+   * → DigestSettings: the time and a level a group, on this host alone; a client writes it to every Work host it is linked to.
+   * `setAt`: when each field in the write was set, for a write that brings a host to what another already holds: the host
+   * stamps the field with that time, and leaves alone a field it holds a newer setting of. Absent: set now.
+   */
+  request('work.digest.set', z.object({ at: DigestAtSchema.optional(), levels: DigestLevelsSchema.optional(), setAt: DigestSetAtSchema.optional() })),
   /** → null: the zone of the desktop he is at; the host keeps the newest, so the digest follows the desktop he last used */
   request('work.digest.here', z.object({ zone: z.string().min(1).max(64) })),
   /** → null: he opened that day's digest; every window's notice of it goes */
@@ -56,8 +66,11 @@ export interface DigestSettings {
   levels: Partial<Record<TellGroup, TellLevel>>
   /** when the next digest is due */
   nextAt: number
-  /** when the time or a level was last set on this host; absent: never. Hosts are written alike, and one that missed a write is brought to the newest */
-  setAt?: number
+  /**
+   * When each field was last set on this host: `at` and a group each; a field never set is absent. Hosts are written
+   * alike, and a field one of them missed is brought to the newest setting of it, field by field.
+   */
+  setAt?: Partial<Record<DigestField, number>>
 }
 
 /** A day was made or seen, a row was told or replaced, a row went (its id), or the settings changed. */

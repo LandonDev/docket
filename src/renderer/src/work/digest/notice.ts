@@ -1,4 +1,4 @@
-import { digestLine, sectorName } from "@shared/work/digest";
+import { digestLine, nowLine, sectorName } from "@shared/work/digest";
 import type { TellRow } from "@shared/work/tell";
 import { clockTime, dayTime } from "../../lib/duration";
 import type { DigestView, MergedDay } from "./store";
@@ -36,13 +36,24 @@ export interface DigestNotice {
  * at once before its day was made: one whose clock came due later, and so
  * interrupted after all, is still part of the day he has not opened.
  */
-export function digestNotice(view: Pick<DigestView, "days" | "rows">): DigestNotice | null {
+type HostRow = TellRow & { environmentId?: string };
+export function digestNotice(view: { days: readonly MergedDay[]; rows: readonly HostRow[] }): DigestNotice | null {
   const days = view.days.filter((d) => d.seenAt === null);
   if (days.length === 0) return null;
-  const madeAt = new Map(days.map((d) => [d.day, d.madeAt]));
-  const rows = view.rows.filter((r) => r.day !== null && madeAt.has(r.day) && (r.toldAt === null || r.toldAt > madeAt.get(r.day)!));
+  const byDay = new Map(days.map((d) => [d.day, d]));
+  // By its own host's clock: a host that made its day late told its rows before that, not before another host's earlier time.
+  const madeFor = (r: HostRow): number => {
+    const day = byDay.get(r.day!)!;
+    return (r.environmentId ? day.madeBy?.[r.environmentId] : undefined) ?? day.madeAt;
+  };
+  const rows = view.rows.filter((r) => r.day !== null && byDay.has(r.day) && (r.toldAt === null || r.toldAt > madeFor(r)));
   if (rows.length === 0) return null;
   return { days, line: digestLine(rows.length, jobsOf(rows)) };
+}
+
+/** Whether the unseen days are today alone: only then does Today, which shows today alone, show all the notice spoke for. */
+export function onlyToday(days: readonly Pick<MergedDay, "day">[], now: number): boolean {
+  return days.length > 0 && days.every((d) => d.day === localDay(now));
 }
 
 /** What a closed or opened interrupt is kept under: the thing and when it was told, so the same thing told again later (a send that fails a second time) shows again. */
@@ -81,7 +92,9 @@ export function systemNotices(digest: DigestNotice | null, toasts: readonly NowT
   if (digest) out.push({ key: `digest:${digest.days[0]!.day}`, title: "Work", body: digest.line, silent: true });
   for (const toast of toasts) {
     const one = toast.rows.length === 1 ? toast.rows[0]! : null;
-    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body: toast.detail ? `${toast.title}\n${toast.detail}` : toast.title });
+    // Folded: every open one by name, newest first, as the phone's banner says it (`nowLine`); the toast keeps its short count.
+    const body = one ? (toast.detail ? `${toast.title}\n${toast.detail}` : toast.title) : nowLine([...toast.rows].reverse().map((r) => r.title));
+    out.push({ key: toast.id, title: one?.sector ? sectorName(one.sector) : "Work", body });
   }
   return out;
 }

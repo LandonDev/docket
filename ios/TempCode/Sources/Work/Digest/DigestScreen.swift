@@ -165,13 +165,12 @@ private struct DigestRow: View {
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
+                // The list is the record, and for a row with no screen to open the only place its words show: never cut.
                 Text(row.title)
                     .textStep(.title)
-                    .lineLimit(2)
                 if let detail = row.detail, !detail.isEmpty {
                     Text(detail)
                         .textStep(.meta)
-                        .lineLimit(2)
                 }
             }
             Spacer(minLength: 8)

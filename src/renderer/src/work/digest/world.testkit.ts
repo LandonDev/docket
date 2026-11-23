@@ -15,6 +15,8 @@ export interface World {
   down: Set<string>;
   refuses: Set<string>;
   pushers: Map<string, Set<(push: DigestPush) => void>>;
+  /** a write waits for this before it answers */
+  slow?: Promise<void> | null;
 }
 
 export const makeWorld = (): World => ({ calls: [], rows: new Map(), days: new Map(), settings: new Map(), down: new Set(), refuses: new Set(), pushers: new Map() });
@@ -28,6 +30,7 @@ export function resetWorld(world: World): void {
   world.settings.clear();
   world.down.clear();
   world.refuses.clear();
+  world.slow = null;
 }
 
 export function linkOf(world: World, env: string) {
@@ -52,8 +55,13 @@ export function linkOf(world: World, env: string) {
           return world.settings.get(env) ?? SETTINGS;
         case "work.digest.set": {
           if (world.refuses.has(env)) throw new Error("forbidden: needs admin");
+          if (world.slow) await world.slow;
           const before = world.settings.get(env) ?? SETTINGS;
-          const next = { ...before, ...(params.at ? { at: params.at as string } : {}), levels: { ...before.levels, ...((params.levels as object) ?? {}) }, setAt: Date.now() };
+          // As the host: each field written is stamped, with the time the write names or now.
+          const stamps = (params.setAt as Record<string, number> | undefined) ?? {};
+          const fields = [...(params.at ? ["at"] : []), ...Object.keys((params.levels as object) ?? {})];
+          const setAt = { ...before.setAt, ...Object.fromEntries(fields.map((f) => [f, stamps[f] ?? Date.now()])) };
+          const next = { ...before, ...(params.at ? { at: params.at as string } : {}), levels: { ...before.levels, ...((params.levels as object) ?? {}) }, setAt };
           world.settings.set(env, next);
           return next;
         }

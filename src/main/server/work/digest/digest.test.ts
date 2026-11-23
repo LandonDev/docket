@@ -368,16 +368,27 @@ describe('what he sets', () => {
     expect(next).toMatchObject({ at: '17:30', nextAt: at(23, '17:30') })
     expect(rig.pushes).toEqual([{ push: 'work.digest', settings: next }])
   })
-  it('keeps when he last set the time or a level, and says nothing of it before he ever did', () => {
+  it('keeps when he last set each field, and says nothing of it before he ever did', () => {
     expect(rig.digest.settings().setAt).toBeUndefined()
     // The zone a desktop says is not his setting.
     rig.digest.here('America/Chicago')
     expect(rig.digest.settings().setAt).toBeUndefined()
     const first = rig.clock.now
-    expect(rig.digest.set({ levels: { held: 'now' } }).setAt).toBe(first)
+    expect(rig.digest.set({ levels: { held: 'now' } }).setAt).toEqual({ held: first })
     rig.clock.now += 5_000
-    expect(rig.digest.set({ at: '07:15' }).setAt).toBe(first + 5_000)
-    expect(rig.digest.settings().setAt).toBe(first + 5_000)
+    expect(rig.digest.set({ at: '07:15' }).setAt).toEqual({ held: first, at: first + 5_000 })
+  })
+  it('a write that brings it to what another host holds is stamped with that setting\'s own time, and never undoes a newer one of its own', () => {
+    const t0 = rig.clock.now
+    rig.digest.set({ at: '07:30' })
+    rig.clock.now += 60_000
+    // Another host was set later for Meetings, earlier for the time: only Meetings is taken.
+    const next = rig.digest.set({ at: '08:00', levels: { meetings: 'digest', held: 'now' }, setAt: { at: t0 - 1_000, meetings: t0 + 30_000, held: t0 + 40_000 } })
+    expect(next.at).toBe('07:30')
+    expect(next.levels).toEqual({ meetings: 'digest', held: 'now' })
+    expect(next.setAt).toEqual({ at: t0, meetings: t0 + 30_000, held: t0 + 40_000 })
+    // The same write again changes nothing.
+    expect(rig.digest.set({ levels: { meetings: 'now' }, setAt: { meetings: t0 + 30_000 } }).levels).toEqual({ meetings: 'digest', held: 'now' })
   })
   it('a time moved into the past is not made late: the change misses nothing', () => {
     rig.digest.deliverer = rig.deliverer

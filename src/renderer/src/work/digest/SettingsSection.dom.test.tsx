@@ -18,7 +18,7 @@ vi.mock("../../lib/connection", async (original) => {
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { SETTING_GROUPS, SettingsSection } from "./SettingsSection";
 import { newestSettings, resetDigestStore, staleSettings, useDigestSheetOpen } from "./store";
-import { resetWorld, SETTINGS, type World } from "./world.testkit";
+import { push, resetWorld, SETTINGS, type World } from "./world.testkit";
 
 const w = (): World => world.current as World;
 const sets = () => w().calls.filter((c) => c.method === "work.digest.set");
@@ -107,27 +107,66 @@ describe("Settings → Work → Digest", () => {
     await waitFor(() => expect(screen.queryByText(/did not take it/)).toBeNull());
   });
 
-  it("a host that missed a write is brought to the settings set last, as the section opens", async () => {
-    w().settings.set("box", { ...SETTINGS, at: "07:00", levels: { results: "digest" }, setAt: 2_000 });
-    w().settings.set("mac", { ...SETTINGS, at: "08:00", levels: { held: "now" }, setAt: 1_000 });
+  it("a host that missed a write is brought to each field's newest setting as the section opens, field by field", async () => {
+    // The box alone took a new time; later the Mac alone took a new level for Meetings.
+    w().settings.set("box", { ...SETTINGS, at: "07:30", levels: {}, setAt: { at: 2_000 } });
+    w().settings.set("mac", { ...SETTINGS, at: "08:00", levels: { meetings: "digest" }, setAt: { meetings: 3_000 } });
     render(<SettingsSection />);
-    // The newest is what he sees, whichever host answered first.
-    expect(((await screen.findByLabelText("Time of the digest")) as HTMLInputElement).value).toBe("07:00");
-    await waitFor(() => expect(sets()).toHaveLength(1));
-    expect(sets()[0]).toMatchObject({ env: "mac", params: { at: "07:00", levels: { held: "clock", results: "digest", people: "clock", meetings: "clock" } } });
+    // He sees both of his changes, whichever host answered first.
+    expect(((await screen.findByLabelText("Time of the digest")) as HTMLInputElement).value).toBe("07:30");
+    expect(screen.getByText("In the digest")).toBeTruthy();
+    await waitFor(() => expect(sets()).toHaveLength(2));
+    // Each host is written only the field it missed, stamped with when it was set: neither change undoes the other.
+    expect(sets().map((c) => [c.env, c.params])).toEqual([
+      ["box", { levels: { meetings: "digest" }, setAt: { meetings: 3_000 } }],
+      ["mac", { at: "07:30", setAt: { at: 2_000 } }],
+    ]);
     // Alike now: nothing more is written.
     await act(async () => void (await new Promise((r) => setTimeout(r, 20))));
-    expect(sets()).toHaveLength(1);
+    expect(sets()).toHaveLength(2);
   });
 
-  it("hosts that agree, or that were never set, are left alone", () => {
-    const a = { ...SETTINGS, at: "07:00", setAt: 5 };
-    expect(staleSettings([{ environmentId: "box", settings: a }, { environmentId: "mac", settings: { ...a, setAt: 9, nextAt: 44, zone: "UTC" } }])).toBeNull();
+  it("hosts that agree, or a field no host says when it was set, are left alone", () => {
+    const a = { ...SETTINGS, at: "07:00", setAt: { at: 5 } };
+    expect(staleSettings([{ environmentId: "box", settings: a }, { environmentId: "mac", settings: { ...a, setAt: { at: 9 }, nextAt: 44, zone: "UTC" } }])).toEqual([]);
     // Differing, but nothing says which was set last.
-    expect(staleSettings([{ environmentId: "box", settings: SETTINGS }, { environmentId: "mac", settings: { ...SETTINGS, at: "09:00" } }])).toBeNull();
-    expect(staleSettings([{ environmentId: "box", settings: a }])).toBeNull();
-    expect(newestSettings([SETTINGS, a, { ...a, at: "06:00", setAt: 3 }])).toBe(a);
+    expect(staleSettings([{ environmentId: "box", settings: SETTINGS }, { environmentId: "mac", settings: { ...SETTINGS, at: "09:00" } }])).toEqual([]);
+    expect(staleSettings([{ environmentId: "box", settings: a }])).toEqual([]);
+    // The newest of each field, from whichever host holds it.
+    const merged = newestSettings([
+      { ...SETTINGS, at: "07:30", setAt: { at: 2 } },
+      { ...SETTINGS, at: "06:00", levels: { held: "now", meetings: "digest" }, setAt: { at: 1, held: 4, meetings: 3 } },
+    ])!;
+    expect(merged).toMatchObject({ at: "07:30", levels: { held: "now", meetings: "digest" }, setAt: { at: 2, held: 4, meetings: 3 } });
+    expect(newestSettings([SETTINGS])).toEqual(SETTINGS);
     expect(newestSettings([])).toBeNull();
+  });
+
+  it("a refusal's line goes once every host holds what he asked for, whoever wrote it there", async () => {
+    w().refuses.add("mac");
+    render(<SettingsSection />);
+    const time = await screen.findByLabelText("Time of the digest");
+    fireEvent.change(time, { target: { value: "09:00" } });
+    fireEvent.blur(time);
+    expect(await screen.findByText("The Mac did not take it")).toBeTruthy();
+    // The Mac is back and takes it (a later read brought it into line): its push arrives.
+    w().refuses.clear();
+    await act(async () => push(w(), "mac", { settings: { ...SETTINGS, at: "09:00", setAt: { at: 9 } } }));
+    await waitFor(() => expect(screen.queryByText("The Mac did not take it")).toBeNull());
+  });
+
+  it("the time field keeps what he typed until the hosts have answered", async () => {
+    let answer: (() => void) | null = null;
+    w().slow = new Promise<void>((resolve) => (answer = resolve));
+    render(<SettingsSection />);
+    const time = (await screen.findByLabelText("Time of the digest")) as HTMLInputElement;
+    fireEvent.change(time, { target: { value: "06:45" } });
+    fireEvent.blur(time);
+    await waitFor(() => expect(sets()).toHaveLength(2));
+    // Not answered yet: the field does not fall back to 08:00.
+    expect(time.value).toBe("06:45");
+    await act(async () => answer!());
+    await waitFor(() => expect(time.value).toBe("06:45"));
   });
 
   it("Open the digest opens the list", async () => {

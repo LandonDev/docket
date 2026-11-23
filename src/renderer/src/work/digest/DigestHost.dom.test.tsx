@@ -136,6 +136,20 @@ describe("the digest's toast", () => {
     expect(w().calls.filter((c) => c.method === "work.digest.seen")).toHaveLength(2);
   });
 
+  it("opens the list, not Today, when a day before today is unseen too: Today shows today alone, and every day is marked seen", async () => {
+    const before = { day: "2026-11-23", madeAt: at(23, 8), seenAt: null, count: 1 };
+    w().days.set("box", [day, before]);
+    w().rows.set("box", [tell({ day: "2026-11-24", how: "digest" }), tell({ day: "2026-11-23", how: "digest", sector: "ref", title: "Saturday's crews" })]);
+    const today = vi.fn();
+    digestOpensPort.set(today);
+    await mount();
+    await act(async () => shown()[0]!.action());
+    expect(today).not.toHaveBeenCalled();
+    expect(await screen.findByRole("heading", { name: "Digest" })).toBeTruthy();
+    expect(screen.getByText("Saturday's crews")).toBeTruthy();
+    expect(w().calls.filter((c) => c.method === "work.digest.seen").map((c) => c.params.day).sort()).toContain("2026-11-23");
+  });
+
   it("is gone when the day is seen anywhere: a phone's press reaches this window as a push", async () => {
     await mount();
     expect(shown()).toHaveLength(1);
@@ -272,6 +286,18 @@ describe("an interrupt's toast", () => {
     await settle();
     // Every row it stood for is closed, the new telling too: nothing comes back.
     expect(shown()).toEqual([]);
+  });
+
+  it("its system notification is asked again when its words change, a title alone too", async () => {
+    const row = tell({ key: "prep:ev1", sector: "purdue", title: "Budget review starts at 2:00 PM", how: "now", toldAt: at(24, 9, 50) });
+    w().rows.set("box", [row]);
+    await mount();
+    expect(bridge.show).toHaveBeenLastCalledWith({ key: "work-now:k:prep:ev1", title: "Purdue", body: "Budget review starts at 2:00 PM" });
+    bridge.show.mockClear();
+    // The same thing, now about another job: only the title changes.
+    await act(async () => push(w(), "box", { row: { ...row, sector: "ref" } }));
+    await settle();
+    expect(bridge.show).toHaveBeenCalledWith({ key: "work-now:k:prep:ev1", title: "Ref", body: "Budget review starts at 2:00 PM" });
   });
 
   it("a day after it was told it leaves the window on its own", async () => {

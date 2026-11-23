@@ -103,8 +103,8 @@ said, the host's own zone.
 | Method | Needs | Answers |
 |---|---|---|
 | `work.digest.list {day?, since?}` | read | `{days, rows, waiting, groups}` |
-| `work.digest.get` | read | `{at, zone, levels, nextAt, setAt?}` (`setAt`: when the time or a level was last set on this host; the phone's schema leaves it out) |
-| `work.digest.set {at?, levels?}` | admin | the settings |
+| `work.digest.get` | read | `{at, zone, levels, nextAt, setAt?}` (`setAt`: when each field, the time and a group each, was last set on this host; the phone's schema leaves it out) |
+| `work.digest.set {at?, levels?, setAt?}` | admin | the settings. `setAt` names when each field in the write was set, for a write that brings a host to what another holds: the host stamps the field with that time and leaves alone one it holds a newer setting of |
 | `work.digest.here {zone}` | operate | null |
 | `work.digest.seen {day}` | operate | null |
 
@@ -140,7 +140,8 @@ or `{key, tell, by?, open?}`.
   "2 things need you: Budget review starts at 2:00 PM; Sign-in to Frame.io
   ends today". Each title is cut to 60 characters before they are joined
   and what still does not fit is counted ("; and 2 more"), so one long
-  title never crowds another out (`nowLine`). One open: the title is the
+  title never crowds another out (`nowLine`); the one that could not wait
+  just now is named first. One open: the title is the
   job, the body the row's title with its detail on a line of its own (never
   joined by a colon: `rowLines` in words.ts, kept as two lines by
   `Notifier.work`), and `work.open` is the row's own target. More: the tap
@@ -189,17 +190,18 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 
 | File | Holds |
 |---|---|
-| `store.ts` | each Work host's ledger and settings, asked when its link opens and kept by the `work.digest` push; `mergeRows` (one row a key across hosts, the one told at once winning), `mergeDays` (hosts' days of one date are one, seen once any is); `markSeen`, `setDigest` (written to every Work host); the settings shown are those set last (`newestSettings`), and after a host is read one whose settings differ is written to them (`staleSettings`, `align`: never under a write of his own, never on a push, and not at all when no host says when it was set); `openDigestSheet`; sends `work.digest.here` |
-| `notice.ts` | pure: `digestNotice` (the unseen days and their line: what waited when each day was made, a row whose clock came due later included), `openInterrupts` (told, a day old at most, not closed here), `nowToasts` (one a row, a fold past three), `systemNotices`, `listSections`, `rowWhen`, `emptyLine`, `unansweredLine`, `refusedLine` |
+| `store.ts` | each Work host's ledger and settings, asked when its link opens and kept by the `work.digest` push; `mergeRows` (one row a key across hosts, the one told at once winning), `mergeDays` (hosts' days of one date are one, seen once any is); `markSeen`, `setDigest` (written to every Work host); the settings shown are each field's newest across the hosts (`newestSettings`), and after a host is read the fields it missed are written to it, each stamped with when it was set (`staleSettings`, `align`: never under a write of his own, never on a push, and a field no host says when it was set is left alone), so two changes that reached different hosts both stand; `hostsAgree` ends a row's refusal line; `openDigestSheet`; sends `work.digest.here` |
+| `notice.ts` | pure: `digestNotice` (the unseen days and their line: what waited when each day was made on the row's own host, a row whose clock came due later included; a thing done since is gone from it, as from the list), `onlyToday`, `openInterrupts` (told, a day old at most, not closed here), `nowToasts` (one a row, a fold past three), `systemNotices`, `listSections`, `rowWhen`, `emptyLine`, `unansweredLine`, `refusedLine` |
 | `open.ts` | pure: `routeOf` turns a `TellOpen` into a route (`thread`, `view` with `at` in that view's own field, `place`, `outbox` with the page's item key, `settings`), `go` runs it |
 | `DigestHost.tsx` | the two toasts through `useToastSync`, their system notifications, the routes, the sheet's mount |
 | `DigestSheet.tsx` | the list (`DigestList`) in a 480px `Sheet` |
 | `SettingsSection.tsx` | Settings → Work → Digest |
 
 - The digest's toast opens `digestOpensPort.get()` when one is registered
-  (Today), else the sheet. Opening or closing it marks every unseen day
-  seen on every host that holds it, so each window's toast goes with the
-  push.
+  (Today) and the one unseen day is today (`onlyToday`: Today shows that
+  day alone); with an older day unseen too it opens the sheet, which holds
+  every day. Opening or closing it marks every unseen day seen on every
+  host that holds it, so each window's toast goes with the push.
 - A toast is drawn again only when its words change, so its Open and its
   close read what it stands for at the press (`live` in DigestHost.tsx):
   the same words may have come to mean another telling of a thing, or
@@ -217,8 +219,10 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 - **The system notification.** `src/main/notice.ts`: `app:notice {key,
   title, body, silent?}` and `app:notice-close {key}`; main shows an
   Electron `Notification` only while no app window is focused, once per key
-  across windows (`shouldNotify`); the body keeps two lines, a thing's
-  title and its detail. Every window asks for the same keys, so main keeps
+  across windows, and again with no sound when its words change
+  (`noticeStep`: four things became five); the body keeps two lines, a
+  thing's title and its detail, and the fold's names every open one
+  (`nowLine`, newest first). Every window asks for the same keys, so main keeps
   who asks (`Claims`): a window that lets go or closes takes a notification
   back only once no other window still asks for it. A click brings a
   window that asks forward and sends `app:notice-open {key}`. The renderer reaches it through

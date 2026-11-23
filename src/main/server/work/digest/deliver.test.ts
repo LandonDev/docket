@@ -48,7 +48,8 @@ describe('an interrupt', () => {
     const a = row({ key: 'prep:ev1', toldAt: 100, open: { thread: 't1' } })
     const b = row({ key: 'lapse:frameio:1', kind: 'connections.ending', sector: null, workspaceId: null, title: 'Sign-in to Frame.io ends today', open: { settings: 'connections' } })
     deliverer.now(b, [a, b])
-    expect(work).toEqual([{ title: 'Work', body: '2 things need you: Budget review starts at 2:00 PM; Sign-in to Frame.io ends today', urgent: true, work: { key: NOW_KEY, tell: 'lapse:frameio:1' } }])
+    // the one that could not wait just now is named first
+    expect(work).toEqual([{ title: 'Work', body: '2 things need you: Sign-in to Frame.io ends today; Budget review starts at 2:00 PM', urgent: true, work: { key: NOW_KEY, tell: 'lapse:frameio:1' } }])
   })
   it('cuts each title short before joining them and counts what does not fit, so one long title never crowds another out', () => {
     const long = 'A sign-in that ends today and has a very long name indeed, longer than a banner could ever show in one go'
@@ -58,6 +59,15 @@ describe('an interrupt', () => {
     expect(many.startsWith('9 things need you: Thing number 1 cannot wait')).toBe(true)
     expect(many).toMatch(/; and \d more$/)
     expect(nowLine(['Only this'])).toBe('Only this')
+  })
+  it('names the one that could not wait just now first, so it is never the one counted among the rest', () => {
+    const { deliverer, work } = rig()
+    const long = (i: number): string => `Thing number ${i} that has been open for a while and has a long name`
+    const old = [1, 2, 3].map((i) => row({ key: `old:${i}`, title: long(i), toldAt: 100 + i }))
+    const fresh = row({ key: 'new:1', title: 'The new thing that cannot wait' })
+    deliverer.now(fresh, [...old, fresh])
+    expect(work[0]!.body.startsWith('4 things need you: The new thing that cannot wait; ')).toBe(true)
+    expect(work[0]!.body.length).toBeLessThanOrEqual(200)
   })
   it("leaves out of the fold one that went out on its own thread: that banner is its own", () => {
     const { deliverer, work } = rig()

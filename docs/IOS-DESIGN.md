@@ -2358,7 +2358,7 @@ phone does everything the desktop does. What milestone 46 built:
   notice. Sections by day, newest first, under the Outbox's gray band step:
   "Since the digest", "Today, 8:00 AM", "Yesterday", then dates. A row is the
   job's sector dot in the mark column (a muted ring for a row about no one
-  job), the title, the detail in meta under it, the time as a stamp; the dot
+  job), the title, the detail in meta under it (both whole, never cut: the list is the record), the time as a stamp; the dot
   and the time sit on the title's first line, as the Inbox's rows do ("by
   2:00 PM" for a row whose clock was ahead when it was told and its words do
   not already say, a day that is not today named; else when it was told, its

@@ -2,19 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ BrowserWindow: {}, ipcMain: {}, Notification: {} }))
 
-import { Claims, readAsk, shouldNotify } from './notice'
-
-describe('shouldNotify', () => {
-  it('shows only while no app window is focused', () => {
-    expect(shouldNotify('digest:2026-11-24', new Set(), false)).toBe(true)
-    expect(shouldNotify('digest:2026-11-24', new Set(), true)).toBe(false)
-  })
-  it('shows a key once however many windows ask', () => {
-    const shown = new Set(['now:prep:ev1'])
-    expect(shouldNotify('now:prep:ev1', shown, false)).toBe(false)
-    expect(shouldNotify('now:clash:2', shown, false)).toBe(true)
-  })
-})
+import { Claims, noticeStep, readAsk } from './notice'
 
 describe('readAsk', () => {
   it('takes a key, a title and a body, each cut; the body keeps two lines, a title and its detail', () => {
@@ -51,5 +39,18 @@ describe('who asks for a key', () => {
     expect(claims.of('digest:2026-11-24')).toEqual([1])
     // A key nobody asked for is free already.
     expect(claims.drop('never', 9)).toBe(true)
+  })
+})
+
+
+describe('an ask for a key', () => {
+  it('shows it only while no app window is focused, once however many windows ask in the same words', () => {
+    expect(noticeStep(undefined, 'Work\n4 things', false)).toBe('show')
+    expect(noticeStep(undefined, 'Work\n4 things', true)).toBe('keep')
+    expect(noticeStep('Work\n4 things', 'Work\n4 things', false)).toBe('keep')
+  })
+  it('new words while it is out: shown again in them, or only taken back when a window is in front', () => {
+    expect(noticeStep('Work\n4 things', 'Work\n5 things', false)).toBe('replace')
+    expect(noticeStep('Work\n4 things', 'Work\n5 things', true)).toBe('withdraw')
   })
 })

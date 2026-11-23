@@ -11,7 +11,7 @@ import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
-import { DIGEST_TOAST, digestNotice, nowToasts, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
+import { DIGEST_TOAST, digestNotice, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
 import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
 
@@ -118,11 +118,14 @@ export function DigestHost() {
     },
     [dismiss],
   );
-  /** The digest's press: Today once it is there, else the list. Every unseen day is seen. */
+  /**
+   * The digest's press. Every unseen day is seen, so he must land where all of them show: Today when the one
+   * unseen day is today (Today shows that day alone), else the list, which holds every day.
+   */
   const digest = useMemo(() => digestNotice(view), [view]);
   const openDigest = useCallback(() => {
     if (digest) markSeen(digest.days);
-    const today = digestOpens();
+    const today = digest && onlyToday(digest.days, Date.now()) ? digestOpens() : null;
     if (today) today();
     else openDigestSheet(true);
   }, [digest]);
@@ -193,9 +196,10 @@ export function DigestHost() {
   const system = useMemo(() => systemNotices(digest, toasts), [digest, toasts]);
   const asked = useRef(new Map<string, string>());
   useEffect(() => {
-    const next = new Map(system.map((n) => [n.key, n.body]));
+    // Its words: asked again when either line changes, so the notice says what the toast says.
+    const next = new Map(system.map((n) => [n.key, `${n.title}\n${n.body}`]));
     for (const key of asked.current.keys()) if (!next.has(key)) void systemNotice.close(key);
-    for (const notice of system) if (asked.current.get(notice.key) !== notice.body) void systemNotice.show(notice);
+    for (const notice of system) if (asked.current.get(notice.key) !== next.get(notice.key)) void systemNotice.show(notice);
     asked.current = next;
   }, [system]);
   useEffect(() => {

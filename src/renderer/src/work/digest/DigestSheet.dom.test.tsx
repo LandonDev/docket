@@ -128,7 +128,7 @@ describe("the store", () => {
     const view = digestNow();
     expect(view.rows.filter((r) => r.key === "clash:1")).toMatchObject([{ host: "mac", how: "now" }]);
     expect(view.rows.map((r) => r.title).sort()).toEqual(["A clash", "box's own", "mac's own"]);
-    expect(view.days).toEqual([{ day: "2026-11-24", madeAt: 90, seenAt: 95, hosts: ["box", "mac"] }]);
+    expect(view.days).toEqual([{ day: "2026-11-24", madeAt: 90, seenAt: 95, hosts: ["box", "mac"], madeBy: { box: 100, mac: 90 } }]);
     expect(mergeRows([[tell({ key: "k", at: 1 })], [tell({ key: "k", at: 2, host: "mac" })]])).toMatchObject([{ host: "mac" }]);
     expect(mergeDays([])).toEqual([]);
   });
