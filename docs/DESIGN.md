@@ -2116,7 +2116,9 @@ Around the canvas:
   move), drawn only once the job is known to have money or something
   waiting (never before the first read lands, never on a job with none,
   never in a columns fault), then Add and More, two menus of plain text
-  rows as the other Work views' header menus are. A read belongs to its
+  rows as the other Work views' header menus are; Entry…, Trip… and
+  Mileage rate… draw from the period's read and stay off until one has
+  landed (Receipt… never waits). A read belongs to its
   period: when the period changes the body is bones until that period
   answers, and a failed read keeps only the same period's last figures
   under the state line. Money has one right edge: By category's amounts,
@@ -2137,8 +2139,9 @@ Around the canvas:
   need Review, so the label says its reach): the day ("Sat Nov 21") in
   12px muted, the event, then its fee with cents and its miles as a muted
   comma run (`Facts`), never a dot; Add when both are known and the miles
-  were measured, else Review; Skip in the row's menu, said back in a toast
-  with Undo. Then the figures, as text on one row with a hairline under it
+  were measured, else Review, its word on the column's edge as Review's;
+  Skip in the row's menu, said back in a toast with Undo (an event skipped
+  meanwhile is added by nothing and said by nothing). Then the figures, as text on one row with a hairline under it
   and no heading: In, Out and Net for the period, then, at the row's end,
   Owed to you and You owe, which are not the period's and are drawn only
   when not nothing; each a 12px muted label over a 16/24 semibold tabular
@@ -2161,7 +2164,9 @@ Around the canvas:
   him. Entries is the flat `Table` (Date, Who, Category, Amount, and a
   paperclip where a receipt is kept; every row's money in the one shared
   form, `moneyWords`: "+$30.00", "$20.00", "+$30.00 and $20.00", "-$20.00
-  out" for a correction below zero); the whole row is one press, reached
+  out" for a correction below zero; Amount is 112px, and 176px only
+  while a shown row has money both ways, so a rare row never narrows Who);
+  the whole row is one press, reached
   by Tab, that opens the entry dialog, and it takes a `muted` fill in hand
   and while focused within, the table's one row with one, since the row is
   the control. Mileage, when there was any, is one muted comma line; a
@@ -2171,10 +2176,12 @@ Around the canvas:
   counted.", with Open mileage log; or "The mileage log leads outside this
   job's folder, so its trips are not counted."), while the ledger still
   reads and Open ledger works; Open mileage log on a log that leads out
-  of the job opens nothing and says so in a toast. Loading is bones in
-  the shape of the figures and six rows of Entries' own table, a bone in
-  each cell; the table's layout is fixed, so its columns stand where the
-  header puts them and nothing slides when the read lands. A ledger that leads
+  of the job opens nothing and says so in a toast. Loading draws what
+  never changes as text (In, Out and Net, the Entries heading and the
+  column heads) and bones only what the read fills: the figures and six
+  rows of Entries' own table, a bone in each cell; the table's layout is
+  fixed, so its columns stand where the header puts them and nothing
+  slides when the read lands. A ledger that leads
   outside the job's folder is a failed read in the host's words, never
   "No money yet". "No money yet" ("Drop
   a receipt here.", Add entry) shows only when the job has never had money
@@ -2193,8 +2200,9 @@ Around the canvas:
   disagree), Status beside For. Return in any field saves, pressed afresh
   each time (a held key saves nothing more); Save waits for an amount and
   a date. A row the one-way form cannot say (money both in and out, or an
-  amount below zero) opens read only, its fields off and its stored status
-  always shown as text, under one muted line, "This row has money in and
+  amount below zero) opens read only, its stored values in read-only
+  fields at full ink with no picker, its status always shown, focus on
+  Open ledger, under one muted line, "This row has money in and
   money out. Edit it in the ledger." or "This row has an amount below
   zero. Edit it in the ledger.", with Close and Open ledger in the footer;
   Open ledger spins with the dialog open, a refusal stays in the dialog's
@@ -2228,17 +2236,23 @@ Around the canvas:
   there and back beside Fee, "Estimated: check the miles" under an
   estimate) led by From the calendar; Add waits for miles or a fee, and a
   fee of 0 is none; an event added before keeps the form open with "That
-  event was already added.", while a trip typed by hand that the host
-  already has is the dialog's own earlier Add, saved. More → Mileage rate… is titled for its year
+  event was already added." (one skipped meanwhile, "That event was
+  skipped, so nothing was added."); an event picked there takes up one
+  he skipped before. A trip typed by hand that the host already has is
+  the dialog's own earlier Add: saved when it filed what the form holds,
+  else the form stays with what was filed ("This trip was already added
+  with 24 mi and $80.00 pay. Change it in the ledger or the mileage
+  log."). More → Mileage rate… is titled for its year
   ("Mileage rate for 2026") and holds one quiet-"$" field, Per mile,
   seeded from the stored rate in plain decimals, padded to two places and
-  never rounded ("0.70", "0.7251", never "1e-7"). More → Export… asks the year (this one and the four
+  never rounded ("0.70", "0.7251", never "1e-7"), with "Later years
+  without a rate use the most recent one." under it. More → Export… asks the year (this one and the four
   before, the period's first when offered) and three boxes, all ticked:
   Spreadsheet (Excel), CSV, Summary (PDF); Export spins through the host's
   files, the summary's print and its keeping, then one toast, "Exported
   2026 for tax time", with Show in Files and, on its second line, one
-  comma sentence of what was replaced or could not be made (a summary a
-  newer export replaced says so in the host's words); with nothing
+  comma sentence of what was replaced, removed or could not be made (a
+  summary not of the year's newest export says so in the host's words); with nothing
   made it stays open with the error. Add → Invoice… is a wide form: To,
   then Number, Date and Due in one row (the next number and his usual
   terms from the host), the lines (What, Quantity, Rate, the line's amount

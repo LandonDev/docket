@@ -30,8 +30,10 @@ const toast = Object.assign(vi.fn(), { error: vi.fn(), loading: vi.fn(() => "t1"
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => toast }));
 const opened = vi.fn();
 vi.mock("../../lib/workSwitch", () => ({ openWorkView: opened }));
-// "ws" is a Work job on this host; "code" is a code workspace.
-vi.mock("../../lib/tcserver/workspaces", () => ({ workspaceStore: { workspace: (id: string) => (id === "ws" ? { id, kind: "work" } : id === "code" ? { id, kind: "code" } : undefined) } }));
+// "ws" is a Work job on this host; "bare" a Work workspace with no sector (no Money view); "code" is a code workspace.
+vi.mock("../../lib/tcserver/workspaces", () => ({
+  workspaceStore: { workspace: (id: string) => (id === "ws" ? { id, kind: "work", sector: "ref" } : id === "bare" ? { id, kind: "work", sector: null } : id === "code" ? { id, kind: "code" } : undefined) },
+}));
 
 const { itemVerbsFor } = await import("../canvas/itemVerbs");
 await import("./itemVerb");
@@ -80,6 +82,8 @@ describe("File as receipt", () => {
     // Only in a job's pane: a code workspace's or a jobless pane has no ledger.
     expect(offered({ ...item("pdf", mail("invoice.pdf")), workspaceId: "code" })).toEqual([]);
     expect(offered({ ...item("pdf", mail("invoice.pdf")), workspaceId: null })).toEqual([]);
+    // A Work workspace with no sector has no Money view to file into.
+    expect(offered({ ...item("pdf", mail("invoice.pdf")), workspaceId: "bare" })).toEqual([]);
   });
 
   it("fetches a mail's attachment, reads it back by range, and sends it whole under one key, as from a mail", async () => {

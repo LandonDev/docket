@@ -8,6 +8,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { loadToast } from "../../components/ui/toaster";
 import { openWorkView } from "../../lib/workSwitch";
 import { request } from "./api";
+import { STALE_SUMMARY } from "@shared/work/money";
 import { noHeldReturn } from "./fields";
 import { keepPrinted, newKey, printPage } from "./print";
 
@@ -32,8 +33,6 @@ export interface ExportMade {
   replaced: boolean;
 }
 
-/** The host's refusal of a summary a newer export of the year replaced: said as it is, with no "not made" before it. */
-const NEWER = /newer export/i;
 
 /**
  * What Export does: the host's files, then the summary printed and kept with this export's `generation`, under a key of this
@@ -55,7 +54,8 @@ export async function runExport(env: string, workspaceId: string, choice: Export
       files.push(kept.receipt?.split(/[\\/]/).pop() ?? `${made.summary.name}.pdf`);
     } catch (err) {
       const words = err instanceof Error ? err.message : String(err);
-      warnings.push(NEWER.test(words) ? words : `The summary was not made: ${words}`);
+      // The host's own sentence for a summary not of the year's newest export, said as it is, with no "not made" before it.
+      warnings.push(STALE_SUMMARY.test(words) ? words : `The summary was not made: ${words}`);
     }
   }
   if (!files.length) throw new Error(warnings.join(", ") || "Nothing was made");

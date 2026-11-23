@@ -18,8 +18,11 @@ export function itemName(item: Pick<CanvasItem, "source" | "title">): string {
   return item.title;
 }
 
-/** The item's pane belongs to a Work job on this window's hosts: there is a ledger to file into. */
-export const inJob = (item: Pick<CanvasItem, "workspaceId">): boolean => !!item.workspaceId && workspaceStore.workspace(item.workspaceId)?.kind === "work";
+/** The item's pane belongs to a Work job on this window's hosts with a sector, as the frame needs to mount Money: there is a ledger to file into. */
+export function inJob(item: Pick<CanvasItem, "workspaceId">): boolean {
+  const ws = item.workspaceId ? workspaceStore.workspace(item.workspaceId) : undefined;
+  return ws?.kind === "work" && !!ws.sector;
+}
 
 /** The name Money files the item under, by the host's own rule (`receiptFileName`); null when the host would refuse it. */
 export const receiptNameOf = (item: CanvasItem): string | null => receiptFileName(itemName(item), item.source.at === "mail" ? item.source.contentType : null);

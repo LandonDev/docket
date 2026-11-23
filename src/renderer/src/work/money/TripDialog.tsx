@@ -9,6 +9,7 @@ import { heardTrip, request } from "./api";
 import { newKey } from "./print";
 import { AmountInput, noHeldReturn } from "./fields";
 import { amountText, offerDay, parseAmount } from "./model";
+import { formatMoney } from "@shared/work/money";
 
 /**
  * A trip and its pay (docs/DESIGN.md "The Money view"): a calendar offer he
@@ -64,6 +65,18 @@ export const addOffer = (env: string, workspaceId: string, offer: CalendarOffer)
 
 const NONE = "";
 export const ALREADY_WORDS = "That event was already added.";
+export const SKIPPED_WORDS = "That event was skipped, so nothing was added.";
+
+/** A hand-typed trip the host already has with other values: "This trip was already added with 24 mi and $80.00 pay. Change it in the ledger or the mileage log." */
+export function filedWords(filed: { miles: number | null; fee: number | null }): string {
+  const parts = [filed.miles ? `${filed.miles.toLocaleString("en-US")} mi` : null, filed.fee ? `${formatMoney(filed.fee)} pay` : null].filter(Boolean);
+  const what = parts.length ? ` with ${parts.join(" and ")}` : "";
+  return `This trip was already added${what}. Change it in the ledger or the mileage log.`;
+}
+
+/** Whether the host's `filed` is what these params would file: no miles and no fee are alike as nothing. */
+const sameFiled = (filed: { miles: number | null; fee: number | null }, params: Record<string, unknown>): boolean =>
+  (filed.miles || null) === ((params.miles as number | undefined) || null) && (filed.fee || null) === ((params.fee as number | undefined) || null);
 
 export function TripDialog({ env, workspaceId, offer, day, onClose, onSaved }: { env: string; workspaceId: string; offer: CalendarOffer | null; day: string; onClose: () => void; onSaved: () => void }) {
   const [pending, setPending] = useState(false);
@@ -80,10 +93,11 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
   const [events, setEvents] = useState<CalendarOffer[] | null>(offer ? [] : null);
   const [error, setError] = useState<string | null>(null);
   const patch = (p: Partial<TripForm>) => setForm((f) => ({ ...f, ...p }));
-  // A trip typed by hand: one key for the dialog's life, so the same Add again writes nothing twice.
+  // A trip typed by hand: one key for the dialog's life, so the same Add again writes nothing twice. An event he picked here
+  // himself takes up one he skipped before (`reopen`); an offer's own dialog does not.
   const [key] = useState(newKey);
   const typed = tripParams(workspaceId, form);
-  const params = typed && !typed.eventId ? { ...typed, key } : typed;
+  const params = !typed ? null : !typed.eventId ? { ...typed, key } : offer ? typed : { ...typed, reopen: true };
 
   // By hand: the job's events of the last 60 days, to start from one.
   useEffect(() => {
@@ -105,10 +119,21 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
     request<MoneyTripped>(env, "work.money.trip", params).then(
       (tripped) => {
         setPending(false);
+        // Skipped meanwhile (another window): nothing was written; the form stays, saying so, and the list reads again.
+        if (tripped?.skipped) {
+          setError(SKIPPED_WORDS);
+          onSaved();
+          return;
+        }
         // An event added before: nothing was written, so the form stays, saying so. A trip typed by hand sends this dialog's one key,
-        // so `already` there is its own earlier Add landing, whose answer was lost: saved, as any other.
+        // so `already` there is its own earlier Add landing: saved, when what it filed is what the form holds; else that first
+        // Add was saved with other values, which are changed in the books, not here.
         if (tripped?.already && params.eventId) {
           setError(ALREADY_WORDS);
+          return;
+        }
+        if (tripped?.already && tripped.filed && !sameFiled(tripped.filed, params)) {
+          setError(filedWords(tripped.filed));
           return;
         }
         // Its pay row or its log row may only wait as a suggestion: said, never shown as saved.

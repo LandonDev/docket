@@ -61,7 +61,7 @@ function Body({ env, workspaceId, rate, onClose, onSaved, pending, setPending }:
       }}
     >
       <ModalBody>
-        <Field label="Per mile" hint="Used for every later year until you set that year's.">
+        <Field label="Per mile" hint="Later years without a rate use the most recent one.">
           <AmountInput value={text} placeholder="0.70" onChange={(e) => setText(e.target.value)} />
         </Field>
         <ErrorLine error={error} />

@@ -25,6 +25,7 @@ const toast = Object.assign(vi.fn(), { error: vi.fn(), loading: vi.fn(() => "t")
 vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original<object>()), loadToast: async () => toast }));
 
 const { ExportDialog } = await import("./ExportDialog");
+const { staleSummary } = await import("@shared/work/money");
 
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
 const asked = (method: string) => host.asked.filter((a) => a.method === method).map((a) => a.params);
@@ -117,14 +118,22 @@ describe("Export", () => {
     expect(kept[0].key).not.toBe(kept[1].key);
   });
 
-  it("says the host's words when a newer export took this one's place, and the files it made all the same", async () => {
-    const words = `A newer export of ${year} took this one's place, so its summary was not kept.`;
+  it("says the host's own words when the summary is not of the year's newest export, and the files it made all the same", async () => {
+    const words = staleSummary(year);
     const answer = host.answer;
     host.answer = (method, params) => {
       if (method === "work.money.keep") throw new Error(words);
       return answer(method, params);
     };
     await exportWith();
+    expect(toast).toHaveBeenLastCalledWith(`Exported ${year} for tax time`, expect.objectContaining({ description: words }));
+  });
+
+  it("says an older export's file it removed, in the host's words, on the toast's second line", async () => {
+    const answer = host.answer;
+    const words = `The older Ledger ${year}.xlsx was removed, so the folder holds one export.`;
+    host.answer = (method, params) => (method === "work.money.export" ? { ...(answer(method, params) as object), warnings: [words] } : answer(method, params));
+    await exportWith(["Spreadsheet (Excel)"]);
     expect(toast).toHaveBeenLastCalledWith(`Exported ${year} for tax time`, expect.objectContaining({ description: words }));
   });
 

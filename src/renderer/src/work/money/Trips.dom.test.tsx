@@ -135,7 +135,7 @@ describe("trips and pay from the calendar", () => {
     fireEvent.change(within(dialog).getByLabelText("Fee"), { target: { value: "60" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
     await settle();
-    expect(asked("work.money.trip")).toEqual([{ workspaceId: "ws", eventId: "e9", date: "2026-11-14", title: "JV at Millbrook", place: "Harrison HS", miles: 31, fee: 6000 }]);
+    expect(asked("work.money.trip")).toEqual([{ workspaceId: "ws", eventId: "e9", date: "2026-11-14", title: "JV at Millbrook", place: "Harrison HS", miles: 31, fee: 6000, reopen: true }]);
   });
 
   it("adds a miles-only trip with a fee of 0, and keeps Add off with neither miles nor a fee", async () => {
@@ -163,7 +163,7 @@ describe("trips and pay from the calendar", () => {
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Mileage rate…" }));
     const dialog = await screen.findByRole("dialog", { name: "Mileage rate for 2026" });
-    expect(within(dialog).getByText("Used for every later year until you set that year's.")).toBeTruthy();
+    expect(within(dialog).getByText("Later years without a rate use the most recent one.")).toBeTruthy();
     const rate = within(dialog).getByLabelText("Per mile") as HTMLInputElement;
     expect(rate.value).toBe("0.70");
     const save = within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement;

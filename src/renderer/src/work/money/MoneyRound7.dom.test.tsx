@@ -39,7 +39,7 @@ vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original
 
 const { Head, View, setMoneyPeriod } = await import("./MoneyView");
 const { MILEAGE_OUTSIDE_WORDS } = await import("./api");
-const { REFUND, readOf } = await import("./money.fixtures");
+const { ALL_ROWS, REFUND, readOf } = await import("./money.fixtures");
 const { byMonthBars, trueRows, openMoneyDialog } = await import("./MoneyView");
 const { ChartTooltipContent } = await import("@aliax/charts/tooltip");
 const { formatMoney } = await import("@shared/work/money");
@@ -172,7 +172,8 @@ describe("the loading bones", () => {
     const boneHeads = heads(bones);
     expect(bones.querySelectorAll("tr[data-money-bone]")).toHaveLength(6);
     expect(bones.querySelector("tr[data-money-bone] td")!.querySelector("[data-slot=skeleton]")).toBeTruthy();
-    await act(async () => land(readOf({ from: "2026-11-01", to: "2026-12-01" })));
+    // A month with no row both ways: Amount keeps the bones' width.
+    await act(async () => land(readOf({ from: "2026-11-01", to: "2026-12-01" }, ALL_ROWS.filter((r) => !(r.in && r.out)))));
     await settle();
     const entries = screen.getByRole("region", { name: "Entries" });
     expect(heads(entries)).toEqual(boneHeads);

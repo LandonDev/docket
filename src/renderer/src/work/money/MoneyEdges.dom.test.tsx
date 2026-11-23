@@ -194,7 +194,11 @@ describe("a row with money both ways", () => {
     const dialog = await screen.findByRole("dialog", { name: "Entry" });
     expect(within(dialog).getByText("This row has money in and money out. Edit it in the ledger.")).toBeTruthy();
     expect(within(dialog).queryByRole("button", { name: "Save" })).toBeNull();
-    expect((within(dialog).getByLabelText("Who") as HTMLInputElement).closest("fieldset")!.disabled).toBe(true);
+    // Read-only fields at full ink, not a disabled fieldset that dims what the dialog is there to show.
+    const who = within(dialog).getByLabelText("Who") as HTMLInputElement;
+    expect(who.readOnly).toBe(true);
+    expect(who.disabled).toBe(false);
+    expect(dialog.querySelector("fieldset[disabled]")).toBeNull();
     expect(within(dialog.querySelector("[data-slot=dialog-footer]") as HTMLElement).getByRole("button", { name: "Close" })).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Open ledger" }));
     await waitFor(() => expect(asked("work.money.open")).toHaveLength(1));

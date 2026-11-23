@@ -245,7 +245,7 @@ function CalendarRows({ env, workspaceId, read, adding, onReview, reload }: { en
             <Actions>
               {whole ? (
                 <Button variant="ghost" size="sm" disabled={busy !== null || adding} onClick={add} aria-label={`Add ${offer.title}`}>
-                  <BusyLabel busy={busy === offer.eventId} label="Add" />
+                  <BusyLabel align="end" busy={busy === offer.eventId} label="Add" />
                 </Button>
               ) : (
                 <Button variant="ghost" size="sm" onClick={() => onReview(offer)} aria-label={`Review ${offer.title}`}>

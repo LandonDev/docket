@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { EntryFields, MoneyRead } from "@shared/contract-work-money";
 import type { LedgerRow, Status } from "@shared/work/money";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -12,7 +12,7 @@ import { atOf, openBook, saveEntry } from "./api";
 import { Button } from "../../components/ui/button";
 import { AmountInput } from "./fields";
 import { blankForm, canSave, fieldsOfForm, formOfRow, rowMoney, sheetRow, statusChoices, type EntryForm } from "./model";
-import { sigOf } from "@shared/work/money";
+import { formatDay, sigOf } from "@shared/work/money";
 
 /**
  * The one entry dialog (docs/DESIGN.md "The Money view"): a new entry, a
@@ -65,9 +65,13 @@ export interface EntryDialogProps {
 
 export function EntryDialog(props: EntryDialogProps) {
   const [pending, setPending] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
+  // Read only, focus lands on Open ledger, the one thing to do, never on a stored value.
+  const locked = props.mode === "edit" && sheetRow(props.row) !== null;
+  const initialFocus = locked ? () => form.current?.querySelector<HTMLElement>("[data-dialog-confirm]") ?? true : undefined;
   return (
-    <Modal onClose={props.onClose} title={props.title ?? TITLES[props.mode]} size={props.picture ? "lg" : "md"} busy={pending || props.busy}>
-      <EntryBody {...props} pending={pending} setPending={setPending} />
+    <Modal onClose={props.onClose} title={props.title ?? TITLES[props.mode]} size={props.picture ? "lg" : "md"} busy={pending || props.busy} initialFocus={initialFocus}>
+      <EntryBody {...props} pending={pending} setPending={setPending} formRef={form} />
     </Modal>
   );
 }
@@ -89,7 +93,8 @@ function EntryBody({
   busy,
   pending,
   setPending,
-}: EntryDialogProps & { pending: boolean; setPending: (p: boolean) => void }) {
+  formRef,
+}: EntryDialogProps & { pending: boolean; setPending: (p: boolean) => void; formRef: RefObject<HTMLFormElement | null> }) {
   const close = useModalClose();
   const first = (): EntryForm => start ?? (row ? formOfRow(row, workspaceId) : blankForm(workspaceId));
   const [form, setForm] = useState<EntryForm>(first);
@@ -173,16 +178,22 @@ function EntryBody({
 
   const categories = categoryChoices(read.categories, form.category);
   const statuses = statusChoices(form);
-  // Read only, the row's stored status is always shown as text: To reimburse too, which the form would fold into its box.
-  const showStatus = locked || !(form.way === "out" && form.reimburse);
+  // Read only, the row's stored status is always shown as text (StoredFields): To reimburse too, which the form would fold into its box.
+  const showStatus = !(form.way === "out" && form.reimburse);
   const showJob = mode === "confirm" && (jobs?.length ?? 0) > 1;
 
-  const fields = (
-    <fieldset disabled={locked} className="contents">
-      {locked ? <p className="text-xs text-muted-foreground">{SHEET_WORDS[sheet!]}</p> : null}
+  // Read only: the row's stored values are what the dialog is there to show, at full ink in read-only fields with no picker.
+  const fields = locked ? (
+    <>
+      <p className="text-xs text-muted-foreground">{SHEET_WORDS[sheet!]}</p>
+      <StoredFields row={row!} />
+      <ErrorLine error={error} />
+    </>
+  ) : (
+    <>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Amount">
-          {locked ? <Input value={rowMoney(row!)} readOnly className="tabular-nums" /> : <AmountInput ref={amount} value={form.amount} placeholder="0.00" onChange={(e) => patch({ amount: e.target.value })} />}
+          <AmountInput ref={amount} value={form.amount} placeholder="0.00" onChange={(e) => patch({ amount: e.target.value })} />
         </Field>
         <Field label="Date">
           <Input type="date" value={form.date} onChange={(e) => patch({ date: e.target.value })} className="tabular-nums" />
@@ -218,16 +229,14 @@ function EntryBody({
           <option key={s} value={s} />
         ))}
       </datalist>
-      {locked ? null : (
       <div className="flex min-h-7 items-center gap-4">
         <ChoiceToggle label="Spent or received" value={form.way} options={WAYS} onChange={(way) => patch({ way, status: form.status === "To reimburse" ? "Paid" : form.status })} />
         {form.way === "out" ? <CheckRow label="To be paid back" checked={form.reimburse} onCheckedChange={(reimburse) => patch({ reimburse })} /> : null}
       </div>
-      )}
       <div className={cn("grid gap-3", showStatus ? "grid-cols-2" : "grid-cols-1")}>
         {showStatus ? (
           <Field label="Status">
-            {locked ? <Input value={row!.status} readOnly /> : <ChoiceSelect label="Status" className="w-full" value={form.status} options={statuses.map((s) => ({ value: s, label: s }))} onChange={(status: Status) => patch({ status })} />}
+            <ChoiceSelect label="Status" className="w-full" value={form.status} options={statuses.map((s) => ({ value: s, label: s }))} onChange={(status: Status) => patch({ status })} />
           </Field>
         ) : null}
         <Field label="For">
@@ -240,11 +249,12 @@ function EntryBody({
         </Field>
       ) : null}
       <ErrorLine error={error} />
-    </fieldset>
+    </>
   );
 
   return (
     <form
+      ref={formRef}
       onKeyDown={onKeyDown}
       onSubmit={(e) => {
         e.preventDefault();
@@ -269,6 +279,39 @@ function EntryBody({
         <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} busy={busy} disabled={!ready} start={typeof footerStart === "function" ? footerStart(pending) : footerStart} />
       )}
     </form>
+  );
+}
+
+/** A row the one-way form cannot say, as the ledger holds it: read-only fields at full ink, no picker to open. */
+function StoredFields({ row }: { row: LedgerRow }) {
+  const pair = "grid grid-cols-2 gap-3";
+  return (
+    <>
+      <div className={pair}>
+        <Field label="Amount">
+          <Input value={rowMoney(row)} readOnly className="tabular-nums" />
+        </Field>
+        <Field label="Date">
+          <Input value={row.date ? formatDay(row.date) : ""} readOnly className="tabular-nums" />
+        </Field>
+      </div>
+      <div className={pair}>
+        <Field label="Who">
+          <Input value={row.who} readOnly />
+        </Field>
+        <Field label="Category">
+          <Input value={row.category} readOnly />
+        </Field>
+      </div>
+      <div className={pair}>
+        <Field label="Status">
+          <Input value={row.status} readOnly />
+        </Field>
+        <Field label="For">
+          <Input value={row.what} readOnly />
+        </Field>
+      </div>
+    </>
   );
 }
 

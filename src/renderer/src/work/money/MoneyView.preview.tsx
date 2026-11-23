@@ -5,6 +5,7 @@ import { Receipt } from "../icons";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { openMenus } from "../../chrome/menuRows";
 import { defineChunk } from "../../lib/lazyChunk";
+import { cn } from "../../lib/cn";
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import type { CanvasKindDef } from "../canvas/kind";
 import { CANVAS } from "../canvas/registry";
@@ -27,11 +28,12 @@ import { ALL_ROWS, BOTH_WAYS, EMPTY_READ, NOVEMBER, RECEIPT_SVG, readOf } from "
  * menus (`menu-add`, `menu-more`), a canvas item's More (`item-verb`) and a row
  * with money both ways, read only (`dialog-both-ways`); `columns` is a renamed
  * header (Open ledger) and `columns-restore` headers simply gone (Restore columns);
- * `mileage-problem` a mileage log that cannot be read.
+ * `mileage-problem` a mileage log that cannot be read; `month-narrow` the month in a 600px pane (the smallest window
+ * beside the default rail); `menu-add-loading` the Add menu while the first read is on its way, Entry… and Trip… off.
  * Made-up data; rendered by nothing in the app.
  */
 
-type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb" | "picture-failed" | "confirm-offers" | "dialog-both-ways" | "columns-restore" | "mileage-problem";
+type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice" | "dialog-rate" | "dialog-request" | "dialog-new" | "menu-add" | "menu-more" | "item-verb" | "picture-failed" | "confirm-offers" | "dialog-both-ways" | "columns-restore" | "mileage-problem" | "month-narrow" | "menu-add-loading";
 let state: State = "month";
 let reads = 0;
 
@@ -60,6 +62,7 @@ function answer(period: Period): Promise<MoneyRead> {
     case "empty":
       return Promise.resolve(EMPTY_READ(period));
     case "loading":
+    case "menu-add-loading":
       return new Promise(() => {});
     case "failed":
       return reads > 1 ? Promise.reject(new Error("The box did not answer in 10 seconds")) : Promise.resolve(readOf(period, paid));
@@ -165,7 +168,7 @@ function usePress(selector: string | null) {
   }, [selector]);
 }
 
-const MENU_PLACE = { "menu-add": { top: 44, right: 44 }, "menu-more": { top: 44, right: 8 } } as const;
+const MENU_PLACE = { "menu-add": { top: 44, right: 44 }, "menu-add-loading": { top: 44, right: 44 }, "menu-more": { top: 44, right: 8 } } as const;
 
 export function MoneyPreview({ state: s = "month", height }: { state?: State; height?: number }) {
   if (s === "item-verb") return <ItemVerbPreview />;
@@ -187,8 +190,8 @@ function MoneyFrame({ s, height }: { s: State; height?: number }) {
   if (s === "dialog-rate") openMoneyDialog({ kind: "rate" });
   if (s === "dialog-new") openMoneyDialog({ kind: "entry" });
   if (s === "dialog-both-ways") openMoneyDialog({ kind: "row", row: BOTH_WAYS });
-  usePress(s === "menu-add" ? "[data-money-head] [aria-haspopup=menu]:not([aria-label=More])" : s === "menu-more" ? "[data-money-head] [aria-label=More]" : null);
-  usePortalCopy(portals, s.startsWith("dialog") || s.startsWith("menu") || s === "picture-failed", s === "menu-add" || s === "menu-more" ? MENU_PLACE[s] : undefined);
+  usePress(s === "menu-add" || s === "menu-add-loading" ? "[data-money-head] [aria-haspopup=menu]:not([aria-label=More])" : s === "menu-more" ? "[data-money-head] [aria-label=More]" : null);
+  usePortalCopy(portals, s.startsWith("dialog") || s.startsWith("menu") || s === "picture-failed", s === "menu-add" || s === "menu-add-loading" || s === "menu-more" ? MENU_PLACE[s] : undefined);
   useEffect(() => {
     // The failed state: a second read, asked as the window comes forward, fails over the first.
     if (s !== "failed") return;
@@ -210,7 +213,7 @@ function MoneyFrame({ s, height }: { s: State; height?: number }) {
     return () => clearInterval(t);
   }, [s]);
   return (
-    <div className="relative flex min-h-[560px] w-full flex-col bg-background" style={height || /^(empty|loading|failed)$/.test(s) ? { height: height ?? 560 } : undefined}>
+    <div className={cn("relative flex min-h-[560px] w-full flex-col bg-background", s === "month-narrow" && "max-w-[600px] border-e border-border")} style={height || /^(empty|loading|failed|menu-add-loading)$/.test(s) ? { height: height ?? 560 } : undefined}>
       <div data-money-head className="@container/viewhead flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
         <Receipt className="size-3.5 text-muted-foreground" />
         <span className="font-medium text-foreground">Money</span>

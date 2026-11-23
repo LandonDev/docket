@@ -116,7 +116,8 @@ export function heardTrips(env: string, workspaceId: string, answers: readonly (
   let ledger = false;
   let mileage = false;
   for (const t of answers) {
-    if (!t) continue;
+    // Skipped meanwhile: nothing was written, so nothing is said.
+    if (!t || t.skipped) continue;
     if (t.pay && "changed" in t.pay) changed = true;
     else if (t.pay?.suggested) ledger = true;
     if (t.trip?.suggested) mileage = true;

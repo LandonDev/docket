@@ -51,9 +51,10 @@ export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | 
 /**
  * What the header and the body share: the period, the dialog open, and per job what it is known to be.
  * `bare`: true while the job has no money and nothing waits, or its ledger cannot be read as money; false once
- * it is known to have some; absent until the first read lands.
+ * it is known to have some; absent until the first read lands. `landed`: the view holds a read of its period, so
+ * a dialog that draws from it (Entry…, Trip…, Mileage rate…) can open.
  */
-const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null; bare: Record<string, boolean> }>({ period: periodNow(), dialog: null, bare: {} });
+const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null; bare: Record<string, boolean>; landed: Record<string, boolean> }>({ period: periodNow(), dialog: null, bare: {}, landed: {} });
 const set = (patch: Partial<ReturnType<typeof ui.get>>) => ui.set({ ...ui.get(), ...patch });
 /** Each visit opens on this month. */
 export const resetMoneyView = () => ui.set({ ...ui.get(), period: periodNow(), dialog: null });
@@ -64,13 +65,15 @@ export const setMoneyPeriod = (period: PeriodState) => set({ period });
 
 export function Head({ env, workspace, sector }: WorkViewProps) {
   // The period is drawn only once the job is KNOWN to have money or something waiting: never before the first read lands, never on a job with none, never in a columns fault.
-  const { period, bare: bareOf } = useShared(ui);
+  const { period, bare: bareOf, landed: landedOf } = useShared(ui);
   const bare = bareOf[workspace.id] !== false;
+  // Until a read of the period has landed (loading, or the first read failed), a dialog that draws from it could not open: its row waits.
+  const waiting = landedOf[workspace.id] !== true;
   const unit = period.span;
   const addRows: MenuRow[] = [
     { kind: "item", id: "receipt", label: "Receipt…" },
-    { kind: "item", id: "entry", label: "Entry…" },
-    { kind: "item", id: "trip", label: "Trip…" },
+    { kind: "item", id: "entry", label: "Entry…", disabled: waiting },
+    { kind: "item", id: "trip", label: "Trip…", disabled: waiting },
     { kind: "item", id: "invoice", label: "Invoice…" },
     // A purchase request asks Purdue leave to buy: only a Purdue job has one.
     ...(sector === "purdue" ? [{ kind: "item" as const, id: "request", label: "Purchase request…" }] : []),
@@ -80,7 +83,7 @@ export function Head({ env, workspace, sector }: WorkViewProps) {
     { kind: "item", id: "mileage", label: "Open mileage log" },
     { kind: "sep" },
     { kind: "item", id: "export", label: "Export…" },
-    { kind: "item", id: "rate", label: "Mileage rate…" },
+    { kind: "item", id: "rate", label: "Mileage rate…", disabled: waiting },
   ];
   return (
     <>
@@ -150,6 +153,9 @@ export function View({ env, workspace }: WorkViewProps) {
   const bare = read !== null && !columns && isEmpty(read);
   // What the header may draw: known bare (no money, or a columns fault) or known to have money.
   const headBare = read !== null && (bare || columns !== null);
+  useEffect(() => {
+    if (ui.get().landed[workspace.id] !== (read !== null)) set({ landed: { ...ui.get().landed, [workspace.id]: read !== null } });
+  }, [read, workspace.id]);
   useEffect(() => {
     if (read !== null && ui.get().bare[workspace.id] !== headBare) set({ bare: { ...ui.get().bare, [workspace.id]: headBare } });
   }, [headBare, read, workspace.id]);
@@ -612,18 +618,20 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
 
 /**
  * Entries' table and its columns, which the loading bones share so nothing slides when the read lands: a fixed layout, so the
- * columns stand where the header puts them whatever the rows hold, and Amount wide enough for a row with money both ways.
+ * columns stand where the header puts them whatever the rows hold. Amount widens only for a row with money both ways shown, so a
+ * rare row never narrows Who on every row; the bones keep the usual width.
  */
 const ENTRIES_TABLE = "-mx-2 w-[calc(100%+1rem)] table-fixed";
 
-function EntriesHead() {
+/** `wide`: a shown row has money both in and out ("+$30.00 and $20.00"), and Amount takes the room it needs; else Who keeps it. */
+function EntriesHead({ wide = false }: { wide?: boolean }) {
   return (
     <TableHeader>
       <TableRow>
         <TableHead className="w-24 first:pl-2">Date</TableHead>
         <TableHead>Who</TableHead>
         <TableHead className="w-[26%]">Category</TableHead>
-        <TableHead className="w-44 text-end">Amount</TableHead>
+        <TableHead className={cn(wide ? "w-44" : "w-28", "text-end")}>Amount</TableHead>
         <TableHead className={cn("last:pr-2", ENTRIES_TAIL)}>
           <span className="sr-only">Receipt</span>
         </TableHead>
@@ -636,7 +644,7 @@ function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: s
   const open = (row: LedgerRow) => set({ dialog: { kind: "row", row } });
   return (
     <Table className={ENTRIES_TABLE}>
-      <EntriesHead />
+      <EntriesHead wide={rows.some((r) => r.in && r.out)} />
       <TableBody>
         {rows.map((row) => (
           <TableRow key={`${row.row}:${sigOf(row)}`} data-money-row={row.row} className="relative focus-within:bg-muted hover:bg-muted">
@@ -693,21 +701,21 @@ function ProblemLine({ word, detail, action, onPress }: { word: string; detail: 
   );
 }
 
-/** The figures' shape, then Entries' own table with a bone in each cell: the amount ends on money's one edge (layout.ts), and nothing moves as the read lands. */
+/** The figures' labels over bones, then Entries' heading and own table with a bone in each cell (only what the read fills is a bone): the amount ends on money's one edge (layout.ts), and nothing moves as the read lands. */
 function MoneySkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading money" className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-4 py-4">
       <div className="flex gap-x-8 border-b border-border pb-4">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="flex flex-col">
-            <Skeleton className="my-0.5 h-3 w-8" />
+        {["In", "Out", "Net"].map((label) => (
+          <div key={label} className="flex flex-col">
+            <span className="text-xs text-muted-foreground">{label}</span>
             <Skeleton className="my-0.5 h-5 w-24" />
           </div>
         ))}
       </div>
       <section className="flex flex-col gap-2">
         <div className="flex min-h-6 items-center">
-          <Skeleton className="h-3.5 w-16" />
+          <h2 className="text-[13px] font-semibold text-foreground">Entries</h2>
         </div>
         <Table className={ENTRIES_TABLE}>
           <EntriesHead />
