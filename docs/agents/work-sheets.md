@@ -820,6 +820,20 @@ range at the view's rev, edits batched from the rev the grid stands on, a
 conflict caught up with `since`, pushes), `grid.ts` (work-kit's
 `SheetCanvas`, its worker as a `?worker` chunk), `model.ts`, `host.ts`.
 
+- **Only the workbook's own mutations are his edit** (`ofUnit`, sync.ts).
+  The grid also reports the cell editor's own document, which each key he
+  types changes (`doc.mutation.rich-text-editing` on
+  `__INTERNAL_EDITOR__DOCS_NORMAL`); what he commits arrives as the
+  workbook's mutation and is what is sent. Taken for an edit, those keys
+  were stopped on an opened Excel file ("That change is not saved in an
+  Excel file yet") and refused by the service's host ("not registered"),
+  so a typed value did not save anywhere (757a7d7e7 to 40d0615fb; the
+  report `.temp-code/plans/landed/E-sheets/sheets-files-save-report.md`).
+  `SheetBody.dom.test.tsx` ("a value typed into a cell of an Excel file is
+  sent") and `sync.test.ts` hold it; `filesPane.test.ts` saves a typed value
+  and a bold into an .xlsx a Files tab holds, in the workspace's folder and
+  in a library; `scripts/e2e-sheet-files-save.ts` does it by hand in a real
+  window.
 - An agent's pending values are laid into their cells with
   `handle.apply` (never sent as edits), so totals compute with them; the
   formula bar's `was` says what the cell held; the stepper walks change
