@@ -657,13 +657,17 @@ export function HeldDetail({
   const ready = read && pictureShown(picture) && viewLoaded;
   const [busy, setBusy] = useState<"send" | "discard" | "grant" | null>(null);
   const [editing, setEditing] = useState(false);
+  // Alone in a sheet, a press that did not go through is said in the detail itself: a sheet lies over the toasts.
+  const [refused, setRefused] = useState<string | null>(null);
+  const sayFailed = (line: string): void => (alone ? setRefused(line) : toastError(line));
   const grant = grantFor(item);
   const { about } = splitSummary(item.summary);
   const press = async (which: "send" | "again" | "discard" | "grant") => {
     setBusy(which === "again" ? "send" : which);
+    setRefused(null);
     try {
       const after = which === "discard" ? await discardItem(item) : which === "grant" ? await grantAndSend(item, grant!) : await sendItem(item, { again: which === "again" });
-      if (which !== "discard" && !wentOut(after)) return void toastError(notSentWords(after));
+      if (which !== "discard" && !wentOut(after)) return void sayFailed(notSentWords(after));
       onPressed(item);
       // A held file change names its file ("Changed Brief.docx"): its summary's first ": " may be in the file's own name.
       const done = which === "discard" ? "Discarded" : (changeKind(item.kind) ? kindHeading(item.kind, item.payload, true) : null) ?? `${pastOf(item.verb, item.kind)}${about ? `: ${about}` : ""}`;
@@ -673,7 +677,7 @@ export function HeldDetail({
       else toast(done);
       if (which === "grant") toast(`Grant made: ${grant!.label}`);
     } catch (err) {
-      toastError(errorText(err));
+      sayFailed(errorText(err));
     } finally {
       setBusy(null);
     }
@@ -684,10 +688,10 @@ export function HeldDetail({
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-8 py-8">
           <DetailHead item={item} narrowOnly={alone ? [] : [workspace]} facts={[...(alone ? [workspace] : []), threadWords(item) ?? "", timeOf(item.createdAt)]} menu={<ThreadMenu item={item} onOpenSession={onOpenSession} />} />
-          {item.state === "failed" ? (
+          {refused || item.state === "failed" ? (
             <div role="alert" className="flex items-start gap-2 text-[13px] leading-5">
               <StatusMark state="failed" word={false} />
-              <span className="min-w-0 flex-1 text-destructive">{item.error ?? "It couldn't be sent."}</span>
+              <span className="min-w-0 flex-1 text-destructive">{refused ?? item.error ?? "It couldn't be sent."}</span>
             </div>
           ) : null}
           {item.kind === "computer.act" ? <p className="text-[13px] leading-5 text-muted-foreground">Takes {host}'s screen for a moment.</p> : null}

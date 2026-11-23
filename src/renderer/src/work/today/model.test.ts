@@ -148,10 +148,20 @@ describe("page", () => {
     const over = (answer: TodayAnswer) => [fed("held", HELD, {}), fed("meetings", MEETINGS, { rows: [row("event:1", "meetings", { past: true })], ...answer }), fed("due", DUE, {})];
     expect(page(over({}), { jobs, lifeos: "ok" })).toEqual({ kind: "clear" });
     expect(page(over({ note: "Tomorrow starts at 9:00 AM with Staff sync." }), { jobs, lifeos: "ok" })).toEqual({ kind: "clear", line: "Tomorrow starts at 9:00 AM with Staff sync." });
-    // Unfolded, they are rows he asked to see; and a read still out, or one that failed, is not an answer.
-    expect(page(over({}), { jobs, lifeos: "ok", folds: { more: new Set(), earlier: new Set(["meetings"]) } }).kind).toBe("day");
+    // The day settles the same way whether "N earlier" is folded or open.
+    expect(page(over({}), { jobs, lifeos: "ok", folds: { more: new Set(), earlier: new Set(["meetings"]) } }).kind).toBe("clear");
+    // A read still out, or one that failed, is not an answer.
     expect(page(over({ loading: true }), { jobs, lifeos: "ok" }).kind).toBe("day");
     expect(page(over({ failed: [{ environmentId: "mac", error: "x" }] }), { jobs, lifeos: "ok" }).kind).toBe("day");
+  });
+
+  it("is not clear while a source that draws nothing is still out: a section with no empty line, rows for Also, marks", () => {
+    const empty = [fed("held", HELD, {}), fed("due", DUE, {})];
+    const owed = { id: "money", title: "Owed", order: 60, empty: "" };
+    expect(page([...empty, fed("money", owed, { loading: true })], { jobs, lifeos: "ok" }).kind).toBe("day");
+    expect(page([...empty, fed("money", owed, { rows: [] })], { jobs, lifeos: "ok" }).kind).toBe("clear");
+    expect(page([...empty, { source: { id: "review" }, answer: { loading: true } }], { jobs, lifeos: "ok" }).kind).toBe("day");
+    expect(page([...empty, { source: { id: "review" }, answer: { rows: [] } }], { jobs, lifeos: "ok" }).kind).toBe("clear");
   });
 
   it("a section whose rows arrived while a read some job needs is still out is not empty: it draws bones, and the page is not clear", () => {

@@ -242,6 +242,9 @@ describe('menu state', () => {
       const last = vi.mocked(Menu.buildFromTemplate).mock.calls.at(-1)![0] as MenuItemConstructorOptions[]
       return (last.find((s) => s.label === 'Go')!.submenu as MenuItemConstructorOptions[]).map((r) => r.id)
     }
+    // Before any window has reported, no window is there to open Today in: the row is left out.
+    expect(go()).not.toContain('open_today')
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [] })
     expect(go()).toContain('open_today')
     menuModule.receiveMenuState(c as never, { open: [], disabled: [], hidden: ['open_today', 'open_search', 3] })
     expect(go()).not.toContain('open_today')

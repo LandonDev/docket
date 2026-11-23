@@ -22,7 +22,7 @@ export type WorkPlaceRow = {
 };
 
 export const WORK_PLACE_ROWS: WorkPlaceRow[] = [
-  // Today: one page across every job (work/today). No count on its row: the Outbox's is beside it.
+  // Today: one page across every job (work/today). No count on its row: Today is not a queue.
   // Its key is the Go menu's; the row's hover reads it from the Work keybindings by this label.
   { id: "today", label: "Today", order: 10, icon: Sun },
   { id: "review", label: "Review", order: 20, icon: Layers },

@@ -14,6 +14,8 @@ const world = vi.hoisted(() => ({
   calls: [] as Call[],
   items: new Map<string, OutboxItem[]>(),
   listDown: new Set<string>(),
+  // a Send the host refuses, in its own words
+  sendRefused: null as string | null,
   // the list a host has not answered yet
   listHeld: null as Promise<void> | null,
   // the whole read of a mail the host has not answered yet: it answers when the test lets it
@@ -49,6 +51,7 @@ vi.mock("../../lib/connection", async (original) => {
           if (world.getHeld) await world.getHeld;
           return find();
         case "work.outbox.send":
+          if (world.sendRefused) throw new Error(world.sendRefused);
           Object.assign(find(), { state: "sent", decidedBy: "owner", decidedAt: now, updatedAt: now });
           return find();
         case "work.lifeos.status":
@@ -108,7 +111,7 @@ import { source as held } from "./held";
 import { toastAnchor } from "../../lib/toastAnchor";
 import { nextHeld } from "./HeldSheet";
 import { TIMED_OUT } from "./read";
-import { comeBack, leave, openHeld, putAnswer, resetToday, todayNow } from "./store";
+import { comeBack, leave, openHeld, putAnswer, resetToday, toastUp, todayNow } from "./store";
 import { ROW_GRID, TITLE_EDGE } from "./TodayRow";
 import { View } from "./TodayView";
 import type { TodaySource } from "./types";
@@ -150,6 +153,7 @@ beforeEach(() => {
   world.calls.length = 0;
   world.items.clear();
   world.listDown.clear();
+  world.sendRefused = null;
   world.getHeld = null;
   world.listHeld = null;
   world.workspaces = [...JOBS];
@@ -237,12 +241,16 @@ describe("Today", () => {
       section: { id: "money", title: "Money", order: 60, empty: "Nothing owed" },
       use: () => FAILED,
     };
-    const FAILED = { rows: [], failed: [{ environmentId: "mac", error: TIMED_OUT }, { environmentId: "box", error: "Uncaught Error: gone", said: "LifeOS could not read tasks", retry }] };
+    const FAILED = {
+      rows: [],
+      failed: [{ environmentId: "mac", error: TIMED_OUT }, { environmentId: "box", error: "Uncaught Error: gone", said: "LifeOS could not read tasks", retry }, { environmentId: "box", error: "work.outbox.list timed out" }],
+    };
     resetToday([held, failing]);
     render(<View onClose={() => {}} />);
-    const [late, refused] = [...section("money").querySelectorAll<HTMLElement>('[data-view-state="failed"]')];
-    // The wait running out is what the words already say: nothing is said twice.
+    const [late, refused, link] = [...section("money").querySelectorAll<HTMLElement>('[data-view-state="failed"]')];
+    // The wait running out is what the words already say: nothing is said twice, in this page's words or the link's.
     expect(late!.textContent).toBe("Mac did not answer");
+    expect(link!.textContent).toBe("The box did not answer");
     // LifeOS's own error is not his to read: the line says what could not be read, with its Retry.
     expect(refused!.textContent).toBe("LifeOS could not read tasksRetry");
     for (const cls of ROW_GRID.split(" ")) expect(late!.className).toContain(cls);
@@ -287,8 +295,44 @@ describe("Today", () => {
     expect(toastAnchor()).toBeNull();
     act(() => openHeld(null));
     expect(toastAnchor()).toBe(anchor);
+    // The list ends with a runway a toast and its gaps tall, so the last row can be scrolled clear of the stack.
+    expect(anchor.closest("[data-today]")!.querySelector('[class*="pb-24"]')).not.toBeNull();
     unmount();
     expect(toastAnchor()).toBeNull();
+  });
+
+  it("in a narrow column gives the page's own toasts a strip under the list, as wide as a row, only while one is up", async () => {
+    // The test's document lays nothing out: every width is 0, so the column is narrow once something measures it.
+    vi.stubGlobal("ResizeObserver", class { constructor(private readonly run: () => void) {} observe() { this.run(); } disconnect() {} unobserve() {} });
+    try {
+      world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
+      await loadOutbox();
+      render(<View onClose={() => {}} />);
+      const strip = document.querySelector<HTMLElement>("[data-today-strip], [aria-hidden].flex.shrink-0")!;
+      const anchor = toastAnchor()!;
+      // The titles' column is not the anchor here; the strip's own is, outside the scrolling rows.
+      expect(anchor.closest("[data-today]")).toBeNull();
+      expect(strip.contains(anchor)).toBe(true);
+      expect(strip.className).toContain("h-0");
+      let down!: () => void;
+      act(() => void (down = toastUp()));
+      expect(strip.getAttribute("data-today-strip")).toBe("up");
+      expect(strip.className).toContain("h-20");
+      act(() => down());
+      expect(strip.getAttribute("data-today-strip")).toBeNull();
+      expect(todayNow().toastsUp).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("names a held row by the workspace the item is in, as its sheet does, where two hosts hold one for the sector", async () => {
+    world.workspaces = [...JOBS, { id: "ws9", environmentId: "mac", name: "Purdue", path: "/m/purdue", kind: "work", sector: "purdue" }];
+    world.items.set("mac", [mail("o3", "Northfield Parks", "Invoice 1042", { workspaceId: "ws9" })]);
+    await loadOutbox();
+    render(<View onClose={() => {}} />);
+    const job = document.querySelector<HTMLElement>('[data-today-row] [data-sector="purdue"]')!.parentElement!;
+    expect(job.textContent).toBe("Purdue");
   });
 
   it("with every host failed, the section says who did not answer and not that nothing waits", async () => {
@@ -416,6 +460,55 @@ describe("the held sheet", () => {
     expect(todayNow().heldDone).toBe(1);
     openHeld("held:box:lifeos:o9");
     expect(todayNow().heldDone).toBe(0);
+  });
+
+  it("counts the run by its own steps while the host's list still holds the item he sent, and the item that arrives takes no pointer until it is whole", async () => {
+    world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck"), mail("o2", "Dana Reyes", "Spring budget"), mail("o3", "Priya Nair", "Render queue")]);
+    await loadOutbox();
+    render(<View onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Send to Marcus Bell, Sponsor deck" }));
+    const sheet = await screen.findByRole("dialog");
+    const send = () => within(sheet).getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    const run = () => sheet.querySelector("[data-today-run]")!.textContent;
+    expect(run()).toBe("1 of 3");
+    await waitFor(() => expect(send().disabled).toBe(false));
+    // The reload that follows a Send does not come back yet: the list still holds all three.
+    let release!: () => void;
+    world.listHeld = new Promise<void>((resolve) => (release = resolve));
+    fireEvent.click(send());
+    await waitFor(() => expect(todayNow().held).toBe("held:box:lifeos:o2"));
+    // Never "3 of 4": the sent item is counted as done, not as waiting.
+    expect(run()).toBe("2 of 3");
+    const body = sheet.querySelector<HTMLElement>("[data-today-arriving]");
+    expect(body).not.toBeNull();
+    expect(body!.className).toContain("pointer-events-none");
+    await waitFor(() => expect(sheet.querySelector("[data-today-arriving]")).toBeNull());
+    await act(async () => {
+      release();
+      await world.listHeld;
+    });
+    await waitFor(() => expect(rowTitles()).toEqual(["Send to Dana Reyes", "Send to Priya Nair"]));
+    expect(run()).toBe("2 of 3");
+  });
+
+  it("a Send the host refuses says so in the sheet itself: a sheet lies over the toasts", async () => {
+    world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
+    await loadOutbox();
+    render(<View onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Send to Marcus Bell, Sponsor deck" }));
+    const sheet = await screen.findByRole("dialog");
+    const send = () => within(sheet).getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    await waitFor(() => expect(send().disabled).toBe(false));
+    world.sendRefused = "The mail account is signed out";
+    fireEvent.click(send());
+    const alert = await within(sheet).findByRole("alert");
+    expect(alert.textContent).toBe("The mail account is signed out");
+    // Nothing moved on, and a press that goes through takes the words away.
+    expect(todayNow().held).toBe("held:box:lifeos:o1");
+    world.sendRefused = null;
+    await waitFor(() => expect(send().disabled).toBe(false));
+    fireEvent.click(send());
+    await waitFor(() => expect(todayNow().held).toBeNull());
   });
 
   it("hands the sheet on in the order he saw, though the host's list dropped the item before its answer was back", () => {

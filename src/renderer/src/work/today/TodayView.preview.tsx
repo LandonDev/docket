@@ -214,8 +214,7 @@ export function TodayPreview({ state = "day" }: { state?: State }) {
       <div data-slot="sheet-content" className="flex h-[560px] w-[520px] max-w-full flex-col overflow-hidden rounded-2xl bg-popover text-sm text-popover-foreground shadow-overlay ring-1 ring-border">
         <HeldSheetBody
           item={{ ...HELD_MAIL, environmentId: "box" } as HostItem}
-          at={0}
-          count={state === "sheet" ? 3 : 2}
+          left={state === "sheet" ? 3 : 2}
           done={state === "sheet" ? 0 : 1}
           workspace="Purdue Esports"
           host="The box"

@@ -87,9 +87,15 @@ const NONE: readonly TodayRow[] = [];
 function useWaiting(env: TodayEnv): TodayAnswer {
   const read = useLifeosRows<WaitPage, Wait>(env, "mailWaits:list", PAGE, pick, idOf);
   const lifeos = env.lifeos;
+  // A wait is written through the session it was read through: its sector's own, where the first session lacks it.
+  const sessionOf = read.sessionOf;
   const today = env.day.from;
-  const built = useMemo(
-    () =>
+  const built = useMemo(() => {
+    const via = (wait: Wait) => {
+      const sector = sectorOf(wait);
+      return sector ? sessionOf(sector) : lifeos;
+    };
+    return (
       read.rows &&
       waitingRows(read.rows, today, {
         workspaceOf: env.workspaceOf,
@@ -102,21 +108,24 @@ function useWaiting(env: TodayEnv): TodayAnswer {
           leave(key);
           try {
             await act<{ state: string; dueAt: number } | null>({
-              run: () => mutate(lifeos, "mailWaits:dismiss", fence),
+              run: () => mutate(via(wait), "mailWaits:dismiss", fence),
               message: "Dismissed",
               failed: "dismiss it",
-              undo: (before) => (before ? mutate(lifeos, "mailWaits:putBack", { ...fence, state: before.state, dueAt: before.dueAt }) : Promise.resolve()).finally(() => comeBack(key)),
+              undo: (before) => (before ? mutate(via(wait), "mailWaits:putBack", { ...fence, state: before.state, dueAt: before.dueAt }) : Promise.resolve()).finally(() => comeBack(key)),
             });
           } catch (error) {
             comeBack(key);
             throw error;
           }
         },
-      }),
-    [read.rows, today, env.workspaceOf, lifeos],
-  );
-  const rows = useStableRows(built ?? NONE, env.workspaceOf);
-  return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "mail"), [read, built, rows, lifeos]);
+      })
+    );
+  }, [read.rows, today, env.workspaceOf, sessionOf, lifeos]);
+  // What a row's presses close over: the jobs they open in and the sessions they write through.
+  const ways = useMemo(() => ({}), [env.workspaceOf, sessionOf]);
+  const rows = useStableRows(built ?? NONE, ways);
+  const jobName = env.workspaceOf;
+  return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "mail", undefined, (sector) => jobName(sector)?.name), [read, built, rows, lifeos, jobName]);
 }
 
 export const source: TodaySource = { id: "waiting", section: SECTION, use: useWaiting };

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import type { HostItem } from "../outbox/store";
 import { dueRows, type DueTask } from "./due";
+import { heldRows, heldWhen } from "./held";
 import { liveLine, meetingRows, placeAndPeople, type MeetingEvent } from "./meetings";
 import { dayBounds, fold, merge } from "./model";
 import { keepRows } from "./stable";
@@ -192,6 +194,26 @@ describe("waiting on others", () => {
     expect(w.dismiss).toHaveBeenCalledWith(WAITS[1]);
     row.open();
     expect(w.open).toHaveBeenCalledWith(JOBS[0], WAITS[1]);
+  });
+});
+
+describe("waiting on you", () => {
+  const item = (id: string, environmentId: string, workspaceId: string, createdAt: number): HostItem =>
+    ({ ref: { at: "lifeos", table: "outbox", id }, environmentId, workspaceId, kind: "mail.send", sector: "purdue", summary: `Send to Dana Reyes: ${id}`, verb: "Send", account: null, state: "held", createdAt }) as unknown as HostItem;
+
+  it("says when an item was held as a time that names its day, never as a bare date a late task's would be", () => {
+    const now = at(23, 9, 30);
+    expect(heldWhen(at(23, 7, 42), now)).toBe("7:42 AM");
+    // Yesterday's and the week's name their day; before that, the date alone.
+    expect(heldWhen(at(22, 19, 40), now)).toBe("Sun 7:40 PM");
+    expect(heldWhen(at(17, 8, 5), now)).toBe("Tue 8:05 AM");
+    expect(heldWhen(at(3, 14, 2), now)).toBe("Nov 3");
+  });
+
+  it("names a held row by its own workspace, where two hosts hold one for the sector under two names", () => {
+    const names: Record<string, string> = { "box:ws1": "Purdue Esports", "mac:ws9": "Purdue" };
+    const rows = heldRows([item("o1", "box", "ws1", at(23, 7)), item("o2", "mac", "ws9", at(23, 8)), item("o3", "mac", "gone", at(23, 9))], at(23, 9, 30), (i) => names[`${i.environmentId}:${i.workspaceId}`]);
+    expect(rows.map((r) => r.job)).toEqual(["Purdue Esports", "Purdue", undefined]);
   });
 });
 

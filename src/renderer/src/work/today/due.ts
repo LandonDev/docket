@@ -77,6 +77,8 @@ function useDue(env: TodayEnv): TodayAnswer {
   const now = useMinute();
   const read = useLifeosRows<DueTask[], DueTask>(env, "tasks:list", NO_ARGS, pick, idOf);
   const lifeos = env.lifeos;
+  // A task is written through the session it was read through: its sector's own, where the first session lacks it.
+  const sessionOf = read.sessionOf;
   const built = useMemo(
     () =>
       read.rows &&
@@ -89,23 +91,26 @@ function useDue(env: TodayEnv): TodayAnswer {
               run: () => registry.linkOf(workspace.environmentId).request<TasksDone>("work.tasks.done", { workspaceId: workspace.workspaceId, taskId: task._id }),
               message: "Marked done",
               failed: "mark done",
-              undo: () => mutate(lifeos, "tasks:reopen", { id: task._id }).finally(() => comeBack(taskKey(task._id))),
+              undo: () => mutate(sessionOf(task.sector), "tasks:reopen", { id: task._id }).finally(() => comeBack(taskKey(task._id))),
             }),
           ).then(() => undefined),
         tomorrow: (task) =>
           away(taskKey(task._id), () =>
             act({
-              run: () => mutate(lifeos, "tasks:snooze", { id: task._id, until: snoozeUntil("tomorrow", Date.now(), zone) }),
+              run: () => mutate(sessionOf(task.sector), "tasks:snooze", { id: task._id, until: snoozeUntil("tomorrow", Date.now(), zone) }),
               message: "Snoozed until tomorrow",
               failed: "snooze",
-              undo: () => mutate(lifeos, "tasks:unsnooze", { id: task._id }).finally(() => comeBack(taskKey(task._id))),
+              undo: () => mutate(sessionOf(task.sector), "tasks:unsnooze", { id: task._id }).finally(() => comeBack(taskKey(task._id))),
             }),
           ).then(() => undefined),
       }),
-    [read.rows, now, env.workspaceOf, lifeos],
+    [read.rows, now, env.workspaceOf, sessionOf],
   );
-  const rows = useStableRows(built ?? NONE, env.workspaceOf);
-  return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "tasks"), [read, built, rows, lifeos]);
+  // What a row's presses close over: the jobs they open in and the sessions they write through.
+  const ways = useMemo(() => ({}), [env.workspaceOf, sessionOf]);
+  const rows = useStableRows(built ?? NONE, ways);
+  const jobName = env.workspaceOf;
+  return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "tasks", undefined, (sector) => jobName(sector)?.name), [read, built, rows, lifeos, jobName]);
 }
 
 export const source: TodaySource = { id: "due", section: SECTION, use: useDue };

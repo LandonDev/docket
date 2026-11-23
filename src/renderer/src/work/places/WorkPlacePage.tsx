@@ -75,7 +75,8 @@ export function PlaceFrame({
   children: ReactNode;
 }) {
   return (
-    <div role="region" aria-label={label} data-work-place={place} className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground">
+    // The region takes focus by script alone: where a page with no stop of its own sends the keyboard (Today, all clear, when its sheet closes).
+    <div role="region" aria-label={label} data-work-place={place} tabIndex={-1} className="flex min-h-0 min-w-0 flex-1 flex-col text-foreground outline-none">
       <div className="flex h-10 shrink-0 select-none items-center border-b border-border" data-tauri-drag-region="deep">
         {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
         {besideRail ? null : <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />}

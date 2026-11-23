@@ -138,7 +138,8 @@ function useMeetings(env: TodayEnv): TodayAnswer {
   const note = built?.note;
   const lifeos = env.lifeos;
   // Still to answer: the rows it had stay on the page until it does (store.ts `putAnswer`).
-  return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "meetings", note), [read, built, rows, lifeos, note]);
+  const jobName = env.workspaceOf;
+  return useMemo<TodayAnswer>(() => answerOf(read, built && rows, lifeos, "meetings", note, (sector) => jobName(sector)?.name), [read, built, rows, lifeos, note, jobName]);
 }
 
 const NONE: readonly TodayRow[] = [];

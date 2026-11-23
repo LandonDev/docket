@@ -4,6 +4,8 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../../components/ui/press";
 import { reveal, yields } from "../../components/ui/reveal";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
+import { useTruncated } from "../../components/tip";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { cn } from "../../lib/cn";
 import { glideHeight, stopGlide } from "../../lib/heightGlide";
@@ -84,6 +86,8 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
   const Glyph = lead?.kind === "glyph" ? lead.glyph : null;
   // One tab stop for the whole list: only the row the arrows are on takes Tab, and its own controls with it.
   const stop = current ? 0 : -1;
+  // A title or a second line the column cuts is said whole on hover and focus, only while it is cut.
+  const words = useTruncated(`${row.title}\n${row.detail ?? ""}`);
   return (
     <div
       role="listitem"
@@ -98,6 +102,9 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
       )}
     >
       {/* The open control lies over the whole row, so the keyboard's ring is the row's; the tick and the verbs sit above it. */}
+      <Tooltip disabled={!words.cut}>
+        <TooltipTrigger
+          render={
       <ItemButton
         data-row-open
         data-roving-key={row.key}
@@ -117,10 +124,17 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         onKeyUp={tick ? (event) => event.key === " " && event.preventDefault() : undefined}
         className={ROW_OPEN}
       />
+          }
+        />
+        <TooltipContent side="top" align="start">
+          {row.title}
+          {row.detail ? <span className="block">{row.detail}</span> : null}
+        </TooltipContent>
+      </Tooltip>
       <span className={cn("flex h-5 items-center justify-center", tick ? ROW_CONTROLS : ROW_SHOWS)}>
         {tick ? <Checkbox shape="round" tabIndex={stop} checked={ticked} onCheckedChange={setTicked} aria-label={tick.label} /> : Glyph ? <Glyph className="size-3.5 text-muted-foreground" /> : null}
       </span>
-      <span className={cn("flex min-w-0 flex-col", ROW_SHOWS)}>
+      <span ref={words.ref} className={cn("flex min-w-0 flex-col", ROW_SHOWS)}>
         <span data-row-title className={cn("truncate text-[13px] leading-5 transition-colors duration-(--dur-fast) motion-reduce:transition-none", ticked ? "text-muted-foreground line-through" : row.past ? "text-muted-foreground" : "text-foreground")}>
           {row.title}
         </span>

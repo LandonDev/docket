@@ -83,7 +83,10 @@ export function buildMenu(state: MenuState = EMPTY_MENU_STATE): Menu {
 }
 
 let installed: Menu | null = null
-let applied: MenuState = EMPTY_MENU_STATE
+/** With no window to say otherwise (none focused, none reported yet): every row at rest, and Work's own rows left out, since no window is there to open them in. */
+const NO_WINDOW: MenuState = { ...EMPTY_MENU_STATE, hidden: [...WORK_ONLY_IDS] }
+
+let applied: MenuState = NO_WINDOW
 
 /** Each window's last word over `menu:state`, by webContents id. */
 const states = new Map<number, MenuState>()
@@ -99,7 +102,7 @@ function apply(state: MenuState): void {
 /** The focused window's state, or every row enabled and every toggle Show with none. */
 export function applyFocusedMenu(): void {
   const win = BrowserWindow.getFocusedWindow()
-  apply((win && !win.isDestroyed() && states.get(win.webContents.id)) || EMPTY_MENU_STATE)
+  apply((win && !win.isDestroyed() && states.get(win.webContents.id)) || NO_WINDOW)
 }
 
 const strings = (value: unknown): string[] =>
@@ -135,7 +138,7 @@ export function receiveMenuState(contents: WebContents, raw: unknown): void {
 }
 
 export function registerMenu(): void {
-  apply(EMPTY_MENU_STATE)
+  apply(NO_WINDOW)
   ipcMain.on('menu:state', (event, state: unknown) => receiveMenuState(event.sender, state))
   app.on('browser-window-focus', applyFocusedMenu)
   if (process.platform === 'darwin') registerZoomKeys()

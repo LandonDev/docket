@@ -85,9 +85,16 @@ What a row does:
   press the sheet shows the next held item, and closes after the last. The
   next is picked from the order he saw (`nextHeld`), so a list the host
   refreshed while the press was out still hands the sheet on; the head
-  counts the run forward ("2 of 3": `heldDone` in today/store.ts); the item
-  that takes the sheet fades in and takes the focus; and a sheet that
-  closes gives focus back to the list's own stop.
+  counts the run by its own steps ("2 of 3": `heldDone` in today/store.ts,
+  of those and the items that still wait, which leaves out what his press
+  already took, so the count never waits for the host's reload); the item
+  that takes the sheet fades in, takes the focus and takes no pointer until
+  the fade is over; a press that does not go through is said in the item's
+  own red line (`HeldDetail`'s `alone`: a sheet lies over the toasts); and
+  a sheet that closes gives focus back to the list's own stop, or to the
+  page's region once no row is left. A held row names the workspace its
+  item is in (`TodayRow.job`) and says when it was held as a time that
+  names its day (`heldWhen`).
   **Today adds no way to send**, and no Send is ever drawn in a row.
 - **Meetings.** Today's events, all-day first, then by start; the second
   line is the place and the job's people who are there. Events that ended
@@ -141,11 +148,17 @@ nothing.
   never said on half an answer. A read LifeOS refused, or a sector read
   that failed, is one line in the section ("LifeOS could not read tasks")
   with Retry, which lets go of every read of that list and asks afresh
-  (`answerOf`, today/lifeos.ts).
+  (`answerOf`, today/lifeos.ts). A job whose sector the session lacks and
+  no other open host holds cannot be read at all (`uncoveredOf`): its
+  section says so by the job's name ("LifeOS could not read Ref's tasks").
+- A row is written through the session that read it (`Rows.sessionOf`):
+  Tomorrow, Dismiss and every Undo of a sector read on another host go
+  through that sector's own session, never the first one, which lacks it.
 - A row's presses close over the session they write through and the job
   they open in. When either is another (the host changed, a workspace
-  moved), every row is made again (`useStableRows(rows, ways)`), so no row
-  on the page acts through one that is gone.
+  moved, a sector's session changed), every row is made again
+  (`useStableRows(rows, ways)`), so no row on the page acts through one
+  that is gone.
 - While no host can read LifeOS, its sections give way to one line where the
   first stood: "LifeOS did not answer" with Retry, or "Not signed in to
   LifeOS" with Sign in (Settings → Connections).
@@ -245,7 +258,7 @@ one day). `TodayView.tsx` draws it; `TodayRow.tsx` is the one row grid.
 |---|---|
 | A section has never answered, or a read some job needs is still out | its heading and three bones in its rows' shape |
 | A section is empty | its heading and one muted line |
-| Everything answered, nothing left | "All clear", over "Nothing needs you today." or what tomorrow starts with |
+| Every source answered, nothing left (ended meetings are not left, folded or open) | "All clear", over "Nothing needs you today." or what tomorrow starts with |
 | A host with jobs is offline | one muted line at the foot for each ("Mac is offline.") |
 | A host did not answer in time | a line in the section it feeds, on the rows' grid, with Retry |
 | LifeOS refused one read | "LifeOS could not read tasks" in that section, with Retry |
@@ -260,15 +273,20 @@ Keys: every row and every fold line on the page is one list, one tab stop.
 ↑ ↓ Home End move; Enter opens the row or the fold; Space ticks a task. The
 row the arrows are on shows its verbs, and takes Tab with its own controls.
 A fold he opens hands its focus to the first row it showed. Focus lands on
-the first row when the page opens, and where he left it when he comes back.
-Esc closes the page.
+the first row when the page opens, and where he left it when he comes back
+(the first stop in sight, if he had scrolled that one away). Esc closes the
+page.
 
 Width: `TodayRow.tsx` holds the grid. In a column under 480px (the window
 at its least beside the rail and the Chats column) the inset, the gaps and
 the two trailing columns narrow together (`@container/today`).
 
 Toasts: the titles' column at the page's foot is the toast anchor
-(lib/toastAnchor.ts), so a toast covers neither a tick nor a verb.
+(lib/toastAnchor.ts), so a toast covers neither a tick nor a verb, and the
+list ends with a runway so its last row scrolls clear. In the narrow column
+the page's own toasts (`act`, counted in the store's `toastsUp`) get a
+strip under the list while one is up. While the held sheet is open the
+anchor stands down.
 
 ## Speed
 

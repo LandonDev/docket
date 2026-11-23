@@ -9,7 +9,8 @@ keyless, reloads the focused window past its cache from main), Go
 some host has Work on, since a window with none names it in
 `MenuState.hidden` and `resolveMenu` then leaves the row and its key out;
 main takes only `WORK_ONLY_IDS` from that list, so a window hides no other
-row; the row is a toggle, "Close Today" while the page is open), Threads (Switch Model, Mark All Read, the fleet switches),
+row; with no window focused or none reported yet main hides them itself,
+`NO_WINDOW`; the row is a toggle, "Close Today" while the page is open), Threads (Switch Model, Mark All Read, the fleet switches),
 Window and Help (What's New opens the running build's notes, Show Logs opens
 `<userData>/logs`, the host profile, Developer Tools). Ids
 are command ids of lib/appCommands.ts; `MAIN_MENU_IDS` act in main. Each

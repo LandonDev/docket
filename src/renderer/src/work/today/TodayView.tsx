@@ -17,7 +17,6 @@ import { useTodayEnv } from "./env";
 import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";
-import { TIMED_OUT } from "./read";
 import { fedOf, focusOfToday, keepFocus, keepScroll, scrollOfToday, unfold, useTodayState } from "./store";
 import { ROW_GRID, ROW_SLOT, TITLE_EDGE, TODAY_COLUMN, TODAY_INSET, TodayRowSlot, type RowPhase } from "./TodayRow";
 import type { TodayFailure, TodaySection } from "./types";
@@ -54,6 +53,17 @@ export function View(_props: WorkPlaceProps) {
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollTop = scrollOfToday();
   }, []);
+  // The column under 480px (TodayRow.tsx `ROW_GRID`): a toast there is as wide as a row, so it gets a strip of its
+  // own under the list while one of the page's toasts is up, and covers no row's verbs.
+  const [compact, setCompact] = useState(false);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setCompact(el.clientWidth < COMPACT_PX));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const sheetOpen = state.held !== null;
   // While it is open the page runs its sources itself; closed, they run on for ten minutes (warm.tsx).
   useLayoutEffect(() => {
     pageOpen(true);
@@ -61,22 +71,32 @@ export function View(_props: WorkPlaceProps) {
     return () => pageOpen(false);
   }, []);
   return (
-    <div ref={scroller} data-today onScroll={(event) => keepScroll(event.currentTarget.scrollTop)} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
-      <SourceRuns env={env} />
-      <TodayPageView
-        model={model}
-        hostName={hostName}
-        jobName={jobName}
-        onRetryLifeos={retryLifeos}
-        leaving={state.leaving}
-        closing={state.closing}
-        sheetOpen={state.held !== null}
-        landsOnOpen
-      />
-      <HeldSheet />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div ref={scroller} data-today onScroll={(event) => keepScroll(event.currentTarget.scrollTop)} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
+        <SourceRuns env={env} />
+        <TodayPageView
+          model={model}
+          hostName={hostName}
+          jobName={jobName}
+          onRetryLifeos={retryLifeos}
+          leaving={state.leaving}
+          closing={state.closing}
+          toastsElsewhere={sheetOpen || compact}
+          landsOnOpen
+        />
+        <HeldSheet />
+      </div>
+      {/* The narrow column's toasts: a strip under the list, as tall as a toast while one of the page's own is up, the
+          rows' width. Not while the held sheet is open (TodayPageView's own anchor says why). */}
+      <div aria-hidden data-today-strip={compact && state.toastsUp > 0 && !sheetOpen ? "up" : undefined} className={cn("flex shrink-0 items-end px-6", compact && state.toastsUp > 0 && !sheetOpen ? "h-20" : "h-0")}>
+        <span ref={compact && !sheetOpen ? registerToastAnchor : undefined} className="h-0 flex-1" />
+      </div>
     </div>
   );
 }
+
+/** The column's width under which the grid is compact (TodayRow.tsx: 30rem). */
+const COMPACT_PX = 480;
 
 const NO_KEYS: ReadonlySet<string> = new Set();
 
@@ -94,7 +114,7 @@ export function TodayPageView({
   onRetryLifeos,
   leaving = NO_KEYS,
   closing = NO_KEYS,
-  sheetOpen = false,
+  toastsElsewhere = false,
   landsOnOpen = false,
 }: {
   model: TodayPage;
@@ -105,8 +125,8 @@ export function TodayPageView({
   /** Rows on their way out by his own act: fading, then their place closing. */
   leaving?: ReadonlySet<string>;
   closing?: ReadonlySet<string>;
-  /** The held sheet is over the page: the toasts go back to the window's corner, behind it, as under any sheet. */
-  sheetOpen?: boolean;
+  /** The toasts do not sit over the titles now: the held sheet is over the page (they go back to the window's corner, behind it, as under any sheet), or the column is narrow and they have a strip under the list. */
+  toastsElsewhere?: boolean;
   /** The live page: focus lands when the page first has a row, and where it stands is kept for his return. */
   landsOnOpen?: boolean;
 }) {
@@ -123,7 +143,13 @@ export function TodayPageView({
     if (landed.current || stop === null) return;
     landed.current = true;
     const at = document.activeElement;
-    if (!at || at === document.body || !roving.listRef.current?.contains(at)) focusRow(stop);
+    if (at && at !== document.body && roving.listRef.current?.contains(at)) return;
+    // The scroll is back where it was. A stop he scrolled away from before he left is out of sight: the first stop in
+    // sight takes the focus then, so the first arrow goes on from what he sees.
+    const seen = inSight(roving.listRef.current, keys);
+    const to = seen.length === 0 || seen.includes(stop) ? stop : seen[0]!;
+    if (to !== stop) setFocused(to);
+    focusRow(to);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the first row is there
   }, [stop === null]);
   useEffect(() => {
@@ -145,7 +171,7 @@ export function TodayPageView({
       null;
     setFocused(next);
     const on = document.activeElement;
-    if (next && (!on || on === document.body)) focusRow(next);
+    if (next && (!on || on === document.body || on.hasAttribute("data-work-place"))) focusRow(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- when the stops change under the focus
   }, [keys]);
   if (model.kind === "no-jobs") return <EmptyState title="No jobs yet" line="Add a Work workspace to see its day here." action={{ label: "Add workspace", onClick: openAddWorkspace }} />;
@@ -161,7 +187,8 @@ export function TodayPageView({
   const phaseOf = (key: string): RowPhase => (closing.has(key) ? "closing" : leaving.has(key) ? "leaving" : undefined);
   return (
     <div className={cn("flex flex-1 flex-col", TODAY_COLUMN)}>
-      <div ref={roving.listRef} onKeyDown={onKeyDown} onFocus={onFocus} className={cn("flex flex-col py-6", TODAY_INSET)}>
+      {/* The foot's runway is a toast and its gaps tall: the last row can always be scrolled clear of the stack. */}
+      <div ref={roving.listRef} onKeyDown={onKeyDown} onFocus={onFocus} className={cn("flex flex-col pt-6 pb-24", TODAY_INSET)}>
       {model.blocks.map((block) =>
         block.kind === "section" ? (
           <Section key={block.section.id} section={block.section} hostName={hostName} jobName={jobName} phaseOf={phaseOf} stop={stop} />
@@ -186,13 +213,14 @@ export function TodayPageView({
       ) : null}
       </div>
       {/* Where a toast sits (lib/toastAnchor.ts): at the page's foot over the titles, clear of the ticks before them and
-          the verbs after. In a narrow column there is no such room, and it takes the row's width. Not while the held
-          sheet is open: a sheet lies over the toasts, and one seated here would show cut by its edge. */}
+          the verbs after. Not in a narrow column, where there is no such room (the page gives the toasts a strip under
+          the list), nor while the held sheet is open: a sheet lies over the toasts, and one seated here would show cut
+          by its edge. */}
       <div aria-hidden className="pointer-events-none sticky bottom-0 mt-auto">
         <div className={TODAY_INSET}>
           <div className={cn("px-3", ROW_GRID)}>
             <span />
-            <span ref={sheetOpen ? undefined : registerToastAnchor} data-today-toasts className="h-0 @max-[30rem]/today:col-span-3" />
+            <span ref={toastsElsewhere ? undefined : registerToastAnchor} data-today-toasts className="h-0" />
           </div>
         </div>
       </div>
@@ -201,6 +229,19 @@ export function TodayPageView({
 }
 
 const NONE: string[] = [];
+
+/** A read's error that only says the wait ran out, in this page's words or the link's ("work.outbox.list timed out"). */
+const TIMEOUT_WORDS = /timed out|did not answer in time/i;
+
+/** The stops whose row is in sight in the page's scroller, in order; none where nothing is laid out (a test's document). */
+function inSight(list: HTMLElement | null, keys: readonly string[]): string[] {
+  const view = list?.closest("[data-today]")?.getBoundingClientRect();
+  if (!list || !view || view.height === 0) return [];
+  return keys.filter((key) => {
+    const box = list.querySelector(`[data-roving-key="${CSS.escape(key)}"]`)?.getBoundingClientRect();
+    return !!box && box.top >= view.top && box.bottom <= view.bottom;
+  });
+}
 
 function Section({
   section,
@@ -230,7 +271,7 @@ function Section({
     <section aria-label={section.title} data-today-section={section.id} className="mt-6 flex flex-col first:mt-0">
       <h2 className="flex h-7 items-center px-3 text-xs font-medium text-muted-foreground">{section.title}</h2>
       {section.failed.map((failure) => (
-        <HostLine key={failure.environmentId} failure={failure} name={hostName(failure.environmentId)} />
+        <HostLine key={`${failure.environmentId}:${failure.said ?? ""}`} failure={failure} name={hostName(failure.environmentId)} />
       ))}
       {section.state === "bones" ? (
         <Bones label={section.title} shape={section.bones} />
@@ -241,7 +282,7 @@ function Section({
         <div role="list" className="-mb-0.5 flex flex-col">
           {section.earlier > 0 ? <FoldLine which="earlier" section={section.id} label={`${section.earlier} earlier`} stop={stop} /> : null}
           {section.rows.map((row) => (
-            <TodayRowSlot key={row.key} row={row} job={row.sector ? jobName(row.sector) : null} phase={phaseOf(row.key)} lands={lands(row.key)} current={row.key === stop} />
+            <TodayRowSlot key={row.key} row={row} job={row.job ?? (row.sector ? jobName(row.sector) : null)} phase={phaseOf(row.key)} lands={lands(row.key)} current={row.key === stop} />
           ))}
           {section.more > 0 ? <FoldLine which="more" section={section.id} label={`${section.more} more`} stop={stop} /> : null}
         </div>
@@ -309,7 +350,7 @@ function Bones({ label, shape }: { label: string; shape?: TodaySection["bones"] 
  * read the host is not at fault for has its own words (`said`).
  */
 function HostLine({ failure, name }: { failure: TodayFailure; name: string }) {
-  const detail = failure.said || failure.error === TIMED_OUT ? undefined : failure.error;
+  const detail = failure.said || TIMEOUT_WORDS.test(failure.error) ? undefined : failure.error;
   return <PageLine failed word={failure.said ?? `${name} did not answer`} detail={detail} action={failure.retry ? { label: "Retry", run: failure.retry } : undefined} />;
 }
 

@@ -29,10 +29,12 @@ export type TodayState = {
   closing: ReadonlySet<string>;
   /** Rows his act took off the page, until the source that made them stops giving them. */
   gone: ReadonlySet<string>;
+  /** How many of the page's own toasts are up (an act's "Marked done" with its Undo). */
+  toastsUp: number;
 };
 
 const NONE: ReadonlySet<string> = new Set();
-let state: TodayState = { sources: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE };
+let state: TodayState = { sources: [], answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 };
 let scrollTop = 0;
 let focusKey: string | null = null;
 const listeners = new Set<() => void>();
@@ -161,6 +163,23 @@ export function comeBack(key: string): void {
   set({ leaving: without(state.leaving, key), closing: without(state.closing, key), gone: without(state.gone, key) });
 }
 
+/** How long a toast is counted at most: one that never says it left (a stack cleared at once) frees its place by itself. */
+const TOAST_MAX_MS = 12_000;
+
+/** One of the page's toasts is up; call what it returns once, when the toast leaves. */
+export function toastUp(): () => void {
+  let up = true;
+  const down = (): void => {
+    if (!up) return;
+    up = false;
+    clearTimeout(timer);
+    set({ toastsUp: Math.max(0, state.toastsUp - 1) });
+  };
+  const timer = setTimeout(down, TOAST_MAX_MS);
+  set({ toastsUp: state.toastsUp + 1 });
+  return down;
+}
+
 // ── what he did to the page ────────────────────────────────────────────────
 
 /** Unfold a section's "N more" or its "N earlier"; they stay open until the window closes. */
@@ -203,5 +222,5 @@ export function resetToday(sources?: readonly TodaySource[]): void {
   handed.clear();
   for (const timer of timers.values()) clearTimeout(timer);
   timers.clear();
-  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE });
+  set({ sources: (sources ?? []).map((source) => ({ id: source.id, source })), answers: new Map(), folds: NO_FOLDS, held: null, heldDone: 0, leaving: NONE, closing: NONE, gone: NONE, toastsUp: 0 });
 }

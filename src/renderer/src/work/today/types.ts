@@ -39,6 +39,8 @@ export type TodayRow = {
   /** `held` 10, `meetings` 20, `due` 30, `waiting` 40, `files` 50, `also` 90, or a section of the source's own. */
   section: string;
   sector: SectorKey | null;
+  /** The job's name, where the row knows the very workspace it belongs to (a held item, a row a host answered for one workspace); left out, the page names the sector's job. */
+  job?: string;
   /** The 13px line, in plain words: no path, no URL. */
   title: string;
   /** The 12px muted line under it. */

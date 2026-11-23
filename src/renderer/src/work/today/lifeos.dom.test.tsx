@@ -8,7 +8,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetLifeos } from "../shell/lifeos";
 import { FakeConvex, fakeSession } from "./fakeLifeos";
-import { act as rowAct, mutate, useLifeosRows } from "./lifeos";
+import { act as rowAct, answerOf, mutate, NOT_COVERED, uncoveredOf, useLifeosRows } from "./lifeos";
 import type { TodayEnv, TodayWorkspace } from "./types";
 
 const toasts = vi.hoisted(() => ({ said: [] as { line: string; undo?: () => void; error?: boolean }[] }));
@@ -107,6 +107,37 @@ describe("useLifeosRows", () => {
     // Every read was made again, the first one's too.
     expect(box.reads.length).toBeGreaterThan(asked.box);
     expect(mac.reads.length).toBeGreaterThan(asked.mac);
+  });
+
+  it("names a job no signed-in host can read: its rows are missing, and the read is not whole", async () => {
+    // The session covers purdue alone, and ref's only host is the session's own: nothing can read ref.
+    const box = new FakeConvex().answer("auth:caller", { sectors: ["purdue"] }).answer("tasks:list", [{ _id: "t1", title: "One", sector: "purdue" }]);
+    const env = envOf(fakeSession("box", box), [job("box", "purdue"), job("box", "ref")]);
+    const { result } = renderHook(() => useLifeosRows<Task[], Task>(env, "tasks:list", {}, pick, idOf));
+    await waitFor(() => expect(result.current.lost).toEqual([{ environmentId: "box", sector: "ref", error: NOT_COVERED }]));
+    expect(result.current.rows?.map(idOf)).toEqual(["t1"]);
+    expect(uncoveredOf(["purdue"], env.workspaces, "box")).toEqual(["ref"]);
+    expect(uncoveredOf("all", env.workspaces, "box")).toEqual([]);
+    // In its section it is one line that names the job.
+    const answer = answerOf(result.current, [], env.lifeos, "tasks", undefined, (sector) => (sector === "ref" ? "Refereeing" : undefined));
+    expect(answer.failed?.map((f) => f.said)).toEqual(["LifeOS could not read Refereeing's tasks"]);
+  });
+
+  it("says which session read a sector's rows, so a row is written through the session that read it", async () => {
+    const box = new FakeConvex().answer("auth:caller", { sectors: ["purdue"] }).answer("tasks:list", [{ _id: "t1", title: "One", sector: "purdue" }]);
+    const mac = new FakeConvex().answer("tasks:list", [{ _id: "t9", title: "Ref's", sector: "ref" }]);
+    const lifeos = fakeSession("box", box);
+    const narrowed = fakeSession("mac", mac, "ref");
+    const env = envOf(lifeos, [job("box", "purdue"), job("mac", "ref")]);
+    const { result, rerender } = renderHook(() => useLifeosRows<Task[], Task>(env, "tasks:list", {}, pick, idOf));
+    await waitFor(() => expect(result.current.rows?.map(idOf)).toEqual(["t1", "t9"]));
+    expect(result.current.sessionOf("purdue" as never).client).toBe(lifeos.client);
+    expect(result.current.sessionOf("ref" as never).client).toBe(narrowed.client);
+    // The same function while the sessions are the same: the rows built on it stay the same rows.
+    const was = result.current.sessionOf;
+    act(() => void box.answer("tasks:list", [{ _id: "t1", title: "One, renamed", sector: "purdue" }]));
+    rerender();
+    expect(result.current.sessionOf).toBe(was);
   });
 
   it("says LifeOS's own refusal of the read", () => {

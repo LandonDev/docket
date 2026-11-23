@@ -229,6 +229,27 @@ describe("the due source", () => {
     expect(todayNow().gone.has("task:t2")).toBe(false);
   });
 
+  it("a task read through a sector's own session is written through it, and its Undo too: the first session lacks that sector", async () => {
+    // The box's session covers purdue alone; ref's tasks are read on the Mac, through a session narrowed to ref.
+    convex.answer("auth:caller", { sectors: ["purdue"] }).answer("tasks:list", []);
+    const mac = new FakeConvex().answer("tasks:list", [{ _id: "t9", title: "Renew arbiter registration", sector: "ref", status: "todo", pinned: true }]);
+    fakeSession("mac", mac, "ref");
+    const env = envNow();
+    const { result } = renderHook(() => due.use(env));
+    await vi.waitFor(() => expect(result.current.rows?.map((r) => r.key)).toEqual(["task:t9"]));
+    await act(async () => {
+      await rowOf(result.current.rows, "task:t9").acts![0]!.run();
+    });
+    expect(mac.writes).toEqual([{ name: "tasks:snooze", args: { id: "t9", until: at(24, 9) } }]);
+    expect(convex.writes).toEqual([]);
+    await act(async () => {
+      world.toasts[0]!.undo!();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mac.writes.at(-1)).toEqual({ name: "tasks:unsnooze", args: { id: "t9" } });
+    expect(convex.writes).toEqual([]);
+  });
+
   it("Tomorrow snoozes the task to the next morning in LifeOS, with Undo", async () => {
     convex.answer("tasks:list", TASKS);
     const env = envNow();

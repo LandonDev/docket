@@ -192,14 +192,21 @@ export function foldOf(key: string): { which: keyof Folds; section: string } | n
   return lead === "fold" && (which === "more" || which === "earlier") ? { which, section: rest.join(":") } : null;
 }
 
-/** A section with nothing left in it: it answered whole, none of its reads failed, and it holds no row but those that are over. */
-const done = (s: ShownSection): boolean => s.failed.length === 0 && (s.state === "empty" || (s.state === "rows" && !s.pending && s.rows.length === 0 && s.more === 0));
+/**
+ * A section with nothing left in it: it answered whole, none of its reads
+ * failed, and it holds no row but those that are over, whether its "N
+ * earlier" is folded or open (the day settles the same way either way).
+ */
+const done = (s: ShownSection): boolean =>
+  s.failed.length === 0 && (s.state === "empty" || (s.state === "rows" && !s.pending && s.more === 0 && s.rows.every((row) => row.past)));
 
 /**
  * The whole page. While no host can read LifeOS, the sections that read it
  * give way to one line in the first one's place. "All clear" is said only
- * when every section answered whole, none failed, no host is offline and
- * nothing is left: a meeting that ended is not left.
+ * when every source answered whole, none failed, no host is offline and
+ * nothing is left: a meeting that ended is not left. A source still out
+ * that draws nothing while it waits (a section with no empty line, rows for
+ * Also) counts too: it may yet bring a row.
  */
 export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[]; lifeos: LifeosReach; folds?: Folds; gone?: ReadonlySet<string> }): TodayPage {
   if (opts.jobs.length === 0) return { kind: "no-jobs" };
@@ -219,7 +226,9 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
   const offline = offlineHosts(opts.jobs);
   const shown = blocks.flatMap((b) => (b.kind === "section" ? [b.section] : []));
   // LifeOS out of reach matters only where a section reads it: `said` is set when one gave way.
-  if (!said && offline.length === 0 && shown.every(done)) {
+  const drawn = new Set(shown.map((s) => s.id));
+  const out = fed.some(({ source, answer }) => !!answer.loading && !(source.section && drawn.has(source.section.id)));
+  if (!said && !out && offline.length === 0 && shown.every(done)) {
     const line = shown.find((s) => s.note)?.note;
     return { kind: "clear", ...(line ? { line } : {}) };
   }

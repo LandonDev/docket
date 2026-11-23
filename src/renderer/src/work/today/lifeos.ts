@@ -4,6 +4,7 @@ import type { SectorKey } from "@shared/work";
 import { loadToast } from "../../components/ui/toaster";
 import { reopenLifeos, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import type { LifeosReach } from "./model";
+import { toastUp } from "./store";
 import type { TodayAnswer, TodayEnv, TodayFailure, TodayRow, TodayWorkspace } from "./types";
 
 /**
@@ -55,16 +56,29 @@ export function lackingOf(cover: "all" | readonly string[] | null, jobs: readonl
   return out;
 }
 
+/** The jobs' sectors the all-sector session lacks and no other open host holds: nothing can read them, and the page must say so. */
+export function uncoveredOf(cover: "all" | readonly string[] | null, jobs: readonly TodayWorkspace[], host: string): SectorKey[] {
+  if (cover === null || cover === "all") return [];
+  const read = lackingOf(cover, jobs, host);
+  return [...new Set(jobs.map((job) => job.sector).filter((sector) => !cover.includes(sector) && !read.has(sector)))];
+}
+
+type Slot<V> = { query: LifeosQuery<V>; session: LifeosSession } | null;
+
 /** One sector's slot: its narrowed session and query while the sector is lacking, idle otherwise. Always the same hooks. */
-function useSlot<V>(sector: SectorKey, lacking: ReadonlyMap<SectorKey, string>, name: string, args: Record<string, unknown>): LifeosQuery<V> | null {
+function useSlot<V>(sector: SectorKey, lacking: ReadonlyMap<SectorKey, string>, name: string, args: Record<string, unknown>): Slot<V> {
   const host = lacking.get(sector) ?? null;
   const session = useLifeosSession(host ?? "", sector);
   const query = useLifeosQuery<V>(host ? session : IDLE, name, host ? { ...args, sector } : args);
-  return host ? query : null;
+  // The same object while the query and the session are the same: what reads it is memoised on it.
+  return useMemo(() => (host ? { query, session } : null), [host, query, session]);
 }
 
-/** A read some job needs that did not come back: the session's cover (`sector` null), or one sector's narrowed read. */
+/** A read some job needs that did not come back: the session's cover (`sector` null), one sector's narrowed read, or a sector no open host's session can read at all. */
 export type Lost = { environmentId: string; sector: SectorKey | null; error: string };
+
+/** What a sector no session covers fails with. */
+export const NOT_COVERED = "No signed-in host can read this job";
 
 export type Rows<T> = {
   /** Null until the all-sector read has answered. */
@@ -77,6 +91,8 @@ export type Rows<T> = {
   lost: readonly Lost[];
   /** Ask again: every read is dropped and made afresh, and a session that failed is opened again. */
   retry(): Promise<void>;
+  /** The session a row of this sector was read through, and so the one its writes go through: the sector's own narrowed session where the first one lacks it. */
+  sessionOf(sector: SectorKey): LifeosSession;
 };
 
 const NO_LOST: readonly Lost[] = [];
@@ -113,18 +129,28 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
     useSlot<V>(SLOTS[5]!, lacking, name, args),
   ];
   const [a, b, c, d, e, f] = slots;
+  // A row is written through the session that read it. The same function while the sessions are the same.
+  const [sa, sb, sc, sd, se, sf] = [a?.session, b?.session, c?.session, d?.session, e?.session, f?.session];
+  const first = env.lifeos;
+  const sessionOf = useMemo(() => {
+    const narrowed = new Map<SectorKey, LifeosSession>();
+    [sa, sb, sc, sd, se, sf].forEach((s, at) => s && narrowed.set(SLOTS[at]!, s));
+    return (sector: SectorKey): LifeosSession => narrowed.get(sector) ?? first;
+  }, [first, sa, sb, sc, sd, se, sf]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the cover by its value
+  const uncovered = useMemo(() => uncoveredOf(cover, env.workspaces, host), [coverKey, env.workspaces, host]);
   const lostNow = useRef<readonly Lost[]>(NO_LOST);
   const retry = useCallback(async () => {
     await Promise.all(lostNow.current.map((lost) => reopenLifeos(lost.environmentId, lost.sector).catch(() => {})));
     setResting(true);
   }, []);
   const read = useMemo<Rows<T>>(() => {
-    if (main.status !== "ready") return { rows: null, error: main.status === "failed" ? main.error : null, pending: false, lost: NO_LOST, retry };
+    if (main.status !== "ready") return { rows: null, error: main.status === "failed" ? main.error : null, pending: false, lost: NO_LOST, retry, sessionOf };
     const seen = new Set<string>();
     const rows: T[] = [];
     const lost: Lost[] = caller.status === "failed" ? [{ environmentId: host, sector: null, error: caller.error }] : [];
     let pending = caller.status === "loading";
-    const each = [a, b, c, d, e, f];
+    const each = [a, b, c, d, e, f].map((slot) => slot?.query);
     for (const value of [main.value, ...each.flatMap((slot) => (slot?.status === "ready" ? [slot.value] : []))]) {
       for (const row of pick(value)) {
         const id = idOf(row);
@@ -138,10 +164,12 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
       if (slot?.status === "loading") pending = true;
       if (slot?.status === "failed") lost.push({ environmentId: lacking.get(sector) ?? host, sector, error: slot.error });
     });
-    return { rows, error: null, pending, lost: lost.length ? lost : NO_LOST, retry };
+    // A job whose sector no open host's session covers: its rows are missing, and nothing is on its way.
+    for (const sector of uncovered) lost.push({ environmentId: host, sector, error: NOT_COVERED });
+    return { rows, error: null, pending, lost: lost.length ? lost : NO_LOST, retry, sessionOf };
     // `pick` and `idOf` are the caller's constants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [main, caller, a, b, c, d, e, f, lacking, host, retry]);
+  }, [main, caller, a, b, c, d, e, f, lacking, uncovered, host, retry, sessionOf]);
   useEffect(() => {
     lostNow.current = read.lost;
   }, [read.lost]);
@@ -155,17 +183,28 @@ const NO_ARGS = {};
  * A read LifeOS refused is said in the section with a Retry, in plain words
  * (`what`: "meetings", "tasks"); a read still out keeps the section from
  * saying it is empty; one beside the first that failed is said under the
- * rows that did arrive.
+ * rows that did arrive, naming the job it left out where it was one job's
+ * (`jobName`).
  */
-export function answerOf(read: Pick<Rows<unknown>, "error" | "pending" | "lost" | "retry">, rows: TodayRow[] | null, lifeos: LifeosSession, what: string, note?: string): TodayAnswer {
-  const failure = (environmentId: string, error: string): TodayFailure => ({ environmentId, error, said: `LifeOS could not read ${what}`, retry: read.retry });
+export function answerOf(
+  read: Pick<Rows<unknown>, "error" | "pending" | "lost" | "retry">,
+  rows: TodayRow[] | null,
+  lifeos: LifeosSession,
+  what: string,
+  note?: string,
+  jobName?: (sector: SectorKey) => string | undefined,
+): TodayAnswer {
+  const failure = (environmentId: string, error: string, sector?: SectorKey | null): TodayFailure => {
+    const job = sector ? jobName?.(sector) : undefined;
+    return { environmentId, error, said: job ? `LifeOS could not read ${job}'s ${what}` : `LifeOS could not read ${what}`, retry: read.retry };
+  };
   // A session that is down is the page's one line (model.ts `page`), never each section's.
   if (read.error && !sessionDown(lifeos)) return { rows: [], failed: [failure(lifeos.environmentId, read.error)] };
   if (!rows) return { loading: true };
   return {
     rows,
     ...(read.pending ? { loading: true } : {}),
-    ...(read.lost.length ? { failed: [failure(read.lost[0]!.environmentId, read.lost[0]!.error)] } : {}),
+    ...(read.lost.length ? { failed: read.lost.map((lost) => failure(lost.environmentId, lost.error, lost.sector)) } : {}),
     ...(note ? { note } : {}),
   };
 }
@@ -174,6 +213,12 @@ export function answerOf(read: Pick<Rows<unknown>, "error" | "pending" | "lost" 
 export function mutate<T>(session: LifeosSession, name: string, args: Record<string, unknown>): Promise<T> {
   if (!session.client) return Promise.reject(new Error("LifeOS is not connected"));
   return session.client.mutation(makeFunctionReference<"mutation">(name), args) as Promise<T>;
+}
+
+/** A toast of the page's own, counted while it is up (store.ts `toastsUp`): in a narrow column the page gives it a strip of its own. */
+export function shown(): { onDismiss(): void; onAutoClose(): void } {
+  const down = toastUp();
+  return { onDismiss: down, onAutoClose: down };
 }
 
 /**
@@ -187,9 +232,9 @@ export async function act<T>({ run, message, failed, undo }: { run: () => Promis
   try {
     result = await run();
   } catch (error) {
-    toast.error(`Couldn't ${failed}`);
+    toast.error(`Couldn't ${failed}`, shown());
     throw error;
   }
-  toast(message, undo ? { action: { label: "Undo", onClick: () => void undo(result).catch(() => toast.error("Couldn't undo")) } } : undefined);
+  toast(message, { ...shown(), ...(undo ? { action: { label: "Undo", onClick: () => void undo(result).catch(() => toast.error("Couldn't undo", shown())) } } : {}) });
   return result;
 }

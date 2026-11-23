@@ -4,6 +4,7 @@ import { Button } from "../../components/ui/button";
 import { Sheet, SheetClose, SheetContent } from "../../components/ui/sheet";
 import { cn } from "../../lib/cn";
 import { useEnvironments } from "../../lib/connection";
+import { DUR } from "../../lib/ease";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { workOpenPort } from "../../lib/workSwitch";
 import { shell } from "../../stores/shell";
@@ -24,7 +25,7 @@ import { advanceHeld, leave, openHeld, todayNow, useTodayState } from "./store";
  * opened it, or the row that took its place.
  */
 export function HeldSheet() {
-  const { held: key, heldDone: done } = useTodayState();
+  const { held: key, heldDone: done, leaving, closing, gone } = useTodayState();
   const waiting = useOutbox().waiting;
   const workspaces = useWorkspaces();
   const environments = useEnvironments();
@@ -35,6 +36,12 @@ export function HeldSheet() {
   }, [key]);
   const at = waiting.findIndex((item) => heldKey(item) === (key ?? shownKey));
   const item = waiting[at] ?? null;
+  // What still waits: the host's list without the items his press already took. The list drops a sent item only
+  // when its reload is back, a beat after the sheet has moved on, and the run's count must not wait for it.
+  const left = waiting.filter((i) => {
+    const k = heldKey(i);
+    return !leaving.has(k) && !closing.has(k) && !gone.has(k);
+  }).length;
   // The order he sees, kept for the press: the host's list may drop the item before its answer is back.
   useLayoutEffect(() => {
     if (at !== -1) runOrder = waiting.map(heldKey);
@@ -47,8 +54,7 @@ export function HeldSheet() {
       <SheetContent side="right" width={520} showCloseButton={false} aria-label={item ? item.summary : "Held item"} data-today-held finalFocus={listStop}>
         <HeldSheetBody
           item={item}
-          at={at}
-          count={waiting.length}
+          left={left}
           done={done}
           workspace={item ? workspace(item) : ""}
           host={item ? host(item) : ""}
@@ -63,34 +69,30 @@ export function HeldSheet() {
   );
 }
 
-/** The page's own stop: where focus goes when the sheet closes. The row that opened it may have left by then. */
-const listStop = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-today] [data-roving-key][tabindex="0"]');
+/**
+ * Where focus goes when the sheet closes: the page's own stop (the row that
+ * opened it may have left by then), or the page itself once it has no row
+ * left to stop on.
+ */
+const listStop = (): HTMLElement | null =>
+  document.querySelector<HTMLElement>('[data-today] [data-roving-key][tabindex="0"]') ?? document.querySelector<HTMLElement>('[data-work-place="today"]');
 
 /**
  * What the sheet holds: its place in the run and Close over the Outbox's own
- * detail. The run counts forward: `done` items decided since the sheet
- * opened, then this one, of all there were ("2 of 3"). An item that takes
- * the sheet after a press fades in and takes the focus, so the Send under
- * his pointer is seen to be another item's.
+ * detail. The run counts forward by its own steps: `done` items decided
+ * since the sheet opened, then this one, of those and the `left` that still
+ * wait ("2 of 3"), whenever the host's list catches up.
  */
-export function HeldSheetBody({ item, at, count, done = 0, workspace, host, close }: { item: HostItem | null; at: number; count: number; done?: number; workspace: string; host: string; close: ReactNode }) {
-  const body = useRef<HTMLDivElement>(null);
+export function HeldSheetBody({ item, left, done = 0, workspace, host, close }: { item: HostItem | null; left: number; done?: number; workspace: string; host: string; close: ReactNode }) {
   const key = item ? heldKey(item) : null;
-  const shown = useRef(key);
-  useLayoutEffect(() => {
-    if (shown.current === key) return;
-    shown.current = key;
-    // Another item took the sheet: the keyboard reads it from its top.
-    if (key && done > 0) body.current?.focus({ preventScroll: true });
-  }, [key, done]);
   return (
     <>
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border ps-8 pe-6">
         {/* Where he is in the run, as a question card says it; one item alone says nothing. */}
-        <span data-today-run className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">{item && done + count > 1 ? `${done + at + 1} of ${done + count}` : null}</span>
+        <span data-today-run className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">{item && done + left > 1 ? `${done + 1} of ${done + left}` : null}</span>
         {close}
       </div>
-      <div ref={body} tabIndex={-1} aria-label={item?.summary} key={key ?? "none"} className={cn("flex min-h-0 flex-1 flex-col outline-none", done > 0 && "transition-opacity duration-(--dur-base) ease-(--ease-out) starting:opacity-0")}>
+      <ItemBody key={key ?? "none"} label={item?.summary} late={done > 0}>
         {item ? (
           <HeldDetail
             key={heldKey(item)}
@@ -113,8 +115,41 @@ export function HeldSheetBody({ item, at, count, done = 0, workspace, host, clos
         ) : (
           <EmptyState title="No longer waiting" line="Another press or device decided it." />
         )}
-      </div>
+      </ItemBody>
     </>
+  );
+}
+
+/**
+ * An item's body in the sheet. One that took the sheet after a press
+ * (`late`) fades in over `--dur-base`, takes the focus so the keyboard reads
+ * it from its top (the ring shows where it went), and takes no pointer
+ * until it is whole on screen: the second click of a double click never
+ * lands on the next item's Send.
+ */
+function ItemBody({ label, late, children }: { label: string | undefined; late: boolean; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [arriving, setArriving] = useState(late);
+  useLayoutEffect(() => {
+    if (late) box.current?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as it takes the sheet
+  }, []);
+  useEffect(() => {
+    if (!late) return;
+    const timer = setTimeout(() => setArriving(false), DUR.base * 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as it takes the sheet
+  }, []);
+  return (
+    <div
+      ref={box}
+      tabIndex={-1}
+      aria-label={label}
+      data-today-arriving={arriving ? "" : undefined}
+      className={cn("focus-ring flex min-h-0 flex-1 flex-col", late && "transition-opacity duration-(--dur-base) ease-(--ease-out) starting:opacity-0", arriving && "pointer-events-none")}
+    >
+      {children}
+    </div>
   );
 }
 

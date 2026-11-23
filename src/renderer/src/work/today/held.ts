@@ -1,6 +1,6 @@
 import { createElement, useEffect, useMemo } from "react";
 import type { SectorKey } from "@shared/work";
-import { timeOf } from "../outbox/model";
+import { dayTime } from "../../lib/duration";
 import { KindGlyph, rowWords } from "../outbox/OutboxView";
 import { loadHost, loadOutbox, useOutbox, type HostItem } from "../outbox/store";
 import { openHeld } from "./store";
@@ -29,39 +29,60 @@ function leadOf(kind: HostItem["kind"]): TodayRow["lead"] {
   return lead;
 }
 
-/** The held items as rows, oldest first: the act, what it is about, when it was held. */
-export function heldRows(waiting: readonly HostItem[], now = Date.now()): TodayRow[] {
+const dates = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+
+/**
+ * When an item was held, as a time: "7:42 AM" today, "Sun 7:40 PM" within
+ * the last six days, the date alone before that. Never a bare date for
+ * yesterday's: in this column a bare date is what a late task's due date
+ * looks like.
+ */
+export function heldWhen(ts: number, now = Date.now()): string {
+  const day = (t: number): number => new Date(t).setHours(0, 0, 0, 0);
+  return Math.round((day(now) - day(ts)) / 86_400_000) < 7 ? dayTime(ts, now) : dates.format(ts);
+}
+
+/**
+ * The held items as rows, oldest first: the act, what it is about, when it
+ * was held. `jobOf` names the item's own workspace: two hosts may hold a
+ * workspace for one sector under different names, and the row must name
+ * the one its sheet will.
+ */
+export function heldRows(waiting: readonly HostItem[], now = Date.now(), jobOf: (item: HostItem) => string | undefined = () => undefined): TodayRow[] {
   return waiting.map((item) => {
     const key = heldKey(item);
+    const job = jobOf(item);
     const { act, about } = rowWords(item);
     const detail = item.state === "failed" ? (item.error ?? "Couldn't send") : item.state === "sending" ? "Sending" : (about ?? item.account ?? undefined);
     return {
       key,
       section: SECTION.id,
       sector: (item.sector as SectorKey | null) ?? null,
+      ...(job ? { job } : {}),
       title: act,
       ...(detail ? { detail } : {}),
       ...(item.state === "failed" ? { detailLate: true } : {}),
       at: item.createdAt,
-      when: timeOf(item.createdAt, now),
+      when: heldWhen(item.createdAt, now),
       lead: leadOf(item.kind),
       open: () => openHeld(key),
     };
   });
 }
 
-function useHeld(_env: TodayEnv): TodayAnswer {
+function useHeld(env: TodayEnv): TodayAnswer {
   const outbox = useOutbox();
   useEffect(() => {
     void loadOutbox();
   }, []);
+  const jobs = env.workspaces;
   return useMemo(
     () => ({
-      rows: heldRows(outbox.waiting),
+      rows: heldRows(outbox.waiting, Date.now(), (item) => jobs.find((w) => w.environmentId === item.environmentId && w.workspaceId === item.workspaceId)?.name),
       loading: !outbox.loaded,
       failed: outbox.errors.map((e) => ({ ...e, retry: () => loadHost(e.environmentId) })),
     }),
-    [outbox],
+    [outbox, jobs],
   );
 }
 

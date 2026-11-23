@@ -2223,25 +2223,37 @@ own selected fill is a card's fill at rest in light.
 - **The job is on every row**, dot and name: the dot is never the only cue,
   and the column is one the eye can run down to find a job. The name is the
   workspace's, as the rail and the held sheet say it, never the sector's
-  own word.
+  own word; a held row names the very workspace its item is in. A title or
+  a second line the column cuts is said whole in a tooltip, only while it
+  is cut.
 - **Verbs show on hover and on focus**, in place of the job and the fact
   (`reveal`, `yields`): at most two ghost `xs` buttons, the last one's
   label ending on the facts' edge. None is drawn at rest, and Send is never
   one of them: a held row opens the item whole in a sheet from the right
   (520px) whose body is the Outbox's own detail, with its Send and its
   rule. The sheet's 40px head says where he is in the run ("2 of 5", 12px
-  muted tabular: the items decided since it opened, then this one, of all
-  there were, so it counts forward) beside Close, whose glyph ends on the
-  body's edge. After a press it shows the next held item in the order he
-  saw, which fades in over `--dur-base` on `--ease-out` and takes the
-  focus, and closes after the last; closed, it gives focus back to the
-  list's own stop.
+  muted tabular: the items decided since it opened, then this one, of those
+  and the ones that still wait, so it counts forward by the run's own
+  steps, whenever the host's list catches up) beside Close, whose glyph
+  ends on the body's edge. After a press it shows the next held item in
+  the order he saw, which fades in over `--dur-base` on `--ease-out`, takes
+  the focus (the ring shows where it went) and takes no pointer until the
+  fade is over, so a double click never sends an item he has not seen; it
+  closes after the last. Closed, it gives focus back to the list's own
+  stop, or to the page once no row is left. A press that does not go
+  through is said in the item's own red line, since a sheet lies over the
+  toasts. A held row's fact is when it was held, as a time that names its
+  day ("7:42 AM", "Sun 7:40 PM", the date alone after a week): never a bare
+  date for yesterday's, which is what a late task's due date looks like.
 - **A toast sits at the page's foot over the titles** (lib/toastAnchor.ts:
   the titles' column is the anchor), clear of the ticks before them and the
-  verbs after, so a run of ticks or dismissals never waits on a toast. In
-  the narrow column it takes the row's width. While the held sheet is open
-  the toasts are back in the window's corner, behind it, as under any
-  sheet.
+  verbs after, so a run of ticks or dismissals never waits on a toast. The
+  list ends with a runway a toast and its gaps tall (96px), so the last row
+  can be scrolled clear of the stack. In the narrow column, where a toast
+  is as wide as a row, the page's own toasts get a strip under the list
+  (80px, only while one is up), outside the scrolling rows. While the held
+  sheet is open the toasts are back in the window's corner, behind it, as
+  under any sheet.
 - **Long sections fold**: Waiting on you shows 5, Due 7, Waiting on others
   5, Changed by others 5, then one muted 12px line ("4 more") that unfolds
   in place and stays unfolded. Meetings that have ended fold into "2
@@ -2263,11 +2275,14 @@ own selected fill is a card's fill at rest in light.
   `EmptyState` and no headings: "All clear" over "Nothing needs you
   today.", or, once the day's meetings are over, over what tomorrow starts
   with ("Tomorrow starts at 9:00 AM with Staff sync."). A meeting that
-  ended is not left. A read that did not come back is one line in the
+  ended is not left, whether "N earlier" is folded or open, and the page is
+  not clear while any source is still out, even one that draws nothing
+  while it waits. A read that did not come back is one line in the
   section it feeds, on the rows' grid: the failed mark in the lead, the
   words on the titles' edge ("The box did not answer", with the cause
   beside it only when it is not the wait running out; "LifeOS could not
-  read tasks" for a read LifeOS refused), Retry's label ending on the
+  read tasks" for a read LifeOS refused, "LifeOS could not read Ref's
+  tasks" for a job no signed-in host can read), Retry's label ending on the
   facts' edge; that section never says "nothing" beside it. An offline host
   is one 12px muted line at the page's foot ("Mac is offline."). While no
   host can reach LifeOS its sections give way to one line on the same grid:
@@ -2277,7 +2292,8 @@ own selected fill is a card's fill at rest in light.
   Home End move, Enter opens the row or the fold, Space ticks a task; the
   row the arrows are on shows its verbs. A fold he opens hands its focus to
   the first row it showed. Focus lands on the first row when the page
-  opens, and where he left it when he comes back.
+  opens, and where he left it when he comes back, unless he had scrolled
+  that row out of sight: then on the first stop in sight.
 - **A row that leaves a list by his own act** (a tick, Tomorrow, Dismiss, a
   Send from the sheet) fades where it stands over `--dur-fast`, inert; then
   its place closes over `--dur-base` on `--ease-out` (`glideHeight`), so
