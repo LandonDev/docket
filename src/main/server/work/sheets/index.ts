@@ -6,7 +6,7 @@ import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutati
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
 import { sharedOf, workspaceHere } from '../files/policy'
-import { registerFileMaker, registerFileMoved, registerFileWaiting, type FileMaker } from '../files/hooks'
+import { registerFileMaker, registerFileMoved, registerFilePreviewer, registerFileWaiting, type FileMaker } from '../files/hooks'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
 import { blankWorkbook } from './host/backends'
@@ -16,6 +16,7 @@ import { ensureChangeTables } from './changes'
 import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setChart, setSharedPath, sheetsOf, storeKey, viewOf, type Held, type Sheets } from './held'
 import { sheetFileMoved } from './moved'
 import { ensurePackageTables, type Moved } from './packages'
+import { dropSharedPreviews, dropSharedPreviewsOf, exportPreview, previewSheet, readSheetPreview, SHEET_PREVIEW_CONVERTERS, sheetFilePreviewer, sweepPreviewScratch } from './preview'
 import { mapCell, STRUCTURAL_CONVERTERS } from './structural'
 import { ensureSuggestionTables, type Which } from './suggestions'
 import { layChange, sheetTools, Unplaced, writeAccepted } from './tools'
@@ -219,6 +220,13 @@ export const sheets: WorkModule = {
       }
       case 'work.sheets.export':
         return handled(await exportSheet(s, item!, req.params.format, req.params.sheet))
+      // Preview and export (preview.ts): a sheet he can only read still previews; nothing here changes the file.
+      case 'work.sheets.preview':
+        return handled(await previewSheet(s, item!, req.params))
+      case 'work.sheets.previewRead':
+        return handled(readSheetPreview(ctx, item!, req.params))
+      case 'work.sheets.previewExport':
+        return handled(await exportPreview(s, item!, req.params))
     }
     return NOT_HANDLED
   },
@@ -231,10 +239,14 @@ export const sheets: WorkModule = {
     const offMoved = registerFileMoved(sheetFileMoved)
     // An .xlsx is edited in place here, whole: Files seats one from a library in this kind (not in Excel), and New makes one.
     const offMaker = registerFileMaker('sheet', SHEET_MAKER)
+    // Files' page picture of a workbook: the first page of its print, drawn as Preview draws it. A crash's scratch goes.
+    sweepPreviewScratch(ctx.dataDir)
+    const offPreviewer = registerFilePreviewer('sheet', sheetFilePreviewer(ctx))
     const off = (): void => {
       offWaiting()
       offMoved()
       offMaker()
+      offPreviewer()
     }
     return () => {
       off()
@@ -242,15 +254,20 @@ export const sheets: WorkModule = {
     }
   },
   tools: () => sheetTools,
-  convert: STRUCTURAL_CONVERTERS,
+  convert: [...STRUCTURAL_CONVERTERS, ...SHEET_PREVIEW_CONVERTERS],
   preamble: () =>
     'A sheet in the canvas is read with `sheet_read` and changed with `sheet_write` or `sheet_suggest`, cells in A1. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a sheet others share, your own idea waits as a suggestion he steps through cell by cell.',
   // A workbook others can open keeps nothing here past its tab or its thread (packages.ts `release`).
   itemsRemoved(items, ctx) {
     const ids = items.filter((item) => item.kind === 'sheet').map((item) => item.id)
+    // What Preview made of a shared workbook goes with its item, at once (preview.ts `storeFor`).
+    for (const id of ids) dropSharedPreviews(ctx.dataDir, id)
     if (ids.length) void sheetsOf(ctx).then((s) => s.packages.release({ items: ids })).catch(() => {})
   },
   sessionsRemoved(ids, ctx) {
+    // What Preview made of a shared workbook in a deleted thread goes with the thread (preview.ts): the frame says
+    // the threads here, not their items.
+    dropSharedPreviewsOf(ctx.dataDir, ids)
     if (ids.length) void sheetsOf(ctx).then((s) => s.packages.release({ sessions: ids })).catch(() => {})
   },
   workspaceRemoved() {}

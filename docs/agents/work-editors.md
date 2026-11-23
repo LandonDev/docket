@@ -91,10 +91,11 @@ return <div ref={root} data-editor-keys="document">…</div>;
   (`scripts/entryGraph.test.ts`); nothing of Work is imported by the menu, the
   resolver or App.tsx.
 
-Today the document answers `export` by opening Preview on the format he last
-used, `print` by opening it on Print ("Print" below) and `find` by opening
-the editor's own find bar (work-docs.md "Find…"). The sheet's and the
-deck's answers come with their milestones.
+Today the document and the sheet answer `export` by opening Preview on the
+format he last used and `print` by opening it on Print ("Print" below); the
+document answers `find` by opening the editor's own find bar (work-docs.md
+"Find…"). The sheet's `find` and the deck's answers come with their
+milestones.
 
 ## Preview: the contract
 

@@ -1,0 +1,858 @@
+{
+ "about": "Excel's own pages of the ten print cases (the editors plan, SHT7's live proof): each fixture opened read-only in a hidden Excel of its own and the whole workbook exported with Workbook.ExportAsFixedFormat (PDF), in the box's standing Windows VM on 2026-11-23; dummy files only. pages: what Excel's PDF holds, read as expect.json's were (page size in points, the 1-based rows and columns whose cells were found on the page, header and footer text). sheets: what Excel's own page set-up answered for each sheet (PageSetup.Pages.Count, the fit or the zoom, the breaks it lists). agrees: [pages that agree, pages compared] with expect.json's excelRules (the lab's arithmetic) and libreoffice (LibreOffice's print of the file as it is). probes: fit-width.xlsx with its pageSetup's fitToWidth and fitToHeight set (made.fit, 0 automatic) and a manual break after row 19 and after a column, to learn which breaks Excel prints under Fit to. A record, not a gate.",
+ "excel": {
+  "product": "Microsoft 365 Apps x64, Click-to-Run 16.0.20625.20108",
+  "version": "16.0",
+  "build": 20625,
+  "printer": "Microsoft Print to PDF on Ne00:"
+ },
+ "found": [
+  "Manual breaks under Fit to: Excel ignores a manual break only along a side fitted to a page count. With the height automatic (fitToHeight 0: fit-width, protect_print, probes 1x0 and 2x0) its manual row breaks print and its column breaks do not; with the width automatic (0x1, 0x2) its column breaks print and its row breaks do not; with both counted (1x1, 1x2) neither prints. HPageBreaks and VPageBreaks list a manual break even where the print ignores it. The plan's rule (no manual breaks under Fit to) predicted fit-width as rows 1-64 and 65-86 and protect_print as 5 pages; Excel prints rows 1-19 and 20-86, and 7 pages, as LibreOffice does with the file as it is.",
+  "Automatic breaks: Excel fits one or two more rows on a page than LibreOffice 26.8.3 (landscape 36 to 35, scale-70 69 to 67, titles 48 to 47, protect_print 33 to 31). The page counts agree on all nine; where an automatic break falls does not.",
+  "Paper: both A4 sheets (links_dest, protect_print's Report) came out on Letter pages, though Excel answered PaperSize 9 for each. Excel has a setting on by default, \"Scale content for A4 or 8.5 x 11\\\" paper sizes\", that does this where the printer's paper is Letter; which paper this printer holds was not read.",
+  "pivot.xlsx: Excel would not open the corpus file at all, so there is no Excel truth for the tenth case."
+ ],
+ "cases": {
+  "chart-print": {
+   "file": "print/chart-print.xlsx",
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 1,
+     "paper": 1,
+     "orientation": "portrait",
+     "zoom": 100
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "2-38",
+     "cols": "3-10",
+     "chart": true
+    }
+   ],
+   "agrees": {
+    "excelRules": [
+     1,
+     1
+    ],
+    "libreoffice": [
+     1,
+     1
+    ]
+   }
+  },
+  "fit-width": {
+   "file": "print/fit-width.xlsx",
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 2,
+     "paper": 1,
+     "orientation": "portrait",
+     "fit": {
+      "wide": 1,
+      "tall": null
+     },
+     "rowBreaks": [
+      "row 20 manual"
+     ],
+     "columnBreaks": [
+      "column 13 automatic"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-19",
+     "cols": "1-12"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "20-86",
+     "cols": "1-12"
+    }
+   ],
+   "agrees": {
+    "excelRules": [
+     0,
+     2
+    ],
+    "libreoffice": [
+     2,
+     2
+    ]
+   }
+  },
+  "landscape": {
+   "file": "print/landscape.xlsx",
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 2,
+     "paper": 1,
+     "orientation": "landscape",
+     "zoom": 100,
+     "rowBreaks": [
+      "row 37 automatic"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1-36",
+     "cols": "1-9",
+     "hf": [
+      "Header 1 of 2",
+      "Footer 1 of 2"
+     ]
+    },
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "37-42",
+     "cols": "1-9",
+     "hf": [
+      "Header 2 of 2",
+      "Footer 2 of 2"
+     ]
+    }
+   ],
+   "agrees": {
+    "excelRules": [
+     0,
+     2
+    ],
+    "libreoffice": [
+     0,
+     2
+    ]
+   }
+  },
+  "links_dest": {
+   "file": "links_dest.xlsx",
+   "sheets": [
+    {
+     "name": "Orders",
+     "pages": 1,
+     "paper": 9,
+     "orientation": "portrait",
+     "zoom": 100
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-6",
+     "cols": "1-3,5"
+    }
+   ],
+   "agrees": {
+    "excelRules": [
+     0,
+     1
+    ],
+    "libreoffice": [
+     0,
+     1
+    ]
+   }
+  },
+  "manual-breaks": {
+   "file": "print/manual-breaks.xlsx",
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 6,
+     "paper": 1,
+     "orientation": "portrait",
+     "zoom": 100,
+     "rowBreaks": [
+      "row 14 manual",
+      "row 32 manual"
+     ],
+     "columnBreaks": [
+      "column 4 manual"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-13",
+     "cols": "1-3"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "14-31",
+     "cols": "1-3"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "32-46",
+     "cols": "1-3"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-13",
+     "cols": "4-8"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "14-31",
+     "cols": "4-8"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "32-46",
+     "cols": "4-8"
+    }
+   ],
+   "agrees": {
+    "excelRules": [
+     6,
+     6
+    ],
+    "libreoffice": [
+     6,
+     6
+    ]
+   }
+  },
+  "pivot": {
+   "file": "pivot.xlsx",
+   "opened": "Excel refused it, at a normal load and at a repair load (CorruptLoad 1): \"Open method of Workbooks class failed\". No pages.",
+   "pages": []
+  },
+  "protect_print": {
+   "file": "protect_print.xlsx",
+   "sheets": [
+    {
+     "name": "Report",
+     "pages": 6,
+     "paper": 9,
+     "orientation": "landscape",
+     "fit": {
+      "wide": 1,
+      "tall": null
+     },
+     "rowBreaks": [
+      "row 33 automatic",
+      "row 41 manual",
+      "row 72 automatic",
+      "row 81 manual"
+     ]
+    },
+    {
+     "name": "Plain",
+     "pages": 1,
+     "paper": 1,
+     "orientation": "portrait",
+     "zoom": 75
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1-33",
+     "cols": "1-4",
+     "hf": [
+      "Page 2 of 7"
+     ],
+     "confidential": true
+    },
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1,34-40",
+     "cols": "1-4",
+     "hf": [
+      "Page 3 of 7"
+     ],
+     "confidential": true
+    },
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1,41-72",
+     "cols": "1-4",
+     "hf": [
+      "Page 4 of 7"
+     ],
+     "confidential": true
+    },
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1,73-80",
+     "cols": "1-4",
+     "hf": [
+      "Page 5 of 7"
+     ],
+     "confidential": true
+    },
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1,81-112",
+     "cols": "1-4",
+     "hf": [
+      "Page 6 of 7"
+     ],
+     "confidential": true
+    },
+    {
+     "size": [
+      792,
+      612
+     ],
+     "rows": "1,113-120",
+     "cols": "1-4",
+     "hf": [
+      "Page 7 of 7"
+     ],
+     "confidential": true
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1",
+     "cols": "1-2"
+    }
+   ],
+   "agrees": {
+    "excelRules": [
+     0,
+     7
+    ],
+    "libreoffice": [
+     0,
+     7
+    ]
+   }
+  },
+  "scale-70": {
+   "file": "print/scale-70.xlsx",
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 2,
+     "paper": 1,
+     "orientation": "portrait",
+     "zoom": 70,
+     "rowBreaks": [
+      "row 70 automatic"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-69",
+     "cols": "1-9"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "70-98",
+     "cols": "1-9"
+    }
+   ],
+   "agrees": {
+    "excelRules": [
+     0,
+     2
+    ],
+    "libreoffice": [
+     0,
+     2
+    ]
+   }
+  },
+  "titles": {
+   "file": "print/titles.xlsx",
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 4,
+     "paper": 1,
+     "orientation": "portrait",
+     "zoom": 100,
+     "rowBreaks": [
+      "row 49 automatic"
+     ],
+     "columnBreaks": [
+      "column 5 automatic"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-48",
+     "cols": "1-4"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-48",
+     "cols": "1,5-6"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-2,49-81",
+     "cols": "1-4"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-2,49-81",
+     "cols": "1,5-6"
+    }
+   ],
+   "agrees": {
+    "excelRules": [
+     0,
+     4
+    ],
+    "libreoffice": [
+     0,
+     4
+    ]
+   }
+  },
+  "wide-columns": {
+   "file": "print/wide-columns.xlsx",
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 3,
+     "paper": 1,
+     "orientation": "portrait",
+     "zoom": 100,
+     "columnBreaks": [
+      "column 4 automatic",
+      "column 8 automatic"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "1-3"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "4-6"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-8,10-45",
+     "cols": "8"
+    }
+   ],
+   "agrees": {
+    "excelRules": [
+     3,
+     3
+    ],
+    "libreoffice": [
+     3,
+     3
+    ]
+   }
+  }
+ },
+ "probes": {
+  "1x1": {
+   "made": {
+    "fit": [
+     1,
+     1
+    ],
+    "rowBreakAfter": 19,
+    "colBreakAfter": 6
+   },
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 1,
+     "paper": 1,
+     "orientation": "portrait",
+     "fit": {
+      "wide": 1,
+      "tall": 1
+     },
+     "rowBreaks": [
+      "row 20 manual"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-86",
+     "cols": "1-12"
+    }
+   ]
+  },
+  "1x2": {
+   "made": {
+    "fit": [
+     1,
+     2
+    ],
+    "rowBreakAfter": 19
+   },
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 2,
+     "paper": 1,
+     "orientation": "portrait",
+     "fit": {
+      "wide": 1,
+      "tall": 2
+     },
+     "rowBreaks": [
+      "row 20 manual"
+     ],
+     "columnBreaks": [
+      "column 13 automatic"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-72",
+     "cols": "1-12"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "73-86",
+     "cols": "1-12"
+    }
+   ]
+  },
+  "1x0-col": {
+   "made": {
+    "fit": [
+     1,
+     0
+    ],
+    "rowBreakAfter": 19,
+    "colBreakAfter": 6
+   },
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 2,
+     "paper": 1,
+     "orientation": "portrait",
+     "fit": {
+      "wide": 1,
+      "tall": null
+     },
+     "rowBreaks": [
+      "row 20 manual"
+     ],
+     "columnBreaks": [
+      "column 7 manual"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-19",
+     "cols": "1-12"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "20-86",
+     "cols": "1-12"
+    }
+   ]
+  },
+  "0x1": {
+   "made": {
+    "fit": [
+     0,
+     1
+    ],
+    "rowBreakAfter": 19,
+    "colBreakAfter": 6
+   },
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 2,
+     "paper": 1,
+     "orientation": "portrait",
+     "fit": {
+      "wide": null,
+      "tall": 1
+     },
+     "rowBreaks": [
+      "row 20 manual"
+     ],
+     "columnBreaks": [
+      "column 7 manual"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-86",
+     "cols": "1-6"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-86",
+     "cols": "7-12"
+    }
+   ]
+  },
+  "2x0-col": {
+   "made": {
+    "fit": [
+     2,
+     0
+    ],
+    "rowBreakAfter": 19,
+    "colBreakAfter": 3
+   },
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 6,
+     "paper": 1,
+     "orientation": "portrait",
+     "fit": {
+      "wide": 2,
+      "tall": null
+     },
+     "rowBreaks": [
+      "row 20 manual",
+      "row 68 automatic"
+     ],
+     "columnBreaks": [
+      "column 4 manual"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-19",
+     "cols": "1-8"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "20-67",
+     "cols": "1-8"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "68-86",
+     "cols": "1-8"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-19",
+     "cols": "9-12"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "20-67",
+     "cols": "9-12"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "68-86",
+     "cols": "9-12"
+    }
+   ]
+  },
+  "0x2-row": {
+   "made": {
+    "fit": [
+     0,
+     2
+    ],
+    "rowBreakAfter": 19,
+    "colBreakAfter": 6
+   },
+   "sheets": [
+    {
+     "name": "Data",
+     "pages": 4,
+     "paper": 1,
+     "orientation": "portrait",
+     "fit": {
+      "wide": null,
+      "tall": 2
+     },
+     "rowBreaks": [
+      "row 20 manual"
+     ],
+     "columnBreaks": [
+      "column 7 manual"
+     ]
+    }
+   ],
+   "pages": [
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-48",
+     "cols": "1-6"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "49-86",
+     "cols": "1-6"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "1-48",
+     "cols": "7-12"
+    },
+    {
+     "size": [
+      612,
+      792
+     ],
+     "rows": "49-86",
+     "cols": "7-12"
+    }
+   ]
+  }
+ }
+}

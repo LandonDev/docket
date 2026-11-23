@@ -88,13 +88,24 @@ function localSpan(z: Zip, e: Entry): [number, number, number] {
   return [o, dataStart, end]
 }
 
-export function readEntry(z: Zip, name: string): Uint8Array {
+/** The most one part may unpack to: a small hostile file that would unpack to gigabytes is refused, not read. */
+export const ENTRY_MAX_BYTES = 512 * 1024 * 1024
+
+export function readEntry(z: Zip, name: string, max = ENTRY_MAX_BYTES): Uint8Array {
   const e = z.byName.get(name)
   if (!e) throw new Error(`no part ${name}`)
   const [, start] = localSpan(z, e)
   const raw = z.buf.subarray(start, start + e.compSize)
   if (e.method === 0) return raw
-  if (e.method === 8) return inflateRawSync(raw)
+  if (e.method === 8) {
+    try {
+      return inflateRawSync(raw, { maxOutputLength: max })
+    } catch (err) {
+      if (err instanceof RangeError || (err as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE')
+        throw new Error(`${name} unpacks past ${max >= 1024 * 1024 ? `${Math.round(max / 1024 / 1024)} MiB` : `${Math.round(max / 1024)} KiB`}: this file is refused`)
+      throw err
+    }
+  }
   throw new Error(`unsupported compression method ${e.method} in ${name}`)
 }
 

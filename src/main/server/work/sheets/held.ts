@@ -232,6 +232,17 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
 export const sharedCopies = (dataDir: string): string => join(dataDir, 'work-files', 'preview-scratch', 'sheets', 'files')
 
 /**
+ * Where Preview keeps what it makes of a workbook others can open (preview.ts): its renders, exported files and
+ * scratch, one folder an item, under the same preview scratch. Gone with the item (index.ts `itemsRemoved`) and at
+ * Files' start; a draw that finds it gone draws again.
+ */
+export const sharedPreviewsRoot = (dataDir: string): string => join(dataDir, 'work-files', 'preview-scratch', 'sheets', 'previews')
+export const sharedPreviews = (dataDir: string, itemId: string): string => {
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(itemId)) throw new Error('not an item id')
+  return join(sharedPreviewsRoot(dataDir), itemId)
+}
+
+/**
  * The key Files itself locks a file of this host under while it saves or changes it (files/handle.ts): a library's
  * file by its place and the path inside it, any other by its host and path. A save here takes the same key, so it
  * and a change made in Files take turns. Files' own code makes the key (`doorPlace`, `libraryKey`), read as his

@@ -24,6 +24,9 @@ import { linkSheetHost, type ReviewWhich, type SheetHost } from "./host";
 import { chartBars, chartFrom, chartTicks, saidLine, savedLine, sheetChanges, tickText, type ChartBar as Bars } from "./model";
 import { SheetSync, syncOf, useSheetSync } from "./sync";
 import { guestSource } from "../guests/api";
+import { useWorkCommands } from "../formats/command";
+import { Preview } from "../formats/PreviewFrame";
+import { sheetPreviewSource } from "./preview";
 import { ShareButton } from "../guests/Share";
 
 /**
@@ -121,7 +124,22 @@ export function Body(props: Props) {
   }, [shell, ready]);
   useFeeds(shell, sync, failed ? null : view, state.sendError, changes, current, handle, locked, act, ready);
   useSavedLine(shell, sync, failed ? null : view, state.sendError, state.saving, state.savedAt);
-  useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, act);
+  // Preview is a state of the item: the frame over the grid, which stays mounted under it, out of reach, its place kept.
+  // Each ask is counted: Print… pressed while Preview shows another format opens it on Print anew.
+  const [previewing, setPreviewing] = useState<false | "last" | "print">(false);
+  const [asked, setAsked] = useState(0);
+  const showPreview = useCallback((on: "last" | "print") => {
+    setPreviewing(on);
+    setAsked((n) => n + 1);
+  }, []);
+  useSelectionFeed(props, sync, grid, handle, selection, locked, pointer, frame, act, showPreview);
+  // File → Export… and ⇧⌘E open Preview on the format he last used; File → Print… and ⌘P on Print. Answered once the grid is
+  // up, when the root they are offered for is there.
+  useWorkCommands(frame, ready ? { export: () => showPreview("last"), print: () => showPreview("print") } : {});
+  // What Preview draws: one source for as long as the item shows the same workbook.
+  const previewStore = view?.store;
+  const previewName = view?.name;
+  const source = useMemo(() => (previewStore && previewName !== undefined ? sheetPreviewSource({ env: props.env, itemId: item.id, store: previewStore, name: previewName }) : null), [props.env, item.id, previewStore, previewName]);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const width = useWidth(box);
   const frameRef = useCallback((node: HTMLDivElement | null) => {
@@ -175,6 +193,7 @@ export function Body(props: Props) {
         pointer.current = { x: event.clientX, y: event.clientY };
       }}
     >
+      <div className={previewing ? "invisible contents" : "contents"} inert={previewing ? true : undefined}>
       {handle && controls.length > 0 ? (
         <SheetToolbar
           sheet={handle}
@@ -217,6 +236,13 @@ export function Body(props: Props) {
         ) : null}
       </div>
       {handle ? <Charts charts={view.charts} grid={grid} handle={handle} tick={state.tick} locked={locked} width={chartWidth(width)} remove={(chart) => act(sync.host.chart(chart, true), "Couldn't remove the chart")} /> : null}
+      </div>
+      {previewing && source ? (
+        <div data-sheet-preview="" className="absolute inset-0 z-10">
+          {/* Print… asked for while it is up on another format moves it to Print: a new frame on that format. */}
+          <Preview key={asked} source={source} title={item.title} kind="sheet" {...(previewing === "print" ? { initial: "print" } : {})} readOnly={locked} onClose={() => setPreviewing(false)} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -385,6 +411,7 @@ function useSelectionFeed(
   pointer: { current: { x: number; y: number } | null },
   frame: { current: HTMLDivElement | null },
   act: (work: Promise<SheetView>, fallback: string) => Promise<void>,
+  showPreview: (on: "last") => void,
 ): void {
   const range = selection?.range;
   const many = !!range && (range.endRow > range.startRow || range.endColumn > range.startColumn);
@@ -435,17 +462,14 @@ function useSelectionFeed(
           await act(sync.host.chart(chart), "Couldn't make the chart");
         },
       },
-      // An opened Excel file is saved as it is edited; anything else is written out on request.
-      ...(store && store !== "package"
-        ? [{ id: "export-xlsx", label: "Export as Excel", icon: Export, run: () => saveAs(sync.host, "xlsx") }]
-        : []),
-      ...(store
-        ? [{ id: "export-csv", label: store === "csv" ? "Save as CSV" : "Export sheet as CSV", icon: Export, run: () => saveAs(sync.host, "csv", activeName()) }]
-        : []),
+      // Every way out is in Preview: each format drawn as it will be, with what it drops. A sheet read from a .csv still
+      // saves back over it.
+      ...(store ? [{ id: "preview", label: "Preview…", icon: Export, run: () => showPreview("last") }] : []),
+      ...(store === "csv" ? [{ id: "save-csv", label: "Save as CSV", icon: Export, run: () => saveAs(sync.host, "csv", activeName()) }] : []),
       ...(shareGone ? [{ id: "share", label: "Share", icon: Share, run: () => way.ask() }] : []),
     ]);
     return () => shell.more?.(null);
-  }, [shell, sync, wide, handle, grid, act, store, activeName, shareGone, way]);
+  }, [shell, sync, wide, handle, grid, act, store, activeName, shareGone, way, showPreview]);
 }
 
 const letters = (column: number): string => {

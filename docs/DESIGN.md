@@ -2915,6 +2915,13 @@ opening puts the focus on Edit.
 - **A long file** draws its first pages: the who-drew slot reads "The first
   50 pages" with a ghost extra-small "Draw all 2,084" at its end, and the
   count is of the whole ("Page 1 of 2,084").
+- **The sheet's formats**, in the bar's order: Excel, PDF, Print,
+  OpenDocument, Excel 97-2003, CSV, TSV, Web page. An opened Excel file's
+  own format is already the file: its button reads Save a copy. CSV and TSV
+  draw the first 500 rows of one sheet, with the Sheet row over them. The
+  sheet's ⋯ holds one Preview… in place of its export rows; a sheet read
+  from a .csv keeps Save as CSV beside it. Its Page rows wait for the
+  sheet's page set-up.
 - **After Export** the system's own save dialog is the answer and nothing
   more is said. When a kind saved the file somewhere itself, one toast says
   where: "Saved Budget.xlsx to Spring LAN".

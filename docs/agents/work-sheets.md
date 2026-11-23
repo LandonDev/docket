@@ -46,7 +46,9 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   patches the cached values IronCalc computes for the edit's dependents.
   Where IronCalc cannot be trusted (it disagrees with a stored value, or
   returns an error it does not implement) it drops `calcChain.xml` and sets
-  `fullCalcOnLoad`, so Excel recalculates on open. A package whose
+  `fullCalcOnLoad`, so Excel recalculates on open. A part that unpacks past 512 MiB is refused
+  in words before it is unpacked whole (`readEntry`, `ENTRY_MAX_BYTES`), so a
+  small hostile workbook cannot take main down. A package whose
   `styles.xml` has no `<fonts>` is saved without IronCalc (0.9.1 panics on
   it). A 1904 file gets date-formatted numbers moved back by 1,462 days.
 - **The format writer** (`patch/format.ts` and its parts, `patchFormat`):
@@ -303,7 +305,186 @@ opened Excel file is saved with, so both hold a rule the same way
 rather than failing the export, and `left` names it. A sheet read from a .csv saves back over
 it and exports beside it; a package gives a .csv of one sheet beside itself
 (it is its own .xlsx); anything else lands in the item's own folder. The
-canvas puts these in More.
+canvas no longer offers these two in More (Preview, below, is the way out);
+a sheet read from a .csv keeps Save as CSV there, back over its file.
+
+## Preview and export
+
+The sheet's side of the one Preview surface (SHT7; the frame and its
+contract are [work-editors.md](work-editors.md) "Preview: the contract").
+Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
+`src/renderer/src/work/sheets/preview.ts`.
+
+- **The wire.** `work.sheets.preview {itemId, format, pages?, sheet?, by?}`
+  answers a picture: `paged` (a render's `rev`, `size`, `pages`, `shown`
+  when the PDF holds only the first pages), `table` (one sheet's rows, at
+  most 500, and the sheets to pick from) or `html`; each with its `drops`.
+  `work.sheets.previewRead {itemId, rev, offset, length}` reads one kept
+  render by range, 4 MiB a call; a `rev` no longer kept, or another
+  sheet's, answers "That preview is gone: draw it again." and the frame
+  draws once more. `work.sheets.previewExport {itemId, format, sheet?}`
+  makes the file now and answers its `rev`, `size` and `name`, read the
+  same way. `by: 'office'` is refused: "Check in Excel" is a later
+  milestone and the source offers no `office()`. A sheet he can only read
+  previews and exports like any other: none of these change the file.
+- **What is drawn.** The workbook is the package as its revision stands
+  (`packages.fileAt` at the store's newest rev), or for a sheet the
+  service holds, the .xlsx the model writer makes of its snapshot
+  (`writeXlsxWhole`). LibreOffice draws it to PDF (`calc_pdf_Export` with a
+  `PageRange`) through `ctx.convert`, on the host that holds the file.
+
+  | Format | Its picture | Its export |
+  |---|---|---|
+  | Excel | the workbook's PDF | an opened package: a copy of itself as it stands ("Save a copy", .xlsx or .xlsm); else the model writer's .xlsx |
+  | PDF, Print | the same PDF | the whole PDF; Print hands it to `printPdf` |
+  | OpenDocument | the PDF of the exported .ods itself | that .ods |
+  | Excel 97-2003 | the PDF of the exported .xls itself | that .xls |
+  | CSV, TSV | one sheet's shown values as a table (LibreOffice's text export, the sheet by its place, cells as shown, no formulas) | that file, of the sheet last drawn |
+  | Web page | LibreOffice's HTML, in the frame's sealed page (over 4 MB it is not drawn; export still works) | that .html |
+
+- **Fit to.** Where a sheet prints fitted (`pageSetUpPr fitToPage`) its
+  manual breaks are taken out of a scratch copy before LibreOffice draws
+  it (`withoutBreaksUnderFit`), along each side fitted to a page count and
+  no other: row breaks where `fitToHeight` is a count, column breaks where
+  `fitToWidth` is. Excel ignores a manual break there and LibreOffice does
+  not. A side left automatic ("1 page wide" by as many tall as it takes)
+  keeps its breaks, which Excel prints. This is Excel's own behaviour as
+  measured (`harness/corpus/print/excel-truth.json`, below), not the
+  plan's "no manual breaks under Fit to", which held only for a counted
+  side. The file keeps its breaks. An OpenDocument or Excel 97-2003
+  picture is LibreOffice's of that exported file as it is.
+- **Long sheets.** The first draw asks LibreOffice for pages 1 to 51 and
+  keeps 50: a 51st page says the whole goes on. The whole is not counted
+  until it is drawn, and the frame has no way to say "about", so `shown`
+  says pages 1 to 50 of 51 (what it holds, and one more) and the column
+  says "Prints on more than 50 pages" (`moreThan`). No estimate is shown
+  as a number. "Draw all" asks for every page with no range.
+- **Kept by content hash.** A render's `rev` is the hash of what was drawn
+  (the format, the input's bytes, the range), so the same workbook asked
+  again is answered without LibreOffice. His own files' renders and
+  exported files are kept under `<userData>/work-files/previews/sheets/`,
+  beside Files' own pictures, which both backups leave out (Files' prune
+  reads only the files at its folder's top, so it leaves this one alone):
+  at most 64 and 1 GiB, the least used out first (`PreviewStore`). Each
+  call works in a scratch folder of its own (`mkdtempSync`, 0700) removed
+  when it ends; a crash's are swept at the module's start
+  (`sweepPreviewScratch`). Each kept render names the sheet it was made
+  from, and a read for another item's sheet is refused.
+- **A file others can open** (`sharedOf`: a library's file, another host's,
+  the cloud folder): its renders, exported files and scratch live in a
+  folder its item's own under Files' preview scratch
+  (`sharedPreviews(dataDir, itemId)`, held.ts:
+  `<userData>/work-files/preview-scratch/sheets/previews/<item>/`, at most
+  16 and 256 MiB), which both backups leave out. The module's
+  `itemsRemoved` removes it with the item, and Files clears the whole
+  scratch at each start. Each folder says whose it is (a `.thread` file,
+  written at every draw), so a deleted thread's folders are found by
+  `dropSharedPreviewsOf(dataDir, sessionIds)`, which the module's
+  `sessionsRemoved` is to call (the frame tells a pillar a deleted thread,
+  not its items). A draw that
+  finds a file gone under it (`ENOENT`) is made once more from the start,
+  and a read of a render that went answers "draw it again", which the
+  frame does. Every job is `shared`, so the runner never carries it to
+  another host; nothing is written beside the file. Export hands the
+  file's bytes to the window's save dialog, as the document does: the copy
+  goes where he saves it. `preview.test.ts` holds it with a spy on every
+  write (`writeFileSync`, `renameSync`, `copyFileSync`, `mkdirSync`,
+  `mkdtempSync`): each lies under the item's folder; every job is marked
+  shared; `itemsRemoved` takes the folder and its renders with it.
+- **A draw carried to another host.** Where this host has no LibreOffice
+  the runner forwards the job, and a PDF past 64 MiB cannot come back: the
+  draw is asked again with half the pages until it fits, and the column
+  says "Drawn on another computer: only the first N pages could be sent".
+  A shared file is never forwarded, so it is never cut.
+- **"In this format"** (`sheetDrops`), counted from the workbook in hand:
+  a package from its parts (`factsOfPackage`: formulas, styles and the
+  last used cell from each sheet's XML, rules through `readRules`, tables,
+  charts, pictures and notes from the zip), a held sheet from its snapshot
+  (`factsOfWorkbook`). The lines follow what decision 8 measured: CSV and
+  TSV, the other sheets ("Flights and Hotel stay behind", or "5 other
+  sheets"), and the chosen sheet's own formulas ("149 formulas become
+  their values"), formatting, rules, charts and pictures (a sheet's charts
+  and pictures by its drawing's links: what the other sheets hold goes
+  with them, said once); Excel 97-2003, colour scales, data bars and icon
+  sets, tables ("2 tables become plain ranges"), formulas that call a
+  function newer than Excel 2007 ("39 formulas use functions Excel 97-2003
+  does not have": `_xlfn.` in the file, a shared formula's cells counted
+  with it; a held sheet's formulas as the writer would write them), rows
+  past 65,536 and columns past IV by sheet; OpenDocument, each chartsheet
+  ("ChartSheet becomes a sheet holding its chart"); PDF and Print, only a
+  chart of a newer kind (`chartEx`), which LibreOffice does not draw; a web
+  page, formulas, conditional formats, validations, filters, charts and
+  pictures. A held sheet's Excel adds the notes and what the model writer
+  left out ("The names stay behind"), and every format the charts made
+  here (`work_sheets_charts`), which no file holds.
+- **Pairs this pillar adds** (`SHEET_PREVIEW_CONVERTERS`, on the module's
+  `convert`): `xlsm` to `pdf`, `ods`, `xls`, `csv` and `html`; `xlsx` to
+  `html`; `xlsx` and `xlsm` to `tsv` (LibreOffice's text export with a tab,
+  `options.sheet` its place); `tsv` to `xlsx` (read as the CSV it becomes).
+- **Files' page picture** (`registerFilePreviewer('sheet', …)` in the
+  module's start): the first page of an .xlsx's or .xlsm's print, drawn as
+  Preview draws it (pages 1 to 1, the Fit-to rule above), made a PNG by
+  the pdf pillar's `pdf → png` as Files' own previewers do; every job
+  `here`. Only for a page-size picture: at or under Files' largest
+  thumbnail (416 pixels) it answers null, so a folder of workbooks starts
+  no LibreOffice and its tiles come from Files' cheaper sources. His own
+  file's render is kept in the store above; a shared file's is made in a
+  folder of its own under the preview scratch, removed before the answer,
+  and Files holds the picture in memory alone. Other pages, and a
+  `.tcsheet` or a .csv, answer null, so Files' own sources draw them.
+- **The canvas.** `SheetBody.tsx` draws the frame over the grid, which
+  stays mounted, unseen and `inert` under it; More's Preview…, File →
+  Export… and ⇧⌘E open it on the format he last used, File → Print… and
+  ⌘P on Print (`useWorkCommands`, offered once the grid is up). The source
+  is made once per item, store and file name. It takes its read limit as
+  a constant of its own (`READ_MAX`, held equal to the contract's by
+  test), since the canvas takes no value from the contract.
+- **The print fixtures, behind LibreOffice** (`preview.live.test.ts`,
+  skipped where LibreOffice is absent; on the box, LibreOffice 26.8.3,
+  2026-11-23): each of the ten cases' preview equals LibreOffice's own PDF
+  of the same render input, page for page (count, size and what each page
+  draws; LibreOffice tags a PDF made with no options and not one made with
+  a page range, so the tags' marks are left out of the comparison). The
+  previews hold 1, 2, 2, 1, 6, 5, 7, 2, 4 and 3 pages (chart-print,
+  fit-width, landscape, links_dest, manual-breaks, pivot, protect_print,
+  scale-70, titles, wide-columns). The same run drew `formulas.xlsx` as
+  OpenDocument (11 pages) and Excel 97-2003 (12 pages) from the exported
+  files, its second sheet as CSV and TSV (the sheet asked for, not the
+  first), the web page, a macro workbook's PDF, and a TSV read in.
+- **Excel's truth** (`harness/corpus/print/excel-truth.json`; made
+  2026-11-23 in the box's Windows VM, Excel 16.0.20625 of Microsoft 365
+  Apps, each fixture opened read-only in a hidden Excel and the workbook
+  exported with `ExportAsFixedFormat`; a record, not a gate). Excel opened
+  nine of the ten: it refuses `pivot.xlsx` at a normal load and at a
+  repair load, so the tenth has no truth. What it showed:
+  - **Counts.** The preview holds as many pages as Excel on all nine (1,
+    2, 2, 1, 6, 7, 2, 4, 3).
+  - **Manual breaks** fall on the same rows and columns in both, on every
+    fixture and probe.
+  - **Automatic breaks** differ: Excel fits one or two more rows on a page
+    than LibreOffice (landscape 36 rows to 35, scale-70 69 to 67, titles
+    48 to 47, protect_print 33 to 31), so the row a page ends on is not
+    Excel's on those four. Page for page, four of the nine agree in full
+    (chart-print, fit-width, manual-breaks, wide-columns).
+  - **Paper.** Excel printed both A4 sheets (links_dest, protect_print's
+    Report) on Letter; the preview draws them on A4, as the file says.
+  - **Fit to.** Six probes (fit-width.xlsx fitted 1 by 1, 1 by 2, 1 by
+    any, 2 by any, any by 1 and any by 2, each with a manual break after
+    row 19 and after a column) gave the rule above. Excel's `HPageBreaks`
+    and `VPageBreaks` list a manual break even where its print ignores it.
+    The live test draws the same six and holds their page counts to
+    Excel's (1, 2, 2, 6, 2, 4).
+  The proof's scripts, logs and Excel's PDFs are kept with the landing
+  notes (`.temp-code/plans/landed/E-sheets/sheets-preview-excel-truth/`).
+- **Unproven.** Excel's truth is one Excel, on Windows, of ten fixtures
+  and six probes: nothing here says a picture matches Excel beyond them,
+  and nothing was compared by eye or by pixel. OpenDocument, Excel 97-2003,
+  CSV, TSV and the web page were not opened in any other program. The
+  frame reads "Page 3 of 51" and "Draw all 51" for a long sheet: the count
+  is what it holds and one more, never the whole, until the frame can say
+  that the whole is not counted. The capped forward is tested with a
+  stand-in runner, not over a real link. The sheet's Page set-up rows
+  (SHT6) are not in this tree, so the source offers no `setup` yet.
 
 ## Sheets the service holds
 
@@ -622,8 +803,8 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   (`saidLine`: "Suggested: Bold, yellow fill on B2:B9", with the agent's
   reason); a name, which sits in no cell, is said the same way. Accept and
   Reject call `work.sheets.review` with its id.
-- An export that could not hold a list of rules says so with the save
-  ("Saved Budget.xlsx without the names").
+- What an Excel export could not hold is said in Preview's "In this
+  format" ("The names stay behind"), before he exports.
 
 ## The full editor
 

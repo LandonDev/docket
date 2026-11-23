@@ -513,39 +513,68 @@ describe("the sheet kind", () => {
     expect(made.chart).toMatchObject({ range: "A1:B5", title: "Qty", col: 3 });
   });
 
-  it("offers Export as Excel for a sheet made here", async () => {
-    open(sheetView({ store: "tcsheet" }));
-    await gridUp();
-    fireEvent.click(await screen.findByRole("button", { name: "More" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Export as Excel" }));
-    await waitFor(() => expect(sheetHost.calls.find((c) => c[0] === "export")?.[1]).toEqual({ format: "xlsx", sheet: undefined }));
-    await waitFor(() => expect(toasts.said).toEqual(["Saved Nationals travel budget.xlsx"]));
+  it("offers Preview… in More for every sheet, in place of the export rows", async () => {
+    for (const store of ["tcsheet", "package", "lifeos"] as const) {
+      cleanup();
+      resetSheetSyncs();
+      open(sheetView({ store }));
+      await gridUp();
+      fireEvent.click(await screen.findByRole("button", { name: "More" }));
+      expect(await screen.findByRole("menuitem", { name: "Preview…" })).toBeTruthy();
+      for (const gone of ["Export as Excel", "Export sheet as CSV", "Save as CSV"]) expect(screen.queryByRole("menuitem", { name: gone })).toBeNull();
+    }
   });
 
-  it("says with the save what the Excel file could not hold", async () => {
-    open(sheetView({ store: "tcsheet" }));
-    await gridUp();
-    sheetHost.exportLeft = ["the names", "conditional formats on Budget"];
-    fireEvent.click(await screen.findByRole("button", { name: "More" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Export as Excel" }));
-    await waitFor(() => expect(toasts.said).toEqual(["Saved Nationals travel budget.xlsx without the names and conditional formats on Budget"]));
-  });
-
-  it("offers Save as CSV, back over the file, for a sheet read from a .csv", async () => {
+  it("keeps Save as CSV, back over the file, for a sheet read from a .csv", async () => {
     open(sheetView({ store: "csv" }));
     await gridUp();
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
-    expect(screen.queryByRole("menuitem", { name: "Export as Excel" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Preview…" })).toBeTruthy();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Save as CSV" }));
     await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "export").at(-1)?.[1]).toMatchObject({ format: "csv" }));
   });
 
-  it("offers an opened Excel file a CSV of its sheet, and no Excel export", async () => {
+  it("opens Preview over the grid, which stays mounted and out of reach, and Edit puts him back", async () => {
     open(sheetView({ store: "package" }));
     await gridUp();
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
-    expect(await screen.findByRole("menuitem", { name: "Export sheet as CSV" })).toBeTruthy();
-    expect(screen.queryByRole("menuitem", { name: "Export as Excel" })).toBeNull();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Preview…" }));
+    const frame = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>("[data-sheet-preview]");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    // The grid is still there, its cells kept, under an inert and unseen wrapper.
+    expect(cell("A2").textContent).toBe("Flights");
+    expect(cell("A2").closest("[inert]")).toBeTruthy();
+    expect(within(frame).getByRole("button", { name: /Edit/ })).toBeTruthy();
+    fireEvent.click(within(frame).getByRole("button", { name: /Edit/ }));
+    await waitFor(() => expect(document.querySelector("[data-sheet-preview]")).toBeNull());
+    expect(cell("A2").closest("[inert]")).toBeNull();
+  });
+
+  it("answers File → Print… on Print and File → Export… on the format he last used", async () => {
+    localStorage.setItem("work.preview.format.sheet", "csv");
+    open(sheetView({ store: "package" }));
+    await gridUp();
+    window.dispatchEvent(new CustomEvent("work:command", { detail: { id: "print" } }));
+    await waitFor(() => expect(document.querySelector("[data-sheet-preview]")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Print…" })).toBeTruthy();
+    window.dispatchEvent(new CustomEvent("work:command", { detail: { id: "export" } }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Print…" })).toBeNull());
+    expect(screen.getAllByRole("button", { name: "Export" }).length).toBeGreaterThan(0);
+  });
+
+  it("previews a sheet he can only read: the way out reads Back", async () => {
+    open(sheetView({ store: "package", readOnly: "This file cannot be opened here: a password" }));
+    await gridUp();
+    window.dispatchEvent(new CustomEvent("work:command", { detail: { id: "export" } }));
+    const frame = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>("[data-sheet-preview]");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(within(frame).getByRole("button", { name: /Back/ })).toBeTruthy();
   });
 
   it("offers the switch only while the file holds what the grid cannot reach", async () => {
@@ -767,7 +796,9 @@ describe("the format row", () => {
     expect(within(bar).getByRole("button", { name: "More formatting" })).toBeTruthy();
     // the row is the body's first row, over the grid
     const body = document.querySelector("[data-sheet-item]")!;
-    expect(body.firstElementChild).toBe(bar);
+    // First in the body (under the wrapper Preview makes inert, which takes no box of its own).
+    expect(body.firstElementChild?.className).toBe("contents");
+    expect(body.firstElementChild!.firstElementChild).toBe(bar);
   });
 
   it("is drawn over an opened Excel file, whose host keeps formatting now", async () => {

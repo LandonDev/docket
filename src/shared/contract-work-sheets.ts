@@ -212,6 +212,43 @@ export const SHEET_EDIT_MAX = 500
 /** The most cells a compare answers; `truncated` says there were more. */
 export const SHEET_COMPARE_MAX = 5000
 
+/**
+ * Preview's formats a sheet draws on its host (docs/agents/work-sheets.md "Preview and export"): Print is
+ * the PDF, so it is not one of them. `xlsx` is the workbook as Excel gets it, `ods` and `xls` the exported
+ * file drawn by LibreOffice, `csv` and `tsv` one sheet's shown values, `html` the web page.
+ */
+export const SHEET_PREVIEW_FORMATS = ['xlsx', 'pdf', 'ods', 'xls', 'csv', 'tsv', 'html'] as const
+export type SheetPreviewFormat = (typeof SHEET_PREVIEW_FORMATS)[number]
+/** The most one `work.sheets.previewRead` answers: a render is read by range, a frame at a time. */
+export const SHEET_PREVIEW_READ_MAX = 4 * 1024 * 1024
+/** Pages a first draw holds; "Draw all" asks for every one. */
+export const SHEET_PREVIEW_PAGES = 50
+
+/** What `work.sheets.preview` answers: a render read by range (`rev`), a table of one sheet, or a web page. */
+export type SheetPreviewAnswer = { drops: string[] } & (
+  | {
+      kind: 'paged'
+      /** names the render: every `previewRead` at it is of this render */
+      rev: string
+      size: number
+      /** the pages the PDF holds */
+      pages: number
+      /** set when the PDF holds only the first pages of the whole: `of` is about how many there are */
+      shown?: { from: number; to: number; of: number }
+      drawnBy: 'libreoffice'
+    }
+  | { kind: 'table'; name: string; rows: string[][]; sheets: string[] }
+  | { kind: 'html'; html: string }
+)
+/** What `work.sheets.previewExport` answers: the file as it stands now, kept as a render and read by range. */
+export interface SheetExportAnswer {
+  rev: string
+  size: number
+  name: string
+  /** what the file could not hold, one line each */
+  drops: string[]
+}
+
 export const SheetsRequestSchemas = [
   /** → SheetView */
   request('work.sheets.open', z.object({ itemId })),
@@ -256,7 +293,27 @@ export const SheetsRequestSchemas = [
    * sheet (`sheet`, else the first), back over the .csv it was read from, else beside the file or
    * among the item's files. An opened package is its own .xlsx.
    */
-  request('work.sheets.export', z.object({ itemId, format: z.enum(['xlsx', 'csv']).default('xlsx'), sheet: z.string().max(200).optional() }))
+  request('work.sheets.export', z.object({ itemId, format: z.enum(['xlsx', 'csv']).default('xlsx'), sheet: z.string().max(200).optional() })),
+  /**
+   * → SheetPreviewAnswer: the workbook as `format` makes it, for the Preview frame, drawn on the host that holds
+   * the file. A paged format draws `pages` (1-based, inclusive; the first 50 when absent); `sheet` picks the sheet
+   * a CSV or TSV holds. Renders are kept by content hash, and a file others can open keeps its own in its item's
+   * folder alone.
+   */
+  request(
+    'work.sheets.preview',
+    z.object({
+      itemId,
+      format: z.enum(SHEET_PREVIEW_FORMATS),
+      pages: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
+      sheet: z.string().max(200).optional(),
+      by: z.literal('office').optional()
+    })
+  ),
+  /** → { data: base64 }: bytes of one render by range. A `rev` no longer kept is refused: draw it again. */
+  request('work.sheets.previewRead', z.object({ itemId, rev: z.string().regex(/^[a-f0-9]{32}$/), offset: z.number().int().min(0), length: z.number().int().min(1).max(SHEET_PREVIEW_READ_MAX) })),
+  /** → SheetExportAnswer: the file in `format` made now from the workbook as it stands, read with `previewRead`. */
+  request('work.sheets.previewExport', z.object({ itemId, format: z.enum(SHEET_PREVIEW_FORMATS), sheet: z.string().max(200).optional() }))
 ] as const
 
 /** Something landed on a sheet: new ops (another person, an agent) or a changed view. */
@@ -276,6 +333,9 @@ export const SHEETS_CAPS = {
   'work.sheets.create': 'operate',
   'work.sheets.chart': 'operate',
   'work.sheets.switch': 'operate',
-  'work.sheets.export': 'operate'
+  'work.sheets.export': 'operate',
+  'work.sheets.preview': 'operate',
+  'work.sheets.previewRead': 'read',
+  'work.sheets.previewExport': 'read'
 } satisfies CapsOf<typeof SheetsRequestSchemas>
 export const SHEETS_RELAY = {} satisfies RelayOf<typeof SheetsRequestSchemas>
