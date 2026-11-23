@@ -357,7 +357,7 @@ edits none of these.
 Pillar ids, in mount order: `outbox, canvas, lifeos, routines, rules, mail,
 tasks, agenda, docs, history, formats, sheets, office, google, guests, pdf,
 slides, media, frameio, meetings, forms, dashboards, browser, projects,
-winvm, capture, files, prep, search` (the Windows VM's keeper: [work-winvm.md](work-winvm.md); capture from anywhere,
+winvm, capture, files, prep, money, search` (the Windows VM's keeper: [work-winvm.md](work-winvm.md); capture from anywhere,
 [work-capture.md](work-capture.md); the Files place, [work-files.md](work-files.md); one search for everything,
 [work-search.md](work-search.md)).
 `PILLAR_MILESTONE` names the plan milestone that builds each. Canvas kinds
