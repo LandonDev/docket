@@ -344,7 +344,9 @@ scrolls, pointer moves, clicks that place the caret or select, arrow keys,
 Page Up and Page Down, Home and End, Copy, Find and Escape can run.
 The host reads the browser's address afresh before an edit. The list
 covers Google Docs, Sheets and Slides, SharePoint, OneDrive and the
-Office web hosts (`COAUTHOR_HOSTS`). Word, Excel and PowerPoint on Mac
+Office web hosts (`COAUTHOR_HOSTS`), less the mail and chat pages that
+share their domains (Outlook and Teams on the web: a draft there is no
+shared file, and their sends are held above). Word, Excel and PowerPoint on Mac
 and Windows all count, since the screen cannot tell which files other
 people can open. Each edit waits for the owner's press, and no grant
 covers it. For Office files, use the Office tools such as

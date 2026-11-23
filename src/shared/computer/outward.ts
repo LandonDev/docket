@@ -666,7 +666,9 @@ export function coauthorRead(steps: readonly ComputerAction[], screen: Screen | 
   const id = screen.app.bundleId?.toLowerCase() ?? ''
   const host = isBrowser(screen.app) ? pageHost(screen) : null
   const desktop = COAUTHOR_APP_BUNDLES.some((b) => b.toLowerCase() === id) || COAUTHOR_EXES.includes(id)
-  if (!desktop && !(host && COAUTHOR_HOSTS.some((h) => h.startsWith('*.') ? host.endsWith(h.slice(1)) : host === h))) return null
+  // Outlook and Teams on the web share these domains: a draft there is his own until a send, which the rest of this file holds.
+  const editor = !!host && !hostIn(host, MAIL_HOSTS) && !hostIn(host, CHAT_HOSTS) && COAUTHOR_HOSTS.some((h) => (h.startsWith('*.') ? host.endsWith(h.slice(1)) : host === h))
+  if (!desktop && !editor) return null
   const step = steps.findIndex(editsDocument)
   if (step < 0) return null
   const a = steps[step]!

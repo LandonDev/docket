@@ -869,7 +869,7 @@ describe('readOutward: what the second round closed', () => {
     expect(readOutward(steps({ action: 'key', text: 'super+Return' }), chatBox({ bundleId: 'org.mozilla.thunderbird', name: 'Thunderbird' }))).toMatchObject({ why: 'chord', label: 'Send' })
   })
 
-  it('holds Return on Teams and ⌘Return on Outlook, including on co-authoring hosts', () => {
+  it('holds Return on Teams and ⌘Return on Outlook, as sends: a draft there is no shared file', () => {
     const at = (url: string): Screen =>
       screen(
         `app "Google Chrome" · window "Chat" · 1280×800 · focused [5]\n[1] window "Chat"\n  [2] toolbar\n    [3] input "Address and search bar" = ${JSON.stringify(url)}\n  [4] web area "Chat"\n    [5] text area "Message" = "hi" focused caret 2`,
@@ -877,8 +877,11 @@ describe('readOutward: what the second round closed', () => {
       )
     expect(readOutward(steps({ action: 'key', text: 'Return' }), at('teams.microsoft.com/'))).toMatchObject({ label: 'Send' })
     expect(readOutward(steps({ action: 'key', text: 'super+Return' }), at('outlook.office365.com/mail/'))).toMatchObject({ why: 'chord', label: 'Send' })
-    expect(readOutward(steps({ action: 'key', text: 'Return' }), at('teams.cloud.microsoft/'))).toMatchObject({ why: 'coauthor', label: 'Edit', grantable: false })
-    expect(readOutward(steps({ action: 'key', text: 'super+Return' }), at('outlook.cloud.microsoft/mail/'))).toMatchObject({ why: 'coauthor', label: 'Edit', grantable: false })
+    expect(readOutward(steps({ action: 'key', text: 'Return' }), at('teams.cloud.microsoft/'))).toMatchObject({ label: 'Send' })
+    expect(readOutward(steps({ action: 'key', text: 'super+Return' }), at('outlook.cloud.microsoft/mail/'))).toMatchObject({ why: 'chord', label: 'Send' })
+    // Writing a draft in Outlook or Teams on the web shares no file: no co-authoring hold, though their domains match.
+    for (const url of ['outlook.office.com/mail/', 'outlook.cloud.microsoft/mail/', 'teams.cloud.microsoft/'])
+      expect(coauthorRead(steps({ action: 'type', text: 'Draft' }), at(url))).toBeNull()
   })
 
   it('holds Return in a chat page installed as an app of its own, and ⌘Return in a mail one', () => {
