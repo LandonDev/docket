@@ -1488,6 +1488,97 @@ Around the canvas:
   no Can row: a project's guest views, and a choice of one is not drawn.
   The project's settings sheet lists the same links under Sharing.
 
+#### Work editors
+
+What the document, the sheet and the deck share on screen. Who hears a key,
+Print… and Export… are docs/agents/work-editors.md.
+
+**The format row** (work-kit `src/format`, `FormatRow` and its parts; drawn
+by each kind as the first, unscrolled row of its own body, under the kind's
+bar). One row, the same in the three editors, and the one place a style is
+set by hand.
+
+- **The row** is 36px on `background` with a hairline under it and a 12px
+  inset. Controls are 28px quiet buttons at the 6px radius, 2px apart, a
+  14px glyph each, `muted-foreground` at rest and `foreground` under the
+  pointer; a press steps the fill and scales nothing, as every ghost
+  control. A toggle that is on (Bold) is the `muted` fill with foreground
+  ink.
+- **Groups**, in an order that never changes: his own edits (Undo, Redo);
+  the style (a paragraph's, a cell's, a slide's layout); the font (family,
+  size in points); the character (Bold, Italic, Underline, text colour,
+  and highlight or fill); the paragraph or the cell (align, then lists and
+  indent, or borders and number format); Insert; Data (the sheet's); then,
+  at the row's end after at least 8px, the view switch and the way out
+  (Preview, or Present). A 1 by 16px `border` rule with 4px either side
+  parts two groups and parts the view switch from the way out.
+- **Controls.** The style select is a quiet 132px face (148px for a deck's
+  layouts), 13px foreground, a 12px muted chevron; the font select the
+  same at 120px, set in the font it names. The size is a 44 by 28px field,
+  13px tabular, centred, on the `input` border. A menu button is its glyph
+  (or three characters, "123") and the chevron; Insert and Data are their
+  word and the chevron. A colour control is its glyph over a 14 by 3px bar
+  in the colour it last laid down, on the `image-outline` edge: the ink
+  for a text colour's Automatic, no bar for No fill. The view switch is
+  the segmented control at 28px with 12px labels; the way out is a quiet
+  button, its glyph and its word.
+- **The fold.** The row measures itself; nothing is a breakpoint. What
+  does not fit waits in one ⋯ (28px, "More formatting") at the cell
+  group's end, folding in one order for all three editors: the paragraph
+  or cell group, then Data, then Insert, then the character group, the
+  font group, then Redo and Undo, each group from its end. Style, Bold,
+  Italic and ⋯ never fold. When everything has folded the view switch
+  becomes glyphs, then the way out a glyph. A full row needs about
+  1,200px of canvas; in an 864px window it shows through the text colour;
+  beside a thread it is Style, Bold, Italic, ⋯, the view and the way out.
+  That is by design: the Files tab is where he formats.
+- **⋯** is a 224px menu of what folded, in row order, a rule between
+  groups: each row its 14px glyph and its name, then its key or its value
+  in 12px muted ("⌘U", "Aptos", "11"), then a 12px chevron when it opens
+  more. A folded toggle shows its check in the glyph's place.
+- **Layers.** Every menu and popover from the row opens 4px under its
+  trigger, stays 8px inside the canvas, and when its control has folded
+  opens under ⋯. Menus are the app's one size (28px rows, 12px in, 8px to
+  the label); a choice of several carries its check in the glyph's place,
+  so an example can sit at the row's end ("Currency", then "$1,206.96" in
+  12px muted). A popover opened by a press takes focus itself, so no tip
+  opens under the pointer; opened by a key, its first control does.
+- **The colour picker** is one 240px popover everywhere (6px over, 12px
+  sides and foot): the automatic row first (Automatic, No fill or No
+  colour: a 14px swatch with a stroke through it, a check when it is the
+  selection's); "Theme" in 11px, then the file's ten theme colours as 18px
+  swatches at 4px radius 4px apart, and 6px under them their five tints as
+  18 by 14px swatches at 3px radius 2px apart (lighter 80, 60 and 40%,
+  darker 25 and 50%; a white steps darker 5 to 50%, a black lighter 50 to
+  5%); "Standard" and Office's ten; then Custom, a 108 by 28px hex field
+  in 12px mono with a 14px swatch inside it, taken on Return. A swatch
+  wears the `image-outline` edge; the selection's own takes a 2px gap and
+  a 1.5px `foreground` ring, the one under the pointer the same in
+  `muted-foreground`. A swatch is the file's literal colour and is never
+  themed. A theme swatch is kept as a theme colour with its tint, so the
+  file's theme can change it later. A press applies and closes.
+- **The font list** is a 248px popover (6px in): a 28px search field over
+  a list capped at 284px, "In this document" first, then "Fonts", 28px a
+  row, each family in its own face. A font TempCode cannot draw keeps its
+  name with one 12px muted line under it, "Drawn as Carlito".
+- **The style menu** is 200px: each style in its own look as a 22px
+  sample (4px radius, 8px in, 96px at least), the current one checked,
+  and one verb under a rule ("New cell style…"). No sample takes a green,
+  red or blue fill: on a canvas those mean a change or a selection.
+- **Alignment** is one menu button showing the current glyph. Its sheet
+  holds the choice across as glyphs on the segmented track (with Justify
+  in a document) and, for a cell or a text box, the choice down beside it,
+  then Wrap text and Merge cells as 28px rows that say when they are on.
+  It stays open, since alignment is often set both ways.
+- **Keys.** A control's tip is its name and its key ("Italic ⌘I"). A key
+  the app also holds (⌘B, ⌘K, ⌘P, ⌘F) is shown only where the editor has
+  it. The row is one tab stop: ← → Home End move inside it, a field keeps
+  the arrows until the caret stands at its edge, and a press with nothing
+  to act on stays a stop.
+- **What is absent.** A file he cannot edit draws no row, never a greyed
+  one. A control whose change could not be saved where the file lives is
+  not drawn there.
+
 ## Scrolling
 
 Every scroller is a native element with `overflow-*-auto`, and one rule in

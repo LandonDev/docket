@@ -186,7 +186,9 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   in the browser (`work.sheets.switch` answers `{ opened, url? }`).
 - Our own charts (`work.sheets.chart`, `work_sheets_charts`): plain neutral
   bars over a range, made from a selection through More.
-- No formatting toolbar in the bar (the approved page has none).
+- No formatting row yet: its parts are built (work-kit `src/format`, pinned
+  at v61; docs/DESIGN.md "Work editors: The format row") and the sheet
+  draws none until its changes are kept on each store.
 
 ## The full editor
 
