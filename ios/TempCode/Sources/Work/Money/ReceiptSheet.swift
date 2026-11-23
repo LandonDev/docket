@@ -122,7 +122,7 @@ struct ReceiptSheet: View {
     }
 
     private func add(_ scan: ReceiptScan) {
-        try? receipt.add(file: scan.file, mime: scan.mime, pages: scan.pages)
+        _ = try? receipt.add(file: scan.file, mime: scan.mime, pages: scan.pages)
     }
 
     private func save() async {
