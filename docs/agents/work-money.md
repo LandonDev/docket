@@ -277,7 +277,10 @@ quit, and a retry goes to the same host first. The phone has no Money page.
 - **Weekly review**: `work.money.sums {from, to, workspaceId?}` → `{rows:
   [{workspaceId, sector, in, out, owedToHim, heOwes, miles, currency}]}`.
 - **Today**: `work.money.owed {workspaceId?}` → unpaid rows, the oldest
-  first, and `toConfirm`.
+  first, and `toConfirm`. Money's own source (`src/renderer/src/work/money/today.ts`,
+  one line in `TODAY_SOURCES`) lists each open row of every job under
+  "Owed", order 60, drawn only while something is owed; a row opens its
+  job's Money view. It shows rows, never the count that waits.
 - **Work search**: a `SearchSource` on the module (`borders.ts`, kind
   `money`), over `searchMoney`; `work.money.search` is the same on the wire.
 - **Digest**: a receipt the phone or a thread left waiting is
