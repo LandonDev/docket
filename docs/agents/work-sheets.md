@@ -1144,18 +1144,21 @@ mutations are applied to the engine in the worker, as `handle.comments`
 makes them; a new note has no author. The words: "The note on A9 reworded:
 “Checked on Monday.”", "A note on B2: “Ask Sam”".
 
-**A chart** (`sheet_chart`, `acts.ts`), for an opened Excel file only, the
-store that keeps charts today (a `.tcsheet` or LifeOS sheet is refused in
-words). `make` a column, bar, line or pie chart of a range, with a title
+**A chart** (`sheet_chart`, `acts.ts`), on every store that keeps charts:
+an opened Excel file, a `.tcsheet` and a LifeOS sheet. `make` a column, bar, line or pie chart of a range, with a title
 and the cell its corner sits on (right of the data when left out); `change`
 a chart's kind, range or title (null takes it away), the chart named by
 its name ("Chart 1") or its title; `remove` it. A range is read as the
 grid's "chart from a block" reads one: the row of text over the first
 numbers names the series, a first column with no number names the
 categories, every other column with a number is a series; a pie takes the
-first. The tab's whole chart list as the file holds it (`readObjects`),
-with this one made, changed or taken out, goes as the canvas sends a list
-(`RULES_SET` of kind `charts`). A combo and a kind only Excel draws
+first. The tab's whole chart list as the store holds it (an Excel file's
+chart parts, `readObjects`; the objects a service-held sheet's snapshot
+carries, `readObjectsResource`), with this one made, changed or taken out,
+goes as the canvas sends a list (`RULES_SET` of kind `charts`), which
+`host/objects.ts` keeps for a sheet the service holds. That host keeps any
+well-shaped list, so the tool holds each chart to the chart writer's model
+first (`checkedPlan`), the one its Excel export writes with. A combo and a kind only Excel draws
 (`other`) are refused. Not offered: colours, axes, a legend's place, a
 second axis, data labels, stacked or percent groupings, a picture.
 

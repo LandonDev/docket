@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import type { IWorkbookData } from '@univerjs/core'
-import { headlessSheet } from 'work-kit/sheet/engine'
+import { headlessSheet, readObjectsResource } from 'work-kit/sheet/engine'
 import { createTables, TABLE_STYLES } from 'work-kit/sheet/tables'
 import { createPages } from 'work-kit/sheet/pages/access'
 import { MARGIN_PRESETS, PAPERS, type SheetPageSetup } from 'work-kit/sheet/pages'
@@ -13,6 +13,7 @@ import { place, type Placed } from './asks'
 import { CHART_KINDS, type ActAnswer, type ActAsk, type ActMade, type ChartAsk, type ChartKindAsked, type NoteAsk, type PageAsk, type TableAsk } from './actAsks'
 import { importPackage, savePackage } from './jobs'
 import { planOf } from './structural'
+import { ChartsRefused, checkedPlan, planOf as chartPlanOf } from './patch/charts-model'
 
 /**
  * What a thread asks of a sheet that only the grid's own code can make (sheet_table, tools.ts): the
@@ -311,13 +312,14 @@ function seriesOf(box: Placed['range'], tab: string, kindAt: (row: number, col: 
 }
 
 /**
- * A chart's ask on an opened Excel file (the store that keeps charts today): the tab's whole chart
- * list as the file holds it, with this chart made, changed or taken out, sent as the canvas sends a
- * list (`RULES_SET` of kind `charts`) and tried by the store's own save.
+ * A chart's ask: the tab's whole chart list as the store holds it (an Excel file's chart parts, or the
+ * objects a service-held sheet's snapshot carries), with this chart made, changed or taken out, sent
+ * as the canvas sends a list (`RULES_SET` of kind `charts`). An Excel file's is tried by the store's
+ * own save; a service-held sheet's by the chart writer's model, which its Excel export writes with.
  */
 async function chartMade(ask: ActAsk, a: ChartAsk, workbook: IWorkbookData, sheets: { id: string; name: string }[]): Promise<ActMade> {
-  if (ask.store !== 'package') refuse('Charts are kept in an opened Excel file only, for now: this sheet has none to change.')
-  const all = readObjects(new Uint8Array(readFileSync(ask.path!))).charts.filter((c) => !c.chartsheet)
+  // An Excel file's charts are its chart parts; a sheet the service holds keeps its own in the snapshot (host/objects.ts).
+  const all = (ask.store === 'package' ? readObjects(new Uint8Array(readFileSync(ask.path!))) : (readObjectsResource(workbook) ?? { charts: [] })).charts.filter((c) => !c.chartsheet)
   const on = (sheet: string, box: Placed['range']): string => rangeName(box, sheets.length > 1 ? sheets.find((s) => s.id === sheet)?.name : undefined)
   const placed = (text: string): Placed => {
     try {
@@ -394,7 +396,16 @@ async function chartMade(ask: ActAsk, a: ChartAsk, workbook: IWorkbookData, shee
   }
   const params: RulesSetParams = { kind: 'charts', subUnitId: tab.id, list }
   const mutations: SheetMutationJson[] = [{ id: RULES_SET, params }]
-  await triedOn(ask.path!, mutations, sheets)
+  if (ask.store === 'package') await triedOn(ask.path!, mutations, sheets)
+  else
+    // The service keeps any list it is sent; its Excel export writes each chart with the chart writer, so each is held to that writer's model now.
+    for (const chart of list)
+      try {
+        checkedPlan(chartPlanOf(chart, sheets.map((x) => x.name)))
+      } catch (err) {
+        if (err instanceof ChartsRefused) refuse(err.message)
+        throw err
+      }
   return { mutations, sheet: tab.id, range: box, words }
 }
 const quotedTitle = (text: string): string => `“${text}”`

@@ -469,7 +469,7 @@ export const sheetTools: WorkTool[] = [
   {
     name: 'sheet_chart',
     description:
-      'Charts in an opened Excel file: `make` a column, bar, line or pie chart of a range with a title, `change` one\'s kind, range or title, or `remove` it. ' +
+      'Charts: `make` a column, bar, line or pie chart of a range with a title, `change` one\'s kind, range or title, or `remove` it. ' +
       'Say why, as for `sheet_write`: on a sheet others share your own idea waits in words for the owner.',
     input: z.object({ ...target, chart: ChartAskSchema, ...because }),
     readOnly: false,

@@ -17,6 +17,7 @@ import { readTables } from './patch/tables'
 import { readPages } from './patch/pages'
 import { readNotes } from './patch/notes'
 import { PAGES_RESOURCE } from 'work-kit/sheet/pages/access'
+import { readObjectsResource } from 'work-kit/sheet/engine'
 
 /**
  * The owner's ruling (2026-11-23): what an agent proposes on a workbook anyone else can open is
@@ -1100,7 +1101,7 @@ describe('a chart an agent makes or changes', () => {
     expect(chartsIn(own)).toEqual([])
   })
 
-  it('what has no place is refused as it is asked: no numbers, no such chart, nothing to change, a sheet the service holds', async () => {
+  it('what has no place is refused as it is asked: no numbers, no such chart, nothing to change', async () => {
     state.said.push('chart the regions')
     const before = folder()
     for (const chart of [{ op: 'make', range: 'Data!B1:B9' }, { op: 'change', chart: 'Chart 9', kind: 'pie' }, { op: 'remove', chart: 'Nope' }]) {
@@ -1110,10 +1111,63 @@ describe('a chart an agent makes or changes', () => {
     await tool('sheet_chart', { item: itemId, chart: { op: 'make', range: 'Data!B1:C9' }, because: 'asked', quote: 'chart the regions' })
     expect(chartsIn(path)).toHaveLength(1)
     expect((await tool('sheet_chart', { item: itemId, chart: { op: 'change', chart: 'Chart 1' }, because: 'asked', quote: 'chart the regions' })).text).toBe('Say what changes: its kind, its range or its title.')
-    const plan = join(dir, 'Plan.tcsheet')
-    TcsheetBackend.create(plan, 'Plan')
-    const refused = await tool('sheet_chart', { item: open(plan, 'Plan'), chart: { op: 'make', range: 'A1:B3' }, because: 'own' })
-    expect(refused).toMatchObject({ isError: true, text: 'Charts are kept in an opened Excel file only, for now: this sheet has none to change.' })
     expect(Object.keys(folder())).toEqual(Object.keys(before))
+  })
+})
+
+/** sheet_chart on a sheet the service holds, which keeps its charts in its snapshot (host/objects.ts): the same rule, read back through a cold load. */
+describe('a chart an agent makes on a .tcsheet', () => {
+  const cells = { 0: { 0: { v: 'Item' }, 1: { v: 'Cost' } }, 1: { 0: { v: 'Bus' }, 1: { v: 40 } }, 2: { 0: { v: 'Hotel' }, 1: { v: 90 } } }
+  const seeded = async (path: string, title: string): Promise<string> => {
+    TcsheetBackend.create(path, title)
+    const id = open(path, title)
+    await call('work.sheets.edit', { itemId: id, baseRev: 0, mutations: [{ id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: cells } }] })
+    return id
+  }
+  /** The charts a cold host reads from the file. */
+  const chartsOf = async (path: string) => {
+    const host = new SheetHost(() => new TcsheetBackend(path, join(dir, 'sheets', 'suggestions')))
+    try {
+      return readObjectsResource(JSON.parse((await host.snapshotJson({ tcsheet: path })).json))?.charts ?? []
+    } finally {
+      host.close()
+    }
+  }
+
+  it('on one others can open its own idea waits in this host\'s database, the file and its folder byte for byte; his accept lands it in the sheet', async () => {
+    const plan = join(library, 'Plan.tcsheet')
+    const id = await seeded(plan, 'Plan')
+    const before = folder()
+    const got = await tool('sheet_chart', { item: id, chart: { op: 'make', range: 'A1:B3', kind: 'pie', title: 'Trip costs' }, because: 'own' })
+    expect(got.isError, got.text).toBeFalsy()
+    expect(got.text).toMatch(/^Suggested: A pie chart of A1:B3, titled “Trip costs”\. Others share this sheet/)
+    expect(folder()).toEqual(before)
+    expect(await chartsOf(plan)).toEqual([])
+    expect((await call<SheetView>('work.sheets.open', { itemId: id })).changes!.map((c) => c.kind)).toEqual(['chart'])
+    await call('work.sheets.review', { itemId: id, which: 'all', verdict: 'accept' })
+    const [chart] = await chartsOf(plan)
+    expect(chart).toMatchObject({ kind: 'pie', title: { text: 'Trip costs' }, name: 'Chart 1', sheet: 'Sheet1' })
+    expect(chart!.series[0]).toMatchObject({ values: { ref: "'Sheet1'!$B$2:$B$3" }, categories: { ref: "'Sheet1'!$A$2:$A$3" } })
+  })
+
+  it('asked for in so many words it is written at once there', async () => {
+    const plan = join(library, 'Asked.tcsheet')
+    const id = await seeded(plan, 'Asked')
+    state.said.push('chart the costs please')
+    expect((await tool('sheet_chart', { item: id, chart: { op: 'make', range: 'A1:B3' }, because: 'asked', quote: 'chart the costs' })).text).toBe('A column chart of A1:B3.')
+    expect((await chartsOf(plan)).map((c) => c.kind)).toEqual(['column'])
+  })
+
+  it('on his own sheet set to write: made, changed and removed, each read back through a cold load', async () => {
+    const own = join(dir, 'Own.tcsheet')
+    const id = await seeded(own, 'Own')
+    await call('work.sheets.mode', { itemId: id, mode: 'writes' })
+    expect((await tool('sheet_chart', { item: id, chart: { op: 'make', range: 'A1:B3', at: 'E2' }, because: 'own' })).text).toBe('A column chart of A1:B3.')
+    expect((await chartsOf(own))[0]).toMatchObject({ kind: 'column', anchor: { from: { column: 4, row: 1 } } })
+    expect((await tool('sheet_chart', { item: id, chart: { op: 'change', chart: 'Chart 1', kind: 'bar', title: 'Costs' }, because: 'own' })).text).toBe('Chart 1: a bar chart, titled “Costs”.')
+    expect((await chartsOf(own))[0]).toMatchObject({ kind: 'bar', title: { text: 'Costs' } })
+    expect((await tool('sheet_chart', { item: id, chart: { op: 'make', range: 'A1:A3' }, because: 'own' })).isError).toBe(true)
+    expect((await tool('sheet_chart', { item: id, chart: { op: 'remove', chart: 'costs' }, because: 'own' })).text).toBe('Chart 1 removed.')
+    expect(await chartsOf(own)).toEqual([])
   })
 })
