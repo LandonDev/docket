@@ -234,18 +234,14 @@ export function markWords(text: string, query: string): [string, boolean][] {
 }
 
 /**
- * A long message's words from a little before the first match, so a hit's
- * line shows what it found: "…the controller fix on the second pad". Cut only
- * when the match starts past `after` characters; a line that shows it whole
- * keeps its start.
- */
-/**
  * A hit's words cut to show the match on a measured line. `fits` says whether a string, with the line's lead before it,
- * fits the line. The words through the end of the first match fitting, nothing is cut (the line's own end may truncate
- * what follows). Else the line starts as late as it must and no later, at a word where one starts there, and "…"
- * says so; a match too wide for the line starts the line itself.
+ * fits the whole line; `fitsLead` whether it fits the share a cut line gives what leads up to the match (about two
+ * thirds), so words follow the match. The words through the end of the first match fitting the whole line, nothing is
+ * cut (the line's own end may truncate what follows). Else the line starts as late as it must to hold "…" and the
+ * match in that share and no later, at a word where one starts there; a match too wide for it starts the line itself.
+ * A match at the very start is never led by "…": the line keeps its start and its end is what truncates.
  */
-export function cutToFit(text: string, query: string, fits: (line: string) => boolean): string {
+export function cutToFit(text: string, query: string, fits: (line: string) => boolean, fitsLead: (line: string) => boolean = fits): string {
   const flat = text.replace(/\s+/g, " ").trim();
   let at = 0;
   let end = -1;
@@ -256,14 +252,15 @@ export function cutToFit(text: string, query: string, fits: (line: string) => bo
     }
     at += part.length;
   }
-  if (end < 0 || fits(flat.slice(0, end))) return flat;
-  if (!fits(`…${flat.slice(at, end)}`)) return `…${flat.slice(at)}`;
-  // The earliest start that still shows the match whole: a later start is always shorter, so halve the span.
+  if (end < 0 || at === 0 || fits(flat.slice(0, end))) return flat;
+  if (!fitsLead(`…${flat.slice(at, end)}`)) return `…${flat.slice(at)}`;
+  // The earliest start that still holds "…" and the match in the lead's share: a later start is always shorter, so
+  // halve the span.
   let lo = 1;
   let hi = at;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (fits(`…${flat.slice(mid, end)}`)) hi = mid;
+    if (fitsLead(`…${flat.slice(mid, end)}`)) hi = mid;
     else lo = mid + 1;
   }
   const space = flat.indexOf(" ", lo - 1);
@@ -271,6 +268,12 @@ export function cutToFit(text: string, query: string, fits: (line: string) => bo
   return `…${flat.slice(start)}`;
 }
 
+/**
+ * A long message's words from a little before the first match, so a hit's
+ * line shows what it found: "…the controller fix on the second pad". Cut only
+ * when the match starts past `after` characters; a line that shows it whole
+ * keeps its start.
+ */
 export function aroundMatch(text: string, query: string, after = 40, lead = 12): string {
   const flat = text.replace(/\s+/g, " ").trim();
   let at = 0;

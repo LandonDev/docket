@@ -1888,7 +1888,8 @@ Around the canvas:
   conversation's name in a row's ink and the time, then who ("You: " alone in
   a direct chat) and the words, cut to start a little before the match only
   where the line, measured in its own 12px font, could not show it otherwise
-  (as late as it must, at a word where one starts there, else mid-run, so the match shows even deep in a
+  (the lead and the match within about two thirds of the line, so words
+  follow it; as late as it must, at a word where one starts there, else mid-run, so the match shows even deep in a
   URL; "…" only where words were cut), lit in `foreground` medium. A
   search's first bones say "Loading search results", the reader's "Loading
   messages". Name bones are fixed widths in pixels, different row to row. Under 640px the conversation's toolbar line reads "Last synced
@@ -1897,7 +1898,8 @@ Around the canvas:
   semibold (a direct chat's opens the person in People when LifeOS knows
   an address), one muted 12px fact ("Slack, CosmicGames") 8px after it on
   its baseline, and at the end two quiet 28px buttons, Start thread and
-  More. The messages are rows, not bubbles,
+  More. Under it the column fades over 12px, the app's edge fade, so no
+  sliver of a cut line sits at the seam. The messages are rows, not bubbles,
   in a 680px column stacked from its foot: a run of one writer inside five
   minutes shares one head (28px face, name 600, time 12px muted), the words
   14/22 with their line breaks and http, https and mailto links in `link`;
@@ -1918,7 +1920,8 @@ Around the canvas:
   inside 360 by 270, radius 8 inside the image outline, a skeleton of that
   shape while it comes; any other file is Mail's 40px chip with its 28px
   tile, named by its press ("View runner-budget.xlsx", "Download
-  build.zip"); a file that cannot come is one 12px muted line, its glyph,
+  build.zip"), and while its bytes are still on their way the same chip with
+  a spinner in its tile and its name muted; a file that cannot come is one 12px muted line, its glyph,
   its name in medium `foreground` (a long unbroken name wraps inside the
   message), why, and 8px on Try again (where asking
   or reading again may help) and Open in the app as quiet controls; a
@@ -1933,9 +1936,12 @@ Around the canvas:
   draft or a held one where the route says no, then its controls in ink at
   the line's far end, apart from the name: Use draft while the field holds
   his own words, Open thread; Discard beside the primary), a thread's held
-  reply whose press failed (the red mark, "Not sent.", LifeOS's reason, and
-  Open in Outbox at the far end; no Discard, its words never in the field),
-  or a refusal in red. His reply shows as his own message with one 12px line under it:
+  reply whose press failed (the red mark and "Not sent.", or, its outcome
+  unknown, the amber mark and "May have gone." with "Check whether it went
+  first"; then the thread's name in ink, LifeOS's reason muted, the route's
+  reason while the button is Copy, and Open in Outbox at the far end; no
+  Discard, its words never in the field, no amber mark on its row), or a
+  refusal in red. His reply shows as his own message with one 12px line under it:
   "Sending" and Undo (in ink, as Retry), or the red mark, "Not sent.", LifeOS's reason and
   Retry. The field empties at Send's press, the button turning busy until
   LifeOS answers. A message that arrives at the foot rises 4px and fades in over

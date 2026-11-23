@@ -108,7 +108,7 @@ vi.mock("../../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 import { toastAnchor } from "../../lib/toastAnchor";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { batchVerb, canEdit, OutboxView, rowWords } from "./OutboxView";
+import { batchVerb, canEdit, OutboxView, rememberOutboxTab, rowWords } from "./OutboxView";
 import { loadOutbox, resetOutboxStore, wantOutboxItem } from "./store";
 
 const mail = (id: string, to: string, subject: string, extra: Partial<OutboxItem> = {}): OutboxItem => ({
@@ -207,6 +207,15 @@ describe("the Outbox", () => {
     fireEvent.click(screen.getAllByText("Send to Dana Lee")[0]!);
     await act(async () => void (await loadOutbox()));
     expect(document.querySelector("[aria-current=true]")?.textContent).toContain("Send to Dana Lee");
+  });
+
+  it("opens on the item asked for (Open in Outbox from the composer) in its own tab, though Sent was the tab left open and another item is first", async () => {
+    await loadOutbox();
+    rememberOutboxTab("sent");
+    wantOutboxItem("box:lifeos:o3");
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    await waitFor(() => expect(document.querySelector("[aria-current=true]")?.textContent).toContain("Send to Events booking"), { timeout: 5000 });
+    expect(screen.getByRole("tab", { name: "Waiting" }).getAttribute("aria-selected")).toBe("true");
   });
 
   it("an item asked for that is gone leaves the page as it opens, and is forgotten when the page closes", async () => {

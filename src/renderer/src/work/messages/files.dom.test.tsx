@@ -78,15 +78,21 @@ describe("a message's files", () => {
     expect(waiting.closest("button")!.className).toContain("max-w-full");
   });
 
-  it("names each file's verb on its chip and opens it through the seam", () => {
+  it("names each file's verb on its chip and opens it through the seam, a file still on its way once its address comes", () => {
     const data = mount({}, "c_lucas");
     expect(within(block("c_lucas_m1")).getByRole("button", { name: "View runner-budget.xlsx" })).toBeTruthy();
-    fireEvent.click(within(block("c_lucas_m3")).getByRole("button", { name: "Download starboard-0.9.5-linux.zip" }));
+    // The build is only listed: its chip is pending (a spinner, the name muted), and a press waits for the address.
+    const zip = within(block("c_lucas_m3")).getByRole("button", { name: "Download starboard-0.9.5-linux.zip, on its way" });
+    expect(zip.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(zip);
     fireEvent.click(within(block("c_lucas_m1")).getByRole("button", { name: "View patch-notes-0.9.5.pdf" }));
+    expect(data.log.opened).toEqual([{ chatId: "c_lucas", messageId: "c_lucas_m1", file: "f_notes", verb: "view" }]);
+    act(() => data.storeFile("c_lucas", "c_lucas_m3", "f_zip", "https://lifeos.example.dev/api/storage/zip"));
     expect(data.log.opened).toEqual([
-      { chatId: "c_lucas", messageId: "c_lucas_m3", file: "f_zip", verb: "save" },
       { chatId: "c_lucas", messageId: "c_lucas_m1", file: "f_notes", verb: "view" },
+      { chatId: "c_lucas", messageId: "c_lucas_m3", file: "f_zip", verb: "save" },
     ]);
+    expect(within(block("c_lucas_m3")).getByRole("button", { name: "Download starboard-0.9.5-linux.zip" }).hasAttribute("aria-busy")).toBe(false);
     expect(block("c_lucas_m1").textContent).not.toContain("[file:");
   });
 

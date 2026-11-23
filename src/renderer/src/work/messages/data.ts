@@ -33,6 +33,10 @@ export interface ThreadDraft {
   thread?: string;
   /** A held reply whose press failed: LifeOS's reason. Its words are the item's, offered only through the Outbox. */
   failed?: string;
+  /** Failed with its outcome unknown (the Outbox's `outcomeUnknown`): LifeOS may have taken it, so it may have gone. */
+  unknown?: boolean;
+  /** The Outbox page's own key for the item (`<host>:<ref.at>:<ref.id>`), so Open in Outbox picks that very item. */
+  outboxKey?: string;
 }
 
 /** What a press on a file does: show it beside the conversation, or save it to Downloads. */
@@ -68,13 +72,14 @@ export interface MessagesData {
   useDrafts(chatId: string | null): readonly ThreadDraft[];
   /**
    * Presses a held draft with these words: an edit is saved to it first. Rejects with why nothing went, the error's
-   * `failed` true when the item itself failed (it stays in the Outbox, for Send again or Check Sent first there).
+   * `failed` true when the item itself failed (it stays in the Outbox, for Send again or Check Sent first there), and
+   * `unknown` true when it failed with its outcome unknown (it may have gone).
    */
   sendDraft(draft: ThreadDraft, text: string): Promise<void>;
   /** Saves his edit to a held draft's words, the Outbox's edit, without pressing it. */
   saveDraft(draft: ThreadDraft, text: string): Promise<void>;
-  /** Opens the Outbox, where a failed held reply is sent again or checked. */
-  openOutbox(): void;
+  /** Opens the Outbox on this held reply (whichever tab was open last), where it is sent again or checked. */
+  openOutbox(draft: ThreadDraft): void;
   /** Discards a held draft, or drops a copy-only one. */
   dropDraft(draft: ThreadDraft): Promise<void>;
   /** Asks LifeOS's worker to fetch a message's files it only listed; rejects when LifeOS did not take the ask. */

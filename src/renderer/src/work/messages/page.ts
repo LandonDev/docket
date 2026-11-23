@@ -104,6 +104,18 @@ export const typedFromDraft = (workspaceId: string, chatId: string): string | nu
  */
 const typedRevs = new Map<string, number>();
 export const typedRev = (workspaceId: string, chatId: string): number => typedRevs.get(key(workspaceId, chatId)) ?? 0;
+/**
+ * The field as a press found it: its words, whose they are and its revision. Every step that awaits (Send, Discard,
+ * Copy's cleanup, Undo and the draft save inside it) takes this before it awaits and judges by it after: the field is
+ * the pressed one only while its revision stands (`stillPressed`), whatever words it holds.
+ */
+export interface PressedField {
+  text: string;
+  from: string | null;
+  rev: number;
+}
+export const fieldAsPressed = (workspaceId: string, chatId: string): PressedField => ({ text: typedIn(workspaceId, chatId), from: typedFromDraft(workspaceId, chatId), rev: typedRev(workspaceId, chatId) });
+export const stillPressed = (workspaceId: string, chatId: string, pressed: PressedField): boolean => typedRev(workspaceId, chatId) === pressed.rev;
 const typedListeners = new Set<() => void>();
 /**
  * Keeps the field's words. `from` says whose they are: a draft's id, null for
@@ -219,7 +231,7 @@ export function usePendingPress(workspaceId: string, chatId: string): PendingPre
  * and not to be offered again, or failed with LifeOS's reason. Kept per conversation until the list itself drops the
  * draft (or lists it failed), so no mount, Retry or 640px crossing offers it again in the meantime.
  */
-export type DraftMark = { settled: true } | { failed: string };
+export type DraftMark = { settled: true } | { failed: string; unknown?: boolean };
 const draftMarks = new Map<string, ReadonlyMap<string, DraftMark>>();
 const NO_MARKS: ReadonlyMap<string, DraftMark> = new Map();
 const markListeners = new Set<() => void>();

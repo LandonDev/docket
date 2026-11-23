@@ -111,11 +111,23 @@ function Toolbar({ workspaceId, detail, loading, name, narrow, onBack }: { works
   const line = narrow && source && staleOf(source, now) ? (heard ? `Last synced ${syncWhen(heard, now)}` : "Has not synced") : null;
   // Opening a conversation under 640px puts the keys on its way back. Crossing the line with it open moves them only
   // when they stood outside the conversation (the list, now hidden): his place in it, the composer say, is kept.
+  // Widening past the line removes Back: if it held the keys they pass to the open row in the list, else to the field.
   const back = useRef<HTMLButtonElement>(null);
+  const backHeld = useRef(false);
+  const toolbar = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!narrow) return;
+    if (!narrow) {
+      const fell = document.activeElement === null || document.activeElement === document.body;
+      if (!backHeld.current || !fell) return;
+      backHeld.current = false;
+      const open = chat ? document.getElementById(`chat-row-${chat._id}`)?.closest<HTMLElement>("[role=listbox]") : null;
+      const field = toolbar.current?.closest("[data-conversation]")?.querySelector<HTMLElement>("[data-composer] textarea");
+      (open ?? field)?.focus({ preventScroll: true });
+      return;
+    }
     const pane = back.current?.closest("[data-conversation]");
     if (!pane?.contains(document.activeElement)) back.current?.focus({ preventScroll: true });
+    // biome-ignore lint/correctness/useExhaustiveDependencies: on the crossing alone
   }, [narrow]);
   // Start thread has its own button; More holds the rest, Mention only while a thread is open.
   const rows = (): MenuRow[] =>
@@ -136,11 +148,21 @@ function Toolbar({ workspaceId, detail, loading, name, narrow, onBack }: { works
   // A direct chat's name opens the person in People, where LifeOS knows an address for them.
   const person = chat?.kind === "direct" ? detail?.email : undefined;
   return (
-    <div className="shrink-0 border-b border-border">
+    <div ref={toolbar} className="shrink-0 border-b border-border">
       <div className="flex h-11 items-center gap-0.5 px-2">
         {narrow ? (
           <Tip label="Back to Messages">
-            <Button ref={back} variant="ghost" size="icon-sm" aria-label="Back to Messages" className="text-muted-foreground" onClick={onBack}>
+            <Button
+              ref={back}
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Back to Messages"
+              className="text-muted-foreground"
+              onClick={onBack}
+              onFocus={() => (backHeld.current = true)}
+              // Moved on to another control, it no longer holds them; removed by the widening, it did (no control after it).
+              onBlur={(event) => void (event.relatedTarget && (backHeld.current = false))}
+            >
               <ArrowLeft />
             </Button>
           </Tip>
@@ -470,21 +492,26 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
     if (!page.done && layout.total() < view.current.height + LOAD_AHEAD) page.more();
   }, [page, layout]);
 
+  // "2 new" goes as it is pressed: the keys pass to the column, never to the page.
+  const log = useRef<HTMLDivElement>(null);
   const toFoot = (): void => {
     goTo(0);
     keepPlace(workspaceId, chatId, null);
     setUnseen(0);
     redraw();
+    log.current?.focus({ preventScroll: true });
   };
 
   if (!blocks.length) return <EmptyState title="No messages yet" />;
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={scroller} onScroll={onScroll} data-column className="flex h-full flex-col-reverse overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
+      {/* At the toolbar's seam the column fades over 12px, the app's edge fade (a mask, no colour), so a line cut by the
+          scroll's top edge never shows as a sliver; at the column's top its padding is all the fade covers. */}
+      <div ref={scroller} onScroll={onScroll} data-column className="flex h-full flex-col-reverse overflow-x-hidden overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent,var(--foreground)_12px)] [scrollbar-gutter:stable]">
         <RowsContextMenu lazyMount label="Message" rowsFor={messageRows} onPick={pickMessage} openRef={menuAt}>
           {/* A log that pages upward says nothing of itself: an older page drawn on the way up is not news. What comes at
               the foot is said once, in the status under it. */}
-          <div className={cn(COLUMN, "focus-ring pt-4 pb-5")} role="log" aria-label="Messages" aria-live="off" tabIndex={0} onKeyDown={keys}>
+          <div ref={log} className={cn(COLUMN, "focus-ring pt-4 pb-5")} role="log" aria-label="Messages" aria-live="off" tabIndex={0} onKeyDown={keys}>
             <div aria-hidden style={{ height: layout.total() - layout.offsetOf(range.end) }} />
             {shown
               .slice()

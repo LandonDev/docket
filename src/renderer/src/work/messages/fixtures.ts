@@ -261,6 +261,10 @@ export interface FixtureOptions {
   lingers?: boolean;
   /** A held draft's press fails and the item stays as failed, with these words. */
   pressFails?: string;
+  /** With `pressFails`: the failure's outcome is unknown (the Outbox's `outcomeUnknown`), so it may have gone. */
+  pressUnknown?: boolean;
+  /** Saving an edit to a held draft waits for `release`. */
+  slowSave?: boolean;
   /** Undo waits for `release`. */
   slowUndo?: boolean;
   /** Mark unread reaches the list only at `catchUp`, as LifeOS's answer comes after the command. */
@@ -285,7 +289,8 @@ export interface FixtureLog {
   retried: string[];
   pressed: { id: string; text: string }[];
   saved: { id: string; text: string }[];
-  outbox: number;
+  /** The Outbox items asked for by Open in Outbox, by the page's key. */
+  outbox: string[];
   dropped: string[];
   requested: string[];
   opened: { chatId: string; messageId: string; file: string; verb: FileVerb }[];
@@ -315,11 +320,15 @@ export interface FixtureControls {
   release(): void;
   /** The lists catch up: lingering drafts leave, a late unread mark lands. */
   catchUp(): void;
+  /** A held draft's press fails elsewhere (the Outbox, the phone): the list shows it failed. */
+  failDraft(id: string, reason: string, unknown?: boolean): void;
+  /** LifeOS's worker stores a message's file: its address comes. */
+  storeFile(chatId: string, messageId: string, fileId: string, url: string): void;
 }
 
 export function fixtureData(options: FixtureOptions = {}): MessagesData & FixtureControls {
   const now = options.now ?? NOW;
-  const log: FixtureLog = { read: [], unread: [], chats: [], searched: [], sent: [], undone: [], retried: [], pressed: [], saved: [], outbox: 0, dropped: [], requested: [], opened: [] };
+  const log: FixtureLog = { read: [], unread: [], chats: [], searched: [], sent: [], undone: [], retried: [], pressed: [], saved: [], outbox: [], dropped: [], requested: [], opened: [] };
   let rows = options.empty || options.noSource ? [] : (options.chats ?? CHATS);
   const threads = new Map<string, ChatMessage[]>(Object.entries(options.messages ?? MESSAGES));
   // Discord silent since Nov 3 holds nothing newer than Nov 3: its conversations move back to before its last sync.
@@ -408,6 +417,18 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       rows = rows.map((row) => (row._id === chatId ? { ...row, lastAt: sentAt, lastText: text, lastWho: who, lastFromMe: false, lastInAt: sentAt, lastForMeAt: sentAt, unread: true } : row));
       changed();
     },
+    storeFile(chatId, messageId, fileId, url) {
+      putMessages(
+        chatId,
+        messagesOf(chatId).map((m) => (m._id === messageId ? { ...m, files: m.files.map((f) => (f._id === fileId ? { ...f, status: "stored" as const, url } : f)) } : m)),
+      );
+    },
+    failDraft(id, reason, unknown) {
+      const chatId = chatOfDraft(id);
+      if (!chatId) return;
+      drafts = { ...drafts, [chatId]: drafts[chatId]!.map((d) => (d.id === id ? { ...d, failed: reason, ...(unknown ? { unknown } : {}) } : d)) };
+      changed();
+    },
     catchUp() {
       for (const later of lingering.splice(0)) later();
       for (const id of lateUnread) mark(id, true);
@@ -479,7 +500,8 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     },
     useDrafted() {
       useVersion();
-      return useMemo(() => new Set([...(options.drafted ?? []), ...Object.keys(drafts).filter((id) => drafts[id]!.length)]), [drafts]);
+      // A failed held reply is no draft waiting: the row's mark leaves it to the composer's line.
+      return useMemo(() => new Set([...(options.drafted ?? []), ...Object.keys(drafts).filter((id) => drafts[id]!.some((d) => d.failed === undefined))]), [drafts]);
     },
     useNow: () => now,
     markRead(id) {
@@ -526,21 +548,23 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
       if (options.pressFails) {
         // The item stays, failed, as the Outbox keeps it: its list says so only once it catches up.
         const failed = options.pressFails;
+        const unknown = options.pressUnknown === true;
         const settle = (): void => {
-          drafts = { ...drafts, [chatId]: drafts[chatId]!.map((d) => (d.id === draft.id ? { ...d, text, failed } : d)) };
+          drafts = { ...drafts, [chatId]: drafts[chatId]!.map((d) => (d.id === draft.id ? { ...d, text, failed, ...(unknown ? { unknown } : {}) } : d)) };
           changed();
         };
         if (options.lingers) lingering.push(settle);
         else settle();
-        throw Object.assign(new Error(failed), { failed: true });
+        throw Object.assign(new Error(failed), { failed: true, unknown });
       }
       settleDraft(chatId, draft.id);
       reply(chatId, text);
     },
-    openOutbox() {
-      log.outbox++;
+    openOutbox(draft) {
+      log.outbox.push(draft.outboxKey ?? `box:host:${draft.id}`);
     },
     async saveDraft(draft, text) {
+      if (options.slowSave) await new Promise<void>((go) => (letGo = go));
       log.saved.push({ id: draft.id, text });
       const chatId = chatOfDraft(draft.id);
       if (!chatId) return;

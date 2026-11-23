@@ -192,7 +192,9 @@ The look is docs/DESIGN.md "The Messages view".
   Send on its way, his words and the keys stay where they were. The hidden
   list takes the keys back as it shows again, not as it mounts. A remount
   that cannot be helped (Retry) opens where he stood this visit, reading
-  older pages to hold that row, ahead of "New".
+  older pages to hold that row, ahead of "New". At the toolbar's seam the
+  column fades over 12px (the app's edge fade, a `mask-image`), so a line cut
+  by the scroll's top edge never shows as a sliver.
 - **Windowing.** The list's rows are one height, so `useWindowed`
   (work-kit/mail/lib/window, Mail's) draws only those near the window. The
   conversation's blocks are measured: `RowLayout` (lib/transcriptWindow.ts)
@@ -246,20 +248,34 @@ The look is docs/DESIGN.md "The Messages view".
   drafts.ts) until the Outbox's own list drops it, so its line, Use draft
   and a fill of an empty field never come back for the round trip, on any
   mount. A held reply whose press failed stays in the Outbox (Send again,
-  Check Sent first there): the composer shows "Not sent." with the reason and
-  Open in Outbox, never puts its words in the field, and clears words tied to
-  it; what he types is his own reply. Discard empties the field if and only
-  if its words are that draft's (tied by its id, edited or not) at the press
-  and the field's revision (`typedRev`, moved by every edit) is unchanged
-  when it settles; the copy-only cleanup after Copy goes by the same rule. A refusal is kept with the conversation (`page.ts`) until he
+  Check whether it went first there): the composer's line (`role="status"`)
+  says "Not sent." when the outcome is known, or "May have gone." with the
+  Outbox's own "Check whether it went first" when it is not (`outcomeUnknown`,
+  carried on the draft and on the rejected press as `unknown`), then the
+  thread's name in ink, the reason muted, the route's reason while the button
+  is Copy, and Open in Outbox, which opens that very item
+  (`wantOutboxItem(<host>:<ref.at>:<ref.id>)`) in whichever tab holds it. Its
+  words never come into the field, and the row wears no "a draft waits" mark
+  for it. Whose words the field holds is answered once, against every draft
+  still waiting (`fieldOrigin`, drafts.ts: held, copy-only, failed, or his
+  own), for the line, Send and the cleanup alike: a failure from elsewhere
+  empties the field only if it still holds the item's own words, and an edit
+  he was making stays as his own words. A draft already waiting when the
+  field held other words never fills it later; only a draft that arrives
+  does. Every step that awaits (Send, Discard, Copy's cleanup, Undo and the
+  save inside it) takes the field as pressed before it awaits
+  (`fieldAsPressed`: words, origin, revision) and judges by it after
+  (`stillPressed`): Discard and the cleanup after Copy empty the field only
+  if its revision (`typedRev`, moved by every edit) still stands. A refusal is kept with the conversation (`page.ts`) until he
   types or sends again. His own reply shows from LifeOS's row: `queued` is
   "Sending" with Undo, `sending` "Sending", `failed` "Not sent." with the
   reason and Retry. Undone words are his own and never take a draft's id,
   judged when the Undo settles: into an empty field, else before his own
   words, a line between; where the field then holds a held draft's words,
   they are saved to the item first when they differ from its own
-  (`saveDraft`, the Outbox's edit), then the field takes his words and the
-  draft waits behind Use draft.
+  (`saveDraft`, the Outbox's edit), and again if he went on editing them
+  while the save went, then the field takes his words and the draft waits
+  behind Use draft; words that became his own meanwhile stay behind his.
 - **Threads.** Start thread is the toolbar's 28px button and a row on the
   row's and a message's menus; a message's chip carries its words as
   `quote`. Mention in a thread puts the chip in the thread open in the window
@@ -277,18 +293,24 @@ The look is docs/DESIGN.md "The Messages view".
   none is left, or in a search the hit he opened); Shift+F10 or the
   menu key opens the active row's menu; until a row is active and drawn the
   list wears the focus ring. When the row the keys stand on leaves the list
-  (read, under Unread), they keep its index: the arrows move from there and
-  the menu key opens the row now there. Clear filter leaves the keys on the
-  whole list's first row; Clear search hands them to the search field. Search hits are one list the same way; a search
+  (read, under Unread), the row now at its index becomes the active row,
+  marked and named (`aria-activedescendant`), so Enter and the menu key act
+  on a row he sees; when the last one leaves, the keys go to Clear filter.
+  Clear filter leaves the keys on the whole list's first row; Clear search
+  hands them to the search field. No control that goes by its own action or
+  a change of layout drops the keys to the page: widening past 640px with
+  Back focused hands them to the open row in the list (else the composer's
+  field), and "2 new" hands them to the column as it goes. Search hits are one list the same way; a search
   keeps its last hits on screen while the next words are asked (bones only
   before the first answer), and a hit's line is measured so the word it
   found always shows: measured in its own font on a canvas
   (`measureText`, widths kept by words), the words through the match are
-  never cut when they fit, else the line starts as late as it must (at a
-  word where one starts there, else mid-run, so a URL's match shows too) and
-  "…" stands only where words were cut; where nothing can measure text it
-  counts characters (`aroundMatch`). Back under 640px is taken by the first
-  answer that shows, once: hits put the keys on the hit he left (or the one
+  never cut when they fit; else what leads up to and through the match gets
+  about two thirds of the line, so words follow it, starting at a word where
+  one starts there, else mid-run (a URL's match shows too), and "…" stands
+  only where words were cut, never before a match at the very start; where nothing can measure text it
+  counts characters (`aroundMatch`). New words drop the way back. Back under
+  640px is taken by the first answer that shows, once: hits put the keys on the hit he left (or the one
   now in its place), brought into view; no hits on Clear search; a failure
   on its Retry, the way back kept for the search Retry brings. Later answers,
   as he types, take nothing. In the column the
@@ -310,7 +332,10 @@ The look is docs/DESIGN.md "The Messages view".
   picture uses released, read again when drawn again); a picture never grows
   wider than its message, its height from its proportions; one whose bytes
   did not come or do not draw says so in a file's failure line, with Try
-  again and Open in the app. A file a canvas kind shows opens in the view's own pane
+  again and Open in the app. A file LifeOS lists but has not stored yet
+  (`listed`, `wanted`) is its own chip, pending: a spinner in its tile, the
+  name muted, `aria-busy`; a press then waits for the address and opens it
+  as it comes, with no toast for a file that is merely on its way. A file a canvas kind shows opens in the view's own pane
   (`openItem(env, messagesPaneOf(ws), {kind, source: chatFileSource(…)})`,
   the host fetching it as the owner); any other is saved to Downloads once
   stored. `fileMarkers` takes the folded names out of the words once the

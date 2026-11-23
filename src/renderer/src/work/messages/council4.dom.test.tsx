@@ -174,7 +174,7 @@ describe("a held reply whose press failed", () => {
     expect(inComposer("Discard")).toBeNull();
     expect(inComposer("Use draft")).toBeNull();
     fireEvent.click(within(line).getByRole("button", { name: "Open in Outbox" }));
-    expect(data.log.outbox).toBe(1);
+    expect(data.log.outbox).toEqual([`box:host:${HELD_DRAFT.id}`]);
     act(() => data.catchUp());
     type("I'll send it by hand");
     enter();

@@ -153,7 +153,11 @@ function SearchField({ workspaceId, query, field }: { workspaceId: string; query
           autoComplete="off"
           spellCheck={false}
           value={query}
-          onChange={(event) => patchPage(workspaceId, { query: event.currentTarget.value })}
+          onChange={(event) => {
+            // New words are a new search: the way back belonged to the words he left.
+            takeReturn(workspaceId);
+            patchPage(workspaceId, { query: event.currentTarget.value });
+          }}
           onKeyDown={(event) => {
             if (event.key !== "Escape") return;
             event.preventDefault();
@@ -192,6 +196,11 @@ function ChatRows({
 }) {
   const data = useMessagesData();
   const chats = data.useChats(filter);
+  // Whether the rows held the keys: when his reading takes the last row off a filtered list, the list goes from under
+  // the keys, and they pass to Clear filter rather than fall to the page.
+  const hadKeys = useRef(false);
+  const heldKeys = useCallback(() => hadKeys.current, []);
+  const onKeys = useCallback((on: boolean) => void (hadKeys.current = on), []);
   // A failure on his way back gives Retry the keys and keeps the way back for the list Retry brings.
   if (chats.status === "failed") return <ListEmpty title="Messages did not load" action={retryOf(retry)} returns={{ workspaceId, shown, keep: true }} />;
   if (chats.status === "loading") return <RowBones />;
@@ -199,7 +208,7 @@ function ChatRows({
   if (rows.length === 0) {
     // Come back to a list his reading emptied, the keys go to Clear filter.
     // Clear filter leaves the keys to the whole list, on its first row.
-    if (filter !== "all") return <ListEmpty title={FILTER_EMPTY[filter]} action={{ label: "Clear filter", onClick: () => (returnToTop(workspaceId), patchPage(workspaceId, { filter: "all" })) }} returns={{ workspaceId, shown }} />;
+    if (filter !== "all") return <ListEmpty title={FILTER_EMPTY[filter]} action={{ label: "Clear filter", onClick: () => (returnToTop(workspaceId), patchPage(workspaceId, { filter: "all" })) }} returns={{ workspaceId, shown }} takesKeys={heldKeys} />;
     // Held until the sources answer too, so an empty job says its true cause the first time; sources that did not load
     // leave the cause unknown, which is a list that did not load.
     if (linked === null) return <RowBones />;
@@ -207,7 +216,7 @@ function ChatRows({
     if (!linked) return <ListEmpty title={`No chat is linked to ${job}`} action={{ label: "Open Connections", onClick: openConnections }} />;
     return <ListEmpty title={`No messages in ${job} yet`} />;
   }
-  return <RowsWindow workspaceId={workspaceId} filter={filter} rows={rows} done={chats.value.done} more={chats.value.more} openId={openId} narrow={narrow} shown={shown} onOpen={onOpen} />;
+  return <RowsWindow workspaceId={workspaceId} filter={filter} rows={rows} done={chats.value.done} more={chats.value.more} openId={openId} narrow={narrow} shown={shown} onOpen={onOpen} onKeys={onKeys} />;
 }
 
 function RowsWindow({
@@ -220,6 +229,7 @@ function RowsWindow({
   narrow,
   shown,
   onOpen,
+  onKeys,
 }: {
   workspaceId: string;
   filter: ChatFilter;
@@ -230,6 +240,8 @@ function RowsWindow({
   narrow: boolean;
   shown: boolean;
   onOpen: (chatId: string) => void;
+  /** Whether the listbox holds the keys, for the list around it. */
+  onKeys: (on: boolean) => void;
 }) {
   const data = useMessagesData();
   const now = data.useNow();
@@ -251,12 +263,13 @@ function RowsWindow({
     if (index * SLOT < el.scrollTop) el.scrollTop = index * SLOT;
     else if ((index + 1) * SLOT > el.scrollTop + el.clientHeight) el.scrollTop = (index + 1) * SLOT - el.clientHeight;
   };
-  // Where the keys stood, by index: when the row they stood on leaves the list (read, under Unread), the arrows move
-  // from its place and the menu key opens the row now there.
+  // Where the keys stood, by index: when the row they stood on leaves the list (read, under Unread), the row now at its
+  // index becomes the active one, marked and named to a screen reader, so Enter and the menu key act on a row he sees.
   const keptAt = useRef(0);
   useLayoutEffect(() => {
     const at = active ? rows.findIndex((row) => row._id === active) : -1;
     if (at >= 0) keptAt.current = at;
+    else if (active && rows.length) setActive(rows[Math.min(keptAt.current, rows.length - 1)]!._id);
   });
   // Back where he left this list as it shows; and, come back from a conversation under 640px, the keys on the row he left.
   useLayoutEffect(() => {
@@ -309,26 +322,21 @@ function RowsWindow({
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>): void => {
     const found = active ? rows.findIndex((row) => row._id === active) : -1;
-    // The active row gone from the list: the keys stand where it stood, on the row now at its index.
-    const gone = active !== null && found < 0 && rows.length > 0;
-    const here = gone ? rows[Math.min(keptAt.current, rows.length - 1)]!._id : active;
     if (menuKey(event)) {
-      if (!here) return;
+      if (!active) return;
       event.preventDefault();
-      menuAt.current?.({ x: 0, y: 0, id: here });
+      menuAt.current?.({ x: 0, y: 0, id: active });
       return;
     }
-    if (event.key === "Enter" && here) {
+    if (event.key === "Enter" && active) {
       event.preventDefault();
-      open(here);
+      open(active);
       return;
     }
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!step) return;
     event.preventDefault();
-    // From a departed row, down is the row that took its place and up the one above it.
-    const at = gone ? keptAt.current - (step > 0 ? 1 : 0) : found;
-    const next = rows[Math.max(0, Math.min(rows.length - 1, at + step))];
+    const next = rows[Math.max(0, Math.min(rows.length - 1, found + step))];
     if (!next) return;
     setActive(next._id);
     if (!narrow) open(next._id);
@@ -348,6 +356,8 @@ function RowsWindow({
           aria-label="Conversations"
           aria-activedescendant={standing && active ? rowId(active) : undefined}
           onKeyDown={keys}
+          onFocus={() => onKeys(true)}
+          onBlur={() => onKeys(false)}
           className={cn("group/list px-1.5 pb-1.5", standing ? "outline-none" : "focus-ring")}
         >
           <div aria-hidden style={{ height: range.start * SLOT }} />
@@ -500,16 +510,29 @@ export function RowBones({ label = "Loading conversations" }: { label?: string }
  * keys as the list shows; it takes the way back with it, or, `keep` (a failure's Retry), leaves it for the list Retry
  * brings.
  */
-function ListEmpty({ title, action, returns }: { title: string; action?: { label: string; onClick: () => void }; returns?: { workspaceId: string; shown: boolean; keep?: boolean } }) {
+function ListEmpty({
+  title,
+  action,
+  returns,
+  takesKeys,
+}: {
+  title: string;
+  action?: { label: string; onClick: () => void };
+  returns?: { workspaceId: string; shown: boolean; keep?: boolean };
+  /** Whether the list that was here held the keys when it went: the action takes them, so they never fall to the page. */
+  takesKeys?: () => boolean;
+}) {
   const button = useRef<HTMLButtonElement>(null);
   const ws = returns?.workspaceId;
   const shown = returns?.shown ?? false;
   const keep = returns?.keep ?? false;
   useLayoutEffect(() => {
+    const fell = document.activeElement === null || document.activeElement === document.body;
+    if (takesKeys?.() && fell) return void button.current?.focus();
     if (!ws || !shown || !peekReturn(ws)) return;
     if (!keep) takeReturn(ws);
     button.current?.focus();
-  }, [ws, shown, keep]);
+  }, [ws, shown, keep, takesKeys]);
   return (
     <Empty className={LIST_EMPTY}>
       <EmptyHeader>
@@ -645,7 +668,7 @@ function SearchHits({
         className={cn("group/list px-1.5 pb-1.5", standing ? "outline-none" : "focus-ring")}
       >
         {list.map((hit) => (
-          <HitRow key={hit.messageId} hit={hit} row={known.get(hit.chatId)} query={query} chars={chars} fits={measure ? (line) => measure(line) <= room : null} open={hit.messageId === opened} active={hit.messageId === active} now={now} onOpen={() => open(hit)} />
+          <HitRow key={hit.messageId} hit={hit} row={known.get(hit.chatId)} query={query} chars={chars} fits={measure ? (line) => measure(line) <= room : null} fitsLead={measure ? (line) => measure(line) <= room * LEAD_SHARE : null} open={hit.messageId === opened} active={hit.messageId === active} now={now} onOpen={() => open(hit)} />
         ))}
       </div>
     </div>
@@ -654,6 +677,8 @@ function SearchHits({
 
 const hitId = (messageId: string): string => `chat-hit-${messageId}`;
 
+/** What a cut hit's line gives the words up to and through its match, so a few words follow it. */
+const LEAD_SHARE = 2 / 3;
 /** A hit row's insets, gutter and face column: what of the list's width its second line cannot use. */
 const HIT_INSET = 78;
 /** Widths of text in the hits' 12px font, kept by font and words: a list redraws its lines on every key he types. */
@@ -687,6 +712,7 @@ function HitRow({
   query,
   chars,
   fits,
+  fitsLead,
   open,
   active,
   now,
@@ -697,6 +723,7 @@ function HitRow({
   query: string;
   chars: number;
   fits: ((line: string) => boolean) | null;
+  fitsLead: ((line: string) => boolean) | null;
   open: boolean;
   active: boolean;
   now: number;
@@ -733,7 +760,7 @@ function HitRow({
       </span>
       <span dir="auto" className="h-5 truncate text-start text-xs leading-5 text-muted-foreground">
         {lead}
-        <Lit text={fits ? cutToFit(hit.text, query, (line) => fits(lead + line)) : aroundMatch(hit.text, query, room, Math.min(12, room))} query={query} />
+        <Lit text={fits ? cutToFit(hit.text, query, (line) => fits(lead + line), fitsLead ? (line) => fitsLead(lead + line) : undefined) : aroundMatch(hit.text, query, room, Math.min(12, room))} query={query} />
       </span>
     </div>
   );

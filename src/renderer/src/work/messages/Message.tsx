@@ -6,6 +6,7 @@ import { fileMarkers, SOURCE_APP, type ChatFile, type ChatMessage, type ChatRepl
 import { CornerDownRight, MoreHorizontal, type IconComponent } from "../../chrome/icons";
 import { Tip } from "../../components/tip";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
 import { Doc, File as FileGlyph, Media, Pdf, Slides, Table } from "../icons";
 import { reveal } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
@@ -17,8 +18,8 @@ import { Face } from "../mail/face";
 import { useMessagesData, type FileVerb } from "./data";
 import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
-import { useWaitingDrafts } from "./drafts";
-import { keepTyped, typedFromDraft, typedIn } from "./page";
+import { fieldOrigin, useWaitingDrafts } from "./drafts";
+import { fieldAsPressed, keepTyped, stillPressed, typedIn } from "./page";
 
 /**
  * One message in the conversation's column (docs/agents/work-messages.md):
@@ -121,7 +122,7 @@ function Files({ message, chatId, chat }: { message: ChatMessage; chatId: string
     if (wants && !asked.has(message._id)) ask();
   }, [wants, message._id, ask]);
   const link = message.permalink ?? chat.link;
-  const open = (file: ChatFile) => () => data.openFile(chatId, message, file);
+  const open = useCallback((file: ChatFile) => () => data.openFile(chatId, message, file), [data, chatId, message]);
   // An ask LifeOS did not take leaves its files unfetched: each says so.
   const cannot = (file: ChatFile): boolean => file.status === "failed" || (refused !== null && (file.status === "listed" || file.status === "wanted"));
   // Pictures each on their own line; the other files side by side, as Mail lays out a mail's; the ones that could not come last.
@@ -245,21 +246,46 @@ function Picture({ file, source, link, onOpen }: { file: ChatFile; source: ChatR
 const GLYPH: Partial<Record<CanvasKind, IconComponent>> = { pdf: Pdf, sheet: Table, slides: Slides, media: Media, document: Doc };
 
 /** Mail's 40px chip: a 28px tile with the file's glyph, its name, its size; the press views or downloads it. */
+/**
+ * A file's chip, named by its press. Until LifeOS holds its bytes (listed or wanted, its address not come yet) the chip
+ * is the same chip, pending: a spinner in its tile and the name muted; a press then waits for the address and opens it
+ * by itself as it comes, rather than failing with a toast for a file that is merely on its way.
+ */
 function FileChip({ file, verb, onOpen }: { file: ChatFile; verb: FileVerb; onOpen: () => void }) {
   const kind = viewKind(file);
   const Glyph = (kind && GLYPH[kind]) || FileGlyph;
+  const pending = file.status !== "stored";
   const said = `${verb === "view" ? "View" : "Download"} ${file.name}`;
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => {
+    if (!waiting || pending) return;
+    setWaiting(false);
+    onOpen();
+  }, [waiting, pending, onOpen]);
   return (
-    <Tip label={said}>
-      <Button variant="ghost" aria-label={said} onClick={onOpen} className="h-10 max-w-72 min-w-0 shrink justify-start gap-2 self-start rounded-lg border border-border ps-1.5 pe-3 font-normal">
-        <span className="grid size-7 shrink-0 place-items-center rounded-sm bg-muted text-muted-foreground">
-          <Glyph className="size-3.5" />
-        </span>
-        <span className="min-w-0 truncate font-medium text-foreground">{file.name}</span>
+    <Tip label={pending ? `${file.name} is on its way from LifeOS` : said}>
+      <Button
+        variant="ghost"
+        aria-label={pending ? `${said}, on its way` : said}
+        aria-busy={pending || undefined}
+        data-pending={pending || undefined}
+        onClick={pending ? () => setWaiting(true) : onOpen}
+        className="h-10 max-w-72 min-w-0 shrink justify-start gap-2 self-start rounded-lg border border-border ps-1.5 pe-3 font-normal"
+      >
+        <ChipTile glyph={Glyph} pending={pending} />
+        <span className={cn("min-w-0 truncate font-medium", pending ? "text-muted-foreground" : "text-foreground")}>{file.name}</span>
         {file.size !== undefined ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatSize(file.size)}</span> : null}
       </Button>
     </Tip>
   );
+}
+
+/**
+ * The chip's 28px tile: the file's glyph, or a spinner while its bytes are on their way. The tile holds its size, so
+ * the chip's width never moves as the spinner comes and goes (the busy button guard's concern, kept here by the tile).
+ */
+function ChipTile({ glyph: Glyph, pending }: { glyph: IconComponent; pending: boolean }) {
+  return <span className="grid size-7 shrink-0 place-items-center rounded-sm bg-muted text-muted-foreground">{pending ? <Spinner className="size-3.5" /> : <Glyph className="size-3.5" />}</span>;
 }
 
 /**
@@ -312,24 +338,40 @@ function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; wor
    */
   const undo = async (): Promise<void> => {
     const words = await data.undo(chatId, reply.outboxId);
-    const now = typedIn(workspaceId, chatId);
-    const from = typedFromDraft(workspaceId, chatId);
-    const draft = from ? waiting.current.find((d) => d.id === from && d.failed === undefined) : undefined;
-    if (draft?.held && now.trim()) {
-      try {
-        if (now.trim() !== draft.text) await data.saveDraft(draft, now.trim());
-      } catch (err) {
-        // Not saved: neither is lost. His words go in front, the draft's edit behind as his own, and the refusal shows.
-        keepTyped(workspaceId, chatId, `${words}\n${now}`, null);
-        throw err;
+    // The field as he left it when the recall answered. Each save of a held draft's edit awaits, so the field is taken
+    // before it and judged after by its revision (`stillPressed`): words he went on typing under the draft's id meanwhile
+    // are saved too, before the recalled words take the field; words that became his own stay behind them.
+    let pressed = fieldAsPressed(workspaceId, chatId);
+    let saved: string | null = null;
+    for (let round = 0; round < 5; round++) {
+      const at = fieldOrigin(pressed.from, waiting.current);
+      if (at.kind !== "held" || !pressed.text.trim()) break;
+      const edit = pressed.text.trim();
+      if (edit !== (saved ?? at.draft.text)) {
+        try {
+          await data.saveDraft(at.draft, edit);
+          saved = edit;
+        } catch (err) {
+          // Not saved: neither is lost. His words go in front, the field as it is now behind as his own, and the refusal shows.
+          const now = typedIn(workspaceId, chatId);
+          keepTyped(workspaceId, chatId, now.trim() ? `${words}\n${now}` : words, null);
+          throw err;
+        }
       }
-      keepTyped(workspaceId, chatId, words, null);
-      return;
+      if (stillPressed(workspaceId, chatId, pressed)) {
+        keepTyped(workspaceId, chatId, words, null);
+        return;
+      }
+      pressed = fieldAsPressed(workspaceId, chatId);
     }
-    // An unedited copy-only draft waits behind Use draft; anything else in the field is his and stays behind his words.
-    const behind = now.trim() && !(draft && now === draft.text) ? now : "";
+    // His own words, or a copy-only draft's edit (which has nowhere to be saved), stay behind his recalled words; an
+    // unedited copy-only draft waits behind Use draft.
+    const at = fieldOrigin(pressed.from, waiting.current);
+    const now = pressed.text;
+    const behind = now.trim() && !(at.kind !== "own" && now === at.draft.text) ? now : "";
     keepTyped(workspaceId, chatId, behind ? `${words}\n${behind}` : words, null);
   };
+
   const act = (run: () => Promise<void>): void => {
     setBusy(true);
     setRefused(null);

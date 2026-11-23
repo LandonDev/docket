@@ -50,6 +50,8 @@ const SCENES: Record<string, () => Scene> = {
   "held-draft-offline": () => ({ data: { drafts: { c_jordan: [{ ...HELD_DRAFT, id: "held_2", text: "Running ten minutes late, save me a seat by the window." }] }, routes: { c_jordan: { can: false, why: "Your Mac isn't running LifeOS" } } }, page: { chatId: "c_jordan" } }),
   // A thread's held reply whose press failed: "Not sent.", the reason, Open in Outbox; its words stay out of the field.
   "held-draft-failed": () => ({ data: { drafts: { c_dana: [{ ...HELD_DRAFT, failed: "Slack said the thread is archived" }] } }, page: { chatId: "c_dana" } }),
+  // A thread's held reply whose press failed with its outcome unknown: "May have gone.", the Outbox's own words.
+  "held-draft-unknown": () => ({ data: { drafts: { c_dana: [{ ...HELD_DRAFT, failed: "LifeOS did not answer in time", unknown: true }] } }, page: { chatId: "c_dana" } }),
   "copy-draft": () => ({ data: { drafts: { c_playtest: [COPY_DRAFT] } }, page: { chatId: "c_playtest" } }),
   "open-pictures": () => ({ page: { chatId: "c_art" } }),
   "open-files": () => ({ page: { chatId: "c_lucas" } }),

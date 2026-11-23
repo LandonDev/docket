@@ -11,7 +11,7 @@ import { refusalWords } from "../../lib/settingsHome";
 import { sessionStore } from "../../lib/tcserver/store";
 import { shell } from "../../stores/shell";
 import { openItem } from "../canvas/store";
-import { discardItem, editItem, notSentWords, outboxNow, sendItem, useOutbox, wentOut, type HostItem } from "../outbox/store";
+import { discardItem, editItem, notSentWords, outboxNow, sendItem, useOutbox, wantOutboxItem, wentOut, type HostItem } from "../outbox/store";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import type { MessagesData, Paged, ThreadDraft } from "./data";
 import { chatFileSource, fileVerb, viewKind } from "./files";
@@ -134,7 +134,8 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     useDrafted: () => {
       const held = useHeldReplies(env, workspaceId);
       const copies = useCopyDrafts(env, workspaceId);
-      return useMemo(() => new Set([...held.flatMap((item) => chatOf(item) ?? []), ...copies.map((d) => d.chatId)]), [held, copies]);
+      // The row's mark says a draft waits: a held reply whose press failed is the Outbox's to say, not the row's.
+      return useMemo(() => new Set([...held.flatMap((item) => (item.state === "held" ? (chatOf(item) ?? []) : [])), ...copies.map((d) => d.chatId)]), [held, copies]);
     },
     useNow: useMinute,
     markRead: (chatId: string) => write("chats:markRead", chatId, "Couldn't mark it read"),
@@ -166,9 +167,13 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
       const payload = (item.payload ?? {}) as { text?: string };
       const pressed = payload.text === text ? item : { ...(await editItem(item, { ...payload, text })), environmentId: env };
       const after = await sendItem(pressed);
-      if (!wentOut(after)) throw Object.assign(new Error(notSentWords(after)), { failed: after.state === "failed" });
+      if (!wentOut(after)) throw Object.assign(new Error(notSentWords(after)), { failed: after.state === "failed", unknown: after.outcomeUnknown === true });
     },
-    openOutbox: () => shell.openOutbox(),
+    openOutbox: (draft) => {
+      // That very item, in whichever tab holds it, whatever tab was open last.
+      if (draft.outboxKey) wantOutboxItem(draft.outboxKey);
+      shell.openOutbox();
+    },
     saveDraft: async (draft, text) => {
       const item = heldItem(env, draft.id);
       if (!item) throw new Error("This draft is no longer waiting");
@@ -227,7 +232,8 @@ const heldDraft = (item: HostItem): ThreadDraft => {
     text: String(((item.payload ?? {}) as { text?: unknown }).text ?? ""),
     threadId: item.sessionId,
     ...(title ? { thread: title } : {}),
-    ...(item.state === "failed" ? { failed: item.error ?? "It couldn't be sent" } : {}),
+    outboxKey: `${item.environmentId}:${item.ref.at}:${item.ref.id}`,
+    ...(item.state === "failed" ? { failed: item.error ?? "It couldn't be sent", ...(item.outcomeUnknown ? { unknown: true } : {}) } : {}),
   };
 };
 const heldItem = (env: string, id: string): HostItem | undefined => outboxNow().waiting.find((item) => item.environmentId === env && item.ref.id === id && item.kind === "chat.reply");
