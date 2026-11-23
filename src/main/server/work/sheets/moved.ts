@@ -5,7 +5,7 @@ import { dirname, extname, join } from 'node:path'
 import { canvasSourcePath, type CanvasSource } from '@shared/work'
 import type { FileMoved } from '../files/hooks'
 import { servicePaths } from '../service/config'
-import { csvSheetPath, PACKAGE_EXT } from './held'
+import { csvEdited, csvSheetPath, ownCsvPath, PACKAGE_EXT, sharedCopies } from './held'
 
 /**
  * A sheet's file was renamed or moved (docs/agents/work-files.md "The seam with the editor
@@ -14,7 +14,8 @@ import { csvSheetPath, PACKAGE_EXT } from './held'
  * renamed last, and a row that names a folder that did not move is found again by its path.
  *
  *  - an opened Excel file: its revision row and op log (`work_sheets_files`, `work_sheets_ops`),
- *    the kept copies under `sheets/files/<hash of the path>/`, and what is keyed `file:<path>`
+ *    the kept copies under `sheets/files/<hash of the path>/` (a shared workbook's under Files'
+ *    scratch, `sharedCopies`), who holds it (`work_sheets_shared`), and what is keyed `file:<path>`
  *    (suggestions, a waiting format or rule, the mode and written line, our charts);
  *  - a `.tcsheet`: what is keyed `tcsheet:<path>`, and its waiting suggestions' file in the Work
  *    service's folder (`work-service/sheets/suggestions/`, by the path's hash);
@@ -54,8 +55,12 @@ export const sheetFileMoved: FileMoved = (from: CanvasSource, to: CanvasSource, 
     at.db.prepare('DELETE FROM work_sheets_files WHERE path = ?').run(b)
     at.db.prepare('UPDATE work_sheets_ops SET path = ? WHERE path = ?').run(b, a)
     at.db.prepare('UPDATE work_sheets_files SET path = ? WHERE path = ?').run(b, a)
+    // Who holds a workbook others can open follows it too; whether the new place is one is asked again when it is next touched.
+    at.db.prepare('DELETE FROM work_sheets_shared WHERE path = ?').run(b)
+    at.db.prepare('UPDATE work_sheets_shared SET path = ? WHERE path = ?').run(b, a)
     rekey(at.db, `file:${a}`, `file:${b}`)
     carry(join(at.dataDir, 'sheets', 'files', hash(a)), join(at.dataDir, 'sheets', 'files', hash(b)))
+    carry(join(sharedCopies(at.dataDir), hash(a)), join(sharedCopies(at.dataDir), hash(b)))
     return
   }
   if (ext === '.tcsheet') {
@@ -64,8 +69,14 @@ export const sheetFileMoved: FileMoved = (from: CanvasSource, to: CanvasSource, 
     return
   }
   if (ext === '.csv') {
-    const was = csvSheetPath(at.dataDir, a)
-    const now = csvSheetPath(at.dataDir, b)
+    // The sheet among the app's own files follows the file. One he edited stays his sheet under the new name, even in
+    // a folder others can open; a cache of a shared file is not carried (it is read again where the file now lies).
+    const was = ownCsvPath(at.dataDir, a)
+    const now = ownCsvPath(at.dataDir, b)
+    if (!csvEdited(was) && csvSheetPath(at.dataDir, b) !== now) {
+      rmSync(was, { force: true })
+      return
+    }
     rekey(at.db, `tcsheet:${was}`, `tcsheet:${now}`)
     carry(sideFile(at.dataDir, was), sideFile(at.dataDir, now))
     carry(was, now)

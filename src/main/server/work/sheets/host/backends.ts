@@ -254,6 +254,16 @@ export function writeTcsheet(path: string, t: Tcsheet): void {
   renameSync(tmp, path)
 }
 
+/** A .tcsheet's revision, read from its meta alone; null for a file that is not one. */
+export function tcsheetRev(path: string): number | null {
+  try {
+    const meta = JSON.parse(readText(readZip(new Uint8Array(readFileSync(path))), 'meta.json')) as { rev?: unknown }
+    return typeof meta.rev === 'number' ? meta.rev : null
+  } catch {
+    return null
+  }
+}
+
 function readTcsheet(path: string): Tcsheet {
   const z = readZip(new Uint8Array(readFileSync(path)))
   const json = <T>(name: string): T => JSON.parse(readText(z, name)) as T

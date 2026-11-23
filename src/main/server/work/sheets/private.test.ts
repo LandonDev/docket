@@ -52,7 +52,7 @@ vi.mock('../files/policy', async (original) => {
 const { startWork } = await import('../ctx')
 const { canvas } = await import('../canvas/index')
 const { sheets } = await import('./index')
-const { setJobs } = await import('./held')
+const { setJobs, sharedCopies } = await import('./held')
 const { localJobs } = await import('./workerClient')
 const { SheetHost } = await import('./host/host')
 const { TcsheetBackend, writeTcsheet, gz, blankWorkbook } = await import('./host/backends')
@@ -99,6 +99,7 @@ function serve(): void {
     if (op === 'cells') return h.cells(b.sheet, b.cells, b.by, b.suggest === true, b.reason)
     if (op === 'review') return h.review(b.sheet, b.which, b.verdict)
     if (op === 'restore') return h.restore(b.sheet, b.rev, b.by)
+    if (op === 'snapshot') return h.snapshot(b.sheet, b.rev, b.offset, b.length)
     throw new Error(`not in this test: ${op}`)
   }
 }
@@ -571,5 +572,177 @@ describe('a format or a rule an agent proposes on a .tcsheet others can open', (
     const refused = await tool('sheet_format', { file: csv, range: 'A1', format: { bold: true }, because: 'own' })
     expect(refused.isError).toBe(true)
     expect(refused.text).toContain('A .csv keeps cell contents only')
+  })
+})
+
+/**
+ * A workbook others can open keeps nothing on this host past its tab or thread, and nothing of it
+ * where a backup reads (the editors plan, "University files"): held through the pillar's own wire.
+ */
+describe('what this host keeps of an Excel file others can open', () => {
+  let path: string
+  let itemId: string
+  const filesUnder = (root: string): string[] => (existsSync(root) ? readdirSync(root, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name)) : [])
+  beforeEach(() => {
+    mkdirSync(join(library, 'Budget'), { recursive: true })
+    path = join(library, 'Budget', 'Budget.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+    itemId = open(path, 'Budget.xlsx')
+  })
+
+  it('its copies lie in the scratch the backups leave out, its log holds no word he typed, and both the copies and nothing else go with its tab', async () => {
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view).toMatchObject({ shared: true, rev: 0 })
+    const book = importXlsx(new Uint8Array(readFileSync(path))).workbook
+    const sheet = book.sheetOrder.find((s) => book.sheets[s]?.name === 'Data')!
+    const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: sheet, cellValue: { 30: { 0: { v: SECRET } } } } }
+    expect(await call('work.sheets.edit', { itemId, baseRev: 0, mutations: [typed] })).toMatchObject({ rev: 1 })
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'Data!A2', v: 41 }], reason: 'a guess' })
+    // the copies: in the scratch alone
+    expect(filesUnder(join(dir, 'sheets', 'files'))).toEqual([])
+    expect(filesUnder(sharedCopies(dir)).length).toBe(2)
+    // what he typed is in the file and in no row of the edit log
+    expect(JSON.stringify(db.prepare('SELECT * FROM work_sheets_ops').all())).not.toContain(SECRET)
+    // the tab closed for good: the copies go; the suggestion still waits on this host, as he ruled
+    const item = work.ctx.canvas.get(itemId)!
+    work.ctx.canvas.remove([itemId])
+    // (the canvas tells every loaded pillar; this rig loads the two by hand, so the pillar is told here; the thread that suggested holds it too)
+    sheets.itemsRemoved!([item], work.ctx)
+    sheets.sessionsRemoved!(['t1'], work.ctx)
+    await vi.waitFor(() => expect(filesUnder(sharedCopies(dir))).toEqual([]))
+    expect((db.prepare('SELECT COUNT(*) AS n FROM work_sheets_shared').get() as { n: number }).n).toBe(0)
+    const again = open(path, 'Budget.xlsx')
+    const back = await call<SheetView>('work.sheets.open', { itemId: again })
+    expect(back.rev).toBe(1)
+    expect(back.suggestions.filter((s) => s.state === 'pending')).toHaveLength(1)
+    // what he decides leaves this host's database with his press
+    await tool('sheet_format', { item: again, range: 'Data!A1:C1', format: { bold: true }, because: 'own' })
+    expect((db.prepare('SELECT COUNT(*) AS n FROM work_sheets_suggestions').get() as { n: number }).n).toBe(1)
+    expect((db.prepare('SELECT COUNT(*) AS n FROM work_sheets_changes').get() as { n: number }).n).toBe(1)
+    await call('work.sheets.review', { itemId: again, which: 'all', verdict: 'reject' })
+    expect((db.prepare('SELECT COUNT(*) AS n FROM work_sheets_suggestions').get() as { n: number }).n).toBe(0)
+    expect((db.prepare('SELECT COUNT(*) AS n FROM work_sheets_changes').get() as { n: number }).n).toBe(0)
+  })
+
+  it('a thread working on it by its item holds it too', async () => {
+    await tool('sheet_read', { item: itemId, range: 'Data!A1:B2' })
+    expect(db.prepare('SELECT item, session FROM work_sheets_shared').all()).toEqual([{ item: itemId, session: 't1' }])
+  })
+
+  it('a thread that read it by its path holds it until the thread is deleted', async () => {
+    expect((await tool('sheet_read', { file: path, range: 'Data!A1:B2' })).isError).toBeFalsy()
+    expect(filesUnder(sharedCopies(dir)).length).toBe(1)
+    expect(db.prepare('SELECT item, session FROM work_sheets_shared').all()).toEqual([{ item: '', session: 't1' }])
+    sheets.sessionsRemoved!(['t1'], work.ctx)
+    await vi.waitFor(() => expect(filesUnder(sharedCopies(dir))).toEqual([]))
+  })
+})
+
+/**
+ * A .csv others can open, and what is written out of a sheet others can open (the editors plan,
+ * "University files"): the .csv's sheet is a cache in Files' scratch and opens to read; an export
+ * never lands beside the shared file or where a backup reads, and goes with its tab.
+ */
+describe('a .csv and an export in a folder others can open', () => {
+  const filesUnder = (root: string): string[] => (existsSync(root) ? readdirSync(root, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name)) : [])
+  const scratch = (): string => join(dir, 'work-files', 'preview-scratch', 'sheets')
+
+  it('a shared .csv opens to read, from a cache in the scratch; nothing of it among the app\'s own files; no edit and no tool write lands', async () => {
+    const csv = join(library, 'List.csv')
+    writeFileSync(csv, `name,code\nAda,${SECRET}\n`)
+    const itemId = open(csv, 'List.csv')
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view).toMatchObject({ store: 'csv', shared: true, readOnly: 'This .csv is in a folder others can open, so it opens here to read. Save a copy to edit it.' })
+    expect(filesUnder(join(dir, 'sheets', 'csv'))).toEqual([])
+    expect(filesUnder(join(scratch(), 'csv'))).toHaveLength(1)
+    const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 5: { 0: { v: 'x' } } } } }
+    await expect(call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [typed] })).rejects.toThrow('it opens here to read')
+    state.said.push('put x in A6 please')
+    const wrote = await tool('sheet_write', { item: itemId, cells: [{ at: 'A6', v: 'x' }], because: 'asked', quote: 'put x in A6' })
+    expect(wrote.isError).toBe(true)
+    expect(wrote.text).toContain('it opens here to read')
+    expect(readFileSync(csv, 'utf8')).toBe(`name,code\nAda,${SECRET}\n`)
+  })
+
+  it('his own .csv is a sheet he edits, kept among the app\'s files as before', async () => {
+    const csv = join(dir, 'Own.csv')
+    writeFileSync(csv, 'a,b\n1,2\n')
+    const itemId = open(csv, 'Own.csv')
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view.readOnly).toBeUndefined()
+    expect(filesUnder(join(dir, 'sheets', 'csv'))).toHaveLength(1)
+    expect(filesUnder(join(scratch(), 'csv'))).toEqual([])
+  })
+
+  it('a sheet of a shared workbook written out as .csv is a copy he takes: in his workspace\'s own folder, never beside the file', async () => {
+    mkdirSync(join(library, 'Budget'), { recursive: true })
+    const path = join(library, 'Budget', 'Budget.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+    const itemId = open(path, 'Budget.xlsx')
+    const before = folder()
+    // no folder of his own here: said, and nothing written
+    await expect(call('work.sheets.export', { itemId, format: 'csv' })).rejects.toThrow('there is no folder of your own here')
+    const mine = join(dir, 'My workspace')
+    mkdirSync(mine)
+    const cols = (db.prepare(`PRAGMA table_info(workspaces)`).all() as { name: string; notnull: number; dflt_value: unknown; pk: number }[]).filter((c) => c.notnull && c.dflt_value === null && !['id', 'name', 'path'].includes(c.name))
+    db.prepare(`INSERT INTO workspaces (id, name, path, kind${cols.map((c) => `, ${c.name}`).join('')}) VALUES ('w1', 'Mine', ?, 'work'${cols.map(() => ', 0').join('')})`).run(mine)
+    const out = await call<{ path: string }>('work.sheets.export', { itemId, format: 'csv' })
+    expect(out.path).toBe(join(mine, 'Budget.csv'))
+    expect(readFileSync(out.path, 'utf8').length).toBeGreaterThan(0)
+    // a second one does not write over the first
+    expect((await call<{ path: string }>('work.sheets.export', { itemId, format: 'csv' })).path).not.toBe(out.path)
+    expect(folder()).toEqual(before)
+  })
+
+  it('a shared .csv he was already editing here keeps its sheet and his edits: it is not made read-only under him, and saves back', async () => {
+    const csv = join(library, 'Edited.csv')
+    writeFileSync(csv, 'a,b\n1,2\n')
+    // as it stood before the rule: a sheet among the app's own files, with an edit of his
+    state.library = ''
+    const itemId = open(csv, 'Edited.csv')
+    const first = await call<SheetView>('work.sheets.open', { itemId })
+    const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 1: { 0: { v: 'his edit' } } } } }
+    expect(await call('work.sheets.edit', { itemId, baseRev: first.rev, mutations: [typed] })).toMatchObject({ rev: first.rev + 1 })
+    // now its folder counts as one others can open
+    state.library = library
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view.readOnly).toBeUndefined()
+    expect(view.rev).toBe(first.rev + 1)
+    expect(filesUnder(join(dir, 'sheets', 'csv'))).toHaveLength(1)
+    expect(filesUnder(join(scratch(), 'csv'))).toEqual([])
+    const out = await call<{ path: string }>('work.sheets.export', { itemId, format: 'csv' })
+    expect(out.path).toBe(csv)
+    expect(readFileSync(csv, 'utf8')).toContain('his edit')
+  })
+
+  it('a sheet of his that cannot be read just now is never taken for an unedited cache and removed', async () => {
+    const { csvEdited, ownCsvPath, csvSheetPath } = await import('./held')
+    const csv = join(library, 'Busy.csv')
+    writeFileSync(csv, 'a\n1\n')
+    const own = ownCsvPath(dir, csv)
+    mkdirSync(join(dir, 'sheets', 'csv'), { recursive: true })
+    // a sheet that is there but is no readable .tcsheet (a write in flight, a file the disk will not give up)
+    writeFileSync(own, 'not a zip')
+    expect(csvEdited(own)).toBe(true)
+    expect(csvSheetPath(dir, csv)).toBe(own)
+    // one read at revision 0 is the only thing that lets it go
+    rmSync(own)
+    TcsheetBackend.create(own, 'Busy')
+    expect(csvEdited(own)).toBe(false)
+    expect(csvSheetPath(dir, csv)).not.toBe(own)
+    expect(csvEdited(join(dir, 'sheets', 'csv', 'missing.tcsheet'))).toBe(false)
+  })
+
+  it('a shared .csv that changes on disk is read again: its cache is named for the file as it stands', async () => {
+    const csv = join(library, 'Fresh.csv')
+    writeFileSync(csv, 'a\nold\n')
+    const itemId = open(csv, 'Fresh.csv')
+    await call<SheetView>('work.sheets.open', { itemId })
+    expect((await tool('sheet_read', { item: itemId, range: 'A2' })).text).toContain('old')
+    writeFileSync(csv, 'a\nnewer value\n')
+    await call<SheetView>('work.sheets.open', { itemId })
+    expect((await tool('sheet_read', { item: itemId, range: 'A2' })).text).toContain('newer value')
+    // the cache of the file as it stood is gone
+    expect(filesUnder(join(scratch(), 'csv'))).toHaveLength(1)
   })
 })

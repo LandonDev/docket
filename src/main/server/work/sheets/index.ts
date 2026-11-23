@@ -5,7 +5,7 @@ import type { IWorkbookData } from '@univerjs/core'
 import { SHEET_COMPARE_MAX, SHEET_LOAD_MAX, type SheetCellJson, type SheetMutationJson } from '@shared/contract-work-sheets'
 import { filesPaneWorkspace, handled, NOT_HANDLED, type CanvasItem, type Principal } from '@shared/work'
 import { canvasItemDir } from '../canvas/store'
-import { workspaceHere } from '../files/policy'
+import { sharedOf, workspaceHere } from '../files/policy'
 import { registerFileMaker, registerFileMoved, registerFileWaiting, type FileMaker } from '../files/hooks'
 import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { fullEditorHere, fullEditorOf, openFull } from './fullEditor'
@@ -13,7 +13,7 @@ import { blankWorkbook } from './host/backends'
 import type { SheetRef } from './host/wire'
 import { writeCsv, writeXlsx, writeXlsxWhole } from './writer'
 import { ensureChangeTables } from './changes'
-import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, setChart, sheetsOf, storeKey, viewOf, type Held, type Sheets } from './held'
+import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setChart, setSharedPath, sheetsOf, storeKey, viewOf, type Held, type Sheets } from './held'
 import { sheetFileMoved } from './moved'
 import { ensurePackageTables, type Moved } from './packages'
 import { mapCell, STRUCTURAL_CONVERTERS } from './structural'
@@ -103,7 +103,7 @@ export const sheets: WorkModule = {
     const item = typeof named === 'string' ? itemOf(ctx, named) : null
     if (item) {
       fence(ctx, by, item, req.method)
-      ensureCsvSheet(heldOf(item, ctx.dataDir))
+      ensureCsvSheet(heldOf(item, ctx.dataDir), ctx.dataDir)
     }
     switch (req.method) {
       case 'work.sheets.open':
@@ -150,7 +150,13 @@ export const sheets: WorkModule = {
         else if (held.at === 'google') await (await import('../google/grid')).review(ctx, held.ref, req.params.which, req.params.verdict)
         else await host(ctx, 'review', { sheet: held.ref, which: req.params.which, verdict: req.params.verdict })
         await announce(s, item!)
-        return handled(await viewOf(s, item!))
+        const after = await viewOf(s, item!)
+        // A sheet others can open: what he decided leaves this host's database with his press (what still waits stays, as he ruled).
+        if (after.shared) {
+          s.suggestions.prune(key)
+          s.changes.prune(key)
+        }
+        return handled(after)
       }
       case 'work.sheets.mode': {
         if (by.kind === 'model') throw new Error('Only the owner sets what an agent may do to a sheet.')
@@ -218,6 +224,8 @@ export const sheets: WorkModule = {
   },
   // A sheet's file renamed or moved takes what is kept by its path with it (moved.ts); the full editor's docservice stops with Work (fullEditor/).
   start(ctx) {
+    // Which file others can open is the host's rule: a .csv that is one opens as a cache that does not last (held.ts).
+    setSharedPath((path) => sharedOf(ctx, { at: 'file', host: ctx.host, path }))
     // Files reads the suggestions waiting in a workbook from here: a count in its row, and Home's Waiting on you.
     const offWaiting = registerFileWaiting(sheetWaiting)
     const offMoved = registerFileMoved(sheetFileMoved)
@@ -237,7 +245,14 @@ export const sheets: WorkModule = {
   convert: STRUCTURAL_CONVERTERS,
   preamble: () =>
     'A sheet in the canvas is read with `sheet_read` and changed with `sheet_write` or `sheet_suggest`, cells in A1. Say why you write: `because: "asked"` with the owner\'s words as `quote` when he asked for exactly this change, `"routine"` when a routine you run was granted it, else `"own"`. On a sheet others share, your own idea waits as a suggestion he steps through cell by cell.',
-  sessionsRemoved() {},
+  // A workbook others can open keeps nothing here past its tab or its thread (packages.ts `release`).
+  itemsRemoved(items, ctx) {
+    const ids = items.filter((item) => item.kind === 'sheet').map((item) => item.id)
+    if (ids.length) void sheetsOf(ctx).then((s) => s.packages.release({ items: ids })).catch(() => {})
+  },
+  sessionsRemoved(ids, ctx) {
+    if (ids.length) void sheetsOf(ctx).then((s) => s.packages.release({ sessions: ids })).catch(() => {})
+  },
   workspaceRemoved() {}
 }
 
@@ -356,30 +371,55 @@ async function workbookOf(ctx: WorkCtx, ref: SheetRef): Promise<IWorkbookData> {
 export async function exportSheet(s: Sheets, item: CanvasItem, format: 'xlsx' | 'csv', sheet?: string): Promise<{ path: string; left?: string[] }> {
   const held = heldOf(item, s.ctx.dataDir)
   const base = item.title.replace(/\.(xlsx|xlsm|tcsheet|csv)$/i, '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').trim() || 'Sheet'
+  // What he writes out of a sheet others can open is a copy he takes: it lands in his own workspace's folder, never
+  // beside the file (a library would sync it to the team) and never among what the app keeps for him.
+  const shared = sharedOf(s.ctx, item.source)
   const own = (): string => {
-    const dir = canvasItemDir(s.ctx.dataDir, item.sessionId, item.id)
+    const dir = shared ? ownFolderOf(s.ctx, item.sessionId) : canvasItemDir(s.ctx.dataDir, item.sessionId, item.id)
     mkdirSync(dir, { recursive: true })
     return dir
   }
+  const beside = (near: string, name: string): string => (shared ? free(join(own(), name)) : free(join(dirname(near), name)))
   if (held.at === 'excel') throw new Error(`${item.title} lives in Excel: save or export it there.`)
   if (held.at === 'google') throw new Error(`${item.title} lives in Google: download it there with File → Download.`)
   if (held.at === 'package') {
     if (format === 'xlsx') throw new Error('This is an Excel file already: every edit is saved into it.')
-    const path = free(join(dirname(held.path), `${base}.csv`))
+    const path = beside(held.path, `${base}.csv`)
     writeFileSync(path, await s.jobs.csv(held.path, sheet))
     return { path }
   }
   const wb = await workbookOf(s.ctx, held.ref)
   if (format === 'csv') {
-    const path = held.csv ?? join(own(), `${base}.csv`)
-    writeFileSync(path, writeCsv(wb, sheet))
+    // A .csv others can open opens to read and is not written over from here; one he was already editing here is still saved back.
+    const back = held.csv && !isSharedCsvSheet(s.ctx.dataDir, held.ref) ? held.csv : null
+    const path = back ?? (shared ? free(join(own(), `${base}.csv`)) : join(own(), `${base}.csv`))
+    const text = writeCsv(wb, sheet)
+    // Saved back over a file others can open: through Files' one door for replacing a file where it lies (its lock, one whole replace), as an Excel file's save is.
+    if (back && shared) {
+      const { saveFile, versionWord } = await import('../files/save')
+      const { versionOf } = await import('../files/write')
+      const { fileKey } = await import('./held')
+      const got = await saveFile({ roots: [dirname(back)] }, await fileKey(s.ctx, back), back, new TextEncoder().encode(text), versionWord(await versionOf(back)))
+      if ('conflict' in got) throw new Error('The file changed as it was saved: try again.')
+    } else writeFileSync(path, text)
     return { path }
   }
-  const path = held.csv ? free(join(dirname(held.csv), `${base}.xlsx`)) : join(own(), `${base}.xlsx`)
+  const path = held.csv ? beside(held.csv, `${base}.xlsx`) : shared ? free(join(own(), `${base}.xlsx`)) : join(own(), `${base}.xlsx`)
   // A list of rules the file cannot hold is left out, and said: "the names", "conditional formats on Q1".
   const { bytes, left } = writeXlsxWhole(wb)
   writeFileSync(path, bytes)
   return { path, ...(left.length ? { left: left.map((l) => (l.sheet ? `${l.what} on ${l.sheet}` : `the ${l.what}`.replace('the the ', 'the '))) } : {}) }
+}
+
+/**
+ * His own folder for a copy he takes of a sheet others can open: the workspace's, of the Files pane or the thread the
+ * item is in. Refused in words where there is none, or where that folder is itself one others can open.
+ */
+function ownFolderOf(ctx: WorkCtx, owner: string): string {
+  const ws = filesPaneWorkspace(owner) ?? ctx.scopeOf(owner)?.workspaceId ?? null
+  const folder = ws ? (workspaceHere(ctx.db, ws)?.path ?? null) : null
+  if (!folder || sharedOf(ctx, { at: 'file', host: ctx.host, path: join(folder, 'x') })) throw new Error('Others can open this sheet, and there is no folder of your own here to write a copy into. Copy the file in Files first.')
+  return folder
 }
 
 /** A new sheet in a thread's canvas: a LifeOS sheet when its workspace has a sector, else a `.tcsheet` among this host's files. */

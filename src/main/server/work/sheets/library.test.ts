@@ -1,15 +1,17 @@
-import { chmodSync, copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { importXlsx } from 'work-kit/sheet/xlsx'
 import { refKey } from '@shared/work/files'
 import { doorPlace, openAs } from '../files/handle'
 import { fileMakerFor, registerFileMaker } from '../files/hooks'
-import { locate } from '../files/policy'
+import { locate, sharedOf } from '../files/policy'
+import { previewScratch } from '../files/preview'
 import { libraryKey } from '../files/places/teams'
 import { at, HOST, makeRig, window, WS, type Rig } from '../files/testkit'
 import { withFileLocks } from '../files/write'
-import { fileKey } from './held'
+import { fileKey, sharedCopies } from './held'
 import { SHEET_MAKER } from './index'
 import { SET_RANGE_VALUES } from './mutations'
 import { ensurePackageTables, PackageStore, PACKAGE_UNIT } from './packages'
@@ -213,5 +215,190 @@ describe('a save into a library\'s workbook', () => {
     expect(await s.restore(book, 0, 'owner')).toEqual({ rev: 2 })
     expect(valueAt(book, 1, 0)).toBe(was)
     expect(folder()).toEqual(before)
+  })
+})
+
+/**
+ * A workbook others can open keeps nothing here past its tab or thread, and nothing of it reaches a
+ * backup (the editors plan, "University files"): its copies lie under Files' own scratch, which both
+ * backups leave out and Files clears at each start; its edits are logged without what was typed;
+ * and when its last holder goes, so do the copies.
+ */
+describe('what is kept of a library\'s workbook', () => {
+  const everyFile = (dir: string): string[] => (existsSync(dir) ? readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name)) : [])
+  const own = () => join(rig.dataDir, 'sheets', 'files')
+  const scratch = () => sharedCopies(rig.dataDir)
+  async function sharedStore(): Promise<PackageStore> {
+    ensurePackageTables(rig.db)
+    return new PackageStore(rig.db, await localJobs(), own(), () => null, Date.now, () => {}, null, (path) => fileKey(rig.ctx, path), { root: scratch(), is: (path) => sharedOf(rig.ctx, { at: 'file', host: HOST, path }) })
+  }
+  const ops = (path: string) => rig.db.prepare('SELECT rev, label, mutations, undo FROM work_sheets_ops WHERE path = ? ORDER BY rev').all(path) as { rev: number; label: string; mutations: string; undo: string | null }[]
+
+  it('the copies lie under Files\' own scratch, which the backups leave out', () => {
+    expect(scratch().startsWith(join(previewScratch(rig.dataDir), 'sheets'))).toBe(true)
+  })
+
+  it('a library\'s workbook: copies in the scratch alone, a log with no word of what was typed', async () => {
+    const s = await sharedStore()
+    const { inspected } = await s.open(book)
+    expect(s.isShared(book)).toBe(true)
+    const sheet = inspected.sheets[0]!.id
+    expect(await s.edit(book, 0, [set(sheet, 30, 0, { v: 'Q4-forecast-7731' })], 'owner')).toEqual({ rev: 1 })
+    await s.writeCells(book, [{ at: 'A32', v: 'agent-wrote-4410' }], 'agent:local:t1', 'A32', 'w1')
+    expect(valueAt(book, 30, 0)).toBe('Q4-forecast-7731')
+    // nothing among the app's own kept files; the copies are the scratch's
+    expect(everyFile(own())).toEqual([])
+    expect(everyFile(scratch()).map((f) => f.slice(scratch().length + 1).replace(/^[0-9a-f]+\//, '')).sort()).toEqual(['0.xlsx', '1.xlsx', '2.xlsx'])
+    // the log says a revision and its label, never the cells
+    expect(ops(book).map((o) => [o.rev, o.label, o.mutations, o.undo])).toEqual([
+      [1, 'A31', '"unkept"', null],
+      [2, 'A32', '"unkept"', null]
+    ])
+    const dump = JSON.stringify(rig.db.prepare('SELECT * FROM work_sheets_ops').all()) + JSON.stringify(rig.db.prepare('SELECT * FROM work_sheets_files').all())
+    expect(dump).not.toContain('Q4-forecast-7731')
+    expect(dump).not.toContain('agent-wrote-4410')
+    // another grid of the file reads it again; an edit made before those still lands, since no cell moved
+    expect(s.since(book, 0)).toEqual({ rev: 2, reload: true })
+    expect(await s.edit(book, 0, [set(sheet, 33, 0, { v: 'late' })], 'owner')).toEqual({ rev: 3 })
+    // a write whose log keeps no cells cannot be taken back from the line
+    await expect(s.undo(book, 'w1')).rejects.toThrow('can no longer be taken back')
+  })
+
+  it('his own workbook is kept as before: copies among the app\'s files, a log that can be replayed', async () => {
+    const mine = join(rig.dataDir, 'Mine.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), mine)
+    const s = await sharedStore()
+    const { inspected } = await s.open(mine)
+    expect(s.isShared(mine)).toBe(false)
+    await s.edit(mine, 0, [set(inspected.sheets[0]!.id, 30, 0, { v: 'mine' })], 'owner')
+    expect(everyFile(scratch())).toEqual([])
+    expect(everyFile(own())).toHaveLength(2)
+    expect(ops(mine)[0]!.mutations).toContain('mine')
+    expect(s.since(mine, 0)).toMatchObject({ rev: 1, ops: [{ rev: 1 }] })
+  })
+
+  it('the copies go when the last holder goes: a tab closed for good, a thread deleted; the row stays, so a suggestion still knows its revision', async () => {
+    const s = await sharedStore()
+    const { inspected } = await s.open(book)
+    s.hold(book, 'item-1', 'pane-1')
+    s.hold(book, 'item-2', 'pane-1')
+    s.hold(book, '', 'thread-9')
+    await s.edit(book, 0, [set(inspected.sheets[0]!.id, 30, 0, { v: 1 })], 'owner')
+    expect(everyFile(scratch())).toHaveLength(2)
+    // one tab of two closed: still held
+    expect(s.release({ items: ['item-1'] })).toEqual([])
+    expect(everyFile(scratch())).toHaveLength(2)
+    expect(s.release({ items: ['item-2'] })).toEqual([])
+    // the thread that read it by path is deleted: nobody holds it now
+    expect(s.release({ sessions: ['thread-9'] })).toEqual([book])
+    await s.idle()
+    expect(everyFile(scratch())).toEqual([])
+    expect(everyFile(own())).toEqual([])
+    // opened again, it stands at the revision it had, and takes an edit
+    const again = await s.open(book)
+    expect(again.rev).toBe(1)
+    expect(await s.edit(book, 1, [set(inspected.sheets[0]!.id, 31, 0, { v: 2 })], 'owner')).toEqual({ rev: 2 })
+    expect(valueAt(book, 31, 0)).toBe(2)
+    // an old revision's copy is gone, and is said so
+    expect(() => s.fileAt(book, 0)).toThrow('no longer kept')
+  })
+
+  it('his own workbook is held by nobody: closing its tab removes nothing', async () => {
+    const mine = join(rig.dataDir, 'Mine.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), mine)
+    const s = await sharedStore()
+    await s.open(mine)
+    s.hold(mine, 'item-1', 'pane-1')
+    expect(s.release({ items: ['item-1'] })).toEqual([])
+    expect(everyFile(own())).toHaveLength(1)
+  })
+
+  it('copies made among the app\'s files before this rule move to the scratch the next time the workbook is touched', async () => {
+    const before = await store()
+    const { inspected } = await before.open(book)
+    await before.edit(book, 0, [set(inspected.sheets[0]!.id, 30, 0, { v: 1 })], 'owner')
+    expect(everyFile(own())).toHaveLength(2)
+    const s = await sharedStore()
+    expect((await s.open(book)).rev).toBe(1)
+    expect(everyFile(own())).toEqual([])
+    expect(everyFile(scratch())).toHaveLength(2)
+    expect(s.fileAt(book, 0)).toContain(scratch())
+  })
+
+  it('a log written before this rule gives up what was typed the next time the workbook is touched', async () => {
+    const before = await store()
+    const { inspected } = await before.open(book)
+    await before.edit(book, 0, [set(inspected.sheets[0]!.id, 30, 0, { v: 'Q4-forecast-7731' })], 'owner')
+    await before.writeCells(book, [{ at: 'A32', v: 'agent-wrote-4410' }], 'agent:local:t1', 'A32', 'w1')
+    expect(JSON.stringify(ops(book))).toContain('Q4-forecast-7731')
+    const s = await sharedStore()
+    await s.open(book)
+    expect(ops(book).map((o) => [o.rev, o.mutations, o.undo])).toEqual([
+      [1, '"unkept"', null],
+      [2, '"unkept"', null]
+    ])
+    expect(JSON.stringify(rig.db.prepare('SELECT * FROM work_sheets_ops').all())).not.toMatch(/Q4-forecast-7731|agent-wrote-4410/)
+  })
+
+  it('at a start, every shared workbook this host knows gives up its old copies and typed log, opened again or not', async () => {
+    const before = await store()
+    const { inspected } = await before.open(book)
+    await before.edit(book, 0, [set(inspected.sheets[0]!.id, 30, 0, { v: 'Q4-forecast-7731' })], 'owner')
+    const s = await sharedStore()
+    s.sweep()
+    expect(everyFile(own())).toEqual([])
+    expect(everyFile(scratch())).toHaveLength(2)
+    expect(JSON.stringify(rig.db.prepare('SELECT * FROM work_sheets_ops').all())).not.toContain('Q4-forecast-7731')
+  })
+
+  it('a release waits for a save in flight: the tab\'s last edit lands, then the copies go', async () => {
+    const s = await sharedStore()
+    const { inspected } = await s.open(book)
+    s.hold(book, 'item-1', 'pane-1')
+    const last = s.edit(book, 0, [set(inspected.sheets[0]!.id, 30, 0, { v: 'last words' })], 'owner')
+    expect(s.release({ items: ['item-1'] })).toEqual([book])
+    expect(await last).toEqual({ rev: 1 })
+    await s.idle()
+    expect(valueAt(book, 30, 0)).toBe('last words')
+    expect(everyFile(scratch())).toEqual([])
+  })
+
+  it('History offers the newest revision and those whose copy is still here', async () => {
+    const s = await sharedStore()
+    const { inspected } = await s.open(book)
+    await s.edit(book, 0, [set(inspected.sheets[0]!.id, 30, 0, { v: 1 })], 'owner')
+    await s.edit(book, 1, [set(inspected.sheets[0]!.id, 31, 0, { v: 2 })], 'owner')
+    expect(s.history(book).map((h) => h.rev)).toEqual([2, 1, 0])
+    rmSync(previewScratch(rig.dataDir), { recursive: true, force: true })
+    expect(s.history(book).map((h) => h.rev)).toEqual([2])
+  })
+
+  it('a save is made in the OS temp folder, never in the scratch Files clears at start, and leaves nothing there', async () => {
+    const seen: string[] = []
+    const real = await localJobs()
+    ensurePackageTables(rig.db)
+    const s = new PackageStore(rig.db, { ...real, save: async (input, out, ...rest) => (seen.push(out), real.save(input, out, ...rest)) }, own(), () => null, Date.now, () => {}, null, (path) => fileKey(rig.ctx, path), { root: scratch(), is: (path) => sharedOf(rig.ctx, { at: 'file', host: HOST, path }) })
+    const { inspected } = await s.open(book)
+    await s.edit(book, 0, [set(inspected.sheets[0]!.id, 30, 0, { v: 1 })], 'owner')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.startsWith(join(tmpdir(), 'tc-sheet-save-'))).toBe(true)
+    expect(existsSync(seen[0]!)).toBe(false)
+    // a folder of this process alone, for its owner only
+    expect(statSync(join(seen[0]!, '..')).mode & 0o077).toBe(0)
+  })
+
+  it('a start that cleared the scratch leaves a workbook that still opens, saves and keeps its new revision', async () => {
+    const s = await sharedStore()
+    const { inspected } = await s.open(book)
+    await s.edit(book, 0, [set(inspected.sheets[0]!.id, 30, 0, { v: 1 })], 'owner')
+    rmSync(previewScratch(rig.dataDir), { recursive: true, force: true })
+    expect((await s.open(book)).rev).toBe(1)
+    expect(await s.edit(book, 1, [set(inspected.sheets[0]!.id, 31, 0, { v: 2 })], 'owner')).toEqual({ rev: 2 })
+    expect(everyFile(scratch())).toHaveLength(1)
+    // changed outside while nothing was kept: its copy is made again
+    writeFileSync(book, readFileSync(join(CORPUS, 'formulas.xlsx')))
+    rmSync(previewScratch(rig.dataDir), { recursive: true, force: true })
+    expect((await s.open(book)).rev).toBe(3)
+    expect(everyFile(scratch())).toHaveLength(1)
   })
 })

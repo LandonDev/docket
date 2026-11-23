@@ -105,6 +105,11 @@ export class ChangeStore {
   }
 
   /** Rows, columns or sheets changed, the file came back from outside or was restored: no waiting change is where the agent saw it for sure. */
+  /** Drops what was taken or dropped (a shared sheet's decided asks hold its words; the database rides the backup). */
+  prune(store: string): void {
+    this.db.prepare(`DELETE FROM work_sheets_changes WHERE store = ? AND state NOT IN ${OPEN}`).run(store)
+  }
+
   orphanAll(store: string): void {
     this.db.prepare(`UPDATE work_sheets_changes SET state = 'orphaned' WHERE store = ? AND state = 'pending'`).run(store)
   }

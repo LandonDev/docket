@@ -95,6 +95,50 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   opened is kept for good and the newest 30 after it. A change on disk we did
   not make is a revision of its own (`by: 'file'`), and the grids reload.
   Restore puts a kept copy back byte for byte as a new revision.
+- **A workbook others can open keeps nothing here past its tab or thread**
+  (the editors plan, "University files"; `library.test.ts`, `private.test.ts`).
+  For a file where `sharedOf` is true (a Teams library's, a shared OneDrive
+  folder's): its kept copies and the scratch a save is made in lie under
+  Files' own preview scratch (`held.ts` `sharedCopies`:
+  `<userData>/work-files/preview-scratch/sheets/files/`), which both backups
+  leave out and Files clears at each start; its edits are logged with their
+  revision and label and without what was typed (`UNKEPT`: another grid of
+  the file reads it again, an edit made before it still lands, and an
+  agent's write there has no Undo on its line); and when its last holder
+  goes, a tab closed for good or a thread that read it by path deleted
+  (`work_sheets_shared`, `hold`, `release`), the copies go. What stays is
+  a row with the path, a revision number and a stamp, so a suggestion still
+  knows which revision it was made for; History offers the newest revision
+  and those whose copy is still here. A save is made in the OS temp folder
+  (removed as it ends), never in the scratch Files clears while tabs reopen;
+  a release waits for a save in flight. Copies made among the app's own
+  files before this rule move to the scratch the next time the workbook is
+  touched, and the log written before it gives up what was typed. What
+  still rides the database for such a workbook: an agent's suggestions and
+  proposed formats while they wait (kept on this host by the owner's
+  ruling; a decided one leaves with his press), the mode, and our own
+  charts' ranges and titles. Whether waiting suggestions in the backed-up
+  database are acceptable for university files is the owner's call.
+  At each start every shared workbook this host knows is swept the same way
+  (`sweep`), opened again or not. A shared workbook's save folder is made
+  for this process and its owner alone.
+  **A `.csv` others can open** is read into a cache in the same scratch
+  (`sharedCsvDir`), named for the file as it stands so a co-author's newer
+  file is read again, and opens to read ("…it opens here to read. Save a
+  copy to edit it."): an edit would live only in a cache that does not
+  last, so none is taken (`host` refuses `apply`, `cells`, `review` and
+  `restore` for it). One exception keeps his work: a shared `.csv` he had
+  already edited here before this rule keeps its sheet among the app's
+  files, editable as before (`csvEdited`; a sheet that cannot be read just
+  now counts as edited, so only a read that says revision 0 lets one go),
+  saved back through Files' door, and that sheet follows the file when it
+  is renamed or moved. A read-only tab already open is not told when the
+  file changes: it shows the newer file when it is opened again. **What he writes out of a
+  sheet others can open** (a sheet as .csv, a .csv as .xlsx) is a copy he
+  takes: it lands in his own workspace's folder (`ownFolderOf`), never
+  beside the file, where a library would sync it to the team, and never
+  among what the app keeps; with no folder of his own there it is refused
+  in words.
 - **What a package saves**: cell contents (the patch writer, fills
   included: the canvas sends each filled cell's formula text), formatting
   (the format writer: everything the format row sets, a column's width, a

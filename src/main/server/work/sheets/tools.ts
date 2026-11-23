@@ -62,12 +62,16 @@ async function targetOf(ctx: ToolCtx, a: { item?: string; file?: string }): Prom
     if (h.at === 'google') throw new Error(`${item.title} lives in Google: read it with google_sheet_read and suggest cells with google_sheet_suggest.`)
     held = h
     source = item.source
+    // (a thread's own item no window ever showed is held here: a shared workbook's copies go with the thread)
+    if (held.at === 'package') (await sheetsOf(ctx)).packages.hold(held.path, item.id, ctx.sessionId)
   } else {
     if (!a.file) throw new Error('Pass `item` (a sheet open in the canvas) or `file` (an absolute path).')
     held = heldOfPath(a.file, ctx.dataDir)
     source = { at: 'file', host: ctx.host, path: a.file }
+    // Read by its path, with no tab: this thread holds what is kept of it (a shared workbook's copies go with the thread).
+    if (held.at === 'package') (await sheetsOf(ctx)).packages.hold(held.path, '', ctx.sessionId)
   }
-  ensureCsvSheet(held)
+  ensureCsvSheet(held, ctx.dataDir)
   const stored = held.at === 'service' ? (await host(ctx, 'open', { sheet: held.ref })).shared : false
   return { held, item, shared: stored || sharedOf(ctx, source) || ctx.scope.shared(source) }
 }

@@ -29,7 +29,7 @@ beforeEach(() => {
       }
     }
   })
-  const packages = { open: async () => ({ rev: 0, inspected: { sheets: [], date1904: false, reach: null }, saveError: null, missing: false }) }
+  const packages = { hold: () => {}, open: async () => ({ rev: 0, inspected: { sheets: [], date1904: false, reach: null }, saveError: null, missing: false }) }
   s = { ctx: rig.ctx, packages, suggestions: new SuggestionStore(rig.db), changes: new ChangeStore(rig.db), jobs: {} } as unknown as Sheets
 })
 afterEach(() => rig.close())

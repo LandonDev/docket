@@ -118,6 +118,11 @@ export class SuggestionStore {
   }
 
   /** The file came back from outside or was restored: no cell is where the agent saw it for sure. */
+  /** Drops what was taken or dropped: a shared sheet's decided suggestions hold its cells' values, and the database rides the backup. */
+  prune(store: string): void {
+    this.db.prepare(`DELETE FROM work_sheets_suggestions WHERE store = ? AND state NOT IN ${OPEN}`).run(store)
+  }
+
   orphanAll(store: string): void {
     this.db.prepare(`UPDATE work_sheets_suggestions SET state = 'orphaned' WHERE store = ? AND state IN ${OPEN}`).run(store)
   }

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 import { basename, dirname, join } from 'node:path'
 import type { SheetCellDiff, SheetMutationJson, SheetRevision } from '@shared/contract-work-sheets'
@@ -45,6 +46,26 @@ export function ensurePackageTables(db: DatabaseSync): void {
     undo TEXT,
     PRIMARY KEY (path, rev)
   )`)
+  // Who holds a workbook others can open: its tab, or a thread that read it by its path. Names and ids only.
+  db.exec(`CREATE TABLE IF NOT EXISTS work_sheets_shared (
+    path TEXT NOT NULL,
+    item TEXT NOT NULL,
+    session TEXT NOT NULL,
+    PRIMARY KEY (path, item, session)
+  )`)
+}
+
+/**
+ * What an edit's row says in place of its mutations for a workbook others can open: the cells did
+ * not move, and what was typed is not kept in this host's database. Another grid of the file reads
+ * it again (`since`); an edit made before it still lands (`reloadSince` does not count it).
+ */
+const UNKEPT = '"unkept"'
+
+/** Where a workbook others can open keeps its copies, and which workbook that is (held.ts: Files' own scratch, out of every backup, cleared at each start). */
+export interface SharedPlace {
+  root: string
+  is(path: string): boolean
 }
 
 /** The file's stamp: what tells a change made outside us. */
@@ -88,11 +109,71 @@ export class PackageStore {
     /** LibreOffice applying structural ops (structural.ts's converter through `ctx.convert`): answers the package it wrote */
     private structural: ((input: string, ops: StructuralOp[], kind: 'xlsx' | 'xlsm') => Promise<string>) | null = null,
     /** the lock a save of this file takes in Files' door: the file's own key there, so a save here and a change made in Files take turns */
-    private keyOf: (path: string) => string | Promise<string> = (path) => `file::${path}`
+    private keyOf: (path: string) => string | Promise<string> = (path) => `file::${path}`,
+    /**
+     * A workbook others can open (a Teams library's, a shared OneDrive folder's): nothing made from it
+     * outlives its tab or thread, or reaches a backup. Its copies live under `shared.root`, go when the
+     * last holder goes (`release`), and its edits are logged without what was typed.
+     */
+    private shared: SharedPlace | null = null
   ) {}
 
+  private sharedSeen = new Map<string, { at: number; value: boolean }>()
+  /** Whether others can open the file, asked of the host's rule and kept for a moment (it reads the disk). */
+  isShared(path: string): boolean {
+    if (!this.shared) return false
+    const hit = this.sharedSeen.get(path)
+    if (hit && this.now() - hit.at < 5000) return hit.value
+    const value = this.shared.is(path)
+    this.sharedSeen.set(path, { at: this.now(), value })
+    return value
+  }
+  private rootOf(path: string): string {
+    return this.isShared(path) ? this.shared!.root : this.root
+  }
+  /**
+   * Where a save is made before the file takes it. A shared workbook's is in the OS temp folder, which no backup
+   * reads and nothing else clears mid-save (Files clears its scratch at each start, while tabs reopen): it is
+   * removed as the save ends.
+   */
+  private scratchOf(path: string): string {
+    if (!this.isShared(path)) return join(this.root, 'work')
+    // (a folder of this process alone, made for its owner only: the workbook is not readable by another account while it saves)
+    if (!this.saveDir || !existsSync(this.saveDir)) this.saveDir = mkdtempSync(join(tmpdir(), 'tc-sheet-save-'))
+    return this.saveDir
+  }
+  private saveDir: string | null = null
+
+  /**
+   * What was kept of shared workbooks before this rule: their copies move to the scratch and their log gives up
+   * what was typed, for every workbook this host knows, opened again or not.
+   */
+  sweep(): void {
+    if (!this.shared) return
+    for (const { path } of this.db.prepare('SELECT path FROM work_sheets_files').all() as { path: string }[]) {
+      if (!this.isShared(path)) continue
+      this.dir(path)
+      this.db.prepare(`UPDATE work_sheets_ops SET mutations = ?, undo = NULL WHERE path = ? AND mutations NOT IN ('null', '[]', ?)`).run(UNKEPT, path, UNKEPT)
+    }
+  }
   private dir(path: string): string {
-    return join(this.root, createHash('sha256').update(path).digest('hex').slice(0, 24))
+    const name = createHash('sha256').update(path).digest('hex').slice(0, 24)
+    const here = join(this.rootOf(path), name)
+    // Copies made where the file's place was judged otherwise (before this rule, or before its folder became a library) are not left behind.
+    if (this.shared) {
+      const other = join(this.isShared(path) ? this.root : this.shared.root, name)
+      if (existsSync(other)) {
+        if (this.isShared(path) && !existsSync(here)) {
+          mkdirSync(dirname(here), { recursive: true })
+          try {
+            renameSync(other, here)
+          } catch {
+            rmSync(other, { recursive: true, force: true })
+          }
+        } else rmSync(other, { recursive: true, force: true })
+      }
+    }
+    return here
   }
   copyOf(path: string, rev: number): string {
     return join(this.dir(path), `${rev}.xlsx`)
@@ -118,6 +199,12 @@ export class PackageStore {
   private sync(path: string): FileRow {
     const row = this.row(path)
     const stamp = stampOf(path)
+    // (copies kept where the file's place was judged otherwise are moved or removed now, not at the next save; and
+    // a shared workbook's log written before this rule gives up what was typed: the database rides the backup)
+    if (this.shared && row) {
+      this.dir(path)
+      if (this.isShared(path)) this.db.prepare(`UPDATE work_sheets_ops SET mutations = ?, undo = NULL WHERE path = ? AND mutations NOT IN ('null', '[]', ?)`).run(UNKEPT, path, UNKEPT)
+    }
     if (!row) {
       mkdirSync(this.dir(path), { recursive: true })
       copyFileSync(path, this.copyOf(path, 0))
@@ -126,6 +213,8 @@ export class PackageStore {
     }
     if (row.stamp === stamp) return row
     const rev = row.rev + 1
+    // (a shared workbook's copies go with its tab and at each start: the folder is made again)
+    mkdirSync(this.dir(path), { recursive: true })
     copyFileSync(path, this.copyOf(path, rev))
     this.db.prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations) VALUES (?, ?, ?, ?, ?, ?)').run(path, rev, 'file', this.now(), 'Changed outside TempCode', '[]')
     this.db.prepare('UPDATE work_sheets_files SET rev = ?, stamp = ? WHERE path = ?').run(rev, stamp, path)
@@ -162,8 +251,8 @@ export class PackageStore {
     const row = existsSync(path) ? this.sync(path) : this.row(path)
     if (!row) throw new Error('Open the sheet first.')
     const ops = this.db.prepare('SELECT rev, by, mutations FROM work_sheets_ops WHERE path = ? AND rev > ? ORDER BY rev').all(path, rev) as { rev: number; by: string; mutations: string }[]
-    // A change from outside and a restore carry no ops: the grids load the file again.
-    if (ops.some((o) => o.by === 'file' || o.mutations === 'null')) return { rev: row.rev, reload: true }
+    // A change from outside and a restore carry no ops, and a shared workbook's edit keeps none: the grids load the file again.
+    if (ops.some((o) => o.by === 'file' || o.mutations === 'null' || o.mutations === UNKEPT)) return { rev: row.rev, reload: true }
     const out = ops.map((o) => ({ rev: o.rev, by: o.by, mutations: JSON.parse(o.mutations) as SheetMutationJson[] }))
     // A rule's whole list is no mutation a grid applies: the grids that were not its sender load the file again.
     if (out.some((o) => o.mutations.some((m) => m.id === RULES_SET))) return { rev: row.rev, reload: true }
@@ -206,7 +295,7 @@ export class PackageStore {
       const ops = steps.flatMap((s) => (s.kind === 'structural' ? s.ops : []))
       let rev: number
       try {
-        rev = await this.save(path, row, (target, out) => this.write(target, out, steps))
+        rev = await this.save(path, row, (target, out) => this.write(path, target, out, steps))
       } catch (err) {
         if (!(err instanceof ChangedOutside)) throw err
         // The file was moved or deleted while we patched: nothing is made under its old name, and the edit goes back.
@@ -216,25 +305,27 @@ export class PackageStore {
       }
       const edits = steps.flatMap((s) => (s.kind === 'cells' ? s.edits : []))
       const rules = mutations.filter((m) => m.id === RULES_SET)
+      // A workbook others can open: what was typed is not kept in this host's database (it rides the backup).
+      const unkept = this.isShared(path)
       // After a structural save every grid loads the file again (LibreOffice renumbers sheets): its op carries no mutations.
       // A rule's op keeps its own (the whole list its change left), which `since` answers as a reload: no other grid
       // can apply a list as it is, but no cell moved, so an edit made before it still lands.
       this.db
         .prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations, write_id, undo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(path, rev, by, this.now(), extra.label ?? (ops.length ? labelOfOps(ops) : rules.length && !edits.length ? labelOfRules(rules) : labelOf(edits)), ops.length ? 'null' : JSON.stringify(mutations), extra.writeId ?? null, extra.undo && !ops.length ? JSON.stringify(extra.undo) : null)
+        .run(path, rev, by, this.now(), extra.label ?? (ops.length ? labelOfOps(ops) : rules.length && !edits.length ? labelOfRules(rules) : labelOf(edits)), ops.length ? 'null' : unkept ? UNKEPT : JSON.stringify(mutations), extra.writeId ?? null, extra.undo && !ops.length && !unkept ? JSON.stringify(extra.undo) : null)
       return ops.length ? { rev, moved: { ops, before } } : { rev }
     })
   }
 
   /** Writes the edit's steps from `target` into `out`: the patch writer for cells, LibreOffice and the graft for structure. */
-  private async write(target: string, out: string, steps: Step[]): Promise<void> {
+  private async write(path: string, target: string, out: string, steps: Step[]): Promise<void> {
     if (steps.length === 1 && steps[0].kind === 'cells') {
       await this.jobs.save(target, out, steps[0].edits, this.ironcalcDir(), steps[0].formats)
       return
     }
     if (!this.structural) throw new NotSaved('Rows, columns and sheets cannot be changed in an opened Excel file on this host.')
     const kind = target.toLowerCase().endsWith('.xlsm') ? 'xlsm' : 'xlsx'
-    const work = join(this.root, 'work', randomUUID())
+    const work = join(this.scratchOf(path), randomUUID())
     mkdirSync(work, { recursive: true })
     try {
       let at = target
@@ -269,7 +360,7 @@ export class PackageStore {
     // The new package is made among this host's own files, never beside the file, and its bytes are handed to
     // Files' one door for replacing a file where it lies (through a link, its target).
     const target = realpathSync(path)
-    const made = join(this.root, 'work', `${randomUUID()}.save`)
+    const made = join(this.scratchOf(path), `${randomUUID()}.save`)
     let stamp: string
     try {
       mkdirSync(dirname(made), { recursive: true })
@@ -302,8 +393,14 @@ export class PackageStore {
   private async put(path: string, target: string, bytes: Uint8Array, expect: string, rev: number): Promise<string> {
     const copy = this.copyOf(path, rev)
     try {
-      mkdirSync(dirname(copy), { recursive: true })
-      writeFileSync(copy, bytes)
+      try {
+        mkdirSync(dirname(copy), { recursive: true })
+        writeFileSync(copy, bytes)
+      } catch {
+        // (a shared workbook's folder is Files' scratch, cleared at each start: made again once)
+        mkdirSync(dirname(copy), { recursive: true })
+        writeFileSync(copy, bytes)
+      }
     } catch {
       // Our own folder, not the workbook's: said as that, so he does not look for the fault beside his file.
       rmSync(copy, { force: true })
@@ -369,7 +466,7 @@ export class PackageStore {
     if (!op?.undo) throw new Error('That write can no longer be taken back.')
     const touched = cellsOfMutations(JSON.parse(op.mutations) as SheetMutationJson[])
     const later = this.db.prepare('SELECT mutations FROM work_sheets_ops WHERE path = ? AND rev > ?').all(path, op.rev) as { mutations: string }[]
-    if (later.some((l) => l.mutations === 'null' || l.mutations === '[]')) throw new Error('The file was restored or changed since: that write can no longer be taken back.')
+    if (later.some((l) => l.mutations === 'null' || l.mutations === '[]' || l.mutations === UNKEPT)) throw new Error('The file was restored or changed since: that write can no longer be taken back.')
     for (const l of later) for (const k of cellsOfMutations(JSON.parse(l.mutations) as SheetMutationJson[])) if (touched.has(k)) throw new Error('Those cells were edited since: that write can no longer be taken back.')
     const state = await this.open(path)
     const mutations = JSON.parse(op.undo) as SheetMutationJson[]
@@ -382,7 +479,11 @@ export class PackageStore {
   history(path: string): SheetRevision[] {
     const ops = this.db.prepare('SELECT rev, by, at, label FROM work_sheets_ops WHERE path = ? ORDER BY rev DESC').all(path) as { rev: number; by: string; at: number; label: string }[]
     const first = existsSync(this.copyOf(path, 0)) ? [{ rev: 0, at: statSync(this.copyOf(path, 0)).mtimeMs, by: 'file' as const, label: 'As opened' }] : []
-    return [...ops.map((o) => ({ rev: o.rev, at: o.at, by: o.by as SheetRevision['by'], label: o.label })), ...first]
+    // A workbook others can open keeps its copies only while a tab or thread holds it: History lists the newest
+    // revision (the file itself) and those whose copy is still here, so nothing it offers answers "no longer kept".
+    const newest = ops[0]?.rev
+    const kept = this.isShared(path) ? ops.filter((o) => o.rev === newest || existsSync(this.copyOf(path, o.rev))) : ops
+    return [...kept.map((o) => ({ rev: o.rev, at: o.at, by: o.by as SheetRevision['by'], label: o.label })), ...first]
   }
 
   compare(path: string, from: number, to: number, max: number): Promise<{ cells: SheetCellDiff[]; truncated: boolean }> {
@@ -421,6 +522,7 @@ export class PackageStore {
   /** Keeps the original and the newest copies. */
   private prune(path: string): void {
     const dir = this.dir(path)
+    if (!existsSync(dir)) return
     const revs = readdirSync(dir)
       .map((f) => Number(/^(\d+)\.xlsx$/.exec(f)?.[1]))
       .filter((n) => Number.isInteger(n) && n > 0)
@@ -428,11 +530,61 @@ export class PackageStore {
     for (const rev of revs.slice(KEEP_COPIES)) rmSync(this.copyOf(path, rev), { force: true })
   }
 
+  /**
+   * Says who holds a workbook others can open: `item` its tab (or ''), `session` the thread or pane it is in. Its
+   * copies go when the last holder does (`release`).
+   */
+  hold(path: string, item: string, session: string): void {
+    if (!this.isShared(path)) return
+    this.db.prepare('INSERT OR IGNORE INTO work_sheets_shared (path, item, session) VALUES (?, ?, ?)').run(path, item, session)
+  }
+
+  /**
+   * Holders that went: tabs closed for good (`items`) or threads deleted (`sessions`). A workbook nobody holds any
+   * more keeps no copy here: what stays is its row (a path, a revision number, a stamp) and its log's labels, so a
+   * suggestion waiting on it still knows which revision it was made for.
+   */
+  release(gone: { items?: readonly string[]; sessions?: readonly string[] }): string[] {
+    const paths = new Set<string>()
+    const rows = (column: 'item' | 'session', ids: readonly string[]): void => {
+      for (const id of ids) {
+        if (!id) continue
+        for (const r of this.db.prepare(`SELECT path FROM work_sheets_shared WHERE ${column} = ?`).all(id) as { path: string }[]) paths.add(r.path)
+        this.db.prepare(`DELETE FROM work_sheets_shared WHERE ${column} = ?`).run(id)
+      }
+    }
+    rows('item', gone.items ?? [])
+    rows('session', gone.sessions ?? [])
+    const dropped: string[] = []
+    for (const path of paths) {
+      if (this.db.prepare('SELECT 1 FROM work_sheets_shared WHERE path = ? LIMIT 1').get(path)) continue
+      dropped.push(path)
+      // After any save of the file in flight (a tab's last edit is flushed as it closes), and only if nobody took hold meanwhile.
+      void this.serial(path, async () => {
+        if (!this.db.prepare('SELECT 1 FROM work_sheets_shared WHERE path = ? LIMIT 1').get(path)) this.dropCopies(path)
+      })
+    }
+    return dropped
+  }
+
+  /** Resolves once every save and release asked for so far has ended (a test waits on it). */
+  idle(): Promise<void> {
+    return Promise.all([...this.chains.values()]).then(() => undefined)
+  }
+
+  /** Removes every copy kept of a file, in either place. */
+  private dropCopies(path: string): void {
+    const name = createHash('sha256').update(path).digest('hex').slice(0, 24)
+    rmSync(join(this.root, name), { recursive: true, force: true })
+    if (this.shared) rmSync(join(this.shared.root, name), { recursive: true, force: true })
+  }
+
   /** Forget a file's copies and log (its item was deleted with its thread, and no other item names it). */
   forget(path: string): void {
     this.db.prepare('DELETE FROM work_sheets_ops WHERE path = ?').run(path)
     this.db.prepare('DELETE FROM work_sheets_files WHERE path = ?').run(path)
-    rmSync(this.dir(path), { recursive: true, force: true })
+    this.db.prepare('DELETE FROM work_sheets_shared WHERE path = ?').run(path)
+    this.dropCopies(path)
     this.inspected.delete(path)
   }
 }

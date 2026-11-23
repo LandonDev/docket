@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, statSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, statSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, extname, isAbsolute, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, sep } from 'node:path'
 import { SHEET_ROW, type SheetChart, type SheetMutationJson, type SheetStoreKind, type SheetView } from '@shared/contract-work-sheets'
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
 import { refKey } from '@shared/work/files'
@@ -14,7 +14,7 @@ import type { Caller, WorkCtx } from '../modules'
 import { excelStore } from '../office/excel'
 import { excelRefOf, type ExcelRef } from '../office/grid'
 import { googleSheetRefOf, googleStore, type GoogleSheetRef } from '../google/grid'
-import { gz, writeTcsheet } from './host/backends'
+import { gz, tcsheetRev, writeTcsheet } from './host/backends'
 import type { HostAnswer, HostAsk, SheetRef } from './host/wire'
 import { readCsv } from './writer'
 import { cellsOfMutations, PackageStore } from './packages'
@@ -72,11 +72,85 @@ export function heldOfPath(path: string, dataDir: string): Exclude<Held, { at: '
 }
 
 /** Where the sheet read from a .csv is kept: one per CSV path, under this host's data. */
-export const csvSheetPath = (dataDir: string, csv: string): string => join(dataDir, 'sheets', 'csv', `${createHash('sha256').update(csv).digest('hex').slice(0, 24)}.tcsheet`)
+export function csvSheetPath(dataDir: string, csv: string): string {
+  // His own .csv, and a shared one he had edited here before this rule: the sheet among the app's files, as before.
+  if (!sharedCsv(csv) || csvEdited(ownCsvPath(dataDir, csv))) return ownCsvPath(dataDir, csv)
+  // A .csv others can open: a cache named for the file as it stands, so a co-author's newer file is read again.
+  return join(sharedCsvDir(dataDir), `${nameOfCsv(csv)}-${stampOfCsv(csv)}.tcsheet`)
+}
+const nameOfCsv = (csv: string): string => createHash('sha256').update(csv).digest('hex').slice(0, 24)
+/** The sheet a .csv opens as among the app's own files. */
+export const ownCsvPath = (dataDir: string, csv: string): string => join(dataDir, 'sheets', 'csv', `${nameOfCsv(csv)}.tcsheet`)
+/**
+ * Whether a .csv's sheet holds an edit of his (it stands past the revision it was read at): such a sheet is never
+ * dropped or made read-only under him. A sheet that is there and cannot be read just now counts as edited: only a
+ * read that says revision 0 lets it go. Asked on every request for the file, so the answer is kept by the sheet's
+ * size and time.
+ */
+export function csvEdited(sheet: string): boolean {
+  let stamp: string
+  try {
+    const st = statSync(sheet)
+    stamp = `${st.size}:${st.mtimeMs}`
+  } catch {
+    return false
+  }
+  const hit = editedSeen.get(sheet)
+  if (hit?.stamp === stamp) return hit.edited
+  const rev = tcsheetRev(sheet)
+  // (an unreadable sheet is not remembered: the next ask reads it again)
+  if (rev === null) return true
+  editedSeen.set(sheet, { stamp, edited: rev > 0 })
+  return rev > 0
+}
+const editedSeen = new Map<string, { stamp: string; edited: boolean }>()
+const stampOfCsv = (csv: string): string => {
+  try {
+    const st = statSync(csv)
+    return createHash('sha256').update(`${st.size}:${st.mtimeMs}`).digest('hex').slice(0, 8)
+  } catch {
+    return 'gone'
+  }
+}
+
+/**
+ * A .csv others can open (the editors plan, "University files"): the sheet it is read into is a cache under
+ * Files' scratch (out of the backups, cleared at each start), and it opens to read: an edit would live only in
+ * that cache until he saved it back, and the cache does not last. Which file that is, is the host's rule
+ * (`sharedOf`), set once the pillar has its context; before that, and in a test that sets none, no file is.
+ */
+let sharedPath: ((path: string) => boolean) | null = null
+export const setSharedPath = (fn: ((path: string) => boolean) | null): void => {
+  sharedPath = fn
+}
+const sharedCsv = (csv: string): boolean => {
+  try {
+    return sharedPath?.(csv) ?? false
+  } catch {
+    return false
+  }
+}
+export const sharedCsvDir = (dataDir: string): string => join(dataDir, 'work-files', 'preview-scratch', 'sheets', 'csv')
+/** Whether a sheet the service holds is the read-only cache of a .csv others can open. */
+export const isSharedCsvSheet = (dataDir: string, ref: unknown): boolean => typeof (ref as { tcsheet?: unknown } | null)?.tcsheet === 'string' && (ref as { tcsheet: string }).tcsheet.startsWith(sharedCsvDir(dataDir) + sep)
+export const SHARED_CSV_READS = 'This .csv is in a folder others can open, so it opens here to read. Save a copy to edit it.'
 
 /** Makes the sheet a .csv opens as, the first time: the CSV's cells as its first snapshot. */
-export function ensureCsvSheet(held: Held): void {
-  if (held.at !== 'service' || !held.csv || !('tcsheet' in held.ref) || existsSync(held.ref.tcsheet)) return
+export function ensureCsvSheet(held: Held, dataDir?: string): void {
+  if (held.at !== 'service' || !held.csv || !('tcsheet' in held.ref)) return
+  if (dataDir && isSharedCsvSheet(dataDir, held.ref)) {
+    // A cache made among the app's own files before the file counted as shared is not left behind (one he edited is
+    // still his sheet: `csvSheetPath` answered it, and this branch is not reached). Caches of the file as it stood go too.
+    rmSync(ownCsvPath(dataDir, held.csv), { force: true })
+    const mine = basename(held.ref.tcsheet)
+    const prefix = `${mine.slice(0, mine.indexOf('-'))}-`
+    try {
+      for (const name of readdirSync(dirname(held.ref.tcsheet))) if (name.startsWith(prefix) && name !== mine) rmSync(join(dirname(held.ref.tcsheet), name), { force: true })
+    } catch {
+      /* no cache folder yet */
+    }
+  }
+  if (existsSync(held.ref.tcsheet)) return
   mkdirSync(dirname(held.ref.tcsheet), { recursive: true })
   const title = basename(held.csv)
   const wb = readCsv(readFileSync(held.csv, 'utf8'), 'workbook', title)
@@ -103,6 +177,7 @@ export const setJobs = (fn: (() => Promise<SheetJobs>) | null): void => {
 export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
   const hit = made.get(ctx.db)
   if (hit) return hit
+  setSharedPath((path) => sharedOf(ctx, { at: 'file', host: ctx.host, path }))
   // The built app forks the sheet worker; a test, or a proof that bundled the server itself, runs the jobs in this process.
   const jobs =
     (jobsFor ? await jobsFor() : null) ??
@@ -130,15 +205,31 @@ export async function sheetsOf(ctx: WorkCtx): Promise<Sheets> {
         const done = await ctx.convert({ from: kind, to: `${kind}+ops`, input, output: join(dir, `out.${kind}`), options: { ops } })
         return done.output
       },
-      (path) => fileKey(ctx, path)
+      (path) => fileKey(ctx, path),
+      { root: sharedCopies(ctx.dataDir), is: (path) => sharedOf(ctx, { at: 'file', host: ctx.host, path }) }
     ),
     suggestions,
     changes,
     jobs
   }
   made.set(ctx.db, s)
+  // What was kept of a shared workbook before this rule is moved and emptied now, not only when it is next opened.
+  setImmediate(() => {
+    try {
+      s.packages.sweep()
+    } catch (err) {
+      ctx.log(`sheets: shared workbooks' kept things were not swept: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  })
   return s
 }
+
+/**
+ * Where a workbook others can open keeps its working copies (the editors plan, "University files"): under Files'
+ * own preview scratch (files/preview.ts `previewScratch`; library.test.ts holds the two equal), which both backups
+ * leave out and Files clears at each start. Nothing made from such a file outlives its tab or thread.
+ */
+export const sharedCopies = (dataDir: string): string => join(dataDir, 'work-files', 'preview-scratch', 'sheets', 'files')
 
 /**
  * The key Files itself locks a file of this host under while it saves or changes it (files/handle.ts): a library's
@@ -159,8 +250,11 @@ export async function fileKey(ctx: WorkCtx, path: string): Promise<string> {
 
 /** One call to the Work service's sheet host. */
 export async function host<A extends HostAsk['op']>(ctx: WorkCtx, op: A, body: Omit<Extract<HostAsk, { op: A }>, 'op'>): Promise<HostAnswer<A>> {
+  // The cache of a .csv others can open takes no change, whoever asks: it opens to read (`SHARED_CSV_READS`).
+  if (WRITES.has(op) && isSharedCsvSheet(ctx.dataDir, (body as { sheet?: unknown }).sheet)) throw new Error(SHARED_CSV_READS)
   return (await ctx.service.internal(`/internal/sheet/${op}`, body)) as HostAnswer<A>
 }
+const WRITES: ReadonlySet<string> = new Set(['apply', 'cells', 'review', 'restore'])
 
 /** A remote key reaches a file item only where it could name the file itself. */
 export function fence(ctx: WorkCtx, by: Caller, item: CanvasItem, method: string): void {
@@ -184,7 +278,7 @@ export function setChart(ctx: WorkCtx, store: string, chart: SheetChart, remove:
 /** The view a canvas draws: the store's state, with this host's suggestions, mode, written line and charts. */
 export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   const held = heldOf(item, s.ctx.dataDir)
-  ensureCsvSheet(held)
+  ensureCsvSheet(held, s.ctx.dataDir)
   const key = storeKey(held)
   // A Files tab's owner is no thread and has no scope: what others can open is read from the source itself.
   const scope = s.ctx.scopeOf(item.sessionId)
@@ -193,6 +287,8 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   const written = s.suggestions.written(key)
   if (held.at === 'package') {
     const st = await s.packages.open(held.path)
+    // A workbook others can open is held by this tab: its copies go when the tab does (index.ts `itemsRemoved`).
+    s.packages.hold(held.path, item.id, item.sessionId)
     return {
       ...base,
       name: basename(held.path),
@@ -252,6 +348,8 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     suggestions: st.suggestions,
     ...changesOf(s, key),
     ...(written ? { written } : {}),
+    // A .csv others can open is a cache that does not last: it opens to read.
+    ...(isSharedCsvSheet(s.ctx.dataDir, held.ref) ? { readOnly: SHARED_CSV_READS } : {}),
     ...(st.missing ? { missing: true } : {})
   }
 }
