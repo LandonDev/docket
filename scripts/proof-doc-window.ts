@@ -108,10 +108,7 @@ try {
   )
   run.check('the text is drawn in the document\'s own styles: Calibri as Carlito, 11 pt body, 22 pt title', /Carlito/.test(fonts.family) && fonts.loaded && Math.abs(parseFloat(fonts.size) - 14.667) < 0.2 && Math.abs(parseFloat(fonts.title) - 29.333) < 0.3, JSON.stringify(fonts))
   const named = await run.page<{ titles: number; headCells: number; cells: number }>(`({ titles: [...document.querySelectorAll('[data-doc-scroller] h1, [data-doc-scroller] .bn-inline-content')].filter((e) => e.textContent.trim() === ${JSON.stringify(TITLE)}).length, headCells: document.querySelectorAll('.bn-editor th').length, cells: document.querySelectorAll('.bn-editor td').length })`)
-  // The table's header row is counted with the next work-kit pin (v74: a Word table keeps ONE header row): until then every row comes back a header.
-  run.check('the name is said once in the text (the document\'s own Title)', named.titles === 1, JSON.stringify(named))
-  const sideways = await run.page<number>(`(() => { const s = document.querySelector('[data-doc-scroller]'); return s ? s.scrollWidth - s.clientWidth : -1 })()`)
-  run.check('the document does not scroll sideways', sideways === 0, String(sideways))
+  run.check('the name is said once in the text (the document\'s own Title), and the table has one header row of two cells', named.titles === 1 && named.headCells === 2 && named.cells === 4, JSON.stringify(named))
   await shot('01-document')
 
   // 2. Find: the bar, its count, the tints on the text.
@@ -125,10 +122,20 @@ try {
   run.check('find counts its matches and tints them on the text, one in hand', counted && hits.hits > 20 && hits.current === 1, JSON.stringify(hits))
   const barFits = await run.page<boolean>(`(() => { const b = document.querySelector('.te-find-bar')?.getBoundingClientRect(); const s = document.querySelector('[data-doc-scroller]')?.getBoundingClientRect(); return !!b && !!s && b.left >= s.left && b.right <= s.right && b.top >= s.top; })()`)
   run.check('the find bar sits inside the document\'s scroller', barFits)
+  // Three steps on, to matches further down: each is brought into view.
+  for (let i = 0; i < 3; i++) {
+    await run.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    await run.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    await sleep(150)
+  }
+  run.check('Enter steps to the next match', await run.until('the fourth', 5000, () => run.page<boolean>(`/^4 of /.test(document.querySelector('.te-find-count')?.textContent ?? '')`)), await run.page<string>(`document.querySelector('.te-find-count')?.textContent ?? ''`))
   await sleep(600)
   await shot('02-find')
   await run.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
   await run.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  // The scroller holds its sideways place (the comments rail lies 4px past the column: nothing may scroll the text toward it, a step of find least of all).
+  const sideways = await run.page<number>(`document.querySelector('[data-doc-scroller]')?.scrollLeft ?? -1`)
+  run.check('stepping through find never moves the document sideways', sideways === 0, String(sideways))
   run.check('Escape closes it and the tints go', await run.until('closed', 5000, () => run.page<boolean>(`!document.querySelector('.te-find-bar') && document.querySelectorAll('.bn-editor .te-find-hit').length === 0`)))
 
   // 3. An agent's formatting waits as a suggestion that says what it does.

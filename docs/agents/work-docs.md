@@ -70,11 +70,20 @@ size, colour and highlight, a paragraph's own formatting, and the page map
 what it cannot read, for everyone (y-prosemirror removes an attribute it has
 no name for, and drops text whose marks it cannot make). So a document says
 its **schema** (a number in its `page` map: 0 for every document before
-2026-11-23, 1 once anything of the new kind is first put in), and the Work
-service holds one line, in work-kit's collab server (`schemaGate: true`,
-`service/serve.ts`; work-kit `src/collab-server/README.md` "The schema
-gate"):
+2026-11-23, 1 once anything of the new kind is first put in, 2 once it holds
+a table of contents), and the Work service holds one line, in work-kit's
+collab server (`schemaGate: true`, `service/serve.ts`; work-kit
+`src/collab-server/README.md` "The schema gate"):
 
+- **A number per kind of thing, and a document is raised only as far as it
+  needs.** 1 is styling (`STYLED_SCHEMA`); 2 is the table of contents block
+  (`CONTENTS_SCHEMA`), a node an editor that knows 1 would delete. A styled
+  document with no table of contents stays at 1 and still opens in a window
+  that knows 1; inserting one asks for 2 first, and a window that knows 1 is
+  then off the document before the block is written. A host says the highest
+  it knows (`DOCUMENT_SCHEMA`, now 2), never the number of a document. A
+  thing added to the editor after a release has shipped takes the next
+  number: see work-kit `src/collab/document.ts`.
 - **An older window, a newer host.** A client says the highest schema it
   knows in its socket's address (`?schema=n`; one that says nothing knows
   0). The service refuses a document whose number is higher, before any of it
@@ -167,7 +176,24 @@ layers are held inside the body. The slot is marked `data-editor-keys`, so
 - **On a guest's page** an Edit link gets the row in the page itself; Comment
   and View get none.
 
-## The canvas
+## The table of contents
+
+Insert → Table of contents (the format row and the slash menu, on a host
+that knows schema 2) puts in one block that lists the document's headings,
+levels 1 to 3, each a row: the heading's words and, in Pages, its page number
+after a dotted leader. It follows the text as he types; a press on a row
+goes to its heading. It is read, never written: nothing of it is in the
+document but the block and its `levels`. Out: Word gets a real TOC field
+(Word's own gallery control, `TOC \o "1-3" \h \u \z`, a row a heading with
+its page number, bookmarks on the headings), and a Word file's TOC comes in
+as the block; a web page and a PDF get the rows as links to the headings;
+Markdown gets a list of links. `doc_read` shows it as that list, and an
+agent's write around it leaves it where it stands. The page numbers come
+from the Pages layout through one seam (work-kit `ContentsPagesContext`);
+with no layout the rows have none. A Word table keeps its header rows
+through Word as he made them (one header row stays one: work-kit v74).
+
+
 
 The shared editor in a 672px measure with a 52px gutter for the block
 handle, the title above it in the document ladder's title step (renamed in

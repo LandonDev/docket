@@ -12,6 +12,9 @@
 @source "../../../node_modules/work-kit/src/editor/collaboration.ts";
 @source "../../../node_modules/work-kit/src/editor/comment-composer.tsx";
 @source "../../../node_modules/work-kit/src/editor/composer-draft.ts";
+@source "../../../node_modules/work-kit/src/editor/contents-pages.tsx";
+@source "../../../node_modules/work-kit/src/editor/contents-rows.ts";
+@source "../../../node_modules/work-kit/src/editor/contents.ts";
 @source "../../../node_modules/work-kit/src/editor/controls/bars.tsx";
 @source "../../../node_modules/work-kit/src/editor/controls/blocks.tsx";
 @source "../../../node_modules/work-kit/src/editor/controls/kit.tsx";
