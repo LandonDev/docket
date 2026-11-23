@@ -35,6 +35,7 @@ import { MONEY_CAPS, MONEY_RELAY, MoneyRequestSchemas, type MoneyPush } from './
 import { SEARCH_CAPS, SEARCH_RELAY, SearchRequestSchemas, type SearchPush } from './contract-work-search'
 import { REVIEW_CAPS, REVIEW_RELAY, ReviewRequestSchemas, type ReviewPush } from './contract-work-review'
 import { CLASHES_CAPS, CLASHES_RELAY, ClashesRequestSchemas, type ClashesPush } from './contract-work-clashes'
+import { TEMPLATES_CAPS, TEMPLATES_RELAY, TemplatesRequestSchemas, type TemplatesPush } from './contract-work-templates'
 
 /**
  * Work over the wire (docs/agents/work.md): the core's own methods, then
@@ -127,7 +128,8 @@ export const WorkRequestSchemas = [
   ...MoneyRequestSchemas,
   ...SearchRequestSchemas,
   ...ReviewRequestSchemas,
-  ...ClashesRequestSchemas
+  ...ClashesRequestSchemas,
+  ...TemplatesRequestSchemas
 ] as const
 
 export type WorkPush =
@@ -164,6 +166,7 @@ export type WorkPush =
   | SearchPush
   | ReviewPush
   | ClashesPush
+  | TemplatesPush
 
 export const WORK_CAPS = {
   ...WORK_CORE_CAPS,
@@ -198,7 +201,8 @@ export const WORK_CAPS = {
   ...MONEY_CAPS,
   ...SEARCH_CAPS,
   ...REVIEW_CAPS,
-  ...CLASHES_CAPS
+  ...CLASHES_CAPS,
+  ...TEMPLATES_CAPS
 }
 
 /** Each pillar's own requests, capability rows and relay rows, for the guards (contract-work.test.ts) and the router. */
@@ -234,7 +238,8 @@ export const WORK_PILLAR_CONTRACTS: Record<PillarId, { requests: readonly z.ZodT
   money: { requests: MoneyRequestSchemas, caps: MONEY_CAPS, relay: MONEY_RELAY },
   search: { requests: SearchRequestSchemas, caps: SEARCH_CAPS, relay: SEARCH_RELAY },
   review: { requests: ReviewRequestSchemas, caps: REVIEW_CAPS, relay: REVIEW_RELAY },
-  clashes: { requests: ClashesRequestSchemas, caps: CLASHES_CAPS, relay: CLASHES_RELAY }
+  clashes: { requests: ClashesRequestSchemas, caps: CLASHES_CAPS, relay: CLASHES_RELAY },
+  templates: { requests: TemplatesRequestSchemas, caps: TEMPLATES_CAPS, relay: TEMPLATES_RELAY }
 }
 
 /**

@@ -318,7 +318,8 @@ export const PILLAR_LOADERS: PillarLoaders = {
   money: () => import('./money').then((m) => m.money),
   search: () => import('./search').then((m) => m.search),
   review: () => import('./review').then((m) => m.review),
-  clashes: () => import('./clashes').then((m) => m.clashes)
+  clashes: () => import('./clashes').then((m) => m.clashes),
+  templates: () => import('./templates').then((m) => m.templates)
 }
 
 let loaded: Promise<Map<PillarId, string>> | null = null
