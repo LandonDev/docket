@@ -54,12 +54,14 @@ export const NO_LICENCE = 'Office in the Windows VM is not signed in yet, so it 
 /**
  * The VM's carrier with two things said plainly. A call the helper never answered left it sitting on a dialog
  * in Office: the helper is ended as the admin, and its door made ready again at the next call. And an Office
- * with no licence refuses most of what is asked of it with a bare code (0x800A03EC, "the license … has
- * expired"): while the VM's last read says Office is not licensed, such a failure says why (`licensed`).
+ * with no licence refuses a save or a write with a bare code (0x800A03EC, "the license … has expired"): only
+ * while the VM's last read says Office holds no licence (`licensed` false, not unknown) does such a failure say
+ * why. 0x800A03EC is Excel's answer to anything it will not do (a dynamic-array member on an Excel without
+ * them, a bad formula, a locked cell), so a licensed or unread Office's failure stays as it is.
  */
-function restartOnStall(carrier: ComCarrier, log: (line: string) => void, licensed: () => boolean): OfficeCarrier {
+function restartOnStall(carrier: ComCarrier, log: (line: string) => void, licensed: () => boolean | null): OfficeCarrier {
   const stalled = (err: unknown): boolean => err instanceof OfficeError && /did not answer .* within|has not said within/.test(err.message)
-  const unlicensed = (err: unknown): err is OfficeError => err instanceof OfficeError && err.code === 'failed' && !licensed() && /0x800A03EC|license/i.test(err.message)
+  const unlicensed = (err: unknown): err is OfficeError => err instanceof OfficeError && err.code === 'failed' && licensed() === false && /0x800A03EC|licen[cs]e/i.test(err.message)
   return new Proxy(carrier, {
     get(target, prop, receiver) {
       const v = Reflect.get(target, prop, receiver) as unknown
@@ -85,7 +87,7 @@ function restartOnStall(carrier: ComCarrier, log: (line: string) => void, licens
 export function vmHereOf(ctx: WorkCtx): VmHere {
   const had = made.get(ctx.db)
   if (had) return had
-  const carrier = restartOnStall(comCarrier({ start: () => startFor(), log: (line) => ctx.log(line) }), ctx.log, () => storedStatus(ctx.db)?.status.office.licensed === true)
+  const carrier = restartOnStall(comCarrier({ start: () => startFor(), log: (line) => ctx.log(line) }), ctx.log, () => storedStatus(ctx.db)?.status.office.licensed ?? null)
   const suggestions = new SuggestionStore(ctx.db)
   const here: VmHere = { carrier, suggestions, excel: new ExcelHelper(carrier, ctx.db, suggestions) }
   made.set(ctx.db, here)

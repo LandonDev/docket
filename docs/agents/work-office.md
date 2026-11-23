@@ -243,15 +243,49 @@ first-run licensing dialog never draws its content and cannot be closed
 (found 2026-11-22; tcuser's lock-down is not the cause), and the policy
 skips it, leaving "Sign in" in each app's title bar. Found live before his
 sign-in: the helper opens a workbook and a document, lists them, and reads a
-Word document's paragraphs; Excel refuses a range's read and a save
-("This command is unavailable because the license to use this application
-has expired", or a bare 0x800A03EC), which the VM's carrier says as "not
-signed in yet, so it opens files to view only" (`NO_LICENCE`) while the
-last read of the VM says Office has no licence. From Version 2205 on,
+Word document's paragraphs; Excel refuses a save ("This command is
+unavailable because the license to use this application has expired"). He
+signed in on 2026-11-22 and the apps lost "(Viewer)" with the policy still
+set. The VM's carrier says "not signed in yet, so it opens files to view
+only" (`NO_LICENCE`) for a bare 0x800A03EC or a licence refusal only while
+the last read of the VM says Office holds no licence (`licensed` false, not
+unknown): 0x800A03EC is Excel's answer to anything it will not do, and a
+licensed Office's failure keeps its own words. From Version 2205 on,
 Microsoft says a user who signs in with a licence has the whole product
 while the policy stays; if the apps still say "(Viewer)" after his sign-in
 and a restart, the policy's value is removed (F-vm-files.md).
 
+- **Signed in, and licensed.** On this build (16.0.20625) OneAuth keeps no
+  identity under `Common\Identity\Identities`, and there is no
+  `LicenseIdToEmailMapping`. The helper's `guest.status` now reads what
+  Office keeps after a licensed sign-in: the account from OneAuth's own
+  record (`%LOCALAPPDATA%\Microsoft\OneAuth\accounts\<id>`, JSON with no
+  token in it: `email`, and `association_status` naming
+  `com.microsoft.Office` as associated; the one whose id holds a licence
+  first), and the licence from `LicensingNext\CIDToLicenseIdsMapping` (his
+  account id to a licence id) and the licence file under
+  `%LOCALAPPDATA%\Microsoft\Office\Licenses\5` (UTF-16 JSON whose
+  `License` is base64 JSON): licensed while a file with that `LicenseId`
+  says `Status: Provisioned` and no `ExpiresOn` in the past. A device's
+  licence (`%ProgramData%\Microsoft\Office\Licenses`) counts without the
+  mapping; the old two keys still count where a build writes them. With
+  Office installed, `licensed` is now true or false, never unknown. An
+  unlicensed profile (viewer mode before his sign-in) holds only the grace
+  Office starts with (`InstalledGraceKey`, `LicensingExperience\GraceExperience`,
+  both present after the sign-in too, so neither is a sign) and no mapping
+  or licence file.
+- **An Excel without dynamic arrays.** The VM's Excel answers `SEQUENCE`
+  with #NAME? and refuses every dynamic-array member (`Formula2`,
+  `HasSpill`, `SavedAsArray`) with 0x800A03EC, read or write, while
+  `Value` and `Formula` work. Every range read asks `Formula2`, so every
+  read and every checked write failed in about 15 ms ("Microsoft Excel
+  answered: … 0x800A03EC"), which the carrier then called a missing licence.
+  The helper now takes 0x800A03EC from `Formula2` as it took "unknown name"
+  from an older Excel, and uses `Formula` (`NoFormula2`), the same formula
+  on an Excel without dynamic arrays. Proved through the helper's door on
+  2026-11-23: a read of A1:C3 and B2, a write of values and of formulas to
+  E1:E2 and back, the Excel helper's conflict check and undo, a Word
+  document's paragraphs and a presentation's slides.
 - **An app started a moment ago.** Excel and Word enter the running object
   table only once their window has lost the focus for the first time, so
   on a PC nobody clicks on `GetActiveObject` answers "not there" for an
