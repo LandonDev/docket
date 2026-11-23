@@ -715,10 +715,14 @@ Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
   picture is LibreOffice's of that exported file as it is.
 - **Long sheets.** The first draw asks LibreOffice for pages 1 to 51 and
   keeps 50: a 51st page says the whole goes on. The whole is not counted
-  until it is drawn, and the frame has no way to say "about", so `shown`
-  says pages 1 to 50 of 51 (what it holds, and one more) and the column
-  says "Prints on more than 50 pages" (`moreThan`). No estimate is shown
-  as a number. "Draw all" asks for every page with no range.
+  until it is drawn, so the answer says `uncounted` and the canvas hands
+  the frame a `shown` with no `of`: the bar reads "Page 3 of 50+" and the
+  way to the rest is "Draw all" with no number. "Prints on more than 50
+  pages" (`moreThan`) and a draw cut to fit a link are `notes`, said over
+  the first sheet and not among the losses. (For a window a release
+  behind, `shown.of` is still what it holds and one more, and the note is
+  still among `drops`.) No estimate is shown as a number. "Draw all" asks
+  for every page with no range.
 - **Kept by content hash.** A render's `rev` is the hash of what was drawn
   (the format, the input's bytes, the range), so the same workbook asked
   again is answered without LibreOffice. His own files' renders and
@@ -840,11 +844,10 @@ Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
   and six probes: nothing here says a picture matches Excel beyond them,
   and nothing was compared by eye or by pixel. OpenDocument, Excel 97-2003,
   CSV, TSV and the web page were not opened in any other program. The
-  frame reads "Page 3 of 51" and "Draw all 51" for a long sheet: the count
-  is what it holds and one more, never the whole, until the frame can say
-  that the whole is not counted. The capped forward is tested with a
-  stand-in runner, not over a real link. The sheet's Page set-up rows
-  (SHT6) are not in this tree, so the source offers no `setup` yet.
+  capped forward is tested with a stand-in runner, not over a real link.
+  Preview's column has no Page section for a sheet yet (the source offers
+  no `setup`): a sheet's page set-up is changed from the row's Page menu
+  ("Pages"), and Preview draws the file as it then stands.
 
 ### Check in Excel
 

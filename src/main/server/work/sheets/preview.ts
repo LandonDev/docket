@@ -63,6 +63,8 @@ interface Meta {
   size: number
   pages?: number
   shown?: { from: number; to: number; of: number }
+  /** more pages follow the ones drawn, and nobody has counted them */
+  uncounted?: true
   name?: string
   /** a drop said for this render alone: a forwarded draw that was cut to fit */
   note?: string
@@ -476,7 +478,7 @@ export async function drawPaged(job: Job, format: 'xlsx' | 'pdf' | 'ods' | 'xls'
     // the column says so in words. No estimate is shown as a count.
     const shown = more || first > 1 ? { from: first, to: first + count - 1, of: first + count - (more ? 0 : 1) } : undefined
     const note = drawn.cut !== undefined ? `Drawn on another computer: only the first ${count.toLocaleString('en-US')} pages could be sent` : more ? moreThan(first + count - 1) : undefined
-    return book.store.put({ rev, ext: 'pdf', key: book.key, size: bytes.byteLength, pages: count, ...(shown ? { shown } : {}), ...(note ? { note } : {}) }, drawn.path)
+    return book.store.put({ rev, ext: 'pdf', key: book.key, size: bytes.byteLength, pages: count, ...(shown ? { shown } : {}), ...(more ? { uncounted: true as const } : {}), ...(note ? { note } : {}) }, drawn.path)
   } finally {
     rmSync(drawn.path, { force: true })
   }
@@ -542,7 +544,7 @@ export async function previewSheet(s: Sheets, item: CanvasItem, params: PreviewP
         return { kind: 'html', html: readFileSync(book.store.fileOf(file), 'utf8'), drops: drops() }
       }
       const meta = await drawPaged(job, format, params.pages)
-      return { kind: 'paged', rev: meta.rev, size: meta.size, pages: meta.pages ?? 1, ...(meta.shown ? { shown: meta.shown } : {}), drawnBy: 'libreoffice', drops: drops([meta.note]) }
+      return { kind: 'paged', rev: meta.rev, size: meta.size, pages: meta.pages ?? 1, ...(meta.shown ? { shown: meta.shown } : {}), ...(meta.uncounted ? { uncounted: true as const } : {}), drawnBy: 'libreoffice', drops: drops([meta.note]), ...(meta.note ? { notes: [meta.note] } : {}) }
     } finally {
       rmSync(book.scratch, { recursive: true, force: true })
     }

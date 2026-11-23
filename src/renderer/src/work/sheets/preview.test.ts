@@ -25,7 +25,13 @@ function host() {
           ? { kind: "table", name: (p.sheet as string) ?? "Budget", rows: [["Item", "Cost"], ["Hotel", "240"]], sheets: ["Budget", "Flights"], drops: ["Flights stays behind", "3 formulas become their values"] }
           : format === "html"
             ? { kind: "html", html: "<table><tr><td>Hotel</td></tr></table>", drops: ["3 formulas become their values"] }
-            : { kind: "paged", rev: "a".repeat(32), size: PDF.length, pages: 1, drawnBy: "libreoffice", drops: format === "xls" ? ["2 tables become plain ranges"] : [] };
+            : format === "ods"
+              ? // a long workbook from a host of this release: more pages follow, and nobody has counted them
+                { kind: "paged", rev: "a".repeat(32), size: PDF.length, pages: 1, shown: { from: 1, to: 1, of: 2 }, uncounted: true, drawnBy: "libreoffice", drops: ["A chart sheet becomes a sheet", "Prints on more than 1 pages"], notes: ["Prints on more than 1 pages"] }
+              : format === "xlsx"
+                ? // the same from a host a release behind: the count as it said it, the line among the losses
+                  { kind: "paged", rev: "a".repeat(32), size: PDF.length, pages: 1, shown: { from: 1, to: 1, of: 2 }, drawnBy: "libreoffice", drops: ["Prints on more than 1 pages"] }
+                : { kind: "paged", rev: "a".repeat(32), size: PDF.length, pages: 1, drawnBy: "libreoffice", drops: format === "xls" ? ["2 tables become plain ranges"] : [] };
       return answer as T;
     }
     if (method === "work.sheets.previewRead") {
@@ -93,6 +99,22 @@ describe("the sheet's PreviewSource", () => {
       { itemId: "item1", format: "pdf", pages: [1, Number.MAX_SAFE_INTEGER] },
       { itemId: "item1", format: "csv", sheet: "Flights" },
     ]);
+  });
+
+  it("says a whole nobody has counted with no number, and what is no loss apart from the losses", async () => {
+    const h = host();
+    const source = sourceOf(h);
+    const signal = new AbortController().signal;
+    const long = await source.draw("ods", { signal });
+    expect(long.picture).toMatchObject({ kind: "paged", pages: 1, shown: { from: 1, to: 1 } });
+    expect(long.picture.kind === "paged" && long.picture.shown && "of" in long.picture.shown).toBe(false);
+    expect(long.notes).toEqual(["Prints on more than 1 pages"]);
+    expect(long.drops).toEqual(["A chart sheet becomes a sheet"]);
+    // a host a release behind: its count and its line are said as they came
+    const old = await source.draw("xlsx", { signal });
+    expect(old.picture).toMatchObject({ shown: { from: 1, to: 1, of: 2 } });
+    expect(old.notes).toBeUndefined();
+    expect(old.drops).toEqual(["Prints on more than 1 pages"]);
   });
 
   it("exports the sheet a CSV was last drawn for, made afresh on the host", async () => {

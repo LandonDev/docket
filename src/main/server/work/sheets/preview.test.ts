@@ -134,6 +134,9 @@ describe('the page range', () => {
     // One more than it holds: the frame's count is never a guess at the whole.
     expect(got.shown?.of).toBe(51)
     expect(got.drops).toContain('Prints on more than 50 pages')
+    // The whole is said as not counted, and the line as no loss: the frame reads "of 50+" and says it over the first sheet.
+    expect(got.uncounted).toBe(true)
+    expect(got.notes).toEqual(['Prints on more than 50 pages'])
     expect(moreThan(1200)).toBe('Prints on more than 1,200 pages')
     const bytes = Buffer.from(readSheetPreview(ctxOf(), itemOf(book('formulas.xlsx')), { rev: got.rev, offset: 0, length: got.size }).data, 'base64')
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(50)

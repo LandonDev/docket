@@ -264,7 +264,15 @@ export const SHEET_PREVIEW_READ_MAX = 4 * 1024 * 1024
 export const SHEET_PREVIEW_PAGES = 50
 
 /** What `work.sheets.preview` answers: a render read by range (`rev`), a table of one sheet, or a web page. */
-export type SheetPreviewAnswer = { drops: string[] } & (
+export type SheetPreviewAnswer = {
+  drops: string[]
+  /**
+   * What is true of this picture and is no loss ("Prints on more than 50 pages", a draw cut to fit a
+   * link), for the frame's line over the first sheet. Each is in `drops` too, for a window a
+   * release behind; a window that reads `notes` leaves them out of the losses.
+   */
+  notes?: string[]
+} & (
   | {
       kind: 'paged'
       /** names the render: every `previewRead` at it is of this render */
@@ -272,8 +280,10 @@ export type SheetPreviewAnswer = { drops: string[] } & (
       size: number
       /** the pages the PDF holds */
       pages: number
-      /** set when the PDF holds only the first pages of the whole: `of` is about how many there are */
+      /** set when the PDF holds only the first pages of the whole: `of` is how many there are, or one more than `to` with `uncounted` */
       shown?: { from: number; to: number; of: number }
+      /** the whole has not been counted (more pages follow the ones drawn): the frame says "of 50+" and "Draw all" with no number */
+      uncounted?: true
       /** `excel` only for his press on "Check in Excel" (`by: 'office'`): Excel's own PDF of the whole workbook */
       drawnBy: 'libreoffice' | 'excel'
     }

@@ -144,7 +144,12 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
       const got = await call<SheetPreviewAnswer>("work.sheets.preview", { format: id, ...(opts.pages ? { pages: opts.pages } : {}), ...(sheet ? { sheet } : {}) });
       if (opts.signal.aborted) throw cancelled();
       let drawn: Drawn;
-      if (got.kind === "paged") drawn = { picture: { kind: "paged", pdf: bytesOf(got.rev, got.size), pages: got.pages, drawnBy: got.drawnBy, ...(got.shown ? { shown: got.shown } : {}) }, drops: got.drops };
+      if (got.kind === "paged") {
+        // A whole nobody has counted says no number ("Page 3 of 50+"), and what is no loss is said over the first sheet.
+        const shown = got.shown ? (got.uncounted ? { from: got.shown.from, to: got.shown.to } : got.shown) : undefined;
+        const notes = got.notes ?? [];
+        drawn = { picture: { kind: "paged", pdf: bytesOf(got.rev, got.size), pages: got.pages, drawnBy: got.drawnBy, ...(shown ? { shown } : {}) }, drops: got.drops.filter((line) => !notes.includes(line)), ...(notes.length ? { notes } : {}) };
+      }
       else if (got.kind === "table") {
         sheetOf.set(id, got.name);
         drawn = { picture: { kind: "table", name: got.name, rows: got.rows, sheets: got.sheets }, drops: got.drops };
