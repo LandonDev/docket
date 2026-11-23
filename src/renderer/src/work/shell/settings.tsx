@@ -26,6 +26,7 @@ import { WinvmSection, WinvmWorkspaceRow } from "../winvm/WinvmSection";
 import { HouseRules } from "../rules/HouseRules";
 import { captureKeyApi, CaptureKeyRow } from "../capture/CaptureKeyRow";
 import { WaitingSection } from "../mail/WaitingSection";
+import { StartPlacesSection } from "../clashes/StartPlaces";
 import { hostIdOfLink, isDesktop, linkIdOfHost, linkSector, localHostId, sectorName, SECTORS, setWorkHome, setWorkspaceSettings, workHome, workspaceSettings } from "./actions";
 import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
 
@@ -97,6 +98,7 @@ export function WorkSettingsBody() {
             <TeamsFilesRow key={host.id} link={registry.linkOf(host.id)} title={hosts.length > 1 ? `Teams files on ${host.name}` : "Teams files"} editable={host.id === LOCAL_ENVIRONMENT_ID} />
           ))}
       </PageSection>
+      {home ? <StartPlacesSection environmentId={home} /> : null}
       <WinvmSection hosts={hosts.map((h) => h.id)} />
       <GuestLinksSection hosts={hosts.map((h) => h.id)} />
       {home ? <MailSettingsSection environmentId={home} /> : null}

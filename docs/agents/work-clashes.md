@@ -142,3 +142,43 @@ what gets a leg measured. A round trip is two calls.
 `calendarOps:save {kind, eventId, payload}`, `calendarOps:send {id, cause}`,
 `events:update {id, patch}` (mutations). Tests stub them
 (`clashes/clashes.test.ts`, `src/shared/work/clashes.test.ts`).
+
+## Start places (Settings → Work)
+
+Where each job's drives begin. `StartPlacesSection`
+(`src/renderer/src/work/clashes/StartPlaces.tsx`) is a section of Settings →
+Work on the Work home host, after Where it runs. It reads LifeOS live on the
+owner session and draws nothing while that session is not connected; bones
+while it reads, the read's error in a red line if it fails.
+
+- **Rows.** Seven: Home, then the six jobs in the order LifeOS gives them,
+  each job with its sector dot and the name the LifeOS section uses
+  (`sectors:list`). Under the title: the place as the map named it; "Home"
+  where a job has no start of its own (it starts from home); "Not set" for
+  Home with no address; "Looking up…" until LifeOS's worker has placed a new
+  address (about twenty seconds; the query is live, so the row turns by
+  itself); the address he typed with "Not found" in red under it when the map
+  did not find it. The words are `placeWords` in `clashes/places.ts`.
+- **The dialog.** The whole row opens it (named "Change Home", "Change
+  Purdue"). One Address field filled with the current address; for a job, the
+  switch "Look up places on Apple Maps" with the one line "Off, this job's
+  event places never leave your machines.", and "Use home" at the footer's
+  start while the job has a start of its own. Save stays off until something
+  changed, spins while LifeOS answers, then closes; a refusal stays in the
+  dialog in LifeOS's words. No toast: the row changes.
+- **LifeOS.** Queries `settings:startPlaces {}` (the rows: `{home, jobs}`,
+  each `{address?, label?, state: none | looking | found | failed}`, a job
+  with `sector` and its `lookups`) and `settings:get {}` (the maps a Save
+  sends). The one write is `settings:update`: `homeAddress` (null clears it),
+  or for a job `starts` and `placeLookups`, each sent whole, changed at its one
+  key (`savePatch`, `homePatch`). A job left out of `starts`, or given an empty
+  address, starts from home.
+- **Lookups are his alone.** Only this switch, pressed by him, changes
+  `placeLookups`; no tool or thread does. A job with no entry takes LifeOS's
+  default: every job on, Purdue off (ruling 1 of the plan). A start place he
+  types is looked up on the map whatever the switch says (ruling 2).
+
+Tests: `clashes/places.test.ts` (the words and the patches) and
+`clashes/StartPlaces.dom.test.tsx` (the rows, the dialog, each patch, a
+refusal, signed out, bones). Pictures: `StartPlaces.preview.tsx` through
+`bun run ui:preview`.
