@@ -228,7 +228,8 @@ while it reads, the read's error in a red line if it fails.
   Home with no address; a small spinner and "Looking up…" until LifeOS's
   worker has placed a new address (about twenty seconds; the query is live,
   so the row turns by itself); the address he typed with "Not found" in red under it when the map
-  did not find it. The words are `placeWords` in `clashes/places.ts`.
+  did not find it, or at once when the text is a link or a call, which no
+  pass ever places (LifeOS's `isVenue`). The words are `placeWords` in `clashes/places.ts`.
 - **The dialog.** The whole row opens it; its button is named for what the
   row says ("Change Purdue: Cedar Hall, 4 Elm Street", `rowLabel`). One
   Address field filled with the current address; for a job, the switch "Look
