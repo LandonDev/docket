@@ -1,18 +1,41 @@
 # Work: Messages, chat beside Mail
 
-The `messages` pillar (milestone 55, plan-80VsimogREJv): his chat (Slack,
+The `messages` pillar (milestone 56, plan-80VsimogREJv): his chat (Slack,
 Discord, iMessage, Teams) as LifeOS holds it, in a Messages view beside
-Mail. LifeOS keeps the conversations (`chats`), their unread mark and the
-replies' queue; TempCode reads no chat service. This file is the host's
-side; the view's account is added beside it by the screens' build.
+Mail. LifeOS keeps the conversations (`chats`), their unread mark, their
+files and the replies' queue; TempCode reads no chat service. The window
+reads lists and conversations straight from LifeOS on its sector session
+and writes only the read mark there; every send goes through the host.
+
+## LifeOS (its `docs/BRIEF.md`, "Conversations")
+
+One `chats` row for the stored messages that share a source, an account and
+a channel, stamped by `rawMessages.insertRaw` as each chat message is stored
+and restamped when its source's sector moves; `chatFiles` rows for a
+message's pictures and files. Unread is `unreadOf` in `@lifeos/shared`:
+someone wrote to him (a direct message, a mention or a reply), or he marked
+it unread, after he last read it here, after Slack says he read it there and
+after his own last message in it. The functions the pillar calls, each
+through LifeOS's own sector fence:
+
+| Function | Who calls it |
+|---|---|
+| `chats:list {sector, filter?, paginationOpts}`, `chats:get {id}`, `chats:messages {chatId, paginationOpts}`, `chats:unread {sector}`, `chats:search {sector, text, limit?}`, `chats:markRead`, `chats:markUnread`, `chats:requestFiles {messageId}` | the window, on the sector's session |
+| `chats:get`, `chats:search`, `chats:unanswered {sector}`, `chats:unread`, `chats:find {sector?, text}`, `chats:reply {chatId, replyTo?, text}`, `chats:file {id}`, `chats:requestFiles`, `replies:undo`, `replies:retry`, `sources:list` | the host, as the owner |
+
+`chats:get` answers `route`: `{can: true}` or `{can: false, why}` with
+LifeOS's sentence ("LifeOS can't reply in Discord yet", "Your Mac isn't
+running LifeOS"). LifeOS's worker fetches a file's bytes only once a client
+asks (`requestFiles`), for Slack and Discord, and reads Slack's own read
+mark every two minutes.
 
 ## Names and rules (src/shared/work/messages.ts)
 
-`CHAT_SOURCES`, `SOURCE_NAME`, `CHAT_ROUTES` (which sources LifeOS can send
+`CHAT_SOURCES`, `SOURCE_NAME`, `SOURCE_APP`, `CHAT_ROUTES` (which sources LifeOS can send
 to: Slack and iMessage; Discord and Teams are Copy), `OWN_REPLY_HELD`
 (false: his own Send goes on his press), `AGENT_CHAT_SECTORS` (the sectors
 whose chat a thread may read), `staleOf` (the one rule the view's sync line
-and Connections share), `syncWhen`, `syncLine`, `fileMarkers`, `replyWhere`,
+and Connections share), `serviceState`, `syncWhen`, `syncLine`, `fileMarkers`, `replyWhere`,
 `firstWords`, and the shapes LifeOS answers (`ChatRow`, `ChatDetail`,
 `ChatMessage`, `ChatHit`, `ChatWaiting`, `ChatDraft`, `ChatRoute`).
 
@@ -52,7 +75,8 @@ answered as if it did not exist when its sector differs (`chatIn`).
 | `tools.ts` | `messages_read`, `messages_draft_reply`, the preamble line |
 | `health.ts` | Connections' rows |
 | `watch.ts` | the live subscriptions while Work is on |
-| `mentions.ts`, `tell.ts` | `@` and the digest's tells |
+| `mentions.ts`, `tell.ts`, `search.ts` | `@`, the digest's tells, the one search's sources |
+| `file.ts` | the chat file fetcher |
 | `fakeChats.ts`, `testRig.ts` | LifeOS's chat in memory and the rig, for the tests |
 
 - **Tables.** `work_messages_drafts (id, workspace_id, chat_id, session_id,
@@ -80,12 +104,16 @@ answered as if it did not exist when its sector differs (`chatIn`).
   it."). The preamble line: "Chat: read this job's conversations with
   messages_read. To answer one, use messages_draft_reply: the reply waits
   for the owner's press. You never send chat."
-- **Connections.** One row a chat source of a sector a Work workspace of
-  this host links, group "Chat", `shared`, its `sector`: error → broken in
-  its redacted words; idle with an error → needs you; silent past
-  `CHAT_SILENT_MS` (Slack and Discord 15 minutes, iMessage and Teams 36
-  hours) → broken "No sync since Nov 3"; else working. Disabled sources,
-  mail sources and unlinked sectors have none.
+- **Connections.** One row a chat service, account and sector that a Work
+  workspace of this host links, group "Chat", `shared`, its `sector`
+  (`foldAccounts`: LifeOS keeps a row a Discord channel, and the page says
+  "Discord" once; a chat source with no sector is life's, as LifeOS has it):
+  any row in error → broken in its redacted words; stopped with a reason →
+  needs you; its freshest row silent past `CHAT_SILENT_MS` (Slack and
+  Discord 15 minutes, iMessage and Teams 36 hours) → broken "No sync since
+  Nov 3"; else working. Disabled sources, mail sources and unlinked sectors
+  have none. The view's sync line judges a service the same way
+  (`serviceState`).
 - **Live.** `start` keeps one `chats:unread` and one `chats:unanswered` a
   linked Work workspace, following workspaces made and deleted.
 
@@ -98,13 +126,43 @@ answered as if it did not exist when its sector differs (`chatIn`).
   `typedWords` (work/threads.ts) knows the chip's head, so a message's
   words quoted under it never count as words he typed.
 - A conversation that newly waits on him is told to the digest with
-  `ctx.tell?.({kind: 'messages.new', workspaceId, title: 'Dana Lee wrote in
+  `ctx.tell({kind: 'messages.new', workspaceId, title: 'Dana Lee wrote in
   Slack', detail, open: {view: 'messages', workspaceId, at: chatId}, key:
   'messages:<chatId>'})`, once, and taken back with `ctx.tell.done(key)`
-  when it leaves the list. `WorkCtx.tell` and the module's `tells` are the
-  digest's build: until they are on master the call is typed in `tell.ts`
-  and does nothing, and the module lists no `tells`. `search: [source]`
-  waits the same way for the one search's `SearchSource`.
+  when it leaves the list (`tell.ts`; the module lists `tells: [{kind:
+  'messages.new', group: 'people', name: 'New messages'}]`). It says no
+  `by`: the digest's rule decides whether it interrupts. `open.at` is the
+  conversation's id: `openWorkView({workspaceId, view: 'messages', chat})`.
+- **The one search** (`search.ts`): two sources on the module, `message`
+  (a job's messages that hold the words, `chats:search`) and `chat` (its
+  conversations by name, `chats:find`), each job in reach asked by its own
+  sector. A hit opens the view (`{to: 'view', view: 'messages', with:
+  {chat, message?}}`) and carries the conversation's chip.
+- **Today** (`src/renderer/src/work/messages/today.ts`, one line in
+  `TODAY_SOURCES`): the section Messages (order 45), rows keyed
+  `chat:<chatId>` from `work.messages.unanswered` in every job, asked again
+  on the `work.messages` push; a row opens its conversation and offers Mark
+  read.
+- A sent conversation chip, a search hit and a tell open the view through
+  `OpenWorkView.chat` and `message` (lib/workSwitch.ts).
+
+## Files
+
+A chat's picture or file is a canvas item on the mail arm of
+`CanvasSource` with one field more: `{at: 'mail', from: 'chat', threadId:
+<chatId>, messageId, partId: <chatFiles id>, name, contentType?, size?}`.
+Every kind that opens a fetched file opens this one unchanged; only the
+fetcher differs: `canvas/fetch.ts` picks it by `source.from ?? 'mail'`.
+`messages/file.ts` reads `chats:file` as the owner, refuses a file whose
+conversation is outside the pane's sector (or whose row names another
+conversation or message than the item does), asks `chats:requestFiles` for
+one not stored and waits up to two minutes, fails in LifeOS's words ("Slack
+needs the files permission. Reinstall the app."), then streams the bytes
+into the item's own folder. The pane is `messagesPaneOf(workspaceId)`
+(`msgpane_<id>`), a pane owner as the Mail view's is (`paneWorkspace`,
+`PANE_PREFIXES`). Read only, Download, Save to workspace and Keep as
+document are the canvas's, as for a mail's file. iMessage and Teams hand no
+files: there a file is the plain line LifeOS stored.
 
 ## The view (src/renderer/src/work/messages/)
 
@@ -151,8 +209,12 @@ tests `model.test.ts` and `MessagesView.dom.test.tsx`.
 
 ## Proofs
 
-`messages/messages.test.ts` (the fence on each read, health's rows, the
-push), `held.test.ts` (held, Away, once on two presses, no thread's press,
-no grant, stale and not sent), `tools.test.ts` (who is offered chat, the
-read tool's fence, the draft row, his presses), `mentions.test.ts` (`@`,
-the chip's line, the tells). Nothing here has run against the live LifeOS.
+`messages/messages.test.ts` (the fence on each read, health's rows and the
+fold, the push), `held.test.ts` (held, Away, once on two presses, no
+thread's press, no grant, stale and not sent), `tools.test.ts` (who is
+offered chat, the read tool's fence, the draft row, his presses),
+`mentions.test.ts` (`@`, the chip's line, the tells), `search.test.ts`,
+`file.test.ts` (the fetcher's fence, ask and wait, its failures, picked for
+a chat's file and never a mail's), `src/shared/work/messages.test.ts`
+(stale, the sync line, folded file names). What has run against the live
+LifeOS, and what has not, is `.temp-code/plans/landed/R3-messages.md`.
