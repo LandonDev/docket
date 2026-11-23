@@ -269,6 +269,23 @@ describe('tabs', () => {
     expect(rig.canvas.list(filesPaneOf(WS)).map((i) => i.id)).toEqual([doc.id])
   })
 
+  it("never opens twice a file that took another's place in a tab: a deck's copy to edit is found by its own row too", async () => {
+    writeFileSync(join(rig.folder, 'Pitch.ppt'), 'old')
+    const old = await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'Pitch.ppt')) })
+    // Make a copy to edit: a new file beside the original, whose item takes the original's place in the tab.
+    writeFileSync(join(rig.folder, 'Pitch.pptx'), 'copy')
+    const copy = rig.canvas.replace(filesPaneOf(WS), old.item!.id, { kind: 'slides', source: at(join(rig.folder, 'Pitch.pptx')), title: 'Pitch.pptx' })
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs).toMatchObject([{ id: old.tabId, kind: 'file', name: 'Pitch.pptx', itemId: copy.id }])
+    // The copy's own row in the folder: the tab that shows it, never a second tab and a second item on one file.
+    const again = await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'Pitch.pptx')) })
+    expect(again.tabId).toBe(old.tabId)
+    expect(again.item?.id).toBe(copy.id)
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs).toHaveLength(1)
+    expect(rig.canvas.list(filesPaneOf(WS)).map((i) => i.id)).toEqual([copy.id])
+    // The file he opened first still selects it, as a Word file selects its document.
+    expect((await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'Pitch.ppt')) })).tabId).toBe(old.tabId)
+  })
+
   it("closes the tab when its item is closed from the pane's own menu", async () => {
     const a = await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'Budget.xlsx')) })
     rig.canvas.close(a.item!.id)

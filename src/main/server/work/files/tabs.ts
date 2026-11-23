@@ -31,6 +31,8 @@ interface Row {
 interface FilePageJson {
   name: string
   key: string
+  /** the file the tab shows now, where an item of another file took the opened one's place (a Word file's document, a deck's copy to edit): its key, so opening either file selects this tab */
+  shows?: string
   /** the tab shows a copy made here of a file on that host */
   copyOf?: { host: string; path: string; vm?: boolean }
   /** a second file at the tab's side: its item, key and name */
@@ -213,10 +215,12 @@ export class TabStore {
     this.change(workspaceId, () => void this.db.prepare(`UPDATE work_files_tabs SET page = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`).run(JSON.stringify(next), Date.now(), workspaceId, tabId))
   }
 
-  /** The tab that holds a file, by its key. */
+  /** The tab that holds a file, by its key: the file he opened in it, or the file that took its place there. */
   tabOf(workspaceId: string, key: string): FileTab | null {
     if (!key) return null
-    const row = this.db.prepare(`SELECT workspace_id, id, position, kind, page, item_id, opener FROM work_files_tabs WHERE workspace_id = ? AND kind = 'file' AND json_extract(page, '$.key') = ?`).get(workspaceId, key) as Row | undefined
+    const row = this.db
+      .prepare(`SELECT workspace_id, id, position, kind, page, item_id, opener FROM work_files_tabs WHERE workspace_id = ? AND kind = 'file' AND (json_extract(page, '$.key') = ? OR json_extract(page, '$.shows') = ?) ORDER BY json_extract(page, '$.key') = ? DESC`)
+      .get(workspaceId, key, key, key) as Row | undefined
     return row ? this.tab(row) : null
   }
 
@@ -393,7 +397,10 @@ export class TabStore {
       page = { name: next.title, key: '' }
     }
     // The key stays the file he opened: opening that file again selects this tab, which now shows its document.
-    this.db.prepare(`UPDATE work_files_tabs SET item_id = ?, page = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`).run(next.id, JSON.stringify({ ...page, name: next.title }), Date.now(), workspaceId, row.id)
+    // The file it shows now is kept beside it, so that file's own row selects this tab too and is never opened twice.
+    const shows = next.source.at === 'file' ? refKey(next.source) : ''
+    const { shows: _was, ...kept } = page
+    this.db.prepare(`UPDATE work_files_tabs SET item_id = ?, page = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`).run(next.id, JSON.stringify({ ...kept, name: next.title, ...(shows && shows !== page.key ? { shows } : {}) }), Date.now(), workspaceId, row.id)
     const rev = this.bump(workspaceId)
     this.changed(workspaceId, rev)
   }
