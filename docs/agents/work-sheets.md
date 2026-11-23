@@ -1060,7 +1060,7 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 ## Agents: the tools and the rule
 
 `sheet_read`, `sheet_write`, `sheet_suggest`, `sheet_format`, `sheet_rule`,
-`sheet_table`, `sheet_page`, `sheet_note`, `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
+`sheet_table`, `sheet_page`, `sheet_note`, `sheet_chart`, `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
 read and 1,000 a write. A read of an opened Excel file ends with one line
 when the file holds what only Excel changes ("This workbook also holds 2
 pivot tables: only Excel changes those…", `waitsNote`), so a thread does
@@ -1139,6 +1139,21 @@ Excel."), and so are words the note already says. The grid's own note
 mutations are applied to the engine in the worker, as `handle.comments`
 makes them; a new note has no author. The words: "The note on A9 reworded:
 “Checked on Monday.”", "A note on B2: “Ask Sam”".
+
+**A chart** (`sheet_chart`, `acts.ts`), for an opened Excel file only, the
+store that keeps charts today (a `.tcsheet` or LifeOS sheet is refused in
+words). `make` a column, bar, line or pie chart of a range, with a title
+and the cell its corner sits on (right of the data when left out); `change`
+a chart's kind, range or title (null takes it away), the chart named by
+its name ("Chart 1") or its title; `remove` it. A range is read as the
+grid's "chart from a block" reads one: the row of text over the first
+numbers names the series, a first column with no number names the
+categories, every other column with a number is a series; a pie takes the
+first. The tab's whole chart list as the file holds it (`readObjects`),
+with this one made, changed or taken out, goes as the canvas sends a list
+(`RULES_SET` of kind `charts`). A combo and a kind only Excel draws
+(`other`) are refused. Not offered: colours, axes, a legend's place, a
+second axis, data labels, stacked or percent groupings, a picture.
 
 The store's own save is the last check for each: for an Excel file the
 mutations go through `planOf` and `savePackage` in memory, the bytes thrown

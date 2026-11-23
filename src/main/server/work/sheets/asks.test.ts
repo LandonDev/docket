@@ -275,7 +275,7 @@ describe('a rule for an opened Excel file: the whole list it leaves', () => {
 describe('the tools a thread formats and rules a sheet with', () => {
   it('each says itself in under 400 bytes', () => {
     for (const tool of sheetTools) expect(Buffer.byteLength(tool.description), tool.name).toBeLessThan(400)
-    expect(sheetTools.map((t) => t.name)).toEqual(['sheet_read', 'sheet_write', 'sheet_suggest', 'sheet_format', 'sheet_rule', 'sheet_table', 'sheet_page', 'sheet_note', 'sheet_create'])
+    expect(sheetTools.map((t) => t.name)).toEqual(['sheet_read', 'sheet_write', 'sheet_suggest', 'sheet_format', 'sheet_rule', 'sheet_table', 'sheet_page', 'sheet_note', 'sheet_chart', 'sheet_create'])
   })
 
   it('take one rule of a known kind and nothing else', () => {

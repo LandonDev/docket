@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { importXlsx } from 'work-kit/sheet/xlsx'
+import { importXlsx, readObjects } from 'work-kit/sheet/xlsx'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { SheetView } from '@shared/contract-work-sheets'
@@ -1055,5 +1055,65 @@ describe('a note an agent writes', () => {
     expect((await notes())[1]?.[1]).toMatchObject({ note: 'Sam said yes' })
     expect((await tool('sheet_note', { item: id, note: { at: 'B2', text: null }, because: 'own' })).text).toBe('The note on B2 removed.')
     expect((await notes())[1]?.[1]).toBeUndefined()
+  })
+})
+
+/** The agent's side of Insert → Chart for an opened Excel file (sheet_chart): the same rule, each read back from the file's chart parts. */
+describe('a chart an agent makes or changes', () => {
+  const chartsIn = (path: string) => readObjects(new Uint8Array(readFileSync(path))).charts.filter((c) => c.sheet === 'Data')
+  let path: string
+  let itemId: string
+  beforeEach(() => {
+    mkdirSync(join(library, 'Budget'), { recursive: true })
+    path = join(library, 'Budget', 'Budget.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+    itemId = open(path, 'Budget.xlsx')
+  })
+
+  it('on an Excel file others can open its own idea waits in words, the folder byte for byte; his accept writes a real chart', async () => {
+    const before = folder()
+    const got = await tool('sheet_chart', { item: itemId, chart: { op: 'make', range: 'Data!B1:C9', title: 'Qty by region' }, because: 'own' })
+    expect(got.isError, got.text).toBeFalsy()
+    expect(got.text).toMatch(/^Suggested: A column chart of Data!B1:C9, titled “Qty by region”\. Others share this sheet/)
+    expect(folder()).toEqual(before)
+    expect(chartsIn(path)).toEqual([])
+    expect((await call<SheetView>('work.sheets.open', { itemId })).changes!.map((c) => c.kind)).toEqual(['chart'])
+    await call('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    const [chart] = chartsIn(path)
+    expect(chart).toMatchObject({ kind: 'column', title: { text: 'Qty by region' }, name: 'Chart 1' })
+    expect(chart!.series).toHaveLength(1)
+    expect(chart!.series[0]).toMatchObject({ values: { ref: "Data!$C$2:$C$9" }, categories: { ref: "Data!$B$2:$B$9" }, name: { ref: 'Data!$C$1' } })
+  })
+
+  it('on his own Excel file set to write: made, turned to a line with a new title, and removed, each read back', async () => {
+    const own = join(dir, 'Own.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), own)
+    const id = open(own, 'Own.xlsx')
+    await call('work.sheets.mode', { itemId: id, mode: 'writes' })
+    expect((await tool('sheet_chart', { item: id, chart: { op: 'make', range: 'Data!B1:C9', kind: 'bar', at: 'H2' }, because: 'own' })).text).toBe('A bar chart of Data!B1:C9.')
+    let [chart] = chartsIn(own)
+    expect(chart).toMatchObject({ kind: 'bar', anchor: { from: { column: 7, row: 1 } } })
+    expect((await tool('sheet_chart', { item: id, chart: { op: 'change', chart: 'Chart 1', kind: 'line', title: 'Trend' }, because: 'own' })).text).toBe('Chart 1: a line chart, titled “Trend”.')
+    ;[chart] = chartsIn(own)
+    expect(chart).toMatchObject({ kind: 'line', title: { text: 'Trend' } })
+    expect((await tool('sheet_chart', { item: id, chart: { op: 'remove', chart: 'trend' }, because: 'own' })).text).toBe('Chart 1 removed.')
+    expect(chartsIn(own)).toEqual([])
+  })
+
+  it('what has no place is refused as it is asked: no numbers, no such chart, nothing to change, a sheet the service holds', async () => {
+    state.said.push('chart the regions')
+    const before = folder()
+    for (const chart of [{ op: 'make', range: 'Data!B1:B9' }, { op: 'change', chart: 'Chart 9', kind: 'pie' }, { op: 'remove', chart: 'Nope' }]) {
+      const got = await tool('sheet_chart', { item: itemId, chart, because: 'asked', quote: 'chart the regions' })
+      expect(got.isError, JSON.stringify(chart)).toBe(true)
+    }
+    await tool('sheet_chart', { item: itemId, chart: { op: 'make', range: 'Data!B1:C9' }, because: 'asked', quote: 'chart the regions' })
+    expect(chartsIn(path)).toHaveLength(1)
+    expect((await tool('sheet_chart', { item: itemId, chart: { op: 'change', chart: 'Chart 1' }, because: 'asked', quote: 'chart the regions' })).text).toBe('Say what changes: its kind, its range or its title.')
+    const plan = join(dir, 'Plan.tcsheet')
+    TcsheetBackend.create(plan, 'Plan')
+    const refused = await tool('sheet_chart', { item: open(plan, 'Plan'), chart: { op: 'make', range: 'A1:B3' }, because: 'own' })
+    expect(refused).toMatchObject({ isError: true, text: 'Charts are kept in an opened Excel file only, for now: this sheet has none to change.' })
+    expect(Object.keys(folder())).toEqual(Object.keys(before))
   })
 })

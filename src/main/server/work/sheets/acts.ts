@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import type { IWorkbookData } from '@univerjs/core'
 import { z } from 'zod'
 import { headlessSheet } from 'work-kit/sheet/engine'
@@ -5,8 +7,8 @@ import { createTables, TABLE_STYLES, TOTAL_FUNCTIONS, type TotalFunction } from 
 import { createPages } from 'work-kit/sheet/pages/access'
 import { MARGIN_PRESETS, PAPERS, type SheetPageSetup } from 'work-kit/sheet/pages'
 import { SHEET_NOTES, SHEET_ROW, type SheetMutationJson, type SheetNoteControl } from '@shared/contract-work-sheets'
-import { forPackage, latestRules, NOTE_STOP, RULE_MUTATIONS, ruleKinds } from '@shared/work/sheets'
-import { randomUUID } from 'node:crypto'
+import { forPackage, latestRules, NOTE_STOP, RULE_MUTATIONS, ruleKinds, RULES_SET, type RulesSetParams } from '@shared/work/sheets'
+import { readObjects, type ChartSeries, type ChartSpec } from 'work-kit/sheet/xlsx'
 import { colName, rangeName } from './a1'
 import { place, type Placed } from './asks'
 import { importPackage, savePackage } from './jobs'
@@ -67,6 +69,25 @@ export const NoteAskSchema = z
   .strict()
 export type NoteAsk = z.infer<typeof NoteAskSchema>
 
+/** The kinds a chart is made in here: the grid's own "chart from a block" makes a column chart, and these are its first three turns. */
+const CHART_KINDS = ['column', 'bar', 'line', 'pie'] as const
+type ChartKindAsked = (typeof CHART_KINDS)[number]
+const chartRef = z.string().min(1).max(255).describe('Its name ("Chart 1") or its title.')
+export const ChartAskSchema = z.discriminatedUnion('op', [
+  z
+    .object({
+      op: z.literal('make'),
+      range: range.describe('The data with its header row and its label column.'),
+      kind: z.enum(CHART_KINDS).optional().describe('column when left out'),
+      title: z.string().min(1).max(255).optional(),
+      at: z.string().min(2).max(30).optional().describe('The cell its top left corner sits on; right of the data when left out.')
+    })
+    .strict(),
+  z.object({ op: z.literal('change'), chart: chartRef, kind: z.enum(CHART_KINDS).optional(), range: range.optional(), title: z.string().min(1).max(255).nullable().optional().describe('null takes the title away.') }).strict(),
+  z.object({ op: z.literal('remove'), chart: chartRef }).strict()
+])
+export type ChartAsk = z.infer<typeof ChartAskSchema>
+
 /** What the worker is asked: the sheet as it stands (an opened package's path, or the service's snapshot) and the ask. */
 export interface ActAsk {
   store: 'package' | 'service'
@@ -77,6 +98,7 @@ export interface ActAsk {
   table?: TableAsk
   page?: PageAsk
   note?: NoteAsk
+  chart?: ChartAsk
 }
 
 /** What the ask makes, or `refused`: the words for a change the sheet has no place for (a worker's error crosses as text alone). */
@@ -168,6 +190,7 @@ interface Step {
 async function made(ask: ActAsk): Promise<ActMade> {
   const workbook = workbookOf(ask)
   const sheets = workbook.sheetOrder.map((id) => ({ id, name: workbook.sheets[id]?.name ?? id }))
+  if (ask.chart) return chartMade(ask, ask.chart, workbook, sheets)
   const grid = headlessSheet('univer', workbook, { rules: true, pages: true, notes: true })
   try {
     const emitted: SheetMutationJson[] = []
@@ -336,6 +359,134 @@ function noteStep(env: Env, a: NoteAsk, workbook: IWorkbookData, controls: reado
   }
   return { sheet, range, words }
 }
+
+/** EMU a CSS pixel at 96 dpi, and a new chart's size: Excel's own, 5 by 3 inches. */
+const EMU = 9525
+const CHART_WIDTH = 480
+const CHART_HEIGHT = 288
+const KIND_WORDS: Record<ChartKindAsked, string> = { column: 'a column chart', bar: 'a bar chart', line: 'a line chart', pie: 'a pie chart' }
+
+/** A chart's kind laid on a spec: every series that kind in one group, as the row's kind select does. */
+function asKind(spec: Omit<ChartSpec, 'id' | 'anchor'>, kind: ChartKindAsked): Omit<ChartSpec, 'id' | 'anchor'> {
+  const group = kind === 'pie' ? { kind, grouping: 'standard' as const, varyColours: true } : kind === 'line' ? { kind, grouping: 'standard' as const } : { kind, grouping: 'clustered' as const, gapWidth: 219, overlap: -27 }
+  const series = (kind === 'pie' ? spec.series.slice(0, 1) : spec.series).map(({ secondAxis: _s, ...one }) => ({ ...one, kind, group: 0, ...(kind === 'line' ? { line: true, marker: true } : {}) }))
+  const axes = kind === 'pie' ? {} : kind === 'bar' ? { category: { id: '1', position: 'left' as const }, value: { id: '2', position: 'bottom' as const } } : { category: { id: '1', position: 'bottom' as const }, value: { id: '2', position: 'left' as const } }
+  return { ...spec, kind, grouping: group.grouping, groups: [group], series, axes, legend: kind === 'pie' ? 'right' : series.length > 1 ? 'top' : null }
+}
+
+/**
+ * A range read as Excel reads a block for a chart: the row of text over the first numbers names
+ * the series, a first column with no number in it names the categories, and every other column
+ * that holds a number is a series. Null where nothing in it is a number.
+ */
+function seriesOf(box: Placed['range'], tab: string, kindAt: (row: number, col: number) => 'number' | 'text' | 'empty'): ChartSeries[] | null {
+  const quoted = `'${tab.replace(/'/g, "''")}'`
+  const ref = (r1: number, r2: number, c1: number, c2: number) => `${quoted}!$${colName(c1)}$${r1 + 1}${r1 === r2 && c1 === c2 ? '' : `:$${colName(c2)}$${r2 + 1}`}`
+  const numberIn = (row: number) => Array.from({ length: box.endColumn - box.startColumn + 1 }, (_, k) => kindAt(row, box.startColumn + k)).includes('number')
+  let top = box.startRow
+  while (top <= box.endRow && !numberIn(top)) top++
+  if (top > box.endRow) return null
+  const header = top > box.startRow
+  let labelled = box.endColumn > box.startColumn
+  for (let r = top; labelled && r <= box.endRow; r++) if (kindAt(r, box.startColumn) === 'number') labelled = false
+  const out: ChartSeries[] = []
+  for (let c = box.startColumn + (labelled ? 1 : 0); c <= box.endColumn && out.length < 255; c++) {
+    let numeric = false
+    for (let r = top; r <= box.endRow; r++) if (kindAt(r, c) === 'number') numeric = true
+    if (!numeric) continue
+    out.push({ kind: 'column', group: 0, index: out.length, ...(header ? { name: { ref: ref(top - 1, top - 1, c, c) } } : {}), ...(labelled ? { categories: { ref: ref(top, box.endRow, box.startColumn, box.startColumn) } } : {}), values: { ref: ref(top, box.endRow, c, c) } })
+  }
+  return out.length ? out : null
+}
+
+/**
+ * A chart's ask on an opened Excel file (the store that keeps charts today): the tab's whole chart
+ * list as the file holds it, with this chart made, changed or taken out, sent as the canvas sends a
+ * list (`RULES_SET` of kind `charts`) and tried by the store's own save.
+ */
+async function chartMade(ask: ActAsk, a: ChartAsk, workbook: IWorkbookData, sheets: { id: string; name: string }[]): Promise<ActMade> {
+  if (ask.store !== 'package') refuse('Charts are kept in an opened Excel file only, for now: this sheet has none to change.')
+  const all = readObjects(new Uint8Array(readFileSync(ask.path!))).charts.filter((c) => !c.chartsheet)
+  const on = (sheet: string, box: Placed['range']): string => rangeName(box, sheets.length > 1 ? sheets.find((s) => s.id === sheet)?.name : undefined)
+  const placed = (text: string): Placed => {
+    try {
+      return place(text, sheets)
+    } catch (err) {
+      return refuse(err instanceof Error ? err.message : String(err))
+    }
+  }
+  const kindAt = (sheet: string) => (row: number, col: number): 'number' | 'text' | 'empty' => {
+    const cell = workbook.sheets[sheet]?.cellData?.[row]?.[col]
+    const v = cell?.v
+    return typeof v === 'number' ? 'number' : (typeof v === 'string' && v !== '') || cell?.p ? 'text' : 'empty'
+  }
+  const titleOf = (c: ChartSpec): string => c.title?.text ?? ''
+  const label = (c: ChartSpec): string => c.name ?? (titleOf(c) || 'The chart')
+  let tab: { id: string; name: string }
+  let list: ChartSpec[]
+  let box: Placed['range'] | null = null
+  let words: string
+  if (a.op === 'make') {
+    const at = placed(a.range)
+    tab = sheets.find((s) => s.id === at.sheet)!
+    const series = seriesOf(at.range, tab.name, kindAt(at.sheet)) ?? refuse(`${on(at.sheet, at.range)} holds no numbers to chart.`)
+    const corner = a.at === undefined ? null : placed(a.at.includes('!') ? a.at : `'${tab.name.replace(/'/g, "''")}'!${a.at}`)
+    if (corner && corner.sheet !== at.sheet) refuse('A chart sits on the sheet of its data.')
+    const taken = new Set(all.filter((c) => c.sheet === tab.name).map((c) => (c.name ?? '').toLowerCase()))
+    let n = 1
+    while (taken.has(`chart ${n}`)) n++
+    const kind = a.kind ?? 'column'
+    const base: Omit<ChartSpec, 'id' | 'anchor'> = { sheet: tab.name, kind, grouping: 'clustered', groups: [], name: `Chart ${n}`, legend: null, axes: {}, series, flags: {}, ...(a.title ? { title: { text: a.title } } : series.length === 1 && series[0]!.name ? { autoTitle: true as const } : {}) }
+    const spec: ChartSpec = {
+      ...asKind(base, kind),
+      id: `chart-${randomUUID().replace(/-/g, '').slice(0, 8)}`,
+      anchor: { kind: 'oneCell', from: { column: corner ? corner.range.startColumn : at.range.endColumn + 2, row: corner ? corner.range.startRow : at.range.startRow, columnOffset: 0, rowOffset: 0 }, width: CHART_WIDTH * EMU, height: CHART_HEIGHT * EMU }
+    } as ChartSpec
+    list = [...all.filter((c) => c.sheet === tab.name), spec]
+    box = at.range
+    words = `${KIND_WORDS[kind][0]!.toUpperCase()}${KIND_WORDS[kind].slice(1)} of ${on(at.sheet, at.range)}${a.title ? `, titled ${quotedTitle(a.title)}` : ''}`
+  } else {
+    const want = a.chart.trim().toLowerCase()
+    const found = all.find((c) => (c.name ?? '').toLowerCase() === want) ?? all.find((c) => titleOf(c).toLowerCase() === want)
+    if (!found) return refuse(`There is no chart named ${a.chart}${all.length ? `: this workbook has ${all.map(label).join(', ')}` : ': this workbook has none'}.`)
+    tab = sheets.find((s) => s.name === found.sheet) ?? refuse(`${label(found)} is on a sheet this editor does not show.`)
+    if (found.kind === 'other' || found.kind === 'combo') refuse(`${label(found)} is a kind of chart only Excel changes.`)
+    const others = all.filter((c) => c.sheet === tab.name && c.id !== found.id)
+    if (a.op === 'remove') {
+      list = others
+      words = `${label(found)} removed`
+    } else {
+      const said: string[] = []
+      let spec: ChartSpec = structuredClone(found)
+      if (a.range !== undefined) {
+        const at = placed(a.range)
+        if (at.sheet !== tab.id) refuse(`${label(found)} charts the cells of its own sheet.`)
+        spec.series = seriesOf(at.range, tab.name, kindAt(at.sheet)) ?? refuse(`${on(at.sheet, at.range)} holds no numbers to chart.`)
+        box = at.range
+        said.push(`now of ${on(at.sheet, at.range)}`)
+      }
+      const kind = a.kind ?? (a.range !== undefined ? ((CHART_KINDS as readonly string[]).includes(spec.kind) ? (spec.kind as ChartKindAsked) : 'column') : undefined)
+      if (kind) spec = { ...spec, ...asKind(spec, kind) }
+      if (a.kind) said.unshift(KIND_WORDS[a.kind])
+      if (a.title === null) {
+        delete spec.title
+        delete spec.autoTitle
+        said.push('no title')
+      } else if (a.title !== undefined) {
+        spec.title = { text: a.title }
+        said.push(`titled ${quotedTitle(a.title)}`)
+      }
+      if (!said.length) refuse('Say what changes: its kind, its range or its title.')
+      list = [...others, spec]
+      words = `${label(found)}: ${said.join(', ')}`
+    }
+  }
+  const params: RulesSetParams = { kind: 'charts', subUnitId: tab.id, list }
+  const mutations: SheetMutationJson[] = [{ id: RULES_SET, params }]
+  await triedOn(ask.path!, mutations, sheets)
+  return { mutations, sheet: tab.id, range: box, words }
+}
+const quotedTitle = (text: string): string => `“${text}”`
 
 const letterOf = (text: string): number => [...text.toUpperCase()].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1
 const span = (text: string, of: (part: string) => number): { start: number; end: number } => {

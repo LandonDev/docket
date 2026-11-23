@@ -9,7 +9,7 @@ import { parseA1 } from './a1'
 import { agentFormat, FORMAT_MAX_CELLS, FormatSchema, formatWords, heldOfPackage, place, ruleClash, ruleListMutation, ruleModel, ruleMutations, RuleSchema, ruleWords, where, type FormatAsk, type Placed, type RuleAsk } from './asks'
 import type { RulesHeld } from './host/wire'
 import type { ChangeAsk } from './changes'
-import { NoteAskSchema, PageAskSchema, TableAskSchema, type ActAnswer, type ActMade, type NoteAsk, type PageAsk, type TableAsk } from './acts'
+import { ChartAskSchema, NoteAskSchema, PageAskSchema, TableAskSchema, type ActAnswer, type ActMade, type ChartAsk, type NoteAsk, type PageAsk, type TableAsk } from './acts'
 import { ensureImported } from './formatsIn'
 import { ensureCsvSheet, heldOf, heldOfPath, host, sheetsOf, storeKey, type Held, type Sheets } from './held'
 import type { A1Cell } from './host/wire'
@@ -135,9 +135,9 @@ async function standing(s: Sheets, held: Target['held']): Promise<Standing> {
 }
 
 /** The worker's answer for one ask, asked once for a standing: the words and the mutations come from one run. */
-type Acted = { table: TableAsk } | { page: PageAsk } | { note: NoteAsk }
+type Acted = { table: TableAsk } | { page: PageAsk } | { note: NoteAsk } | { chart: ChartAsk }
 /** The ask of a change the sheet worker makes (acts.ts), or null for a format or a rule. */
-const actedOf = (ask: ChangeAsk): Acted | null => (ask.kind === 'table' ? { table: ask.table } : ask.kind === 'page' ? { page: ask.page } : ask.kind === 'note' ? { note: ask.note } : null)
+const actedOf = (ask: ChangeAsk): Acted | null => (ask.kind === 'table' ? { table: ask.table } : ask.kind === 'page' ? { page: ask.page } : ask.kind === 'note' ? { note: ask.note } : ask.kind === 'chart' ? { chart: ask.chart } : null)
 function once(ask: (acted: Acted) => Promise<ActAnswer>): (acted: Acted) => Promise<ActMade> {
   const seen = new Map<string, Promise<ActMade>>()
   return (acted) => {
@@ -464,6 +464,18 @@ export const sheetTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; note: NoteAsk; because: 'asked' | 'routine' | 'own'; quote?: string; reason?: string }
       return change(ctx, a, { kind: 'note', note: a.note })
+    }
+  },
+  {
+    name: 'sheet_chart',
+    description:
+      'Charts in an opened Excel file: `make` a column, bar, line or pie chart of a range with a title, `change` one\'s kind, range or title, or `remove` it. ' +
+      'Say why, as for `sheet_write`: on a sheet others share your own idea waits in words for the owner.',
+    input: z.object({ ...target, chart: ChartAskSchema, ...because }),
+    readOnly: false,
+    run: async (args, ctx) => {
+      const a = args as { item?: string; file?: string; chart: ChartAsk; because: 'asked' | 'routine' | 'own'; quote?: string; reason?: string }
+      return change(ctx, a, { kind: 'chart', chart: a.chart })
     }
   },
   {
