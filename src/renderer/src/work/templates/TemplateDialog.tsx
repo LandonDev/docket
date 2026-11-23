@@ -40,7 +40,7 @@ export function TemplateDialog({
   const [making, setMaking] = useState<string | null>(null);
   return (
     <Modal title={chosen ? chosen.name : "New from a template"} size="md" busy={making !== null} onClose={onClose} data-templates-dialog="">
-      <Steps
+      <TemplateSteps
         env={env}
         workspaceId={workspaceId}
         into={into}
@@ -59,7 +59,7 @@ export function TemplateDialog({
 /** The swap's fade, on the step that arrives; none under reduced motion. */
 const ARRIVE = "flex min-h-0 flex-col transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 motion-reduce:transition-none";
 
-function Steps({
+export function TemplateSteps({
   env,
   workspaceId,
   into,
@@ -127,7 +127,7 @@ function Steps({
   const groups = load.status === "ready" ? shelfGroups(load.value.templates, jobName) : [];
   return (
     <div key="tiles" className={ARRIVE}>
-      <ModalBody className="pt-3">
+      <ModalBody>
         {load.status === "loading" ? (
           <ShelfSkeleton layout="dialog" />
         ) : load.status === "error" ? (

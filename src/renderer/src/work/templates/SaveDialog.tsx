@@ -35,7 +35,7 @@ export function SaveDialog(props: SaveProps) {
   );
 }
 
-function SaveForm({ env, workspaceId, source, name, fields, onClose, pending, setPending }: SaveProps & { pending: boolean; setPending: (on: boolean) => void }) {
+export function SaveForm({ env, workspaceId, source, name, fields, onClose, pending, setPending }: SaveProps & { pending: boolean; setPending: (on: boolean) => void }) {
   const close = useModalClose();
   const [value, setValue] = useState(() => name ?? (source.at === "file" ? stemOf(baseName(source.path)) : ""));
   const [everywhere, setEverywhere] = useState(false);
