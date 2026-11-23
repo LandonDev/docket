@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -20,7 +20,9 @@ import { ensureSlidesTables, SlidesStore } from './store'
 import { TWELVE } from './fixtures/twelve'
 import { writeNewDeck } from './newDeck'
 
-vi.mock('../scope', () => ({
+// The rest of the scope module is the real one: other parts of the context read it (the outbox's scope facts).
+vi.mock('../scope', async (original) => ({
+  ...(await original<typeof import('../scope')>()),
   scopePart: () => ({
     scopeOf: (id: string): WorkScope => ({ sessionId: id, workspaceId: 'w1', sector: null, host: 'env_test', away: false, routineRunId: null, shared: () => false }),
     createWorkspace: async () => {
@@ -29,6 +31,13 @@ vi.mock('../scope', () => ({
     admitSession: () => {}
   })
 }))
+/** Paths the test calls a place others can open (a Teams library); every other path is judged by the real rule. */
+const sharedPaths = vi.hoisted(() => new Set<string>())
+vi.mock('../files/policy', async (original) => {
+  const real = await original<typeof import('../files/policy')>()
+  return { ...real, sharedOf: (ctx: never, source: CanvasSource) => (source.at === 'file' && [...sharedPaths].some((p) => source.path.startsWith(p))) || real.sharedOf(ctx, source) }
+})
+
 const { startWork } = await import('../ctx')
 const { canvas } = await import('../canvas')
 const { slides } = await import('.')
@@ -94,6 +103,8 @@ function applyFake(d: FakeDeck, ops: SlideOp[]): string[] {
 }
 
 const calls: string[] = []
+/** Every job a converter was handed: what it made, and whether it was marked a shared file's. */
+const jobs: Array<{ to: string; shared?: boolean }> = []
 /** Runs while the fake edit runs: the owner saving the file meanwhile. */
 let duringEdit: (() => void) | null = null
 /** Holds the outline job until it resolves: a long first render on the item's queue. */
@@ -108,6 +119,7 @@ const FAKE: Converter[] = [
     to: 'deckinfo',
     async run(job) {
       calls.push('deckinfo')
+      jobs.push({ to: job.to, shared: job.shared })
       await holdInfo
       const d = readFake(job.input)
       writeFileSync(job.output, JSON.stringify({ width: 12192000, height: 6858000, sections: [], ...d }))
@@ -119,6 +131,7 @@ const FAKE: Converter[] = [
     to: 'pptxedit',
     async run(job) {
       calls.push('pptxedit')
+      jobs.push({ to: job.to, shared: job.shared })
       editInputs.push(job.input)
       duringEdit?.()
       const d = readFake(job.input)
@@ -134,6 +147,7 @@ const FAKE: Converter[] = [
     to: 'pdf',
     async run(job) {
       calls.push(`pdf ${String(job.options?.filter)}`)
+      jobs.push({ to: job.to, shared: job.shared })
       writeFileSync(job.output, `%PDF-1.7 ${createHash('sha256').update(readFileSync(job.input)).digest('hex')}`)
       return {}
     }
@@ -143,6 +157,7 @@ const FAKE: Converter[] = [
     to: 'png',
     async run(job) {
       calls.push(`png ${String(job.options?.page)}`)
+      jobs.push({ to: job.to, shared: job.shared })
       writeFileSync(job.output, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
       return {}
     }
@@ -468,6 +483,74 @@ describe('the module, on a fake deck tool', () => {
     const r = await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'notes', slide: 256, text: 'x' }] })
     expect(textOf(r)).toContain('The deck is shared, so your own idea is a suggestion.')
     expect((pushes.at(-1) as { view: DeckView }).view).toMatchObject({ hosted: true, name: 'Show.pptx', changes: [{ kind: 'changed' }] })
+  })
+
+  describe('a deck in a place others can open (a Teams or OneDrive library)', () => {
+    let team: string
+    let deckAt: string
+    beforeEach(() => {
+      team = join(dir, 'Esports Staff')
+      mkdirSync(team)
+      deckAt = join(team, 'Show.pptx')
+      writeFileSync(deckAt, fakeBytes(FAKE_DECK))
+      sharedPaths.add(team)
+    })
+    afterEach(() => sharedPaths.clear())
+
+    it("an agent's own idea is a suggestion even where the deck says Agent writes: the file stays byte for byte as it was, nothing is written beside it, and no copy may leave this host", async () => {
+      const item = openDeck(fileSource(deckAt))
+      await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
+      const before = readFileSync(deckAt)
+      jobs.length = 0
+      const r = await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['New words'] }, { op: 'add', after: 256, layout: 'Title and Content', title: 'Added' }] })
+      expect(r.isError).toBeFalsy()
+      expect(textOf(r)).toContain('The deck is shared, so your own idea is a suggestion.')
+      expect(r.structuredContent).toMatchObject({ direct: false })
+      // Nothing reached the file or its folder: the edits are rows on this host and the proposed deck is under app data.
+      expect(readFileSync(deckAt).equals(before)).toBe(true)
+      expect(readdirSync(team)).toEqual(['Show.pptx'])
+      expect(new SlidesStore(db).pending(item.id)).toHaveLength(2)
+      const view = (pushes.at(-1) as { view: DeckView }).view
+      expect(view.changes).toHaveLength(2)
+      expect(view.written).toBeUndefined()
+      // Every tool run on a copy of it says the copy is a shared file's, so the runner never carries it to another host.
+      expect(jobs.length).toBeGreaterThan(0)
+      expect(jobs.every((j) => j.shared === true)).toBe(true)
+      // A picture of the proposed deck for the agent is made here too.
+      jobs.length = 0
+      await tool('slides_image', { item: item.id, slide: 1 })
+      expect(jobs.at(-1)).toMatchObject({ to: 'png', shared: true })
+      // His accept is what writes it, as an ordinary edit.
+      await call('work.slides.review', { itemId: item.id, changes: 'all', verdict: 'accept', rev: view.changesRev })
+      expect(readFileSync(deckAt).equals(before)).toBe(false)
+      expect(readdirSync(team)).toEqual(['Show.pptx'])
+    })
+
+    it('what he asked for in so many words is still written at once', async () => {
+      typed.set('t1', ['Please retitle the second slide to New words for the staff meeting'])
+      const item = openDeck(fileSource(deckAt))
+      await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
+      const before = readFileSync(deckAt)
+      const r = await tool('slides_edit', { item: item.id, because: 'asked', quote: 'retitle the second slide to New words', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['New words'] }] })
+      expect(r.structuredContent).toMatchObject({ direct: true })
+      expect(readFileSync(deckAt).equals(before)).toBe(false)
+    })
+
+    it('a deck of his own is still written at once in Agent writes, and its copies carry no mark', async () => {
+      const item = openDeck(fileSource(path))
+      await call('work.slides.mode', { itemId: item.id, mode: 'writes' })
+      jobs.length = 0
+      const r = await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'text', slide: 257, shape: 3, paragraphs: ['New words'] }] })
+      expect(r.structuredContent).toMatchObject({ direct: true })
+      expect(jobs.some((j) => j.shared)).toBe(false)
+    })
+
+    it('an agent never puts a new deck in such a place: nothing is written there and it is told to make it in the thread', async () => {
+      const r = await tool('slides_new', { title: 'Staff update', slides: [{ layout: 'title', title: 'Staff update' }], save: join(team, 'Staff update.pptx') })
+      expect(r.isError).toBe(true)
+      expect(textOf(r)).toContain('is a place other people can open, and an agent does not put a new deck there')
+      expect(readdirSync(team)).toEqual(['Show.pptx'])
+    })
   })
 
   it('a remote key reviews, sets the mode of and undoes nothing on a deck outside its roots, and hears no push of it', async () => {

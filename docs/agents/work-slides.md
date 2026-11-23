@@ -84,16 +84,53 @@ drops it. Agents suggest; the owner accepts.
 - **Reject** (`reject`). The rows go. Any other edit anchored on a rejected
   add takes that add's own `after`.
 - **Direct writes.** In `writes` mode an edit goes into the file at once when
-  its reason holds: `because: 'own'` on a deck that is not hosted, or
+  its reason holds: `because: 'own'` on a deck nobody else can open, or
   `because: 'asked'` with a `quote` that `ctx.threads.ownerSaid` finds whole
   in one of the owner's own messages (milestone 6: at least 12 letters,
-  case and spacing aside; an error reads as no). `own` on a hosted deck is
-  always a suggestion. So is any edit made while suggestions wait: the agent
+  case and spacing aside; an error reads as no). `own` on a deck others can
+  open is always a suggestion ("Suggestions stay private", below). So is any edit made while suggestions wait: the agent
   reads the deck with them in, so its edit belongs with them. The mode is
   read on the item's queue, so an edit that waited behind a render follows
   a switch the owner made meanwhile. A direct write keeps the file before it in `history/` and
   records `written: { id, text, at, before, after }`; Undo puts the copy back
   only while the file's sha256 is still `after`.
+
+### Suggestions stay private
+
+The owner's ruling (2026-11-23), for every kind of file: nothing an agent
+suggests may be seen by anyone else on the team until he approves it and
+the file is really edited. For a deck:
+
+- **Which decks.** `deckShared(ctx, item)` (`view.ts`): a deck that lives in
+  PowerPoint (`{at: 'microsoft'}`), and any file `sharedOf` (the files
+  pillar's `policy.ts`) says others can open: a Teams or OneDrive library,
+  any cloud folder of this computer, a file on another host.
+- **A suggestion is rows and a copy on this host.** The edits are rows in
+  `work_slides_ops`; the proposed deck (`render/<key>.pptx`), its outline
+  and its picture are under the item's own folder in app data, never beside
+  the file. The file is not opened for writing until he accepts: a waiting
+  suggestion leaves it byte for byte as it was and writes nothing into its
+  folder, so nothing syncs.
+- **`own` never writes a shared deck**, whatever the mode says: in "Agent
+  writes" an agent's own idea on such a deck is still a suggestion, and the
+  agent is told so. What he asked for in so many words (`asked` with his
+  quote) is written at once, as the ruling allows.
+- **No copy leaves the host.** Every conversion of a shared deck's copy
+  (the outline, the picture, a checked edit, `slides_image`'s PNG) is
+  marked `shared: true`, so the runner runs it here or fails and never
+  carries it to another host (work-formats.md "Jobs").
+- **A new deck is not put where others can see it.** `slides_new` with a
+  `save` path in such a place is refused in words; the deck is made in the
+  thread and he moves it.
+- **Who sees the review.** `work.slides.open`, `read` and the `work.slides`
+  push reach only a caller who could name the file itself (`fenceItem`,
+  `pushFor`): his own window and his own keys. A deck is not guestable, the
+  PowerPoint side of the switch is not built, and this pillar uploads
+  nothing anywhere.
+- **Accept** writes the change into the file as an ordinary edit; from then
+  on it syncs like any save.
+
+Tests: `slides.test.ts`, "a deck in a place others can open".
 
 ### Tables
 

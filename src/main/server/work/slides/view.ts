@@ -5,6 +5,7 @@ import type { Bbox } from '@shared/contract-work-pdf'
 import type { DeckShape, DeckSlide, DeckView, ShowDeck, SlideChange, SlideOp } from '@shared/contract-work-slides'
 import type { CanvasItem } from '@shared/work'
 import { errorText } from '@shared/work/ids'
+import { sharedOf } from '../files/policy'
 import { NoConverterError } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
 import { copyWhole, hasMagic, itemDir, ItemFileError, pushFor, sourcePath } from '../pdf/file'
@@ -69,6 +70,15 @@ export const nameOf = (item: CanvasItem, path: string | null): string => {
   return /\.pptx$/i.test(item.title) ? item.title : `${item.title}.pptx`
 }
 
+/**
+ * Whether anyone else can open the deck (work/files/policy.ts `sharedOf`): a deck that lives in PowerPoint, in a
+ * Teams or OneDrive library or any cloud folder, on another host. For such a deck an agent's own idea is always
+ * a suggestion kept on this host, and no copy of it is carried to another host to be read, drawn or edited.
+ */
+export const deckShared = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): boolean => item.source.at === 'microsoft' || sharedOf(ctx, item.source)
+/** The mark a conversion of a shared deck's copy carries: the copy lies under app data, so the runner cannot tell by its path. */
+const sharedJob = (ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasItem): { shared?: true } => (deckShared(ctx, item) ? { shared: true } : {})
+
 // ── renders ──────────────────────────────────────────────────────────
 
 /** One version of a deck as the host keeps it: its outline, and its PDF when LibreOffice could make one. */
@@ -121,7 +131,7 @@ async function build(ctx: Ctx, item: CanvasItem, key: string, input: string, sig
     // Written beside its place, then moved onto it: a job cut short never leaves half an outline under the key.
     const tmp = `${json}.${randomUUID().slice(0, 8)}.tmp`
     try {
-      await ctx.convert({ from: 'pptx', to: 'deckinfo', input, output: tmp, ...(signal ? { signal } : {}) })
+      await ctx.convert({ from: 'pptx', to: 'deckinfo', input, output: tmp, ...sharedJob(ctx, item), ...(signal ? { signal } : {}) })
       info = JSON.parse(readFileSync(tmp, 'utf8')) as DeckInfo
       renameSync(tmp, json)
     } catch (err) {
@@ -135,7 +145,7 @@ async function build(ctx: Ctx, item: CanvasItem, key: string, input: string, sig
     try {
       const tmp = `${pdf}.${randomUUID().slice(0, 8)}.tmp`
       try {
-        await ctx.convert({ from: 'pptx', to: 'pdf', input, output: tmp, options: { filter: RENDER_FILTER }, ...(signal ? { signal } : {}) })
+        await ctx.convert({ from: 'pptx', to: 'pdf', input, output: tmp, options: { filter: RENDER_FILTER }, ...sharedJob(ctx, item), ...(signal ? { signal } : {}) })
         renameSync(tmp, pdf)
       } finally {
         rmSync(tmp, { force: true })
@@ -151,8 +161,8 @@ async function build(ctx: Ctx, item: CanvasItem, key: string, input: string, sig
 }
 
 /** Applies edits to a copy of the deck: under `strict` any edit that does not go in fails the whole list with its sentences. */
-export async function applyTo(ctx: Ctx, input: string, ops: SlideOp[], output: string, strict: boolean, signal?: AbortSignal): Promise<string[]> {
-  const done = await ctx.convert({ from: 'pptx', to: 'pptxedit', input, output, options: { ops, strict }, ...(signal ? { signal } : {}) })
+export async function applyTo(ctx: Ctx, item: CanvasItem, input: string, ops: SlideOp[], output: string, strict: boolean, signal?: AbortSignal): Promise<string[]> {
+  const done = await ctx.convert({ from: 'pptx', to: 'pptxedit', input, output, options: { ops, strict }, ...sharedJob(ctx, item), ...(signal ? { signal } : {}) })
   return done.warnings
 }
 
@@ -173,7 +183,7 @@ async function proposedBuilt(ctx: Ctx, item: CanvasItem, input: string, fileHash
   if (!existsSync(copy)) {
     const tmp = `${copy}.${randomUUID().slice(0, 8)}.tmp`
     try {
-      await applyTo(ctx, input, pending.map((p) => p.op), tmp, false, signal)
+      await applyTo(ctx, item, input, pending.map((p) => p.op), tmp, false, signal)
       renameSync(tmp, copy)
     } finally {
       rmSync(tmp, { force: true })
@@ -449,7 +459,7 @@ export async function writeInto(ctx: Ctx, item: CanvasItem, path: string, ops: S
     copyWhole(path, base)
     const was = hashFile(base)
     if (expect && was !== expect) throw new Error('The deck changed while this was being made. Nothing was written; look at it again.')
-    const notes = (await applyTo(ctx, base, ops, out, true, signal)).filter(isNote)
+    const notes = (await applyTo(ctx, item, base, ops, out, true, signal)).filter(isNote)
     // The copy from before is kept first: a write that fails after it leaves the file as it was and no stray copy.
     const before = await keepHistory(ctx, item, base)
     try {
@@ -550,7 +560,7 @@ export async function accept(ctx: Ctx, item: CanvasItem, ids: readonly string[] 
         let warnings: string[]
         const ops = opsOf(chosen)
         try {
-          warnings = await applyTo(ctx, deck.copy, ops, out, false, signal)
+          warnings = await applyTo(ctx, item, deck.copy, ops, out, false, signal)
         } finally {
           rmSync(out, { force: true })
         }

@@ -5,12 +5,13 @@ import { z } from 'zod'
 import { NewSlideSchema, SlideOpSchema, type NewDeck, type SlideOp } from '@shared/contract-work-slides'
 import { agentPrincipal, workText, type CanvasItem, type WorkToolResult } from '@shared/work'
 import { errorText } from '@shared/work/ids'
+import { sharedOf } from '../files/policy'
 import type { ToolCtx, WorkTool } from '../modules'
 import { paneItem, sourcePath } from '../pdf/file'
 import { allocateIds, isNote, slideOfOp, type DeckInfo } from './deck'
 import { writeNewDeck } from './newDeck'
 import { SlidesStore } from './store'
-import { announce, applyTo, deckOf, OWN_FILE, renderPath, scratch, serial, withDeck, writeInto } from './view'
+import { announce, applyTo, deckOf, deckShared, OWN_FILE, renderPath, scratch, serial, withDeck, writeInto } from './view'
 
 /**
  * The tools a Work thread reads and revises a deck with
@@ -113,7 +114,7 @@ export const slidesTools: WorkTool[] = [
         const count = (deck.proposed ?? deck.file).info.slides.length
         if (a.slide > count) return fail(`The deck has ${plural(count, 'slide')}.`)
         const { path } = await renderPath(ctx, it, which, ctx.signal)
-        const done = await ctx.convert({ from: 'pdf', to: 'png', input: path, options: { page: a.slide }, signal: ctx.signal })
+        const done = await ctx.convert({ from: 'pdf', to: 'png', input: path, options: { page: a.slide }, ...(deckShared(ctx, it) ? { shared: true } : {}), signal: ctx.signal })
         return { content: [{ type: 'image', data: readFileSync(done.output).toString('base64'), mimeType: 'image/png' }] }
       } catch (err) {
         return fail(errorText(err))
@@ -140,12 +141,14 @@ export const slidesTools: WorkTool[] = [
       try {
         const it = deckItem(ctx, a.item)
         const store = new SlidesStore(ctx.db)
-        const hosted = it.source.at === 'microsoft'
+        // Others can open it (a deck in PowerPoint, a Teams or OneDrive library, a cloud folder): nothing an agent
+        // thought of itself reaches the file, and so their screens, until the person accepts it.
+        const shared = deckShared(ctx, it)
         const said = await serial(it.id, () => withDeck(ctx, it, ctx.signal, async (deck) => {
           // Read on the queue: the owner may have switched the mode while this waited behind a render.
           const writes = store.mode(it.id) === 'writes'
           // With suggestions waiting, what the agent reads is the deck with them in: an edit of that deck waits with them.
-          const direct = writes && !deck.pending.length && (a.because === 'own' ? !hosted : ownerSaid(ctx, a.quote))
+          const direct = writes && !deck.pending.length && (a.because === 'own' ? !shared : ownerSaid(ctx, a.quote))
           const all = allocateIds([...deck.pending.map((p) => p.op), ...a.ops], deck.file.info)
           const fresh = all.slice(deck.pending.length)
           const added = fresh.flatMap((o) => (o.op === 'add' ? [o.id!] : []))
@@ -159,7 +162,7 @@ export const slidesTools: WorkTool[] = [
           const out = await scratch(ctx, it, 'check')
           let warnings: string[]
           try {
-            warnings = await applyTo(ctx, deck.copy, all, out, false, ctx.signal)
+            warnings = await applyTo(ctx, it, deck.copy, all, out, false, ctx.signal)
           } finally {
             rmSync(out, { force: true })
           }
@@ -196,6 +199,9 @@ export const slidesTools: WorkTool[] = [
           if (!isAbsolute(a.save) || !/\.pptx$/i.test(a.save)) return fail('`save` is an absolute path ending in .pptx.')
           if (existsSync(a.save)) return fail(`There is already a file at ${a.save}.`)
           if (!existsSync(dirname(a.save))) return fail(`There is no folder ${dirname(a.save)}.`)
+          // A new file in a library shows on every teammate's screen the moment it syncs: that is the person's to put there.
+          if (sharedOf(ctx, { at: 'file', host: ctx.host, path: a.save }))
+            return fail(`${dirname(a.save)} is a place other people can open, and an agent does not put a new deck there. Leave out \`save\` to make it in this thread; the person can move it.`)
         }
         const bytes = await writeNewDeck({ title: a.title, slides: a.slides, ...(a.theme ? { theme: a.theme } : {}) })
         let it: CanvasItem
