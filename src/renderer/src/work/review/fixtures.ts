@@ -68,6 +68,8 @@ const EVENTS: ReviewEvent[] = [
   event("life", "Dentist", 2, 16, 1),
 ];
 
+const ended = (eventId: string, cut: number): boolean => EVENTS.some((e) => e.id === eventId && e.endsAt !== null && e.endsAt <= cut);
+
 const SENT_COSMIC = ["Season 12 patch notes", "Crate odds for the wiki", "Store pricing for the weekend", "Bug bash sign-up", "Vendor invoice for October", "Release window", "Mod tooling budget", "Server costs, a first pass", "Playtest invites", "Changelog draft", "Thanks for the report", "Economy numbers"];
 const DONE_COSMIC = ["Fix the crate drop rates", "Ship the vote-party hotfix"];
 
@@ -159,7 +161,8 @@ function box(now: number, over: Partial<ReviewBody> = {}): ReviewBody {
       [job("purdue"), 6 * HOUR + 40 * MIN],
       [job("hypixel"), 2 * HOUR + 5 * MIN],
     ],
-    slipped: { at: now, rows: [...SLIPPED.filter((r) => r.at < cut), ...(HELD.at < cut - DAY ? [HELD] : [])] },
+    // A meeting slips only once it is over (followup.ts): one still running at the cut is not listed.
+    slipped: { at: now, rows: [...SLIPPED.filter((r) => (r.ref.kind === "meeting" ? ended(r.ref.eventId, cut) : r.at < cut)), ...(HELD.at < cut - DAY ? [HELD] : [])] },
     shipped: APPROVED.at < cut ? [APPROVED] : [],
     before: { from: B, to: B + (cut - WEEK.from), lifeos: { events: BEFORE_EVENTS.filter((e) => e.from < B + (cut - WEEK.from)).map((e) => ({ ...e, to: Math.min(e.to, B + (cut - WEEK.from)) })), sent: [] }, points: BEFORE_POINTS.filter((p) => p[0] < B + (cut - WEEK.from)) },
     left: [],
@@ -182,8 +185,9 @@ export function fixtureView(state: FixtureState): { view: ReviewView; now: numbe
     ["cosmic", { in: 240_000, out: 31_250 }],
     ["ref", { in: 19_000, out: 0 }],
   ]);
-  const base = { week: WEEK, tz: TZ, settled: true, off: [] as string[], errors: [] as ReviewView["errors"], money: state === "lifeos" ? new Map() : money };
-  const merged = (parts: { environmentId: string; body: ReviewBody }[]) => mergeReview(parts, now, { home: "env-box" });
+  const base = { week: WEEK, tz: TZ, settled: true, making: false, off: [] as string[], errors: [] as ReviewView["errors"], money: state === "lifeos" ? new Map() : money };
+  // `gap`: a host is off, or did not answer this time, as the store tells the merge.
+  const merged = (parts: { environmentId: string; body: ReviewBody }[], gap: { fresh?: boolean; whole?: boolean } = {}) => mergeReview(parts, now, { home: "env-box", ...gap });
   // The routine made it on Friday; looked at the Monday after, what slipped is as it stood then.
   const friday = (): ReviewBody => ({ ...box(now), by: "routine", slipped: { at: FRIDAY, rows: box(FRIDAY).slipped.rows } });
   const both = (b: ReviewBody) => [
@@ -204,11 +208,15 @@ export function fixtureView(state: FixtureState): { view: ReviewView; now: numbe
     case "clear":
       return { now, view: { ...base, review: merged(both({ ...friday(), slipped: { at: FRIDAY, rows: [] } })) } };
     case "off":
-      return { now, view: { ...base, off: [hostOffWords("The Mac")], review: merged([{ environmentId: "env-box", body: friday() }]) } };
+      return { now, view: { ...base, off: [hostOffWords("The Mac")], review: merged([{ environmentId: "env-box", body: friday() }], { whole: false }) } };
     case "lifeos":
       return { now, view: { ...base, review: merged(both({ ...friday(), lifeos: null, slipped: { at: FRIDAY, rows: [HELD] }, before: null, left: [LEFT.lifeos] }).map((p) => ({ ...p, body: { ...p.body, lifeos: null, left: [LEFT.lifeos] } }))) } };
-    case "failed":
-      return { now, view: { ...base, errors: [{ environmentId: "env-mac", name: "The Mac", error: "the request timed out" }], review: merged([{ environmentId: "env-box", body: { ...friday(), left: [LEFT.threads, LEFT.held] } }]) } };
+    case "failed": {
+      // The box could read neither its threads nor its held items: no message is counted, and nothing held shows.
+      const b = friday();
+      const noHeld = { ...b, points: b.points.filter((p) => p[2] !== "said"), ran: [], shipped: [], slipped: { at: FRIDAY, rows: b.slipped.rows.filter((r) => r.ref.kind !== "held") }, left: [LEFT.threads, LEFT.held] };
+      return { now, view: { ...base, errors: [{ environmentId: "env-mac", name: "The Mac", error: "it timed out", kept: false }], review: merged([{ environmentId: "env-box", body: noHeld }], { fresh: false }) } };
+    }
     default:
       return { now, view: { ...base, review: merged(both(friday())) } };
   }

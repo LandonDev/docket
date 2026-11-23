@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
+import { act, cleanup, render, renderHook } from "@testing-library/react";
+import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LEFT, type ReviewBody } from "@shared/work/review";
-import { registry, type EnvironmentStatus } from "../../lib/connection";
+import { LEFT, weekOf, type ReviewBody } from "@shared/work/review";
+import { registry, TimeoutError, type EnvironmentStatus } from "../../lib/connection";
+import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { AFTER, fixtureView, TZ, WEEK } from "./fixtures";
-import { loadRoutine, loadWeek, loadZone, markSeen, resetReviewStore, reviewNow, reviewZone, settleHost, settleRow, thisWeek, undoSettle } from "./store";
+import { resetShown, shownWeek, showWeekNamed, useWeekTurn } from "./shown";
+import { loadRoutine, loadWeek, loadZone, makeAgain, markSeen, resetReviewStore, reviewNow, reviewZone, settleHost, settleRow, thisWeek, undoSettle, useReview } from "./store";
 
 /**
  * The page's store: every host with Work on is asked for its part, the parts are merged by sector with LifeOS taken
@@ -114,8 +118,223 @@ describe("the week across hosts", () => {
     links["env-mac"]!.answer = () => new Error("the request timed out");
     await loadWeek(WEEK);
     const view = reviewNow(WEEK);
-    expect(view.errors).toEqual([{ environmentId: "env-mac", name: "The Mac", error: "the request timed out" }]);
+    // What it answered before still stands in the numbers, and the line can say so.
+    expect(view.errors).toEqual([{ environmentId: "env-mac", name: "The Mac", error: "the request timed out", kept: true }]);
     expect(view.review!.hours.find((h) => h.job === "cosmic")!.ranMs).toBe(3_600_000 + 1_800_000);
+    // Its rows stand as last known: nobody checked them this time.
+    expect(view.review!.slipped.filter((r) => r.unchecked).map((r) => r.key)).toEqual(["env-mac:held:host:h1"]);
+  });
+
+  it("says a host timed out in his words, never the wire method's, and that nothing of it is shown when it never answered", async () => {
+    links["env-mac"]!.answer = (method) => (method === "work.review.week" ? new TimeoutError("work.review.week", 30_000) : { ok: true });
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).errors).toEqual([{ environmentId: "env-mac", name: "The Mac", error: "it timed out", kept: false }]);
+  });
+
+  it("lists jobs in the order he dragged the rail into, a job on two hosts at its first row's place", async () => {
+    const snapshot = workspaceStore.getSnapshot();
+    const ws = (id: string, environmentId: string, sector: string) => ({ id, environmentId, kind: "work", sector, name: sector, path: `/${environmentId}/${sector}` });
+    vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue({ ...snapshot, workspaces: [ws("w-cosmic", "env-box", "cosmic"), ws("w-hypixel", "env-box", "hypixel"), ws("w-purdue", "env-box", "purdue"), ws("m-cosmic", "env-mac", "cosmic")] } as never);
+    // Purdue dragged to the top; the Mac's Cosmic sits last in the rail and must not move Cosmic down.
+    localStorage.setItem("monocode.projectRailOrder", JSON.stringify(["/env-box/purdue", "/env-box/cosmic", "/env-box/hypixel", "/env-mac/cosmic"]));
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).review!.jobs.map((j) => j.key).slice(0, 3)).toEqual(["purdue", "cosmic", "hypixel"]);
+    // A pinned row leads the rail's list, so it leads here; an open page is told of a pin or a drag and follows at once.
+    const { savePinnedProjects, saveProjectRailOrder } = await import("../../lib/recents");
+    const page = renderHook(() => useReview(WEEK));
+    const order = () => page.result.current.review!.jobs.map((j) => j.key).slice(0, 3);
+    act(() => savePinnedProjects(["/env-box/hypixel"]));
+    expect(order()).toEqual(["hypixel", "purdue", "cosmic"]);
+    act(() => saveProjectRailOrder(["/env-box/hypixel", "/env-box/cosmic", "/env-box/purdue", "/env-mac/cosmic"]));
+    expect(order()).toEqual(["hypixel", "cosmic", "purdue"]);
+    page.unmount();
+  });
+
+  it("holds a host that links again as from before until its new answer lands, with no page open too", async () => {
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).settled).toBe(true);
+    // The Mac slept and woke with nobody on the page: the registry tells every listener of the link's return.
+    const opens: (() => void)[] = [];
+    const link = { environmentId: "env-mac", onPush: () => () => {}, onOpen: (fn: () => void) => (opens.push(fn), () => {}) };
+    for (const listener of (registry as unknown as { linkListeners: Set<(l: unknown, e: string) => void> }).linkListeners) listener(link, "added");
+    for (const fn of opens) fn();
+    const view = reviewNow(WEEK);
+    // Its old part still stands in the numbers, as last known; nothing is settled, compared or called empty on it.
+    expect(view.settled).toBe(false);
+    expect(view.review!.known).toEqual({ calendar: true, desk: false, shipped: false, slipped: false });
+    expect(view.review!.slipped.filter((r) => r.unchecked).map((r) => r.key)).toEqual(["env-mac:held:host:h1"]);
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK)).toMatchObject({ settled: true, review: { known: { desk: true, slipped: true } } });
+  });
+
+  it("moves to a named week before it reads or marks any week seen", async () => {
+    // This week is cached and unseen; an older run's row opens the page at its own week.
+    await loadZone();
+    await loadWeek(thisWeek());
+    for (const id of Object.keys(links)) links[id]!.calls.length = 0;
+    const { openWorkPlaceAt, takeWorkPlaceAt } = await import("../../lib/workPlaceAt");
+    const { View } = await import("./ReviewPage");
+    resetShown();
+    act(() => openWorkPlaceAt("review", WEEK.from));
+    const page = render(createElement(View, {} as never));
+    // The bones, not this week's rows.
+    expect(page.container.querySelector("[data-review-job]")).toBeNull();
+    expect(page.container.querySelector('[role="status"]')).not.toBeNull();
+    await act(async () => {
+      for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    const asked = (method: string) => Object.values(links).flatMap((l) => l.calls.filter((c) => c.method === method).map((c) => c.params.from));
+    expect(new Set(asked("work.review.seen"))).toEqual(new Set([WEEK.from]));
+    expect(new Set(asked("work.review.week"))).toEqual(new Set([WEEK.from]));
+    expect(shownWeek().from).toBe(WEEK.from);
+    page.unmount();
+    takeWorkPlaceAt("review");
+    resetShown();
+    const { shellStore, initialShellState } = await import("../../stores/shell");
+    shellStore.setState(initialShellState());
+  });
+
+  it("counts nothing of a host that went off after it answered, as its line says, and counts it again when it is back", async () => {
+    await loadWeek(WEEK);
+    links["env-mac"]!.answer = () => new Error("the request timed out");
+    await loadWeek(WEEK);
+    links["env-mac"]!.status = offline;
+    const view = reviewNow(WEEK);
+    expect(view.off).toEqual(["The Mac is off. Its threads and held items are not counted."]);
+    // Neither its last answer nor its last failure is on the page while it is off.
+    expect(view.errors).toEqual([]);
+    expect(view.review!.hours.find((h) => h.job === "cosmic")!.ranMs).toBe(3_600_000);
+    expect(view.review!.slipped.map((r) => r.environmentId)).not.toContain("env-mac");
+    links["env-mac"]!.status = open;
+    expect(reviewNow(WEEK).review!.hours.find((h) => h.job === "cosmic")!.ranMs).toBe(3_600_000);
+  });
+
+  it("says a week is being made while Make again reads it, and no longer once every host has answered", async () => {
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).making).toBe(false);
+    const made = makeAgain(WEEK);
+    expect(reviewNow(WEEK).making).toBe(true);
+    expect(reviewNow(WEEK).review).not.toBeNull();
+    await made;
+    expect(reviewNow(WEEK).making).toBe(false);
+    expect(links["env-box"]!.calls.filter((c) => c.method === "work.review.week")).toHaveLength(2);
+  });
+
+  it("says nothing is known to be empty, and compares no weeks, until every host has answered afresh", async () => {
+    const before = { from: WEEK.from - 7 * 86_400_000, to: WEEK.to - 7 * 86_400_000, lifeos: { events: [{ sector: "cosmic", from: WEEK.from - 6 * 86_400_000, to: WEEK.from - 6 * 86_400_000 + 8 * 3_600_000 }], sent: [] }, points: [] };
+    bodies.box = { ...bodies.box!, before };
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).review!.known).toEqual({ calendar: true, desk: true, shipped: true, slipped: true });
+    expect(reviewNow(WEEK).review!.compare.map((c) => c.job)).toEqual(["cosmic"]);
+    // The Mac times out: its old part still stands in the totals, so nothing is compared and no "nothing" is claimed.
+    links["env-mac"]!.answer = () => new Error("the request timed out");
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).review!.compare).toEqual([]);
+    expect(reviewNow(WEEK).review!.known).toEqual({ calendar: true, desk: false, shipped: false, slipped: false });
+    // Off: out of both weeks alike, so the comparison holds; what it holds is still not known.
+    links["env-mac"]!.status = offline;
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).review!.compare.map((c) => c.job)).toEqual(["cosmic"]);
+    expect(reviewNow(WEEK).review!.known.desk).toBe(false);
+  });
+
+  it("prefers the LifeOS facts of a host that answered this time, and sends a press there", async () => {
+    await loadWeek(WEEK);
+    expect(reviewNow(WEEK).review!.lifeosFrom).toBe("env-box");
+    // The home times out; what it said before still holds a task the Mac's fresh read no longer lists.
+    links["env-box"]!.answer = (method) => (method === "work.review.week" ? new Error("the request timed out") : { ok: true });
+    bodies.mac = { ...bodies.mac!, lifeos: bodies.box!.lifeos, slipped: { at: AFTER, rows: bodies.box!.slipped.rows.filter((r) => r.key === "mail:tw1") } };
+    await loadWeek(WEEK);
+    const review = reviewNow(WEEK).review!;
+    expect(review.lifeosFrom).toBe("env-mac");
+    expect(review.slipped.filter((r) => r.ref.kind !== "held").map((r) => [r.key, r.environmentId])).toEqual([["mail:tw1", "env-mac"]]);
+  });
+
+  it("lists a job whose only host is off, with nothing known of it", async () => {
+    const snapshot = workspaceStore.getSnapshot();
+    vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue({
+      ...snapshot,
+      workspaces: [
+        { id: "w-cosmic", environmentId: "env-box", kind: "work", sector: "cosmic", name: "Cosmic", path: "/w/cosmic" },
+        { id: "m-unify", environmentId: "env-mac", kind: "work", sector: "unify", name: "Unify", path: "/m/unify" },
+      ],
+    } as never);
+    links["env-mac"]!.status = offline;
+    bodies.box = { ...bodies.box!, jobs: [{ workspaceId: "w-cosmic", sector: "cosmic", name: "Cosmic" }], slipped: { at: AFTER, rows: [] } };
+    await loadWeek(WEEK);
+    const review = reviewNow(WEEK).review!;
+    expect(review.jobs.map((j) => [j.key, j.name, j.at.length])).toEqual([
+      ["cosmic", "Cosmic", 1],
+      ["unify", "Unify", 0],
+    ]);
+    expect(review.known.desk).toBe(false);
+  });
+
+  it("answers a press's reload with a read that starts after it, never one already on its way", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const box = links["env-box"]!.answer;
+    let reads = 0;
+    links["env-box"]!.answer = (method, params) => (method === "work.review.week" ? (reads++, gate.then(() => bodies.box)) : box(method, params));
+    const first = loadWeek(WEEK);
+    const after = loadWeek(WEEK, true);
+    // A plain ask shares the read on its way; the one after a write waits it out and asks again.
+    void loadWeek(WEEK);
+    expect(reads).toBe(1);
+    release();
+    await first;
+    await after;
+    expect(reads).toBe(2);
+  });
+
+  it("puts a week on record before any host answers, and asks for the zone again once one can say", async () => {
+    for (const id of Object.keys(links)) links[id]!.status = offline;
+    await loadZone();
+    await loadWeek(WEEK);
+    // Off, not loading: nothing is waited for.
+    expect(reviewNow(WEEK)).toMatchObject({ review: null, settled: true });
+    expect(reviewZone()).not.toBe("Pacific/Kiritimati");
+    // The host links: the zone ask that nobody answered was not kept, so this one reaches it.
+    links["env-box"]!.status = open;
+    const box = links["env-box"]!.answer;
+    links["env-box"]!.answer = (method, params) => (method === "work.review.list" ? { weeks: [], tz: "Pacific/Kiritimati" } : box(method, params));
+    await loadZone();
+    expect(reviewZone()).toBe("Pacific/Kiritimati");
+  });
+
+  it("opens at a week only once the zone weeks are cut in is known", async () => {
+    // A host far to the east: its Monday midnight is still Sunday in this window's own zone.
+    const east = "Pacific/Kiritimati";
+    const box = links["env-box"]!.answer;
+    links["env-box"]!.answer = (method, params) => (method === "work.review.list" ? { weeks: [], tz: east } : box(method, params));
+    const monday = weekOf(WEEK.from + 3 * 86_400_000, east).from;
+    resetShown();
+    const named = monday - 14 * 86_400_000;
+    expect(shownWeek(named).from).not.toBe(named);
+    await showWeekNamed(named);
+    expect(shownWeek().from).toBe(named);
+    resetShown();
+  });
+
+  it("turns to the new week at the week's end, for a page left open", () => {
+    vi.useFakeTimers();
+    try {
+      let at = WEEK.to - 60_000;
+      resetReviewStore({ now: () => at, zone: TZ });
+      resetShown();
+      const { result } = renderHook(() => useWeekTurn());
+      expect(result.current).toBe(WEEK.from);
+      at = WEEK.to + 1_000;
+      act(() => void vi.advanceTimersByTime(61_000));
+      expect(result.current).toBe(WEEK.to);
+      // A machine that slept past the next turn hears it when the window is seen again.
+      at = WEEK.to + 8 * 86_400_000;
+      act(() => void document.dispatchEvent(new Event("visibilitychange")));
+      expect(result.current).toBeGreaterThan(WEEK.to);
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
   });
 
   it("takes LifeOS from another host when the home could not reach it, and says only what is still missing", async () => {
@@ -186,6 +405,10 @@ describe("money", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect([...reviewNow(WEEK).money]).toEqual([["cosmic", { in: 50_00, out: 0 }]]);
     expect(reviewNow(WEEK).errors).toEqual([]);
+    // A host that is off adds no sums either: every number is of the hosts the page counts.
+    links["env-mac"]!.status = offline;
+    await loadWeek(WEEK);
+    expect([...reviewNow(WEEK).money]).toEqual([]);
   });
 });
 

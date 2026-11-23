@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { ReviewWeek } from "@shared/work/review";
-import { thisWeek, weekAt, weekBy } from "./store";
+import { loadZone, reviewClock, thisWeek, weekAt, weekBy } from "./store";
 
 /**
  * Which week the page shows: one small store, since the frame draws the
@@ -24,6 +24,40 @@ export function useShownFrom(): number | null {
   return useSyncExternalStore(subscribe, get, get);
 }
 
+/**
+ * This week's first moment, read by what draws "this week": a page left open hears when the week turns (a timer set
+ * for its end) and when the window comes back into view (a timer a sleeping machine held does not fire on time).
+ * The timer never sleeps past a quarter hour, so a zone a host names after it was set (which moves the week's end)
+ * is picked up well before that end.
+ */
+const TURN_CHECK_MS = 15 * 60_000;
+
+export function useWeekTurn(): number {
+  const get = (): number => thisWeek().from;
+  return useSyncExternalStore(subscribeTurn, get, get);
+}
+
+function subscribeTurn(listener: () => void): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = (): void => {
+    clearTimeout(timer);
+    timer = setTimeout(turned, Math.min(TURN_CHECK_MS, Math.max(1_000, thisWeek().to - reviewClock() + 50)));
+  };
+  const turned = (): void => {
+    listener();
+    arm();
+  };
+  const seen = (): void => {
+    if (document.visibilityState === "visible") turned();
+  };
+  arm();
+  document.addEventListener("visibilitychange", seen);
+  return () => {
+    clearTimeout(timer);
+    document.removeEventListener("visibilitychange", seen);
+  };
+}
+
 /** The week shown, in the zone weeks are cut in now. */
 export const shownWeek = (from: number | null = shownFrom): ReviewWeek => (from === null ? thisWeek() : weekAt(from));
 
@@ -34,6 +68,12 @@ export function showWeekAt(at: number | null): void {
   shownFrom = next;
   changed();
 }
+
+/**
+ * Shows the week a moment names (a routine run's row, Today's row), once the zone weeks are cut in is known: the
+ * moment is a host's Monday midnight, which is still Sunday in a window to its west.
+ */
+export const showWeekNamed = (at: number): Promise<void> => loadZone().then(() => showWeekAt(at));
 
 /** One week back or on; never past this week. */
 export function stepShown(by: number): void {

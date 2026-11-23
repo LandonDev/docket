@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SlippedRef } from '@shared/work/review'
 import { review } from '.'
+import { LEFT } from '@shared/work/review'
 import { NO_JOB_HERE, NOT_A_PERSON, OPEN_IN_OUTBOX, settle, undo, UNDO_GONE, undoCount } from './settle'
 import { hiddenKeys } from './store'
 import { approver, DAY, HOUR, makeRig, MON, reader, thread, TZ, WEEK, window, type Rig } from './testkit'
@@ -36,9 +37,17 @@ describe('a task', () => {
 
   it('Next week moves its due date to Monday at nine, and Undo puts the old date back', async () => {
     const { undo: token } = await press(task, 'later')
-    expect(everything()).toEqual([['tasks:update', { id: 'k1', patch: { dueAt: NEXT_MONDAY_9 } }]])
+    expect(everything().filter(([fn]) => fn !== 'tasks:get')).toEqual([['tasks:update', { id: 'k1', patch: { dueAt: NEXT_MONDAY_9 } }]])
     await undo(window, token!, NOW)
     expect(everything().at(-1)).toEqual(['tasks:update', { id: 'k1', patch: { dueAt: MON + DAY } }])
+  })
+
+  it('Undo puts back the date the press replaced, not the one a kept week remembers', async () => {
+    // The kept row says Tuesday; he has since moved the task to Saturday in Tasks.
+    rig.lifeos['tasks:get'] = { task: { dueAt: MON + 5 * DAY } }
+    const { undo: token } = await press(task, 'later')
+    await undo(window, token!, NOW)
+    expect(everything().at(-1)).toEqual(['tasks:update', { id: 'k1', patch: { dueAt: MON + 5 * DAY } }])
   })
 
   it('Drop drops it with the reason, and Undo reopens it', async () => {
@@ -102,15 +111,56 @@ describe('a held item', () => {
 })
 
 describe('a meeting', () => {
-  it('Next week hides it until Monday; None needed hides it for good; Undo brings it back', async () => {
-    await press(meeting, 'later')
+  it('Next week hides it until Monday; None needed hides it for good; Undo puts back what stood before the press', async () => {
+    const { undo: first } = await press(meeting, 'later')
     expect([...hiddenKeys(rig.db, WEEK.to - 1)]).toEqual(['meeting:e1'])
     expect([...hiddenKeys(rig.db, WEEK.to)]).toEqual([])
     const { undo: token } = await press(meeting, 'drop')
     expect([...hiddenKeys(rig.db, WEEK.to + 365 * DAY)]).toEqual(['meeting:e1'])
+    // Undo of None needed: the Next week before it stands again, whole.
     await undo(window, token!, NOW)
+    expect([...hiddenKeys(rig.db, NOW)]).toEqual(['meeting:e1'])
+    expect([...hiddenKeys(rig.db, WEEK.to)]).toEqual([])
+    // Undo of that first press, which stood on nothing: no mark at all.
+    await undo(window, first!, NOW)
     expect([...hiddenKeys(rig.db, NOW)]).toEqual([])
     expect(everything()).toEqual([])
+  })
+
+  it('brought back into the next week, a press undone leaves it there, and that week still lists it when looked back on', async () => {
+    const { weekFor } = await import('.')
+    const event = { _id: 'e1', sector: 'purdue', title: 'Budget review', startsAt: MON + 3 * DAY + 14 * HOUR, endsAt: MON + 3 * DAY + 15 * HOUR, allDay: false, attendees: [{ address: 'dana@example.edu', name: 'Dana Reyes' }] }
+    rig.lifeos['mail:accounts'] = []
+    rig.lifeos['events:range'] = (a: { to: number }) => (a.to === WEEK.to ? [event] : [])
+    rig.lifeos['events:get'] = event
+    rig.lifeos['review:sentBetween'] = []
+    rig.lifeos['review:doneBetween'] = []
+    rig.lifeos['review:answeredBetween'] = { rows: [], answeredSince: null }
+    rig.lifeos['tasks:due'] = []
+    rig.lifeos['mailWaits:list'] = { page: [], isDone: true, continueCursor: '' }
+    const next = { from: WEEK.to, to: WEEK.to + 7 * DAY }
+    const rows = async (now: number) => (await weekFor(rig.ctx, { ...next, tz: TZ, by: 'owner' }, undefined, now)).slipped.rows.map((r) => [r.key, r.open])
+    await press(meeting, 'later')
+    const friday = next.from + 4 * DAY + 16 * HOUR
+    expect(await rows(friday)).toEqual([['meeting:e1', true]])
+    // None needed, then Undo: the mark that brought it into this week is put back whole, so it is listed again.
+    const MIN = HOUR / 60
+    const { undo: token } = await settle(rig.ctx, window, { row: meeting, how: 'drop', tz: TZ }, friday + 5 * MIN)
+    expect(await rows(friday + 10 * MIN)).toEqual([])
+    await undo(window, token!, friday + 15 * MIN)
+    expect(await rows(friday + 20 * MIN)).toEqual([['meeting:e1', true]])
+    // The Monday after: that week's calendar never held the meeting, yet nobody dealt with it.
+    const monday = next.to + 9 * HOUR
+    expect(await rows(monday)).toEqual([['meeting:e1', true]])
+    // A lookup that fails says so and changes nothing.
+    rig.lifeos['events:get'] = new Error('timed out')
+    const dark = await weekFor(rig.ctx, { ...next, tz: TZ, by: 'owner' }, undefined, monday + HOUR)
+    expect(dark.left).toEqual([LEFT.calendar])
+    expect(dark.slipped.rows.map((r) => [r.key, r.open])).toEqual([['meeting:e1', true]])
+    // A mail to Dana since: it moves under "dealt with since".
+    rig.lifeos['events:get'] = event
+    rig.lifeos['review:sentBetween'] = (a: { from: number }) => (a.from === next.to ? [{ id: 'm1', threadId: 't1', subject: 'Notes', to: [{ address: 'dana@example.edu' }], sentAt: next.to + HOUR, sector: 'purdue' }] : [])
+    expect(await rows(monday + 2 * HOUR)).toEqual([['meeting:e1', false]])
   })
 
   it('put off to next week, it comes back in the new week\'s review until it is followed up or needs nothing', async () => {

@@ -26,6 +26,8 @@ export type MakeAsk = {
   by: 'routine' | 'owner'
   /** a thread's tool: its own job alone, by workspace and sector */
   only?: { workspaceId: string | null; sector: SectorKey | null }
+  /** a week that is over: the meetings its kept review lists, so one that ended in an earlier week (put off, then brought back) is still judged */
+  carry?: readonly string[]
   signal?: AbortSignal
 }
 
@@ -51,7 +53,9 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
     tz: a.tz,
     now: a.now,
     cut,
-    before: { from: prev.from, to: Math.min(prev.to, prev.from + Math.max(0, cut - a.from)) },
+    // The same span of the week before while the week runs; the whole of it once the week is over (the two differ
+    // in length across a clock change).
+    before: { from: prev.from, to: a.now >= a.to ? prev.to : Math.min(prev.to, prev.from + Math.max(0, cut - a.from)) },
     ...(a.only ? { only: a.only.sector } : {}),
     ...(a.signal ? { signal: a.signal } : {})
   }
@@ -71,8 +75,9 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
       ask(ctx, lifeosLeft, LEFT.calendar, 'the calendar', () => eventsBetween(owner, a.from, a.to, self, asked)),
       ask(ctx, [], '', 'last week’s calendar', () => eventsBetween(owner, asked.before.from, asked.before.to, self, asked)),
       ask(ctx, lifeosLeft, LEFT.mail, 'sent mail', () => sentBetween(owner, a.from, a.to, asked)),
-      // A meeting's follow-up may have gone after the week ended.
-      ask(ctx, [], '', 'mail sent since', () => sentBetween(owner, a.to, a.now, asked)),
+      // A meeting's follow-up may have gone after the week ended: without this read no meeting can be judged, and
+      // the line it leaves keeps a kept meeting as it last stood (`mergeKept`).
+      ask(ctx, lifeosLeft, LEFT.mail, 'mail sent since', () => sentBetween(owner, a.to, a.now, asked)),
       ask(ctx, [], '', 'last week’s sent mail', () => sentBetween(owner, asked.before.from, asked.before.to, asked)),
       ask(ctx, lifeosLeft, LEFT.tasks, 'finished tasks', () => doneBetween(owner, a.from, a.to, asked)),
       ask(ctx, lifeosLeft, LEFT.mail, 'answered mail', () => answeredBetween(owner, a.from, a.to, asked)),
@@ -85,17 +90,20 @@ export async function makeWeek(ctx: WorkCtx, a: MakeAsk): Promise<Made> {
       lifeos = { events: events ?? [], sent: sent ?? [], done: done ?? [], answered: answered?.rows ?? [], answeredSince: answered?.answeredSince ?? null }
       slipped.push(...(due ?? []), ...(waits ?? []))
       // Without the sent mail nobody can say a meeting was not followed up, so none is listed.
-      if (events && sent) {
+      if (events && sent && sentAfter) {
         // A meeting he put off to "next week" ended in a week that is over: the week that holds now lists it again,
         // judged by the mail sent since it ended.
-        const carried = a.now >= a.from && a.now < a.to ? carriedMeetings(ctx.db, a.now).filter((id) => !events.some((e) => e.id === id)) : []
-        const back = (await Promise.all(carried.map((id) => eventById(owner, id, self, asked)))).filter((e): e is ReviewEvent => e !== null)
+        // Looked back on, the kept week's own meetings are asked for the same way: its calendar no longer holds one
+        // that ended before it. A lookup that fails says so, and the kept row keeps its last state.
+        const carried = (a.now >= a.from && a.now < a.to ? carriedMeetings(ctx.db, a.now) : (a.carry ?? [])).filter((id) => !events.some((e) => e.id === id))
+        const back = (await Promise.all(carried.map((id) => ask(ctx, left, LEFT.calendar, 'a put-off meeting', () => eventById(owner, id, self, asked, true))))).filter((e): e is ReviewEvent => e !== null)
         const earliest = Math.min(a.from, ...back.map((e) => e.endsAt ?? a.from))
         const sentEarlier = back.length ? ((await ask(ctx, [], '', 'mail sent since a put-off meeting', () => sentBetween(owner, earliest, a.from, asked))) ?? []) : []
         const prepped = await preppedAfter(ctx, earliest, cut)
-        slipped.push(...meetingsSlipped([...events, ...back], [...sentEarlier, ...sent, ...(sentAfter ?? [])], { from: a.from, cut }, hidden, prepped, new Set(back.map((e) => e.id))))
+        slipped.push(...meetingsSlipped([...events, ...back], [...sentEarlier, ...sent, ...sentAfter], { from: a.from, cut }, hidden, prepped, new Set(back.map((e) => e.id))))
       }
-      if (eventsBefore || sentBefore) beforeLifeos = { events: spansOf(eventsBefore ?? [], asked.before), sent: (sentBefore ?? []).map((m: ReviewSent) => ({ at: m.at, sector: m.sector })) }
+      // Both or neither: half of last week's facts would turn a failed read into a change in his hours.
+      if (eventsBefore && sentBefore) beforeLifeos = { events: spansOf(eventsBefore, asked.before), sent: sentBefore.map((m: ReviewSent) => ({ at: m.at, sector: m.sector })) }
     }
   }
 

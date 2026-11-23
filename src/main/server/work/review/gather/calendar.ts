@@ -53,8 +53,12 @@ export function toEvent(doc: EventDoc, self: ReadonlySet<string>): ReviewEvent {
 }
 
 /** One event by id; null when LifeOS no longer has it. */
-export async function eventById(owner: LifeosClient, id: string, self: ReadonlySet<string>, asked: Pick<Asked, 'only'>): Promise<ReviewEvent | null> {
-  const doc = await owner.query<EventDoc | null>('events:get', { id }).catch(() => null)
+export async function eventById(owner: LifeosClient, id: string, self: ReadonlySet<string>, asked: Pick<Asked, 'only'>, strict = false): Promise<ReviewEvent | null> {
+  // `strict`: a read that failed throws, so the caller can tell it from an event that is gone.
+  const doc = await owner.query<EventDoc | null>('events:get', { id }).catch((err: unknown) => {
+    if (strict) throw err
+    return null
+  })
   if (!doc || (asked.only !== undefined && doc.sector !== asked.only)) return null
   return toEvent(doc, self)
 }

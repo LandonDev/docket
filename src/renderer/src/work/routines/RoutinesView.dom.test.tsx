@@ -163,6 +163,8 @@ describe("the Routines view", () => {
       const off = routineJobOpenPort.set((o) => void opened.push(o));
       render(<View {...props} />);
       await settle();
+      // A run that opens something answers the pointer as every row that opens its thing does.
+      expect(screen.getByRole("button", { name: /Review made/ }).className).toContain("hover:bg-foreground/5");
       fireEvent.click(screen.getByRole("button", { name: /Review made/ }));
       expect(opened).toEqual([{ place: "review", at: 5 }]);
       expect(screen.queryByRole("button", { name: /its job is not on this host/ })).toBeNull();

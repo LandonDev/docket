@@ -170,6 +170,8 @@ export type SlippedRow = {
   /** whom the mail went to, or who else was at the meeting; empty for the rest */
   people: string[]
   others: number
+  /** in the window's merge alone: the row's source did not answer this time, so it stands as last known and its presses wait */
+  unchecked?: boolean
   /** still open when last read; false: dealt with since the week was kept */
   open: boolean
 }
@@ -387,8 +389,19 @@ export function totalWords(h: Pick<JobHours, 'calendarMs' | 'deskMs'>): string |
   return h.deskMs > 0 ? hoursWords(totalMs(h), 'estimate') : hoursWords(h.calendarMs, 'measured')
 }
 
-export const NOTHING_SEEN = 'Nothing seen this week'
-export const HOURS_NOTE = 'Calendar time is measured. Desk time is an estimate from what you did in TempCode.'
+/** A job with nothing all week. It names no week: the page may show one that is long over. */
+export const NOTHING_SEEN = 'Nothing seen'
+/** The same row while the calendar could not be read: only the desk is known to be empty. */
+export const NO_DESK_SEEN = 'No desk time seen'
+/** While what desk time stands on could not all be read (threads, a host): only the calendar is known to be empty. */
+export const NO_CALENDAR_SEEN = 'Nothing on the calendar'
+/** Neither was read. */
+export const NOT_KNOWN = 'Not known'
+/** What a job with no hours reads: "nothing" only of what was read. */
+export const nothingWords = (known: { calendar: boolean; desk: boolean }): string => (known.calendar ? (known.desk ? NOTHING_SEEN : NO_CALENDAR_SEEN) : known.desk ? NO_DESK_SEEN : NOT_KNOWN)
+export const CALENDAR_NOTE = 'Calendar time is measured.'
+export const DESK_NOTE = 'Desk time is an estimate from what you did in TempCode.'
+export const HOURS_NOTE = `${CALENDAR_NOTE} ${DESK_NOTE}`
 
 const count = (n: number, one: string, many: string): string => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
 
@@ -422,11 +435,12 @@ export type Comparison = { job: JobKey; words: string }
  * The week before, said only where it says something: a job whose hours moved
  * by a quarter and by two hours, or one with two hours or more then and
  * nothing now. `running`: this week is not over, so `before` holds the same
- * span of last week and the words say so.
+ * span of last week and the words say so. A week that is over is compared
+ * with "the week before", since the page may show it long after.
  */
 export function compareWeeks(now: readonly JobHours[], before: readonly JobHours[], running: boolean): Comparison[] {
   const then = new Map(before.map((h) => [h.job, h]))
-  const tail = running ? ' by this point last week' : ' last week'
+  const tail = running ? ' by this point last week' : ' the week before'
   const out: Comparison[] = []
   for (const h of now) {
     const b = then.get(h.job)
@@ -448,30 +462,52 @@ export function compareWeeks(now: readonly JobHours[], before: readonly JobHours
 
 // --- what is kept ---------------------------------------------------------------------------
 
+/** Whether a body's read could say anything of a slipped row: false when the row's own source did not answer in it. */
+export function uncheckedIn(body: Pick<ReviewBody, 'left' | 'lifeos'>, r: Pick<SlippedRow, 'ref'>): boolean {
+  const left = (line: string): boolean => body.left.includes(line)
+  if (r.ref.kind === 'held') return left(LEFT.held)
+  if (!body.lifeos) return true
+  if (r.ref.kind === 'task') return left(LEFT.tasks)
+  if (r.ref.kind === 'mail') return left(LEFT.mail)
+  return left(LEFT.calendar) || left(LEFT.mail)
+}
+
 /**
  * What a host answers for a week, from what it kept and what it just read.
  *
  * 1. A week that is not over is made again each time: the fresh body stands
- *    and replaces the kept one.
+ *    and replaces the kept one, with the kept rows of any source that did
+ *    not answer this time carried as they last stood.
  * 2. Once the week is over, hours and what shipped are still the fresh ones
  *    (their facts carry times), but what slipped stays as it stood at the last
  *    make inside the week. A week first asked for after it ended has no such
  *    make: it shows what is still open from it, as of now.
  * 3. Each kept slipped row is checked against what is open now: one dealt
- *    with since reads `open: false`.
+ *    with since reads `open: false`. A row whose source did not answer this
+ *    time (`left`) is not checked: it keeps what was last known of it, so a
+ *    read that failed never makes a thing look dealt with.
  *
  * `fresh.slipped.rows` is what had slipped by the week's end and is open now.
  */
 export function mergeKept(kept: ReviewBody | null, fresh: ReviewBody, now: number): ReviewBody {
-  if (now < fresh.to) return fresh
+  const unknown = (r: SlippedRow): boolean => uncheckedIn(fresh, r)
+  if (now < fresh.to) {
+    // Made again inside the week: the fresh body stands, but a read that failed must not wipe what the last make
+    // knew, or Monday has nothing to look back on. The rows it could not check ride along as they last stood.
+    if (!kept || fresh.left.length === 0) return fresh
+    const have = new Set(fresh.slipped.rows.map((r) => r.key))
+    const carried = kept.slipped.rows.filter((r) => unknown(r) && !have.has(r.key))
+    return carried.length === 0 ? fresh : { ...fresh, slipped: { at: fresh.slipped.at, rows: [...fresh.slipped.rows, ...carried] } }
+  }
   if (!kept || kept.slipped.at >= kept.to) return fresh
   const open = new Set(fresh.slipped.rows.map((r) => r.key))
-  return { ...fresh, by: kept.by, slipped: { at: kept.slipped.at, rows: kept.slipped.rows.map((r) => ({ ...r, open: open.has(r.key) })) } }
+  return { ...fresh, by: kept.by, slipped: { at: kept.slipped.at, rows: kept.slipped.rows.map((r) => (unknown(r) ? r : { ...r, open: open.has(r.key) })) } }
 }
 
 // --- one review from every host's part ------------------------------------------------------
 
-export type ReviewPart = { environmentId: string; body: ReviewBody }
+/** `stale`: the host did not answer this time, and this is what it answered before. */
+export type ReviewPart = { environmentId: string; body: ReviewBody; stale?: boolean }
 export type MergedJob = {
   key: JobKey
   sector: SectorKey | null
@@ -499,6 +535,13 @@ export type MergedReview = {
   /** the host LifeOS's facts were taken from; null: no host had them */
   lifeosFrom: string | null
   left: string[]
+  /**
+   * What an empty list means: true only where every source of it answered, so "nothing" is known. `calendar`:
+   * calendar time was read; `desk`: every host answered with its threads, held items and document history, and
+   * LifeOS with the mail he sent; `shipped`: mail, tasks and every host's held items were; `slipped`: tasks, mail, the
+   * calendar and every host's held items were.
+   */
+  known: { calendar: boolean; desk: boolean; shipped: boolean; slipped: boolean }
 }
 
 /** The name a sector's job goes by when no workspace of it is on a host that answered. */
@@ -517,10 +560,29 @@ const placePoints = (part: ReviewPart, points: readonly HostPoint[]): Point[] =>
  * and what went out on his press there. Jobs are one per sector; a job is
  * listed whether or not anything was seen, since the empty row is the news.
  */
-export function mergeReview(parts: readonly ReviewPart[], now: number, opts: { home?: string | null; names?: SectorNames; order?: readonly JobKey[] } = {}): MergedReview | null {
+export function mergeReview(
+  parts: readonly ReviewPart[],
+  now: number,
+  /**
+   * `fresh`: false when a host that was asked did not answer this time, so its part is missing or from before.
+   * `whole`: false when that, or a host with Work on is off, so not every host's part is here.
+   */
+  /**
+   * `jobs`: every job this window knows of, a host that is off its own too: each is listed though nothing of it was
+   * read, since the empty row is the news.
+   */
+  opts: { home?: string | null; names?: SectorNames; order?: readonly JobKey[]; jobs?: readonly Pick<MergedJob, 'key' | 'sector' | 'name'>[]; fresh?: boolean; whole?: boolean } = {}
+): MergedReview | null {
   const first = parts[0]
   if (!first) return null
-  const source = parts.find((p) => p.environmentId === opts.home && p.body.lifeos) ?? parts.find((p) => p.body.lifeos) ?? null
+  // LifeOS's facts from a part that answered this time before one kept from an earlier answer, the home first in each.
+  const holds = (p: ReviewPart): boolean => !!p.body.lifeos
+  const source =
+    parts.find((p) => !p.stale && p.environmentId === opts.home && holds(p)) ??
+    parts.find((p) => !p.stale && holds(p)) ??
+    parts.find((p) => p.environmentId === opts.home && holds(p)) ??
+    parts.find(holds) ??
+    null
   const lifeos = source?.body.lifeos ?? null
 
   const jobs = new Map<JobKey, MergedJob>()
@@ -541,8 +603,14 @@ export function mergeReview(parts: readonly ReviewPart[], now: number, opts: { h
     for (const e of lifeos.events) if (countedSpan(e)) seen(e.sector)
     for (const x of [...lifeos.sent, ...lifeos.done, ...lifeos.answered]) seen(x.sector)
   }
-  const slippedFrom = (part: ReviewPart): SlippedRow[] => part.body.slipped.rows.filter((r) => (r.ref.kind === 'held' ? true : part === source))
+  // LifeOS's slipped rows are taken once, as its facts are. With LifeOS answering nobody, a kept week still holds
+  // them as they last stood (`mergeKept`): they come from the home's part, else the first that has any, so a read
+  // that failed does not empty the list it could not check.
+  const ofLifeos = (part: ReviewPart): boolean => part.body.slipped.rows.some((r) => r.ref.kind !== 'held')
+  const rowsFrom = source ?? parts.find((p) => p.environmentId === opts.home && ofLifeos(p)) ?? parts.find(ofLifeos) ?? null
+  const slippedFrom = (part: ReviewPart): SlippedRow[] => part.body.slipped.rows.filter((r) => (r.ref.kind === 'held' ? true : part === rowsFrom))
   for (const part of parts) for (const r of slippedFrom(part)) if (r.sector) seen(r.sector)
+  for (const j of opts.jobs ?? []) if (!jobs.has(j.key)) jobs.set(j.key, { ...j, at: [] })
 
   let list = [...jobs.values()]
   if (opts.order) {
@@ -551,7 +619,11 @@ export function mergeReview(parts: readonly ReviewPart[], now: number, opts: { h
   }
   const keys = list.map((j) => j.key)
 
-  const span: Span = { from: first.body.from, to: Math.min(first.body.to, Math.max(now, first.body.from)) }
+  // A week still running is counted to the moment its facts were read, not to the window's own clock: the page
+  // says "So far, made 2:02 PM", the span of the week before was cut there, and a later re-merge of the same
+  // answers must not count a meeting on past it.
+  const read = (source ?? first).body.madeAt
+  const span: Span = { from: first.body.from, to: now >= first.body.to ? first.body.to : Math.max(Math.min(now, read), first.body.from) }
   const events = (lifeos?.events ?? []).flatMap((e) => {
     const s = countedSpan(e)
     return s ? [{ ...s, job: e.sector }] : []
@@ -567,16 +639,23 @@ export function mergeReview(parts: readonly ReviewPart[], now: number, opts: { h
   }
   const hours = hoursOf({ jobs: keys, span, events, points, ran })
 
-  // The week before, from the same parts by the same rule.
+  const left = [...new Set(parts.flatMap((p) => (p === source || !source ? p.body.left : p.body.left.filter((l) => !LIFEOS_LEFT.has(l)))))]
+  const missing = (...lines: string[]): boolean => lines.some((l) => left.includes(l))
+
+  const fresh = opts.fresh !== false
+  const whole = fresh && opts.whole !== false
+  // The week before, from the same parts by the same rule. With anything unread, in either week, or a host that
+  // did not answer this time, a comparison would describe the failure and not his week: none is drawn. A host
+  // that is off is out of both weeks alike, so the comparison still holds.
   let compare: Comparison[] = []
   const beforeOf = (source ?? first).body.before
-  if (beforeOf) {
-    const past: Point[] = (source?.body.before?.lifeos?.sent ?? []).map((m) => ({ at: m.at, job: m.sector, kind: 'sent' as const }))
+  if (beforeOf && source?.body.before?.lifeos && fresh && left.length === 0) {
+    const past: Point[] = source.body.before.lifeos.sent.map((m) => ({ at: m.at, job: m.sector, kind: 'sent' as const }))
     for (const part of parts) if (part.body.before) past.push(...placePoints(part, part.body.before.points))
     const was = hoursOf({
       jobs: keys,
       span: { from: beforeOf.from, to: beforeOf.to },
-      events: (source?.body.before?.lifeos?.events ?? []).map((e) => ({ from: e.from, to: e.to, job: e.sector })),
+      events: source.body.before.lifeos.events.map((e) => ({ from: e.from, to: e.to, job: e.sector })),
       points: past,
       ran: []
     })
@@ -608,19 +687,19 @@ export function mergeReview(parts: readonly ReviewPart[], now: number, opts: { h
       const key = r.ref.kind === 'held' && r.ref.ref.at === 'host' ? `${part.environmentId}:${r.key}` : r.key
       if (!job || !jobs.has(job) || has.has(key)) continue
       has.add(key)
-      slipped.push({ ...r, key, job, environmentId: part.environmentId })
+      slipped.push({ ...r, key, job, environmentId: part.environmentId, ...(part.stale || uncheckedIn(part.body, r) ? { unchecked: true } : {}) })
     }
   }
   shipped.sort((a, b) => b.at - a.at)
   slipped.sort((a, b) => b.at - a.at)
 
-  const left = [...new Set(parts.flatMap((p) => (p === source || !source ? p.body.left : p.body.left.filter((l) => !LIFEOS_LEFT.has(l)))))]
-  const made = source ?? first
+  const made = rowsFrom ?? first
   return {
     from: first.body.from,
     to: first.body.to,
     tz: first.body.tz,
-    madeAt: Math.max(...parts.map((p) => p.body.madeAt)),
+    // A running week's "So far, made" names the moment its hours are counted to; a week that is over, its newest read.
+    madeAt: now < first.body.to ? read : Math.max(...parts.map((p) => p.body.madeAt)),
     by: made.body.by,
     over: now >= first.body.to,
     jobs: list,
@@ -631,7 +710,13 @@ export function mergeReview(parts: readonly ReviewPart[], now: number, opts: { h
     slippedAt: made.body.slipped.at,
     answersKept,
     lifeosFrom: source?.environmentId ?? null,
-    left
+    left,
+    known: {
+      calendar: !!lifeos && !missing(LEFT.calendar),
+      desk: whole && !!lifeos && !missing(LEFT.threads, LEFT.held, LEFT.files, LEFT.mail),
+      shipped: whole && !!lifeos && !missing(LEFT.mail, LEFT.tasks, LEFT.held),
+      slipped: whole && !!lifeos && !missing(LEFT.tasks, LEFT.mail, LEFT.calendar, LEFT.held)
+    }
   }
 }
 
@@ -662,7 +747,9 @@ export function peopleWords(names: readonly string[], total: number): string | n
 }
 
 /** "Week of Nov 16". */
-export const weekWords = (week: Pick<ReviewWeek, 'from'>, tz: string): string => `Week of ${format('md', tz, { month: 'short', day: 'numeric' }).format(week.from)}`
+/** The words a week's name opens with: a header short of room keeps the day alone. */
+export const WEEK_OF = 'Week of '
+export const weekWords = (week: Pick<ReviewWeek, 'from'>, tz: string): string => `${WEEK_OF}${format('md', tz, { month: 'short', day: 'numeric' }).format(week.from)}`
 
 const clock = (at: number, tz: string): string => format('clock', tz, { hour: 'numeric', minute: '2-digit' }).format(at)
 const weekday = (at: number, tz: string): string => format('wd', tz, { weekday: 'short' }).format(at)

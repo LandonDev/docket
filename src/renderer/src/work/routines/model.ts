@@ -173,7 +173,9 @@ export function saveParamsOf(f: RoutineForm, row: RoutineRow | null, o: { worksp
   const name = f.name.trim();
   if (!name) return "Give it a name";
   if (!row?.job && !f.play && !f.prompt.trim()) return "Say what it does";
-  const trigger = row && !o.touched ? row.trigger : triggerOf(f, o.host, o.tz);
+  // A schedule he edits stays in the zone it was made in: the window's own zone is for a new one.
+  const tz = row?.trigger.on === "schedule" ? row.trigger.tz : o.tz;
+  const trigger = row && !o.touched ? row.trigger : triggerOf(f, o.host, tz);
   if (typeof trigger === "string") return trigger;
   const ends = endsOf(f);
   if (typeof ends === "string") return ends;

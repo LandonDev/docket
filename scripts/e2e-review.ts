@@ -650,7 +650,7 @@ try {
   await step('5. at Friday 4:00 PM a tick of the real engine fires it with no thread: one quiet run that opens the review at the week\'s first ms', () => {
     assert.equal(runs.length, 1)
     const [run] = runs
-    assert.deepEqual({ state: run!.state, sessionId: run!.sessionId, open: run!.open, summary: run!.summary, firedAt: run!.firedAt }, { state: 'quiet', sessionId: null, open: { place: 'review', at: MON }, summary: 'Week of Nov 16: 3 things slipped', firedAt: at(4, 16) })
+    assert.deepEqual({ state: run!.state, sessionId: run!.sessionId, open: run!.open, summary: run!.summary, firedAt: run!.firedAt }, { state: 'quiet', sessionId: null, open: { place: 'review', at: MON }, summary: 'Week of Nov 16: 3 things slipped on this host', firedAt: at(4, 16) })
     assert.deepEqual(started, [])
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sessions').get() as { n: number }).n, sessionsBefore)
   })

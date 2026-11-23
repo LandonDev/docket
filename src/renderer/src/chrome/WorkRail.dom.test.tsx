@@ -172,8 +172,11 @@ describe("Review in the rail", () => {
     const work = root.querySelector(`[data-rail-path="${WORK.path}"]`)!;
     expect(heading.compareDocumentPosition(review) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(review.compareDocumentPosition(work) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(review.closest("[data-rail-row]")!.className).not.toContain("bg-sidebar-group-selected");
     await probe!.act(async () => review.click());
     expect(shellStore.getState().workPlace).toBe("review");
+    // Among the workspaces' groups a selected page's row takes their selected step: `muted` is their resting fill in light.
+    expect(review.closest("[data-rail-row]")!.className).toContain("bg-sidebar-group-selected");
     shellStore.setState({ workPlace: null });
   });
 });

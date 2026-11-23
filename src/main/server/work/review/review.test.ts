@@ -125,6 +125,27 @@ describe('what is kept', () => {
     expect(keptWeek(rig.db, WEEK.from)!.slipped.at).toBe(FRIDAY)
   })
 
+  it('compares a week that is over with the whole of the week before, and a running one with the same span', async () => {
+    const running = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, FRIDAY)
+    expect(running.before).toMatchObject({ from: WEEK.from - 7 * DAY, to: FRIDAY - 7 * DAY })
+    const over = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, WEEK.to + DAY)
+    expect(over.before).toMatchObject({ from: WEEK.from - 7 * DAY, to: WEEK.from })
+  })
+
+  it('keeps a kept meeting as it last stood when the mail sent since the week could not be read', async () => {
+    await weekFor(rig.ctx, { ...ask, by: 'routine' }, undefined, FRIDAY)
+    // The Wednesday after: the read of mail sent since the week ended fails; the week's own mail still answers.
+    const sent = rig.lifeos['review:sentBetween']
+    rig.lifeos['review:sentBetween'] = (args: { from: number }) => {
+      if (args.from >= WEEK.to) throw new Error('timed out')
+      return sent
+    }
+    const later = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, WEEK.to + 2 * DAY)
+    // Nobody can say the meeting was followed up or not: it stays open, and the gap is said.
+    expect(later.left).toEqual([LEFT.mail])
+    expect(later.slipped.rows.find((r) => r.key === 'meeting:e1')!.open).toBe(true)
+  })
+
   it('a week first asked for after it ended shows what is still open from it, each time as of now', async () => {
     const first = await weekFor(rig.ctx, { ...ask, by: 'owner' }, undefined, WEEK.to + DAY)
     expect(first.slipped.at).toBe(WEEK.to + DAY)
@@ -258,7 +279,7 @@ describe('the week_review tool', () => {
   it('shows a job with no sector nothing of LifeOS, and a Work Chat nothing at all', async () => {
     const side = await run('t-side')
     expect(side).toContain('Week of Nov 16, Side work.')
-    expect(side).toContain('Nothing seen this week.')
+    expect(side).toContain('Nothing seen.')
     for (const other of ['Budget', 'jerseys', 'Season 12', 'travel forms']) expect(side).not.toContain(other)
     expect(await run('t-chat')).toContain('This thread is in no job')
   })

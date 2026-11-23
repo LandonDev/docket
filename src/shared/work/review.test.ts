@@ -14,6 +14,7 @@ import {
   madeWords,
   mergeKept,
   mergeReview,
+  nothingWords,
   peopleWords,
   shippedWords,
   slippedDetail,
@@ -198,10 +199,10 @@ describe('the week before', () => {
     expect(compareWeeks([hours('e', 12 * HOUR)], [hours('e', 4 * HOUR, 2 * HOUR)], false)).toEqual([{ job: 'e', words: 'up from about 6 h' }])
   })
 
-  it('names a job with two hours or more last week and nothing now', () => {
-    expect(compareWeeks([hours('unify', 0)], [hours('unify', 0, 6 * HOUR)], false)).toEqual([{ job: 'unify', words: 'about 6 h last week' }])
+  it('names a job with two hours or more the week before and nothing now, in words that hold for any week shown', () => {
+    expect(compareWeeks([hours('unify', 0)], [hours('unify', 0, 6 * HOUR)], false)).toEqual([{ job: 'unify', words: 'about 6 h the week before' }])
     expect(compareWeeks([hours('unify', 0)], [hours('unify', 1.5 * HOUR)], false)).toEqual([])
-    expect(compareWeeks([hours('new', 5 * HOUR)], [hours('new', 0)], false)).toEqual([{ job: 'new', words: 'nothing last week' }])
+    expect(compareWeeks([hours('new', 5 * HOUR)], [hours('new', 0)], false)).toEqual([{ job: 'new', words: 'nothing the week before' }])
   })
 
   it('says a running week is compared with the same span', () => {
@@ -241,7 +242,7 @@ describe('what is kept', () => {
     const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
     const kept = body({ by: 'routine', madeAt: friday, slipped: { at: friday, rows: [slip('task:a'), slip('task:b')] }, ran: [[0, HOUR]] })
     const later = WEEK.to + 3 * 24 * HOUR
-    const fresh = body({ over: true, madeAt: later, slipped: { at: later, rows: [slip('task:b'), slip('task:c')] }, ran: [[0, 2 * HOUR]] })
+    const fresh = body({ over: true, madeAt: later, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, slipped: { at: later, rows: [slip('task:b'), slip('task:c')] }, ran: [[0, 2 * HOUR]] })
     const got = mergeKept(kept, fresh, later)
     expect(got.slipped.at).toBe(friday)
     // a was dealt with since; c slipped after the make and is not this week's news.
@@ -252,6 +253,45 @@ describe('what is kept', () => {
     expect(got.ran).toEqual([[0, 2 * HOUR]])
     expect(got.madeAt).toBe(later)
     expect(got.by).toBe('routine')
+  })
+
+  it('made again inside the week, a read that failed does not wipe the rows the last make knew', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const sunday = WEEK.to - 2 * HOUR
+    const heldRow = slip('held:host:h1', { ref: { kind: 'held', ref: { at: 'host', id: 'h1' } } })
+    const kept = body({ by: 'routine', madeAt: friday, slipped: { at: friday, rows: [slip('task:a'), slip('mail:t1', { ref: { kind: 'mail', threadId: 't1', since: MON } }), heldRow] } })
+    // LifeOS is out on Sunday: the held item, which the host itself read, is fresh; the task and the mail ride along.
+    const dark = body({ madeAt: sunday, slipped: { at: sunday, rows: [heldRow] }, left: [LEFT.lifeos] })
+    const got = mergeKept(kept, dark, sunday)
+    expect(got.slipped.at).toBe(sunday)
+    expect(got.slipped.rows.map((r) => r.key)).toEqual(['held:host:h1', 'task:a', 'mail:t1'])
+    // A whole read stands as it is: what it no longer lists is gone.
+    const whole = body({ madeAt: sunday, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, slipped: { at: sunday, rows: [heldRow] } })
+    expect(mergeKept(kept, whole, sunday)).toBe(whole)
+    // Only the source that failed is carried: with tasks unread, the mail's row is the fresh read's to say.
+    const noTasks = body({ madeAt: sunday, lifeos: { events: [], sent: [], done: [], answered: [], answeredSince: MON }, slipped: { at: sunday, rows: [] }, left: [LEFT.tasks] })
+    expect(mergeKept(kept, noTasks, sunday).slipped.rows.map((r) => r.key)).toEqual(['task:a'])
+  })
+
+  it('a kept row whose source did not answer this time keeps what was last known of it', () => {
+    const friday = WEEK.from + 4 * 24 * HOUR + 16 * HOUR
+    const later = WEEK.to + 3 * 24 * HOUR
+    const heldRow = slip('held:host:h1', { ref: { kind: 'held', ref: { at: 'host', id: 'h1' } } })
+    const mail = slip('mail:t1', { ref: { kind: 'mail', threadId: 't1', since: MON } })
+    const meeting = slip('meeting:e1', { ref: { kind: 'meeting', eventId: 'e1' } })
+    const lifeos = { events: [], sent: [], done: [], answered: [], answeredSince: MON }
+    const kept = body({ by: 'routine', madeAt: friday, slipped: { at: friday, rows: [slip('task:a'), mail, meeting, heldRow] } })
+    const open = (left: string[], over: Partial<ReviewBody> = {}): [string, boolean][] =>
+      mergeKept(kept, body({ over: true, madeAt: later, lifeos, slipped: { at: later, rows: [] }, left, ...over }), later).slipped.rows.map((r) => [r.key, r.open])
+    // Every source answered and lists none of them: all four were dealt with.
+    expect(open([]).every(([, o]) => !o)).toBe(true)
+    // A read that failed never makes a thing look dealt with.
+    expect(open([LEFT.tasks]).filter(([, o]) => o).map(([k]) => k)).toEqual(['task:a'])
+    expect(open([LEFT.mail]).filter(([, o]) => o).map(([k]) => k)).toEqual(['mail:t1', 'meeting:e1'])
+    expect(open([LEFT.calendar]).filter(([, o]) => o).map(([k]) => k)).toEqual(['meeting:e1'])
+    expect(open([LEFT.held]).filter(([, o]) => o).map(([k]) => k)).toEqual(['held:host:h1'])
+    // LifeOS out: only the held item, which the host itself read, is known.
+    expect(open([LEFT.lifeos], { lifeos: null }).filter(([, o]) => o).map(([k]) => k)).toEqual(['task:a', 'mail:t1', 'meeting:e1'])
   })
 
   it('a week first asked for after it ended shows what is still open from it, as of now', () => {
@@ -370,6 +410,111 @@ describe('one review from every host’s part', () => {
     }
     const r = mergeReview([{ environmentId: 'env-box', body: { ...box, before } }], now)!
     expect(r.compare).toEqual([{ job: 'purdue', words: 'down from 8 h' }])
+    // With anything unread, in either week, a comparison would describe the failure: none is drawn. Sent mail, held
+    // decisions and document edits feed desk time as threads do.
+    for (const left of [LEFT.threads, LEFT.calendar, LEFT.mail, LEFT.held, LEFT.files]) expect(mergeReview([{ environmentId: 'env-box', body: { ...box, before, left: [left] } }], now)!.compare).toEqual([])
+    expect(mergeReview([{ environmentId: 'env-box', body: { ...box, before: { ...before, lifeos: null } } }], now)!.compare).toEqual([])
+    // Nor on a host's answer from before. A host that is off is out of both weeks alike, so the comparison holds.
+    expect(mergeReview([{ environmentId: 'env-box', body: { ...box, before } }], now, { fresh: false })!.compare).toEqual([])
+    expect(mergeReview([{ environmentId: 'env-box', body: { ...box, before } }], now, { whole: false })!.compare).toHaveLength(1)
+  })
+
+  it('keeps a kept week\'s LifeOS rows as they last stood while LifeOS answers nobody', () => {
+    const rows = [slip('task:k9'), slip('task:k8', { open: false }), held('h1')]
+    const dark = (host: string, over: Partial<ReviewBody> = {}): ReviewBody => ({ ...box, host, lifeos: null, left: [LEFT.lifeos], slipped: { at: MON + 4 * 24 * HOUR, rows }, ...over })
+    const r = mergeReview(
+      [
+        { environmentId: 'env-mac', body: dark('mac', { jobs: [{ workspaceId: 'm-purdue', sector: 'purdue', name: 'Purdue' }] }) },
+        { environmentId: 'env-box', body: dark('box') }
+      ],
+      now,
+      { home: 'env-box' }
+    )!
+    // Once, from the home; each host's own held row beside them; the read that failed empties nothing.
+    expect(r.slipped.map((s) => [s.key, s.environmentId, s.open]).sort()).toEqual([
+      ['env-box:held:host:h1', 'env-box', true],
+      ['env-mac:held:host:h1', 'env-mac', true],
+      ['task:k8', 'env-box', false],
+      ['task:k9', 'env-box', true]
+    ])
+    expect(r.lifeosFrom).toBeNull()
+    expect(r.slippedAt).toBe(MON + 4 * 24 * HOUR)
+  })
+
+  it('takes LifeOS from a part that answered this time before one kept from an earlier answer', () => {
+    const old = { ...box, lifeos: { ...lifeos, done: [] }, slipped: { at: MON + 5 * 24 * HOUR, rows: [slip('task:k9'), slip('task:gone')] } }
+    const r = mergeReview(
+      [
+        { environmentId: 'env-box', body: old, stale: true },
+        { environmentId: 'env-mac', body: { ...mac, lifeos, slipped: { at: MON + 5 * 24 * HOUR, rows: [slip('task:k9')] } } }
+      ],
+      now,
+      { home: 'env-box', fresh: false }
+    )!
+    // The home timed out: the Mac's fresh facts stand, and a press on a LifeOS row goes to the host that answered.
+    expect(r.lifeosFrom).toBe('env-mac')
+    expect(r.slipped.filter((s) => s.ref.kind === 'task').map((s) => [s.key, s.environmentId])).toEqual([['task:k9', 'env-mac']])
+    expect(r.shipped.some((s) => s.kind === 'finished')).toBe(true)
+  })
+
+  it('counts a running week to the moment its facts were read, whatever the clock says when it is merged again', () => {
+    // A meeting 2:00 to 3:30 PM on Monday, read at 2:02 PM, merged again at 3:00 PM with the same answer still held.
+    const meeting = { ...lifeos.events[0]!, startsAt: MON + 14 * HOUR, endsAt: MON + 15.5 * HOUR }
+    const part = { environmentId: 'env-box', body: { ...box, madeAt: MON + 14 * HOUR + 2 * MIN, lifeos: { ...lifeos, events: [meeting] } } }
+    const at = (t: number): number => mergeReview([part], t)!.hours.find((h) => h.job === 'purdue')!.calendarMs
+    expect(at(MON + 14 * HOUR + 2 * MIN)).toBe(2 * MIN)
+    expect(at(MON + 15 * HOUR)).toBe(2 * MIN)
+    // The page's "So far, made" names that same moment, though another host's part was read later.
+    const later = { environmentId: 'env-mac', body: { ...mac, lifeos: null, madeAt: MON + 14 * HOUR + 8 * MIN } }
+    expect(mergeReview([part, later], MON + 15 * HOUR, { home: 'env-box' })!.madeAt).toBe(MON + 14 * HOUR + 2 * MIN)
+    // Once the week is over the whole meeting counts, whenever it was read.
+    expect(at(WEEK.to + HOUR)).toBe(1.5 * HOUR)
+  })
+
+  it('marks a row that stands as last known: its source did not answer, or its host answered from before', () => {
+    const rows = [slip('task:k9'), slip('mail:t9', { ref: { kind: 'mail', threadId: 't9', since: MON } }), held('h1')]
+    const marked = (over: Partial<ReviewBody>, stale = false): string[] =>
+      mergeReview([{ environmentId: 'env-box', body: { ...box, slipped: { at: MON + 5 * 24 * HOUR, rows }, ...over }, stale }], now, { fresh: !stale })!
+        .slipped.filter((r) => r.unchecked)
+        .map((r) => r.key)
+    expect(marked({})).toEqual([])
+    expect(marked({ left: [LEFT.tasks] })).toEqual(['task:k9'])
+    expect(marked({ left: [LEFT.held] })).toEqual(['env-box:held:host:h1'])
+    expect(marked({ lifeos: null, left: [LEFT.lifeos] }).sort()).toEqual(['mail:t9', 'task:k9'])
+    expect(marked({}, true)).toHaveLength(3)
+  })
+
+  it('lists every job the window knows of, one whose host did not answer too', () => {
+    const r = mergeReview([{ environmentId: 'env-box', body: box }], now, { jobs: [{ key: 'purdue', sector: 'purdue', name: 'Purdue' }, { key: 'unify', sector: 'unify', name: 'Unify' }], whole: false })!
+    expect(r.jobs.map((j) => [j.key, j.at.length])).toEqual([
+      ['purdue', 1],
+      [jobKey('box', { workspaceId: 'w-side', sector: null }), 1],
+      ['unify', 0]
+    ])
+    expect(r.hours.find((h) => h.job === 'unify')).toMatchObject({ calendarMs: 0, deskMs: 0 })
+  })
+
+  it('says where an empty list is known to be empty', () => {
+    const known = (left: string[], over: Partial<ReviewBody> = {}, opts: { fresh?: boolean; whole?: boolean } = {}) => mergeReview([{ environmentId: 'env-box', body: { ...box, left, ...over } }], now, opts)!.known
+    expect(known([])).toEqual({ calendar: true, desk: true, shipped: true, slipped: true })
+    expect(known([LEFT.calendar])).toEqual({ calendar: false, desk: true, shipped: true, slipped: false })
+    expect(known([LEFT.mail])).toEqual({ calendar: true, desk: false, shipped: false, slipped: false })
+    expect(known([LEFT.tasks])).toEqual({ calendar: true, desk: true, shipped: false, slipped: false })
+    // What he approved goes out through the held items, and deciding one is desk time.
+    expect(known([LEFT.held])).toEqual({ calendar: true, desk: false, shipped: false, slipped: false })
+    expect(known([LEFT.threads])).toEqual({ calendar: true, desk: false, shipped: true, slipped: true })
+    expect(known([LEFT.files])).toEqual({ calendar: true, desk: false, shipped: true, slipped: true })
+    // The mail he sent is desk time too: with LifeOS out neither is known.
+    expect(known([LEFT.lifeos], { lifeos: null })).toEqual({ calendar: false, desk: false, shipped: false, slipped: false })
+    // A host that is off, or did not answer this time, holds threads and held items nobody read.
+    for (const gap of [{ whole: false }, { fresh: false }]) expect(known([], {}, gap)).toEqual({ calendar: true, desk: false, shipped: false, slipped: false })
+  })
+
+  it('says "nothing" of a job with no hours only as far as it was read', () => {
+    expect(nothingWords({ calendar: true, desk: true })).toBe('Nothing seen')
+    expect(nothingWords({ calendar: false, desk: true })).toBe('No desk time seen')
+    expect(nothingWords({ calendar: true, desk: false })).toBe('Nothing on the calendar')
+    expect(nothingWords({ calendar: false, desk: false })).toBe('Not known')
   })
 })
 

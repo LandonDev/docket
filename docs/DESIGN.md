@@ -1396,14 +1396,21 @@ Around the canvas:
   the workspaces, with no count and no mark, opening over the board on the
   frame of a page above the workspaces (`WorkPlacePage`, "Today"). The 40px
   header is the glyph and the name, and at its end the page's controls as
-  one group: "This week" as one ghost verb only while another week shows,
-  the week ("Week of Nov 16", 13px tabular), Previous and Next as ghost icon
-  buttons (Next is off on this week), and a ⋯ menu: Make again, and "Made
-  Fridays at 4:00 PM…", which opens the routine in Routines. The body is a page's 672px column with a 24px inset
-  and **no title**: its first line is 12px muted and says when it was made
-  ("So far, made 2:02 PM", "Made Fri 4:00 PM"); a host that is off is one
-  more muted line there, a host that did not answer one red line with
-  Retry. Three sections under 12px muted headings, 24px apart, in the order
+  one group, every control 28px tall: "This week" as one ghost verb only
+  while another week shows, the week ("Week of Nov 16", 13px tabular),
+  Previous and Next as ghost icon buttons (Next is off on this week), and a
+  ⋯ menu: Make again, and "Made Fridays at 4:00 PM…", which opens
+  Routines in the routine's workspace (asked for with the page, so the
+  menu opens at its full height, and keeps the rows it opened with). A window under 520px has no room for the group beside the
+  window's own controls: "This week" goes (Next still walks there) and the
+  week is its day alone ("Nov 16"). The body is a page's 672px column with
+  a 24px inset and **no title**: its first line is 12px muted and says when
+  it was made ("So far, made 2:02 PM", "Made Fri 4:00 PM"), or a 12px
+  spinner and "Making…" while Make again reads the week; a host that is
+  off is one more muted line there, a host that did not answer one red
+  line. **One Retry** asks every host again and sits at the end of the
+  first red line on the page (there, or a section's own), spinning while
+  they answer. Three sections under 12px muted headings, 24px apart, in the order
   of a Friday: **Hours**, **Shipped**, **Slipped**. It shows a week, so it
   carries no amber, no badge, no score, no streak and no praise, and no
   chart library.
@@ -1412,19 +1419,38 @@ Around the canvas:
     comparison line under it when there is one: "down from about 9 h"), a
     bar, the total right-aligned in a 132px column in tabular figures, a
     12px chevron. A row is 32px at least; it opens (`Collapsible`, the one
-    chevron) to its three facts in a 96px-label list, 12px, 24px in: "On the
-    calendar", "At the desk", "Threads ran", each value in the foreground
-    and what it stands on muted after a comma. **The bar** is 8px tall and
+    chevron) to its three facts, 12px, on the row's own grid: a fact's name
+    under the job's name (the 144px column), its value from the bar's
+    leading edge: "On the calendar", "At the desk", "Threads ran", each
+    value in the foreground and what it stands on muted after a comma
+    (`Facts`: a line breaks only between facts). Money's line is two sums,
+    both in the foreground. A narrow page (under 480px) draws no bar and
+    sets a fact's name over its value. **The bar** is 8px tall and
     two parts on one scale shared by every job: calendar time **filled**
     (`muted-foreground`), desk time an **empty outline** (a 1px
-    `muted-foreground` border), 2px apart, `rounded-sm`. Measured and
+    `muted-foreground` border), 2px apart, `rounded-sm`, the outline sized
+    by the estimate as the words round it and no part under 12px (the key's
+    own piece), so a short part never draws as a dot or a ring. Measured and
     estimated differ by shape, so the bar reads the same in both themes and
     needs no new colour; it is drawn for the eye alone (`aria-hidden`), the
     total beside it saying the same in words. A total says "about" whenever
     any of it is the estimate. A job with nothing has no bar and no chevron:
-    "Nothing seen this week", muted, in the bar's and the total's place.
-    One 12px muted line closes the section: "Calendar time is measured.
-    Desk time is an estimate from what you did in TempCode."
+    "Nothing seen", muted, in the bar's and the total's place (it names no
+    week: the page may show one long over; a comparison says "the week
+    before" for the same reason). One 12px muted line closes the section
+    and is **the bar's key**: a 12px piece of the bar (8px tall, its own
+    corner), filled, before "Calendar time is measured." and an outlined
+    one before "Desk time is an estimate from what you did in TempCode.",
+    each 4px from its sentence, the two 12px apart (a narrow page, with no
+    bar, drops them). Never a square or a dot: a dot before a sentence is a
+    bullet. A job with no hours says "nothing" only as far as it was read:
+    "No desk time seen" while the calendar alone could not be read (no
+    calendar fact is stated then, and the key keeps the desk's sentence
+    alone), "Nothing on the calendar" while a host is off or did not
+    answer, or threads, held items, document history or sent mail went
+    unread, and "Not known" with neither read, which is every such job
+    while LifeOS does not answer. A job whose threads ran with none of his
+    own time still opens, to "Threads ran" alone.
   - **Shipped** and **Slipped** group by job, groups 16px apart. A group's
     heading is 12px muted: the dot in the 24px gutter, then the name on the
     same edge as its rows' words. The dot is the only thing in the gutter.
@@ -1433,8 +1459,10 @@ Around the canvas:
     in the foreground and the rest muted ("Sent **Budget v2** to Dana
     Reyes", "Finished **Order the new jerseys**", "Dana Reyes answered
     **Field trip forms**"), the day at the row's end, 12px muted tabular
-    ("Thu"). Five rows a job, then a ghost "Show all 23". A row opens its
-    thing. Nothing at all is one muted line: "Nothing went out this week".
+    ("Thu") on the words' 20px line. Five rows a job, then a ghost "Show
+    all 23", which hands the keyboard to the first row it brought. A row
+    opens its thing. On a narrow page the sentence wraps beside its day.
+    Nothing at all is one muted line: "Nothing went out".
   - A **Slipped** row is 32px: the thing's own title in the foreground and
     one muted detail a space after it ("due Tue", "sent Nov 12 to Dana
     Reyes", "held since Tue", "Thu 2:00 PM with Dana Reyes and 3 others,
@@ -1443,20 +1471,60 @@ Around the canvas:
     fill, named for what each does to that kind of thing: Done, Next week,
     Drop; Nudge, Next week, Stop waiting; Open, Next week, Discard; Follow
     up, Next week, None needed. The row itself opens its thing
-    (`ROW_HOLDS`). A row a press settled **leaves**: its height and opacity
+    (`ROW_HOLDS`). The words under the verbs fade into the row's fill over
+    24px at the verbs' leading edge, never cut mid-letter; a narrow page
+    sets the title over the detail and the verbs over the detail's line
+    alone, the detail there the next size down (12px on a 16px line, 2px
+    under the title) and a long word wrapping. The verbs sit 2px inside the
+    row, so the row's focus ring is whole round them, and the row holds its
+    fill wherever they show: under the keyboard and through a wait, not
+    under the pointer alone. The verb pressed
+    spins (`BusyLabel`) while the host works, and the verbs stay in sight
+    until it has answered, wherever the pointer and the focus went; each
+    verb's name carries its row ("Next week: Send the drafts"). A verb that
+    has nowhere to go is off: Follow up, where the meeting's job has no
+    workspace this window can open. A row a press settled **leaves**: its height and opacity
     ease out over `--dur-base` on `--ease-out`, it takes no pointer or
     focus on the way, and under reduced motion it is simply gone; a toast
-    says what was done, with Undo where it can be taken back. A group whose
-    last row left leaves with it. Tasks due before the week fold behind "12
-    older"; in a kept week, rows dealt with since sit under one fold at the
-    section's end, "Dealt with since" and their count, titles only, with no
-    presses. Nothing slipped is one muted line: "Nothing slipped".
-  - Loading is the three sections' bones in the shape of what is coming,
-    until the first host answers; later hosts fill in. A source that did
-    not answer is one red line in its own section (`PageError`); LifeOS
-    missing touches every section, so it is said once, over them, and no
-    section then claims an empty list ("Not known while LifeOS does not
-    answer").
+    says what was done, with Undo where it can be taken back. The keyboard
+    goes to the row after it, else the one before, else the section's
+    heading. A group whose last row left leaves with it, its 16px with it.
+    Tasks due before the week fold behind "12 older", which counts what is
+    still behind it and goes with its last row; in a kept week, rows dealt
+    with since sit under one fold at the section's end, the count first
+    ("2 dealt with since"), titles only, with no presses. Nothing slipped
+    is one muted line after the groups, "Nothing slipped", which takes the
+    last group's place as it leaves.
+  - Loading is the three sections' bones in the shape of what is coming
+    (the Hours key's line too, and nothing at a Slipped row's end), until
+    the first host answers; later hosts fill in. An empty section, or a
+    job with no hours, keeps a bone in its words' place until every linked
+    host has answered: nothing has failed, and "nothing" is not known yet.
+    A page opened at a week (a run's row, Today's) shows the bones until it
+    has moved there, never the week it stood on. The bones are for the eye:
+    one status, "Loading the review", is read out. A source that did
+    not answer is one red line (`PageError`): in the one section it feeds
+    (threads and document history are Hours' alone), and once over the
+    sections, as a host is, when it feeds several (LifeOS, the calendar,
+    tasks, mail, held items: a held item is Shipped's approval, Slipped's
+    row and desk time). An empty section is always one muted line, and
+    says "nothing" only where every source of it answered, every host
+    among them: with LifeOS out it reads "Not known while LifeOS does not
+    answer", otherwise "Some of it could not be read", the line over the
+    sections saying what. A host that did not answer is named in his
+    words ("The Mac did not answer: it timed out.", never a wire method),
+    and says so when what it answered before still stands in the numbers
+    ("Its last answer is shown."). A slipped row whose source did not
+    answer stands as last known with its presses off (a held item's Open
+    stays), and one muted line under the red ones says "Slipped shows what
+    was last known.", unless a host's own line already said so." Nudge, as Follow up, is off where the job has no
+    workspace this window can open. No comparison with the week
+    before is drawn on anything unread, or on a host's answer from before.
+    After a Retry the keyboard is back on Retry, or on the Hours heading
+    when nothing is red any more; back on this week it goes to Previous.
+    A heading the keyboard is put on (that, or Slipped's when its last row
+    left) is its words as a `focus-ring` target, never a bare heading with
+    the browser's ring.
 - **The digest** (work/digest; docs/agents/work-digest.md). Work tells him
   in two toasts and one list, and nothing of Work raises a toast for news
   besides. The day's digest is one plain toast, "Digest: 9 things in

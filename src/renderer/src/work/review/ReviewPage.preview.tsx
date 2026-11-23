@@ -2,7 +2,7 @@ import { weekWords } from "@shared/work/review";
 import { Layers, MoreHorizontal } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { fixtureView, WEEK, type FixtureState } from "./fixtures";
-import { HeadView } from "./Head";
+import { HeadView, NARROW_ICON } from "./Head";
 import { PlaceFrame } from "../places/WorkPlacePage";
 import { ReviewPageView } from "./ReviewPage";
 
@@ -33,7 +33,7 @@ export function ReviewPreview({ state = "full", peek, gone = [] }: { state?: Fix
             onStep={() => {}}
             onThisWeek={() => {}}
             menu={
-              <Button variant="ghost" size="icon-sm" aria-label="More" className="text-muted-foreground">
+              <Button variant="ghost" size="icon-sm" aria-label="More" className={`text-muted-foreground ${NARROW_ICON}`}>
                 <MoreHorizontal />
               </Button>
             }

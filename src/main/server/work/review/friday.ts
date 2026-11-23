@@ -86,9 +86,14 @@ export async function routineOf(ctx: WorkCtx): Promise<ReviewRoutine> {
   }
 }
 
+/**
+ * A run's outcome: a firm count only when every source answered; a review made on part of the facts says so. The
+ * count is this host's (LifeOS's things and its own held items), and says so: the page it opens adds every host's.
+ */
 const slippedWords = (body: ReviewBody): string => {
+  if (body.left.length > 0) return 'Some of it could not be read'
   const n = body.slipped.rows.filter((r) => r.open).length
-  return n === 0 ? 'Nothing slipped' : n === 1 ? '1 thing slipped' : `${n} things slipped`
+  return `${n === 0 ? 'Nothing' : n === 1 ? '1 thing' : `${n} things`} slipped on this host`
 }
 
 /**
@@ -99,7 +104,7 @@ const slippedWords = (body: ReviewBody): string => {
 export function makeJob(make: (ctx: WorkCtx, ask: { from: number; to: number; tz: string; by: 'routine' }, now: number) => Promise<ReviewBody>): RoutineJob {
   return {
     id: MAKE_JOB,
-    name: 'Makes the week’s review: your hours, what shipped and what slipped, with no model',
+    name: 'Your hours, what shipped and what slipped',
     async run(ctx, { firedAt }) {
       const tz = await hostZone(ctx)
       const week = weekOf(firedAt, tz)

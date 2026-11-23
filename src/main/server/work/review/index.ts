@@ -44,7 +44,9 @@ export function weekFor(ctx: WorkCtx, ask: { from: number; to: number; tz: strin
   // A routine's make is its own: it must stamp the week ready, which a shared read for a window would not.
   if (running && ask.by === 'owner') return running
   const run = (async () => {
-    const { body } = await makeWeek(ctx, { ...ask, now, ...(signal ? { signal } : {}) })
+    // A week that is over is judged with the meetings its kept review lists: one put off into it ended in an earlier week.
+    const carry = now >= ask.to ? keptWeek(ctx.db, ask.from)?.slipped.rows.flatMap((r) => (r.ref.kind === 'meeting' ? [r.ref.eventId] : [])) : undefined
+    const { body } = await makeWeek(ctx, { ...ask, now, ...(carry?.length ? { carry } : {}), ...(signal ? { signal } : {}) })
     const merged = mergeKept(keptWeek(ctx.db, ask.from), body, now)
     keepWeek(ctx.db, merged, ask.by === 'routine')
     return merged

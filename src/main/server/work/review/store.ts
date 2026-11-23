@@ -93,6 +93,12 @@ export function setMark(db: DatabaseSync, mark: Mark, now: number): void {
   db.prepare('INSERT INTO work_review_marks (key, how, until, at) VALUES (?, ?, ?, ?) ON CONFLICT (key) DO UPDATE SET how = excluded.how, until = excluded.until, at = excluded.at').run(mark.key, mark.how, mark.until, now)
 }
 
+/** A mark as it stands, for an undo that must put it back whole (a put-off meeting's `until` and `at` are what bring it back). */
+export function markOf(db: DatabaseSync, key: string): (Mark & { at: number }) | null {
+  const row = db.prepare('SELECT key, how, until, at FROM work_review_marks WHERE key = ?').get(key) as (Mark & { at: number }) | undefined
+  return row ?? null
+}
+
 export function dropMark(db: DatabaseSync, key: string): void {
   db.prepare('DELETE FROM work_review_marks WHERE key = ?').run(key)
 }

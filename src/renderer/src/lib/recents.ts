@@ -203,6 +203,18 @@ export function loadProjectRailOrder(): string[] {
 
 export function saveProjectRailOrder(order: string[]) {
   savePathList(RAIL_ORDER_KEY, order.map(normalize));
+  railChanged();
+}
+
+/** The rail's order or pins changed: a page that lists things in the rail's order (Work's Review) follows at once. */
+const RAIL_CHANGED = "monocode:rail-changed";
+function railChanged(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(RAIL_CHANGED));
+}
+export function subscribeRailOrder(onChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(RAIL_CHANGED, onChange);
+  return () => window.removeEventListener(RAIL_CHANGED, onChange);
 }
 
 export function loadPinnedProjects(): string[] {
@@ -211,6 +223,7 @@ export function loadPinnedProjects(): string[] {
 
 export function savePinnedProjects(pinned: string[]) {
   savePathList(RAIL_PINNED_KEY, pinned.map(normalize));
+  railChanged();
 }
 
 /** All projects for the rail, keyed by normalized path. The rail itself

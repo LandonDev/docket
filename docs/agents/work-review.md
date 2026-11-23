@@ -78,14 +78,27 @@ the tool and the tests all call it. Per job, three facts, never mixed:
 A job's total is calendar plus desk (`totalWords`) and reads "about 11 h"
 whenever any of it is the estimate. `hoursWords(ms, kind)` is the only way
 to say a length of time, and the kind is its argument, so no caller can
-drop the "about". A job with nothing reads "Nothing seen this week": that
-row is the starved job, which is why every job is always listed.
+drop the "about". A job with nothing reads "Nothing seen" (it names no
+week: the page may show one long over): that row is the starved job, which
+is why every job is always listed. The row says "nothing" only as far as
+it was read (`nothingWords` over `MergedReview.known`): "No desk time seen"
+while the calendar alone could not be read (no calendar fact is stated then),
+"Nothing on the calendar" while a host is off or did not answer or what
+desk time stands on went unread, "Not known" with neither. A job whose
+threads ran with none of his own time opens to that fact alone.
 
 **The week before** (`compareWeeks`) is said only where it says something:
 a job whose hours moved by a quarter and by two hours ("down from about 9
-h"), or one with two hours or more then and nothing now ("about 6 h last
-week"). A week still running is compared with the same span of the week
-before, and says so ("by this point last week").
+h"), or one with two hours or more then and nothing now ("about 6 h the
+week before"). A week still running is compared with the same span of the
+week before, and says so ("by this point last week"); a week that is over
+is compared with the whole of the week before (`makeWeek`'s `before`: the
+two differ in length across a clock change). No comparison is
+drawn on half the facts: with anything unread in either week (`left`;
+`make.ts` keeps last week's calendar and sent mail only when both were
+read), or with a host answering from before (`fresh`), a line would
+describe the failure and not his week. A host that is off is out of both
+weeks alike, so the comparison holds.
 
 Work done outside TempCode (a game on a field, a video in an editor) shows
 as calendar time only. The section's last line says what desk time stands
@@ -169,7 +182,10 @@ marks), a held item's own host, and for a nudge a host with a workspace of
 the job. It needs a key that may approve and refuses a thread's own call
 before anything is read. It calls the thing's own write and nothing else,
 and answers an undo token where the write can be taken back (`tasks:reopen`,
-the old due date, `mailWaits:putBack`, the mark removed), held in memory for
+the due date the press replaced, read then with `tasks:get`, never a kept
+week's memory of it; `mailWaits:putBack`; the mark removed, or the mark that
+stood before it put back whole, since a put-off meeting is in this week by
+that older mark), held in memory for
 half an hour and good once (`work.review.undo`). A nudge is a draft, held
 like every draft. A held item's "now" and a meeting's "now" never reach the
 host: the window opens the Outbox, or starts the thread. A call into
@@ -181,12 +197,24 @@ mail pillar reaches routines.
 `work_review_weeks`, one row a week a host (`mergeKept` holds the rules):
 
 - A week that is not over is made again each time it is asked for, and its
-  row is overwritten.
+  row is overwritten; the rows of a source that did not answer that time
+  ride along as they last stood, so a failed read on Sunday leaves Monday
+  something to look back on.
 - Once the week is over, hours and what shipped are still read fresh (their
   facts carry times), but **what slipped stays as it stood at the last make
   inside the week** (`slipped.at`). Each kept row is checked against what is
-  open now: one dealt with since reads `open: false` and sits under "Dealt
-  with since", with no presses.
+  open now: one dealt with since reads `open: false` and sits under "2 dealt
+  with since", with no presses. A row whose source did not answer this time
+  (`left`) is not checked: it keeps what was last known of it, so a read
+  that failed never makes a thing look dealt with. That covers the read of
+  mail sent since the week ended, which a meeting's follow-up is judged by
+  (it leaves `LEFT.mail`, and no meeting is judged without it). With LifeOS
+  answering nobody, the window still lists a kept week's LifeOS rows, from
+  the home's part (`mergeReview`'s `rowsFrom`).
+- A kept week's meetings are asked for by id when it is looked back on
+  (`MakeAsk.carry`): one put off into it ended in an earlier week, and its
+  calendar no longer holds it. A lookup that fails leaves `LEFT.calendar`
+  and the row as it stood.
 - A week first asked for after it ended has no such make: it shows what is
   still open from it, read again each time, and says "Not made in its week.
   What slipped is as of today."
@@ -210,7 +238,9 @@ The job makes this week, keeps it as made by the routine (so
 {from, madeAt, seen: false}`, and tells the digest once a week (`ctx.tell`,
 kind `review.ready`, key `review:<from>`). Its
 run's row in Routines opens the page at that week (`open: {place: 'review',
-at}`).
+at}`) and says how many things slipped on this host (its count is LifeOS's
+things and its own held items; the page adds every host's), or, when a source did not answer,
+"some of it could not be read" in place of a count.
 
 ## The window
 
@@ -230,8 +260,43 @@ under the `work-places` frame.
   opens the week it names without loading the page first.
 - **The store** (`store.ts`): asks every linked host with Work on, keeps
   each one's answer per week, merges, and reads a week again on the
-  `work.review` push and when a host's link comes back. `settleHost` picks
-  the host of a press.
+  `work.review` push and when a host's link comes back (a week is on record
+  as asked for before any host answers, so a host that links later fills it
+  in, after the zone is asked again). `settleHost` picks the host of a
+  press. LifeOS's facts come from a host that answered this time before one
+  whose part is kept from an earlier answer (`ReviewPart.stale`), the home
+  first in each. Every job the window knows of is listed (`knownJobs`), one
+  whose only host is off too, in the rail's own order (`railWorkspaces`: the
+  pinned rows first, then the rail's saved list, a job on two hosts at its
+  first row's place; a drag or a pin while the page is open is followed:
+  lib/recents.ts `subscribeRailOrder`). A
+  host that links again is from before until its new read lands: its part
+  is `stale`, the page waits as for a host still answering, and its sums
+  are dropped until the new ones come. A press's
+  reload is a read that starts after the write (`loadWeek(week, true)`),
+  never one already on its way. A running week is counted to the moment its
+  facts were read (`madeAt`), not to the window's clock, so a re-merge of
+  the same answers adds nothing. A row whose source did not answer, or
+  whose host answered from before, is `unchecked` (`uncheckedIn`): it stands
+  as last known and its presses wait. `hostError` says why a host did not
+  answer in his words; `errors[].kept` says its last answer still counts.
+  While a named week is on its way (`useWorkPlaceAt`), the page draws bones
+  and neither reads nor marks seen the week it stood on. A host that is off is not counted, as its line says:
+  what it answered before it went is kept for its return and not merged.
+  `makeAgain` reads a week again with the page's first line saying
+  "Making…". `MergedReview.known` says where an empty list is known to be
+  empty (every source of it answered, and every host: the store tells the
+  merge `fresh`, every linked host's newest ask answered, and `whole`, no
+  host off besides); a section claims "nothing" only there. Money's sums
+  count the same hosts. A row a press settled is kept away (`stillAway`)
+  only until a read of its week no longer lists it as open, in the week it
+  was pressed in; after that the week's own reads say what is there. A week
+  named by a run's row or Today's is shown only once the zone weeks are cut
+  in is known (`showWeekNamed`): the moment is a host's Monday midnight,
+  still Sunday in a window to its west. A page left open hears the week turn (`useWeekTurn` in shown.ts: a
+  timer set for the week's end, and the window coming back into view).
+- **One Retry** asks every host again (`loadWeek`) and sits on the first
+  red line on the page, whichever that is.
 - **The page** is the look in docs/DESIGN.md "The weekly review".
 - **In.** `openReview({week?})` (`open.ts`) is the one way in for another
   pillar; it loads nothing of the page.

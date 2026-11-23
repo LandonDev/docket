@@ -4,7 +4,7 @@ import type { SectorKey } from '@shared/work'
 import { weekOf, type SettleHow, type SlippedRef } from '@shared/work/review'
 import { WORK_MODULES, type Caller, type WorkCtx } from '../modules'
 import { heldKey, outboxCall } from './gather/held'
-import { dropMark, setMark } from './store'
+import { dropMark, markOf, setMark, type Mark } from './store'
 
 /**
  * His press on a slipped row (docs/agents/work-review.md "The presses"). Each press calls the thing's own write and
@@ -88,8 +88,12 @@ export async function settle(ctx: WorkCtx, by: Caller, p: { row: SlippedRef; how
       return kept(async () => void (await owner.mutation('tasks:reopen', { id: row.id })))
     }
     if (how === 'later') {
+      // Undo puts back the date this press replaced, read now: a kept week's row carries the date the task had when
+      // the week was made, and he may have moved it since.
+      const live = await owner.query<{ task?: { dueAt?: number | null } } | null>('tasks:get', { id: row.id }).catch(() => null)
+      const was = live?.task?.dueAt ?? row.dueAt
       await owner.mutation('tasks:update', { id: row.id, patch: { dueAt: monday + MONDAY_AT } })
-      return kept(async () => void (await owner.mutation('tasks:update', { id: row.id, patch: { dueAt: row.dueAt } })))
+      return kept(async () => void (await owner.mutation('tasks:update', { id: row.id, patch: { dueAt: was } })))
     }
     await owner.mutation('tasks:drop', { id: row.id, reason: DROP_REASON })
     return kept(async () => void (await owner.mutation('tasks:reopen', { id: row.id })))
@@ -118,13 +122,24 @@ export async function settle(ctx: WorkCtx, by: Caller, p: { row: SlippedRef; how
       return { undo: null }
     }
     const key = heldKey(row.ref)
+    const back = unmark(ctx, key)
     setMark(ctx.db, { key, how: 'later', until: monday }, now)
-    return kept(async () => dropMark(ctx.db, key))
+    return kept(back)
   }
 
   // A meeting: following up is a thread he starts in the window, so only the two marks land here.
   if (how === 'now') throw new Error('Start the follow-up from the page: it opens a new thread about the meeting.')
   const key = `meeting:${row.eventId}`
+  const back = unmark(ctx, key)
   setMark(ctx.db, { key, how, until: how === 'later' ? monday : null }, now)
-  return kept(async () => dropMark(ctx.db, key))
+  return kept(back)
+}
+
+/**
+ * What takes a mark back: the mark that stood before it put back whole, or none. A meeting he put off last week is
+ * in this week's review because of that older mark; an Undo that only deleted the new one would lose the meeting.
+ */
+function unmark(ctx: WorkCtx, key: string): () => Promise<void> {
+  const before: (Mark & { at: number }) | null = markOf(ctx.db, key)
+  return async () => (before ? setMark(ctx.db, before, before.at) : dropMark(ctx.db, key))
 }

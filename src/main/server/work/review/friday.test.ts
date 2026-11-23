@@ -84,11 +84,20 @@ describe('the routine is seeded once a host', () => {
 describe('the job', () => {
   it('makes this week’s review with no thread, keeps it as ready, and says what its run’s row opens', async () => {
     const out = await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })
-    expect(out).toEqual({ words: 'Week of Nov 16: 1 thing slipped', open: { place: 'review', at: WEEK.from } })
+    expect(out).toEqual({ words: 'Week of Nov 16: 1 thing slipped on this host', open: { place: 'review', at: WEEK.from } })
     expect(rig.started).toEqual([])
     expect(keptWeek(rig.db, WEEK.from)).toMatchObject({ by: 'routine', madeAt: FRIDAY, from: WEEK.from, to: WEEK.to, tz: TZ })
     expect(readyWeek(rig.db)).toEqual({ from: WEEK.from, madeAt: FRIDAY })
     expect(rig.pushes.map((x) => x.p)).toEqual([{ push: 'work.review', from: WEEK.from, madeAt: FRIDAY, seen: false }])
+  })
+
+  it('names itself by what it makes, and gives no firm count for a week a source did not answer', async () => {
+    expect(job().name).toBe('Your hours, what shipped and what slipped')
+    // The tasks could not be read: the review is kept as far as it goes, and its run does not say "nothing slipped".
+    delete rig.lifeos['tasks:due']
+    const out = await job().run(rig.ctx, { workspaceId: 'w-purdue', firedAt: FRIDAY })
+    expect(out).toEqual({ words: 'Week of Nov 16: some of it could not be read', open: { place: 'review', at: WEEK.from } })
+    expect(keptWeek(rig.db, WEEK.from)!.left.length).toBeGreaterThan(0)
   })
 
   it('tells him once a week through the digest, with a press that opens the page at that week, and never again for a second make of the same week', async () => {

@@ -3,6 +3,7 @@ import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
 import { ChevronLeft, Plus } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Item, ItemButton } from "../../components/ui/item";
+import { ROW_PRESS } from "../../components/ui/press";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments } from "../../lib/connection";
@@ -312,16 +313,18 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
                   const cells = (
                     <>
                       <time className="w-36 shrink-0 text-muted-foreground tabular-nums">{dayTime(run.firedAt)}</time>
-                      <StatusMark state={runMark(run)} word={false} className="shrink-0" />
-                      <span className={run.state === "failed" ? "min-w-0 flex-1 truncate text-destructive" : run.state === "held" ? "min-w-0 flex-1 truncate text-foreground" : "min-w-0 flex-1 truncate text-muted-foreground"}>{runWords(run)}</span>
+                      <StatusMark state={runMark(run)} word={false} className="mt-[3px] shrink-0" />
+                      <span className={cn("min-w-0 flex-1 [overflow-wrap:anywhere]", run.state === "failed" ? "text-destructive" : run.state === "held" ? "text-foreground" : "text-muted-foreground")}>{runWords(run)}</span>
                     </>
                   );
                   return press ? (
-                    <ItemButton key={run.id} onClick={press} className="h-8 items-center gap-3 px-2 text-[13px]">
+                    // A run that opens something answers the pointer as every row that opens its thing does; one with nothing to
+                    // open is plain. Its words keep the heading's edge: the fill reaches 8px past them, and no border sets them in.
+                    <ItemButton key={run.id} onClick={press} className={cn(RUN_ROW, ROW_PRESS)}>
                       {cells}
                     </ItemButton>
                   ) : (
-                    <Item key={run.id} className="h-8 items-center gap-3 px-2 text-[13px]">
+                    <Item key={run.id} className={RUN_ROW}>
                       {cells}
                     </Item>
                   );
@@ -334,6 +337,9 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
     </div>
   );
 }
+
+/** A run's row: 32px at least, growing with an outcome too long for its cell (a narrow pane), which wraps and is never cut. */
+const RUN_ROW = "-mx-2 min-h-8 w-[calc(100%+1rem)] flex-nowrap items-start gap-3 border-0 px-2 py-1.5 text-[13px] leading-5";
 
 function ListSkeleton() {
   return (

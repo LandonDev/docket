@@ -59,7 +59,11 @@ counted from the tree's transcripts; unread), `asked`
 - **schedule** (`{rrule, tz}`): weekly on some days at a time
   (`FREQ=WEEKLY;BYDAY=…;BYHOUR;BYMINUTE`, `DAILY` too) or every N minutes
   (`MINUTELY`/`HOURLY`, at least 5 minutes), 7:00 on the wall clock of
-  `tz` across clock changes. Due times missed while the host was down fold
+  `tz` across clock changes. The form keeps the zone a schedule was made in
+  when he moves its day or time (`saveParamsOf`); a new one takes the
+  window's. In the detail a run's row keeps its heading's edge (its fill
+  reaches 8px past the words, `RUN_ROW`) and grows with an outcome too long
+  for its cell, which wraps and is never cut. Due times missed while the host was down fold
   into one run (`folded` = missed − 1; its message says how many it
   covers); the next due time is the first after now. A firing due while the
   routine's last run still works folds into that run, and what it heard (a
@@ -111,7 +115,7 @@ a plain function a pillar registers on its module, `WorkModule.jobs`
 ```ts
 export type RoutineJob = {
   id: string   // '<pillar>.<what>', e.g. 'review.make'
-  name: string // what the Routines view says it does: 'Makes the week\'s review'
+  name: string // what the Routines view says it does: 'Your hours, what shipped and what slipped'
   run(ctx: WorkCtx, at: { workspaceId: string; firedAt: number }): Promise<{ words: string; open?: RoutineJobOpen }>
 }
 ```

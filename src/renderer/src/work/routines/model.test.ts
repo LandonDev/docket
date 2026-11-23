@@ -98,6 +98,13 @@ describe("a routine that runs a host job", () => {
     expect(saveParamsOf({ ...f, days: "1" }, job, { ...o, touched: true })).toMatchObject({ job: "review.make", trigger: { rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=16;BYMINUTE=0" } });
   });
 
+  it("keeps the zone a schedule was made in when he moves its day or time from a window elsewhere", () => {
+    const f = { ...formOf(job, NOW), at: "15:00" };
+    expect(saveParamsOf(f, job, { ...o, tz: "America/Los_Angeles", touched: true })).toMatchObject({ trigger: { on: "schedule", rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=15;BYMINUTE=0", tz: "America/New_York" } });
+    // A new one is in the window's zone.
+    expect(saveParamsOf({ ...blankForm(NOW), name: "x", prompt: "y" }, null, { ...o, tz: "America/Los_Angeles", touched: true })).toMatchObject({ trigger: { tz: "America/Los_Angeles" } });
+  });
+
   it("a routine without one still needs its words, and sends no job", () => {
     const plain = row();
     expect(saveParamsOf({ ...formOf(plain, NOW), prompt: " " }, plain, o)).toBe("Say what it does");
