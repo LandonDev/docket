@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import type { MoneyHits, MoneyOwed, MoneyRead, MoneySums } from '@shared/contract-work-money'
+import type { MoneyHits, MoneyOwed, MoneyRate, MoneyRead, MoneySums } from '@shared/contract-work-money'
 import {
   byCategory,
   byMonth,
@@ -9,6 +9,7 @@ import {
   mileageOf,
   milesOf,
   owedOf,
+  rateFor,
   rowsOf,
   sumsOf,
   type Cell,
@@ -103,6 +104,9 @@ export function booksHere(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Books 
   return books && existsSync(books.ledger) ? books : null
 }
 
+/** The mileage rate for a year: his own when he set one, else the last we are sure of. */
+export const rateOf = (books: Books | null, year: number): MoneyRate => ({ year, rate: rateFor(year, books?.rates ?? {}), own: books?.rates[year] !== undefined })
+
 const EMPTY_SUMS = { in: 0, out: 0, net: 0, owedToHim: 0, heOwes: 0 }
 
 /** Everything the view paints, in one read. */
@@ -110,7 +114,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service'>, ws: Worksp
   const year = Number(period.from.slice(0, 4))
   const books = booksHere(ctx, ws.id)
   if (!books) {
-    return { made: false, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], problems: [] }
+    return { made: false, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(null, year), problems: [] }
   }
   const [ledger, trips] = await Promise.all([ledgerOf(ctx, books), mileageRows(ctx, books)])
   const rows = ledger.rows
@@ -137,6 +141,8 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service'>, ws: Worksp
     ),
     sellers,
     toConfirm: [],
+    calendar: [],
+    rate: rateOf(books, year),
     problems: ledger.missing.length ? [{ kind: 'columns', missing: ledger.missing }] : []
   }
 }

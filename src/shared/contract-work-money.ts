@@ -91,6 +91,51 @@ export const ReceiveParamsSchema = z.object({
 })
 export type ReceiveParams = z.infer<typeof ReceiveParamsSchema>
 
+/** A trip, and the pay that went with it: from a calendar event he was offered, or typed by hand. */
+export const TripParamsSchema = z.object({
+  workspaceId,
+  /** the calendar event it came from: it is then marked added, and offered no more */
+  eventId: z.string().min(1).max(200).optional(),
+  date: day,
+  /** the trip's name: the event's title */
+  title: z.string().trim().min(1).max(300),
+  place: z.string().trim().max(300).default(''),
+  /** miles there and back; absent or 0: no row in the mileage log */
+  miles: z.number().min(0).max(100_000).optional(),
+  /** what he is paid for it, in cents; absent or 0: no row in the ledger */
+  fee: z.number().int().min(0).max(100_000_000_000).optional()
+})
+export type TripParams = z.infer<typeof TripParamsSchema>
+
+const InvoiceLineSchema = z.object({ what: z.string().trim().min(1).max(300), quantity: z.number().min(0).max(1_000_000), rate: z.number().int().min(0).max(100_000_000_000) })
+export const InvoiceFromSchema = z.object({ name: z.string().trim().max(200), address: z.string().trim().max(600), pay: z.string().trim().max(600) })
+/** An invoice (it asks to be paid) or a purchase request (it asks leave to buy): `Invoice` in work/money.ts. */
+export const InvoiceSchema = z.object({
+  kind: z.enum(['invoice', 'request']),
+  number: z.string().trim().min(1).max(40),
+  to: z.string().trim().min(1).max(300),
+  date: day,
+  due: day.nullable(),
+  lines: z.array(InvoiceLineSchema).min(1).max(100),
+  from: InvoiceFromSchema,
+  reason: z.string().trim().max(2000).optional()
+})
+
+/** A file the window made for Money to keep: the tax summary it printed, or an invoice's PDF, which files the invoice's row with it. */
+export const KeepParamsSchema = z.object({
+  workspaceId,
+  /** the sender's own id for this file: a repeat with the same key answers the first */
+  key: z.string().min(8).max(100),
+  what: z.enum(['summary', 'invoice']),
+  /** a summary's year */
+  year: z.number().int().min(1990).max(2100).optional(),
+  /** an invoice's own fields: kept with the file as its row in the ledger */
+  invoice: InvoiceSchema.optional(),
+  part: z.number().int().min(0).max(PARTS_MAX - 1),
+  parts: z.number().int().min(1).max(PARTS_MAX),
+  dataBase64: z.string().max(Math.ceil((MONEY_PART_BYTES * 4) / 3) + 4)
+})
+
 export const MoneyRequestSchemas = [
   /** → MoneyState: this host's jobs and which have a ledger */
   request('work.money.state', z.object({})),
@@ -117,7 +162,23 @@ export const MoneyRequestSchemas = [
   /** → null: a waiting one is dropped, and its file with it */
   request('work.money.drop', z.object({ id: z.string().min(1).max(100) })),
   /** → MoneyPicture: a waiting receipt's picture (`id`) or a filed row's (`workspaceId` and the Receipt cell), a part at a time; a PDF is drawn as its first page */
-  request('work.money.picture', z.object({ id: z.string().min(1).max(100).optional(), workspaceId: workspaceId.optional(), receipt: z.string().min(1).max(600).optional(), part: z.number().int().min(0).max(63).default(0) }))
+  request('work.money.picture', z.object({ id: z.string().min(1).max(100).optional(), workspaceId: workspaceId.optional(), receipt: z.string().min(1).max(600).optional(), part: z.number().int().min(0).max(63).default(0) })),
+  /** → MoneyEvents: the job's ended calendar events of the last 60 days that name a place, for Add → Trip… */
+  request('work.money.events', z.object({ workspaceId })),
+  /** → MoneyTripped: a trip into the mileage log and its pay into the ledger (Game fees, Unpaid); the event it came from is marked added */
+  request('work.money.trip', TripParamsSchema),
+  /** → null: a calendar event he does not want offered again */
+  request('work.money.skip', z.object({ workspaceId, eventId: z.string().min(1).max(200) })),
+  /** → MoneyRate: his own mileage rate for a year, in dollars a mile */
+  request('work.money.rate', z.object({ workspaceId, year: z.number().int().min(1990).max(2100), rate: z.number().min(0).max(100) })),
+  /** → MoneyExport: makes Money/Tax <year>/ with the year's CSV and Excel file; with `pdf`, also answers the summary's page for the window to print and hand back with `keep` */
+  request('work.money.export', z.object({ workspaceId, year: z.number().int().min(1990).max(2100), csv: z.boolean().default(true), xlsx: z.boolean().default(true), pdf: z.boolean().default(true) })),
+  /** → MoneyInvoiceNext: the next free number, his details as he last gave them, and the terms he last used */
+  request('work.money.invoiceNext', z.object({ workspaceId, kind: z.enum(['invoice', 'request']).default('invoice') })),
+  /** → MoneyInvoicePage: checks an invoice, keeps his details and terms for next time, and answers its page for the window to print and hand back with `keep` */
+  request('work.money.invoice', z.object({ workspaceId, invoice: InvoiceSchema })),
+  /** → MoneyKept: a file the window printed, kept in the job's Money folder; an invoice's also files its row (Sales, Unpaid; a request: Requested) */
+  request('work.money.keep', KeepParamsSchema)
 ] as const
 
 export interface MoneyJob {
@@ -160,7 +221,70 @@ export interface MoneyRead {
   sellers: string[]
   /** what waits for his accept, the oldest first */
   toConfirm: ToConfirm[]
+  /** past calendar events not yet added or skipped, the oldest first */
+  calendar: CalendarOffer[]
+  /** the mileage rate for the year `from` is in, in dollars a mile; `own`: he set it himself */
+  rate: MoneyRate
   problems: MoneyProblem[]
+}
+
+/** A past calendar event offered as pay and a trip. Whole (a fee and measured miles): one press adds it. */
+export interface CalendarOffer {
+  eventId: string
+  date: string
+  title: string
+  place: string | null
+  /** cents; null: not known */
+  fee: number | null
+  /** miles there and back; null: not known */
+  miles: number | null
+  /** the miles are his own or measured along roads; false: an estimate he must check before it is added */
+  measured: boolean
+}
+export interface MoneyEvents {
+  events: CalendarOffer[]
+}
+export interface MoneyTripped {
+  /** the ledger's row for the pay, when there was a fee */
+  pay: MoneyActed | null
+  /** the mileage log's row, when there were miles */
+  trip: { row: number; ref: string | null; value: number } | null
+}
+export interface MoneyRate {
+  year: number
+  rate: number
+  own: boolean
+}
+export interface MoneyExport {
+  /** the folder that holds them, on this host */
+  folder: CanvasSource
+  /** the names of the files made */
+  files: string[]
+  /** the summary's page, for the window to print: null when no PDF was asked for */
+  summary: { name: string; html: string } | null
+  /** one line each for what could not be made */
+  warnings: string[]
+}
+export interface MoneyInvoiceNext {
+  number: string
+  from: z.infer<typeof InvoiceFromSchema> | null
+  /** days from the date to the due date, as he last had them */
+  dueDays: number
+}
+export interface MoneyInvoicePage {
+  /** the file's name: "Invoice 1042 Rivera Dental.pdf" */
+  name: string
+  html: string
+}
+export interface MoneyKept {
+  /** more parts are expected */
+  partial?: true
+  /** the kept file, on this host */
+  source?: CanvasSource
+  /** its path under Money/, as the Receipt column holds it */
+  receipt?: string
+  /** an invoice's row */
+  acted?: MoneyActed
 }
 
 /** One thing that waits for his accept: a receipt being read or read, or an entry a thread left. */
@@ -223,9 +347,30 @@ export const MONEY_CAPS = {
   'work.money.receive': 'operate',
   'work.money.accept': 'operate',
   'work.money.drop': 'operate',
-  'work.money.picture': 'read'
+  'work.money.picture': 'read',
+  'work.money.events': 'read',
+  'work.money.trip': 'operate',
+  'work.money.skip': 'operate',
+  'work.money.rate': 'operate',
+  'work.money.export': 'operate',
+  'work.money.invoiceNext': 'read',
+  'work.money.invoice': 'operate',
+  'work.money.keep': 'operate'
 } satisfies CapsOf<typeof MoneyRequestSchemas>
 export const MONEY_RELAY = {} satisfies RelayOf<typeof MoneyRequestSchemas>
 
 /** What only the owner does: a thread's own call is refused. */
-export const MONEY_OWNER_ONLY: ReadonlySet<string> = new Set(['work.money.open', 'work.money.entry', 'work.money.paid', 'work.money.receive', 'work.money.accept', 'work.money.drop'])
+export const MONEY_OWNER_ONLY: ReadonlySet<string> = new Set([
+  'work.money.open',
+  'work.money.entry',
+  'work.money.paid',
+  'work.money.receive',
+  'work.money.accept',
+  'work.money.drop',
+  'work.money.trip',
+  'work.money.skip',
+  'work.money.rate',
+  'work.money.export',
+  'work.money.invoice',
+  'work.money.keep'
+])
