@@ -31,6 +31,8 @@ import { Picture } from "./Picture";
 import { Sorter } from "./Sorter";
 import { Strip, type PictureOf, type SlideHand } from "./Strip";
 import { present, presentKey, PresentButton, type PresentAsk } from "./Present";
+import { askPreview, PreviewOpener } from "./preview/ask";
+import { DeckPreviewLayer } from "./preview/DeckPreview";
 
 export { freePage } from "./Picture";
 
@@ -155,7 +157,12 @@ export function Body(props: CanvasBodyProps<SlidesState> & SlidesDeps) {
   const host = props.host ?? hostFor(props.env, props.item.id);
   const store = deckStoreOf(props.item.id);
   useDeckView(host, store);
-  return <SlidesBody {...props} host={host} store={store} engine={props.engine ?? pdfjsEngine} />;
+  // Preview (preview/DeckPreview.tsx) is a state of the item over the deck, which stays mounted under it.
+  return (
+    <DeckPreviewLayer env={props.env} itemId={props.item.id} shell={props.shell}>
+      <SlidesBody {...props} host={host} store={store} engine={props.engine ?? pdfjsEngine} />
+    </DeckPreviewLayer>
+  );
 }
 
 export function SlidesBody({
@@ -1105,7 +1112,11 @@ export function Bar({ item, env, host: given, engine }: CanvasBodyProps<SlidesSt
     return (
       <div className="ms-auto flex shrink-0 items-center gap-1">
         {view.hand ? <HistoryButton host={host} session={handOf(item.id, host, store)} /> : null}
-        {presentHere ? <PresentButton onPresent={(ask) => startPresenting(host, store, ask, engine)} /> : null}
+        {presentHere ? (
+          <PreviewOpener.Provider value={() => askPreview(item.id)}>
+            <PresentButton onPresent={(ask) => startPresenting(host, store, ask, engine)} />
+          </PreviewOpener.Provider>
+        ) : null}
       </div>
     );
   }

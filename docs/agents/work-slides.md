@@ -510,6 +510,9 @@ thread (`rowSession`):
 | `work.slides.versions` | read | → `DeckVersion[]`, the kept copies newest first |
 | `work.slides.restore` | operate | `{itemId, version}`: puts a kept copy in the file's place → `DeckView`; refused for a thread |
 | `work.slides.attach` | operate | one piece of a picture or a video he is adding by hand → `{token}`; refused for a thread |
+| `work.slides.preview` | operate | `{itemId, format, layout?, hidden?, page?, picture?, video?, office?}` → `DeckOut`: the deck as a format holds it ("Preview and export"), made from the file as it is now, or the one already made when the file did not change |
+| `work.slides.previewRead` | read | → `{ data, size, rev }`: bytes of a file `work.slides.preview` made, by its 32-character rev, at most 4 MB a call |
+| `work.slides.reach` | read | → `DeckReach` (`pdf`, `video`): whether PowerPoint draws this deck from this host: `ready`, `asleep`, `not open` or `none` |
 
 A thread's own call (`kind: 'model'`) may not review or set the mode. Every
 change pushes `work.slides` with the view; `work.slides.ready` (`itemId`,
@@ -730,10 +733,103 @@ input is the deck with the files its edits bring):
 - `slidemedia → playable` (`needs: 'ffmpeg'`): the clip as the app plays it
   ("Video and sound").
 
-The Python is `DECK_PY` in `deckScript.ts` and `STEPS_PY` in
+`video.ts` registers two for Preview and export:
+
+- `pdf → slidepics` (`needs: 'pdf-tools'`): chosen pages of a PDF as PNG or
+  JPEG at a width (pypdfium2 and Pillow), packed as a zip of named files or
+  joined in one file the next job reads (`readJoined`). Pages, sizes and names
+  from another host's key are checked.
+- `slidepics → slidevideo` (`needs: 'ffmpeg'`): those pictures in a row,
+  `seconds` each with a `fade` between, silent (`videoArgs`).
+
+The Python is `DECK_PY` in `deckScript.ts`, `SLIDEPICS_PY` in `video.ts` and `STEPS_PY` in
 `stepsScript.ts`, each a `String.raw` (no backtick, no `${`), written into
 the job's scratch folder and run with `python -I`. `pptx → pdf` is the
 toolchain's LibreOffice converter.
+
+### Preview and export
+
+Built by SLD7 of the editors plan. Export… in the pane's More, File →
+Export… (⇧⌘E), File → Print… (⌘P) and Preview in the Present menu open the
+one Preview frame of docs/agents/work-editors.md over the deck
+(`work/slides/preview/DeckPreview.tsx`, `DeckPreviewLayer` around the Body;
+the deck stays mounted under it, `inert` and unseen). The deck's
+`PreviewSource` is `work/slides/preview/source.ts` (`deckPreviewSource`); the
+host's side is `slides/out.ts` (`deckOut`).
+
+| Format | The file | The picture | His rows |
+|---|---|---|---|
+| PowerPoint | the .pptx itself | the deck's own render, "As LibreOffice draws it"; "Check in PowerPoint" draws `pptx → pdf+powerpoint` on his press | none |
+| PDF | the slides, notes pages, or handouts of 2, 3, 4 or 6 a page | the file itself | Layout; Paper for notes and handouts; Hidden slides |
+| Print | the same pages, handed to this computer's PDF viewer (`printPdf`) | "As it will print" | as PDF |
+| Pictures | a .zip of `Slide 01.png` … (PNG or JPEG) | the files, as small pictures | Type; Size (1,280, 1,920 or 3,840 wide) |
+| Video | an .mp4 of the slides, or PowerPoint's own | its first frame | Each slide (3, 5 or 10 s); Quality (720p, 1080p); Made by, where PowerPoint is in reach |
+| OpenDocument | the .odp LibreOffice writes | drawn from that .odp, not from the deck's picture | none |
+
+- **Made from the file, kept by rev.** `deckOut` takes a copy of the file and
+  of its render on the deck's queue (`withDeck`), then makes the format off
+  the queue, so an edit never waits on a video. What it made is kept in the
+  deck's `out` folder (`deckDir`) under a rev of the render's key and what he
+  picked (`planOf`, `outRev`): asked again for an unchanged deck it answers
+  at once, so Export writes the file as it stands and costs nothing when he
+  only looked. Six are kept; two asks of one rev at once share one making.
+- **Slides, notes pages and handouts.** A PDF of the slides is the deck's own
+  render with its hidden slides taken out unless he asks for them
+  (`keepPages`, pdf-lib). Notes pages and handouts are laid out here
+  (`slides/handouts.ts`: `sheetsOf`, the page maths in points, and
+  `paperHtml`) from the slides as JPEGs 1,600 wide and printed by Chromium
+  through the formats pillar's `printToPdf`, as a document's PDF is. A notes
+  page is the slide across the top 45% of the room, its notes under it;
+  handouts fill a grid row by row, three a page keeping half of each row for
+  rules to write on; the deck's name over each page and the page number
+  under it take a 20 pt band each when on. Paper is the locale's (Letter or
+  A4), portrait, half-inch margins, the page number on.
+- **The video of the slides** (decision 8): the slides as PNGs at the height
+  picked and the deck's own shape, then ffmpeg (`videoArgs`): each slide held
+  its seconds, a 0.5 s crossfade into the next, the k-th fade starting at
+  k × seconds, so 12 slides at 5 s run exactly 60 s. H.264, 30 fps, silent.
+  Its length is read from the file's own header (`mp4Seconds`). With
+  PowerPoint in reach, Made by PowerPoint is `pptx → mp4+powerpoint`
+  (`secondsPerSlide`, `height`) on his press.
+- **What each format leaves out** (`deckDrops`) is counted from the file by
+  the host (`factsOf`: hidden slides, slides with notes, slides with builds
+  or effects, transitions, videos, sounds, slides with waiting suggestions)
+  and said in plain lines: "Animations and transitions do not play in a
+  PDF", "1 video becomes a picture", "1 sound is left out", "Speaker notes
+  on 7 slides stay behind" (not for notes pages), "The video is silent"
+  first for the video made here, then "Animations do not play" and
+  "Transitions become fades", and in
+  every format "Suggestions on 2 slides stay out until you accept them". The
+  .pptx and the .odp say nothing more: the .odp's picture is its own.
+- **His press.** "Check in PowerPoint" is offered for the PowerPoint format
+  alone (`office(format)`: PowerPoint draws a deck's slides, not handouts),
+  when `work.slides.reach` says `ready` or `asleep`; the press carries
+  `pressOf(by)`, so a thread's call or another host's never wakes the
+  Windows VM. A deck the Mac serves gets `none` until a Mac pair is proven
+  (`RENDER_PROVEN.mac` is empty), and so does a host whose only route to
+  PowerPoint is a linked host: `deckReach` reads this host's own pairs.
+- **A file others can open.** Every job of such a deck is `shared`
+  (`sharedJob`), so it is converted on this host and never forwarded, and its
+  `out` folder is the item's own (`deckDir`), which goes when the item goes.
+  `out.test.ts` holds both, with the library's folder left as it was.
+- **Rows that change nothing are not drawn**: Paper while the PDF is the
+  slides themselves, Hidden slides on a deck with none, Made by where
+  PowerPoint is out of reach. The frame takes the deck's rows through its
+  `rowsFor` prop (a Page section of the kind's own rows, or none, and rows
+  of the format's own with no heading for Pictures and Video); a change hands the
+  frame a new source, which draws again.
+- **Live proof** (`out.live.test.ts`, behind `TEMP_CODE_WORK_TOOLS_DATA`;
+  with `SLIDES_PLAYWRIGHT` naming a playwright-core, notes pages and handouts
+  are printed by a real Chromium): see the numbers in the landing note
+  `.temp-code/plans/landed/SLD7-preview.md`.
+
+### Presenting a PDF
+
+`presentPdf` (exported by `work/slides/show/Show.tsx`) runs the same show
+over any PDF's pages: each page a slide, no notes, builds, transitions or
+clips, the bytes read by range at the PDF's own rev (`pdfShowHost`,
+`show/pdfShow.ts`), from the start or a page he names. The PDF kind's Present
+row that calls it is the Files build's to add.
 
 ### A new deck
 

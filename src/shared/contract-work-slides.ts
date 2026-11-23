@@ -486,6 +486,67 @@ export interface ShowDeck {
   changed?: number
 }
 
+// ── preview and export (docs/agents/work-slides.md "Preview and export") ──
+
+/** What a deck holds that a format may drop, counted from the file (not the suggestions that wait on it). */
+export interface DeckFacts {
+  slides: number
+  hidden: number
+  /** slides with speaker notes */
+  notes: number
+  /** slides with builds or other effects */
+  animated: number
+  /** slides with a transition */
+  transitions: number
+  videos: number
+  sounds: number
+  /** slides an agent's waiting suggestions change */
+  pending: number
+}
+
+/** What `work.slides.preview` answers: one finished file of a format, read by `rev` with `work.slides.previewRead`. */
+export interface DeckOut {
+  /** the file the format makes (a .pptx, .pdf, .zip, .mp4 or .odp) */
+  file: { rev: string; size: number; name: string }
+  /** its pages, for a format drawn as pages: the file itself for a PDF, LibreOffice's or PowerPoint's picture of it otherwise */
+  pdf?: { rev: string; size: number; pages: number }
+  drawnBy: 'tempcode' | 'libreoffice' | 'powerpoint'
+  /** pictures: each file's name in the zip and a small JPEG of it as a `data:` URL */
+  thumbs?: Array<{ name: string; thumb: string }>
+  /** a video: its length, its first frame as a `data:` URL, its height */
+  video?: { seconds: number; poster: string; height: number }
+  facts: DeckFacts
+}
+
+/** Whether PowerPoint can draw this deck from here: its PDF, and its video. */
+export interface DeckReach {
+  pdf: 'ready' | 'asleep' | 'not open' | 'none'
+  video: 'ready' | 'asleep' | 'not open' | 'none'
+}
+
+const margin = z.number().min(0).max(288)
+/** How a deck goes out: the format and what he picked for it. Anything a format does not use is left out of its file's name. */
+export const DeckOutSchema = z.object({
+  format: z.enum(['pptx', 'pdf', 'print', 'pics', 'video', 'odp']),
+  layout: z.union([z.enum(['slides', 'notes']), z.object({ handouts: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(6)]) })]).optional(),
+  /** hidden slides in the PDF, the pictures and the video */
+  hidden: z.boolean().optional(),
+  page: z
+    .object({
+      paper: z.enum(['Letter', 'A4', 'Legal', 'Tabloid', 'A3', 'A5']),
+      orientation: z.enum(['portrait', 'landscape']),
+      margins: z.object({ top: margin, right: margin, bottom: margin, left: margin }),
+      header: z.boolean(),
+      footer: z.boolean()
+    })
+    .optional(),
+  picture: z.object({ type: z.enum(['png', 'jpeg']), width: z.union([z.literal(1280), z.literal(1920), z.literal(3840)]) }).optional(),
+  video: z.object({ seconds: z.union([z.literal(3), z.literal(5), z.literal(10)]), height: z.union([z.literal(720), z.literal(1080)]), by: z.enum(['tempcode', 'powerpoint']).optional() }).optional(),
+  /** "Check in PowerPoint": PowerPoint's own PDF of the file, on his press */
+  office: z.boolean().optional()
+})
+export type DeckOutAsk = z.infer<typeof DeckOutSchema>
+
 const itemId = z.string().min(1).max(100)
 /**
  * His own edits as a request carries them: checked by `SlideOpSchema` as they come in, and typed here by the
@@ -535,7 +596,13 @@ export const SlidesRequestSchemas = [
    * the file and is answered its token; each next piece gives the token and follows on. An `insert` edit then names
    * the file by that token (`file`). Refused for a thread: an agent's edit names a path on the deck's host.
    */
-  request('work.slides.attach', z.object({ itemId, name: z.string().min(1).max(300), token: z.string().max(100).optional(), data: z.string().max(5_600_000) }))
+  request('work.slides.attach', z.object({ itemId, name: z.string().min(1).max(300), token: z.string().max(100).optional(), data: z.string().max(5_600_000) })),
+  /** → DeckOut: the deck as a format will hold it, made from the file as it is now (kept by revision, so asking again costs nothing) */
+  request('work.slides.preview', DeckOutSchema.extend({ itemId })),
+  /** → { data: base64, size, rev }: bytes of a file `work.slides.preview` made, by its rev */
+  request('work.slides.previewRead', z.object({ itemId, rev: z.string().regex(/^[0-9a-f]{32}$/), offset: z.number().int().min(0), length: z.number().int().positive().max(4 * 1024 * 1024) })),
+  /** → DeckReach: whether PowerPoint can draw this deck from here */
+  request('work.slides.reach', z.object({ itemId }))
 ] as const
 
 /** A deck's view changed: an agent revised it, or a change was accepted or rejected. */
@@ -557,6 +624,9 @@ export const SLIDES_CAPS = {
   'work.slides.step': 'operate',
   'work.slides.versions': 'read',
   'work.slides.restore': 'operate',
-  'work.slides.attach': 'operate'
+  'work.slides.attach': 'operate',
+  'work.slides.preview': 'operate',
+  'work.slides.previewRead': 'read',
+  'work.slides.reach': 'read'
 } satisfies CapsOf<typeof SlidesRequestSchemas>
 export const SLIDES_RELAY = {} satisfies RelayOf<typeof SlidesRequestSchemas>

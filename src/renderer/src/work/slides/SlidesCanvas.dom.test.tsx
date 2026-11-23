@@ -398,7 +398,7 @@ describe("the slides kind", () => {
     fireEvent.click(within(present).getByRole("button", { name: "Ways to present" }));
     const rows = await screen.findAllByRole("menuitem");
     // A browser has no second window: In a window is not offered there.
-    expect(rows.map((row) => row.textContent?.replace(/[⌘⇧⌥↩]|Ctrl|Shift|Alt|Enter|Return|\+/g, "").trim())).toEqual(["From the start", "From this slide", "Presenter view"]);
+    expect(rows.map((row) => row.textContent?.replace(/[⌘⇧⌥↩]|Ctrl|Shift|Alt|Enter|Return|\+/g, "").trim())).toEqual(["From the start", "From this slide", "Presenter view", "Preview"]);
     fireEvent.click(screen.getByRole("menuitem", { name: /From the start/ }));
     await waitFor(() => expect(shows.asks).toHaveLength(2));
     expect(shows.asks[1]).toMatchObject({ from: "start", mode: "full" });

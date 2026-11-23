@@ -38,6 +38,13 @@ export interface PreviewProps {
   onClose(): void;
   /** The kind's own rows of the Page section, after the ones every kind shares (`PageMenuRow`, `PageSwitchRow`). */
   pageRows?: ReactNode;
+  /**
+   * The kind's rows for the format shown, where they differ by format (a deck's Layout for a PDF, a picture's type
+   * and size): `page` stands in for the Page section's rows (null: no Page section for this format), and `own` are
+   * rows of the format's own after it, with no heading (the bar names the format), for a format with pages or without. A row that
+   * changes the file hands the frame a new source, which draws it again. Absent: the Page section as above.
+   */
+  rowsFor?(format: PreviewFormat): { page: ReactNode | null; own?: ReactNode };
   /** A test or a static preview hands in its own engine and sizes: jsdom lays nothing out. */
   engine?: PdfEngine;
   width?: number;
@@ -83,7 +90,7 @@ type Draw = { status: "drawing" } | { status: "drawn"; drawn: Drawn } | { status
 
 const messageOf = (error: unknown, fallback: string): string => (error instanceof Error && error.message ? error.message : fallback);
 
-export function Preview({ source, title, kind, initial, readOnly, onClose, pageRows, engine, width, height, tight: tightProp }: PreviewProps) {
+export function Preview({ source, title, kind, initial, readOnly, onClose, pageRows, rowsFor, engine, width, height, tight: tightProp }: PreviewProps) {
   const [format, setFormat] = useState(() => openingFormat(source.formats, kind, initial));
   const [run, setRun] = useState(0);
   const [draw, setDraw] = useState<Draw>({ status: "drawing" });
@@ -222,16 +229,33 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
 
   const picture = draw.status === "drawn" ? draw.drawn.picture : null;
   const drops = draw.status === "drawn" ? draw.drawn.drops : [];
-  const pageSection = setup && paged ? <PageSection setup={setup.common} onChange={change} rows={pageRows} /> : null;
-  const hasColumn = !!pageSection || drops.length > 0;
+  const kindRows = current && rowsFor ? rowsFor(current) : null;
+  const pageSection = !paged
+    ? null
+    : kindRows
+      ? kindRows.page
+        ? <PageSection rows={kindRows.page} />
+        : null
+      : setup
+        ? <PageSection setup={setup.common} onChange={change} rows={pageRows} />
+        : null;
+  // The format's own rows: what a format with no pages is made at (a picture's size, a video's pace). The bar already
+  // names the format, so they stand with no heading of their own.
+  const ownSection = kindRows?.own ? (
+    <div data-preview-own className={`flex min-w-0 flex-col ${pageSection ? "mt-5" : ""}`}>
+      {kindRows.own}
+    </div>
+  ) : null;
+  const settings = pageSection || ownSection ? <>{pageSection}{ownSection}</> : null;
+  const hasColumn = !!settings || drops.length > 0;
 
   // The column beside the paper: Page, then what this format drops. Nothing when there is neither.
   const column = hasColumn ? (
     <div data-preview-column className="flex min-w-0 flex-col">
-      {pageSection}
+      {settings}
       {drops.length > 0 ? (
         <>
-          <ColumnHeading first={!pageSection}>In this format</ColumnHeading>
+          <ColumnHeading first={!settings}>In this format</ColumnHeading>
           {drops.map((line) => (
             <div key={line} className="text-[13px] leading-5 text-pretty not-first:mt-1">
               {line}
@@ -297,9 +321,9 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
           <EmptyState title="Can't draw this format here" line={`${sentence(draw.message)} Exporting still works.`} action={{ label: "Retry", onClick: () => setRun((n) => n + 1) }} />
         </div>
         {/* The page set-up is still his to change; what the format drops is not known without a picture. */}
-        {pageSection && !folded ? (
+        {settings && !folded ? (
           <div data-preview-column className="flex w-[232px] shrink-0 flex-col pt-0.5">
-            {pageSection}
+            {settings}
           </div>
         ) : null}
       </div>
@@ -315,13 +339,13 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
     body = paged ? (
       <PagedSkeleton
         head={head(waiting)}
-        side={pageSection ? <div data-preview-column className="flex min-w-0 flex-col">{pageSection}</div> : undefined}
+        side={settings ? <div data-preview-column className="flex min-w-0 flex-col">{settings}</div> : undefined}
         wide={current?.unit === "slide"}
         {...(setup ? { aspect: paperAspect(setup.common) } : {})}
         width={width}
       />
     ) : (
-      <Plain>
+      <Plain beside={settings && !folded ? <div className="sticky top-4 w-[232px] shrink-0 self-start pt-0.5">{settings}</div> : null}>
         <div role="status" className="flex min-h-6 items-center gap-2 text-xs leading-4 text-muted-foreground">
           {waiting}
         </div>
@@ -411,19 +435,19 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
           </span>
         ) : null}
         <div data-bar-end className="ms-auto flex shrink-0 items-center gap-0.5 ps-2">
-          {folded && pageSection ? (
+          {folded && settings ? (
             <LazyPopover
-              label="Page"
+              label={pageSection ? "Page" : (current?.label ?? "Page")}
               align="end"
               className="w-[264px] px-3 pt-2 pb-3"
-              tip={{ label: "Page" }}
+              tip={{ label: pageSection ? "Page" : (current?.label ?? "Page") }}
               trigger={
-                <Button variant="ghost" size="icon-sm" aria-label="Page" className="text-muted-foreground hover:text-foreground">
+                <Button variant="ghost" size="icon-sm" aria-label={pageSection ? "Page" : (current?.label ?? "Page")} className="text-muted-foreground hover:text-foreground">
                   <SlidersHorizontal />
                 </Button>
               }
             >
-              {pageSection}
+              {settings}
             </LazyPopover>
           ) : null}
           <Button size="sm" className="ms-1.5" disabled={!formatId} onClick={() => void runExport()}>
@@ -597,25 +621,36 @@ const ORIENTATIONS = [
 const MARGINS = (Object.keys(MARGIN_PRESETS) as MarginPreset[]).map((id) => ({ id, label: id }));
 const PAPER_ROWS = PAPERS.map((id) => ({ id, label: id }));
 
-/** The Page section: what every kind's page set-up shares, then the kind's own rows. */
-function PageSection({ setup, onChange, rows }: { setup: CommonSetup; onChange(next: Partial<CommonSetup>): void; rows?: ReactNode }) {
+/** The Page section: what every kind's page set-up shares, then the kind's own rows; or, with no set-up, the kind's rows alone. */
+function PageSection({ setup, onChange, rows }: { setup?: CommonSetup; onChange?(next: Partial<CommonSetup>): void; rows?: ReactNode }) {
   return (
     <div data-preview-page className="flex min-w-0 flex-col">
       <ColumnHeading first>Page</ColumnHeading>
-      <PageMenuRow<PaperName> label="Paper" value={setup.paper} options={PAPER_ROWS} onPick={(paper) => onChange({ paper })} />
-      <PageMenuRow label="Orientation" value={setup.orientation === "landscape" ? "Landscape" : "Portrait"} options={ORIENTATIONS} onPick={(orientation) => onChange({ orientation })} />
-      <PageMenuRow<MarginPreset> label="Margins" value={marginPresetOf(setup.margins) ?? "Custom"} options={MARGINS} onPick={(preset) => onChange({ margins: { ...MARGIN_PRESETS[preset] } })} />
-      <PageSwitchRow label="Headers and footers" checked={setup.header || setup.footer} onChange={(on) => onChange({ header: on, footer: on })} />
+      {setup && onChange ? (
+        <>
+          <PageMenuRow<PaperName> label="Paper" value={setup.paper} options={PAPER_ROWS} onPick={(paper) => onChange({ paper })} />
+          <PageMenuRow label="Orientation" value={setup.orientation === "landscape" ? "Landscape" : "Portrait"} options={ORIENTATIONS} onPick={(orientation) => onChange({ orientation })} />
+          <PageMenuRow<MarginPreset> label="Margins" value={marginPresetOf(setup.margins) ?? "Custom"} options={MARGINS} onPick={(preset) => onChange({ margins: { ...MARGIN_PRESETS[preset] } })} />
+          <PageSwitchRow label="Headers and footers" checked={setup.header || setup.footer} onChange={(on) => onChange({ header: on, footer: on })} />
+        </>
+      ) : null}
       {rows}
     </div>
   );
 }
 
-/** The body for a file that is its own text or files: on `background`, at most 624px of measure. */
-function Plain({ children }: { children: ReactNode }) {
+/** The body for a file that is its own text or files: on `background`, at most 624px of measure; the column beside it, if any. */
+function Plain({ children, beside }: { children: ReactNode; beside?: ReactNode }) {
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-background">
-      <div className="mx-auto flex max-w-[672px] min-w-0 flex-col gap-2 px-6 pt-4 pb-8">{children}</div>
+      {beside ? (
+        <div className="flex w-full justify-center gap-4 px-6 pt-4 pb-8">
+          <div className="flex max-w-[640px] min-w-0 flex-1 flex-col gap-2">{children}</div>
+          {beside}
+        </div>
+      ) : (
+        <div className="mx-auto flex max-w-[672px] min-w-0 flex-col gap-2 px-6 pt-4 pb-8">{children}</div>
+      )}
     </div>
   );
 }

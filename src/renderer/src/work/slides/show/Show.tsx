@@ -9,6 +9,7 @@ import { Audience } from "./Audience";
 import { RENDER_CHANGED } from "../deck";
 import { openFramePlace, openWindowPlace, type ShowPlace, type Surface } from "./places";
 import { Presenter } from "./Presenter";
+import { pdfShowHost, type PdfBytes } from "./pdfShow";
 import { playReducer, StageContext, useMediaUrls, useStepDocs, type MediaAct, type MediaRun, type Picture, type Playing, type ShowStage } from "./stage";
 import { autoAfter, keyAct, motionBetween, nextPress, NOTES_DEFAULT, NOTES_SIZES, showReducer, startShowState, stepNotes, type ShowAct, type ShowMotion, type ShowState, type Slide } from "./state";
 import { pauseTimer, restartTimer, resumeTimer, startTimer, TARGETS, type Target } from "./timer";
@@ -431,4 +432,13 @@ function ShowRoot({ ask, places: opened, native, onOver }: { ask: ShowAsk; place
         : null}
     </StageContext.Provider>
   );
+}
+
+/**
+ * Presents any PDF (the PDF kind's Present): the same show, full screen or with the presenter's view, over the PDF's
+ * pages, one a slide, with no notes, builds or clips. `from` is a page number, from 1, or the start.
+ */
+export function presentPdf(ask: Omit<ShowAsk, "host" | "from"> & { pdf: PdfBytes; from?: "start" | number }): Promise<ShowHandle> {
+  const { pdf, from = "start", ...rest } = ask;
+  return startShow({ ...rest, host: pdfShowHost(pdf, ask.title), from: from === "start" ? "start" : Math.min(Math.max(1, Math.round(from)), pdf.pages) });
 }

@@ -184,7 +184,8 @@ export interface PreviewSource {
    * Word". Absent or null: never offered. `ready` and `asleep` offer it (a press on
    * an asleep one wakes the machine and draws); `not open` is an app he has
    * shut, which no press starts unseen; `none` is no Office in reach of a
-   * press from this window.
+   * press from this window. The frame names the format it is shown, for a kind whose real app draws only some of
+   * its formats (PowerPoint draws a deck's slides, not its handouts).
    */
   office?(format?: string): Promise<{ app: OfficeApp; state: "ready" | "asleep" | "not open" | "none" } | null>;
   /** Draws the format. `by: 'office'` is his press on "Check in …": the app's own picture, or a rejection with NotInReach. */

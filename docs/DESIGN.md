@@ -2669,7 +2669,11 @@ opening puts the focus on Edit.
   12px chevron, at most 156px, hung 8px into the edge so values meet it), or
   a switch. Every kind has Paper, Orientation, Margins (Word's Normal,
   Narrow, Moderate and Wide; anything else reads Custom) and Headers and
-  footers; a kind's own rows follow. A change draws the file again. **In
+  footers; a kind's own rows follow. A change draws the file again. A kind
+  whose rows differ by format puts its own in their place (the deck's PDF: Layout, Paper for paper, Hidden slides; its
+  .pptx: none), and a format with rows of its own that are not the page's
+  (a deck's Pictures, Video) has them first, with no heading, since the bar
+  names the format; a row that would change nothing is not drawn. **In
   this format** comes after: what the format cannot hold, one line each in
   13/20 foreground, 4px apart, counted from the item and saying what happens
   to the thing ("2 comments stay behind", "3 suggestions go as tracked

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { ChevronDown, Play } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -6,6 +6,7 @@ import { bareKey, chordKey, keyHint, modOrCtrl } from "../../lib/keys";
 import { sayError } from "../canvas/frame";
 import type { ShowMode } from "@shared/slidesShow";
 import type { ShowNative } from "./show/Show";
+import { PreviewOpener } from "./preview/ask";
 
 /**
  * Present (docs/DESIGN.md "The show"): a secondary split button at the end
@@ -39,6 +40,8 @@ const DISPLAY_KEY = "tc.show.display";
 export function usePresentMenu(onPresent: (ask: PresentAsk) => void, native: ShowNative | null = nativeShow()): { rows: MenuRow[]; onPick(id: string): void; present(): void; readDisplays(): void } {
   const [displays, setDisplays] = useState<Awaited<ReturnType<ShowNative["displays"]>>>([]);
   const [picked, setPicked] = useState<number | null>(null);
+  // The deck's Preview, where its Body or bar gives one (preview/ask.ts): the deck as a PDF, handouts, pictures or a video.
+  const preview = useContext(PreviewOpener);
   const readDisplays = useCallback(() => {
     void native?.displays().then(setDisplays, () => setDisplays([]));
   }, [native]);
@@ -59,6 +62,7 @@ export function usePresentMenu(onPresent: (ask: PresentAsk) => void, native: Sho
     { kind: "item", id: "here", label: "From this slide", shortcut: keyHint("mod+return") },
     { kind: "item", id: "presenter", label: "Presenter view", shortcut: keyHint("alt+mod+return") },
     ...(native ? ([{ kind: "item", id: "windowed", label: "In a window" }] satisfies MenuRow[]) : []),
+    ...(preview ? ([{ kind: "sep" }, { kind: "item", id: "preview", label: "Preview" }] satisfies MenuRow[]) : []),
     ...(displays.length > 1
       ? ([{ kind: "sep" }, { kind: "label", label: "Slideshow on" }, ...displays.map((d) => ({ kind: "item" as const, id: `display:${d.id}`, label: d.label, checked: d.id === display, keepOpen: true }))] satisfies MenuRow[])
       : []),
@@ -68,6 +72,7 @@ export function usePresentMenu(onPresent: (ask: PresentAsk) => void, native: Sho
     else if (id === "here") ask("here", "full");
     else if (id === "presenter") ask("here", "presenter");
     else if (id === "windowed") ask("here", "windowed");
+    else if (id === "preview") preview?.();
     else if (id.startsWith("display:")) {
       const next = Number(id.slice(8));
       setPicked(next);

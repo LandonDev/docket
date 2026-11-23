@@ -17,6 +17,8 @@ import { registerFileMaker, registerFileMoved, registerFilePreviewer } from '../
 import { accept, announce, ChangedSinceError, deckDir, fileMoved, itemsGone, onDeckOpened, reject, renderPath, seatOf, sessionsGone, setSlideEngine, setSlideRenderer, slidePath, StaleChangesError, undo, viewOf } from './view'
 import { mediaPath, prepareShow, showOf, stepPath, stopShows } from './show'
 import { STEPS_CONVERTERS } from './steps'
+import { deckOut, deckReach, outPath } from './out'
+import { VIDEO_CONVERTERS } from './video'
 
 /**
  * The slides pillar's server module (docs/agents/work-slides.md): a deck
@@ -40,7 +42,10 @@ const SLIDES_METHODS: ReadonlySet<string> = new Set([
   'work.slides.restore',
   'work.slides.attach',
   'work.slides.build',
-  'work.slides.media'
+  'work.slides.media',
+  'work.slides.preview',
+  'work.slides.previewRead',
+  'work.slides.reach'
 ])
 
 // A deck's rows and folder are kept by its file's path: a rename or a move through Files re-keys them in the
@@ -175,6 +180,17 @@ export const slides: WorkModule = {
         seatOf(ctx, item)
         return handled(attachPiece(await deckDir(ctx, item, 'attach'), { name: req.params.name, ...(req.params.token !== undefined ? { token: req.params.token } : {}), data: Buffer.from(req.params.data, 'base64') }))
       }
+      // Preview and export (out.ts): the deck as a format holds it, read by its rev; PowerPoint's own only on his press.
+      case 'work.slides.preview': {
+        const { itemId: _item, ...ask } = req.params
+        return handled(await deckOut(ctx, item, by, ask, signal))
+      }
+      case 'work.slides.previewRead': {
+        const path = await outPath(ctx, item, req.params.rev)
+        return handled({ ...readRange(path, req.params.offset, req.params.length), rev: req.params.rev })
+      }
+      case 'work.slides.reach':
+        return handled(await deckReach(ctx))
       case 'work.slides.restore': {
         if (by.kind === 'model') throw new Error('Only the owner restores a version of a deck.')
         await restoreVersion(ctx, item, req.params.version)
@@ -184,7 +200,7 @@ export const slides: WorkModule = {
     return NOT_HANDLED
   },
   tools: () => slidesTools,
-  convert: [...SLIDES_CONVERTERS, ...STEPS_CONVERTERS],
+  convert: [...SLIDES_CONVERTERS, ...STEPS_CONVERTERS, ...VIDEO_CONVERTERS],
   preamble: () =>
     'A deck in the canvas is a .pptx file. Read it with `slides_read` and look at a slide with `slides_image`. Revise it with `slides_edit`, naming slides and shapes by id: each revised slide is a suggestion the person steps through and accepts. Say `because: "asked"` with the person\'s own words as `quote` when they asked for the edit, and `because: "own"` when it is your idea. Draft a new deck with `slides_new`.',
   sessionsRemoved(ids, ctx) {

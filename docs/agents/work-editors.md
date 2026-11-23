@@ -171,6 +171,13 @@ only by case resolve to one on the Mac's disk, where the release is built.
   Headers and footers) and then `pageRows`, your own rows, built from
   `PageMenuRow` and `PageSwitchRow` (exported by `PreviewFrame.tsx`). After
   `setup.set(…)` resolves the frame draws the file again.
+- A kind whose rows differ by format (the deck's) passes `rowsFor(format)`
+  instead: `{ page, own }`, where `page` stands in for the Page section's rows
+  (null: no Page section, as for a deck's .pptx, whose paper is its slides)
+  and `own` are rows of the format's own after it, with no heading (the bar
+  names the format), for a format with pages or without (a deck's Pictures
+  and Video). A row there that changes the file
+  hands the frame a new source, which draws again.
 - Pages are drawn by `PagedView` (`work/formats/PagedView.tsx`) over the PDF
   kind's engine, by range reads of `PreviewBytes`. A `rev` the host no longer
   has must reject the read: the frame then shows its failure with Retry.
