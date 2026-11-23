@@ -53,7 +53,7 @@ describe('a change that rewords nothing', () => {
   it('is said by its look before and after, so the stepper never shows a change with nothing in it', () => {
     const before = slideOf([{ ...shape(2, 'Title 1', 'text', 'title', 'One'), bbox: [0, 0, 1, 1], paragraphs: [para('One')] }])
     const bolder = slideOf([{ ...shape(2, 'Title 1', 'text', 'title', 'One'), bbox: [0, 0, 1, 1], paragraphs: [para('One', { bold: true })] }])
-    expect(editsOf(before, bolder)).toEqual({ edits: [{ where: 'Title, look', before: 'Calibri, 18 pt, left', after: 'Calibri, 18 pt, bold, left' }], boxes: [[0, 0, 1, 1]] })
+    expect(editsOf(before, bolder)).toEqual({ edits: [{ where: 'Title, look', before: 'Calibri, 18 pt, left', after: 'Calibri, 18 pt, bold, left' }], boxes: [[0, 0, 1, 1]], gone: [] })
     // A look on part of the words that the few words cannot tell apart is still a change.
     const two = slideOf([{ ...shape(2, 'Title 1', 'text', 'title', 'One'), bbox: [0, 0, 1, 1], paragraphs: [{ ...para('One'), runs: [{ text: 'O', font: 'Calibri', size: 18 }, { text: 'ne', font: 'Calibri', size: 18 }] }] }])
     expect(editsOf(before, two).edits).toEqual([{ where: 'Title, look', before: 'As it was', after: 'Changed within the text' }])
@@ -83,6 +83,8 @@ describe('a change to shapes, a slide or the deck itself, in words', () => {
     ])
     // The boxes to tint are the shapes the change touched.
     expect(editsOf(before, after).boxes).toEqual([[0.5, 0, 1, 0.5], [0.1, 0.1, 0.6, 0.6], [0, 0, 0.2, 0.2]])
+    // And where the shape it takes away lay, to tint as removed.
+    expect(editsOf(before, after).gone).toEqual([[0.5, 0.5, 1, 1]])
   })
 
   it('counts an edit of the deck itself as one change of its own: its theme and its sections', () => {

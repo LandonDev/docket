@@ -86,15 +86,6 @@ export function selectionOf(quad: Quad, width: number, height: number): { corner
   return { corners, handles, rotate: along(ROTATE_RISE), stem: [along(ROTATE_RISE - ROTATE_STEM - ROTATE_HANDLE / 2), along(ROTATE_RISE - ROTATE_HANDLE / 2)] };
 }
 
-/** The shapes a key can move the selection through, in reading order: by their box's top, then its left. */
-export function readingOrder(shapes: readonly DeckShape[]): DeckShape[] {
-  return shapes.filter(pickable).sort((a, b) => {
-    const [ax, ay] = [Math.min(...a.quad.map((p) => p[0])), Math.min(...a.quad.map((p) => p[1]))];
-    const [bx, by] = [Math.min(...b.quad.map((p) => p[0])), Math.min(...b.quad.map((p) => p[1]))];
-    return Math.abs(ay - by) > 0.02 ? ay - by : ax - bx;
-  });
-}
-
 /** What a shape is called where it has no words: by what it is. */
 export const KIND_WORDS: Readonly<Record<DeckShapeKind, string>> = { text: "Text", other: "Shape", picture: "Picture", table: "Table", chart: "Chart", media: "Media", connector: "Line", frame: "Object" };
 

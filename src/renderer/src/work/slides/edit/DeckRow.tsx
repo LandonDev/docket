@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
-import type { DeckShape, DeckSlide, DeckView } from "@shared/contract-work-slides";
+import type { DeckColour, DeckShape, DeckSlide, DeckView, SlideOp } from "@shared/contract-work-slides";
+import { themeEdit } from "@shared/work/deckThemes";
 import { DEFAULT_TWIN, drawnAs, FONT_FAMILIES, fontStatus, twinOf } from "work-kit/fonts";
 import {
   AlignMenu,
@@ -8,6 +9,7 @@ import {
   FontSelect,
   FormatRow,
   GROUP,
+  menuItem,
   nextSize,
   OFFICE_THEME,
   resolveColour,
@@ -29,10 +31,16 @@ import {
 } from "work-kit/format";
 import { IS_MAC } from "../../../lib/platform";
 import { usePresentMenu, warmShow, type PresentAsk } from "../Present";
-import { Play, Undo2 as Undo } from "../../../chrome/icons";
-import { Align, Bold, Bullets, Font, Italic, Numbers, Redo, TextColour, Underline } from "../../icons";
+import { Layers, Play, Undo2 as Undo } from "../../../chrome/icons";
+import type { PdfEngine } from "../../pdf/engine";
+import { Align, Bold, BringForward, BringToFront, Bullets, Font, FormatSheet, Italic, Numbers, Redo, SendBackward, SendToBack, ShapeFill, Slides, Sorter, TextColour, Underline } from "../../icons";
+import type { DeckHost, DeckStore } from "../deck";
+import type { Size } from "./drag";
+import { insertRows, useInsert, type MediaSize } from "./Insert";
+import { LayoutSelect } from "./LayoutSelect";
 import { DEFAULT_SIZE, modelOf, showing, showingAll, type ParaLook, type RunLook, type Showing } from "./model";
 import type { HandSession, HandState } from "./session";
+import { ThemeMenu } from "./ThemeMenu";
 
 /**
  * The row's keys by their names in work-kit's key table (`format/keys.ts`), never typed out as a chord: the row
@@ -83,6 +91,15 @@ export function lay(target: Target, session: HandSession, set: RunLook & ParaLoo
   if (Object.keys(para).length > 0) session.para(para);
 }
 
+/** A colour from the picker as an edit says it: a theme colour by its slot and tint, so it stays the theme's; else its hex. */
+export const deckColour = (colour: Colour): DeckColour => ("theme" in colour ? { slot: colour.theme, ...(colour.tint ? { tint: colour.tint } : {}) } : colour.hex.replace(/^#/, "").toUpperCase());
+
+/** A shape whose fill is set here: a table's and a chart's are set in PowerPoint, and media has none. */
+export const fillable = (shape: DeckShape): boolean => shape.kind !== "table" && shape.kind !== "chart" && shape.kind !== "media";
+
+/** The fill a shape says it has, as the picker marks it: a hex, none, or undefined where its style gives it. */
+const fillOf = (shape: DeckShape | undefined): Colour | null | undefined => (!shape?.fill ? undefined : shape.fill === "none" ? null : { hex: `#${shape.fill}` });
+
 /** The format keys of the table (work-kit `formatKeyOf`) that the row's controls answer, on what it acts on. */
 export function keyAct(key: FormatKey, target: Target, session: HandSession): boolean {
   if (!target) return false;
@@ -119,17 +136,41 @@ const DISPLAYS_STALE_MS = 10_000;
 export function DeckRow({
   view,
   target,
+  slide,
+  picked,
   hand,
   session,
+  host,
+  store,
+  engine,
+  size,
+  look,
+  sheet,
+  narrow,
   tone,
   boundary,
   onPresent,
   measure,
+  mediaSize,
 }: {
   view: DeckView;
   target: Target;
+  /** the slide on the stage (in the Sorter, the one he last stood on) */
+  slide: DeckSlide | undefined;
+  /** the shape picked on a slide his hand may change */
+  picked: { slide: DeckSlide; shape: DeckShape } | null;
   hand: HandState;
   session: HandSession;
+  host: DeckHost;
+  store: DeckStore;
+  engine?: PdfEngine | undefined;
+  /** the slide in EMU */
+  size: Size;
+  look: "slide" | "sorter";
+  /** the Format sheet is open */
+  sheet: boolean;
+  /** a canvas under 420px: the layout select narrows to 132px */
+  narrow: boolean;
   /** the slide's ground, for Automatic: the theme's dark ink on a light slide, its light one on a dark slide */
   tone: "dark" | "light";
   boundary: Element | null;
@@ -137,6 +178,8 @@ export function DeckRow({
   onPresent?: (ask: PresentAsk) => void;
   /** a preview's widths, where nothing lays out */
   measure?: ((el: HTMLElement) => number) | undefined;
+  /** a test's reading of a picture's size, where the window cannot read one */
+  mediaSize?: MediaSize | undefined;
 }) {
   const theme = useMemo(() => officeTheme(view), [view]);
   const inDocument = useMemo(() => {
@@ -145,6 +188,15 @@ export function DeckRow({
     return [...named];
   }, [view, theme]);
   const [lastColour, setLastColour] = useState<Colour | "auto">("auto");
+  const [lastFill, setLastFill] = useState<Colour | null>(null);
+  // His hand on the slide itself (its layout, what goes on it): none on a slide a suggestion changes.
+  const slideOpen = !!slide && session.slideRefusal(slide) === null;
+  const onStage = slideOpen && look === "slide";
+  const insert = useInsert({ view, slide: onStage ? slide : undefined, size, host, store, session, measure: mediaSize });
+  const shape = picked?.shape;
+  const order = (to: "front" | "back" | "forward" | "backward"): void => {
+    if (picked) void session.edit([{ op: "order", slide: picked.slide.id, shape: picked.shape.id, to }], "Couldn't move the shape");
+  };
   const now = target?.showing;
   const off = !target;
   const box = hand.box;
@@ -177,6 +229,25 @@ export function DeckRow({
   const items: FormatItem[] = [
     buttonItem({ id: "undo", group: GROUP.edits, label: "Undo", icon: <Undo />, hint: hints.undo, disabled: !undo || !!(box && box.phase !== "typing"), onPress: () => (box ? session.undo() : void session.step("undo")) }),
     buttonItem({ id: "redo", group: GROUP.edits, label: "Redo", icon: <Redo />, hint: hints.redo, disabled: !redo || !!(box && box.phase !== "typing"), onPress: () => (box ? session.redo() : void session.step("redo")) }),
+    {
+      id: "layout",
+      group: GROUP.style,
+      keep: true,
+      label: "Layout",
+      hint: slide?.layout,
+      control: (
+        <LayoutSelect
+          view={view}
+          slide={slide}
+          host={host}
+          engine={engine}
+          width={narrow ? 132 : 148}
+          disabled={!slideOpen}
+          onPick={(layout) => slide && void session.edit([{ op: "layout", slide: slide.id, layout }], "Couldn't change the layout")}
+        />
+      ),
+      more: { layer: true, disabled: !slideOpen },
+    },
     {
       id: "font",
       group: GROUP.font,
@@ -237,6 +308,28 @@ export function DeckRow({
       more: { layer: true, disabled: off },
     },
     {
+      id: "fill",
+      group: GROUP.character,
+      label: "Shape fill",
+      icon: <ShapeFill />,
+      control: (
+        <ColourPicker
+          label="Shape fill"
+          icon={<ShapeFill />}
+          last={lastFill}
+          current={fillOf(shape)}
+          none="No fill"
+          theme={theme}
+          disabled={!shape || !fillable(shape)}
+          onPick={(colour) => {
+            setLastFill(colour);
+            if (picked) void session.edit([{ op: "fill", slide: picked.slide.id, shape: picked.shape.id, color: colour ? deckColour(colour) : null }], "Couldn't fill the shape");
+          }}
+        />
+      ),
+      more: { layer: true, disabled: !shape || !fillable(shape) },
+    },
+    {
       id: "align",
       group: GROUP.cell,
       label: "Align",
@@ -246,6 +339,40 @@ export function DeckRow({
     },
     toggleItem({ id: "bullets", group: GROUP.cell, label: "Bullets", icon: <Bullets />, shortcut: KEY.bulleted, disabled: off, pressed: now?.list === "bullet", onPressedChange: (on) => set({ list: on ? "bullet" : "none" }) }),
     toggleItem({ id: "numbers", group: GROUP.cell, label: "Numbering", icon: <Numbers />, shortcut: KEY.numbered, disabled: off, pressed: now?.list === "number", onPressedChange: (on) => set({ list: on ? "number" : "none" }) }),
+    menuItem({
+      id: "arrange",
+      group: GROUP.cell,
+      label: "Arrange",
+      icon: <Layers />,
+      disabled: !picked,
+      menuWidth: 200,
+      rows: (
+        <>
+          <RowMenuItem icon={<BringToFront />} onSelect={() => order("front")}>
+            Bring to front
+          </RowMenuItem>
+          <RowMenuItem icon={<BringForward />} onSelect={() => order("forward")}>
+            Bring forward
+          </RowMenuItem>
+          <RowMenuItem icon={<SendBackward />} onSelect={() => order("backward")}>
+            Send backward
+          </RowMenuItem>
+          <RowMenuItem icon={<SendToBack />} onSelect={() => order("back")}>
+            Send to back
+          </RowMenuItem>
+        </>
+      ),
+    }),
+    toggleItem({ id: "format", group: GROUP.cell, label: "Format", icon: <FormatSheet />, disabled: look !== "slide", pressed: sheet && look === "slide", onPressedChange: (on) => store.set({ sheet: on }) }),
+    menuItem({ id: "insert", group: GROUP.insert, label: "Insert", word: true, menuWidth: 200, rows: insertRows(insert, { onSlide: onStage, canAdd: !!view.hand }) }),
+    {
+      id: "theme",
+      group: GROUP.insert,
+      label: "Theme",
+      icon: <Slides />,
+      control: <ThemeMenu view={view} disabled={false} onPick={(next) => void session.edit([themeEdit(next) as SlideOp], "Couldn't change the theme")} />,
+      more: { layer: true },
+    },
   ];
   return (
     <div
@@ -273,8 +400,26 @@ export function DeckRow({
           if (box?.phase === "typing" && button && !button.hasAttribute("aria-haspopup")) event.preventDefault();
         }}
       >
-        <FormatRow kind="slides" items={items} out={out} mac={IS_MAC} editorKeys boundary={boundary} {...(measure ? { measure } : {})} />
+        <FormatRow
+          kind="slides"
+          items={items}
+          view={{
+            label: "View",
+            value: look,
+            options: [
+              { value: "slide", label: "Slide", icon: <Slides /> },
+              { value: "sorter", label: "Sorter", icon: <Sorter /> },
+            ],
+            onChange: (next) => store.set({ look: next as "slide" | "sorter" }),
+          }}
+          out={out}
+          mac={IS_MAC}
+          editorKeys
+          boundary={boundary}
+          {...(measure ? { measure } : {})}
+        />
       </div>
+      {insert.inputs}
     </div>
   );
 }

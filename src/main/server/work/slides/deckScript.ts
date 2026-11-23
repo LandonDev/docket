@@ -476,13 +476,14 @@ def shape_info(sh, xf, w, h, group=None, theme=None):
         # A decorative shape carries an empty txBody too: only words or a placeholder make it a text shape.
         if info['text'] or pt is not None:
             info['kind'] = 'text'
-            if theme is not None:
-                try:
-                    look = paragraphs_of(sh, theme)
-                except Exception:
-                    look = None
-                if look is not None:
-                    info['paragraphs'], info['frame'] = look['paragraphs'], look['frame']
+        # Its paragraphs and frame are said either way: a drawn shape with no words can still be typed into.
+        if theme is not None:
+            try:
+                look = paragraphs_of(sh, theme)
+            except Exception:
+                look = None
+            if look is not None:
+                info['paragraphs'], info['frame'] = look['paragraphs'], look['frame']
     if el.tag == qn('p:sp'):
         geom = el.find(qn('p:spPr') + '/' + '{%s}prstGeom' % NS_A)
         drawn = el.find(qn('p:spPr') + '/' + '{%s}custGeom' % NS_A)
@@ -702,7 +703,11 @@ def inspect(src, out):
         notes = ''
         if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:
             notes = text_of(slide.notes_slide.notes_text_frame)
+        # The layouts this slide may be given (op_layout's own test), by name.
+        mine = holds_of(slide)
+        fits = [l.name for m in prs.slide_masters for l in m.slide_layouts if l.part is slide.slide_layout.part or all(held.get(i) == k for i, k in mine.items() for held in (holds_of(l),))]
         slides.append({
+            'fits': fits,
             'id': slide.slide_id,
             'hidden': slide._element.get('show') in ('0', 'false'),
             'layout': slide.slide_layout.name,

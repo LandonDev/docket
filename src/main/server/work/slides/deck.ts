@@ -51,6 +51,8 @@ export interface SlideInfo {
   /** in z-order; a group's children flattened in, each placed through every group above it */
   shapes: ShapeInfo[]
   transition?: SlideTransition
+  /** the layouts this slide may be given, by name: its own, and each whose placeholders match the slide's by index and kind (`op_layout`'s test) */
+  fits?: string[]
 }
 export interface ShapeInfo {
   id: number

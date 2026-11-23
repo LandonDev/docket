@@ -1,9 +1,10 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Bbox } from "@shared/contract-work-pdf";
 import type { DeckShape, DeckSlide, DeckView, SlideChange } from "@shared/contract-work-slides";
 import { formatKeyOf } from "work-kit/format/keys";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
 import { bareKey, chordKey, modKey } from "../../lib/keys";
@@ -11,16 +12,27 @@ import { IS_MAC } from "../../lib/platform";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
-import { CSS_PER_POINT, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
+import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
 import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
-import { DeckRow, keyAct, targetOf, type Target } from "./edit/DeckRow";
+import { DeckRow, keyAct, officeTheme, targetOf, type Target } from "./edit/DeckRow";
+import { FormatSheet, SHEET_BESIDE, SHEET_WIDTH } from "./edit/FormatSheet";
+import type { MediaSize } from "./edit/Insert";
 import { HistoryButton } from "./edit/History";
 import { typable, type Sel } from "./edit/model";
+import { unitFor } from "./edit/drag";
+import { Manipulate, movable, turnable, type ManipulateHandle, type Movable } from "./edit/Manipulate";
 import { CONFLICT_WORD, HandSession, type HandState, type Start } from "./edit/session";
 import { TypingBox } from "./edit/TypingBox";
-import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, readingOrder, ROTATE_HANDLE, selectionOf, textFrameOf, type Quad } from "./geometry";
+import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, textFrameOf, type Quad } from "./geometry";
+import { SectionName } from "./edit/SectionName";
+import type { NameAsk } from "./edit/slides";
+import { Picture } from "./Picture";
+import { Sorter } from "./Sorter";
+import { Strip, type PictureOf, type SlideHand } from "./Strip";
 import { present, presentKey, PresentButton, type PresentAsk } from "./Present";
+
+export { freePage } from "./Picture";
 
 /**
  * The slides kind (docs/agents/work-slides.md; the approved page is
@@ -46,6 +58,10 @@ export interface SlidesDeps {
   typing?: { shape: number; sel?: Sel; ground?: string };
   /** A preview's: how wide the format row and its controls are, which jsdom cannot measure. */
   rowMeasure?: (el: HTMLElement) => number;
+  /** A test's: how big a picture he adds is, which jsdom cannot read. */
+  mediaSize?: MediaSize;
+  /** A preview's: a shape being dragged by this much (EMU) when the stage mounts. */
+  dragging?: { shape: number; dx: number; dy: number };
 }
 
 const hosts = new Map<string, DeckHost>();
@@ -70,7 +86,19 @@ function handOf(itemId: string, host: DeckHost, store: DeckStore): HandSession {
 }
 
 export const STRIP = 140;
-export const THUMB = 96;
+
+/** A view's pages by slide, kept for each render it names (the newest eight), so a render still on screen is drawn with its own. */
+function remember(at: Map<string, Map<string, number>>, view: DeckView): void {
+  for (const which of ["file", "proposed"] as const) {
+    const rev = view.renders[which]?.rev;
+    if (!rev || at.has(rev)) continue;
+    at.set(rev, new Map(view.slides.filter((s) => s.from === which).map((s) => [s.key, s.page])));
+    if (at.size > 8) at.delete(at.keys().next().value!);
+  }
+}
+/** His lengths: inches where the paper is Letter, centimetres elsewhere (edit/drag.ts `unitFor`). */
+const UNIT = unitFor(typeof navigator === "undefined" ? "en-US" : navigator.language);
+export { THUMB } from "./Strip";
 export const STAGE_MAX = 760;
 /** Under this the canvas itself is too narrow for a strip beside the stage: the strip becomes a row under it. */
 export const NARROW = 400;
@@ -142,8 +170,10 @@ export function SlidesBody({
   picked: firstPicked,
   typing: firstTyping,
   rowMeasure,
+  mediaSize,
+  dragging: firstDrag,
 }: CanvasBodyProps<SlidesState> & Omit<SlidesDeps, "host" | "engine"> & { host: DeckHost; store: DeckStore; engine: PdfEngine }) {
-  const { view, error, current, side } = useDeck(store);
+  const { view, error, current, side, look, sheet } = useDeck(store);
   const session = handOf(item.id, host, store);
   const hand = useSyncExternalStore(session.subscribe, session.get, session.get);
   // A box open when the tab closes, or the item leaves, commits.
@@ -221,8 +251,31 @@ export function SlidesBody({
   const bound = pictured && proposedDoc !== null && proposedRender.rev === view?.renders.proposed?.rev;
   const seen = !!shownSlide && !!shownDoc && painted?.key === shownSlide.key && painted.doc === shownDoc && stageOn !== null && painted.stage === stageOn;
   const held = !reviewRev || (pictured && !(bound && seen));
-  const target = view ? targetOf(view, shownSlide, hand, session) : null;
+  const target = view && look === "slide" ? targetOf(view, shownSlide, hand, session) : null;
+  // The shape his hand may change from the row and the sheet: picked on the stage, on a slide no suggestion changes.
+  const pickedShape = look === "slide" && shownSlide && hand.picked?.slideKey === shownSlide.key && session.slideRefusal(shownSlide) === null ? shownSlide.shapes.find((s) => s.id === hand.picked!.shapeId) : undefined;
+  const picked = shownSlide && pickedShape ? { slide: shownSlide, shape: pickedShape } : null;
+  const slideSize = view?.size ?? { width: 12_192_000, height: 6_858_000 };
   const reload = useCallback(() => void session.reload(), [session]);
+  // Each render's pages by slide, as the view that came with it had them: until a new render has opened, the one on
+  // screen is drawn with its own pages, so a slide moved, added or taken out never shows another slide's picture.
+  const pagesAt = useRef(new Map<string, Map<string, number>>());
+  if (view) remember(pagesAt.current, view);
+  const fileRev = fileRender.rev;
+  const proposedRev = proposedRender.rev;
+  const pictureOf = useCallback<PictureOf>(
+    (slide) => {
+      const doc = slide.from === "proposed" ? proposedDoc : fileDoc;
+      const pages = pagesAt.current.get((slide.from === "proposed" ? proposedRev : fileRev) ?? "");
+      if (!doc || !pages) return { doc, page: slide.page };
+      const page = pages.get(slide.key);
+      return page === undefined ? { doc: null, page: slide.page } : { doc, page };
+    },
+    [fileDoc, proposedDoc, fileRev, proposedRev],
+  );
+  const [naming, setNaming] = useState<NameAsk | null>(null);
+  const editable = !!view?.hand;
+  const slideHand = useMemo<SlideHand | null>(() => (editable ? { session, store, askName: setNaming } : null), [editable, session, store]);
   useFeeds(shell, view, error, renderError, current, side, select, host, run, retry, retryRender, reviewRev, held, store, hand, session, reload);
 
   // A deck the host could not open is the pane's state line alone, with Retry: no bones under it.
@@ -230,10 +283,24 @@ export function SlidesBody({
   if (!view) return <DeckSkeleton row={source.at === "file"} />;
   if (side === "powerpoint") return <EmptyState title="Not built yet" />;
 
-  const docOf = (slide: DeckSlide): PdfDoc | null => (slide.from === "proposed" ? proposedDoc : fileDoc);
   const revOf = (doc: PdfDoc): string | null => (doc === fileDoc ? fileRender.rev : doc === proposedDoc ? proposedRender.rev : null);
   const shown = view.slides.find((s) => s.key === current) ?? view.slides[0];
   const narrow = size.width > 0 && size.width < NARROW;
+  // The Format sheet beside the stage where the canvas has room, else under the slide in the notes' place.
+  const sheetOpen = sheet && look === "slide" && !!view.hand;
+  const beside = sheetOpen && size.width >= SHEET_BESIDE;
+  const formatSheet = sheetOpen ? (
+    <FormatSheet
+      slide={shown}
+      shape={picked?.shape}
+      theme={officeTheme(view)}
+      unit={UNIT}
+      session={session}
+      docked={!beside}
+      boundary={root}
+      onClose={() => store.set({ sheet: false })}
+    />
+  ) : null;
   const presentFrom = (ask: PresentAsk): void => {
     void session.commit();
     startPresenting(host, store, ask, engine);
@@ -270,40 +337,72 @@ export function SlidesBody({
         if (key && keyAct(key, target, session)) event.preventDefault();
       }}
     >
-      {view.hand ? <DeckRow view={view} target={target} hand={hand} session={session} tone={tone} boundary={root} onPresent={canPresent(view) ? presentFrom : undefined} measure={rowMeasure} /> : null}
-      <div ref={box} className={`flex min-h-0 min-w-0 flex-1 ${narrow ? "flex-col-reverse" : ""}`}>
-        <Strip view={view} current={shown?.key ?? null} narrow={narrow} fileDoc={fileDoc} proposedDoc={proposedDoc} pictures={!view.renderError} onPick={select} />
-        {shown ? (
-          <Main
-            key={shown.key}
-            view={view}
-            slide={shown}
-            doc={view.renderError ? null : docOf(shown)}
-            onMount={stageCame}
-            onUnmount={stageWent}
-            onPainted={(doc, stage) => {
-              if (live.current.has(stage)) setPainted({ key: shown.key, doc, stage });
-              session.painted(shown.key, revOf(doc));
-            }}
-            onPaintFailed={(stage) => {
-              setPainted((p) => (p?.stage === stage ? null : p));
-              session.paintFailed(shown.key);
-            }}
-            onTone={setTone}
-            width={narrow ? size.width : size.width - STRIP}
-            height={narrow ? size.height - 96 : size.height}
-            itemTitle={item.title}
-            source={source}
-            shell={shell}
-            picked={firstPicked}
-            typing={firstTyping}
-            session={session}
-            hand={hand}
-            target={target}
-            tone={tone}
-          />
-        ) : null}
-      </div>
+      {view.hand ? (
+        <DeckRow
+          view={view}
+          target={target}
+          slide={shown}
+          picked={picked}
+          hand={hand}
+          session={session}
+          host={host}
+          store={store}
+          engine={engine}
+          size={slideSize}
+          look={look}
+          sheet={sheet}
+          narrow={size.width > 0 && size.width < 420}
+          tone={tone}
+          boundary={root}
+          onPresent={canPresent(view) ? presentFrom : undefined}
+          measure={rowMeasure}
+          mediaSize={mediaSize}
+        />
+      ) : null}
+      {look === "sorter" ? (
+        <div ref={box} className="flex min-h-0 min-w-0 flex-1">
+          <Sorter view={view} current={shown?.key ?? null} width={size.width} pictureOf={pictureOf} pictures={!view.renderError} hand={slideHand} onOpen={(key) => store.set({ current: key, look: "slide" })} />
+        </div>
+      ) : (
+        <div ref={box} className={`flex min-h-0 min-w-0 flex-1 ${narrow ? "flex-col-reverse" : ""}`}>
+          <Strip view={view} current={shown?.key ?? null} narrow={narrow} pictureOf={pictureOf} pictures={!view.renderError} hand={slideHand} onPick={select} />
+          {shown ? (
+            <Main
+              key={shown.key}
+              view={view}
+              slide={shown}
+              doc={view.renderError ? null : pictureOf(shown).doc}
+              page={pictureOf(shown).page}
+              onMount={stageCame}
+              onUnmount={stageWent}
+              onPainted={(doc, stage) => {
+                if (live.current.has(stage)) setPainted({ key: shown.key, doc, stage });
+                session.painted(shown.key, revOf(doc));
+              }}
+              onPaintFailed={(stage) => {
+                setPainted((p) => (p?.stage === stage ? null : p));
+                session.paintFailed(shown.key);
+              }}
+              onTone={setTone}
+              width={narrow ? size.width : size.width - STRIP - (beside ? SHEET_WIDTH : 0)}
+              height={narrow ? size.height - 96 : size.height}
+              itemTitle={item.title}
+              source={source}
+              shell={shell}
+              picked={firstPicked}
+              typing={firstTyping}
+              dragging={firstDrag}
+              session={session}
+              hand={hand}
+              target={target}
+              tone={tone}
+              under={beside ? null : formatSheet}
+            />
+          ) : null}
+          {beside ? formatSheet : null}
+        </div>
+      )}
+      {naming ? <SectionName ask={naming} session={session} onClose={() => setNaming(null)} /> : null}
     </div>
   );
 }
@@ -409,216 +508,12 @@ function useFeeds(
   }, [shell, host, changes, index, inPowerPoint, run, select, reviewRev, held, store]);
 }
 
-// ── the strip ────────────────────────────────────────────────────────
-
-const FRAME_TINT = { add: "bg-(--add-bg)", del: "bg-(--del-bg)" } as const;
-
-/** The strip draws again only when the deck, the slide on the stage or a render does: not on each word he types. */
-const Strip = memo(function Strip({
-  view,
-  current,
-  narrow,
-  fileDoc,
-  proposedDoc,
-  pictures,
-  onPick,
-}: {
-  view: DeckView;
-  current: string | null;
-  narrow: boolean;
-  fileDoc: PdfDoc | null;
-  proposedDoc: PdfDoc | null;
-  pictures: boolean;
-  onPick(key: string): void;
-}) {
-  const docOf = (slide: DeckSlide): PdfDoc | null => (slide.from === "proposed" ? proposedDoc : fileDoc);
-  const list = useRef<HTMLDivElement>(null);
-  // The current slide stays in view when the stepper moves the stage.
-  useEffect(() => {
-    list.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [current]);
-  // One Tab stop, as a listbox is: the slide on the stage takes it (the first while none is), and the arrows along the
-  // strip, Home and End move the focus and the stage together.
-  const stop = view.slides.some((slide) => slide.key === current) ? current : (view.slides[0]?.key ?? null);
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    const keys = view.slides.map((slide) => slide.key);
-    const at = keys.indexOf((event.target as HTMLElement).dataset.slide ?? stop ?? "");
-    const back = narrow ? "ArrowLeft" : "ArrowUp";
-    const on = narrow ? "ArrowRight" : "ArrowDown";
-    const to = event.key === back ? at - 1 : event.key === on ? at + 1 : event.key === "Home" ? 0 : event.key === "End" ? keys.length - 1 : null;
-    if (to === null) return;
-    event.preventDefault();
-    const key = keys[Math.max(0, Math.min(keys.length - 1, to))];
-    if (!key) return;
-    if (key !== current) onPick(key);
-    list.current?.querySelector<HTMLElement>(`[data-slide="${CSS.escape(key)}"]`)?.focus();
-  };
-  return (
-    <div
-      ref={list}
-      data-slides-strip
-      role="listbox"
-      aria-label="Slides"
-      aria-orientation={narrow ? "horizontal" : "vertical"}
-      onKeyDown={onKeyDown}
-      className={
-        narrow
-          ? "flex shrink-0 gap-1 overflow-x-auto overflow-y-hidden overscroll-contain border-t border-border bg-sidebar p-2"
-          : "flex w-[140px] shrink-0 flex-col gap-0.5 overflow-x-hidden overflow-y-auto overscroll-contain border-e border-border bg-sidebar pt-2 pr-2 pb-4 pl-1"
-      }
-    >
-      {view.slides.map((slide, index) => {
-        const on = slide.key === current;
-        return (
-          <div key={slide.key} className={narrow ? "flex shrink-0 flex-col" : "contents"}>
-            {slide.section ? <div className={`text-xs font-medium text-muted-foreground ${narrow ? "px-2 pb-1 whitespace-nowrap" : `${index === 0 ? "pt-1" : "pt-3"} pr-1 pb-1 pl-6`}`}>{slide.section}</div> : null}
-            <button
-              type="button"
-              role="option"
-              aria-selected={on}
-              aria-current={on ? "true" : undefined}
-              aria-label={`${slide.number === null ? "Removed" : `Slide ${slide.number}`}: ${slide.title || "Untitled"}`}
-              data-slide={slide.key}
-              data-tint={slide.tint ?? undefined}
-              tabIndex={slide.key === stop ? 0 : -1}
-              onClick={() => onPick(slide.key)}
-              className="group/th relative flex shrink-0 items-start gap-1 rounded-md text-start"
-            >
-              <span className={`w-5 shrink-0 pt-1 text-end text-xs leading-4 tabular-nums ${on ? "text-foreground" : "text-muted-foreground"}`}>{slide.number ?? ""}</span>
-              <span
-                className={`block rounded-md p-[3px] transition-[background-color] duration-(--dur-hover) ease-(--ease-out) motion-reduce:transition-none ${
-                  slide.tint === "add"
-                    ? on
-                      ? "bg-[color-mix(in_srgb,var(--success)_30%,transparent)]"
-                      : FRAME_TINT.add
-                    : slide.tint === "del"
-                      ? FRAME_TINT.del
-                      : on
-                        ? "bg-muted"
-                        : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
-                }`}
-              >
-                <Picture doc={pictures ? docOf(slide) : null} page={slide.page} width={THUMB} ghost={slide.tint === "del"} title={slide.title} thumb />
-              </span>
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-});
-
-/** Whether an element is in its scroller's view, or near it; true where nothing lays out (a test, a static page). */
-function useInView(ref: { current: Element | null }, margin = "200px"): boolean {
-  const [seen, setSeen] = useState(typeof IntersectionObserver === "undefined");
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver((entries) => setSeen(entries.some((e) => e.isIntersecting)), { rootMargin: margin });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref, margin]);
-  return seen;
-}
-
-/**
- * A slide at a width: the render's page, or while it comes (or with no
- * render) its title on a blank. A thumbnail paints only near the view, after
- * the stage, and lets pdf.js free the page when it leaves. A paint pdf.js
- * refuses on the stage says so in the slide's place, with Retry, as a PDF's
- * page does; a thumbnail stays a blank.
- */
-/**
- * Lets pdf.js free a page it drew. A render that was replaced (the deck changed) is destroyed before the pictures
- * that drew from it are let go, and pdf.js throws when a destroyed document is asked for a page: there is nothing
- * left to free, and the throw, from an effect's clean-up, took the whole canvas down ("It could not be shown").
- */
-export function freePage(doc: PdfDoc | null, page: number): void {
-  try {
-    doc?.release(page);
-  } catch {
-    /* destroyed: nothing to free */
-  }
-}
-
-const Picture = memo(function Picture({
-  doc,
-  page,
-  width,
-  ghost = false,
-  title,
-  thumb = false,
-  onPainted,
-  onFailed,
-}: {
-  doc: PdfDoc | null;
-  page: number;
-  width: number;
-  ghost?: boolean;
-  title: string;
-  thumb?: boolean;
-  onPainted?(host: HTMLElement): void;
-  onFailed?(): void;
-}) {
-  const host = useRef<HTMLSpanElement>(null);
-  const [painted, setPainted] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [tries, setTries] = useState(0);
-  const near = useInView(host);
-  const size = doc?.size(page);
-  const aspect = size ? size.width / size.height : 16 / 9;
-  useEffect(() => {
-    const el = host.current;
-    if (!el || !doc || (thumb && !near)) return;
-    const job = new AbortController();
-    const scale = width / (doc.size(page).width * CSS_PER_POINT);
-    const paint = (): void => {
-      setFailed(false);
-      doc.paint(page, el, scale, null, job.signal).then(
-        () => {
-          if (job.signal.aborted) return;
-          setPainted(true);
-          onPainted?.(el);
-        },
-        () => {
-          if (job.signal.aborted || thumb) return;
-          setFailed(true);
-          onFailed?.();
-        },
-      );
-    };
-    // The stage asks first: a thumbnail waits a beat, so the one worker draws the big slide before the strip.
-    const wait = thumb ? setTimeout(paint, 60) : (paint(), undefined);
-    return () => {
-      clearTimeout(wait);
-      job.abort();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, page, width, thumb && near, tries]);
-  useEffect(() => (doc && thumb && !near ? freePage(doc, page) : undefined), [doc, page, thumb, near]);
-  useEffect(() => () => freePage(doc, page), [doc, page]);
-  return (
-    <span className={`relative block overflow-hidden rounded-[3px] bg-muted outline-1 -outline-offset-1 outline-(--image-outline) ${ghost ? "opacity-45" : ""}`} style={{ width, height: Math.round(width / aspect) }}>
-      <span ref={host} aria-hidden="true" className="absolute inset-0" />
-      {!painted && !failed ? <span className="absolute inset-0 grid place-items-center overflow-hidden p-2 text-center text-xs leading-4 text-muted-foreground">{doc ? "" : title}</span> : null}
-      {failed ? (
-        <span data-slide-failed className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-[13px] leading-5 text-muted-foreground">
-          Couldn't draw this slide
-          <Button variant="ghost" size="xs" className="text-foreground" onClick={() => setTries((n) => n + 1)}>
-            Retry
-          </Button>
-        </span>
-      ) : null}
-    </span>
-  );
-});
-
 // ── the stage ────────────────────────────────────────────────────────
 
 /** The tints a slide takes: the dark theme's on a dark picture, paper's on a light one. */
 const TINTS = {
-  dark: { add: "bg-(--add-bg-dark-pic)" },
-  light: { add: "bg-(--add-bg-paper)" },
+  dark: { add: "bg-(--add-bg-dark-pic)", del: "bg-(--del-bg-dark-pic)" },
+  light: { add: "bg-(--add-bg-paper)", del: "bg-(--del-bg-paper)" },
 } as const;
 
 /** Whether a drawn picture is dark: its mean light over a coarse grid. */
@@ -640,9 +535,10 @@ export function toneOf(host: HTMLElement): "dark" | "light" {
 
 /**
  * The colour of the slide just inside a shape's edges, read from the stage's drawn picture (`groundOf`): seven
- * samples along each edge, 3px in. Null where nothing is drawn yet (no canvas, or a picture with no pixels to read).
+ * samples along each edge, 3px in (`inset`; below 0, that far outside it: the slide round a shape). Null where
+ * nothing is drawn yet (no canvas, or a picture with no pixels to read).
  */
-function groundAt(stage: Element | null, quad: Quad, width: number, height: number): string | null {
+function groundAt(stage: Element | null, quad: Quad, width: number, height: number, inset = 3): string | null {
   const canvas = stage?.querySelector("canvas");
   const ctx = canvas?.getContext("2d", { willReadFrequently: true });
   if (!canvas || !ctx || canvas.width === 0 || width <= 0) return null;
@@ -656,8 +552,8 @@ function groundAt(stage: Element | null, quad: Quad, width: number, height: numb
       const t = j / 8;
       const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
       const toward = Math.hypot(mid.x - p.x, mid.y - p.y) || 1;
-      const x = Math.round((p.x + ((mid.x - p.x) / toward) * 3) * k);
-      const y = Math.round((p.y + ((mid.y - p.y) / toward) * 3) * k);
+      const x = Math.round((p.x + ((mid.x - p.x) / toward) * inset) * k);
+      const y = Math.round((p.y + ((mid.y - p.y) / toward) * inset) * k);
       if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
       const [r, g, bl, al] = ctx.getImageData(x, y, 1, 1).data;
       samples.push([r, g, bl, al]);
@@ -673,6 +569,7 @@ function Main({
   view,
   slide,
   doc,
+  page,
   width,
   height,
   itemTitle,
@@ -685,24 +582,32 @@ function Main({
   onTone,
   picked: firstPicked,
   typing: firstTyping,
+  dragging: firstDrag,
   session,
   hand,
   target,
   tone,
+  under,
 }: {
   /** the shape picked when the stage mounts (a preview) */
   picked?: number;
   /** the box open when the stage mounts (a preview) */
   typing?: SlidesDeps["typing"];
+  /** a shape being dragged when the stage mounts (a preview) */
+  dragging?: SlidesDeps["dragging"];
   session: HandSession;
   hand: HandState;
   target: Target;
   /** the picture's tone, read from its pixels when it paints */
   tone: "dark" | "light";
   onTone(tone: "dark" | "light"): void;
+  /** the Format sheet, laid under the slide in the notes' place (a narrow canvas); the slide takes 42% of the height then */
+  under?: ReactNode;
   view: DeckView;
   slide: DeckSlide;
   doc: PdfDoc | null;
+  /** the slide's page in `doc` */
+  page: number;
   width: number;
   height: number;
   itemTitle: string;
@@ -721,9 +626,9 @@ function Main({
     onMount(stage);
     return () => onUnmount(stage);
   }, [stage, onMount, onUnmount]);
-  const size = doc?.size(slide.page);
+  const size = doc?.size(page);
   const aspect = size ? size.width / size.height : 16 / 9;
-  const w = width > 0 ? stageWidth(width, height, aspect) : STAGE_MAX;
+  const w = width > 0 ? stageWidth(width, under ? Math.round(height * 0.42) + 150 : height, aspect) : STAGE_MAX;
   // The shape picked is the session's, so the row acts on it; it is let go when the stage leaves the slide.
   const picked = hand.picked?.slideKey === slide.key ? hand.picked.shapeId : null;
   useLayoutEffect(() => {
@@ -736,7 +641,10 @@ function Main({
   const tints = TINTS[tone];
   // A press takes the keyboard to the shape it picked, so Escape and the arrows answer after a pick by pointer.
   const byPointer = useRef(false);
+  /** The shape Ask was last told of: a pick made elsewhere (a shape he just added) is told once it is on the stage. */
+  const told = useRef<number | null>(null);
   const pick = (shape: DeckShape, el: HTMLElement): void => {
+    told.current = shape.id;
     session.pick(slide.key, shape.id);
     const words = shape.text.replace(/\s+/g, " ").trim();
     const short = words.length > 40 ? `${words.slice(0, 40).trimEnd()}…` : words;
@@ -750,6 +658,7 @@ function Main({
     });
   };
   const unpick = (): void => {
+    told.current = null;
     session.pick(slide.key, null);
     shell.selection(null);
   };
@@ -772,7 +681,17 @@ function Main({
   const buttonOf = (id: number): HTMLElement | null => layer.current?.querySelector<HTMLElement>(`[data-shape="${id}"]`) ?? null;
   const h = Math.round(w / aspect);
   const selected = shapes.find((s) => s.id === picked);
-  const selection = selected ? selectionOf(selected.quad, w, h) : null;
+  // The slide in EMU, as the outline's boxes and his edits have it.
+  const emuWidth = view.size?.width ?? (aspect < 1.5 ? 9_144_000 : 12_192_000);
+  const emu = { width: emuWidth, height: view.size?.height ?? Math.round(emuWidth / aspect) };
+  // His hand moves a shape with its own box on the slide, on a slide no suggestion changes, while no box is open.
+  const canMove = (shape: DeckShape | undefined): shape is Movable => movable(shape) && session.slideRefusal(slide) === null && !hand.box;
+  const manip = useRef<ManipulateHandle>(null);
+  const [dragging, setDragging] = useState(false);
+  // After a move the outline stands where he put it while the edit is on its way; the deck's own corners after.
+  const land = hand.land?.slideKey === slide.key ? hand.land : null;
+  const selectedQuad = selected && land?.shapeId === selected.id && !land.ground && land.phase === "saving" ? land.quad : selected?.quad;
+  const selection = selected && selectedQuad && !dragging ? selectionOf(selectedQuad, w, h) : null;
   // The typing box, while it is on this slide: on the shape's corners as the deck has them now.
   const boxHere = hand.box?.slideKey === slide.key ? hand.box : null;
   const boxShape = boxHere ? (shapes.find((s) => s.id === boxHere.shape.id) ?? null) : null;
@@ -795,12 +714,37 @@ function Main({
   }, [typingHere]);
   /** A second press on a picked text shape, Return or F2 on it: his words go in a box over it. */
   const openBox = (shape: DeckShape, start: Start): boolean => session.open(slide, shape, start);
+  /** The shape off the slide; the slide's own colour round it lies over its place until the new picture lands. */
+  const remove = (shape: DeckShape & { quad: Quad }): void => {
+    unpick();
+    const ground = groundAt(layer.current?.parentElement ?? null, shape.quad, w, h, -3);
+    void session.edit([{ op: "delete", slide: slide.id, shape: shape.id }], "Couldn't delete the shape", ground ? { slideKey: slide.key, shapeId: shape.id, quad: shape.quad, ground } : undefined);
+    layer.current?.focus({ preventScroll: true });
+  };
   useLayoutEffect(() => {
     const shape = firstTyping && shapes.find((s) => s.id === firstTyping.shape);
     if (!shape || !openBox(shape, "end")) return;
     if (firstTyping.sel) session.select(firstTyping.sel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // A shape picked from the row (one he just added) takes the keyboard and feeds Ask, as a press on it would; a box
+  // opened on it keeps the keyboard.
+  useEffect(() => {
+    if (picked === null || picked === told.current) return;
+    const shape = shapes.find((s) => s.id === picked);
+    const el = shape ? buttonOf(shape.id) : null;
+    if (!shape || !el) return;
+    if (hand.box) {
+      told.current = picked;
+      return;
+    }
+    byPointer.current = true;
+    el.focus({ preventScroll: true });
+    byPointer.current = false;
+    pick(shape, el);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked, shapes]);
+  const adding = hand.adding?.slideKey === slide.key ? hand.adding : null;
   // A change to the notes is drawn once, in the Notes section; the list above it is the slide's shapes.
   const notesEdit = change?.edits.find((e) => e.where === NOTES_WHERE);
   const edits = change?.edits.filter((e) => e !== notesEdit) ?? [];
@@ -810,7 +754,7 @@ function Main({
         <div data-slides-stage className="relative shrink-0" style={{ width: w }}>
           <Picture
             doc={doc}
-            page={slide.page}
+            page={page}
             width={w}
             ghost={slide.tint === "del"}
             title={slide.title}
@@ -825,11 +769,17 @@ function Main({
             data-slides-shapes
             role="group"
             aria-label="Shapes on this slide"
-            className="absolute inset-0"
+            // It holds the keyboard when a shape it held goes (a delete), so the keys stay the deck's.
+            tabIndex={-1}
+            className="absolute inset-0 outline-none"
+            // A press on a shape he can move may become a drag (edit/Manipulate.tsx); until it moves it is a press.
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) manip.current?.down(event);
+            }}
             // A press picks the topmost shape under it, by its own corners (a turned shape's box is wider than it
-            // is); a press on the bare slide lets the selection go.
+            // is); a press on the bare slide lets the selection go. The press that ends a drag, or lands on a handle, does neither.
             onClick={(event) => {
-              if (event.target !== event.currentTarget) return;
+              if (event.target !== event.currentTarget || manip.current?.dragged()) return;
               const box = event.currentTarget.getBoundingClientRect();
               const under = box.width > 0 && box.height > 0 ? hit(shapes, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height) : null;
               const el = under ? buttonOf(under.id) : null;
@@ -841,12 +791,14 @@ function Main({
                 pick(under, el);
               } else unpick();
             }}
-            // Tab walks the shapes from the back of the slide to the front; the arrows move the selection in reading order; Escape lets it go.
+            // Tab walks the shapes from the back of the slide to the front; the arrows nudge the picked one (Shift: ten
+            // pixels), Delete and Backspace take it off the slide; Escape lets it go.
             onKeyDown={(event) => {
-              const at = Number((event.target as HTMLElement).dataset.shape);
+              // A press on a handle, or on the shape already picked, leaves the keyboard on the layer itself: its keys are the picked shape's.
+              const at = Number((event.target as HTMLElement).dataset.shape) || (event.target === event.currentTarget ? (picked ?? 0) : 0);
               if (!at) return;
               if (event.key === "Escape") {
-                unpick();
+                if (!manip.current?.live()) unpick();
                 return;
               }
               // Return opens the box with the words selected, F2 with the caret at their end, as in PowerPoint.
@@ -855,18 +807,29 @@ function Main({
                 if (shape && typable(shape) && openBox(shape, event.key === "Enter" ? "all" : "end")) event.preventDefault();
                 return;
               }
-              // The bare arrows only: with a modifier they are someone else's (a word, a line, the window).
-              const by = !bareKey(event) ? 0 : event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
-              if (!by) return;
-              const order = readingOrder(shapes);
-              const next = order[order.findIndex((o) => o.id === at) + by];
+              const shape = shapes.find((s) => s.id === at);
+              if ((event.key === "Delete" || event.key === "Backspace") && bareKey(event)) {
+                if (shape && session.slideRefusal(slide) === null && !hand.box) {
+                  event.preventDefault();
+                  remove(shape);
+                }
+                return;
+              }
+              // The arrows alone or with Shift: with ⌘, Ctrl or Alt they are someone else's (a word, a line, the window).
+              const step = event.shiftKey ? 10 : 1;
+              const [dx, dy] = chordKey(event) ? [0, 0] : event.key === "ArrowRight" ? [step, 0] : event.key === "ArrowLeft" ? [-step, 0] : event.key === "ArrowDown" ? [0, step] : event.key === "ArrowUp" ? [0, -step] : [0, 0];
+              if (!dx && !dy) return;
               event.preventDefault();
               event.stopPropagation();
-              buttonOf(next?.id ?? at)?.focus();
+              if (shape && canMove(shape)) manip.current?.nudge(shape, dx, dy);
             }}
           >
             {slide.changed.map((b: Bbox, i) => (
               <span key={`c${i}`} data-slide-changed style={boxStyle(b)} className={`pointer-events-none absolute rounded-[3px] ${tints.add}`} />
+            ))}
+            {/* Where a shape the change takes off the slide lay: the picture no longer shows it, the tint says where it was. */}
+            {(slide.removed ?? []).map((b: Bbox, i) => (
+              <span key={`r${i}`} data-slide-removed style={boxStyle(b)} className={`pointer-events-none absolute rounded-[3px] ${tints.del}`} />
             ))}
             {shapes.map((shape) => {
               const xs = shape.quad.map((p) => p[0]);
@@ -896,7 +859,7 @@ function Main({
                 box={boxHere}
                 target={target}
                 place={textFrameOf(boxShape.quad, !!boxShape.flip, w, h)}
-                emu={w / (view.size?.width ?? (aspect < 1.5 ? 9_144_000 : 12_192_000))}
+                emu={w / emuWidth}
                 frame={boxShape.frame}
                 // With no picture the slide is the blank's own fill, and so is the box.
                 ground={firstTyping?.ground ?? ground ?? (doc ? null : "var(--muted)")}
@@ -905,25 +868,54 @@ function Main({
                 onLeave={() => buttonOf(boxShape.id)?.focus({ preventScroll: true })}
               />
             ) : null}
-            {selection ? <Selection selection={selection} width={w} height={h} /> : null}
+            {adding ? <Adding quad={adding.quad} width={w} height={h} /> : null}
+            {selection && selected ? <Selection selection={selection} width={w} height={h} handles={canMove(selected)} turn={canMove(selected) && turnable(selected)} /> : null}
+            <Manipulate
+              ref={manip}
+              slide={slide}
+              shapes={shapes}
+              picked={selected}
+              size={emu}
+              width={w}
+              height={h}
+              stage={() => layer.current?.parentElement ?? null}
+              session={session}
+              land={land}
+              unit={UNIT}
+              canMove={canMove}
+              onPick={(shape) => {
+                const el = buttonOf(shape.id);
+                if (!el) return;
+                byPointer.current = true;
+                el.focus({ preventScroll: true });
+                byPointer.current = false;
+                pick(shape, el);
+              }}
+              onLive={setDragging}
+              seed={firstDrag}
+            />
           </div>
         </div>
       </div>
-      {edits.length > 0 ? <Edits edits={edits} /> : null}
-      <div className="shrink-0 px-5 pt-4 pb-5">
-        <div className="text-xs font-medium text-muted-foreground">Notes</div>
-        {notesEdit ? (
-          <p data-slide-notes-edit tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
-            <Diff before={notesEdit.before} after={notesEdit.after} />
-          </p>
-        ) : slide.notes.trim() ? (
-          <p tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
-            {slide.notes}
-          </p>
-        ) : (
-          <p className="mt-1 text-sm leading-[22px] text-muted-foreground">None yet</p>
-        )}
-      </div>
+      {under ?? (
+        <>
+          {edits.length > 0 ? <Edits edits={edits} /> : null}
+          <div className="shrink-0 px-5 pt-4 pb-5">
+            <div className="text-xs font-medium text-muted-foreground">Notes</div>
+            {notesEdit ? (
+              <p data-slide-notes-edit tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
+                <Diff before={notesEdit.before} after={notesEdit.after} />
+              </p>
+            ) : slide.notes.trim() ? (
+              <p tabIndex={0} className="focus-ring mt-1 max-w-[70ch] text-sm leading-[22px] text-pretty whitespace-pre-wrap">
+                {slide.notes}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm leading-[22px] text-muted-foreground">None yet</p>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -940,15 +932,21 @@ function shapeLabel(shape: DeckShape): string {
  * and a rotate handle over its top edge, drawn at screen size whatever the slide's zoom and turned with the shape.
  * One look in both themes (`sel-line-dark-pic` on `paper`): it sits on the deck, not on the app.
  */
-function Selection({ selection, width, height }: { selection: ReturnType<typeof selectionOf>; width: number; height: number }) {
-  const { corners, handles, rotate, stem } = selection;
+function Selection({ selection, width, height, handles: withHandles, turn: withTurn }: { selection: ReturnType<typeof selectionOf>; width: number; height: number; handles: boolean; turn: boolean }) {
+  const { corners, rotate, stem } = selection;
+  // Handles only where they do something: a shape he cannot move by hand is outlined alone.
+  const handles = withHandles ? selection.handles : [];
   const [tl, tr] = corners;
   const turn = (Math.atan2(tr.y - tl.y, tr.x - tl.x) * 180) / Math.PI;
   return (
     <svg data-slide-selection aria-hidden="true" width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="pointer-events-none absolute inset-0 overflow-visible">
       <polygon points={corners.map((c) => `${c.x},${c.y}`).join(" ")} fill="none" stroke="var(--sel-line-dark-pic)" strokeWidth={1} />
-      <line x1={stem[0].x} y1={stem[0].y} x2={stem[1].x} y2={stem[1].y} stroke="var(--sel-line-dark-pic)" strokeWidth={1} />
-      <circle data-handle="rotate" cx={rotate.x} cy={rotate.y} r={ROTATE_HANDLE / 2 - HANDLE_EDGE / 2} fill="var(--paper)" stroke="var(--sel-line-dark-pic)" strokeWidth={HANDLE_EDGE} />
+      {withTurn ? (
+        <>
+          <line x1={stem[0].x} y1={stem[0].y} x2={stem[1].x} y2={stem[1].y} stroke="var(--sel-line-dark-pic)" strokeWidth={1} />
+          <circle data-handle="rotate" cx={rotate.x} cy={rotate.y} r={ROTATE_HANDLE / 2 - HANDLE_EDGE / 2} fill="var(--paper)" stroke="var(--sel-line-dark-pic)" strokeWidth={HANDLE_EDGE} />
+        </>
+      ) : null}
       {handles.map((p, i) => (
         <rect
           key={i}
@@ -965,6 +963,29 @@ function Selection({ selection, width, height }: { selection: ReturnType<typeof 
         />
       ))}
     </svg>
+  );
+}
+
+/**
+ * Where a picture or a video he is adding will lie, while it is on its way to the host: its box outlined in the
+ * selection's line, and the one word with a spinner in its middle.
+ */
+function Adding({ quad, width, height }: { quad: Quad; width: number; height: number }) {
+  const xs = quad.map((p) => p[0] * width);
+  const ys = quad.map((p) => p[1] * height);
+  return (
+    <>
+      <svg data-slide-adding aria-hidden="true" width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="pointer-events-none absolute inset-0 overflow-visible">
+        <polygon points={quad.map(([x, y]) => `${x * width},${y * height}`).join(" ")} fill="none" stroke="var(--sel-line-dark-pic)" strokeWidth={1} />
+      </svg>
+      <span
+        className="pointer-events-none absolute flex h-5 -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-[4px] bg-(--sel-line-dark-pic) px-1.5 text-[11px] leading-4 font-medium text-(--paper-ink)"
+        style={{ left: (Math.min(...xs) + Math.max(...xs)) / 2, top: (Math.min(...ys) + Math.max(...ys)) / 2 }}
+      >
+        <Spinner className="size-3" />
+        Adding
+      </span>
+    </>
   );
 }
 

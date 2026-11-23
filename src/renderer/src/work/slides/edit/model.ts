@@ -79,7 +79,7 @@ const LOOK_KEYS = ["font", "size", "bold", "italic", "underline", "color", "them
 const PARA_KEYS = ["level", "align", "list"] as const;
 
 /** A shape with words a hand can type into: a text shape whose paragraphs the outline lists. */
-export const typable = (shape: DeckShape): boolean => shape.kind === "text" && Array.isArray(shape.paragraphs);
+export const typable = (shape: DeckShape): boolean => (shape.kind === "text" || shape.kind === "other") && Array.isArray(shape.paragraphs);
 
 const pick = (run: RunLook): RunLook => {
   const out: RunLook = {};

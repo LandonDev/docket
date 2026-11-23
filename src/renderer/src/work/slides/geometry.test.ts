@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeckShape } from "@shared/contract-work-slides";
-import { ASK_UNDER, askAnchor, groundOf, hit, inQuad, pickable, PICKABLE, readingOrder, ROTATE_RISE, selectionOf, textFrameOf, type Quad } from "./geometry";
+import { ASK_UNDER, askAnchor, groundOf, hit, inQuad, pickable, PICKABLE, ROTATE_RISE, selectionOf, textFrameOf, type Quad } from "./geometry";
 
 const box = (x0: number, y0: number, x1: number, y1: number): Quad => [
   [x0, y0],
@@ -78,13 +78,6 @@ describe("a selection on the stage", () => {
     const top = s.handles[1];
     expect(s.rotate.x).toBeCloseTo(top.x + ROTATE_RISE, 5);
     expect(s.rotate.y).toBeCloseTo(top.y, 5);
-  });
-});
-
-describe("the order keys move a selection in", () => {
-  it("is reading order, top to bottom then left to right, over what can be picked", () => {
-    const shapes = [shape(1, box(0.5, 0.5, 0.9, 0.9)), shape(2, box(0.1, 0.1, 0.9, 0.2)), shape(3, box(0.1, 0.5, 0.4, 0.9)), shape(4, box(0.1, 0.3, 0.2, 0.4), { kind: "frame" })];
-    expect(readingOrder(shapes).map((s) => s.id)).toEqual([2, 3, 1]);
   });
 });
 

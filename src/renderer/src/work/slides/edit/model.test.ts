@@ -44,6 +44,9 @@ describe("the typing box's model", () => {
     expect(typable(shape())).toBe(true);
     expect(typable(shape({ kind: "picture" }))).toBe(false);
     expect(typable(shape({ paragraphs: undefined }))).toBe(false);
+    // A drawn shape with no words takes his, once the host lists its (empty) paragraphs.
+    expect(typable(shape({ kind: "other", paragraphs: [] }))).toBe(true);
+    expect(typable(shape({ kind: "other", paragraphs: undefined }))).toBe(false);
   });
 
   it("lays a look on a range across runs and paragraphs, splitting the runs at its ends and keeping where each came from", () => {

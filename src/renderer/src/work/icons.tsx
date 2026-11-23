@@ -58,6 +58,18 @@ import TextItalicIcon from "@hugeicons/core-free-icons/TextItalicIcon";
 import TextUnderlineIcon from "@hugeicons/core-free-icons/TextUnderlineIcon";
 import Undo02Icon from "@hugeicons/core-free-icons/Undo02Icon";
 import Upload01Icon from "@hugeicons/core-free-icons/Upload01Icon";
+import ChartColumnIcon from "@hugeicons/core-free-icons/ChartColumnIcon";
+import ChartLineData01Icon from "@hugeicons/core-free-icons/ChartLineData01Icon";
+import LayerBringForwardIcon from "@hugeicons/core-free-icons/LayerBringForwardIcon";
+import LayerBringToFrontIcon from "@hugeicons/core-free-icons/LayerBringToFrontIcon";
+import LayerSendBackwardIcon from "@hugeicons/core-free-icons/LayerSendBackwardIcon";
+import LayerSendToBackIcon from "@hugeicons/core-free-icons/LayerSendToBackIcon";
+import PaintBucketIcon from "@hugeicons/core-free-icons/PaintBucketIcon";
+import PieChartIcon from "@hugeicons/core-free-icons/PieChartIcon";
+import ShapesIcon from "@hugeicons/core-free-icons/ShapesIcon";
+import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
+import TextSquareIcon from "@hugeicons/core-free-icons/TextSquareIcon";
+import ViewOffIcon from "@hugeicons/core-free-icons/ViewOffIcon";
 import { wrap } from "../chrome/icons";
 
 /** LifeOS's mark, as the approved prototypes draw it (`b-lifeos`): a ring with a meridian and two parallels. Hugeicons has no LifeOS, so it is drawn here in the same shape Hugeicons gives, and takes the one stroke. */
@@ -149,3 +161,17 @@ export const Font = wrap(TextFontIcon, "Font");
 export const Bullets = wrap(LeftToRightListBulletIcon, "Bullets");
 export const Numbers = wrap(LeftToRightListNumberIcon, "Numbers");
 export const Align = wrap(TextAlignLeftIcon, "Align");
+/** The deck's shapes, slides and views (SLD5): a shape's fill, its place among the others, the Format sheet, what Insert adds, the Sorter, a slide left out of the show. */
+export const ShapeFill = wrap(PaintBucketIcon, "ShapeFill");
+export const BringToFront = wrap(LayerBringToFrontIcon, "BringToFront");
+export const BringForward = wrap(LayerBringForwardIcon, "BringForward");
+export const SendBackward = wrap(LayerSendBackwardIcon, "SendBackward");
+export const SendToBack = wrap(LayerSendToBackIcon, "SendToBack");
+export const FormatSheet = wrap(SlidersHorizontalIcon, "FormatSheet");
+export const TextBox = wrap(TextSquareIcon, "TextBox");
+export const Shapes = wrap(ShapesIcon, "Shapes");
+export const Chart = wrap(ChartColumnIcon, "Chart");
+export const ChartLine = wrap(ChartLineData01Icon, "ChartLine");
+export const ChartPie = wrap(PieChartIcon, "ChartPie");
+export const Sorter = wrap(GridViewIcon, "Sorter");
+export const Hidden = wrap(ViewOffIcon, "Hidden");

@@ -346,14 +346,21 @@ and the deck"); every other part keeps its bytes.
   chart or a diagram cannot be turned.
 - **What is PowerPoint's.** A layout is offered only where each of the
   slide's placeholders has its match in the new one (same index and
-  kind): any other change says "change this layout in PowerPoint". A
+  kind): any other change says "change this layout in PowerPoint". The
+  outline says which those are for each slide (`SlideInfo.fits`,
+  `DeckSlide.layoutsFit`), by the edit's own test, so the picker offers
+  exactly what the host takes. A
   table with merged cells keeps its rows and columns for PowerPoint. A
   table's and a chart's fill are set there.
 - **Effects go with their shape.** A `delete` takes the shape's effects
   out of the slide's timing (the whole effect, and any group it leaves
   empty, up to the main sequence), so no timing names a shape that is
   gone, which PowerPoint would repair.
-- **The outline** also says a shape's own `fill` and `line` where it says
+- **The outline** also says a table's `cells`, the paragraphs and frame
+  of a drawn shape with no words (so it can be typed into; it stays kind
+  `other`), where the shapes a change takes off a slide lay
+  (`DeckSlide.removed`, tinted as removed on the stage), and a shape's own
+  `fill` and `line` where it says
   them itself, and the stepper says a change of this kind in words
   ("Moved or resized", "Added", "Removed", "fill #FF0000", "Hidden").
   An edit of the deck itself (its theme, a section renamed) is one change
@@ -703,10 +710,12 @@ slide's.
   own slide's alone, notes move none, the theme or the deck's settings
   move them all.
 - The renderer: `geometry.test.ts` (hit testing through turned and grouped
-  shapes, the selection's handles, reading order, the typing box's place
+  shapes, the selection's handles, the typing box's place
   through a turn and both flips, the ground's colour), `boxes.test.ts` (the
   measured corners within their bounds), the picking cases of
-  `SlidesCanvas.dom.test.tsx`, `edit/model.test.ts` (the outline read in,
+  `SlidesCanvas.dom.test.tsx`, `edit/drag.test.ts` (moving, resizing, turning, the snap and the
+  guides, the nudge, his units), `edit/add.test.ts` (where a new shape lands, the layouts a slide
+  can take, a slide's new place), `edit/model.test.ts` (the outline read in,
   a look on a range splitting runs, a caret's word and its waiting look,
   Return, a paste, what the row shows, the `runs` edit, nothing changed,
   `rebase`), `edit/dom.test.ts` (drawn and read back, words the browser
@@ -719,7 +728,17 @@ slide's.
   back, the commit on close, a slide with a suggestion; the row present,
   absent and resting, the picked shape's look and its `format` edit, the
   box's selection, the keys; History and its loading and empty states;
-  what saved means).
+  what saved means). His hand on shapes and slides, in the same pane
+  (`stage.testkit.tsx`): `ShapeEditor.dom.test.tsx` (a drag's one
+  `geometry` edit, the carried picture until the new paint, Escape, the
+  guides and the snap, Alt, resize with Shift, a handle press, the turn,
+  the nudge run, Delete, a suggested slide, a suggestion's tints),
+  `DeckRow.dom.test.tsx` (the layouts that map, by name and by picture,
+  fill, Arrange, each Insert, a picture through the attach pieces, Theme,
+  the view switch), `SlideStrip.dom.test.tsx` (the slide's menu, sections,
+  Delete, reorder by drag in the strip and the Sorter, the Sorter's grid)
+  and `FormatSheet.dom.test.tsx` (the fields in his units, the outline, a
+  table's rows and columns, the sheet under the slide).
 
 ## A mail's attachment
 
@@ -734,16 +753,21 @@ stage".
 | File | What it does |
 |---|---|
 | `canvas.ts` | The kind's def |
-| `SlidesCanvas.tsx` | The chunk: `Body` (the format row, the strip and the stage), `Bar` (History, Present where the row is not drawn, the line while PowerPoint shows the deck) and `TabEnd` (the TempCode and PowerPoint switch) |
-| `geometry.ts` | Hit testing, the selection's outline and handles, reading order, which kinds can be picked, where a shape's words are laid (`textFrameOf`) and the ground under them (`groundOf`) (pure) |
+| `SlidesCanvas.tsx` | The chunk: `Body` (the format row, the strip and the stage or the Sorter, the Format sheet), `Bar` (History, Present where the row is not drawn, the line while PowerPoint shows the deck) and `TabEnd` (the TempCode and PowerPoint switch) |
+| `Strip.tsx`, `Sorter.tsx`, `Picture.tsx` | The strip and the Sorter, each with a slide's menu, reorder by drag and Delete; a slide's picture at a width |
+| `geometry.ts` | Hit testing, the selection's outline and handles, which kinds can be picked, where a shape's words are laid (`textFrameOf`) and the ground under them (`groundOf`) (pure) |
 | `deck.ts` | `DeckHost` (the methods and the push), the per-item store the three parts share (the view, the slide on the stage, which app shows it), and `useRender`, which opens one of the deck's renders in pdf.js and keeps the one shown until the next has opened |
 | `Present.tsx` | Present: the split button at the end of the deck's bar, the ways to present as menu rows (`usePresentMenu`, which the format row's way out shares), and the keys that start a show while the keyboard is in the deck |
 | `edit/model.ts` | His words in a shape as runs (pure): the outline read in, a look laid on a range, typing, Return, a paste, what the row shows, the `runs` and `format` edits |
 | `edit/dom.ts` | The typing box's words in the page: drawn from the model, read back run by run, places and selections both ways |
 | `edit/session.ts` | `HandSession`: the shape picked, the typing box's life, the box's own undo, and his edits on their way to the host (one per item and host, shared by the body, the row and the bar) |
 | `edit/TypingBox.tsx`, `edit/DeckRow.tsx`, `edit/History.tsx` | The box over a shape, the deck's format row (its glyphs are in `work/icons.tsx`), History in the bar |
+| `edit/drag.ts`, `edit/Manipulate.tsx` | A shape moved, resized, turned and nudged (the maths pure, in EMU), and the stage's layer for it: the carried picture, the guides, the label |
+| `edit/add.ts`, `edit/Insert.tsx` | What Insert adds and where it lands (pure: boxes, the layouts a slide can take, what an edit made), and Insert's rows with the file choosers |
+| `edit/LayoutSelect.tsx`, `edit/ThemeMenu.tsx`, `edit/FormatSheet.tsx` | The layout select and its pictures, Theme, the Format sheet |
+| `edit/slides.ts`, `edit/SectionName.tsx` | A slide's menu and what each row writes, a slide's place moved; a section's name |
 | `show/` | The show, a chunk of its own loaded when the pointer first reaches Present: `state.ts` (the state and its keys), `timer.ts`, `Show.tsx` (a show running), `places.ts` (the documents it is drawn in), `Audience.tsx` (the slideshow), `Presenter.tsx` (the presenter's view), `pictures.tsx` (a slide painted at a window's size) |
-| `testkit.ts`, `*.dom.test.tsx`, `SlidesCanvas.preview.tsx` | A host that keeps one view and answers his edits, the tests, the preview |
+| `testkit.ts`, `stage.testkit.tsx`, `*.dom.test.tsx`, `SlidesCanvas.preview.tsx` | A host that keeps one view and answers his edits (every kind of them), the pane with a deck in it for the DOM tests, the tests, the preview |
 
 How it works:
 
@@ -772,13 +796,14 @@ How it works:
   `quad` from the front back, so a turned shape is picked where it is
   drawn, and a shape with no area takes no press. The selection is drawn over the picture along
   the quad with eight 8px handles and a turn handle 22px above the top edge
-  (`Selection`, an SVG that takes no pointer); the handles do nothing until
-  SLD5. Each pickable shape is also a button, named for a screen reader by
+  (`Selection`, an SVG that takes no pointer), the handles only where his
+  hand can move the shape ("Moving a shape" below). Each pickable shape is
+  also a button, named for a screen reader by
   what it is on its slide and its words ("Title: Who comes"; the host's
   `DeckShape.label`, never PowerPoint's name for it), in a group named
   "Shapes on this slide". Tab walks the slide from the back to the front,
-  the bare arrows move through it in reading order (`readingOrder`: rows
-  top to bottom, then left to right), focus picks, Escape lets go, and a
+  focus picks, the arrows nudge the picked shape (they no longer walk),
+  Escape lets go, and a
   press by pointer takes the keyboard to the shape it picked. A press on the bare slide lets go
   too. A picked shape with words still feeds Ask.
 - **Which kinds can be picked** (`PICKABLE`): text, a plain shape, a
@@ -803,6 +828,81 @@ How it works:
   switch goes. The PowerPoint side of the switch is not built (the
   Office milestones, 28 and 29, put Excel behind the grid only): it says "Not built yet", and the bar says
   how many suggestions wait in TempCode, with Review to go back to them.
+
+### Shapes and slides by hand
+
+The window's side of SLD5 (the look is docs/DESIGN.md "The slide editor").
+Every act is one or a few `work.slides.edit` ops (the host's "Shapes, slides
+and the deck" above), sent through `HandSession.edit`, which says a refusal
+once as a toast; `saving` and `saved` on the save line follow it.
+
+- **Moving a shape** (`edit/drag.ts`, pure, in EMU; `edit/Manipulate.tsx`).
+  A shape moves where it has `own` (its box before any turn), on a slide no
+  suggestion changes, while no typing box is open. The drawn corners are
+  the host's own sum (`about` in deckScript.ts): the box flipped, then
+  turned clockwise about its centre (`cornersOf`, `quadOf`). A move adds the
+  pointer's way in EMU; a resize reads the pointer in the box's own axes
+  (`axesOf`) and keeps the far side's drawn place, with the handle's offset
+  from the press kept so it stays under the pointer (`resizeTo`); a turn
+  adds the angle the pointer went round the centre (`turnTo`). The snap
+  (`moveTo`) pulls the drawn box's left, centre or right (and top, middle or
+  bottom) onto the nearest of the slide's edges and centre and the other
+  shapes' (`linesOf`) within 6 screen pixels, and the guides are the lines
+  it then lies on within half a pixel. On release `geometryOp` sends only
+  what changed. The carried picture (`carryOf`) is the stage's canvas cut
+  along the shape's corners into its own unturned box (a `drawImage` through
+  the inverse of the shape's affine), laid where the shape goes by one CSS
+  matrix; with no canvas (a test, the preview) it is a clipped copy of what
+  is painted. It stays until `HandSession.painted` sees the slide drawn at
+  another revision (`Landing`, as the typing box waits), or goes at once
+  when the edit fails. Nudges gather for 400ms into one edit. A delete lays
+  the slide's colour from just outside the shape's edges (`groundAt` with a
+  negative inset) over its place until the new picture lands.
+- **The row** (`edit/DeckRow.tsx`) adds the layout select (`LayoutSelect`:
+  `layoutsFor` offers the slide's own layout and each whose placeholders
+  hold every one of its layout's by `idx` and `kind`, the host's own test,
+  with the layout's placeholders standing for the slide's; its pictures are
+  `DeckView.layoutsPic`, read with `work.slides.read {which: 'layouts'}` the
+  first time the popover opens, else the names alone), shape fill (`fill`,
+  a theme swatch as `{slot, tint}`), Arrange (`order`), Format (the sheet,
+  kept in the deck's store as `sheet`), Insert, Theme (`themeEdit` of
+  `DECK_THEMES`) and the view switch (`look`: `slide` or `sorter`).
+- **Insert** (`edit/Insert.tsx`, boxes in `edit/add.ts`): a text box with the
+  word "Text" (the outline lists an empty box as no text shape, so it could
+  take no words), a preset, a table, a chart with PowerPoint's sample data,
+  a picture or a video. The new shape is the one in the answered view whose
+  id was not there (`madeShape`); it is picked, and a text box opens its
+  typing box with the word selected. A file is read for its size in the
+  window (`createImageBitmap`, a video's metadata), sent in 4 MB pieces
+  (`DeckHost.attach`, `ATTACH_PIECE`: 5,592,408 characters of base64 under
+  the method's 5.6 million) and named by its token; meanwhile `adding` draws
+  its place. New slide adds after the slide on the stage in its layout (the
+  next layout with a body after a title slide: `layoutAfter`) and goes to it.
+- **The Format sheet** (`edit/FormatSheet.tsx`): `geometry` from the X, Y,
+  W, H and Rotation fields (in his units, `parseLength` reading "2.5",
+  "3 cm" or "1 in"), `line` for the outline (PowerPoint's own dashes read
+  as solid, dash or dot: `dashOf`), `grid` for a table's rows and columns
+  (their count from the outline's cells). Shadow and crop are not offered:
+  the host has no edit for them.
+- **Slides** (`edit/slides.ts`, `Strip.tsx`, `Sorter.tsx`): a slide's menu
+  writes `add`, `duplicate`, `hide`, `layout`, `section` (its place counted
+  from the slides that start one, `sectionIndex`) and `remove`; a drag
+  writes one `move` after the slide before it in the new order (`moveOp`),
+  and the strip keeps the new order until the deck comes back (`useDropped`;
+  a refusal puts it back). All of it only while no suggestion waits
+  (`slidesOpen`): the strip shows the proposed order then, which is not the
+  file's.
+- **A render on screen is drawn with its own pages.** A new view can name
+  pages a render not yet opened has (a slide moved, added or taken out);
+  the body keeps each render's pages by slide as its view had them
+  (`remember`, the newest eight) and `pictureOf` paints the render on
+  screen from those, a slide it does not hold as its title on a blank, until
+  the new render has opened.
+- **An agent's shape edits** read on the stage as the host says them: its
+  boxes (`changed`) tint a moved or added shape where it now lies, and the
+  stepper's words come from `editsOf` ("Moved or resized", "Added",
+  "Removed", "fill #FF0000"). A removed shape's place is not tinted: the
+  host gives no box for it (an ask in the landing note).
 
 ### Typing on a slide
 

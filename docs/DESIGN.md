@@ -2780,7 +2780,7 @@ his hands and leaves no trace on what he was searching from.
   and takes ⌘↩ while it is open.
 
 **The slide editor** (`src/renderer/src/work/slides/SlidesCanvas.tsx`,
-`geometry.ts`, `edit/`). A picked shape is outlined along its own edges, turned with
+`geometry.ts`, `Strip.tsx`, `Sorter.tsx`, `edit/`). A picked shape is outlined along its own edges, turned with
 it: a 1px line, eight 8px handles (2px radius) at the corners and the
 middles of the sides, and a 10px round turn handle on a 12px stem, 22px
 above the top edge. One look in both themes and on any slide: the line is
@@ -2788,7 +2788,39 @@ above the top edge. One look in both themes and on any slide: the line is
 line's colour, because the selection sits on the deck, not on the app. It
 is drawn at screen size whatever the slide's size, as one SVG over the
 picture that takes no pointer. Nothing animates: a selection is made many
-times a minute. A shape that cannot be picked shows no hover.
+times a minute. A shape that cannot be picked shows no hover. Handles are
+drawn only where they act: a shape he can move by hand (a deck he can edit,
+a slide no suggestion changes, a shape with its own box on the slide) has
+the eight and the turn handle; a table and a chart have no turn handle; any
+other picked shape is the outline alone.
+
+- **Moving a shape** (`edit/Manipulate.tsx`, the maths in `edit/drag.ts`).
+  A press on the picked shape (or on any shape he can move, which it picks)
+  and a move of 3px drags it; a handle resizes it along its own width and
+  height, so a turned shape stays turned and the side or corner across from
+  the handle stays put (Shift keeps its proportions, an edge handle growing
+  the other way about the middle); the turn handle turns it about its
+  centre (Shift: 15 degree steps). The handle stays under the pointer. While
+  he drags, the handles step aside: the shape's own picture, cut from the
+  stage along its corners, rides at 80% opacity under a 1px outline in
+  `sel-line-dark-pic`, over the picture as it was; a guide, a 1px line of
+  the same colour the slide's whole height or width, is drawn exactly where
+  an edge or the centre of the box the shape is drawn in meets the slide's
+  edges or centre or another shape's edges or centres, and the box is
+  pulled onto a line within 6 screen pixels (Alt or ⌘ held: no pull). A
+  resize pulls only a square shape's moving side. The size ("7.11 × 1.29
+  cm") or the angle ("35°") sits 6px off the drawn box's bottom-right
+  corner, turned to its other side where the stage ends: 16px tall, 4px in,
+  4px radius, `sel-line-dark-pic` with `paper-ink` 11px medium tabular
+  words (5.4:1). Lengths are inches where the locale's paper is Letter and
+  centimetres elsewhere (`unitFor`). On release one `geometry` edit goes,
+  and the carried picture stays where he left it, the outline and handles
+  on it, until the stage paints the new picture; Escape puts everything
+  back and sends nothing. The arrows nudge by a pixel of the stage (Shift:
+  ten), the carried picture moving at once and one edit going once the keys
+  rest for 400ms. Delete and Backspace take the shape off the slide: the
+  slide's own colour, read just outside its edges, lies over its place
+  until the new picture lands.
 
 - **The floating bar** (Ask) for a picked shape is anchored under the
   slide's bottom-left corner (`askAnchor`, geometry.ts), not beside the
@@ -2817,18 +2849,80 @@ times a minute. A shape that cannot be picked shows no hover.
   "Accept or reject the suggestion on this slide first" once.
 - **The row's deck arm** (work-kit's `FormatRow`, kind `slides`, the
   first unscrolled row of the body wherever the host says he can edit the
-  deck by hand; absent, never greyed, where he cannot). Undo, Redo | font
-  (120px) and size | Bold, Italic, Underline, text colour | align (left,
-  centre, right, justify), Bulleted, Numbered | Present, its way out, with
-  the ways to present in its menu. It acts on the box's selection while the
+  deck by hand; absent, never greyed, where he cannot). Undo, Redo | the
+  slide's layout (148px, 132 on a canvas under 420px) | font (120px) and
+  size | Bold, Italic, Underline, text colour, shape fill | align (left,
+  centre, right, justify), Bulleted, Numbered, Arrange, Format | Insert,
+  Theme | Slide and Sorter | Present, its way out, with the ways to present
+  in its menu. The groups never swap with what is picked: the outline is
+  the Format sheet's. It acts on the box's selection while the
   box is open, else on the whole of the picked text shape (written at
   once); with neither its controls rest at 50%. It shows the selection's
   look, a value where all of it agrees and nothing where it mixes; a
   toggle is on only when all of it is. A press on a toggle leaves the caret
   in the box. The colour picker's theme is the deck's; Automatic is the
-  theme's dark ink on a light slide and its light ink on a dark one. The
-  layout select, Insert, Slide and Sorter and shape fill come with the next
-  milestone and are not drawn before.
+  theme's dark ink on a light slide and its light ink on a dark one.
+  Shape fill, Arrange and Format act on the picked shape (fill rests on a
+  table, a chart or media, set in PowerPoint), "No fill" first; a theme
+  colour goes as the theme's own slot.
+- **The layout** is a quiet select in the Style place. Its popover (12px
+  in) holds the layouts this slide can take, three across: each the
+  layout's picture at 96px in the strip's 3px frame (`DeckView.layoutsPic`,
+  one page a layout), its name 12/16 muted under it, balanced on two
+  lines; the current one on `muted` with its name in foreground; 12px down
+  and 8px across between them. A layout whose places do not hold the
+  slide's is absent. With no picture of the layouts it is the style menu's
+  list of names.
+- **Insert** is the word and its chevron: New slide (after the one on the
+  stage, in its layout, or the next one after a title slide), a rule, Text
+  box, Shape (a submenu of eight outlines, each drawn as its row's glyph),
+  Picture…, Table (a submenu: a grid of 16px cells eight across and six
+  down, the size under it in 12px tabular), Chart (Column, Line, Pie, with
+  PowerPoint's sample data), Video…. Each lands in the slide's middle at a
+  size of its own and is picked; a text box opens for typing with its word
+  "Text" selected. A picture or a video is read in the window for its
+  proportions and fitted to three fifths of the slide; while it travels to
+  the host its place is outlined with a 20px pill in the middle, a 12px
+  spinner and "Adding".
+- **Theme** is the word and its chevron: a 288px popover, 6px in, a row per
+  theme (8px in, 8px radius): its ten colours as one 16px strip at 4px
+  radius on `image-outline`, its name 13/20, its two fonts 12/16 muted; the
+  deck's own on `muted`. One press writes it and closes. "Edit master
+  slides…" waits for the PowerPoint switch and is not drawn.
+- **The Format sheet** (`edit/FormatSheet.tsx`), from Format in the row:
+  280px at the stage's end on `background` with a hairline on its leading
+  edge, on a canvas 720px wide or more; under that it lies under the slide
+  in the notes' place (the notes go while it is open, the slide fitted to
+  42% of the height). Its head: the shape's name 13/20 medium and a 28px
+  close. Sections 20px apart, 8px inside, labels 12px medium muted:
+  Position and size (X, Y, W, H in a two-column grid of 28px fields, the
+  letter 12px muted inside, values in his units, tabular; Rotation, a 96px
+  field), Outline (its colour picker, "No outline" first; Weight and Dash
+  as 112px quiet selects, each row drawing its line), and for a table, a
+  row and a column by their place with Insert above, Insert below (left,
+  right) and Delete. A field writes when he leaves it or presses Return,
+  only if its words changed; Escape puts it back. With nothing picked:
+  "Pick a shape on the slide". Its body enters on opacity and an 8px slide,
+  `--dur-base` `--ease-out`. Shadow and crop have no edit yet and are not
+  drawn; Animate is the show's.
+- **Slides by hand.** Where no suggestion waits, a slide in the strip or
+  the Sorter opens its menu on a right-click or the menu key: New slide
+  after (a layout), Duplicate, Hide or Show slide, Layout (those that map),
+  Add section here or Rename section… and Remove section, Delete slide.
+  Adding or renaming a section asks its name in a small dialog. A slide
+  drags to a new place (`useSortable` in the strip, a 2px `accent` line
+  where it will land); Delete and Backspace take the focused one out. A
+  hidden slide's picture is at 45%. While a suggestion waits the strip is
+  the proposed order, and none of this is offered.
+- **The Sorter** is the deck's grid: 16px in, four across (two under
+  640px), 12px across and 16px down between them, each slide in the
+  strip's 3px frame with its number and title 12/16 under it (the title in
+  foreground). A section is a heading 13/20 medium with its count 8px after
+  it in regular muted tabular, 24px above it and 16px under. A press goes
+  back to that slide on the stage; the arrows move four ways. A drag shows
+  a 2px `accent` bar in the 12px gap where it will land and carries the
+  slide at 80% with a 1.5px `accent` outline and `shadow-overlay`; its own
+  place is a 1px dashed `border-strong` frame. The drop lands at once.
 - **History** is a quiet button at the end of the deck's bar (its glyph
   and word; under 560px of bar the glyph, with its tip), only where he can
   edit the deck by hand. It opens a 280px popover: the kept copies newest
@@ -2851,6 +2945,12 @@ times a minute. A shape that cannot be picked shows no hover.
   | A list item in and out | Tab and Shift-Tab at its start |
   | Bold, Italic, Underline, size up and down, Bulleted, Numbered | ⌘B, ⌘I, ⌘U, ⇧⌘. and ⇧⌘,, ⇧⌘8, ⇧⌘7: on the box's selection (a caret in a word takes the word), else the picked shape |
   | Undo, Redo | ⌘Z, ⇧⌘Z (Ctrl+Y off the Mac): the box's own while it is open, else his edits to the file |
+  | The next shape, the one before (back to front) | Tab, ⇧Tab |
+  | Nudge the picked shape | the arrows: a pixel of the stage; ⇧ and an arrow: ten |
+  | Take it off the slide | Delete, Backspace |
+  | While dragging: keep proportions, steps of 15 degrees; no pull to the guides; put it back | ⇧; ⌥ or ⌘; Escape |
+  | A slide's menu, in the strip or the Sorter | the menu key, ⇧F10, a right-click |
+  | Take the focused slide out | Delete, Backspace, in the strip or the Sorter |
 
   A paste into the box is plain text, each line a paragraph.
 
@@ -3025,6 +3125,9 @@ being produced shimmers (`WorkingText`); nothing else does.
 | The slideshow's bar | on a real move of the pointer: opacity 0→1 and a rise of 4px, `--dur-base` `--ease-out` | 2000ms after the last move (`PRESENT_IDLE_MS`), with the pointer hidden at the same moment: opacity →0 and 4px back down, `--dur-base` `--ease-exit`; held while the pointer is on it or its picker is open | opacity alone |
 | The slideshow's picker and the presenter's target menu (panels of their own window, so no portal) | the popover's: fade + scale 0.95→1 from the trigger's side, `--dur-base` `--ease-out` | at once | fade only |
 | The slide editor: a shape picked, the typing box opening, going and waiting for its picture | none: a selection and the box are there at once and go at once; the old picture stays until the new one has painted | none | none |
+| The slide editor: a shape dragged, resized, turned or nudged, its guides and its label | none: the carried picture follows the pointer frame by frame and stays where he left it until the new picture has painted; Escape puts it back at once | none | none |
+| The slide editor's Format sheet | its body: opacity and an 8px slide from its edge, `--dur-base` `--ease-out` | at once | opacity only |
+| A slide dropped in the Sorter | none: the carried slide and the bar go, the grid is in its new order | — | the same |
 | The Mac's computer-use banner ("The Mac's computer-use banner" below) | opacity, `--dur-base` `--ease-out` | opacity, `--dur-fast` `--ease-exit`, then the window hides | `--dur-fast` |
 
 Rules: animate `transform` and `opacity` (and height only through the

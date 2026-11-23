@@ -8,7 +8,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DeckView } from "@shared/contract-work-slides";
+import type { DeckShape, DeckView } from "@shared/contract-work-slides";
 import type { CanvasItem } from "@shared/work";
 import { openMenus } from "../../chrome/menuRows";
 import { defineChunk } from "../../lib/lazyChunk";
@@ -270,8 +270,8 @@ describe("the slides kind", () => {
     { id: 5, name: "Straight Connector 4", bbox: [0.1, 0.85, 0.9, 0.9], text: "", kind: "connector", quad: [[0.1, 0.85], [0.9, 0.85], [0.9, 0.9], [0.1, 0.9]] },
     { id: 6, name: "Diagram 5", bbox: [0.75, 0.5, 0.95, 0.8], text: "", kind: "frame", quad: [[0.75, 0.5], [0.95, 0.5], [0.95, 0.8], [0.75, 0.8]] },
   ] as never;
-  async function quads() {
-    open(deckView({ slides: [slide(3, { number: 3, shapes: QUADS })], renders: { file: { rev: "f1", size: 10, pages: 1 }, proposed: null } }));
+  async function quads(over: Partial<DeckView> = {}) {
+    open(deckView({ slides: [slide(3, { number: 3, shapes: QUADS })], renders: { file: { rev: "f1", size: 10, pages: 1 }, proposed: null }, ...over }));
     const layer = await found("[data-slides-shapes]");
     // jsdom lays nothing out: the stage is given a box, so a press has a place on the slide.
     layer.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 500, right: 1000, bottom: 500, x: 0, y: 0, toJSON: () => ({}) });
@@ -279,7 +279,7 @@ describe("the slides kind", () => {
     return { layer, press };
   }
 
-  it("a press picks the topmost shape under it by its own corners, and draws its outline, eight handles and a rotate handle", async () => {
+  it("a press picks the topmost shape under it by its own corners, and draws its outline; where he cannot move it, no handles", async () => {
     const { layer, press } = await quads();
     // Only what can be picked is a shape here: a connector and a diagram are edited in PowerPoint.
     expect([...layer.querySelectorAll("[data-shape]")].map((b) => b.getAttribute("data-shape"))).toEqual(["2", "4"]);
@@ -293,11 +293,9 @@ describe("the slides kind", () => {
     // The press took the keyboard there too: Escape and the arrows answer after a pick by pointer.
     expect(document.activeElement).toBe(layer.querySelector('[data-shape="4"]'));
     const selection = layer.querySelector("[data-slide-selection]")!;
-    expect(selection.querySelectorAll("rect[data-handle]")).toHaveLength(8);
-    expect(selection.querySelector('circle[data-handle="rotate"]')).not.toBeNull();
     expect(selection.querySelector("polygon")!.getAttribute("stroke")).toBe("var(--sel-line-dark-pic)");
-    // The handles turn with the shape.
-    expect(selection.querySelector("rect[data-handle]")!.getAttribute("transform")).toMatch(/^rotate\((?!0 )/);
+    // A handle that does nothing is not drawn: this deck cannot be edited by hand.
+    expect(selection.querySelectorAll("[data-handle]")).toHaveLength(0);
     // A shape with no words is named by what it is, with its place for the agent.
     expect(await screen.findByRole("button", { name: /Ask/ })).toBeTruthy();
     // A press on the connector, the diagram or the bare slide lets the selection go.
@@ -308,24 +306,32 @@ describe("the slides kind", () => {
     expect(layer.querySelector("[data-slide-selection]")).toBeNull();
   });
 
-  it("Tab and the arrows move the selection through the shapes, and Escape lets it go", async () => {
+  it("draws eight handles and a turn handle, turned with the shape, where he can move it by hand", async () => {
+    const own = { box: [0, 0, 100, 100] as [number, number, number, number], rot: 30, flipH: false, flipV: false };
+    open(deckView({ slides: [slide(3, { number: 3, shapes: [{ ...(QUADS as unknown as DeckShape[])[1], own }] })], renders: { file: { rev: "f1", size: 10, pages: 1 }, proposed: null }, hand: { undo: false, redo: false } }));
+    const shape = await found('[data-shape="4"]');
+    act(() => shape.focus());
+    const selection = document.querySelector("[data-slide-selection]")!;
+    expect(selection.querySelectorAll("rect[data-handle]")).toHaveLength(8);
+    expect(selection.querySelector('circle[data-handle="rotate"]')).not.toBeNull();
+    expect(selection.querySelector("rect[data-handle]")!.getAttribute("transform")).toMatch(/^rotate\((?!0 )/);
+  });
+
+  it("Tab walks the shapes, back to front; the arrows never walk; Escape lets the shape go", async () => {
     const { layer } = await quads();
     const [title, picture] = [layer.querySelector<HTMLElement>('[data-shape="2"]')!, layer.querySelector<HTMLElement>('[data-shape="4"]')!];
-    // Focus is selection: tabbing to a shape picks it.
+    // Each shape is a Tab stop in the slide's own order, from the back: focus is selection.
+    expect([...layer.querySelectorAll<HTMLElement>("[data-shape]")].map((b) => b.tabIndex)).toEqual([0, 0]);
     act(() => title.focus());
     expect(title.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.keyDown(title, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(picture);
+    act(() => picture.focus());
     expect(picture.getAttribute("aria-pressed")).toBe("true");
-    // Past the last shape the selection stays.
-    fireEvent.keyDown(picture, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(picture);
+    // The arrows are the nudge's (HandEditor.dom.test.tsx): on a deck he cannot edit they move nothing, the focus included.
     fireEvent.keyDown(picture, { key: "ArrowUp" });
-    expect(title.getAttribute("aria-pressed")).toBe("true");
-    // An arrow with a modifier is someone else's key: it moves nothing here and is left to go on.
-    expect(fireEvent.keyDown(title, { key: "ArrowDown", metaKey: true })).toBe(true);
-    expect(fireEvent.keyDown(title, { key: "ArrowDown", shiftKey: true })).toBe(true);
-    expect(document.activeElement).toBe(title);
+    expect(document.activeElement).toBe(picture);
+    // An arrow with ⌘ is someone else's key: it is left to go on.
+    expect(fireEvent.keyDown(picture, { key: "ArrowDown", metaKey: true })).toBe(true);
+    act(() => title.focus());
     fireEvent.keyDown(title, { key: "Escape" });
     expect(layer.querySelector("[data-slide-selection]")).toBeNull();
     expect(title.getAttribute("aria-pressed")).toBe("false");

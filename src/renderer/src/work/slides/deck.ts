@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { DeckMode, DeckVersion, DeckView, ShowDeck, SlideOp } from "@shared/contract-work-slides";
 import { registry } from "../../lib/connection";
+import { toBase64 } from "../formats/model";
 import { fromBase64, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import type { ShowHost } from "./show/Show";
 
@@ -9,8 +10,11 @@ export interface DeckHost {
   open(): Promise<DeckView>;
   /** The file's slides and render, for a show: never the suggestions that wait. */
   show(): Promise<ShowDeck>;
-  /** With `rev`, bytes of a render at another revision (the deck moved on mid-read) are refused (`RENDER_CHANGED`). */
-  read(which: "file" | "proposed", offset: number, length: number, rev?: string): Promise<Uint8Array>;
+  /**
+   * With `rev`, bytes of a render at another revision (the deck moved on mid-read) are refused (`RENDER_CHANGED`).
+   * `layouts` is the picture of the deck's layouts, one page each (`DeckView.layoutsPic`).
+   */
+  read(which: "file" | "proposed" | "layouts", offset: number, length: number, rev?: string): Promise<Uint8Array>;
   /** With `rev`, the proposed render the press was made on: the host refuses it once the changes moved on since. */
   review(changes: string[] | "all", verdict: "accept" | "reject", rev?: string): Promise<DeckView>;
   mode(mode: DeckMode): Promise<DeckView>;
@@ -23,8 +27,19 @@ export interface DeckHost {
   versions(): Promise<DeckVersion[]>;
   /** Puts a kept copy in the file's place; the deck as it is now is kept first. */
   restore(version: string): Promise<DeckView>;
+  /** A picture or a video he adds, brought to the host in pieces: the token an `insert` edit names it by. */
+  attach(name: string, data: Uint8Array): Promise<string>;
   onView(listener: (view: DeckView) => void): () => void;
 }
+
+/**
+ * The picture of the deck's layouts, one page an entry of `DeckView.layouts` in its order, read with
+ * `work.slides.read {which: 'layouts'}`: the lead's `DeckView.layoutsPic`, read here by name until the contract has it.
+ */
+export const layoutsPicOf = (view: DeckView): { rev: string; size: number } | undefined => view.layoutsPic;
+
+/** The most of a file one `work.slides.attach` carries: 4 MB, which base64 keeps under the method's limit. */
+export const ATTACH_PIECE = 4 * 1024 * 1024;
 
 /** A render read whose bytes came from another revision than the view advertised: the preview is being replaced, never a failure to show. */
 export const RENDER_CHANGED = "The slides changed while they were read";
@@ -48,6 +63,15 @@ export function linkDeckHost(environmentId: string, itemId: string): DeckHost {
     step: (dir) => call("work.slides.step", { dir }),
     versions: () => call("work.slides.versions"),
     restore: (version) => call("work.slides.restore", { version }),
+    attach: async (name, data) => {
+      let token: string | undefined;
+      for (let at = 0; at < data.length || at === 0; at += ATTACH_PIECE) {
+        const got = await call<{ token: string }>("work.slides.attach", { name, data: toBase64(data.subarray(at, at + ATTACH_PIECE)), ...(token ? { token } : {}) });
+        token = got.token;
+        if (data.length === 0) break;
+      }
+      return token!;
+    },
     onView: (listener) =>
       link().onPush((push) => {
         if (push.push === "work.slides" && push.view.itemId === itemId) listener(push.view);
@@ -74,10 +98,14 @@ export interface DeckState {
   current: string | null;
   /** A hosted deck shows in TempCode or in the real PowerPoint. */
   side: "tempcode" | "powerpoint";
+  /** One slide on the stage, or every slide in a grid (the row's view switch). */
+  look: "slide" | "sorter";
+  /** The Format sheet is open beside the stage (or under it in a narrow canvas). */
+  sheet: boolean;
 }
 
 export class DeckStore {
-  private state: DeckState = { view: null, error: null, current: null, side: "tempcode" };
+  private state: DeckState = { view: null, error: null, current: null, side: "tempcode", look: "slide", sheet: false };
   private listeners = new Set<() => void>();
   get = (): DeckState => this.state;
   subscribe = (listener: () => void): (() => void) => {
@@ -142,7 +170,7 @@ export function useDeckView(host: DeckHost, store: DeckStore): void {
  */
 export function useRender(
   host: DeckHost,
-  which: "file" | "proposed",
+  which: "file" | "proposed" | "layouts",
   render: { rev: string; size: number } | null,
   engine: PdfEngine = pdfjsEngine,
   onChanged?: () => void,

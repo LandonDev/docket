@@ -267,6 +267,8 @@ export interface DeckShape {
    * flipped, which is moved in PowerPoint.
    */
   own?: { box: [number, number, number, number]; rot: number; flipH: boolean; flipV: boolean }
+  /** a table's cells, row by row */
+  cells?: string[][]
   /** its own fill where it says one: a hex, or `none`. Absent: what its style or theme gives it. */
   fill?: string
   /** its own outline where it says one */
@@ -313,8 +315,12 @@ export interface DeckSlide {
   /** the layout it is made from, by name */
   layout?: string
   transition?: SlideTransition
+  /** the layouts this slide may be given, by name (the host's own test for a `layout` edit): its own first among them */
+  layoutsFit?: string[]
   /** the boxes of the shapes the change touched, to tint on the stage */
   changed: Bbox[]
+  /** the boxes of the shapes the change takes off the slide, as they lay before it: tinted as removed */
+  removed?: Bbox[]
   /** the heading over this slide in the strip: the section it starts */
   section?: string
 }

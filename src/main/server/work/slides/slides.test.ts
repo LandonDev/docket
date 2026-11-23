@@ -107,6 +107,7 @@ function applyFake(d: FakeDeck, ops: SlideOp[]): string[] {
       if (brought === null) return say(`the ${op.what} to add did not come with the edit`)
       return void s.shapes.push({ id: op.id ?? Math.max(...s.shapes.map((x) => x.id)) + 1, name: 'New', kind: op.what === 'picture' ? 'picture' : 'text', bbox: [0, 0, 1, 1], text: brought !== undefined ? `${op.what} of ${brought} bytes` : (op.text ?? '') })
     }
+    if (op.op === 'delete') return void (s.shapes = s.shapes.filter((x) => x.id !== op.shape))
     if (!('shape' in op)) return
     const sh = s.shapes.find((x) => (typeof op.shape === 'number' ? x.id === op.shape : x.name === op.shape))
     if (!sh) return say(`slide ${op.slide} has no shape ${op.shape}`)
@@ -699,6 +700,22 @@ describe('the module, on a fake deck tool', () => {
     const junk = join(dir, 'junk.pptx')
     writeFileSync(junk, 'hello')
     await expect(call('work.slides.open', { itemId: openDeck(fileSource(junk), 'J').id })).rejects.toThrow('junk.pptx is not a PowerPoint deck.')
+  })
+
+  it('a suggestion that takes a shape off a slide says where it lay, and the view carries the layouts a slide may take and a table\'s cells', async () => {
+    const d = JSON.parse(JSON.stringify(FAKE_DECK)) as FakeDeck
+    Object.assign(d.slides[0], { fits: ['Title and Content', 'Two Content'] })
+    d.slides[0].shapes.push({ id: 9, name: 'Table 8', kind: 'table', bbox: [0.1, 0.6, 0.9, 0.9], text: '', cells: [['a', 'b'], ['c', 'd']] })
+    writeFileSync(path, fakeBytes(d))
+    const item = openDeck(fileSource(path))
+    const view = await call('work.slides.open', { itemId: item.id })
+    expect(view.slides[0].layoutsFit).toEqual(['Title and Content', 'Two Content'])
+    expect(view.slides[0].shapes.at(-1)!.cells).toEqual([['a', 'b'], ['c', 'd']])
+    expect(view.slides[0].removed).toBeUndefined()
+    await tool('slides_edit', { item: item.id, because: 'own', ops: [{ op: 'delete', slide: 256, shape: 3 }] })
+    const after = (pushes.at(-1) as { view: DeckView }).view
+    expect(after.slides[0]).toMatchObject({ tint: 'add', removed: [[0.05, 0.25, 0.95, 0.9]] })
+    expect(after.changes[0].edits).toEqual([{ where: 'Text', before: 'About One', after: 'Removed' }])
   })
 
   it("only the owner reviews or sets the mode: a thread's own call is refused", async () => {

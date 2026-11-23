@@ -1,6 +1,7 @@
-import type { DeckShape, DeckSlide, DeckView } from "@shared/contract-work-slides";
+import type { DeckShape, DeckSlide, DeckView, SlideOp } from "@shared/contract-work-slides";
 import { sayError } from "../../canvas/frame";
 import { openDeck, type DeckHost, type DeckStore } from "../deck";
+import type { Quad } from "../geometry";
 import {
   applyLook,
   applyPara,
@@ -68,6 +69,23 @@ export interface Failure {
   message: string;
 }
 
+/**
+ * What stands in for a shape's new picture after one of his edits to it, until the stage paints the slide anew: the
+ * shape's own picture carried to where he put it (a move, a resize, a turn), or the slide's ground laid over where it
+ * was (a delete). `saving` while the edit is on its way, `landing` once it is written.
+ */
+export interface Landing {
+  slideKey: string;
+  shapeId: number;
+  /** where it is now, in shares of the slide */
+  quad: Quad;
+  /** the slide's colour round the shape, laid over its place: a delete */
+  ground?: string;
+  phase: "saving" | "landing";
+  /** the slide's picture's revision when the edit was made */
+  before: string | null;
+}
+
 export interface HandState {
   picked: { slideKey: string; shapeId: number } | null;
   box: BoxState | null;
@@ -79,6 +97,10 @@ export interface HandState {
   failure: Failure | null;
   /** a look the row laid on the picked shape, shown until the deck comes back with it */
   shapeLook: { shapeId: number; set: RunLook & ParaLook } | null;
+  /** a shape's carried picture, or the ground over a deleted one, until the new picture lands */
+  land: Landing | null;
+  /** where a picture or a video he is adding will lie, while it is on its way to the host */
+  adding: { slideKey: string; quad: Quad } | null;
   /** the box's own undo and redo */
   undo: boolean;
   redo: boolean;
@@ -87,6 +109,8 @@ export interface HandState {
 /** The host's word when the file moved between the read and the write (src/main/server/work/slides/view.ts). */
 const MOVED = /changed while this was being made/i;
 export const CONFLICT_WORD = "The deck changed while you typed";
+/** Why a slide an agent's suggestion changes takes no hand edit. */
+export const SUGGESTED = "Accept or reject the suggestion on this slide first";
 /** A typing pause longer than this starts a new step of the box's own undo. */
 const TYPING_STEP_MS = 1000;
 
@@ -102,7 +126,7 @@ let opened = 0;
 const message = (error: unknown, fallback: string): string => (error instanceof Error && error.message ? error.message : fallback);
 
 export class HandSession {
-  private state: HandState = { picked: null, box: null, busy: 0, savedAt: null, failure: null, shapeLook: null, undo: false, redo: false };
+  private state: HandState = { picked: null, box: null, busy: 0, savedAt: null, failure: null, shapeLook: null, land: null, adding: null, undo: false, redo: false };
   private listeners = new Set<() => void>();
   private past: Snapshot[] = [];
   private future: Snapshot[] = [];
@@ -137,9 +161,16 @@ export class HandSession {
 
   /** Why a shape cannot take his words now, or null when it can. */
   refusal(slide: DeckSlide, shape: DeckShape): string | null {
-    const view = this.store.get().view;
-    if (!view?.hand || !typable(shape)) return "";
-    if (slide.change !== null || slide.from !== "file") return "Accept or reject the suggestion on this slide first";
+    return typable(shape) ? this.slideRefusal(slide) : "";
+  }
+
+  /**
+   * Why a slide (its shapes, its place) cannot take his hand now, or null when it can: "" where the deck cannot be
+   * edited by hand; a sentence on a slide a suggestion changes, whose picture and shapes are the proposed deck's.
+   */
+  slideRefusal(slide: DeckSlide): string | null {
+    if (!this.store.get().view?.hand) return "";
+    if (slide.change !== null || slide.from !== "file") return SUGGESTED;
     return null;
   }
 
@@ -350,30 +381,87 @@ export class HandSession {
     this.set({ failure: null });
   }
 
-  /** The stage painted a picture of a slide at a revision: a box waiting for it goes. */
+  /** The stage painted a picture of a slide at a revision: a box, a carried picture or a cover waiting for it goes. */
   painted(slideKey: string, rev: string | null): void {
-    const box = this.state.box;
+    const { box, land } = this.state;
     if (box?.phase === "landing" && box.slideKey === slideKey && rev !== box.before) this.set({ box: null });
+    if (land?.phase === "landing" && land.slideKey === slideKey && rev !== land.before) this.set({ land: null });
   }
 
-  /** The stage could not paint the slide: its own line says so, and a box waiting for it goes. */
+  /** The stage could not paint the slide: its own line says so, and what waited for it goes. */
   paintFailed(slideKey: string): void {
-    const box = this.state.box;
+    const { box, land } = this.state;
     if (box?.phase === "landing" && box.slideKey === slideKey) this.set({ box: null });
+    if (land?.phase === "landing" && land.slideKey === slideKey) this.set({ land: null });
   }
 
   /** One of his edits from the row or the bar: on its way, then written, or said once as a toast. */
   private async send(work: () => Promise<DeckView>, fallback: string): Promise<boolean> {
+    return (await this.sent(work, fallback)) !== null;
+  }
+
+  private async sent(work: () => Promise<DeckView>, fallback: string): Promise<DeckView | null> {
     this.set({ busy: this.state.busy + 1 });
     try {
-      this.store.view(await work());
+      const next = await work();
+      this.store.view(next);
       this.set({ busy: this.state.busy - 1, savedAt: Date.now() });
-      return true;
+      return next;
     } catch (error) {
       this.set({ busy: this.state.busy - 1 });
       sayError(error, fallback);
-      return false;
+      return null;
     }
+  }
+
+  /**
+   * His edits to shapes, slides or the deck (`geometry`, `insert`, `order`, `fill`, a slide's place …), written at
+   * once: the new view, or null when the host refused them (said once, as a toast). With `land`, the shape's carried
+   * picture or the ground laid over it stays until the stage paints the slide anew, and goes at once if the edit fails.
+   */
+  async edit(ops: SlideOp[], fallback: string, land?: Omit<Landing, "phase" | "before">): Promise<DeckView | null> {
+    let ours: Landing | null = null;
+    if (land) {
+      const view = this.store.get().view;
+      const slide = view?.slides.find((s) => s.key === land.slideKey);
+      ours = { ...land, phase: "saving", before: slide && view ? (view.renders[slide.from]?.rev ?? null) : null };
+      this.set({ land: ours });
+    }
+    const next = await this.sent(() => this.host.edit(ops), fallback);
+    if (ours && this.state.land === ours) {
+      const slide = next?.slides.find((s) => s.key === ours.slideKey);
+      const rev = slide && !next?.renderError ? (next?.renders[slide.from]?.rev ?? null) : null;
+      this.set({ land: next && rev !== null && rev !== ours.before ? { ...ours, phase: "landing" } : null });
+    }
+    return next;
+  }
+
+  /** One of his edits from a dialog, which says a refusal itself: written at once, or thrown with the host's sentence. */
+  async editOrThrow(ops: SlideOp[]): Promise<DeckView> {
+    const next = await this.while(() => this.host.edit(ops));
+    this.store.view(next);
+    this.set({ savedAt: Date.now() });
+    return next;
+  }
+
+  /** A picture or a video on its way to the host: where it will lie, or null once it is there or failed. */
+  adding(at: HandState["adding"]): void {
+    this.set({ adding: at });
+  }
+
+  /** Work for one of his edits that is not the edit itself (a file brought to the host): saving while it runs. */
+  async while<T>(work: () => Promise<T>): Promise<T> {
+    this.set({ busy: this.state.busy + 1 });
+    try {
+      return await work();
+    } finally {
+      this.set({ busy: this.state.busy - 1 });
+    }
+  }
+
+  /** Whether one of his edits to a shape is still on its way: a new drag waits for it, as a new box does. */
+  get moving(): boolean {
+    return this.state.land?.phase === "saving";
   }
 
   /** A look laid on the whole of the picked shape, written at once. */

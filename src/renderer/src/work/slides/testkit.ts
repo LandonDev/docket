@@ -1,5 +1,6 @@
-import type { DeckParagraph, DeckShape, DeckSlide, DeckVersion, DeckView, ShowDeck, SlideChange, SlideOp, DeckColour } from "@shared/contract-work-slides";
+import type { DeckColour, DeckParagraph, DeckShape, DeckSlide, DeckVersion, DeckView, ShowDeck, SlideChange, SlideOp } from "@shared/contract-work-slides";
 import type { DeckHost } from "./deck";
+import { OFFICE_THEME } from "work-kit/format/theme";
 
 /** A deck's view for the DOM tests and the preview, and a host that answers the canvas's calls as the host would. */
 
@@ -45,20 +46,120 @@ export function textShape(id: number, paragraphs: DeckParagraph[], box: [number,
   };
 }
 
-/** The run look of a `format` edit's `set`, without what it sets on the paragraph. */
-const lookOnly = <T extends { level?: unknown; align?: unknown; list?: unknown }>({ level: _level, align: _align, list: _list, ...look }: T): Omit<T, "level" | "align" | "list"> => look;
-
-/** A look as the host reads it back: a theme colour as the hex it comes to (the fake leaves the tint out). */
-function drawn<T extends { color?: DeckColour }>(look: T, view: DeckView): Omit<T, "color"> & { color?: string } {
-  const { color, ...rest } = look;
-  if (color === undefined) return rest;
-  const slot = typeof color === "string" ? null : ({ tx1: "dk1", tx2: "dk2", bg1: "lt1", bg2: "lt2" } as Record<string, string>)[color.slot] ?? color.slot;
-  return { ...rest, color: slot === null ? (color as string) : (view.theme?.colors[slot] ?? "000000") };
+/** A shape at a box of the slide (shares), with its own box in EMU on a 16:9 slide, as the outline gives it. */
+export function boxShape(id: number, box: [number, number, number, number], over: Partial<DeckShape> = {}, size = SIZE): DeckShape {
+  const [x0, y0, x1, y1] = box;
+  return {
+    id,
+    name: `Shape ${id}`,
+    kind: "other",
+    bbox: box,
+    quad: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
+    text: "",
+    own: { box: [Math.round(x0 * size.width), Math.round(y0 * size.height), Math.round((x1 - x0) * size.width), Math.round((y1 - y0) * size.height)], rot: 0, flipH: false, flipV: false },
+    ...over,
+  };
 }
+
+/** A 16:9 slide in EMU. */
+export const SIZE = { width: 12_192_000, height: 6_858_000 };
+
+/** A shape where a geometry edit puts it: its own box, turn and corners. */
+function placed(shape: DeckShape, op: Extract<SlideOp, { op: "geometry" }>, size: { width: number; height: number }): DeckShape {
+  const own = { box: op.box ?? shape.own?.box ?? [0, 0, 1, 1], rot: op.rot ?? shape.own?.rot ?? 0, flipH: op.flipH ?? shape.own?.flipH ?? false, flipV: op.flipV ?? shape.own?.flipV ?? false };
+  const [l, t, w, h] = own.box;
+  const r = (own.rot * Math.PI) / 180;
+  const c = { x: l + w / 2, y: t + h / 2 };
+  const at = (u: number, v: number): [number, number] => [(c.x + u * Math.cos(r) - v * Math.sin(r)) / size.width, (c.y + u * Math.sin(r) + v * Math.cos(r)) / size.height];
+  const quad: DeckShape["quad"] = [at(-w / 2, -h / 2), at(w / 2, -h / 2), at(w / 2, h / 2), at(-w / 2, h / 2)];
+  const xs = quad.map((p) => p[0]);
+  const ys = quad.map((p) => p[1]);
+  return { ...shape, own, quad, rot: own.rot, bbox: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
+}
+
+/** What the fake host makes of an `insert`: a shape of its kind, the next id on the slide. */
+function inserted(slide: DeckSlide, op: Extract<SlideOp, { op: "insert" }>, size: { width: number; height: number }): DeckShape {
+  const id = op.id ?? Math.max(1, ...slide.shapes.map((s) => s.id)) + 1;
+  const [l, t, w, h] = op.box;
+  const kind = op.what === "text" ? "text" : op.what === "shape" ? "other" : op.what === "video" ? "media" : op.what;
+  const base = boxShape(id, [l / size.width, t / size.height, (l + w) / size.width, (t + h) / size.height], { kind, name: `${op.what} ${id}` }, size);
+  return op.what === "text" ? { ...base, text: op.text ?? "", paragraphs: [{ level: 0, align: "left", list: "none", runs: [{ text: op.text ?? "", font: "Calibri", size: 18, color: "000000" }] }], frame: { anchor: "top", insets: [91440, 45720, 91440, 45720], fit: "grow", wrap: true } } : op.what === "shape" ? { ...base, shape: op.preset ?? "rect" } : base;
+}
+
+/** The deck after one of his edits to a slide's shapes, its slides or its theme, as the host would read it back. */
+function arranged(view: DeckView, op: SlideOp): DeckView {
+  const size = view.size ?? SIZE;
+  const onSlide = (id: number, edit: (slide: DeckSlide) => DeckSlide): DeckView => ({ ...view, slides: view.slides.map((s) => (s.id === id && s.tint !== "del" ? edit(s) : s)) });
+  const renumber = (slides: DeckSlide[]): DeckSlide[] => slides.map((s, i) => ({ ...s, number: i + 1 }));
+  switch (op.op) {
+    case "geometry":
+      return onSlide(op.slide, (s) => ({ ...s, shapes: s.shapes.map((sh) => (sh.id === op.shape ? placed(sh, op, size) : sh)) }));
+    case "delete":
+      return onSlide(op.slide, (s) => ({ ...s, shapes: s.shapes.filter((sh) => sh.id !== op.shape) }));
+    case "insert":
+      return onSlide(op.slide, (s) => ({ ...s, shapes: [...s.shapes, inserted(s, op, size)] }));
+    case "fill":
+      return onSlide(op.slide, (s) => ({ ...s, shapes: s.shapes.map((sh) => (sh.id === op.shape ? { ...sh, fill: op.color === null ? "none" : typeof op.color === "string" ? op.color : slotHex(op.color.slot, view) } : sh)) }));
+    case "line":
+      return onSlide(op.slide, (s) => ({ ...s, shapes: s.shapes.map((sh) => (sh.id === op.shape ? { ...sh, line: { ...sh.line, ...(op.color !== undefined ? { color: op.color === null ? "none" : typeof op.color === "string" ? op.color : slotHex(op.color.slot, view) } : {}), ...(op.width !== undefined ? { width: op.width } : {}), ...(op.dash ? { dash: op.dash } : {}) } } : sh)) }));
+    case "order":
+      return onSlide(op.slide, (s) => {
+        const at = s.shapes.findIndex((sh) => sh.id === op.shape);
+        if (at < 0) return s;
+        const list = s.shapes.filter((sh) => sh.id !== op.shape);
+        const to = op.to === "front" ? list.length : op.to === "back" ? 0 : op.to === "forward" ? Math.min(list.length, at + 1) : Math.max(0, at - 1);
+        list.splice(to, 0, s.shapes[at]);
+        return { ...s, shapes: list };
+      });
+    case "hide":
+      return onSlide(op.slide, (s) => ({ ...s, hidden: op.hidden }));
+    case "layout":
+      return onSlide(op.slide, (s) => ({ ...s, layout: op.layout }));
+    case "theme":
+      return { ...view, theme: { colors: { ...view.theme?.colors, ...op.colors }, major: op.major ?? view.theme?.major ?? "", minor: op.minor ?? view.theme?.minor ?? "" } };
+    case "move": {
+      const moving = view.slides.find((s) => s.id === op.slide);
+      if (!moving) return view;
+      const rest = view.slides.filter((s) => s.id !== op.slide);
+      rest.splice(op.after === 0 ? 0 : rest.findIndex((s) => s.id === op.after) + 1, 0, moving);
+      return { ...view, slides: renumber(rest) };
+    }
+    case "remove":
+      return { ...view, slides: renumber(view.slides.filter((s) => s.id !== op.slide)) };
+    case "duplicate":
+    case "add": {
+      const id = op.id ?? Math.max(0, ...view.slides.map((s) => s.id)) + 1;
+      const at = op.op === "add" ? (op.after === 0 ? 0 : view.slides.findIndex((s) => s.id === op.after) + 1) : view.slides.findIndex((s) => s.id === op.slide) + 1;
+      const from = op.op === "duplicate" ? view.slides.find((s) => s.id === op.slide) : undefined;
+      const made = from ? { ...from, key: String(id), id, section: undefined } : slide(id, { layout: op.op === "add" ? op.layout : undefined, title: op.op === "add" ? (op.title ?? "") : "" });
+      const slides = [...view.slides];
+      slides.splice(at, 0, made);
+      return { ...view, slides: renumber(slides) };
+    }
+    case "section": {
+      const starts = view.slides.filter((s) => s.section !== undefined);
+      if (op.act === "add") return onSlide(op.at, (s) => ({ ...s, section: op.name }));
+      const target = starts[op.section];
+      if (!target) return view;
+      return onSlide(target.id, (s) => ({ ...s, section: op.act === "rename" ? op.name : undefined }));
+    }
+    default:
+      return view;
+  }
+}
+
+/** A theme's slot as its hex: the deck's own theme, else Office's; text and background by the names a run uses. */
+function slotHex(slot: string, view: DeckView): string {
+  const name = ({ tx1: "dk1", tx2: "dk2", bg1: "lt1", bg2: "lt2" } as Record<string, string>)[slot] ?? slot;
+  return view.theme?.colors[name] ?? (OFFICE_THEME.colours as Record<string, string>)[name] ?? "000000";
+}
+
+/** A colour as the outline reads it back: a theme's slot as the theme's hex (the fake leaves the tint out). */
+const hexOf = (color: DeckColour | undefined, view: DeckView): { color?: string } => (color === undefined ? {} : { color: typeof color === "string" ? color : slotHex(color.slot, view) });
 
 /** A deck's words after one of his edits, as the host would read them back. */
 function edited(view: DeckView, op: SlideOp): DeckView {
-  if (op.op !== "runs" && op.op !== "format") return view;
+  if (op.op !== "runs" && op.op !== "format") return arranged(view, op);
   const shapeOf = (s: DeckShape): DeckShape => {
     if (s.id !== op.shape || !s.paragraphs) return s;
     const old = s.paragraphs;
@@ -70,10 +171,13 @@ function edited(view: DeckView, op: SlideOp): DeckView {
               level: p.level ?? base?.level ?? 0,
               align: p.align ?? base?.align ?? "left",
               list: p.list ?? base?.list ?? "none",
-              runs: p.runs.map(({ from, ...run }) => ({ ...(from ? old[from[0]]?.runs[from[1]] : base?.runs[0]), ...drawn(run, view) })),
+              runs: p.runs.map(({ from, color, ...run }) => ({ ...(from ? old[from[0]]?.runs[from[1]] : base?.runs[0]), ...run, ...hexOf(color, view) })),
             };
           })
-        : old.map((p) => ({ ...p, ...("align" in op.set ? { align: op.set.align! } : {}), runs: p.runs.map((r) => ({ ...r, ...drawn(lookOnly(op.set), view) })) }));
+        : old.map((p) => {
+            const { color, ...set } = op.set;
+            return { ...p, ...("align" in op.set ? { align: op.set.align! } : {}), runs: p.runs.map((r) => ({ ...r, ...set, ...hexOf(color, view) })) };
+          });
     return { ...s, paragraphs, text: paragraphs.map((p) => p.runs.map((r) => r.text).join("")).join("\n") };
   };
   return { ...view, slides: view.slides.map((sl) => (sl.id === op.slide ? { ...sl, shapes: sl.shapes.map(shapeOf) } : sl)) };
@@ -153,6 +257,10 @@ export function fakeDeckHost(initial: DeckView): DeckHost & {
       host.calls.push(["versions", null]);
       if (host.hold) await host.hold;
       return host.kept;
+    },
+    async attach(name: string, data: Uint8Array) {
+      host.calls.push(["attach", { name, size: data.length }]);
+      return `token:${name}`;
     },
     async restore(version: string) {
       host.calls.push(["restore", version]);

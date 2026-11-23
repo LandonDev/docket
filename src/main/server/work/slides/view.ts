@@ -514,6 +514,7 @@ const deckShape = (s: ShapeInfo, label?: string): DeckShape => ({
   ...(s.media ? { media: s.media } : {}),
   ...(s.paragraphs ? { paragraphs: s.paragraphs } : {}),
   ...(s.frame ? { frame: s.frame } : {}),
+  ...(s.cells ? { cells: s.cells } : {}),
   ...(s.own ? { own: s.own } : {}),
   ...(s.fill ? { fill: s.fill } : {}),
   ...(s.line ? { line: s.line } : {})
@@ -582,9 +583,11 @@ export function lookWords(paragraphs: ShapeInfo['paragraphs']): string {
 }
 
 /** What the words were and are on one slide, shape by shape, cell by cell, then the notes. */
-export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefined): { edits: SlideChange['edits']; boxes: Bbox[] } {
+export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefined): { edits: SlideChange['edits']; boxes: Bbox[]; gone: Bbox[] } {
   const edits: SlideChange['edits'] = []
   const boxes: Bbox[] = []
+  // Where the shapes the change takes off the slide lay.
+  const gone: Bbox[] = []
   const was = new Map((before?.shapes ?? []).map((s) => [s.id, s]))
   const names = partNames(after?.shapes ?? [])
   for (const s of after?.shapes ?? []) {
@@ -638,7 +641,11 @@ export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefi
   if (before && after) {
     const still = new Set(after.shapes.map((s) => s.id))
     const wasNames = partNames(before.shapes)
-    for (const s of before.shapes) if (!still.has(s.id)) edits.push({ where: wasNames.get(s.id) ?? roleOf(s), before: shapeText(s) || 'There', after: 'Removed' })
+    for (const s of before.shapes) {
+      if (still.has(s.id)) continue
+      edits.push({ where: wasNames.get(s.id) ?? roleOf(s), before: shapeText(s) || 'There', after: 'Removed' })
+      if (s.bbox) gone.push(s.bbox)
+    }
     // The order the shapes that stay lie in, front to back.
     const order = (x: SlideInfo, keep: Set<number>): string => x.shapes.filter((s) => keep.has(s.id)).map((s) => s.id).join(',')
     const both = new Set(before.shapes.filter((s) => still.has(s.id)).map((s) => s.id))
@@ -647,7 +654,7 @@ export function editsOf(before: SlideInfo | undefined, after: SlideInfo | undefi
     if (before.layout !== after.layout) edits.push({ where: 'Layout', before: before.layout, after: after.layout })
   }
   if ((before?.notes ?? '') !== (after?.notes ?? '')) edits.push({ where: 'Notes', before: before?.notes ?? '', after: after?.notes ?? '' })
-  return { edits, boxes }
+  return { edits, boxes, gone }
 }
 
 /** What an edit of the deck as a whole changed: its theme's colours and fonts, its sections. */
@@ -691,7 +698,7 @@ function sectionStarts(info: DeckInfo): Map<number, string> {
 /** A slide's own picture where the host keeps one: by which deck (the file or the proposed one) and the slide. */
 export type PicOf = (from: 'file' | 'proposed', s: SlideInfo) => DeckSlide['pic'] | undefined
 
-const slideOf = (s: SlideInfo, o: Pick<DeckSlide, 'key' | 'number' | 'from' | 'page' | 'change' | 'tint' | 'changed'>, section?: string, pic?: DeckSlide['pic']): DeckSlide => ({
+const slideOf = (s: SlideInfo, o: Pick<DeckSlide, 'key' | 'number' | 'from' | 'page' | 'change' | 'tint' | 'changed' | 'removed'>, section?: string, pic?: DeckSlide['pic']): DeckSlide => ({
   ...o,
   ...(pic ? { pic } : {}),
   id: s.id,
@@ -700,6 +707,7 @@ const slideOf = (s: SlideInfo, o: Pick<DeckSlide, 'key' | 'number' | 'from' | 'p
   hidden: s.hidden,
   shapes: ((names) => s.shapes.map((shape) => deckShape(shape, names.get(shape.id))))(partNames(s.shapes)),
   layout: s.layout,
+  ...(s.fits ? { layoutsFit: s.fits } : {}),
   ...(s.transition ? { transition: s.transition } : {}),
   ...(section ? { section } : {})
 })
@@ -719,8 +727,8 @@ export function stripOf(file: DeckInfo, proposed: DeckInfo | null, changes: read
   const starts = sectionStarts(proposed)
   const out: DeckSlide[] = proposed.slides.map((s, i) => {
     const c = byId.get(s.id)
-    const changed = c && c.kind !== 'moved' ? editsOf(inFile.get(s.id), s).boxes : []
-    return slideOf(s, { key: String(s.id), number: i + 1, from: 'proposed', page: i + 1, change: c?.id ?? null, tint: c ? 'add' : null, changed }, starts.get(s.id), picOf('proposed', s))
+    const diff = c && c.kind !== 'moved' ? editsOf(inFile.get(s.id), s) : null
+    return slideOf(s, { key: String(s.id), number: i + 1, from: 'proposed', page: i + 1, change: c?.id ?? null, tint: c ? 'add' : null, changed: diff?.boxes ?? [], ...(diff?.gone.length ? { removed: diff.gone } : {}) }, starts.get(s.id), picOf('proposed', s))
   })
   const kept = new Set(proposed.slides.map((s) => s.id))
   const stays = (id: number): boolean => kept.has(id) && !moved.has(id)

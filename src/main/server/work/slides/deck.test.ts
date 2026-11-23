@@ -638,6 +638,21 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       await expect(apply(input, [{ op: 'grid', slide: slide.id, shape: 2, what: 'row', act: 'insert', at: 0 }], true)).rejects.toThrow('is not a table')
     })
 
+    it('the outline says which layouts a slide may take, and the words of a drawn shape with none, so it can be typed into', async () => {
+      const input = file(await writeNewDeck({ title: 'T', slides: TWELVE }))
+      const info = await inspect(input)
+      for (const s of info.slides) {
+        // Its own is always among them, and each one named is one a layout edit takes.
+        expect(s.fits).toContain(s.layout)
+        for (const name of s.fits!.filter((n) => n !== s.layout).slice(0, 1)) expect((await apply(input, [{ op: 'layout', slide: s.id, layout: name }], true)).warnings).toEqual([])
+      }
+      const other = info.layouts.find((n) => !info.slides[2].fits!.includes(n))
+      if (other) await expect(apply(input, [{ op: 'layout', slide: info.slides[2].id, layout: other }], true)).rejects.toThrow('change this layout in PowerPoint')
+      // A drawn shape with no words: still `other`, with an empty paragraph and its frame.
+      const drawn = (await inspect(file(readFileSync(FEATURE)))).slides.find((x) => x.id === 258)!.shapes.find((x) => x.id === 3)!
+      expect([drawn.kind, drawn.text, Array.isArray(drawn.paragraphs), drawn.frame?.anchor !== undefined]).toEqual(['other', '', true, true])
+    })
+
     it('hide and layout change one part each; a layout with no place for what the slide holds is PowerPoint\'s', async () => {
       const input = file(await writeNewDeck({ title: 'T', slides: TWELVE }))
       const before = await inspect(input)
