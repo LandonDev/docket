@@ -287,11 +287,25 @@ const rows = (): string[] => [...document.querySelectorAll("[data-files-row]")].
 const row = (name: string): HTMLElement => [...document.querySelectorAll<HTMLElement>("[data-files-row]")].find((r) => r.textContent?.startsWith(name))!;
 const trail = (): string => screen.getByRole("navigation", { name: "Folder" }).textContent ?? "";
 const calls = (host: Host, method: string) => host.calls.filter((c) => c.method === method);
+/** A place's row in the sidebar, once it is drawn: the places land with the host's answer, a note's row with the read after it. */
+const placeRow = (name: string): Promise<HTMLElement> => within(screen.getByRole("navigation", { name: "Places" })).findByRole("button", { name });
+
+/**
+ * The view as a case may read it: drawn, its tab row there with a tab in it, and its keys taken. Each lands in a
+ * commit or an effect of its own (the places, then the tabs the host answers, then the port), so on a loaded box
+ * the first can show before the others: a case that reads one waits for all three here, never for a turn.
+ */
+const settled = (): Promise<void> =>
+  waitFor(() => {
+    expect(document.querySelector("[data-files-view]:not([data-loading])")).not.toBeNull();
+    expect(within(screen.getByRole("tablist", { name: "Open tabs" })).getAllByRole("tab").length).toBeGreaterThan(0);
+    expect(filesPort.mounted()).toBe(true);
+  });
 
 async function mount(host: Host = newHost()) {
   hosts.set("box", host);
   const view = render(<View {...props} />);
-  await waitFor(() => expect(document.querySelector("[data-files-view]:not([data-loading])")).not.toBeNull());
+  await settled();
   return { host: host as ReturnType<typeof newHost>, view };
 }
 
@@ -304,13 +318,13 @@ describe("the window", () => {
     await waitFor(() => expect(rows()).toEqual(["Events", "Budget.xlsx", "notes.txt", "bundle.zip"]));
     // The first tab was made once, on the workspace's folder.
     expect(calls(host, "work.files.tabOpen")).toMatchObject([{ params: { first: true, page: { at: { at: "place", id: "folder" }, name: "Dummy Esports" } } }]);
-    expect(tabNames()).toEqual(["Dummy Esports"]);
+    await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports"]));
     const places = within(screen.getByRole("navigation", { name: "Places" }));
     // Each place is a row; the workspace's folder ends in the quiet chevron that opens its folders under it.
     expect([...places.getAllByRole("button")].filter((b) => b.textContent).map((b) => b.textContent)).toEqual(["Recent", "Starred", "Dummy Esports", "Esports Staff"]);
     expect(places.getByRole("button", { name: "Show the folders of Dummy Esports" }).getAttribute("aria-expanded")).toBe("false");
     expect(places.getByRole("button", { name: "Dummy Esports" }).getAttribute("aria-current")).toBe("page");
-    expect(trail()).toBe("Dummy Esports");
+    await waitFor(() => expect(trail()).toBe("Dummy Esports"));
   });
 
   it("holds the place he stands in and the selected tab in the sidebar's own selected fill, and turns one chevron for a fold", async () => {
@@ -344,8 +358,8 @@ describe("a page", () => {
     expect(calls(host, "work.files.tabSet")).toEqual([]);
     fireEvent.doubleClick(row("Events"));
     await waitFor(() => expect(rows()).toEqual(["Poster.png"]));
-    expect(tabNames()).toEqual(["Events"]);
-    expect(trail()).toBe("Dummy EsportsEvents");
+    await waitFor(() => expect(tabNames()).toEqual(["Events"]));
+    await waitFor(() => expect(trail()).toBe("Dummy EsportsEvents"));
     expect(calls(host, "work.files.tabSet")).toMatchObject([{ params: { page: { at: { at: "file", path: "/w/Events" }, name: "Events" } } }]);
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
@@ -382,14 +396,14 @@ describe("a page", () => {
 
   it("opens a team's page from the places already read, its channels as folders", async () => {
     const { host } = await mount();
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Esports Staff" }));
+    fireEvent.click(await placeRow("Esports Staff"));
     await waitFor(() => expect(rows()).toEqual(["Events", "General"]));
-    expect(trail()).toBe("Esports Staff");
+    await waitFor(() => expect(trail()).toBe("Esports Staff"));
     const before = calls(host, "work.files.list").length;
     fireEvent.doubleClick(row("General"));
     await waitFor(() => expect(rows()).toEqual(["Plan.docx"]));
     expect(calls(host, "work.files.list")).toHaveLength(before + 1);
-    expect(trail()).toBe("Esports StaffGeneral");
+    await waitFor(() => expect(trail()).toBe("Esports StaffGeneral"));
     // The team's row stays the one lit while he is inside one of its channels.
     expect(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Esports Staff" }).getAttribute("aria-current")).toBe("page");
   });
@@ -466,7 +480,7 @@ describe("tabs", () => {
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
     fireEvent.doubleClick(row("Budget.xlsx"));
     await waitFor(() => expect(screen.getByTestId("pane")).toBeTruthy());
-    expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]);
+    await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]));
   });
 
   it("opens a file in a tab, never a thread, when another computer answers before the workspace's own host", async () => {
@@ -540,7 +554,7 @@ describe("tabs", () => {
       return got;
     };
     await mount(host);
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Esports Staff" }));
+    fireEvent.click(await placeRow("Esports Staff"));
     fireEvent.doubleClick(await waitFor(() => row("General")));
     await waitFor(() => expect(rows()).toContain("Roster.xlsx"));
     fireEvent.doubleClick(row("Roster.xlsx"));
@@ -630,7 +644,7 @@ describe("the sidebar", () => {
 
   it("opens a place in a new tab on a middle click", async () => {
     await mount();
-    fireEvent(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Starred" }), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    fireEvent(await placeRow("Starred"), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
     await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports", "Starred"]));
   });
 });
@@ -655,7 +669,7 @@ describe("the states", () => {
     const places = PLACES.map((p) => (p.kind === "teams" ? { ...p, vm: true as const, host: "Windows VM", state: { state: "asleep" as const, at: 1_700_000_000_000 } } : p));
     settings.windowsVm = true;
     await mount(newHost({ places, asOf: 1_700_000_000_000 }));
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Esports Staff" }));
+    fireEvent.click(await placeRow("Esports Staff"));
     fireEvent.doubleClick(await waitFor(() => row("General")));
     await waitFor(() => expect(rows()).toEqual(["Plan.docx"]));
     const note = document.querySelector("[data-files-note]")!;
@@ -665,7 +679,7 @@ describe("the states", () => {
   it("with no Teams place listed, draws one greyed row that says why when opened, with its press", async () => {
     settings.windowsVm = true;
     await mount(newHost({ places: PLACES.filter((p) => p.kind !== "teams"), sources: [{ kind: "vm", state: "signed-out", account: null }] }));
-    const teams = within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Teams files" });
+    const teams = await placeRow("Teams files");
     expect(teams.getAttribute("data-down")).toBe("true");
     fireEvent.click(teams);
     await waitFor(() => expect(screen.getByText("OneDrive on the Windows VM is signed out")).toBeTruthy());
@@ -674,7 +688,7 @@ describe("the states", () => {
 
   it("offers Allow where the workspace may use no computer that has his files yet, and no row where nothing is wrong", async () => {
     await mount(newHost({ places: PLACES.filter((p) => p.kind !== "teams"), sources: [{ kind: "vm", state: "ok", account: "a@dummy.edu" }] }));
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Teams files" }));
+    fireEvent.click(await placeRow("Teams files"));
     await waitFor(() => expect(screen.getByText("This workspace can't use your computers yet")).toBeTruthy());
     expect(screen.getByText("Allow the Windows VM to list your Teams files.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Allow" })).toBeTruthy();
@@ -692,7 +706,7 @@ describe("a host a release behind", () => {
     render(<View {...props} />);
     await waitFor(() => expect(document.querySelector("[data-files-behind]")?.textContent).toBe("Update The box to keep tabs here"));
     expect(calls(host, "work.office.filesLibraries")).toHaveLength(1);
-    expect(tabNames()).toEqual(["Dummy Esports"]);
+    await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports"]));
     // It keeps no marks and has no folder place of its own on this wire.
     const places = within(screen.getByRole("navigation", { name: "Places" }));
     expect([...places.getAllByRole("button")].map((b) => b.textContent)).toEqual(["Esports Staff"]);
@@ -702,7 +716,7 @@ describe("a host a release behind", () => {
     // The old wire lists a folder whole and unsorted: the window puts folders first.
     await waitFor(() => expect(rows()).toEqual(["Budgets", "Plan.docx"]));
     expect(calls(host, "work.office.filesList")).toMatchObject([{ params: { source: { at: "file", host: "env_box", path: "/cloud/Staff/General" } } }]);
-    expect(trail()).toBe("Esports StaffGeneral");
+    await waitFor(() => expect(trail()).toBe("Esports StaffGeneral"));
     // Nothing of the new wire was asked again once it was found missing, and no tab went to the host.
     expect(calls(host, "work.files.tabOpen")).toEqual([]);
     expect(calls(host, "work.files.list")).toEqual([]);
