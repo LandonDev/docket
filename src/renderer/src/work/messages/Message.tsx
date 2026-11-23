@@ -1,12 +1,15 @@
-import { memo, type MouseEvent } from "react";
-import type { ChatMessage } from "@shared/work/messages";
-import { firstWords } from "@shared/work/messages";
+import { memo, useState, type MouseEvent } from "react";
+import { firstWords, type ChatMessage, type ChatReplyState } from "@shared/work/messages";
 import { CornerDownRight } from "../../chrome/icons";
 import { cn } from "../../lib/cn";
 import { clockTime } from "../../lib/duration";
 import { openUrl } from "../../lib/native";
+import { BusyLabel, Button } from "../../components/ui/button";
+import { StatusMark } from "../../components/ui/status";
 import { Face } from "../mail/face";
+import { useMessagesData } from "./data";
 import { linkParts, opensOutside, type Block } from "./model";
+import { keepTyped } from "./page";
 
 /**
  * One message in the conversation's column (docs/agents/work-messages.md):
@@ -15,7 +18,7 @@ import { linkParts, opensOutside, type Block } from "./model";
  * A day opens with its date on a hairline, and the first unread message sits
  * under the one that says "New".
  */
-export const MessageBlock = memo(function MessageBlock({ block, arrives }: { block: Block; arrives?: boolean }) {
+export const MessageBlock = memo(function MessageBlock({ block, arrives, workspaceId, chatId }: { block: Block; arrives?: boolean; workspaceId: string; chatId: string }) {
   const { message, head, day, isNew } = block;
   return (
     <div data-block={block.id} data-head={head || undefined} className={cn(head ? (day || isNew ? "pt-3" : "pt-4") : "pt-1", arrives && "tc-message-arrives")}>
@@ -33,6 +36,7 @@ export const MessageBlock = memo(function MessageBlock({ block, arrives }: { blo
         ) : null}
         <div className="col-start-2 min-w-0">
           <Words text={message.text} />
+          {message.reply && message.reply.status !== "sent" ? <ReplyState reply={message.reply} workspaceId={workspaceId} chatId={chatId} /> : null}
           {/* A message's pictures and files are drawn here once LifeOS keeps them (the plan's MSG4): in place, at
               most 360 by 270, or Mail's 40px chip. Until then its words say what it held, as LifeOS stored them. */}
         </div>
@@ -40,6 +44,55 @@ export const MessageBlock = memo(function MessageBlock({ block, arrives }: { blo
     </div>
   );
 });
+
+/**
+ * His reply on its way: "Sending" and Undo inside its undo time, which puts
+ * the words back in the composer; failed, the red mark, "Not sent." and
+ * LifeOS's reason, with Retry.
+ */
+function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; workspaceId: string; chatId: string }) {
+  const data = useMessagesData();
+  const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
+  const act = (run: () => Promise<void>): void => {
+    setBusy(true);
+    setRefused(null);
+    run()
+      .catch((err: unknown) => setRefused(err instanceof Error ? err.message : String(err)))
+      .finally(() => setBusy(false));
+  };
+  if (reply.status === "failed") {
+    return (
+      <div data-reply="failed" className="flex min-h-6 flex-wrap items-center gap-x-2 text-xs">
+        <StatusMark state="failed" word="Not sent." detail={refused ?? reply.error} className="min-w-0" />
+        <Button variant="ghost" size="xs" disabled={busy} onClick={() => act(() => data.retry(chatId, reply.outboxId))}>
+          <BusyLabel busy={busy} label="Retry" />
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div data-reply="sending" className="flex h-6 items-center gap-2 text-xs text-muted-foreground">
+      <span>Sending</span>
+      {reply.status === "queued" ? (
+        <Button
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          className="text-muted-foreground"
+          onClick={() =>
+            act(async () => {
+              keepTyped(workspaceId, chatId, await data.undo(chatId, reply.outboxId));
+            })
+          }
+        >
+          <BusyLabel busy={busy} label="Undo" />
+        </Button>
+      ) : null}
+      {refused ? <span className="text-destructive">{refused}</span> : null}
+    </div>
+  );
+}
 
 /** A day's date on a hairline, centred; "New" at the line's end over the first unread message. */
 function Divider({ day, isNew }: { day: string | null; isNew: boolean }) {

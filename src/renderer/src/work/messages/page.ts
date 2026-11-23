@@ -6,8 +6,9 @@ import type { ChatFilter } from "./model";
  * What each workspace's Messages shows, kept while the window lives, so
  * coming back finds it as it was (as Mail's page does): the open
  * conversation, the filter, the search, where the list and each
- * conversation were scrolled, and what he typed in each. The places and the
- * words are kept outside React: a scroll or a key re-renders nothing.
+ * conversation were scrolled, and what he typed in each. The places are kept
+ * outside React, so a scroll re-renders nothing; the words wake only the
+ * composer that reads them.
  */
 
 export interface MessagesPage {
@@ -58,9 +59,22 @@ export function keepPlace(workspaceId: string, chatId: string, anchor: RowAnchor
 
 /** What he typed in a conversation and has not sent; the composer reads it back. */
 export const typedIn = (workspaceId: string, chatId: string): string => typed.get(key(workspaceId, chatId)) ?? "";
+const typedListeners = new Set<() => void>();
 export function keepTyped(workspaceId: string, chatId: string, text: string): void {
   if (text) typed.set(key(workspaceId, chatId), text);
   else typed.delete(key(workspaceId, chatId));
+  for (const listener of typedListeners) listener();
+}
+/** What he typed in one conversation, live: an Undo puts a reply's words back here. */
+export function useTyped(workspaceId: string, chatId: string): string {
+  return useSyncExternalStore(
+    (fn) => {
+      typedListeners.add(fn);
+      return () => void typedListeners.delete(fn);
+    },
+    () => typedIn(workspaceId, chatId),
+    () => typedIn(workspaceId, chatId),
+  );
 }
 
 /** Test seam: every workspace back to blank. */

@@ -71,6 +71,8 @@ export interface ChatRow {
   lastInId?: string
   unread: boolean
   faces: ChatFace[]
+  /** where the conversation opens in its own app */
+  link?: string
 }
 
 /** Whether a reply can go, as LifeOS judges it; `why` is LifeOS's sentence. */

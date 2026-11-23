@@ -1,17 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { makeFunctionReference } from "convex/server";
-import type { SectorKey } from "@shared/work";
-import { isChatSource, type ChatDetail, type ChatHit, type ChatMessage, type ChatRow, type ChatSourceState } from "@shared/work/messages";
+import { loadBytes } from "work-kit/mail/lib/bytes";
+import { messagesPaneOf, type SectorKey } from "@shared/work";
+import type { MessagesDraftsAnswer, MessagesSendAnswer } from "@shared/contract-work-messages";
+import { isChatSource, type ChatDetail, type ChatDraft, type ChatFile, type ChatHit, type ChatMessage, type ChatRow, type ChatSourceState } from "@shared/work/messages";
 import { loadToast } from "../../components/ui/toaster";
+import { registry } from "../../lib/connection";
+import { saveDownload } from "../../lib/native";
+import { refusalWords } from "../../lib/settingsHome";
+import { sessionStore } from "../../lib/tcserver/store";
+import { openItem } from "../canvas/store";
+import { discardItem, editItem, notSentWords, outboxNow, sendItem, useOutbox, wentOut, type HostItem } from "../outbox/store";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
-import type { MessagesData, Paged } from "./data";
+import type { MessagesData, Paged, ThreadDraft } from "./data";
+import { chatFileSource, fileVerb, viewKind } from "./files";
 import type { ChatFilter } from "./model";
 
 /**
  * The seam answered from LifeOS (docs/agents/work-messages.md "The view"):
  * live queries on the workspace's own sector session, so the view can list no
  * other job's chat, and the read mark written there. Every send goes through
- * the host, in the composer's phase.
+ * the host (`work.messages.*`); a thread's held reply is the Outbox's own
+ * item, pressed as the Outbox presses it.
  */
 
 type Page<T> = { page: T[]; isDone: boolean; continueCursor: string };
@@ -66,7 +76,6 @@ function useMinute(): number {
   return now;
 }
 
-const NONE: ReadonlySet<string> = new Set();
 
 /** The source rows of this job that are chat, as the sync line and the empty list read them. */
 export function chatSources(rows: readonly SourceRow[], sector: SectorKey): ChatSourceState[] {
@@ -82,7 +91,15 @@ export function chatSources(rows: readonly SourceRow[], sector: SectorKey): Chat
     }));
 }
 
-export function liveData(session: LifeosSession, sector: SectorKey): MessagesData {
+export function liveData(session: LifeosSession, sector: SectorKey, env: string, workspaceId: string): MessagesData {
+  /** A call to the host, refused in its own words (LifeOS's sentence where LifeOS said no). */
+  const host = async <T = unknown>(method: string, args: Record<string, unknown>): Promise<T> => {
+    try {
+      return await registry.linkOf(env).request<T>(method, args);
+    } catch (err) {
+      throw new Error(refusalWords(err) || "The host did not answer");
+    }
+  };
   const write = (name: string, id: string, failed: string): void => {
     const client = session.client;
     if (!client) return;
@@ -110,10 +127,133 @@ export function liveData(session: LifeosSession, sector: SectorKey): MessagesDat
       const hits = useQuery<ChatHit[]>(session, "chats:search", query ? { sector, text: query, limit: 50 } : null);
       return query ? hits : { status: "ready", value: [] };
     },
-    // A thread's draft for a conversation is the host's, and comes with the composer's phase.
-    useDrafted: () => NONE,
+    useDrafted: () => {
+      const held = useHeldReplies(env, workspaceId);
+      const copies = useCopyDrafts(env, workspaceId);
+      return useMemo(() => new Set([...held.flatMap((item) => chatOf(item) ?? []), ...copies.map((d) => d.chatId)]), [held, copies]);
+    },
     useNow: useMinute,
     markRead: (chatId: string) => write("chats:markRead", chatId, "Couldn't mark it read"),
     markUnread: (chatId: string) => write("chats:markUnread", chatId, "Couldn't mark it unread"),
+    send: async (chatId, text) => {
+      await host<MessagesSendAnswer>("work.messages.send", { workspaceId, chatId, text });
+    },
+    undo: async (chatId, id) => (await host<{ text: string }>("work.messages.undo", { workspaceId, chatId, id })).text,
+    retry: async (chatId, id) => {
+      await host("work.messages.retry", { workspaceId, chatId, id });
+    },
+    useDrafts: (chatId) => {
+      const held = useHeldReplies(env, workspaceId);
+      const copies = useCopyDrafts(env, workspaceId);
+      return useMemo(
+        () =>
+          chatId
+            ? [
+                ...held.filter((item) => chatOf(item) === chatId).map(heldDraft),
+                ...copies.filter((d) => d.chatId === chatId).map((d): ThreadDraft => ({ id: d.id, held: false, text: d.text, threadId: d.sessionId, ...(threadTitle(d.sessionId, d.thread) ? { thread: threadTitle(d.sessionId, d.thread) } : {}) })),
+              ]
+            : [],
+        [held, copies, chatId],
+      );
+    },
+    sendDraft: async (draft, text) => {
+      const item = heldItem(env, draft.id);
+      if (!item) throw new Error("This draft is no longer waiting");
+      const payload = (item.payload ?? {}) as { text?: string };
+      const pressed = payload.text === text ? item : { ...(await editItem(item, { ...payload, text })), environmentId: env };
+      const after = await sendItem(pressed);
+      if (!wentOut(after)) throw new Error(notSentWords(after));
+    },
+    dropDraft: async (draft) => {
+      if (draft.held) {
+        const item = heldItem(env, draft.id);
+        if (item) await discardItem(item);
+      } else {
+        await host("work.messages.dropDraft", { workspaceId, id: draft.id });
+        void loadCopyDrafts(env, workspaceId);
+      }
+    },
+    requestFiles: (messageId) => {
+      const client = session.client;
+      if (client) void client.mutation(makeFunctionReference<"mutation">("chats:requestFiles"), { messageId }).catch(() => {});
+    },
+    fileVerb,
+    openFile: (chatId, message, file) => {
+      const kind = viewKind(file);
+      if (kind) {
+        void openItem(env, messagesPaneOf(workspaceId), { kind, source: chatFileSource(chatId, message._id, file), title: file.name.slice(0, 200) });
+        return;
+      }
+      void saveFile(file).then(
+        (saved) => loadToast().then((toast) => (saved ? toast("Saved to Downloads") : toast.error(`${file.name} is still on its way from LifeOS`))),
+        () => loadToast().then((toast) => toast.error(`Couldn't save ${file.name}`)),
+      );
+    },
   };
+}
+
+// ── Files ──
+
+/** Saves a stored file to Downloads under its own name; false while LifeOS has not stored it yet. */
+async function saveFile(file: ChatFile): Promise<boolean> {
+  if (!file.url) return false;
+  const blob = await loadBytes(file.url);
+  await saveDownload(file.name, new Uint8Array(await blob.arrayBuffer()));
+  return true;
+}
+
+// ── A thread's drafts ──
+
+const chatOf = (item: HostItem): string | undefined => ((item.payload ?? {}) as { chatId?: string }).chatId;
+/** A thread's title, from the host's own threads first, else the name the draft kept. */
+const threadTitle = (sessionId: string | null, kept?: string): string | undefined => (sessionId ? sessionStore.metaOf(sessionId)?.title?.trim() : undefined) || kept?.trim() || undefined;
+const heldDraft = (item: HostItem): ThreadDraft => {
+  const title = threadTitle(item.sessionId);
+  return { id: item.ref.id, held: true, text: String(((item.payload ?? {}) as { text?: unknown }).text ?? ""), threadId: item.sessionId, ...(title ? { thread: title } : {}) };
+};
+const heldItem = (env: string, id: string): HostItem | undefined => outboxNow().waiting.find((item) => item.environmentId === env && item.ref.id === id && item.kind === "chat.reply");
+
+/** This workspace's held replies still waiting, from the Outbox's own list of the host. */
+function useHeldReplies(env: string, workspaceId: string): readonly HostItem[] {
+  const { waiting } = useOutbox();
+  return useMemo(() => waiting.filter((item) => item.environmentId === env && item.workspaceId === workspaceId && item.kind === "chat.reply" && item.state === "held"), [waiting, env, workspaceId]);
+}
+
+// The copy-only drafts a workspace holds, read once and again on the host's `work.messages` push.
+const copyDrafts = new Map<string, readonly ChatDraft[]>();
+const copyListeners = new Set<() => void>();
+const watchedDrafts = new Set<string>();
+const NO_COPIES: readonly ChatDraft[] = [];
+const draftsKey = (env: string, workspaceId: string): string => `${env}\u0000${workspaceId}`;
+
+function loadCopyDrafts(env: string, workspaceId: string): Promise<void> {
+  return registry
+    .linkOf(env)
+    .request<MessagesDraftsAnswer>("work.messages.drafts", { workspaceId })
+    .then(
+      ({ drafts }) => void copyDrafts.set(draftsKey(env, workspaceId), drafts),
+      () => {},
+    )
+    .finally(() => {
+      for (const fn of copyListeners) fn();
+    });
+}
+
+function useCopyDrafts(env: string, workspaceId: string): readonly ChatDraft[] {
+  const key = draftsKey(env, workspaceId);
+  useEffect(() => {
+    if (watchedDrafts.has(key)) return;
+    watchedDrafts.add(key);
+    void loadCopyDrafts(env, workspaceId);
+    registry.linkOf(env).onPush((push) => {
+      if (push.push === "work.messages" && push.workspaceId === workspaceId) void loadCopyDrafts(env, workspaceId);
+    });
+  }, [env, workspaceId, key]);
+  return useSyncExternalStore(
+    (fn) => {
+      copyListeners.add(fn);
+      return () => void copyListeners.delete(fn);
+    },
+    () => copyDrafts.get(key) ?? NO_COPIES,
+  );
 }

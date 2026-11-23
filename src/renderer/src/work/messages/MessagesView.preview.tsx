@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { MessagesDataProvider } from "./data";
-import { fixtureData, JOB, manyChats, manyMessages, MESSAGES, type FixtureOptions } from "./fixtures";
+import { ReplyBody } from "./ChatReplyAct";
+import { CHATS, COPY_DRAFT, fixtureData, HELD_DRAFT, JOB, manyChats, manyMessages, MESSAGES, withReply, type FixtureOptions } from "./fixtures";
 import { MessagesScreen } from "./MessagesView";
 import { patchPage, type MessagesPage } from "./page";
 
@@ -8,7 +9,9 @@ import { patchPage, type MessagesPage } from "./page";
  * The Messages view over made-up conversations (fixtures.ts), for `bun run ui:preview
  * src/renderer/src/work/messages/MessagesView.preview.tsx#MessagesPreview --props '{"scene":"open-direct","width":1280}'`.
  * Scenes: `list`, `list-unread`, `list-loading`, `list-empty`, `list-no-source`, `list-stale`,
- * `open-direct`, `open-channel`, `open-thread-reply`, `search`, `narrow-list`, `narrow-open`, and
+ * `open-direct`, `open-channel`, `open-thread-reply`, `search`, `narrow-list`, `narrow-open`, the
+ * composer's `sending`, `not-sent`, `no-route`, `mac-offline`, `held-draft`, `copy-draft`, the
+ * Outbox's `outbox-reply` (a held reply's body as the Outbox shows it), and
  * `heavy-list` (2,000 conversations) and `heavy-open` (5,000 messages) for the speed proof. `width`
  * is the view's (1280 or 640; at and under 640 the list and the conversation take turns). Rendered
  * by nothing in the app.
@@ -32,6 +35,12 @@ const SCENES: Record<string, () => Scene> = {
   search: () => ({ page: { query: "controller" } }),
   "narrow-list": () => ({ data: { stale: true }, narrow: true }),
   "narrow-open": () => ({ data: { stale: true }, page: { chatId: "c_playtest" }, narrow: true }),
+  sending: () => ({ data: { messages: { ...MESSAGES, c_dana: withReply("c_dana", "queued", "Thursday is tight, but yes. I'll get it in by Wednesday night.") } }, page: { chatId: "c_dana" } }),
+  "not-sent": () => ({ data: { messages: { ...MESSAGES, c_dana: withReply("c_dana", "failed", "Thursday is tight, but yes. I'll get it in by Wednesday night.", "Slack says this conversation is archived") } }, page: { chatId: "c_dana" } }),
+  "no-route": () => ({ page: { chatId: "c_playtest" } }),
+  "mac-offline": () => ({ data: { routes: { c_jordan: { can: false, why: "Your Mac isn't running LifeOS" } } }, page: { chatId: "c_jordan" } }),
+  "held-draft": () => ({ data: { drafts: { c_dana: [HELD_DRAFT] } }, page: { chatId: "c_dana" } }),
+  "copy-draft": () => ({ data: { drafts: { c_playtest: [COPY_DRAFT] } }, page: { chatId: "c_playtest" } }),
   "heavy-list": () => ({ data: { chats: manyChats(HEAVY_CHATS) } }),
   "heavy-open": () => {
     const chats = manyChats(HEAVY_CHATS);
@@ -42,6 +51,7 @@ const SCENES: Record<string, () => Scene> = {
 export const MESSAGES_SCENES = Object.keys(SCENES);
 
 export function MessagesPreview({ scene = "list", width = 1280, height = 760 }: { scene?: string; width?: number; height?: number }) {
+  if (scene === "outbox-reply") return <OutboxReply width={width} />;
   const workspaceId = `preview-messages-${scene}-${width}`;
   const setup = useMemo(() => (SCENES[scene] ?? SCENES.list!)(), [scene]);
   const data = useMemo(() => fixtureData(setup.data), [setup]);
@@ -57,3 +67,17 @@ export function MessagesPreview({ scene = "list", width = 1280, height = 760 }: 
   );
 }
 
+
+/** A held reply's body as the Outbox's detail shows it, at that column's measure. */
+function OutboxReply({ width }: { width: number }) {
+  const dana = CHATS.find((c) => c._id === "c_dana")!;
+  return (
+    <div style={{ width: Math.min(width, 720) }} className="border border-border bg-background p-6">
+      <ReplyBody
+        reply={{ chatId: dana._id, source: dana.source, chat: dana.name, text: HELD_DRAFT.text }}
+        chat={dana}
+        answered={{ who: "Dana Lee", text: dana.lastText }}
+      />
+    </div>
+  );
+}

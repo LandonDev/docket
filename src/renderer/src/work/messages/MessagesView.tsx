@@ -40,7 +40,7 @@ function readListWidth(): number {
 
 export function View(props: WorkViewProps) {
   const { lifeos, sector } = props;
-  const data = useMemo(() => (lifeos.client ? liveData(lifeos, sector) : null), [lifeos, sector]);
+  const data = useMemo(() => (lifeos.client ? liveData(lifeos, sector, props.env, props.workspace.id) : null), [lifeos, sector, props.env, props.workspace.id]);
   // A failed session is the frame's to say (its sign-in or its line), with nothing pulsing under it.
   if (!data && !sessionWaits(lifeos)) return null;
   return (

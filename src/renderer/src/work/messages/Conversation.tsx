@@ -12,6 +12,7 @@ import { anchorShift, RowLayout, type RowAnchor } from "../../lib/transcriptWind
 import { openWorkView } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { useMessagesData, type Paged } from "./data";
+import { Composer } from "./Composer";
 import { MessageBlock } from "./Message";
 import { blocksOf, chatFact, estimateOf, newSince, threadRows, wantsRead, type Block } from "./model";
 import { keepPlace, placeOf } from "./page";
@@ -22,7 +23,7 @@ import { keepPlace, placeOf } from "./page";
  * opens at the first unread message, else at its foot, and stays at the foot
  * while he is there; older messages load as he scrolls up, his place held.
  * Opening it marks it read, and so does a message that arrives while it is
- * open and the window is in front. Its foot is where the composer will sit.
+ * open and the window is in front. The composer sits at its foot.
  */
 export function Conversation({ workspaceId, chatId, narrow, onBack }: { workspaceId: string; chatId: string; narrow: boolean; onBack: () => void }) {
   const data = useMessagesData();
@@ -58,6 +59,7 @@ export function Conversation({ workspaceId, chatId, narrow, onBack }: { workspac
       ) : (
         <Column workspaceId={workspaceId} chatId={chatId} since={newSince(chat)} page={messages.value} />
       )}
+      {detail.status === "ready" && detail.value ? <Composer workspaceId={workspaceId} detail={detail.value} /> : null}
     </div>
   );
 }
@@ -298,7 +300,7 @@ function Column({ workspaceId, chatId, since, page }: { workspaceId: string; cha
             .slice()
             .reverse()
             .map((block: Block) => (
-              <MessageBlock key={block.id} block={block} arrives={arrived.current.has(block.id)} />
+              <MessageBlock key={block.id} block={block} arrives={arrived.current.has(block.id)} workspaceId={workspaceId} chatId={chatId} />
             ))}
           <div aria-hidden style={{ height: layout.offsetOf(range.start) }} />
         </div>

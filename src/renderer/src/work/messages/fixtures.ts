@@ -1,7 +1,8 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
-import type { ChatDetail, ChatFace, ChatHit, ChatKind, ChatMessage, ChatRow, ChatSource, ChatSourceState } from "@shared/work/messages";
+import { CHAT_ROUTES, SOURCE_NAME, type ChatDetail, type ChatFace, type ChatHit, type ChatKind, type ChatMessage, type ChatRoute, type ChatRow, type ChatSource, type ChatSourceState } from "@shared/work/messages";
 import type { LifeosQuery } from "../shell/lifeos";
-import type { MessagesData, Paged } from "./data";
+import type { FileVerb, MessagesData, Paged, ThreadDraft } from "./data";
+import { fileVerb } from "./files";
 import { firstName, type ChatFilter } from "./model";
 
 /**
@@ -104,6 +105,9 @@ const SEEDS: ChatSeed[] = [
   { id: "c_lucas", name: "Lucas Gray", kind: "direct", source: "slack", account: "Starboard Games", who: [LUCAS], lastAt: at(2026, 9, 30, 11, 0), text: "Runner keys rotated, the old ones stop working Monday.", fromMe: false, readAt: at(2026, 9, 30, 12, 0) },
 ];
 
+/** Where each source's conversation opens in its own app; iMessage and Teams give none. */
+const LINKS: Partial<Record<ChatSource, string>> = { slack: "https://starboard.slack.com/archives/", discord: "https://discord.com/channels/starboard/" };
+
 function rowOf(seed: ChatSeed): ChatRow {
   const fromMe = seed.fromMe ?? false;
   return {
@@ -125,6 +129,7 @@ function rowOf(seed: ChatSeed): ChatRow {
     readAt: seed.readAt,
     unread: seed.unread ?? false,
     faces: seed.who.map(face),
+    ...(LINKS[seed.source] ? { link: `${LINKS[seed.source]}${seed.id}` } : {}),
   };
 }
 
@@ -139,6 +144,16 @@ function filler(row: ChatRow): ChatMessage[] {
     [row.lastFromMe ? ME : other, row.lastAt, row.lastText],
   ]);
 }
+
+/** A conversation with his reply at its foot, on its way or failed, as LifeOS answers it. */
+export function withReply(id: string, status: "queued" | "failed", text: string, error?: string): ChatMessage[] {
+  const own: ChatMessage = { _id: `${id}_mine`, who: { name: ME.name, me: true }, text, sentAt: NOW - MIN, files: [], reply: { outboxId: `${id}_out`, status, ...(status === "queued" ? { sendAt: NOW + 4_000 } : {}), ...(error ? { error } : {}) } };
+  return [own, ...(MESSAGES[id] ?? [])];
+}
+
+/** A thread's held reply and a copy-only draft, for the composer's two draft states. */
+export const HELD_DRAFT: ThreadDraft = { id: "held_1", held: true, text: "Thursday works. I'll have the key art in the launcher by Wednesday night so the art team can check it first.", threadId: "t_keyart", thread: "Key art for the launcher" };
+export const COPY_DRAFT: ThreadDraft = { id: "copy_1", held: false, text: "Thanks Theo! I'll post the patch notes in #announcements once wave two is in.", threadId: "t_wave", thread: "Playtest wave two" };
 
 export const MESSAGES: Record<string, ChatMessage[]> = { c_dana: DIRECT, c_builds: CHANNEL, c_design: REPLIES, c_playtest: PLAYTEST };
 
@@ -189,8 +204,14 @@ export interface FixtureOptions {
   stale?: boolean;
   chats?: ChatRow[];
   messages?: Record<string, ChatMessage[]>;
-  /** Conversations a thread's draft waits in. */
+  /** Conversations a thread's draft waits in, with no draft drawn (the list's mark alone). */
   drafted?: string[];
+  /** The threads' drafts in each conversation, drawn in its composer. */
+  drafts?: Record<string, ThreadDraft[]>;
+  /** A conversation's route, where LifeOS says no. */
+  routes?: Record<string, ChatRoute>;
+  /** Send refuses, in these words (LifeOS's sentence). */
+  refuse?: string;
   /** Messages that are still loading, for a conversation's bones. */
   messagesLoading?: boolean;
   now?: number;
@@ -202,6 +223,13 @@ export interface FixtureLog {
   unread: string[];
   chats: ChatFilter[];
   searched: string[];
+  sent: { chatId: string; text: string }[];
+  undone: string[];
+  retried: string[];
+  pressed: { id: string; text: string }[];
+  dropped: string[];
+  requested: string[];
+  opened: { chatId: string; messageId: string; file: string; verb: FileVerb }[];
 }
 
 const ready = <T>(value: T): LifeosQuery<T> => ({ status: "ready", value });
@@ -210,25 +238,65 @@ const LOADING = { status: "loading" } as const;
 const matches = (row: ChatRow, filter: ChatFilter): boolean =>
   filter === "all" || (filter === "unread" ? row.unread : filter === "direct" ? row.kind === "direct" : row.kind === "channel");
 
-/** The seam over made-up conversations. Marks are kept, so a mark read clears its dot. */
+/** The words a route that says no gives where LifeOS cannot reply at all. */
+const copyWhy = (row: ChatRow): string => `LifeOS can't reply in ${SOURCE_NAME[row.source]} yet`;
+
+/**
+ * The seam over made-up conversations. What he does is kept: a mark read
+ * clears its dot, a reply lands as his own message inside its undo time, an
+ * undone one leaves, a pressed draft goes.
+ */
 export function fixtureData(options: FixtureOptions = {}): MessagesData & { log: FixtureLog } {
   const now = options.now ?? NOW;
-  const log: FixtureLog = { read: [], unread: [], chats: [], searched: [] };
+  const log: FixtureLog = { read: [], unread: [], chats: [], searched: [], sent: [], undone: [], retried: [], pressed: [], dropped: [], requested: [], opened: [] };
   let rows = options.empty || options.noSource ? [] : (options.chats ?? CHATS);
-  const messages = options.messages ?? MESSAGES;
+  const threads = new Map<string, ChatMessage[]>(Object.entries(options.messages ?? MESSAGES));
+  let drafts: Record<string, ThreadDraft[]> = { ...(options.drafts ?? {}) };
+  let version = 0;
   const listeners = new Set<() => void>();
   const subscribe = (fn: () => void) => {
     listeners.add(fn);
     return () => void listeners.delete(fn);
   };
-  const mark = (id: string, unread: boolean): void => {
-    rows = rows.map((row) => (row._id === id ? { ...row, unread, readAt: unread ? row.readAt : now } : row));
+  const changed = (): void => {
+    version++;
     for (const fn of listeners) fn();
   };
-  const useRows = () => useSyncExternalStore(subscribe, () => rows, () => rows);
-  const drafted: ReadonlySet<string> = new Set(options.drafted ?? []);
+  const useVersion = () => useSyncExternalStore(subscribe, () => version, () => version);
+  const mark = (id: string, unread: boolean): void => {
+    rows = rows.map((row) => (row._id === id ? { ...row, unread, readAt: unread ? row.readAt : now } : row));
+    changed();
+  };
+  const useRows = () => {
+    useVersion();
+    return rows;
+  };
   const sources = options.noSource ? [] : options.stale ? STALE : SOURCES;
-  const messagesOf = (id: string): ChatMessage[] => messages[id] ?? (rows.find((r) => r._id === id) ? filler(rows.find((r) => r._id === id)!) : []);
+  const messagesOf = (id: string): ChatMessage[] => {
+    let held = threads.get(id);
+    if (!held) {
+      const row = rows.find((r) => r._id === id);
+      held = row ? filler(row) : [];
+      threads.set(id, held);
+    }
+    return held;
+  };
+  const putMessages = (id: string, next: ChatMessage[]): void => {
+    threads.set(id, next);
+    changed();
+  };
+  let replies = 0;
+  /** His reply as LifeOS answers it: his own newest message, inside its undo time. */
+  const reply = (chatId: string, text: string): void => {
+    replies++;
+    const own: ChatMessage = { _id: `${chatId}_r${replies}`, who: { name: ME.name, me: true }, text, sentAt: now, files: [], reply: { outboxId: `o${replies}`, status: "queued", sendAt: now + 5_000 } };
+    putMessages(chatId, [own, ...messagesOf(chatId)]);
+  };
+  const dropped = (chatId: string, id: string): void => {
+    drafts = { ...drafts, [chatId]: (drafts[chatId] ?? []).filter((d) => d.id !== id) };
+    changed();
+  };
+  const chatOfDraft = (id: string): string | undefined => Object.keys(drafts).find((chatId) => drafts[chatId]!.some((d) => d.id === id));
   return {
     log,
     useChats(filter) {
@@ -248,14 +316,17 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
       const all = useRows();
       if (options.loading || !id) return LOADING;
       const chat = all.find((row) => row._id === id);
-      const source = chat ? (sources.find((s) => s.kind === chat.source) ?? null) : null;
-      const detail: ChatDetail | null = chat ? { chat, source, route: { can: true }, email: chat.kind === "direct" ? `${chat.name.split(" ")[0]!.toLowerCase()}@starboard.games` : undefined, link: `https://starboard.slack.com/archives/${chat.channel}` } : null;
+      if (!chat) return ready(null);
+      const source = sources.find((s) => s.kind === chat.source) ?? null;
+      const route: ChatRoute = options.routes?.[id] ?? (CHAT_ROUTES[chat.source] === "lifeos" ? { can: true } : { can: false, why: copyWhy(chat) });
+      const detail: ChatDetail = { chat, source, route, ...(chat.kind === "direct" ? { email: `${chat.name.split(" ")[0]!.toLowerCase()}@starboard.games` } : {}), ...(chat.link ? { link: chat.link } : {}) };
       return ready(detail);
     },
     useMessages(chatId) {
+      useVersion();
       const [count, setCount] = useState(50);
-      const all = useMemo(() => (chatId ? messagesOf(chatId) : []), [chatId]);
       if (options.loading || options.messagesLoading || !chatId) return LOADING;
+      const all = messagesOf(chatId);
       const page: Paged<ChatMessage> = { rows: all.slice(0, count), done: count >= all.length, more: () => setCount((c) => c + 50) };
       return ready(page);
     },
@@ -277,7 +348,10 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
       }, [query]);
       return options.loading ? LOADING : ready(hits);
     },
-    useDrafted: () => drafted,
+    useDrafted() {
+      useVersion();
+      return useMemo(() => new Set([...(options.drafted ?? []), ...Object.keys(drafts).filter((id) => drafts[id]!.length)]), [drafts]);
+    },
     useNow: () => now,
     markRead(id) {
       log.read.push(id);
@@ -287,6 +361,49 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & { log:
       log.unread.push(id);
       mark(id, true);
     },
+    async send(chatId, text) {
+      if (options.refuse) throw new Error(options.refuse);
+      log.sent.push({ chatId, text });
+      reply(chatId, text);
+    },
+    async undo(chatId, id) {
+      log.undone.push(id);
+      const all = messagesOf(chatId);
+      const own = all.find((m) => m.reply?.outboxId === id);
+      putMessages(chatId, all.filter((m) => m !== own));
+      return own?.text ?? "";
+    },
+    async retry(chatId, id) {
+      log.retried.push(id);
+      putMessages(
+        chatId,
+        messagesOf(chatId).map((m) => (m.reply?.outboxId === id ? { ...m, reply: { ...m.reply, status: "queued" as const, error: undefined } } : m)),
+      );
+    },
+    useDrafts(chatId) {
+      useVersion();
+      return chatId ? (drafts[chatId] ?? NO_DRAFTS) : NO_DRAFTS;
+    },
+    async sendDraft(draft, text) {
+      log.pressed.push({ id: draft.id, text });
+      const chatId = chatOfDraft(draft.id);
+      if (!chatId) return;
+      dropped(chatId, draft.id);
+      reply(chatId, text);
+    },
+    async dropDraft(draft) {
+      log.dropped.push(draft.id);
+      const chatId = chatOfDraft(draft.id);
+      if (chatId) dropped(chatId, draft.id);
+    },
+    requestFiles(messageId) {
+      log.requested.push(messageId);
+    },
+    fileVerb,
+    openFile(chatId, message, file) {
+      log.opened.push({ chatId, messageId: message._id, file: file._id, verb: fileVerb(file) });
+    },
   };
 }
 
+const NO_DRAFTS: readonly ThreadDraft[] = [];

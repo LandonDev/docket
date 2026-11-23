@@ -1,11 +1,11 @@
+import { defineChunk } from "../../lib/lazyChunk";
 import type { ActViews } from "../acts/registry";
 
 /**
- * How the messages pillar's held reply is shown (`chat.reply`;
- * docs/agents/work-messages.md). `chunk: null` draws the Outbox's generic
- * view (the act's summary and its payload as text) until the pillar's
- * screens give the kind a view of its own (`ChatReplyAct.tsx`).
+ * How the messages pillar's held reply is shown in the Outbox (`chat.reply`;
+ * docs/agents/work-messages.md): where it goes, the message it answers as one
+ * quoted line, then its words exactly as they go.
  */
 export const messagesActs = {
-  "chat.reply": { kind: "chat.reply", chunk: null },
+  "chat.reply": { kind: "chat.reply", chunk: defineChunk("work-messages-act", () => import("./ChatReplyAct")) },
 } satisfies ActViews;
