@@ -44,7 +44,7 @@ packages:
   # widget or an extension only ever links LifeKitCore.
   WorkKit:
     url: https://github.com/LandonDev/work-kit
-    revision: db973d194474a5dd3a1f5dd5040acb1fdcf186d0
+    revision: 090c95f813e344dc3b4fe43d624bcdab7504c221
 targets:
   TempCode:
     type: application
