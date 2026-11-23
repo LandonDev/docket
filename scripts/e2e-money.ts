@@ -42,6 +42,9 @@ const root = mkdtempSync(join(tmpdir(), 'tc-money-e2e-'))
 const data = join(root, 'data')
 const work = join(root, 'work')
 for (const d of [data, work]) mkdirSync(d, { recursive: true })
+// An instance of its own: its own data folder, the Work service on a free port, and no LifeOS documents served from here.
+process.env.TEMP_CODE_USER_DATA = data
+process.env.TEMP_CODE_WORK_PORT = '0'
 
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
