@@ -6,6 +6,7 @@ import type { WorkModule } from '../modules'
 import { LIBREOFFICE_CONVERTERS, libreOffice } from '.'
 import type { Readiness } from '@shared/contract-work-formats'
 import { convertersOf, defaultCaps, extOf, JobRunner, NoConverterError, NotReadyError, pressed, pressOf, type ConvertJob, type Converter, type LinkedHost } from './jobs'
+import { MCP_CEILING } from '../../remote/auth'
 import { statePath, type ToolchainState } from './tools'
 
 /**
@@ -391,13 +392,29 @@ describe('a converter that is an app or a machine', () => {
     expect(lines.join('\n')).toContain('could not say whether it is ready: the helper did not answer')
   })
 
+  it('a converter that does not answer in time is not here: its jobs fail at once and the report still says the rest', async () => {
+    const lines: string[] = []
+    const hung: Converter = { ...upper('docx', 'pdf+word'), ready: () => new Promise<Readiness>(() => {}) }
+    const runner = new JobRunner({ host: 'box', dataDir: host('box', ['upper']), log: (l) => lines.push(l), readyTimeoutMs: 30, converters: convertersOf([mod('office', [hung]), mod('formats', [upper('txt', 'md', 'upper')])]) })
+    const started = Date.now()
+    await expect(runner.convert({ from: 'docx', to: 'pdf+word', input: input() })).rejects.toThrow(NoConverterError)
+    expect((await runner.report()).converts).toEqual([{ from: 'txt', to: 'md' }])
+    expect(Date.now() - started).toBeLessThan(2_000)
+    expect(lines.join('\n')).toContain('docx→pdf+word could not say whether it is ready: it did not answer')
+  })
+
   it("a press is this host's own: only the owner's window makes one, and nothing sent passes for one", async () => {
     expect(pressOf({ kind: 'local', caps: [] })).toBeDefined()
-    expect(pressOf({ kind: 'remote', caps: ['read', 'operate'] })).toBeDefined()
-    // a thread, another host of his, a read-only key
+    // his own paired device, which could approve as it pressed
+    expect(pressOf({ kind: 'remote', caps: ['read', 'operate', 'approve'] })).toBeDefined()
+    expect(pressOf({ kind: 'remote', caps: ['admin'] })).toBeDefined()
+    // a thread; another host of his; a read-only key; and a key that can run jobs but not approve, which is all an agent's key
+    // through the MCP door may ever hold (MCP_CEILING)
     expect(pressOf({ kind: 'model', caps: ['admin'], sessionId: 's1' })).toBeUndefined()
     expect(pressOf({ kind: 'remote', caps: ['admin'], peer: 'mac' })).toBeUndefined()
     expect(pressOf({ kind: 'remote', caps: ['read'] })).toBeUndefined()
+    expect(pressOf({ kind: 'remote', caps: ['read', 'operate'] })).toBeUndefined()
+    expect(MCP_CEILING.includes('approve') || MCP_CEILING.includes('admin')).toBe(false)
     expect(pressed({ pressed: pressOf(owner) })).toBe(true)
     expect(pressed({ pressed: true })).toBe(false)
     expect(pressed({ pressed: { pressed: true } })).toBe(false)

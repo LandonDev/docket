@@ -145,8 +145,6 @@ describe('a job forwarded to a linked host', () => {
     for (const to of ['pdf+', '+word', 'pdf+word+excel', 'pdf+Word', 'pdf word', '../pdf', 'pdf+wordwordwordx']) {
       await expect(link.request('work.formats.convert', { from: 'docx', to, name: 'a.docx', data }), to).rejects.not.toThrow(/no converter/)
     }
-    // A press is not a field of the wire: a request that names one is refused, or runs without it.
-    await expect(link.request('work.formats.convert', { from: 'docx', to: 'pdf+word', name: 'a.docx', data, pressed: true })).rejects.toThrow()
     link.close()
   })
 

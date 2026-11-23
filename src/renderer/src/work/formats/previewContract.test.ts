@@ -51,6 +51,10 @@ describe("the Preview contract", () => {
     const shifting: PreviewBytes = { rev: "r1", size: 8, read: async () => new TextEncoder().encode(reads++ ? "%PDF-9.9" : "%PDF-1.7") };
     expect(await previewProblems(fake({}, () => ({ picture: { kind: "paged", pdf: shifting, pages: 1, drawnBy: "libreoffice" }, drops: [] })), { only: ["docx"] })).toContain("docx: two reads at one rev differ");
     expect(await previewProblems(fake({}, () => ({ picture: { kind: "paged", pdf: pdf(), pages: 2, drawnBy: "libreoffice", shown: { from: 1, to: 50, of: 20 } }, drops: [] })), { only: ["docx"] })).toEqual(["docx: the pages shown are not a range of the whole"]);
+    // `pages` is what the PDF in hand holds; `shown` says which pages of the whole those are.
+    const part = (pages: number) => fake({}, () => ({ picture: { kind: "paged", pdf: pdf(), pages, drawnBy: "libreoffice", shown: { from: 51, to: 100, of: 2084 } }, drops: [] }));
+    expect(await previewProblems(part(50), { only: ["docx"] })).toEqual([]);
+    expect(await previewProblems(part(2084), { only: ["docx"] })).toEqual(["docx: pages 51 to 100 are shown and the PDF holds 2084"]);
   });
 
   it("holds a loss to one plain line that says what happens, and a cancelled draw to no picture", async () => {
@@ -58,6 +62,17 @@ describe("the Preview contract", () => {
     expect(problems).toEqual(['md: a loss says what happens to the thing, never "not supported"', 'md: a loss is one plain line, got "two\\nlines"', 'md: a loss is one plain line, got " "']);
     const deaf = fake({ draw: async () => ({ picture: { kind: "text", text: "x" }, drops: [] }) });
     expect(await previewProblems(deaf, { only: ["md"] })).toEqual(["md: a cancelled draw answered a picture"]);
+    // A draw that throws where it stands, not as a rejection, is still a refusal the check reads.
+    let calls = 0;
+    const blunt = fake({
+      draw: (_format, opts) => {
+        if (opts.signal.aborted) throw new Error("cancelled");
+        calls++;
+        return Promise.resolve({ picture: { kind: "text" as const, text: "x" }, drops: [] });
+      },
+    });
+    expect(await previewProblems(blunt, { only: ["md"] })).toEqual([]);
+    expect(calls).toBe(1);
   });
 
   it("says when a format cannot be drawn or its export is misnamed", async () => {
@@ -83,8 +98,21 @@ describe("the Preview contract", () => {
         if (by) throw new NotInReach(app, "asleep");
         return { picture: { kind: "paged", pdf: pdf(), pages: 3, drawnBy: "libreoffice" }, drops: [] };
       });
-    expect(await previewProblems(asleep("asleep"), only)).toEqual([]);
+    // The press on an asleep machine is what wakes it: answering "asleep" to the press itself is a broken source.
+    expect(await previewProblems(asleep("asleep"), only)).toEqual(["docx: office() said asleep and the draw said asleep"]);
     expect(await previewProblems(asleep("ready"), only)).toEqual(["docx: office() said ready and the draw said asleep"]);
+    const woken = fake({ office: office("asleep") }, (_f, by) => ({ picture: { kind: "paged", pdf: pdf(), pages: 3, drawnBy: by ? "word" : "libreoffice" }, drops: [] }));
+    expect(await previewProblems(woken, only)).toEqual([]);
+    // An app he has shut is never started unseen, and one that is not there draws nothing.
+    for (const state of ["not open", "none"] as const) {
+      const shut = fake({ office: office(state) }, (_f, by) => {
+        if (by) throw new NotInReach("Word", state);
+        return { picture: { kind: "paged", pdf: pdf(), pages: 3, drawnBy: "libreoffice" }, drops: [] };
+      });
+      expect(await previewProblems(shut, only)).toEqual([]);
+      const started = fake({ office: office(state) }, (_f, by) => ({ picture: { kind: "paged", pdf: pdf(), pages: 3, drawnBy: by ? "word" : "libreoffice" }, drops: [] }));
+      expect(await previewProblems(started, only)).toEqual([`docx: office() said ${state} and the draw answered a picture`]);
+    }
     expect(await previewProblems(asleep("asleep", "Excel"), only)).toEqual(["docx: NotInReach names Excel, office() names Word"]);
     const odd = fake({ office: office("none") }, (_f, by) => {
       if (by) throw new Error("no carrier");

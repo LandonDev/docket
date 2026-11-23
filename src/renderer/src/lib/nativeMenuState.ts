@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { EMPTY_MENU_STATE, sameMenuState, type MenuState } from "@shared/menuTree";
+// From the state's own module: a value import of the menu tree would put every row of it in the first paint.
+import { EMPTY_MENU_STATE, sameMenuState, type MenuState } from "@shared/menuState";
 import { shellStore } from "../stores/shell";
 import { editorHeld, workCommands } from "./appCommands";
 import { awayEnabled, awayStore } from "./away";
@@ -76,8 +77,8 @@ export function menuStateOf(f: MenuFacts): MenuState {
 
 const EVERYWHERE = { kind: "all" } as const;
 
-/** The store-backed facts, read now. */
-function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts {
+/** The store-backed facts, read now; `caret` is where the caret is going, when a focus event knows better than the document does. */
+function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }, caret?: EventTarget | null): MenuFacts {
   const metas = sessionStore.metas();
   const catalog = workspaceStore.getSnapshot();
   const lastSeen = loadLastSeen();
@@ -101,7 +102,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
     workFile: workFilePort.get()?.can() ?? false,
     print: workCommands.has("print"),
     export: workCommands.has("export"),
-    editing: typeof document === "undefined" ? [] : editorHeld(document.activeElement),
+    editing: caret !== undefined ? editorHeld(caret) : typeof document === "undefined" ? [] : editorHeld(document.activeElement),
   };
 }
 
@@ -121,16 +122,16 @@ export function publishMenuState(
   let last: MenuState = EMPTY_MENU_STATE;
   let sent = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const flush = (): void => {
+  const flush = (caret?: EventTarget | null): void => {
     timer = null;
-    const next = menuStateOf(readFacts(dock()));
+    const next = menuStateOf(readFacts(dock(), caret));
     if (sent && sameMenuState(next, last)) return;
     last = next;
     sent = true;
     send(next);
   };
   const schedule = (): void => {
-    if (timer === null) timer = setTimeout(flush, MENU_STATE_THROTTLE_MS);
+    if (timer === null) timer = setTimeout(() => flush(), MENU_STATE_THROTTLE_MS);
   };
   const offs = [
     sessionStore.onMetaChange(schedule),
@@ -144,14 +145,15 @@ export function publishMenuState(
     workSwitch.subscribe(schedule),
     workCommands.subscribe(schedule),
   ];
-  // The caret entering or leaving a Work editor moves four keys between the menu and the page: said at once, not after the throttle.
-  let held = "";
-  const onFocus = (): void => {
-    const next = editorHeld(document.activeElement).join();
-    if (next === held) return;
-    held = next;
+  // The caret entering or leaving a Work editor moves four keys between the menu and the page: said at once, not after
+  // the throttle. Compared with what was last sent, so a state a throttled flush sent (an editor closed under the caret)
+  // is never mistaken for the one in hand. A focusout names where the caret goes: the document still says the old place
+  // then, and a move inside one editor says nothing.
+  const onFocus = (event: FocusEvent): void => {
+    const caret = event.type === "focusout" ? event.relatedTarget : event.target;
+    if (editorHeld(caret).join() === (last.editing ?? []).join()) return;
     if (timer !== null) clearTimeout(timer);
-    flush();
+    flush(caret);
   };
   document.addEventListener("focusin", onFocus);
   document.addEventListener("focusout", onFocus);

@@ -19,8 +19,13 @@ In this order:
    | Mark | The editor owns |
    |---|---|
    | `data-editor-keys` (any value but `read`) | ⌘B and ⌘K (bold, link) |
-   | any, `read` included | ⌘P once an editor on screen answers Print…, ⌘F once one answers find |
+   | any, `read` included | ⌘P once that editor answers Print…, ⌘F once it answers find |
    | `data-editor-keys="document"` | also ⌥⌘0 to ⌥⌘3 (Normal text, Heading 1 to 3) |
+
+   "That editor" is the one holding the caret: its Body's root lists what it
+   answers in `data-editor-answers` (`useWorkCommands` writes it,
+   `editorAnswers` reads it). A sheet that answers Print… beside a document
+   that does not leaves ⌘P as Go to File… while the caret is in the document.
 
    A body he can only read is marked `read`: ⌘B stays Sidebar and ⌘K Search
    there, since there is nothing to make bold.
@@ -42,7 +47,9 @@ How it is built:
   so the window names the rows whose keys the editor holds in
   `MenuState.editing` (`editorHeld`, sent over `menu:state` by
   `lib/nativeMenuState.ts` at once on `focusin` and `focusout`, not after the
-  250 ms throttle). `resolveMenu` (`src/shared/menuTree.ts`) drops those rows'
+  250 ms throttle; a focusout reads where the caret goes, so a move inside one
+  editor sends nothing, and each event is compared with what was last sent,
+  so an editor closed under the caret never leaves a stale answer). `resolveMenu` (`src/shared/menuTree.ts`) drops those rows'
   accelerators, so nothing is registered for them on any platform, and gives
   Print… the ⌘P it takes from Go to File… as a `pageKey` (shown, left to the
   page; on macOS main drops the menu's own click when it came by ⌘ or Ctrl).
@@ -58,8 +65,8 @@ File → Export… (⇧⌘E) and File → Print… (⌘P while the caret is in a
 are two rows of the menu tree and two commands, `export` and `print`. Neither
 does anything itself: `workCommands.run(id)` (`lib/appCommands.ts`) sends one
 window event, `work:command` with `{ id }`, and the editor on screen answers
-it. Edit → Find… sends `find` the same way while the caret is in an editor
-that answers it, and goes to the code editor's find otherwise.
+it. Edit → Find… sends `find` the same way while the editor holding the caret
+answers it (`editorAnswers`), and goes to the code editor's find otherwise.
 
 A kind's `Body` answers with one hook, in its own chunk:
 
@@ -71,11 +78,12 @@ return <div ref={root} data-editor-keys="document">…</div>;
 ```
 
 - While a Body that answers a command is mounted, the command is **offered**
-  (`workCommands.has(id)`): its menu row is live and its key is the editor's.
-  With none mounted the row is greyed (the native menu through
+  (`workCommands.has(id)`): its menu row is live, and ⇧⌘E is Export… wherever
+  the caret is. With none mounted the row is greyed (the native menu through
   `MenuState.disabled`, the in-app bar of `/ui` by asking `workCommands`) and
   the key stays the app's. So a kind answers only what it has built: nothing
-  half-built is reachable from the menu.
+  half-built is reachable from the menu. ⌘P and ⌘F are narrower: they are an
+  editor's only while the caret is in an editor that answers them itself.
 - With several editors on screen the command goes to the one holding the
   caret, else the one that held it last, else the one mounted last; an editor
   that does not answer the command is passed over.
@@ -105,7 +113,9 @@ interface PreviewSource {
 
 - A **picture** is `paged` (a PDF as `PreviewBytes`, its page count and who
   drew it: `tempcode`, `libreoffice`, `word`, `excel`, `powerpoint`), `text`,
-  `html`, `table`, `files` or `video`.
+  `html`, `table`, `files` or `video`. `pages` counts the PDF in hand; when
+  that is only part of the whole, `shown` says which pages of the whole its
+  first and last are and about how many the whole has.
 - **`PreviewBytes`** is one finished render read by range: `rev` names it and
   every read is of that render. A kind keeps its renders by content hash on
   the host that holds the file and reads them from that host.
@@ -116,9 +126,14 @@ interface PreviewSource {
   orientation, margins in points (`MARGIN_PRESETS` are Word's Normal, Narrow,
   Moderate and Wide) and the header and footer each on or off. The document,
   the sheet and the deck each add their own fields in their arm.
+- **`office()`** says whether a press can get the real app's picture:
+  `ready` and `asleep` offer "Check in Word" (the press on an asleep machine
+  is what wakes it), `not open` is an app he has shut, which nothing starts
+  unseen, and `none` is no Office in reach of a press from this window.
 - **`draw` with `by: 'office'`** is his press on "Check in Word" (or Excel, or
   PowerPoint). It answers that app's own picture or rejects with
-  `NotInReach(app, why)`.
+  `NotInReach(app, why)`: never a picture when `office()` said `not open` or
+  `none`, never a refusal when it said `ready` or `asleep`.
 - A draw whose signal is already aborted answers no picture.
 
 `previewProblems(source, opts?)` (`previewContract.ts`) checks all of that and
@@ -141,14 +156,20 @@ Word, Excel and PowerPoint draw through it as well, and for them:
   hibernated), `not open` (an app he has shut on his Mac: never started
   unseen) or `none`. It is asked when a job comes, and with null for
   `work.formats.tools`, whose `converts` rows carry a `state` when a pair is
-  not simply ready. A converter that cannot say is treated as not there.
+  not simply ready. A converter that cannot say, or does not say within 5
+  seconds (`READY_TIMEOUT_MS`), is treated as not there; the report asks them
+  all at once, so one that hangs costs the report its own wait and no more.
 - **A job runs here** when the converter is ready, or when it is asleep and
   the job carries his press. Otherwise it goes to the first linked host that
   reports the pair ready. With no such host the job fails as `NotReadyError`
   (`asleep` or `not open`, naming the host) or `NoConverterError`.
-- **His press.** `pressOf(by)` answers a `Press` only for a person's call at a
-  window of this host: never a thread's (`kind: 'model'`), never another
-  host's (`by.peer`), never a read-only key's. The runner remembers the
+- **His press.** `pressOf(by)` answers a `Press` only for the owner's own
+  call: at a window of this host, or from a paired device of his that could
+  approve as it pressed (`approve` or `admin`, the rule `userTextByOf` keeps
+  for "the owner typed this"). Never a thread's (`kind: 'model'`), never
+  another host's on his behalf (`by.peer`), and never a key that cannot
+  approve: an agent's key through the MCP door holds `read` and `operate` at
+  most, so it can run a job and can wake nothing. The runner remembers the
   objects it made, so a JSON `pressed: true`, a forwarded field or an option
   of that name is not a press. A converter reads it with `pressed(job)`.
   **Only a pressed job may wake the VM**, and a forwarded job carries none: a

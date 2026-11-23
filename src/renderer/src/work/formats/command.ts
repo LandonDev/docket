@@ -12,7 +12,10 @@ import { workCommands, type WorkCommandId } from "../../lib/appCommands";
  *
  * With several editors on screen (a split, a Files tab beside a thread) the
  * command goes to the one that holds the caret, else the one that held it
- * last, else the one mounted last.
+ * last, else the one mounted last. A key is an editor's only when the
+ * editor holding the caret answers it: the hook writes what its Body
+ * answers on the root as `data-editor-answers`, which `editorAnswers`
+ * (lib/appCommands.ts) reads.
  */
 
 export type WorkCommandHandlers = Partial<Record<WorkCommandId, () => void>>;
@@ -52,9 +55,13 @@ export function useWorkCommands(root: RefObject<HTMLElement | null>, handlers: W
       document.addEventListener("focusin", onFocus);
     }
     mounted.push(me);
+    // On the root itself, so the key resolver and the menu read what this editor answers with no registry in first paint.
+    const el = root.current;
+    el?.setAttribute("data-editor-answers", ids.replaceAll(",", " "));
     const offs = ids ? (ids.split(",") as WorkCommandId[]).map((id) => workCommands.offer(id)) : [];
     return () => {
       for (const off of offs) off();
+      el?.removeAttribute("data-editor-answers");
       mounted.splice(mounted.indexOf(me), 1);
       if (last === me) last = null;
       if (mounted.length === 0) {

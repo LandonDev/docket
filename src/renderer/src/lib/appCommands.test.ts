@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 // These keys are a Mac's (⌘): the suite runs on any machine, so it says which platform it means (lib/keys.ts).
 vi.mock("./platform", () => ({ IS_MAC: true }));
 import { RENDERER_MENU_IDS } from "@shared/menuTree";
-import { createKeyResolver, editorHeld, editorKeys, isAppCommandId, menuCommandAllowed, pageOwnsKey, workCommands, DOUBLE_SHIFT_MS } from "./appCommands";
+import { createKeyResolver, editorAnswers, editorHeld, editorKeys, isAppCommandId, menuCommandAllowed, pageOwnsKey, workCommands, DOUBLE_SHIFT_MS } from "./appCommands";
 
 type Surface = "dialog" | "monaco" | "terminal" | "codemirror" | "composer" | "driving" | null;
 
@@ -200,13 +200,19 @@ describe("a live picture he drives holds the keyboard", () => {
 });
 
 describe("a Work editor holding the caret owns its keys", () => {
+  /** What the editor under the next key answers itself (its Body's `data-editor-answers`); null: its Body answers nothing. */
+  let answers: string | null = null;
   /** A key whose target sits in an editor root marked `mark` (null: outside any). */
   function inEditor(k: string, mark: string | null, mods: Partial<Record<"meta" | "ctrl" | "alt" | "shift", boolean>> = { meta: true }, code?: string): KeyboardEvent {
-    const root = { getAttribute: (name: string) => (name === "data-editor-keys" ? mark : null) };
+    const said = answers;
+    const root = { getAttribute: (name: string) => (name === "data-editor-keys" ? mark : name === "data-editor-answers" ? said : null) };
     return {
       ...key(k, mods),
       ...(code ? { code } : {}),
-      target: { closest: (selector: string) => (mark !== null && selector === "[data-editor-keys]" ? root : null) },
+      target: {
+        closest: (selector: string) =>
+          mark === null ? null : selector === "[data-editor-keys]" ? root : selector === "[data-editor-answers]" && said !== null ? root : null,
+      },
     } as unknown as KeyboardEvent;
   }
   const resolve = createKeyResolver();
@@ -232,10 +238,10 @@ describe("a Work editor holding the caret owns its keys", () => {
     expect(resolve(inEditor("k", "read"), ctx)).toEqual({ id: "open_search" });
   });
 
-  it("⌘P is Go to File and ⌘F the app's until an editor on screen answers them; then they are Print and the editor's find, in a read-only root too", () => {
+  it("⌘P is Go to File and ⌘F the app's until the editor holding the caret answers them; then they are Print and its find, in a read-only root too", () => {
     expect(resolve(inEditor("p", "document"), ctx)).toEqual({ id: "go_to_file" });
     expect(resolve(inEditor("f", "document"), ctx)).toBeNull();
-    const offs = [workCommands.offer("print"), workCommands.offer("find")];
+    answers = "export find print";
     for (const mark of ["", "document", "read"]) {
       expect(resolve(inEditor("p", mark), ctx)).toEqual({ id: "print" });
       expect(resolve(inEditor("f", mark), ctx)).toEqual({ id: "find" });
@@ -243,8 +249,26 @@ describe("a Work editor holding the caret owns its keys", () => {
     // outside the editor's root the keys are the app's, whatever is on screen
     expect(resolve(inEditor("p", null), ctx)).toEqual({ id: "go_to_file" });
     expect(resolve(inEditor("f", null), ctx)).toBeNull();
-    for (const off of offs) off();
+    answers = null;
     expect(resolve(inEditor("p", "document"), ctx)).toEqual({ id: "go_to_file" });
+  });
+
+  it("a sheet beside the document answering Print does not take ⌘P or ⌘F from a document that answers neither", () => {
+    // Another editor on screen offers both: the menu's rows are live, and the keys under this caret are still the app's.
+    const offs = [workCommands.offer("print"), workCommands.offer("find")];
+    answers = "export";
+    expect(resolve(inEditor("p", "document"), ctx)).toEqual({ id: "go_to_file" });
+    expect(resolve(inEditor("f", "document"), ctx)).toBeNull();
+    expect(editorHeld(inEditor("p", "document").target)).toEqual(["toggle_sidebar", "open_search"]);
+    expect(editorAnswers(inEditor("p", "document").target, "export")).toBe(true);
+    expect(editorAnswers(inEditor("p", "document").target, "print")).toBe(false);
+    // "print" is a whole word of the list, never part of one
+    answers = "printer";
+    expect(editorAnswers(inEditor("p", "document").target, "print")).toBe(false);
+    answers = null;
+    expect(editorAnswers(inEditor("p", "document").target, "print")).toBe(false);
+    expect(editorAnswers(null, "print")).toBe(false);
+    for (const off of offs) off();
   });
 
   it("⇧⌘E is Export… while an editor answers it, wherever the caret is, and nothing before", () => {
@@ -278,11 +302,11 @@ describe("a Work editor holding the caret owns its keys", () => {
     expect(editorHeld(target(null))).toEqual([]);
     expect(editorHeld(target("document"))).toEqual(["toggle_sidebar", "open_search"]);
     expect(editorHeld(target("read"))).toEqual([]);
-    const offs = [workCommands.offer("print"), workCommands.offer("find")];
+    answers = "find print";
     expect(editorHeld(target("document"))).toEqual(["toggle_sidebar", "open_search", "go_to_file", "find"]);
     expect(editorHeld(target("read"))).toEqual(["go_to_file", "find"]);
     expect(editorHeld(target(null))).toEqual([]);
-    for (const off of offs) off();
+    answers = null;
   });
 
   it("runs a command only when an editor answers it, as one window event", () => {

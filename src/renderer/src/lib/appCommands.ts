@@ -24,9 +24,10 @@
  *   5. Double Shift is dropped in the terminal and inside CodeMirror.
  *   6. A Work editor holding the caret (a kind's Body marked
  *      `data-editor-keys`, docs/agents/work-editors.md "Who hears a key")
- *      owns ⌘B and ⌘K, and ⌘P (Print) and ⌘F (its find) once it answers
- *      them; a read-only one (`data-editor-keys="read"`) owns only the
- *      last two, and a document (`="document"`) also ⌥⌘0 to ⌥⌘3.
+ *      owns ⌘B and ⌘K, and ⌘P (Print) and ⌘F (its find) once that editor
+ *      answers them (`data-editor-answers`); a read-only one
+ *      (`data-editor-keys="read"`) owns only the last two, and a document
+ *      (`="document"`) also ⌥⌘0 to ⌥⌘3.
  *
  * Keys:
  *   Shift Shift (400 ms)  go_to_file        ⌘P        go_to_file
@@ -169,14 +170,26 @@ export function editorKeys(target: unknown): string | null {
   return root ? (root.getAttribute("data-editor-keys") ?? "") : null;
 }
 
+/**
+ * Whether the editor holding `target` answers a command itself: its Body's
+ * root lists what it answers in `data-editor-answers` (`useWorkCommands`
+ * writes it). A sheet beside a document answering Print does not make ⌘P
+ * Print while the caret is in the document.
+ */
+export function editorAnswers(target: unknown, id: WorkCommandId): boolean {
+  const el = target as { closest?: (selector: string) => { getAttribute(name: string): string | null } | null } | null;
+  const root = typeof el?.closest === "function" ? el.closest("[data-editor-answers]") : null;
+  return !!root && (root.getAttribute("data-editor-answers") ?? "").split(" ").includes(id);
+}
+
 /** The menu rows whose keys the editor holding `target` owns now (`MenuState.editing`). */
 export function editorHeld(target: unknown): string[] {
   const editor = editorKeys(target);
   if (editor === null) return [];
   return [
     ...(editor === "read" ? [] : ["toggle_sidebar", "open_search"]),
-    ...(workCommands.has("print") ? ["go_to_file"] : []),
-    ...(workCommands.has("find") ? ["find"] : []),
+    ...(editorAnswers(target, "print") ? ["go_to_file"] : []),
+    ...(editorAnswers(target, "find") ? ["find"] : []),
   ];
 }
 
@@ -308,8 +321,8 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
         if (editor === "document" && /^Digit[0-3]$/.test(e.code)) return null;
       } else {
         if (editor !== "read" && (k === "b" || k === "k")) return null;
-        if (k === "p" && workCommands.has("print")) return { id: "print" };
-        if (k === "f" && workCommands.has("find")) return { id: "find" };
+        if (k === "p" && editorAnswers(target, "print")) return { id: "print" };
+        if (k === "f" && editorAnswers(target, "find")) return { id: "find" };
       }
     }
 

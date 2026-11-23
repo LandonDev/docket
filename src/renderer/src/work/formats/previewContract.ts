@@ -42,7 +42,9 @@ async function pictureProblems(what: string, picture: PreviewPicture, paged: boo
   if (paged !== (picture.kind === "paged")) out.push(`${what}: the format says ${paged ? "paged" : "not paged"} and drew ${picture.kind}`);
   if (picture.kind === "paged") {
     if (!Number.isInteger(picture.pages) || picture.pages < 1) out.push(`${what}: ${picture.pages} pages`);
-    if (picture.shown && !(picture.shown.from >= 1 && picture.shown.to >= picture.shown.from && picture.shown.of >= picture.shown.to)) out.push(`${what}: the pages shown are not a range of the whole`);
+    const shown = picture.shown;
+    if (shown && !(shown.from >= 1 && shown.to >= shown.from && shown.of >= shown.to)) out.push(`${what}: the pages shown are not a range of the whole`);
+    else if (shown && shown.to - shown.from + 1 !== picture.pages) out.push(`${what}: pages ${shown.from} to ${shown.to} are shown and the PDF holds ${picture.pages}`);
     out.push(...(await bytesProblems(what, picture.pdf, PDF_MAGIC)));
   } else if (picture.kind === "video") {
     if (!(picture.seconds > 0)) out.push(`${what}: a video of no length`);
@@ -85,10 +87,12 @@ export async function previewProblems(source: PreviewSource, opts: ContractOptio
     // A draw whose signal is already aborted must not answer a picture.
     const gone = new AbortController();
     gone.abort();
-    const late = await source.draw(f.id, { signal: gone.signal }).then(
-      () => true,
-      () => false,
-    );
+    const late = await Promise.resolve()
+      .then(() => source.draw(f.id, { signal: gone.signal }))
+      .then(
+        () => true,
+        () => false,
+      );
     if (late) out.push(`${f.id}: a cancelled draw answered a picture`);
     if (opts.exports) {
       try {
@@ -112,10 +116,12 @@ export async function previewProblems(source: PreviewSource, opts: ContractOptio
       if ("err" in asked) {
         if (!(asked.err instanceof NotInReach)) out.push(`${first.id}: Office's draw failed with something other than NotInReach`);
         else if (asked.err.app !== app) out.push(`${first.id}: NotInReach names ${asked.err.app}, office() names ${app}`);
-        else if (state === "ready") out.push(`${first.id}: office() said ready and the draw said ${asked.err.why}`);
+        // Ready draws; asleep is woken by this very press and then draws.
+        else if (state === "ready" || state === "asleep") out.push(`${first.id}: office() said ${state} and the draw said ${asked.err.why}`);
       } else {
         const p = asked.drawn.picture;
-        if (state === "none") out.push(`${first.id}: office() said none and the draw answered a picture`);
+        // A picture from an app that was shut means it was started unseen; from none, that office() lied.
+        if (state === "none" || state === "not open") out.push(`${first.id}: office() said ${state} and the draw answered a picture`);
         if (p.kind !== "paged" || p.drawnBy !== app.toLowerCase()) out.push(`${first.id}: Office's picture must say ${app} drew it`);
       }
     }

@@ -269,6 +269,7 @@ import { playCue } from "./lib/sounds";
 import {
   APP_COMMANDS,
   createKeyResolver,
+  editorAnswers,
   editorKeys,
   pageOwnsKey,
   dialogOpen,
@@ -3250,7 +3251,7 @@ export default function App() {
           return go(() => void import("./lib/bundledRelease").then(({ BUNDLED_RELEASE }) => onOpenWhatsNew(BUNDLED_RELEASE.version, BUNDLED_RELEASE.notes)));
         case "find_in_project": return go(a.onFindInProject);
         case "new_window": return go(() => void invoke("open_new_window").catch(() => {}));
-        case "find": return go(() => void ((editorKeys(document.activeElement) !== null && workCommands.run("find")) || openFindInActiveEditor()));
+        case "find": return go(() => void ((editorAnswers(document.activeElement, "find") && workCommands.run("find")) || openFindInActiveEditor()));
         // Print… and Export… are the Work editor's on screen (work/formats/command.ts hears the event).
         case "print":
         case "export": return go(() => void workCommands.run(cmd.id as "print" | "export"));

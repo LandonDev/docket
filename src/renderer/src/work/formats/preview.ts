@@ -38,9 +38,16 @@ export type PreviewPicture =
   | {
       kind: "paged";
       pdf: PreviewBytes;
+      /** the pages in `pdf`, the ones the frame draws */
       pages: number;
       drawnBy: DrawnBy;
-      /** set when only some pages were drawn: which, and of about how many */
+      /**
+       * Set when `pdf` holds only part of the whole (a sheet of 2,084 pages
+       * draws its first 50): `from` and `to` are which pages of the whole
+       * the PDF's first and last are, 1-based and inclusive, so
+       * `to - from + 1` is `pages`; `of` is about how many the whole has.
+       * The bar then reads "Page 3 of 2,084".
+       */
       shown?: { from: number; to: number; of: number };
     }
   | { kind: "text"; text: string }
@@ -110,14 +117,14 @@ export interface SheetTitles {
 
 type SetOf<T> = (next: Partial<Omit<T, "kind" | "set">>) => Promise<void>;
 
-interface DocumentSetup {
+export interface DocumentSetup {
   kind: "document";
   common: CommonSetup;
   columns: 1 | 2 | 3;
   differentFirst: boolean;
   set: SetOf<DocumentSetup>;
 }
-interface SheetSetup {
+export interface SheetSetup {
   kind: "sheet";
   common: CommonSetup;
   scale: SheetScale;
@@ -127,7 +134,7 @@ interface SheetSetup {
   headings: boolean;
   set: SetOf<SheetSetup>;
 }
-interface DeckSetup {
+export interface DeckSetup {
   kind: "deck";
   common: CommonSetup;
   layout: "slides" | "notes" | { handouts: 2 | 3 | 4 | 6 };
@@ -170,9 +177,15 @@ export interface Drawn {
 export interface PreviewSource {
   formats: PreviewFormat[];
   setup?: PageSetupModel;
-  /** Whether the real Office app can draw this file now: drives "Check in Word". Absent: never offered. */
+  /**
+   * Whether the real Office app can draw this file now: drives "Check in
+   * Word". Absent: never offered. `ready` and `asleep` offer it (a press on
+   * an asleep one wakes the machine and draws); `not open` is an app he has
+   * shut, which no press starts unseen; `none` is no Office in reach of a
+   * press from this window.
+   */
   office?(): Promise<{ app: OfficeApp; state: "ready" | "asleep" | "not open" | "none" }>;
-  /** Draws the format. `by: 'office'` is his press on "Check in …"; it rejects with NotInReach. */
+  /** Draws the format. `by: 'office'` is his press on "Check in …": the app's own picture, or a rejection with NotInReach. */
   draw(format: string, opts: DrawOptions): Promise<Drawn>;
   /** Writes the file out; answers the name he sees in the toast. */
   export(format: string): Promise<{ name: string }>;

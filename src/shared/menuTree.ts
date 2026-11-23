@@ -14,6 +14,8 @@
  * lose their keys, and Print… takes ⌘P from Go to File… .
  */
 
+import type { MenuState } from './menuState'
+
 export const APP_NAME = 'TempCode'
 
 export interface MenuCommand {
@@ -227,27 +229,7 @@ export const RENDERER_MENU_IDS: string[] = MENU_COMMANDS.map((c) => c.id).filter
   (id) => !(MAIN_MENU_IDS as readonly string[]).includes(id)
 )
 
-/** What a window tells main: the toggles that are open, the items that would
- *  do nothing and the checkbox rows' ticks. */
-export interface MenuState {
-  open: string[]
-  disabled: string[]
-  checked: Record<string, boolean>
-  /** The rows whose keys a Work editor holding the caret owns now (`EDITOR_KEY_IDS`): each loses its key. */
-  editing?: string[]
-}
-
-/** The rows a Work editor can take the key of: Sidebar's ⌘B (bold), Search's ⌘K (link), Go to File's ⌘P (Print) and Find's ⌘F (the editor's find). */
-export const EDITOR_KEY_IDS = ['toggle_sidebar', 'open_search', 'go_to_file', 'find'] as const
-
-export const EMPTY_MENU_STATE: MenuState = { open: [], disabled: [], checked: {} }
-
-export function sameMenuState(a: MenuState, b: MenuState): boolean {
-  const same = (x: string[], y: string[]): boolean =>
-    x.length === y.length && [...x].sort().join('\n') === [...y].sort().join('\n')
-  const ticked = (c: Record<string, boolean>): string[] => Object.keys(c).filter((id) => c[id])
-  return same(a.open, b.open) && same(a.disabled, b.disabled) && same(ticked(a.checked), ticked(b.checked)) && same(a.editing ?? [], b.editing ?? [])
-}
+export { EDITOR_KEY_IDS, EMPTY_MENU_STATE, sameMenuState, type MenuState } from './menuState'
 
 function resolveNodes(items: MenuNode[], state: MenuState): MenuNode[] {
   const held = state.editing ?? []

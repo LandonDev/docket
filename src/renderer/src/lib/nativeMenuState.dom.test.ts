@@ -68,6 +68,19 @@ describe("menuStateOf", () => {
   });
 });
 
+describe("first paint", () => {
+  it("takes the menu's state from its own module, never the tree: the tree is 6 kB the launch does not need", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    for (const file of ["nativeMenuState.ts", "appCommands.ts", "native.ts"]) {
+      const source = readFileSync(join(import.meta.dirname, file), "utf8");
+      expect(source, file).not.toMatch(/import\s+(?!type\b)[^;]*["']@shared\/menuTree["']/);
+    }
+    const state = readFileSync(join(import.meta.dirname, "../../../shared/menuState.ts"), "utf8");
+    expect(state).not.toMatch(/^import /m);
+  });
+});
+
 describe("menuStateOf, with a Work editor", () => {
   it("greys Print… and Export… until an editor on screen answers them", () => {
     expect(menuStateOf(facts({ print: false, export: false })).disabled).toEqual(["print", "export"]);
@@ -149,21 +162,26 @@ describe("publishMenuState", () => {
     expect("editing" in send.mock.calls[0][0]).toBe(false);
     expect(send.mock.calls[0][0].disabled).toEqual(expect.arrayContaining(["print", "export"]));
 
-    document.body.innerHTML = `<input id="outside" /><div data-editor-keys="document"><div id="text" tabindex="0"></div></div><div data-editor-keys="read"><div id="read" tabindex="0"></div></div>`;
+    document.body.innerHTML = `<input id="outside" /><div id="doc"><div data-editor-keys="document"><input id="title" /><div id="text" tabindex="0"></div></div></div><div id="attachment"><div data-editor-keys="read"><div id="read" tabindex="0"></div></div></div>`;
     const focus = (id: string): void => document.getElementById(id)!.focus();
+    /** What each Body's root says it answers, as `useWorkCommands` writes it. */
+    const answer = (list: string): void => {
+      for (const id of ["doc", "attachment"]) document.getElementById(id)!.setAttribute("data-editor-answers", list);
+    };
 
     // The caret enters a document: no throttle, the next key must already be the editor's.
     focus("text");
     expect(send).toHaveBeenCalledTimes(2);
     expect(send.mock.calls[1][0].editing).toEqual(["toggle_sidebar", "open_search"]);
 
-    // Moving inside the same editor says nothing.
-    document.getElementById("text")!.blur();
+    // Moving inside the same editor, from the text to the title and back, says nothing: no menu is built twice.
+    focus("title");
     focus("text");
-    expect(send.mock.calls.at(-1)![0].editing).toEqual(["toggle_sidebar", "open_search"]);
+    expect(send).toHaveBeenCalledTimes(2);
     const before = send.mock.calls.length;
 
     // An editor that answers Print… and Find takes ⌘P and ⌘F too, and the rows go live.
+    answer("export find print");
     const offs = [workCommands.offer("print"), workCommands.offer("find"), workCommands.offer("export")];
     vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
     expect(send.mock.calls.length).toBe(before + 1);
@@ -179,9 +197,22 @@ describe("publishMenuState", () => {
     focus("outside");
     expect("editing" in send.mock.calls.at(-1)![0]).toBe(false);
 
+    // The editor closes under the caret: no focus event says so, and the throttled flush sends that nothing is held...
+    focus("text");
+    expect(send.mock.calls.at(-1)![0].editing).toEqual(["toggle_sidebar", "open_search", "go_to_file", "find"]);
+    document.getElementById("doc")!.remove();
     for (const off of offs) off();
     vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
+    expect("editing" in send.mock.calls.at(-1)![0]).toBe(false);
     expect(send.mock.calls.at(-1)![0].disabled).toEqual(expect.arrayContaining(["print", "export"]));
+    // ...so the next document he clicks into is said, though it holds the same keys the last one did.
+    const next = document.createElement("div");
+    next.innerHTML = `<div data-editor-keys="document"><div id="text" tabindex="0"></div></div>`;
+    document.body.append(next);
+    const sentBefore = send.mock.calls.length;
+    focus("text");
+    expect(send.mock.calls.length).toBe(sentBefore + 1);
+    expect(send.mock.calls.at(-1)![0].editing).toEqual(["toggle_sidebar", "open_search"]);
     publisher.stop();
     const after = send.mock.calls.length;
     focus("text");

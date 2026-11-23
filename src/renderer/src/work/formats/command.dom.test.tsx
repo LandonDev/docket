@@ -6,7 +6,7 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { workCommands, type WorkCommandId } from "../../lib/appCommands";
+import { editorAnswers, workCommands, type WorkCommandId } from "../../lib/appCommands";
 import { useWorkCommands, type WorkCommandHandlers } from "./command";
 
 afterEach(cleanup);
@@ -34,6 +34,15 @@ describe("a Body's commands", () => {
     const view = render(<Editor name="a" handlers={{ export: () => heard.push("export") }} />);
     expect(workCommands.has("export")).toBe(true);
     expect(workCommands.has("print")).toBe(false);
+    // Said on the root, where the key resolver reads it for the editor holding the caret.
+    const root = view.getByTestId("a").parentElement!;
+    expect(root.getAttribute("data-editor-answers")).toBe("export");
+    expect(editorAnswers(view.getByTestId("a"), "export")).toBe(true);
+    expect(editorAnswers(view.getByTestId("a"), "print")).toBe(false);
+    view.rerender(<Editor name="a" handlers={{ export: () => heard.push("export"), print: () => {}, find: () => {} }} />);
+    expect(root.getAttribute("data-editor-answers")).toBe("export find print");
+    view.rerender(<Editor name="a" handlers={{ export: () => heard.push("export") }} />);
+    expect(root.getAttribute("data-editor-answers")).toBe("export");
     expect(run("export")).toBe(true);
     expect(run("print")).toBe(false);
     expect(heard).toEqual(["export"]);

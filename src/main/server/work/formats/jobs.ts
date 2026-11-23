@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { cpus } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
+import { allows, type Capability } from '@shared/capabilities'
 import type { Readiness, ToolsReport } from '@shared/contract-work-formats'
 import type { HostId } from '@shared/work'
 import type { CtxPart } from '../ctx'
@@ -38,10 +39,17 @@ export interface Press {
 }
 const presses = new WeakSet<object>()
 
-/** A press, when the call is a person's at a window of this host: never a thread's, never another host's. */
+/**
+ * A press, when the call is the owner's own: at a window of this host, or
+ * from a paired device of his that could approve as it pressed (the rule
+ * `userTextByOf` keeps for "the owner typed this"). Never a thread's, never
+ * another host's on his behalf (`by.peer`), and never a key that cannot
+ * approve: an agent's key through the MCP door holds `read` and `operate`
+ * at most (`MCP_CEILING`), so it can run a job and can wake nothing.
+ */
 export function pressOf(by: Caller): Press | undefined {
   if (by.kind === 'model' || by.peer) return undefined
-  if (by.kind === 'remote' && !by.caps.includes('operate') && !by.caps.includes('admin')) return undefined
+  if (by.kind === 'remote' && !allows(by.caps as readonly Capability[], 'approve')) return undefined
   const press: Press = Object.freeze({ pressed: true as const })
   presses.add(press)
   return press
@@ -120,6 +128,8 @@ export interface LinkedHost {
 /** The largest file a job may carry to another host or back: the link is one WebSocket frame each way (100 MiB, base64 adds a third). */
 export const FORWARD_MAX_BYTES = 64 * 1024 * 1024
 const FORWARD_TIMEOUT_MS = 20 * 60_000
+/** How long a converter may take to say whether it is ready: an app or a helper that does not answer is not there. */
+export const READY_TIMEOUT_MS = 5_000
 const OFFERS_TTL_MS = 60_000
 const JOB_TTL_MS = 24 * 60 * 60_000
 
@@ -183,6 +193,8 @@ export interface JobRunnerOptions {
   links?: () => LinkedHost[]
   /** the largest file carried either way (FORWARD_MAX_BYTES) */
   forwardMax?: number
+  /** how long a converter's `ready` may take (READY_TIMEOUT_MS) */
+  readyTimeoutMs?: number
   log?: (line: string) => void
 }
 
@@ -219,22 +231,32 @@ export class JobRunner {
   private async stateHere(c: Converter, job: ConvertJob | null): Promise<Readiness> {
     if (c.needs && !this.tools.has(c.needs)) return 'none'
     if (!c.ready) return 'ready'
+    let timer: NodeJS.Timeout | undefined
     try {
-      return await c.ready(job)
+      // Bounded: a helper that hangs must not hang every job of its pair, nor this host's whole report to its peers.
+      return await Promise.race([
+        Promise.resolve(c.ready(job)),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('it did not answer')), this.o.readyTimeoutMs ?? READY_TIMEOUT_MS)
+        })
+      ])
     } catch (err) {
       this.log(`${pairKey(c.from, c.to)} could not say whether it is ready: ${err instanceof Error ? err.message : String(err)}`)
       return 'none'
+    } finally {
+      clearTimeout(timer)
     }
   }
 
   /** The pairs this host runs itself, each with its state when it is not simply ready. */
   async pairs(): Promise<ToolsReport['converts']> {
-    const out: ToolsReport['converts'] = []
-    for (const c of this.o.converters.values()) {
-      const state = await this.stateHere(c, null)
-      if (state !== 'none') out.push({ from: fmt(c.from), to: fmt(c.to), ...(state !== 'ready' ? { state } : {}) })
-    }
-    return out
+    // Asked together: one slow converter costs the report its own wait, not every converter's in a row.
+    const all = [...this.o.converters.values()]
+    const states = await Promise.all(all.map((c) => this.stateHere(c, null)))
+    return all.flatMap((c, i) => {
+      const state = states[i]!
+      return state === 'none' ? [] : [{ from: fmt(c.from), to: fmt(c.to), ...(state !== 'ready' ? { state } : {}) }]
+    })
   }
 
   /** The queue now: the caps, what runs and what waits. */
