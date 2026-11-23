@@ -96,7 +96,8 @@ Settings → Work.
   (`SectorDot`, chrome/WorkspaceGlyph.tsx, the `--sector-*` tokens in
   index.css), with no Pin. Before the heading's + is a search mark that
   opens Work search (`openWorkSearch`, lib/workSearchPort.ts; ⌘⇧K;
-  [work-search.md](work-search.md)), drawn while there is a Work workspace.
+  [work-search.md](work-search.md)), drawn whenever the heading is: Work
+  Chats can be searched with no job yet.
   The heading's + opens the menu the chunk answers
   through `workRailPort` (work/shell/WorkRailHost.tsx): one row per sector
   no Work workspace has yet (one click makes it on `workHome()`: the host
