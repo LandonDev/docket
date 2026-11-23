@@ -182,7 +182,7 @@ describe('adding a trip', () => {
     expect(b.sheets.grid(mileage())).toHaveLength(2)
     expect(await offered()).toEqual([])
     // What it learned of the fee for that role is the fee in the ledger.
-    expect(b.db.prepare("SELECT state, fee, intent FROM work_money_events WHERE event_id = 'West Side'").get()).toEqual({ state: 'added', fee: 8000, intent: null })
+    expect(b.db.prepare("SELECT state, fee FROM work_money_events WHERE event_id = 'West Side'").get()).toEqual({ state: 'added', fee: 8000 })
   })
 
   it('finds the pay a stopped add already wrote by its Ref, and writes only the trip', async () => {
@@ -214,7 +214,8 @@ describe('adding a trip', () => {
     expect(await call<MoneyTripped>('work.money.trip', by)).toMatchObject({ pay: { ok: true }, trip: { row: 2 } })
     // Every window on the job is told, so one that did not make the press reads again.
     expect(b.pushed).toContainEqual({ push: 'work.money', workspaceId: 'ws-ref', toConfirm: 0 })
-    expect(await call<MoneyTripped>('work.money.trip', by)).toEqual({ pay: null, trip: null, already: true })
+    // The same key again writes nothing, and says what that Add filed: a form he changed since is not taken for saved.
+    expect(await call<MoneyTripped>('work.money.trip', { ...by, miles: 99 })).toEqual({ pay: null, trip: null, already: true, filed: { miles: 10, fee: 2500 } })
     expect(b.sheets.grid(ledger())).toHaveLength(2)
     expect(b.sheets.grid(mileage())).toHaveLength(2)
   })
@@ -229,8 +230,11 @@ describe('adding a trip', () => {
     // Skipped, it is still listed for a trip typed by hand, as the add that was begun meant it.
     const listed = (await call<{ events: CalendarOffer[] }>('work.money.events', { workspaceId: 'ws-ref' })).events
     expect(listed).toMatchObject([{ eventId: 'West Side', fee: 8000, miles: 60 }])
-    // Picked there with no Undo, and with another fee typed: the pay already in the ledger stands, once; only the trip is written.
-    const got = await trip(listed[0], { fee: 9500 })
+    // An offer's Add that was still on its way (Add all) finds it skipped, and writes nothing: his Skip stands.
+    expect(await trip(listed[0])).toEqual({ pay: null, trip: null, skipped: true })
+    expect(b.sheets.grid(mileage())).toHaveLength(1)
+    // Picked there himself (`reopen`), with another fee typed: the pay already in the ledger stands, once; only the trip is written.
+    const got = await trip(listed[0], { fee: 9500, reopen: true })
     expect(got.pay).toMatchObject({ ok: true, row: 2 })
     expect(b.sheets.grid(ledger())).toHaveLength(2)
     expect(b.sheets.grid(ledger())[1][4]).toBe(80)
@@ -248,7 +252,7 @@ describe('adding a trip', () => {
     await call('work.money.skip', { workspaceId: 'ws-ref', eventId: 'West Side' })
     await call('work.money.skip', { workspaceId: 'ws-ref', eventId: 'West Side' })
     const [listed] = (await call<{ events: CalendarOffer[] }>('work.money.events', { workspaceId: 'ws-ref' })).events
-    await trip(listed)
+    await trip(listed, { reopen: true })
     expect(b.sheets.grid(ledger())).toHaveLength(2)
     expect(b.sheets.grid(mileage())).toHaveLength(2)
   })

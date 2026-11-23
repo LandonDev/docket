@@ -21,7 +21,7 @@ import {
   type RowAt
 } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
-import { forgetGrid, gridOf, headersWait, ledgerOf, MoneyError, nextRow, writtenAt, type Ledger } from './read'
+import { forgetGrid, gridOf, ledgerOf, MoneyError, nextRow, restorePlan, writtenAt, type Ledger } from './read'
 import { booksOf, putBooks, type Books, type Workspace } from './store'
 
 /**
@@ -191,12 +191,14 @@ export function restoreColumns(ctx: Ctx, ws: Workspace, books: Books): Promise<{
     if (read.renamed.length) throw new MoneyError(`The ledger has no ${read.missing.join(' or ')} column, and ${read.renamed.join(', ')} may be it. Name it back in the ledger.`)
     // A sheet too large to be read whole may hold a header past what was read: nothing is written into its first row unseen.
     if (grid.partial) throw new MoneyError('The ledger is too wide to check whole. Add the missing column in the ledger yourself.')
-    // These very headers already wait in the sheet as a suggestion: his accept there is what is left, not a second one beside it.
-    if (headersWait(grid, missing)) return { suggested: true }
+    // Planned as the read plans it: a header that already waits past the last one (a restore's own suggestion) is not
+    // suggested again, and none is put in a cell where something else already waits.
+    const plan = restorePlan(grid, missing)
+    if (!plan.write.length) return { suggested: plan.waits.length > 0 }
     return write(
       ctx,
       books.ledger,
-      missing.map((v, i) => ({ at: `${columnLetter(grid.header.length + i)}1`, v })),
+      plan.write.map(({ column, name }) => ({ at: `${columnLetter(column)}1`, v: name })),
       await othersCanOpen(ctx, books.ledger, grid.shared)
     )
   })

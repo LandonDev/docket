@@ -56,9 +56,11 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   or amount is a blank line. A missing `Date`, `In` or `Out` header reads no
   rows and answers `problems: [{kind: 'columns', missing, renamed}]`;
   `work.money.open {restore: true}` writes the missing headers at the end
-  of row 1 (`waits` on the problem: those very headers, by name, already
-  wait in the sheet's first tab as a suggestion, and a second restore
-  writes nothing more).
+  of row 1, each in the first cell past the headers that nothing else
+  waits in (`restorePlan`, one plan for the read and the write). `waits`
+  on the problem: those very headers, by name, already wait there as a
+  suggestion (past the last header: a suggested change to a header that
+  stands is not a restore), and a second restore writes nothing more.
   `renamed` names every column Money does not know that holds
   cells ("Spent", or "column F" for cells under no header): with any, a
   header was most likely renamed, and the restore is refused, since an
@@ -97,7 +99,9 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   asked for at all: Money reads no such sheet ("too large"). A read is
   whole or it fails: when the sheet cannot say how far it goes, the read is
   tried again (three times) and then fails, so no reading that may have
-  stopped short is kept, summed, exported or appended under. A sheet wider
+  stopped short is kept, summed, exported or appended under. A read is of
+  one revision too: the sheet is opened again after the last range, and a
+  revision that moved meanwhile makes the read start over. A sheet wider
   than 1,024 columns is read to there (`Grid.partial`) and repairs
   nothing: Restore is refused on it.
 - **`any`** on the read says whether the job has money at all (a ledger row
@@ -130,6 +134,11 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   that throws is settled by a fresh read at once (the sheet may have taken
   the row and lost its answer): found, it is filed; not readable, the file
   and the note stay for the next try; not there, nothing is left behind.
+- **A ledger already at its place** with no record of it (a job's folder
+  copied from another machine) is the job's from the first read (`adopt`:
+  only the record is written). A job is a Work workspace with a sector:
+  one with none has no Money view in the frame, so it keeps no books, is
+  not listed by `work.money.state`, and takes no receipt.
 - **A ledger that leads out of the job** (its file a link) is neither read
   nor written, and is a fault, never an empty job: the read fails with the
   sentence, the sums and what is owed say `problem`, and no fresh ledger is
@@ -165,7 +174,9 @@ pages Money prints. Amounts are whole cents everywhere but in the sheet.
   format waits for the sheets build's named styles.
 
 Categories (`CATEGORIES[sector]`, then every word the ledger already uses;
-`work.money.state` answers each job's the same way, for the phone's picker):
+`work.money.state` answers each job's the same way, for the phone's picker,
+waiting at most 400 ms on a job's ledger so a sender's check before Save is
+never held by one slow sheet):
 ref: Game fees, Mileage, Uniform and gear, Dues and registration, Training,
 Travel, Meals, Other. unify: Sales, Software, Hosting, Contractors,
 Equipment, Fees, Travel, Meals, Office, Taxes, Other. purdue: Equipment,
@@ -302,8 +313,11 @@ box. About 4 seconds a file.
   the host stopped between the two sheets) stays offered (`adding`), as
   that add meant it, and the next add looks for those rows and writes only
   what is missing; the fee that was written stands, also when he skipped
-  the event since and picks it in Add → Trip…. A trip typed by hand goes by
-  the sender's `key` the same way. The log's Value is `ROUND(miles × rate,
+  the event since and picks it in Add → Trip… (`reopen`: only his own
+  pick takes a skipped event up again; an offer's Add that finds it
+  skipped answers `skipped` and writes nothing). A trip typed by hand goes
+  by the sender's `key` the same way, and `already` then says what that
+  Add filed (`filed`), so a form changed since is not taken for saved. The log's Value is `ROUND(miles × rate,
   2)`, so the column's total in the sheet is the total Money says. A log others can open
   takes the trip as a suggestion on a row of its own, and the answer says
   so. The log is read and written only inside the job's folder, as the
@@ -334,11 +348,14 @@ box. About 4 seconds a file.
   log cannot be read is not exported. Each export has a `generation`
   (kept by year in `work_money_books.exports`); the summary's `keep` sends
   it back, and a page that is not of the year's newest export (an older
-  one's, or one that names none) is refused, so a slow window never leaves
-  an old summary beside new files. Everything asked for is made first and
-  then put in the folder together; when the Excel file cannot be made, an
-  older export's workbook is removed, with a warning, so the folder holds
-  one export. Each file is staged beside its place under a fresh name
+  one's, one that names none, or one for a year never exported) is refused
+  (`staleSummary`), so a slow window never leaves an old summary beside new
+  files. Everything asked for is made first and then put in the folder
+  together, the folder checked again after the wait for the conversion.
+  The folder holds one export: a file of an older export that this one
+  does not make again (a format he unchecked, an Excel file that could not
+  be made, the last summary until the window brings the new one) is
+  removed, each with a line in `warnings`. Each file is staged beside its place under a fresh name
   made exclusively, then renamed in, so nothing is ever written through a
   name that was already there.
 - `work.money.invoiceNext` and `work.money.invoice` number an invoice (from
@@ -353,7 +370,9 @@ box. About 4 seconds a file.
   one number. The highest number used stands when a lower one is typed.
   Every number Money files is kept in the books (`used`, noted before the
   ledger is touched), so one whose row only waits as a suggestion, or whose
-  filing stopped half way, is used all the same. `keep` files an
+  filing stopped half way, is used all the same. A keep that stopped half
+  way keeps its note through the cleanup of unfinished uploads, and its
+  own Create settles it however long after. `keep` files an
   invoice only for the key that holds its number.
 - A page is printed by the formats pillar from the window
   (`work.formats.print`) and handed back in parts with `work.money.keep`: a

@@ -68,14 +68,19 @@ export interface Workspace {
 
 type Db = { db: DatabaseSync }
 
-/** A Work workspace of this host, or null: Money keeps books for a job, never for a code workspace. */
+/**
+ * A job of this host, or null: a Work workspace that has a sector. Money
+ * keeps books for a job, never for a code workspace, and never for a Work
+ * workspace with no sector: the frame opens no Money view there, so a
+ * receipt sent to it would be filed where he cannot see it.
+ */
 export function workspaceOf(ctx: Db, id: string): Workspace | null {
-  const row = ctx.db.prepare("SELECT id, name, path, sector FROM workspaces WHERE id = ? AND kind = 'work'").get(id) as Workspace | undefined
+  const row = ctx.db.prepare("SELECT id, name, path, sector FROM workspaces WHERE id = ? AND kind = 'work' AND sector IS NOT NULL AND sector <> ''").get(id) as Workspace | undefined
   return row ?? null
 }
 
 export function workspaces(ctx: Db): Workspace[] {
-  return ctx.db.prepare("SELECT id, name, path, sector FROM workspaces WHERE kind = 'work' ORDER BY created_at").all() as unknown as Workspace[]
+  return ctx.db.prepare("SELECT id, name, path, sector FROM workspaces WHERE kind = 'work' AND sector IS NOT NULL AND sector <> '' ORDER BY created_at").all() as unknown as Workspace[]
 }
 
 export interface Books {

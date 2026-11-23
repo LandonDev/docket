@@ -77,8 +77,12 @@ const adding = new Map<string, Promise<MoneyTripped>>()
 
 async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null): Promise<MoneyTripped> {
   const mark = id ? eventMarks(ctx, ws.id).get(id) : undefined
-  // Already added (a second press, or a list that went stale): nothing is written twice, and the answer says nothing was.
-  if (mark?.state === 'added') return { pay: null, trip: null, already: true }
+  // Already added (a second press, or a list that went stale): nothing is written twice, and the answer says nothing
+  // was. For a trip typed by hand it also says what that Add filed, so a form he changed since is not taken for saved.
+  if (mark?.state === 'added') return { pay: null, trip: null, already: true, ...(p.eventId ? {} : { filed: { miles: mark.intent?.miles ?? null, fee: mark.fee } }) }
+  // Skipped since this Add was pressed (another window, or Add all still on its way down the list): his Skip stands.
+  // Only his own pick of the event in Add → Trip… (`reopen`) takes a skipped one up again.
+  if (mark?.state === 'skipped' && !p.reopen) return { pay: null, trip: null, skipped: true }
   const books = await openBooks(ctx, ws)
   // An add that was begun and not finished: still offered (`adding`), or skipped since with its note kept. Either way
   // it is taken up where it stopped, whichever way he comes back to it (the offer, or Add → Trip… on a skipped one).
@@ -109,7 +113,8 @@ async function addOnce(ctx: Ctx, ws: Workspace, p: TripParams, id: string | null
     trip = await appendTrip(ctx, ws, books, { date: p.date, title: p.title, place: p.place, miles, rate }, intent.trip)
     if (p.place) keepMiles(ctx, ws.id, p.place, miles)
   }
-  if (id) markEvent(ctx, ws.id, id, { state: 'added', role, fee: fee > 0 ? fee : null, intent: null })
+  // Added: what was filed stays on the mark (the miles beside the fee), for a later press of the same key to answer with.
+  if (id) markEvent(ctx, ws.id, id, { state: 'added', role, fee: fee > 0 ? fee : null, intent: miles > 0 ? { ...intent, miles } : null })
   return { pay, trip }
 }
 

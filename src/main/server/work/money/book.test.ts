@@ -1,4 +1,4 @@
-import { existsSync, renameSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { MoneyActed, MoneyBooks, MoneyHits, MoneyOwed, MoneyRead, MoneyState, MoneySums } from '@shared/contract-work-money'
@@ -701,5 +701,88 @@ describe('what the second bug hunt asked of the books', () => {
     expect((await run({ date: '2026-11-07', who: 'Shop', amount: 2.135, way: 'out' })).text).toContain('$2.14')
     expect((await read()).toConfirm).toMatchObject([{ fields: { amount: 214 } }])
     expect((await run({ date: '2026-11-07', who: 'Shop', amount: 0.004, way: 'out' })).isError).toBe(true)
+  })
+})
+
+describe('what the fifth council round asked of the books', () => {
+  const sheet = () => b.sheets.sheets.get(ledger())!
+
+  it('reads one revision or reads again: a sheet that changes between two ranges is never summed half old, half new', async () => {
+    await entry({ who: 'First' })
+    await entry({ who: 'Second' })
+    // He sorts the sheet while Money is between the header's range and the rows': the first read is thrown away.
+    const real = b.sheets.internal
+    let moved = false
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      const got = await real(route, body)
+      if (!moved && route === '/internal/sheet/range' && String(body.range).startsWith('A1:')) {
+        moved = true
+        b.sheets.type(ledger(), 'B2', 'Second')
+        b.sheets.type(ledger(), 'B3', 'First')
+      }
+      return got
+    }
+    const got = await read()
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    // Each row once, as the sheet now stands.
+    expect(got.rows.map((r) => r.who).sort()).toEqual(['First', 'Second'])
+    expect(got.rows.find((r) => r.row === 2)?.who).toBe('Second')
+  })
+
+  it('plans a restore once: never into a cell where something waits, and never taking a change to a standing header for its own', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    b.sheets.type(ledger(), 'F1', '')
+    sheet().shared = true
+    // Someone's suggestion already waits in the first free cell past the headers, and another would rename a standing header to "Out".
+    sheet().suggested.push([{ at: 'K1', v: 'Notes' }], [{ at: 'C1', v: 'Out' }])
+    // A header named Out that waits ON a standing header is not a restore: nothing says the columns wait.
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: [] }])
+    expect((await call<{ suggested?: true }>('work.money.open', { workspaceId: 'ws-ref', restore: true })).suggested).toBe(true)
+    // Out was suggested in the next free cell, not on top of the one that waits.
+    expect(sheet().suggested.at(-1)).toEqual([{ at: 'L1', v: 'Out' }])
+    expect((await read()).problems).toEqual([{ kind: 'columns', missing: ['Out'], renamed: [], waits: true }])
+  })
+
+  it('takes a ledger already at its place for the job’s own from the first read, and makes nothing in a job that has none', async () => {
+    // A job's folder copied from another machine: the ledger is there, and Money has no record of it.
+    await entry({ who: 'Made elsewhere', amount: 700 })
+    b.db.prepare("DELETE FROM work_money_books WHERE workspace_id = 'ws-ref'").run()
+    const got = await read()
+    expect(got.made).toBe(true)
+    expect(got.rows.map((r) => r.who)).toEqual(['Made elsewhere'])
+    // A job with no ledger stays untouched by a read.
+    expect((await read('ws-purdue')).made).toBe(false)
+    expect(existsSync(join(b.purdue, 'Money'))).toBe(false)
+  })
+
+  it('keeps no books for a Work workspace with no sector: the frame opens no Money view there', async () => {
+    const path = join(b.root, 'managed', 'Loose')
+    mkdirSync(path, { recursive: true })
+    b.db.prepare("INSERT INTO workspaces VALUES ('ws-loose', 'Loose', ?, 'work', NULL, 9)").run(path)
+    const state = await call<MoneyState>('work.money.state', {})
+    expect(state.jobs.map((j) => j.workspaceId)).toEqual(['ws-ref', 'ws-purdue'])
+    await expect(entry({}, undefined, 'ws-loose')).rejects.toThrow('That job is not on this computer.')
+    expect(existsSync(join(path, 'Money'))).toBe(false)
+  })
+
+  it('answers which jobs there are without waiting on a slow ledger', async () => {
+    await entry({ category: 'Whistles' })
+    const real = b.sheets.internal
+    // Purdue has a ledger whose sheet does not answer for a long while.
+    await entry({ category: 'Banners' }, undefined, 'ws-purdue')
+    const purdue = join(b.purdue, 'Money', 'Ledger.tcsheet')
+    let release: () => void = () => {}
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if ((body.sheet as { tcsheet?: string } | undefined)?.tcsheet === purdue) await new Promise<void>((r) => (release = r))
+      return real(route, body)
+    }
+    const started = Date.now()
+    const state = await call<MoneyState>('work.money.state', {})
+    expect(Date.now() - started).toBeLessThan(2000)
+    // The job that answered has its ledger's words; the slow one its starting list, for now.
+    expect(state.jobs.find((j) => j.workspaceId === 'ws-ref')!.categories).toContain('Whistles')
+    expect(state.jobs.find((j) => j.workspaceId === 'ws-purdue')!.categories).not.toContain('Banners')
+    release()
+    ;(b.ctx.service as { internal: unknown }).internal = real
   })
 })

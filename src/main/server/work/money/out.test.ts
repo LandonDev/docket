@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MONEY_CAPS, MONEY_OWNER_ONLY, MONEY_PART_BYTES, type MoneyExport, type MoneyInvoiceNext, type MoneyInvoicePage, type MoneyKept, type MoneyRead } from '@shared/contract-work-money'
@@ -107,15 +107,19 @@ describe('export for tax time', () => {
 
   it('keeps the printed summary in the year’s folder, in parts, and a repeat of the key answers the first', async () => {
     await add({})
+    // A summary is of an export: with none on record for the year, it is not kept.
+    await expect(keep({ key: 'no-export-key', what: 'summary', year: 2026 })).rejects.toThrow("That summary is not of 2026's newest export, so it was not kept. Export again.")
+    const { generation } = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, csv: false, xlsx: false })
     const data = Buffer.alloc(MONEY_PART_BYTES + 5, 3)
-    const part = (n: number) => call<MoneyKept>('work.money.keep', { workspaceId: 'ws-ref', key: 'summary-key', what: 'summary', year: 2026, part: n, parts: 2, dataBase64: data.subarray(n * MONEY_PART_BYTES, (n + 1) * MONEY_PART_BYTES).toString('base64') })
+    const part = (n: number) =>
+      call<MoneyKept>('work.money.keep', { workspaceId: 'ws-ref', key: 'summary-key', what: 'summary', year: 2026, generation, part: n, parts: 2, dataBase64: data.subarray(n * MONEY_PART_BYTES, (n + 1) * MONEY_PART_BYTES).toString('base64') })
     expect(await part(0)).toEqual({ partial: true })
     const done = await part(1)
     expect(done).toEqual({ source: { at: 'file', host: 'env_box', path: join(tax(), 'Summary 2026.pdf') }, receipt: 'Tax 2026/Summary 2026.pdf' })
     expect(readFileSync(join(tax(), 'Summary 2026.pdf')).equals(data)).toBe(true)
     expect(await part(1)).toEqual(done)
     // A second summary for the year takes the first's place, and says so.
-    expect((await keep({ key: 'summary-key-2', what: 'summary', year: 2026 })).replaced).toBe(true)
+    expect((await keep({ key: 'summary-key-2', what: 'summary', year: 2026, generation })).replaced).toBe(true)
     // What was kept is no waiting receipt.
     expect((await view()).toConfirm).toEqual([])
     await expect(keep({ key: 'no-year-key', what: 'summary' })).rejects.toThrow('names its year')
@@ -170,14 +174,46 @@ describe('export for tax time', () => {
     b.readerDown = true
     const got = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, pdf: false })
     expect(got.files).toEqual(['Ledger 2026.csv'])
-    expect(got.warnings).toEqual(['The Excel file could not be made on this computer. The older one was removed, so the folder holds one export.'])
+    expect(got.warnings).toEqual(['The Excel file could not be made on this computer.', 'The older Ledger 2026.xlsx was removed, so the folder holds one export.'])
     expect(readdirSync(tax())).toEqual(['Ledger 2026.csv'])
     expect(readFileSync(join(tax(), 'Ledger 2026.csv'), 'utf8')).toContain('A later entry')
   })
 
+  it('leaves no file of an older export beside a new one: what this export does not make again goes, the last summary too', async () => {
+    await add({})
+    const first = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026 })
+    await keep({ key: 'summary-first1', what: 'summary', year: 2026, generation: first.generation })
+    expect(readdirSync(tax()).sort()).toEqual(['Ledger 2026.csv', 'Ledger 2026.xlsx', 'Summary 2026.pdf'])
+    // The year again, the CSV alone: the workbook and the summary of the older read do not stay as if they were this one's.
+    const second = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, xlsx: false, pdf: false })
+    expect(second.warnings).toEqual(['The older Ledger 2026.xlsx was removed, so the folder holds one export.', 'The older Summary 2026.pdf was removed, so the folder holds one export.'])
+    expect(readdirSync(tax())).toEqual(['Ledger 2026.csv'])
+    // A summary asked for is the window's to print and bring back: until it does, the folder holds no older one.
+    const third = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, xlsx: false })
+    expect(third.summary).not.toBeNull()
+    expect(readdirSync(tax())).toEqual(['Ledger 2026.csv'])
+  })
+
+  it('checks the year’s folder again after the wait for the Excel file: one that came to lead out of the job takes nothing', async () => {
+    await add({})
+    const outside = join(b.root, 'elsewhere', 'taken')
+    const convert = b.ctx.convert
+    ;(b.ctx as { convert: typeof convert }).convert = async (job) => {
+      const made = await convert(job)
+      // While the workbook was being made, the year's folder was swapped for a link out of the job.
+      rmSync(tax(), { recursive: true, force: true })
+      mkdirSync(outside, { recursive: true })
+      symlinkSync(outside, tax())
+      return made
+    }
+    await expect(call('work.money.export', { workspaceId: 'ws-ref', year: 2026 })).rejects.toThrow("leads outside this job's folder")
+    expect(readdirSync(outside)).toEqual([])
+  })
+
   it('binds a page’s key to its job at the first part, before anything is put together', async () => {
     await add({})
-    const part = (workspaceId: string, n: number) => call<MoneyKept>('work.money.keep', { workspaceId, key: 'two-jobs-key', what: 'summary', year: 2026, part: n, parts: 2, dataBase64: Buffer.alloc(8, n).toString('base64') })
+    const { generation } = await call<MoneyExport>('work.money.export', { workspaceId: 'ws-ref', year: 2026, csv: false, xlsx: false })
+    const part = (workspaceId: string, n: number) => call<MoneyKept>('work.money.keep', { workspaceId, key: 'two-jobs-key', what: 'summary', year: 2026, generation, part: n, parts: 2, dataBase64: Buffer.alloc(8, n).toString('base64') })
     expect(await part('ws-ref', 0)).toEqual({ partial: true })
     await expect(part('ws-purdue', 0)).rejects.toThrow('kept for another job')
     await expect(part('ws-purdue', 1)).rejects.toThrow('kept for another job')
@@ -266,6 +302,40 @@ describe('an invoice', () => {
     expect(readdirSync(join(b.ref, 'Money', 'Invoices'))).toEqual([])
     b.sheets.type(join(b.ref, 'Money', 'Ledger.tcsheet'), 'I1', 'Receipt')
     expect((await create(inv, 'refused-key-1')).acted).toMatchObject({ ok: true })
+  })
+
+  it('lets the same Create settle a keep that stopped half way, however long after: its note outlives the cleanup and its number stays its own', async () => {
+    await call('work.money.open', { workspaceId: 'ws-ref' })
+    const inv = invoice({ number: '1042' })
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'half-way-key', invoice: inv })
+    // The sheet took the row, its answer was lost, and the sheet then did not answer the read that would have settled it.
+    const real = b.sheets.internal
+    let down = false
+    ;(b.ctx.service as { internal: unknown }).internal = async (route: string, body: Record<string, unknown>) => {
+      if (down) throw new Error('The Work service did not answer.')
+      const got = await real(route, body)
+      if (route === '/internal/sheet/cells' && (body.sheet as { tcsheet: string }).tcsheet === join(b.ref, 'Money', 'Ledger.tcsheet')) {
+        down = true
+        throw new Error('The Work service did not answer.')
+      }
+      return got
+    }
+    await expect(keep({ key: 'half-way-key', what: 'invoice', invoice: inv })).rejects.toThrow('did not answer')
+    ;(b.ctx.service as { internal: unknown }).internal = real
+    // Two days on: the claim on the number has run out, and the cleanup of unfinished uploads has been through.
+    const later = Date.now() + 48 * 3600_000
+    const { resume } = await import('./inbox')
+    resume(b.ctx, later)
+    expect(b.db.prepare("SELECT COUNT(*) AS n FROM work_money_inbox WHERE key = 'kept:half-way-key'").get()).toEqual({ n: 1 })
+    b.db.prepare("UPDATE work_money_books SET invoice = json_set(invoice, '$.claims', json('[]')) WHERE workspace_id = 'ws-ref'").run()
+    // The same Create again: the page is answered (the number is its own), and the keep finds the row it wrote.
+    await call('work.money.invoice', { workspaceId: 'ws-ref', key: 'half-way-key', invoice: inv })
+    const got = await keep({ key: 'half-way-key', what: 'invoice', invoice: inv })
+    expect(got.acted).toMatchObject({ ok: true, row: 2 })
+    expect((await view()).rows).toHaveLength(1)
+    expect(readdirSync(join(b.ref, 'Money', 'Invoices'))).toEqual(['Invoice 1042 Rivera Dental.pdf'])
+    // Another Create still cannot take the number.
+    await expect(call('work.money.invoice', { workspaceId: 'ws-ref', key: 'other-key-99', invoice: inv })).rejects.toThrow('is taken')
   })
 
   it('never brings the count back down: a lower number typed by hand leaves the highest standing', async () => {

@@ -35,6 +35,9 @@ const paramsOf = <M extends string>(method: M, req: ClientRequest): Params<M> =>
   throw day ? new MoneyError(day.message) : got.error
 }
 
+/** How long `work.money.state` waits for a job's ledger before answering that job's starting categories alone. */
+const STATE_WAIT_MS = 400
+
 const OWNER_ONLY = 'Only the owner writes the ledger. A thread adds with money_add or money_receipt, which wait for his accept.'
 
 /**
@@ -93,7 +96,11 @@ async function handle(req: ClientRequest, ctx: WorkCtx, by: Caller, signal?: Abo
       const jobs = await Promise.all(
         reachable(ctx, by, req.method).map(async (ws) => {
           const books = booksHere(ctx, ws.id)
-          const used = books ? await ledgerOf(ctx, books).then((l) => l.rows.map((r) => r.category)).catch(() => []) : []
+          // Asked of every job at once and never waited on for long: a sender checks this call before it sends (the
+          // phone's Save), so one job's slow ledger must not hold the answer. A job not read in time answers its
+          // starting list; its read goes on and is kept, so the next ask has its words.
+          const late = new Promise<string[]>((resolve) => setTimeout(() => resolve([]), STATE_WAIT_MS).unref?.())
+          const used = books ? await Promise.race([ledgerOf(ctx, books).then((l) => l.rows.map((r) => r.category), () => []), late]) : []
           return { workspaceId: ws.id, name: ws.name, sector: ws.sector, made: books !== null, categories: categoriesFor(ws.sector, used) }
         })
       )

@@ -788,6 +788,10 @@ export function receiptName(f: { date: string | null; who: string | null; amount
   return `${words || 'Receipt'}.${ext.replace(/^\./, '').toLowerCase() || 'pdf'}`
 }
 
+/** What the host says of a summary that is not of its year's newest export (a slow print sent late, or one no export asked for): the one sentence, for the host that says it and the window that shows it as it is. */
+export const staleSummary = (year: number): string => `That summary is not of ${year}'s newest export, so it was not kept. Export again.`
+export const STALE_SUMMARY = /is not of \d+'s newest export/
+
 // ── out: the CSV ─────────────────────────────────────────────────────
 
 const csvCell = (cell: string | number): string => {

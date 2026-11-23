@@ -189,7 +189,8 @@ export function read(ctx: Ctx, id: string): Promise<void> {
 
 /** Reading picks up where a restart left it, and parts nobody finished in a day go. Returns what stops the reads in hand. */
 export function resume(ctx: Ctx, now = Date.now()): () => void {
-  const stale = ctx.db.prepare("SELECT id, key, source, workspace_id FROM work_money_inbox WHERE state = 'partial' AND updated_at < ?").all(now - 24 * 3600_000) as { id: string; key: string; source: string; workspace_id: string }[]
+  // Parts nobody finished: never a row that carries a filing's note (a keep begun and not settled), which its own Create settles.
+  const stale = ctx.db.prepare("SELECT id, key, source, workspace_id FROM work_money_inbox WHERE state = 'partial' AND ref IS NULL AND updated_at < ?").all(now - 24 * 3600_000) as { id: string; key: string; source: string; workspace_id: string }[]
   for (const row of stale) {
     rmSync(scratchOf(ctx, row), { recursive: true, force: true })
     ctx.db.prepare('DELETE FROM work_money_inbox WHERE id = ?').run(row.id)

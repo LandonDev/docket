@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { z } from 'zod'
 import type { InvoiceFromSchema, InvoiceSchema, KeepParamsSchema, MoneyExport, MoneyInvoiceNext, MoneyInvoicePage, MoneyKept } from '@shared/contract-work-money'
 import { errorText } from '@shared/work/ids'
-import { csvOf, daysBetween, fileWord, INVOICE_DUE_DAYS, invoiceHtml, invoiceTotal, nextInvoiceNumber, payCategory, taxSummaryHtml } from '@shared/work/money'
+import { csvOf, daysBetween, fileWord, INVOICE_DUE_DAYS, invoiceHtml, invoiceTotal, nextInvoiceNumber, payCategory, staleSummary, taxSummaryHtml } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
 import { appendRow, insideJob, locked, MONEY_FOLDER, moneyFolder, newRef, openBooks, writtenRow } from './book'
 import { keepFile, keyed } from './inbox'
@@ -98,23 +98,31 @@ async function exportOnce(ctx: Ctx, ws: Workspace, o: { year: number; csv: boole
         ctx.log(`money: no Excel file for ${o.year} (${errorText(err)})`)
       }
     }
+    // The folder is checked again now, after the wait for the conversion: one that came to lead out of the job
+    // meanwhile takes nothing.
+    const into = taxFolder(ws, o.year)
+    /** An older export's file that this export does not make again would stand beside its figures as if it were theirs: it goes, and he is told. */
+    const retire = (name: string): void => {
+      if (!existsSync(join(into, name))) return
+      rmSync(join(into, name), { force: true })
+      warnings.push(`The older ${name} was removed, so the folder holds one export.`)
+    }
     if (o.csv) {
-      replaced ||= existsSync(join(dir, csvName))
-      writeWhole(join(dir, csvName), text)
+      replaced ||= existsSync(join(into, csvName))
+      writeWhole(join(into, csvName), text)
       files.push(csvName)
+    } else retire(csvName)
+    if (o.xlsx && workbook) {
+      replaced ||= existsSync(join(into, xlsxName))
+      copyWhole(workbook, join(into, xlsxName))
+      files.push(xlsxName)
+    } else {
+      if (o.xlsx) warnings.push('The Excel file could not be made on this computer.')
+      retire(xlsxName)
     }
-    if (o.xlsx) {
-      const there = existsSync(join(dir, xlsxName))
-      if (workbook) {
-        copyWhole(workbook, join(dir, xlsxName))
-        replaced ||= there
-        files.push(xlsxName)
-      } else if (there) {
-        // An older export's workbook would stand beside this one's figures as if it were theirs: it goes, and he is told.
-        rmSync(join(dir, xlsxName), { force: true })
-        warnings.push('The Excel file could not be made on this computer. The older one was removed, so the folder holds one export.')
-      } else warnings.push('The Excel file could not be made on this computer.')
-    }
+    // The summary is printed by the window and kept later, by this export's generation: until then, and when no
+    // summary was asked for, the older one is not this export's.
+    retire(`Summary ${o.year}.pdf`)
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }
@@ -225,7 +233,9 @@ export async function invoicePage(ctx: Ctx, ws: Workspace, key: string, inv: Inv
     const mine = numberKey(inv.number)
     // This Create holds this very number already (the same press again, or its keep was begun and stopped half way):
     // the number is its own, whatever the books have noted of it since.
-    const own = claims.some((c) => c.key === key && c.kind === inv.kind && numberKey(c.number) === mine)
+    // A keep of this key that was begun and not settled (its note stands) holds the number too, however long ago the
+    // page was asked for: the same Create must be able to come back and settle it.
+    const own = claims.some((c) => c.key === key && c.kind === inv.kind && numberKey(c.number) === mine) || unsettled(ctx, ws.id, key)
     const taken = own ? [] : [...(await usedNumbers(ctx, ws, inv.kind)), ...claims.filter((c) => c.kind === inv.kind && c.key !== key).map((c) => c.number)]
     if (taken.some((n) => numberKey(n) === mine)) {
       const free = nextInvoiceNumber([...taken, ...(kept.last?.[inv.kind] ? [kept.last[inv.kind]!] : [])])
@@ -259,6 +269,10 @@ export function keep(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKept>
   return keyed(`keep:${p.key}`, () => keepOnce(ctx, ws, p))
 }
 
+/** Whether a keep of this key in this job was begun and not settled: its note (the row's Ref, the file) still stands. */
+const unsettled = (ctx: Pick<WorkCtx, 'db'>, workspaceId: string, key: string): boolean =>
+  !!ctx.db.prepare("SELECT 1 FROM work_money_inbox WHERE key = ? AND source = 'kept' AND workspace_id = ? AND state = 'partial' AND ref IS NOT NULL").get(`kept:${key}`, workspaceId)
+
 /** What a keep in hand means to write, noted before the ledger is touched (as an accept's is): the Ref of the invoice's row and the file it kept. */
 interface KeepIntent {
   ref: string
@@ -291,10 +305,10 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
       // Under the year's own lock, with its exports: a summary printed from an older export than the year's newest is
       // not kept over the newer one's files, however late its window sent it.
       return await keyed(`export:${ws.id}:${year}`, async () => {
-        // The page must be of the year's newest export, by the generation that export answered: an older one's, or
-        // one that names none or another (a sender that never asked for this export), is not kept over its files.
+        // The page must be of the year's newest export, by the generation that export answered: an older one's, one
+        // that names none or another, or one for a year never exported is not kept in the year's folder.
         const newest = booksOf(ctx, ws.id)?.exports[year]
-        if (newest !== undefined && p.generation !== newest) throw new MoneyError(`That summary is not of ${year}'s newest export, so it was not kept. Export again.`)
+        if (newest === undefined || p.generation !== newest) throw new MoneyError(staleSummary(year))
         const folder = taxFolder(ws, year)
         const name = `Summary ${year}.pdf`
         const there = existsSync(join(folder, name))
@@ -340,7 +354,7 @@ async function keepOnce(ctx: Ctx, ws: Workspace, p: KeepParams): Promise<MoneyKe
     }
     // The page is this Create's own: its key took this number of this kind when the page was asked for
     // (`invoicePage`), and still holds it. A page nobody took a number for is not filed.
-    const held = (keptOf(ctx, ws.id).claims ?? []).some((c) => c.key === p.key && c.kind === inv.kind && numberKey(c.number) === numberKey(inv.number) && Date.now() - c.at < CLAIM_MS)
+    const held = begun !== null || (keptOf(ctx, ws.id).claims ?? []).some((c) => c.key === p.key && c.kind === inv.kind && numberKey(c.number) === numberKey(inv.number) && Date.now() - c.at < CLAIM_MS)
     if (!held) throw new MoneyError(`${TITLE[inv.kind]} ${inv.number} is not held for this Create any more. Create it again.`)
     const ref = newRef()
     const note = (receipt?: string): void =>

@@ -20,7 +20,7 @@ import {
   type Period
 } from '@shared/work/money'
 import type { WorkCtx } from '../modules'
-import { booksOf, workspaces, type Books, type Workspace } from './store'
+import { booksOf, putBooks, workspaces, type Books, type Workspace } from './store'
 
 /**
  * Reading a job's sheets (docs/agents/work-money.md "Reading"). The ledger
@@ -148,6 +148,10 @@ async function readGrid(ctx: Svc, path: string): Promise<Grid> {
     for (let start = 2; start <= extent.rows; start += per) body.push(...(await range(ctx, path, `A${start}:${columnLetter(width - 1)}${start + per - 1}`)))
     while (body.length && blank(body[body.length - 1])) body.pop()
   }
+  // The ranges read the sheet as it is now, each a moment after the last: a sort or an edit between two of them would
+  // count a row twice or leave one out. The read is of one revision or it is made again.
+  const after = (await ctx.service.internal('/internal/sheet/open', { sheet: sheet(path) })) as Opened
+  if (after.rev !== open.rev) throw new Error('The sheet changed while it was being read.')
   // A row that holds only a formula with no result yet reads as blank, and is a row all the same: nothing is written over it.
   const grid: Grid = { rev: open.rev, shared: open.shared === true, header, body, last: Math.max(1 + body.length, extent.rows), pending: pendingOf(extent.tab), partial: extent.columns > WIDTH_MAX, tab: extent.tab }
   grids.set(path, grid)
@@ -160,8 +164,31 @@ async function readGrid(ctx: Svc, path: string): Promise<Grid> {
  * by its own name. Another suggestion in row 1, or one on another tab, is
  * not that.
  */
-export const headersWait = (grid: Grid, names: readonly string[]): boolean =>
-  names.length > 0 && names.every((name) => grid.pending.some((p) => p.open && p.row === 1 && String(p.v ?? '').trim().toLowerCase() === name.toLowerCase()))
+export const headersWait = (grid: Grid, names: readonly string[]): boolean => names.length > 0 && restorePlan(grid, names).write.length === 0
+
+/**
+ * Where a restore puts the headers a sheet lacks, planned once for the read
+ * and for the write: each at the end of row 1, in the first cells past the
+ * headers that nothing else already waits in. A header of that name that
+ * already waits there, past the last header (a restore's own suggestion,
+ * not someone's change to a header that stands), is not written again.
+ */
+export function restorePlan(grid: Grid, names: readonly string[]): { waits: string[]; write: { column: number; name: string }[] } {
+  const first = grid.header.length
+  const row1 = grid.pending.filter((p) => p.row === 1)
+  const waiting = (name: string): boolean => row1.some((p) => p.open && p.column >= first && String(p.v ?? '').trim().toLowerCase() === name.toLowerCase())
+  const waits = names.filter(waiting)
+  const taken = new Set(row1.map((p) => p.column))
+  const write: { column: number; name: string }[] = []
+  let column = first
+  for (const name of names) {
+    if (waiting(name)) continue
+    while (taken.has(column)) column++
+    write.push({ column, name })
+    taken.add(column)
+  }
+  return { waits, write }
+}
 
 /** The row under everything a sheet holds and everything that waits in it as a suggestion: where an append writes. */
 export const nextRow = (grid: Grid): number => Math.max(grid.last, ...grid.pending.map((p) => p.row)) + 1
@@ -198,10 +225,11 @@ export const LEDGER_OUTSIDE = "The ledger leads outside this job's folder, so Mo
 
 /** A job's ledger is on record and its file is there, but leads out of the job's folder (a link): it is neither read nor written, and the job is not an empty one. */
 export function ledgerOutside(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): boolean {
-  const books = booksOf(ctx, workspaceId)
-  if (!books || !existsSync(books.ledger)) return false
   const ws = workspaces(ctx).find((w) => w.id === workspaceId)
-  return !ws || !insideFolder(ws.path, books.ledger)
+  // With no record yet, the ledger's own place is where it would be looked for.
+  const ledger = booksOf(ctx, workspaceId)?.ledger ?? (ws ? join(ws.path, 'Money', 'Ledger.tcsheet') : null)
+  if (!ledger || !existsSync(ledger)) return false
+  return !ws || !insideFolder(ws.path, ledger)
 }
 export const MILEAGE_OUTSIDE = "The mileage log leads outside this job's folder, so Money does not read it."
 
@@ -232,11 +260,26 @@ export const mileageRows = async (ctx: Svc & Pick<WorkCtx, 'db'>, books: Books):
 
 /** A job's books when both the row and the ledger's file are there; null otherwise (he has none yet, or deleted the file). */
 export function booksHere(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Books | null {
-  const books = booksOf(ctx, workspaceId)
+  const books = booksOf(ctx, workspaceId) ?? adopt(ctx, workspaceId)
   if (!books || !existsSync(books.ledger)) return null
   // A ledger that is a link out of the job's folder is not this job's: it is neither read nor written.
   const ws = workspaces(ctx).find((w) => w.id === workspaceId)
   return ws && insideFolder(ws.path, books.ledger) ? books : null
+}
+
+/**
+ * A ledger already at its place with no record of it (a job's folder copied
+ * from another machine): it is the job's ledger from the first read on,
+ * never "no money yet" until something happens to open it. Only the record
+ * is written; nothing is made in a folder that holds no ledger.
+ */
+function adopt(ctx: Pick<WorkCtx, 'db'>, workspaceId: string): Books | null {
+  const ws = workspaces(ctx).find((w) => w.id === workspaceId)
+  if (!ws) return null
+  const ledger = join(ws.path, 'Money', 'Ledger.tcsheet')
+  if (!existsSync(ledger) || !insideFolder(ws.path, ledger)) return null
+  putBooks(ctx, { workspaceId, ledger, mileage: join(ws.path, 'Money', 'Mileage.tcsheet') })
+  return booksOf(ctx, workspaceId)
 }
 
 /** Whether a file that exists lies, by its real spelling, inside a folder. */

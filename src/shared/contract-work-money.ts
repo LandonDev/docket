@@ -106,6 +106,8 @@ export const TripParamsSchema = z.object({
   eventId: z.string().min(1).max(200).optional(),
   /** a trip typed by hand: the sender's own id for this add, so the same Add again writes nothing twice */
   key: z.string().min(8).max(100).optional(),
+  /** he picked the event himself in Add → Trip…: one he skipped before is taken up again. Without it (an offer's Add, Add all) a skipped event stays skipped */
+  reopen: z.boolean().optional(),
   date: day,
   /** the trip's name: the event's title */
   title: z.string().trim().min(1).max(300),
@@ -285,6 +287,10 @@ export interface MoneyEvents {
 export interface MoneyTripped {
   /** the event it named was added before: nothing was written this time */
   already?: true
+  /** with `already`, for a trip typed by hand (its `key`): what that earlier Add filed, so a form changed since is not taken for saved */
+  filed?: { miles: number | null; fee: number | null }
+  /** the event was skipped (in another window, or while this Add waited its turn): nothing was written */
+  skipped?: true
   /** the ledger's row for the pay, when there was a fee */
   pay: MoneyActed | null
   /** the mileage log's row, when there were miles; `suggested`: the log is a sheet others can open, and the row waits there as a suggestion */
