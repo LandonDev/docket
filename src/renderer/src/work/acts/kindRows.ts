@@ -191,29 +191,43 @@ const EDIT_APP: Record<string, string> = { word: "Word", powerpoint: "PowerPoint
 /** Words as they go: a value with nothing to see (spaces, breaks, a zero-width space) is quoted with its escapes, so it never reads as nothing. */
 const shown = (v: string): string => (v.replace(/\p{Cf}/gu, "").trim() ? v : visible(v));
 
-/** The sentence of a paragraph that holds the words, whole: it starts after the last stop and space before them, and
- * ends at the first stop with a space or the paragraph's end after it, looking from the words' own last character. */
+/** The sentence of a paragraph that holds the words, whole: it starts after the last stop (and any closing quote or
+ * bracket) and space before them, and ends at the first stop with a space or the paragraph's end after it, looking
+ * from the words' own last character. */
 export function sentenceOf(paragraph: string, words: string): string {
   const at = paragraph.indexOf(words);
   if (at < 0) return paragraph;
-  const start = /^[\s\S]*[.!?]\s+/.exec(paragraph.slice(0, at))?.[0].length ?? 0;
+  const start = /^[\s\S]*[.!?]["'\u2019\u201d)\]]*\s+/.exec(paragraph.slice(0, at))?.[0].length ?? 0;
   const last = at + Math.max(0, words.length - 1);
-  const tail = paragraph.slice(last).search(/[.!?](\s|$)/);
-  return paragraph.slice(start, tail < 0 ? paragraph.length : last + tail + 1).trim();
+  const tail = /[.!?]["'\u2019\u201d)\]]*(?=\s|$)/.exec(paragraph.slice(last));
+  return paragraph.slice(start, tail ? last + tail.index + tail[0].length : paragraph.length).trim();
 }
 
-/** That sentence for the card, cut to about `max` characters around the words, each cut at a space. */
+/** Words long enough that the card's Where shows what is around them, not them again. */
+const LONG_WORDS = 40;
+
+/**
+ * That sentence for the card: whole when it fits in `max` characters, else cut around the words at spaces, using the
+ * window's whole width. Words past `LONG_WORDS` are shown as " … " in it, since Replace shows them in full below.
+ */
 export function sentenceAround(paragraph: string, words: string, max = 120): string {
-  const s = paragraph.includes(words) ? sentenceOf(paragraph, words) : paragraph;
+  let s = paragraph.includes(words) ? sentenceOf(paragraph, words) : paragraph;
+  let key = words;
+  if (words.length > LONG_WORDS && s.includes(words)) {
+    s = s.replace(words, "\u2026").replace(/\s*\u2026\s*/, " \u2026 ").trim();
+    key = "\u2026";
+  }
   if (s.length <= max) return s;
-  const at = Math.max(0, s.indexOf(words));
-  let from = Math.max(0, at - Math.max(0, Math.floor((max - words.length) / 2)));
+  const at = Math.max(0, s.indexOf(key));
+  let from = Math.max(0, at - Math.max(0, Math.floor((max - key.length) / 2)));
   let to = Math.min(s.length, from + max);
+  // near the end: the window moves back so it is used whole
+  if (to === s.length) from = Math.max(0, to - max);
   // back to whole words where a space is near: a cut splits a word only when the text has no space close by
   const space = (i: number) => s.lastIndexOf(" ", i);
   if (from > 0 && space(from) >= from - 20 && space(from) >= 0) from = space(from) + 1;
   if (to < s.length && space(to) > from && space(to) >= to - 20) to = space(to);
-  return `${from > 0 ? "…" : ""}${s.slice(from, to).trim()}${to < s.length ? "…" : ""}`;
+  return `${from > 0 ? "\u2026" : ""}${s.slice(from, to).trim()}${to < s.length ? "\u2026" : ""}`;
 }
 
 /** Whether a sentence says more than the words it holds: not when only stops, quotes, spaces or a cut's "…" remain. */

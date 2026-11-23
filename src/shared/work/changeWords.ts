@@ -48,7 +48,9 @@ export function changeWords(find: string, replace: string, max = 60): string {
     return `${visible(p)} to ${visible(q)}`
   }
   const [p, q] = x === y || !x || !y ? sides(find, replace, cut) : sides(x, y, cut)
-  return `"${p}" to "${q}"`
+  // a side with nothing to see reads by its escapes, never as empty quotes
+  const say = (v: string) => (v.replace(/[\p{Cf}]/gu, '').trim() ? `"${v}"` : visible(v))
+  return `${say(p)} to ${say(q)}`
 }
 
 /** Two sides cut to their limit; when their cuts would read the same, each is cut around where they first differ. */

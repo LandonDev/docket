@@ -504,44 +504,64 @@ public extension OutboxModel {
     }
 
     /// The sentence of a paragraph that holds the words, whole (the desktop's `sentenceOf`): it starts after the last
-    /// stop and space before them, and ends at the first stop with a space or the paragraph's end after it, looking
-    /// from the words' own last character.
+    /// stop (and any closing quote or bracket) and space before them, and ends at the first stop with a space or the
+    /// paragraph's end after it, looking from the words' own last character.
     nonisolated static func sentenceOf(_ paragraph: String, _ words: String) -> String {
-        guard let hit = paragraph.range(of: words) else { return paragraph }
+        let p = Array(paragraph)
+        let w = Array(words)
+        guard let hitRange = paragraph.range(of: words) else { return paragraph }
+        let at = paragraph.distance(from: paragraph.startIndex, to: hitRange.lowerBound)
         let enders: Set<Character> = [".", "!", "?"]
-        var start = paragraph.startIndex
-        var i = paragraph.startIndex
-        while i < hit.lowerBound {
-            let next = paragraph.index(after: i)
-            if enders.contains(paragraph[i]), next < hit.lowerBound, paragraph[next].isWhitespace {
-                var j = next
-                while j < hit.lowerBound, paragraph[j].isWhitespace { j = paragraph.index(after: j) }
-                start = j
+        let closers: Set<Character> = ["\"", "'", "\u{2019}", "\u{201D}", ")", "]"]
+        var start = 0
+        var i = 0
+        while i < at {
+            if enders.contains(p[i]) {
+                var j = i + 1
+                while j < at, closers.contains(p[j]) { j += 1 }
+                if j < at, p[j].isWhitespace {
+                    while j < at, p[j].isWhitespace { j += 1 }
+                    start = j
+                }
             }
-            i = next
+            i += 1
         }
-        var end = hit.isEmpty ? hit.upperBound : paragraph.index(before: hit.upperBound)
-        while end < paragraph.endIndex {
-            let next = paragraph.index(after: end)
-            if enders.contains(paragraph[end]) && (next == paragraph.endIndex || paragraph[next].isWhitespace) { end = next; break }
-            end = next
+        var end = p.count
+        var k = at + Swift.max(0, w.count - 1)
+        while k < p.count {
+            if enders.contains(p[k]) {
+                var j = k + 1
+                while j < p.count, closers.contains(p[j]) { j += 1 }
+                if j == p.count || p[j].isWhitespace { end = j; break }
+            }
+            k += 1
         }
-        return paragraph[start..<end].trimmingCharacters(in: .whitespaces)
+        return String(p[start..<end]).trimmingCharacters(in: .whitespaces)
     }
 
-    /// That sentence for the card, cut to about `max` characters around the words, each cut at a space when one is
-    /// within 20 characters (the desktop's `sentenceAround`).
+    /// That sentence for the card (the desktop's `sentenceAround`): whole when it fits in `max` characters, else cut
+    /// around the words at spaces within 20 characters, using the window's whole width. Words past 40 characters are
+    /// shown as " … " in it, since Replace shows them in full below.
     nonisolated static func sentenceAround(_ paragraph: String, _ words: String, max: Int = 120) -> String {
-        let s = Array(paragraph.contains(words) ? sentenceOf(paragraph, words) : paragraph)
-        if s.count <= max { return String(s) }
-        let text = String(s)
-        let at = text.range(of: words).map { text.distance(from: text.startIndex, to: $0.lowerBound) } ?? 0
-        var from = Swift.max(0, at - Swift.max(0, (max - words.count) / 2))
+        var text = paragraph.contains(words) ? sentenceOf(paragraph, words) : paragraph
+        var key = words
+        if words.count > 40, let r = text.range(of: words) {
+            text = text.replacingCharacters(in: r, with: "\u{2026}")
+                .replacingOccurrences(of: #"\s*\u{2026}\s*"#, with: " \u{2026} ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+            key = "\u{2026}"
+        }
+        let s = Array(text)
+        if s.count <= max { return text }
+        let at = text.range(of: key).map { text.distance(from: text.startIndex, to: $0.lowerBound) } ?? 0
+        var from = Swift.max(0, at - Swift.max(0, (max - key.count) / 2))
         var to = Swift.min(s.count, from + max)
+        // near the end: the window moves back so it is used whole
+        if to == s.count { from = Swift.max(0, to - max) }
         let space = { (i: Int) -> Int in var k = Swift.min(i, s.count - 1); while k >= 0, s[k] != " " { k -= 1 }; return k }
         if from > 0, space(from) >= 0, space(from) >= from - 20 { from = space(from) + 1 }
         if to < s.count, space(to) > from, space(to) >= to - 20 { to = space(to) }
-        return (from > 0 ? "…" : "") + String(s[from..<to]).trimmingCharacters(in: .whitespaces) + (to < s.count ? "…" : "")
+        return (from > 0 ? "\u{2026}" : "") + String(s[from..<to]).trimmingCharacters(in: .whitespaces) + (to < s.count ? "\u{2026}" : "")
     }
 
     private nonisolated static func word(_ value: JSONValue?) -> String? {

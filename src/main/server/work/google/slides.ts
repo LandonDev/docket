@@ -1,4 +1,5 @@
-import type { GoogleDeckJson } from './client'
+import { quoted } from '@shared/work/changeWords'
+import { GoogleError, type GoogleDeckJson } from './client'
 import type { Google } from './google'
 
 /**
@@ -38,30 +39,34 @@ export type DeckEdit = { find: string; replace: string } | { shape: string; text
 export type HeldDeckEdit = { find: string; replace: string; boxes?: number; on?: number[] } | { shape: string; text: string; slide: number; was: string }
 
 /**
- * Where a deck stands for these edits: each `find` on some slide, each shape there with what it holds now. An
- * edit that does not fit answers why, in words for the agent (when held) or for him (at the press).
+ * Where a deck stands for these edits, run in order on a copy of its words as Google runs a batch: each replace-all
+ * counts its boxes and slides on the words as the edits before it left them, and each box its words then. So the card
+ * names exactly what the press changes. An edit that does not fit answers why twice: for the agent when held (`error`),
+ * and in his words at the press (`owner`).
  */
-function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held: HeldDeckEdit[] } | { error: string } {
+function judge(d: { slides: TextShape[][] }, edits: readonly DeckEdit[]): { held: HeldDeckEdit[] } | { error: string; owner: string } {
   const held: HeldDeckEdit[] = []
-  // A replace-all runs over the words the batch's other edits put in: words one edit writes that another finds would
-  // change more than either shows, so such a batch is refused, to be sent as two.
+  // A replace-all over words another edit of the batch writes would change more than either shows: refused, to be sent as two.
   for (const e of edits) {
     if (!('find' in e)) continue
     const other = edits.find((x) => x !== e && ('find' in x ? x.replace : x.text).includes(e.find))
-    if (other) return { error: `"${e.find}" stands in what another edit of this batch writes: send them as two calls.` }
+    if (other) return { error: `"${e.find}" stands in what another edit of this batch writes: send them as two calls.`, owner: `two of its changes touch ${quoted(e.find)}` }
   }
+  const state = d.slides.map((s) => s.map((x) => ({ ...x })))
   for (const e of edits) {
     if ('find' in e) {
-      const boxes = d.slides.flat().filter((x) => x.text.includes(e.find)).length
-      if (!boxes) return { error: `"${e.find}" is on no slide.` }
-      // the slides the words stand on, so the card can say where a replace-all lands
-      const on = d.slides.flatMap((s, i) => (s.some((x) => x.text.includes(e.find)) ? [i + 1] : []))
+      const on = state.flatMap((s, i) => (s.some((x) => x.text.includes(e.find)) ? [i + 1] : []))
+      const boxes = state.flat().filter((x) => x.text.includes(e.find)).length
+      if (!boxes) return { error: `"${e.find}" is on no slide.`, owner: `${quoted(e.find)} is on no slide now` }
       held.push({ find: e.find, replace: e.replace, boxes, on })
+      for (const x of state.flat()) x.text = x.text.split(e.find).join(e.replace)
       continue
     }
-    const slide = d.slides.findIndex((s) => s.some((x) => x.objectId === e.shape))
-    if (slide < 0) return { error: `There is no shape ${e.shape} with words: take its id from google_slides_read.` }
-    held.push({ ...e, slide: slide + 1, was: d.slides[slide]!.find((x) => x.objectId === e.shape)!.text })
+    const slide = state.findIndex((s) => s.some((x) => x.objectId === e.shape))
+    if (slide < 0) return { error: `There is no shape ${e.shape} with words: take its id from google_slides_read.`, owner: 'a box this changes is gone' }
+    const box = state[slide]!.find((x) => x.objectId === e.shape)!
+    held.push({ ...e, slide: slide + 1, was: box.text })
+    box.text = e.text
   }
   return { held }
 }
@@ -91,20 +96,21 @@ export async function checkDeckEdits(g: Google, account: string, fileId: string,
 export async function writeDeckEdits(g: Google, account: string, fileId: string, edits: readonly HeldDeckEdit[], judgedOn: string): Promise<{ stale: string } | { moved: boolean }> {
   const api = g.api(account)
   const d = slidesOf(await api.deck(fileId))
-  if (!d.revisionId) return { stale: 'Google lets this account read the deck but not change it.' }
+  // the account may no longer change it: nothing was written, and the file did not change
+  if (!d.revisionId) throw new GoogleError('Google no longer lets this account change the deck.', 'refused')
   const now = judge(d, edits)
-  if ('error' in now) return { stale: now.error }
+  if ('error' in now) return { stale: now.owner }
   const edited = edits.find((e, i) => 'was' in e && (now.held[i] as { was?: string }).was !== e.was)
-  if (edited) return { stale: `A shape on slide ${'slide' in edited ? edited.slide : '?'} holds other words than it did.` }
+  if (edited) return { stale: `the box on slide ${'slide' in edited ? edited.slide : '?'} holds other words than it did` }
   // a box moved to another slide is not the one he was shown
   const moved = edits.findIndex((e, i) => 'slide' in e && (now.held[i] as { slide?: number }).slide !== e.slide)
-  if (moved >= 0) return { stale: `a box on slide ${(edits[moved] as { slide: number }).slide} is on slide ${(now.held[moved] as { slide: number }).slide} now.` }
-  // Replace-all reaches every box with the words: more or fewer than he was shown is not what he approved.
+  if (moved >= 0) return { stale: `a box on slide ${(edits[moved] as { slide: number }).slide} is on slide ${(now.held[moved] as { slide: number }).slide} now` }
+  // Replace-all reaches every box with the words: more or fewer, or other slides, than he was shown is not what he approved.
   const spread = edits.findIndex((e, i) => 'find' in e && ((e.boxes !== undefined && (now.held[i] as { boxes?: number }).boxes !== e.boxes) || (e.on !== undefined && JSON.stringify((now.held[i] as { on?: number[] }).on) !== JSON.stringify(e.on))))
   if (spread >= 0) {
     const e = edits[spread] as { find: string; boxes: number }
     const was = now.held[spread] as { boxes: number; on?: number[] }
-    return { stale: was.boxes !== e.boxes ? `"${e.find}" stands in ${was.boxes} boxes now, not the ${e.boxes} it was suggested for.` : `"${e.find}" stands on other slides now than the ones it was suggested for.` }
+    return { stale: was.boxes !== e.boxes ? `${quoted(e.find)} stands in ${was.boxes} boxes now, not the ${e.boxes} shown` : `${quoted(e.find)} stands on other slides now than the ones shown` }
   }
   await api.deckUpdate(fileId, requestsOf(edits), { requiredRevisionId: d.revisionId })
   return { moved: d.revisionId !== judgedOn }

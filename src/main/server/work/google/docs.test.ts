@@ -116,7 +116,7 @@ describe('a Google Doc in the document canvas', () => {
     fake.editDoc('doc1', 1, 'Note: ')
     await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged.revisionId)).resolves.toEqual({ moved: true })
     const now = fake.docText('doc1')
-    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged.revisionId)).resolves.toEqual({ stale: expect.stringContaining('not in the Doc') })
+    await expect(writeEdits(googleOf(ctx), src, [{ find: 'tight', replace: 'fine' }], judged.revisionId)).resolves.toEqual({ stale: '"tight" is no longer in the Doc' })
     expect(fake.docText('doc1')).toBe(now)
   })
 
@@ -126,7 +126,7 @@ describe('a Google Doc in the document canvas', () => {
     expect(judged.within).toEqual(['Budget is tight.'])
     fake.editDoc('doc1', 35, 'very ')
     const now = fake.docText('doc1')
-    await expect(writeEdits(googleOf(ctx), src, edits.map((e, i) => ({ ...e, within: judged.within[i] })), judged.revisionId)).resolves.toEqual({ stale: expect.stringContaining('other than the one it was suggested in') })
+    await expect(writeEdits(googleOf(ctx), src, edits.map((e, i) => ({ ...e, within: judged.within[i] })), judged.revisionId)).resolves.toEqual({ stale: '"tight" now stands in another passage than the one shown' })
     expect(fake.docText('doc1')).toBe(now)
   })
 

@@ -121,8 +121,8 @@ export const googleEdit: ActKindDef<GoogleEdit> = {
       if (err instanceof GoogleError && ['refused', 'not-found', 'bad-request', 'conflict', 'needs-consent', 'no-account', 'signed-out', 'too-wide'].includes(err.code)) throw new ActNotSent(err.message)
       throw err
     }
-    // one sentence after the colon, lower-cased where it starts with a word, and a stop at its end
-    if ('stale' in got) throw new ActStale(`${p.name} changed since: ${got.stale.replace(/\.$/, '').replace(/^[A-Z](?=[a-z ])/, (c) => c.toLowerCase())}. Nothing was changed.`)
+    // the reason is written in his words where it is found; one sentence after the colon, and a stop at its end
+    if ('stale' in got) throw new ActStale(`${p.name} changed since: ${got.stale}. Nothing was changed.`)
     const n = p.edits.length
     return { summary: `Made ${n === 1 ? 'the change' : `${n} changes`} in ${p.name}${got.moved ? '. It had changed since the suggestion; every change still fit' : ''}`, ref: { at: 'google', fileId: p.fileId } }
   },

@@ -191,6 +191,12 @@ import TempCodeContract
         #expect(!OutboxModel.addsWords("…a long clause cut…", "a long clause cut"))
         #expect(OutboxModel.addsWords("We leave at 7 sharp, $4.50 a head.", "$4.50"))
         #expect(OutboxModel.sentenceOf("A. B c d. E.", "c") == "B c d.")
+        // the desktop's same cases (kindRows.test.ts)
+        #expect(OutboxModel.sentenceOf("He said \"Go now.\" Then we left at 7.", "we left") == "Then we left at 7.")
+        #expect(OutboxModel.sentenceOf("He said \"Go now.\" Then we left.", "Go now") == "He said \"Go now.\"")
+        let clause = "after the regional qualifiers on the third weekend of March"
+        #expect(OutboxModel.sentenceAround("We play \(clause) and rest after the finals.", clause) == "We play \u{2026} and rest after the finals.")
+        #expect(OutboxModel.sentenceAround(String(repeating: "lead ", count: 40) + "the end here.", "here").count > 110)
         let long = "The tournament runs three days with sixteen teams in four pools, then a bracket for the top eight and a final on Sunday."
         let longDoc = OutboxModel.actView(item("e13", kind: .googleEdit, payload: .object(["app": .string("doc"), "name": .string("Plan"), "edits": .array([.object(["find": .string(long), "replace": .string("Two days."), "within": .string("Intro here. \(long)")])])])))
         #expect(longDoc.fields.map(\.label) == ["In", "Replace", "With"])

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { fileDocName } from 'work-kit/collab-server'
 import { everyBlock, plain, type Block } from 'work-kit/formats'
 import type { CanvasSource } from '@shared/work'
+import { quoted } from '@shared/work/changeWords'
 import type { WorkCtx } from '../modules'
 import { ensureThreadTables } from '../docs/threads'
 import { GoogleError, GOOGLE_MIME, type GoogleApi } from './client'
@@ -204,10 +205,15 @@ export function writeEdits(g: Google, source: GoogleSource, edits: readonly { fi
     if (!fresh.revisionId) throw new GoogleError('Google lets this account read the Doc but not change it.', 'refused')
     const paragraphs = mapGoogleDoc(fresh).paragraphs
     const plan = planSuggest(paragraphs, edits)
-    if ('error' in plan) return { stale: plan.error }
+    if ('error' in plan) {
+      // in his words, not the agent's: where the words stand now
+      const e = edits.find((x) => paragraphs.reduce((n, p) => n + p.text.split(x.find).length - 1, 0) !== 1) ?? edits[0]!
+      const n = paragraphs.reduce((k, p) => k + p.text.split(e.find).length - 1, 0)
+      return { stale: n === 0 ? `${quoted(e.find)} is no longer in the Doc` : n > 1 ? `${quoted(e.find)} now stands in ${n} places` : `${quoted(e.find)} now sits beside something only Google can change` }
+    }
     // The words he was shown, in the paragraph he was shown: moved to another passage, they are not what he approved.
     const strayed = fresh.revisionId === judgedOn ? undefined : edits.find((e) => e.within !== undefined && paragraphs.find((p) => p.text.includes(e.find))?.text !== e.within)
-    if (strayed) return { stale: `"${strayed.find}" now stands in a passage other than the one it was suggested in.` }
+    if (strayed) return { stale: `${quoted(strayed.find)} now stands in another passage than the one shown` }
     await api.docUpdate(source.fileId, plan.requests, { requiredRevisionId: fresh.revisionId })
     return { moved: fresh.revisionId !== judgedOn }
   })

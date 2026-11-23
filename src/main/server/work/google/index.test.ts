@@ -177,7 +177,7 @@ describe('the google tools', () => {
     expect(text(got)).toMatch(/^Held for the owner/)
     expect(JSON.stringify([...fake.files])).toBe(before)
     expect(fake.calls.filter((c) => c.startsWith('POST') && !c.includes('/google/token'))).toEqual([])
-    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026', boxes: 1, on: [1] }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2025' }] }) })])
+    expect(held).toEqual([expect.objectContaining({ kind: 'google.edit', payload: expect.objectContaining({ app: 'slides', fileId: 'deck1', edits: [{ find: '2025', replace: '2026', boxes: 1, on: [1] }, { shape: 't1', text: 'Hi', slide: 1, was: 'Hello 2026' }] }) })])
     expect(results).toEqual([])
     const done = await googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)
     expect(done.summary).toBe('Made 2 changes in Pitch')
@@ -194,6 +194,14 @@ describe('the google tools', () => {
     fake.files.get('deck2')!.deck!.rev++
     await expect(googleEdit.execute(googleEdit.payload.parse(held[0].payload), { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('stands in 2 boxes now, not the 1')
     expect(fake.files.get('deck2')!.deck!.slides[0].texts.map((t) => t.text)).toEqual(['Q1 goals', 'Q1 budget'])
+  })
+
+  it("counts a replace-all's slides on the deck as the batch's earlier edits leave it, as Google runs them", async () => {
+    fake.addDeck(ME, 'deck4', 'Run', [{ objectId: 's1', texts: [{ objectId: 'a', text: 'Q 1 plan' }] }, { objectId: 's2', texts: [{ objectId: 'b', text: 'Q1 goals' }] }])
+    const { itemId } = await call<{ itemId: string }>('work.google.open', { sessionId: 's1', account: ME, fileId: 'deck4' })
+    await run('google_slides_revise', { item: itemId, edits: [{ find: ' 1 ', replace: '1 ' }, { find: 'Q1', replace: 'Q2' }] })
+    // the first edit joins "Q 1" into "Q1" on slide 1, so the second reaches both slides, and the card says so
+    expect(held[0]).toMatchObject({ payload: { edits: [{ find: ' 1 ', on: [1] }, { find: 'Q1', boxes: 2, on: [1, 2] }] } })
   })
 
   it('refuses a batch whose replace-all would reach words another of its edits writes', async () => {
@@ -228,7 +236,7 @@ describe('the google tools', () => {
     expect(fake.docText('doc2')).toContain('We ship in May.')
     expect(fake.docSuggestions('doc2')).toEqual([])
     // pressed again: the words are gone, so nothing is written and he is told why
-    await expect(googleEdit.execute(payload, { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow(/Brief changed since: .*not in the Doc/)
+    await expect(googleEdit.execute(payload, { ...ctx, item: { sessionId: 's1' } } as never)).rejects.toThrow('Brief changed since: "March" is no longer in the Doc. Nothing was changed.')
   })
 
   it('an agent edit takes no grant and cannot be edited', () => {

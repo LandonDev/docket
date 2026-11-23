@@ -322,6 +322,15 @@ describe("an agent's change to a shared file, as he approves it", () => {
     expect(kindRows("google.edit", { app: "slides", edits: [{ find: "Q1", replace: "Q2", boxes: 1, on: [4] }] })!.fields[1]).toEqual({ label: "Where", value: "Slide 4", gap: true });
     expect(sentenceAround(`${"x".repeat(300)} March ${"y".repeat(300)}`, "March").length).toBeLessThanOrEqual(122);
     expect(sentenceOf("A. B c d. E.", "c")).toBe("B c d.");
+    // a sentence ends after its closing quote, and the next starts after it
+    expect(sentenceOf('He said "Go now." Then we left at 7.', "we left")).toBe("Then we left at 7.");
+    expect(sentenceOf('He said "Go now." Then we left.', "Go now")).toBe('He said "Go now."');
+    // a long clause is shown around, not again
+    const clause = "after the regional qualifiers on the third weekend of March";
+    expect(sentenceAround(`We play ${clause} and rest after the finals.`, clause)).toBe("We play … and rest after the finals.");
+    // near the end of a long sentence the window is used whole
+    const tailEnd = sentenceAround(`${"lead ".repeat(40)}the end here.`, "here");
+    expect(tailEnd.length).toBeGreaterThan(110);
   });
 
   it("finds the sentence the words stand in wherever it falls, and drops it when it is the words themselves", () => {
