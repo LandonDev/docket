@@ -166,6 +166,15 @@ describe('the people', () => {
     expect(page.people).toHaveLength(12)
     expect(page.morePeople).toBe(3)
     expect(lifeos.called('people:find')).toHaveLength(12)
+    // everyone the calendar lists is named to the window, the three it does not draw too: none of them is his to add
+    expect(page.invited).toHaveLength(15)
+    expect(page.invited).toContain('p14@x.test')
+  })
+
+  it('names as invited only those the calendar lists, never one he added', async () => {
+    const { ctx, store } = world()
+    store.write('ws-purdue', { id: 'ev1', series: 'series1', title: 'Staff sync', startsAt: 1, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => ({ ...doc, people: [{ name: 'Dana Reyes', address: 'dana@x.test' }] }), NOW)
+    expect((await gather(ctx, 'ws-purdue', 'ev1', NOW)).page.invited).toEqual(['maya@x.test', 'tom@x.test', 'cory@cosmic.test'])
   })
 
   it('an added person the window named by id is still only one of the sector’s people', async () => {
@@ -224,6 +233,36 @@ describe('last time', () => {
     expect(page.files.at(-1)).toEqual({ title: 'Roster sheet', url: 'https://example.com/roster' })
     // still nothing written for this meeting
     expect(store.get('ws-purdue', 'ev1')).toBeNull()
+  })
+
+  it('says Last time did not load when a task it filed could not be read, and still shows what was', async () => {
+    const { ctx, lifeos, store } = world()
+    lifeos.task({ _id: 'task-open', title: 'Order jerseys' })
+    lifeos.task({ _id: 'task-lost', title: 'Book the bus' })
+    store.write('ws-purdue', { id: 'ev0', series: 'series1', title: 'Staff sync', startsAt: 5, endsAt: null, peopleKeys: [] }, emptyPrepDoc, (doc) => ({
+      ...doc,
+      after: {
+        summary: [], decisions: [], questions: [], at: 2,
+        tasks: [
+          { id: 's1', title: 'Order jerseys', state: 'filed', lifeosTaskId: 'task-open' },
+          { id: 's2', title: 'Book the bus', state: 'filed', lifeosTaskId: 'task-lost' },
+          { id: 's3', title: 'Deleted since', state: 'filed', lifeosTaskId: 'task-gone' }
+        ]
+      }
+    }), NOW)
+    // a task LifeOS no longer holds is simply not there: nothing failed
+    let got = (await gather(ctx, 'ws-purdue', 'ev1', NOW)).page
+    expect(got.problems).toEqual([])
+    expect(got.last?.tasks.map((t) => t.id)).toEqual(['task-open', 'task-lost'])
+    // one whose read fails is a part that did not load, with Retry, beside the task that was read
+    const query = lifeos.query
+    lifeos.query = (async (fn: string, args?: Record<string, unknown>) => {
+      if (fn === 'tasks:get' && args?.id === 'task-lost') throw new Error('LifeOS did not answer')
+      return query(fn, args)
+    }) as typeof lifeos.query
+    got = (await gather(ctx, 'ws-purdue', 'ev1', NOW)).page
+    expect(got.problems).toEqual(['last'])
+    expect(got.last?.tasks.map((t) => t.id)).toEqual(['task-open'])
   })
 
   it('is not drawn when the page before said nothing', async () => {

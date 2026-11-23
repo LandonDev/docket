@@ -60,6 +60,10 @@ describe('last time', () => {
     // letters of any script are kept: two names in Chinese are two keys, not one empty one
     expect(personKey({ name: '李雷' })).toBe('~李雷')
     expect(personKey({ name: '王芳' })).not.toBe(personKey({ name: '李雷' }))
+    // a vowel sign is a mark, and it is what tells these names apart: the fold keeps it (the window folds by the same rule)
+    expect(personKey({ name: 'नील' })).not.toBe(personKey({ name: 'नल' }))
+    expect(personKey({ name: 'राम' })).not.toBe(personKey({ name: 'रम' }))
+    expect(foldTitle('Café  Zoë—Señor')).toBe('cafe zoe senor')
   })
 })
 

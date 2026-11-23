@@ -6,6 +6,8 @@
  * and the tests read one rule.
  */
 
+import { prepFold } from '@shared/contract-work-prep'
+
 /** The worker's stamp of an occurrence's original start: `20261110T090000Z`, or `20261110` for an all-day one (lifeos apps/worker calendar/expand.ts `stamp`). */
 const STAMP = /^\d{8}(T\d{6}Z)?$/
 
@@ -21,15 +23,8 @@ export function seriesOf(event: { uid?: string | null }): string | null {
   return uid.slice(0, at)
 }
 
-/** A title as two meetings share it: case, accents and punctuation aside. */
-export const foldTitle = (title: string): string =>
-  title
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    // Letters and digits of any script: two names in Chinese are two names, not the same empty key.
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
+/** A title as two meetings share it: case, accents and punctuation aside (the window folds a name by the same rule). */
+export const foldTitle = prepFold
 
 /** A person as two pages share them: their address, or their folded name when the page has none. */
 export const personKey = (person: { address?: string | null; name?: string | null }): string => {

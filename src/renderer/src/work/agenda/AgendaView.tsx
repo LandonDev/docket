@@ -242,8 +242,9 @@ export const EventRow = memo(function EventRow({
           <span>{event.allDay ? "All day" : formatTime(event.startsAt)}</span>
           {leave !== undefined && !past ? <span className="font-medium text-foreground">Leave {formatLeave(leave, event.startsAt)}</span> : null}
         </span>
-        <span className="flex min-w-0 flex-col pr-24">
-          <span className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
+        <span className="flex min-w-0 flex-col">
+          {/* The verb's place is kept on the title's line alone: where it is and who is there read the column's whole width. */}
+          <span className={cn("truncate pr-24 text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
           {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
           {clash?.length ? <ClashLines clashes={clash} eventId={event._id} environmentId={environmentId} day={day} /> : null}
           {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}

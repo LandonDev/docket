@@ -111,6 +111,9 @@ export function usePrep(environmentId: string, workspaceId: string, eventId: str
       const held = entries.get(key)?.page;
       // The follow-up's mail is LifeOS's own draft: it comes with no page write, so the held feed says when to look again.
       if (push.push === "work.outbox") return void (held?.followSessionId && loadPrep(environmentId, workspaceId, eventId));
+      // A recording is read, or fails to be, long after the dialog closed and with no page write: the meetings pillar says which
+      // meeting, and the Notes row is read again when it is this page's.
+      if (push.push === "work.meetings") return void (held?.notesFile?.itemId === push.itemId && (push.status === "failed" || push.status === "ready") && loadPrep(environmentId, workspaceId, eventId));
       if (push.push !== "work.prep" || push.workspaceId !== workspaceId || push.eventId !== eventId) return;
       if (!held || push.rev > held.rev) void loadPrep(environmentId, workspaceId, eventId);
     });

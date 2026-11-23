@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PrepPage } from '@shared/contract-work-prep'
-import { briefMessage, briefTitle, followMessage, followTitle, pageWords } from './prompts'
+import { briefMessage, briefTitle, followAgainMessage, followMessage, followTitle, pageWords } from './prompts'
 
 const at = Date.parse('2026-11-23T19:00:00Z')
 const home = 'https://example.com/roster'
@@ -14,6 +14,7 @@ const page: PrepPage = {
     { name: 'Dana Reyes' }
   ],
   morePeople: 0,
+  invited: [],
   tasks: [
     { id: 't1', title: 'Send the roster', dueAt: at, why: 'asked', who: 'Maya Chen' },
     { id: 't2', title: 'Chair quote', why: 'waiting', who: 'Tom Beck' }
@@ -38,6 +39,8 @@ const page: PrepPage = {
   followSessionId: 'follow-1',
   briefUntil: null,
   followUntil: null,
+  briefStartedAt: null,
+  followStartedAt: null,
   drafts: [],
   notesFile: null,
   aheadOn: false,
@@ -87,6 +90,16 @@ describe('words for a prep thread', () => {
     expect(text).toContain('Never call add_task.')
     expect(text).toContain('Draft one follow-up mail to the people with addresses using draft_mail.')
     expect(text).toContain('It waits for his press. Never send it.')
+    expect(text.endsWith('End with the outcome as your last message.')).toBe(true)
+  })
+  it('asks a stopped follow-up thread again for the meeting beside it, and for a mail only if none waits', () => {
+    const recorded: PrepPage = { ...page, notesFile: { kind: 'meeting', itemId: 'it1', title: 'Staff sync.m4a' } }
+    const text = followAgainMessage(recorded)
+    expect(text).toContain(pageWords(recorded))
+    expect(text).toContain('open beside this thread as meeting it1. Read it with meeting_read.')
+    expect(text).toContain('Read the meeting beside you with meeting_read. Call prep_follow_up')
+    expect(text).toContain('never call add_task')
+    expect(text).toContain('If no follow-up mail to the people with addresses waits yet, draft one with draft_mail. It waits for his press. Never send it.')
     expect(text.endsWith('End with the outcome as your last message.')).toBe(true)
   })
 })

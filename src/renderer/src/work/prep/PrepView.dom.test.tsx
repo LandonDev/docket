@@ -23,7 +23,7 @@ const host = vi.hoisted(() => ({
   pushes: [] as ((push: Record<string, unknown>) => void)[],
   /** suggestion ids LifeOS will not file */
   refuses: [] as string[],
-  /** a `decide` waits on this before it answers */
+  /** a `decide`, or a save of the people, waits on this before it answers */
   slow: null as Promise<void> | null,
   /** what `work.meetings.start` answers */
   meeting: { status: "transcribing", error: null } as { status: string; error: string | null },
@@ -56,6 +56,7 @@ vi.mock("../../lib/connection", async (original) => ({
       request: async (method: string, params: Record<string, unknown>) => {
         host.asked.push({ method, params });
         if (host.fails) throw new Error(host.fails);
+        if (method === "work.prep.people" && host.slow) await host.slow;
         if (method === "work.prep.people") host.page = { ...(host.page as PrepPage), rev: (host.page as PrepPage).rev + 1, doc: { ...emptyPrepDoc(), people: params.people } };
         if (method === "work.prep.followUp" && params.recording) return host.busyFollow ? { sessionId: "t-follow" } : { sessionId: "t-follow", itemId: "it1" };
         if (method === "work.meetings.start") return { meeting: host.meeting };
@@ -128,6 +129,7 @@ const facts = (over: Partial<PrepPage> = {}): PrepPage => ({
     { name: "Outside Person", address: "out@elsewhere.test" },
   ],
   morePeople: 2,
+  invited: ["maya@x.test", "tom@x.test", "out@elsewhere.test"],
   tasks: [
     { id: "t1", title: "Send the seat list", dueAt: at(9, 0, 25), why: "asked", who: "Maya Chen" },
     { id: "t2", title: "Staff handbook update" },
@@ -141,6 +143,8 @@ const facts = (over: Partial<PrepPage> = {}): PrepPage => ({
   followSessionId: null,
   briefUntil: null,
   followUntil: null,
+  briefStartedAt: null,
+  followStartedAt: null,
   drafts: [],
   notesFile: null,
   aheadOn: false,
@@ -264,7 +268,7 @@ describe("the page of facts", () => {
 
 describe("a page with no one on it", () => {
   it("says so in one line and offers Add people", async () => {
-    host.page = facts({ people: [], morePeople: 0, tasks: [], files: [], last: null });
+    host.page = facts({ people: [], invited: [], morePeople: 0, tasks: [], files: [], last: null });
     await mount();
     expect(section("People").getByText("No one is listed on this meeting")).toBeTruthy();
     // an empty state under the heading, not an item of the list
@@ -461,6 +465,27 @@ describe("Add people", () => {
     expect(screen.getByRole("dialog", { name: "Add people" }).querySelector("[aria-busy]")).not.toBeNull();
   });
 
+  it("holds the list still while Save is on its way: no tick and no typed name moves it, and the search keeps its caret", async () => {
+    const dialog = await open();
+    fireEvent.click(dialog.getByRole("checkbox", { name: "Sam Whitaker" }));
+    let answer: () => void = () => {};
+    host.slow = new Promise<void>((resolve) => (answer = resolve));
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Save" })));
+    const search = dialog.getByLabelText("Search people") as HTMLInputElement;
+    // read only, not disabled: a refusal leaves him where he was
+    expect(search.readOnly).toBe(true);
+    expect(search.disabled).toBe(false);
+    fireEvent.click(dialog.getByText("Dana Reyes"));
+    const dana = dialog.getByRole("checkbox", { name: "Dana Reyes" });
+    expect(dana.getAttribute("aria-checked")).toBe("false");
+    expect(dana.getAttribute("aria-disabled") ?? (dana as HTMLButtonElement).disabled).toBeTruthy();
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(dialog.getByRole("checkbox", { name: "Sam Whitaker" }).getAttribute("aria-checked")).toBe("true");
+    await act(async () => answer());
+    await act(async () => {});
+    expect(host.asked.filter((a) => a.method === "work.prep.people")).toEqual([{ method: "work.prep.people", params: { workspaceId: "ws", eventId: "ev1", people: [{ name: "Sam Whitaker", address: "sam@x.test", personId: "p4" }] } }]);
+  });
+
   it("says why when the host refuses, and keeps the dialog open", async () => {
     const dialog = await open();
     fireEvent.click(dialog.getByRole("checkbox", { name: "Sam Whitaker" }));
@@ -541,6 +566,22 @@ describe("Brief me", () => {
     resetPrep();
     await mount();
     expect(screen.getByText("Tom declined; someone else carries the venue form.").parentElement!.className).toBe("");
+  });
+
+  it("stops saying Preparing once the brief has landed, though its thread still runs, and says it again for a Prepare again", async () => {
+    threads.status = { "t-brief": "running" };
+    host.page = facts({ rev: 1, state: "working", briefSessionId: "t-brief", briefStartedAt: 4 });
+    await mount();
+    expect(head().getByRole("button", { name: "Preparing" })).toBeTruthy();
+    // the brief is written (at 5, after the start at 4): the thread is saying its last words, and the page is done waiting
+    host.page = briefed({ briefStartedAt: 4 });
+    await push({ push: "work.prep", workspaceId: "ws", eventId: "ev1", rev: 2 });
+    expect(head().queryByRole("button", { name: "Preparing" })).toBeNull();
+    expect(head().getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["More"]);
+    // Prepare again starts a run later than the brief that stands
+    host.page = briefed({ rev: 3, briefStartedAt: 6 });
+    await push({ push: "work.prep", workspaceId: "ws", eventId: "ev1", rev: 3 });
+    expect(head().getByRole("button", { name: "Preparing" })).toBeTruthy();
   });
 
   it("offers Brief me again when its thread stopped without writing, and that press starts a new thread whatever the host's clock says", async () => {
@@ -746,9 +787,9 @@ describe("after the meeting", () => {
     await mount();
     fireEvent.click(section("To do").getByRole("button", { name: "Tick all" }));
     await act(async () => fireEvent.click(section("To do").getByRole("button", { name: "Add 2 tasks" })));
-    // a short word that always fits, then the task and why, which give way in a narrow window
+    // a short word that always fits, then why and the task, which give way from the end in a narrow window
     expect(screen.getByRole("status").textContent).toContain("A task was not added");
-    expect(screen.getByRole("status").textContent).toContain("“Send Maya the seat list”: LifeOS did not answer");
+    expect(screen.getByRole("status").textContent).toContain("LifeOS did not answer: “Send Maya the seat list”");
     expect(section("To do").getAllByRole("listitem").map((r) => r.getAttribute("data-task-state"))).toEqual(["proposed", "filed"]);
     // Retry owns it: its tick is spent, it cannot be ticked again, and no second button says the same thing
     const box = () => section("To do").getByRole("checkbox", { name: "Send Maya the seat list" });
@@ -801,6 +842,52 @@ describe("after the meeting", () => {
     vi.unstubAllGlobals();
   });
 
+  it("runs a Retry pressed while Add is filing once that answer is in: the press is never lost, and the two never overlap", async () => {
+    host.page = outcome();
+    host.refuses = ["s1"];
+    await mount();
+    fireEvent.click(section("To do").getByRole("checkbox", { name: "Send Maya the seat list" }));
+    await act(async () => fireEvent.click(section("To do").getByRole("button", { name: "Add 1 task" })));
+    expect(screen.getByRole("status").textContent).toContain("A task was not added");
+    // Add files the other task, and the host takes its time
+    let answer: () => void = () => {};
+    host.slow = new Promise<void>((resolve) => (answer = resolve));
+    host.refuses = [];
+    fireEvent.click(section("To do").getByRole("checkbox", { name: "Confirm jersey sizes" }));
+    await act(async () => fireEvent.click(section("To do").getByRole("button", { name: "Add 1 task" })));
+    const decides = () => host.asked.filter((a) => a.method === "work.prep.decide").map((a) => a.params.taskIds);
+    expect(decides()).toEqual([["s1"], ["s2"]]);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    // not sent beside the filing in flight
+    expect(decides()).toEqual([["s1"], ["s2"]]);
+    host.slow = null;
+    await act(async () => answer());
+    await act(async () => {});
+    expect(decides()).toEqual([["s1"], ["s2"], ["s1"]]);
+    expect(section("To do").getAllByRole("listitem").map((r) => r.getAttribute("data-task-state"))).toEqual(["filed", "filed"]);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("puts the caret on Retry when LifeOS took none of what he added, and on the task once a Retry files it", async () => {
+    vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => (fn(0), 0));
+    host.page = outcome();
+    host.refuses = ["s1"];
+    await mount();
+    fireEvent.click(section("To do").getByRole("checkbox", { name: "Send Maya the seat list" }));
+    const add = section("To do").getByRole("button", { name: "Add 1 task" });
+    add.focus();
+    await act(async () => fireEvent.click(add));
+    await act(async () => {});
+    // Add went with its one tick: the line that names the task holds the way on
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Retry" }));
+    host.refuses = [];
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await act(async () => {});
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(document.activeElement?.textContent).toContain("Send Maya the seat list");
+    vi.unstubAllGlobals();
+  });
+
   it("holds the outcome's place with bones while the follow-up thread works, as a brief's is held", async () => {
     host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "Dana drives.", at: 1 } } });
     threads.status = { "t-follow": "running" };
@@ -810,6 +897,15 @@ describe("after the meeting", () => {
     host.page = outcome();
     await push({ push: "work.prep", workspaceId: "ws", eventId: "ev1", rev: 5 });
     expect(screen.queryByLabelText("The outcome is being written")).toBeNull();
+  });
+
+  it("stops saying Following up once the outcome has landed, though the thread is still drafting the mail", async () => {
+    threads.status = { "t-follow": "running" };
+    host.page = outcome({ followStartedAt: 9, drafts: [] });
+    await mount();
+    expect(head().queryByRole("button", { name: "Following up" })).toBeNull();
+    expect(head().getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["More"]);
+    expect(await moreRows()).toContain("Open thread");
   });
 
   it("reads the page again when the Outbox says something is held: the follow-up's mail comes with no write of the page", async () => {
@@ -1000,6 +1096,26 @@ describe("a recording or a transcript as the notes", () => {
     host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, meetingItemId: "it1" } }, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync.m4a", error: "The transcriber is not installed on box." } });
     await mount();
     expect(rowsOf("Notes")).toEqual(["Staff sync.m4aThe transcriber is not installed on box."]);
+  });
+
+  it("reads the page again when the meetings pillar says its recording was read or could not be, and for no other meeting", async () => {
+    const reading = { kind: "meeting" as const, itemId: "it1", title: "Staff sync.m4a" };
+    host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, meetingItemId: "it1" } }, notesFile: reading });
+    await mount();
+    expect(rowsOf("Notes")).toEqual(["Staff sync.m4a"]);
+    expect(head().getByRole("button", { name: "Follow up" })).toBeTruthy();
+    const asked = host.asked.length;
+    await push({ push: "work.meetings", itemId: "other", sessionId: "t-x", rev: 2, status: "failed" });
+    await push({ push: "work.meetings", itemId: "it1", sessionId: "t-follow", rev: 2, status: "transcribing" });
+    expect(host.asked).toHaveLength(asked);
+    // the transcription failed with no write of the page: the same rev, a new Notes row
+    host.page = { ...(host.page as PrepPage), notesFile: { ...reading, error: "The transcriber is not installed on box." } };
+    await push({ push: "work.meetings", itemId: "it1", sessionId: "t-follow", rev: 3, status: "failed" });
+    expect(host.asked).toHaveLength(asked + 1);
+    expect(rowsOf("Notes")).toEqual(["Staff sync.m4aThe transcriber is not installed on box."]);
+    // a recording that could not be read is no notes to follow up from: the header asks for notes
+    expect(head().queryByRole("button", { name: "Follow up" })).toBeNull();
+    expect(head().getByRole("button", { name: "Add notes" })).toBeTruthy();
   });
 
   it("names the recording on the page, and its row opens the thread it shows beside", async () => {

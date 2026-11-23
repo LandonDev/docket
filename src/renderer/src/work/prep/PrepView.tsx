@@ -351,8 +351,8 @@ export function View(props: WorkViewProps) {
         onDismissOffer={() => settleOffer(workspaceId)}
         refreshError={error}
       />
-      {dialog === "people" ? <AddPeopleDialog key={eventId} env={props.env} lifeos={props.lifeos} page={page} faces={faces} onClose={close} /> : null}
-      {dialog === "notes" ? <NotesDialog key={eventId} env={props.env} page={page} onClose={close} /> : null}
+      {dialog === "people" ? <AddPeopleDialog key={`people:${eventId}`} env={props.env} lifeos={props.lifeos} page={page} faces={faces} onClose={close} /> : null}
+      {dialog === "notes" ? <NotesDialog key={`notes:${eventId}`} env={props.env} page={page} onClose={close} /> : null}
     </>
   );
 }
@@ -428,19 +428,34 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
   const outcome = !!(doc.notes || after);
   const [failed, setFailed] = useState<{ id: string; error: string }[]>(failedAtFirst ?? []);
   // The line about a failed filing stays until the next answer is in: a Retry spins on it, and nothing flickers away.
-  // One filing at a time, whichever control asked: Add and Retry share this, so neither can send while the other waits.
+  // One filing at a time, whichever control asked: Add and Retry share this, so the two never send at once.
   const [filing, setFiling] = useState(false);
-  const decide = async (ids: string[], decision: "accept" | "reject"): Promise<void> => {
-    if (!onDecide || filing) return;
-    setFiling(true);
-    let now: { id: string; error: string }[];
-    try {
-      now = await onDecide(ids, decision);
-    } catch (err) {
-      now = ids.map((id) => ({ id, error: refusalWords(err) || "The host did not answer" }));
-    }
-    setFailed((was) => [...was.filter((f) => !ids.includes(f.id)), ...now]);
-    setFiling(false);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const body = useRef<HTMLDivElement>(null);
+  // The control he pressed may go with its answer (Add with the last tick, Retry with its line): once that is drawn, the caret is handed on.
+  const [answered, setAnswered] = useState<{ ids: readonly string[] } | null>(null);
+  useEffect(() => {
+    if (!answered) return;
+    const frame = requestAnimationFrame(() => focusAfterFiling(body.current, answered.ids));
+    return () => cancelAnimationFrame(frame);
+  }, [answered]);
+  const decide = (ids: string[], decision: "accept" | "reject"): Promise<void> => {
+    if (!onDecide) return Promise.resolve();
+    // A press made while another filing waits runs after it (Retry while Add files): no press is lost, and no two overlap.
+    const run = queue.current.then(async () => {
+      setFiling(true);
+      let now: { id: string; error: string }[];
+      try {
+        now = await onDecide(ids, decision);
+      } catch (err) {
+        now = ids.map((id) => ({ id, error: refusalWords(err) || "The host did not answer" }));
+      }
+      setFailed((was) => [...was.filter((f) => !ids.includes(f.id)), ...now]);
+      setFiling(false);
+      if (decision === "accept") setAnswered({ ids });
+    });
+    queue.current = run;
+    return run;
   };
   const [turningOn, setTurningOn] = useState(false);
   // One line at a time: a filing that failed is his to try again before a part that did not load.
@@ -459,7 +474,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
       ) : problem ? (
         <ViewStateLine word={problem} onRetry={onRetry} />
       ) : null}
-      <div onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] ps-7 pe-6 py-6">
+      <div ref={body} onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] ps-7 pe-6 py-6">
         <header className="flex flex-col gap-0.5">
           <h1 className="text-base leading-6 font-semibold tracking-[-0.01em] text-pretty wrap-anywhere text-foreground select-text">{event.title || "Untitled meeting"}</h1>
           <p className="text-xs text-muted-foreground select-text">{whenLine(event, now)}</p>
@@ -591,6 +606,16 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
   );
 }
 
+/**
+ * A caret left on nothing after a filing lands on the first task it put in LifeOS, or, when LifeOS took none, on the
+ * Retry that names them.
+ */
+function focusAfterFiling(body: HTMLElement | null, ids: readonly string[]): void {
+  if (!body || (document.activeElement && document.activeElement !== document.body)) return;
+  const filed = ids.map((id) => body.querySelector<HTMLElement>(`[data-task="${CSS.escape(id)}"][data-task-state="filed"] [data-page-row]`)).find(Boolean);
+  (filed ?? body.parentElement?.querySelector<HTMLElement>(":scope > [data-view-state] button"))?.focus();
+}
+
 /** The offer went with the press that answered it: the caret goes to More, where the same switch lives, never to nothing. */
 function focusMoreIfLost(region: Element | null): void {
   // After the press's own render has taken the offer off the page.
@@ -707,7 +732,8 @@ function Notes({ text, lines, file, onOpenFile }: { text: string; lines: 2 | 6; 
         </div>
       ) : null}
       {text ? (
-        <p ref={words} className={cn("max-w-[65ch] text-sm leading-[22px] whitespace-pre-line text-foreground select-text", file && "mt-1", !all && CLAMP[lines])}>
+        // The 1px edge a pressable line has, so his words start where the summary above and the rows below do.
+        <p ref={words} className={cn("max-w-[65ch] border-s border-transparent text-sm leading-[22px] whitespace-pre-line text-foreground select-text", file && "mt-1", !all && CLAMP[lines])}>
           {text}
         </p>
       ) : null}
@@ -750,7 +776,6 @@ function ToDo({
   const proposed = tasks.filter((t) => t.state === "proposed");
   const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set(tickedAtFirst ?? (TICKED_AT_FIRST ? proposed.map((t) => t.id) : [])));
   const [adding, setAdding] = useState(false);
-  const list = useRef<HTMLDivElement>(null);
   if (!tasks.length) return null;
   // What he can tick: every suggestion but the ones Retry holds.
   const free = proposed.filter((t) => !retrying.includes(t.id));
@@ -769,21 +794,16 @@ function ToDo({
     setAdding(true);
     void onDecide(ids, "accept").finally(() => {
       setAdding(false);
-      // What was asked is answered: filed, or named in the line above with its Retry. Either way its tick is spent.
+      // What was asked is answered: filed, or named in the line above with its Retry. Either way its tick is spent,
+      // and the page hands the caret on (`focusAfterFiling`).
       setTicked((was) => new Set([...was].filter((id) => !ids.includes(id))));
-      // The button he pressed goes with the last tick: the caret lands on the first task it filed, not on nothing.
-      requestAnimationFrame(() => {
-        if (document.activeElement && document.activeElement !== document.body) return;
-        const filed = ids.map((id) => list.current?.querySelector<HTMLElement>(`[data-task="${CSS.escape(id)}"][data-task-state="filed"] [data-page-row]`)).find(Boolean);
-        filed?.focus();
-      });
     });
   };
   return (
     <section aria-label="To do" className="mt-6">
       <h2 className="mb-1 text-xs font-medium text-muted-foreground">To do</h2>
       {/* At the measure the notes and the brief read at (65ch of 14px): a tint the column's whole width would shout. */}
-      <div ref={list} role="list" className="flex max-w-[65ch] flex-col gap-0.5 text-sm">
+      <div role="list" className="flex max-w-[65ch] flex-col gap-0.5 text-sm">
         {tasks.map((task) => {
           const line = suggestionLine(task);
           const words = (

@@ -81,3 +81,14 @@ export function followMessage(page: PrepPage, opts: { recording?: boolean; docum
     'End with the outcome as your last message.'
   ].join('\n\n')
 }
+
+/** Asked of a follow-up thread that stopped before it wrote, whose notes are the meeting open beside it. */
+export function followAgainMessage(page: PrepPage): string {
+  return [
+    'He asked for this meeting’s follow-up again. The page as it stands now:',
+    pageWords(page),
+    'Read the meeting beside you with meeting_read. Call prep_follow_up for this event with what was decided, what is still open, and the tasks. Suggest no task the page already lists as open, and no open question that a task you suggest settles. Write the tasks with prep_follow_up alone, and never call add_task.',
+    'If no follow-up mail to the people with addresses waits yet, draft one with draft_mail. It waits for his press. Never send it.',
+    'End with the outcome as your last message.'
+  ].join('\n\n')
+}

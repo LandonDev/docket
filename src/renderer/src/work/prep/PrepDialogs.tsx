@@ -73,10 +73,14 @@ export function PeopleForm({
     return all.filter((p) => kept.has(addedKey(p)));
   }, [all, query]);
   const ticked = new Set(picked.map(addedKey));
-  const toggle = (person: PrepAddedPerson) => setPicked((now) => (now.some((p) => addedKey(p) === addedKey(person)) ? now.filter((p) => addedKey(p) !== addedKey(person)) : [...now, person]));
+  // While Save is on its way the list holds still: a tick made after the request left would show and never be kept.
+  const toggle = (person: PrepAddedPerson) => {
+    if (!pending) setPicked((now) => (now.some((p) => addedKey(p) === addedKey(person)) ? now.filter((p) => addedKey(p) !== addedKey(person)) : [...now, person]));
+  };
   const typed = query.trim();
   const canName = typed.length > 0 && !all.some((p) => p.name.toLowerCase() === typed.toLowerCase());
   const addNamed = () => {
+    if (pending) return;
     const person = { name: typed };
     setNamed((now) => [...now, person]);
     setPicked((now) => [...now, person]);
@@ -112,6 +116,8 @@ export function PeopleForm({
             aria-label="Search people"
             placeholder="Search"
             value={query}
+            // Read only, not disabled, while Save is on its way: the caret keeps its place if the host refuses.
+            readOnly={pending}
             onChange={(e) => setQuery(e.currentTarget.value)}
             // Return in the search never saves. It adds the typed name when the list has no one for it, and ticks the one person it shows.
             onKeyDown={(e) => {
@@ -132,7 +138,7 @@ export function PeopleForm({
             return (
               // The whole row takes the pointer; the box inside it takes the keyboard.
               <div key={key} data-pick-row={key} className="flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-[13px] transition-colors duration-(--dur-hover) hover:bg-foreground/5" onClick={() => toggle(person)}>
-                <Checkbox aria-label={person.name} checked={ticked.has(key)} onCheckedChange={() => toggle(person)} onClick={(e) => e.stopPropagation()} />
+                <Checkbox aria-label={person.name} checked={ticked.has(key)} disabled={pending} onCheckedChange={() => toggle(person)} onClick={(e) => e.stopPropagation()} />
                 <Face name={person.name} picture={person.address ? pictureOf([person.address], faces) : undefined} size="row" />
                 <span className="flex min-w-0 flex-1 items-baseline gap-1">
                   <span className="shrink-0 truncate text-foreground">{person.name}</span>
@@ -146,7 +152,7 @@ export function PeopleForm({
           {rows && !shown.length && !canName ? <p className="px-2 py-1.5 text-[13px] text-muted-foreground">{typed ? "No matches" : "No people in this job yet"}</p> : null}
           {canName ? (
             <div className="flex h-8 items-center px-0.5">
-              <Button variant="ghost" size="xs" onClick={addNamed}>
+              <Button variant="ghost" size="xs" disabled={pending} onClick={addNamed}>
                 Add “{typed}” by name
               </Button>
             </div>

@@ -41,6 +41,7 @@ const FACTS: PrepPage = {
     { name: "sam.whitaker@arena.com", address: "sam.whitaker@arena.com" },
   ],
   morePeople: 0,
+  invited: ["mchen@school.edu", "tbeck@school.edu", "dreyes@school.edu", "sam.whitaker@arena.com"],
   tasks: [
     { id: "t1", title: "Send the final seat list", dueAt: NOW + 2 * DAY, why: "asked", who: "Maya Chen" },
     { id: "t2", title: "Signed venue form", why: "waiting", who: "Tom Beck" },
@@ -65,6 +66,8 @@ const FACTS: PrepPage = {
   followSessionId: null,
   briefUntil: null,
   followUntil: null,
+  briefStartedAt: null,
+  followStartedAt: null,
   drafts: [],
   notesFile: null,
   aheadOn: false,
@@ -73,7 +76,7 @@ const FACTS: PrepPage = {
 };
 
 /** Most Purdue events: the calendar lists no one, and nothing else is known yet. */
-const NOBODY: PrepPage = { ...FACTS, event: { id: "ev2", title: "Budget review", startsAt: at(10, 0, 1), endsAt: at(11, 0, 1), allDay: false, location: "Krach 230" }, people: [], tasks: [], files: [], last: null };
+const NOBODY: PrepPage = { ...FACTS, event: { id: "ev2", title: "Budget review", startsAt: at(10, 0, 1), endsAt: at(11, 0, 1), allDay: false, location: "Krach 230" }, people: [], invited: [], tasks: [], files: [], last: null };
 
 const BRIEF: NonNullable<PrepPage["doc"]["brief"]> = {
   matters: [
@@ -123,6 +126,9 @@ const FILED: PrepPage = {
 
 /** The notes are a recording: it is named on the page and opens beside its thread, while the thread still reads it. */
 const RECORDED: PrepPage = { ...FACTS, rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: LATER - 300_000, meetingItemId: "it1" } }, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync 2026-11-23.m4a" } };
+
+/** The same recording once this host could not read it: the row says why, and the header asks for notes again. */
+const UNREAD: PrepPage = { ...RECORDED, notesFile: { ...RECORDED.notesFile!, error: "The transcriber is not installed on this host." } };
 
 const none = () => {};
 const verbs = { thread: false, again: false, notes: false, rest: 0, ahead: null, onBrief: none, onFollowUp: none, onOpenThread: none, onNotes: none, onAddPeople: none, onThread: none, onDismissRest: none, onAhead: none } as const;
@@ -217,9 +223,9 @@ export function PrepPreview({ state = "facts" }: { state?: string }) {
         <PrepSkeleton />
       </Frame>
     );
-  const after = state === "after" || state === "after-ticked" || state === "filed" || state === "failed" || state === "recording";
+  const after = state === "after" || state === "after-ticked" || state === "filed" || state === "failed" || state.startsWith("recording");
   const page =
-    state === "recording" ? RECORDED : state === "nobody" ? NOBODY : state === "partial" ? { ...FACTS, tasks: [], problems: ["tasks" as const] } : state === "preparing" ? PREPARING : state === "briefed" ? BRIEFED : state === "filed" ? FILED : after ? AFTER : FACTS;
+    state === "recording" ? RECORDED : state === "recording-failed" ? UNREAD : state === "nobody" ? NOBODY : state === "partial" ? { ...FACTS, tasks: [], problems: ["tasks" as const] } : state === "preparing" ? PREPARING : state === "briefed" ? BRIEFED : state === "filed" ? FILED : after ? AFTER : FACTS;
   const now = after ? LATER : NOW;
   const verb = headVerb(page, now, { brief: state === "preparing" ? "running" : "idle", follow: state === "recording" ? "running" : "idle" });
   return (

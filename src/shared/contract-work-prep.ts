@@ -131,6 +131,19 @@ export function prepEndOf(event: { startsAt: number; endsAt?: number | null; all
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
 }
 
+/**
+ * A name or a title as two pages share it: case, Latin accents and punctuation aside. Letters, digits and the marks
+ * of any script are kept (a Devanagari vowel sign is a mark, and tells two names apart). The one fold for the host's
+ * keys and the window's, so the two never disagree on who is who.
+ */
+export const prepFold = (text: string): string =>
+  text
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
+    .trim()
+
 export function prepStateOf(page: { doc: PrepDoc; briefSessionId: string | null; briefAt: number | null }, now: number): PrepState {
   if (page.doc.notes || page.doc.after) return 'after'
   if (page.doc.brief) return 'briefed'
@@ -212,6 +225,8 @@ export interface PrepPage {
   people: PrepPerson[]
   /** people past the ones drawn */
   morePeople: number
+  /** the address of everyone the calendar itself lists, drawn or not: none of them is his to add */
+  invited: string[]
   tasks: PrepTask[]
   files: PrepFileRef[]
   last: PrepLast | null
@@ -227,6 +242,9 @@ export interface PrepPage {
    */
   briefUntil: number | null
   followUntil: number | null
+  /** When each thread was started; a brief or an outcome written since is that run's, so the run no longer counts as at work. */
+  briefStartedAt: number | null
+  followStartedAt: number | null
   drafts: PrepDraft[]
   /**
    * The file that holds the notes, when one does: a recording or transcript (a meeting open beside the

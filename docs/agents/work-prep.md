@@ -51,10 +51,10 @@ What it reads, in one round trip:
 | Part | From |
 |---|---|
 | The event | `events:get`: title, time, place. The leave time is the clashes pillar's (`work.clashes.leave`, asked through that module's `handle` only after the fence passed) when that pillar answers, else the event's own `leaveAt` |
-| People | the event's attendees (Google feeds only), then the page's added people, folded by address, 12 drawn and the rest counted. For each: their newest mail thread in the sector, whether they declined |
+| People | the event's attendees (Google feeds only), then the page's added people, folded by address, 12 drawn and the rest counted. For each: their newest mail thread in the sector, whether they declined. `invited` is the address of everyone the calendar lists, drawn or not: the window's Add people offers none of them, and `people` keeps none of them (an invitee kept as his addition would follow the series to a day they are not invited) |
 | Tasks | each person's open tasks (asked by them, waiting on them; four a person), then up to five open tasks whose title names the subject, less those already listed, and less any this page filed (they show under To do) or last time's page filed (under Last time) |
 | Files | the event's links, last time's files, the brief's files, each once |
-| Last time | `lastOf`'s page: what was decided, what was left open, and the tasks it filed that are still open (`tasks:get`, ten at most). Not answered when that page said nothing |
+| Last time | `lastOf`'s page: what was decided, what was left open, and the tasks it filed that are still open (`tasks:get`, ten at most). A task LifeOS no longer holds is left out; one whose read fails is named in `problems` as `last`, beside what did load. Not answered when that page said nothing |
 | The mail | `compose:byOrigin {threadId: follow thread}`: the drafts still waiting, in this sector. For display only |
 | Notes' file | the meeting item or the document that holds the notes (`notesFile`) |
 
@@ -89,6 +89,10 @@ Both are ordinary Work threads made by `ctx.threads.start`: in the rail, on the 
 
 A second press while that thread still works (started under 20 minutes ago, nothing written since) answers the same thread. The host cannot read a thread's status, so the window says when it knows better: it holds the thread's row, and a press on a thread it knows has stopped carries `restart`, which starts a new one whatever the clock says.
 
+The page says when each thread was started (`briefStartedAt`, `followStartedAt`). A brief or an outcome written since is that run's, and from then the header no longer calls the thread at work, though it may still run (it drafts the mail and says its last words after it writes). A Prepare again starts later than the brief that stands, so the header says Preparing until its own lands.
+
+One follow-up is not a new thread: notes that are a recording beside a follow-up thread that stopped. A meeting is read only from its own pane (`meetings.owns`), so a new thread could not read it; the host asks the same thread again (`ctx.threads.resume` with `followAgainMessage`) and counts it as at work from that press. Only if that thread cannot be woken does a new one start.
+
 ## The tools
 
 For every Work thread of a linked workspace; none in a Work Chat or an unlinked workspace. The event is `event`, or the newest event the thread is linked to. An event of another sector is refused with the gatherer's own words.
@@ -116,7 +120,9 @@ The Notes dialog has two ways in beside typing.
 2. The window sends the file to that thread's host, into the workspace's folder (`uploadFile {into: 'workspace'}`), then calls the meetings pillar's own `work.meetings.start {itemId, source}`. A recording is transcribed on that host. Nothing of it goes anywhere else.
 3. The thread's message says to call `prep_read`, which names the meeting, then `meeting_read` (which waits while it is transcribed), and to write tasks through `prep_follow_up` alone: no `meeting_notes` actions, or each task would be suggested twice.
 
-A file over the host's limit starts nothing. A host that cannot transcribe says so in the dialog, in the meeting's own words, once the start has answered; by then the thread exists, and it reads the same failure. A recording that never arrived, or that the host could not read at once, is no notes: the window tells the host to forget it (`notes {dropFile}`) and what he typed stays; and a later Follow up from typed words that still finds an empty meeting (the meetings pillar's own `get`) leaves it behind and starts a fresh thread. A transcription that fails later, after the dialog has gone, is said on the page: the Notes row carries the meeting's own words (`notesFile.error`), and the thread reads the same failure.
+A file over the host's limit starts nothing. A host that cannot transcribe says so in the dialog, in the meeting's own words, once the start has answered; by then the thread exists, and it reads the same failure. A recording that never arrived, or that the host could not read at once, is no notes: the window tells the host to forget it (`notes {dropFile}`). What he typed stays, a notes document the recording stood beside stays, and the page lets go of the thread that was started for it (it waits on a file that will never come), so the header stops saying Following up and the next Follow up, typed or from another file, starts fresh. A later Follow up from typed words that still finds an empty meeting (the meetings pillar's own `get`; the window never said) leaves it behind and starts a fresh thread too. A transcription that fails later, after the dialog has gone, is said on the page: the window reads the page again on the `work.meetings` push that names its meeting, the Notes row carries the meeting's own words (`notesFile.error`), and the thread reads the same failure. Notes that are only such a recording are no notes to follow up from: the header asks for notes again.
+
+A second file picked while a follow-up thread is at work goes to that thread's meeting only while it is still empty (the first never arrived). A meeting that holds a file is being read, so the host answers no item and the dialog says a follow-up is already at work.
 
 **A document.** `notesDoc` makes the notes file from the job's Meeting notes template through the templates pillar's door for other pillars (`makeFromTemplate(ctx, {template: 'any/meeting-notes', …}, by)`, loaded on the press), in the workspace's own folder, and keeps it as `notes.file`. Made once: a second ask answers the same file. The window opens it beside a new thread, as a file dropped on a view opens (`openOutside({at: 'new'})`); nothing runs until he sends. Follow up then opens it beside the follow-up thread, whose message says to read it with `doc_read` and change nothing in it. A host with no such template says so in the dialog.
 
@@ -141,18 +147,18 @@ Words he types later sit beside either file.
 | Where the meeting stands | The verb (`headVerb`) |
 |---|---|
 | before the end, no brief | Brief me |
-| its brief thread at work | a spinner with "Preparing", which opens the thread |
+| its brief thread at work, its brief not yet written | a spinner with "Preparing", which opens the thread |
 | a brief stands | none (More holds Prepare again) |
-| over, no notes | Add notes |
+| over, no notes (or only a recording the host could not read) | Add notes |
 | notes stand | Follow up |
-| its follow-up thread at work | a spinner with "Following up" |
+| its follow-up thread at work, its outcome not yet written | a spinner with "Following up" |
 | an outcome stands | none |
 
 More: Open thread, Prepare again, Add people…, Add notes… (Edit notes… once there are some; left out while the header holds it), Dismiss the rest, New thread about this, and the check row Prepare meetings each morning (`AHEAD_LABEL`; not drawn where it is withheld).
 
 **The body** (`PrepPageBody`, which holds no query, so the preview and the tests draw what the app draws). The title and one comma line (`whenLine`: "Today, 2:00 to 2:45 PM, RecWell 204, leave 1:40"). Then, each only when it has something: the brief's lines; Last time; People; Tasks; Files. A row opens where its thing lives. After the meeting the outcome leads: the summary, Notes, Decided, To do, Open questions, Mail; then the brief (named "Brief" once it no longer leads) and the rest as before.
 
-- **To do**: suggested tasks start unticked (`TICKED_AT_FIRST`). The section's foot holds Tick all and, while any is ticked, the page's one primary button ("Add 3 tasks"). A filed task takes LifeOS's mark and opens its sheet. A filing that failed is one state line ("A task was not added", then the task and why, which give way in a narrow window) with Retry. Retry owns that task until it is filed: it cannot be ticked, Tick all leaves it out, and the line stays until the next answer is in. One filing runs at a time, whichever control asked, and no tick moves while it does.
+- **To do**: suggested tasks start unticked (`TICKED_AT_FIRST`). The section's foot holds Tick all and, while any is ticked, the page's one primary button ("Add 3 tasks"). A filed task takes LifeOS's mark and opens its sheet. A filing that failed is one state line ("A task was not added", then why and the task, which give way from the end in a narrow window) with Retry. Retry owns that task until it is filed: it cannot be ticked, Tick all leaves it out, and the line stays until the next answer is in. One filing runs at a time, whichever control asked: a Retry pressed while Add files runs once that answer is in, and no tick moves meanwhile. When the control he pressed goes with its answer, the caret lands on the first task that was filed, or on Retry when LifeOS took none.
 - **Mail**: one row a waiting draft, which opens the Outbox on it. Send, Edit and Discard stay the Outbox's. The draft comes with no write of the page, so the page also reads again on the `work.outbox` push while it has a follow-up thread.
 - **Notes**: the file that holds them, as one row by its name (it is not listed again under Files), then what he typed: six lines while they lead the page, two once the outcome stands over what they say, then Show all, offered only when the words run past that as drawn.
 - While the follow-up thread works and has written nothing, three bones hold the outcome's place, as a brief's is held.
@@ -160,7 +166,7 @@ More: Open thread, Prepare again, Add people…, Add notes… (Edit notes… onc
 
 **The offer.** Under his first brief in a workspace, once: the switch by its one name, Turn on, and a dismiss. It is answered, per workspace in localStorage (`work.prep.aheadOffer`), once the host has taken the switch or he dismisses it; a refusal leaves it there. Never drawn where Prepare ahead is withheld.
 
-**Add people** searches the sector's directory (`people:directory` on the view's own session), leaves out whoever is on the event already, and takes a typed name for someone LifeOS does not know: the name stays in the list, ticked. Return in the search never saves: it adds the typed name when the list shows no one for it, ticks the one person it shows, and does nothing for several. A person is known by address, else by name folded for case and accents in any script. Save is off until the ticks differ from what the page keeps. While the directory is read its bones stand under whoever is already added. A calendar that lists no attendees (Teams and ICS feeds, so most Purdue events) leaves a page with no one on it; this is how he says who is coming, and it is kept for the series.
+**Add people** searches the sector's directory (`people:directory` on the view's own session), leaves out whoever is on the event already, and takes a typed name for someone LifeOS does not know: the name stays in the list, ticked. Return in the search never saves: it adds the typed name when the list shows no one for it, ticks the one person it shows, and does nothing for several. A person is known by address, else by name folded for case and Latin accents, the marks of other scripts kept (`prepFold` in the contract: one rule for the host's `personKey` and the window's `addedKey`). Save is off until the ticks differ from what the page keeps, and while it is on its way the list holds still: no tick, no typed name, the search read only. While the directory is read its bones stand under whoever is already added. A calendar that lists no attendees (Teams and ICS feeds, so most Purdue events) leaves a page with no one on it; this is how he says who is coming, and it is kept for the series.
 
 **Notes** keeps what he typed however the dialog closes. Cancel saves first and closes once the host has it; a save the host refuses keeps the dialog open on his words, with why. Escape, the backdrop and the corner's close leave at once and send the save then; if it is refused, his words are held for that meeting and the dialog opens again on them, on that meeting's page alone and never over another dialog. After any way out it opens again from the header or More. A follow-up started from the dialog carries `restart` as the header's does. A dialog is its own meeting's: it never follows him to another meeting's page. While a file goes up the dialog shows the app's bar with the per cent, and a spinner until the size is known.
 

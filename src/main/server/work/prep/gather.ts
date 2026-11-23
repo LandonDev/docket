@@ -169,14 +169,27 @@ async function personFacts(client: LifeosClient, sector: SectorKey, person: Prep
   }
 }
 
-async function lastFacts(client: LifeosClient, sector: SectorKey, last: PageRow): Promise<PrepLast | null> {
+/**
+ * What last time's page left: its decisions, what it left open, and the tasks it filed that are still open. A task
+ * LifeOS no longer holds is simply not there; one whose read failed is `missed`, so the page can say that part did
+ * not load and offer to read again, and what did load still shows.
+ */
+async function lastFacts(client: LifeosClient, sector: SectorKey, last: PageRow): Promise<{ last: PrepLast | null; missed: boolean }> {
   const filed = (last.doc.after?.tasks ?? []).filter((t) => t.state === 'filed' && t.lifeosTaskId).slice(0, LAST_TASKS)
-  const got = await Promise.all(filed.map((t) => client.query<{ task: TaskDoc } | null>('tasks:get', { id: t.lifeosTaskId }).catch(() => null)))
+  let missed = false
+  const got = await Promise.all(
+    filed.map((t) =>
+      client.query<{ task: TaskDoc } | null>('tasks:get', { id: t.lifeosTaskId }).catch((err) => {
+        if (!/not found/i.test(errorText(err))) missed = true
+        return null
+      })
+    )
+  )
   const tasks = got.flatMap((g): PrepTask[] => (g && g.task.sector === sector && OPEN.has(g.task.status) ? [{ id: g.task._id, title: g.task.title, ...(g.task.dueAt !== undefined ? { dueAt: g.task.dueAt } : {}) }] : []))
   const decided = last.doc.after?.decisions ?? []
   const open = last.doc.after?.questions ?? []
-  if (!decided.length && !open.length && !tasks.length) return null
-  return { eventId: last.eventId, title: last.title, startsAt: last.startsAt, decided, open, tasks }
+  if (!decided.length && !open.length && !tasks.length) return { last: null, missed }
+  return { last: { eventId: last.eventId, title: last.title, startsAt: last.startsAt, decided, open, tasks }, missed }
 }
 
 async function draftsOf(client: LifeosClient, sector: SectorKey, threadId: string): Promise<PrepDraft[]> {
@@ -203,23 +216,21 @@ export const fileTitle = (path: string): string => path.split(/[\\/]/).pop() || 
 
 /**
  * The file that holds the notes: the meeting beside the follow-up thread
- * while its item still exists, or the document made for the notes, with its
- * item beside that thread once the follow-up has opened it there.
+ * while its item still exists, else the document made for the notes, with
+ * its item beside that thread once the follow-up has opened it there.
  */
-async function notesFileOf(ctx: WorkCtx, row: PageRow | null): Promise<PrepPage['notesFile']> {
-  const notes = row?.doc.notes
-  if (!row || !notes) return null
+export async function notesFileOf(ctx: WorkCtx, notes: PrepDoc['notes'], followSessionId: string | null | undefined): Promise<PrepPage['notesFile']> {
+  if (!notes) return null
   try {
-    if (notes.meetingItemId) {
-      const item = ctx.canvas.get(notes.meetingItemId)
-      if (!item || item.kind !== 'meeting') return null
+    const item = notes.meetingItemId ? ctx.canvas.get(notes.meetingItemId) : null
+    if (item?.kind === 'meeting') {
       // A recording this host could not read says so on the page: its transcription may fail long after the dialog closed.
       const meeting = await meetingOf(ctx, item.id)
       return { kind: 'meeting', itemId: item.id, title: item.title, ...(meeting?.status === 'failed' ? { error: meeting.error?.trim() || 'This host could not read it.' } : {}) }
     }
     const file = notes.file
     if (file?.at !== 'file') return null
-    const held = row.followSessionId ? ctx.canvas.forSession(ctx.canvas.paneOf(row.followSessionId)).find((i) => i.kind === 'document' && i.source.at === 'file' && i.source.path === file.path) : undefined
+    const held = followSessionId ? ctx.canvas.forSession(ctx.canvas.paneOf(followSessionId)).find((i) => i.kind === 'document' && i.source.at === 'file' && i.source.path === file.path) : undefined
     return { kind: 'document', title: fileTitle(file.path), source: file, ...(held ? { itemId: held.id } : {}) }
   } catch {
     // A host whose canvas is not running names no file; the notes' words still show.
@@ -298,10 +309,16 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
         })
       : Promise.resolve([] as TaskDoc[]),
     last
-      ? lastFacts(client, sector, last).catch(() => {
-          problems.push('last')
-          return null
-        })
+      ? lastFacts(client, sector, last).then(
+          (facts) => {
+            if (facts.missed) problems.push('last')
+            return facts.last
+          },
+          () => {
+            problems.push('last')
+            return null
+          }
+        )
       : Promise.resolve(null),
     row?.followSessionId
       ? draftsOf(client, sector, row.followSessionId).catch(() => {
@@ -311,7 +328,7 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
       : Promise.resolve([]),
     aheadOf(ctx, workspaceId),
     clashLeave(ctx, event._id),
-    notesFileOf(ctx, row)
+    notesFileOf(ctx, row?.doc.notes ?? null, row?.followSessionId)
   ])
 
   // A task this page filed shows under To do, and one last time's page filed shows under Last time: never a second row under Tasks.
@@ -336,6 +353,7 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
     },
     people: people.map((p) => p.person),
     morePeople: everyone.length - drawn.length,
+    invited: everyone.flatMap((p) => (!p.added && p.address ? [p.address] : [])),
     tasks,
     files: filesOf(event, last, row?.doc ?? null),
     last: before,
@@ -348,6 +366,8 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
     notesFile,
     briefUntil: workingUntil(row?.briefSessionId, row?.briefAt, row?.doc.brief?.at, now),
     followUntil: workingUntil(row?.followSessionId, row?.followAt, row?.doc.after?.at, now),
+    briefStartedAt: row?.briefSessionId ? row.briefAt : null,
+    followStartedAt: row?.followSessionId ? row.followAt : null,
     aheadOn: ahead.on,
     aheadOffered: ahead.offered,
     problems

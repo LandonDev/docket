@@ -82,7 +82,7 @@ describe("what did not load", () => {
 });
 
 describe("who Add people can tick", () => {
-  const page = (over: Partial<PrepPage>): Pick<PrepPage, "people" | "doc" | "morePeople"> => ({ people: [], morePeople: 0, doc: emptyPrepDoc(), ...over });
+  const page = (over: Partial<PrepPage>): Pick<PrepPage, "people" | "doc" | "morePeople" | "invited"> => ({ people: [], morePeople: 0, invited: [], doc: emptyPrepDoc(), ...over });
 
   it("is those already added, then the sector's people who are not on the event itself, each once", () => {
     const directory = [
@@ -95,11 +95,18 @@ describe("who Add people can tick", () => {
       page({
         // Tom is on the event already; Maya was added by her second address; Dana by name
         people: [{ name: "Tom Beck", address: "tbeck@school.edu" }, { name: "Maya Chen", address: "maya@home.test", added: true }],
+        invited: ["tbeck@school.edu"],
         doc: { ...emptyPrepDoc(), people: [{ name: "Maya Chen", address: "maya@home.test" }, { name: "Dana Reyes" }] },
       }),
       directory,
     );
     expect(got).toEqual([{ name: "Maya Chen", address: "maya@home.test" }, { name: "Dana Reyes" }, { name: "Sam Whitaker", address: "sam@arena.com", personId: "p4" }]);
+  });
+
+  it("leaves out everyone the calendar lists, those past the twelve the page draws too", () => {
+    const directory = [{ _id: "p1", name: "Maya Chen", emails: ["mchen@school.edu"] }, { _id: "p2", name: "Tom Beck", emails: ["TBeck@school.edu"] }];
+    // Tom is the thirteenth invitee: the page counts him under "and 1 more" and draws no row for him
+    expect(pickable(page({ people: [], morePeople: 1, invited: ["tbeck@school.edu"] }), directory)).toEqual([{ name: "Maya Chen", address: "mchen@school.edu", personId: "p1" }]);
   });
 
   it("keeps a name he typed in this sitting in the list, once, with what the page already keeps", () => {
@@ -111,6 +118,11 @@ describe("who Add people can tick", () => {
     expect(addedKey({ name: "李雷" })).not.toBe(addedKey({ name: "王芳" }));
     expect(addedKey({ name: "Ольга  Петрова" })).toBe("~ольга петрова");
     expect(pickable(page({}), [], [{ name: "李雷" }, { name: "王芳" }])).toHaveLength(2);
+    // a vowel sign is a mark, and it is what tells these two names apart
+    expect(addedKey({ name: "नील" })).not.toBe(addedKey({ name: "नल" }));
+    expect(addedKey({ name: "राम" })).not.toBe(addedKey({ name: "रम" }));
+    expect(pickable(page({}), [], [{ name: "नील" }, { name: "नल" }])).toHaveLength(2);
+    expect(samePeople([{ name: "राम" }], [{ name: "रम" }])).toBe(false);
   });
 
   it("has Return in the search add a name only when the list shows no one, tick the one it shows, and never act on several", () => {
@@ -132,7 +144,7 @@ describe("who Add people can tick", () => {
 
 describe("the header's verb", () => {
   type Page = Parameters<typeof headVerb>[0];
-  const page = (over: Partial<Page> = {}): Page => ({ event: event(), doc: emptyPrepDoc(), briefSessionId: null, followSessionId: null, briefUntil: null, followUntil: null, ...over });
+  const page = (over: Partial<Page> = {}): Page => ({ event: event(), doc: emptyPrepDoc(), notesFile: null, briefSessionId: null, followSessionId: null, briefUntil: null, followUntil: null, briefStartedAt: null, followStartedAt: null, ...over });
   const brief = { matters: [{ text: "x" }], agreed: [], files: [], at: 1, by: "t" };
   const notes = { text: "n", at: 2 };
   const after = { summary: [], decisions: [], questions: [], tasks: [], at: 3 };
@@ -143,8 +155,29 @@ describe("the header's verb", () => {
     expect(headVerb(page({ briefSessionId: "t" }), NOW, { ...idle, brief: "running" })).toBe("preparing");
     expect(headVerb(page({ briefSessionId: "t" }), NOW, { ...idle, brief: "queued" })).toBe("preparing");
     expect(headVerb(page({ briefSessionId: "t", doc: { ...emptyPrepDoc(), brief } }), NOW, { ...idle, brief: "idle" })).toBeNull();
-    // Prepare again: a brief stands and its thread is at work once more
-    expect(headVerb(page({ briefSessionId: "t", doc: { ...emptyPrepDoc(), brief } }), NOW, { ...idle, brief: "running" })).toBe("preparing");
+    // Prepare again: a brief stands and a thread started after it is at work
+    expect(headVerb(page({ briefSessionId: "t", briefStartedAt: 5, doc: { ...emptyPrepDoc(), brief } }), NOW, { ...idle, brief: "running" })).toBe("preparing");
+  });
+
+  it("stops saying a thread is at work once what it was started for is written, though the thread still runs", () => {
+    // the brief landed and its thread is saying its last words
+    expect(headVerb(page({ briefSessionId: "t", briefStartedAt: 1, doc: { ...emptyPrepDoc(), brief } }), NOW, { ...idle, brief: "running" })).toBeNull();
+    // the outcome landed and the follow-up thread is still drafting the mail
+    const done = page({ followSessionId: "f", followStartedAt: 2, doc: { ...emptyPrepDoc(), notes, after } });
+    expect(headVerb(done, at(15), { ...idle, follow: "running" })).toBeNull();
+    expect(outcomeIsComing(done, headVerb(done, at(15), { ...idle, follow: "running" }))).toBe(false);
+    // a follow-up started again after an outcome stands is at work until its own lands
+    expect(headVerb(page({ followSessionId: "f", followStartedAt: 4, doc: { ...emptyPrepDoc(), notes, after } }), at(15), { ...idle, follow: "running" })).toBe("following");
+  });
+
+  it("asks for notes again when all they hold is a recording this host could not read", () => {
+    const unread = { kind: "meeting" as const, title: "Staff sync.m4a", itemId: "i1", error: "The transcriber is not installed." };
+    const over = at(15);
+    expect(headVerb(page({ notesFile: unread, doc: { ...emptyPrepDoc(), notes: { text: "", at: 2, meetingItemId: "i1" } } }), over, idle)).toBe("addNotes");
+    // words typed beside it are notes still
+    expect(headVerb(page({ notesFile: unread, doc: { ...emptyPrepDoc(), notes: { text: "Dana drives.", at: 2, meetingItemId: "i1" } } }), over, idle)).toBe("followUp");
+    // a recording that reads, or is being read, is notes
+    expect(headVerb(page({ notesFile: { kind: "meeting", title: "Staff sync.m4a", itemId: "i1" }, doc: { ...emptyPrepDoc(), notes: { text: "", at: 2, meetingItemId: "i1" } } }), over, idle)).toBe("followUp");
   });
 
   it("offers Brief me again when the thread stopped without writing", () => {
@@ -206,10 +239,10 @@ describe("the outcome's words", () => {
     expect(notesLines({ doc: { ...emptyPrepDoc(), notes: { text: "n", at: 1 }, after } })).toBe(2);
   });
 
-  it("says a failed filing in a short word that always fits, with the task and why beside it", () => {
+  it("says a failed filing in a short word that always fits, with why and then the task beside it", () => {
     const tasks = [{ id: "s1", title: "Book the van" }, { id: "s2", title: "Order jerseys" }];
     const why = "LifeOS did not answer";
-    expect(failedWords([{ id: "s2", error: why }], tasks)).toEqual({ word: "A task was not added", detail: "“Order jerseys”: LifeOS did not answer" });
+    expect(failedWords([{ id: "s2", error: why }], tasks)).toEqual({ word: "A task was not added", detail: "LifeOS did not answer: “Order jerseys”" });
     expect(failedWords([{ id: "gone", error: why }], tasks)).toEqual({ word: "A task was not added", detail: why });
     expect(failedWords([{ id: "s1", error: why }, { id: "s2", error: "x" }], tasks)).toEqual({ word: "2 tasks were not added", detail: why });
   });

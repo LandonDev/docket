@@ -1,4 +1,4 @@
-import { prepEndOf, type PrepAddedPerson, type PrepDraft, type PrepEvent, type PrepFileRef, type PrepPage, type PrepPerson, type PrepProblem, type PrepSuggestion, type PrepTask, type PrepUpcoming } from "@shared/contract-work-prep";
+import { prepEndOf, prepFold, type PrepAddedPerson, type PrepDraft, type PrepEvent, type PrepFileRef, type PrepPage, type PrepPerson, type PrepProblem, type PrepSuggestion, type PrepTask, type PrepUpcoming } from "@shared/contract-work-prep";
 import { formatLeave, formatStamp, formatTime } from "work-kit/views/lib/format";
 
 /**
@@ -93,19 +93,17 @@ export const lastLabel = (last: NonNullable<PrepPage["last"]>): string => `Last 
 /** Whether the page has anyone on it at all. */
 export const nobodyOn = (page: Pick<PrepPage, "people" | "morePeople">): boolean => page.people.length === 0 && page.morePeople === 0;
 
-// Letters and digits of any script, as the host's `foldTitle`: two names in Chinese are two names.
-const fold = (s: string): string => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-
-/** A person as a page keeps them once: their address, or their folded name when they have none (the host's `personKey`). */
-export const addedKey = (person: Pick<PrepAddedPerson, "address" | "name">): string => (person.address ? person.address.trim().toLowerCase() : `~${fold(person.name)}`);
+/** A person as a page keeps them once: their address, or their folded name when they have none (the host's `personKey`, by the one fold the two share). */
+export const addedKey = (person: Pick<PrepAddedPerson, "address" | "name">): string => (person.address ? person.address.trim().toLowerCase() : `~${prepFold(person.name)}`);
 
 /**
  * Everyone Add people can tick: those the page already added and those he
  * has picked in this sitting (a name he typed among them) first, then the
  * sector's people who are not on the event itself, each once.
  */
-export function pickable(page: Pick<PrepPage, "people" | "doc">, directory: readonly { _id: string; name: string; emails: string[] }[], picked: readonly PrepAddedPerson[] = []): PrepAddedPerson[] {
-  const onEvent = new Set(page.people.filter((p) => !p.added && p.address).map((p) => p.address!.toLowerCase()));
+export function pickable(page: Pick<PrepPage, "invited" | "doc">, directory: readonly { _id: string; name: string; emails: string[] }[], picked: readonly PrepAddedPerson[] = []): PrepAddedPerson[] {
+  // Everyone the calendar lists, past the twelve the page draws too: an invitee is never his to add.
+  const onEvent = new Set(page.invited.map((address) => address.toLowerCase()));
   const out = new Map<string, PrepAddedPerson>();
   // What the page keeps, then what he has ticked or typed in this sitting: a name he just added stays in the list, ticked.
   for (const p of [...page.doc.people, ...picked]) if (!out.has(addedKey(p))) out.set(addedKey(p), p);
@@ -138,19 +136,29 @@ export const threadStopped = (sessionId: string | null, status: ThreadStatus): b
  * stands. The window knows a thread's status from its own row; for a thread
  * it does not hold, the host's bound on time stands in (`briefUntil`,
  * `followUntil`), read against the window's own clock so it runs out with
- * no push.
+ * no push. Either way a thread stops counting as at work once what it was
+ * started for is written: it may still be running (drafting the mail,
+ * saying its last words), but the page already holds its result.
  */
 export type HeadVerb = "brief" | "preparing" | "addNotes" | "followUp" | "following" | null;
 
-export function headVerb(page: Pick<PrepPage, "event" | "doc" | "briefSessionId" | "followSessionId" | "briefUntil" | "followUntil">, now: number, threads: { brief: ThreadStatus; follow: ThreadStatus }): HeadVerb {
+export function headVerb(
+  page: Pick<PrepPage, "event" | "doc" | "notesFile" | "briefSessionId" | "followSessionId" | "briefUntil" | "followUntil" | "briefStartedAt" | "followStartedAt">,
+  now: number,
+  threads: { brief: ThreadStatus; follow: ThreadStatus },
+): HeadVerb {
   const { doc } = page;
+  // Written since this run began: a "Prepare again" starts later than the brief that stands, so it spins until its own lands.
+  const wrote = (startedAt: number | null, writtenAt: number | undefined): boolean => startedAt !== null && writtenAt !== undefined && writtenAt >= startedAt;
   // A thread this window holds says for itself; one it does not is at work until the host's bound runs out on the window's own clock.
-  const works = (sessionId: string | null, status: ThreadStatus, until: number | null): boolean => sessionId !== null && (status === undefined ? until !== null && until > now : threadWorks(status));
-  if (works(page.followSessionId, threads.follow, page.followUntil)) return "following";
+  const works = (sessionId: string | null, status: ThreadStatus, until: number | null, written: boolean): boolean =>
+    sessionId !== null && !written && (status === undefined ? until !== null && until > now : threadWorks(status));
+  if (works(page.followSessionId, threads.follow, page.followUntil, wrote(page.followStartedAt, doc.after?.at))) return "following";
   if (doc.after) return null;
-  if (doc.notes) return "followUp";
+  // Notes that are only a recording this host could not read are no notes to follow up from: a press would read the same failure.
+  if (doc.notes && (doc.notes.text.trim() || !page.notesFile?.error)) return "followUp";
   if (isOver(page.event, now)) return "addNotes";
-  if (works(page.briefSessionId, threads.brief, page.briefUntil)) return "preparing";
+  if (works(page.briefSessionId, threads.brief, page.briefUntil, wrote(page.briefStartedAt, doc.brief?.at))) return "preparing";
   return doc.brief ? null : "brief";
 }
 
@@ -190,13 +198,14 @@ export const NOTES_FILE_ACCEPT = "audio/*,video/*,.vtt,.srt,.txt,.docx";
 export const uploadPercent = (progress: { sent: number; total: number } | null): number | null => (!progress || progress.total <= 0 ? null : Math.min(100, Math.round((progress.sent / progress.total) * 100)));
 
 /**
- * What a filing LifeOS did not take says: a short word that always fits, and beside it the task by its name and
- * why, which gives way when the window is narrow.
+ * What a filing LifeOS did not take says: a short word that always fits, and beside it why and the task by its
+ * name, which gives way from its end when the window is narrow.
  */
 export function failedWords(failed: readonly { id: string; error: string }[], tasks: readonly Pick<PrepSuggestion, "id" | "title">[]): { word: string; detail: string } {
   if (failed.length !== 1) return { word: `${failed.length} tasks were not added`, detail: failed[0]?.error ?? "" };
   const title = tasks.find((t) => t.id === failed[0]!.id)?.title;
-  return { word: "A task was not added", detail: title ? `“${title}”: ${failed[0]!.error}` : failed[0]!.error };
+  // Why leads: the greyed row under To do already shows which task, and the cause is what a narrow window must not lose.
+  return { word: "A task was not added", detail: title ? `${failed[0]!.error}: “${title}”` : failed[0]!.error };
 }
 
 /**
