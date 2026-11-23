@@ -45,7 +45,8 @@ charts (`aliax/charts`, on recharts and the `--chart-1..4` tokens), and
 Work's canvas shapes: the canvas pane's tab row and kind bar, the sheet
 grid (its formula bar, sheet tabs and chart object), the document editor
 (the tracker's block editor, shared), the mail client and the task and
-agenda lists (LifeOS's, shared), the project screens (the tracker's,
+agenda lists (LifeOS's, shared), the Messages view (TempCode's own, on
+Mail's frame), the project screens (the tracker's,
 shared), the PDF page, the slide stage, the media
 viewer, the meeting view, the live browser, the form canvas, the dashboard
 page, the compare and History views, the Outbox, the routines' week
@@ -1432,6 +1433,47 @@ Around the canvas:
   headings; a signature and an account open as dialogs in the one dialog
   shape (the title beside a quiet Close, a hairline over the footer), every
   control in the account dialog at one width.
+- **The Messages view** (TempCode's own, src/renderer/src/work/messages/;
+  docs/agents/work-messages.md). Mail's frame: no header of its own, the
+  list's 44px head the page's, the list 296px (260 to 480, kept as
+  `tc.messages.listWidth`) beside the conversation, and at and under 640px
+  of view the two take turns, the conversation's toolbar leading with the
+  way back. The head is "Messages" (13px semibold, the job's unread count
+  muted after it) on a menu of All, Unread, Direct and Channels, and names
+  the filter in force; under it the 28px search, then one 12px muted line
+  while a source of the job is stale ("Discord last synced Nov 3, iMessage
+  Nov 16"). Under 640px with a conversation open, its toolbar says its own
+  source's line instead, so the fact is on screen once. A row is 48px at
+  radius 6, 1px apart, in Mail's grid: the 20px gutter for the 6px unread
+  dot, a 24px face (two 18px faces lapped side by side for a group, a 14px
+  hash on `muted` for a channel), the name (600 and `foreground` when
+  unread, muted when read) with its time at the end in 12px tabular, and
+  the newest words in 12px muted, led by "You: " or the writer's first
+  name. The 14px amber circle-dot before the time marks a thread's draft
+  waiting there. No source chip: the source is said once, in the open
+  conversation. Hover is `foreground` at 5%, the open row 9%, at once;
+  under the pointer the time gives way to Mark read or Mark unread. Bones
+  are eight rows in the row's grid; an empty list is one line at the
+  column's middle with its true cause ("No chat is linked to Cosmic" with
+  Open Connections, "No messages in Cosmic yet", "Nothing unread" with
+  Clear filter). A search shows the messages that hold its words in the
+  rows' place, the conversation's name and time, then who and the words
+  from a little before the first match, lit in `foreground` medium.
+  The conversation's toolbar is 44px over a hairline: the name 13px
+  semibold (a direct chat's opens the person in People when LifeOS knows
+  an address), one muted 12px fact ("Slack, CosmicGames") 8px after it on
+  its baseline, and More at the end. The messages are rows, not bubbles,
+  in a 680px column stacked from its foot: a run of one writer inside five
+  minutes shares one head (28px face, name 600, time 12px muted), the words
+  14/22 with their line breaks and http, https and mailto links in `link`;
+  runs are 16px apart, messages in a run 4px. A day opens with its date,
+  12px muted, centred on a hairline; "New" sits at the end of the hairline
+  over the first unread message, 12px `foreground` medium. It opens over
+  "New", else where he left it, else at its foot; while he is up the column
+  a quiet pill at its foot says "2 new" and goes down. A Slack thread reply
+  carries one 12px muted line above it: a turned arrow, the writer in
+  medium and the first words of what it answers. A message that arrives at
+  the foot rises 4px and fades in over `--dur-fast`; nothing else moves.
 - **People** (the People view, work/people/; docs/agents/work-people.md).
   The list is the Docs list's shape: a 720px column, one 32px row a
   person, the 24px face, the name in `foreground`, the first address 4px

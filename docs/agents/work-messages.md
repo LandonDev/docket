@@ -106,6 +106,49 @@ answered as if it did not exist when its sector differs (`chatIn`).
   and does nothing, and the module lists no `tells`. `search: [source]`
   waits the same way for the one search's `SearchSource`.
 
+## The view (src/renderer/src/work/messages/)
+
+| File | What |
+| --- | --- |
+| `view.ts` | The row and its view: after Mail (`order` 0.5), `readsLifeos`, `ownHead`, the chunk `work-messages-view`. In the first paint: an icon, the chunk and `facts.ts`. |
+| `facts.ts` | The row's fact: `chats:unread {sector}` on the column's session, "3" or nothing. |
+| `data.ts` | The one seam, `MessagesData`: `useChats(filter)`, `useUnread()`, `useChat(id)`, `useMessages(id)`, `useSources()`, `useSearch(text)`, `useDrafted()`, `useNow()`, `markRead`, `markUnread`. `WAITING` answers while the session opens. |
+| `live.ts` | The seam from LifeOS on the workspace's sector session: `chats:list` (100 more as he nears the end), `chats:get`, `chats:messages` (50 more as he scrolls up; one live query each, grown, the smaller answer kept on screen while the bigger comes), `chats:unread`, `chats:search`, `sources:list` kept to the chat kinds of this sector, `chats:markRead` and `chats:markUnread`. |
+| `fixtures.ts` | The seam from a made-up studio, Starboard, with switches: `loading`, `empty`, `noSource`, `stale`, `drafted`, and `manyChats`/`manyMessages` for the speed proof. |
+| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search; outside React, the list's scroll, each conversation's place and what he typed in it. |
+| `model.ts` | Pure rules: `rowTime`, `dayWords`, `rowLine`, `chatFact`, `newSince`, `wantsRead`, `blocksOf` (runs inside five minutes, days, "New"), `linkParts` and `opensOutside` (http, https, mailto), `markWords`, `aroundMatch`, and `threadRows`. |
+| `MessagesView.tsx` | The frame (`ListFrame`, Mail's: 296px, 260 to 480, `tc.messages.listWidth`), the narrow rule at 640px, `MessagesScreen` for the preview. |
+| `ChatList.tsx`, `Conversation.tsx`, `Message.tsx` | The list, the conversation, one message. |
+| `messages.css` | The 14/22 step and the one motion: a message arriving at the foot. |
+| `quick.ts` | The empty list of one-press answers. |
+
+The look is docs/DESIGN.md "The Messages view".
+
+- **Windowing.** The list's rows are one height, so `useWindowed`
+  (work-kit/mail/lib/window, Mail's) draws only those near the window. The
+  conversation's blocks are measured: `RowLayout` (lib/transcriptWindow.ts)
+  counts offsets up from the foot, and the scroller is `flex-col-reverse`,
+  so it opens at its foot with no script, a new message at the foot keeps
+  him there, and an older page added at the top moves nothing he sees; a
+  block that changes size under his place shifts the window by `anchorShift`.
+- **Unread.** LifeOS's mark (`ChatRow.unread`). Opening a conversation marks
+  it read when it is unread or someone wrote since he last saw it
+  (`wantsRead`); so does a message that arrives while it is open and the
+  window is in front, or his coming back to the window. "New" is fixed as it
+  opens (`newSince`): over the first message from someone else since his
+  mark, the service's own or his own last word, and only for one he has
+  opened before or that is unread.
+- **Thread verbs.** Start thread and Mention in a thread need the chip kind
+  `chat`, which lands with the host build; until then `threadRows` answers
+  none and no verb is drawn.
+- **Not yet.** The composer and the held reply, pictures and files (the
+  place is marked in `Message.tsx`), Open in an app and Copy link on a row's
+  menu (a row carries no link; the conversation's More has them), and a
+  conversation opened from elsewhere (`OpenWorkView.chat`).
+
+Proof: `bun run ui:preview src/renderer/src/work/messages/MessagesView.preview.tsx#MessagesPreview --props '{"scene":"open-direct","width":1280}'`;
+tests `model.test.ts` and `MessagesView.dom.test.tsx`.
+
 ## Proofs
 
 `messages/messages.test.ts` (the fence on each read, health's rows, the
