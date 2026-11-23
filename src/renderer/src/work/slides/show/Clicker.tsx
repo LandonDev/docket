@@ -4,7 +4,6 @@ import type { ShowLive, ShowPressAct } from "@shared/contract-work-slides";
 import { Button } from "../../../components/ui/button";
 import { Toggle } from "../../../components/ui/toggle";
 import { ChevronLeft, ChevronRight, Pause, Play } from "../../../chrome/icons";
-import { sayError } from "../../canvas/frame";
 import { isOwnShow, useLiveShows, type ShowRemote } from "./remote";
 import { clockOf, overTarget } from "./timer";
 
@@ -54,12 +53,27 @@ function useElapsed(live: ShowLive): number {
 
 const PRESS = "transition-[scale] duration-(--dur-fast) ease-(--ease-out) active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100";
 
+/** Why a press did not reach the show, in his words: the wire's own refusal of a key that may only read is not. */
+export function pressFailure(e: unknown): string {
+  const message = e instanceof Error ? e.message : "";
+  if (/^forbidden:/.test(message)) return "This device can only watch the show.";
+  return message || "Couldn't reach the show";
+}
+
 /** `contained`: a preview's, drawn in its own box rather than over the page. */
 export function Clicker({ live, remote, contained = false }: { live: ShowLive; remote: ShowRemote; contained?: boolean }) {
   const elapsed = useElapsed(live);
+  // A press that failed is said here: the clicker lies over the page's toasts (docs/DESIGN.md "The clicker").
+  // It goes once the show has moved on.
+  const [failed, setFailed] = useState<{ rev: number; why: string } | null>(null);
+  const why = failed?.rev === live.rev ? failed.why : null;
   const press = (act: ShowPressAct): void => {
     // A press on a state that moved on is dropped by the host; the state as it is now arrives by the push.
-    remote.press(live.showId, act, live.rev).catch((e: unknown) => sayError(e, "Couldn't reach the show"));
+    const rev = live.rev;
+    remote.press(live.showId, act, rev).then(
+      () => setFailed(null),
+      (e: unknown) => setFailed({ rev, why: pressFailure(e) }),
+    );
   };
   const { next, timer } = live;
   const over = overTarget(elapsed, timer.target);
@@ -126,6 +140,12 @@ export function Clicker({ live, remote, contained = false }: { live: ShowLive; r
       >
         {live.ended ? "" : live.notes || "No notes"}
       </p>
+
+      {why ? (
+        <p data-clicker-failed role="alert" className="shrink-0 px-4 pb-2 text-[15px] leading-5 text-pretty text-destructive">
+          {why}
+        </p>
+      ) : null}
 
       <button type="button" data-clicker-prev disabled={first} onClick={() => press("prev")} className={`mx-3 mb-2 flex h-14 shrink-0 items-center justify-center gap-1.5 rounded-2xl bg-muted text-[17px] leading-[22px] font-medium disabled:text-faint-foreground ${PRESS}`}>
         <ChevronLeft className="size-[18px]" />

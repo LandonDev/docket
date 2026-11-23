@@ -125,6 +125,28 @@ describe("the clicker at 390px", () => {
     ]);
   });
 
+  it("says a press that failed in its own line, since it lies over the page's toasts, and drops it once the show moves on", async () => {
+    const { remote } = fakeRemote();
+    let refusal = new Error("forbidden: work.slides.show.press needs operate");
+    remote.press = () => Promise.reject(refusal);
+    const { rerender } = render(<Clicker live={live()} remote={remote} />);
+    expect(document.querySelector("[data-clicker-failed]")).toBeNull();
+    await act(async () => void fireEvent.click(document.querySelector("[data-clicker-next]")!));
+    // The wire's refusal of a key that may only read, in his words, inside the clicker.
+    const line = document.querySelector<HTMLElement>("[data-clicker] [data-clicker-failed]")!;
+    expect(line.getAttribute("role")).toBe("alert");
+    expect(line.textContent).toBe("This device can only watch the show.");
+    // Between the notes and Previous: Previous and Next keep their places.
+    expect(line.previousElementSibling).toBe(document.querySelector("[data-clicker-notes]"));
+    expect(line.nextElementSibling).toBe(document.querySelector("[data-clicker-prev]"));
+    // Any other failure says its own words; the show moving on takes the line away.
+    refusal = new Error("The show did not answer.");
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Blank" })));
+    expect(document.querySelector("[data-clicker-failed]")!.textContent).toBe("The show did not answer.");
+    rerender(<Clicker live={live({ rev: 8, slide: 5 })} remote={remote} />);
+    expect(document.querySelector("[data-clicker-failed]")).toBeNull();
+  });
+
   it("says a build, the end and the close as the next press does; Previous rests on the first slide; Blank shows it is on", () => {
     const { remote } = fakeRemote();
     const view = render(<Clicker live={live({ next: { kind: "build", step: 2, of: 4 }, slide: 1, blank: true, timer: { elapsed: 5000, paused: true, target: null } })} remote={remote} />);

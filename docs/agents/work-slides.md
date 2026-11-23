@@ -1579,7 +1579,9 @@ through the app's own wire; the show runs in one window, whose state
 - **Who may.** His own window and his keys that could name the deck's
   file (`fenceItem`); a key whose caps lack `operate` is refused a press
   ("Only his own devices drive a show."), and the wire's own gate refuses it
-  first. A thread is refused all three ("A thread never drives a show: a
+  first; the web clicker says that refusal, as any failed press, in a line
+  of its own ("This device can only watch the show.", `pressFailure`),
+  never in a toast, which it would cover. A thread is refused all three ("A thread never drives a show: a
   show is his, from his own devices."). A guest link's page reaches only
   the work service's `/g/` routes, never this wire. A call relayed from
   another host of his (`by.peer`, carried by the relay's default:

@@ -2793,7 +2793,11 @@ the room sees, and the presenter's view. One state moves both.
   foot "Next" 22/28 semibold with a 20px chevron; at the end "Close the
   show" alone. The time's glyph is filled, 18px. Previous, Next and the time press to 0.96 over
   `--dur-fast` on `--ease-out` (none under reduced motion). No control
-  waits on a hover; the page never scrolls. When the show ends the deck
+  waits on a hover; the page never scrolls. A press that fails is said in
+  the clicker itself, which lies over the page's toasts: one 15/20
+  `destructive` line between the notes and Previous, so Previous and Next
+  never move ("This device can only watch the show." for a key that may
+  only read), gone once the show moves on. When the show ends the deck
   comes back.
 - **Video and sound** play over their shapes in both windows: the room
   hears the slideshow's copy. The transport is in the presenter's view
