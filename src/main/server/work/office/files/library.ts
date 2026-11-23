@@ -23,6 +23,8 @@ import { zipEntries } from './zip'
 let cloudDir = (_host: string): string => join(homedir(), 'Library', 'CloudStorage')
 /** A test points the finder at a dummy CloudStorage, per host. */
 export const setCloudDir = (dir: (host: string) => string): void => void (cloudDir = dir)
+/** Where OneDrive and the other cloud apps keep their folders on this host. */
+export const cloudDirOf = (host: string): string => cloudDir(host)
 
 export function ensureFilesTables(db: DatabaseSync): void {
   db.exec('CREATE TABLE IF NOT EXISTS work_office_files (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
