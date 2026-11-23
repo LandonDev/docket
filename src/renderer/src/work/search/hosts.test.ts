@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
-import { jobOfWorkspace, jobsOf, searchHosts, type HostsDeps } from "./hosts";
+import { SEARCH_WAIT_MS } from "@shared/work/search";
+import { ASK_MS, jobOfWorkspace, jobsOf, searchHosts, type HostsDeps } from "./hosts";
 
 /** Who a search asks: every connected host with Work on, the Work home first, an offline one as a quiet line. */
 
@@ -18,6 +19,13 @@ const deps = (over: Partial<HostsDeps> = {}): Partial<HostsDeps> => ({
   home: () => "box",
   workspaces: () => workspaces,
   ...over,
+});
+
+describe("one ask of a host", () => {
+  it("is given the host's own wait for a source and the road both ways, far short of the wire's own half minute", () => {
+    expect(ASK_MS).toBeGreaterThan(SEARCH_WAIT_MS);
+    expect(ASK_MS).toBeLessThanOrEqual(SEARCH_WAIT_MS + 3000);
+  });
 });
 
 describe("jobs", () => {

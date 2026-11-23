@@ -65,6 +65,11 @@ function dotIcon(sector: string | null): MenuIcon {
   return icon;
 }
 
+/** The dot's place, empty: the scope's first row has no job to show. */
+const NO_DOT: MenuIcon = function NoDot() {
+  return <span aria-hidden className="-mx-px size-4 shrink-0" />;
+};
+
 const ALL_JOBS = "all";
 /** The list's id and an option's, for the field to name the row the arrows are on (a combobox's `aria-activedescendant`). */
 export const LIST_ID = "work-search-list";
@@ -78,6 +83,9 @@ const LIST_CAP = 380;
 
 /** A row the arrows bring into view stops clear of the list's faded edges (32px, `OVERFLOW_FADE_Y`): the highlighted row is never the dimmed one. */
 const CLEAR_OF_FADE = "scroll-my-8";
+
+/** A fact of this many characters or fewer is narrower than the 72px a long one keeps. */
+const SHORT_FACT = 10;
 
 /** A row of the list itself; what could not be searched stands under the list, outside its scroller. */
 const isListed = (row: Row): boolean => !(row.type === "note" && row.cause);
@@ -130,7 +138,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   useEffect(() => () => controller.close(), [controller]);
   useEffect(() => {
     const { hosts, offline } = searchHosts(job, { workspaces: () => workspaces });
-    controller.search(query, kind, hosts, offline, job?.key ?? null);
+    controller.search(query, kind, hosts, offline, job?.key ?? null, job?.ids ?? null);
     // The hosts follow the Work switches and the catalog; a job is its key.
   }, [controller, query, kind, job?.key, workHosts, workspaces]);
 
@@ -154,7 +162,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
     });
   }, []);
 
-  const rows = useMemo(() => rowsOf(model, { scoped: job !== null }), [model, job]);
+  const rows = useMemo(() => rowsOf(model, { scoped: job !== null, jobOf: (id) => jobOfWorkspace(jobs, id)?.key ?? id ?? "" }), [model, job, jobs]);
   const options = useMemo(() => rows.filter(isOption), [rows]);
   const active = activeOf(model, rows);
   const spin = useSteadySpin(busy(model));
@@ -287,7 +295,8 @@ export function FieldEnd({
   finalFocus?: RefObject<HTMLInputElement | null>;
 }) {
   const rows = (): MenuRow[] => [
-    { kind: "item", id: ALL_JOBS, label: "All jobs", checked: job === null },
+    // An empty glyph, so "All jobs" starts on the names' own edge.
+    { kind: "item", id: ALL_JOBS, label: "All jobs", icon: NO_DOT, checked: job === null },
     { kind: "sep" },
     ...jobs.map((j): MenuRow => ({ kind: "item", id: j.key, label: j.name, icon: dotIcon(j.sector), checked: j.key === job?.key })),
   ];
@@ -378,7 +387,7 @@ export function Results({
     return () => document.removeEventListener("keydown", onKey, true);
   }, [menuRow, options, onTake]);
   const activeIndex = options.findIndex((option) => option.id === active);
-  const { activeRef, onMouseMove, onRowEnter } = usePointerHighlight<HTMLDivElement>({
+  const { activeRef, onMouseMove, onRowEnter, pointAt } = usePointerHighlight<HTMLDivElement>({
     active: activeIndex,
     // By its name: a row he chose that only stands further down, because more landed above, is held where it is and not scrolled to.
     activeKey: active,
@@ -471,7 +480,8 @@ export function Results({
         onOpenChange={(open, id) => {
           const on = open && id && menuRows(id) ? id : null;
           setMenuRow(on);
-          if (on) onPoint(on);
+          // The pointer's own choice: the highlight goes to the row, and the list is not scrolled under the menu.
+          if (on) pointAt(options.findIndex((option) => option.id === on));
         }}
         onPick={(pick, id) => {
           const row = options.find((option) => option.id === id);
@@ -548,7 +558,8 @@ export function Results({
                   {hit.cloud ? <Cloud aria-label="Kept in the cloud" className="ml-1.5 inline size-3.5 align-[-2px] text-muted-foreground" /> : null}
                 </span>
                 {/* In a window too narrow for it the fact goes, rather than stand as a stub. */}
-                <span className={cn("flex-[1_1_0] truncate text-xs text-muted-foreground", fact ? "min-w-[4.5rem] max-[480px]:hidden" : "min-w-0")}>
+                {/* A long fact keeps 72px and is cut first; a short one keeps only its own width, so it never holds room a long title needs. */}
+                <span className={cn("flex-[1_1_0] truncate text-xs text-muted-foreground", fact ? cn(fact.length > SHORT_FACT ? "min-w-[4.5rem]" : "min-w-max", "max-[480px]:hidden") : "min-w-0")}>
                   {fact ? <MatchText text={fact} query={text} active={Boolean(text)} /> : null}
                 </span>
                 {/* The row's end: the job and the time, each a column of one width, at the right whatever stands before them. */}

@@ -76,23 +76,24 @@ describe("opening a hit", () => {
     const file = hit({ key: "file:k1", kind: "file", workspaceId: "cosmic", open: { to: "file", ref, name: "Budget.xlsx" } });
     const r = rig(["purdue"]);
     expect(await openHit(file, "box", r.deps)).toBe("opened");
+    // the window moves at once; the tab is made on the job's host, and then the Files place shows it
     expect(r.did).toEqual([
-      ["file", "cosmic", { ref, name: "Budget.xlsx" }],
       ["clear"],
       ["enter", "/w/cosmic"],
+      ["file", "cosmic", { ref, name: "Budget.xlsx" }],
       ["view", { workspaceId: "cosmic", view: "files" }],
       ["opened", "box", "file:k1"],
     ]);
     const refused = rig(["purdue"], { file: async () => Promise.reject(new Error("refused")) });
     expect(await openHit(file, "box", refused.deps)).toBe("failed");
-    expect(refused.did).toEqual([]);
+    expect(refused.did).toEqual([["clear"], ["enter", "/w/cosmic"]]);
   });
   it("a LifeOS document opens as a Files tab, whether its hit names its chip or the Docs view a host a release behind still names", async () => {
     const ref = { at: "lifeos", table: "docs", id: "d1" };
     for (const open of [{ to: "chip", chip: { kind: "doc", label: "Plan", ref } }, { to: "view", view: "docs", with: { doc: { id: "d1", title: "Plan" } } }] as SearchHit["open"][]) {
       const r = rig(["purdue"]);
       expect(await openHit(hit({ key: "lifeos:docs:d1", open }), "box", r.deps)).toBe("opened");
-      expect(r.did).toEqual([["file", "purdue", { ref, name: "Plan" }], ["clear"], ["view", { workspaceId: "purdue", view: "files" }], ["opened", "box", "lifeos:docs:d1"]]);
+      expect(r.did).toEqual([["clear"], ["file", "purdue", { ref, name: "Plan" }], ["view", { workspaceId: "purdue", view: "files" }], ["opened", "box", "lifeos:docs:d1"]]);
     }
   });
   it("a hit that came through a mention source opens as its chip does: a task in Tasks on that task, a card in Projects, a held act in the Outbox, a routine in Routines", async () => {

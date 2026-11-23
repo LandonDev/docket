@@ -118,6 +118,16 @@ describe('Recent', () => {
     expect(kept[0].key).toBe('k10')
     expect(recentGroup(rig.db, windowReach(rig.ctx))!.hits.map((h) => h.key)).toEqual(Array.from({ length: SEARCH_RECENTS }, (_, i) => `k${SEARCH_RECENTS_KEPT + 9 - i}`))
   })
+  it('sends eight he can tell apart: two things that would read the same (two messages of one conversation) are one, the newest', () => {
+    const rig = makeRig()
+    for (let i = 0; i < 9; i++) recordOpened(rig.db, hit(`msg${i}`, PURDUE, { kind: 'message', title: '#launch-crew' }), 100 + i)
+    for (let i = 0; i < 9; i++) recordOpened(rig.db, hit(`mail${i}`, PURDUE, { title: `Mail ${i}` }), i)
+    const hits = recentGroup(rig.db, windowReach(rig.ctx))!.hits
+    expect(hits.map((h) => h.key)).toEqual(['msg8', 'mail8', 'mail7', 'mail6', 'mail5', 'mail4', 'mail3', 'mail2'])
+    // the same title in another job is another thing
+    recordOpened(rig.db, hit('msgC', COSMIC, { kind: 'message', title: '#launch-crew' }), 500)
+    expect(recentGroup(rig.db, windowReach(rig.ctx))!.hits.slice(0, 2).map((h) => h.key)).toEqual(['msgC', 'msg8'])
+  })
   it('shows only things whose job still exists, and a deleted job takes its rows with it', async () => {
     const rig = makeRig()
     await opened(rig, hit('a', PURDUE))

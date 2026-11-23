@@ -51,6 +51,8 @@ describe("PickerDialog", () => {
     const group = document.querySelector("[data-slot=input-group]")!;
     expect([...group.children].map((el) => el.getAttribute("data-slot"))).toEqual(["input-group-leading", "input"]);
     expect(document.querySelector("[data-picker-leading]")).toBeNull();
+    // the search glyph stands in a row's own 16px slot, so his words begin over the titles of the rows
+    expect(group.querySelector("[data-slot=input-group-leading] > .size-4 svg")).not.toBeNull();
     // the frame's children, in order: its title for a reader, the field, the rule, the list
     expect([...screen.getByRole("dialog").children].map((el) => el.getAttribute("data-slot") ?? el.tagName)).toEqual(["dialog-title", "input-group", "separator", "P"]);
   });

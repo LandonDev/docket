@@ -64,5 +64,12 @@ export function usePointerHighlight<T extends HTMLElement>({
     onActive(index);
   };
 
-  return { activeRef, onMouseMove, onRowEnter };
+  /** The pointer's choice by another road (a right-click on a row): the highlight goes there and the list is not scrolled under it. */
+  const pointAt = (index: number) => {
+    if (index === active) return;
+    fromPointer.current = true;
+    onActive(index);
+  };
+
+  return { activeRef, onMouseMove, onRowEnter, pointAt };
 }

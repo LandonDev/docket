@@ -76,7 +76,16 @@ export function PickerFrame({ label, search, query, onQuery, onSearchKey, leadin
   return (
     <>
       {/* The frame's radius less its 4px inset (16 − 4 = 12px), as a row's. */}
-      <InputGroup leading={<Search className="size-3.5" />} trailing={trailing} className="h-9 rounded-xl border-transparent">
+      {/* The glyph in a row's own 16px slot, 12px in (11 and the border), so his words stand over the titles they find. */}
+      <InputGroup
+        leading={
+          <span className="grid size-4 place-items-center">
+            <Search className="size-3.5" />
+          </span>
+        }
+        trailing={trailing}
+        className="h-9 rounded-xl border-transparent pl-[11px]"
+      >
         {leading ? (
           <span id={leadingId} data-picker-leading className="shrink-0 text-[13px] text-muted-foreground">
             {leading}

@@ -30,11 +30,17 @@ type Row = { key: string; hit: string; opened_at: number }
 export function recentGroup(db: DatabaseSync, reach: SearchReach, keep: (hit: SearchHit) => boolean = () => true, limit = SEARCH_RECENTS): SearchGroup | null {
   if (limit <= 0) return null
   const hits: SearchHit[] = []
+  // Two things that would read the same in the list (a row keeps a title and no more) are one, the newest: the
+  // eight sent are eight he can tell apart.
+  const looks = new Set<string>()
   for (const row of db.prepare(`SELECT key, hit, opened_at FROM work_search_recent ORDER BY opened_at DESC, key`).all() as unknown as Row[]) {
     if (hits.length >= limit) break
     try {
       const hit = { ...(JSON.parse(row.hit) as SearchHit), openedAt: row.opened_at }
-      if (inReach(reach, hit.workspaceId ?? null) && keep(hit)) hits.push(hit)
+      const look = `${hit.kind}\n${hit.title}\n${hit.workspaceId}`
+      if (!inReach(reach, hit.workspaceId ?? null) || !keep(hit) || looks.has(look)) continue
+      looks.add(look)
+      hits.push(hit)
     } catch {
       // a row from a shape this build no longer reads
     }

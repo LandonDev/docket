@@ -1,4 +1,4 @@
-import type { SearchAnswer, SearchHit } from "@shared/work/search";
+import { SEARCH_WAIT_MS, type SearchAnswer, type SearchHit } from "@shared/work/search";
 import { registry } from "../../lib/connection";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
@@ -85,8 +85,11 @@ export function searchHosts(job: Job | null, deps: Partial<HostsDeps> = {}): { h
   return { hosts: hosts.sort((a, b) => Number(b.home) - Number(a.home)), offline };
 }
 
+/** How long a host has to answer one ask: its own wait for a source, and the road there and back. A host that says nothing by then is one quiet line, and what the others found is not kept waiting. */
+export const ASK_MS = SEARCH_WAIT_MS + 2000;
+
 /** One call of `work.search.query` to a host. */
-export const askHost = (hostId: string, params: Record<string, unknown>): Promise<SearchAnswer> => registry.linkOf(hostId).request<SearchAnswer>("work.search.query", params);
+export const askHost = (hostId: string, params: Record<string, unknown>): Promise<SearchAnswer> => registry.linkOf(hostId).request<SearchAnswer>("work.search.query", params, { timeoutMs: ASK_MS, retry: false });
 
 /** He opened this: the hit's own host keeps it for Recent. Never waited on. */
 export function tellOpened(hostId: string, hit: SearchHit): void {

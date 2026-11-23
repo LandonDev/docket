@@ -178,7 +178,7 @@ takes eight; a deleted job takes its rows with it
 | doc | network | a sector at a time: the newest page of `docs:list` by title, then `catalog:search { sector, text }` with its line (a title outside that page read with `docs:get`) | `{ to: 'file', ref: { at: 'lifeos', table: 'docs', id }, name }`: a Files tab (a hit kept from before, `{ view: 'docs' }`, opens there too) |
 | project | network | `projects:list { sector? }` by name and description | `{ view: 'projects', with: { project } }` |
 | thread | instant by title, network by its words | the host's rows for titles; `Store.searchEvents { query, scope: 'work' }` for words, with the index's own snippet (thread notes among them) | `{ to: 'thread', sessionId, seq? }` |
-| file | instant; network for LifeOS's documents where they are files; a third source `when: 'alone'` | `work.files.names { workspaceId, text }` a job in reach (the names Files has listed, from its database); the documents of a job where Files holds LifeOS, as the doc row reads them, by the key Files gives a document; for "All files", `work.files.search { workspaceId, query }` | `{ to: 'file', ref, name }`, through Files' own door `openInFiles` (work/files/openFrom.ts) |
+| file | instant; network for LifeOS's documents where they are files; a third source `when: 'alone'` | `work.files.names { workspaceId, text }` a job in reach (the names Files has listed, from its database); the documents of a job where Files holds LifeOS, as the doc row reads them, by the key Files gives a document; for "All files", `work.files.search { workspaceId, query }` | `{ to: 'file', ref, name }`, through Files' own door `openInFiles` (work/files/openFrom.ts), the window moved first; each carries the chip Files gives the row (`fileChipOf`), so ⌘↩ starts a thread about a file |
 | message, chat | network | Messages' own sources (`messages/search.ts`, on its module's `search`): messages that hold the words, and conversations by name | `{ view: 'messages', with: { chat, message? } }` |
 | money | instant | Money's own source (`money/borders.ts`): a ledger's rows | `{ view: 'money', with: { row } }` |
 | item, held, routine, card, any later kind | as its mention source | every module's `mentions` with no `search` source of its kind | `{ to: 'chip', chip }` |
@@ -233,9 +233,13 @@ method can be given a small source here on `ask.ts`, as Files is.
   in their order, the highlight. `controller.ts` runs the asks: every host
   at once for its instant tier on each change of his words, then each
   source a host named on its own, 120 ms after his last key and from two
-  characters, so each lands when it is ready. A change of scope clears what
-  the last scope found (a row of another job is never left to take), as a
-  change of kind does; a change of his words keeps the rows on screen
+  characters, so each lands when it is ready. One ask of a host is given
+  `ASK_MS` (the host's own wait and two seconds for the road); a host that
+  says nothing by then is its quiet line, and the rest is not kept
+  waiting. A change of scope keeps what is
+  still in reach and nothing else (narrowed, the job's own rows, so a row
+  of another job is never left to take; widened, every row); a change of
+  his words keeps the rows on screen
   until the new ones land. A source that fails is one line by its kind
   ("Mail did not answer."); a host whose first answer fails is one line by
   its name. "Nothing for …" is said only of a search that ran (two

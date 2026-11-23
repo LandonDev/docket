@@ -77,8 +77,27 @@ describe('files', () => {
     const hits = await names.search(ask('budget'), rig.ctx)
     expect(names.tier).toBe('instant')
     expect(hits).toEqual([
-      { key: 'file:k1', kind: 'file', title: 'Budget FY27.xlsx', detail: 'Esports › Finance', at: 7, workspaceId: PURDUE, open: { to: 'file', ref: { at: 'file', host: 'env_box', path: '/work/Budget FY27.xlsx' }, name: 'Budget FY27.xlsx' }, cloud: true },
-      { key: 'file:k3', kind: 'file', title: 'Server budget.xlsx', at: 7, workspaceId: COSMIC, open: { to: 'file', ref: { at: 'file', host: 'env_box', path: '/work/Server budget.xlsx' }, name: 'Server budget.xlsx' } }
+      {
+        key: 'file:k1',
+        kind: 'file',
+        title: 'Budget FY27.xlsx',
+        detail: 'Esports › Finance',
+        at: 7,
+        workspaceId: PURDUE,
+        open: { to: 'file', ref: { at: 'file', host: 'env_box', path: '/work/Budget FY27.xlsx' }, name: 'Budget FY27.xlsx' },
+        // the chip Files gives the same row: a thread can be started about a file he found
+        chip: { kind: 'file', label: 'Budget FY27.xlsx', ref: { at: 'file', host: 'env_box', path: '/work/Budget FY27.xlsx' }, where: { place: 'teams:esports', name: 'Esports', path: 'Finance/Budget FY27.xlsx' } },
+        cloud: true
+      },
+      {
+        key: 'file:k3',
+        kind: 'file',
+        title: 'Server budget.xlsx',
+        at: 7,
+        workspaceId: COSMIC,
+        open: { to: 'file', ref: { at: 'file', host: 'env_box', path: '/work/Server budget.xlsx' }, name: 'Server budget.xlsx' },
+        chip: { kind: 'file', label: 'Server budget.xlsx', ref: { at: 'file', host: 'env_box', path: '/work/Server budget.xlsx' } }
+      }
     ])
     expect(module.seen.map((s) => [s.method, s.params])).toEqual([
       ['work.files.names', { workspaceId: PURDUE, text: 'budget' }],

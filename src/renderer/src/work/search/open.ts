@@ -107,18 +107,21 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
   // A file, a LifeOS document among them (the Docs view folded into Files), and a hit a host a release behind
   // still sends to Docs: Files' own door.
   const file = open.to === "file" ? { ref: open.ref, name: open.name } : docOf(open);
-  let view: OpenWorkView | null;
   if (file) {
-    // The file opens as a Files tab of the job on the job's host, the tab shown; the window then moves there as for any view.
+    // The window moves at once, as for any view, so Return is answered before the job's host has made the tab
+    // (a trip over the network for a job on another computer); the file then opens as a Files tab there, shown.
+    d.clear();
+    if (!d.selected().includes(workspace.id)) d.enter(workspace);
     try {
       await d.file(workspace, { ref: file.ref as CanvasSource, name: file.name });
     } catch {
       return "failed";
     }
-    view = { workspaceId: workspace.id, view: "files" };
-  } else if (open.to === "view") view = { workspaceId: workspace.id, view: open.view, ...(open.with ?? {}) } as OpenWorkView;
-  else if (open.to === "chip") view = viewOfChip(open.chip, workspace.id);
-  else view = null;
+    d.view({ workspaceId: workspace.id, view: "files" });
+    d.opened(hostId, hit);
+    return "opened";
+  }
+  const view = open.to === "view" ? ({ workspaceId: workspace.id, view: open.view, ...(open.with ?? {}) } as OpenWorkView) : open.to === "chip" ? viewOfChip(open.chip, workspace.id) : null;
   if (!view) return "nothing";
   d.clear();
   // A view shows only while its workspace is the window's (WorkViewSurface): the window moves first.

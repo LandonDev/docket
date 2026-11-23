@@ -211,7 +211,7 @@ describe("the highlight", () => {
     expect(activeOf(step(typed("x"), [], -1), [])).toBeNull();
     expect(activeOf(step(emptyModelWith(m), rows, -1), rows)).toBe("all:mail");
   });
-  it("goes back to the first row when his words change, and to it when the row he chose is gone", () => {
+  it("goes back to the first row when his words change; a row he chose that an answer takes away leaves none lit, never a neighbour for Return", () => {
     let m = step(filled(), rowsOf(filled()), 1);
     const again = begin(m, { text: "budget", kind: null, hosts: [box] });
     expect(again.moved).toBe(true);
@@ -219,7 +219,9 @@ describe("the highlight", () => {
     expect(m.moved).toBe(false);
     let gone = step(filled(), rowsOf(filled()), 1);
     gone = landInstant(gone, gone.gen, "box", answer([group("thread", ["t1"])])).model;
-    expect(activeOf(gone, rowsOf(gone))).toBe("hit:t1");
+    expect(activeOf(gone, rowsOf(gone))).toBeNull();
+    // the next arrow starts from the top
+    expect(activeOf(step(gone, rowsOf(gone), 1), rowsOf(gone))).toBe("hit:t1");
   });
 });
 const emptyModelWith = (m: SearchModel): SearchModel => ({ ...m, moved: false, active: null });
@@ -422,6 +424,24 @@ describe("Recent, by how a row reads", () => {
   });
 });
 
+describe("Recent, held to one kind", () => {
+  const recent = (rows: [string, string, number, string?][]): SearchGroup => ({ source: "search.recent", kind: "recent", label: "Recent", more: false, hits: rows.map(([key, kind, openedAt, workspaceId]) => hit(key, { kind, title: `Thing ${key.replace(/-.*/, "")}`, openedAt, workspaceId: workspaceId ?? "w1" })) });
+  it("stays with nothing typed, by the things of that kind in it, under its own heading", () => {
+    let m = typed("", [box], emptyModel(), "mail");
+    m = landInstant(m, m.gen, "box", answer([recent([["m1", "mail", 30], ["t1", "thread", 20], ["m2", "mail", 10]])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Recent", "m1", "m2"]);
+  });
+  it("lists a thing of one job opened on two hosts once, by the job the row shows", () => {
+    let m = typed("", [box, mac]);
+    m = landInstant(m, m.gen, "box", answer([recent([["a-box", "mail", 10, "w-box"]])])).model;
+    m = landInstant(m, m.gen, "mac", answer([recent([["a-mac", "mail", 20, "w-mac"]])])).model;
+    const jobOf = (id: string | null): string => (id === "w-box" || id === "w-mac" ? "purdue" : (id ?? ""));
+    expect(shape(rowsOf(m, { jobOf }))).toEqual(["# Recent", "a-mac"]);
+    // by the workspace alone they are two things
+    expect(shape(rowsOf(m))).toEqual(["# Recent", "a-mac", "a-box"]);
+  });
+});
+
 describe("what could not be searched", () => {
   it("is never the same words twice, and is marked as the list's foot", () => {
     let m = typed("budget");
@@ -442,14 +462,24 @@ describe("his words", () => {
 });
 
 describe("a change of scope", () => {
-  it("clears the list at once: no row of a job the search no longer reads stays for a Return to take", () => {
+  it("keeps what is still in reach and nothing else: narrowed, the job's own rows stay and no other job's row is left for a Return to take; widened, every row stays", () => {
+    const mails = (): SearchGroup => ({ ...group("mail", []), hits: [hit("m-purdue", { workspaceId: "w-purdue" }), hit("m-cosmic", { workspaceId: "w-cosmic" }), hit("m-chats", { workspaceId: null })], more: true });
     let m = begin(emptyModel(), { text: "budget", kind: null, scope: null, hosts: [box] });
-    m = landInstant(m, m.gen, "box", answer([group("mail", ["m-purdue", "m-cosmic"])])).model;
+    m = landInstant(m, m.gen, "box", answer([mails(), { ...group("thread", []), hits: [hit("t-cosmic", { kind: "thread", workspaceId: "w-cosmic" })] }])).model;
     m = step(m, rowsOf(m), 1);
-    m = begin(m, { text: "budget", kind: null, scope: "purdue", hosts: [box] });
-    expect(rowsOf(m)).toEqual([]);
-    expect(activeOf(m, rowsOf(m))).toBeNull();
+    m = begin(m, { text: "budget", kind: null, scope: "purdue", within: ["w-purdue"], hosts: [box] });
+    // the job's mail stays where it stood; the other job's, the Work Chats' and the empty group are gone; "All mail" waits for the fresh answer
+    expect(shape(rowsOf(m))).toEqual(["# Mail", "m-purdue"]);
+    expect(activeOf(m, rowsOf(m))).toBe("hit:m-purdue");
     expect(m.moved).toBe(false);
+    // widened again before anything answers: nothing goes
+    m = landInstant(m, m.gen, "box", answer([{ ...group("mail", []), hits: [hit("m-purdue", { workspaceId: "w-purdue" })] }])).model;
+    m = begin(m, { text: "budget", kind: null, scope: null, hosts: [box] });
+    expect(shape(rowsOf(m))).toEqual(["# Mail", "m-purdue"]);
+    // with no word of which workspaces the job has, nothing is kept
+    let blind = begin(emptyModel(), { text: "budget", kind: null, scope: null, hosts: [box] });
+    blind = landInstant(blind, blind.gen, "box", answer([mails()])).model;
+    expect(rowsOf(begin(blind, { text: "budget", kind: null, scope: "purdue", hosts: [box] }))).toEqual([]);
     // the same words in the same scope keep what is on screen
     let same = begin(emptyModel(), { text: "budget", kind: null, scope: "purdue", hosts: [box] });
     same = landInstant(same, same.gen, "box", answer([group("mail", ["m-purdue"])])).model;

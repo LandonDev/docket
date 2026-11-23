@@ -2676,7 +2676,9 @@ docs/agents/work-search.md). It is a picker, never a page: it opens under
 his hands and leaves no trace on what he was searching from.
 
 - **The frame** is `PickerDialog`, the Go to File shell: 560px, the field
-  36px with 12px corners (the dialog's 16 less its 4px inset) over a
+  36px with 12px corners (the dialog's 16 less its 4px inset; its glyph
+  in a row's own 16px slot, so his words stand over the titles they find)
+  over a
   hairline with 4px over it as under it (the field's ring never sits on
   the line), 28px rows (a 20px line and 4px above and below) at the frame's
   4px inset, appearing at once. The hairline is drawn only over rows: with
@@ -2696,7 +2698,8 @@ his hands and leaves no trace on what he was searching from.
   a screen that wants this one calls `openWorkSearch`.
 - **The scope** is the field's own end: a quiet button reading "All jobs",
   or a job's dot and name. It opens on All jobs every time. ⌘⇧K again
-  narrows to the job the window is in and again widens; a click opens the
+  narrows to the job the window is in and again widens (the rows still in
+  reach stay on screen through either, and no other); a click opens the
   menu of All jobs and each job, and ⌥↓ in the field opens it by key.
   While a source is still out a `Spinner` stands before it, in the field:
   only once the wait has lasted 150ms, and then for at least 300ms, so an
@@ -2711,7 +2714,8 @@ his hands and leaves no trace on what he was searching from.
 - **A row** is the `@` list's own, one line: a 16px glyph of its kind, the
   title (13px, as wide as its words, the matched ones in the foreground's
   weight through `MatchText`), the fact or the matched line right after it
-  (12px muted, cut first, a matched word marked as in the title), then at
+  (12px muted, cut first, a matched word marked as in the title; a long
+  fact keeps 72px, a short one only its own width), then at
   the row's end the job and the time (12px muted, tabular, each a column
   of one width, 8px apart). The time column stands from his first word,
   whichever rows have landed, so the job column never jumps when a kind
@@ -2741,14 +2745,16 @@ his hands and leaves no trace on what he was searching from.
   place on screen: what lands above it is taken up by the scroller in the
   same frame, so the row under his eye, and the one Return will take,
   never moves, and a group that fills keeps the row he is on among its
-  four. The scroller keeps its 10px strip from the start
+  four. A thing he chose that an answer takes off the list leaves no row
+  lit: Return never opens a neighbour in its place. The scroller keeps its 10px strip from the start
   (`scrollbar-gutter: stable`), so the columns do not shift when the list
   first overflows; the strip lies in the frame's own right inset (`-mr-1`),
   so a row ends 10px from the frame's edge. A cut edge fades (`OVERFLOW_FADE_Y`) while more
   lies past it, and a row the arrows bring into view stops 32px clear of
   it (`scroll-my-8`), so the highlighted row is never the dimmed one.
 - **Nothing typed** shows Recent: the last eight things he opened from
-  search, any job. No hint text and no tips.
+  search, any job, two that would read the same shown once (held to one
+  kind, the things of that kind, under Recent's own heading). No hint text and no tips.
 - **Nothing found** is one muted row, "Nothing for “q”" (`PickerNote`).
   Scoped to one job it is followed by one row he can take, "Search all
   jobs", on the note's own inset. It is said only of a search that ran: at

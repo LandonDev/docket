@@ -327,14 +327,28 @@ describe("Work search", () => {
     expect(list().querySelectorAll("[data-job]")).toHaveLength(2);
   });
 
+  it("lets a short fact keep only its own width, and a long one 72px before it is cut: a long title is never clipped for blank room", async () => {
+    await mount();
+    await type("budget");
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail", { detail: "Ops" }), hit("m2", "mail", { detail: "Finance and Operations" })])]));
+    const fact = (row: string): string => list().querySelector(`[data-row="${row}"] span.text-xs.truncate`)!.className;
+    expect(fact("hit:m1")).toContain("min-w-max");
+    expect(fact("hit:m1")).not.toContain("min-w-[4.5rem]");
+    expect(fact("hit:m2")).toContain("min-w-[4.5rem]");
+  });
+
   it("the row's menu holds the key it shows: ⌘↩ starts the thread while the menu is open on a row", async () => {
     await mount();
     await type("budget");
     const chip = { kind: "mail" as const, label: "Budget m2", ref: { at: "lifeos" as const, table: "mailThreads" as const, id: "m2" } };
     await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail"), hit("m2", "mail", { chip })])]));
+    // the right-click is the pointer's own choice: the highlight goes to the row and the list is not scrolled under the menu
+    const scrolls = vi.spyOn(Element.prototype, "scrollIntoView");
     await act(async () => void fireEvent.contextMenu(list().querySelector('[data-row="hit:m2"]')!));
     await screen.findByRole("menu");
     expect(selected()).toBe("hit:m2");
+    expect(scrolls).not.toHaveBeenCalled();
+    scrolls.mockRestore();
     await act(async () => void fireEvent.keyDown(document.activeElement ?? document.body, { key: "Enter", metaKey: true }));
     expect(opened.threads).toEqual(["m2"]);
     expect(opened.hits).toEqual([]);

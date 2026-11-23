@@ -1,4 +1,4 @@
-import { PLACE } from '@shared/work/files'
+import { fileChipOf, PLACE, type FileEntry } from '@shared/work/files'
 import { fileKey, type SearchHit } from '@shared/work/search'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../../modules'
 import { askPillar } from '../ask'
@@ -39,8 +39,12 @@ const hitOf = (row: FileRow, workspaceId: string): SearchHit => ({
   ...(row.changed !== undefined ? { at: row.changed } : {}),
   workspaceId,
   open: { to: 'file', ref: row.ref, name: row.name },
+  // The chip Files gives the same row, so a thread can be started about a file he found (never a folder: those are left out).
+  ...(chipOf(row) ? { chip: chipOf(row)! } : {}),
   ...(row.local === false ? { cloud: true as const } : {})
 })
+
+const chipOf = (row: FileRow) => fileChipOf(row as unknown as FileEntry)
 
 /** One Files method asked of every job in reach, a turn a job, folders left out (a hit opens as a file). */
 async function ask(ctx: WorkCtx, modules: readonly WorkModule[], method: string, params: (workspaceId: string) => Record<string, unknown>, o: { reach: { workspaces: { id: string }[] }; limit: number; by: Caller; signal: AbortSignal }): Promise<SearchHit[]> {
