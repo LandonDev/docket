@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
-import type { CalendarOffer, MoneyRead } from "@shared/contract-work-money";
+import { receiptSource, type CalendarOffer, type MoneyRead } from "@shared/contract-work-money";
 import { loadToast } from "../../components/ui/toaster";
-import { formatDay, formatMoney, milesLine, sigOf, today, type LedgerRow, type OwedRow } from "@shared/work/money";
+import { formatDay, formatMoney, invoiceTotal, milesLine, sigOf, today, type LedgerRow, type OwedRow } from "@shared/work/money";
 import { AXIS, BAR, BAR_CURSOR, ChartFrame, GRID } from "@aliax/charts/chart";
 import { ChartLegend } from "@aliax/charts/legend";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
@@ -25,6 +25,8 @@ import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
 import { receiveFiles, takesFile } from "./receive";
 import { ExportDialog } from "./ExportDialog";
+import { InvoiceDialog, invoiceTitle, type InvoiceKind } from "./InvoiceDialog";
+import { sendInvoice, sentAs } from "./send";
 import { RateDialog } from "./RateDialog";
 import { addAll, CalendarRows, ReceiptPicture, ReceiptRows, ToConfirmSection } from "./ToConfirm";
 import { offerWhole, TripDialog } from "./TripDialog";
@@ -43,7 +45,7 @@ const SPANS = [
 ] as const;
 
 /** A dialog the header or the body opened. */
-export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string } | { kind: "trip"; offer: CalendarOffer | null } | { kind: "rate" } | { kind: "export" };
+export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string } | { kind: "trip"; offer: CalendarOffer | null } | { kind: "rate" } | { kind: "export" } | { kind: "invoice"; as: InvoiceKind };
 
 /** What the header and the body share: the period, and the dialog open. */
 const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null }>({ period: periodNow(), dialog: null });
@@ -55,13 +57,16 @@ export const openMoneyDialog = (dialog: MoneyDialog) => set({ dialog });
 /** Puts the view on a period (the preview, the tests). */
 export const setMoneyPeriod = (period: PeriodState) => set({ period });
 
-export function Head({ env, workspace }: WorkViewProps) {
+export function Head({ env, workspace, sector }: WorkViewProps) {
   const { period } = useShared(ui);
   const unit = period.span;
   const addRows: MenuRow[] = [
     { kind: "item", id: "receipt", label: "Receipt…" },
     { kind: "item", id: "entry", label: "Entry…" },
     { kind: "item", id: "trip", label: "Trip…" },
+    { kind: "item", id: "invoice", label: "Invoice…" },
+    // A purchase request asks Purdue leave to buy: only a Purdue job has one.
+    ...(sector === "purdue" ? [{ kind: "item" as const, id: "request", label: "Purchase request…" }] : []),
   ];
   const moreRows: MenuRow[] = [
     { kind: "item", id: "ledger", label: "Open ledger" },
@@ -92,6 +97,7 @@ export function Head({ env, workspace }: WorkViewProps) {
           if (id === "entry") set({ dialog: { kind: "entry" } });
           else if (id === "receipt") set({ dialog: { kind: "pick" } });
           else if (id === "trip") set({ dialog: { kind: "trip", offer: null } });
+          else if (id === "invoice" || id === "request") set({ dialog: { kind: "invoice", as: id === "request" ? "request" : "invoice" } });
         }}
         trigger={
           <Button variant="ghost" size="sm">
@@ -230,6 +236,7 @@ export function View({ env, workspace }: WorkViewProps) {
           mode="edit"
           row={dialog.row}
           picture={dialog.row.receipt && /\.(pdf|jpe?g|png|heic|webp|gif)$/i.test(dialog.row.receipt) ? <ReceiptPicture env={env} of={{ workspaceId: workspace.id, receipt: dialog.row.receipt }} name={dialog.row.receipt} /> : undefined}
+          footerStart={sentAs(dialog.row.receipt) ? <SendRow env={env} workspaceId={workspace.id} read={read} row={dialog.row} onSent={close} /> : undefined}
           onClose={close}
           onSaved={() => void reload()}
         />
@@ -238,9 +245,36 @@ export function View({ env, workspace }: WorkViewProps) {
         <TripDialog env={env} workspaceId={workspace.id} offer={dialog.offer} day={today() >= span.from && today() < span.to ? today() : span.from} onClose={close} onSaved={() => void reload()} />
       ) : null}
       {read && dialog?.kind === "rate" ? <RateDialog env={env} workspaceId={workspace.id} rate={read.rate} onClose={close} onSaved={() => void reload()} /> : null}
+      {dialog?.kind === "invoice" ? (
+        <InvoiceDialog
+          env={env}
+          workspaceId={workspace.id}
+          kind={dialog.as}
+          onClose={close}
+          onCreated={(kept, invoice) => {
+            void reload();
+            const title = invoiceTitle(invoice.kind, invoice.number);
+            const file = kept.source;
+            void loadToast().then((toast) =>
+              toast(`${title} created`, file ? { action: { label: "Send…", onClick: () => withToast(() => sendInvoice(env, workspace.id, file, invoice.kind, invoice.number, formatMoney(invoiceTotal(invoice.lines)))) } } : undefined),
+            );
+          }}
+        />
+      ) : null}
       {dialog?.kind === "export" ? <ExportDialog env={env} workspaceId={workspace.id} year={period.year} onClose={close} /> : null}
       {read && dialog?.kind === "confirm" ? <ConfirmFlow env={env} workspaceId={workspace.id} read={read} first={dialog.id} onClose={close} reload={reload} /> : null}
     </div>
+  );
+}
+
+/** Send… in a row's dialog, for a row whose kept file is an invoice or a purchase request: the composer, filled, and the PDF in Files. */
+function SendRow({ env, workspaceId, read, row, onSent }: { env: string; workspaceId: string; read: MoneyRead; row: LedgerRow; onSent: () => void }) {
+  const sent = row.receipt ? sentAs(row.receipt) : null;
+  if (!sent) return null;
+  return (
+    <Button variant="ghost" onClick={() => withToast(() => sendInvoice(env, workspaceId, receiptSource(read.root, row.receipt), sent.kind, sent.number, formatMoney(row.in || row.out)).then(onSent))}>
+      Send…
+    </Button>
   );
 }
 

@@ -1618,7 +1618,19 @@ Around the canvas:
   (Excel), CSV, Summary (PDF); Export spins through the host's files, the
   summary's print and its keeping, then one toast, "Exported 2026 for tax
   time", with Show in Files and, on its second line, whatever could not
-  be made.
+  be made. Add → Invoice… is a wide form: To, then Number, Date and Due in
+  one row (the next number and his usual terms from the host), the lines
+  (What, Quantity, Rate, the line's amount at its end, a remove on every
+  line but the first, Add line quiet under them) with the total under the
+  amounts in semibold, then his own details, asked whole the first time
+  and one muted line with Edit after. Create prints it and keeps the PDF
+  with its row, then one toast, "Invoice 1042 created", with Send…. A
+  Purdue job's Add also has Purchase request…, the same form with Vendor
+  for To, Needed by for Due, a Reason, and no How to pay. Send…, there and
+  in a kept invoice's or request's own dialog (at its footer's start),
+  fills Mail's composer (no address, the subject, two plain lines) and
+  opens the PDF in Files to attach: the composer takes no file from
+  outside, and nothing leaves until his own Send.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way

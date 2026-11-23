@@ -215,6 +215,18 @@ describe("the Money view", () => {
     expect(await screen.findByRole("dialog", { name: "Export" })).toBeTruthy();
   });
 
+  it("offers Purchase request… in Add only in a Purdue job", async () => {
+    mount();
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Receipt…", "Entry…", "Trip…", "Invoice…"]);
+    cleanup();
+    const purdue = { ...(props as object), sector: "purdue" } as never;
+    render(<Head {...purdue} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Receipt…", "Entry…", "Trip…", "Invoice…", "Purchase request…"]);
+  });
+
   it("keeps the last read under a failed one, with Retry", async () => {
     mount();
     await settle();

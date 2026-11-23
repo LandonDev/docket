@@ -16,7 +16,7 @@ import { ALL_ROWS, EMPTY_READ, NOVEMBER, RECEIPT_SVG, readOf } from "./money.fix
  * Made-up data; rendered by nothing in the app.
  */
 
-type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture";
+type State = "empty" | "month" | "year" | "owed" | "loading" | "failed" | "columns" | "dialog" | "confirm" | "drop" | "dialog-picture" | "dialog-trip" | "dialog-export" | "dialog-invoice";
 let state: State = "month";
 let reads = 0;
 
@@ -52,6 +52,7 @@ function answer(period: Period): Promise<MoneyRead> {
       return Promise.resolve(readOf(period, paid, { problems: [{ kind: "columns", missing: ["In", "Out"] }] }));
     case "confirm":
     case "dialog-picture":
+    case "dialog-trip":
       return Promise.resolve(readOf(period, paid, { toConfirm: TO_CONFIRM, calendar: CALENDAR }));
     case "owed":
     case "dialog":
@@ -71,6 +72,7 @@ const link = {
   request<T>(method: string, params: { from: string; to: string }): Promise<T> {
     if (method === "work.money.read") return answer({ from: params.from, to: params.to }) as Promise<T>;
     if (method === "work.money.picture") return Promise.resolve({ mime: "image/svg+xml", name: "receipt.svg", size: RECEIPT_SVG.length, parts: 1, dataBase64: RECEIPT_B64 } as T);
+    if (method === "work.money.invoiceNext") return Promise.resolve({ number: "1042", from: { name: "Ridgeline Officiating", address: "12 Elm St, Harlan", pay: "Check" }, dueDays: 30 } as T);
     if (method === "work.money.state") return Promise.resolve({ host: "box", jobs: [{ workspaceId: "ws", name: "Refereeing", sector: "ref", made: true }] } as T);
     return Promise.reject(new Error(`no ${method}`));
   },
@@ -94,6 +96,9 @@ export function MoneyPreview({ state: s = "month", height }: { state?: State; he
   setMoneyPeriod({ span: s === "year" ? "year" : "month", year: 2026, month: 11 });
   if (s === "dialog") openMoneyDialog({ kind: "row", row: NOVEMBER[0] });
   if (s === "dialog-picture") openMoneyDialog({ kind: "confirm", id: "a" });
+  if (s === "dialog-trip") openMoneyDialog({ kind: "trip", offer: CALENDAR[2] });
+  if (s === "dialog-export") openMoneyDialog({ kind: "export" });
+  if (s === "dialog-invoice") openMoneyDialog({ kind: "invoice", as: "invoice" });
   useEffect(() => {
     // The failed state: a second read, asked as the window comes forward, fails over the first.
     if (s !== "failed") return;
