@@ -1,3 +1,4 @@
+import { PLACE } from '@shared/work/files'
 import { fileKey, type SearchHit } from '@shared/work/search'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../../modules'
 import { askPillar } from '../ask'
@@ -23,11 +24,18 @@ export interface FileRow {
   where?: { place: string; name: string; trail: string[] }
 }
 
+/**
+ * Where a file lies, as its row says it: its place and the folders down to
+ * it. The job's own folder is named for the job, which the row already
+ * says: there only the folders are said, and nothing at its top.
+ */
+const whereWords = (where: NonNullable<FileRow['where']>): string => (where.place === PLACE.folder ? where.trail : [where.name, ...where.trail]).filter(Boolean).join(' › ')
+
 const hitOf = (row: FileRow, workspaceId: string): SearchHit => ({
   key: fileKey(row.key),
   kind: 'file',
   title: row.name,
-  ...(row.where ? { detail: [row.where.name, ...row.where.trail].filter(Boolean).join(' › ') } : {}),
+  ...(row.where && whereWords(row.where) ? { detail: whereWords(row.where) } : {}),
   ...(row.changed !== undefined ? { at: row.changed } : {}),
   workspaceId,
   open: { to: 'file', ref: row.ref, name: row.name },

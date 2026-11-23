@@ -105,6 +105,24 @@ describe('files', () => {
     expect(all.groups[0].more).toBe(true)
     expect(module.seen.filter((s) => s.method === 'work.files.search').map((s) => s.params)).toEqual([{ workspaceId: PURDUE, query: 'budget' }])
   })
+  it("says where a file lies, and never the job's own folder by its name: the row's end already says the job", async () => {
+    const rig = makeRig()
+    const module = standIn('files', {
+      'work.files.names': () => ({
+        entries: [
+          entry('top', 'Budget.csv', { where: { place: 'folder', name: 'Purdue', trail: [] } }),
+          entry('deep', 'Budget old.csv', { where: { place: 'folder', name: 'Purdue', trail: ['Finance', '2025'] } }),
+          entry('lib', 'Budget shared.xlsx', { where: { place: 'teams:esports', name: 'Esports', trail: ['Finance'] } })
+        ]
+      })
+    })
+    const hits = await fileSources([module])[0].search(ask('budget', onlyPurdue), rig.ctx)
+    expect(hits.map((h) => [h.title, h.detail])).toEqual([
+      ['Budget.csv', undefined],
+      ['Budget old.csv', 'Finance › 2025'],
+      ['Budget shared.xlsx', 'Esports › Finance']
+    ])
+  })
   it('is absent, with no line, until Files answers', async () => {
     const rig = makeRig()
     const answer = await runSearch(rig.ctx, { modules: [], own: fileSources([standIn('files', {})]), reach: everywhere, text: 'budget', by: window })

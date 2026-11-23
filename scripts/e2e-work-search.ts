@@ -97,8 +97,8 @@ try {
   // Two made-up files in the job's own folder, listed once: Files answers names from what it has listed, never a walk.
   writeFileSync(join(cosmicAt.path, 'Budget lines.csv'), 'item,cost\nBooth,400\nShirts,250\n')
   writeFileSync(join(cosmicAt.path, 'Budget notes.md'), '# Budget notes\n\nMade up for the proof.\n')
-  const listed = await run.call<{ entries: { name: string }[] }>('work.files.list', { workspaceId: cosmic, at: { at: 'place', id: 'folder' } })
-  run.check('Files lists the two made-up files of the job', ['Budget lines.csv', 'Budget notes.md'].every((name) => listed.entries.some((e) => e.name === name)), listed.entries.map((e) => e.name).join(','))
+  const inFolder = await run.call<{ entries: { name: string }[] }>('work.files.list', { workspaceId: cosmic, at: { at: 'place', id: 'folder' } })
+  run.check('Files lists the two made-up files of the job', ['Budget lines.csv', 'Budget notes.md'].every((name) => inFolder.entries.some((e) => e.name === name)), inFolder.entries.map((e) => e.name).join(','))
   await sleep(500)
   const unify = (await run.call<{ id: string }>('workspace.create', { kind: 'work', sector: 'unify', name: 'Unify' })).id
   run.later('delete the Unify workspace', () => run.call('workspace.delete', { workspaceId: unify }))
@@ -173,6 +173,10 @@ try {
   await sleep(600)
   const rest = await run.page<{ n: number; top: number; now: number }>(`({ ...window.__ws, now: document.querySelector('[data-work-search-list]').scrollTop })`)
   run.check('scrolled by the arrows, the list rests where it stands', rest.top > 0 && rest.n === 0 && rest.now === rest.top, JSON.stringify(rest))
+  // A file in the job's own folder says its job once: the folder is named for the job, and the row's end already says it.
+  const fileRows = await run.page<string[]>(`[...document.querySelectorAll('[data-work-search-list] [data-kind="file"]')].map((el) => el.textContent)`)
+  run.check('a file at the top of its job\'s folder names the job once', fileRows.filter((t) => t.includes('.')).every((t) => t.split('Cosmic').length === 2), fileRows.join(' | '))
+  await run.shot('04b-further-down')
   for (let i = 0; i < 12; i++) await key('ArrowUp')
   run.check('and the arrows bring the highlight back', (await selected()) === 'hit:lifeos:mailThreads:m2', String(await selected()))
 
