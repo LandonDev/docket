@@ -349,7 +349,7 @@ describe('what he sets', () => {
 describe('the wire', () => {
   const ctx = (): WorkCtx => {
     const c = { db: rig.db, host: 'env_box', enabled: () => rig.on.value, log: (l: string) => void rig.logs.push(l), push: (p: DigestPush) => void rig.pushes.push(p) } as unknown as WorkCtx
-    Object.assign(c, tellPart(c, { db: rig.db, environmentId: 'env_box' } as unknown as WorkPartDeps))
+    Object.assign(c, tellPart(c, { db: rig.db, environmentId: 'env_box', whileOn: () => {} } as unknown as WorkPartDeps))
     return c
   }
   const call = async <T>(c: WorkCtx, method: string, params: unknown): Promise<T> => {
@@ -398,12 +398,46 @@ describe('the wire', () => {
   })
 })
 
+describe('the gate and the notifier', () => {
+  it('the notifier is handed the gate at the first look that finds it, and loses it when Work goes off', () => {
+    const gates: unknown[] = []
+    const notifier = { setGate: (g: unknown) => void gates.push(g), work: () => {}, held: () => {} }
+    let built: typeof notifier | null = null
+    const offs: (() => void)[] = []
+    const c = { db: rig.db, host: 'env_box', enabled: () => true, log: () => {}, push: () => {}, scopeOf: () => null } as unknown as WorkCtx
+    tellPart(c, {
+      db: rig.db,
+      environmentId: 'env_box',
+      notifier: () => built,
+      whileOn: (run: () => (() => void) | void) => {
+        const off = run()
+        if (off) offs.push(off)
+      }
+    } as unknown as WorkPartDeps)
+    const digest = digestOf(c)!
+    // late in boot: no notifier yet
+    digest.tick()
+    expect(gates).toEqual([])
+    built = notifier
+    digest.tick()
+    digest.tick()
+    expect(gates).toHaveLength(1)
+    expect(typeof gates[0]).toBe('function')
+    // Work off: the notifier is today's again
+    for (const off of offs) off()
+    expect(gates).toEqual([gates[0], null])
+    // and on again: handed over once more
+    digest.tick()
+    expect(gates).toHaveLength(3)
+  })
+})
+
 describe('ctx.tell is total', () => {
   it('never throws, whatever the store does, and says the fault once', () => {
     const logs: string[] = []
     const broken = { prepare: () => { throw new Error('the table is gone') }, exec: () => { throw new Error('the table is gone') } }
     const c = { db: broken, host: 'env_box', enabled: () => true, log: (l: string) => void logs.push(l), push: () => {} } as unknown as WorkCtx
-    const { tell } = tellPart(c, { db: broken, environmentId: 'env_box' } as unknown as WorkPartDeps)
+    const { tell } = tellPart(c, { db: broken, environmentId: 'env_box', whileOn: () => {} } as unknown as WorkPartDeps)
     expect(() => tell({ kind: 'outbox.held', workspaceId: 'w', title: 'Held', key: 'k' })).not.toThrow()
     expect(() => tell.done('k')).not.toThrow()
     expect(() => tell.only('held:', ['k'])).not.toThrow()

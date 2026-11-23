@@ -549,6 +549,34 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   again), Decided without you (each thread and its count, Open), Written
   on your files (Undo). With Work off the return is what it was.
 
+### How he is told (the digest)
+
+The Outbox raises no notice of its own. What it has to say goes through
+`ctx.tell` (work/outbox/tells.ts; docs/agents/work-digest.md), and the
+digest's rule decides whether it interrupts:
+
+- **A held item** is `outbox.held` (group `held`), "Held: Send to Dana Lee:
+  Re: budget", key `held:<ref>`, opening the item. It waits for the day's
+  digest unless its kind has a clock: `ActKindDef.by(payload)` answers the
+  moment after which a press is too late, and only `calendar.op` and
+  `office.calendar.op` answer (their event's start). An invite for an event
+  that starts before the next digest interrupts; when a thread made the
+  item, that notice goes out on the thread through `Notifier.held`, so the
+  phone opens the Outbox item as it always did.
+- **A send that failed** is `outbox.failed`, "Not sent: …" with the error
+  as its second line, key `unsent:<ref>`. Its clock is the moment it
+  failed, so it interrupts: he believes it went. One found a day old (a
+  host that just came up) waits for the digest instead.
+- **A grant he has earned** is `outbox.offer` (group `system`), "You could
+  stop holding …", opening the sent item it sits beside. It waits.
+- The ledger is kept in step 250 ms after any Outbox change (`syncTells`):
+  an item sent, discarded, stale or decided on another device is done
+  (`ctx.tell.only`), so its row and its toast go. What LifeOS holds is
+  pruned only once its watch has answered (`loadedTables`).
+
+He can set held items louder or quieter in Settings → Work → Digest. The
+Outbox count in the rail and the thread's own row say what they always did.
+
 ### On the phone (milestone 46)
 
 The phone lists, opens, edits, sends and discards held items and reviews

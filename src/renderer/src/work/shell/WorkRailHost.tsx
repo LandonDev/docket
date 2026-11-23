@@ -15,7 +15,6 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { useWorkspaces, workspaceByPath } from "../../lib/tcserver/workspaces";
 import { workRailPort, useWorkHosts } from "../../lib/workSwitch";
 import { FileDrops } from "../canvas/fileDrop";
-import { LapseNotices } from "../connections/lapseNotice";
 import { workDigestChunk } from "../../surfaces/chunks";
 import { openConnections, openWorkSettings } from "./open";
 import { PlaysHost } from "../routines/plays/PlaysHost";
@@ -164,7 +163,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       {/* The Clash dialog, from an Agenda row or a Today row (work/clashes/ClashHost.tsx). */}
       <ClashHost />
       {/* What Work leans on that ends soon, said once (work/connections/lapseNotice.tsx). */}
-      <LapseNotices />
+      <LapseNotices />,
       {/* The day's digest and what cannot wait, told once across hosts (work/digest). */}
       <DigestHost onOpenWorkspace={onOpenWorkspace} />
       {naming && home ? (

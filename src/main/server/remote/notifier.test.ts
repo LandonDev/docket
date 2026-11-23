@@ -811,6 +811,48 @@ describe('the gate', () => {
     const cleared = run('none')
     expect(JSON.stringify(cleared.notices)).toBe(JSON.stringify(plain.notices))
   })
+  it('a gate may answer later: the notice goes, or is kept, once it has, and one that rejects lets it through', async () => {
+    vi.useRealTimers()
+    const r = new FakeRegistry()
+    const out: Notice[] = []
+    const log: string[] = []
+    const n = new Notifier({ registry: r, stuckMinutes: () => 10, now: () => Date.now(), debounceMs: 1, log: (l) => log.push(l) })
+    n.onNotice((x) => void out.push(x))
+    let answer: (kept: boolean) => void = () => {}
+    let fail: (err: Error) => void = () => {}
+    n.setGate(
+      () =>
+        new Promise<boolean>((resolve, reject) => {
+          answer = resolve
+          fail = reject
+        })
+    )
+    r.add('a', { status: 'running', title: 'Morning summary' })
+    n.start()
+    const finish = async (): Promise<void> => {
+      r.status('a', 'running')
+      r.row('a', { type: 'assistant-text', id: 'm', text: 'x' } as never)
+      r.status('a', 'idle')
+      await new Promise((done) => setTimeout(done, 20))
+    }
+    await finish()
+    // asked, not yet answered: nothing has gone
+    expect(out).toEqual([])
+    answer(true)
+    await new Promise((done) => setTimeout(done, 5))
+    expect(out).toEqual([])
+    await finish()
+    answer(false)
+    await new Promise((done) => setTimeout(done, 5))
+    expect(out.map((x) => x.event)).toEqual(['finished'])
+    await finish()
+    fail(new Error('routines did not answer'))
+    await new Promise((done) => setTimeout(done, 5))
+    expect(out.map((x) => x.event)).toEqual(['finished', 'finished'])
+    expect(log.some((l) => l.includes('gate failed: routines did not answer'))).toBe(true)
+    n.stop()
+    vi.useFakeTimers()
+  })
   it('keeps back what the gate takes, hands it the notice and the thread, and sends the rest', () => {
     const asked: string[] = []
     const kept = run((notice, session) => {

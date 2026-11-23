@@ -95,14 +95,17 @@ One optional field on the module, two core reads and one frame tool
 
 ## Things that lapse
 
-A row with a known end shows the date. The window asks each linked Work
-host `work.lapses` once its link opens and every six hours while Work is on
-(`LapseNotices`, mounted by WorkRailHost; a local read, it costs nothing),
-and raises a toast 14 days before an end and again the last day
-(`LAPSE_NOTICE_DAYS`, `lapseStage`): "Windows evaluation: Ends Feb 17, 2027, 1:22 AM",
-with Connections as its action. Each stage is said once per window
-(localStorage `work.lapsesNoticed`, keyed by host, id, end and stage); a new
-end date is a new lapse.
+A row with a known end shows the date. The host tells him before it ends,
+through the digest (docs/agents/work-digest.md, the `lapses` source in
+work/digest/sources/lapses.ts): each six hours and at start it reads
+`lapsesOf(ctx, WORK_MODULES)`, and by the stages in `LAPSE_NOTICE_DAYS`
+(`lapseStage`) tells "Windows evaluation ends Feb 17" fourteen days before,
+which waits for the day's digest, and "Windows evaluation ends Feb 17 at
+1:22 AM" on the last day, which carries its end as its clock and so
+interrupts, on the desktop and on the phone. A press opens Connections. A
+new end date is a new lapse; one renewed or gone takes its rows with it.
+The window's own toast (`LapseNotices`) is gone: `work.lapses` is still
+answered for a client that wants the list.
 
 Known ends today: the Windows evaluation (2027-02-17, from the browser
 pillar) and a Frame.io sign-in with no refresh token. LifeOS device

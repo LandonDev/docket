@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { HealthRow, Lapse } from "@shared/work/health";
-import { dueNotices } from "./lapseNotice";
+import type { HealthRow } from "@shared/work/health";
 import { fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView } from "./model";
 
 const row = (over: Partial<HealthRow>): HealthRow => ({ id: "x", pillar: "office", group: "Office", title: "Excel", state: "working", ...over });
@@ -67,26 +66,5 @@ describe("the rest of the page's words", () => {
     expect(usableFix({ kind: "open", label: "Grant…", url: "javascript:alert(1)" })).toBeNull();
     expect(usableFix({ kind: "open", label: "Grant…", url: "https://accounts.google.com/" })).not.toBeNull();
     expect(usableFix(undefined)).toBeNull();
-  });
-});
-
-describe("dueNotices", () => {
-  const DAY = 86_400_000;
-  const now = Date.UTC(2027, 1, 5, 12);
-  const vm: Lapse = { id: "browser.vm", pillar: "browser", title: "Windows evaluation", until: Date.UTC(2027, 1, 18, 4, 59) };
-
-  it("is due once at 14 days, again at the last day, and never twice for one stage", () => {
-    expect(dueNotices("box", [vm], new Set(), now - 10 * DAY)).toEqual([]);
-    const first = dueNotices("box", [vm], new Set(), now);
-    expect(first).toEqual([{ key: expect.stringContaining("browser.vm"), text: expect.stringMatching(/^Windows evaluation: Ends Feb 1[78], /) }]);
-    expect(dueNotices("box", [vm], new Set([first[0]!.key]), now + 3 * DAY)).toEqual([]);
-    const last = dueNotices("box", [vm], new Set([first[0]!.key]), vm.until - DAY / 2);
-    expect(last).toHaveLength(1);
-    expect(last[0]!.key).not.toBe(first[0]!.key);
-  });
-
-  it("says a new end date again, as a new lapse", () => {
-    const first = dueNotices("box", [vm], new Set(), now);
-    expect(dueNotices("box", [{ ...vm, until: vm.until + DAY }], new Set([first[0]!.key]), now)).toHaveLength(1);
   });
 });
