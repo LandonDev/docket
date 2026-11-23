@@ -22,6 +22,11 @@
  *      ⌃H, ⌃⌥H); lib/editorKeys.ts stops ⌘P before we see it.
  *   4. A focused terminal keeps every ctrl-only chord for the shell.
  *   5. Double Shift is dropped in the terminal and inside CodeMirror.
+ *   6. A Work editor holding the caret (a kind's Body marked
+ *      `data-editor-keys`, docs/agents/work-editors.md "Who hears a key")
+ *      owns ⌘B and ⌘K, and ⌘P (Print) and ⌘F (its find) once it answers
+ *      them; a read-only one (`data-editor-keys="read"`) owns only the
+ *      last two, and a document (`="document"`) also ⌥⌘0 to ⌥⌘3.
  *
  * Keys:
  *   Shift Shift (400 ms)  go_to_file        ⌘P        go_to_file
@@ -90,6 +95,8 @@ export const APP_COMMANDS = [
   "stop_all_threads",
   "archive_done_threads",
   "toggle_away",
+  "print",
+  "export",
 ] as const;
 
 export type AppCommandId = (typeof APP_COMMANDS)[number];
@@ -123,6 +130,55 @@ export type KeyContext = {
   /** Toggle Terminal only exists in the deck layout. */
   terminalToggle?: boolean;
 };
+
+/**
+ * What the Work editors on screen answer: `print`, `export`, `find`. A
+ * kind's Body offers each while it is mounted (work/formats/command.ts), so
+ * first paint holds only the count; the menu greys a row nobody answers, and
+ * a key nobody answers stays the app's.
+ */
+export type WorkCommandId = "print" | "export" | "find";
+const offered = new Map<WorkCommandId, number>();
+const offerListeners = new Set<() => void>();
+export const workCommands = {
+  offer(id: WorkCommandId): () => void {
+    offered.set(id, (offered.get(id) ?? 0) + 1);
+    for (const l of offerListeners) l();
+    return () => {
+      offered.set(id, (offered.get(id) ?? 1) - 1);
+      for (const l of offerListeners) l();
+    };
+  },
+  has: (id: WorkCommandId): boolean => (offered.get(id) ?? 0) > 0,
+  subscribe(listener: () => void): () => void {
+    offerListeners.add(listener);
+    return () => void offerListeners.delete(listener);
+  },
+  /** Hands the command to the editor on screen (a `work:command` window event); false when none answers it. */
+  run(id: WorkCommandId): boolean {
+    if (!workCommands.has(id)) return false;
+    window.dispatchEvent(new CustomEvent("work:command", { detail: { id } }));
+    return true;
+  },
+};
+
+/** The Work editor a key or the caret is in: `""` one he can edit, `"document"` a document, `"read"` one he can only read; null outside any. */
+export function editorKeys(target: unknown): string | null {
+  const el = target as { closest?: (selector: string) => { getAttribute(name: string): string | null } | null } | null;
+  const root = typeof el?.closest === "function" ? el.closest("[data-editor-keys]") : null;
+  return root ? (root.getAttribute("data-editor-keys") ?? "") : null;
+}
+
+/** The menu rows whose keys the editor holding `target` owns now (`MenuState.editing`). */
+export function editorHeld(target: unknown): string[] {
+  const editor = editorKeys(target);
+  if (editor === null) return [];
+  return [
+    ...(editor === "read" ? [] : ["toggle_sidebar", "open_search"]),
+    ...(workCommands.has("print") ? ["go_to_file"] : []),
+    ...(workCommands.has("find") ? ["find"] : []),
+  ];
+}
 
 type Closest = { closest?: (selector: string) => unknown };
 const within = (target: EventTarget | null, selector: string): boolean => {
@@ -244,6 +300,19 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
 
     if (insideMonaco(target) && monacoOwns(e)) return null;
 
+    // A Work editor holding the caret: its own keys never reach the app's map.
+    const editor = editorKeys(target);
+    if (editor !== null && modOrCtrl(e) && !e.shiftKey) {
+      const k = e.key.toLowerCase();
+      if (e.altKey) {
+        if (editor === "document" && /^Digit[0-3]$/.test(e.code)) return null;
+      } else {
+        if (editor !== "read" && (k === "b" || k === "k")) return null;
+        if (k === "p" && workCommands.has("print")) return { id: "print" };
+        if (k === "f" && workCommands.has("find")) return { id: "find" };
+      }
+    }
+
     const inTerminal = within(target, TERMINAL);
     if (inTerminal && ctrlOnly(e) && isMac()) return null;
 
@@ -277,6 +346,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
       if (key === "r") return { id: "toggle_panel" };
       if (key === "o") return { id: "go_to_symbol" };
       if (key === "m") return { id: "toggle_message_list" };
+      if (key === "e" && workCommands.has("export")) return { id: "export" };
       return null;
     }
 

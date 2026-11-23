@@ -55,6 +55,25 @@ describe("MenuBar", () => {
     expect(screen.queryByRole("menubar")).toBeNull();
   });
 
+  it("greys Print… and Export… until a Work editor on screen answers them", async () => {
+    const { workCommands } = await import("../lib/appCommands");
+    render(<MenuBar onCommand={() => {}} />);
+    tapAlt();
+    fireEvent.click(menuButton("File"));
+    const row = async (name: RegExp) => within(await screen.findByRole("menu")).getByRole("menuitem", { name }) as HTMLButtonElement;
+    const greyed = (el: HTMLButtonElement) => el.disabled || el.getAttribute("aria-disabled") === "true";
+    expect(greyed(await row(/Print…/))).toBe(true);
+    expect(greyed(await row(/Export…/))).toBe(true);
+    // Print… shows no key here: ⌘P is Go to File's until the caret is in an editor.
+    expect((await row(/Print…/)).textContent).toBe("Print…");
+    let off = (): void => {};
+    act(() => void (off = workCommands.offer("export")));
+    expect(greyed(await row(/Export…/))).toBe(false);
+    expect(greyed(await row(/Print…/))).toBe(true);
+    act(() => off());
+    expect(greyed(await row(/Export…/))).toBe(true);
+  });
+
   it("greys a disabled row", async () => {
     render(<MenuBar onCommand={() => {}} disabled={["open_notes"]} />);
     tapAlt();

@@ -444,7 +444,7 @@ function listenMenu(
 
 /** What the window's menu bar shows (`menu:state`), sent to main; undefined
  *  at /ui, where there is no native menu bar. */
-export function menuStateSender(): ((state: { open: string[]; disabled: string[] }) => void) | undefined {
+export function menuStateSender(): ((state: { open: string[]; disabled: string[]; editing?: string[] }) => void) | undefined {
   return isWebMode() ? undefined : window.api?.menu?.setState;
 }
 

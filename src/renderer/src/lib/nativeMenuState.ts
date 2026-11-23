@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { EMPTY_MENU_STATE, sameMenuState, type MenuState } from "@shared/menuTree";
 import { shellStore } from "../stores/shell";
+import { editorHeld, workCommands } from "./appCommands";
 import { awayEnabled, awayStore } from "./away";
 import { workspaceTabsStore } from "../stores/workspace";
 import { leafIds } from "./layout";
@@ -39,6 +40,11 @@ export type MenuFacts = {
   /** This machine's Away is on (lib/away.ts). */
   away: boolean;
   workFile: boolean;
+  /** A Work editor on screen answers Print… and Export… (lib/appCommands.ts `workCommands`). */
+  print?: boolean;
+  export?: boolean;
+  /** The rows whose keys the editor holding the caret owns (`editorHeld`). */
+  editing?: string[];
 };
 
 const FLEET_IDS: Record<BatchAction, string> = {
@@ -60,10 +66,12 @@ export function menuStateOf(f: MenuFacts): MenuState {
   if (!f.dockUsable) disabled.push("toggle_terminal");
   if (f.unread === 0) disabled.push("mark_all_read");
   if (!f.workFile) disabled.push("open_file");
+  if (!f.print) disabled.push("print");
+  if (!f.export) disabled.push("export");
   for (const action of Object.keys(FLEET_IDS) as BatchAction[]) {
     if (f.counts[action] === 0) disabled.push(FLEET_IDS[action]);
   }
-  return { open, disabled, checked: { toggle_away: f.away } };
+  return { open, disabled, checked: { toggle_away: f.away }, ...(f.editing?.length ? { editing: f.editing } : {}) };
 }
 
 const EVERYWHERE = { kind: "all" } as const;
@@ -91,6 +99,9 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
     counts: batchCounts(metas, { catalog, lastSeen, floor, scope: EVERYWHERE, now: Date.now() }),
     away: awayEnabled(),
     workFile: workFilePort.get()?.can() ?? false,
+    print: workCommands.has("print"),
+    export: workCommands.has("export"),
+    editing: typeof document === "undefined" ? [] : editorHeld(document.activeElement),
   };
 }
 
@@ -131,7 +142,19 @@ export function publishMenuState(
     messageListFold.subscribe(schedule),
     awayStore.subscribe(schedule),
     workSwitch.subscribe(schedule),
+    workCommands.subscribe(schedule),
   ];
+  // The caret entering or leaving a Work editor moves four keys between the menu and the page: said at once, not after the throttle.
+  let held = "";
+  const onFocus = (): void => {
+    const next = editorHeld(document.activeElement).join();
+    if (next === held) return;
+    held = next;
+    if (timer !== null) clearTimeout(timer);
+    flush();
+  };
+  document.addEventListener("focusin", onFocus);
+  document.addEventListener("focusout", onFocus);
   const clock = setInterval(schedule, MENU_STATE_CLOCK_MS);
   flush();
   return {
@@ -140,6 +163,8 @@ export function publishMenuState(
       clearInterval(clock);
       if (timer !== null) clearTimeout(timer);
       for (const off of offs) off();
+      document.removeEventListener("focusin", onFocus);
+      document.removeEventListener("focusout", onFocus);
     },
   };
 }

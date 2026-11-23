@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, globalShortcut, ipcMain, Menu, shell, type MenuItemConstructorOptions, type WebContents } from 'electron'
-import { EMPTY_MENU_STATE, MENU_TREE, resolveMenu, sameMenuState, type MenuNode, type MenuState } from '../shared/menuTree'
+import { EDITOR_KEY_IDS, EMPTY_MENU_STATE, MENU_TREE, resolveMenu, sameMenuState, type MenuNode, type MenuState } from '../shared/menuTree'
 import { createWindow } from './windows'
 import { hostProfileRunning, profileHost } from './server/doctorProfile'
 
@@ -60,14 +60,14 @@ function toItem(node: MenuNode): MenuItemConstructorOptions {
     id: node.id,
     label: node.label,
     ...(node.accelerator ? { accelerator: node.accelerator } : {}),
-    // The page owns the key (a focused terminal keeps ⌃` for the shell); the item only shows it.
-    // registerAccelerator is Windows and Linux only, so on macOS the key's own click is dropped
-    // (its Ctrl; Return on the item from menu navigation is also "by accelerator" and still runs).
+    // The page owns the key (a focused terminal keeps ⌃` for the shell, a Work editor ⌘P for Print); the
+    // item only shows it. registerAccelerator is Windows and Linux only, so on macOS the key's own click is
+    // dropped (its Ctrl or ⌘; Return on the item from menu navigation is also "by accelerator" and still runs).
     ...(node.pageKey ? { registerAccelerator: false } : {}),
     ...(node.enabled === false ? { enabled: false } : {}),
     ...(node.checkbox ? { type: 'checkbox' as const, checked: node.checked === true } : {}),
     click: (_item, _window, event) => {
-      if (node.pageKey && event?.triggeredByAccelerator && event.ctrlKey) return
+      if (node.pageKey && event?.triggeredByAccelerator && (event.ctrlKey || event.metaKey)) return
       dispatch(node.id)
     }
   }
@@ -121,7 +121,8 @@ export function receiveMenuState(contents: WebContents, raw: unknown): void {
       applyFocusedMenu()
     })
   }
-  states.set(contents.id, { open: strings(value.open), disabled: strings(value.disabled), checked: ticks(value.checked) })
+  const editing = strings(value.editing).filter((id) => (EDITOR_KEY_IDS as readonly string[]).includes(id))
+  states.set(contents.id, { open: strings(value.open), disabled: strings(value.disabled), checked: ticks(value.checked), ...(editing.length ? { editing } : {}) })
   if (BrowserWindow.getFocusedWindow()?.webContents === contents) applyFocusedMenu()
 }
 

@@ -8,6 +8,16 @@ import { request, type CapsOf, type RelayOf } from './work/wire'
  * the helpers and the rules. Milestone 15 wrote the toolchain's two methods;
  * milestone 21 added import, export and print after them.
  */
+/**
+ * A format's name on the wire: its extension, or its extension and who
+ * draws it after a plus (`pdf+word` is a PDF as Word itself draws it,
+ * `xlsx+ops` a workbook with structural edits applied).
+ */
+export const FORMAT_NAME = /^[a-z0-9]{1,10}(\+[a-z0-9]{1,12})?$/
+
+/** Whether a converter can run now: `asleep` runs only for his own press on that host, `not open` is an app he has shut, `none` is not there. */
+export type Readiness = 'ready' | 'asleep' | 'not open' | 'none'
+
 export const FormatsRequestSchemas = [
   /** → ToolsReport */
   request('work.formats.tools', z.object({}).optional()),
@@ -19,8 +29,8 @@ export const FormatsRequestSchemas = [
   request(
     'work.formats.convert',
     z.object({
-      from: z.string().regex(/^[a-z0-9]{1,10}$/),
-      to: z.string().regex(/^[a-z0-9]{1,10}$/),
+      from: z.string().regex(FORMAT_NAME),
+      to: z.string().regex(FORMAT_NAME),
       /** the input's file name, for its extension and the output's name */
       name: z.string().min(1).max(255),
       data: z.string().max(90 * 1024 * 1024),
@@ -84,7 +94,8 @@ export interface ToolsReport {
   host: string
   platform: string
   tools: { name: string; pillar: string; version: string; licence: string; ok: boolean; bytes?: number; error?: string }[]
-  converts: { from: string; to: string }[]
+  /** `state` is absent for a pair that is simply ready; a pair that is not on the host at all is not listed */
+  converts: { from: string; to: string; state?: Exclude<Readiness, 'ready' | 'none'> }[]
   queue: { cap: { jobs: number; threads: number }; running: number; queued: number }
 }
 

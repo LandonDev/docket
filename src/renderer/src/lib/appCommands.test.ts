@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 // These keys are a Mac's (⌘): the suite runs on any machine, so it says which platform it means (lib/keys.ts).
 vi.mock("./platform", () => ({ IS_MAC: true }));
 import { RENDERER_MENU_IDS } from "@shared/menuTree";
-import { createKeyResolver, isAppCommandId, menuCommandAllowed, pageOwnsKey, DOUBLE_SHIFT_MS } from "./appCommands";
+import { createKeyResolver, editorHeld, editorKeys, isAppCommandId, menuCommandAllowed, pageOwnsKey, workCommands, DOUBLE_SHIFT_MS } from "./appCommands";
 
 type Surface = "dialog" | "monaco" | "terminal" | "codemirror" | "composer" | "driving" | null;
 
@@ -196,5 +196,111 @@ describe("a live picture he drives holds the keyboard", () => {
     expect(pageOwnsKey(key("Escape", {}, "driving"))).toBe(true);
     expect(pageOwnsKey(key("Escape", {}, "dialog"))).toBe(false);
     expect(pageOwnsKey(key("Escape"))).toBe(false);
+  });
+});
+
+describe("a Work editor holding the caret owns its keys", () => {
+  /** A key whose target sits in an editor root marked `mark` (null: outside any). */
+  function inEditor(k: string, mark: string | null, mods: Partial<Record<"meta" | "ctrl" | "alt" | "shift", boolean>> = { meta: true }, code?: string): KeyboardEvent {
+    const root = { getAttribute: (name: string) => (name === "data-editor-keys" ? mark : null) };
+    return {
+      ...key(k, mods),
+      ...(code ? { code } : {}),
+      target: { closest: (selector: string) => (mark !== null && selector === "[data-editor-keys]" ? root : null) },
+    } as unknown as KeyboardEvent;
+  }
+  const resolve = createKeyResolver();
+
+  it("reads the root's mark: one he can edit, a document, a read-only one, or none", () => {
+    expect(editorKeys(inEditor("b", "").target)).toBe("");
+    expect(editorKeys(inEditor("b", "document").target)).toBe("document");
+    expect(editorKeys(inEditor("b", "read").target)).toBe("read");
+    expect(editorKeys(inEditor("b", null).target)).toBeNull();
+    expect(editorKeys(null)).toBeNull();
+  });
+
+  it("⌘B and ⌘K are the editor's in a root he can edit, the app's outside it and in a read-only one", () => {
+    for (const mark of ["", "document"]) {
+      expect(resolve(inEditor("b", mark), ctx)).toBeNull();
+      expect(resolve(inEditor("k", mark), ctx)).toBeNull();
+      // Ctrl is the same key off macOS
+      expect(resolve(inEditor("b", mark, { ctrl: true }), ctx)).toBeNull();
+    }
+    expect(resolve(inEditor("b", null), ctx)).toEqual({ id: "toggle_sidebar" });
+    expect(resolve(inEditor("k", null), ctx)).toEqual({ id: "open_search" });
+    expect(resolve(inEditor("b", "read"), ctx)).toEqual({ id: "toggle_sidebar" });
+    expect(resolve(inEditor("k", "read"), ctx)).toEqual({ id: "open_search" });
+  });
+
+  it("⌘P is Go to File and ⌘F the app's until an editor on screen answers them; then they are Print and the editor's find, in a read-only root too", () => {
+    expect(resolve(inEditor("p", "document"), ctx)).toEqual({ id: "go_to_file" });
+    expect(resolve(inEditor("f", "document"), ctx)).toBeNull();
+    const offs = [workCommands.offer("print"), workCommands.offer("find")];
+    for (const mark of ["", "document", "read"]) {
+      expect(resolve(inEditor("p", mark), ctx)).toEqual({ id: "print" });
+      expect(resolve(inEditor("f", mark), ctx)).toEqual({ id: "find" });
+    }
+    // outside the editor's root the keys are the app's, whatever is on screen
+    expect(resolve(inEditor("p", null), ctx)).toEqual({ id: "go_to_file" });
+    expect(resolve(inEditor("f", null), ctx)).toBeNull();
+    for (const off of offs) off();
+    expect(resolve(inEditor("p", "document"), ctx)).toEqual({ id: "go_to_file" });
+  });
+
+  it("⇧⌘E is Export… while an editor answers it, wherever the caret is, and nothing before", () => {
+    expect(resolve(inEditor("e", null, { meta: true, shift: true }), ctx)).toBeNull();
+    const off = workCommands.offer("export");
+    expect(resolve(inEditor("e", null, { meta: true, shift: true }), ctx)).toEqual({ id: "export" });
+    expect(resolve(inEditor("e", "document", { meta: true, shift: true }), ctx)).toEqual({ id: "export" });
+    off();
+    expect(resolve(inEditor("e", "document", { meta: true, shift: true }), ctx)).toBeNull();
+  });
+
+  it("a document keeps ⌥⌘0 to ⌥⌘3 for its styles; elsewhere ⌥⌘1 is the first host", () => {
+    for (const n of [0, 1, 2, 3]) expect(resolve(inEditor(String(n), "document", { meta: true, alt: true }, `Digit${n}`), ctx)).toBeNull();
+    expect(resolve(inEditor("4", "document", { meta: true, alt: true }, "Digit4"), ctx)).toEqual({ id: "activate_environment", index: 3 });
+    expect(resolve(inEditor("1", "", { meta: true, alt: true }, "Digit1"), ctx)).toEqual({ id: "activate_environment", index: 0 });
+    expect(resolve(inEditor("1", null, { meta: true, alt: true }, "Digit1"), ctx)).toEqual({ id: "activate_environment", index: 0 });
+  });
+
+  it("every other chord is the app's inside an editor as outside it", () => {
+    for (const [k, id] of [["o", "open_project"], ["s", "save_all"], ["n", "new_tab"], ["w", "close_tab"], [",", "open_settings"], ["=", "zoom_in"]] as const) {
+      expect(resolve(inEditor(k, "document"), ctx)).toEqual({ id });
+    }
+    expect(resolve(inEditor("f", "document", { meta: true, shift: true }), ctx)).toEqual({ id: "find_in_project" });
+    // a dialog over the editor still wins
+    const dialog = { ...inEditor("b", "document"), target: { closest: (selector: string) => (selector.includes('role="dialog"') ? {} : null) } } as unknown as KeyboardEvent;
+    expect(resolve(dialog, ctx)).toBeNull();
+  });
+
+  it("names the menu rows the editor holds: the menu drops those keys while the caret is there", () => {
+    const target = (mark: string | null) => inEditor("b", mark).target;
+    expect(editorHeld(target(null))).toEqual([]);
+    expect(editorHeld(target("document"))).toEqual(["toggle_sidebar", "open_search"]);
+    expect(editorHeld(target("read"))).toEqual([]);
+    const offs = [workCommands.offer("print"), workCommands.offer("find")];
+    expect(editorHeld(target("document"))).toEqual(["toggle_sidebar", "open_search", "go_to_file", "find"]);
+    expect(editorHeld(target("read"))).toEqual(["go_to_file", "find"]);
+    expect(editorHeld(target(null))).toEqual([]);
+    for (const off of offs) off();
+  });
+
+  it("runs a command only when an editor answers it, as one window event", () => {
+    const heard: unknown[] = [];
+    const window = { dispatchEvent: (event: { type: string; detail: unknown }) => (heard.push([event.type, event.detail]), true) };
+    vi.stubGlobal("window", window);
+    vi.stubGlobal("CustomEvent", class { constructor(readonly type: string, readonly init: { detail: unknown }) {} get detail() { return this.init.detail; } });
+    expect(workCommands.run("print")).toBe(false);
+    const changes: number[] = [];
+    const unsubscribe = workCommands.subscribe(() => changes.push(1));
+    const off = workCommands.offer("print");
+    expect(workCommands.run("print")).toBe(true);
+    expect(workCommands.run("export")).toBe(false);
+    off();
+    expect(workCommands.run("print")).toBe(false);
+    expect(heard).toEqual([["work:command", { id: "print" }]]);
+    expect(changes).toHaveLength(2);
+    unsubscribe();
+    vi.unstubAllGlobals();
   });
 });

@@ -7,6 +7,11 @@
  * (src/renderer/src/lib/appCommands.ts); `MAIN_MENU_IDS` act in main.
  * A window keeps the labels and greyed rows in step with what it shows
  * by sending its `MenuState` over `menu:state`; `resolveMenu` applies it.
+ *
+ * While the caret is in a Work editor (a document, a sheet, a deck) the
+ * editor owns ⌘B, ⌘K, ⌘P and ⌘F (docs/agents/work-editors.md "Who hears
+ * a key"): the window names those rows in `MenuState.editing`, the rows
+ * lose their keys, and Print… takes ⌘P from Go to File… .
  */
 
 export const APP_NAME = 'TempCode'
@@ -26,6 +31,8 @@ export interface MenuCommand {
   toggle?: { show: string; hide: string }
   /** A checkbox row, ticked while the window names the id true in `MenuState.checked`. */
   checkbox?: true
+  /** The key this row shows while the window is editing and has taken it from the row `from` (`MenuState.editing`); the page owns it. */
+  whileEditing?: { accelerator: string; from: string }
   /** Set by `resolveMenu` only. */
   enabled?: boolean
   /** Set by `resolveMenu` only, on a checkbox row. */
@@ -101,6 +108,9 @@ export const MENU_TREE: MenuSection[] = [
       cmd('open_file', 'Open File…', undefined, { desktopOnly: true }),
       sep,
       cmd('save_all', 'Save All', 'CmdOrCtrl+S'),
+      sep,
+      cmd('export', 'Export…', 'CmdOrCtrl+Shift+E'),
+      { ...cmd('print', 'Print…'), whileEditing: { accelerator: 'CmdOrCtrl+P', from: 'go_to_file' } },
       sep,
       { ...cmd('close_tab', 'Close Tab', 'CmdOrCtrl+W'), toggle: { show: 'Close Tab', hide: 'Close Pane' } },
       role('close', 'Close Window', 'CmdOrCtrl+Shift+W')
@@ -223,7 +233,12 @@ export interface MenuState {
   open: string[]
   disabled: string[]
   checked: Record<string, boolean>
+  /** The rows whose keys a Work editor holding the caret owns now (`EDITOR_KEY_IDS`): each loses its key. */
+  editing?: string[]
 }
+
+/** The rows a Work editor can take the key of: Sidebar's ⌘B (bold), Search's ⌘K (link), Go to File's ⌘P (Print) and Find's ⌘F (the editor's find). */
+export const EDITOR_KEY_IDS = ['toggle_sidebar', 'open_search', 'go_to_file', 'find'] as const
 
 export const EMPTY_MENU_STATE: MenuState = { open: [], disabled: [], checked: {} }
 
@@ -231,13 +246,22 @@ export function sameMenuState(a: MenuState, b: MenuState): boolean {
   const same = (x: string[], y: string[]): boolean =>
     x.length === y.length && [...x].sort().join('\n') === [...y].sort().join('\n')
   const ticked = (c: Record<string, boolean>): string[] => Object.keys(c).filter((id) => c[id])
-  return same(a.open, b.open) && same(a.disabled, b.disabled) && same(ticked(a.checked), ticked(b.checked))
+  return same(a.open, b.open) && same(a.disabled, b.disabled) && same(ticked(a.checked), ticked(b.checked)) && same(a.editing ?? [], b.editing ?? [])
 }
 
 function resolveNodes(items: MenuNode[], state: MenuState): MenuNode[] {
-  return items.map((item) => {
-    if (item.kind === 'submenu') return { ...item, items: resolveNodes(item.items, state) }
-    if (item.kind !== 'command') return item
+  const held = state.editing ?? []
+  return items.map((node) => {
+    if (node.kind === 'submenu') return { ...node, items: resolveNodes(node.items, state) }
+    if (node.kind !== 'command') return node
+    let item = node
+    if (held.includes(item.id)) {
+      // The editor owns the key: the row shows none, so no accelerator fires on any platform.
+      const { accelerator: _key, ...rest } = item
+      item = rest
+    } else if (item.whileEditing && held.includes(item.whileEditing.from)) {
+      item = { ...item, accelerator: item.whileEditing.accelerator, pageKey: true }
+    }
     const label = item.toggle && state.open.includes(item.id) ? item.toggle.hide : item.label
     return {
       ...item,

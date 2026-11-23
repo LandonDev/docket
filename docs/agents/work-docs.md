@@ -94,6 +94,15 @@ place for a LifeOS document). What it tells the pane:
   thread's composer as a chip.
 - **History** is the pane's (`history: true`). **Share** on the bar is the
   guests pillar's (`ShareButton`, [work-guests.md](work-guests.md)).
+- **Its keys** are its own while the caret is in it: the text column's
+  frame (`DocumentFrame`) is marked `data-editor-keys`, `document` when he
+  may edit and `read` when he may not, so ⌘B is bold and ⌘K a link there
+  and not Sidebar and Search ([work-editors.md](work-editors.md) "Who hears
+  a key"). The Docs view draws the same frame, so the rule holds there too.
+- **Export…** in the pane's More, File → Export… and ⇧⌘E open the Export
+  dialog: the body answers the `export` command (`useWorkCommands`). It
+  answers no `print` or `find` yet, so File → Print… is greyed and ⌘P and
+  ⌘F stay the app's.
 
 ## The Docs view
 

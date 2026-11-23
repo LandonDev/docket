@@ -135,6 +135,21 @@ describe('a job forwarded to a linked host', () => {
     reader.close()
   })
 
+  it("takes a format's +renderer suffix through request validation, and nothing looser", async () => {
+    const link = await linkWith(['read', 'operate'])
+    const data = Buffer.from('x').toString('base64')
+    // Past the schema and into the runner, which has no such pair here: the refusal is the runner's own.
+    await expect(link.request('work.formats.convert', { from: 'docx', to: 'pdf+word', name: 'a.docx', data })).rejects.toThrow('no converter from docx to pdf+word')
+    await expect(link.request('work.formats.convert', { from: 'xlsx', to: 'xlsx+ops', name: 'a.xlsx', data })).rejects.toThrow(/no converter from xlsx to xlsx\+ops|not installed|cannot convert/)
+    // The schema's own refusals never reach it.
+    for (const to of ['pdf+', '+word', 'pdf+word+excel', 'pdf+Word', 'pdf word', '../pdf', 'pdf+wordwordwordx']) {
+      await expect(link.request('work.formats.convert', { from: 'docx', to, name: 'a.docx', data }), to).rejects.not.toThrow(/no converter/)
+    }
+    // A press is not a field of the wire: a request that names one is refused, or runs without it.
+    await expect(link.request('work.formats.convert', { from: 'docx', to: 'pdf+word', name: 'a.docx', data, pressed: true })).rejects.toThrow()
+    link.close()
+  })
+
   it('runs on B for A, which has no LibreOffice, and the file comes back to A', async () => {
     const link = await linkWith(['read', 'operate'])
     const a = join(root, 'a')

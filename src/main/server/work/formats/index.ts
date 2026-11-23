@@ -95,7 +95,7 @@ export const formats: WorkModule = {
     if (req.method === 'work.formats.tools') {
       const runner = await runnerOf(ctx)
       if (!runner) throw new Error('the job runner is not up')
-      return handled(runner.report())
+      return handled(await runner.report())
     }
     if (req.method === 'work.formats.convert') {
       const runner = await runnerOf(ctx)

@@ -204,6 +204,37 @@ describe('menu state', () => {
     expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(2)
   })
 
+  it('while the window is editing, drops the keys the editor took, gives Print… ⌘P as the page\'s, and rebuilds when the caret leaves', () => {
+    const c = contents(1)
+    const send = vi.fn()
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue({ webContents: Object.assign(c, { send }), isDestroyed: () => false } as unknown as BrowserWindow)
+    expect(row('View', 'toggle_sidebar').accelerator).toBe('CmdOrCtrl+B')
+    expect(row('Go', 'go_to_file').accelerator).toBe('CmdOrCtrl+P')
+    expect(row('File', 'print').accelerator).toBeUndefined()
+    expect(row('File', 'export').accelerator).toBe('CmdOrCtrl+Shift+E')
+
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [], editing: ['toggle_sidebar', 'open_search', 'go_to_file', 'find', 'quit', 7] })
+    expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(2)
+    for (const [section, id] of [['View', 'toggle_sidebar'], ['Go', 'open_search'], ['Go', 'go_to_file'], ['Edit', 'find']] as const) expect(row(section, id).accelerator, id).toBeUndefined()
+    // an id that is no editor key is not taken at a window's word: Quit keeps ⌘Q
+    expect(row('TempCode', 'quit').accelerator).toBe('CmdOrCtrl+Q')
+    expect(row('Edit', 'find_in_project').accelerator).toBe('CmdOrCtrl+Shift+F')
+    const print = row('File', 'print')
+    expect(print).toMatchObject({ accelerator: 'CmdOrCtrl+P', registerAccelerator: false })
+    // On macOS the key still reaches the menu: the page ran it, so the menu's own click by ⌘P or Ctrl+P is dropped; a press on the row runs.
+    const click = print.click as (...args: unknown[]) => void
+    click({}, undefined, { triggeredByAccelerator: true, metaKey: true })
+    click({}, undefined, { triggeredByAccelerator: true, ctrlKey: true })
+    expect(send).not.toHaveBeenCalled()
+    click({}, undefined, { triggeredByAccelerator: false })
+    expect(send).toHaveBeenLastCalledWith('native:menu', 'print')
+
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [] })
+    expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(3)
+    expect(row('View', 'toggle_sidebar').accelerator).toBe('CmdOrCtrl+B')
+    expect(row('File', 'print').accelerator).toBeUndefined()
+  })
+
   it('goes back to the plain menu when the window closes', () => {
     const c = contents(1)
     vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))

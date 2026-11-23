@@ -269,10 +269,12 @@ import { playCue } from "./lib/sounds";
 import {
   APP_COMMANDS,
   createKeyResolver,
+  editorKeys,
   pageOwnsKey,
   dialogOpen,
   isAppCommandId,
   menuCommandAllowed,
+  workCommands,
   type AppCommand,
 } from "./lib/appCommands";
 import { preparePrompt } from "./lib/promptPreparation";
@@ -3248,7 +3250,10 @@ export default function App() {
           return go(() => void import("./lib/bundledRelease").then(({ BUNDLED_RELEASE }) => onOpenWhatsNew(BUNDLED_RELEASE.version, BUNDLED_RELEASE.notes)));
         case "find_in_project": return go(a.onFindInProject);
         case "new_window": return go(() => void invoke("open_new_window").catch(() => {}));
-        case "find": return go(() => openFindInActiveEditor());
+        case "find": return go(() => void ((editorKeys(document.activeElement) !== null && workCommands.run("find")) || openFindInActiveEditor()));
+        // Print… and Export… are the Work editor's on screen (work/formats/command.ts hears the event).
+        case "print":
+        case "export": return go(() => void workCommands.run(cmd.id as "print" | "export"));
         case "open_model_picker":
           return go(() => window.dispatchEvent(new Event("open_model_picker")));
         // Main already sends menu commands to the focused window only (or
@@ -3303,6 +3308,8 @@ export default function App() {
       if (
         !lightboxOpen &&
         !anyViewOpen(shellStore.getState()) &&
+        // a Work editor holding the caret keeps its own find keys (lib/appCommands.ts, guard 6)
+        editorKeys(e.target) === null &&
         handleEditorFindKey(e)
       ) {
         e.stopPropagation();

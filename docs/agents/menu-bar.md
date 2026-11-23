@@ -13,7 +13,12 @@ window sends what it shows over `menu:state` (lib/nativeMenuState.ts:
 Show/Hide on the four toggles, ⌘W's Close Tab or Close Pane while the
 focused tab is split, idle rows greyed) and main rebuilds the menu
 from the focused window's state when it changes. A `pageKey` row (New
-Terminal, ⌃`) shows its key but leaves it to the page. The in-app bar
+Terminal, ⌃`) shows its key but leaves it to the page. File → Export… (⇧⌘E)
+and Print… are a Work editor's: greyed until one on screen answers them, and
+while the caret is in one the window names the rows whose keys the editor
+holds (`MenuState.editing`: Sidebar's ⌘B, Search's ⌘K, Go to File's ⌘P,
+Find's ⌘F), those rows lose their keys and Print… shows ⌘P
+([work-editors.md](work-editors.md) "Who hears a key"). The in-app bar
 (chrome/MenuBarView.tsx, `inAppMenus`; it and the menu tree load from their own chunk,
 chrome/MenuBar.tsx, so no desktop window's first paint carries them) mounts only in web mode off macOS: a
 desktop window on Linux has the native bar, and one on Windows has none

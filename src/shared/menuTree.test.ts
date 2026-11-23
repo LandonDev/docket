@@ -1,16 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  APP_NAME,
-  MAIN_MENU_IDS,
-  MENU_COMMANDS,
-  MENU_TREE,
-  EMPTY_MENU_STATE,
-  RENDERER_MENU_IDS,
-  inAppMenus,
-  resolveMenu,
-  sameMenuState,
-  type MenuNode
-} from './menuTree'
+import { APP_NAME, MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, EMPTY_MENU_STATE, RENDERER_MENU_IDS, inAppMenus, resolveMenu, sameMenuState, type MenuNode, EDITOR_KEY_IDS } from './menuTree'
 
 /** What Electron gives a role when the tree names none (macOS). */
 const ROLE_DEFAULTS: Record<string, [string, string?]> = {
@@ -99,6 +88,9 @@ describe('menu tree', () => {
       ['Open File…'],
       '—',
       ['Save All', 'Cmd+S'],
+      '—',
+      ['Export…', 'Shift+Cmd+E'],
+      ['Print…'],
       '—',
       ['Close Tab', 'Cmd+W'],
       ['Close Window', 'Shift+Cmd+W']
@@ -250,6 +242,81 @@ describe('resolveMenu', () => {
     expect(sameMenuState(state(['a'], []), state(['a'], ['b']))).toBe(false)
     expect(sameMenuState(state([], [], { toggle_away: false }), state([], []))).toBe(true)
     expect(sameMenuState(state([], [], { toggle_away: true }), state([], []))).toBe(false)
+  })
+
+  describe('while a Work editor holds the caret', () => {
+    const key = (tree: ReturnType<typeof resolveMenu>, id: string) => (find(tree, id) as { accelerator?: string }).accelerator
+    const page = (tree: ReturnType<typeof resolveMenu>, id: string) => (find(tree, id) as { pageKey?: true }).pageKey
+    const editing = (ids: string[]) => resolveMenu(MENU_TREE, { open: [], disabled: [], checked: {}, editing: ids })
+    /** Every row's key, by id. */
+    const keys = (tree: ReturnType<typeof resolveMenu>) =>
+      Object.fromEntries(
+        tree
+          .flatMap((s) => s.items)
+          .flatMap((i) => (i.kind === 'submenu' ? i.items : [i]))
+          .flatMap((i) => (i.kind === 'command' ? [[i.id, i.accelerator]] : []))
+      )
+
+    it('outside an editor every row keeps the key the table gives it, and Print… shows none', () => {
+      const plain = resolveMenu(MENU_TREE, EMPTY_MENU_STATE)
+      expect(keys(plain)).toEqual(Object.fromEntries(MENU_COMMANDS.map((c) => [c.id, c.accelerator])))
+      expect(key(plain, 'toggle_sidebar')).toBe('CmdOrCtrl+B')
+      expect(key(plain, 'open_search')).toBe('CmdOrCtrl+K')
+      expect(key(plain, 'go_to_file')).toBe('CmdOrCtrl+P')
+      expect(key(plain, 'find')).toBe('CmdOrCtrl+F')
+      expect(key(plain, 'print')).toBeUndefined()
+      expect(key(plain, 'export')).toBe('CmdOrCtrl+Shift+E')
+      expect(keys(resolveMenu(MENU_TREE, { open: [], disabled: [], checked: {}, editing: [] }))).toEqual(keys(plain))
+    })
+
+    it('the four rows the editor took lose their keys, Print… takes ⌘P as the page\'s own, and no other row moves', () => {
+      const tree = editing([...EDITOR_KEY_IDS])
+      for (const id of EDITOR_KEY_IDS) expect(key(tree, id), id).toBeUndefined()
+      expect(key(tree, 'print')).toBe('CmdOrCtrl+P')
+      expect(page(tree, 'print')).toBe(true)
+      const moved = new Set<string>([...EDITOR_KEY_IDS, 'print'])
+      const plain = keys(resolveMenu(MENU_TREE, EMPTY_MENU_STATE))
+      const now = keys(tree)
+      for (const id of Object.keys(plain)) if (!moved.has(id)) expect(now[id], id).toBe(plain[id])
+      // and still no two rows hold one chord
+      const held = Object.values(now).filter((k): k is string => !!k).map(chord)
+      expect(new Set(held).size).toBe(held.length)
+    })
+
+    it('a read-only editor takes only what it answers: ⌘B and ⌘K stay the app\'s, and ⌘P stays Go to File… until an editor answers Print…', () => {
+      const read = editing(['find'])
+      expect(key(read, 'toggle_sidebar')).toBe('CmdOrCtrl+B')
+      expect(key(read, 'open_search')).toBe('CmdOrCtrl+K')
+      expect(key(read, 'go_to_file')).toBe('CmdOrCtrl+P')
+      expect(key(read, 'print')).toBeUndefined()
+      expect(key(read, 'find')).toBeUndefined()
+      const bold = editing(['toggle_sidebar', 'open_search'])
+      expect(key(bold, 'toggle_sidebar')).toBeUndefined()
+      expect(key(bold, 'go_to_file')).toBe('CmdOrCtrl+P')
+      expect(key(bold, 'print')).toBeUndefined()
+    })
+
+    it('the state compares by what is held, and the tree itself keeps its keys', () => {
+      const state = (ids?: string[]) => ({ open: [], disabled: [], checked: {}, ...(ids ? { editing: ids } : {}) })
+      expect(sameMenuState(state(), state([]))).toBe(true)
+      expect(sameMenuState(state(['find', 'go_to_file']), state(['go_to_file', 'find']))).toBe(true)
+      expect(sameMenuState(state(['find']), state())).toBe(false)
+      editing([...EDITOR_KEY_IDS])
+      expect(MENU_COMMANDS.find((c) => c.id === 'toggle_sidebar')!.accelerator).toBe('CmdOrCtrl+B')
+      expect(MENU_COMMANDS.find((c) => c.id === 'print')!.accelerator).toBeUndefined()
+    })
+
+    it('Export… and Print… sit together in File, are the renderer\'s, and grey as the window says', () => {
+      const file = MENU_TREE.find((s) => s.label === 'File')!.items
+      const at = file.findIndex((i) => i.kind === 'command' && i.id === 'export')
+      expect(file[at - 1].kind).toBe('separator')
+      expect(file[at + 1]).toMatchObject({ kind: 'command', id: 'print', label: 'Print…' })
+      expect(file[at + 2].kind).toBe('separator')
+      expect(RENDERER_MENU_IDS).toEqual(expect.arrayContaining(['print', 'export']))
+      const off = resolveMenu(MENU_TREE, { open: [], disabled: ['print', 'export'], checked: {} })
+      expect(find(off, 'print').enabled).toBe(false)
+      expect(find(off, 'export').enabled).toBe(false)
+    })
   })
 
   it('ticks Away from Computer, in its own group after Mark All Read, as the window says', () => {

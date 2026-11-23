@@ -3,10 +3,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { cpus } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import type { ToolsReport } from '@shared/contract-work-formats'
+import type { Readiness, ToolsReport } from '@shared/contract-work-formats'
 import type { HostId } from '@shared/work'
 import type { CtxPart } from '../ctx'
-import type { WorkModule } from '../modules'
+import type { Caller, WorkModule } from '../modules'
 import { runTool, Toolchain, toolsRoot, type RunOpts, type RunResult } from './tools'
 
 /**
@@ -17,7 +17,38 @@ import { runTool, Toolchain, toolsRoot, type RunOpts, type RunResult } from './t
  * cap on jobs and threads; otherwise it goes to a linked host that offers
  * the pair, with the file carried in the request and the output carried
  * back. A forwarded job is never forwarded again.
+ *
+ * A format's name may say who draws it after a plus (`pdf+word`: a PDF as
+ * Word itself draws it); the file's extension is the part before it. A
+ * converter that is not a tool on disk but an app that may be shut or a
+ * machine that may sleep says so with `ready`, asked when the job comes. A
+ * job his own press made (`pressOf`) may wake what sleeps; no other may. A
+ * job on a shared library's file (`shared`) never leaves this host.
  */
+
+/**
+ * His press, on this host: the only thing that lets a job wake a machine
+ * that sleeps (the Windows VM for "Check in Word"). It is an object this
+ * module made and remembers, so nothing a thread or another host sends can
+ * pass for one: a forwarded job carries none, and a JSON `pressed: true`
+ * is not it.
+ */
+export interface Press {
+  readonly pressed: true
+}
+const presses = new WeakSet<object>()
+
+/** A press, when the call is a person's at a window of this host: never a thread's, never another host's. */
+export function pressOf(by: Caller): Press | undefined {
+  if (by.kind === 'model' || by.peer) return undefined
+  if (by.kind === 'remote' && !by.caps.includes('operate') && !by.caps.includes('admin')) return undefined
+  const press: Press = Object.freeze({ pressed: true as const })
+  presses.add(press)
+  return press
+}
+const withoutPress = ({ pressed: _not, ...job }: ConvertJob): ConvertJob => job
+/** Whether a job carries a press this host made. */
+export const pressed = (job: { pressed?: unknown }): boolean => typeof job.pressed === 'object' && job.pressed !== null && presses.has(job.pressed)
 
 /** One conversion: a file in one format to a file in another. */
 export interface ConvertJob {
@@ -33,6 +64,10 @@ export interface ConvertJob {
   signal?: AbortSignal
   /** run on this host or fail: set on a job another host forwarded here */
   here?: boolean
+  /** his press (`pressOf`): the job may wake a machine that sleeps. Dropped from a forwarded job. */
+  pressed?: Press
+  /** the input is a shared library's file (`sharedOf(source)`): the job runs here or fails, and is never carried to another host */
+  shared?: boolean
 }
 export interface ConvertResult {
   /** absolute path of the output on this host */
@@ -64,6 +99,14 @@ export interface Converter {
   needs?: string
   /** threads one job uses; else the tool's own `threads` from its manifest, else 1 */
   threads?: number
+  /**
+   * Whether it can run now, for a converter that is an app or a machine
+   * and not a tool on disk: `ready`; `asleep` (it runs only for a job he
+   * pressed, which wakes it); `not open` (an app he has shut: never
+   * started unseen); `none` (not on this host at all). Asked when a job
+   * comes, with the job, and for `work.formats.tools`, with null.
+   */
+  ready?(job: ConvertJob | null): Readiness | Promise<Readiness>
   /** writes `job.output`; returns what it could not carry over */
   run(job: ConvertJob & { output: string }, run: ConvertRun): Promise<{ warnings?: string[] }>
 }
@@ -85,9 +128,21 @@ export type { ToolsReport }
 export class NoConverterError extends Error {
   readonly code = 'no-converter' as const
 }
+/** The pair's converter is on a host in reach but cannot run now: the machine sleeps and nobody pressed, or the app is shut. */
+export class NotReadyError extends Error {
+  readonly code = 'not-ready' as const
+  constructor(
+    readonly state: 'asleep' | 'not open',
+    message: string
+  ) {
+    super(message)
+  }
+}
 
 const mbOf = (bytes: number): string => `${Math.round(bytes / 1048576)} MB`
 const fmt = (s: string): string => s.toLowerCase().replace(/^\./, '')
+/** A format's file extension: its name up to the plus (`pdf+word` is a `.pdf`). */
+export const extOf = (format: string): string => fmt(format).split('+')[0]!
 const pairKey = (from: string, to: string): string => `${fmt(from)}→${fmt(to)}`
 
 /** Every module's converters by pair, in module order; a second converter for a pair is refused by name, the first stays. */
@@ -138,7 +193,7 @@ export class JobRunner {
   private running = new Map<number, number>() // slot → threads
   private waiting: Waiting[] = []
   /** What each linked host converts, or that it did not say, as of `at` */
-  private offers = new Map<HostId, { at: number; pairs: Set<string> }>()
+  private offers = new Map<HostId, { at: number; pairs: Map<string, Readiness> }>()
   private readonly log: (line: string) => void
   private readonly forwardMax: number
 
@@ -160,31 +215,72 @@ export class JobRunner {
     return c && (!c.needs || this.tools.has(c.needs)) ? c : null
   }
 
-  /** The pairs this host runs itself. */
-  pairs(): { from: string; to: string }[] {
-    return [...this.o.converters.values()].filter((c) => !c.needs || this.tools.has(c.needs)).map((c) => ({ from: fmt(c.from), to: fmt(c.to) }))
+  /** Whether a converter can run here now: its tool on disk, then its own word. A converter that throws is not here. */
+  private async stateHere(c: Converter, job: ConvertJob | null): Promise<Readiness> {
+    if (c.needs && !this.tools.has(c.needs)) return 'none'
+    if (!c.ready) return 'ready'
+    try {
+      return await c.ready(job)
+    } catch (err) {
+      this.log(`${pairKey(c.from, c.to)} could not say whether it is ready: ${err instanceof Error ? err.message : String(err)}`)
+      return 'none'
+    }
   }
 
-  report(): ToolsReport {
+  /** The pairs this host runs itself, each with its state when it is not simply ready. */
+  async pairs(): Promise<ToolsReport['converts']> {
+    const out: ToolsReport['converts'] = []
+    for (const c of this.o.converters.values()) {
+      const state = await this.stateHere(c, null)
+      if (state !== 'none') out.push({ from: fmt(c.from), to: fmt(c.to), ...(state !== 'ready' ? { state } : {}) })
+    }
+    return out
+  }
+
+  /** The queue now: the caps, what runs and what waits. */
+  queue(): ToolsReport['queue'] {
+    return { cap: this.caps, running: this.running.size, queued: this.waiting.length }
+  }
+
+  async report(): Promise<ToolsReport> {
     const state = this.tools.state()
     return {
       host: this.o.host,
       platform: state.platform,
       tools: this.tools.list().map((t) => ({ name: t.name, pillar: t.pillar, version: t.version, licence: t.licence, ok: t.ok && this.tools.has(t.name), ...(t.bytes !== undefined ? { bytes: t.bytes } : {}), ...(t.error ? { error: t.error } : {}) })),
-      converts: this.pairs(),
-      queue: { cap: this.caps, running: this.running.size, queued: this.waiting.length }
+      converts: await this.pairs(),
+      queue: this.queue()
     }
   }
 
   async convert(job: ConvertJob): Promise<ConvertResult> {
     const converter = this.converter(job.from, job.to)
-    if (!converter) throw new NoConverterError(`no converter from ${fmt(job.from)} to ${fmt(job.to)}`)
+    const pair = `${fmt(job.from)} to ${fmt(job.to)}`
+    if (!converter) throw new NoConverterError(`no converter from ${pair}`)
     if (!existsSync(job.input)) throw new Error(`no file at ${job.input}`)
-    if (!converter.needs || this.tools.has(converter.needs)) return this.runHere(converter, job)
-    if (job.here) throw new NoConverterError(`${converter.needs} is not installed on ${this.o.host}`)
+    // A press is this host's own object: one that came from anywhere else is not a press.
+    const mine = pressed(job) ? job : withoutPress(job)
+    const here = await this.stateHere(converter, mine)
+    if (here === 'ready' || (here === 'asleep' && mine.pressed)) return this.runHere(converter, mine)
+    const what = converter.needs && !this.tools.has(converter.needs) ? `${converter.needs} is not installed on ${this.o.host}` : `${this.o.host} cannot convert ${pair} now`
+    const notReady = (): Error =>
+      here === 'asleep'
+        ? new NotReadyError('asleep', `the machine that converts ${pair} is asleep, and only his own press wakes it`)
+        : here === 'not open'
+          ? new NotReadyError('not open', `the app that converts ${pair} is not open on ${this.o.host}`)
+          : new NoConverterError(what)
+    if (job.here) throw notReady()
+    if (job.shared) throw here === 'none' ? new NoConverterError(`${what}, and a shared library's file is never carried to another host`) : notReady()
     const far = await this.hostFor(job.from, job.to)
-    if (!far) throw new NoConverterError(`${converter.needs} is not installed on ${this.o.host}, and no linked host converts ${fmt(job.from)} to ${fmt(job.to)}`)
-    return this.forward(far, job)
+    if (far && 'request' in far) return this.forward(far, mine)
+    if (here !== 'none') throw notReady()
+    if (!far) throw new NoConverterError(`${what}, and no linked host converts ${pair}`)
+    throw new NotReadyError(
+      far.state,
+      far.state === 'asleep'
+        ? `the machine that converts ${pair} is asleep on ${far.host}, and only his own press at a window of that host wakes it`
+        : `the app that converts ${pair} is not open on ${far.host}`
+    )
   }
 
   /** Run one job here once the caps allow it. */
@@ -195,7 +291,7 @@ export class JobRunner {
     const id = `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`
     const dir = join(toolsRoot(this.o.dataDir), 'jobs', id)
     const tmp = join(dir, 'tmp')
-    const output = job.output ?? join(dir, `${basename(job.input, extname(job.input))}.${fmt(job.to)}`)
+    const output = job.output ?? join(dir, `${basename(job.input, extname(job.input))}.${extOf(job.to)}`)
     const abort = new AbortController()
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
@@ -279,36 +375,46 @@ export class JobRunner {
 
   // ── another host ──────────────────────────────────────────────────
 
-  /** The first linked host whose report offers the pair; reports are kept a minute. */
-  private async hostFor(from: string, to: string): Promise<LinkedHost | null> {
+  /**
+   * The first linked host whose report offers the pair ready to run;
+   * reports are kept a minute. A host that says the pair is asleep or not
+   * open is passed over (a forwarded job carries no press, so it could
+   * wake nothing there), and is what the answer names when none is ready.
+   */
+  private async hostFor(from: string, to: string): Promise<LinkedHost | { host: HostId; state: 'asleep' | 'not open' } | null> {
     const key = pairKey(from, to)
+    let waiting: { host: HostId; state: 'asleep' | 'not open' } | null = null
     for (const link of this.o.links?.() ?? []) {
       let known = this.offers.get(link.id)
       if (!known || Date.now() - known.at > OFFERS_TTL_MS) {
         try {
           const report = await link.request<ToolsReport>('work.formats.tools', {}, { timeoutMs: 15_000 })
-          known = { at: Date.now(), pairs: new Set(report.converts.map((p) => pairKey(p.from, p.to))) }
+          known = { at: Date.now(), pairs: new Map(report.converts.map((p) => [pairKey(p.from, p.to), p.state ?? 'ready'])) }
           this.offers.set(link.id, known)
         } catch (err) {
           // Asked again after the same minute: a slow host does not cost every job its wait.
-          this.offers.set(link.id, { at: Date.now(), pairs: new Set() })
+          this.offers.set(link.id, { at: Date.now(), pairs: new Map() })
           this.log(`${link.id} did not say what it converts: ${err instanceof Error ? err.message : String(err)}`)
           continue
         }
       }
-      if (known.pairs.has(key)) return link
+      const state = known.pairs.get(key)
+      if (state === 'ready') return link
+      if (state === 'asleep' || (state === 'not open' && !waiting)) waiting = { host: link.id, state }
     }
-    return null
+    return waiting
   }
 
   private async forward(far: LinkedHost, job: ConvertJob): Promise<ConvertResult> {
     const size = statSync(job.input).size
     if (size > this.forwardMax) throw new Error(`${basename(job.input)} is ${mbOf(size)}; a job carried to another host takes at most ${mbOf(this.forwardMax)}`)
-    this.log(`${pairKey(job.from, job.to)} goes to ${far.id}: no ${this.converter(job.from, job.to)?.needs} here`)
+    this.log(`${pairKey(job.from, job.to)} goes to ${far.id}: it does not run here`)
     if (job.signal?.aborted) throw new Error('cancelled')
+    // What goes over is the pair, the file and the converter's own switches: never the press, which is this host's alone.
+    const options = forwardable(job.options)
     const asked = far.request<ForwardReply>(
       'work.formats.convert',
-      { from: fmt(job.from), to: fmt(job.to), name: basename(job.input), data: readFileSync(job.input).toString('base64'), ...(job.options ? { options: job.options } : {}) },
+      { from: fmt(job.from), to: fmt(job.to), name: basename(job.input), data: readFileSync(job.input).toString('base64'), ...(options ? { options } : {}) },
       { timeoutMs: FORWARD_TIMEOUT_MS }
     )
     // A cancel stops the wait here; the far host finishes its run (its own timeout bounds it) and its answer is dropped.
@@ -323,9 +429,12 @@ export class JobRunner {
     if (!output) {
       const dir = join(toolsRoot(this.o.dataDir), 'jobs', `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`)
       mkdirSync(dir, { recursive: true })
-      output = join(dir, `${basename(job.input, extname(job.input))}.${fmt(job.to)}`)
+      output = join(dir, `${basename(job.input, extname(job.input))}.${extOf(job.to)}`)
     }
-    writeFileSync(output, Buffer.from(reply.data, 'base64'))
+    const bytes = Buffer.from(reply.data, 'base64')
+    // The far host refuses an output past the cap itself; one that did not is refused here, in words, before it is kept.
+    if (bytes.length > this.forwardMax) throw new Error(`the ${extOf(job.to)} that came back is ${mbOf(bytes.length)}; a job carried from another host takes at most ${mbOf(this.forwardMax)}`)
+    writeFileSync(output, bytes)
     return { output, ranOn: reply.ranOn, warnings: reply.warnings }
   }
 
@@ -340,13 +449,15 @@ export class JobRunner {
     mkdirSync(dir, { recursive: true })
     try {
       // Names of our own: the far host's file name is its word, and the reply carries none.
-      const input = join(dir, `input.${fmt(params.from)}`)
+      const input = join(dir, `input.${extOf(params.from)}`)
       writeFileSync(input, bytes)
-      const output = join(dir, `output.${fmt(params.to)}`)
-      const done = await this.convert({ from: params.from, to: params.to, input, output, here: true, ...(params.options ? { options: params.options } : {}), ...(signal ? { signal } : {}) })
+      const output = join(dir, `output.${extOf(params.to)}`)
+      // Built field by field: whatever else the request carried (a `pressed`, a `shared`) is not part of the job.
+      const options = forwardable(params.options)
+      const done = await this.convert({ from: params.from, to: params.to, input, output, here: true, ...(options ? { options } : {}), ...(signal ? { signal } : {}) })
       // The reply is one frame: an output past the cap would close the link, and everything else on it.
       const size = statSync(done.output).size
-      if (size > this.forwardMax) throw new Error(`the ${fmt(params.to)} is ${mbOf(size)}; a job carried back to another host takes at most ${mbOf(this.forwardMax)}`)
+      if (size > this.forwardMax) throw new Error(`the ${extOf(params.to)} is ${mbOf(size)}; a job carried back to another host takes at most ${mbOf(this.forwardMax)}`)
       return { data: readFileSync(done.output).toString('base64'), ranOn: done.ranOn, warnings: done.warnings }
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -372,6 +483,13 @@ export interface ForwardReply {
   data: string
   ranOn: HostId
   warnings: string[]
+}
+
+/** A job's switches as they cross a link: the converter's own, with no `pressed` among them (a converter reads the job's press, never an option). */
+function forwardable(options: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!options) return undefined
+  const { pressed: _dropped, ...rest } = options
+  return rest
 }
 
 // ── the context part ─────────────────────────────────────────────────

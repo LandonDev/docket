@@ -22,6 +22,8 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
   counts: { pause: 1, resume: 1, stop: 1, archiveDone: 1 },
   away: false,
   workFile: true,
+  print: true,
+  export: true,
   ...over,
 });
 
@@ -63,6 +65,21 @@ describe("menuStateOf", () => {
 
   it("greys Open File… with no Work thread, draft or view in front", () => {
     expect(menuStateOf(facts({ workFile: false })).disabled).toEqual(["open_file"]);
+  });
+});
+
+describe("menuStateOf, with a Work editor", () => {
+  it("greys Print… and Export… until an editor on screen answers them", () => {
+    expect(menuStateOf(facts({ print: false, export: false })).disabled).toEqual(["print", "export"]);
+    expect(menuStateOf(facts({ print: true, export: false })).disabled).toEqual(["export"]);
+    const { print: _p, export: _e, ...bare } = facts();
+    expect(menuStateOf(bare).disabled).toEqual(["print", "export"]);
+  });
+
+  it("names the rows the editor holds, and says nothing of editing when it holds none", () => {
+    expect(menuStateOf(facts({ editing: ["toggle_sidebar", "open_search"] })).editing).toEqual(["toggle_sidebar", "open_search"]);
+    expect("editing" in menuStateOf(facts({ editing: [] }))).toBe(false);
+    expect("editing" in menuStateOf(facts())).toBe(false);
   });
 });
 
@@ -122,6 +139,54 @@ describe("publishMenuState", () => {
     vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
     expect(send).toHaveBeenCalledTimes(4);
     publisher.stop();
+  });
+
+  it("says at once when the caret enters or leaves a Work editor, and again as editors start to answer Print and Find", async () => {
+    const { workCommands } = await import("./appCommands");
+    const send = vi.fn();
+    const publisher = publishMenuState(() => ({ dockOpen: false, dockUsable: true }), send);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect("editing" in send.mock.calls[0][0]).toBe(false);
+    expect(send.mock.calls[0][0].disabled).toEqual(expect.arrayContaining(["print", "export"]));
+
+    document.body.innerHTML = `<input id="outside" /><div data-editor-keys="document"><div id="text" tabindex="0"></div></div><div data-editor-keys="read"><div id="read" tabindex="0"></div></div>`;
+    const focus = (id: string): void => document.getElementById(id)!.focus();
+
+    // The caret enters a document: no throttle, the next key must already be the editor's.
+    focus("text");
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1][0].editing).toEqual(["toggle_sidebar", "open_search"]);
+
+    // Moving inside the same editor says nothing.
+    document.getElementById("text")!.blur();
+    focus("text");
+    expect(send.mock.calls.at(-1)![0].editing).toEqual(["toggle_sidebar", "open_search"]);
+    const before = send.mock.calls.length;
+
+    // An editor that answers Print… and Find takes ⌘P and ⌘F too, and the rows go live.
+    const offs = [workCommands.offer("print"), workCommands.offer("find"), workCommands.offer("export")];
+    vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
+    expect(send.mock.calls.length).toBe(before + 1);
+    expect(send.mock.calls.at(-1)![0].editing).toEqual(["toggle_sidebar", "open_search", "go_to_file", "find"]);
+    expect(send.mock.calls.at(-1)![0].disabled).not.toContain("print");
+    expect(send.mock.calls.at(-1)![0].disabled).not.toContain("export");
+
+    // A read-only root holds only what it answers.
+    focus("read");
+    expect(send.mock.calls.at(-1)![0].editing).toEqual(["go_to_file", "find"]);
+
+    // Out of every editor: the keys are the menu's again.
+    focus("outside");
+    expect("editing" in send.mock.calls.at(-1)![0]).toBe(false);
+
+    for (const off of offs) off();
+    vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
+    expect(send.mock.calls.at(-1)![0].disabled).toEqual(expect.arrayContaining(["print", "export"]));
+    publisher.stop();
+    const after = send.mock.calls.length;
+    focus("text");
+    expect(send.mock.calls.length).toBe(after);
+    document.body.innerHTML = "";
   });
 
   it("says Hide Message List while the list is open, Show once it folds", () => {

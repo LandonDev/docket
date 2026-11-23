@@ -258,6 +258,11 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **Master threads** — a pinned master's batch of root threads, the queue and
   running cap, the batch's steps engine, the board (docs/master-threads.md,
   src/main/server/batch.ts). [docs/agents/master-threads.md](docs/agents/master-threads.md)
+- **Work editors** — what the document, sheet and deck kinds share: who hears a key (`data-editor-keys`,
+  `MenuState.editing`), File → Print… and Export… as one `work:command` event a kind's Body answers
+  (`useWorkCommands`), the Preview contract (`work/formats/preview.ts`, `previewProblems`), and the conversion
+  runner's `+renderer` formats, `ready`, his press and the shared-file rule.
+  [docs/agents/work-editors.md](docs/agents/work-editors.md)
 - **work-kit** — the private package shared with LifeOS, pinned as a devDependency at
   `git+https://www.github.com/LandonDev/work-kit.git#<sha>` (bun cannot fetch a private
   `github:` spec), kept out of the app by electron-builder; scripts/workKitPin.test.ts.

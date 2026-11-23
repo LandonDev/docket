@@ -1,7 +1,8 @@
 import { keyHint } from "../lib/keys";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { MENU_TREE, inAppMenus, type InAppMenu } from "@shared/menuTree";
 import { Button } from "../components/ui/button";
+import { workCommands } from "../lib/appCommands";
 import { useAway } from "../lib/away";
 import { cn } from "../lib/cn";
 import { RowsMenu, type MenuRow } from "./menuRows";
@@ -54,7 +55,13 @@ type Props = {
 
 export function MenuBar({ onCommand, disabled }: Props) {
   const menus = useMemo(() => inAppMenus(MENU_TREE), []);
-  const off = useMemo(() => new Set(disabled ?? []), [disabled]);
+  // Print… and Export… are live only while a Work editor on screen answers them (lib/appCommands.ts).
+  const answered = useSyncExternalStore(workCommands.subscribe, () => `${workCommands.has("print")}${workCommands.has("export")}`);
+  const off = useMemo(
+    () => new Set([...(disabled ?? []), ...(["print", "export"] as const).filter((id) => !workCommands.has(id))]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [disabled, answered],
+  );
   const away = useAway().enabled;
   const [open, setOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);

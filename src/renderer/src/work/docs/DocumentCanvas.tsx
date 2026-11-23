@@ -21,6 +21,7 @@ import { dayTime } from "../../lib/duration";
 import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
+import { useWorkCommands } from "../formats/command";
 import { ExportDialog } from "../formats/ExportDialog";
 import { DropImport, ImportBody, keepAsDocument, readAttachment } from "../formats/Import";
 import { importsFirst } from "../formats/model";
@@ -386,12 +387,16 @@ function Opened({ host, open, shell, width, more = NO_MORE }: { host: DocHost; o
     return () => shell.more?.(null);
   }, [shell, more]);
 
+  // File → Export… and ⇧⌘E open the same dialog (lib/appCommands.ts `workCommands`).
+  const root = useRef<HTMLDivElement | null>(null);
+  useWorkCommands(root, { export: () => setExporting(true) });
+
   // Through the frame, as the pane's own Ask: the chip goes in, a folded thread unfolds and its composer takes the caret.
   const onAsk = (selection: DocumentSelection): void => shell.ask?.(selectionChip(selection.text, open));
 
   return (
     // A copy is written as mail clients and sheets read it, after the editor wrote its own (work-kit/formats/clipboard).
-    <div onCopy={(e) => mailSafeCopy(e.nativeEvent)} onCut={(e) => mailSafeCopy(e.nativeEvent)}>
+    <div ref={root} onCopy={(e) => mailSafeCopy(e.nativeEvent)} onCut={(e) => mailSafeCopy(e.nativeEvent)}>
       <DocumentFrame
         doc={doc}
         open={open}
@@ -553,7 +558,8 @@ export function DocumentFrame({
   return (
     <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER }}>
       <EditorAdaptersProvider adapters={doc.adapters}>
-        <div className="mx-auto" style={{ maxWidth: GUTTER + MEASURE + (margin ? MARGIN : 0) }}>
+        {/* The editor's keys are its own while the caret is here (docs/agents/work-editors.md "Who hears a key"): ⌘B is bold, ⌘K a link. */}
+        <div data-editor-keys={open.role === "edit" ? "document" : "read"} className="mx-auto" style={{ maxWidth: GUTTER + MEASURE + (margin ? MARGIN : 0) }}>
           <div style={{ paddingLeft: GUTTER, maxWidth: GUTTER + MEASURE }} className="mb-4">
             {open.role === "edit" && open.source.at === "lifeos" ? <TitleField text={open.title} rename={doc.host.rename} /> : <Title text={open.title} />}
           </div>

@@ -194,7 +194,7 @@ const api = {
     onCommand: (cb: (id: string) => void): (() => void) =>
       on<[string]>('native:menu', (id) => cb(id)),
     /** What this window shows: main relabels the toggles and greys the idle rows. */
-    setState: (state: { open: string[]; disabled: string[] }): void => ipcRenderer.send('menu:state', state)
+    setState: (state: { open: string[]; disabled: string[]; editing?: string[] }): void => ipcRenderer.send('menu:state', state)
   },
 
   dialog: {

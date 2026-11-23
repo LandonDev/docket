@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { WorkModule } from '../modules'
 import { LIBREOFFICE_CONVERTERS, libreOffice } from '.'
-import { convertersOf, defaultCaps, JobRunner, NoConverterError, type Converter, type LinkedHost } from './jobs'
+import type { Readiness } from '@shared/contract-work-formats'
+import { convertersOf, defaultCaps, extOf, JobRunner, NoConverterError, NotReadyError, pressed, pressOf, type ConvertJob, type Converter, type LinkedHost } from './jobs'
 import { statePath, type ToolchainState } from './tools'
 
 /**
@@ -58,7 +59,7 @@ function link(id: string, far: JobRunner, calls: string[] = []): LinkedHost {
     async request<T>(method: string, params?: unknown): Promise<T> {
       calls.push(method)
       const wire = JSON.parse(JSON.stringify(params ?? {}))
-      const answer = method === 'work.formats.tools' ? far.report() : method === 'work.formats.convert' ? await far.serveForwarded(wire) : null
+      const answer = method === 'work.formats.tools' ? await far.report() : method === 'work.formats.convert' ? await far.serveForwarded(wire) : null
       if (answer === null) throw new Error(`unknown method ${method}`)
       return JSON.parse(JSON.stringify(answer)) as T
     }
@@ -127,12 +128,12 @@ describe('a job on this host', () => {
     const b = runner.convert({ from: 'wav', to: 'txt', input: input('b') })
     const c = runner.convert({ from: 'txt', to: 'md', input: input('c') })
     await new Promise((r) => setTimeout(r, 20))
-    expect(runner.report().queue).toEqual({ cap: { jobs: 2, threads: 4 }, running: 2, queued: 1 })
+    expect(runner.queue()).toEqual({ cap: { jobs: 2, threads: 4 }, running: 2, queued: 1 })
     releases.shift()!()
     expect((await a).warnings).toEqual(['ran in slot 0'])
     await new Promise((r) => setTimeout(r, 20))
     // c takes the slot a left; b still holds 3 of 4 threads
-    expect(runner.report().queue.running).toBe(2)
+    expect(runner.queue().running).toBe(2)
     releases.shift()!()
     releases.shift()!()
     expect((await b).warnings).toEqual(['ran in slot 1'])
@@ -168,7 +169,7 @@ describe('a job on this host', () => {
     writeFileSync(join(dataDir, 'work-tools', 'jobs'), 'in the way')
     await expect(runner.convert({ from: 'txt', to: 'md', input: input() })).rejects.toThrow()
     await expect(runner.convert({ from: 'txt', to: 'md', input: input() })).rejects.toThrow()
-    expect(runner.report().queue.running).toBe(0)
+    expect(runner.queue().running).toBe(0)
     rmSync(join(dataDir, 'work-tools', 'jobs'))
     expect(readFileSync((await runner.convert({ from: 'txt', to: 'md', input: input('ok') })).output, 'utf8')).toBe('OK')
   })
@@ -190,11 +191,11 @@ describe('a job on this host', () => {
     const started = Date.now()
     const running = runner.convert({ from: 'txt', to: 'md', input: input(), signal: abort.signal })
     await new Promise((r) => setTimeout(r, 100))
-    expect(runner.report().queue.running).toBe(1)
+    expect(runner.queue().running).toBe(1)
     abort.abort()
     await expect(running).rejects.toThrow()
     expect(Date.now() - started).toBeLessThan(5_000)
-    expect(runner.report().queue.running).toBe(0)
+    expect(runner.queue().running).toBe(0)
   })
 
   it('leaves no abort listener on a signal it is done with', async () => {
@@ -299,6 +300,180 @@ describe('a job this host lacks the tool for', () => {
     expect(Buffer.from(r.data, 'base64').toString()).toBe('SAFE')
     expect(seen.map((p) => p.split('/').at(-1))).toEqual(['input.txt', 'output.md'])
     expect(existsSync(join(root, 'etc'))).toBe(false)
+  })
+})
+
+describe('a format drawn by a named program', () => {
+  it("takes a +renderer suffix as part of the pair and names the file by the extension before it", async () => {
+    expect(extOf('pdf+word')).toBe('pdf')
+    expect(extOf('.DOCX')).toBe('docx')
+    const runner = new JobRunner({ host: 'box', dataDir: host('box'), converters: convertersOf([mod('office', [upper('docx', 'pdf+word')])]) })
+    const own = await runner.convert({ from: 'docx', to: 'pdf+word', input: input('x') })
+    expect(own.output).toMatch(/work-tools\/jobs\/[^/]+\/in-[a-z0-9]+\.pdf$/)
+    expect(await runner.pairs()).toEqual([{ from: 'docx', to: 'pdf+word' }])
+    // the plain pair is another pair: nothing claims it here
+    await expect(runner.convert({ from: 'docx', to: 'pdf', input: input('x') })).rejects.toThrow('no converter from docx to pdf')
+  })
+
+  it('carries the suffix to a linked host and back, the far side naming its own files by the extension', async () => {
+    const seen: string[] = []
+    const far = convertersOf([mod('office', [{ ...upper('docx', 'pdf+word'), run: async (job) => (seen.push(job.input, job.output), writeFileSync(job.output, 'WORD'), {}) }])])
+    const box = new JobRunner({ host: 'box', dataDir: host('box'), converters: far })
+    // The Mac knows the pair and cannot run it: Word is not on it.
+    const mac = new JobRunner({ host: 'mac', dataDir: host('mac'), log: () => {}, converters: convertersOf([mod('office', [{ ...upper('docx', 'pdf+word'), ready: () => 'none' }])]), links: () => [link('box', box)] })
+    const r = await mac.convert({ from: 'docx', to: 'pdf+word', input: input('x') })
+    expect(r.ranOn).toBe('box')
+    expect(r.output).toMatch(/\.pdf$/)
+    expect(readFileSync(r.output, 'utf8')).toBe('WORD')
+    expect(seen.map((p) => p.split('/').at(-1))).toEqual(['input.docx', 'output.pdf'])
+  })
+})
+
+describe('a converter that is an app or a machine', () => {
+  /** A converter whose state the test sets, recording the press each run saw. */
+  function office(state: { now: Readiness }, runs: boolean[] = [], asked: (ConvertJob | null)[] = []): Converter {
+    return {
+      from: 'docx',
+      to: 'pdf+word',
+      ready: (job) => (asked.push(job), state.now),
+      async run(job) {
+        runs.push(pressed(job))
+        writeFileSync(job.output, 'WORD')
+        return {}
+      }
+    }
+  }
+  const owner = { kind: 'local', caps: ['admin'] } as const
+
+  it('is asked when the job comes, with the job, and told in the report with null', async () => {
+    const state = { now: 'ready' as Readiness }
+    const asked: (ConvertJob | null)[] = []
+    const runner = new JobRunner({ host: 'box', dataDir: host('box'), log: () => {}, converters: convertersOf([mod('office', [office(state, [], asked)])]) })
+    expect((await runner.report()).converts).toEqual([{ from: 'docx', to: 'pdf+word' }])
+    expect(asked).toEqual([null])
+    const job = { from: 'docx', to: 'pdf+word', input: input() }
+    await runner.convert(job)
+    expect(asked[1]).toMatchObject(job)
+    state.now = 'asleep'
+    expect((await runner.report()).converts).toEqual([{ from: 'docx', to: 'pdf+word', state: 'asleep' }])
+    state.now = 'not open'
+    expect((await runner.report()).converts).toEqual([{ from: 'docx', to: 'pdf+word', state: 'not open' }])
+    state.now = 'none'
+    expect((await runner.report()).converts).toEqual([])
+  })
+
+  it('runs when ready; asleep, runs only for his press; not open or none, never', async () => {
+    const state = { now: 'ready' as Readiness }
+    const runs: boolean[] = []
+    const runner = new JobRunner({ host: 'box', dataDir: host('box'), log: () => {}, converters: convertersOf([mod('office', [office(state, runs)])]) })
+    const job = (): ConvertJob => ({ from: 'docx', to: 'pdf+word', input: input() })
+    await runner.convert(job())
+    expect(runs).toEqual([false])
+
+    state.now = 'asleep'
+    await expect(runner.convert(job())).rejects.toThrow(NotReadyError)
+    await expect(runner.convert(job())).rejects.toMatchObject({ state: 'asleep', message: 'the machine that converts docx to pdf+word is asleep, and only his own press wakes it' })
+    await runner.convert({ ...job(), pressed: pressOf(owner)! })
+    expect(runs).toEqual([false, true])
+
+    state.now = 'not open'
+    await expect(runner.convert({ ...job(), pressed: pressOf(owner)! })).rejects.toMatchObject({ state: 'not open', message: 'the app that converts docx to pdf+word is not open on box' })
+    state.now = 'none'
+    await expect(runner.convert({ ...job(), pressed: pressOf(owner)! })).rejects.toThrow(new NoConverterError('box cannot convert docx to pdf+word now, and no linked host converts docx to pdf+word'))
+    expect(runs).toEqual([false, true])
+  })
+
+  it('a converter that cannot say is not here, and the job says so rather than failing oddly', async () => {
+    const lines: string[] = []
+    const broken: Converter = { ...upper('docx', 'pdf+word'), ready: () => Promise.reject(new Error('the helper did not answer')) }
+    const runner = new JobRunner({ host: 'box', dataDir: host('box'), log: (l) => lines.push(l), converters: convertersOf([mod('office', [broken])]) })
+    await expect(runner.convert({ from: 'docx', to: 'pdf+word', input: input() })).rejects.toThrow(NoConverterError)
+    expect(lines.join('\n')).toContain('could not say whether it is ready: the helper did not answer')
+  })
+
+  it("a press is this host's own: only the owner's window makes one, and nothing sent passes for one", async () => {
+    expect(pressOf({ kind: 'local', caps: [] })).toBeDefined()
+    expect(pressOf({ kind: 'remote', caps: ['read', 'operate'] })).toBeDefined()
+    // a thread, another host of his, a read-only key
+    expect(pressOf({ kind: 'model', caps: ['admin'], sessionId: 's1' })).toBeUndefined()
+    expect(pressOf({ kind: 'remote', caps: ['admin'], peer: 'mac' })).toBeUndefined()
+    expect(pressOf({ kind: 'remote', caps: ['read'] })).toBeUndefined()
+    expect(pressed({ pressed: pressOf(owner) })).toBe(true)
+    expect(pressed({ pressed: true })).toBe(false)
+    expect(pressed({ pressed: { pressed: true } })).toBe(false)
+    expect(pressed(JSON.parse(JSON.stringify({ pressed: pressOf(owner) })))).toBe(false)
+
+    // A job that claims a press it was not given is run as an unpressed job: asleep stays asleep.
+    const state = { now: 'asleep' as Readiness }
+    const runs: boolean[] = []
+    const runner = new JobRunner({ host: 'box', dataDir: host('box'), log: () => {}, converters: convertersOf([mod('office', [office(state, runs)])]) })
+    const forged = { from: 'docx', to: 'pdf+word', input: input(), pressed: { pressed: true } } as ConvertJob
+    await expect(runner.convert(forged)).rejects.toMatchObject({ state: 'asleep' })
+    expect(runs).toEqual([])
+  })
+
+  it('a forwarded job carries no press: it runs on a far host that is ready, passes one that sleeps, and wakes nothing', async () => {
+    const farState = { now: 'ready' as Readiness }
+    const farRuns: boolean[] = []
+    const sent: unknown[] = []
+    const box = new JobRunner({ host: 'box', dataDir: host('box'), log: () => {}, converters: convertersOf([mod('office', [office(farState, farRuns)])]) })
+    const wire: LinkedHost = {
+      id: 'box',
+      async request<T>(method: string, params?: unknown): Promise<T> {
+        if (method === 'work.formats.convert') sent.push(JSON.parse(JSON.stringify(params)))
+        return link('box', box).request<T>(method, params)
+      }
+    }
+    const mac = (): JobRunner => new JobRunner({ host: 'mac', dataDir: host(`mac-${Math.random().toString(36).slice(2)}`), log: () => {}, converters: convertersOf([mod('office', [{ ...upper('docx', 'pdf+word'), ready: () => 'none' }])]), links: () => [wire] })
+
+    const r = await mac().convert({ from: 'docx', to: 'pdf+word', input: input(), pressed: pressOf(owner)!, options: { quality: 'print', pressed: true } })
+    expect(r.ranOn).toBe('box')
+    // the far run saw no press, and neither the field nor an option of that name crossed the link
+    expect(farRuns).toEqual([false])
+    expect(sent).toHaveLength(1)
+    expect(Object.keys(sent[0] as object).sort()).toEqual(['data', 'from', 'name', 'options', 'to'])
+    expect((sent[0] as { options: unknown }).options).toEqual({ quality: 'print' })
+
+    // asleep there: his press here cannot wake it over a link, so the job is not sent at all
+    farState.now = 'asleep'
+    await expect(mac().convert({ from: 'docx', to: 'pdf+word', input: input(), pressed: pressOf(owner)! })).rejects.toMatchObject({
+      state: 'asleep',
+      message: 'the machine that converts docx to pdf+word is asleep on box, and only his own press at a window of that host wakes it'
+    })
+    expect(sent).toHaveLength(1)
+    farState.now = 'not open'
+    await expect(mac().convert({ from: 'docx', to: 'pdf+word', input: input() })).rejects.toMatchObject({ state: 'not open', message: 'the app that converts docx to pdf+word is not open on box' })
+    farState.now = 'asleep'
+
+    // and a far host asked directly with a `pressed` in the request runs it unpressed, or not at all
+    await expect(box.serveForwarded({ from: 'docx', to: 'pdf+word', name: 'a.docx', data: Buffer.from('x').toString('base64'), pressed: true, options: { pressed: true } } as Parameters<JobRunner['serveForwarded']>[0])).rejects.toMatchObject({ state: 'asleep' })
+    expect(farRuns).toEqual([false])
+  })
+
+  it("never carries a shared library's file to another host", async () => {
+    const calls: string[] = []
+    const converters = convertersOf([mod('formats', [upper('txt', 'md', 'upper')])])
+    const box = new JobRunner({ host: 'box', dataDir: host('box', ['upper']), converters })
+    const mac = new JobRunner({ host: 'mac', dataDir: host('mac'), converters, log: () => {}, links: () => [link('box', box, calls)] })
+    await expect(mac.convert({ from: 'txt', to: 'md', input: input('roster'), shared: true })).rejects.toThrow(new NoConverterError("upper is not installed on mac, and a shared library's file is never carried to another host"))
+    // not even asked what it converts
+    expect(calls).toEqual([])
+    // the same job, not shared, goes; and a shared job runs where its tool is
+    await expect(mac.convert({ from: 'txt', to: 'md', input: input('plan') })).resolves.toMatchObject({ ranOn: 'box' })
+    await expect(box.convert({ from: 'txt', to: 'md', input: input('roster'), shared: true })).resolves.toMatchObject({ ranOn: 'box' })
+  })
+
+  it('refuses in words a result that comes back past the cap, and keeps none of it', async () => {
+    const converters = convertersOf([mod('formats', [upper('txt', 'md', 'upper')])])
+    const big: LinkedHost = {
+      id: 'box',
+      request: <T,>(method: string) =>
+        Promise.resolve(method === 'work.formats.tools' ? { converts: [{ from: 'txt', to: 'md' }] } : { data: Buffer.from('x'.repeat(11)).toString('base64'), ranOn: 'box', warnings: [] }) as Promise<T>
+    }
+    const mac = new JobRunner({ host: 'mac', dataDir: host('mac'), converters, log: () => {}, links: () => [big], forwardMax: 10 })
+    const out = join(root, 'never.md')
+    await expect(mac.convert({ from: 'txt', to: 'md', input: input('x'), output: out })).rejects.toThrow('the md that came back is 0 MB; a job carried from another host takes at most 0 MB')
+    expect(existsSync(out)).toBe(false)
   })
 })
 

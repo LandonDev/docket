@@ -169,6 +169,15 @@ host) from `job.from` into `job.to` (formats by extension) and resolves to
   blocked (`LIBREOFFICE_PROFILE`). Checked on the box: 26.8 headless leaves a
   linked `file://` or `http://` image and a linked section out of .docx and
   PDF output and fetches nothing.
+- **A renderer that is an app or a machine** (real Word, Excel and
+  PowerPoint; [work-editors.md](work-editors.md) has the full account): a
+  format's name may say who draws it after a plus (`pdf+word`; the file's
+  extension is the part before it, `extOf`); a converter may give
+  `ready(job)` (`ready`, `asleep`, `not open`, `none`), asked when the job
+  comes and told in `work.formats.tools`; a job carries his press only as an
+  object `pressOf(by)` made on this host for a person's window call, and only
+  such a job may run a converter that is asleep; a job with `shared: true`
+  (a shared library's file) is never carried to another host.
 - **The queue**: a job runs when the host has fewer than its job cap running
   and its threads fit the thread cap (a quarter of the cores in jobs, at most
   4; half the cores in threads; a job asking more than the cap gets the cap).
@@ -179,11 +188,16 @@ host) from `job.from` into `job.to` (formats by extension) and resolves to
   after a day.
 - **Forwarding**: when the pair's tool is not here, the job goes to the first
   host this one holds a link to (`deps.peers`, the links a Mac or a Windows
-  host makes to the box) whose `work.formats.tools` lists the pair (each
-  host's answer, or its silence, kept a minute). `work.formats.convert`
+  host makes to the box) whose `work.formats.tools` lists the pair as ready
+  (each host's answer, or its silence, kept a minute; a host that says the
+  pair is asleep or not open is passed over, and named in the refusal when
+  none is ready). What crosses is the pair, the file and the converter's own
+  switches: never the press. `work.formats.convert`
   carries the input as base64 and the output comes back the same way,
   written where the job asked; either file is at most 64 MB, since the link
-  is one frame each way (100 MiB) and a larger one would close it. The far
+  is one frame each way (100 MiB) and a larger one would close it (the far
+  host refuses its own output past the cap, and this host refuses one that
+  came back past it before keeping any of it). The far
   host runs it itself or fails (`here`): a job is never forwarded twice. It
   writes the file under names of its own (`input.<from>`, `output.<to>`),
   never the name sent. The far side needs Work on and the key `operate`.
@@ -191,8 +205,8 @@ host) from `job.from` into `job.to` (formats by extension) and resolves to
   (its converter's limit bounds it) and its answer is dropped, since a
   module's `handle` hears no signal from the socket.
 - **The wire** (src/shared/contract-work-formats.ts): `work.formats.tools`
-  (`read`) answers `ToolsReport`: the tools, the pairs this host runs itself,
-  the queue. `work.formats.convert` (`operate`) is the forwarded job; it is
+  (`read`) answers `ToolsReport`: the tools, the pairs this host runs itself
+  (each with a `state` when it is asleep or not open), the queue. `work.formats.convert` (`operate`) is the forwarded job; it is
   never carried on a relayed lane.
 - **Settings**: the pillar's `health` (work/formats/health.ts) answers for
   the toolchain on Settings → Connections ([work-connections.md](work-connections.md)):
