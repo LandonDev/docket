@@ -17,7 +17,7 @@ import { SettingsSection } from "./SettingsSection";
  */
 
 const at = (day: number, h: number, m = 0): number => new Date(2026, 10, day, h, m).getTime();
-const NOW = at(24, 10, 12);
+const NOW = at(24, 13, 55);
 
 let n = 0;
 const row = (over: Partial<TellRow>): TellRow => ({ id: `t${++n}`, host: "box", kind: "routines.done", group: "results", workspaceId: "ws", sector: "cosmic", title: "", at: at(24, 7), how: "digest", day: "2026-11-24", toldAt: null, ...over });
@@ -25,7 +25,7 @@ const row = (over: Partial<TellRow>): TellRow => ({ id: `t${++n}`, host: "box", 
 const ROWS: TellRow[] = [
   // since the digest
   row({ day: null, how: "waiting", sector: "ref", group: "results", title: "2 receipts to confirm", detail: "Game fees, Saturday", at: at(24, 9, 40), open: { view: "tasks", workspaceId: "ws" } }),
-  row({ day: null, how: "now", toldAt: at(24, 9, 50), sector: "purdue", group: "meetings", title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", at: at(24, 9, 50), by: at(24, 14), open: { view: "agenda", workspaceId: "ws", at: "ev1" } }),
+  row({ day: null, how: "now", toldAt: at(24, 13, 50), sector: "purdue", group: "meetings", title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", at: at(24, 13, 50), by: at(24, 14), open: { view: "prep", workspaceId: "ws", at: "ev1" } }),
   // today's digest
   row({ sector: "cosmic", title: "Morning summary", detail: "Done in 12m", at: at(24, 7, 2), open: { thread: "t1" } }),
   row({ sector: "cosmic", group: "held", title: "Held: Send to Marcus Hale: Re: season pass copy", at: at(23, 16, 20), open: { held: { at: "host", id: "h1" } } }),
@@ -33,7 +33,7 @@ const ROWS: TellRow[] = [
   row({ sector: "purdue", group: "held", title: "Held: Invite Dana Reyes to Spring LAN walkthrough", at: at(23, 15, 5), by: at(26, 14), open: { held: { at: "lifeos", table: "calendarOps", id: "op1" } } }),
   row({ sector: "purdue", group: "people", title: "3 sent mails have no answer", detail: "The oldest is 6 days old", at: at(24, 8), open: { view: "mail", workspaceId: "ws" } }),
   row({ sector: "ref", group: "clashes", title: "Varsity at North overlaps JV at East", detail: "Thursday, 6:00 PM", at: at(23, 20, 10), open: { view: "agenda", workspaceId: "ws", at: "ev2" } }),
-  row({ sector: null, workspaceId: null, group: "ending", title: "Sign-in to Frame.io ends in 14 days", at: at(24, 6, 30), open: { settings: "connections" } }),
+  row({ sector: null, workspaceId: null, group: "ending", title: "Sign-in to Frame.io ends Dec 8", at: at(24, 6, 30), open: { settings: "connections" } }),
   // yesterday's
   row({ day: "2026-11-23", sector: "cosmic", title: "Morning summary", detail: "Done in 9m", at: at(23, 7, 1), open: { thread: "t2" } }),
   row({ day: "2026-11-23", sector: "unify", group: "people", title: "Dana Reyes edited Pricing notes", at: at(22, 21, 14), open: { view: "docs", workspaceId: "ws" } }),
@@ -53,7 +53,7 @@ export function DigestSheetPreview({ state = "full" }: { state?: SheetState }) {
   const has = state === "full" || state === "hostDown";
   const view = { days: has ? mergeDays([{ environmentId: "box", days: DAYS }]) : [], rows: has ? mergeRows([ROWS]) : [], loaded: state !== "loading" };
   return (
-    <div className="flex h-[720px] flex-col overflow-hidden rounded-2xl bg-popover text-sm text-popover-foreground shadow-overlay ring-1 ring-border" style={{ width: DIGEST_WIDTH }}>
+    <div className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl bg-popover text-sm text-popover-foreground shadow-overlay ring-1 ring-border" style={{ width: DIGEST_WIDTH }}>
       <div className="flex flex-col gap-1 p-5 pe-12">
         <h2 className="text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">Digest</h2>
       </div>

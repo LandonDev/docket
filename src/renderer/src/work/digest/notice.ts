@@ -131,9 +131,15 @@ export function listSections(view: Pick<DigestView, "days" | "rows">, now: numbe
   return out;
 }
 
-/** A row's trailing fact: its clock in words when it has one ("by 2:00 PM"), else when it was told. */
-export function rowWhen(row: Pick<TellRow, "by" | "at">, now: number, locale?: string): string {
-  return row.by !== undefined ? `by ${dayTime(row.by, now, locale)}` : clockTime(row.at, locale);
+/**
+ * A row's trailing fact: its clock in words when it has one ("by Thu 2:00
+ * PM"), else when it was told, naming the day when that was not today. A
+ * clock its own words already say ("Budget review starts at 2:00 PM") is not
+ * said twice: that row ends with when it was told.
+ */
+export function rowWhen(row: Pick<TellRow, "by" | "at" | "title" | "detail">, now: number, locale?: string): string {
+  if (row.by !== undefined && !`${row.title} ${row.detail ?? ""}`.includes(clockTime(row.by, locale))) return `by ${dayTime(row.by, now, locale)}`;
+  return dayTime(row.at, now, locale);
 }
 
 /** The list's one empty line: since when Work has had nothing to tell him (the ledger keeps 30 days). */

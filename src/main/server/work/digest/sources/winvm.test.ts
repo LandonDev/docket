@@ -18,6 +18,7 @@ function envOf(answer: WinvmState | Error): SourceEnv & { calls: string[] } {
     },
     workspaces: () => [],
     day: '2026-11-23',
+    zone: 'America/Chicago',
     since: 0
   }
 }

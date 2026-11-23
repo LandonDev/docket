@@ -40,6 +40,7 @@ function envOf(found: Record<string, FindEntry[] | Error>, since = 0): SourceEnv
     },
     workspaces: () => WORKSPACES,
     day: '2026-11-23',
+    zone: 'America/Chicago',
     since
   }
 }

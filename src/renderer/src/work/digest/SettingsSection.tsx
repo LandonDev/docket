@@ -74,7 +74,7 @@ export function SettingsSection() {
         <Input
           type="time"
           aria-label="Time of the digest"
-          className="w-28 tabular-nums"
+          className="w-32 tabular-nums"
           value={at ?? settings.at}
           onChange={(e) => {
             const next = e.target.value;
@@ -88,6 +88,8 @@ export function SettingsSection() {
         <PageRow key={group} title={GROUP_NAMES[group]} error={refused?.row === group ? refused.line : undefined}>
           <ChoiceSelect<TellLevel>
             size="sm"
+            // One width for the column of them: the longest level's, so their edges line up whatever each says.
+            className="w-44"
             label={GROUP_NAMES[group]}
             value={settings.levels[group] ?? DEFAULT_LEVEL}
             options={LEVEL_CHOICES}

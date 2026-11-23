@@ -28,6 +28,7 @@ function envOf(pages: Record<string, unknown[][]> | 'throws', o: { connected?: b
     call: () => Promise.reject(new Error('not used')),
     workspaces: () => WORKSPACES,
     day: DAY,
+    zone: 'America/Chicago',
     since: 0
   }
 }

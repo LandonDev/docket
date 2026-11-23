@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { TellRow } from "@shared/work/tell";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
+import { TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { Item, ItemButton } from "../../components/ui/item";
@@ -35,7 +36,10 @@ function RowBody({ row, now }: { row: TellRow; now: number }) {
       {/* On the title's line: a 16px box on a 20px line. */}
       <SectorDot sector={row.sector} className="mt-0.5" />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[13px] font-medium leading-5 text-foreground">{row.title}</span>
+        {/* A title cut by a long clock says itself whole on hover. */}
+        <TruncateTip text={row.title}>
+          <span className="truncate text-[13px] font-medium leading-5 text-foreground">{row.title}</span>
+        </TruncateTip>
         {row.detail ? <span className="truncate text-xs leading-4 text-muted-foreground">{row.detail}</span> : null}
       </span>
       <span className="shrink-0 ps-2 text-xs leading-5 text-muted-foreground tabular-nums">{rowWhen(row, now)}</span>

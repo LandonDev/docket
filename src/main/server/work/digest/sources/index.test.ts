@@ -11,7 +11,7 @@ function frame(sources: Source[], modules: Partial<WorkModule>[] = [{ id: 'mail'
   const only: [string, readonly string[]][] = []
   const logs: string[] = []
   const ctx = { tell: Object.assign((t: Tell) => void told.push(t), { only: (p: string, k: readonly string[]) => void only.push([p, k]) }), log: (l: string) => void logs.push(l) }
-  const s = new Sources({ ctx: ctx as never, modules: () => modules as WorkModule[], sources, day: () => '2026-11-23', since: () => 0 })
+  const s = new Sources({ ctx: ctx as never, modules: () => modules as WorkModule[], sources, day: () => '2026-11-23', zone: () => 'America/Chicago', since: () => 0 })
   return { s, told, only, logs }
 }
 

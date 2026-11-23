@@ -109,10 +109,16 @@ describe("the list", () => {
   it("leaves out a day whose rows have all gone, and is empty when nothing was told", () => {
     expect(listSections({ days: [day("2026-11-24")], rows: [] }, now)).toEqual([]);
   });
-  it("ends a row with its clock in words when it has one, else when it was told", () => {
-    expect(rowWhen({ at: at(24, 9, 5) }, now, "en-US")).toBe("9:05 AM");
-    expect(rowWhen({ at: at(24, 9), by: at(24, 14) }, now, "en-US")).toBe("by 2:00 PM");
-    expect(rowWhen({ at: at(23, 9), by: at(26, 14) }, now, "en-US")).toBe("by Nov 26, 2:00 PM");
+  it("ends a row with its clock in words when it has one, else when it was told, naming a day that is not today", () => {
+    const held = { title: "Held: Invite Dana Reyes to Spring LAN walkthrough" };
+    expect(rowWhen({ ...held, at: at(24, 9, 5) }, now, "en-US")).toBe("9:05 AM");
+    expect(rowWhen({ ...held, at: at(23, 16, 20) }, now, "en-US")).toBe("Mon 4:20 PM");
+    expect(rowWhen({ ...held, at: at(24, 9), by: at(24, 14) }, now, "en-US")).toBe("by 2:00 PM");
+    expect(rowWhen({ ...held, at: at(23, 9), by: at(26, 14) }, now, "en-US")).toBe("by Nov 26, 2:00 PM");
+  });
+  it("never says a clock twice: a row whose words carry its time ends with when it was told", () => {
+    expect(rowWhen({ title: "Budget review starts at 2:00 PM", detail: "With Dana Reyes", at: at(24, 13, 50), by: at(24, 14) }, at(24, 13, 55), "en-US")).toBe("1:50 PM");
+    expect(rowWhen({ title: "Prep is ready for Budget review", detail: "2:00 PM, with Dana Reyes", at: at(24, 8), by: at(24, 14) }, now, "en-US")).toBe("8:00 AM");
   });
   it("says since when Work has had nothing to tell: the thirty days the ledger keeps", () => {
     expect(emptyLine(at(24, 10), "en-US")).toBe("Work has had nothing to tell you since Oct 25.");
