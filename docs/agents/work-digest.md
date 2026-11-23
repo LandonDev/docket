@@ -31,10 +31,9 @@ ctx.tell.quiet(sessionId)         // this thread started on its own: its done, f
   starts at 2:00 PM", never "in 10 min"): the row is read hours later, in
   the list. A time is written in the digest's zone (`timeIn`, `dateIn` in
   clock.ts), never the host's: the box may run in UTC.
-- A kind whose teller names no target is given one on the digest's side
-  where it is known (`defaultOpen` in rule.ts: the weekly review's page on
-  the week its key names), and a kind no sibling lists yet is given its
-  group there too (`DIGEST_TELLS`); a sibling's own listing wins.
+- A kind the digest tells for a pillar that hands a read, not a tell (its
+  gate and its sources), is listed on the digest's own module
+  (`DIGEST_TELLS` in rule.ts).
 - `WorkModule.tells?: TellKind[]` lists each kind with its group (`held`,
   `ending`, `meetings`, `clashes`, `results`, `people`, `review`,
   `system`). A tell of a kind no module lists is logged once and kept
@@ -362,12 +361,11 @@ fresh), `outbox.offer` (waits), kept in step by `ctx.tell.only`.
 
 ## Tonight's builds
 
-As found on master at 06:00 EST on 2026-11-23. Clashes (`clashes.new`,
-`by` only for a clash today) and money (`money.confirm`) tell for
-themselves, with their kinds listed. Review tells `review.ready` with no
-target and lists no kind: the digest gives it both. Prep hands a read: the
-two sources above. Messages was not on master; `messages.new` is given its
-group for when it lands.
+As found on master on 2026-11-23. Clashes (`clashes.new`, `by` only for a
+clash today), money (`money.confirm`), review (`review.ready`, its page
+and week as the target) and messages (`messages.new`, the conversation as
+the target) tell for themselves, each with its kind listed on its own
+module. Prep hands a read: the two sources above.
 
 ## The swap for Today
 

@@ -1,4 +1,4 @@
-import { TELL_GROUPS, type Tell, type TellGroup, type TellKind, type TellLevel, type TellOpen } from '@shared/work/tell'
+import { TELL_GROUPS, type TellGroup, type TellKind, type TellLevel } from '@shared/work/tell'
 
 /**
  * The whole rule (docs/agents/work-digest.md): whether a tell interrupts or
@@ -46,24 +46,8 @@ export const DIGEST_TELLS: TellKind[] = [
   { kind: 'capture.unsorted', group: 'system', name: 'Captures to sort' },
   { kind: 'winvm.failed', group: 'system', name: 'The Windows VM needs you' },
   { kind: 'prep.starting', group: 'meetings', name: 'A meeting is about to start' },
-  { kind: 'prep.ready', group: 'meetings', name: 'Prep is ready' },
-  // A sibling that tells for itself lists its own kinds; one that does not yet is given its group here (the first listing wins).
-  { kind: 'review.ready', group: 'review', name: 'The weekly review' },
-  { kind: 'messages.new', group: 'people', name: 'New chat' }
+  { kind: 'prep.ready', group: 'meetings', name: 'Prep is ready' }
 ]
-
-/**
- * Where a press goes for a kind whose teller names no target: the weekly
- * review tells with its week in its key (`review:<the week's first day>`)
- * and no `open`.
- */
-export function defaultOpen(t: Pick<Tell, 'kind' | 'key'>): TellOpen | undefined {
-  if (t.kind === 'review.ready') {
-    const at = t.key?.startsWith('review:') ? t.key.slice('review:'.length) : ''
-    return { place: 'review', ...(at ? { at } : {}) }
-  }
-  return undefined
-}
 
 /** Every listed kind's group, by kind; a kind two modules list keeps the first. */
 export function groupsByKind(modules: readonly { tells?: TellKind[] }[]): Map<string, TellGroup> {

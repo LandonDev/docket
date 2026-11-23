@@ -13,7 +13,7 @@ import type { Notifier } from '../../remote/notifier'
 import { makeDeliverer, ofDay } from './deliver'
 import { makeGate, runPressed } from './gate'
 import { makeDay } from './make'
-import { decide, defaultOpen, groupsByKind, groupsListed, LATE_MS, retold } from './rule'
+import { decide, groupsByKind, groupsListed, LATE_MS, retold } from './rule'
 import { Sources } from './sources'
 import { SOURCES } from './sources/list'
 import { DigestStore, type LedgerRow } from './store'
@@ -165,8 +165,7 @@ export class Digest {
     }
     const now = this.clock()
     const detail = typeof t.detail === 'string' ? tellLine(t.detail, DETAIL_MAX) : ''
-    const target = t.open ?? defaultOpen(t)
-    const open = target ? TellOpenSchema.safeParse(target) : null
+    const open = t.open ? TellOpenSchema.safeParse(t.open) : null
     const by = typeof t.by === 'number' && Number.isFinite(t.by) ? t.by : undefined
     const workspaceId = t.workspaceId ?? null
     const said = {
