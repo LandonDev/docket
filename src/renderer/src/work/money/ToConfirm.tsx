@@ -106,8 +106,9 @@ export function ToConfirmSection({ env, workspaceId, read, reload, onReview, onR
                 onClick={() => {
                   setAdding(true);
                   withToast(() =>
+                    // Read again however the batch ended: what one failed press left added is shown as added; the refusal stays its toast.
                     addAll(env, workspaceId, read.calendar)
-                      .then(reload)
+                      .finally(() => reload())
                       .finally(() => setAdding(false)),
                   );
                 }}
@@ -184,12 +185,15 @@ function Thumb({ env, item }: { env: string; item: Waiting }) {
   );
 }
 
-/** A receipt's picture beside the dialog's fields: at its own height in the 320px column, 420px at most, a taller one scrolling inside the column; one quiet line with Retry when it did not load. */
+/**
+ * A receipt's picture beside the dialog's fields, in one 420px slot of the 320px column whatever its state, so Save never moves as
+ * it lands: a short scan sits at the slot's top, a taller one scrolls inside it; one quiet line with Retry when it did not load.
+ */
 export function ReceiptPicture({ env, of, name }: { env: string; of: { id: string } | { workspaceId: string; receipt: string }; name: string }) {
   const picture = usePicture(env, of);
   if (picture.state === "ready") {
     return (
-      <div data-receipt-picture className="max-h-[420px] overflow-x-hidden overflow-y-auto rounded-lg outline-1 -outline-offset-1 outline-(--image-outline) [--scrollbar-inset:var(--radius-lg)]">
+      <div data-receipt-picture className="h-[420px] overflow-x-hidden overflow-y-auto rounded-lg bg-muted outline-1 -outline-offset-1 outline-(--image-outline) [--scrollbar-inset:var(--radius-lg)]">
         <img src={picture.url} alt={name} draggable={false} className="block h-auto w-full" onError={picture.broken} />
       </div>
     );

@@ -132,10 +132,11 @@ describe("receipts in", () => {
     expect((within(dialog).getByLabelText("Date") as HTMLInputElement).value).toBe("2026-11-20");
     expect((within(dialog).getByLabelText("Who") as HTMLInputElement).value).toBe("Corner Fuel");
     expect(within(dialog).queryByLabelText("Job")).toBeNull();
-    // The picture at its own height in its column, 420px at most, scrolling inside it when taller.
+    // The picture in one 420px slot whatever its state, a taller one scrolling inside it.
     await waitFor(() => expect(dialog.querySelector("[data-receipt-picture]")).toBeTruthy());
     const picture = dialog.querySelector("[data-receipt-picture]")!;
-    expect(picture.className).toContain("max-h-[420px]");
+    expect(picture.className).toContain("h-[420px]");
+    expect(picture.className).not.toContain("max-h-");
     expect(picture.className).toContain("overflow-y-auto");
     fireEvent.keyDown(amount, { key: "Enter" });
     await settle();

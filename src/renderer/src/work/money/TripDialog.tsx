@@ -105,8 +105,9 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
     request<MoneyTripped>(env, "work.money.trip", params).then(
       (tripped) => {
         setPending(false);
-        // The event was added before: nothing was written, so the form stays, saying so.
-        if (tripped?.already) {
+        // An event added before: nothing was written, so the form stays, saying so. A trip typed by hand sends this dialog's one key,
+        // so `already` there is its own earlier Add landing, whose answer was lost: saved, as any other.
+        if (tripped?.already && params.eventId) {
           setError(ALREADY_WORDS);
           return;
         }

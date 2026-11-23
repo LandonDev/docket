@@ -8,7 +8,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle } from "../../components/choice-toggle";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/cn";
-import { atOf, openBook, saveEntry, withToast } from "./api";
+import { atOf, openBook, saveEntry } from "./api";
 import { Button } from "../../components/ui/button";
 import { AmountInput } from "./fields";
 import { blankForm, canSave, fieldsOfForm, formOfRow, rowMoney, sheetRow, statusChoices, type EntryForm } from "./model";
@@ -143,6 +143,24 @@ function EntryBody({
     );
   };
 
+  // Read only, the ledger is the way to change the row: the dialog waits for the host, says a refusal in its own line and stays; once
+  // the ledger opens it closes, letting the row go, so a later press on that row opens it afresh.
+  const openLedger = () => {
+    if (pending) return;
+    setError(null);
+    setPending(true);
+    openBook(env, workspaceId, "ledger").then(
+      () => {
+        setPending(false);
+        finish(onClose);
+      },
+      (err: Error) => {
+        setPending(false);
+        setError(err.message);
+      },
+    );
+  };
+
   // Return in any field saves; a select's own list keeps its keys.
   const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
     if (e.key !== "Enter" || e.nativeEvent.isComposing || !(e.target instanceof HTMLInputElement)) return;
@@ -242,8 +260,8 @@ function EntryBody({
         <ModalBody>{fields}</ModalBody>
       )}
       {locked ? (
-        <DialogFooter confirmLabel="Open ledger" closeOnConfirm onConfirm={() => withToast(() => openBook(env, workspaceId, "ledger"))}>
-          <Button variant="secondary" onClick={() => finish(onClose)}>
+        <DialogFooter confirmLabel="Open ledger" pending={pending} onConfirm={openLedger}>
+          <Button variant="secondary" disabled={pending} onClick={() => finish(onClose)}>
             Close
           </Button>
         </DialogFooter>

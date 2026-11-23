@@ -30,11 +30,12 @@ const settle = () => act(async () => void (await new Promise((r) => setTimeout(r
 const asked = (method: string) => host.asked.filter((a) => a.method === method).map((a) => a.params);
 const folder = { at: "file", host: "box", path: "/home/ref/Refereeing/Money/Tax 2026" };
 const year = new Date().getFullYear();
+let generation = 0;
 
 beforeEach(() => {
   host.asked.length = 0;
   host.answer = (method, params) => {
-    if (method === "work.money.export") return { folder, files: [`Ledger ${params.year}.csv`, `Ledger ${params.year}.xlsx`], summary: params.pdf ? { name: `Summary ${params.year}`, html: "<p>sums</p>" } : null, warnings: [] };
+    if (method === "work.money.export") return { folder, files: [`Ledger ${params.year}.csv`, `Ledger ${params.year}.xlsx`], summary: params.pdf ? { name: `Summary ${params.year}`, html: "<p>sums</p>" } : null, warnings: [], replaced: false, generation: ++generation };
     if (method === "work.formats.print") return { name: "Summary.pdf", data: btoa("%PDF-1.7 made up"), warnings: [] };
     if (method === "work.money.keep") return { source: folder, receipt: `Tax ${year}/Summary ${year}.pdf` };
     return null;
@@ -79,7 +80,7 @@ describe("Export", () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
-  it("says it replaced the earlier export, joined with what could not be made, and keeps the summary under the same key on a retry", async () => {
+  it("says it replaced the earlier export, joined with what could not be made", async () => {
     const answer = host.answer;
     let fail = true;
     host.answer = (method, params) => {
@@ -103,8 +104,28 @@ describe("Export", () => {
     await exportWith(["CSV"]);
     expect(asked("work.money.export")).toEqual([{ workspaceId: "ws", year, xlsx: true, csv: false, pdf: true }]);
     expect(asked("work.formats.print")).toEqual([{ name: `Summary ${year}`, html: "<p>sums</p>", paper: "Letter" }]);
-    expect(asked("work.money.keep")).toEqual([{ workspaceId: "ws", what: "summary", year, key: expect.any(String), part: 0, parts: 1, dataBase64: btoa("%PDF-1.7 made up") }]);
+    expect(asked("work.money.keep")).toEqual([{ workspaceId: "ws", what: "summary", year, generation, key: expect.any(String), part: 0, parts: 1, dataBase64: btoa("%PDF-1.7 made up") }]);
     expect(toast).toHaveBeenCalledWith(`Exported ${year} for tax time`, expect.objectContaining({ action: expect.objectContaining({ label: "Show in Files" }) }));
+  });
+
+  it("keeps each export's summary with its own generation, under a key of its own", async () => {
+    await exportWith();
+    cleanup();
+    await exportWith();
+    const kept = asked("work.money.keep");
+    expect(kept.map((k) => k.generation)).toEqual([generation - 1, generation]);
+    expect(kept[0].key).not.toBe(kept[1].key);
+  });
+
+  it("says the host's words when a newer export took this one's place, and the files it made all the same", async () => {
+    const words = `A newer export of ${year} took this one's place, so its summary was not kept.`;
+    const answer = host.answer;
+    host.answer = (method, params) => {
+      if (method === "work.money.keep") throw new Error(words);
+      return answer(method, params);
+    };
+    await exportWith();
+    expect(toast).toHaveBeenLastCalledWith(`Exported ${year} for tax time`, expect.objectContaining({ description: words }));
   });
 
   it("prints nothing with the summary off", async () => {

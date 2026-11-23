@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { MoneyExport } from "@shared/contract-work-money";
 import type { CanvasSource } from "@shared/work/canvas";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -32,9 +32,16 @@ export interface ExportMade {
   replaced: boolean;
 }
 
-/** What Export does: the host's files, then the summary printed and kept under `key` (the same on a retry). Refuses when nothing landed. */
-export async function runExport(env: string, workspaceId: string, choice: ExportChoice, key: string): Promise<ExportMade> {
+/** The host's refusal of a summary a newer export of the year replaced: said as it is, with no "not made" before it. */
+const NEWER = /newer export/i;
+
+/**
+ * What Export does: the host's files, then the summary printed and kept with this export's `generation`, under a key of this
+ * export's own: a retry that read fresh rows is a new export, and never answers an older kept summary. Refuses when nothing landed.
+ */
+export async function runExport(env: string, workspaceId: string, choice: ExportChoice): Promise<ExportMade> {
   const made = await request<MoneyExport>(env, "work.money.export", { workspaceId, ...choice });
+  const key = newKey();
   const warnings = [...made.warnings];
   const files = [...made.files];
   // Replaced: a file this export wrote, or the summary it kept, took an earlier one's place.
@@ -43,11 +50,12 @@ export async function runExport(env: string, workspaceId: string, choice: Export
     try {
       const printed = await printPage(env, made.summary.name, made.summary.html);
       warnings.push(...printed.warnings);
-      const kept = await keepPrinted(env, { workspaceId, what: "summary", year: choice.year }, printed.data, key);
+      const kept = await keepPrinted(env, { workspaceId, what: "summary", year: choice.year, generation: made.generation }, printed.data, key);
       if (kept.replaced) replaced = true;
       files.push(kept.receipt?.split(/[\\/]/).pop() ?? `${made.summary.name}.pdf`);
     } catch (err) {
-      warnings.push(`The summary was not made: ${err instanceof Error ? err.message : String(err)}`);
+      const words = err instanceof Error ? err.message : String(err);
+      warnings.push(NEWER.test(words) ? words : `The summary was not made: ${words}`);
     }
   }
   if (!files.length) throw new Error(warnings.join(", ") || "Nothing was made");
@@ -88,8 +96,6 @@ function Body({ env, workspaceId, year, onClose, pending, setPending }: { env: s
   const close = useModalClose();
   const { years, first } = exportYears(year);
   const [choice, setChoice] = useState<ExportChoice>({ year: first, xlsx: true, csv: true, pdf: true });
-  // One key per year for this dialog's kept summary: a retry files it once.
-  const keys = useRef(new Map<number, string>());
   const [error, setError] = useState<string | null>(null);
   const patch = (p: Partial<ExportChoice>) => setChoice((c) => ({ ...c, ...p }));
   const any = choice.xlsx || choice.csv || choice.pdf;
@@ -98,9 +104,7 @@ function Body({ env, workspaceId, year, onClose, pending, setPending }: { env: s
     if (!any || pending || !years.includes(choice.year)) return;
     setError(null);
     setPending(true);
-    const key = keys.current.get(choice.year) ?? newKey();
-    keys.current.set(choice.year, key);
-    runExport(env, workspaceId, choice, key).then(
+    runExport(env, workspaceId, choice).then(
       (made) => {
         setPending(false);
         const name = `Tax ${choice.year}`;

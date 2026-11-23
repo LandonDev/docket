@@ -39,7 +39,6 @@ vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original
 
 const { Head, View, setMoneyPeriod } = await import("./MoneyView");
 const { SUGGESTED_WORDS } = await import("./api");
-const { rateText } = await import("./RateDialog");
 const { BOTH_WAYS } = await import("./money.fixtures");
 const { EMPTY_READ, readOf } = await import("./money.fixtures");
 
@@ -121,25 +120,30 @@ describe("a write that only waits as a suggestion", () => {
     expect(toast.mock.calls.filter((c) => c[0] === SUGGESTED_WORDS)).toHaveLength(1);
   });
 
-  it("says restored columns wait on the line itself, which offers Open ledger in place of Restore, also after a visit elsewhere", async () => {
-    host.read = (p) => readOf(p, [], { problems: [{ kind: "columns", missing: ["In", "Out"], renamed: [] }] });
-    host.answer = (method) => (method === "work.money.open" ? { ledger: {}, mileage: {}, suggested: true } : null);
+  it("says restored columns wait from the read itself, with Open ledger in place of Restore, and offers Restore again once the suggestion is rejected", async () => {
+    let waits = false;
+    host.read = (p) => readOf(p, [], { problems: [{ kind: "columns", missing: ["In", "Out"], renamed: [], ...(waits ? { waits: true as const } : {}) }] });
+    host.answer = (method) => {
+      if (method !== "work.money.open") return null;
+      waits = true;
+      return { ledger: {}, mileage: {}, suggested: true };
+    };
     mount();
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Restore columns" }));
     await settle();
     await settle();
-    // The line says it and holds Open ledger; no toast says it twice.
+    // The next read says the headers wait: the line says it and holds Open ledger; no toast says it twice.
     expect(toast).not.toHaveBeenCalled();
     expect(screen.getByText("Restored as a suggestion: accept it in the ledger")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Restore columns" })).toBeNull();
     expect(screen.getByRole("button", { name: "Open ledger" })).toBeTruthy();
-    // Remembered for the job: back again, Restore is still not offered.
-    cleanup();
-    mount();
+    // He rejects the suggestion in the sheet: the next read has nothing waiting, and Restore columns is back.
+    waits = false;
+    await act(async () => void window.dispatchEvent(new Event("focus")));
     await settle();
-    expect(screen.queryByRole("button", { name: "Restore columns" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Open ledger" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Restore columns" })).toBeTruthy();
+    expect(screen.queryByText("Restored as a suggestion: accept it in the ledger")).toBeNull();
   });
 });
 
@@ -231,9 +235,6 @@ describe("a picture the browser cannot draw", () => {
 
 describe("the mileage rate", () => {
   it("goes back as it came, padded and never rounded", async () => {
-    expect(rateText(0.7251)).toBe("0.7251");
-    expect(rateText(0.7)).toBe("0.70");
-    expect(rateText(1)).toBe("1.00");
     host.read = (p) => ({ ...readOf(p), rate: { year: 2026, rate: 0.7251, own: true } });
     mount();
     await settle();

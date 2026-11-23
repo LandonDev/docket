@@ -2144,7 +2144,8 @@ Around the canvas:
   when not nothing; each a 12px muted label over a 16/24 semibold tabular
   figure, no tiles and no colour on a number. A year adds one chart, In
   and out by month: paired bars in `chart-1` and `chart-2` with a legend,
-  since it compares two things, no bar below the axis, money short on the
+  since it compares two things, no bar below the axis (the hover still
+  says the month's true, signed sum, "Out -$20.00"), money short on the
   axis ($1.2k from a thousand up, cents kept where neighbouring ticks
   would read alike). By category is a flat list on one scale (each bar its
   size beside the largest), the name, the 8px `chart-neutral` bar and the
@@ -2152,8 +2153,9 @@ Around the canvas:
   the heading then names the category beside a Clear. Owed is two groups,
   Owed to you and You owe: 40px rows of who and what for in muted, how
   long ("32 days"), the amount and one ghost Paid that spins while it
-  lands (on a row with money both ways, where one status covers both
-  sides, Open ledger in its place); a cost to be paid back leads with what
+  lands, its word on the column's edge and the spinner opening to its
+  left (on a row with money both ways, where one status covers both
+  sides, Open ledger in its place, ending on the same edge); a cost to be paid back leads with what
   it was for and puts the seller after it in muted (with no For, the
   seller and "to be paid back"), so it never reads as the seller owing
   him. Entries is the flat `Table` (Date, Who, Category, Amount, and a
@@ -2165,18 +2167,24 @@ Around the canvas:
   the control. Mileage, when there was any, is one muted comma line; a
   mileage log that cannot be read is one quiet line in its place, never a
   zero ("The mileage log has no Miles column, so its trips are not
-  counted." with Open mileage log, or "The mileage log leads outside this
+  counted." or "The mileage log could not be read, so its trips are not
+  counted.", with Open mileage log; or "The mileage log leads outside this
   job's folder, so its trips are not counted."), while the ledger still
-  reads. Loading is bones in the shape of the figures and six rows with a
-  Category bone and the amount bone on money's edge. "No money yet" ("Drop
+  reads and Open ledger works; Open mileage log on a log that leads out
+  of the job opens nothing and says so in a toast. Loading is bones in
+  the shape of the figures and six rows of Entries' own table, a bone in
+  each cell; the table's layout is fixed, so its columns stand where the
+  header puts them and nothing slides when the read lands. A ledger that leads
+  outside the job's folder is a failed read in the host's words, never
+  "No money yet". "No money yet" ("Drop
   a receipt here.", Add entry) shows only when the job has never had money
   in any period (`any`) and nothing waits, so the first drop on a new job
   is seen; a period with nothing keeps its figures and says "Nothing in
   November 2026" in the table's place; a ledger missing a needed header is
   the state line over To confirm and nothing else: "The ledger's columns
   changed", "No In or Out column" and Restore columns, or, where an
-  unknown header holds cells, "No Out column. Spent may be it: name it
-  back in the ledger." and Open ledger, never Restore (it would add an
+  unknown header holds cells, "No Out column: Spent may be it, name it
+  back in the ledger" and Open ledger, never Restore (it would add an
   empty column beside his figures). The entry dialog is one form for a new
   entry, a row and a receipt to confirm: Amount (focused and selected, "$"
   quiet before it) beside Date, Who (the ledger's names offered) beside
@@ -2188,19 +2196,23 @@ Around the canvas:
   amount below zero) opens read only, its fields off and its stored status
   always shown as text, under one muted line, "This row has money in and
   money out. Edit it in the ledger." or "This row has an amount below
-  zero. Edit it in the ledger.", with Close and Open ledger in the footer.
+  zero. Edit it in the ledger.", with Close and Open ledger in the footer;
+  Open ledger spins with the dialog open, a refusal stays in the dialog's
+  error line, and the dialog closes once the ledger opens.
   On a ledger others can open a write waits as a suggestion, and every
   write says so (an entry, Paid, an accept, a trip's pay or log row):
   "Suggested in the ledger. Accept it there.", with Open ledger; one press
   is one toast: a suggested invoice's created toast carries "Its row waits
   in the ledger for you to accept." as its second line, Add all says a
-  suggestion once, and restored columns are said on the line alone, whose
-  press becomes Open ledger, remembered for the job. Review opens the
+  suggestion once, and restored columns are said on the line alone
+  ("Restored as a suggestion: accept it in the ledger"), whose press
+  becomes Open ledger for as long as the read says the headers wait in
+  the sheet; rejected there, Restore columns is back. Review opens the
   entry dialog wide, titled "Confirm receipt 1 of 2" while more wait, the
-  picture in a 320px column at the left (at its own height, 420px at most,
-  a taller one scrolling inside the column; one muted line, "The picture
-  did not load", with Retry where it failed or the browser could not draw
-  it, at the column's same 420px so the footer never moves) and what was
+  picture in one 420px slot of a 320px column at the left, whatever its
+  state, so Save never moves as it lands (a short scan at the slot's top,
+  a taller one scrolling inside it; one muted line, "The picture did not
+  load", with Retry where it failed or the browser could not draw it) and what was
   read in the fields, empty where nothing was, with no mark of how sure
   the reading was; Discard sits at the footer's start, its word on the
   picture's edge, and waits while Save is in flight; Save shows the next
@@ -2216,15 +2228,17 @@ Around the canvas:
   there and back beside Fee, "Estimated: check the miles" under an
   estimate) led by From the calendar; Add waits for miles or a fee, and a
   fee of 0 is none; an event added before keeps the form open with "That
-  event was already added." More → Mileage rate… is titled for its year
+  event was already added.", while a trip typed by hand that the host
+  already has is the dialog's own earlier Add, saved. More → Mileage rate… is titled for its year
   ("Mileage rate for 2026") and holds one quiet-"$" field, Per mile,
-  seeded from the stored rate padded to two places and never rounded
-  ("0.70", "0.7251"). More → Export… asks the year (this one and the four
+  seeded from the stored rate in plain decimals, padded to two places and
+  never rounded ("0.70", "0.7251", never "1e-7"). More → Export… asks the year (this one and the four
   before, the period's first when offered) and three boxes, all ticked:
   Spreadsheet (Excel), CSV, Summary (PDF); Export spins through the host's
   files, the summary's print and its keeping, then one toast, "Exported
   2026 for tax time", with Show in Files and, on its second line, one
-  comma sentence of what was replaced or could not be made; with nothing
+  comma sentence of what was replaced or could not be made (a summary a
+  newer export replaced says so in the host's words); with nothing
   made it stays open with the error. Add → Invoice… is a wide form: To,
   then Number, Date and Due in one row (the next number and his usual
   terms from the host), the lines (What, Quantity, Rate, the line's amount

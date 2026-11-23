@@ -48,14 +48,12 @@ const SPANS = [
 /** A dialog the header or the body opened. */
 export type MoneyDialog = { kind: "entry" } | { kind: "row"; row: LedgerRow } | { kind: "pick" } | { kind: "confirm"; id: string } | { kind: "trip"; offer: CalendarOffer | null } | { kind: "rate" } | { kind: "export" } | { kind: "invoice"; as: InvoiceKind };
 
-/** What the header and the body share: the period, and the dialog open. */
 /**
  * What the header and the body share: the period, the dialog open, and per job what it is known to be.
  * `bare`: true while the job has no money and nothing waits, or its ledger cannot be read as money; false once
- * it is known to have some; absent until the first read lands. `restoring`: its columns were restored as a
- * suggestion, so the line holds Open ledger and Restore is not offered again, also after a visit elsewhere.
+ * it is known to have some; absent until the first read lands.
  */
-const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null; bare: Record<string, boolean>; restoring: Record<string, boolean> }>({ period: periodNow(), dialog: null, bare: {}, restoring: {} });
+const ui = shared<{ period: PeriodState; dialog: MoneyDialog | null; bare: Record<string, boolean> }>({ period: periodNow(), dialog: null, bare: {} });
 const set = (patch: Partial<ReturnType<typeof ui.get>>) => ui.set({ ...ui.get(), ...patch });
 /** Each visit opens on this month. */
 export const resetMoneyView = () => ui.set({ ...ui.get(), period: periodNow(), dialog: null });
@@ -149,13 +147,6 @@ export function View({ env, workspace }: WorkViewProps) {
   const picker = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const columns = read?.problems.find((p): p is ColumnsProblem => p.kind === "columns") ?? null;
-  const { restoring } = useShared(ui);
-  const restoreWaits = restoring[workspace.id] === true;
-  const setRestoreWaits = (on: boolean) => set({ restoring: { ...ui.get().restoring, [workspace.id]: on } });
-  // Once the headers are back (he accepted them), a later fault starts afresh.
-  useEffect(() => {
-    if (read && !columns && ui.get().restoring[workspace.id]) set({ restoring: { ...ui.get().restoring, [workspace.id]: false } });
-  }, [read, columns, workspace.id]);
   const bare = read !== null && !columns && isEmpty(read);
   // What the header may draw: known bare (no money, or a columns fault) or known to have money.
   const headBare = read !== null && (bare || columns !== null);
@@ -244,21 +235,17 @@ export function View({ env, workspace }: WorkViewProps) {
         columns.renamed.length ? (
           // His figures may sit under a header Money does not know: the fix is his, naming it back; Restore would add an empty column beside them.
           <ProblemLine word="The ledger's columns changed" detail={renamedWords(columns.missing, columns.renamed)} action="Open ledger" onPress={() => openBook(env, workspace.id, "ledger")} />
-        ) : restoreWaits ? (
-          // The headers wait as a suggestion in the sheet: the press is where he accepts them, not Restore again.
+        ) : columns.waits ? (
+          // The read says the headers wait as a suggestion in the sheet: the press is where he accepts them, not Restore again. Once he
+          // rejects it there, the next read says nothing waits and Restore columns is back.
           <ProblemLine word="The ledger's columns changed" detail="Restored as a suggestion: accept it in the ledger" action="Open ledger" onPress={() => openBook(env, workspace.id, "ledger")} />
         ) : (
           <ProblemLine
             word="The ledger's columns changed"
             detail={missingWords(columns.missing)}
             action="Restore columns"
-            onPress={() =>
-              openBooks(env, workspace.id, true).then((books) => {
-                // Answered as a suggestion: the line says so and holds Open ledger; no toast says it twice.
-                if (books.suggested) setRestoreWaits(true);
-                return reload();
-              })
-            }
+            // Answered as a suggestion, the next read carries `waits`: the line says so and holds Open ledger; no toast says it twice.
+            onPress={() => openBooks(env, workspace.id, true).then(() => reload())}
           />
         )
       ) : null}
@@ -337,6 +324,7 @@ type MileageProblem = Extract<MoneyProblem, { kind: "mileage" }>;
 /** The mileage log's fault in its place: "The mileage log has no Miles column, so its trips are not counted." */
 export function mileageWords(p: MileageProblem): string {
   if (p.reason === "outside") return "The mileage log leads outside this job's folder, so its trips are not counted.";
+  if (p.reason === "unreadable") return "The mileage log could not be read, so its trips are not counted.";
   const what = p.missing.length > 1 ? `${p.missing.slice(0, -1).join(", ")} or ${p.missing[p.missing.length - 1]}` : (p.missing[0] ?? "Miles");
   return `The mileage log has no ${what} column, so its trips are not counted.`;
 }
@@ -344,10 +332,10 @@ export function mileageWords(p: MileageProblem): string {
 /** The created toast's second line when the invoice's row waits as a suggestion. */
 export const INVOICE_WAITS = "Its row waits in the ledger for you to accept.";
 
-/** "No Out column. Spent may be it: name it back in the ledger.": what is gone, and where his figures likely are. */
+/** "No Out column: Spent may be it, name it back in the ledger": what is gone, and where his figures likely are, a fragment like its siblings. */
 export function renamedWords(missing: readonly string[], renamed: readonly string[]): string {
   const where = renamed.length === 1 ? renamed[0] : `${renamed.slice(0, -1).join(", ")} or ${renamed[renamed.length - 1]}`;
-  return `${missingWords(missing)}. ${where} may be it: name it back in the ledger.`;
+  return `${missingWords(missing)}: ${where} may be it, name it back in the ledger`;
 }
 
 /** The picker offers what Money files: the one list, as extensions. */
@@ -426,7 +414,7 @@ function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { en
         <Section title="Mileage">
           <p data-mileage-problem className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted-foreground">
             <span>{mileageWords(mileage)}</span>
-            {mileage.reason === "columns" ? (
+            {mileage.reason !== "outside" ? (
               <Button variant="link" className="h-auto p-0 text-[13px] font-normal text-foreground" onClick={() => withToast(() => openBook(env, workspaceId, "mileage"))}>
                 Open mileage log
               </Button>
@@ -487,8 +475,20 @@ function Figure({ label, cents }: { label: string; cents: number }) {
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 type TooltipProps = Parameters<typeof ChartTooltipContent>[0];
 
-/** The year's bars: no bar below the axis, so a month whose in or out is below zero (a refund he typed) draws that bar at nothing. */
-export const byMonthBars = (months: readonly { month: number; in: number; out: number }[]) => months.map((m) => ({ month: MONTH_SHORT[m.month - 1], in: Math.max(0, m.in), out: Math.max(0, m.out) }));
+/**
+ * The year's bars: no bar below the axis, so a month whose in or out is below zero (a refund he typed) draws that bar at nothing.
+ * The true sums ride beside the bars' (`sums`): the hover says the month's figure as the ledger has it, sign and all.
+ */
+export const byMonthBars = (months: readonly { month: number; in: number; out: number }[]) =>
+  months.map((m) => ({ month: MONTH_SHORT[m.month - 1], in: Math.max(0, m.in), out: Math.max(0, m.out), sums: { in: m.in, out: m.out } }));
+
+/** The hover's rows with each bar's true sum in place of its height ("Out -$20.00" for a month of only a refund). */
+export const trueRows = (payload: TooltipProps["payload"]): TooltipProps["payload"] =>
+  payload?.map((e) => {
+    const sums = (e.payload as { sums?: Record<string, number> } | undefined)?.sums;
+    const key = String(e.dataKey ?? "");
+    return sums && key in sums ? { ...e, value: sums[key] } : e;
+  });
 
 function ByMonth({ read }: { read: MoneyRead }) {
   const data = byMonthBars(read.byMonth);
@@ -510,7 +510,7 @@ function ByMonth({ read }: { read: MoneyRead }) {
               cursor={BAR_CURSOR}
               isAnimationActive={false}
               content={(props) => (
-                <ChartTooltipContent active={props.active} payload={props.payload as TooltipProps["payload"]} label={props.label as TooltipProps["label"]} valueFormatter={formatMoney} />
+                <ChartTooltipContent active={props.active} payload={trueRows(props.payload as TooltipProps["payload"])} label={props.label as TooltipProps["label"]} valueFormatter={formatMoney} />
               )}
             />
             <Bar {...BAR} dataKey="in" name="In" fill="var(--chart-1)" />
@@ -595,7 +595,7 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
                     </Button>
                   ) : (
                     <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${words.lead}`}>
-                      <BusyLabel busy={paying === key} label="Paid" />
+                      <BusyLabel align="end" busy={paying === key} label="Paid" />
                     </Button>
                   )}
                 </li>
@@ -610,21 +610,33 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
 
 // ── entries ──────────────────────────────────────────────────────────
 
+/**
+ * Entries' table and its columns, which the loading bones share so nothing slides when the read lands: a fixed layout, so the
+ * columns stand where the header puts them whatever the rows hold, and Amount wide enough for a row with money both ways.
+ */
+const ENTRIES_TABLE = "-mx-2 w-[calc(100%+1rem)] table-fixed";
+
+function EntriesHead() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead className="w-24 first:pl-2">Date</TableHead>
+        <TableHead>Who</TableHead>
+        <TableHead className="w-[26%]">Category</TableHead>
+        <TableHead className="w-44 text-end">Amount</TableHead>
+        <TableHead className={cn("last:pr-2", ENTRIES_TAIL)}>
+          <span className="sr-only">Receipt</span>
+        </TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+}
+
 function Entries({ env, workspaceId, read, rows }: { env: string; workspaceId: string; read: MoneyRead; rows: LedgerRow[] }) {
   const open = (row: LedgerRow) => set({ dialog: { kind: "row", row } });
   return (
-    <Table className="-mx-2 w-[calc(100%+1rem)]">
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-24 first:pl-2">Date</TableHead>
-          <TableHead>Who</TableHead>
-          <TableHead className="w-[26%]">Category</TableHead>
-          <TableHead className="w-28 text-end">Amount</TableHead>
-          <TableHead className={cn("last:pr-2", ENTRIES_TAIL)}>
-            <span className="sr-only">Receipt</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
+    <Table className={ENTRIES_TABLE}>
+      <EntriesHead />
       <TableBody>
         {rows.map((row) => (
           <TableRow key={`${row.row}:${sigOf(row)}`} data-money-row={row.row} className="relative focus-within:bg-muted hover:bg-muted">
@@ -681,7 +693,7 @@ function ProblemLine({ word, detail, action, onPress }: { word: string; detail: 
   );
 }
 
-/** The figures' shape, then Entries' rows: date, who, category, and the amount ending on money's one edge (layout.ts). */
+/** The figures' shape, then Entries' own table with a bone in each cell: the amount ends on money's one edge (layout.ts), and nothing moves as the read lands. */
 function MoneySkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading money" className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-4 py-4">
@@ -693,24 +705,33 @@ function MoneySkeleton() {
           </div>
         ))}
       </div>
-      <div className="flex flex-col">
-        <Skeleton className="mb-3 h-3.5 w-16" />
-        {[72, 56, 64, 48, 60, 52].map((w, i) => (
-          <div key={i} className="flex h-10 items-center border-b border-border last:border-0">
-            <Skeleton className="h-3 w-12" />
-            <span className="ms-12 min-w-0 flex-1">
-              <Skeleton className="h-3" style={{ width: `${w}%` }} />
-            </span>
-            <span className="w-[26%]">
-              <Skeleton className="h-3" style={{ width: `${w - 12}%` }} />
-            </span>
-            <span className="flex w-28 justify-end">
-              <Skeleton className="h-3 w-16" />
-            </span>
-            <span className="w-[120px]" />
-          </div>
-        ))}
-      </div>
+      <section className="flex flex-col gap-2">
+        <div className="flex min-h-6 items-center">
+          <Skeleton className="h-3.5 w-16" />
+        </div>
+        <Table className={ENTRIES_TABLE}>
+          <EntriesHead />
+          <TableBody>
+            {[72, 56, 64, 48, 60, 52].map((w, i) => (
+              <TableRow key={i} data-money-bone>
+                <TableCell className="first:pl-2">
+                  <Skeleton className="h-3 w-12" />
+                </TableCell>
+                <TableCell className="max-w-0">
+                  <Skeleton className="h-3" style={{ width: `${w}%` }} />
+                </TableCell>
+                <TableCell className="max-w-0">
+                  <Skeleton className="h-3" style={{ width: `${w - 12}%` }} />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="ms-auto h-3 w-16" />
+                </TableCell>
+                <TableCell className="last:pr-2" />
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </section>
     </div>
   );
 }

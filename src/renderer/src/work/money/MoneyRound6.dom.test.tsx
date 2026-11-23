@@ -187,7 +187,7 @@ describe("a row below zero", () => {
 
   it("draws no bar below the year chart's axis", async () => {
     const { byMonthBars } = await import("./MoneyView");
-    expect(byMonthBars([{ month: 11, in: 3000, out: -2000 }])).toEqual([{ month: "Nov", in: 3000, out: 0 }]);
+    expect(byMonthBars([{ month: 11, in: 3000, out: -2000 }])).toEqual([{ month: "Nov", in: 3000, out: 0, sums: { in: 3000, out: -2000 } }]);
   });
 });
 
@@ -196,7 +196,7 @@ describe("a renamed Status column", () => {
     host.read = (p) => readOf(p, [], { problems: [{ kind: "columns", missing: ["Status"], renamed: ["State"] }] });
     mount();
     await settle();
-    expect(screen.getByText("No Status column. State may be it: name it back in the ledger.")).toBeTruthy();
+    expect(screen.getByText("No Status column: State may be it, name it back in the ledger")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Restore columns" })).toBeNull();
     expect(screen.getByRole("button", { name: "Open ledger" })).toBeTruthy();
   });

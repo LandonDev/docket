@@ -147,10 +147,14 @@ export async function openInFiles(env: string, workspaceId: string, ref: CanvasS
   openWorkView({ workspaceId, view: "files" });
 }
 
-/** Open ledger, Open mileage log. */
+export const MILEAGE_OUTSIDE_WORDS = "The mileage log leads outside this job's folder.";
+
+/** Open ledger, Open mileage log. The ledger opens whatever state the mileage log is in; a log that leads out of the job opens nothing and says so. */
 export async function openBook(env: string, workspaceId: string, which: "ledger" | "mileage"): Promise<void> {
   const books = await openBooks(env, workspaceId);
-  await openInFiles(env, workspaceId, books[which], which === "ledger" ? "Ledger" : "Mileage");
+  const file = books[which];
+  if (!file) throw new Error(MILEAGE_OUTSIDE_WORDS);
+  await openInFiles(env, workspaceId, file, which === "ledger" ? "Ledger" : "Mileage");
 }
 
 /** A row's kept receipt, opened in Files. */

@@ -135,7 +135,7 @@ describe("a renamed header", () => {
     host.read = (p) => readOf(p, [], { problems: [{ kind: "columns", missing: ["Out"], renamed: ["Spent"] }] });
     mount();
     await settle();
-    expect(screen.getByText("No Out column. Spent may be it: name it back in the ledger.")).toBeTruthy();
+    expect(screen.getByText("No Out column: Spent may be it, name it back in the ledger")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Restore columns" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Open ledger" }));
     await waitFor(() => expect(asked("work.money.open")).toEqual([{ workspaceId: "ws" }]));
@@ -143,18 +143,17 @@ describe("a renamed header", () => {
 });
 
 describe("a trip already added", () => {
-  it("keeps the form open with the error line, as nothing was written", async () => {
+  it("keeps an event's form open with the error line, as nothing was written", async () => {
     host.answer = (method) => (method === "work.money.events" ? { events: [] } : method === "work.money.trip" ? { already: true, pay: null, trip: null } : null);
+    const { openMoneyDialog } = await import("./MoneyView");
     mount();
     await settle();
-    fireEvent.click(within(screen.getByTestId("head")).getByRole("button", { name: "Add" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Trip…" }));
+    act(() => openMoneyDialog({ kind: "trip", offer: offer("e1", { title: "Varsity at Harrison HS" }) }));
     const dialog = await screen.findByRole("dialog", { name: "Trip" });
     await settle();
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Varsity at Harrison HS" } });
-    fireEvent.change(within(dialog).getByLabelText("Miles there and back"), { target: { value: "24" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
     await settle();
+    expect(asked("work.money.trip")[0]).toMatchObject({ eventId: "e1" });
     expect(within(dialog).getByText("That event was already added.")).toBeTruthy();
     expect(screen.getByRole("dialog", { name: "Trip" })).toBe(dialog);
     expect(toast).not.toHaveBeenCalled();

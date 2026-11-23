@@ -5,6 +5,7 @@ import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { AmountInput, noHeldReturn } from "./fields";
 import { request } from "./api";
+import { rateWords } from "@shared/work/money";
 
 /** The mileage rate (More → Mileage rate…): his own dollars a mile for the period's year. */
 
@@ -16,11 +17,6 @@ export function parseRate(text: string): number | null {
   return n > 0 && n <= 100 ? n : null;
 }
 
-/** The stored rate as he sees it: never rounded, padded to two places at least ("0.70", "0.7251"), so Save with no edit sends the same number. */
-export function rateText(rate: number): string {
-  const [whole, part = ""] = String(rate).split(".");
-  return `${whole}.${part.padEnd(2, "0")}`;
-}
 
 export function RateDialog({ env, workspaceId, rate, onClose, onSaved }: { env: string; workspaceId: string; rate: MoneyRate; onClose: () => void; onSaved: () => void }) {
   const [pending, setPending] = useState(false);
@@ -35,9 +31,11 @@ function Body({ env, workspaceId, rate, onClose, onSaved, pending, setPending }:
   const close = useModalClose();
   // Bound to the year it opened for: that year's rate seeds it, and that year is what it saves.
   const [bound] = useState(rate);
-  const [text, setText] = useState(rateText(bound.rate));
+  // The field seeds with the shared words ("0.70", "0.725", never "1e-7"); untouched, Save sends the stored number itself.
+  const seed = rateWords(bound.rate);
+  const [text, setText] = useState(seed);
   const [error, setError] = useState<string | null>(null);
-  const value = parseRate(text);
+  const value = text === seed ? bound.rate : parseRate(text);
   const submit = () => {
     if (value === null || pending) return;
     setError(null);
