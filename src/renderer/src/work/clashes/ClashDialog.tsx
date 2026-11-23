@@ -114,7 +114,7 @@ export function Empty({ state, error, onClose }: { state: "loading" | "failed" |
           </div>
         </ModalBody>
       ) : null}
-      <Foot onClose={onClose} />
+      <Foot onClose={onClose} landing={state === "gone"} />
     </>
   );
 }
@@ -150,11 +150,19 @@ function EventBlock({ side, day, children }: { side: ClashSide; day: number; chi
   );
 }
 
-function Foot({ onClose, start, busy }: { onClose: () => void; start?: React.ReactNode; busy?: boolean }) {
+function Foot({ onClose, start, busy, landing }: { onClose: () => void; start?: React.ReactNode; busy?: boolean; /** Close takes the focus when it has nowhere of its own: the control that held it went with the clash */ landing?: boolean }) {
   const close = useModalClose();
+  const button = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!landing) return;
+    const dialog = button.current?.closest("[role=dialog]");
+    const active = document.activeElement;
+    // Only then: on the page, or on the dialog's own box. A control he is on keeps it.
+    if (!dialog || active === dialog || !dialog.contains(active)) button.current?.focus();
+  }, [landing]);
   return (
     <DialogFooter start={start}>
-      <Button data-dialog-cancel variant="secondary" disabled={busy} onClick={() => (close ? close(onClose) : onClose())}>
+      <Button ref={button} data-dialog-cancel variant="secondary" disabled={busy} onClick={() => (close ? close(onClose) : onClose())}>
         Close
       </Button>
     </DialogFooter>
@@ -205,12 +213,17 @@ function Body({
     setBusy(null);
     setError(refusalWords(err) || fallback);
   };
+  // The pair as the last render had it, for a press whose answer comes later.
+  const latest = useRef(clash);
+  latest.current = clash;
   // Back puts focus where the step was opened from, so the keyboard never loses its place.
   const from = useRef<string | null>(null);
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (step || !from.current) return;
-    body.current?.querySelector<HTMLElement>(`[data-way="${from.current}"]`)?.focus();
+    // The way he came from, or the foot's Close when that way is gone (its event ended while the step was open).
+    const close = body.current?.closest("[role=dialog]")?.querySelector<HTMLElement>("[data-dialog-cancel]");
+    (body.current?.querySelector<HTMLElement>(`[data-way="${from.current}"]`) ?? close)?.focus();
     from.current = null;
   }, [step]);
 
@@ -235,13 +248,16 @@ function Body({
     setError(null);
     setPending(true);
     setBusy("late");
+    const pressed = pairStamp(clash);
     answered(session.client.query(eventGet, { id: clash.b.eventId })).then(
       (event: { attendees?: { address: string }[] } | null) => {
         setPending(false);
+        // The pair changed while the people were read: the minutes he pressed for are no longer the minutes. The dialog shows the pair as it is, and the press is his again.
+        if (pairStamp(latest.current) !== pressed) return setBusy(null);
         const to = (event?.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
         if (!to.length) return failed(null, "Nobody on this event has an address");
         openWorkView({ workspaceId, view: "mail" });
-        writeMail(lateDraft(clash, to, Date.now()));
+        writeMail(lateDraft(latest.current, to, Date.now()));
         close ? close(onClose) : onClose();
       },
       (err: unknown) => failed(err, "LifeOS did not answer"),

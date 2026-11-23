@@ -198,9 +198,9 @@ export function StartPlaceForm({
             <Switch checked={form.lookups} disabled={pending !== null} aria-describedby={linesId} onCheckedChange={(on) => setEdits((f) => ({ ...f, lookups: on }))} />
           </FieldRow>
         ) : null}
-        {/* One line at a time: why LifeOS cannot be read now, before what it said of an earlier Save; and the wait, while a read is out. */}
+        {/* One line at a time: why LifeOS cannot be read now, before what it said of an earlier Save; and the wait, while a read is out. An earlier Save's words stand only while the form still differs from what LifeOS holds: once a Save that timed out is seen to have landed, there is nothing left to save again. */}
         <div role="alert" className="empty:hidden">
-          <ErrorLine error={blocked === "" ? null : blocked || error} />
+          <ErrorLine error={blocked === "" ? null : blocked || (formChanged(saved, form) ? error : null)} />
         </div>
         <div role="status" className="empty:hidden">
           {blocked === "" ? (

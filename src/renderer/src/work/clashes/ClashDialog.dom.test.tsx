@@ -29,10 +29,10 @@ vi.mock("../../lib/connection", async (original) => ({
 }));
 const marks = vi.hoisted(() => ({ now: null as unknown, asked: [] as unknown[] }));
 vi.mock("./mark", () => ({ useClashes: (...asked: unknown[]) => ((marks.asked = asked), marks.now) }));
-const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false }));
+const lifeos = vi.hoisted(() => ({ attendees: [] as { address: string }[], gone: false, connecting: false, silent: false, held: null as Promise<unknown> | null }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
-  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: () => (lifeos.silent ? new Promise<never>(() => {}) : Promise.resolve({ attendees: lifeos.attendees })) } }),
+  useLifeosSession: () => (lifeos.gone || lifeos.connecting ? { environmentId: "box", sector: null, state: lifeos.gone ? "unreachable" : "connecting", client: null } : { environmentId: "box", sector: null, state: "connected", client: { query: () => lifeos.held ?? (lifeos.silent ? new Promise<never>(() => {}) : Promise.resolve({ attendees: lifeos.attendees })) } }),
 }));
 const toasts = vi.hoisted(() => ({ said: [] as { words: string; action?: { label: string; onClick: () => void } }[] }));
 vi.mock("../../components/ui/toaster", () => ({
@@ -75,6 +75,7 @@ beforeEach(() => {
   lifeos.gone = false;
   lifeos.connecting = false;
   lifeos.silent = false;
+  lifeos.held = null;
 });
 afterEach(() => {
   cleanup();
@@ -515,6 +516,63 @@ describe("the Clash dialog", () => {
       // The header's and the foot's both work again.
       expect(closes()).toEqual([false, false]);
       expect(mail.drafts).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drafts nothing when the pair changes while Running late reads the people: the press is his again on the pair as it is", async () => {
+    let answer: (value: { attendees: { address: string }[] }) => void = () => {};
+    lifeos.held = new Promise((resolve) => (answer = resolve));
+    const view = (clash: Clash) => {
+      marks.now = marksOf({ clashes: [clash], leaves: [] });
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(overlap()));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    // The meeting's end moves from 3:00 to 2:10 while the people are read: he is no longer an hour late.
+    rerender(view(overlap({ ...meeting(["decline", "propose"]), endsAt: T0 + 70 * 60_000 }, game(["move", "late"]))));
+    await act(async () => answer({ attendees: [{ address: "dana@example.com" }] }));
+    await settle();
+    expect(mail.drafts).toEqual([]);
+    expect((screen.getByRole("button", { name: "Running late…" }) as HTMLButtonElement).disabled).toBe(false);
+    // Pressed again, it drafts for the pair as it is: ten minutes shared and the 38 minute drive, where it was 98.
+    lifeos.held = null;
+    lifeos.attendees = [{ address: "dana@example.com" }];
+    fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+    await settle();
+    expect(mail.drafts).toEqual([expect.objectContaining({ body: "I'm running about 48 minutes late." })]);
+  });
+
+  it("puts focus on Close when Back finds the way he came from gone", async () => {
+    vi.useFakeTimers({ now: T0 + HOUR, toFake: ["Date"] });
+    try {
+      const view = (live: ClashMarks) => {
+        marks.now = live;
+        return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+      };
+      const { rerender } = render(view(marksOf({ clashes: [overlap()], leaves: [] })));
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+      // The meeting ends while the step is open: Back finds no Decline to return to.
+      vi.setSystemTime(T0 + 2 * HOUR + 60_000);
+      rerender(view(marksOf({ clashes: [overlap()], leaves: [] })));
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      await settle();
+      expect(document.activeElement).toBe(document.querySelector("[data-dialog-cancel]"));
+      // And when the clash is gone altogether, the gone state's Close takes it.
+      cleanup();
+      const again = render(view(marksOf({ clashes: [overlap()], leaves: [] })));
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Move…" }));
+      again.rerender(view(marksOf({ clashes: [], leaves: [] })));
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      await settle();
+      expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
+      expect(document.activeElement).toBe(document.querySelector("[data-dialog-cancel]"));
     } finally {
       vi.useRealTimers();
     }

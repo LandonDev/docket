@@ -1918,7 +1918,7 @@ Around the canvas:
   holds its width and spins, and the step's fields are locked while it
   is out; a toast answers the press and the dialog closes on the clash it
   showed, though his own press is what ended it; a refusal stays in the
-  step in LifeOS's words, in `destructive`, as an alert. Back puts focus on the way it came from. While the dialog
+  step in LifeOS's words, in `destructive`, as an alert. Back puts focus on the way it came from, or on Close when that way is gone. While the dialog
   reads a clash it was not handed, it draws the two events' bones with the
   hairline between them (and says "Reading the clash…" to a screen
   reader); a step he is typing in stays when the calendar settles the
@@ -1963,7 +1963,8 @@ Around the canvas:
   whatever else changed, for that one job alone (another job's start or
   switch, changed elsewhere meanwhile, is kept). The fields are locked
   while Save is out, for ten seconds at most: then the dialog says
-  "LifeOS did not answer. Save again to be sure." and he can. An open
+  "LifeOS did not answer. Save again to be sure." and he can; the words
+  go once the reads show the Save landed after all. An open
   dialog keeps what he typed when a read fails or the session drops (a
   field he has not touched follows the reads, and Save is on whenever
   the form differs from what LifeOS holds now): it

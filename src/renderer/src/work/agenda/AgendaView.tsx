@@ -167,7 +167,8 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   const clashesOf = useMemo(() => {
     const live = new Map<string, readonly Clash[]>();
     for (const [id, list] of marks.clashes) {
-      const kept = list.filter((c) => c.b.endsAt >= now && (c.a.eventId === id ? c.a : c.b).endsAt >= now);
+      // Strictly after the clock: at its last minute's end an event is over, as the dialog reads it.
+      const kept = list.filter((c) => c.b.endsAt > now && (c.a.eventId === id ? c.a : c.b).endsAt > now);
       if (kept.length) live.set(id, kept.length === list.length ? list : kept);
     }
     return live;

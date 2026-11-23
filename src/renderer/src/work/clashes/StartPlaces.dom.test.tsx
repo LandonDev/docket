@@ -302,11 +302,14 @@ describe("Start places", () => {
     lifeos.silent = false;
     // The write landed after the wait ended: the live read now says Purdue's lookups are on.
     lifeos.places = { ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "purdue" ? { ...j, lookups: true } : j)) };
+    // Until the read shows it, the dialog says the Save is unsure.
+    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("LifeOS did not answer. Save again to be sure.");
     view.rerender(<StartPlacesSection environmentId="box" />);
     await act(async () => {});
     const saveOff = () => (within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled;
-    // The switch shows on, as stored: nothing to save.
+    // The switch shows on, as stored: nothing to save, and nothing left that says to save again.
     expect(saveOff()).toBe(true);
+    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");
     // He turns it back off: that differs from what LifeOS holds, so Save is on and sends it.
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("switch"));
     expect(saveOff()).toBe(false);
