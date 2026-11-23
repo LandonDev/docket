@@ -265,6 +265,13 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   (`useWorkCommands`), the Preview contract (`work/formats/preview.ts`, `previewProblems`), and the conversion
   runner's `+renderer` formats, `ready`, his press and the shared-file rule.
   [docs/agents/work-editors.md](docs/agents/work-editors.md)
+- **Work: money** — receipts to a ledger by job (pillar 60, one of Work's pillars): the ledger is
+  `Money/Ledger.tcsheet` in the workspace's own folder, made and written through the service's
+  `/internal/sheet/*` and read by header name; `src/shared/work/money.ts` holds the rules, the sums and the
+  one receipt parser; every way in waits in `work_money_inbox` and only his accept writes a row; a receipt is
+  read by RapidOCR from the Docling tool folder, never a model; pay and miles from the calendar, a year's
+  export, an invoice as a page the window prints; no act kind, every write refused for a thread;
+  `bun run script:e2e-money`. [docs/agents/work-money.md](docs/agents/work-money.md)
 - **work-kit** — the private package shared with LifeOS, pinned as a devDependency at
   `git+https://www.github.com/LandonDev/work-kit.git#<sha>` (bun cannot fetch a private
   `github:` spec), kept out of the app by electron-builder; scripts/workKitPin.test.ts.

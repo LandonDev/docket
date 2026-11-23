@@ -362,6 +362,7 @@ winvm, capture, files, prep, money, search, clashes, templates` (the Windows VM'
 [work-search.md](work-search.md); clashes across jobs,
 [work-clashes.md](work-clashes.md); templates per job,
 [work-templates.md](work-templates.md)).
+Money, receipts to a ledger by job, has its own account: [work-money.md](work-money.md).
 `PILLAR_MILESTONE` names the plan milestone that builds each. Canvas kinds
 map to pillars once (`CANVAS_PILLAR`), act kinds too (`ACT_PILLAR`).
 

@@ -12,9 +12,11 @@ import { bench, LOCAL, req, type Bench } from './testing'
 // Clashes' measure of a drive, standing in: a leg per pair of stops, by the event's id.
 const legs = new Map<string, { miles: number; minutes: number; measured: boolean } | null>()
 const drivesAsked: unknown[][] = []
-const standIn = async (_ctx: unknown, workspaceId: string, from: { event?: string }, to: { event?: string }) => {
+type Stop = { start: true } | { event: string }
+const eventOf = (stop: Stop): string | undefined => ('event' in stop ? stop.event : undefined)
+const standIn = async (_ctx: unknown, workspaceId: string, from: Stop, to: Stop) => {
   drivesAsked.push([workspaceId, from, to])
-  return legs.get(from.event ?? to.event ?? '') ?? null
+  return legs.get(eventOf(from) ?? eventOf(to) ?? '') ?? null
 }
 
 let b: Bench
