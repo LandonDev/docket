@@ -167,17 +167,16 @@ export function StartPlaceForm({
   const form = { ...saved, ...edits };
   const [error, setError] = useState<string | null>(shownError);
   const job: SectorKey | null = target === "home" ? null : target;
-  // What a Save whose answer never came sent. Once the reads show those values, it landed: its words go, and its edits are simply what is stored now, so they are dropped and those fields follow the reads again (a change made elsewhere since is not undone by his next Save). An edit he made after it stays.
-  const unsure = useRef<Partial<typeof saved> | null>(null);
+  // What a Save whose answer never came sent. Once the reads show those values, it landed: its words go, and its edits are simply what is stored now, so they are dropped and those fields follow the reads again (a change made elsewhere since is not undone by his next Save). An edit he made after it stays. Asked when the wait ends as well as at each read: the read may have shown the write before the wait ran out.
+  const [unsure, setUnsure] = useState<Partial<typeof saved> | null>(null);
   useEffect(() => {
-    const sent = unsure.current;
-    if (!sent) return;
-    const fields = Object.keys(sent) as (keyof typeof saved)[];
-    if (!fields.every((field) => sameField(saved[field], sent[field]))) return;
-    unsure.current = null;
+    if (!unsure) return;
+    const fields = Object.keys(unsure) as (keyof typeof saved)[];
+    if (!fields.every((field) => sameField(saved[field], unsure[field]))) return;
+    setUnsure(null);
     setError(null);
-    setEdits((edits) => Object.fromEntries(Object.entries(edits).filter(([field, value]) => !sameField(value, sent[field as keyof typeof saved]))));
-  }, [saved.address, saved.lookups]);
+    setEdits((edits) => Object.fromEntries(Object.entries(edits).filter(([field, value]) => !sameField(value, unsure[field as keyof typeof saved]))));
+  }, [saved.address, saved.lookups, unsure]);
 
   const linesId = useId();
   const address = useRef<HTMLInputElement>(null);
@@ -187,7 +186,7 @@ export function StartPlaceForm({
     if (!patch || pending || blocked !== null) return;
     setPending("save");
     setError(null);
-    unsure.current = null;
+    setUnsure(null);
     // The write is given an end: a session that drops under it would leave the dialog locked. One job set alone is the same write twice over, so Save again is safe.
     answered(send(patch), UNSURE).then(
       () => {
@@ -197,7 +196,7 @@ export function StartPlaceForm({
       (err: unknown) => {
         setPending(null);
         const words = refusalWords(err) || "LifeOS refused it";
-        if (words === UNSURE) unsure.current = fieldsOf(patch);
+        if (words === UNSURE) setUnsure(fieldsOf(patch));
         setError(words);
       },
     );

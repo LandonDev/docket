@@ -355,6 +355,39 @@ describe("Start places", () => {
     expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "purdue", address: "14 Oak Ct" } } }]);
   });
 
+  it("sees a Save that landed before its wait ran out: the read showed it first, and the timeout then finds nothing unsure", async () => {
+    const view = render(<StartPlacesSection environmentId="box" />);
+    const dialog = await open("Change Purdue");
+    const stored = (more: object) => ({ ...PLACES, jobs: PLACES.jobs.map((j) => (j.sector === "purdue" ? { ...j, ...more } : j)) });
+    vi.useFakeTimers();
+    try {
+      lifeos.silent = true;
+      fireEvent.click(within(dialog).getByRole("switch"));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+      await act(async () => {});
+      // The read shows the write while the Save's own answer is still out; then the link drops under it.
+      lifeos.places = stored({ lookups: true });
+      view.rerender(<StartPlacesSection environmentId="box" />);
+      await act(async () => {});
+      await act(async () => void vi.advanceTimersByTime(10_000));
+    } finally {
+      vi.useRealTimers();
+    }
+    lifeos.silent = false;
+    await act(async () => {});
+    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");
+    // Lookups are turned off elsewhere: the switch follows, and an address Save sends the address alone.
+    lifeos.places = stored({ lookups: false });
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(within(screen.getByRole("dialog")).getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Address"), { target: { value: "14 Oak Ct" } });
+    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");
+    lifeos.sent = [];
+    await save(screen.getByRole("dialog"));
+    expect(lifeos.sent).toEqual([{ name: "settings:update", args: { startFor: { sector: "purdue", address: "14 Oak Ct" } } }]);
+  });
+
   it("lets a field he has not touched follow the reads, and never offers to send it back", async () => {
     const view = render(<StartPlacesSection environmentId="box" />);
     await open("Change Ref");

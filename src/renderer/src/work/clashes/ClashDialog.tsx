@@ -258,7 +258,8 @@ function Body({
       (event: { attendees?: { address: string }[] } | null) => {
         setPending(false);
         // The pair changed while the people were read, or stopped being a clash: the minutes he pressed for are no longer the minutes. The dialog shows the pair as it is, or that it is gone, and the press is his again.
-        if (left.current || pairStamp(latest.current) !== pressed) return setBusy(null);
+        // Nor is a line drafted for an event that ended in the wait: its Running late is gone from the dialog by then.
+        if (left.current || latest.current.b.endsAt <= Date.now() || pairStamp(latest.current) !== pressed) return setBusy(null);
         const to = (event?.attendees ?? []).map((a) => a.address).filter((a) => a.includes("@"));
         if (!to.length) return failed(null, "Nobody on this event has an address");
         openWorkView({ workspaceId, view: "mail" });

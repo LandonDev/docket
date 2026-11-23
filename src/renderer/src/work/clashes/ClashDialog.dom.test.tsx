@@ -568,6 +568,26 @@ describe("the Clash dialog", () => {
     expect(document.activeElement).toBe(document.querySelector("[data-dialog-cancel]"));
   });
 
+  it("drafts nothing when the later event ends while Running late reads the people", async () => {
+    let answer: (value: { attendees: { address: string }[] }) => void = () => {};
+    lifeos.held = new Promise((resolve) => (answer = resolve));
+    vi.useFakeTimers({ now: T0 + 3 * HOUR - 5_000, toFake: ["Date"] });
+    try {
+      show(overlap());
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Running late…" }));
+      await settle();
+      // The game ends five seconds on; the people arrive after that.
+      vi.setSystemTime(T0 + 3 * HOUR + 2_000);
+      await act(async () => answer({ attendees: [{ address: "dana@example.com" }] }));
+      await settle();
+      expect(mail.drafts).toEqual([]);
+      expect(screen.getAllByRole("button", { name: "Close" }).every((b) => !(b as HTMLButtonElement).disabled)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("puts focus on Close when Back finds the way he came from gone", async () => {
     vi.useFakeTimers({ now: T0 + HOUR, toFake: ["Date"] });
     try {
