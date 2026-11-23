@@ -15,6 +15,7 @@ import { canvasStoreOf } from '../canvas/store'
 import { readText, readZip } from './patch/zip'
 import { readTables } from './patch/tables'
 import { readPages } from './patch/pages'
+import { readNotes } from './patch/notes'
 import { PAGES_RESOURCE } from 'work-kit/sheet/pages/access'
 
 /**
@@ -990,5 +991,69 @@ describe('a page set-up an agent changes', () => {
     } finally {
       host.close()
     }
+  })
+})
+
+/** The agent's side of a note's pop-over (sheet_note): by what the store keeps of notes (`SHEET_NOTES`), each read back. */
+describe('a note an agent writes', () => {
+  let path: string
+  let itemId: string
+  const notesIn = () => readNotes(new Uint8Array(readFileSync(path)), 'Review')
+  beforeEach(() => {
+    mkdirSync(join(library, 'Review'), { recursive: true })
+    path = join(library, 'Review', 'Review.xlsx')
+    copyFileSync(join(CORPUS, 'threaded_comments.xlsx'), path)
+    itemId = open(path, 'Review.xlsx')
+  })
+
+  it('on an Excel file others can open its new words for a note wait in words, the folder byte for byte; his accept writes them in place', async () => {
+    const before = folder()
+    const got = await tool('sheet_note', { item: itemId, note: { at: 'A9', text: 'Checked on Monday.' }, because: 'own' })
+    expect(got.isError, got.text).toBeFalsy()
+    expect(got.text).toMatch(/^Suggested: The note on A9 reworded: “Checked on Monday\.” Others share this sheet/)
+    expect(folder()).toEqual(before)
+    expect((await call<SheetView>('work.sheets.open', { itemId })).changes!.map((c) => c.kind)).toEqual(['note'])
+    await call('work.sheets.review', { itemId, which: 'all', verdict: 'accept' })
+    expect(notesIn()).toEqual([{ sheet: 'Review', row: 8, column: 0, author: 'Lab', text: 'Checked on Monday.' }])
+  })
+
+  it('what an Excel file cannot take is refused as it is asked: a new note, a removal, a thread, the same words', async () => {
+    state.said.push('fix the note on A9')
+    const before = folder()
+    const refused = async (note: unknown): Promise<string> => {
+      const got = await tool('sheet_note', { item: itemId, note, because: 'asked', quote: 'fix the note' })
+      expect(got.isError, JSON.stringify(note)).toBe(true)
+      return got.text
+    }
+    expect(await refused({ at: 'A4', text: 'New' })).toBe('Add a new note in Excel')
+    expect(await refused({ at: 'A9', text: null })).toBe('Delete this note in Excel')
+    expect(await refused({ at: 'B2', text: 'Done' })).toBe('The comment at B2 is a thread. Reply to it in Excel.')
+    expect(await refused({ at: 'A9', text: 'An ordinary note next to the threads' })).toBe('The note on A9 says that already.')
+    expect(await refused({ at: 'A9:A10', text: 'x' })).toMatch(/not one cell/)
+    expect(folder()).toEqual(before)
+    expect((await tool('sheet_note', { item: itemId, note: { at: 'A9', text: 'Fixed.' }, because: 'asked', quote: 'fix the note' })).text).toBe('The note on A9 reworded: “Fixed.”')
+    expect(notesIn()[0]!.text).toBe('Fixed.')
+  })
+
+  it('on a .tcsheet of his own a note is made, reworded and removed, and a cold load agrees', async () => {
+    const own = join(dir, 'Own.tcsheet')
+    TcsheetBackend.create(own, 'Own')
+    const id = open(own, 'Own')
+    await call('work.sheets.mode', { itemId: id, mode: 'writes' })
+    const notes = async (): Promise<Record<string, Record<string, { note: string }>>> => {
+      const host = new SheetHost(() => new TcsheetBackend(own, join(dir, 'sheets', 'suggestions')))
+      try {
+        const wb = JSON.parse((await host.snapshotJson({ tcsheet: own })).json) as { resources?: { name: string; data: string }[] }
+        return (JSON.parse(wb.resources?.find((r) => r.name === 'SHEET_NOTE_PLUGIN')?.data || '{}') as Record<string, Record<string, Record<string, { note: string }>>>).sheet1 ?? {}
+      } finally {
+        host.close()
+      }
+    }
+    expect((await tool('sheet_note', { item: id, note: { at: 'B2', text: 'Ask Sam' }, because: 'own' })).text).toBe('A note on B2: “Ask Sam”.')
+    expect((await notes())[1]?.[1]).toMatchObject({ note: 'Ask Sam' })
+    expect((await tool('sheet_note', { item: id, note: { at: 'B2', text: 'Sam said yes' }, because: 'own' })).text).toBe('The note on B2 reworded: “Sam said yes”.')
+    expect((await notes())[1]?.[1]).toMatchObject({ note: 'Sam said yes' })
+    expect((await tool('sheet_note', { item: id, note: { at: 'B2', text: null }, because: 'own' })).text).toBe('The note on B2 removed.')
+    expect((await notes())[1]?.[1]).toBeUndefined()
   })
 })

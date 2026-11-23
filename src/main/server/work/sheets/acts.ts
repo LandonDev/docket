@@ -4,8 +4,9 @@ import { headlessSheet } from 'work-kit/sheet/engine'
 import { createTables, TABLE_STYLES, TOTAL_FUNCTIONS, type TotalFunction } from 'work-kit/sheet/tables'
 import { createPages } from 'work-kit/sheet/pages/access'
 import { MARGIN_PRESETS, PAPERS, type SheetPageSetup } from 'work-kit/sheet/pages'
-import { SHEET_ROW, type SheetMutationJson } from '@shared/contract-work-sheets'
-import { forPackage, latestRules, RULE_MUTATIONS, ruleKinds } from '@shared/work/sheets'
+import { SHEET_NOTES, SHEET_ROW, type SheetMutationJson, type SheetNoteControl } from '@shared/contract-work-sheets'
+import { forPackage, latestRules, NOTE_STOP, RULE_MUTATIONS, ruleKinds } from '@shared/work/sheets'
+import { randomUUID } from 'node:crypto'
 import { colName, rangeName } from './a1'
 import { place, type Placed } from './asks'
 import { importPackage, savePackage } from './jobs'
@@ -58,6 +59,14 @@ export const PageAskSchema = z
   .strict()
 export type PageAsk = z.infer<typeof PageAskSchema>
 
+export const NoteAskSchema = z
+  .object({
+    at: z.string().min(2).max(300).describe("One cell: B4, or 'Q1 Budget'!B4."),
+    text: z.string().min(1).max(32_767).nullable().describe('The note\'s words; null removes it.')
+  })
+  .strict()
+export type NoteAsk = z.infer<typeof NoteAskSchema>
+
 /** What the worker is asked: the sheet as it stands (an opened package's path, or the service's snapshot) and the ask. */
 export interface ActAsk {
   store: 'package' | 'service'
@@ -67,6 +76,7 @@ export interface ActAsk {
   snapshot?: string
   table?: TableAsk
   page?: PageAsk
+  note?: NoteAsk
 }
 
 /** What the ask makes, or `refused`: the words for a change the sheet has no place for (a worker's error crosses as text alone). */
@@ -179,7 +189,8 @@ async function made(ask: ActAsk): Promise<ActMade> {
       },
       hold: (sheet) => void grid.workbook.setActiveSheet(grid.workbook.getSheetBySheetId(sheet)!)
     }
-    const step = ask.table ? tableStep(env, ask.table) : ask.page ? pageStep(env, ask.page) : refuse('Nothing was asked.')
+    // What a note's pop-over takes there (SHEET_NOTES): an Excel file rewords a note it has; a sheet the service holds makes and removes them too.
+    const step = ask.table ? tableStep(env, ask.table) : ask.page ? pageStep(env, ask.page) : ask.note ? noteStep(env, ask.note, workbook, ask.store === 'package' ? SHEET_NOTES.package : SHEET_NOTES.tcsheet) : refuse('Nothing was asked.')
     // Univer applies part of a change a tick after its command, as the canvas sees it.
     await new Promise((done) => setTimeout(done, 0))
     if (!emitted.length) refuse('That changes nothing.')
@@ -189,7 +200,7 @@ async function made(ask: ActAsk): Promise<ActMade> {
     if (ask.store === 'package') {
       const out: SheetMutationJson[] = []
       for (const m of emitted) {
-        const got = forPackage(m, () => null, { formats: true, kinds: ruleKinds(SHEET_ROW.package), rules: (kind, at) => (kind === 'tables' ? env.tables.models(at) : kind === 'pages' ? env.pages.get(at) : undefined), style: styleOf })
+        const got = forPackage(m, () => null, { formats: true, kinds: ruleKinds(SHEET_ROW.package), rules: (kind, at) => (kind === 'tables' ? env.tables.models(at) : kind === 'pages' ? env.pages.get(at) : undefined), style: styleOf, notes: SHEET_NOTES.package })
         if ('stop' in got) refuse(got.stop)
         else out.push(...got.keep)
       }
@@ -284,6 +295,46 @@ function tableStep(env: Env, a: TableAsk): Step {
   }
   if (!tables.remove(t.id)) refuse(`Table ${t.name} could not be converted.`)
   return { sheet, range: t.range, words: `Table ${t.name} back to a plain range` }
+}
+
+/** Univer's note resource (work-kit's README "Notes and comments"): by sheet id, row and column. */
+const NOTES = 'SHEET_NOTE_PLUGIN'
+type KeptNote = { id: string; row: number; col: number; note: string; thread?: string } & Record<string, unknown>
+const quoted = (text: string): string => `“${text.length > 60 ? `${text.slice(0, 59)}…` : text}”`
+
+/** A note's ask as the grid's own note mutations (the ones `handle.comments` makes), applied to the engine. */
+function noteStep(env: Env, a: NoteAsk, workbook: IWorkbookData, controls: readonly SheetNoteControl[]): Step {
+  const at = env.place(a.at)
+  const { sheet, range } = at
+  if (range.startRow !== range.endRow || range.startColumn !== range.endColumn) refuse(`${a.at} is not one cell: a note is on one cell.`)
+  const cell = env.on(sheet, range)
+  let kept: Record<string, Record<string, Record<string, KeptNote | null>>> = {}
+  try {
+    kept = JSON.parse(workbook.resources?.find((r) => r.name === NOTES)?.data || '{}') ?? {}
+  } catch {
+    kept = {}
+  }
+  const was = kept[sheet]?.[range.startRow]?.[range.startColumn] ?? null
+  if (was?.thread) refuse(`The comment at ${cell} is a thread. Reply to it in Excel.`)
+  const unitId = env.grid.workbook.getId()
+  const where = { unitId, sheetId: sheet, row: range.startRow, col: range.startColumn }
+  let words: string
+  if (a.text === null) {
+    if (!was) refuse(`${cell} has no note.`)
+    if (!controls.includes('remove')) refuse(NOTE_STOP.remove)
+    env.grid.api.syncExecuteCommand('sheet.mutation.remove-note', { ...where, noteId: was!.id })
+    words = `The note on ${cell} removed`
+  } else if (was) {
+    if (!controls.includes('edit')) refuse(NOTE_STOP.add)
+    if (was.note === a.text) refuse(`The note on ${cell} says that already.`)
+    env.grid.api.syncExecuteCommand('sheet.mutation.update-note', { ...where, note: { ...was, note: a.text } })
+    words = `The note on ${cell} reworded: ${quoted(a.text)}`
+  } else {
+    if (!controls.includes('add')) refuse(NOTE_STOP.add)
+    env.grid.api.syncExecuteCommand('sheet.mutation.update-note', { ...where, note: { id: randomUUID().slice(0, 6), row: range.startRow, col: range.startColumn, width: 160, height: 72, note: a.text, show: false } })
+    words = `A note on ${cell}: ${quoted(a.text)}`
+  }
+  return { sheet, range, words }
 }
 
 const letterOf = (text: string): number => [...text.toUpperCase()].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1

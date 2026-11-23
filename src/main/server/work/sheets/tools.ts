@@ -9,7 +9,7 @@ import { parseA1 } from './a1'
 import { agentFormat, FORMAT_MAX_CELLS, FormatSchema, formatWords, heldOfPackage, place, ruleClash, ruleListMutation, ruleModel, ruleMutations, RuleSchema, ruleWords, where, type FormatAsk, type Placed, type RuleAsk } from './asks'
 import type { RulesHeld } from './host/wire'
 import type { ChangeAsk } from './changes'
-import { PageAskSchema, TableAskSchema, type ActAnswer, type ActMade, type PageAsk, type TableAsk } from './acts'
+import { NoteAskSchema, PageAskSchema, TableAskSchema, type ActAnswer, type ActMade, type NoteAsk, type PageAsk, type TableAsk } from './acts'
 import { ensureImported } from './formatsIn'
 import { ensureCsvSheet, heldOf, heldOfPath, host, sheetsOf, storeKey, type Held, type Sheets } from './held'
 import type { A1Cell } from './host/wire'
@@ -135,9 +135,9 @@ async function standing(s: Sheets, held: Target['held']): Promise<Standing> {
 }
 
 /** The worker's answer for one ask, asked once for a standing: the words and the mutations come from one run. */
-type Acted = { table: TableAsk } | { page: PageAsk }
+type Acted = { table: TableAsk } | { page: PageAsk } | { note: NoteAsk }
 /** The ask of a change the sheet worker makes (acts.ts), or null for a format or a rule. */
-const actedOf = (ask: ChangeAsk): Acted | null => (ask.kind === 'table' ? { table: ask.table } : ask.kind === 'page' ? { page: ask.page } : null)
+const actedOf = (ask: ChangeAsk): Acted | null => (ask.kind === 'table' ? { table: ask.table } : ask.kind === 'page' ? { page: ask.page } : ask.kind === 'note' ? { note: ask.note } : null)
 function once(ask: (acted: Acted) => Promise<ActAnswer>): (acted: Acted) => Promise<ActMade> {
   const seen = new Map<string, Promise<ActMade>>()
   return (acted) => {
@@ -260,18 +260,21 @@ async function change(ctx: ToolCtx, a: { item?: string; file?: string; because: 
     if (!writes) {
       const words = await propose(s, t, ask, by, a.reason)
       await announceItem(s, t.item)
-      return workText(`Suggested: ${words}. ${t.shared ? 'Others share this sheet, so' : 'The sheet is set to suggest, so'} the owner takes or drops it; nothing in the sheet changed.${note}`)
+      return workText(`Suggested: ${ended(words)} ${t.shared ? 'Others share this sheet, so' : 'The sheet is set to suggest, so'} the owner takes or drops it; nothing in the sheet changed.${note}`)
     }
     const { words } = await read(ask, await standing(s, t.held))
     if (!(await layChange(s, t.held, ask, by, words))) throw new Error('The sheet changed as this was written: read it again and try once more.')
     // His own sheet, on the agent's own idea: the bar says what was done. History takes it back, not the line (no cell's contents changed, and the grid's own Undo does not hold an agent's change).
     if (!asked && !routine) s.suggestions.setWritten(storeKey(t.held), { id: randomUUID(), text: words, at: Date.now(), undo: false })
     await announceItem(s, t.item)
-    return workText(`${words}.${note}`)
+    return workText(`${ended(words)}${note}`)
   } catch (err) {
     return fail(errorText(err))
   }
 }
+
+/** Words as a sentence: a full stop unless they end one already (a quoted note's own). */
+const ended = (words: string): string => (/[.!?]”?$/.test(words) ? words : `${words}.`)
 
 const shown = (c: { at: string; v?: unknown; f?: string }): string => (c.f !== undefined ? `${c.at} ${c.f}${c.v !== undefined ? ` = ${JSON.stringify(c.v)}` : ''}` : c.v !== undefined ? `${c.at} ${JSON.stringify(c.v)}` : '')
 /** A cell as `sheet_read` says it: its value or formula, then its note's words. */
@@ -449,6 +452,18 @@ export const sheetTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; page: PageAsk; because: 'asked' | 'routine' | 'own'; quote?: string; reason?: string }
       return change(ctx, a, { kind: 'page', page: a.page })
+    }
+  },
+  {
+    name: 'sheet_note',
+    description:
+      'Sets the words of the note on one cell, or with `text: null` removes it. An Excel file takes only new words for a note it has; a .tcsheet or LifeOS sheet also makes and removes notes. ' +
+      'Say why, as for `sheet_write`: on a sheet others share your own idea waits in words for the owner.',
+    input: z.object({ ...target, note: NoteAskSchema, ...because }),
+    readOnly: false,
+    run: async (args, ctx) => {
+      const a = args as { item?: string; file?: string; note: NoteAsk; because: 'asked' | 'routine' | 'own'; quote?: string; reason?: string }
+      return change(ctx, a, { kind: 'note', note: a.note })
     }
   },
   {

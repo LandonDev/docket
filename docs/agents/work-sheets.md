@@ -1060,7 +1060,7 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 ## Agents: the tools and the rule
 
 `sheet_read`, `sheet_write`, `sheet_suggest`, `sheet_format`, `sheet_rule`,
-`sheet_table`, `sheet_page`, `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
+`sheet_table`, `sheet_page`, `sheet_note`, `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
 read and 1,000 a write. A read of an opened Excel file ends with one line
 when the file holds what only Excel changes ("This workbook also holds 2
 pivot tables: only Excel changes those…", `waitsNote`), so a thread does
@@ -1129,7 +1129,18 @@ already, or one under Fit to (Excel leaves those out), is refused as it is
 asked. The words: "Data's page: landscape, A4, narrow margins, fit to 1 page
 wide, rows 1 on every page, print area A1:C21".
 
-The store's own save is the last check for both: for an Excel file the
+**A note** (`sheet_note`, `acts.ts`). The words of the note on one cell,
+or `text: null` to remove it, by what the store keeps of notes
+(`SHEET_NOTES`): an opened Excel file takes new words for a note it has
+and nothing else ("Add a new note in Excel", "Delete this note in Excel");
+a `.tcsheet` and a LifeOS sheet make, reword and remove. A thread's
+stand-in is refused ("The comment at B2 is a thread. Reply to it in
+Excel."), and so are words the note already says. The grid's own note
+mutations are applied to the engine in the worker, as `handle.comments`
+makes them; a new note has no author. The words: "The note on A9 reworded:
+“Checked on Monday.”", "A note on B2: “Ask Sam”".
+
+The store's own save is the last check for each: for an Excel file the
 mutations go through `planOf` and `savePackage` in memory, the bytes thrown
 away (`triedOn`), so what any writer refuses is said as it is asked.
 
@@ -1553,8 +1564,7 @@ The harness corpus also keeps the workbooks the editors plan measured with
   Excel's comments and drawing parts, which no writer here makes. Moves are
   saved where the file allows ("Structural edits").
 - The model writer leaves out notes and our charts.
-- An agent reads a note's words (`sheet_read`) and writes none: no tool
-  changes a note or a cell's runs.
+- No tool changes a cell's runs (text in more than one style).
 - An agent adds rules and formats (`sheet_rule`, `sheet_format`); it does
   not change or remove a rule, merge cells or sort. The plan promised
   agents no more than those two tools, and SHT9 added none: a thread has
