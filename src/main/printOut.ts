@@ -1,6 +1,7 @@
 import { lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { spawn as nodeSpawn } from 'node:child_process'
 import { safeFileName } from '@shared/fileName'
 
 /**
@@ -153,10 +154,42 @@ export function answerPrint(deps: PrintDeps, event: PrintSender, name: unknown, 
   return printPdf(deps, name, bytes)
 }
 
+/** How long xdg-open is heard before the PDF counts as handed over. */
+export const XDG_SETTLE_MS = 3_000
+export const NO_VIEWER = 'No app on this computer opens a PDF'
+
+/**
+ * Opens a file on Linux through xdg-open, heard only for a moment. Electron's
+ * `shell.openPath` never settled there (the box, Electron 39: xdg-open ran
+ * and exited 0, and the window waited until its call was dropped, "reply was
+ * never sent"); and xdg-open's generic mode stays in the foreground until the
+ * viewer closes. So: an exit that fails, or no xdg-open at all, says why; an
+ * exit that succeeds, or one still running after `settleMs`, is the viewer
+ * holding the file.
+ */
+export function xdgOpen(path: string, spawn: typeof nodeSpawn = nodeSpawn, settleMs = XDG_SETTLE_MS): Promise<string> {
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const answer = (error: string): void => {
+      clearTimeout(timer)
+      resolve(error)
+    }
+    try {
+      const child = spawn('xdg-open', [path], { detached: true, stdio: 'ignore' })
+      child.once('error', () => answer(NO_VIEWER))
+      child.once('exit', (code) => answer(code === 0 ? '' : NO_VIEWER))
+      child.unref()
+      timer = setTimeout(() => answer(''), settleMs)
+    } catch {
+      answer(NO_VIEWER)
+    }
+  })
+}
+
 /** `print:pdf` for every window, then a sweep of what an earlier run left. */
 export async function registerPrintOut(): Promise<void> {
   const { app, ipcMain, shell } = await import('electron')
-  const deps: PrintDeps = { temp: app.getPath('temp'), open: (path) => shell.openPath(path) }
+  const deps: PrintDeps = { temp: app.getPath('temp'), open: (path) => (process.platform === 'linux' ? xdgOpen(path) : shell.openPath(path)) }
   ipcMain.handle('print:pdf', (event, name: unknown, bytes: unknown) => answerPrint(deps, event, name, bytes))
   sweepPrints(deps.temp)
 }

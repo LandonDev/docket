@@ -1,8 +1,9 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import { PRINT_KEEP, PRINT_MAX_BYTES, answerPrint, printDir, printName, printPdf, sweepPrints } from './printOut'
+import { EventEmitter } from 'node:events'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { NO_VIEWER, PRINT_KEEP, PRINT_MAX_BYTES, XDG_SETTLE_MS, answerPrint, printDir, printName, printPdf, sweepPrints, xdgOpen } from './printOut'
 
 /** Print… hands the previewed PDF to the system's own viewer (docs/agents/work-editors.md "Print"). */
 const dirs: string[] = []
@@ -99,6 +100,34 @@ describe('Print…', () => {
     expect(await printPdf({ temp: t, open: async () => 'No application knows how to open this file' }, 'x', PDF)).toEqual({ ok: false, error: 'No application knows how to open this file' })
     expect(await printPdf({ temp: t, open: () => Promise.reject(new Error('the viewer crashed')) }, 'x', PDF)).toEqual({ ok: false, error: 'the viewer crashed' })
     expect(walk(printDir(t))).toEqual([])
+  })
+
+  it('on Linux hears xdg-open for a moment: a failed exit or no xdg-open says why; a good exit, or one still running, is the viewer holding the file', async () => {
+    vi.useFakeTimers()
+    try {
+      const runs: Array<{ args: unknown[]; child: EventEmitter & { unref(): void } }> = []
+      const spawn = ((...args: unknown[]) => {
+        const child = Object.assign(new EventEmitter(), { unref: () => {} })
+        runs.push({ args, child })
+        return child
+      }) as unknown as Parameters<typeof xdgOpen>[1]
+      const at = (p: Promise<string>, act: () => void): Promise<string> => (act(), p)
+      expect(await at(xdgOpen('/t/Run.pdf', spawn), () => runs.at(-1)!.child.emit('exit', 0))).toBe('')
+      expect(runs[0]!.args).toEqual(['xdg-open', ['/t/Run.pdf'], { detached: true, stdio: 'ignore' }])
+      expect(await at(xdgOpen('/t/Run.pdf', spawn), () => runs.at(-1)!.child.emit('exit', 3))).toBe(NO_VIEWER)
+      expect(await at(xdgOpen('/t/Run.pdf', spawn), () => runs.at(-1)!.child.emit('error', new Error('spawn xdg-open ENOENT')))).toBe(NO_VIEWER)
+      // Its generic mode waits for the viewer to close: the answer does not.
+      const waiting = xdgOpen('/t/Run.pdf', spawn)
+      await vi.advanceTimersByTimeAsync(XDG_SETTLE_MS)
+      expect(await waiting).toBe('')
+      // Through Print…, an xdg-open that never exits still answers.
+      const t = temp()
+      const printed = printPdf({ temp: t, open: (path) => xdgOpen(path, spawn) }, 'Run of show', PDF)
+      await vi.advanceTimersByTimeAsync(XDG_SETTLE_MS)
+      expect(await printed).toEqual({ ok: true, via: 'viewer' })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('sweeps copies handed over more than a day ago, at each print, and keeps the fresh ones', async () => {

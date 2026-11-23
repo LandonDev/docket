@@ -218,6 +218,14 @@ await printPdf(name, bytes); // says where it went; rejects with the reason
   launch, and no more than twenty are kept. A folder that is not a real one
   of his own where the copies should be (a link, a file) is never written
   through or swept.
+- **On Linux** main runs `xdg-open` itself (`xdgOpen`) and hears it for 3
+  s: a failed exit, or no `xdg-open`, says "No app on this computer opens a
+  PDF"; a good exit, or one still running (its generic mode waits for the
+  viewer to close), is the viewer holding the file. Electron's
+  `shell.openPath` never settled there: on the box (Electron 39, xvfb) an
+  `xdg-open` that exited 0 at once was run, and the window's call waited
+  until Electron dropped it, so he saw "Error invoking remote method
+  'print:pdf': reply was never sent" (SLD7's live proof, fault 2).
 - **In a browser** (`/ui`) the toast says "The PDF is ready to print" with
   one press, Open, which opens the PDF in a tab of its own, where the
   browser's viewer prints it. It waits for his press because a browser opens
