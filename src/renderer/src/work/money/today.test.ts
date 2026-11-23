@@ -24,8 +24,8 @@ describe("Money on Today", () => {
   it("lists each open row with who, which way and how long, and never the count that waits for his accept", () => {
     const rows = owedRows(
       [
-        { workspace: ref, value: owed([{ workspaceId: "ws-ref", sector: "ref", row: 4, who: "West Side HS", amount: 8000, since: "2026-11-07", way: "toHim" }], 2) },
-        { workspace: purdue, value: owed([{ workspaceId: "ws-purdue", sector: "purdue", row: 2, who: "", amount: 4500, since: null, way: "byHim" }]) },
+        { workspace: ref, value: owed([{ workspaceId: "ws-ref", sector: "ref", row: 4, who: "West Side HS", what: "", amount: 8000, since: "2026-11-07", way: "toHim", reimburse: false }], 2) },
+        { workspace: purdue, value: owed([{ workspaceId: "ws-purdue", sector: "purdue", row: 2, who: "", what: "", amount: 4500, since: null, way: "byHim", reimburse: false }]) },
       ],
       "2026-11-23",
     );
@@ -36,8 +36,13 @@ describe("Money on Today", () => {
     expect(JSON.stringify(rows)).not.toContain("confirm");
   });
 
+  it("leads a cost to be paid back with what it was for, never as if the shop owed him", () => {
+    const [row] = owedRows([{ workspace: ref, value: owed([{ workspaceId: "ws-ref", sector: "ref", row: 5, who: "Diner on 9th", what: "Crew meal before the game", amount: 1625, since: "2026-11-09", way: "toHim", reimburse: true }]) }], "2026-11-23");
+    expect([row.title, row.detail]).toEqual(["Crew meal before the game", "To be paid back $16.25"]);
+  });
+
   it("opens the row's own job in the Money view", () => {
-    owedRows([{ workspace: purdue, value: owed([{ workspaceId: "ws-purdue", sector: "purdue", row: 2, who: "Catering", amount: 4500, since: "2026-11-20", way: "byHim" }]) }])[0].open();
+    owedRows([{ workspace: purdue, value: owed([{ workspaceId: "ws-purdue", sector: "purdue", row: 2, who: "Catering", what: "", amount: 4500, since: "2026-11-20", way: "byHim", reimburse: false }]) }])[0].open();
     expect(went).toEqual([[purdue, { view: "money" }]]);
   });
 });

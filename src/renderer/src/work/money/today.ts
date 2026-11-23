@@ -25,8 +25,9 @@ export function owedRows(answers: ReturnType<typeof useEachWorkspace<MoneyOwed>>
         key: `money:${workspace.environmentId}:${workspace.workspaceId}:${row.row}`,
         section: "money",
         sector: workspace.sector,
-        title: row.who || "Entry",
-        detail: `${row.way === "toHim" ? "Owes you" : "You owe"} ${formatMoney(row.amount)}`,
+        // A cost to be paid back: the shop he paid does not owe him, so the row leads with what it was for.
+        title: row.reimburse ? row.what || row.who || "Entry" : row.who || "Entry",
+        detail: `${row.reimburse ? "To be paid back" : row.way === "toHim" ? "Owes you" : "You owe"} ${formatMoney(row.amount)}`,
         ...(since !== undefined ? { at: since } : {}),
         ...(waited ? { when: waited } : {}),
         open: () => goTo(workspace, { view: "money" }),
