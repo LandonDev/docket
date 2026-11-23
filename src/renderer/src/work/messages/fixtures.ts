@@ -103,7 +103,7 @@ const SEEDS: ChatSeed[] = [
   { id: "c_general", name: "#general", kind: "channel", source: "slack", account: "Starboard Games", who: [LUCAS, MIA], lastAt: at(2026, 10, 20, 16, 0), text: "Friday demo is in the big room, snacks provided.", lastWho: "Lucas Gray", readAt: at(2026, 10, 21, 9, 0) },
   { id: "c_theo", name: "Theo Park", kind: "direct", source: "discord", account: "Starboard Community", who: [THEO], lastAt: at(2026, 10, 19, 12, 30), text: "Thanks for the moderator role!", readAt: at(2026, 10, 19, 13, 0) },
   { id: "c_art", name: "#art", kind: "channel", source: "slack", account: "Starboard Games", who: [ANA], lastAt: at(2026, 10, 12, 15, 10), text: "Key art v3 is in the shared folder.", lastWho: "Ana Ruiz", readAt: at(2026, 10, 12, 16, 0) },
-  { id: "c_lucas", name: "Lucas Gray", kind: "direct", source: "slack", account: "Starboard Games", who: [LUCAS], lastAt: at(2026, 9, 30, 11, 0), text: "Runner keys rotated, the old ones stop working Monday.", fromMe: false, readAt: at(2026, 9, 30, 12, 0) },
+  { id: "c_lucas", name: "Lucas Gray", kind: "direct", source: "slack", account: "Starboard Games", who: [LUCAS], lastAt: at(2026, 10, 19, 11, 2), text: "starboard-0.9.5-linux.zip", fromMe: false, readAt: at(2026, 10, 19, 12, 0) },
 ];
 
 /** Where each source's conversation opens in its own app; iMessage and Teams give none. */

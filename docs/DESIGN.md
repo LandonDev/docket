@@ -1528,7 +1528,8 @@ Around the canvas:
   The conversation's toolbar is 44px over a hairline: the name 13px
   semibold (a direct chat's opens the person in People when LifeOS knows
   an address), one muted 12px fact ("Slack, CosmicGames") 8px after it on
-  its baseline, and More at the end. The messages are rows, not bubbles,
+  its baseline, and at the end two quiet 28px buttons, Start thread and
+  More. The messages are rows, not bubbles,
   in a 680px column stacked from its foot: a run of one writer inside five
   minutes shares one head (28px face, name 600, time 12px muted), the words
   14/22 with their line breaks and http, https and mailto links in `link`;
@@ -1538,8 +1539,29 @@ Around the canvas:
   "New", else where he left it, else at its foot; while he is up the column
   a quiet pill at its foot says "2 new" and goes down. A Slack thread reply
   carries one 12px muted line above it: a turned arrow, the writer in
-  medium and the first words of what it answers. A message that arrives at
-  the foot rises 4px and fades in over `--dur-fast`; nothing else moves.
+  medium and the first words of what it answers. A message's menu (a
+  right-click, or its ⋯ under the pointer at its top right) holds Start
+  thread, Mention in a thread while one is open, Copy text and its link; a
+  row's holds Mark read or unread, the two thread verbs, Open in the app and
+  Copy link. A message he was sent to (a search hit, a chip, a tell) comes
+  into view with 96px over it under a `muted` fill that fades after a
+  moment over `--dur-slow`. A picture is drawn in place in its own shape
+  inside 360 by 270, radius 8 inside the image outline, a skeleton of that
+  shape while it comes; any other file is Mail's 40px chip with its 28px
+  tile, named by its press ("View runner-budget.xlsx", "Download
+  build.zip"); a file that cannot come is one 12px muted line, its name in
+  medium, why, and Open in the app. The composer sits at the column's foot
+  on the composer's surface (`card`, a hairline, radius 12): a field of one
+  to eight 14/22 lines, then the foot row, the place for one-press answers
+  at its left and the one primary button at its right. Above the box, one
+  12px line when there is something to say: LifeOS's reason where nothing
+  can send (the button is then Copy, with Open in the app quiet beside it),
+  a thread's draft (the amber circle-dot, "Drafted in" and the thread's
+  name in medium, Open thread; Discard beside the primary), or a refusal in
+  red. His reply shows as his own message with one 12px line under it:
+  "Sending" and Undo, or the red mark, "Not sent.", LifeOS's reason and
+  Retry. A message that arrives at the foot rises 4px and fades in over
+  `--dur-fast`; nothing else moves.
 - **People** (the People view, work/people/; docs/agents/work-people.md).
   The list is the Docs list's shape: a 720px column, one 32px row a
   person, the 24px face, the name in `foreground`, the first address 4px

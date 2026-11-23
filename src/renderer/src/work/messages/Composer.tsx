@@ -108,52 +108,55 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   ) : null;
 
   return (
-    <div data-composer className="mx-auto w-full max-w-[728px] shrink-0 px-6 pb-4">
-      {note ? <div className="flex min-h-6 items-center px-3 pb-1">{note}</div> : null}
-      <div className={cn("rounded-xl transition-[border-color] duration-(--dur-fast) ease-(--ease-out) has-focus:border-input motion-reduce:transition-none", COMPOSER_SURFACE)}>
-        <textarea
-          ref={field}
-          rows={1}
-          aria-label={placeholder}
-          placeholder={placeholder}
-          value={text}
-          onChange={(event) => {
-            setText(event.currentTarget.value);
-            if (refused) setRefused(null);
-          }}
-          onKeyDown={onKeyDown}
-          className="text-message block max-h-[190px] min-h-[38px] w-full resize-none overflow-x-hidden overflow-y-auto bg-transparent px-3 pt-2.5 pb-1 text-foreground outline-none field-sizing-content placeholder:text-muted-foreground"
-        />
-        <div className="flex items-center gap-1 px-2 pb-2">
-          {QUICK_ANSWERS.length ? (
-            <div className="flex min-w-0 items-center gap-1">
-              {QUICK_ANSWERS.map((answer) => (
-                <Button key={answer.id} variant="ghost" size="xs" className="text-muted-foreground" onClick={() => setText(text ? `${text} ${answer.text}` : answer.text)}>
-                  {answer.label}
-                </Button>
-              ))}
-            </div>
-          ) : null}
-          <span className="flex-1" />
-          {draft ? (
-            <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={busy !== null} onClick={() => void discard(draft)}>
-              <BusyLabel busy={busy === "drop"} label="Discard" />
-            </Button>
-          ) : null}
-          {mode === "copy" && link ? (
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => void openUrl(link)}>
-              Open in {SOURCE_APP[chat.source]}
-            </Button>
-          ) : null}
-          {mode === "send" ? (
-            <Button size="sm" disabled={!words || busy !== null} onClick={() => void send()}>
-              <BusyLabel busy={busy === "send"} label="Send" />
-            </Button>
-          ) : (
-            <Button size="sm" disabled={!words || busy !== null} onClick={() => void copy()}>
-              Copy
-            </Button>
-          )}
+    // The column above keeps its scrollbar's strip; the composer keeps the same, so the two share one measure.
+    <div className="shrink-0 overflow-hidden [scrollbar-gutter:stable]">
+      <div data-composer className="mx-auto w-full max-w-[728px] px-6 pb-4">
+        {note ? <div className="flex min-h-6 items-center px-3 pb-1">{note}</div> : null}
+        <div className={cn("rounded-xl transition-[border-color] duration-(--dur-fast) ease-(--ease-out) has-focus:border-input motion-reduce:transition-none", COMPOSER_SURFACE)}>
+          <textarea
+            ref={field}
+            rows={1}
+            aria-label={placeholder}
+            placeholder={placeholder}
+            value={text}
+            onChange={(event) => {
+              setText(event.currentTarget.value);
+              if (refused) setRefused(null);
+            }}
+            onKeyDown={onKeyDown}
+            className="text-message block max-h-[190px] min-h-[38px] w-full resize-none overflow-x-hidden overflow-y-auto bg-transparent px-3 pt-2.5 pb-1 text-foreground outline-none field-sizing-content placeholder:text-muted-foreground"
+          />
+          <div className="flex items-center gap-1 px-2 pb-2">
+            {QUICK_ANSWERS.length ? (
+              <div className="flex min-w-0 items-center gap-1">
+                {QUICK_ANSWERS.map((answer) => (
+                  <Button key={answer.id} variant="ghost" size="xs" className="text-muted-foreground" onClick={() => setText(text ? `${text} ${answer.text}` : answer.text)}>
+                    {answer.label}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+            <span className="flex-1" />
+            {draft ? (
+              <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={busy !== null} onClick={() => void discard(draft)}>
+                <BusyLabel busy={busy === "drop"} label="Discard" />
+              </Button>
+            ) : null}
+            {mode === "copy" && link ? (
+              <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => void openUrl(link)}>
+                Open in {SOURCE_APP[chat.source]}
+              </Button>
+            ) : null}
+            {mode === "send" ? (
+              <Button size="sm" disabled={!words || busy !== null} onClick={() => void send()}>
+                <BusyLabel busy={busy === "send"} label="Send" />
+              </Button>
+            ) : (
+              <Button size="sm" disabled={!words || busy !== null} onClick={() => void copy()}>
+                Copy
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

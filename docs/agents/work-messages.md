@@ -170,13 +170,16 @@ files: there a file is the plain line LifeOS stored.
 | --- | --- |
 | `view.ts` | The row and its view: after Mail (`order` 0.5), `readsLifeos`, `ownHead`, the chunk `work-messages-view`. In the first paint: an icon, the chunk and `facts.ts`. |
 | `facts.ts` | The row's fact: `chats:unread {sector}` on the column's session, "3" or nothing. |
-| `data.ts` | The one seam, `MessagesData`: `useChats(filter)`, `useUnread()`, `useChat(id)`, `useMessages(id)`, `useSources()`, `useSearch(text)`, `useDrafted()`, `useNow()`, `markRead`, `markUnread`. `WAITING` answers while the session opens. |
-| `live.ts` | The seam from LifeOS on the workspace's sector session: `chats:list` (100 more as he nears the end), `chats:get`, `chats:messages` (50 more as he scrolls up; one live query each, grown, the smaller answer kept on screen while the bigger comes), `chats:unread`, `chats:search`, `sources:list` kept to the chat kinds of this sector, `chats:markRead` and `chats:markUnread`. |
-| `fixtures.ts` | The seam from a made-up studio, Starboard, with switches: `loading`, `empty`, `noSource`, `stale`, `drafted`, and `manyChats`/`manyMessages` for the speed proof. |
-| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search; outside React, the list's scroll, each conversation's place and what he typed in it. |
-| `model.ts` | Pure rules: `rowTime`, `dayWords`, `rowLine`, `chatFact`, `newSince`, `wantsRead`, `blocksOf` (runs inside five minutes, days, "New"), `linkParts` and `opensOutside` (http, https, mailto), `markWords`, `aroundMatch`, and `threadRows`. |
-| `MessagesView.tsx` | The frame (`ListFrame`, Mail's: 296px, 260 to 480, `tc.messages.listWidth`), the narrow rule at 640px, `MessagesScreen` for the preview. |
-| `ChatList.tsx`, `Conversation.tsx`, `Message.tsx` | The list, the conversation, one message. |
+| `data.ts` | The one seam, `MessagesData`. Reads: `useChats(filter)`, `useUnread()`, `useChat(id)`, `useMessages(id)`, `useSources()`, `useSearch(text)`, `useDrafted()`, `useDrafts(chatId)` (`ThreadDraft`: a held reply or a copy-only draft, its thread), `useNow()`, `fileVerb(file)`. Writes: `markRead`, `markUnread`, `send`, `undo` (answers the words), `retry`, `sendDraft(draft, text)`, `dropDraft`, `requestFiles(messageId)`, `openFile(chatId, message, file)`. `WAITING` answers while the session opens. |
+| `live.ts` | The seam from LifeOS on the workspace's sector session (`chats:list`, `get`, `messages`, `unread`, `search`, `sources:list` kept to this sector's chat kinds, `markRead`, `markUnread`, `requestFiles`), each list one live query grown in place, the smaller answer kept on screen while the bigger comes; his replies through the host (`work.messages.send`, `undo`, `retry`, `drafts`, `dropDraft`, a refusal in its own words); a thread's held reply from the Outbox's own list (`outbox/store.ts`: `useOutbox`, `editItem` then `sendItem`, `discardItem`); copy-only drafts read once a workspace and again on the `work.messages` push. |
+| `files.ts` | `viewKind` (the canvas kind `kindForFile` names, when the canvas fetches it), `fileVerb`, `chatFileSource` (the mail arm with `from: 'chat'`). |
+| `threads.ts` | `chatChip` ("Dana Lee in Slack", a message's words as `quote`), `threadRows` (Start thread; Mention in a thread only while one is open), `linkRows` (Open in the app, Copy link), `mention`, `StartThreadProvider`. |
+| `fixtures.ts`, `pictures.fixtures.ts` | The seam from a made-up studio, Starboard, kept in memory (a reply lands as his own message, an undo takes it away, a pressed draft goes), with switches: `loading`, `empty`, `noSource`, `stale`, `drafted`, `drafts`, `routes`, `refuse`, and `manyChats`/`manyMessages` for the speed proof; two made-up pictures as `data:` addresses. |
+| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search, what he typed in each conversation (live: Undo writes back into it), a message asked for (`wantMessage`); outside React, the list's scroll and each conversation's place. |
+| `model.ts` | Pure rules: `rowTime`, `dayWords`, `rowLine`, `chatFact`, `newSince`, `wantsRead`, `blocksOf` (runs inside five minutes, days, "New"), `estimateOf`, `isPicture`, `pictureBox` (360 by 270), `linkParts` and `opensOutside` (http, https, mailto), `markWords`, `aroundMatch`. |
+| `MessagesView.tsx` | The frame (`ListFrame`, Mail's: 296px, 260 to 480, `tc.messages.listWidth`), the narrow rule at 640px, the conversation in a `CanvasSeat` on `messagesPaneOf` (toggle "Messages"), `useOpened` (`OpenWorkView.chat` and `.message`, taken once), `MessagesScreen` for the preview. |
+| `ChatList.tsx`, `Conversation.tsx`, `Message.tsx`, `Composer.tsx` | The list, the conversation, one message (its reply state, pictures and files), the composer. |
+| `act.ts`, `ChatReplyAct.tsx` | The Outbox's view of a held `chat.reply`: To, In ("Slack, Starboard Games"), the message it answers as one quoted line, the words exactly. |
 | `messages.css` | The 14/22 step and the one motion: a message arriving at the foot. |
 | `quick.ts` | The empty list of one-press answers. |
 
@@ -196,16 +199,39 @@ The look is docs/DESIGN.md "The Messages view".
   opens (`newSince`): over the first message from someone else since his
   mark, the service's own or his own last word, and only for one he has
   opened before or that is unread.
-- **Thread verbs.** Start thread and Mention in a thread need the chip kind
-  `chat`, which lands with the host build; until then `threadRows` answers
-  none and no verb is drawn.
-- **Not yet.** The composer and the held reply, pictures and files (the
-  place is marked in `Message.tsx`), Open in an app and Copy link on a row's
-  menu (a row carries no link; the conversation's More has them), and a
-  conversation opened from elsewhere (`OpenWorkView.chat`).
+- **The composer.** Send when the source is LifeOS's (`CHAT_ROUTES`) and the
+  route says yes; else Copy, Open in the app beside it, LifeOS's `route.why`
+  above (for a Copy source whose route says yes, "LifeOS can't reply in
+  Discord yet"). A thread's held reply wins over a copy-only draft; either
+  fills an empty field once and never writes over his words. Send on a held
+  draft saves an edit to it first (`work.outbox.edit`), then presses it with
+  the `rev` it now has; anything but sent or sending is refused in the
+  Outbox's words. His own reply shows from LifeOS's row: `queued` is
+  "Sending" with Undo, `sending` "Sending", `failed` "Not sent." with the
+  reason and Retry.
+- **Threads.** Start thread is the toolbar's 28px button and a row on the
+  row's and a message's menus; a message's chip carries its words as
+  `quote`. Mention in a thread puts the chip in the thread open in the window
+  (`addContextChip`) and says so in a toast with Open.
+- **The ways in.** `OpenWorkView.chat` opens the conversation; with
+  `message`, the column reads older pages until it holds it (at most twenty),
+  brings it into view with 96px of air over it, and marks it with the muted
+  fill for 1.2 seconds, which then fades over `--dur-slow` (at once under
+  reduced motion). A hit in the view's own search opens its message so.
+- **Pictures and files.** A message's `listed` files are asked for once a
+  window's life as it mounts (the column draws only what is near the
+  window). A stored picture's bytes are read with `loadBytes` into a blob
+  address, never put in the page as a web address; a picture that cannot load
+  becomes its chip. A file a canvas kind shows opens in the view's own pane
+  (`openItem(env, messagesPaneOf(ws), {kind, source: chatFileSource(…)})`,
+  the host fetching it as the owner); any other is saved to Downloads once
+  stored. `fileMarkers` takes the folded names out of the words once the
+  files are listed.
+- **Not yet.** One-press answers (`QUICK_ANSWERS` is empty).
 
-Proof: `bun run ui:preview src/renderer/src/work/messages/MessagesView.preview.tsx#MessagesPreview --props '{"scene":"open-direct","width":1280}'`;
-tests `model.test.ts` and `MessagesView.dom.test.tsx`.
+Proof: `bun run ui:preview src/renderer/src/work/messages/MessagesView.preview.tsx#MessagesPreview --props '{"scene":"open-direct","width":1280}'`
+(scenes are listed in the file); tests `model.test.ts`, `MessagesView.dom.test.tsx`, `Composer.dom.test.tsx`,
+`ChatReplyAct.dom.test.tsx`, `ways.dom.test.tsx`, `files.dom.test.tsx`, `open.dom.test.tsx`.
 
 ## Proofs
 

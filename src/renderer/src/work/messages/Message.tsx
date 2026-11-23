@@ -110,17 +110,27 @@ function Files({ message, chatId, chat }: { message: ChatMessage; chatId: string
     data.requestFiles(message._id);
   }, [wants, message._id, data]);
   const link = message.permalink ?? chat.link;
+  const open = (file: ChatFile) => () => data.openFile(chatId, message, file);
+  // Pictures each on their own line; the other files side by side, as Mail lays out a mail's; the ones that could not come last.
+  const shown = message.files.filter((file) => file.status !== "failed");
+  const pictures = shown.filter(isPicture);
+  const chips = shown.filter((file) => !isPicture(file));
+  const failed = message.files.filter((file) => file.status === "failed");
   return (
     <div data-files className="mt-1.5 mb-0.5 flex flex-col gap-1.5">
-      {message.files.map((file) =>
-        file.status === "failed" ? (
-          <FileFailed key={file._id} file={file} source={chat.source} link={link} />
-        ) : isPicture(file) ? (
-          <Picture key={file._id} file={file} onOpen={() => data.openFile(chatId, message, file)} />
-        ) : (
-          <FileChip key={file._id} file={file} verb={data.fileVerb(file)} onOpen={() => data.openFile(chatId, message, file)} />
-        ),
-      )}
+      {pictures.map((file) => (
+        <Picture key={file._id} file={file} onOpen={open(file)} />
+      ))}
+      {chips.length ? (
+        <div className="flex flex-wrap gap-2">
+          {chips.map((file) => (
+            <FileChip key={file._id} file={file} verb={data.fileVerb(file)} onOpen={open(file)} />
+          ))}
+        </div>
+      ) : null}
+      {failed.map((file) => (
+        <FileFailed key={file._id} file={file} source={chat.source} link={link} />
+      ))}
     </div>
   );
 }
