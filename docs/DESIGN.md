@@ -2705,7 +2705,9 @@ his hands and leaves no trace on what he was searching from.
   only once the wait has lasted 150ms, and then for at least 300ms, so an
   answer in a few frames never flickers it.
 - **Groups** stand in one fixed order by kind (People, Mail, Messages,
-  Tasks, Agenda, Files, Documents, Projects, Threads, then the rest),
+  Tasks, Agenda, Files, Documents, Projects, Threads, then the rest;
+  Documents only from a host a release behind, since a LifeOS document is
+  a file and stands under Files),
   never by speed or score, under the menu group label (11px medium muted,
   `px-3 pt-2 pb-1`; the first under the field `pt-1`, which with the
   rule's 4px stands it the same 8px down): the `@` list's own headings. Narrowed to one kind
