@@ -1,9 +1,12 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, isAbsolute } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { ExportAnswer } from '@shared/contract-work-formats'
 import type { CanvasSource } from '@shared/work'
+import { canvasSourcePath } from '@shared/work'
 import { namesFor } from '../docs'
+import { importsRoot } from '../files/imports'
+import { sharedOf } from '../files/policy'
 import { lifeosRow, serviceTarget, targetOf, titleOf } from '../docs/target'
 import { readThreads } from '../docs/threads'
 import type { Caller, WorkCtx } from '../modules'
@@ -20,6 +23,21 @@ import { printToPdf } from './print'
  */
 
 const METHOD = 'work.formats.export'
+
+/**
+ * Whether a document is, or was made from, a file others can open: a source
+ * `sharedOf` says is shared, or the `.tcdoc` the importer wrote under
+ * `work-files/imports` for a file in a library (it writes there for no
+ * other). What is made of such a document (a converted copy, a preview's
+ * render) never leaves this host.
+ */
+export function madeFromShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, source: CanvasSource): boolean {
+  if (sharedOf(ctx, source)) return true
+  const path = canvasSourcePath(source)
+  if (!path) return false
+  const inside = relative(importsRoot(ctx.dataDir), path)
+  return !!inside && !inside.startsWith('..') && !isAbsolute(inside)
+}
 
 export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: CanvasSource; format: 'docx' | 'odt' | 'rtf' | 'md' }): Promise<ExportAnswer> {
   const t = await targetOf(ctx, by, METHOD, params.source)
@@ -42,7 +60,8 @@ export async function exportDoc(ctx: WorkCtx, by: Caller, params: { source: Canv
   const input = join(scratchDir(ctx), `${randomUUID()}.docx`)
   writeFileSync(input, Buffer.from(got.data ?? '', 'base64'))
   try {
-    const done = await ctx.convert({ from: 'docx', to: params.format, input })
+    // The scratch copy says nothing of where its words came from: the job is told, so a shared document's never leaves this host.
+    const done = await ctx.convert({ from: 'docx', to: params.format, input, shared: madeFromShared(ctx, params.source) })
     try {
       const data = readFileSync(done.output).toString('base64')
       return { name, data, warnings: [...warnings, ...done.warnings] }

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { WorkModule } from '../modules'
 import { LIBREOFFICE_CONVERTERS, libreOffice } from '.'
 import type { Readiness } from '@shared/contract-work-formats'
-import { convertersOf, defaultCaps, extOf, JobRunner, NoConverterError, NotReadyError, pressed, pressOf, type ConvertJob, type Converter, type LinkedHost } from './jobs'
+import { convertersOf, defaultCaps, extOf, JobRunner, NoConverterError, NotReadyError, pressed, pressOf, sharedJob, type ConvertJob, type Converter, type LinkedHost } from './jobs'
 import { MCP_CEILING } from '../../remote/auth'
 import { statePath, type ToolchainState } from './tools'
 
@@ -478,6 +478,19 @@ describe('a converter that is an app or a machine', () => {
     // the same job, not shared, goes; and a shared job runs where its tool is
     await expect(mac.convert({ from: 'txt', to: 'md', input: input('plan') })).resolves.toMatchObject({ ranOn: 'box' })
     await expect(box.convert({ from: 'txt', to: 'md', input: input('roster'), shared: true })).resolves.toMatchObject({ ranOn: 'box' })
+  })
+
+  it("marks a job on a file others can open as shared by its input's own path, and takes a caller at its word either way", () => {
+    const asked: string[] = []
+    const inLibrary = (path: string): boolean => (asked.push(path), path.startsWith('/Users/him/OneDrive'))
+    const job = (input: string, shared?: boolean): ConvertJob => ({ from: 'docx', to: 'pdf', input, ...(shared !== undefined ? { shared } : {}) })
+    expect(sharedJob(job('/Users/him/OneDrive - Purdue/Roster.docx'), inLibrary).shared).toBe(true)
+    expect(sharedJob(job('/srv/data/work-tools/jobs/x/out.docx'), inLibrary).shared).toBeUndefined()
+    // an export of a shared document, written to a scratch folder: its caller says so, and the path is not asked
+    asked.length = 0
+    expect(sharedJob(job('/tmp/scratch/Roster.docx', true), inLibrary).shared).toBe(true)
+    expect(sharedJob(job('/Users/him/OneDrive - Purdue/Mine.docx', false), inLibrary).shared).toBe(false)
+    expect(asked).toEqual([])
   })
 
   it('refuses in words a result that comes back past the cap, and keeps none of it', async () => {

@@ -17,6 +17,8 @@ import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
 import { ensureThreadTables } from '../docs/threads'
+import { importFolderOf } from '../files/imports'
+import { madeFromShared } from './exporter'
 import { formats } from './index'
 import { droppedWords, freePath, safeName } from './importer'
 import { convertersOf, JobRunner } from './jobs'
@@ -322,6 +324,39 @@ describe('which reader a PDF gets', () => {
     expect(needsDocling(prose, 0)).toBeNull()
     expect(needsDocling('  \n ', 0)).toBe('scan')
     expect(needsDocling(prose, 3)).toBe('tables')
+  })
+})
+
+describe('a document made from a file others can open', () => {
+  it('is known by where the importer wrote it, and its conversions are told so they never leave this host', async () => {
+    const r = await rig()
+    const data = join(r.dir, 'data')
+    const ctx = { db: r.ctx.db, host: 'env_box', dataDir: data }
+    const imported = join(importFolderOf(data, { host: 'env_box', path: '/Users/him/OneDrive - Purdue/Roster.docx' }), 'Roster.tcdoc')
+    expect(madeFromShared(ctx, { at: 'file', host: 'env_box', path: imported })).toBe(true)
+    // his own things under the app's data are his own: an item's folder, the imports root itself
+    expect(madeFromShared(ctx, { at: 'file', host: 'env_box', path: join(data, 'canvas', 'i1', 'Notes.tcdoc') })).toBe(false)
+    expect(madeFromShared(ctx, { at: 'file', host: 'env_box', path: join(data, 'work-files', 'imports') })).toBe(false)
+    // a file this host cannot see is taken as shared, as the files door rules
+    expect(madeFromShared(ctx, { at: 'file', host: 'env_mac', path: '/Users/him/Plan.tcdoc' })).toBe(true)
+    expect(madeFromShared(ctx, { at: 'lifeos', table: 'docs', id: 'd1' } as CanvasSource)).toBe(false)
+
+    // The export of such a document converts a scratch copy: the job itself must say shared.
+    const jobs: { shared?: boolean; input: string }[] = []
+    const real = r.ctx.convert
+    ;(r.ctx as { convert: unknown }).convert = async (job: { shared?: boolean; input: string; to: string }) => {
+      jobs.push(job)
+      writeFileSync(`${job.input}.${job.to}`, 'converted')
+      return { output: `${job.input}.${job.to}`, ranOn: 'env_box', warnings: [] }
+    }
+    mkdirSync(dirname(imported), { recursive: true })
+    const mine = await r.ask<ImportAnswer>('work.formats.import', { sessionId: 't1', from: { at: 'source', source: { at: 'file', host: 'env_box', path: word(r) } } })
+    await r.ask<ExportAnswer>('work.formats.export', { source: mine.source, format: 'odt' })
+    expect(jobs.at(-1)).toMatchObject({ shared: false })
+    copyFileSync((mine.source as { path: string }).path, imported)
+    await r.ask<ExportAnswer>('work.formats.export', { source: { at: 'file', host: 'env_box', path: imported }, format: 'rtf' })
+    expect(jobs.at(-1)).toMatchObject({ shared: true })
+    ;(r.ctx as { convert: unknown }).convert = real
   })
 })
 

@@ -507,6 +507,19 @@ export interface ForwardReply {
   warnings: string[]
 }
 
+/**
+ * A job as the runner takes it from a pillar: one whose input is a file
+ * others can open (`sharedOf`, work/files/policy.ts) is marked shared
+ * whether or not its caller said so, so it never leaves this host. A
+ * caller that converts its own copy of a shared source (an export written
+ * to a scratch folder) says `shared: true` itself; one that said either
+ * way is taken at its word.
+ */
+export function sharedJob(job: ConvertJob, isShared: (path: string) => boolean): ConvertJob {
+  if (job.shared !== undefined) return job
+  return isShared(job.input) ? { ...job, shared: true } : job
+}
+
 /** A job's switches as they cross a link: the converter's own, with no `pressed` among them (a converter reads the job's press, never an option). */
 function forwardable(options: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!options) return undefined
@@ -558,7 +571,9 @@ export const convertPart: CtxPart<'convert'> = (ctx, deps) => {
   return {
     convert: async (job) => {
       if (!ctx.enabled()) throw new Error('Work is off on this host')
-      return (await get()).convert(job)
+      // Read when a job comes, never at import: the files pillar's door reads this context's own parts.
+      const { sharedOf } = await import('../files/policy')
+      return (await get()).convert(sharedJob(job, (path) => sharedOf(ctx, { at: 'file', host: ctx.host, path })))
     }
   }
 }

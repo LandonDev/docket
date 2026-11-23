@@ -175,8 +175,13 @@ Word, Excel and PowerPoint draw through it as well, and for them:
   **Only a pressed job may wake the VM**, and a forwarded job carries none: a
   machine that sleeps is woken only from a window of the host it is on.
 - **A shared library's file never leaves its host.** A job with
-  `shared: true` (the caller asks `sharedOf(source)`) runs here or fails; no
-  linked host is even asked what it converts.
+  `shared: true` runs here or fails; no linked host is even asked what it
+  converts. `ctx.convert` marks a job shared itself when its input's own path
+  is a file others can open (`sharedOf`, work/files/policy.ts), so a pillar
+  that converts the file in place needs to say nothing. A pillar that
+  converts its own scratch copy of a shared source (an export of the live
+  text) must pass `shared: sharedOf(ctx, source)`: the runner cannot tell
+  from a scratch path.
 - **64 MiB each way.** The far host refuses an output past the cap in words,
   and this host refuses one that came back past it before keeping any of it.
 
