@@ -429,23 +429,7 @@ function hostCommand(): [string, string[]] {
   const history = args.scene === 'send' || args.scene === 'scroll' ? ['--history', String(args.history)] : []
   if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst, ...thought, ...history]]
   const out = join(REPO, 'scripts', '.out', 'soak-host.mjs')
-  execFileSync(
-    join(REPO, 'node_modules', '.bin', 'esbuild'),
-    [
-      'scripts/soak-host.ts',
-      '--bundle',
-      '--platform=node',
-      '--format=esm',
-      '--packages=external',
-      '--alias:@shared=./src/shared',
-      '--alias:aliax-core=./node_modules/aliax-core/src',
-      '--alias:work-kit=./node_modules/work-kit/src',
-      '--alias:electron=./scripts/electron-shim.mjs',
-      `--outfile=${out}`,
-      '--log-level=warning'
-    ],
-    { cwd: REPO, stdio: ['ignore', 'ignore', 'inherit'] }
-  )
+  execFileSync('bun', ['scripts/bundle-server.ts', 'scripts/soak-host.ts'], { cwd: REPO, stdio: ['ignore', 'ignore', 'inherit'] })
   return ['node', [out, '--scene', args.scene, ...burst, ...thought, ...history]]
 }
 

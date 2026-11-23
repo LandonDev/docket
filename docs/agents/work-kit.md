@@ -55,9 +55,14 @@ it and who owns each folder.
   (16/24) as theme steps. The check badge's arc does not turn by CSS here (a
   new keyframe needs a row in `lib/motionGuard.test.ts`); work-kit's own
   animation moves it.
-- **A script bundle** that imports work-kit with `--packages=external` needs
-  `--alias:work-kit=./node_modules/work-kit/src`, as aliax-core does; a subpath
-  maps to the same path under `src` (`work-kit/lifeos` is `src/lifeos/index.ts`).
+- **A script bundle** that runs server code for plain node goes through
+  `bun scripts/bundle-server.ts scripts/<name>.ts` (scripts/lib/bundle-node-script.ts,
+  server mode), which writes `scripts/.out/<name>.mjs` and resolves work-kit as its
+  exports map says, as vite and vitest do. Never alias `work-kit` to
+  `node_modules/work-kit/src`: `work-kit/sheet/format` is `src/sheet/grid/format.ts`,
+  and the alias made it a path that does not exist (the release of 2026-11-23 stopped
+  on it). scripts/proofBundling.test.ts bundles every work-kit path src/main,
+  src/shared and scripts import and names any that does not resolve.
 - `overrides` holds `yjs` at 13.6.31, `prosemirror-model` at 1.25.13 and
   `@tiptap/pm` at 3.34.0: the one Yjs and the one ProseMirror the shared editor
   (`work-kit/editor`, BlockNote 0.57.0) runs on. The two ProseMirror versions are

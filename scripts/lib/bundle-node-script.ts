@@ -55,6 +55,9 @@ export async function bundleNodeScript(repo: string, entry: string, outfile: str
     })
     return null
   } catch (err) {
+    // esbuild's message opens with "Build failed with N errors"; each error's own text names the import.
+    const errors = (err as { errors?: { text: string }[] }).errors
+    if (errors?.length) return `esbuild failed: ${errors.map((e) => e.text).join('; ')}`
     return `esbuild failed: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`
   }
 }
