@@ -3,7 +3,7 @@
 process.env.TZ = "America/New_York";
 
 import { afterAll, describe, expect, it } from "vitest";
-import { endsNextDay, formOf, spanOf, whenOf } from "./model";
+import { endsNextDay, fieldOf, formOf, spanOf, whenOf } from "./model";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -54,5 +54,22 @@ describe("a step's times when the clocks change", () => {
     expect(new Date(when.end).getDate()).toBe(14);
     // Three clock hours after 11:30 PM are only three real hours here: 12:30, 1:30, then 3:30.
     expect(when.end - when.start).toBe(3 * HOUR);
+  });
+
+  it("refuses a time he types into the hour the clocks skip, in words, rather than send it an hour on", () => {
+    // 2027-03-14 in New York: 2:00 to 2:59 AM never shows. A Date reads 2:30 AM there as 3:30 AM.
+    const offered = { start: Date.UTC(2027, 2, 14, 5, 30), end: Date.UTC(2027, 2, 14, 8, 0) };
+    const form = formOf(offered);
+    expect(form).toEqual({ day: "2027-03-14", from: "00:30", to: "04:00" });
+    const from = whenOf({ ...form, from: "02:30" }, offered);
+    expect(from).toBe("From is in the hour the clocks skip that day. Pick another time.");
+    const to = whenOf({ ...form, to: "02:15" }, offered);
+    expect(to).toBe("To is in the hour the clocks skip that day. Pick another time.");
+    expect(spanOf({ day: "2027-03-13", from: "23:00", to: "02:30" })).toBe(to);
+    // The refusal names its field, for the step to mark.
+    expect([fieldOf(from as string), fieldOf(to as string), fieldOf("It must end after it starts"), fieldOf(null)]).toEqual(["from", "to", null, null]);
+    // The hours either side of it are times like any other.
+    expect(whenOf({ ...form, from: "01:30" }, offered)).toEqual({ start: Date.UTC(2027, 2, 14, 6, 30), end: offered.end });
+    expect(whenOf({ ...form, from: "03:00" }, offered)).toEqual({ start: Date.UTC(2027, 2, 14, 7, 0), end: offered.end });
   });
 });

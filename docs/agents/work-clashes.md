@@ -132,12 +132,16 @@ The pillar has no view of its own and no row in the column.
   its title, and a read that failed with nothing handed over says why. It
   keeps the clash it showed while his own press is out and while it closes,
   and keeps an open step with what he typed when the calendar settles the
-  clash meanwhile: the title says it is gone and the step sends nothing.
+  clash meanwhile: the title says it is gone, the step's sentence turns to
+  "Nothing was sent." and the step sends nothing.
   What a read said for certain holds while a later read is out or fails, so
   a clash seen gone never returns from the opener's copy. A step's time
   field left as offered sends the instant offered, each field on its own
-  (`whenOf`; `model.dst.test.ts` holds it across the clock changes); a move
-  of an event with guests says they are told.
+  (`whenOf`; `model.dst.test.ts` holds it across the clock changes), an
+  offered end only while it is under a day after the start, and a time he
+  types into the hour the clocks skip is refused in words and its field
+  marked invalid (`fieldOf`, `ClashStep.dst.dom.test.tsx`); a move of an
+  event with guests says they are told.
 - `model.ts` holds the pure parts: the marks, the time a move or a proposal
   starts filled with (the earlier event: the latest quarter hour that ends a
   drive before the later one, while that is ahead and on its day; else the
@@ -193,7 +197,9 @@ while it reads, the read's error in a red line if it fails.
   LifeOS's words, as an alert. No toast: the row changes. The dialog stands
   on what the reads last gave whole, so it and what he typed stay when a
   read fails, the session drops or a read is out; Save waits until the
-  reads are current again, since it writes the maps whole.
+  reads are current again, since it writes the maps whole. Why LifeOS
+  cannot be read now shows in the alert before an earlier Save's refusal,
+  and a read that is merely out says "Waiting for LifeOS…" as a status.
 - **LifeOS.** Queries `settings:startPlaces {}` (the rows: `{home, jobs}`,
   each `{address?, label?, state: none | looking | found | failed}`, a job
   with `sector` and its `lookups`) and `settings:get {}` (the maps a Save

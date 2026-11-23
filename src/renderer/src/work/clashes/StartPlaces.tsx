@@ -157,7 +157,7 @@ export function StartPlaceForm({
   onClose: () => void;
   pending: Pending;
   setPending: (pending: Pending) => void;
-  /** LifeOS cannot be read just now (why, in words; empty while a read is merely out): the form keeps what he typed and Save waits. */
+  /** LifeOS cannot be read just now (why, in words; empty while a read is merely out, which the form says as a wait): the form keeps what he typed and Save waits. */
   blocked?: string | null;
   /** A refusal to show from the start: the preview's seam. */
   error?: string | null;
@@ -199,8 +199,17 @@ export function StartPlaceForm({
             <Switch checked={form.lookups} disabled={pending !== null} aria-describedby={linesId} onCheckedChange={(on) => setForm((f) => ({ ...f, lookups: on }))} />
           </FieldRow>
         ) : null}
+        {/* One line at a time: why LifeOS cannot be read now, before what it said of an earlier Save; and the wait, while a read is out. */}
         <div role="alert" className="empty:hidden">
-          <ErrorLine error={error ?? (blocked || null)} />
+          <ErrorLine error={blocked === "" ? null : blocked || error} />
+        </div>
+        <div role="status" className="empty:hidden">
+          {blocked === "" ? (
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Spinner aria-hidden className="size-3" />
+              Waiting for LifeOS…
+            </span>
+          ) : null}
         </div>
       </ModalBody>
       <DialogFooter

@@ -1833,8 +1833,11 @@ Around the canvas:
   Send (Move for a move). The times start filled: the earlier event with
   the latest quarter hour that still ends a drive before the later one,
   the later with the first after the earlier ends. A field he leaves as
-  offered sends the instant offered, each field on its own. A To at or
-  before the start is the next day's, and says "Next day" under it. Send
+  offered sends the instant offered, each field on its own. A To before
+  the start on the clock is the next day's, and says "Next day" under it;
+  the same minute is no span, and a time the clocks skip that day is
+  refused in words, its field ringed in `destructive` until he edits; a
+  time already gone is refused too. Send
   holds its width and spins, and the step's fields are locked while it
   is out; a toast answers the press and the dialog closes on the clash it
   showed, though his own press is what ended it; a refusal stays in the
@@ -1842,8 +1845,9 @@ Around the canvas:
   reads a clash it was not handed, it draws the two events' bones with the
   hairline between them (and says "Reading the clash…" to a screen
   reader); a step he is typing in stays when the calendar settles the
-  clash meanwhile: the title turns to "No longer a clash", one 12px muted
-  line under his fields says "Nothing was sent.", and Send is off. What a
+  clash meanwhile: the title turns to "No longer a clash", the step's one
+  sentence turns to "Nothing was sent." (read out as it turns), Send is
+  off, and nothing else moves. What a
   read said for certain holds while a later read is out or fails: a clash
   seen gone never comes back from an old copy; a read that failed says why in the body; two
   events that no longer clash are the title "No longer a clash" over the
@@ -1871,7 +1875,9 @@ Around the canvas:
   empties the field and leaves focus there, and Save sends that with
   whatever else changed. The fields are locked while Save is out. An open
   dialog keeps what he typed when a read fails or the session drops: it
-  says why in its alert and Save waits for a read that is current.
+  says why in its alert, before what LifeOS said of an earlier Save, and
+  Save waits for a read that is current; while a read is merely out, one
+  12px muted line says "Waiting for LifeOS…" after a 12px spinner.
   Save stays off until something changed, spins, and closes; a refusal
   stays in the dialog, as an alert. No toast: the row is the
   answer. Signed out of LifeOS the section is absent; while it reads,

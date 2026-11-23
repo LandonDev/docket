@@ -20,7 +20,7 @@ import { writeMail } from "../mail/mailto";
 import { sectorName } from "../shell/actions";
 import { sessionFailure, useLifeosSession } from "../shell/lifeos";
 import { useClashes } from "./mark";
-import { doneWords, endsNextDay, formOf, freeAfter, lateDraft, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
+import { doneWords, endsNextDay, fieldOf, formOf, freeAfter, lateDraft, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
 
 /**
@@ -57,7 +57,8 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   const clash = read ?? (pending || settled || stepping ? shown.current : undefined);
   // Gone by something other than his press here: the title says so, and an open step sends nothing.
   const cleared = gone && !pending && !settled;
-  const day = clash && !cleared ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
+  // The day stays while a clash is on screen, so nothing under the title moves when the read lands.
+  const day = clash ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
   const state = gone ? "gone" : marks.failed !== undefined ? "failed" : "loading";
   return (
     <Modal onClose={onClose} title={clash && !cleared ? clashTitle(clash) : gone ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
@@ -369,7 +370,12 @@ export function StepForm({
   const [form, setForm] = useState<TimeForm>(() => formOf(offered));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const patch = (p: Partial<TimeForm>) => setForm((f) => ({ ...f, ...p }));
+  // What was wrong with the times is said of the times as they were: an edit takes it away, and Send says it again if it still holds.
+  const patch = (p: Partial<TimeForm>) => {
+    setForm((f) => ({ ...f, ...p }));
+    setError(null);
+  };
+  const bad = fieldOf(error);
   const timed = step.way !== "decline";
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -377,6 +383,8 @@ export function StepForm({
     if (cleared) return;
     const when = timed ? whenOf(form, offered) : null;
     if (typeof when === "string") return setError(when);
+    // A proposal goes to another person and a move has no Undo: neither goes to a time already gone.
+    if (when && when.start < Date.now()) return setError("That time has passed");
     setError(null);
     onSend({ ...(note.trim() && step.way !== "move" ? { comment: note.trim() } : {}), ...(when ?? {}) });
   };
@@ -384,17 +392,20 @@ export function StepForm({
     <form onSubmit={submit} data-clash-step={`${step.side}:${step.way}`}>
       <ModalBody>
         <EventBlock side={event} day={startOfDay(clash.b.startsAt)} />
-        <p className="text-[13px] leading-5 text-muted-foreground">{wayWords(step.way, event.guests)}</p>
+        {/* One line, always there: what goes and to whom, or that nothing went once the two no longer clash, read out as it turns. */}
+        <p aria-live="polite" className="text-[13px] leading-5 text-muted-foreground">
+          {cleared ? "Nothing was sent." : wayWords(step.way, event.guests)}
+        </p>
         {timed ? (
           <div className="grid grid-cols-[minmax(0,1fr)_112px_112px] gap-2">
             <Field label="Day">
               <Input autoFocus type="date" disabled={pending} value={form.day} onChange={(e) => patch({ day: e.target.value })} />
             </Field>
             <Field label="From">
-              <Input type="time" disabled={pending} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
+              <Input type="time" disabled={pending} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
             </Field>
             <Field label="To" hint={endsNextDay(form, offered) ? "Next day" : undefined}>
-              <Input type="time" disabled={pending} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
+              <Input type="time" disabled={pending} aria-invalid={bad === "to" || undefined} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
             </Field>
           </div>
         ) : null}
@@ -402,11 +413,6 @@ export function StepForm({
           <Field label="Note">
             <Textarea autoFocus={!timed} disabled={pending} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
           </Field>
-        ) : null}
-        {cleared ? (
-          <p role="status" className="text-xs text-muted-foreground">
-            Nothing was sent.
-          </p>
         ) : null}
         <div role="alert" className="empty:hidden">
           <ErrorLine error={error ?? refused} />

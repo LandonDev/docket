@@ -240,6 +240,9 @@ describe("Start places", () => {
     await act(async () => {});
     expect(typed()).toBe("12 Oak Ct");
     expect(saveOff()).toBe(true);
+    // A read that is merely out says so as a wait, not as an error.
+    expect(within(screen.getByRole("dialog")).getByRole("status").textContent).toBe("Waiting for LifeOS…");
+    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");
 
     // The reads are back: Save sends what he typed, with the switch.
     lifeos.loading = false;
@@ -258,5 +261,24 @@ describe("Start places", () => {
     fireEvent.change(within(dialog).getByLabelText("Address"), { target: { value: "12 Oak Ct" } });
     await save(dialog);
     expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("That address is too long");
+  });
+
+  it("says why LifeOS cannot be read now before what it said of an earlier Save, and the refusal again once the read is back", async () => {
+    lifeos.refuse = "refused: that address is too long";
+    const view = render(<StartPlacesSection environmentId="box" />);
+    const dialog = await open("Change Home");
+    fireEvent.change(within(dialog).getByLabelText("Address"), { target: { value: "12 Oak Ct" } });
+    await save(dialog);
+    const alert = () => within(screen.getByRole("dialog")).getByRole("alert").textContent;
+    expect(alert()).toBe("That address is too long");
+    lifeos.failed = "LifeOS did not answer";
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(alert()).toBe("LifeOS did not answer");
+    lifeos.failed = null;
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(alert()).toBe("That address is too long");
+    expect(within(screen.getByRole("dialog")).getByRole("status").textContent).toBe("");
   });
 });

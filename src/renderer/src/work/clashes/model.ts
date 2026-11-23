@@ -96,8 +96,23 @@ export const timeField = (ms: number) => {
 export type TimeForm = { day: string; from: string; to: string };
 export const formOf = (span: { start: number; end: number }): TimeForm => ({ day: dayField(span.start), from: timeField(span.start), to: timeField(span.end) });
 
-/** A clock time on a day: the day first, then the clock on it, so a clock change on another day cannot move it. */
-const clockOn = (day: string, clock: string): number => new Date(`${day}T${clock}`).getTime();
+const UNSET = "Pick a day and its times";
+const SKIPPED = { from: "From is in the hour the clocks skip that day. Pick another time.", to: "To is in the hour the clocks skip that day. Pick another time." } as const;
+/** The field a refusal is about, when it is about one alone: the step marks that field. */
+export const fieldOf = (words: string | null): keyof typeof SKIPPED | null => (words === SKIPPED.from ? "from" : words === SKIPPED.to ? "to" : null);
+const DAY = 24 * 60 * MINUTE;
+
+/**
+ * A clock time on a day (the day first, then the clock on it), or the words
+ * that say why it is no time: a field left empty, or a clock time that day
+ * never shows, since the hour the clocks skip would otherwise be read as an
+ * hour later than what the field says.
+ */
+function clockOn(day: string, clock: string, field: keyof typeof SKIPPED): number | string {
+  const at = new Date(`${day}T${clock}`).getTime();
+  if (!Number.isFinite(at)) return UNSET;
+  return dayField(at) === day && timeField(at) === clock ? at : SKIPPED[field];
+}
 const dayAfter = (day: string): string => {
   const d = new Date(`${day}T12:00`);
   d.setDate(d.getDate() + 1);
@@ -106,21 +121,25 @@ const dayAfter = (day: string): string => {
 
 /**
  * The start and end a form names, or the words that say what is wrong with
- * it. A field he left as it was offered keeps the instant offered, each on
- * its own: an hour the clocks repeat shows one clock time for two instants,
- * and reading the field back would pick the wrong one. A To at or before the
- * start is the next day's, so an event may run past midnight; the same minute
- * is no span at all.
+ * it. What goes out is what the fields show, read the plain way: From on the
+ * Day, To the first time after it, the next day's when it is earlier on the
+ * clock; the same minute is no span. A field he left as it was offered keeps
+ * the instant offered, each on its own, since an hour the clocks repeat shows
+ * one clock time for two instants; the offered end stands only while it is
+ * still an end for the start, after it and under a day on.
  */
 export function whenOf(form: TimeForm, offered?: { start: number; end: number }): { start: number; end: number } | string {
   const was = offered ? formOf(offered) : null;
   const sameDay = was !== null && form.day === was.day;
-  const start = offered && sameDay && form.from === was?.from ? offered.start : clockOn(form.day, form.from);
-  let end = offered && sameDay && form.to === was?.to ? offered.end : clockOn(form.day, form.to);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return "Pick a day and its times";
-  if (end <= start && form.to !== form.from) end = clockOn(dayAfter(form.day), form.to);
-  if (!Number.isFinite(end) || end <= start) return "It must end after it starts";
-  return { start, end };
+  const start = offered && sameDay && form.from === was?.from ? offered.start : clockOn(form.day, form.from, "from");
+  if (typeof start === "string") return start;
+  if (offered && sameDay && form.to === was?.to && offered.end > start && offered.end - start < DAY) return { start, end: offered.end };
+  if (!form.to) return UNSET;
+  if (form.to === form.from) return "It must end after it starts";
+  let end = clockOn(form.day, form.to, "to");
+  if (typeof end !== "string" && end <= start) end = clockOn(dayAfter(form.day), form.to, "to");
+  if (typeof end === "string") return end;
+  return end > start ? { start, end } : "It must end after it starts";
 }
 
 /** The same with nothing offered: every field is read as typed. */

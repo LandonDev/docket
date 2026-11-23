@@ -3,6 +3,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Clash, ClashSide } from "@shared/work/clashes";
+import { startOfDay } from "work-kit/views/lib/agenda";
+import { formatDayHeading } from "work-kit/views/lib/format";
 import { marksOf, NO_MARKS, type ClashMarks } from "./model";
 
 const HOUR = 3_600_000;
@@ -192,6 +194,15 @@ describe("the Clash dialog", () => {
     await settle();
     expect(screen.getByRole("alert").textContent).toBe("It must end after it starts");
     expect(wire.calls).toEqual([]);
+    // An edit takes the words away; a day already gone is refused the same way.
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "23:00" } });
+    expect(screen.getByRole("alert").textContent).toBe("");
+    fireEvent.change(screen.getByLabelText("Day"), { target: { value: "2020-01-01" } });
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "09:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("That time has passed");
+    expect(wire.calls).toEqual([]);
   });
 
   it("keeps a refusal in the dialog in LifeOS's words", async () => {
@@ -288,13 +299,19 @@ describe("the Clash dialog", () => {
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     fireEvent.change(screen.getByLabelText("Note"), { target: { value: "At a game then, sorry" } });
+    expect(document.querySelector("[data-clash-step] [aria-live=polite]")?.textContent).toBe("Its organizer is told you declined.");
+    const day = formatDayHeading(startOfDay(overlap().b.startsAt));
+    expect(screen.getByRole("dialog").textContent).toContain(day);
     rerender(view(marksOf({ clashes: [], leaves: [] })));
     await settle();
     // What he typed is still there to read or copy.
     expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe("At a game then, sorry");
     // The title follows the read, so the top and the foot of the step say one thing.
     expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
-    expect(screen.getByRole("status").textContent).toBe("Nothing was sent.");
+    // The line that said what would go is the one that now says nothing went, and the day under the title stays.
+    expect(document.querySelector("[data-clash-step] [aria-live=polite]")?.textContent).toBe("Nothing was sent.");
+    expect(document.querySelector("[data-clash-step]")?.textContent).not.toContain("Its organizer is told you declined.");
+    expect(screen.getByRole("dialog").textContent).toContain(day);
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.submit(document.querySelector("[data-clash-step]")!);
     await settle();

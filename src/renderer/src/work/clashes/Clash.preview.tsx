@@ -88,7 +88,7 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
     const clash = state === "move" ? CLASHES.drive! : CLASHES.overlap!;
     const way = state === "move" ? "move" : state === "propose" ? "propose" : "decline";
     return (
-      <Box title={state === "cleared" ? "No longer a clash" : clashTitle(clash)} day={state === "cleared" ? undefined : day}>
+      <Box title={state === "cleared" ? "No longer a clash" : clashTitle(clash)} day={day}>
         <StepForm clash={clash} step={{ side: step, way }} cleared={state === "cleared"} pending={state === "sending"} refused={state === "refused" ? "This calendar's Google account must be connected again before LifeOS may write to it." : null} onBack={noop} onSend={noop} />
       </Box>
     );

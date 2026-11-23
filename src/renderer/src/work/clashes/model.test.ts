@@ -130,4 +130,12 @@ describe("the time fields", () => {
     // A From moved past the To he left alone runs to the next day's To.
     expect(whenOf({ ...form, from: "15:00" }, offered)).toEqual({ start: T0 + 3 * HOUR, end: offered.end + 24 * HOUR });
   });
+
+  it("read an offer past midnight the plain way once he moves From before it: the To he left is that day's, not a day on", () => {
+    const late = { start: new Date(2026, 10, 25, 23, 30).getTime(), end: new Date(2026, 10, 26, 0, 30).getTime() };
+    const form = { ...formOf(late), from: "00:00" };
+    expect(endsNextDay(formOf(late), late)).toBe(true);
+    expect(whenOf(form, late)).toEqual({ start: new Date(2026, 10, 25, 0, 0).getTime(), end: new Date(2026, 10, 25, 0, 30).getTime() });
+    expect(endsNextDay(form, late)).toBe(false);
+  });
 });
