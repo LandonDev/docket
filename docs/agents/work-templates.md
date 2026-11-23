@@ -131,7 +131,7 @@ A play is text, so "start the game report" is a step that says so; the play's th
 
 ## A job's look (`look.ts`)
 
-`lookOf(ctx, workspaceId): JobLook | null`, with `JobLook = { theme: OfficeTheme; logo? }`. It answers null. `make.ts` asks it once, after the fill and before the file is placed. The feature that gives a job its colours, fonts and logo fills `lookOf` and writes the one swap of `theme/theme1.xml` in the scratch file. `OfficeTheme` is declared here by work-kit's shape until the pin has it.
+`lookOf(ctx, workspaceId): JobLook | null`, with `JobLook = { theme: OfficeTheme; logo? }`. It answers null. `make.ts` asks it once, after the fill and before the file is placed. The feature that gives a job its colours, fonts and logo fills `lookOf` and writes the one swap of `theme/theme1.xml` in the scratch file. `OfficeTheme` is work-kit's (`work-kit/format/theme`).
 
 ## Proofs
 

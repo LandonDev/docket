@@ -1,3 +1,4 @@
+import type { OfficeTheme } from 'work-kit/format/theme'
 import type { WorkCtx } from '../modules'
 
 /**
@@ -9,14 +10,10 @@ import type { WorkCtx } from '../modules'
  * colours and theme fonts alone, so that swap is the whole job.
  */
 
-/** Twelve colours and two fonts, as Office's `theme1.xml` holds them (work-kit's `OfficeTheme`, declared here until the pin has it). */
-export interface OfficeTheme {
-  name: string
-  colours: Record<'dk1' | 'lt1' | 'dk2' | 'lt2' | 'accent1' | 'accent2' | 'accent3' | 'accent4' | 'accent5' | 'accent6' | 'hlink' | 'folHlink', string>
-  fonts: { heading: string; body: string }
-}
+export type { OfficeTheme }
 
 export interface JobLook {
+  /** twelve colours and two fonts, as Office's `theme1.xml` holds them */
   theme: OfficeTheme
   /** a picture file on this host */
   logo?: string
