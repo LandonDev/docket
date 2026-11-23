@@ -154,6 +154,44 @@ Every part is a Kobra part (`components/README.md`). One tile, one grid and one 
 
 `Templates.preview.tsx` holds the preview pages (`bun run ui:preview src/renderer/src/work/templates/Templates.preview.tsx#TemplatesViewPreview`, also `TemplateDialogPreview`, `FieldsPreview`, `SavePreview`). A menu and a dialog draw in portals a preview cannot hold, so the dialogs are drawn inside the Modal's own box and the menu is held by DOM tests.
 
+## The starters (`starters/`, `resources/work-templates/`)
+
+Twenty-three files, checked in under `resources/work-templates/<sector>/<Name>.<form>` and packed with the app (both builder configs hold only negative globs, and none matches the folder). `starters/manifest.ts` lists them: sector, name, kind, form and the fields each asks for.
+
+| Job | Starters (kind; fields asked) |
+|---|---|
+| Cosmic | Release note (document; Version) · Incident report (document; Incident) · Release checklist (sheet; Version) · Update briefing (deck; Update) |
+| Hypixel | Shot list (sheet; Video) · Video brief (document; Video) · Script (document; Video) · Review deck (deck; Video) |
+| Purdue | Memo (document; To, Subject) · Event run of show (document; Event) · Travel budget (sheet; Trip) · Program update (deck; Term) |
+| Ref | Game report (document; Home, Away, Site) · Incident report (document; Home, Away) · Season log (sheet) |
+| Unify | Invoice (sheet; Client, Invoice number), key `unify/invoice` · Proposal (document; Client, Project) · Statement of work (document; Client, Project) · Pitch deck (deck; Client) |
+| Life | Trip plan (document; Trip) · Monthly budget (sheet) · Checklist (document) |
+| All jobs | Meeting notes (document; Meeting), key `any/meeting-notes` |
+
+**To make more, or change one.** Add its row to `manifest.ts`, write its fixture (`starters/docs.ts`, `sheets.ts` or `decks.ts`), then run the build by hand and check in what it wrote:
+
+```
+bun --preload ./scripts/lib/electron-stub.ts scripts/build-work-templates.ts
+```
+
+The build is never run at build time. It removes any file the manifest does not name. Documents and sheets come out the same bytes each run; a deck does not, since pptxgenjs stamps the time.
+
+- **Documents** are block fixtures written through work-kit's `writeDocx`, then `themeDocx` (`starters/docx.ts`). The pass is needed because `writeDocx` writes the `docx` library's default styles, which hold hex colours. It writes Word's built-in styles on theme colours and theme fonts, sets 11 pt body and US Letter with inch margins, gives table rules a theme tint, hangs a check item's box, and fixes the core dates. It shrinks to the dates once `writeDocx` writes its own styles and theme (DOC3, DOC5).
+- **Sheets** are written by `starters/xlsx.ts`: one fixed style sheet with Excel's named styles (Normal, Heading 1, Heading 2, Total, Input, Note, Currency, Percent), date and number formats, widths, formulas with no cached values, a frozen head, pick lists and print set-up. It is not a second sheet writer: it knows only what the starters use and imports nothing of the sheets pillar.
+- **Decks** are inputs to the slides pillar's own `slides_new`, run by the build from the slides module's tool list. No code of this pillar writes a `.pptx`. A deck keeps `slides_new`'s look.
+
+The rules every starter keeps, each held by `starters.test.ts` over the checked-in files:
+
+- In documents and sheets, colours are theme slots with tints and automatic ink, and fonts are the theme's heading and body: no literal colour outside `theme1.xml`. So a job's look recolours all of it by swapping one part.
+- No picture, logo or embedded font. One thing is let through by name: a deck's chart keeps its numbers in `ppt/embeddings/Microsoft_Excel_Worksheet.xlsx`, as pptxgenjs writes it.
+- No name of an employer, school, league, game or person (a deny list, whole words, every part). Where one belongs the file says `{{Job}}`, `{{Name}}` or a named field. Sample rows are plainly made up ("Item one").
+- Every field in a starter's manifest row is in its file, in that order, and no other.
+- Each document reads back through work-kit's `readDocx` with the fixture's headings, each sheet through `importXlsx` with its sheet names, and each document and sheet fills with nothing left.
+
+`starters/shelf.test.ts` holds the shelf to the manifest: each sector's workspace lists its starters and every job's, and each is found by its key.
+
+LibreOffice draws a Word run or fill that is `auto` with a theme colour in automatic ink, so there a document's headings, rules and table heads are black with no fill; Word shows the theme's colours. Sheets show their theme colours in both.
+
 ## A job's look (`look.ts`)
 
 `lookOf(ctx, workspaceId): JobLook | null`, with `JobLook = { theme: OfficeTheme; logo? }`. It answers null. `make.ts` asks it once, after the fill and before the file is placed. The feature that gives a job its colours, fonts and logo fills `lookOf` and writes the one swap of `theme/theme1.xml` in the scratch file. `OfficeTheme` is work-kit's (`work-kit/format/theme`).
