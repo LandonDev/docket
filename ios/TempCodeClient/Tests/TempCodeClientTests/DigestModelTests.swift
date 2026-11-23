@@ -132,10 +132,25 @@ import TempCodeContract
         #expect(DigestModel.sections(entries, days: [], now: now, calendar: calendar, locale: locale)[0].entries.map(\.row.id) == ["b", "a"])
     }
 
-    @Test func `a row with a clock reads by its clock, else the time it was told`() {
-        #expect(plain(DigestModel.when(row("r", at: ms(23, 9, 5)), now: now, calendar: calendar, locale: locale)) == "9:05 AM")
-        #expect(plain(DigestModel.when(row("r", at: ms(23, 9), by: ms(23, 14)), now: now, calendar: calendar, locale: locale)) == "by 2:00 PM")
-        #expect(plain(DigestModel.when(row("r", at: ms(23, 9), by: ms(24, 14)), now: now, calendar: calendar, locale: locale)) == "by Nov 24, 2:00 PM")
+    private func when(_ row: TellRow) -> String { plain(DigestModel.when(row, now: now, calendar: calendar, locale: locale)) }
+
+    @Test func `a row with a clock reads by its clock, else the time it was told, each naming a day that is not today`() {
+        #expect(when(row("r", at: ms(23, 9, 5))) == "9:05 AM")
+        #expect(when(row("r", at: ms(23, 9), by: ms(23, 14))) == "by 2:00 PM")
+        // a held invite with a clock on Thursday
+        #expect(when(row("r", title: "Held: Invite Dana Reyes to Spring LAN walkthrough", at: ms(23, 9), by: ms(26, 14))) == "by Nov 26, 2:00 PM")
+        // told yesterday, and told before the week
+        #expect(when(row("r", at: ms(22, 16, 20))) == "Sun 4:20 PM")
+        #expect(when(row("r", at: ms(9, 7))) == "Nov 9, 7:00 AM")
+    }
+
+    @Test func `a row whose words carry its clock never says it twice: it ends with when it was told`() {
+        #expect(when(row("r", title: "Budget review starts at 2:00 PM", at: ms(23, 13, 50), by: ms(23, 14))) == "1:50 PM")
+        var detailed = row("r", title: "Prep is ready for Budget review", at: ms(23, 8), by: ms(23, 14))
+        detailed = TellRow(id: detailed.id, host: detailed.host, kind: detailed.kind, group: detailed.group, workspaceId: detailed.workspaceId, sector: detailed.sector, title: detailed.title, detail: "2:00 PM, with Dana Reyes", by: detailed.by, at: detailed.at, how: detailed.how, day: nil, toldAt: nil)
+        #expect(when(detailed) == "8:00 AM")
+        // the host's words with a narrow no-break space still say the clock
+        #expect(when(row("r", title: "Budget review starts at 2:00\u{202F}PM", at: ms(22, 13, 50), by: ms(23, 14))) == "Sun 1:50 PM")
     }
 
     @Test func `nothing at all says since when`() {

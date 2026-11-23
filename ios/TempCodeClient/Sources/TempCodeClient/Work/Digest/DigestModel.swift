@@ -201,10 +201,19 @@ public enum DigestModel {
         }
     }
 
-    /// A row's trailing fact: its clock in words when it has one ("by 2:00 PM"), else when it was told.
+    /// A row's trailing fact: its clock in words when it has one ("by 2:00 PM"), else when it was told,
+    /// each naming its day when it is not today. A clock the row's own words already say ("Budget review
+    /// starts at 2:00 PM") is not said twice: that row ends with when it was told (the desktop's `rowWhen`).
     public nonisolated static func when(_ row: TellRow, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
-        if let by = row.by { return "by \(dayTime(date(by), now: now, calendar, locale))" }
-        return clock(date(row.at), calendar, locale)
+        if let by = row.by, !says(row, clock(date(by), calendar, locale)) { return "by \(dayTime(date(by), now: now, calendar, locale))" }
+        return dayTime(date(row.at), now: now, calendar, locale)
+    }
+
+    /// The row's title or detail holds `clock`. Spaces compare as spaces: a formatter may write a narrow
+    /// no-break space before AM and PM where the host's words have a plain one.
+    nonisolated static func says(_ row: TellRow, _ clock: String) -> Bool {
+        let plain = { (text: String) in text.replacingOccurrences(of: "\u{202F}", with: " ").replacingOccurrences(of: "\u{00A0}", with: " ") }
+        return plain("\(row.title) \(row.detail ?? "")").contains(plain(clock))
     }
 
     /// The empty list's one line: since when Work has had nothing to tell him (the ledger keeps 30 days).
@@ -304,13 +313,14 @@ public enum DigestModel {
         return formatter.string(from: date)
     }
 
-    /// "2:00 PM"
+    /// "2:00 PM": the phone's one clock time (`TimeFormat.clock`).
     nonisolated static func clock(_ date: Date, _ calendar: Calendar, _ locale: Locale) -> String {
-        format(date, "jmm", calendar, locale)
+        TimeFormat.clock(Int((date.timeIntervalSince1970 * 1000).rounded()), locale: locale, timeZone: calendar.timeZone)
     }
 
     /// A clock that names its day when it is not today: "2:00 PM" today, "Mon 2:00 PM" within the last
-    /// six days, "Nov 3, 2:00 PM" otherwise (the desktop's `dayTime`).
+    /// six days, "Nov 3, 2:00 PM" otherwise, a day ahead too (the desktop's `dayTime`). `TimeFormat.stamp`
+    /// names a coming day by its weekday, which a clock ahead must not: "by Nov 26", not "by Thu".
     nonisolated static func dayTime(_ date: Date, now: Date, _ calendar: Calendar, _ locale: Locale) -> String {
         let ago = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
         if ago == 0 { return clock(date, calendar, locale) }
