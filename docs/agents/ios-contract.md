@@ -62,3 +62,10 @@
   `CaptureFiled` named (zod in wireSchemas.ts, each a `Mirror` of its
   interface). A nullable param the host requires (`sector`, null for
   Unsorted) is encoded as an explicit `null`, never left out.
+
+**Switches that must stay whole.** A new held act kind, chip kind or pillar id
+regenerates the Swift contract, and every phone `switch` over that enum with
+no `default` stops compiling (`WorkGlyph.of`, `LifeViewScreen.symbol`), which
+only the Mac's build would see. `scripts/swiftSwitches.test.ts` reads each
+such switch in `ios/` as text on the box and fails naming the missing case,
+the file and the line. Add the case there in the same commit as the new kind.
