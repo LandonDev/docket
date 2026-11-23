@@ -307,17 +307,146 @@ describe("the sheet kind", () => {
     expect(edits().at(-1)!.mutations).toEqual([set(3, 1, 4)]);
   });
 
+  it("sends a move to a host that saves moves by itself, after what he typed before it, and holds the grid still until the host has answered", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL, moves: true }));
+    await gridUp();
+    const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 });
+    const move: SheetMutationJson = {
+      id: "sheet.mutation.move-range",
+      params: { unitId: "book", fromRange: range(0, 0, 1, 1), toRange: range(4, 4, 5, 5), from: { subUnitId: "budget", value: {} }, to: { subUnitId: "budget", value: {} } },
+    };
+    // the host takes its time over a move (LibreOffice runs)
+    const edit = sheetHost.edit;
+    let answer = (): void => undefined;
+    sheetHost.edit = async (baseRev, mutations) => {
+      if (mutations[0]?.id === move.id) await new Promise<void>((resolve) => (answer = resolve));
+      return edit(baseRev, mutations);
+    };
+    // typed just before the drag (a turn of its own), and still waiting to be sent: it goes first, as its own batch
+    await act(async () => grid.edit(set(3, 1, 4)));
+    // one drag: the move, the formulas the grid pointed at the block's new place and a merge it moved; only the move goes
+    act(() => {
+      grid.edit(move);
+      grid.edit(set(7, 1, 0));
+      grid.edit({ id: "sheet.mutation.add-worksheet-merge", params: { unitId: "book", subUnitId: "budget", ranges: [range(4, 4, 4, 5)] } });
+      grid.edit({ id: "sheet.mutation.update-note-position", params: { unitId: "book", sheetId: "budget" } });
+    });
+    await waitFor(() => expect(edits()).toHaveLength(1), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[0]).toEqual({ baseRev: 3, mutations: [set(3, 1, 4)] });
+    // the move is with the host: the grid takes no edit until it has answered
+    await waitFor(() => expect(grid.readOnly).toBe(true));
+    act(() => answer());
+    await waitFor(() => expect(edits()).toHaveLength(2));
+    expect(edits()[1]).toEqual({ baseRev: 4, mutations: [move] });
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+    expect(grid.undone).toBe(0);
+    expect(toasts.said).toEqual([]);
+    sheetHost.edit = edit;
+    const rows: SheetMutationJson = { id: "sheet.mutation.move-rows", params: { unitId: "book", subUnitId: "budget", sourceRange: range(0, 0, 1, 9), targetRange: range(6, 0, 7, 9) } };
+    act(() => grid.edit(rows));
+    await waitFor(() => expect(edits()).toHaveLength(3), { timeout: EDIT_WAIT * 10 });
+    expect(edits()[2]!.mutations).toEqual([rows]);
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+  });
+
+  it("takes a move the host refuses back by itself: the words are said once, the book is read again from the file, and there is nothing to press", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL, moves: true }));
+    await gridUp();
+    const loads = () => sheetHost.calls.filter((c) => c[0] === "load").length;
+    const before = loads();
+    const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 });
+    const move: SheetMutationJson = {
+      id: "sheet.mutation.move-range",
+      params: { unitId: "book", fromRange: range(0, 0, 1, 1), toRange: range(4, 4, 5, 5), from: { subUnitId: "budget", value: {} }, to: { subUnitId: "budget", value: {} } },
+    };
+    // what only the file shows (here, a table the block cuts) comes back from the host in the canvas's words
+    const edit = sheetHost.edit;
+    sheetHost.edit = async () => {
+      throw new Error("Move this in Excel: it crosses a table");
+    };
+    act(() => grid.edit(move));
+    await waitFor(() => expect(toasts.said).toEqual(["Move this in Excel: it crosses a table"]));
+    await waitFor(() => expect(loads()).toBeGreaterThan(before));
+    await gridUp();
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+    expect(screen.queryByText("Couldn't save")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+    // the grid is the file again, and takes his next edit
+    sheetHost.edit = edit;
+    act(() => grid.edit(set(3, 1, 4)));
+    await waitFor(() => expect(edits().at(-1)?.mutations).toEqual([set(3, 1, 4)]), { timeout: EDIT_WAIT * 10 });
+  });
+
+  it("reads the file again after a move it saved: the file is LibreOffice's, not the grid's own picture", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL, moves: true }));
+    await gridUp();
+    const loads = () => sheetHost.calls.filter((c) => c[0] === "load").length;
+    const before = loads();
+    const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 });
+    const rows: SheetMutationJson = { id: "sheet.mutation.move-rows", params: { unitId: "book", subUnitId: "budget", sourceRange: range(0, 0, 1, 9), targetRange: range(6, 0, 7, 9) } };
+    act(() => grid.edit(rows));
+    await waitFor(() => expect(edits().at(-1)?.mutations).toEqual([rows]), { timeout: EDIT_WAIT * 10 });
+    await waitFor(() => expect(loads()).toBeGreaterThan(before));
+    await gridUp();
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+    expect(toasts.said).toEqual([]);
+  });
+
+  it("after a refused move whose book cannot be read again, says the sheet did not open, with Retry: never a grid locked for good", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL, moves: true }));
+    await gridUp();
+    const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 });
+    const rows: SheetMutationJson = { id: "sheet.mutation.move-rows", params: { unitId: "book", subUnitId: "budget", sourceRange: range(0, 0, 1, 9), targetRange: range(6, 0, 7, 9) } };
+    const { edit, open: openHost } = sheetHost;
+    sheetHost.edit = async () => {
+      throw new Error("Move this in Excel: it crosses a table");
+    };
+    // the host goes away as the move is refused: neither the view nor the book answers
+    sheetHost.open = async () => {
+      throw new Error("offline");
+    };
+    act(() => grid.edit(rows));
+    await waitFor(() => expect(toasts.said).toEqual(["Move this in Excel: it crosses a table"]));
+    // the host is back: Retry opens the sheet, and the grid takes edits again
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    sheetHost.edit = edit;
+    sheetHost.open = openHost;
+    fireEvent.click(retry);
+    await gridUp();
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+    act(() => grid.edit(set(3, 1, 4)));
+    await waitFor(() => expect(edits().at(-1)?.mutations).toEqual([set(3, 1, 4)]), { timeout: EDIT_WAIT * 10 });
+  });
+
+  it("never sends a move again on another revision: the sheet changed under it, so it is taken back and said", async () => {
+    open(sheetView({ store: "package", rev: 3, row: ROW_ALL, moves: true }));
+    await gridUp();
+    const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 });
+    const rows: SheetMutationJson = { id: "sheet.mutation.move-rows", params: { unitId: "book", subUnitId: "budget", sourceRange: range(0, 0, 1, 9), targetRange: range(6, 0, 7, 9) } };
+    const edit = sheetHost.edit;
+    let asked = 0;
+    sheetHost.edit = async () => {
+      asked++;
+      return { conflict: true as const, rev: 9 };
+    };
+    act(() => grid.edit(rows));
+    await waitFor(() => expect(toasts.said).toEqual(["The sheet changed under that move. Make it again"]));
+    await waitFor(() => expect(grid.readOnly).toBe(false));
+    expect(asked).toBe(1);
+    sheetHost.edit = edit;
+  });
+
   it("stops a change an Excel file cannot keep as he makes it: the grid takes it back, nothing of it is sent, and he is told why in a few words", async () => {
     open(sheetView({ store: "package", rev: 3, row: ROW_ALL }));
     await gridUp();
     const move: SheetMutationJson = { id: "sheet.mutation.move-range", params: { unitId: "book", subUnitId: "budget", from: {}, to: {} } };
-    // one drag is one command: the cells it cleared and wrote come with the move, and all of it is stopped
+    // one drag is one command: the cells it cleared and wrote come with the move, and all of it is stopped (a host that does not say it saves moves)
     act(() => {
       grid.edit(set(5, 1, 7));
       grid.edit(move);
     });
     await waitFor(() => expect(grid.undone).toBe(1));
-    await waitFor(() => expect(toasts.said).toEqual(["Moving cells is not saved in an Excel file yet. Cut and paste them instead"]));
+    await waitFor(() => expect(toasts.said).toEqual(["Move this in Excel"]));
     // rich text in a cell, and a change with no name here (a hidden row), are stopped the same way
     act(() => grid.edit({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "budget", cellValue: { 1: { 1: { v: "a", p: { body: {} } } } } } }));
     await waitFor(() => expect(grid.undone).toBe(2));

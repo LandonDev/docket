@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { SheetCellJson, SheetMutationJson, SheetView } from "@shared/contract-work-sheets";
-import { AUTO_FIT, forPackage, latestRules, ruleKinds, sheetStopWords, type SheetRuleKind } from "@shared/work/sheets";
+import { AUTO_FIT, forPackage, latestRules, ruleKinds, SHEET_MOVES, sheetStopWords, type SheetRuleKind } from "@shared/work/sheets";
 import { cellText, holds } from "./model";
 import { EDIT_MAX, fromBase64, LOAD_MAX, type SheetHost, type SheetPushed } from "./host";
 
@@ -48,7 +48,7 @@ export interface SheetSyncState {
   saving: boolean;
   /** when his last edit was saved (epoch ms); null before the first */
   savedAt: number | null;
-  /** the book is being read again from its store after a stop: the grid takes no edit until it is drawn */
+  /** the book is being read again from its store after a stop, or a move is on its way to the host: the grid takes no edit until it is drawn or the host has answered */
   reloading: boolean;
   /** a change the sheet's store cannot keep was stopped as he made it: why, in the words he reads, and which time (so the same words twice are said twice) */
   stopped: { why: string; n: number } | null;
@@ -202,18 +202,36 @@ export class SheetSync {
     // turn with a part the store cannot keep is stopped whole and nothing of it is sent.
     let group: SheetMutationJson[] = [];
     let stop: string | null = null;
+    // A move's turn: the move alone is sent. What else the turn did (the formulas, merges, rules and notes the grid moved
+    // beside it) the host's LibreOffice does to the file itself, and every grid then reads the file again.
+    let moves: SheetMutationJson[] = [];
+    let moveStop: string | null = null;
     let commands = 0;
     let gathering = false;
     const settle = (): void => {
       gathering = false;
-      const taken = group;
-      const why = stop;
+      const moved = moves.length > 0 || moveStop !== null;
+      const taken = moved ? moves : group;
+      const why = moved ? moveStop : stop;
       const ran = commands;
       group = [];
       stop = null;
+      moves = [];
+      moveStop = null;
       commands = 0;
       if (why) return this.stop(grid, why, grid.onCommand ? ran : 1);
       if (taken.length === 0) return;
+      if (moved) {
+        // A move goes now, by itself (`batch`), and the grid takes no edit until the host has answered: the host may still
+        // refuse it (a table it would cut, a formula that reads where it lands), and an edit made on a move the file never
+        // took would be lost with it or written into another cell.
+        this.queue.push(...taken);
+        this.set({ tick: this.state.tick + 1, saving: true, reloading: true });
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = null;
+        this.run(() => this.send());
+        return;
+      }
       this.queue.push(...latestRules(taken));
       this.set({ tick: this.state.tick + 1, saving: true });
       if (this.queue.length >= EDIT_MAX) this.flush();
@@ -240,8 +258,12 @@ export class SheetSync {
           google: view.reach?.to === "google",
           ...(grid.style ? { style: (id: string) => grid.style!(id) } : {}),
           ...(grid.rules ? { rules: (kind: SheetRuleKind, sheet?: string) => grid.rules!(kind, sheet), kinds: ruleKinds(view.row) } : {}),
+          moves: view.moves === true,
         });
-        if ("stop" in got) stop ??= got.stop;
+        if (SHEET_MOVES.has(mutation.id)) {
+          if ("stop" in got) moveStop ??= got.stop;
+          else moves.push(...got.keep);
+        } else if ("stop" in got) stop ??= got.stop;
         else group.push(...got.keep);
       } else if (mutation.id !== AUTO_FIT) group.push(mutation);
       gather();
@@ -336,9 +358,16 @@ export class SheetSync {
     return this.chain;
   }
 
+  /** The next batch to send. A move goes by itself: what he did before it first, then the move alone, so the host takes or refuses it whole and nothing else with it. */
+  private batch(): SheetMutationJson[] {
+    const move = this.queue.findIndex((m) => SHEET_MOVES.has(m.id));
+    return this.queue.splice(0, move === 0 ? 1 : move > 0 ? Math.min(move, EDIT_MAX) : EDIT_MAX);
+  }
+
   private async send(): Promise<void> {
     if (this.queue.length === 0) return;
-    const batch = this.queue.splice(0, EDIT_MAX);
+    const batch = this.batch();
+    const move = SHEET_MOVES.has(batch[0]!.id);
     try {
       for (let tries = 0; ; tries++) {
         const answer = await this.host.edit(this.rev, batch);
@@ -348,6 +377,8 @@ export class SheetSync {
           break;
         }
         if (tries + 1 >= CONFLICT_TRIES) throw new Error("Others kept changing the sheet; your edits did not save");
+        // A move is made on the sheet as he saw it: once the sheet changed under it, its rows and columns name other cells. It is not sent again.
+        if (move) throw new Error("The sheet changed under that move. Make it again");
         await this.catchUp();
       }
       if (this.state.sendError) this.set({ sendError: null });
@@ -359,7 +390,29 @@ export class SheetSync {
         this.set({ sendError: message(error, "The host did not answer"), saving: false });
         return;
       }
+      if (move) {
+        // A move the file did not take: the grid shows cells where the file has none, so the canvas takes it back itself.
+        // The words are said once, as for a change stopped at the press, and the book is read again from its file.
+        this.queue = [];
+        this.set({ saving: false, stopped: { why: message(error, "The host did not answer"), n: (this.state.stopped?.n ?? 0) + 1 } });
+        // (the grid is let go whether or not the book could be read again: a host that is gone must not leave it locked)
+        try {
+          await this.open();
+        } finally {
+          this.set({ reloading: false });
+        }
+        return;
+      }
       this.set({ sendError: message(error, "The host did not answer"), saving: this.queue.length > 0 });
+    }
+    if (move) {
+      // A move the file took: LibreOffice and the graft wrote it, not Univer, so the grid that made it reads the file
+      // again too (a rule's ranges or a chart's may differ from Univer's picture, and his next change would send that).
+      try {
+        await this.open();
+      } finally {
+        this.set({ reloading: false });
+      }
     }
     if (this.queue.length > 0) await this.send();
   }

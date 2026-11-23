@@ -2615,7 +2615,10 @@ set by hand.
   not drawn there. A change made another way that the file cannot keep (a
   range dragged to move it in an Excel file) is taken back as he makes it,
   and one toast says why in a few words; no line stands over the canvas
-  about it, and nothing stays on screen that the file does not have.
+  about it, and nothing stays on screen that the file does not have. The
+  same holds for a move the file's host refuses once it has read the file
+  ("Move this in Excel: it crosses a table"): the grid takes no edit for
+  the seconds the move is with the host, then keeps it or takes it back.
 - **In the sheet** the row sits over the formula bar. Its groups: Undo and
   Redo; the cell style (Normal, the headings, Total, Input, Note, then
   Good, Bad and Neutral in the app's own inks, then Currency, Percent and

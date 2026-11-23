@@ -96,10 +96,37 @@ describe('an opened package', () => {
     expect(outside).toEqual([path])
   })
 
-  it('refuses moved cells and row inserts in words, and saves nothing', async () => {
+  it('refuses a move the file cannot take before it asks for the LibreOffice job, and saves nothing', async () => {
+    const tables = join(scratch, `${n}-tables.xlsx`)
+    copyFileSync(join(CORPUS, 'moves/tables.xlsx'), tables)
+    const before = readFileSync(tables)
+    const db = new DatabaseSync(':memory:')
+    ensurePackageTables(db)
+    const asked: unknown[] = []
+    const moving = new PackageStore(db, await localJobs(), join(scratch, `${n}-moving`), () => null, Date.now, () => {}, async (_input, ops) => {
+      asked.push(ops)
+      throw new Error('no LibreOffice in this test')
+    })
+    const data = (await moving.open(tables)).inspected.sheets[0].id
+    const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 })
+    // two rows of the table Sales (A1:B4) dragged out of it
+    const cut = { fromRange: range(1, 0, 2, 1), toRange: range(9, 7, 10, 8), from: { subUnitId: data, value: {} }, to: { subUnitId: data, value: {} } }
+    await expect(moving.edit(tables, 0, [{ id: 'sheet.mutation.move-range', params: { unitId: PACKAGE_UNIT, ...cut } }], 'owner')).rejects.toThrow('Move this in Excel: it crosses a table')
+    expect(asked).toEqual([])
+    expect(readFileSync(tables).equals(before)).toBe(true)
+    expect((await moving.open(tables)).rev).toBe(0)
+    // the whole table is a move the file takes: the job is asked for
+    const whole = { fromRange: range(0, 0, 3, 1), toRange: range(0, 7, 3, 8), from: { subUnitId: data, value: {} }, to: { subUnitId: data, value: {} } }
+    await expect(moving.edit(tables, 0, [{ id: 'sheet.mutation.move-range', params: { unitId: PACKAGE_UNIT, ...whole } }], 'owner')).rejects.toThrow(/no LibreOffice in this test/)
+    expect(asked).toEqual([[{ op: 'moveRange', sheet: 'Data', r1: 0, c1: 0, r2: 3, c2: 1, to: 'Data', row: 0, col: 7 }]])
+  })
+
+  it('refuses moved cells and row inserts in words where it has no LibreOffice, and saves nothing', async () => {
     const data = (await store.open(path)).inspected.sheets[0].id
     const range = { startRow: 1, endRow: 1, startColumn: 0, endColumn: 4 }
-    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.move-range', params: { unitId: PACKAGE_UNIT, subUnitId: data, from: {}, to: {} } }], 'owner')).rejects.toThrow('Moving cells is not saved in an Excel file yet')
+    // a move goes through LibreOffice, as an insert does: a store with none refuses it
+    const moved = { fromRange: range, toRange: { ...range, startRow: 5, endRow: 5 }, from: { subUnitId: data, value: {} }, to: { subUnitId: data, value: {} } }
+    await expect(store.edit(path, 0, [{ id: 'sheet.mutation.move-range', params: { unitId: PACKAGE_UNIT, ...moved } }], 'owner')).rejects.toThrow(/Rows, columns and sheets cannot be changed/)
     await expect(store.edit(path, 0, [{ id: 'sheet.mutation.set-frozen', params: { unitId: PACKAGE_UNIT, subUnitId: data } }], 'owner')).rejects.toThrow('That change is not saved in an Excel file yet')
     await expect(store.edit(path, 0, [set(data, 1, 0, { p: { body: {} } })], 'owner')).rejects.toThrow('more than one style in a cell')
     await expect(store.edit(path, 0, [{ id: 'sheet.mutation.insert-row', params: { unitId: PACKAGE_UNIT, subUnitId: data, range } }], 'owner')).rejects.toThrow(/Rows, columns and sheets cannot be changed/)

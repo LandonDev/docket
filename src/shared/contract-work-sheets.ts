@@ -183,6 +183,8 @@ export interface SheetView {
   charts: SheetChart[]
   /** the format row's controls this sheet keeps (`SHEET_ROW`); absent or empty, the canvas draws no row */
   row?: SheetRowControl[]
+  /** an opened Excel file whose host saves moved cells, rows and columns (sheets/structural.ts); absent, the canvas stops a move as he makes it */
+  moves?: true
 }
 
 /** One revision in a sheet's history. */

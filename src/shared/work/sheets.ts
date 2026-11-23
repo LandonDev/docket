@@ -4,14 +4,32 @@
  * canvas says them at the press and the host says the same if one reaches it. `google`: the workbook
  * lives in Google Sheets, so that is where the change is made.
  */
-export function sheetStopWords(kind: 'moved' | 'rich' | 'fill' | 'other', google = false): string {
+export function sheetStopWords(kind: 'moved' | 'rich' | 'fill' | 'other', google = false, why?: MoveRefusal): string {
   const there = google ? 'Google Sheets' : 'Excel'
   const file = google ? 'a Google sheet' : 'an Excel file'
-  if (kind === 'moved') return `Moving cells is not saved in ${file} yet. Cut and paste them instead`
+  if (kind === 'moved') return `Move this in ${there}${why ? `: ${MOVE_WHY[why]}` : ''}`
   if (kind === 'rich') return `Text with more than one style in a cell is not saved in ${file} yet`
   if (kind === 'fill') return `That fill could not be saved in ${file}`
   return `That change is not saved in ${file} yet. Make it in ${there}`
 }
+
+/**
+ * Why a move cannot be saved into an opened Excel file, said after "Move this in Excel": the host
+ * finds these in the file before LibreOffice runs (sheets/moves.ts) and the canvas finds the ones
+ * the grid can see at the press (`forPackage`), in the same words.
+ */
+export const MOVE_WHY = {
+  table: 'it crosses a table',
+  merge: 'it crosses a merged cell',
+  array: 'part of an array formula',
+  spill: 'part of a spilled formula',
+  pivot: "a pivot table's cells or source",
+  filter: "it crosses the sheet's filter",
+  protected: 'the sheet is protected',
+  lands: 'a formula or chart reads where it lands',
+  rule: 'its conditional formats overlap',
+} as const
+export type MoveRefusal = keyof typeof MOVE_WHY
 
 /** A sheet's rules by kind: its conditional formats, its validations, the workbook's names, its filter, its tables. */
 export type SheetRuleKind = 'conditional' | 'validation' | 'names' | 'filter' | 'tables'
@@ -86,6 +104,9 @@ const STRUCTURAL_SAVED = new Set([
   "sheet.mutation.set-worksheet-name",
 ]);
 
+/** The grid's moves (a block dragged, or cut and pasted; whole rows or columns dragged): saved through LibreOffice where the host says it can (`moves`). */
+export const SHEET_MOVES: ReadonlySet<string> = new Set(["sheet.mutation.move-range", "sheet.mutation.move-rows", "sheet.mutation.move-columns"]);
+
 type Cells = Record<string, Record<string, Record<string, unknown> | null>>;
 
 /** What an opened Excel file keeps of the grid's formatting: a column's width, a row's height he set, a merge made or parted. A cell's style rides in its set-range-values. */
@@ -141,9 +162,13 @@ export function latestRules(mutations: SheetMutation[]): SheetMutation[] {
 export function forPackage(
   mutation: SheetMutation,
   formula: (sheet: string, row: number, col: number) => string | null,
-  opts: { formats?: boolean; google?: boolean; style?: (id: string) => Record<string, unknown> | null; rules?: (kind: SheetRuleKind, sheet?: string) => unknown; kinds?: ReadonlySet<SheetRuleKind> } = {},
+  opts: { formats?: boolean; google?: boolean; style?: (id: string) => Record<string, unknown> | null; rules?: (kind: SheetRuleKind, sheet?: string) => unknown; kinds?: ReadonlySet<SheetRuleKind>; moves?: boolean } = {},
 ): { keep: SheetMutation[] } | { stop: string } {
   if (STRUCTURAL_SAVED.has(mutation.id)) return { keep: [mutation] };
+  if (SHEET_MOVES.has(mutation.id)) {
+    // What a move may not cut through (a table, a merge, an array) the host finds in the file and says in the same words.
+    return opts.moves ? { keep: [mutation] } : { stop: sheetStopWords("moved", opts.google) };
+  }
   if (RULE_NOISE.has(mutation.id)) return { keep: [] };
   const kind = RULE_MUTATIONS[mutation.id];
   if (kind) {
@@ -156,7 +181,7 @@ export function forPackage(
   }
   if (mutation.id === AUTO_FIT && !opts.formats) return { keep: [] };
   if (FORMAT_SAVED.has(mutation.id)) return opts.formats ? { keep: [mutation] } : { stop: sheetStopWords("other", opts.google) };
-  if (mutation.id !== SET_RANGE_VALUES) return { stop: sheetStopWords(mutation.id.includes(".move-") ? "moved" : "other", opts.google) };
+  if (mutation.id !== SET_RANGE_VALUES) return { stop: sheetStopWords("other", opts.google) };
   const params = mutation.params as { subUnitId?: string; cellValue?: Cells } | null;
   if (!params?.cellValue) return { keep: [mutation] };
   const cellValue: Cells = {};
@@ -194,3 +219,4 @@ export function forPackage(
   if (!kept) return { keep: [] };
   return { keep: [{ id: mutation.id, params: { ...params, cellValue } }] };
 }
+

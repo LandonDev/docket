@@ -72,3 +72,23 @@ describe("one turn's rule lists", () => {
     expect(latestRules(turn)).toBe(turn);
   });
 });
+
+describe("a move in an opened Excel file", () => {
+  const range = (r1: number, c1: number, r2: number, c2: number) => ({ startRow: r1, startColumn: c1, endRow: r2, endColumn: c2 });
+  const block = (to = "s1"): SheetMutationJson => ({ id: "sheet.mutation.move-range", params: { fromRange: range(0, 0, 1, 1), toRange: range(4, 4, 5, 5), from: { subUnitId: "s1", value: {} }, to: { subUnitId: to, value: {} } } });
+  const rows: SheetMutationJson = { id: "sheet.mutation.move-rows", params: { subUnitId: "s1", sourceRange: range(0, 0, 1, 9), targetRange: range(6, 0, 6, 9) } };
+  const cols: SheetMutationJson = { id: "sheet.mutation.move-columns", params: { subUnitId: "s1", sourceRange: range(0, 0, 9, 0), targetRange: range(0, 4, 9, 4) } };
+
+  it.each([block(), rows, cols])("%s is kept where the host says it saves moves", (move) => {
+    expect(kept(move, { formats: true, moves: true })).toEqual({ keep: [move] });
+  });
+
+  it.each([block(), rows, cols])("%s is stopped where the host does not say so: a host a release behind, a workbook Excel or Google holds", (move) => {
+    expect(kept(move, { formats: true })).toEqual({ stop: "Move this in Excel" });
+    expect(kept(move, { google: true })).toEqual({ stop: "Move this in Google Sheets" });
+  });
+
+  it("a block cut on one sheet and pasted on another is kept too: what a move may not cross, the host finds in the file", () => {
+    expect(kept(block("s2"), { formats: true, moves: true })).toEqual({ keep: [block("s2")] });
+  });
+});

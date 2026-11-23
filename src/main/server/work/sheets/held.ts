@@ -305,6 +305,8 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       name: basename(held.path),
       store: 'package',
       ...(SHEET_ROW.package.length ? { row: [...SHEET_ROW.package] } : {}),
+      // moved cells go through LibreOffice, as an insert does: a host with none forwards the job
+      moves: true,
       rev: st.rev,
       shared,
       suggestions: s.suggestions.open(key),

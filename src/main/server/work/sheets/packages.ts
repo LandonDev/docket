@@ -10,7 +10,7 @@ import { versionOf } from '../files/write'
 import { cellName, colName, parseA1 } from './a1'
 import type { Inspected, ReadCell } from './jobs'
 import { mutationsOf, NotSaved, type CellWrite } from './mutations'
-import { planOf, type Step, type StructuralOp } from './structural'
+import { planOf, refuseMove, type Step, type StructuralOp } from './structural'
 import type { EditSpec } from './patch/patch'
 import type { SheetJobs } from './workerClient'
 
@@ -333,6 +333,10 @@ export class PackageStore {
         const next = join(work, `${i}.${kind}`)
         if (step.kind === 'cells') await this.jobs.save(at, next, step.edits, this.ironcalcDir(), step.formats)
         else {
+          // A move the file cannot take is refused here, on the file as this step finds it, before the job is asked
+          // for: the words come back at once, not after a wait behind another conversion, and as a refusal even where
+          // the job itself would run on another host.
+          refuseMove(at, step.ops)
           const written = await this.structural(at, step.ops, kind)
           try {
             await this.jobs.graft(at, written, next, step.ops)
@@ -623,6 +627,12 @@ function labelOfOps(ops: readonly StructuralOp[]): string {
       return `Deleted ${op.count === 1 ? 'a column' : `${op.count} columns`}${many}`
     case 'reorder':
       return `Sorted ${op.sheet}${many}`
+    case 'moveRange':
+      return `Moved cells${many}`
+    case 'moveRows':
+      return `Moved ${op.count === 1 ? 'a row' : `${op.count} rows`}${many}`
+    case 'moveCols':
+      return `Moved ${op.count === 1 ? 'a column' : `${op.count} columns`}${many}`
     case 'addSheet':
       return `Added ${op.name}${many}`
     case 'removeSheet':

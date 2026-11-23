@@ -200,14 +200,14 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   icon set of custom icons) is said over the grid after the press, as any
   refusal only the host can know.
 - **What it cannot keep yet is stopped as he makes it** (`forPackage` and
-  `stop`, sync.ts): moved cells (a drag of a range, a row or a column),
-  text with more than one style in a cell, a cell given only a type, and any
+  `stop`, sync.ts): text with more than one style in a cell, a cell given
+  only a type, a move where the host does not save moves, and any
   change with no saved form (a hidden row, a frozen pane). What he does in
   one turn is taken together (the grid's commands counted, their mutations
   gathered): when a part of it cannot be kept, none of it is sent, the grid
   takes it back with its own undo, and a toast says why in a few words
-  ("Moving cells is not saved in an Excel file yet. Cut and paste them
-  instead"). One command is one undo; a turn that ran several, or
+  ("Text with more than one style in a cell is not saved in an Excel file
+  yet"). One command is one undo; a turn that ran several, or
   mutations that came with no command of their own, is undone and the book
   then read again from the file, so the grid is the file whatever the undo
   left. No line stands over the grid about it. The host refuses the same
@@ -288,8 +288,8 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
 ## Structural edits
 
 Rows and columns inserted or deleted, a sort, sheets added, removed or
-renamed, saved into an opened package (architecture §9.1; the sheet report
-§8 item 7):
+renamed, and cells, rows and columns moved, saved into an opened package
+(architecture §9.1; the sheet report §8 item 7):
 
 - `planOf` (structural.ts) turns an edit's mutations into steps in the
   order they came: structural ops for LibreOffice, cell writes for the patch
@@ -320,6 +320,95 @@ renamed, saved into an opened package (architecture §9.1; the sheet report
   pane's size, an external link's path) the harness reports as changed; it
   loses nothing the harness counts. After a structural save, cell edits go
   back to the patch writer on LibreOffice's package.
+
+### Moved cells, rows and columns
+
+A block dragged or cut and pasted (`sheet.mutation.move-range`, on its sheet
+or onto another), and whole rows or columns dragged (`move-rows`,
+`move-columns`), are saved through the same path as an insert:
+
+- **The ops.** `moveRange` (the block, where its top left lands, and the
+  sheet it lands on) is LibreOffice's `XCellRangeMovement.moveRange`.
+  `moveRows` and `moveCols` (the lines, and the line they go before, counted
+  as the sheet stood: Univer's own count) are what Excel's Shift-drag does,
+  made in three steps, as LibreOffice has no such call: room inserted before
+  the target, the lines moved into it with `moveRange`, the emptied lines
+  removed; the moved lines then get back the heights or widths and the
+  hidden state they had. Every formula, name and chart range that pointed at
+  what moved follows it. A range a move takes only part of stays where it
+  was: LibreOffice's rule and the grid's own, so the file holds what he sees.
+  Excel moves a range's end with its corner cell, so the same drag made in
+  Excel can leave another range.
+- **One move, one step.** `planOf` makes each move a structural step of its
+  own, so it is judged on the file as it stands. Only the move is sent: the
+  grid's move also rewrites formulas, merges, rules and notes in the same
+  turn, and the canvas sends the turn's move mutations alone
+  (`SheetSync.attach`); LibreOffice makes those changes itself, and every
+  grid then loads the file again.
+- **Checked twice.** The host refuses a move before LibreOffice runs when it
+  cannot show the file stays whole (`moveRefusal`, moves.ts, on the file's
+  own XML; `refuseMove` in structural.ts is the one call, made by the store
+  before it asks for the job, so the words do not wait behind another
+  conversion, and again by the converter, whose ops may come from another
+  host), and the script checks every `moveRange` it makes: the block's
+  filled cells must be where it landed and none left behind. On the box,
+  several LibreOffices opening one file made `moveRange` do nothing without a
+  word (the second opened it read only behind the first's lock file), so the
+  converter gives LibreOffice its own copy, and a move it did not make is
+  refused, never saved.
+- **What follows a move, read back from LibreOffice's file** (dummy files in
+  `harness/corpus/moves`, made by `make_moves.py`; `structuralMoves.test.ts`):
+
+  | Case | What LibreOffice did | Here |
+  |---|---|---|
+  | A formula at a moved cell, at the whole block, from another sheet | follows the block | saved |
+  | A formula at a range partly moved | stays, and reads what is left, as the grid shows; Excel stretches a range after a moved corner cell | saved |
+  | A formula inside the block pointing out, and pointing in | out: unchanged; in: follows | saved |
+  | A name over the block, and over a cell of it | follows | saved |
+  | A name over part of the block | stays | saved |
+  | A chart reading the block (on the sheet; a chartsheet's chart through graft) | its ranges follow. Where a series' name was typed text, LibreOffice's move wrote a reference to a moved cell for it (an insert writes the text as a formula, `"Block"`); `graft` puts the typed name back after any structural save (`typedSeriesNames`) | saved |
+  | A block onto cells something reads (a formula, a name, a chart) | LibreOffice keeps the reference and points it at what landed; Excel makes it #REF! | refused: "a formula or chart reads where it lands" |
+  | A block onto cells nothing reads | what stood there is gone, as in Excel (Univer asks first) | saved |
+  | The block's formats, conditional formats, validations, link and note | move with it; a rule over part of it splits in two. For a block several columns wide LibreOffice left a conditional format on some of the cells the block left (`C2:C10` where Excel leaves `C4:C10`), and `graft` takes it off them (`offVacated`) | saved |
+  | A block onto cells that have rules of their own | those cells take the block's rules and lose their own | saved |
+  | A conditional format moved whole (it shares no cell with another) | LibreOffice makes it again: after every other, or as one more range of a format that holds the very same rule | saved |
+  | A conditional format that shares cells with another, moved whole | made again at another place in the order, Excel would try the two in another order on the cells they share; moved in part, a format keeps its place | refused: "its conditional formats overlap" |
+  | A merge inside the block, or in moved rows | moves | saved |
+  | A merge across the block's edge, or a column through one | LibreOffice moved the whole merge, or split it | refused: "it crosses a merged cell" |
+  | A whole table, rows holding it, rows moved past it | the table moves or shifts whole; `Sales[Amount]` still reads it | saved |
+  | Part of a table, a block onto one, rows taken out of one | the table kept holes, took the cell, or shrank | refused: "it crosses a table" |
+  | A whole array formula, a whole spill, a shared formula group whole or in part, an array's input | moves; the spill keeps its `cm` mark | saved |
+  | Part of an array formula, a spill's first cell alone, a row through either | LibreOffice did not move it | refused: "part of an array formula", "part of a spilled formula" |
+  | Rows among the filter's own rows; the frozen pane | the filter and the pane stay | saved |
+  | The filter's header row, a column of the filter, a block that meets it | the filter shrank, or lost its header | refused: "it crosses the sheet's filter" |
+  | A block beside a pivot table and its source | as any block | saved |
+  | A pivot table's cells or its source | not tried: LibreOffice lays a pivot out again | refused: "a pivot table's cells or source" |
+  | A protected sheet | | refused: "the sheet is protected" |
+  | A macro workbook | the project kept byte for byte | saved |
+
+- **Where a refusal is said.** At the press, only a host that does not say
+  it saves moves (`SheetView.moves`, set by held.ts for an opened Excel
+  file): the canvas stops the move and says "Move this in Excel" (in Google's
+  words for a Google sheet). Every other refusal needs the file, so the host
+  says it, in the same words with the reason ("Move this in Excel: it crosses
+  a table"; `MOVE_WHY`, src/shared/work/sheets.ts, and the host's own
+  `HOST_WHY` in moves.ts), and the canvas takes the move back itself: the
+  words are one toast, the book is read again from the file, and no "Couldn't
+  save" line stands over the grid (DESIGN.md "What is absent").
+- **A move goes alone.** The canvas sends a move as a batch of its own, after
+  what he typed before it (`SheetSync.batch`), and the grid takes no edit
+  from the drop until the host has answered (`reloading`): an edit made on a
+  move the file then refuses would be lost with it, or written into another
+  cell. The wait is LibreOffice's run, some seconds.
+- **Not proven.** None of this was opened in real Excel: the proof files
+  (each case's file before and after, with the cells and values Excel
+  should show, `manifest.json`) wait for a live proof; the first thing to
+  compare there is a range a move takes only part of. Not tried: a move onto
+  a sheet that holds another table, a move in a workbook with external
+  links, rows through outline groups, a block wider than 20,000 landing
+  cells (refused), how a moved block's hidden rows behave under a filter,
+  and the order of more than two conditional formats that share cells and
+  all move whole.
 
 ## Writing a sheet out
 
@@ -1030,8 +1119,8 @@ The harness corpus also keeps the workbooks the editors plan measured with
 
 ## Not built
 
-- Moving cells (drag a range, move rows or columns) and rich text in an
-  opened Excel file: stopped as he tries, until they are saved.
+- Rich text in an opened Excel file: stopped as he tries, until it is
+  saved. Moves are saved where the file allows ("Structural edits").
 - The model writer leaves out notes and our charts.
 - An agent adds rules and formats (`sheet_rule`, `sheet_format`); it does
   not change or remove a rule, merge cells or sort.

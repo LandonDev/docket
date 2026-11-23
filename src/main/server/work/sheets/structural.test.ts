@@ -4,10 +4,10 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, describe, expect, it } from 'vitest'
 import { importXlsx } from 'work-kit/sheet/xlsx'
-import { moveChartRef } from './graft'
+import { boxWithout, moveChartRef, offVacated, typedSeriesNames, vacatedBy, withTypedNames } from './graft'
 import { NotSaved, SET_RANGE_VALUES } from './mutations'
 import { ensurePackageTables, PackageStore } from './packages'
-import { mapCell, planOf, type StructuralOp } from './structural'
+import { mapCell, mapRange, planOf, scriptRefusal, type StructuralOp } from './structural'
 import { libreOffice, SOFFICE } from './testing'
 import { localJobs } from './workerClient'
 
@@ -88,7 +88,7 @@ describe('planning a structural edit', () => {
 
   it('refuses what it cannot save, in words', () => {
     expect(() =>
-      planOf([{ id: 'sheet.mutation.move-rows', params: { subUnitId: 'sheet1' } }], names())
+      planOf([{ id: 'sheet.mutation.set-row-hidden', params: { subUnitId: 'sheet1' } }], names())
     ).toThrow(NotSaved)
     expect(() =>
       planOf(
@@ -101,6 +101,77 @@ describe('planning a structural edit', () => {
         names()
       )
     ).toThrow(/already/)
+  })
+
+  it('turns a block, rows and columns moved into moves, each a step of its own, and drops a move that goes nowhere', () => {
+    const steps = planOf(
+      [
+        {
+          id: 'sheet.mutation.move-range',
+          params: { fromRange: range(0, 2, 0, 1), toRange: range(4, 6, 5, 6), from: { subUnitId: 'sheet1', value: {} }, to: { subUnitId: 'sheet2', value: {} } }
+        },
+        { id: 'sheet.mutation.move-rows', params: { subUnitId: 'sheet1', sourceRange: range(0, 1), targetRange: range(6, 7) } },
+        { id: 'sheet.mutation.move-columns', params: { subUnitId: 'sheet1', sourceRange: range(0, 99, 3, 3), targetRange: range(0, 99, 0, 0) } },
+        // the same place, and rows put just below themselves: nothing moves
+        { id: 'sheet.mutation.move-range', params: { fromRange: range(1, 1, 1, 1), toRange: range(1, 1, 1, 1), from: { subUnitId: 'sheet1', value: {} }, to: { subUnitId: 'sheet1', value: {} } } },
+        { id: 'sheet.mutation.move-rows', params: { subUnitId: 'sheet1', sourceRange: range(3, 4), targetRange: range(5, 5) } },
+        { id: 'sheet.mutation.insert-row', params: { subUnitId: 'sheet1', range: range(9, 9) } },
+        { id: 'sheet.mutation.remove-rows', params: { subUnitId: 'sheet1', range: range(9, 9) } }
+      ],
+      names()
+    )
+    expect(steps).toEqual([
+      { kind: 'structural', ops: [{ op: 'moveRange', sheet: 'Data', r1: 0, c1: 0, r2: 2, c2: 1, to: 'Calc', row: 4, col: 5 }] },
+      { kind: 'structural', ops: [{ op: 'moveRows', sheet: 'Data', at: 0, count: 2, to: 6 }] },
+      { kind: 'structural', ops: [{ op: 'moveCols', sheet: 'Data', at: 3, count: 1, to: 0 }] },
+      {
+        kind: 'structural',
+        ops: [
+          { op: 'insertRows', sheet: 'Data', at: 9, count: 1 },
+          { op: 'removeRows', sheet: 'Data', at: 9, count: 1 }
+        ]
+      }
+    ])
+  })
+
+  it('maps a cell through a moved block: it lands at its new place, a cell under where it lands is gone, the rest stay', () => {
+    const ops: StructuralOp[] = [{ op: 'moveRange', sheet: 'Data', r1: 0, c1: 0, r2: 2, c2: 1, to: 'Data', row: 4, col: 5 }]
+    expect(mapCell(ops, 'Data', 1, 1)).toEqual({ sheet: 'Data', row: 5, col: 6 })
+    expect(mapCell(ops, 'Data', 6, 6)).toBeNull()
+    expect(mapCell(ops, 'Data', 6, 7)).toEqual({ sheet: 'Data', row: 6, col: 7 })
+    expect(mapCell(ops, 'Calc', 1, 1)).toEqual({ sheet: 'Calc', row: 1, col: 1 })
+    // a block that lands over part of itself: its own cells move, none is lost
+    const over: StructuralOp[] = [{ op: 'moveRange', sheet: 'Data', r1: 0, c1: 0, r2: 2, c2: 0, to: 'Data', row: 1, col: 0 }]
+    expect([0, 1, 2].map((r) => mapCell(over, 'Data', r, 0)?.row)).toEqual([1, 2, 3])
+    // to another sheet: the cell goes with it, and what stood there is gone
+    const away: StructuralOp[] = [{ op: 'moveRange', sheet: 'Data', r1: 0, c1: 0, r2: 0, c2: 0, to: 'Calc', row: 2, col: 2 }]
+    expect(mapCell(away, 'Data', 0, 0)).toEqual({ sheet: 'Calc', row: 2, col: 2 })
+    expect(mapCell(away, 'Calc', 2, 2)).toBeNull()
+  })
+
+  it('maps a cell through rows and columns moved: the moved lines land before the target, the ones between close up', () => {
+    const down: StructuralOp[] = [{ op: 'moveRows', sheet: 'Data', at: 0, count: 2, to: 6 }]
+    expect([0, 1, 2, 5, 6, 9].map((r) => mapCell(down, 'Data', r, 3)?.row)).toEqual([4, 5, 0, 3, 6, 9])
+    const up: StructuralOp[] = [{ op: 'moveRows', sheet: 'Data', at: 5, count: 1, to: 0 }]
+    expect([0, 4, 5, 6].map((r) => mapCell(up, 'Data', r, 3)?.row)).toEqual([1, 5, 0, 6])
+    const cols: StructuralOp[] = [{ op: 'moveCols', sheet: 'Data', at: 3, count: 1, to: 0 }]
+    expect([0, 2, 3, 4].map((c) => mapCell(cols, 'Data', 7, c)?.col)).toEqual([1, 3, 0, 4])
+    // rows moved on one sheet leave another alone
+    expect(mapCell(down, 'Calc', 0, 0)).toEqual({ sheet: 'Calc', row: 0, col: 0 })
+  })
+
+  it("maps a chart's range as LibreOffice moves a reference: along with a block only when wholly inside it, gone under where one lands", () => {
+    const block: StructuralOp[] = [{ op: 'moveRange', sheet: 'Data', r1: 0, c1: 0, r2: 2, c2: 1, to: 'Data', row: 4, col: 5 }]
+    expect(mapRange(block, { sheet: 'Data', r1: 0, c1: 1, r2: 2, c2: 1 })).toEqual({ sheet: 'Data', r1: 4, c1: 6, r2: 6, c2: 6 })
+    // partly inside: it stays as it was
+    expect(mapRange(block, { sheet: 'Data', r1: 0, c1: 0, r2: 5, c2: 0 })).toEqual({ sheet: 'Data', r1: 0, c1: 0, r2: 5, c2: 0 })
+    expect(mapRange(block, { sheet: 'Data', r1: 5, c1: 5, r2: 6, c2: 5 })).toBeNull()
+    // rows 1 to 3 put before row 9: a range over them follows; one across them closes up; one below moves up
+    const rows: StructuralOp[] = [{ op: 'moveRows', sheet: 'Data', at: 0, count: 3, to: 8 }]
+    expect(mapRange(rows, { sheet: 'Data', r1: 0, c1: 1, r2: 2, c2: 1 })).toEqual({ sheet: 'Data', r1: 5, c1: 1, r2: 7, c2: 1 })
+    expect(mapRange(rows, { sheet: 'Data', r1: 0, c1: 0, r2: 5, c2: 0 })).toEqual({ sheet: 'Data', r1: 0, c1: 0, r2: 2, c2: 0 })
+    expect(mapRange(rows, { sheet: 'Data', r1: 9, c1: 0, r2: 12, c2: 0 })).toEqual({ sheet: 'Data', r1: 9, c1: 0, r2: 12, c2: 0 })
+    expect(moveChartRef('Data!$B$1:$B$3', rows)).toBe('Data!$B$6:$B$8')
   })
 
   it('maps a cell through inserts, deletes, a sort and a rename; a deleted cell maps to nothing', () => {
@@ -250,5 +321,109 @@ describe.skipIf(!office)('structural edits through LibreOffice', () => {
       )
     ).rejects.toThrow(/is protected/)
     expect(readFileSync(path).equals(before)).toBe(true)
+  })
+})
+
+describe('what a moved block leaves behind (graft)', () => {
+  const box = (r1: number, c1: number, r2: number, c2: number) => ({ r1, c1, r2, c2 })
+  it('cuts a box out of another: nothing, the whole, or up to four boxes around it', () => {
+    expect(boxWithout(box(0, 0, 9, 0), box(20, 0, 22, 0))).toEqual([box(0, 0, 9, 0)])
+    expect(boxWithout(box(0, 0, 2, 0), box(0, 0, 9, 3))).toEqual([])
+    expect(boxWithout(box(0, 0, 9, 0), box(0, 0, 2, 2))).toEqual([box(3, 0, 9, 0)])
+    // a hole in the middle: above, below, left, right
+    expect(boxWithout(box(0, 0, 4, 4), box(2, 2, 2, 2))).toEqual([box(0, 0, 1, 4), box(3, 0, 4, 4), box(2, 0, 2, 1), box(2, 3, 2, 4)])
+  })
+
+  it('the cells a block left: all of it on another sheet, and less where it landed on its own', () => {
+    const op = { op: 'moveRange' as const, sheet: 'Data', r1: 0, c1: 0, r2: 2, c2: 1, to: 'Data', row: 1, col: 1 }
+    expect(vacatedBy({ ...op, to: 'Calc' })).toEqual([box(0, 0, 2, 1)])
+    expect(vacatedBy({ ...op, row: 14, col: 9 })).toEqual([box(0, 0, 2, 1)])
+    // dropped over part of itself: B2:B3 is filled again
+    expect(vacatedBy(op)).toEqual([box(0, 0, 0, 1), box(1, 0, 2, 0)])
+  })
+
+  it('takes a conditional format off the cells a block left, in the sheet’s list and the extended one, and leaves the rest as it was', () => {
+    const rule = '<cfRule type="cellIs" priority="2" operator="lessThan" dxfId="0"><formula>0</formula></cfRule>'
+    const xml =
+      `<worksheet><sheetData/><conditionalFormatting sqref="C2:C10 L15:L17">${rule}</conditionalFormatting>` +
+      `<conditionalFormatting sqref="C1:C3">${rule}</conditionalFormatting><conditionalFormatting sqref="N5:P7">${rule}</conditionalFormatting>` +
+      '<dataValidations count="1"><dataValidation type="whole" sqref="C1:C3"/></dataValidations>' +
+      '<extLst><ext><x14:conditionalFormattings><x14:conditionalFormatting xmlns:xm="x"><x14:cfRule type="dataBar" id="{1}"/><xm:sqref>C1:C10</xm:sqref></x14:conditionalFormatting></x14:conditionalFormattings></ext></extLst></worksheet>'
+    const out = offVacated(xml, [box(0, 0, 2, 2)])
+    expect([...out.matchAll(/<conditionalFormatting sqref="([^"]*)"/g)].map((m) => m[1])).toEqual(['C4:C10 L15:L17', 'N5:P7'])
+    expect(out).toContain('<xm:sqref>C4:C10</xm:sqref>')
+    // a validation is LibreOffice's own to move (it does, cell for cell): not touched here
+    expect(out).toContain('<dataValidation type="whole" sqref="C1:C3"/>')
+    // nothing of it on those cells: the same text comes back
+    const far = offVacated(xml, [box(40, 0, 42, 2)])
+    expect(far).toBe(xml)
+  })
+})
+
+describe("a chart series' typed name (graft)", () => {
+  const ser = (tx: string, cat: string, val: string) => `<c:ser><c:idx val="0"/>${tx}<c:cat><c:numRef><c:f>${cat}</c:f></c:numRef></c:cat><c:val><c:numRef><c:f>${val}</c:f></c:numRef></c:val></c:ser>`
+  const typed = '<c:tx><c:v>Block</c:v></c:tx>'
+  const asRef = (cell: string) => `<c:tx><c:strRef><c:f>${cell}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>1</c:v></c:pt></c:strCache></c:strRef></c:tx>`
+  const move = [{ op: 'moveRange' as const, sheet: 'Data', r1: 0, c1: 0, r2: 2, c2: 1, to: 'Data', row: 4, col: 5 }]
+
+  it('is put back on the series that reads the same ranges once they have moved', () => {
+    const original = `<c:chart>${ser(typed, 'Data!$A$1:$A$3', 'Data!$B$1:$B$3')}</c:chart>`
+    // LibreOffice: the name is a reference to the first category cell
+    const written = `<c:chart>${ser(asRef('Data!$F$5'), 'Data!$F$5:$F$7', 'Data!$G$5:$G$7')}</c:chart>`
+    const names = typedSeriesNames([original], move)
+    expect(withTypedNames(written, names)).toBe(`<c:chart>${ser(typed, 'Data!$F$5:$F$7', 'Data!$G$5:$G$7')}</c:chart>`)
+    // quoted or not, with or without `$`: the same ranges
+    expect(withTypedNames(`<c:chart>${ser(asRef("'Data'!$F$5"), "'Data'!$F$5:$F$7", "'Data'!$G$5:$G$7")}</c:chart>`, names)).toContain(typed)
+  })
+
+  it('never gives a series named from a cell another chart’s typed name, though both charts read the same ranges', () => {
+    // chart 1: the typed name "Budget"; chart 2: a name read from Data!$H$1; the same values. A row is inserted on another sheet.
+    const one = (tx: string) => `<c:chart><c:ser><c:idx val="0"/>${tx}<c:val><c:numRef><c:f>Data!$B$2:$B$5</c:f></c:numRef></c:val></c:ser></c:chart>`
+    const linked = '<c:tx><c:strRef><c:f>Data!$H$1</c:f></c:strRef></c:tx>'
+    const names = typedSeriesNames([one('<c:tx><c:v>Budget</c:v></c:tx>'), one(linked)], [{ op: 'insertRows', sheet: 'Other', at: 0, count: 1 }])
+    expect(withTypedNames(one(linked), names)).toBe(one(linked))
+    // which of the two is which cannot be told from LibreOffice's file, so the typed one is left as LibreOffice wrote it too
+    const asFormula = '<c:tx><c:strRef><c:f>&quot;Budget&quot;</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Budget</c:v></c:pt></c:strCache></c:strRef></c:tx>'
+    expect(withTypedNames(one(asFormula), names)).toBe(one(asFormula))
+    expect(names.size).toBe(0)
+  })
+
+  it('tells charts apart by all the ranges their series read: a typed name goes back on its own chart alone', () => {
+    const body = (tx: string, val: string) => `<c:ser><c:idx val="0"/>${tx}<c:val><c:numRef><c:f>${val}</c:f></c:numRef></c:val></c:ser>`
+    const linked = (cell: string) => `<c:tx><c:strRef><c:f>${cell}</c:f></c:strRef></c:tx>`
+    // chart A: one typed series over B2:B5; chart B: the same values named from H1, and a second series
+    const a = `<c:chart>${body('<c:tx><c:v>Budget</c:v></c:tx>', 'Data!$B$2:$B$5')}</c:chart>`
+    const b = `<c:chart>${body(linked('Data!$H$1'), 'Data!$B$2:$B$5')}${body(linked('Data!$I$1'), 'Data!$C$2:$C$5')}</c:chart>`
+    const names = typedSeriesNames([a, b], [])
+    expect(withTypedNames(`<c:chart>${body(linked('Data!$B$2'), 'Data!$B$2:$B$5')}</c:chart>`, names)).toBe(a)
+    expect(withTypedNames(b, names)).toBe(b)
+  })
+
+  it('leaves a name read from a cell, a series that reads other ranges, and two typed names over the same ranges', () => {
+    const fromCell = `<c:chart>${ser(asRef('Data!$B$1'), 'Data!$A$2:$A$9', 'Data!$B$2:$B$9')}</c:chart>`
+    expect(typedSeriesNames([fromCell], []).size).toBe(0)
+    const names = typedSeriesNames([`<c:chart>${ser(typed, 'Data!$A$1:$A$3', 'Data!$B$1:$B$3')}</c:chart>`], [])
+    const other = `<c:chart>${ser(asRef('Data!$D$1'), 'Data!$D$1:$D$3', 'Data!$E$1:$E$3')}</c:chart>`
+    expect(withTypedNames(other, names)).toBe(other)
+    const twice = typedSeriesNames([`<c:chart>${ser(typed, 'Data!$A$1:$A$3', 'Data!$B$1:$B$3')}${ser('<c:tx><c:v>Other</c:v></c:tx>', 'Data!$A$1:$A$3', 'Data!$B$1:$B$3')}</c:chart>`], [])
+    const same = `<c:chart>${ser(asRef('Data!$A$1'), 'Data!$A$1:$A$3', 'Data!$B$1:$B$3')}</c:chart>`
+    expect(withTypedNames(same, twice)).toBe(same)
+  })
+})
+
+describe('what the script says as it gives up, in the words he reads', () => {
+  const move: StructuralOp[] = [{ op: 'moveRows', sheet: 'Data', at: 0, count: 1, to: 5 }]
+  const insert: StructuralOp[] = [{ op: 'insertRows', sheet: 'Data', at: 0, count: 1 }]
+  it('a move: each reason in the canvas’s words, never the script’s own line', () => {
+    expect(scriptRefusal(move, 'full: Data', 1)).toBeInstanceOf(NotSaved)
+    expect(scriptRefusal(move, 'full: Data', 1).message).toBe('Move this in Excel: the sheet is full')
+    expect(scriptRefusal(move, 'protected: Data', 1).message).toBe('Move this in Excel: the sheet is protected')
+    expect(scriptRefusal(move, 'unmoved: Data', 1).message).toBe('Move this in Excel')
+  })
+  it('an insert keeps its own words, and anything else names what LibreOffice said', () => {
+    expect(scriptRefusal(insert, 'full: Data', 1).message).toMatch(/^There is no room in Data/)
+    expect(scriptRefusal(insert, 'protected: Data', 1).message).toMatch(/^Data is protected/)
+    expect(scriptRefusal(move, 'RuntimeError: no sheet named X', 1).message).toBe('LibreOffice could not make that change: RuntimeError: no sheet named X')
+    expect(scriptRefusal(insert, '', 3).message).toBe('LibreOffice could not make that change: exit 3')
   })
 })

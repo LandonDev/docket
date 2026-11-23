@@ -11,7 +11,8 @@ describe('what an Excel file cannot keep', () => {
     for (const kind of ['moved', 'rich', 'fill', 'other'] as const) expect(UNSAVED[kind]).toBe(sheetStopWords(kind))
     expect(sheetStopWords('other')).toBe('That change is not saved in an Excel file yet. Make it in Excel')
     expect(sheetStopWords('other', true)).toBe('That change is not saved in a Google sheet yet. Make it in Google Sheets')
-    expect(sheetStopWords('moved', true)).toContain('a Google sheet')
+    expect(sheetStopWords('moved', true)).toBe('Move this in Google Sheets')
+    expect(sheetStopWords('moved', false, 'table')).toBe('Move this in Excel: it crosses a table')
   })
 
   const name = (id: string): string | undefined => (id === 's1' ? 'Data' : undefined)
