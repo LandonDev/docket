@@ -1,7 +1,7 @@
 import type { SheetExportAnswer, SheetPreviewAnswer, SheetPreviewFormat, SheetStoreKind } from "@shared/contract-work-sheets";
 import { registry } from "../../lib/connection";
 import { saveFile } from "../formats/model";
-import type { Drawn, PreviewBytes, PreviewFormat, PreviewSource } from "../formats/preview";
+import { NotInReach, type Drawn, type PreviewBytes, type PreviewFormat, type PreviewSource } from "../formats/preview";
 import { fromBase64 } from "./host";
 
 /**
@@ -11,6 +11,8 @@ import { fromBase64 } from "./host";
  *
  * - Excel, PDF and Print are LibreOffice's PDF of the workbook, the file as
  *   it stands (a sheet the service holds as the .xlsx the model writer makes).
+ *   "Check in Excel" is Excel's own PDF of that file, only on his press and
+ *   only where the host says Excel is in reach (`work.sheets.previewOffice`).
  * - OpenDocument and Excel 97-2003 are drawn from the exported file itself,
  *   so he sees what that format keeps.
  * - CSV and TSV are one sheet's shown values as a table, with the sheets to
@@ -55,6 +57,11 @@ const MIME: Record<SheetPreviewFormat | "xlsm", string> = {
   html: "text/html",
 };
 
+/** Whether Excel can draw the workbook from its host now (`work.sheets.previewOffice`). */
+type ExcelState = "ready" | "asleep" | "not open" | "none";
+/** What a press on "Check in Excel" answers: Excel's pages, or that Excel went out of reach since the look. */
+type Checked = (Omit<Extract<SheetPreviewAnswer, { kind: "paged" }>, "drawnBy"> & { drawnBy: "excel" }) | { notInReach: Exclude<ExcelState, "ready"> };
+
 type Request = <T>(env: string, method: string, params: unknown, opts?: { timeoutMs?: number }) => Promise<T>;
 const linkRequest: Request = (env, method, params, opts) => registry.linkOf(env).request(method, params, opts);
 
@@ -74,6 +81,8 @@ export interface SheetPreviewDeps {
 const cancelled = (): DOMException => new DOMException("The draw was cancelled", "AbortError");
 /** A render takes as long as LibreOffice does: a 2,000-page sheet is seconds, a cold host more. */
 const DRAW_MS = 5 * 60_000;
+/** Excel's own draw may first wake the machine it runs on. */
+const CHECK_MS = 30 * 60_000;
 
 /** The sheet's `PreviewSource`: one object for as long as the item shows the same workbook. */
 export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
@@ -109,13 +118,30 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
 
   const host = (format: SheetFormat): SheetPreviewFormat => (format === "print" ? "pdf" : format);
 
+  // Excel draws the workbook's own file: the Excel format's pages, and no other's. A host a release behind does not
+  // know the question, and then Excel is not offered.
+  const office = async (format?: string): Promise<{ app: "Excel"; state: ExcelState }> => ({
+    app: "Excel",
+    state: format === "xlsx" ? await call<{ state: ExcelState }>("work.sheets.previewOffice", {}, 15_000).then((got) => got.state, (): ExcelState => "none") : "none",
+  });
+
   return {
     formats: sheetFormats(deps),
+    office,
     async draw(format, opts) {
       if (opts.signal.aborted) throw cancelled();
+      if (opts.by === "office") {
+        // Asked afresh at the press: Excel may have been shut, or the machine put to sleep, since the look.
+        const { state } = await office(format);
+        if (state !== "ready" && state !== "asleep") throw new NotInReach("Excel", state);
+        const got = await call<Checked>("work.sheets.preview", { format: "xlsx", by: "office" }, CHECK_MS);
+        if (opts.signal.aborted) throw cancelled();
+        if ("notInReach" in got) throw new NotInReach("Excel", got.notInReach);
+        return { picture: { kind: "paged", pdf: bytesOf(got.rev, got.size), pages: got.pages, drawnBy: "excel" }, drops: got.drops };
+      }
       const id = host(format as SheetFormat);
       const sheet = opts.sheet ?? sheetOf.get(id);
-      const got = await call<SheetPreviewAnswer>("work.sheets.preview", { format: id, ...(opts.pages ? { pages: opts.pages } : {}), ...(sheet ? { sheet } : {}), ...(opts.by ? { by: opts.by } : {}) });
+      const got = await call<SheetPreviewAnswer>("work.sheets.preview", { format: id, ...(opts.pages ? { pages: opts.pages } : {}), ...(sheet ? { sheet } : {}) });
       if (opts.signal.aborted) throw cancelled();
       let drawn: Drawn;
       if (got.kind === "paged") drawn = { picture: { kind: "paged", pdf: bytesOf(got.rev, got.size), pages: got.pages, drawnBy: got.drawnBy, ...(got.shown ? { shown: got.shown } : {}) }, drops: got.drops };
