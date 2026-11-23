@@ -68,14 +68,35 @@ describe("Save as template", () => {
     expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("Season plan");
   });
 
-  it("reads the file's fields as it opens and names them in their own line under the check row, not as the name's hint", async () => {
+  it("reads the file's fields as it opens and names them in the footer's quiet note, so the form never grows", async () => {
     render(<SaveDialog env="box" workspaceId="ws" source={SOURCE} onClose={() => {}} />);
     await settle();
     expect(host.asked.filter((a) => a.method === "work.templates.fields")).toEqual([{ method: "work.templates.fields", params: { workspaceId: "ws", source: SOURCE } }]);
     const line = screen.getByText("Asks for Client and Game.");
-    expect(line.className).toContain("text-muted-foreground");
-    expect(line.previousElementSibling?.getAttribute("data-slot")).toBe("dialog-check-row");
+    expect(line.closest("[data-footer-note]")).not.toBeNull();
+    expect(line.closest('[data-slot="dialog-footer"]')).not.toBeNull();
     expect(screen.getByRole("textbox").getAttribute("aria-describedby")).toBeNull();
+  });
+
+  it("says no fields for our own sheet, whose fields only the save knows, and lets the toast name them", async () => {
+    host.fields = () => ({ fields: [], later: true });
+    render(<SaveDialog env="box" workspaceId="ws" source={{ at: "file", host: "box", path: "/w/Dummy Esports/Log.tcsheet" }} onClose={() => {}} />);
+    await settle();
+    expect(screen.queryByText(/^Asks for/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await settle();
+    expect(toasts[0]!.options.description).toBe("Asks for Client and Game.");
+  });
+
+  it("reads a refusal out as it lands", async () => {
+    host.answer = () => Promise.reject(new Error("refused: the file is gone"));
+    render(<SaveDialog env="box" workspaceId="ws" source={SOURCE} onClose={() => {}} />);
+    await settle();
+    const region = screen.getByRole("alert");
+    expect(region.textContent).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await settle();
+    expect(region.textContent).toBe("The file is gone");
   });
 
   it("saves for all jobs under the name typed, then says it was saved without saying the fields again", async () => {

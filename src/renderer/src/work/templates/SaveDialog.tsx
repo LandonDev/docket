@@ -22,12 +22,13 @@ type SaveProps = {
 /**
  * "Save as template" (docs/agents/work-templates.md "Save as template"): the
  * name, filled with the file's stem and selected, and whether it is used in all
- * jobs. Under the check row one muted line names the fields the template will ask
- * for: the caller's `fields` when it listed them, else the host's read of the
- * file (`work.templates.fields`), asked as the dialog opens; no line for a file
- * with none. A blank name stays in the form with its error. The toast that says
- * it was saved names the fields only when the read did not answer; Show opens
- * the shelf.
+ * jobs. The footer's quiet note names the fields the template will ask for: the
+ * caller's `fields` when it listed them, else the host's read of the file
+ * (`work.templates.fields`), asked as the dialog opens; no note for a file with
+ * none, nor for our own sheet, whose fields only the save knows (`later`). A
+ * blank name stays in the form with its error, and a refusal is read out. The
+ * toast that says it was saved names the fields only when the dialog could not;
+ * Show opens the shelf.
  */
 export function SaveDialog(props: SaveProps) {
   const [pending, setPending] = useState(false);
@@ -44,7 +45,8 @@ export function SaveForm({ env, workspaceId, source, name, fields, onClose, pend
   const [everywhere, setEverywhere] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The fields: the caller's, else the host's read; undefined while it is asked or when it did not answer.
+  // The fields: the caller's, else the host's read; undefined while it is asked, when it did not answer, and for
+  // our own sheet, whose fields are known only from the save's answer (`later`).
   const [read, setRead] = useState<readonly string[] | undefined>(fields);
   const selected = useRef(false);
   const sourceKey = JSON.stringify(source);
@@ -52,7 +54,7 @@ export function SaveForm({ env, workspaceId, source, name, fields, onClose, pend
     if (fields) return;
     let live = true;
     fieldsOfFile(env, workspaceId, source).then(
-      (found) => live && setRead(found),
+      (found) => live && !found.later && setRead(found.fields),
       () => {},
     );
     return () => {
@@ -113,17 +115,14 @@ export function SaveForm({ env, workspaceId, source, name, fields, onClose, pend
             }}
           />
         </Field>
-        <div className="flex flex-col gap-1">
-          <CheckRow label="Use in all jobs" checked={everywhere} disabled={pending} onCheckedChange={setEverywhere} />
-          {said ? (
-            <p data-asks="" className="text-xs text-muted-foreground">
-              {said}
-            </p>
-          ) : null}
+        <CheckRow label="Use in all jobs" checked={everywhere} disabled={pending} onCheckedChange={setEverywhere} />
+        {/* Read out as it lands, as the fields' refusal is. */}
+        <div role="alert" className="contents">
+          <ErrorLine error={error} />
         </div>
-        <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} />
+      {/* The fields are the file's, said in the footer's quiet slot ("Kept in" stands there in New), so nothing moves when the read answers. */}
+      <DialogFooter note={said ? <span data-asks="">{said}</span> : undefined} onCancel={onClose} confirmLabel="Save" pending={pending} />
     </form>
   );
 }

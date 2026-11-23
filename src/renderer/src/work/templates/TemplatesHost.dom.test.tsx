@@ -12,10 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerPush } from "@shared/contract";
 
 const host: { asked: { env: string; method: string; params: Record<string, unknown> }[]; pushes: ((push: ServerPush) => void)[] } = { asked: [], pushes: [] };
+/** The link's socket opening: what a host read asks again on. */
+const opens = new Set<() => void>();
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
     linkOf: (env: string) => ({
+      connected: true,
+      onOpen: (listener: () => void) => (opens.add(listener), () => void opens.delete(listener)),
       onPush: (listener: (push: ServerPush) => void) => {
         host.pushes.push(listener);
         return () => {};

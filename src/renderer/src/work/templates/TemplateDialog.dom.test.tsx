@@ -13,10 +13,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dayOf, type Template } from "@shared/work/templates";
 
 const host: { asked: { method: string; params: Record<string, unknown> }[]; answer: (method: string, params: Record<string, unknown>) => unknown } = { asked: [], answer: () => null };
+/** The link's socket opening: what a host read asks again on. */
+const opens = new Set<() => void>();
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
     linkOf: () => ({
+      connected: true,
+      onOpen: (listener: () => void) => (opens.add(listener), () => void opens.delete(listener)),
       onPush: () => () => {},
       request: async (method: string, params: Record<string, unknown>) => {
         host.asked.push({ method, params });
@@ -188,22 +192,118 @@ describe("New from a template", () => {
     expect(note.className).toContain("whitespace-normal");
   });
 
-  it("keeps the tiles' height when it turns to the fields, the footer at the bottom, so the dialog does not jump", async () => {
-    const heights = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
-      return this.dataset.step === "tiles" ? 520 : 0;
-    });
-    try {
-      render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+  it("fixes its top, so the title holds still when it turns to the fields and the box only shortens from the bottom", async () => {
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    const popup = screen.getByRole("dialog");
+    const classes = popup.className.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["top-[12%]", "translate-y-0", "starting:translate-y-1"]));
+    expect(classes).not.toContain("top-1/2");
+    fireEvent.click(screen.getByRole("button", { name: "Game report" }));
+    await settle();
+    // No held height: three fields make a short box, not a tall empty one.
+    expect(document.querySelector<HTMLElement>('[data-step="fields"]')!.style.minHeight).toBe("");
+  });
+
+  it("says what he hid when no tile is left, with Show hidden, as the page does", async () => {
+    host.answer = (method) => (method === "work.templates.list" ? { templates: [], hidden: 2 } : {});
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    expect(screen.getByText("No templates")).toBeTruthy();
+    expect(screen.getByText("2 starters are hidden")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show hidden" }));
+    await settle();
+    expect(asked("work.templates.unhide")).toEqual([{ workspaceId: "ws" }]);
+  });
+
+  it("shows a refusal above the grid, where a press near its top can see it", async () => {
+    host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO, REPORT], hidden: 0 } : method === "work.templates.make" ? Promise.reject(new Error("refused: the workspace's folder is gone")) : {});
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("The workspace's folder is gone");
+    const grid = screen.getByRole("region", { name: "Dummy Esports" });
+    expect(alert.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("turns a template's fields to Open once its file was made but did not open: what was sent, read only, opened again and never made twice", async () => {
+    let opens = 0;
+    host.answer = (method) => {
+      if (method === "work.templates.list") return { templates: [MEMO, REPORT], hidden: 0 };
+      if (method === "work.templates.make") return MADE;
+      if (method === "work.files.open" && opens++ === 0) return Promise.reject(new Error("refused: the Files view is busy"));
+      return {};
+    };
+    const onClose = vi.fn();
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={onClose} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Game report" }));
+    await settle();
+    fireEvent.change(screen.getAllByRole("textbox")[0]!, { target: { value: "North" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await settle();
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("Game report - North was made but did not open. The Files view is busy");
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+    const fields = screen.getAllByRole("textbox") as HTMLInputElement[];
+    expect(fields.every((f) => f.hasAttribute("readonly"))).toBe(true);
+    expect(fields[0]!.value).toBe("North");
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await settle();
+    expect(asked("work.templates.make")).toHaveLength(1);
+    expect(asked("work.files.open")).toHaveLength(2);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("keeps each made file's retry by its template, across Back and a second failed open", async () => {
+    const VISIT = tpl("all:Visit.docx", "Visit", ["Venue"]);
+    const madeOf: Record<string, typeof MADE> = {
+      "starter:ref/game-report": MADE,
+      "all:Visit.docx": { ...MADE, source: { at: "file", host: "box", path: "/w/Dummy Esports/Visit - Hall.docx" }, title: "Visit - Hall" },
+    };
+    host.answer = (method, params) => {
+      if (method === "work.templates.list") return { templates: [MEMO, REPORT, VISIT], hidden: 0 };
+      if (method === "work.templates.make") return madeOf[(params as { template: string }).template];
+      if (method === "work.files.open") return Promise.reject(new Error("refused: the Files view is busy"));
+      return {};
+    };
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    for (const name of ["Game report", "Visit"]) {
+      fireEvent.click(screen.getByRole("button", { name }));
       await settle();
-      fireEvent.click(screen.getByRole("button", { name: "Game report" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
       await settle();
-      const step = document.querySelector<HTMLElement>('[data-step="fields"]')!;
-      expect(step.style.minHeight).toBe("520px");
-      // The fields' body grows to fill it, so the footer stands at the bottom.
-      expect(step.querySelector('[data-slot="dialog-footer"]')!.previousElementSibling!.className.split(" ")).toContain("flex-1");
-    } finally {
-      heights.mockRestore();
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      await settle();
     }
+    expect(asked("work.templates.make")).toHaveLength(2);
+    // Each keeps its own file: back in either, the primary opens it.
+    for (const [name, path] of [["Game report", MADE.source.path], ["Visit", "/w/Dummy Esports/Visit - Hall.docx"]] as const) {
+      fireEvent.click(screen.getByRole("button", { name }));
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Open" }));
+      await settle();
+      await settle();
+      expect((asked("work.files.open").at(-1)!.ref as { path: string }).path).toBe(path);
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      await settle();
+    }
+    expect(asked("work.templates.make")).toHaveLength(2);
+  });
+
+  it("asks for the shelf again when the socket opens, after a read that did not answer", async () => {
+    host.answer = (method) => (method === "work.templates.list" ? Promise.reject(new Error("refused: the box did not answer")) : {});
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    expect(screen.getByText("Templates did not load")).toBeTruthy();
+    host.answer = (method) => (method === "work.templates.list" ? { templates: [MEMO], hidden: 0 } : {});
+    act(() => opens.forEach((l) => l()));
+    await settle();
+    expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
   });
 
   it("returns the focus to the tile that opened the fields, one in All jobs past the first row", async () => {

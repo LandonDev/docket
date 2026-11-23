@@ -6,9 +6,9 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
-import { makeFrom, useTemplates } from "./data";
+import { makeFrom, unhideStarters, useTemplates } from "./data";
 import { FieldsForm } from "./FieldsForm";
-import { folderName, shelfGroups } from "./model";
+import { folderName, hiddenLine, shelfGroups } from "./model";
 import { openMade } from "./open";
 import { Shelf, ShelfSkeleton } from "./Shelf";
 
@@ -19,10 +19,11 @@ import { Shelf, ShelfSkeleton } from "./Shelf";
  * one with fields turns this same dialog to them, with the way back. Opened on
  * one template (the shelf page's press) it starts at the fields and has no way
  * back. The footer names the folder the file is kept in only when the caller
- * gave one. The swap between the two is a 120ms fade, none under reduced motion,
- * in a frame that keeps the tiles' height; Back returns the focus and the scroll
- * to the tile that opened the fields. A file made whose open failed is opened
- * again on the next press, never made twice.
+ * gave one. Its top is fixed, so the title holds still when the step changes;
+ * the step that arrives fades in over 120ms, none under reduced motion. Back
+ * returns the focus and the scroll to the tile that opened the fields. A file
+ * made whose open failed is kept by its template: a press on that tile, or
+ * Open in its fields (read only, as sent), opens it again, never a second.
  */
 export function TemplateDialog({
   env,
@@ -43,7 +44,9 @@ export function TemplateDialog({
   const [chosen, setChosen] = useState<Template | null>(template ?? null);
   const [making, setMaking] = useState<string | null>(null);
   return (
-    <Modal title={chosen ? chosen.name : "New from a template"} size="md" busy={making !== null} onClose={onClose} data-templates-dialog="">
+    // Its top is fixed (the recipe PickerDialog and the `full` size use, still rising 4px on entry), so the title never
+    // moves when a step changes: the box only grows or shortens from the bottom.
+    <Modal title={chosen ? chosen.name : "New from a template"} size="md" busy={making !== null} onClose={onClose} className={TOP_ANCHORED} data-templates-dialog="">
       <TemplateSteps
         env={env}
         workspaceId={workspaceId}
@@ -60,6 +63,9 @@ export function TemplateDialog({
   );
 }
 
+/** This dialog's place: a fixed top instead of the centre, with room below it for the whole box. */
+export const TOP_ANCHORED = "top-[12%] translate-y-0 starting:translate-y-1 max-h-[calc(88vh-2rem)]";
+
 /** The swap's fade, on the step that arrives; none under reduced motion. */
 const ARRIVE = "flex min-h-0 flex-col transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 motion-reduce:transition-none";
 
@@ -68,6 +74,9 @@ const unmoved = (el: Element | null): boolean => !el || el === document.body || 
 
 /** The dialog's one scroller (chrome/Modal.tsx). */
 const scrollerOf = (el: Element | null): HTMLElement | null => el?.closest<HTMLElement>(".overflow-y-auto") ?? null;
+
+/** A file made whose open failed: what a press on its template, or Open in its fields, opens again. */
+type Made = { source: CanvasSource; title: string; values?: Record<string, string> };
 
 export function TemplateSteps({
   env,
@@ -95,10 +104,11 @@ export function TemplateSteps({
   const close = useModalClose();
   const [load, retry] = useTemplates(env, workspaceId);
   const [error, setError] = useState<string | null>(null);
-  // A file made whose open failed, by template: a press again opens it and never makes a second.
-  const [made, setMade] = useState<{ id: string; source: CanvasSource; title: string } | null>(null);
-  // The tile that turned the dialog to its fields, where Back returns: the tile, the scroll, the frame's height.
-  const [opener, setOpener] = useState<{ id: string; top: number; height: number } | null>(null);
+  // Made files whose open failed, by template: kept across Back and another template, so no retry is lost
+  // and a press again opens the file, never a second one.
+  const [made, setMade] = useState<Readonly<Record<string, Made>>>({});
+  // The tile that turned the dialog to its fields, where Back returns: the tile and the scroll.
+  const [opener, setOpener] = useState<{ id: string; top: number } | null>(null);
   const tiles = useRef<HTMLDivElement | null>(null);
   const jobName = useWorkspaces().find((w) => w.id === workspaceId)?.name ?? "This job";
   const ready = load.status === "ready";
@@ -117,15 +127,20 @@ export function TemplateSteps({
     tiles.current.querySelector<HTMLElement>(`[data-tile="${CSS.escape(opener.id)}"] [data-tile-open]`)?.focus({ preventScroll: true });
   }, [chosen, opener]);
 
-  const open = async (file: { id: string; source: CanvasSource; title: string }) => {
+  const words = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+  const open = async (id: string, file: Made) => {
     try {
       await openMade({ workspaceId, source: file.source });
     } catch (err) {
-      setMade(file);
-      setError(`${file.title} was made but did not open. ${err instanceof Error ? err.message : String(err)}`);
+      setMade((m) => ({ ...m, [id]: file }));
+      setError(`${file.title} was made but did not open. ${words(err)}`);
       return;
     }
-    setMade(null);
+    setMade((m) => {
+      const { [id]: _, ...rest } = m;
+      return rest;
+    });
     if (close) close(onClose);
     else onClose();
   };
@@ -135,41 +150,37 @@ export function TemplateSteps({
     setError(null);
     try {
       // Made already, its open failed: open that file, never a second one.
-      if (made?.id === template.id) await open(made);
-      else {
-        let file: { id: string; source: CanvasSource; title: string };
-        try {
-          const answer = await makeFrom(env, workspaceId, template.id, { ...(into ? { into } : {}), ...(fields ? { fields } : {}) });
-          file = { id: template.id, source: answer.source, title: answer.title };
-        } catch (err) {
-          setError(err instanceof Error ? err.message : String(err));
-          return;
-        }
-        await open(file);
+      const kept = made[template.id];
+      if (kept) return await open(template.id, kept);
+      let file: Made;
+      try {
+        const answer = await makeFrom(env, workspaceId, template.id, { ...(into ? { into } : {}), ...(fields ? { fields } : {}) });
+        file = { source: answer.source, title: answer.title, ...(fields ? { values: fields } : {}) };
+      } catch (err) {
+        setError(words(err));
+        return;
       }
+      await open(template.id, file);
     } finally {
       setMaking(null);
     }
   };
 
   const turnTo = (t: Template) => {
-    const box = tiles.current?.closest<HTMLElement>("[data-step]");
-    const scroller = scrollerOf(tiles.current);
-    // Never taller than the scroller shows, or the fields' footer would sit below its fold.
-    const height = Math.min(box?.offsetHeight ?? 0, scroller?.clientHeight || Infinity);
-    setOpener({ id: t.id, top: scroller?.scrollTop ?? 0, height });
+    setOpener({ id: t.id, top: scrollerOf(tiles.current)?.scrollTop ?? 0 });
     setError(null);
     choose(t);
   };
 
   if (chosen)
     return (
-      // The frame keeps the tiles' height, so the dialog does not jump: the fields at the top, the footer at the bottom.
-      <div key="fields" data-step="fields" className={ARRIVE} style={opener?.height ? { minHeight: opener.height } : undefined}>
+      <div key="fields" data-step="fields" className={ARRIVE}>
         <FieldsForm
+          key={chosen.id}
           template={chosen}
           pending={making === chosen.id}
           error={error}
+          made={made[chosen.id] ? { values: made[chosen.id]!.values ?? {} } : undefined}
           onBack={
             fromTiles
               ? () => {
@@ -186,15 +197,24 @@ export function TemplateSteps({
 
   const kept = into ? folderName(into, intoName) : null;
   const groups = ready ? shelfGroups(load.value.templates, jobName) : [];
+  const narrowed = ready ? hiddenLine(load.value.hidden) : null;
   return (
     <div key="tiles" data-step="tiles" className={ARRIVE}>
       <ModalBody>
+        {/* A refusal or a failed open stands above the grid, where a press near its top can see it; read out as it lands. */}
+        <div role="alert" className="contents">
+          <ErrorLine error={error} />
+        </div>
         {load.status === "loading" ? (
           <ShelfSkeleton layout="dialog" />
         ) : load.status === "error" ? (
           <EmptyState title="Templates did not load" line={load.error} action={{ label: "Retry", onClick: retry }} />
         ) : groups.length === 0 ? (
-          <EmptyState title="No templates" />
+          // A shelf he narrowed says so and offers the way back, as the page does.
+          <EmptyState
+            title="No templates"
+            {...(narrowed ? { line: narrowed, action: { label: "Show hidden", onClick: () => void unhideStarters(env, workspaceId).catch((err: unknown) => setError(words(err))) } } : {})}
+          />
         ) : (
           <div ref={tiles}>
             <Shelf
@@ -204,15 +224,12 @@ export function TemplateSteps({
               focusId={opener?.id ?? null}
               onPress={(t) => {
                 if (making) return;
-                if (t.fields.length && made?.id !== t.id) turnTo(t);
+                if (t.fields.length) turnTo(t);
                 else void make(t);
               }}
             />
           </div>
         )}
-        <div role="alert" className="contents">
-          <ErrorLine error={error} />
-        </div>
       </ModalBody>
       {/* While a tile's file is made, Cancel waits with Escape and the backdrop. A long folder name wraps to be read whole. */}
       <DialogFooter note={kept ? <span className="whitespace-normal [overflow-wrap:anywhere]">Kept in {kept}</span> : undefined} onCancel={onClose} busy={making !== null} />

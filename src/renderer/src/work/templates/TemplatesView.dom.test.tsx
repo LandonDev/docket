@@ -13,15 +13,22 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Template } from "@shared/work/templates";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 
 const host: { asked: { method: string; params: Record<string, unknown> }[]; answer: (method: string, params: Record<string, unknown>) => unknown; primary: string } = { asked: [], answer: () => null, primary: "box" };
+/** The link's socket opening: what a host read asks again on. */
+const opens = new Set<() => void>();
+/** The host's pushes. */
+const pushes = new Set<(push: unknown) => void>();
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
     primary: () => ({ environmentId: host.primary }),
     environment: (id: string) => ({ id, name: id === "box" ? "The box" : "Mac" }),
     linkOf: () => ({
-      onPush: () => () => {},
+      connected: true,
+      onOpen: (listener: () => void) => (opens.add(listener), () => void opens.delete(listener)),
+      onPush: (listener: (push: unknown) => void) => (pushes.add(listener), () => void pushes.delete(listener)),
       request: async (method: string, params: Record<string, unknown>) => {
         host.asked.push({ method, params });
         return host.answer(method, params);
@@ -392,5 +399,117 @@ describe("the Templates view", () => {
     await settle();
     expect(asked("work.templates.make")).toHaveLength(1);
     expect(asked("work.files.open")).toHaveLength(2);
+  });
+
+  it("says which template was not made, with the host's words", async () => {
+    host.answer = (method) => (method === "work.templates.list" ? list : method === "work.templates.make" ? Promise.reject(new Error("refused: the workspace's folder is gone")) : {});
+    render(<View {...props} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
+    await settle();
+    await settle();
+    expect(toasts).toEqual([{ kind: "error", title: "Crew memo was not made", options: { description: "The workspace's folder is gone" } }]);
+  });
+
+  it("refuses a drop where he can see it while an add runs: no wash, no copy cursor, nothing sent", async () => {
+    let finish: () => void = () => {};
+    host.answer = (method) => (method === "work.templates.list" ? list : method === "work.templates.save" ? new Promise((done) => (finish = () => done(MEMO))) : {});
+    picked.paths = ["/w/Desktop/Budget.xlsx"];
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+    await settle();
+    const view = document.querySelector("[data-templates-view]")!;
+    const data = { types: ["Files"], files: [new File(["x"], "Other.docx")], dropEffect: "copy" };
+    fireEvent.dragEnter(view, { dataTransfer: data });
+    expect(screen.queryByText("Drop to add")).toBeNull();
+    // Kept from the document's own drop (which would start a thread), but no copy is offered.
+    const kept = fireEvent.dragOver(view, { dataTransfer: data });
+    expect(kept).toBe(false);
+    expect(data.dropEffect).toBe("none");
+    fireEvent.drop(view, { dataTransfer: data });
+    await settle();
+    expect(asked("work.templates.save")).toHaveLength(1);
+    await act(async () => finish());
+    await settle();
+    // Free again: the cue comes back.
+    fireEvent.dragEnter(view, { dataTransfer: { ...data, dropEffect: "copy" } });
+    expect(screen.getByText("Drop to add")).toBeTruthy();
+  });
+
+  it("shows Edit a copy's wait on its tile and takes no second pick while it runs", async () => {
+    let finish: () => void = () => {};
+    host.answer = (method) => {
+      if (method === "work.templates.list") return list;
+      if (method === "work.templates.save") return new Promise((done) => (finish = () => done({ ...LOG, id: "job:Season log.xlsx", where: "job" })));
+      return {};
+    };
+    render(<View {...props} />);
+    await settle();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Season log" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit a copy" }));
+    // Past the 150ms a make waits before its spinner shows.
+    await act(async () => void (await new Promise((r) => setTimeout(r, 200))));
+    const tile = document.querySelector('[data-tile="starter:ref/season-log"]')!;
+    expect(tile.querySelector('[data-slot="spinner"]')).not.toBeNull();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Season log" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit a copy" }));
+    await settle();
+    expect(asked("work.templates.save")).toHaveLength(1);
+    await act(async () => finish());
+    await settle();
+    expect(asked("work.files.open")).toHaveLength(1);
+  });
+
+  it("keeps the shelf on screen when a refresh fails", async () => {
+    render(<View {...props} />);
+    await settle();
+    expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
+    host.answer = (method) => (method === "work.templates.list" ? Promise.reject(new Error("refused: the box did not answer")) : {});
+    act(() => pushes.forEach((l) => l({ push: "work.templates", workspaceId: "ws" })));
+    await settle();
+    await settle();
+    expect(asked("work.templates.list")).toHaveLength(2);
+    // A failed read over a shelf already shown keeps the shelf, with no state line over it.
+    expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
+    expect(document.querySelector('[data-view-state="failed"]')).toBeNull();
+  });
+
+  it("asks for the shelf again on a new socket after a read that did not answer", async () => {
+    host.answer = (method) => (method === "work.templates.list" ? Promise.reject(new Error("refused: the box did not answer")) : {});
+    render(<View {...props} />);
+    await settle();
+    expect(document.querySelector('[data-view-state="failed"]')).not.toBeNull();
+    host.answer = (method) => (method === "work.templates.list" ? list : {});
+    act(() => opens.forEach((l) => l()));
+    await settle();
+    expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
+  });
+
+  it("gives the state line's cut detail its whole text as a tip, the shared line itself untouched", async () => {
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    const spy = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.slot === "status-detail" ? 300 : 10;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    try {
+      host.answer = () => Promise.reject(new Error("refused: the box did not answer in time for this read"));
+      render(<View {...props} />);
+      await settle();
+      const tip = document.querySelector("[data-state-tip]")!;
+      expect(tip.getAttribute("data-slot")).toBe("tooltip-trigger");
+      expect(tip.querySelector('[data-view-state="failed"]')).not.toBeNull();
+    } finally {
+      spy.mockRestore();
+      vi.restoreAllMocks();
+    }
   });
 });

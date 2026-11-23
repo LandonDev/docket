@@ -10,7 +10,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Template } from "@shared/work/templates";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { shelfGroups, tileMenu } from "./model";
-import { nextTile, Shelf, SPIN_AFTER_MS } from "./Shelf";
+import { ROW_HOLDS } from "../../components/ui/press";
+import { nextTile, Shelf, ShelfSkeleton, SPIN_AFTER_MS } from "./Shelf";
 
 const tpl = (id: string, name: string, over: Partial<Template> = {}): Template => ({
   id,
@@ -53,12 +54,28 @@ describe("the shelf", () => {
     expect(tile.textContent).toBe("Season log");
   });
 
-  it("aligns a tile to the grid's edge, washes it on hover and scales it while pressed only where motion is allowed, never moving it", () => {
+  it("aligns a tile to the grid's edge and presses as a row does: /5 on hover, /12 at once while its press is held, nothing scaling", () => {
     render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
     const tile = document.querySelector('[data-tile="job:Crew memo.docx"]')!;
-    for (const cls of ["-m-1.5", "p-1.5", "rounded-xl", "hover:bg-foreground/5", "motion-safe:has-[>[data-tile-open]:active]:scale-[0.97]", "motion-reduce:transition-none"]) expect(tile.className).toContain(cls);
-    // No scale outside motion-safe: reduced motion has none at all.
-    expect(tile.className.split(" ").filter((c) => c.includes("scale-[") && !c.startsWith("motion-safe:"))).toEqual([]);
+    const classes = tile.className.split(" ");
+    for (const cls of ["-m-1.5", "p-1.5", "rounded-xl", "hover:bg-foreground/5"]) expect(classes).toContain(cls);
+    // ROW_HOLDS (components/ui/press.ts), keyed to the tile's press.
+    for (const cls of ROW_HOLDS.split(" ")) expect(classes).toContain(cls);
+    expect(tile.querySelector(":scope > [data-row-open]")).toBe(tile.querySelector("[data-tile-open]"));
+    expect(tile.className).not.toMatch(/scale/);
+  });
+
+  it("holds the loaded tile's shape while the shelf loads: the plate, then a 14px square 8px from the name's bar", () => {
+    render(<ShelfSkeleton layout="page" />);
+    const bone = document.querySelector("[data-bone-tile]")!;
+    const line = bone.lastElementChild!;
+    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center", "gap-2"]));
+    expect(line.firstElementChild!.className.split(" ")).toContain("size-3.5");
+    // The real tile's line: the same height and gap, so nothing shifts when it lands.
+    cleanup();
+    render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
+    const real = document.querySelector('[data-tile="job:Crew memo.docx"] [data-tile-name]')!.parentElement!;
+    expect(real.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center", "gap-2"]));
   });
 
   it("presses through the shared Button laid over the whole tile, its ring inside the tile's edge", () => {

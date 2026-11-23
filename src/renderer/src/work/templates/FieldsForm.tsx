@@ -15,13 +15,15 @@ import { Input } from "../../components/ui/input";
  * runs Create spins and the fields are read only; the host's refusal is one red
  * line under them, in its words, announced as it arrives, the values and focus
  * left as they are. `onBack` is there when he came from the tiles; its chevron
- * sits on the content's edge. The body grows to fill a frame the tiles set, so
- * the footer stays at the bottom.
+ * sits on the content's edge. Once its file was made but did not open (`made`),
+ * the fields hold what was sent, read only, and the primary says Open: it opens
+ * that file, and nothing is made again.
  */
 export function FieldsForm({
   template,
   pending,
   error,
+  made,
   onBack,
   onCancel,
   onCreate,
@@ -29,11 +31,14 @@ export function FieldsForm({
   template: Template;
   pending: boolean;
   error: string | null;
+  /** Its file was made but did not open: the values it was made with. */
+  made?: { values: Record<string, string> };
   onBack?: () => void;
   onCancel: () => void;
   onCreate: (fields: Record<string, string>) => void;
 }) {
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, string>>(() => made?.values ?? {});
+  const fixed = pending || !!made;
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const create = () => {
     if (pending) return;
@@ -56,7 +61,7 @@ export function FieldsForm({
         create();
       }}
     >
-      <ModalBody className="flex-1">
+      <ModalBody>
         {template.fields.map((name, i) => (
           <Field key={name} label={name}>
             <Input
@@ -64,7 +69,7 @@ export function FieldsForm({
                 inputs.current[i] = el;
               }}
               autoFocus={i === 0}
-              readOnly={pending}
+              readOnly={fixed}
               value={values[name] ?? ""}
               spellCheck={false}
               onChange={(event) => setValues((v) => ({ ...v, [name]: event.target.value }))}
@@ -88,7 +93,7 @@ export function FieldsForm({
           ) : undefined
         }
         onCancel={onCancel}
-        confirmLabel="Create"
+        confirmLabel={made ? "Open" : "Create"}
         pending={pending}
       />
     </form>

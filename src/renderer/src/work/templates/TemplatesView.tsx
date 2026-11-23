@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
 import type { CanvasSource } from "@shared/work/canvas";
 import type { Template } from "@shared/work/templates";
-import { Briefcase, Copy, Eye, FilePlus, Layers, Minus, MoreHorizontal, Pencil, TextCursor, Trash2 } from "../../chrome/icons";
+import { Briefcase, Copy, Eye, FilePlus, Globe, Minus, MoreHorizontal, Pencil, TextCursor, Trash2 } from "../../chrome/icons";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
+import { TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
@@ -120,7 +121,7 @@ export function Head({ env, workspace }: WorkViewProps) {
   );
 }
 
-const GLYPH = { new: FilePlus, edit: Pencil, copy: Copy, rename: TextCursor, everywhere: Layers, job: Briefcase, delete: Trash2, hide: Minus } as const;
+const GLYPH = { new: FilePlus, edit: Pencil, copy: Copy, rename: TextCursor, everywhere: Globe, job: Briefcase, delete: Trash2, hide: Minus } as const;
 const menuRows = (rows: readonly TileRow[]): MenuRow[] =>
   rows.map((row) => (row.kind === "sep" ? row : { kind: "item", id: row.id, label: row.label, icon: GLYPH[row.glyph], ...(row.danger ? { danger: true } : {}) }));
 
@@ -147,6 +148,7 @@ export function View({ env, workspace }: WorkViewProps) {
   const [renaming, setRenaming] = useState<Template | null>(null);
   const [removing, setRemoving] = useState<Template | null>(null);
   const [over, setOver] = useState(0);
+  const { adding } = useHead(workspace.id);
   // A file made whose open failed, by template: a press again opens it and never makes a second.
   const made = useRef(new Map<string, { source: CanvasSource; title: string }>());
   // The header's ⋯ offers Show hidden over a shelf with tiles; an empty one offers it in its own state, once.
@@ -182,7 +184,8 @@ export function View({ env, workspace }: WorkViewProps) {
     makeFrom(env, workspace.id, t.id)
       .then(
         (file) => open(t.id, file),
-        (err: unknown) => failed(err),
+        // What failed, then why, in the host's words: the open-failed toast names the file the same way.
+        (err: unknown) => void loadToast().then((toast) => toast.error(`${t.name} was not made`, { description: words(err) })),
       )
       .finally(() => setMaking(null));
   };
@@ -205,29 +208,38 @@ export function View({ env, workspace }: WorkViewProps) {
     if (action === "move") return void moveTemplate(env, workspace.id, t.id, t.where === "job").catch(failed);
     if (action === "remove") return void remove(t).catch(failed);
     if (action === "edit") {
+      // One at a time, the tile busy as a make's is: a second pick while the first runs does nothing.
+      if (making) return;
+      setMaking(t.id);
       // A starter is ours: Edit makes his own copy, which takes its place on the shelf, and opens that.
       const own = t.where === "starter" ? saveTemplate(env, workspace.id, t.source, { name: t.name }).then((saved) => saved.source) : Promise.resolve(t.source);
-      void own.then((source) => openMade({ workspaceId: workspace.id, source })).catch(failed);
+      void own
+        .then((source) => openMade({ workspaceId: workspace.id, source }))
+        .catch(failed)
+        .finally(() => setMaking(null));
     }
   };
 
   // A file dropped here becomes a template: the view takes the drop, so no thread starts for it.
+  // While an add runs the view refuses a drop where he can see it: no wash, no copy cursor.
   const drop = {
     onDragEnter: (event: DragEvent) => {
-      if (carriesFiles(event)) setOver((n) => n + 1);
+      if (carriesFiles(event) && !adding) setOver((n) => n + 1);
     },
     onDragLeave: (event: DragEvent) => {
       if (carriesFiles(event)) setOver((n) => Math.max(0, n - 1));
     },
     onDragOver: (event: DragEvent) => {
       if (!carriesFiles(event)) return;
+      // Kept from the document's drop either way, which would start a thread.
       event.preventDefault();
-      event.dataTransfer.dropEffect = "copy";
+      event.dataTransfer.dropEffect = adding ? "none" : "copy";
     },
     onDrop: (event: DragEvent) => {
       if (!carriesFiles(event)) return;
       event.preventDefault();
       setOver(0);
+      if (adding) return;
       void addFiles(env, workspace.id, Array.from(event.dataTransfer.files).map((f) => ({ name: f.name, path: pathOf(f) })));
     },
   };
@@ -241,7 +253,12 @@ export function View({ env, workspace }: WorkViewProps) {
           <ShelfSkeleton layout="page" count={8} />
         </div>
       ) : load.status === "error" ? (
-        <ViewStateLine word="Templates did not load" detail={load.error} onRetry={retry} />
+        // The shared line cuts its detail to one line; while it is cut, the whole of it is the line's tip.
+        <TruncateTip text={load.error}>
+          <div data-state-tip="">
+            <ViewStateLine word="Templates did not load" detail={load.error} onRetry={retry} />
+          </div>
+        </TruncateTip>
       ) : groups.length === 0 ? (
         // Add… is the header's; an empty shelf he narrowed says so and offers the way back.
         <EmptyState
@@ -253,7 +270,7 @@ export function View({ env, workspace }: WorkViewProps) {
           <Shelf groups={groups} layout="page" making={making} onPress={make} menuFor={(t) => menuRows(tileMenu(t, workspace.name))} onMenu={act} />
         </div>
       )}
-      {over > 0 ? (
+      {over > 0 && !adding ? (
         <div
           data-drop-wash=""
           className="pointer-events-none absolute inset-3 grid place-items-center rounded-lg border border-border bg-muted/70 transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 motion-reduce:transition-none"

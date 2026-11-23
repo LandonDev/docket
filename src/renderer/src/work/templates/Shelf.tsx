@@ -4,7 +4,7 @@ import { MoreHorizontal } from "../../chrome/icons";
 import { RowsContextMenu, type MenuRow } from "../../chrome/menuRows";
 import { useTruncated } from "../../components/tip";
 import { Button } from "../../components/ui/button";
-import { ROW_OPEN } from "../../components/ui/press";
+import { ROW_HOLDS, ROW_OPEN } from "../../components/ui/press";
 import { reveal } from "../../components/ui/reveal";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
@@ -19,8 +19,9 @@ import type { ShelfGroup } from "./model";
  * 12px muted label over a grid of tiles. A tile is the file's picture, then the
  * kind's glyph 8px from the name on one 13px line, cut to it, the whole name the
  * press's tip while it is cut. It aligns to the grid's edge (6px of padding
- * against a -6px margin), washes 5% on hover, draws the ring inside on focus and
- * takes scale(0.97) while pressed, where motion is allowed; the glyph turns to a
+ * against a -6px margin), washes 5% on hover and steps to 12% at once while
+ * pressed, as every row with its open control laid over it does (`ROW_HOLDS`),
+ * never scaling, and draws the ring inside on focus; the glyph turns to a
  * spinner only when a make takes over `SPIN_AFTER_MS`. Arrows walk the tiles,
  * Return makes. On the page a tile also has its menu: a right-click, or the ⋯
  * that shows on hover and on focus, takes no pointer until then, and stays while
@@ -139,6 +140,7 @@ function Tile({
     <Button
       variant="ghost"
       data-tile-open=""
+      data-row-open=""
       aria-label={template.name}
       aria-busy={making || undefined}
       tabIndex={focusable ? 0 : -1}
@@ -151,7 +153,8 @@ function Tile({
     <div
       data-menu-id={template.id}
       data-tile={template.id}
-      className="group/item relative -m-1.5 flex min-w-0 flex-col gap-1.5 rounded-xl p-1.5 [transition:background-color_var(--dur-hover)_var(--ease-out),scale_var(--dur-fast)_var(--ease-out)] hover:bg-foreground/5 motion-safe:has-[>[data-tile-open]:active]:scale-[0.97] motion-reduce:transition-none"
+      // A row whose open control lies over it (README, `ROW_HOLDS`): /5 on hover, /12 at once while pressed, nothing scales.
+      className={cn(ROW_HOLDS, "group/item -m-1.5 flex min-w-0 flex-col gap-1.5 rounded-xl p-1.5")}
     >
       {/* The tile's press, laid over the whole tile so its ring is the tile's edge, inside. */}
       {cut ? (
@@ -318,9 +321,11 @@ export function ShelfSkeleton({ layout, count = 6 }: { layout: ShelfLayout; coun
       <Skeleton className="h-4 w-24" />
       <div className={GRID[layout]}>
         {Array.from({ length: count }, (_, i) => (
-          <div key={i} className="flex min-w-0 flex-col gap-1.5">
+          // The loaded tile's shape: the plate, then the glyph's 14px square 8px from the name's bar.
+          <div key={i} data-bone-tile="" className="flex min-w-0 flex-col gap-1.5">
             <Skeleton className="aspect-[4/3] w-full rounded-md" />
-            <span className="flex h-5 items-center">
+            <span className="flex h-5 min-w-0 items-center gap-2">
+              <Skeleton className="size-3.5 shrink-0 rounded-sm" />
               <Skeleton className="h-3 rounded-sm" style={{ width: `${[64, 48, 72, 56, 40, 60][i % 6]}%` }} />
             </span>
           </div>
