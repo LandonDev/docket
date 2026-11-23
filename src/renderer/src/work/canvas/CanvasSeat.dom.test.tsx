@@ -506,6 +506,22 @@ describe("the frame a kind drives through its shell", () => {
     expect(screen.getByRole("menuitem", { name: "Close" })).toBeTruthy();
   });
 
+  it("lists a pillar's verb for the item after its own rows and before Close, and runs it with the item's host", async () => {
+    const { registerItemVerb } = await import("./itemVerbs");
+    const run = vi.fn();
+    const off = registerItemVerb({ id: "file", label: "File as receipt", icon: X, when: (_item, kind) => kind === "document", run });
+    try {
+      await seat([DOC, SHEET]);
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      const rows = (await screen.findAllByRole("menuitem")).map((row) => row.textContent);
+      expect(rows.slice(-3)).toEqual(["File as receipt", "Close", "Close others"]);
+      fireEvent.click(screen.getByRole("menuitem", { name: "File as receipt" }));
+      await waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({ id: DOC.id }), { environmentId: "local" }));
+    } finally {
+      off();
+    }
+  });
+
   it("switches the mode from its menu, and shows a mode that cannot be switched as words", async () => {
     const { shell, container } = await driven();
     const set = vi.fn();

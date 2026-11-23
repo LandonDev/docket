@@ -13,14 +13,16 @@ import { CanvasMore, CanvasTabs } from "./CanvasTabs";
 import { sayError, useFrame } from "./frame";
 import type { CanvasKindDef, CanvasSelection } from "./kind";
 import { useOpening, type Opening } from "./fileDrop";
+import { itemVerbsFor } from "./itemVerbs";
 import { CANVAS, kindDefOf } from "./registry";
 import { closeItem, reorderItems, selectItem, setFolded, useCanvas, useKeptState } from "./store";
 
 /** Google's Picker, loaded when asked for (work/google). */
 const PickDialog = lazy(() => import("../google/PickDialog").then((m) => ({ default: m.PickDialog })));
 
-/** A kind's own row in More is named apart from the frame's. */
+/** A kind's own row in More is named apart from the frame's, and a pillar's verb apart from both. */
 const KIND_ROW = "kind:";
+const VERB_ROW = "verb:";
 
 /** The item's share of the pane while the thread shows: it takes the room, and the thread keeps its 360px. */
 export const ITEM_SPLIT = 70;
@@ -84,6 +86,8 @@ export function CanvasSeat({
 
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   const own = feeds.more ?? [];
+  // A pillar's verbs for this item (canvas/itemVerbs.ts), after the pane's own rows and before Close.
+  const verbs = shown ? itemVerbsFor(shown, shown.kind) : [];
   // The kind's own verbs first, then the verbs on every pending change, then the tab's.
   const rows: MenuRow[] = [
     ...own.map((entry): MenuRow => ({ kind: "item", id: KIND_ROW + entry.id, label: entry.label, icon: entry.icon, disabled: entry.disabled })),
@@ -103,6 +107,8 @@ export function CanvasSeat({
           { kind: "item", id: "google-open", label: "Open from Google…", icon: FolderOpen },
           { kind: "sep" },
         ] satisfies MenuRow[])),
+    ...verbs.map((verb): MenuRow => ({ kind: "item", id: VERB_ROW + verb.id, label: verb.label, icon: verb.icon })),
+    ...(verbs.length > 0 ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
     { kind: "item", id: "close", label: "Close", icon: X },
     ...(view.items.length > 1 ? ([{ kind: "item", id: "close-others", label: "Close others", icon: X }] satisfies MenuRow[]) : []),
   ];
@@ -113,6 +119,13 @@ export function CanvasSeat({
       Promise.resolve()
         .then(() => entry.run())
         .catch((error: unknown) => sayError(error, `Couldn't ${entry.label.charAt(0).toLowerCase()}${entry.label.slice(1)}`));
+      return;
+    }
+    const verb = id.startsWith(VERB_ROW) ? verbs.find((v) => VERB_ROW + v.id === id) : undefined;
+    if (verb) {
+      Promise.resolve()
+        .then(() => verb.run(shown, { environmentId }))
+        .catch((error: unknown) => sayError(error, `Couldn't ${verb.label.charAt(0).toLowerCase()}${verb.label.slice(1)}`));
       return;
     }
     if (id === "google-open") setPicking(true);
