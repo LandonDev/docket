@@ -2359,7 +2359,8 @@ phone does everything the desktop does. What milestone 46 built:
   "Since the digest", "Today, 8:00 AM", "Yesterday", then dates. A row is the
   job's sector dot in the mark column (a muted ring for a row about no one
   job), the title, the detail in meta under it, the time as a stamp ("by
-  2:00 PM" for a row with a clock). The dot is the only colour; no counts,
+  2:00 PM" for a row with a clock its words do not already say, a day that
+  is not today named). The dot is the only colour; no counts,
   no chips. A row the phone has no screen for is not a button. Loading draws
   the rows' shape; empty is "Nothing Waited"; a host that did not answer is
   one meta line at the foot. Settings → Work leads with its Digest section:

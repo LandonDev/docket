@@ -287,8 +287,9 @@ rules; nothing about the wire is the phone's own.
 - **Screen.** `ios/TempCode/Sources/Work/Digest/DigestScreen.swift`,
   `Route.digest` (a sidebar list). Title "Digest"; "Since the digest",
   "Today, 8:00 AM", "Yesterday", then dates; a row is the job's dot (a muted
-  ring for no one job), the title, the detail, the time ("by 2:00 PM" for a
-  row with a clock). A row is a button only where the phone has a route: a
+  ring for no one job), the title, the detail, the time: "by 2:00 PM" for a
+  row with a clock its words do not already say, else when it was told, a
+  day that is not today named ("Mon 2:02 PM", "Nov 26, 2:00 PM"). A row is a button only where the phone has a route: a
   thread, a held item (over the Outbox) or a Work view it draws (mail, tasks,
   agenda, projects, routines). The rows' shape while reading; "Nothing
   Waited" when empty; "The Mac did not answer" at the foot for a host whose
