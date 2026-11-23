@@ -56,7 +56,6 @@ enum WorkGlyph {
         case .computerAct: "macwindow"
         case .addonCall: "puzzlepiece.extension"
         case .officeEdit, .googleEdit: "doc.text"
-        case .chatReply: "bubble.left"
         case .unknown: "paperplane"
         }
     }
