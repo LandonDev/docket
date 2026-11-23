@@ -13,7 +13,6 @@ import CursorTextIcon from "@hugeicons/core-free-icons/CursorTextIcon";
 import HourglassIcon from "@hugeicons/core-free-icons/HourglassIcon";
 import MousePointerClickIcon from "@hugeicons/core-free-icons/MousePointerClickIcon";
 import ScanTextIcon from "@hugeicons/core-free-icons/ScanTextIcon";
-import ReceiptIcon from "@hugeicons/core-free-icons/ReceiptIcon";
 import ScrollVerticalIcon from "@hugeicons/core-free-icons/ScrollVerticalIcon";
 import SlashIcon from "@hugeicons/core-free-icons/SlashIcon";
 import AddSquareIcon from "@hugeicons/core-free-icons/AddSquareIcon";
@@ -224,7 +223,6 @@ export const MousePointerClick = wrap(MousePointerClickIcon, "MousePointerClick"
 export const TextCursor = wrap(CursorTextIcon, "TextCursor");
 export const MoveVertical = wrap(ScrollVerticalIcon, "MoveVertical");
 export const ScanText = wrap(ScanTextIcon, "ScanText");
-export const Receipt = wrap(ReceiptIcon, "Receipt");
 export const Hourglass = wrap(HourglassIcon, "Hourglass");
 export const Archive = wrap(ArchiveIcon, "Archive");
 export const ArchiveRestore = wrap(ArchiveRestoreIcon, "ArchiveRestore");

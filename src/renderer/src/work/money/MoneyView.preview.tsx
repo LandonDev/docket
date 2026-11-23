@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { MoneyRead, ToConfirm } from "@shared/contract-work-money";
 import type { Period } from "@shared/work/money";
-import { Receipt } from "../../chrome/icons";
+import { Receipt } from "../icons";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { openMenus } from "../../chrome/menuRows";
 import { defineChunk } from "../../lib/lazyChunk";

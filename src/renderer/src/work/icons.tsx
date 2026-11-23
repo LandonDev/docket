@@ -15,6 +15,7 @@ import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import News01Icon from "@hugeicons/core-free-icons/News01Icon";
 import Mic01Icon from "@hugeicons/core-free-icons/Mic01Icon";
 import Pdf01Icon from "@hugeicons/core-free-icons/Pdf01Icon";
+import ReceiptIcon from "@hugeicons/core-free-icons/ReceiptIcon";
 import Presentation01Icon from "@hugeicons/core-free-icons/Presentation01Icon";
 import Share08Icon from "@hugeicons/core-free-icons/Share08Icon";
 import Table01Icon from "@hugeicons/core-free-icons/Table01Icon";
@@ -56,6 +57,8 @@ export const Doc = wrap(Doc01Icon, "Doc");
 /** A sheet. */
 export const Table = wrap(Table01Icon, "Table");
 export const Pdf = wrap(Pdf01Icon, "Pdf");
+/** Money: its row in the column, a receipt with no picture, File as receipt. */
+export const Receipt = wrap(ReceiptIcon, "Receipt");
 export const Slides = wrap(Presentation01Icon, "Slides");
 /** Images and video share the media kind. */
 export const Media = wrap(Image01Icon, "Media");

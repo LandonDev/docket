@@ -1,6 +1,6 @@
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { kindOfEntry } from "@shared/work/files";
-import { Receipt } from "../../chrome/icons";
+import { Receipt } from "../icons";
 import { registerItemVerb } from "../canvas/itemVerbs";
 
 /**

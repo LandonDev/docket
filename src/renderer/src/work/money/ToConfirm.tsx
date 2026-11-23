@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import type { CalendarOffer, MoneyRead, ToConfirm as Waiting } from "@shared/contract-work-money";
 import { formatDay, formatMoney } from "@shared/work/money";
-import { MoreHorizontal, Receipt } from "../../chrome/icons";
-import { Calendar } from "../icons";
+import { MoreHorizontal } from "../../chrome/icons";
+import { Calendar, Receipt } from "../icons";
 import { RowsMenu } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";

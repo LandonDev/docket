@@ -1,4 +1,4 @@
-import { Receipt } from "../../chrome/icons";
+import { Receipt } from "../icons";
 import { defineChunk } from "../../lib/lazyChunk";
 import type { WorkViewDef } from "../views/registry";
 // File as receipt on a canvas item: registered as Work's shell loads the views.
