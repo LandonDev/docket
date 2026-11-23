@@ -935,7 +935,11 @@ A modal (`Dialog`) is for a form, a CRUD action or a decision that needs the
 whole screen's attention; it never holds a list that could be a panel. A
 confirm (`AlertDialog`) is for destructive, irreversible actions only, with
 one title, one line and two buttons; code that must ask first awaits
-`useConfirm()` (chrome/ConfirmDialog.tsx), never `window.confirm`. A
+`useConfirm()` (chrome/ConfirmDialog.tsx), never `window.confirm`. Where
+leaving loses something unless he picks how (a copy's changes that have
+not reached its file), the confirm takes one second answer, secondary,
+between Cancel and the verb (`confirmChoice`: Cancel, Discard, Keep
+trying). A
 confirm never holds a checkbox: a destructive decision with options is a
 form `Dialog` with its `CheckRow`s and the red verb in its footer (Delete
 project with cleanup or other copies). An archive is red only while a box that
@@ -1750,7 +1754,18 @@ Around the canvas:
   MacBook. Changes stay here", with Open on MacBook) or, for a kind that
   saves, where saving stands ("Saved 1:52 PM in Events"; it takes
   `foreground` only when it needs him, with at most two presses beside
-  it: Reload, Keep mine as a copy); at the right ⋯ and Ask (secondary,
+  it: Reload, Keep mine as a copy). A copy that saves back to its file on
+  another computer names that computer as its tab does: "On MacBook" until
+  a change goes, "Saving to MacBook…", "Saved to MacBook 1:52 PM", all
+  muted; in the foreground "This file changed on MacBook" with Reload
+  (asked first, since it drops what was not sent) and Keep Both, "This
+  file was moved or deleted on MacBook" with Keep Both, "MacBook is not
+  answering. Changes wait here" with Retry, "MacBook refused the save."
+  and its sentence, with Retry. Closing such a tab while changes have not
+  reached the file asks once in the house confirm: "Changes to Roster.xlsx
+  have not reached MacBook.", Cancel, Discard and Keep trying (Keep Both in
+  its place over a file that changed there; Discard alone where it was
+  refused); at the right ⋯ and Ask (secondary,
   the Ask glyph; flat on `muted` while its chat is open). The name is a press that renames it in place. ⋯ holds
   its row's verbs, Download, Full Window and Close Tab. Full Window fills
   the app's window with the file, its way back in the header and on

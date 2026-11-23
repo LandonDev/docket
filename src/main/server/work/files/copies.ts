@@ -350,8 +350,8 @@ export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
   if (by.kind !== 'remote' || !by.peer) throw new Error(ONLY_HOST)
   const data = Buffer.from(p.data, 'base64')
   if (data.length > COPY_ACROSS_MAX) throw new Error(TOO_BIG(basename(p.ref.at === 'file' ? p.ref.path : 'This file')))
-  const path = p.ref.at === 'file' ? p.ref.path : null
-  if (path === null) throw new Error('A copy goes back to a file on a disk.')
+  if (p.ref.at !== 'file') throw new Error('A copy goes back to a file on a disk.')
+  const path = p.ref.path
   if (p.copy) {
     const folder = { at: 'file' as const, host: p.ref.host, path: dirname(path) }
     admitChange(ctx, by, 'edit', { workspaceId: p.workspaceId, refs: [folder], origin: p.origin }, method)

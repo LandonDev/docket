@@ -191,7 +191,7 @@ the first paint.
 | The file | Opens |
 |---|---|
 | on the workspace's host, a kind a canvas shows | in a tab (`work.files.open`); a cloud-only file is fetched first, its row saying "Downloading…". A library's Office file whose form an editor of ours edits in place (`registerFileMaker`'s `forms`: an .xlsx in the sheet editor, a .pptx in the deck editor) opens as the file it is and saves where it lies by version (`saveFile`); no Office app is started. Any other Office file there is seated on its app (`microsoft`), which the window then starts (`openFileTab`'s `seated`), before the tab is drawn |
-| on another computer of his, or in the Windows VM | in a tab, as a copy the host makes in the pane's own folder (`openCopy`), where Copy Teams files is on. The tab's header says "A copy from MacBook. Changes stay here", with Open on MacBook. The copy goes when its tab closes |
+| on another computer of his, or in the Windows VM | in a tab, as a copy the host makes in the pane's own folder (`openCopy`), where Copy Teams files is on. A copy whose kind edits its bytes (the sheet's .xlsx and .xlsm, the deck's .pptx, the `file` kind's text: `copySavesBack`) saves back to the file where it lies, by version ("A copy saves back"); its header says where the file stands ("On MacBook", "Saved to MacBook 1:52 PM"). Any other copy's header says "A copy from MacBook. Changes stay here", with Open on MacBook. The copy goes when its tab closes, unless changes in it have not reached the file yet |
 | the same, with Copy Teams files off | refused in one toast, "Teams files open on MacBook for this workspace.", whose press Open copies here turns the switch on and opens it, and whose other press opens it on that computer |
 | a kind no canvas shows, in a library | in its own app on its computer (`work.office.filesOpen`) |
 | a kind no editor shows (a text or code file, a sound, a zip, anything else) | in a tab, as the `file` kind: text in an editor that saves as he types, a sound with Play, a zip as the list of what it holds, the rest as its facts with Download |
@@ -1179,6 +1179,8 @@ while its screen is unlocked.
 | `fetch {workspaceId, ref}` | read | screen | downloads a cloud-only file on its own host |
 | `tabs`, `open {ref, name?, as?, opener?, key?}`, `tabOpen {page, after?, first?}`, `tabClose`, `tabMove`, `tabSet` | read; operate | yes | the tabs and their items (below). `open` of a file on another host of his, or in the VM, makes its copy here |
 | `star {ref, name, on}`, `seen {ref, name}` | operate | yes | his marks |
+| `copyBack {tabId}`, `copyReload {tabId}`, `copyKeep {tabId}` | operate, and his own edit (`approve` for a key) | screen | a copy that saves back: send it if it differs (`CopyBack`), read the file into it again, keep his beside the file ("A copy saves back"). `tabClose {tabId, discard}` drops a copy's changes not yet sent |
+| `writeBack {ref, data, version, copy?, origin}` | operate; another host of his only | screen | run where the file lies: `saveFile` by version, or with `copy` beside it under the keep-both name (`WrittenBack`) |
 | `make {at, kind, name?, from?}`, `rename {ref, name}`, `move {refs, to}`, `copy {refs, to}` | operate, and `approve` where others can open the place | screen | `FileDone`: the things as they are now, and a `refused` row with its sentence for each one that could not be done ("New, rename, move and copy") |
 | `trash`, `upload` | operate, and `approve` where others can open the place | screen | located and passed through the door, then "Files cannot … yet" |
 | `restore`, `purge` | operate; approve | screen; never | the workspace's own rows; not built |
@@ -1536,6 +1538,65 @@ folder or a lens) and file tabs.
 Which tab is selected, and each page's order and row size, are each
 window's own ("The screen").
 
+## A copy saves back
+
+`files/copies.ts`, the owner's order of 2026-11-23: a file from any place opens in the real editor and saves
+properly. A Files tab's copy of a file on another computer of his, or in this host's Windows VM, sends what he
+changed to the file where it lies, through that file's own door and by the version the copy was read at, never
+over a file that changed there.
+
+- **Which copies.** Those whose kind edits the copy's own bytes and says when it saved (`copySavesBack` in
+  src/shared/work/files.ts): the sheet on an .xlsx or .xlsm, the deck on a .pptx, the `file` kind's text. A
+  document edits a `.tcdoc` made of the file, not the file, and a .csv opens as a sheet of our own: those copies,
+  and a PDF's, a picture's or a recording's, keep "A copy from MacBook. Changes stay here".
+- **The record** (`work_files_copies`, tables.ts): made by `openCopy` from what `copyIn` read in one look: the
+  file's host and path (a guest path in the VM), its version, the sha256 of its bytes (`sent`), the copy's path
+  here and its folder, how sending stands, and `closed`. Another host answers `office.filesRead {as: 'bytes'}`
+  with the version beside the bytes (`readWhole` in save.ts: a stat, the read, a stat, the hash of exactly those
+  bytes); a host a release behind answers none, so its copies keep their old line. A copy out of the VM is read in
+  4 MB pieces with the helper's version on each (`vmVersioned`, office/files/handle.ts); a piece of another version
+  is read once more, then refused.
+- **One send** (`sendBack`): reads the copy as it lies and sends it only when its hash differs from `sent`. One send
+  a copy is in flight; one asked while it runs runs once after it, reading the copy then, so the newest bytes go
+  once. Another host: the peer verb `work.files.writeBack {ref, data, version, origin: {from: 'window'}}`, admitted
+  there as his own save of that library file (`admitChange` as `edit`, a peer only with its origin, a file of a
+  library of that host, never its VM), then `saveFile` by the version. The VM: `vmSave`, the guest's versioned
+  `files.write {path, data, expect}`. Landed, `version` and `sent` move and `saved_at` is set.
+- **Two things ask for a send, and both meet there.** `saveFile` replacing a recorded copy's path (`onFileSaved`
+  in save.ts, which the module's start hears): the sheet's saves, and the `file` kind's text, whose
+  `work.files.write` of a copy now goes through the door to the copy. And his window: when a copy's kind goes from
+  saving to saved, or says a newer save time (`copyBackDue`), the tab asks `work.files.copyBack {workspaceId,
+  tabId}`. The deck saves by a rename of its own, so it rides the window's ask alone. The window's ask is his own
+  edit of that file: his window, or a key that may approve (`admitOwner` over `admitWrite`); a key without approve
+  is refused "Others can open that place: this key may not change it.", a read key by its capability, a thread by
+  `THREADS_BY_TOOLS`.
+- **The states**, on the tab (`FileTab.back`, `CopyBack`; every change bumps the tabs' revision, so each window
+  asks the list again): `ok` (`at` when a send last landed), `sending`, `changed` (the file changed there: nothing
+  is sent over it until he chooses), `gone`, `away` (its computer did not answer: the changes wait here), `refused`
+  (`detail`, its sentence). An `away` copy is sent again when its computer answers: another host once its link is
+  up, the VM once it is awake (looked at every 30 s while any copy waits; a send never wakes the VM from there), and
+  on his next save. A send a dead process left under way waits as `away` (`settleCopies`).
+- **Reload** (`work.files.copyReload`): the file read again into the copy's place, a new record, and the kind drawn
+  again from the copy. **Keep Both** (`work.files.copyKeep`): his copy saved beside the file on its own computer
+  under the keep-both name ("Roster (mine).xlsx", through `saveCopy` there, or `files.write {dir, name}` in the VM),
+  and the tab re-pointed to that file (`TabStore.repoint`): its name, its key and `copyOf`.
+- **The shared-place rule holds on a copy.** A recorded copy, and what lies beside it in its folder, is as shared as
+  its file (`sharedOf`, over `isSavingCopy` in copyKept.ts): the sheet's agent only suggests on it, the deck's
+  too (it already read every copy as shared), a key without approve cannot edit it, a preview of it is kept in
+  memory only. Files' own routes never let a thread change it: the `files_*` tools name a place, and a copy is in
+  none; the wire refuses a thread's `write`, `copyBack`, `copyReload`, `copyKeep`; a thread copies only into its own
+  folder. His press on a held suggestion writes the copy as his edit, and the window's ask sends it. What a thread
+  writes through the sheet's tool where his own words asked it (`because: 'asked'` with his quote) is the sheet's
+  own rule for a shared file, and goes back as his save would.
+- **Closing the tab.** A copy whose changes have not reached its file asks once (`closeCopyTab`, copyClose.ts):
+  "Changes to Roster.xlsx have not reached MacBook." with Keep trying and Discard while its computer does not
+  answer, Keep Both and Discard over a file that changed there, Discard alone where it was refused. Keep trying
+  closes the tab and keeps the copy and its record (`closed`; the office pillar's drop leaves its folder,
+  `copyKeptIn`) until the changes land, then lets both go; Discard (`tabClose {discard: true}`) drops them at once.
+  A closed tab's copy is looked at 3 s after the close, so a kind's last save has landed; opened again before it
+  goes, the tab shows the kept copy and nothing is read over it. Turning Copy Teams files off drops every copy and
+  its record, sent or not. Home's Waiting on you does not list a kept copy yet.
+
 ## What a pane owner changes for every kind
 
 A pane owner is no session: `ctx.scopeOf(owner)` is null, and whoever acts
@@ -1554,7 +1615,9 @@ on its items is his own window.
   `ctx.canvas.replace`.
 - A Teams file copied for a tab lands under
   `attachments/teams-files/filespane_<workspaceId>/`, and goes when its tab
-  closes, when Copy Teams files is turned off and when the workspace goes.
+  closes (a copy whose changes have not reached its file once they have, "A
+  copy saves back"), when Copy Teams files is turned off and when the
+  workspace goes.
 - A remote key sees no name of a tab's file it could not list: the item's
   path, name and title are cut (`fencedItem`), and `tabs` leaves the tab out.
 
@@ -1599,7 +1662,9 @@ it. So:
   library.
 - A copy he allowed (Copy Teams files, on by default for a new workspace)
   lives under `attachments/teams-files/` and is deleted with its thread or
-  its tab.
+  its tab; a Files tab's copy whose changes have not reached its file stays
+  until they have, or he discards them, or turns Copy Teams files off. The
+  record of where its file lies holds names and versions, never bytes.
 
 Tests of any Purdue path use dummy files. No build thread contacts a Purdue
 system.
@@ -1636,7 +1701,7 @@ system.
 | this host's window | every place of the workspace on this host; for a workspace that lives on another host, this host's libraries |
 | a thread (`model`) | its own workspace's places (a Work Chat none); the VM only where its workspace turns it on; never the tabs, the marks or `open`; a change only through the `files_*` tools |
 | a thread (`model`) | its own workspace's places (a Work Chat none); the VM only where its workspace turns it on; never the tabs, the marks, `open`, `preview` or `thumbs`; no change until F5 |
-| another host of his (`peer`) | the libraries alone, under this host's bridge policy; no tab, no mark, no Google Drive; a change only with its origin |
+| another host of his (`peer`) | the libraries alone, under this host's bridge policy; no tab, no mark, no Google Drive; a change only with its origin, a copy sent back (`writeBack`) among them, which needs the policy's read+run |
 | a remote key | what the listener's fence lets it name (`ctx.reaches`, by the real path): the workspace's folder, and the VM's libraries by the guest-path rule. A Mac's own libraries stay out of a key's reach. A Google Drive of the workspace only for a key that may name the workspace's folder |
 
 The listener passes a guest path (`C:\Users\…`) only to the verbs
@@ -1661,6 +1726,11 @@ pillar calls, all landed:
 - `shell.saved({ state, at?, where?, pending?, detail?, actions? })` from
   its `Body` (work-canvas.md): kept in `feeds.saved`, drawn nowhere until
   F1b.
+- A copy of another computer's file asks nothing more of a kind: its
+  `shell.saved` going from saving to saved is what makes the tab send the copy
+  back ("A copy saves back"), and a save through `saveFile` sends it at once.
+  The frame draws the copy's line from it; the kind's own saving and saved say
+  nothing of the far file and are not shown for a copy.
 - `registerFileMaker`, `registerFilePreviewer`, `registerFileMoved`,
   `registerFileWaiting` (`files/hooks.ts`): four registries of their own, which no module's
   start touches, so a registration made before or after the files module
@@ -1727,6 +1797,22 @@ and a scroll through 5,000 rows in the window (F1a).
   words, the mapping between a saved search and a Docs view both ways.
 - `files/places/disk.test.ts`, `places/teams.test.ts`: the listing and the
   places, the Windows VM through a stand-in helper.
+- `files/copies.test.ts`: a copy that saves back, between two hosts joined by
+  a stand-in of the link that runs the far host's own handlers: the record
+  read in one look, a save through the door sent by version, the window's
+  ask for a kind that renames, one send in flight with the newest bytes,
+  the `file` kind's text, a file that changed there (Keep Both, Reload), a
+  gone file, no answer then the link back, the next save, a refusal in its
+  words, a thread, a read key and a key without approve sending nothing, the
+  far host's door for `writeBack`, a closed tab kept and sent, Discard, Copy
+  Teams files turned off. `files/copiesVm.test.ts`: the same through the
+  VM's stand-in guest. `work/files/copyLine.test.ts` (window): the line's
+  words per state, when a tab asks for a send, the close confirm's three
+  answers; `fileKind.dom.test.tsx` draws them in the header.
+- `scripts/e2e-files-open-remote.ts` saves a copy's change back to mac's
+  dummy library, then the conflict, Keep Both, Reload, a read key and a
+  thread; `scripts/proof-files-vm.ts` runs Files' own code against the rig's
+  helper for the VM's copy (`bun scripts/proof-bun.ts`).
 - `files/write.test.ts`: names, the fence, nothing replaced, a swapped
   folder, a second writer, locks, the journal.
 - `files/verbs.test.ts`: New, rename, move and copy in the folder and a
@@ -1880,6 +1966,13 @@ no build thread may or can do.
   in the Windows VM `VM_TRASH` is false) until a live proof on an account
   that is not Purdue's shows the provider's bin holds a file, a folder and a
   cloud-only file.
+- **A copy saving back on two real computers.** Unit tests join two hosts
+  with a stand-in link and stand in for the VM's helper; the e2e and the rig
+  proof are written for him to run. No real Mac and no real OneDrive has run
+  it: what OneDrive makes of a replaced file in a synced library (a second
+  version, a conflict copy of its own), a File Provider folder's change time
+  after the write, a far window's sheet saving a copy, and the deck's save
+  reaching the window's ask are not seen yet.
 - **A real Google Drive.** It ran only against the fake Google
   (google/fake.ts). Not seen on a real Drive: that Drive marks a file shared
   when it lies in a shared folder (the host reads the folder's sharing too,
