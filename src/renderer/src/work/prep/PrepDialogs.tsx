@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { PrepAddedPerson, PrepPage } from "@shared/contract-work-prep";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Search } from "../../chrome/icons";
@@ -7,11 +7,14 @@ import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Textarea } from "../../components/ui/textarea";
+import { loadToast } from "../../components/ui/toaster";
+import { modOrCtrl } from "../../lib/keys";
 import { refusalWords } from "../../lib/settingsHome";
 import { Face } from "../mail/face";
 import { findPeople, pictureOf, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, type LifeosSession } from "../shell/lifeos";
-import { setPrepPeople } from "./data";
+import { followUpPrep, keepPrepNotes, loadPrep, setPrepPeople } from "./data";
 import { addedKey, pickable } from "./model";
 
 /**
@@ -128,5 +131,98 @@ function ListBones() {
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * Notes: what he typed or pasted of the meeting. Follow up keeps them and
+ * starts the thread that turns them into tasks and a mail draft. Closing the
+ * dialog any other way keeps what he typed too, so nothing typed is lost and
+ * the header's verb becomes Follow up.
+ */
+export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPage; onClose: () => void }) {
+  const before = page.doc.notes?.text ?? "";
+  const [text, setText] = useState(before);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // What the host holds, and what he has typed, as the close reads them (it runs after the exit has played).
+  const kept = useRef(before);
+  const typed = useRef(before);
+  typed.current = text;
+  const { workspaceId } = page;
+  const eventId = page.event.id;
+  const close = () => {
+    if (typed.current.trim() !== kept.current.trim()) {
+      void keepPrepNotes(env, workspaceId, eventId, typed.current).catch((err: unknown) => void loadToast().then((toast) => toast.error("The notes were not kept", { description: refusalWords(err) || "The host did not answer" })));
+    }
+    onClose();
+  };
+  return (
+    <Modal onClose={close} title="Notes" size="md" busy={pending} data-prep-dialog="notes">
+      <NotesForm
+        text={text}
+        setText={setText}
+        pending={pending}
+        error={error}
+        onCancel={close}
+        onFollowUp={(done) => {
+          setError(null);
+          setPending(true);
+          keepPrepNotes(env, workspaceId, eventId, text)
+            .then(() => {
+              kept.current = text;
+              return followUpPrep(env, workspaceId, eventId);
+            })
+            .then(
+              () => {
+                setPending(false);
+                loadPrep(env, workspaceId, eventId);
+                done();
+              },
+              (err: unknown) => {
+                setPending(false);
+                setError(refusalWords(err) || "The host did not answer");
+              },
+            );
+        }}
+      />
+    </Modal>
+  );
+}
+
+function NotesForm({ text, setText, pending, error, onCancel, onFollowUp }: { text: string; setText: (text: string) => void; pending: boolean; error: string | null; onCancel: () => void; onFollowUp: (done: () => void) => void }) {
+  const close = useModalClose();
+  const empty = !text.trim();
+  const submit = () => {
+    if (!empty && !pending) onFollowUp(() => (close ? close(onCancel) : onCancel()));
+  };
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+      // ⌘↩ follows up from inside the field, where ↩ is a new line.
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && modOrCtrl(e)) {
+          e.preventDefault();
+          submit();
+        }
+      }}
+    >
+      <ModalBody>
+        <Textarea
+          autoFocus
+          aria-label="Notes"
+          placeholder="What was said, what was decided, what is still open"
+          value={text}
+          onChange={(e) => setText(e.currentTarget.value)}
+          // A fixed height that scrolls: the dialog holds still as he types or pastes a page of notes.
+          className="field-sizing-fixed h-72 resize-none overflow-x-hidden overflow-y-auto text-sm leading-[22px]"
+        />
+        <ErrorLine error={error} />
+      </ModalBody>
+      <DialogFooter onCancel={onCancel} confirmLabel="Follow up" pending={pending} disabled={empty} />
+    </form>
   );
 }

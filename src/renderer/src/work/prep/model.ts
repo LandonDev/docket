@@ -1,4 +1,4 @@
-import { prepEndOf, type PrepAddedPerson, type PrepEvent, type PrepFileRef, type PrepPage, type PrepPerson, type PrepProblem, type PrepTask } from "@shared/contract-work-prep";
+import { prepEndOf, type PrepAddedPerson, type PrepDraft, type PrepEvent, type PrepFileRef, type PrepPage, type PrepPerson, type PrepProblem, type PrepSuggestion, type PrepTask } from "@shared/contract-work-prep";
 import { formatLeave, formatStamp, formatTime } from "work-kit/views/lib/format";
 
 /**
@@ -120,3 +120,60 @@ export function pickable(page: Pick<PrepPage, "people" | "doc">, directory: read
   }
   return [...out.values()];
 }
+
+/** A thread's status as the window's own session row has it; undefined: this window does not hold the thread. */
+export type ThreadStatus = string | undefined;
+
+/** Whether a thread is still at work: running, queued to run, or waiting on him inside its turn. */
+export const threadWorks = (status: ThreadStatus): boolean => status === "running" || status === "queued" || status === "waiting";
+
+/**
+ * The header's one verb (docs/agents/work-prep.md "The header"). Before the
+ * end: Brief me, then Preparing while its thread works, then nothing once a
+ * brief stands. After the end, or once notes stand: Add notes, then Follow
+ * up, then Following up while its thread works, then nothing once an outcome
+ * stands. The window knows a thread's status from its own row; for a thread
+ * it does not hold, the host's bound on time stands in.
+ */
+export type HeadVerb = "brief" | "preparing" | "addNotes" | "followUp" | "following" | null;
+
+export function headVerb(page: Pick<PrepPage, "event" | "doc" | "state" | "briefSessionId" | "followSessionId">, now: number, threads: { brief: ThreadStatus; follow: ThreadStatus }): HeadVerb {
+  const { doc } = page;
+  if (page.followSessionId && threadWorks(threads.follow)) return "following";
+  if (doc.after) return null;
+  if (doc.notes) return "followUp";
+  if (isOver(page.event, now)) return "addNotes";
+  if (page.briefSessionId && (threads.brief === undefined ? page.state === "working" : threadWorks(threads.brief))) return "preparing";
+  return doc.brief ? null : "brief";
+}
+
+/** Whether the brief's place shows its bones: a thread is writing and nothing stands yet. */
+export const briefIsComing = (page: Pick<PrepPage, "doc">, verb: HeadVerb): boolean => verb === "preparing" && !page.doc.brief;
+
+/** The thread More's Open thread opens: the follow-up's once there is one, else the brief's. */
+export const pageThread = (page: Pick<PrepPage, "briefSessionId" | "followSessionId">): string | null => page.followSessionId ?? page.briefSessionId;
+
+/** A suggested task's muted line: who it falls to and when it is due, as one comma sentence. */
+export function suggestionLine(task: Pick<PrepSuggestion, "who" | "due">, now: number): string | undefined {
+  const parts = [task.who?.trim(), task.due !== undefined ? `due ${dayWords(task.due, now).replace(/^(Today|Tomorrow|Yesterday)$/, (d) => d.toLowerCase())}` : undefined].filter(Boolean);
+  return parts.length ? parts.join(", ") : undefined;
+}
+
+/** The suggestions the page still draws: one he rejected is gone. */
+export const shownTasks = (tasks: readonly PrepSuggestion[]): PrepSuggestion[] => tasks.filter((t) => t.state !== "rejected");
+
+/** "Add 3 tasks", "Add 1 task". */
+export const addTasksLabel = (count: number): string => `Add ${count} ${count === 1 ? "task" : "tasks"}`;
+
+/** The mail row's words: "Follow-up to Maya Chen and Tom Beck". */
+export function draftLine(draft: Pick<PrepDraft, "to" | "subject">): string {
+  const to = draft.to;
+  if (!to.length) return draft.subject.trim() || "Follow-up mail";
+  const names = to.length <= 2 ? to.join(" and ") : `${to[0]}, ${to[1]} and ${to.length - 2} more`;
+  return `Follow-up to ${names}`;
+}
+
+/** How many lines of his notes the page shows before Show all. */
+export const NOTES_LINES = 6;
+/** Whether notes run past what six lines hold: long by lines or by length. */
+export const notesAreLong = (text: string): boolean => text.split("\n").length > NOTES_LINES || text.length > 480;

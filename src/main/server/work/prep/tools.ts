@@ -79,7 +79,7 @@ const today = tool('prep_today', 'List the upcoming meetings in this workspace t
 
 const write = tool(
   'prep_write',
-  'Write the brief for a meeting. Keep up to five things the owner should know or decide. Pass the event id or use this thread’s linked meeting.',
+  'Write the brief for a meeting: up to five things the owner should know or decide walking in, one line each. It replaces the brief whole. A line may name the mail thread, task or document it is about in ref. Pass the event id or use this thread’s linked meeting.',
   z.object({ ...eventArg, matters: z.array(PrepLineSchema).min(1).max(PREP_MATTERS_MAX), agreed: lines, files: z.array(file).max(PREP_LINES_MAX).optional(), people: z.array(people).max(PREP_PEOPLE_MAX).optional() }),
   async (args, ctx) => {
     const { workspaceId } = toolWorkspace(ctx)
@@ -105,7 +105,7 @@ const write = tool(
 
 const followUp = tool(
   'prep_follow_up',
-  'Keep the outcome of a meeting. Its tasks wait for the owner to accept them. Pass the event id or use this thread’s linked meeting.',
+  'Keep the outcome of a meeting: what was decided, what is still open, and the tasks that came of it. The tasks are suggestions that wait for the owner to tick them; nothing is filed by you. A rewrite keeps what he already accepted or rejected. Pass the event id or use this thread’s linked meeting.',
   z.object({ ...eventArg, summary: lines, decisions: lines, questions: lines, tasks: z.array(suggestion).max(PREP_TASKS_MAX).optional() }),
   async (args, ctx) => {
     const { workspaceId } = toolWorkspace(ctx)

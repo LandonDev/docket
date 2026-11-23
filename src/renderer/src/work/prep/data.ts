@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { PrepAddedPerson, PrepPage } from "@shared/contract-work-prep";
+import type { PrepAddedPerson, PrepAhead, PrepPage } from "@shared/contract-work-prep";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 
@@ -107,4 +107,30 @@ export async function setPrepPeople(environmentId: string, workspaceId: string, 
 export function resetPrep(): void {
   entries.clear();
   tell();
+}
+
+/** Brief me: the host starts the brief thread, or answers the one still working. */
+export const briefPrep = async (environmentId: string, workspaceId: string, eventId: string): Promise<string> =>
+  (await ask<{ sessionId: string }>(environmentId, "work.prep.brief", { workspaceId, eventId })).sessionId;
+
+/** Keeps his notes with the page (empty text takes them back). */
+export async function keepPrepNotes(environmentId: string, workspaceId: string, eventId: string, text: string): Promise<void> {
+  holdPrep((await ask<{ page: PrepPage }>(environmentId, "work.prep.notes", { workspaceId, eventId, text })).page);
+}
+
+/** Follow up: the host starts the follow-up thread from the notes, or answers the one still working. */
+export const followUpPrep = async (environmentId: string, workspaceId: string, eventId: string): Promise<string> =>
+  (await ask<{ sessionId: string }>(environmentId, "work.prep.followUp", { workspaceId, eventId })).sessionId;
+
+/** His word on suggested tasks; answers the ones LifeOS did not take, each with why. */
+export async function decidePrepTasks(environmentId: string, workspaceId: string, eventId: string, taskIds: string[], decision: "accept" | "reject"): Promise<{ id: string; error: string }[]> {
+  const out = await ask<{ page: PrepPage; failed: { id: string; error: string }[] }>(environmentId, "work.prep.decide", { workspaceId, eventId, taskIds, decision });
+  holdPrep(out.page);
+  return out.failed;
+}
+
+/** Turns Prepare ahead on or off for the workspace, in this window's time zone; the page is read again after. */
+export async function setPrepAhead(environmentId: string, workspaceId: string, eventId: string, on: boolean): Promise<void> {
+  await ask<PrepAhead>(environmentId, "work.prep.ahead", { workspaceId, on, tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+  loadPrep(environmentId, workspaceId, eventId);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyPrepDoc, type PrepEvent, type PrepPage } from "@shared/contract-work-prep";
-import { addedKey, dayWords, fileWhere, isOver, lastLabel, moreWords, nobodyOn, personLine, personTrail, pickable, problemWords, taskLine, timeWords, whenLine } from "./model";
+import { addedKey, addTasksLabel, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, moreWords, nobodyOn, notesAreLong, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, timeWords, whenLine } from "./model";
 
 /** A meeting's page in words (docs/agents/work-prep.md "The page"): the comma line, each row's second line and what trails it. */
 
@@ -100,5 +100,74 @@ describe("who Add people can tick", () => {
     expect(addedKey({ name: "Dána  Reyes" })).toBe("~dana reyes");
     expect(nobodyOn(page({}))).toBe(true);
     expect(nobodyOn(page({ morePeople: 2 }))).toBe(false);
+  });
+});
+
+describe("the header's verb", () => {
+  type Page = Parameters<typeof headVerb>[0];
+  const page = (over: Partial<Page> = {}): Page => ({ event: event(), doc: emptyPrepDoc(), state: "none", briefSessionId: null, followSessionId: null, ...over });
+  const brief = { matters: [{ text: "x" }], agreed: [], files: [], at: 1, by: "t" };
+  const notes = { text: "n", at: 2 };
+  const after = { summary: [], decisions: [], questions: [], tasks: [], at: 3 };
+  const idle = { brief: undefined, follow: undefined };
+
+  it("before the end is Brief me, then Preparing while its thread works, then nothing once a brief stands", () => {
+    expect(headVerb(page(), NOW, idle)).toBe("brief");
+    expect(headVerb(page({ briefSessionId: "t" }), NOW, { ...idle, brief: "running" })).toBe("preparing");
+    expect(headVerb(page({ briefSessionId: "t" }), NOW, { ...idle, brief: "queued" })).toBe("preparing");
+    expect(headVerb(page({ briefSessionId: "t", doc: { ...emptyPrepDoc(), brief } }), NOW, { ...idle, brief: "idle" })).toBeNull();
+    // Prepare again: a brief stands and its thread is at work once more
+    expect(headVerb(page({ briefSessionId: "t", doc: { ...emptyPrepDoc(), brief } }), NOW, { ...idle, brief: "running" })).toBe("preparing");
+  });
+
+  it("offers Brief me again when the thread stopped without writing", () => {
+    for (const status of ["idle", "error", "stopped", "done", "paused"]) expect(headVerb(page({ briefSessionId: "t", state: "working" }), NOW, { ...idle, brief: status }), status).toBe("brief");
+  });
+
+  it("takes the host's bound on time for a thread this window does not hold", () => {
+    expect(headVerb(page({ briefSessionId: "t", state: "working" }), NOW, idle)).toBe("preparing");
+    expect(headVerb(page({ briefSessionId: "t", state: "none" }), NOW, idle)).toBe("brief");
+    expect(briefIsComing(page({ briefSessionId: "t", state: "working" }), "preparing")).toBe(true);
+    expect(briefIsComing(page({ doc: { ...emptyPrepDoc(), brief } }), "preparing")).toBe(false);
+  });
+
+  it("after the end is Add notes, then Follow up once notes stand, then Following up, then nothing once an outcome stands", () => {
+    const over = at(15);
+    expect(headVerb(page(), over, idle)).toBe("addNotes");
+    expect(headVerb(page({ doc: { ...emptyPrepDoc(), brief } }), over, idle)).toBe("addNotes");
+    expect(headVerb(page({ doc: { ...emptyPrepDoc(), notes } }), over, idle)).toBe("followUp");
+    expect(headVerb(page({ followSessionId: "f", doc: { ...emptyPrepDoc(), notes } }), over, { ...idle, follow: "running" })).toBe("following");
+    expect(headVerb(page({ followSessionId: "f", doc: { ...emptyPrepDoc(), notes, after } }), over, { ...idle, follow: "idle" })).toBeNull();
+    // notes typed before the end lead to Follow up too
+    expect(headVerb(page({ doc: { ...emptyPrepDoc(), notes } }), NOW, idle)).toBe("followUp");
+  });
+
+  it("opens the follow-up's thread once there is one, else the brief's", () => {
+    expect(pageThread({ briefSessionId: "b", followSessionId: null })).toBe("b");
+    expect(pageThread({ briefSessionId: "b", followSessionId: "f" })).toBe("f");
+    expect(pageThread({ briefSessionId: null, followSessionId: null })).toBeNull();
+  });
+});
+
+describe("the outcome's words", () => {
+  it("says who a task falls to and when it is due as one muted line", () => {
+    expect(suggestionLine({ who: "Tom Beck", due: at(9, 0, 30) }, NOW)).toBe("Tom Beck, due Mon, Nov 30");
+    expect(suggestionLine({ due: at(9, 0, 24) }, NOW)).toBe("due tomorrow");
+    expect(suggestionLine({ who: " " }, NOW)).toBeUndefined();
+  });
+
+  it("counts the ticks, drops what he rejected, and names the mail by who it goes to", () => {
+    expect(addTasksLabel(1)).toBe("Add 1 task");
+    expect(addTasksLabel(3)).toBe("Add 3 tasks");
+    expect(shownTasks([{ id: "a", title: "x", state: "proposed" }, { id: "b", title: "y", state: "rejected" }, { id: "c", title: "z", state: "filed" }]).map((t) => t.id)).toEqual(["a", "c"]);
+    expect(draftLine({ to: ["Maya Chen", "Tom Beck"], subject: "s" })).toBe("Follow-up to Maya Chen and Tom Beck");
+    expect(draftLine({ to: ["Maya Chen", "Tom Beck", "Dana Reyes", "Sam"], subject: "s" })).toBe("Follow-up to Maya Chen, Tom Beck and 2 more");
+    expect(draftLine({ to: [], subject: " " })).toBe("Follow-up mail");
+  });
+
+  it("calls notes long past six lines or a long paragraph", () => {
+    expect(notesAreLong("a\nb\nc")).toBe(false);
+    expect(notesAreLong("1\n2\n3\n4\n5\n6\n7")).toBe(true);
+    expect(notesAreLong("x".repeat(500))).toBe(true);
   });
 });
