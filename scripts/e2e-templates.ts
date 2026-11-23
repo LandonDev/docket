@@ -180,11 +180,21 @@ try {
     }
     if (await menuOf('East report')) {
       await run.press('Remove')
-      if (run.check('Remove of his own asks first', await run.until('the confirm', 5000, () => run.has('Delete “East report”?')))) {
+      // With Files' Trash the file goes there at once, with Undo; before it, the window asks first.
+      const asked = await run.until('the confirm or the toast', 6000, async () => (await run.has('Delete “East report”?')) || (await run.has('Moved to Trash')))
+      if (run.check('Remove of his own asks first, or moves it to Trash with Undo', asked)) {
+        await sleep(400)
         await run.shot('05-remove')
-        await run.press('Cancel')
-        await sleep(600)
-        run.check('and Cancel keeps the file', existsSync(join(folder, 'Templates', 'East report.docx')))
+        if (await run.has('Delete “East report”?')) {
+          await run.press('Cancel')
+          await sleep(600)
+          run.check('and Cancel keeps the file', existsSync(join(folder, 'Templates', 'East report.docx')))
+        } else {
+          run.check('Trash took the file off the shelf', await run.until('the file leaves', 5000, () => !existsSync(join(folder, 'Templates', 'East report.docx'))))
+          await run.press('Undo')
+          run.check('and Undo puts it back', await run.until('the file returns', 8000, () => existsSync(join(folder, 'Templates', 'East report.docx'))))
+          await sleep(800)
+        }
       }
     }
 
@@ -202,6 +212,8 @@ try {
       const there = await run.until('the file is made', 20_000, () => readdirSync(folder).some((n) => n.startsWith(`${tile} - Window 1`) && !n.startsWith('.')))
       run.check('Create makes the file from the window, named for its first field', there && !readdirSync(folder).some((n) => n.endsWith('.tmp')), readdirSync(folder).join(', '))
       await sleep(2500)
+      // The file opens ready to type in: its own words are on screen in the Files tab, not an empty page.
+      if (tile === 'Game report') run.check('the made document shows its words in the Files tab', await run.until('the document draws', 45_000, () => run.has('Unusual situations')), await run.page<string>(`(document.querySelector('[data-canvas-body], main')?.textContent ?? document.body.textContent).slice(0, 300)`))
       const tabs = await run.call<{ tabs: { kind: string; name: string }[] }>('work.files.tabs', { workspaceId: ws.id })
       run.check('the made file is open in a Files tab of the workspace', tabs.tabs.some((t) => t.kind === 'file' && t.name.includes('Window 1')), tabs.tabs.map((t) => `${t.kind}:${t.name}`).join(', '))
       await run.shot('08-made')
@@ -224,8 +236,15 @@ try {
     // Files owns New: its menu's row opens this pillar's dialog, and the file is kept in the folder Files shows.
     await run.press('Files')
     await sleep(2500)
+    // New stands on a folder's page: open the workspace's folder from Files' own sidebar (not the rail's row of the same name).
+    const place = await run.page<{ x: number; y: number } | null>(`(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=treeitem], [role=link]')].find((e) => e.textContent.trim() === 'Dummy Officials' && e.offsetParent && e.getBoundingClientRect().left > 440); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 } })()`)
+    if (place) {
+      await run.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: place.x, y: place.y })
+      for (const type of ['mousePressed', 'mouseReleased']) await run.send('Input.dispatchMouseEvent', { type, x: place.x, y: place.y, button: 'left', clickCount: 1 })
+      await sleep(2000)
+    }
     await run.shot('10-files')
-    if (run.check('Files shows its New button', await run.press('New'))) {
+    if (run.check('Files shows its New button on the folder\'s page', await run.press('New'))) {
       await sleep(600)
       const rows = await run.page<string[]>(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((e) => e.textContent.trim())`)
       run.check("New's menu has From a Template…", rows.includes('From a Template…'), rows.join(' | '))
