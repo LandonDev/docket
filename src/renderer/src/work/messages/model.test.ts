@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "@shared/work/messages";
-import { aroundMatch, blocksOf, chatFact, dayWords, linkParts, markWords, newSince, opensOutside, rowLine, rowTime, threadRows, wantsRead } from "./model";
+import { aroundMatch, blocksOf, chatFact, dayWords, linkParts, markWords, newSince, opensOutside, rowLine, rowTime, wantsRead } from "./model";
 import { unreadFact } from "./facts";
 
 const at = (d: number, h: number, mi = 0): number => new Date(2026, 10, d, h, mi).getTime();
@@ -154,11 +154,5 @@ describe("a search's lit words", () => {
   });
   it("leaves a word's middle alone", () => {
     expect(markWords("recontrol", "control")).toEqual([["recontrol", false]]);
-  });
-});
-
-describe("thread verbs", () => {
-  it("offers none until the chip kind chat lands", () => {
-    expect(threadRows({ _id: "c1", name: "#builds" }, true)).toEqual([]);
   });
 });

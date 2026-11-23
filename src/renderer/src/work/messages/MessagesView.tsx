@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { ContextChip } from "@shared/work";
 import "./messages.css";
+import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { sectorName } from "../shell/actions";
 import { sessionWaits } from "../shell/lifeos";
@@ -8,7 +10,8 @@ import { ChatList } from "./ChatList";
 import { Conversation } from "./Conversation";
 import { MessagesDataProvider, WAITING } from "./data";
 import { liveData } from "./live";
-import { patchPage, usePage } from "./page";
+import { patchPage, usePage, wantMessage } from "./page";
+import { StartThreadProvider } from "./threads";
 
 /**
  * The Messages view of a linked Work workspace (docs/agents/work-messages.md):
@@ -39,15 +42,38 @@ function readListWidth(): number {
 }
 
 export function View(props: WorkViewProps) {
-  const { lifeos, sector } = props;
-  const data = useMemo(() => (lifeos.client ? liveData(lifeos, sector, props.env, props.workspace.id) : null), [lifeos, sector, props.env, props.workspace.id]);
+  const { lifeos, sector, startThread } = props;
+  const workspaceId = props.workspace.id;
+  const data = useMemo(() => (lifeos.client ? liveData(lifeos, sector, props.env, workspaceId) : null), [lifeos, sector, props.env, workspaceId]);
+  const start = useCallback((chip: ContextChip) => startThread(chip), [startThread]);
+  useOpened(workspaceId);
   // A failed session is the frame's to say (its sign-in or its line), with nothing pulsing under it.
   if (!data && !sessionWaits(lifeos)) return null;
   return (
     <MessagesDataProvider value={data ?? WAITING}>
-      <MessagesScreen workspaceId={props.workspace.id} job={sectorName(sector)} />
+      <StartThreadProvider value={start}>
+        <MessagesScreen workspaceId={workspaceId} job={sectorName(sector)} />
+      </StartThreadProvider>
     </MessagesDataProvider>
   );
+}
+
+/**
+ * A conversation asked for from elsewhere (a sent chip, the one search, a
+ * tell), with one of its messages or none: taken once, then cleared, as Mail
+ * takes a mail.
+ */
+export function useOpened(workspaceId: string): void {
+  const wanted = useWorkView();
+  const at = wanted?.workspaceId === workspaceId && wanted.view === "messages" ? wanted : null;
+  const chat = at?.chat;
+  const message = at?.message;
+  useEffect(() => {
+    if (!chat) return;
+    patchPage(workspaceId, { chatId: chat, query: "" });
+    if (message) wantMessage(workspaceId, chat, message);
+    openWorkView({ workspaceId, view: "messages" });
+  }, [workspaceId, chat, message]);
 }
 
 /**
@@ -70,7 +96,7 @@ export function MessagesScreen({ workspaceId, job, narrow: forced }: { workspace
     return () => watch.disconnect();
   }, [forced]);
   const narrow = forced ?? measured;
-  const open = (chatId: string): void => patchPage(workspaceId, { chatId });
+  const open = (chatId: string, messageId?: string): void => (messageId ? wantMessage(workspaceId, chatId, messageId) : patchPage(workspaceId, { chatId }));
   const back = (): void => patchPage(workspaceId, { chatId: null });
   const list = <ChatList workspaceId={workspaceId} job={job} onOpen={open} />;
   // Keyed by the conversation: another one starts with its own place and its own pages.

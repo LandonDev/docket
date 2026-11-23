@@ -4,6 +4,10 @@ import { ReplyBody } from "./ChatReplyAct";
 import { CHATS, COPY_DRAFT, fixtureData, HELD_DRAFT, JOB, manyChats, manyMessages, MESSAGES, withReply, type FixtureOptions } from "./fixtures";
 import { MessagesScreen } from "./MessagesView";
 import { patchPage, type MessagesPage } from "./page";
+import { StartThreadProvider } from "./threads";
+
+/** Start thread in the preview: drawn, and goes nowhere. */
+const startNothing = (): void => {};
 
 /**
  * The Messages view over made-up conversations (fixtures.ts), for `bun run ui:preview
@@ -61,7 +65,9 @@ export function MessagesPreview({ scene = "list", width = 1280, height = 760 }: 
     // The view's region, as the Work frame lays it: the page's own background, a hairline round it for the shot.
     <div style={{ width, height }} className="overflow-hidden border border-border bg-background">
       <MessagesDataProvider value={data}>
-        <MessagesScreen workspaceId={workspaceId} job={JOB} narrow={narrow} />
+        <StartThreadProvider value={startNothing}>
+          <MessagesScreen workspaceId={workspaceId} job={JOB} narrow={narrow} />
+        </StartThreadProvider>
       </MessagesDataProvider>
     </div>
   );

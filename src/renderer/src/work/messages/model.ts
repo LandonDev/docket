@@ -1,5 +1,4 @@
 import { SOURCE_NAME, type ChatMessage, type ChatRow } from "@shared/work/messages";
-import type { MenuRow } from "../../chrome/menuRows";
 import { clockTime } from "../../lib/duration";
 
 /**
@@ -212,15 +211,4 @@ export function aroundMatch(text: string, query: string, lead = 24): string {
   if (at >= flat.length || at <= lead) return flat;
   const space = flat.lastIndexOf(" ", at - lead);
   return `…${flat.slice(space + 1)}`;
-}
-
-/**
- * The thread verbs a conversation offers (Start thread, Mention in a thread,
- * on its row's menu, its toolbar and its More). None yet: a thread names a
- * conversation by the chip kind `chat`, which lands with the host build
- * (the plan's MSG3); until then a thread cannot be told which one, so no
- * verb is drawn. `threadOpen` is whether a thread is open to mention it in.
- */
-export function threadRows(_chat: Pick<ChatRow, "_id" | "name">, _threadOpen: boolean): MenuRow[] {
-  return [];
 }

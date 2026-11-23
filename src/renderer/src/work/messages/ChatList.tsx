@@ -14,7 +14,8 @@ import { Face } from "../mail/face";
 import { Hash } from "../icons";
 import { openConnections } from "../shell/open";
 import { useMessagesData } from "./data";
-import { aroundMatch, CHAT_FILTERS, FILTER_EMPTY, FILTER_LABEL, FILTER_ROW, firstName, markWords, rowLine, rowTime, threadRows, type ChatFilter } from "./model";
+import { aroundMatch, CHAT_FILTERS, FILTER_EMPTY, FILTER_LABEL, FILTER_ROW, firstName, markWords, rowLine, rowTime, type ChatFilter } from "./model";
+import { chatChip, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 import { keepListTop, listTopOf, patchPage, usePage } from "./page";
 
 /**
@@ -39,7 +40,7 @@ const FACE_CELL = "row-span-2 flex h-8 items-end self-start";
 /** An empty list's words, at the middle of the whole column (its head and search included), level with the pane's. */
 const LIST_EMPTY = "pointer-events-none absolute inset-0 max-w-none";
 
-export function ChatList({ workspaceId, job, onOpen }: { workspaceId: string; job: string; onOpen: (chatId: string) => void }) {
+export function ChatList({ workspaceId, job, onOpen }: { workspaceId: string; job: string; onOpen: (chatId: string, messageId?: string) => void }) {
   const data = useMessagesData();
   const page = usePage(workspaceId);
   const sources = data.useSources();
@@ -172,10 +173,24 @@ function RowsWindow({ workspaceId, rows, done, more, openId, onOpen }: { workspa
     if (!done && range.end >= rows.length - 20) more();
   }, [done, range.end, rows.length, more]);
   const byId = useMemo(() => new Map(rows.map((row) => [row._id, row])), [rows]);
+  const start = useStartThread();
   const menu = (id: string | null): MenuRow[] | null => {
     const row = id ? byId.get(id) : undefined;
     if (!row) return null;
-    return tidy([{ kind: "item", id: row.unread ? "read" : "unread", label: row.unread ? "Mark read" : "Mark unread" }, { kind: "sep" }, ...threadRows(row, false)]);
+    return tidy([
+      { kind: "item", id: row.unread ? "read" : "unread", label: row.unread ? "Mark read" : "Mark unread" },
+      { kind: "sep" },
+      ...threadRows(mentionTarget() !== null, start !== null),
+      { kind: "sep" },
+      ...linkRows(row.source, row.link),
+    ]);
+  };
+  const pick = (pick: string, id: string | null): void => {
+    const row = id ? byId.get(id) : undefined;
+    if (!row) return;
+    if (pick === "read") data.markRead(row._id);
+    else if (pick === "unread") data.markUnread(row._id);
+    else pickThreadVerb(pick, chatChip(row), start, row.link);
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>): void => {
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
@@ -193,7 +208,7 @@ function RowsWindow({ workspaceId, rows, done, more, openId, onOpen }: { workspa
   };
   return (
     <div ref={scroller} onScroll={(event) => keepListTop(workspaceId, event.currentTarget.scrollTop)} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-      <RowsContextMenu lazyMount label="Conversation" rowsFor={menu} onPick={(pick, id) => id && (pick === "read" ? data.markRead(id) : pick === "unread" ? data.markUnread(id) : undefined)}>
+      <RowsContextMenu lazyMount label="Conversation" rowsFor={menu} onPick={pick}>
         {/* One tab stop: the arrow keys move the open conversation, which the list names as its active row. */}
         <div role="listbox" tabIndex={0} aria-label="Conversations" aria-activedescendant={openId && byId.has(openId) ? rowId(openId) : undefined} onKeyDown={keys} className="group/list px-1.5 pb-1.5 outline-none">
           <div aria-hidden style={{ height: range.start * SLOT }} />
@@ -353,7 +368,7 @@ function Lit({ text, query }: { text: string; query: string }): ReactNode {
 }
 
 /** The messages that hold the words: the conversation's name and the time, then who wrote and the words, lit. */
-function SearchHits({ workspaceId, query, openId, onOpen }: { workspaceId: string; query: string; openId: string | null; onOpen: (chatId: string) => void }) {
+function SearchHits({ workspaceId, query, openId, onOpen }: { workspaceId: string; query: string; openId: string | null; onOpen: (chatId: string, messageId?: string) => void }) {
   const data = useMessagesData();
   const now = data.useNow();
   const hits = data.useSearch(query);
@@ -374,7 +389,7 @@ function SearchHits({ workspaceId, query, openId, onOpen }: { workspaceId: strin
   );
 }
 
-function HitRow({ hit, row, query, open, now, onOpen }: { hit: ChatHit; row: ChatRow | undefined; query: string; open: boolean; now: number; onOpen: (id: string) => void }) {
+function HitRow({ hit, row, query, open, now, onOpen }: { hit: ChatHit; row: ChatRow | undefined; query: string; open: boolean; now: number; onOpen: (id: string, messageId: string) => void }) {
   const kind = row?.kind ?? (hit.chat.startsWith("#") ? "channel" : "direct");
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: a result opens on a press, as a row does
@@ -383,8 +398,8 @@ function HitRow({ hit, row, query, open, now, onOpen }: { hit: ChatHit; row: Cha
       aria-selected={open}
       tabIndex={0}
       data-hit={hit.messageId}
-      onClick={() => onOpen(hit.chatId)}
-      onKeyDown={(event) => event.key === "Enter" && onOpen(hit.chatId)}
+      onClick={() => onOpen(hit.chatId, hit.messageId)}
+      onKeyDown={(event) => event.key === "Enter" && onOpen(hit.chatId, hit.messageId)}
       style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }}
       className={cn("relative cursor-default rounded-md select-none", ROW_GRID, open ? "bg-foreground/9" : "hover:bg-foreground/5")}
     >

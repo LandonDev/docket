@@ -77,11 +77,45 @@ export function useTyped(workspaceId: string, chatId: string): string {
   );
 }
 
+// ── A message to bring into view ──
+
+/** A message asked for from elsewhere (a search hit, a sent chip, a tell): held until the conversation has shown it once. */
+const wanted = new Map<string, { chatId: string; messageId: string }>();
+const wantedListeners = new Set<() => void>();
+const tellWanted = (): void => {
+  for (const listener of wantedListeners) listener();
+};
+
+/** Opens a conversation on one of its messages. */
+export function wantMessage(workspaceId: string, chatId: string, messageId: string): void {
+  wanted.set(workspaceId, { chatId, messageId });
+  patchPage(workspaceId, { chatId });
+  tellWanted();
+}
+/** The message a conversation is asked to bring into view, if any. */
+export function useWanted(workspaceId: string, chatId: string): string | null {
+  return useSyncExternalStore(
+    (fn) => {
+      wantedListeners.add(fn);
+      return () => void wantedListeners.delete(fn);
+    },
+    () => {
+      const want = wanted.get(workspaceId);
+      return want?.chatId === chatId ? want.messageId : null;
+    },
+  );
+}
+/** Done with it: shown, or not to be found. */
+export function dropWanted(workspaceId: string): void {
+  if (wanted.delete(workspaceId)) tellWanted();
+}
+
 /** Test seam: every workspace back to blank. */
 export function resetPages(): void {
   pages.clear();
   listTops.clear();
   places.clear();
   typed.clear();
+  wanted.clear();
   for (const listener of listeners) listener();
 }

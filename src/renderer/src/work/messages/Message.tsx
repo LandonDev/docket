@@ -1,6 +1,7 @@
 import { memo, useState, type MouseEvent } from "react";
 import { firstWords, type ChatMessage, type ChatReplyState } from "@shared/work/messages";
-import { CornerDownRight } from "../../chrome/icons";
+import { CornerDownRight, MoreHorizontal } from "../../chrome/icons";
+import { reveal } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
 import { clockTime } from "../../lib/duration";
 import { openUrl } from "../../lib/native";
@@ -18,28 +19,60 @@ import { keepTyped } from "./page";
  * A day opens with its date on a hairline, and the first unread message sits
  * under the one that says "New".
  */
-export const MessageBlock = memo(function MessageBlock({ block, arrives, workspaceId, chatId }: { block: Block; arrives?: boolean; workspaceId: string; chatId: string }) {
+export const MessageBlock = memo(function MessageBlock({
+  block,
+  arrives,
+  found,
+  workspaceId,
+  chatId,
+  onMore,
+}: {
+  block: Block;
+  arrives?: boolean;
+  /** A message he was sent to: marked ("on"), then fading ("off"). */
+  found?: "on" | "off";
+  workspaceId: string;
+  chatId: string;
+  /** Opens the message's menu under its ⋯. */
+  onMore?: (id: string, button: HTMLElement) => void;
+}) {
   const { message, head, day, isNew } = block;
   return (
-    <div data-block={block.id} data-head={head || undefined} className={cn(head ? (day || isNew ? "pt-3" : "pt-4") : "pt-1", arrives && "tc-message-arrives")}>
+    <div data-block={block.id} data-menu-id={block.id} data-head={head || undefined} className={cn(head ? (day || isNew ? "pt-3" : "pt-4") : "pt-1", arrives && "tc-message-arrives")}>
       {day || isNew ? <Divider day={day} isNew={isNew} /> : null}
-      {message.replyTo ? <ReplyLine to={message.replyTo} /> : null}
-      <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-3">
-        {head ? (
-          <>
-            <Face name={message.who.name} picture={message.who.picture} size="head" className="row-span-2 self-start" />
-            <div className="flex h-5 min-w-0 items-baseline gap-2">
-              <span className="truncate text-[13px] leading-5 font-semibold text-foreground">{message.who.name}</span>
-              <time className="shrink-0 text-xs text-muted-foreground tabular-nums">{clockTime(message.sentAt)}</time>
-            </div>
-          </>
-        ) : null}
-        <div className="col-start-2 min-w-0">
-          <Words text={message.text} />
-          {message.reply && message.reply.status !== "sent" ? <ReplyState reply={message.reply} workspaceId={workspaceId} chatId={chatId} /> : null}
-          {/* A message's pictures and files are drawn here once LifeOS keeps them (the plan's MSG4): in place, at
-              most 360 by 270, or Mail's 40px chip. Until then its words say what it held, as LifeOS stored them. */}
+      <div
+        data-found={found}
+        className={cn(
+          "group/message relative -mx-2 rounded-md px-2",
+          // Marked at once, then the fill fades; reduced motion takes it away at once.
+          found === "on" ? "bg-muted" : found === "off" ? "transition-[background-color] duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-none" : null,
+        )}
+      >
+        {message.replyTo ? <ReplyLine to={message.replyTo} /> : null}
+        <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-3">
+          {head ? (
+            <>
+              <Face name={message.who.name} picture={message.who.picture} size="head" className="row-span-2 self-start" />
+              <div className="flex h-5 min-w-0 items-baseline gap-2">
+                <span className="truncate text-[13px] leading-5 font-semibold text-foreground">{message.who.name}</span>
+                <time className="shrink-0 text-xs text-muted-foreground tabular-nums">{clockTime(message.sentAt)}</time>
+              </div>
+            </>
+          ) : null}
+          <div className="col-start-2 min-w-0">
+            <Words text={message.text} />
+            {/* A message's pictures and files are drawn here once LifeOS keeps them (the plan's MSG4): in place, at
+                most 360 by 270, or Mail's 40px chip. Until then its words say what it held, as LifeOS stored them. */}
+            {message.reply && message.reply.status !== "sent" ? <ReplyState reply={message.reply} workspaceId={workspaceId} chatId={chatId} /> : null}
+          </div>
         </div>
+        {onMore ? (
+          <span className={cn("absolute end-0 top-0 rounded-md bg-background", reveal("message"))}>
+            <Button variant="ghost" size="icon-xs" aria-label="Message actions" className="text-muted-foreground" onClick={(event) => onMore(block.id, event.currentTarget)}>
+              <MoreHorizontal />
+            </Button>
+          </span>
+        ) : null}
       </div>
     </div>
   );

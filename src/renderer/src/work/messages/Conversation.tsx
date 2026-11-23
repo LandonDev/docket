@@ -1,21 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
-import { SOURCE_APP, syncLine, type ChatDetail, type ChatMessage } from "@shared/work/messages";
-import { ArrowLeft, ChevronDown, Copy, ExternalLink, MoreHorizontal } from "../../chrome/icons";
-import { RowsMenu, tidy, type MenuRow } from "../../chrome/menuRows";
+import { syncLine, type ChatDetail, type ChatMessage, type ChatRow } from "@shared/work/messages";
+import { ArrowLeft, ChevronDown, Copy, MessageSquarePlus, MoreHorizontal } from "../../chrome/icons";
+import { RowsContextMenu, RowsMenu, tidy, type MenuRow } from "../../chrome/menuRows";
 import { Tip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
-import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
-import { openUrl } from "../../lib/native";
 import { anchorShift, RowLayout, type RowAnchor } from "../../lib/transcriptWindow";
 import { openWorkView } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { useMessagesData, type Paged } from "./data";
 import { Composer } from "./Composer";
 import { MessageBlock } from "./Message";
-import { blocksOf, chatFact, estimateOf, newSince, threadRows, wantsRead, type Block } from "./model";
-import { keepPlace, placeOf } from "./page";
+import { blocksOf, chatFact, estimateOf, newSince, wantsRead, type Block } from "./model";
+import { dropWanted, keepPlace, placeOf, useWanted } from "./page";
+import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 
 /**
  * An open conversation (docs/agents/work-messages.md "The conversation"): the
@@ -57,7 +56,7 @@ export function Conversation({ workspaceId, chatId, narrow, onBack }: { workspac
       ) : messages.status === "loading" || !chat ? (
         <ColumnBones />
       ) : (
-        <Column workspaceId={workspaceId} chatId={chatId} since={newSince(chat)} page={messages.value} />
+        <Column workspaceId={workspaceId} chat={chat} since={newSince(chat)} page={messages.value} />
       )}
       {detail.status === "ready" && detail.value ? <Composer workspaceId={workspaceId} detail={detail.value} /> : null}
     </div>
@@ -66,42 +65,29 @@ export function Conversation({ workspaceId, chatId, narrow, onBack }: { workspac
 
 // ── The toolbar ──
 
-/** Where a conversation opens in its own app, when that is a web address. */
-const linkOf = (detail: ChatDetail | undefined): string | undefined => (detail?.link && /^https?:\/\//i.test(detail.link) ? detail.link : undefined);
-
 function Toolbar({ workspaceId, detail, narrow, onBack }: { workspaceId: string; detail: ChatDetail | null | undefined; narrow: boolean; onBack: () => void }) {
   const data = useMessagesData();
   const now = data.useNow();
+  const start = useStartThread();
   const chat = detail?.chat;
-  const link = linkOf(detail ?? undefined);
-  const verbs = chat ? threadRows(chat, false) : [];
-  const start = verbs.find((row) => row.kind === "item" && row.id === "start-thread");
+  const link = chat?.link ?? detail?.link;
   // Under 640px the list and its sync line are hidden: this conversation's own source says it here, once.
   const line = narrow && detail?.source ? syncLine([detail.source], now) : null;
+  // Start thread has its own button; More holds the rest, Mention only while a thread is open.
   const rows = (): MenuRow[] =>
     chat
       ? tidy([
           chat.unread ? { kind: "item", id: "read", label: "Mark read" } : { kind: "item", id: "unread", label: "Mark unread" },
-          ...verbs.filter((row) => row !== start),
+          ...threadRows(mentionTarget() !== null, false),
           { kind: "sep" },
-          ...(link
-            ? ([
-                { kind: "item", id: "open", label: `Open in ${SOURCE_APP[chat.source]}`, icon: ExternalLink },
-                { kind: "item", id: "copy", label: "Copy link", icon: Copy },
-              ] as MenuRow[])
-            : []),
+          ...linkRows(chat.source, link),
         ])
       : [];
   const pick = (id: string): void => {
     if (!chat) return;
     if (id === "read") data.markRead(chat._id);
     else if (id === "unread") data.markUnread(chat._id);
-    else if (id === "open" && link) void openUrl(link);
-    else if (id === "copy" && link)
-      void navigator.clipboard?.writeText(link).then(
-        () => loadToast().then((toast) => toast("Link copied")),
-        () => loadToast().then((toast) => toast.error("Couldn't copy the link")),
-      );
+    else pickThreadVerb(id, chatChip(chat), start, link);
   };
   // A direct chat's name opens the person in People, where LifeOS knows an address for them.
   const person = chat?.kind === "direct" ? detail?.email : undefined;
@@ -127,10 +113,10 @@ function Toolbar({ workspaceId, detail, narrow, onBack }: { workspaceId: string;
           )}
           {chat ? <span className="min-w-0 shrink-[2] truncate text-xs text-muted-foreground">{chatFact(chat)}</span> : null}
         </div>
-        {start && start.kind === "item" ? (
-          <Tip label={start.label}>
-            <Button variant="ghost" size="icon-sm" aria-label={start.label} className="text-muted-foreground">
-              {start.icon ? <start.icon /> : null}
+        {start && chat ? (
+          <Tip label="Start thread">
+            <Button variant="ghost" size="icon-sm" aria-label="Start thread" className="text-muted-foreground" onClick={() => start(chatChip(chat))}>
+              <MessageSquarePlus />
             </Button>
           </Tip>
         ) : null}
@@ -169,6 +155,12 @@ const LOAD_AHEAD = 1200;
 const AT_FOOT = 24;
 /** The air left over "New" when the conversation opens on it. */
 const NEW_AIR = 48;
+/** The air left over a message he was sent to. */
+const FOUND_AIR = 96;
+/** How many older pages are read to find a message he was sent to before giving up on it. */
+const FIND_PAGES = 20;
+/** How long a message he was sent to keeps its mark before it fades. */
+const FOUND_HOLD_MS = 1_200;
 /** A window not yet measured (and a static render's) is taken to be this tall. */
 const UNMEASURED = 800;
 
@@ -180,9 +172,11 @@ const UNMEASURED = 800;
  * keeps each block's measured height (lib/transcriptWindow.ts), measured
  * upward from the foot, and holds his place when one above the foot changes.
  */
-function Column({ workspaceId, chatId, since, page }: { workspaceId: string; chatId: string; since: number | null; page: Paged<ChatMessage> }) {
+function Column({ workspaceId, chat, since, page }: { workspaceId: string; chat: ChatRow; since: number | null; page: Paged<ChatMessage> }) {
   const data = useMessagesData();
   const now = data.useNow();
+  const chatId = chat._id;
+  const start = useStartThread();
   // "New" is fixed as the conversation opens: reading it does not move the line away.
   const [openedSince] = useState(since);
   const blocks = useMemo(() => blocksOf(page.rows, openedSince, now, page.done), [page.rows, openedSince, now, page.done]);
@@ -278,6 +272,57 @@ function Column({ workspaceId, chatId, since, page }: { workspaceId: string; cha
     if (next.start < range.start || next.end > range.end) redraw();
   };
 
+  // A message he was sent to: read back page by page until it is held (a bounded number of pages), brought into view
+  // with air over it, and marked for a moment.
+  const wanted = useWanted(workspaceId, chatId);
+  const tries = useRef(0);
+  const [found, setFound] = useState<{ id: string; on: boolean } | null>(null);
+  useEffect(() => {
+    if (!wanted) return;
+    const index = upward.findIndex((block) => block.id === wanted);
+    if (index < 0) {
+      if (!page.done && tries.current < FIND_PAGES) {
+        tries.current++;
+        page.more();
+      } else dropWanted(workspaceId);
+      return;
+    }
+    openOnNew.current = null;
+    goTo(layout.offsetOf(index + 1) + FOUND_AIR - view.current.height);
+    keepPlace(workspaceId, chatId, anchor.current);
+    setFound({ id: wanted, on: true });
+    dropWanted(workspaceId);
+    redraw();
+  });
+  useEffect(() => {
+    if (!found?.on) return;
+    const timer = setTimeout(() => setFound({ id: found.id, on: false }), FOUND_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [found]);
+
+  // A message's menu, from a right-click or its ⋯: a thread about it (its words ride on the chip), Copy text, its link.
+  const menuAt = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
+  const byId = useMemo(() => new Map(blocks.map((block) => [block.id, block.message])), [blocks]);
+  const messageRows = (id: string | null): MenuRow[] | null => {
+    const message = id ? byId.get(id) : undefined;
+    if (!message) return null;
+    return tidy([...threadRows(mentionTarget() !== null, start !== null), { kind: "item", id: "copy-text", label: "Copy text", icon: Copy }, { kind: "sep" }, ...linkRows(chat.source, message.permalink)]);
+  };
+  const pickMessage = (pick: string, id: string | null): void => {
+    const message = id ? byId.get(id) : undefined;
+    if (!message) return;
+    if (pick === "copy-text") copyText(message.text, "Copied");
+    else pickThreadVerb(pick, chatChip(chat, message.text), start, message.permalink);
+  };
+  const onMore = useMemo(
+    () =>
+      (id: string, button: HTMLElement): void => {
+        const rect = button.getBoundingClientRect();
+        menuAt.current?.({ x: rect.left, y: rect.bottom, id });
+      },
+    [],
+  );
+
   // A conversation shorter than its window asks for older messages at once.
   useEffect(() => {
     if (!page.done && layout.total() < view.current.height + LOAD_AHEAD) page.more();
@@ -294,16 +339,26 @@ function Column({ workspaceId, chatId, since, page }: { workspaceId: string; cha
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scroller} onScroll={onScroll} data-column className="flex h-full flex-col-reverse overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
-        <div className={cn(COLUMN, "pt-4 pb-5")} role="log" aria-label="Messages">
-          <div aria-hidden style={{ height: layout.total() - layout.offsetOf(range.end) }} />
-          {shown
-            .slice()
-            .reverse()
-            .map((block: Block) => (
-              <MessageBlock key={block.id} block={block} arrives={arrived.current.has(block.id)} workspaceId={workspaceId} chatId={chatId} />
-            ))}
-          <div aria-hidden style={{ height: layout.offsetOf(range.start) }} />
-        </div>
+        <RowsContextMenu lazyMount label="Message" rowsFor={messageRows} onPick={pickMessage} openRef={menuAt}>
+          <div className={cn(COLUMN, "pt-4 pb-5")} role="log" aria-label="Messages">
+            <div aria-hidden style={{ height: layout.total() - layout.offsetOf(range.end) }} />
+            {shown
+              .slice()
+              .reverse()
+              .map((block: Block) => (
+                <MessageBlock
+                  key={block.id}
+                  block={block}
+                  arrives={arrived.current.has(block.id)}
+                  found={found?.id === block.id ? (found.on ? "on" : "off") : undefined}
+                  workspaceId={workspaceId}
+                  chatId={chatId}
+                  onMore={onMore}
+                />
+              ))}
+            <div aria-hidden style={{ height: layout.offsetOf(range.start) }} />
+          </div>
+        </RowsContextMenu>
       </div>
       {unseen.current > 0 ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
