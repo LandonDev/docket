@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Template } from "@shared/work/templates";
-import { asksLine, folderName, hiddenLine, inJob, refusedLine, shelfGroups, sourceStem, stemOf, tileMenu } from "./model";
+import { asksLine, editsACopy, folderName, hiddenLine, inJob, namesTemplatesFolder, refusedLine, sentence, shelfGroups, sourceStem, stemOf, tileMenu } from "./model";
 
 const tpl = (id: string, name: string, over: Partial<Template> = {}): Template => ({
   id,
@@ -60,6 +60,13 @@ describe("a tile's menu", () => {
     expect(rows.filter((r) => r.kind === "item" && r.danger).map((r) => (r.kind === "item" ? r.id : ""))).toEqual(["remove"]);
     expect(labels(tileMenu(tpl("all:Weekly.docx", "Weekly"), "Dummy Esports"))).toContain("Only in Dummy Esports");
   });
+
+  it("offers Edit a copy on a template for all jobs, which Files cannot open where it lies, in the same order", () => {
+    const rows = tileMenu(tpl("all:Weekly.docx", "Weekly"), "Dummy Esports");
+    expect(labels(rows)).toEqual(["New from this", "Edit a copy", "Rename…", "Only in Dummy Esports", "—", "Remove"]);
+    expect(rows.find((r) => r.kind === "item" && r.id === "edit")).toMatchObject({ glyph: "copy" });
+    expect([tpl("job:a.docx", "a"), tpl("all:b.docx", "b"), tpl("starter:ref/c", "c")].map(editsACopy)).toEqual([false, true, true]);
+  });
 });
 
 describe("the empty shelf and an add", () => {
@@ -100,5 +107,20 @@ describe("the words", () => {
   it("takes a file's extension off for its name", () => {
     expect(stemOf("Game report.docx")).toBe("Game report");
     expect(stemOf(".hidden")).toBe(".hidden");
+  });
+
+  it("knows a Files push about a job's Templates folder, on either separator", () => {
+    expect(namesTemplatesFolder("file:box:/w/Dummy Esports/Templates")).toBe(true);
+    expect(namesTemplatesFolder("file:pc:C:\\Work\\Dummy Esports\\Templates\\")).toBe(true);
+    expect(namesTemplatesFolder("file:box:/w/Dummy Esports/Invoices")).toBe(false);
+    expect(namesTemplatesFolder("file:box:/w/Dummy Esports/Templates/Old")).toBe(false);
+    expect(namesTemplatesFolder("drive:me:abc")).toBe(false);
+    expect(namesTemplatesFolder(undefined)).toBe(false);
+  });
+
+  it("ends the host's words with a stop when they have none", () => {
+    expect(sentence("The Files view is busy")).toBe("The Files view is busy.");
+    expect(sentence("The Files view is busy.")).toBe("The Files view is busy.");
+    expect(sentence("Is it there?")).toBe("Is it there?");
   });
 });

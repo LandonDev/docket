@@ -1,4 +1,4 @@
-import { ANY_SECTOR, fieldList, parseTemplateId, type Template } from "@shared/work/templates";
+import { ANY_SECTOR, fieldList, parseTemplateId, TEMPLATES_FOLDER, type Template } from "@shared/work/templates";
 
 /**
  * The shelf's two groups (docs/agents/work-templates.md "The screens"): the
@@ -62,7 +62,9 @@ export function tileMenu(template: Template, jobName: string): TileRow[] {
     ];
   return [
     { kind: "item", id: "make", label: "New from this", glyph: "new" },
-    { kind: "item", id: "edit", label: "Edit", glyph: "edit" },
+    // A template for all jobs lies in the host's own data, which Files does not open: he edits his own copy for
+    // this job, as with a starter. Only his job's own is edited in place.
+    template.where === "job" ? { kind: "item", id: "edit", label: "Edit", glyph: "edit" } : { kind: "item", id: "edit", label: "Edit a copy", glyph: "copy" },
     { kind: "item", id: "rename", label: "Rename…", glyph: "rename" },
     template.where === "job"
       ? { kind: "item", id: "move", label: "Use in all jobs", glyph: "everywhere" }
@@ -116,3 +118,19 @@ export const stemOf = (name: string): string => {
   const dot = name.lastIndexOf(".");
   return dot > 0 ? name.slice(0, dot) : name;
 };
+
+/** Whether Edit copies the template first: a starter, or one for all jobs, which lie outside what Files opens. */
+export const editsACopy = (template: Template): boolean => template.where !== "job";
+
+/** Whether a `work.files` push's folder (`file:<host>:<path>`, `refKey`) is a job's Templates folder: then the shelf changed too. */
+export function namesTemplatesFolder(at: string | undefined): boolean {
+  if (!at?.startsWith("file:")) return false;
+  const parts = at.split(/[\\/]+/).filter(Boolean);
+  return parts.at(-1) === TEMPLATES_FOLDER;
+}
+
+/** A host's words as a sentence: a full stop at the end when they have no stop of their own. */
+export const sentence = (words: string): string => (/[.!?…]$/.test(words.trim()) ? words.trim() : `${words.trim()}.`);
+
+/** What a kind is called to someone who cannot see its glyph or tint. */
+export const KIND_WORD = { document: "Document", sheet: "Sheet", deck: "Deck" } as const;

@@ -8,7 +8,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { makeFrom, unhideStarters, useTemplates } from "./data";
 import { FieldsForm } from "./FieldsForm";
-import { folderName, hiddenLine, shelfGroups } from "./model";
+import { folderName, hiddenLine, sentence, shelfGroups } from "./model";
 import { openMade } from "./open";
 import { Shelf, ShelfSkeleton } from "./Shelf";
 
@@ -44,9 +44,17 @@ export function TemplateDialog({
   const [chosen, setChosen] = useState<Template | null>(template ?? null);
   const [making, setMaking] = useState<string | null>(null);
   return (
-    // Its top is fixed (the recipe PickerDialog and the `full` size use, still rising 4px on entry), so the title never
-    // moves when a step changes: the box only grows or shortens from the bottom.
-    <Modal title={chosen ? chosen.name : "New from a template"} size="md" busy={making !== null} onClose={onClose} className={TOP_ANCHORED} data-templates-dialog="">
+    // With the tiles, its top is fixed (the recipe PickerDialog and the `full` size use, still rising 4px on entry), so
+    // the title never moves when a step changes: the box only grows or shortens from the bottom. Opened on one template
+    // (the shelf page's press) it has one step and no Back: a small dialog, centred, as Rename and Save are.
+    <Modal
+      title={chosen ? chosen.name : "New from a template"}
+      size={template ? "sm" : "md"}
+      busy={making !== null}
+      onClose={onClose}
+      {...(template ? {} : { className: TOP_ANCHORED })}
+      data-templates-dialog=""
+    >
       <TemplateSteps
         env={env}
         workspaceId={workspaceId}
@@ -76,7 +84,7 @@ const unmoved = (el: Element | null): boolean => !el || el === document.body || 
 const scrollerOf = (el: Element | null): HTMLElement | null => el?.closest<HTMLElement>(".overflow-y-auto") ?? null;
 
 /** A file made whose open failed: what a press on its template, or Open in its fields, opens again. */
-type Made = { source: CanvasSource; title: string; values?: Record<string, string> };
+type Made = { source: CanvasSource; title: string; values?: Record<string, string>; reason?: string };
 
 export function TemplateSteps({
   env,
@@ -133,8 +141,10 @@ export function TemplateSteps({
     try {
       await openMade({ workspaceId, source: file.source });
     } catch (err) {
-      setMade((m) => ({ ...m, [id]: file }));
-      setError(`${file.title} was made but did not open. ${words(err)}`);
+      // The reason is kept with the made file, so the fields say it again when he comes back to this template.
+      const reason = `${file.title} was made but did not open. ${sentence(words(err))}`;
+      setMade((m) => ({ ...m, [id]: { ...file, reason } }));
+      setError(reason);
       return;
     }
     setMade((m) => {
@@ -179,7 +189,7 @@ export function TemplateSteps({
           key={chosen.id}
           template={chosen}
           pending={making === chosen.id}
-          error={error}
+          error={error ?? made[chosen.id]?.reason ?? null}
           made={made[chosen.id] ? { values: made[chosen.id]!.values ?? {} } : undefined}
           onBack={
             fromTiles
@@ -200,8 +210,9 @@ export function TemplateSteps({
   const narrowed = ready ? hiddenLine(load.value.hidden) : null;
   return (
     <div key="tiles" data-step="tiles" className={ARRIVE}>
-      <ModalBody>
-        {/* A refusal or a failed open stands above the grid, where a press near its top can see it; read out as it lands. */}
+      <ModalBody className="min-h-0 flex-1">
+        {/* A refusal or a failed open stands above the grid, outside its scroller, so a press on any tile sees it; read out
+            as it lands. */}
         <div role="alert" className="contents">
           <ErrorLine error={error} />
         </div>
@@ -216,7 +227,8 @@ export function TemplateSteps({
             {...(narrowed ? { line: narrowed, action: { label: "Show hidden", onClick: () => void unhideStarters(env, workspaceId).catch((err: unknown) => setError(words(err))) } } : {})}
           />
         ) : (
-          <div ref={tiles}>
+          // The grid scrolls on its own, under the alert; its 6px pad keeps the tiles' hover wash from being cut.
+          <div ref={tiles} data-tiles-scroll="" className="-m-1.5 min-h-0 overflow-x-hidden overflow-y-auto p-1.5">
             <Shelf
               groups={groups}
               layout="dialog"

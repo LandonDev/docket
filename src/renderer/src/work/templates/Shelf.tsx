@@ -11,7 +11,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
 import { KindGlyph } from "../files/KindGlyph";
-import type { ShelfGroup } from "./model";
+import { KIND_WORD, type ShelfGroup } from "./model";
 
 /**
  * The shelf's tiles (docs/agents/work-templates.md "The screens"), one part for
@@ -140,6 +140,8 @@ function Tile({
       data-tile-open=""
       data-row-open=""
       aria-label={template.name}
+      // The kind, for someone who cannot see the glyph or its tint; the name stays the label.
+      aria-description={KIND_WORD[template.kind]}
       aria-busy={making || undefined}
       tabIndex={focusable ? 0 : -1}
       onFocus={onFocus}
@@ -152,7 +154,8 @@ function Tile({
       data-menu-id={template.id}
       data-tile={template.id}
       // A row whose open control lies over it (README, `ROW_HOLDS`): /5 on hover, /12 at once while pressed, nothing scales.
-      className={cn(ROW_HOLDS, "group/item -m-1.5 flex min-w-0 flex-col gap-1.5 rounded-xl p-1.5")}
+      // While its menu is open the tile keeps its hover wash, as a rail row does, so the menu stays tied to it.
+      className={cn(ROW_HOLDS, "group/item -m-1.5 flex min-w-0 flex-col gap-1.5 rounded-xl p-1.5", held && "bg-foreground/5")}
     >
       {/* The tile's press, laid over the whole tile so its ring is the tile's edge, inside. */}
       {cut ? (
@@ -176,7 +179,8 @@ function Tile({
       </span>
       {menu ? (
         // Over the plate: no pointer until it shows, and shown while its menu is open.
-        <span data-tile-more="" className={cn("absolute top-3 right-3", held ? "pointer-events-auto opacity-100" : reveal("item", { row: true, overlay: true }))}>
+        // On the plate's own ground (card), so it hides the drawing under it; on a plain plate it reads as nothing.
+        <span data-tile-more="" className={cn("absolute top-3 right-3 rounded-md bg-card", held ? "pointer-events-auto opacity-100" : reveal("item", { row: true, overlay: true }))}>
           <Button
             variant="ghost"
             size="icon-xs"

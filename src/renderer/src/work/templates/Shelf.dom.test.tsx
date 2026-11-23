@@ -226,4 +226,25 @@ describe("the shelf", () => {
     expect(spinner.className).toContain("text-muted-foreground");
     expect(spinner.className).not.toMatch(/kind-/);
   });
+
+  it("tells a screen reader the kind as the press's description, its label still the name", () => {
+    render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
+    const words: Record<string, [string, string]> = { "job:Crew memo.docx": ["Crew memo", "Document"], "starter:ref/season-log": ["Season log", "Sheet"], "all:Pitch.pptx": ["Pitch", "Deck"] };
+    for (const [id, [name, kind]] of Object.entries(words)) {
+      const press = document.querySelector(`[data-tile="${id}"] [data-tile-open]`)!;
+      expect(press.getAttribute("aria-label")).toBe(name);
+      expect(press.getAttribute("aria-description")).toBe(kind);
+    }
+  });
+
+  it("sets the ⋯ on the plate's own ground, and keeps the tile's wash while its menu is open", async () => {
+    render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} menuFor={menuRows} onMenu={() => {}} />);
+    const tile = document.querySelector('[data-tile="starter:ref/season-log"]')!;
+    const more = tile.querySelector("[data-tile-more]")!;
+    expect(more.className.split(" ")).toEqual(expect.arrayContaining(["bg-card", "rounded-md"]));
+    expect(tile.className.split(" ")).not.toContain("bg-foreground/5");
+    fireEvent.click(screen.getByRole("button", { name: "More for Season log" }));
+    await screen.findAllByRole("menuitem");
+    expect(tile.className.split(" ")).toContain("bg-foreground/5");
+  });
 });

@@ -121,8 +121,9 @@ export function SaveForm({ env, workspaceId, source, name, fields, onClose, pend
           <ErrorLine error={error} />
         </div>
       </ModalBody>
-      {/* The fields are the file's, said in the footer's quiet slot ("Kept in" stands there in New), so nothing moves when the read answers. */}
-      <DialogFooter note={said ? <span data-asks="">{said}</span> : undefined} onCancel={onClose} confirmLabel="Save" pending={pending} />
+      {/* The fields are the file's, said in the footer's quiet slot ("Kept in" stands there in New), so nothing moves when
+          the read answers; long names wrap as "Kept in" does, so all of it can be read. */}
+      <DialogFooter note={said ? <span data-asks="" className="whitespace-normal [overflow-wrap:anywhere]">{said}</span> : undefined} onCancel={onClose} confirmLabel="Save" pending={pending} />
     </form>
   );
 }

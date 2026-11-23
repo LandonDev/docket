@@ -75,6 +75,8 @@ describe("Save as template", () => {
     const line = screen.getByText("Asks for Client and Game.");
     expect(line.closest("[data-footer-note]")).not.toBeNull();
     expect(line.closest('[data-slot="dialog-footer"]')).not.toBeNull();
+    // It wraps as "Kept in" does, so long field names are read whole.
+    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["whitespace-normal", "[overflow-wrap:anywhere]"]));
     expect(screen.getByRole("textbox").getAttribute("aria-describedby")).toBeNull();
   });
 

@@ -40,8 +40,8 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
   const workspaces = [{ id: "ws", environmentId: "box", name: "Dummy Esports", path: "/w/Dummy Esports" }];
   return { ...(await original<object>()), useWorkspaces: () => workspaces, workspaceStore: { getSnapshot: () => ({ workspaces }) } };
 });
-const picked: { paths: string[] | null } = { paths: null };
-vi.mock("../../lib/fs", async (original) => ({ ...(await original<object>()), pickFiles: async () => picked.paths }));
+const picked: { paths: string[] | null; calls: number } = { paths: null, calls: 0 };
+vi.mock("../../lib/fs", async (original) => ({ ...(await original<object>()), pickFiles: async () => (picked.calls++, picked.paths) }));
 vi.mock("../../lib/native", async (original) => ({ ...(await original<object>()), getPathForFile: (f: File) => (f.name === "memory.docx" ? "" : `/w/Desktop/${f.name}`) }));
 const toasts: { kind: string; title: string; options?: { description?: string; action?: { label: string; onClick: () => void } } }[] = [];
 vi.mock("../../components/ui/toaster", async (original) => {
@@ -77,6 +77,7 @@ const asked = (method: string) => host.asked.filter((a) => a.method === method).
 let list: { templates: Template[]; hidden: number } = { templates: [], hidden: 0 };
 
 beforeEach(() => {
+  picked.calls = 0;
   host.asked.length = 0;
   host.primary = "box";
   toasts.length = 0;
@@ -306,9 +307,10 @@ describe("the Templates view", () => {
     expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", source: { at: "file", host: "box", path: "/w/Desktop/Budget.xlsx" } }]);
   });
 
-  it("adds only a file on the workspace's own host, and says so in one message from another machine", async () => {
+  it("from a window away from the workspace's host, says why at Add… without opening the picker, and refuses a drag where he can see it", async () => {
     host.primary = "mac";
     picked.paths = ["/Users/sam/Budget.xlsx"];
+    picked.calls = 0;
     render(
       <>
         <Head {...props} />
@@ -318,8 +320,19 @@ describe("the Templates view", () => {
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Add…" }));
     await settle();
+    expect(picked.calls).toBe(0);
     expect(asked("work.templates.save")).toEqual([]);
-    expect(toasts).toEqual([{ kind: "error", title: "Budget.xlsx was not added", options: { description: "Only a file on The box can be added for now" } }]);
+    expect(toasts).toEqual([{ kind: "error", title: "Only a file on The box can be added for now" }]);
+    const view = document.querySelector("[data-templates-view]")!;
+    const data = { types: ["Files"], files: [new File(["x"], "Budget.xlsx")], dropEffect: "copy" };
+    fireEvent.dragEnter(view, { dataTransfer: data });
+    expect(screen.queryByText("Drop to add")).toBeNull();
+    // Kept from the document's drop (no thread starts), with the refused cursor, and nothing sent.
+    expect(fireEvent.dragOver(view, { dataTransfer: data })).toBe(false);
+    expect(data.dropEffect).toBe("none");
+    expect(fireEvent.drop(view, { dataTransfer: data })).toBe(false);
+    await settle();
+    expect(asked("work.templates.save")).toEqual([]);
   });
 
   it("tries every file of an add and names the ones left out in one message", async () => {
@@ -525,5 +538,97 @@ describe("the Templates view", () => {
       spy.mockRestore();
       vi.restoreAllMocks();
     }
+  });
+
+  it("edits a template for all jobs as his own copy for this job, as a starter is", async () => {
+    const WEEKLY = tpl("all:Weekly.docx", "Weekly");
+    list = { templates: [MEMO, WEEKLY], hidden: 0 };
+    render(<View {...props} />);
+    await settle();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Weekly" }));
+    expect((await screen.findAllByRole("menuitem")).map((i) => i.textContent)).toEqual(["New from this", "Edit a copy", "Rename…", "Only in Dummy Esports", "Remove"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit a copy" }));
+    await settle();
+    expect(asked("work.templates.save")).toEqual([{ workspaceId: "ws", source: WEEKLY.source, name: "Weekly" }]);
+    expect(asked("work.files.open").map((p) => p.ref)).toEqual([{ at: "file", host: "box", path: "/w/Dummy Esports/Templates/Season log.docx" }]);
+  });
+
+  it("says what failed as each failed press's title, with the host's words under it", async () => {
+    host.answer = (method) => {
+      if (method === "work.templates.list") return { templates: [MEMO, LOG], hidden: 2 };
+      if (method === "work.templates.move" || method === "work.templates.unhide") return Promise.reject(new Error("refused: the box did not answer"));
+      if (method === "work.templates.remove") return Promise.reject(new Error("refused: the file is in use"));
+      if (method === "work.files.open") return Promise.reject(new Error("refused: the Files view is busy"));
+      return {};
+    };
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    const pick = async (tile: string, row: string) => {
+      fireEvent.contextMenu(screen.getByRole("button", { name: tile }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: row }));
+      await settle();
+      await settle();
+    };
+    await pick("Crew memo", "Use in all jobs");
+    await pick("Crew memo", "Remove");
+    await pick("Crew memo", "Edit");
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Show hidden" }));
+    await settle();
+    expect(toasts.map((t) => [t.title, t.options?.description])).toEqual([
+      ["Crew memo was not moved", "The box did not answer"],
+      ["Crew memo was not removed", "The file is in use"],
+      ["Crew memo did not open", "The Files view is busy"],
+      ["Starters were not shown", "The box did not answer"],
+    ]);
+  });
+
+  it("asks for the shelf again when Trash's Undo put the file back, and says so when Files refused", async () => {
+    let restore: unknown = { entries: [], refused: [], op: "x" };
+    host.answer = (method) => {
+      if (method === "work.templates.list") return list;
+      if (method === "work.templates.remove") return { trashed: ["tr1"] };
+      if (method === "work.files.restore") return restore;
+      return {};
+    };
+    render(<View {...props} />);
+    await settle();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Crew memo" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    await settle();
+    const lists = () => asked("work.templates.list").length;
+    const before = lists();
+    toasts[0]!.options!.action!.onClick();
+    await settle();
+    await settle();
+    expect(lists()).toBe(before + 1);
+    restore = { entries: [], refused: [{ name: "Crew memo.docx", text: "A file of that name is already there." }], op: "y" };
+    toasts[0]!.options!.action!.onClick();
+    await settle();
+    await settle();
+    expect(lists()).toBe(before + 1);
+    expect(toasts.at(-1)).toEqual({ kind: "error", title: "It was not put back", options: { description: "A file of that name is already there." } });
+  });
+
+  it("asks for the shelf again when Files changes the job's Templates folder, and not for another folder", async () => {
+    render(<View {...props} />);
+    await settle();
+    const lists = () => asked("work.templates.list").length;
+    const before = lists();
+    act(() => pushes.forEach((l) => l({ push: "work.files", workspaceId: "ws", at: "file:box:/w/Dummy Esports/Invoices" })));
+    act(() => pushes.forEach((l) => l({ push: "work.files", workspaceId: "other", at: "file:box:/w/Other/Templates" })));
+    await settle();
+    expect(lists()).toBe(before);
+    act(() => pushes.forEach((l) => l({ push: "work.files", workspaceId: "ws", at: "file:box:/w/Dummy Esports/Templates" })));
+    await settle();
+    expect(lists()).toBe(before + 1);
+    act(() => pushes.forEach((l) => l({ push: "work.files", workspaceId: "ws", at: "file:pc:C:\\Work\\Dummy Esports\\Templates\\" })));
+    await settle();
+    expect(lists()).toBe(before + 2);
   });
 });

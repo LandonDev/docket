@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import type { FileDone } from "@shared/contract-work-files";
 import type { TemplateFields, TemplateRemoved, TemplatesList } from "@shared/contract-work-templates";
 import type { FolderRef } from "@shared/work/files";
 import type { CanvasSource } from "@shared/work/canvas";
@@ -6,6 +7,7 @@ import { dayOf, type Template, type TemplateMade } from "@shared/work/templates"
 import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
 import { refusalWords } from "../../lib/settingsHome";
+import { namesTemplatesFolder } from "./model";
 
 /**
  * A workspace's shelf from its host (docs/agents/work-templates.md), read the
@@ -46,6 +48,8 @@ export function useTemplates(env: string, workspaceId: string): [Load<TemplatesL
     if (!link) return;
     return link.onPush((push) => {
       if (push.push === "work.templates" && (push.workspaceId === null || push.workspaceId === workspaceId)) retry();
+      // A file put into or taken out of the job's Templates folder through Files (a Trash Undo among them) changes the shelf too.
+      else if (push.push === "work.files" && push.workspaceId === workspaceId && namesTemplatesFolder(push.at)) retry();
     });
   }, [link, workspaceId, retry]);
   return [loadOf(read), retry];
@@ -84,5 +88,8 @@ export const fieldsOfFile = (env: string, workspaceId: string, source: CanvasSou
   ask<TemplateFields>(env, "work.templates.fields", { workspaceId, source }, "The host did not read the file");
 
 /** Puts files Trash took back where they were (a remove's Undo). */
-export const restoreFiles = (env: string, workspaceId: string, ids: readonly string[]): Promise<unknown> =>
-  ask(env, "work.files.restore", { workspaceId, ids, op: crypto.randomUUID() }, "The host did not put it back");
+export async function restoreFiles(env: string, workspaceId: string, ids: readonly string[]): Promise<void> {
+  const done = await ask<FileDone>(env, "work.files.restore", { workspaceId, ids, op: crypto.randomUUID() }, "The host did not put it back");
+  // Files answers what it could not do, each in one sentence, and does the rest.
+  if (done.refused?.length) throw new Error(done.refused.map((r) => r.text).join(" "));
+}

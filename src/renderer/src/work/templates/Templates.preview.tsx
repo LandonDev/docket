@@ -134,17 +134,18 @@ export function TemplateDialogPreview({ width, kept = false, hidden = false }: {
   );
 }
 
-export function FieldsPreview({ width, state = "rest" }: { width?: number; state?: "rest" | "pending" | "error" | "made" }) {
+export function FieldsPreview({ width, state = "rest", single = false }: { width?: number; state?: "rest" | "pending" | "error" | "made"; single?: boolean }) {
+  // `single`: opened on one template from the shelf page, a small dialog with no Back.
   const report = SHELF[2]!;
   return (
     <Box width={width}>
-      <ModalBox title={report.name} size="md">
+      <ModalBox title={report.name} size={single ? "sm" : "md"}>
         <FieldsForm
           template={report}
           pending={state === "pending"}
-          error={state === "error" ? "The workspace's folder is gone" : state === "made" ? "Game report - North was made but did not open. The Files view is busy" : null}
+          error={state === "error" ? "The workspace's folder is gone" : state === "made" ? "Game report - North was made but did not open. The Files view is busy." : null}
           {...(state === "made" ? { made: { values: { Home: "North", Away: "Central" } } } : {})}
-          onBack={noop}
+          {...(single ? {} : { onBack: noop })}
           onCancel={noop}
           onCreate={noop}
         />
@@ -153,9 +154,10 @@ export function FieldsPreview({ width, state = "rest" }: { width?: number; state
   );
 }
 
-export function SavePreview({ width, fields = true }: { width?: number; fields?: boolean }) {
+export function SavePreview({ width, fields = true, long = false }: { width?: number; fields?: boolean; long?: boolean }) {
   // The fields come from the host's read of the file, as they do for any file saved.
-  fileFields = fields ? ["Home", "Away", "Site"] : [];
+  // `long`: field names as long as the grammar allows, to see the note wrap.
+  fileFields = !fields ? [] : long ? ["Home team and its conference", "Visiting team and its conference", "Site of the game and its address"] : ["Home", "Away", "Site"];
   return (
     <Box width={width}>
       <ModalBox title="Save as template" size="sm">

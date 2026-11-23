@@ -14,7 +14,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { makeFrom, moveTemplate, removeTemplate, restoreFiles, saveTemplate, unhideStarters, useTemplates } from "./data";
-import { baseName, hiddenLine, refusedLine, shelfGroups, tileMenu, type TileAction, type TileRow } from "./model";
+import { baseName, editsACopy, hiddenLine, refusedLine, shelfGroups, tileMenu, type TileAction, type TileRow } from "./model";
 import { askTemplateFields, openMade } from "./open";
 import { RenameDialog } from "./RenameDialog";
 import { Shelf, ShelfSkeleton } from "./Shelf";
@@ -52,7 +52,14 @@ function useHead(workspaceId: string): HeadState {
 }
 
 const words = (err: unknown): string => (err instanceof Error ? err.message : String(err));
-const failed = (err: unknown) => void loadToast().then((toast) => toast.error(words(err)));
+/** One toast shape for every failed press on this page: what failed as its title, then why, in the host's words. */
+const failed = (title: string) => (err: unknown) => void loadToast().then((toast) => toast.error(title, { description: words(err) }));
+
+/** Why this window cannot add a file to the shelf: the workspace lives on another host. Null when it can. */
+function farReason(env: string): string | null {
+  if (env === registry.primary().environmentId) return null;
+  return `Only a file on ${registry.environment(env)?.name ?? "the workspace's host"} can be added for now`;
+}
 
 /** A file to add: its name, and its path on this computer when it has one. */
 type Incoming = { name: string; path: string | null };
@@ -65,9 +72,9 @@ type Incoming = { name: string; path: string | null };
 export async function addFiles(env: string, workspaceId: string, files: readonly Incoming[]): Promise<void> {
   if (files.length === 0 || heads.get(workspaceId)?.adding) return;
   const refused: { name: string; why: string }[] = [];
-  if (env !== registry.primary().environmentId) {
-    const host = registry.environment(env)?.name ?? "the workspace's host";
-    for (const f of files) refused.push({ name: f.name, why: `Only a file on ${host} can be added for now` });
+  const far = farReason(env);
+  if (far) {
+    for (const f of files) refused.push({ name: f.name, why: far });
   } else {
     setHead(workspaceId, { adding: true });
     try {
@@ -92,6 +99,9 @@ export async function addFiles(env: string, workspaceId: string, files: readonly
 
 const pickAndAdd = async (env: string, workspaceId: string): Promise<void> => {
   if (heads.get(workspaceId)?.adding) return;
+  // From another host's window the picker would only offer files that must then be refused: say why at once.
+  const far = farReason(env);
+  if (far) return void loadToast().then((toast) => toast.error(far));
   const paths = await pickFiles("Add a template");
   if (paths) await addFiles(env, workspaceId, paths.map((path) => ({ name: baseName(path), path })));
 };
@@ -111,7 +121,7 @@ export function Head({ env, workspace }: WorkViewProps) {
             </Button>
           }
           rows={[{ kind: "item", id: "unhide", label: "Show hidden", icon: Eye }]}
-          onPick={() => void unhideStarters(env, workspace.id).catch(failed)}
+          onPick={() => void unhideStarters(env, workspace.id).catch(failed("Starters were not shown"))}
         />
       ) : null}
       <Button variant="ghost" size="sm" disabled={adding || down} onClick={() => void pickAndAdd(env, workspace.id)}>
@@ -194,37 +204,49 @@ export function View({ env, workspace }: WorkViewProps) {
     const answer = await removeTemplate(env, workspace.id, t.id);
     const toast = await loadToast();
     // A starter is hidden: one press brings that one back.
-    if (t.where === "starter") return void toast("Hidden", { action: { label: "Undo", onClick: () => void unhideStarters(env, workspace.id, t.id).catch(failed) } });
+    if (t.where === "starter") return void toast("Hidden", { action: { label: "Undo", onClick: () => void unhideStarters(env, workspace.id, t.id).catch(failed(`${t.name} was not shown`)) } });
     // No Trash yet: nothing was deleted, and the host asks first.
     if (answer.confirm) return setRemoving(t);
     const trashed = answer.trashed;
-    if (trashed?.length) toast("Moved to Trash", { action: { label: "Undo", onClick: () => void restoreFiles(env, workspace.id, trashed).catch(failed) } });
+    // Undo puts the file back through Files, then asks for the shelf again; a refusal says it in Files' words.
+    if (trashed?.length)
+      toast("Moved to Trash", { action: { label: "Undo", onClick: () => void restoreFiles(env, workspace.id, trashed).then(retry, failed("It was not put back")) } });
   };
 
   const act = (pick: string, t: Template) => {
     const action = pick as TileAction;
     if (action === "make") return make(t);
     if (action === "rename") return setRenaming(t);
-    if (action === "move") return void moveTemplate(env, workspace.id, t.id, t.where === "job").catch(failed);
-    if (action === "remove") return void remove(t).catch(failed);
+    if (action === "move") return void moveTemplate(env, workspace.id, t.id, t.where === "job").catch(failed(`${t.name} was not moved`));
+    if (action === "remove") return void remove(t).catch(failed(`${t.name} was not removed`));
     if (action === "edit") {
       // One at a time, the tile busy as a make's is: a second pick while the first runs does nothing.
       if (making) return;
       setMaking(t.id);
-      // A starter is ours: Edit makes his own copy, which takes its place on the shelf, and opens that.
-      const own = t.where === "starter" ? saveTemplate(env, workspace.id, t.source, { name: t.name }).then((saved) => saved.source) : Promise.resolve(t.source);
+      // A starter, or one for all jobs (in the host's own data, which Files does not open): Edit a copy makes his own
+      // for this job, which takes its place on the shelf, and opens that.
+      const own = editsACopy(t)
+        ? saveTemplate(env, workspace.id, t.source, { name: t.name }).then(
+            (saved) => saved.source,
+            (err: unknown) => {
+              failed(`${t.name} was not copied`)(err);
+              return null;
+            },
+          )
+        : Promise.resolve(t.source);
       void own
-        .then((source) => openMade({ workspaceId: workspace.id, source }))
-        .catch(failed)
+        .then((source) => (source ? openMade({ workspaceId: workspace.id, source }).catch(failed(`${t.name} did not open`)) : undefined))
         .finally(() => setMaking(null));
     }
   };
 
   // A file dropped here becomes a template: the view takes the drop, so no thread starts for it.
-  // While an add runs the view refuses a drop where he can see it: no wash, no copy cursor.
+  // While an add runs, or from a window away from the workspace's host, it refuses a drop where he can see it:
+  // no wash, no copy cursor, and the drop itself is kept and does nothing.
+  const refuses = adding || farReason(env) !== null;
   const drop = {
     onDragEnter: (event: DragEvent) => {
-      if (carriesFiles(event) && !adding) setOver((n) => n + 1);
+      if (carriesFiles(event) && !refuses) setOver((n) => n + 1);
     },
     onDragLeave: (event: DragEvent) => {
       if (carriesFiles(event)) setOver((n) => Math.max(0, n - 1));
@@ -233,13 +255,13 @@ export function View({ env, workspace }: WorkViewProps) {
       if (!carriesFiles(event)) return;
       // Kept from the document's drop either way, which would start a thread.
       event.preventDefault();
-      event.dataTransfer.dropEffect = adding ? "none" : "copy";
+      event.dataTransfer.dropEffect = refuses ? "none" : "copy";
     },
     onDrop: (event: DragEvent) => {
       if (!carriesFiles(event)) return;
       event.preventDefault();
       setOver(0);
-      if (adding) return;
+      if (refuses) return;
       void addFiles(env, workspace.id, Array.from(event.dataTransfer.files).map((f) => ({ name: f.name, path: pathOf(f) })));
     },
   };
@@ -263,14 +285,14 @@ export function View({ env, workspace }: WorkViewProps) {
         // Add… is the header's; an empty shelf he narrowed says so and offers the way back.
         <EmptyState
           title="No templates"
-          {...(narrowed ? { line: narrowed, action: { label: "Show hidden", onClick: () => void unhideStarters(env, workspace.id).catch(failed) } } : {})}
+          {...(narrowed ? { line: narrowed, action: { label: "Show hidden", onClick: () => void unhideStarters(env, workspace.id).catch(failed("Starters were not shown")) } } : {})}
         />
       ) : (
         <div className="px-4 pt-3 pb-6">
           <Shelf groups={groups} layout="page" making={making} onPress={make} menuFor={(t) => menuRows(tileMenu(t, workspace.name))} onMenu={act} />
         </div>
       )}
-      {over > 0 && !adding ? (
+      {over > 0 && !refuses ? (
         <div
           data-drop-wash=""
           className="pointer-events-none absolute inset-3 grid place-items-center rounded-lg border border-border bg-muted/70 transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 motion-reduce:transition-none"

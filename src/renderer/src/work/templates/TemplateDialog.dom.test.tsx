@@ -206,6 +206,33 @@ describe("New from a template", () => {
     expect(note.className).toContain("whitespace-normal");
   });
 
+  it("opened on one template from the shelf page, is a small dialog sitting centred, as Rename and Save are", async () => {
+    render(<TemplateDialog env="box" workspaceId="ws" template={REPORT} onClose={() => {}} />);
+    await settle();
+    const classes = screen.getByRole("dialog").className.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["sm:max-w-md", "top-1/2"]));
+    expect(classes).not.toContain("top-[12%]");
+    expect(classes).not.toContain("sm:max-w-xl");
+  });
+
+  it("keeps a refused make's line in sight above the grid's own scroller, from a tile on its last row", async () => {
+    const many = Array.from({ length: 9 }, (_, i) => tpl(`starter:ref/t${i}`, `Template ${i + 1}`));
+    host.answer = (method) => (method === "work.templates.list" ? { templates: many, hidden: 0 } : method === "work.templates.make" ? Promise.reject(new Error("refused: the workspace's folder is gone")) : {});
+    render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Template 9" }));
+    await settle();
+    await settle();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("The workspace's folder is gone");
+    const scroll = document.querySelector("[data-tiles-scroll]")!;
+    // The grid scrolls in its own box; the line stands before it, outside it, so it never scrolls away.
+    expect(scroll.className.split(" ")).toEqual(expect.arrayContaining(["overflow-y-auto", "min-h-0"]));
+    expect(scroll.contains(screen.getByRole("button", { name: "Template 9" }))).toBe(true);
+    expect(scroll.contains(alert)).toBe(false);
+    expect(alert.compareDocumentPosition(scroll) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("fixes its top, so the title holds still when it turns to the fields and the box only shortens from the bottom", async () => {
     render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
     await settle();
@@ -213,8 +240,11 @@ describe("New from a template", () => {
     const classes = popup.className.split(" ");
     expect(classes).toEqual(expect.arrayContaining(["top-[12%]", "translate-y-0", "starting:translate-y-1"]));
     expect(classes).not.toContain("top-1/2");
+    expect(classes).toContain("sm:max-w-xl");
     fireEvent.click(screen.getByRole("button", { name: "Game report" }));
     await settle();
+    // The fields reached from the tiles keep the tiles' size and place.
+    expect(screen.getByRole("dialog").className.split(" ")).toEqual(expect.arrayContaining(["top-[12%]", "sm:max-w-xl"]));
     // No held height: three fields make a short box, not a tall empty one.
     expect(document.querySelector<HTMLElement>('[data-step="fields"]')!.style.minHeight).toBe("");
   });
@@ -259,7 +289,7 @@ describe("New from a template", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await settle();
     await settle();
-    expect(screen.getByRole("alert").textContent).toBe("Game report - North was made but did not open. The Files view is busy");
+    expect(screen.getByRole("alert").textContent).toBe("Game report - North was made but did not open. The Files view is busy.");
     expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
     const fields = screen.getAllByRole("textbox") as HTMLInputElement[];
     expect(fields.every((f) => f.hasAttribute("readonly"))).toBe(true);
@@ -295,10 +325,11 @@ describe("New from a template", () => {
       await settle();
     }
     expect(asked("work.templates.make")).toHaveLength(2);
-    // Each keeps its own file: back in either, the primary opens it.
-    for (const [name, path] of [["Game report", MADE.source.path], ["Visit", "/w/Dummy Esports/Visit - Hall.docx"]] as const) {
+    // Each keeps its own file and its reason: back in either, the line says why it is Open, and Open opens that file.
+    for (const [name, path, title] of [["Game report", MADE.source.path, "Game report - North"], ["Visit", "/w/Dummy Esports/Visit - Hall.docx", "Visit - Hall"]] as const) {
       fireEvent.click(screen.getByRole("button", { name }));
       await settle();
+      expect(screen.getByRole("alert").textContent).toBe(`${title} was made but did not open. The Files view is busy.`);
       fireEvent.click(screen.getByRole("button", { name: "Open" }));
       await settle();
       await settle();
@@ -349,7 +380,7 @@ describe("New from a template", () => {
     fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
     await settle();
     await settle();
-    expect(screen.getByRole("alert").textContent).toBe("Game report - North was made but did not open. The Files view is busy");
+    expect(screen.getByRole("alert").textContent).toBe("Game report - North was made but did not open. The Files view is busy.");
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Crew memo" }));
     await settle();
