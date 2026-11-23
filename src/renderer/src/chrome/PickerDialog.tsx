@@ -21,6 +21,8 @@ type FrameProps = {
   activeId?: string | null;
   /** false: no rule under the field, for a picker with no row to show under it. */
   rule?: boolean;
+  /** The most the field takes, where what it asks has a limit: a longer paste is cut at it. */
+  maxLength?: number;
   children: ReactNode;
 };
 
@@ -42,6 +44,7 @@ export function PickerDialog({
   listId,
   activeId,
   rule,
+  maxLength,
   children,
   ...data
 }: FrameProps & {
@@ -59,7 +62,7 @@ export function PickerDialog({
         {...data}
       >
         <DialogTitle className="sr-only">{label}</DialogTitle>
-        <PickerFrame label={label} search={search} query={query} onQuery={onQuery} onSearchKey={onSearchKey} leading={leading} trailing={trailing} listId={listId} activeId={activeId} rule={rule}>
+        <PickerFrame label={label} search={search} query={query} onQuery={onQuery} onSearchKey={onSearchKey} leading={leading} trailing={trailing} listId={listId} activeId={activeId} rule={rule} maxLength={maxLength}>
           {children}
         </PickerFrame>
       </DialogContent>
@@ -68,7 +71,7 @@ export function PickerDialog({
 }
 
 /** What the dialog holds: the field, the rule under it, the list. Its own piece so a design page can draw a picker with no dialog round it. */
-export function PickerFrame({ label, search, query, onQuery, onSearchKey, leading, trailing, listId, activeId, rule = true, children }: FrameProps) {
+export function PickerFrame({ label, search, query, onQuery, onSearchKey, leading, trailing, listId, activeId, rule = true, maxLength, children }: FrameProps) {
   const leadingId = useId();
   return (
     <>
@@ -82,7 +85,9 @@ export function PickerFrame({ label, search, query, onQuery, onSearchKey, leadin
         <GroupInput
           ref={search}
           value={query}
-          placeholder={label}
+          // What stands before his words is the field's hint then: "Mail" and "Search Work" side by side read as one phrase.
+          placeholder={leading ? undefined : label}
+          maxLength={maxLength}
           aria-label={label}
           // What the list is narrowed to is part of what the field is, for a reader that cannot see it stand there.
           aria-describedby={leading ? leadingId : undefined}

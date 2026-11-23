@@ -113,6 +113,20 @@ describe("the order of the list", () => {
     m = landInstant(m, m.gen, "box", answer([group("thread", ["box-0", "box-1"])])).model;
     expect(shape(rowsOf(m))).toEqual(["# Thread", "box-1", "mac-1", "box-0"]);
   });
+  it("leaves a row he has already moved to in its place at the first answer to new words: the new rows go under", () => {
+    let m = typed("budget", [box, mac]);
+    m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1"])])).model;
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1"])])).model;
+    m = typed("budget ", [box, mac], m);
+    m = begin(m, { text: "budget b", kind: null, hosts: [box, mac] });
+    expect(m.moved).toBe(false);
+    // before anything answers he arrows to the second row of what still stands there
+    m = step(m, rowsOf(m), 1);
+    expect(activeOf(m, rowsOf(m))).toBe("hit:box-1");
+    m = landInstant(m, m.gen, "box", answer([group("thread", ["box-1", "box-2"])])).model;
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "mac-1", "box-1", "box-2"]);
+    expect(activeOf(m, rowsOf(m))).toBe("hit:box-1");
+  });
   it("carries the order on when the same ask is made again (a host came or went)", () => {
     let m = typed("budget", [box, mac]);
     m = landInstant(m, m.gen, "mac", answer([group("thread", ["mac-1"])])).model;
@@ -362,6 +376,32 @@ describe("Recent across hosts", () => {
     const rows = rowsOf(m);
     expect(shape(rows)).toEqual(["# Recent", "shared", "b-mid", "m-old"]);
     expect(rows.find((row) => row.type === "hit" && row.hit.key === "shared")).toMatchObject({ host: "mac" });
+  });
+});
+
+describe("out of one kind", () => {
+  it("puts the highlight back on the row he came in by, held as a row he chose", () => {
+    let m = typed("budget");
+    m = landInstant(m, m.gen, "box", answer([group("person", ["p1"]), group("mail", ["m1", "m2", "m3", "m4"], { more: true })])).model;
+    m = begin(m, { text: "budget", kind: "mail", hosts: [box] });
+    expect([m.moved, m.active]).toEqual([false, null]);
+    m = landInstant(m, m.gen, "box", answer([group("mail", ["m1", "m2", "m3", "m4", "m5", "m6"])])).model;
+    m = begin(m, { text: "budget", kind: null, hosts: [box] });
+    // the mail he was looking at still holds his words: four of it, and the row that opens the rest
+    expect(shape(rowsOf(m))).toEqual(["# Mail", "m1", "m2", "m3", "m4", "[All mail for “budget”]"]);
+    expect(activeOf(m, rowsOf(m))).toBe("all:mail");
+    m = landInstant(m, m.gen, "box", answer([group("person", ["p1"]), group("mail", ["m1", "m2", "m3", "m4"], { more: true })])).model;
+    expect(activeOf(m, rowsOf(m))).toBe("all:mail");
+    // into a kind, and with other words, the highlight starts at the top as ever
+    expect(begin(m, { text: "budgets", kind: null, hosts: [box] }).active).toBeNull();
+  });
+});
+
+describe("his words", () => {
+  it("are asked no longer than the wire takes", () => {
+    const m = typed(`${"long ".repeat(60)}`);
+    expect(m.text.length).toBeLessThanOrEqual(200);
+    expect(paramsFor(m, box, {}).text).toBe(m.text);
   });
 });
 

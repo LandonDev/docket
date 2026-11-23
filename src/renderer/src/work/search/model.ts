@@ -4,6 +4,7 @@ import {
   SEARCH_ALL,
   SEARCH_PER_GROUP,
   SEARCH_RECENTS,
+  SEARCH_TEXT_MAX,
   searchLabel,
   searchNoun,
   searchRank,
@@ -95,9 +96,12 @@ export const asksNetwork = (text: string): boolean => text.trim().length >= NETW
  * on that cannot be asked, each one quiet line.
  */
 export function begin(model: SearchModel, ask: { text: string; kind: string | null; scope?: string | null; hosts: SearchHost[]; offline?: readonly string[] }): SearchModel {
-  const text = ask.text.trim();
+  // No more than the wire takes: a host refuses longer words, and that is not a host that did not answer.
+  const text = ask.text.trim().slice(0, SEARCH_TEXT_MAX);
   const scope = ask.scope ?? null;
   const same = text === model.text && ask.kind === model.kind && scope === model.scope;
+  // Out of one kind, by Escape: back on the row he came in by, "All mail for …", when it is still there.
+  const back = model.kind !== null && ask.kind === null && text === model.text && scope === model.scope ? `all:${model.kind}` : null;
   return {
     ...model,
     gen: model.gen + 1,
@@ -111,8 +115,8 @@ export function begin(model: SearchModel, ask: { text: string; kind: string | nu
     // The rows on screen stay as they stand until an answer lands; the same ask again carries their order on.
     orderGen: same && model.orderGen === model.gen ? model.gen + 1 : model.orderGen,
     searched: false,
-    moved: same ? model.moved : false,
-    active: same ? model.active : null,
+    moved: same ? model.moved : back !== null,
+    active: same ? model.active : back,
   };
 }
 
@@ -297,7 +301,8 @@ function groupsOf(model: SearchModel): Group[] {
  */
 function settled(model: SearchModel): SearchModel {
   const order: Record<string, string[]> = {};
-  for (const group of groupsOf(model.orderGen === model.gen ? model : { ...model, order: {} })) if (group.kind !== RECENT_KIND) order[group.kind] = group.hits.map((found) => found.hit.key);
+  // Unless he has already moved to a row of what stands there: then it keeps its place, and the new rows go under.
+  for (const group of groupsOf(model.orderGen === model.gen || model.moved ? model : { ...model, order: {} })) if (group.kind !== RECENT_KIND) order[group.kind] = group.hits.map((found) => found.hit.key);
   return { ...model, order, orderGen: model.gen };
 }
 

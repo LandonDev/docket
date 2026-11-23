@@ -112,7 +112,7 @@ export const SEARCH_NOUNS: Readonly<Record<string, string>> = {
   project: 'projects',
   thread: 'threads',
   item: 'items',
-  held: 'held acts',
+  held: 'held items',
   routine: 'routines',
   card: 'cards',
   money: 'ledger rows'

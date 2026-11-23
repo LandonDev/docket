@@ -117,7 +117,8 @@ describe("keybindings", () => {
 
   it("says where a binding holds in words, never code", () => {
     for (const binding of all) {
-      if (binding.scope) expect(KEYBINDING_SCOPE_LABEL[binding.scope]).toMatch(/^[A-Z][a-z ]+$/);
+      // plain words; one may be a name ("In Work search")
+      if (binding.scope) expect(KEYBINDING_SCOPE_LABEL[binding.scope]).toMatch(/^[A-Z][a-z]*( [A-Za-z][a-z]*)*$/);
     }
     expect(JSON.stringify(KEYBINDING_GROUPS)).not.toMatch(/editorFocus|deckLayout|Always/);
   });

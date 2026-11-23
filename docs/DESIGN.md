@@ -2607,6 +2607,8 @@ his hands and leaves no trace on what he was searching from.
   day. The field is a combobox that names the list and the highlighted
   row (`aria-controls`, `aria-activedescendant`), so a screen reader says
   the row the arrows are on.
+- **The field** takes 200 characters, what a host is asked, and leaves
+  every key to an input method while he composes a word.
 - **The key** is ⌘⇧K, a command of its own (`search_work`); ⌘K stays the
   app's Search. The place to click is a ghost search mark on the rail's
   **Work** heading, before its +, with the key in its tip. No other screen
@@ -2622,7 +2624,8 @@ his hands and leaves no trace on what he was searching from.
 - **Groups** stand in one fixed order by kind (People, Mail, Messages,
   Tasks, Agenda, Files, Documents, Projects, Threads, then the rest),
   never by speed or score, under the menu group label (11px medium muted,
-  `px-3 pt-2 pb-1`): the `@` list's own headings. Narrowed to one kind
+  `px-3 pt-2 pb-1`; the first under the field `pt-1`, which with the
+  rule's 4px stands it the same 8px down): the `@` list's own headings. Narrowed to one kind
   the heading is gone: the field already names the kind, and a reader is
   told on the way in and out ("Mail only", "Every kind").
 - **A row** is the `@` list's own, one line: a 16px glyph of its kind, the
@@ -2638,15 +2641,16 @@ his hands and leaves no trace on what he was searching from.
   under 800) the fact goes rather than stand as a stub, and the job is its
   dot alone. A file kept in
   the cloud wears Files' cloud mark after its name.
-- **The job** is the sector dot and the job's name in 12px muted, in a
-  column of one width so the names line up; never a chip. It is drawn only
+- **The job** is the sector dot and the job's name in 12px muted, in an
+  80px column so the names line up (a longer name is cut); never a chip. It is drawn only
   while the results can mix jobs (All jobs, with more than one job in
   reach). Scoped to one job the column is gone.
 - **Four rows a kind**, then one muted row, "All mail for “budget”"
   (foreground once the highlight is on it, as any row Return will take):
   Return on it narrows the picker to that kind (thirty rows), the kind's
-  name standing muted before his words in the field. Escape steps back
-  out; a second Escape closes.
+  name standing muted before his words in the field (and in the hint's
+  place while he has typed none). Escape steps back out, onto the row he
+  came in by; a second Escape closes.
 - **The list holds still.** Rows on screen never change order among
   themselves: within a kind, what lands later goes under the rows already
   there, into the free places, and the rest is behind "All …". Until he
@@ -2667,7 +2671,8 @@ his hands and leaves no trace on what he was searching from.
   jobs", on the note's own inset. It is said only of a search that ran: at
   two characters or more, with at least one source answering. When none
   could search (every host away, or mail alone with LifeOS signed out) the
-  causes below stand alone. His words are echoed on one line, cut at the
+  causes below stand alone. A reader is told both once the search settles
+  (a status line), since no row is there to be named. His words are echoed on one line, cut at the
   row's end.
 - **What could not be searched** is one muted line a cause at the list's
   foot, in LifeOS's or the host's own words: "LifeOS is signed out on

@@ -387,6 +387,45 @@ describe("Work search", () => {
     expect(list().querySelector('[data-row="all:mail"]')!.className).toContain("text-muted-foreground");
   });
 
+  it("leaves every key to an input method while he composes a word: Return takes a candidate, never a row", async () => {
+    await mount();
+    await type("budget");
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail"), hit("m2", "mail")])]));
+    await press("ArrowDown", { isComposing: true });
+    expect(selected()).toBe("hit:m1");
+    await press("Enter", { isComposing: true });
+    await press("Enter", { keyCode: 229 });
+    expect(opened.hits).toEqual([]);
+    expect(onClose).not.toHaveBeenCalled();
+    await press("Enter");
+    expect(opened.hits).toEqual([{ key: "m1", host: "box" }]);
+  });
+
+  it("tells a reader what the list's foot says once the search has settled: nothing found, and what could not be searched", async () => {
+    await mount();
+    const told = (): string => document.querySelector("[data-work-search-told]")!.textContent ?? "";
+    expect(document.querySelector("[data-work-search-told]")!.getAttribute("role")).toBe("status");
+    await type("zebra");
+    expect(told()).toBe("");
+    await land(asks.length - 1, answer([], { quiet: [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }] }));
+    expect(told()).toBe("Nothing for “zebra”. LifeOS is signed out on The box.");
+    // a search that found things still says what it could not search
+    await type("budget");
+    expect(told()).toBe("");
+    await land(asks.length - 1, answer([group("thread", "Threads", [hit("thread:t1", "thread")])], { quiet: [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }] }));
+    expect(told()).toBe("LifeOS is signed out on The box.");
+  });
+
+  it("takes no more words than a host will be asked, and shows no hint beside a kind", async () => {
+    await mount();
+    expect(field().maxLength).toBe(200);
+    expect(field().placeholder).toBe("Search Work");
+    cleanup();
+    await mount({ kind: "mail" });
+    expect(field().getAttribute("placeholder")).toBeNull();
+    expect(field().getAttribute("aria-label")).toBe("Search Work");
+  });
+
   it("takes the kind away on Backspace at the field's start", async () => {
     await mount({ kind: "mail" });
     field().setSelectionRange(0, 0);

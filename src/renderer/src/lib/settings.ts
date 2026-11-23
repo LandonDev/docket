@@ -327,7 +327,7 @@ export const KEYBINDING_SCOPE_LABEL: Record<NonNullable<Keybinding["scope"]>, st
   editor: "In the editor",
   "outside-editor": "Outside the editor",
   files: "In the file tree",
-  "work-search": "While searching",
+  "work-search": "In Work search",
 };
 
 /** The groups with only the bindings whose name, group or keys match;

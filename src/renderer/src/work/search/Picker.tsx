@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
-import { searchLabel, type SearchHit } from "@shared/work/search";
+import { SEARCH_TEXT_MAX, searchLabel, type SearchHit } from "@shared/work/search";
 import { FileTypeIcon } from "../../chrome/FileTypeIcon";
 import { ChevronDown, Clock, Layers, MessageMultiple, MessageSquare, Outbox, type IconComponent } from "../../chrome/icons";
 import { MatchText } from "../../chrome/MatchText";
@@ -152,6 +152,11 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   const options = useMemo(() => rows.filter(isOption), [rows]);
   const active = activeOf(model, rows);
   const spin = useSteadySpin(busy(model));
+  const told = busy(model)
+    ? ""
+    : rows
+        .flatMap((row) => (row.type === "note" ? [/[.!?]$/.test(row.text) ? row.text : `${row.text}.`] : []))
+        .join(" ");
   const mixed = job === null && jobs.length > 1;
   const jobOf = (hit: SearchHit): Job | null => jobOfWorkspace(jobs, hit.workspaceId);
 
@@ -171,6 +176,8 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   };
 
   const onSearchKey = (e: ReactKeyboardEvent<HTMLInputElement>): void => {
+    // While he composes a word (an input method's candidates), every key is the composition's: Return takes a candidate, the arrows move among them.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !e.altKey) {
       e.preventDefault();
       controller.step(rows, e.key === "ArrowDown" ? 1 : -1);
@@ -217,6 +224,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
       listId={rows.length > 0 ? LIST_ID : undefined}
       activeId={active ? optionId(active) : null}
       rule={rows.length > 0}
+      maxLength={SEARCH_TEXT_MAX}
       trailing={
         <FieldEnd
           busy={spin}
@@ -232,6 +240,10 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
       {/* `data-out` is the truth the spinner steadies: something asked has not answered (the live proof waits on it). */}
       <span role="status" data-out={busy(model) || undefined} className="sr-only">
         {said}
+      </span>
+      {/* What the list's foot says in muted words, a reader is told once the search has settled: nothing found, and what could not be searched. */}
+      <span role="status" data-work-search-told className="sr-only">
+        {told}
       </span>
       <Results
         rows={rows}
@@ -505,7 +517,7 @@ export function Results({
                 <span className="ml-auto flex shrink-0 items-center gap-2">
                   {mixed ? (
                     // In a window too narrow for the names the job is its dot alone, and the title keeps its words.
-                    <span data-job className="flex w-28 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-auto">
+                    <span data-job className="flex w-20 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-auto">
                       {job ? <SectorDot sector={job.sector} /> : <span aria-hidden className="size-4 shrink-0" />}
                       <span className="min-w-0 truncate max-[480px]:sr-only">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
                     </span>
