@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyPrepDoc, type PrepEvent, type PrepPage } from "@shared/contract-work-prep";
-import { addedKey, addTasksLabel, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesLines, outcomeIsComing, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, failedWords, samePeople, threadStopped, timeWords, uploadPercent, whenLine } from "./model";
+import { addedKey, addTasksLabel, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesLines, outcomeIsComing, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, failedWords, returnPicks, samePeople, threadStopped, timeWords, uploadPercent, whenLine } from "./model";
 
 /** A meeting's page in words (docs/agents/work-prep.md "The page"): the comma line, each row's second line and what trails it. */
 
@@ -36,7 +36,7 @@ describe("when a meeting is over", () => {
     expect(isOver(event(), at(14, 45))).toBe(true);
     expect(isOver(event({ endsAt: undefined }), at(14, 59))).toBe(false);
     expect(isOver(event({ endsAt: undefined }), at(15))).toBe(true);
-    // one that lasts the day with no end is over a day after it began
+    // one that lasts the day with no end is over at the next midnight, as Agenda ends it
     expect(isOver(event({ endsAt: undefined, allDay: true, startsAt: at(0) }), at(23))).toBe(false);
     expect(isOver(event({ endsAt: undefined, allDay: true, startsAt: at(0) }), at(0, 0, 24))).toBe(true);
   });
@@ -69,13 +69,15 @@ describe("a row's words", () => {
 });
 
 describe("what did not load", () => {
-  it("is one sentence, however many parts failed", () => {
+  it("names the one part that failed by its own words, and says more than one as one plain line", () => {
     expect(problemWords([])).toBeNull();
     expect(problemWords(["tasks"])).toBe("Tasks did not load");
     // the people are drawn whatever failed: what is missing is what LifeOS says of each
-    expect(problemWords(["people"])).toBe("Their mail and tasks did not load");
-    expect(problemWords(["tasks", "last", "tasks"])).toBe("Tasks and last time did not load");
-    expect(problemWords(["tasks", "last", "drafts"])).toBe("Tasks, last time and the follow-up mail did not load");
+    expect(problemWords(["people", "people"])).toBe("People’s mail and tasks did not load");
+    expect(problemWords(["drafts"])).toBe("The follow-up mail did not load");
+    // never "…mail and tasks and tasks": Retry reads every part again anyway
+    expect(problemWords(["people", "tasks"])).toBe("Parts of this page did not load");
+    expect(problemWords(["people", "tasks", "last", "drafts"])).toBe("Parts of this page did not load");
   });
 });
 
@@ -105,6 +107,21 @@ describe("who Add people can tick", () => {
     expect(got).toEqual([{ name: "Dana Reyes" }, { name: "Jordan Ellis" }]);
   });
 
+  it("keeps two names of another script as two people", () => {
+    expect(addedKey({ name: "李雷" })).not.toBe(addedKey({ name: "王芳" }));
+    expect(addedKey({ name: "Ольга  Петрова" })).toBe("~ольга петрова");
+    expect(pickable(page({}), [], [{ name: "李雷" }, { name: "王芳" }])).toHaveLength(2);
+  });
+
+  it("has Return in the search add a name only when the list shows no one, tick the one it shows, and never act on several", () => {
+    expect(returnPicks("", 3, false)).toBeNull();
+    expect(returnPicks("Jordan Ellis", 0, true)).toBe("name");
+    expect(returnPicks("sam", 1, true)).toBe("tick");
+    expect(returnPicks("a", 4, true)).toBeNull();
+    // a name already in the list, filtered away by nothing: no second add
+    expect(returnPicks("Dana Reyes", 0, false)).toBeNull();
+  });
+
   it("knows a person by address, else by folded name, as the host does", () => {
     expect(addedKey({ name: "Dana", address: " Dana@X.test " })).toBe("dana@x.test");
     expect(addedKey({ name: "Dána  Reyes" })).toBe("~dana reyes");
@@ -115,7 +132,7 @@ describe("who Add people can tick", () => {
 
 describe("the header's verb", () => {
   type Page = Parameters<typeof headVerb>[0];
-  const page = (over: Partial<Page> = {}): Page => ({ event: event(), doc: emptyPrepDoc(), state: "none", briefSessionId: null, followSessionId: null, ...over });
+  const page = (over: Partial<Page> = {}): Page => ({ event: event(), doc: emptyPrepDoc(), briefSessionId: null, followSessionId: null, briefUntil: null, followUntil: null, ...over });
   const brief = { matters: [{ text: "x" }], agreed: [], files: [], at: 1, by: "t" };
   const notes = { text: "n", at: 2 };
   const after = { summary: [], decisions: [], questions: [], tasks: [], at: 3 };
@@ -131,14 +148,22 @@ describe("the header's verb", () => {
   });
 
   it("offers Brief me again when the thread stopped without writing", () => {
-    for (const status of ["idle", "error", "stopped", "done", "paused"]) expect(headVerb(page({ briefSessionId: "t", state: "working" }), NOW, { ...idle, brief: status }), status).toBe("brief");
+    for (const status of ["idle", "error", "stopped", "done", "paused"]) expect(headVerb(page({ briefSessionId: "t", briefUntil: NOW + 60_000 }), NOW, { ...idle, brief: status }), status).toBe("brief");
   });
 
-  it("takes the host's bound on time for a thread this window does not hold", () => {
-    expect(headVerb(page({ briefSessionId: "t", state: "working" }), NOW, idle)).toBe("preparing");
-    expect(headVerb(page({ briefSessionId: "t", state: "none" }), NOW, idle)).toBe("brief");
-    expect(briefIsComing(page({ briefSessionId: "t", state: "working" }), "preparing")).toBe(true);
+  it("takes the host's bound on time for a thread this window does not hold, read against the window's own clock", () => {
+    // at work until the bound: the spinner cannot outlast it, whether or not a push ever comes
+    expect(headVerb(page({ briefSessionId: "t", briefUntil: NOW + 60_000 }), NOW, idle)).toBe("preparing");
+    expect(headVerb(page({ briefSessionId: "t", briefUntil: NOW + 60_000 }), NOW + 61_000, idle)).toBe("brief");
+    expect(headVerb(page({ briefSessionId: "t", briefUntil: null }), NOW, idle)).toBe("brief");
+    expect(briefIsComing(page({ briefSessionId: "t", briefUntil: NOW + 1 }), "preparing")).toBe(true);
     expect(briefIsComing(page({ doc: { ...emptyPrepDoc(), brief } }), "preparing")).toBe(false);
+    // the same for a follow-up thread on a host whose threads this window does not hold
+    const followed = page({ followSessionId: "f", followUntil: NOW + 60_000, doc: { ...emptyPrepDoc(), notes } });
+    expect(headVerb(followed, NOW, idle)).toBe("following");
+    expect(headVerb(followed, NOW + 61_000, idle)).toBe("followUp");
+    // a thread the window does hold says for itself, whatever the bound
+    expect(headVerb(page({ briefSessionId: "t", briefUntil: NOW + 60_000 }), NOW, { ...idle, brief: "error" })).toBe("brief");
   });
 
   it("after the end is Add notes, then Follow up once notes stand, then Following up, then nothing once an outcome stands", () => {
@@ -181,11 +206,12 @@ describe("the outcome's words", () => {
     expect(notesLines({ doc: { ...emptyPrepDoc(), notes: { text: "n", at: 1 }, after } })).toBe(2);
   });
 
-  it("names the one task a filing failed for, and counts more than one", () => {
+  it("says a failed filing in a short word that always fits, with the task and why beside it", () => {
     const tasks = [{ id: "s1", title: "Book the van" }, { id: "s2", title: "Order jerseys" }];
-    expect(failedWords([{ id: "s2" }], tasks)).toBe("“Order jerseys” was not added");
-    expect(failedWords([{ id: "gone" }], tasks)).toBe("A task was not added");
-    expect(failedWords([{ id: "s1" }, { id: "s2" }], tasks)).toBe("2 tasks were not added");
+    const why = "LifeOS did not answer";
+    expect(failedWords([{ id: "s2", error: why }], tasks)).toEqual({ word: "A task was not added", detail: "“Order jerseys”: LifeOS did not answer" });
+    expect(failedWords([{ id: "gone", error: why }], tasks)).toEqual({ word: "A task was not added", detail: why });
+    expect(failedWords([{ id: "s1", error: why }, { id: "s2", error: "x" }], tasks)).toEqual({ word: "2 tasks were not added", detail: why });
   });
 });
 

@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { PrepAddedPerson, PrepAhead, PrepPage } from "@shared/contract-work-prep";
 import { attachmentSettings, blobSource, formatBytes, uploadFile, type UploadProgress } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
@@ -13,6 +13,8 @@ import { refusalWords } from "../../lib/settingsHome";
 
 export interface PrepView {
   page: PrepPage | null;
+  /** a read is on its way: a Retry with no page to show draws the bones, not a button that looks deaf */
+  reading?: boolean;
   /** the first answer has come */
   loaded: boolean;
   /** the last read failed: why */
@@ -99,7 +101,8 @@ export function usePrepHeld(workspaceId: string, eventId: string | null): PrepVi
 /** A meeting's page, live: read on mount and whenever its host says it changed. */
 export function usePrep(environmentId: string, workspaceId: string, eventId: string | null): PrepView {
   const key = keyOf(workspaceId, eventId ?? "");
-  const view = useSyncExternalStore(subscribe, () => entries.get(key) ?? EMPTY);
+  const held = useSyncExternalStore(subscribe, () => entries.get(key) ?? EMPTY);
+  const view = useMemo<PrepView>(() => ({ page: held.page, loaded: held.loaded, error: held.error, reading: "fetching" in held && (held as Entry).fetching }), [held]);
   useEffect(() => {
     if (!eventId) return;
     // Every mount asks once more: the facts are LifeOS's as they stand now.
@@ -140,9 +143,9 @@ export function resetPrep(): void {
 export const briefPrep = async (environmentId: string, workspaceId: string, eventId: string, restart = false): Promise<string> =>
   (await ask<{ sessionId: string }>(environmentId, "work.prep.brief", { workspaceId, eventId, ...(restart ? { restart } : {}) })).sessionId;
 
-/** Keeps his notes with the page (empty text takes them back). */
-export async function keepPrepNotes(environmentId: string, workspaceId: string, eventId: string, text: string): Promise<void> {
-  holdPrep((await ask<{ page: PrepPage }>(environmentId, "work.prep.notes", { workspaceId, eventId, text })).page);
+/** Keeps his notes with the page (empty text takes them back). `dropFile`: a recording that never arrived or could not be read is no notes. */
+export async function keepPrepNotes(environmentId: string, workspaceId: string, eventId: string, text: string, dropFile = false): Promise<void> {
+  holdPrep((await ask<{ page: PrepPage }>(environmentId, "work.prep.notes", { workspaceId, eventId, text, ...(dropFile ? { dropFile } : {}) })).page);
 }
 
 /** Follow up: the host starts the follow-up thread from the notes, or answers the one still working. `restart`: the window knows that thread stopped. */
@@ -157,16 +160,26 @@ export const followUpPrep = async (environmentId: string, workspaceId: string, e
  * of it goes anywhere else. Throws the words to show when the host cannot
  * read it: a transcriber that is not installed, a file over the host's limit.
  */
-export async function followUpFromFile(environmentId: string, workspaceId: string, eventId: string, file: File, onProgress?: (progress: UploadProgress) => void): Promise<string> {
+export async function followUpFromFile(
+  environmentId: string,
+  workspaceId: string,
+  eventId: string,
+  file: File,
+  opts: { onProgress?: (progress: UploadProgress) => void; restart?: boolean; typed?: string } = {},
+): Promise<string> {
   const [{ maxBytes }, source] = await Promise.all([attachmentSettings(environmentId), blobSource(file)]);
   // Said before any thread starts: a file the host will not take starts nothing.
   if (source.size > maxBytes) throw new Error(`${file.name} is ${formatBytes(source.size)}, over this host’s ${formatBytes(maxBytes)} limit`);
-  const { sessionId, itemId } = await ask<{ sessionId: string; itemId?: string }>(environmentId, "work.prep.followUp", { workspaceId, eventId, recording: { name: file.name } });
+  const { sessionId, itemId } = await ask<{ sessionId: string; itemId?: string }>(environmentId, "work.prep.followUp", { workspaceId, eventId, recording: { name: file.name }, ...(opts.restart ? { restart: true } : {}) });
   if (!itemId) throw new Error("A follow-up is already at work on this meeting. Open its thread from More.");
   try {
-    const landed = await uploadFile({ threadEnv: environmentId, sessionId, name: file.name, ...(file.type ? { mime: file.type } : {}), source, into: "workspace", ...(onProgress ? { onProgress } : {}) });
+    const landed = await uploadFile({ threadEnv: environmentId, sessionId, name: file.name, ...(file.type ? { mime: file.type } : {}), source, into: "workspace", ...(opts.onProgress ? { onProgress: opts.onProgress } : {}) });
     const { meeting } = await ask<{ meeting: { status: string; error?: string | null } }>(environmentId, "work.meetings.start", { itemId, source: { at: "file", host: environmentId, path: landed.path } });
     if (meeting.status === "failed") throw new Error(meeting.error?.trim() || "This host could not read the file.");
+  } catch (err) {
+    // The file never arrived, or the host could not read it: it is no notes. What he typed stays; the page offers Add notes or Follow up as before.
+    await keepPrepNotes(environmentId, workspaceId, eventId, opts.typed ?? "", true).catch(() => undefined);
+    throw err;
   } finally {
     void loadPrep(environmentId, workspaceId, eventId);
   }

@@ -12,11 +12,12 @@ import { Spinner } from "../../components/ui/spinner";
 import { Textarea } from "../../components/ui/textarea";
 import { modOrCtrl } from "../../lib/keys";
 import { refusalWords } from "../../lib/settingsHome";
+import { useSessionMetaValue } from "../../lib/tcserver/store";
 import { Face } from "../mail/face";
 import { findPeople, pictureOf, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import { dropNotes, followUpFromFile, followUpPrep, heldNotes, holdNotes, keepPrepNotes, loadPrep, notesDocPrep, openWorkspaceFile, setPrepPeople } from "./data";
-import { addedKey, NOTES_FILE_ACCEPT, pickable, samePeople, uploadPercent } from "./model";
+import { addedKey, NOTES_FILE_ACCEPT, pickable, returnPicks, samePeople, threadStopped, uploadPercent } from "./model";
 
 /**
  * The page's dialogs (docs/agents/work-prep.md "Dialogs"), a chunk of their
@@ -112,11 +113,13 @@ export function PeopleForm({
             placeholder="Search"
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
-            // Return in the search adds the typed name when that is what the list offers; it never saves by itself.
+            // Return in the search never saves. It adds the typed name when the list has no one for it, and ticks the one person it shows.
             onKeyDown={(e) => {
-              if (e.key !== "Enter" || !typed) return;
+              if (e.key !== "Enter") return;
               e.preventDefault();
-              if (canName) addNamed();
+              const does = returnPicks(typed, shown.length, canName);
+              if (does === "name") addNamed();
+              else if (does === "tick") toggle(shown[0]!);
             }}
             autoComplete="off"
             spellCheck={false}
@@ -190,6 +193,8 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
   // What the host holds: a change from it is what a close has to keep.
   const kept = useRef(before);
   const changed = () => text.trim() !== kept.current.trim();
+  // A follow-up thread this window holds and knows has stopped is not waited on, as from the header's verb.
+  const restart = threadStopped(page.followSessionId, useSessionMetaValue(page.followSessionId, (meta) => meta.status));
   const keep = async () => {
     if (!changed()) return;
     await keepPrepNotes(env, workspaceId, eventId, text);
@@ -239,7 +244,7 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
         () => dropNotes(workspaceId, eventId),
         (err: unknown) => {
           holdNotes(workspaceId, eventId, typed, `The notes were not kept: ${refusalWords(err) || "the host did not answer"}`);
-          reopenNotes.current?.();
+          reopenNotes.current?.(workspaceId, eventId);
         },
       );
     }
@@ -254,10 +259,11 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
         upload={upload}
         error={error}
         onCancel={saveThenClose}
-        onFollowUp={(done) => run(() => followUpPrep(env, workspaceId, eventId), done)}
+        onClose={onClose}
+        onFollowUp={(done) => run(() => followUpPrep(env, workspaceId, eventId, restart), done)}
         onFile={(file, done) => {
           setUpload({ name: file.name, progress: null });
-          run(() => followUpFromFile(env, workspaceId, eventId, file, (progress) => setUpload({ name: file.name, progress })), done);
+          run(() => followUpFromFile(env, workspaceId, eventId, file, { onProgress: (progress) => setUpload({ name: file.name, progress }), restart, typed: text }), done);
         }}
         // The document is his to write in: it opens beside a new thread, and the page keeps it as the notes.
         onDocument={(done) => run(async () => openWorkspaceFile(env, await notesDocPrep(env, workspaceId, eventId)), done)}
@@ -266,8 +272,8 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
   );
 }
 
-/** How the page opens the Notes dialog again, for a close whose save failed after the dialog had gone. */
-export const reopenNotes: { current: (() => void) | null } = { current: null };
+/** How the page opens the Notes dialog again, for a close whose save failed after the dialog had gone: it is told whose notes they were, and opens only on that meeting's own page. */
+export const reopenNotes: { current: ((workspaceId: string, eventId: string) => void) | null } = { current: null };
 
 /** The Notes dialog's inside, holding no call of its own: the preview draws it as the app does. */
 export function NotesForm({
@@ -277,6 +283,7 @@ export function NotesForm({
   upload,
   error,
   onCancel,
+  onClose,
   onFollowUp,
   onFile,
   onDocument,
@@ -289,6 +296,8 @@ export function NotesForm({
   error: string | null;
   /** Cancel: keep what he typed, then `done` */
   onCancel: (done: () => void) => void;
+  /** the page's own close, run once the dialog's exit has played */
+  onClose: () => void;
   onFollowUp: (done: () => void) => void;
   onFile: (file: File, done: () => void) => void;
   onDocument: (done: () => void) => void;
@@ -297,8 +306,8 @@ export function NotesForm({
   const input = useRef<HTMLInputElement>(null);
   const empty = !text.trim();
   const busy = pending !== null;
-  // The shell's own exit, then nothing more: the work is done by the time it plays.
-  const done = () => close?.(() => {});
+  // The work is done by the time this runs: the shell plays its exit, then the page forgets the dialog, so it can open again.
+  const done = () => (close ? close(onClose) : onClose());
   const submit = () => {
     if (!empty && !busy) onFollowUp(done);
   };

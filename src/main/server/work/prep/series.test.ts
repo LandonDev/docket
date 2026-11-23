@@ -57,6 +57,9 @@ describe('last time', () => {
     expect(personKey({ address: ' Dana@X.test ', name: 'Dana' })).toBe('dana@x.test')
     expect(personKey({ name: 'Dána  Reyes' })).toBe('~dana reyes')
     expect(foldTitle('  Scrim vs. Illinois (week 3) ')).toBe('scrim vs illinois week 3')
+    // letters of any script are kept: two names in Chinese are two keys, not one empty one
+    expect(personKey({ name: '李雷' })).toBe('~李雷')
+    expect(personKey({ name: '王芳' })).not.toBe(personKey({ name: '李雷' }))
   })
 })
 

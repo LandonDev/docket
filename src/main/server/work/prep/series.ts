@@ -27,7 +27,8 @@ export const foldTitle = (title: string): string =>
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
+    // Letters and digits of any script: two names in Chinese are two names, not the same empty key.
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
 
 /** A person as two pages share them: their address, or their folded name when the page has none. */

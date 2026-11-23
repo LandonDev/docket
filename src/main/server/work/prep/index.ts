@@ -1,9 +1,9 @@
 import { PREP_UPCOMING_MAX_MS, PREP_WORKING_MS, type PrepAddedPerson, type PrepPage } from '@shared/contract-work-prep'
 import { errorText, handled, NOT_HANDLED, type CanvasSource } from '@shared/work'
-import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
+import type { Caller, WorkCtx, WorkModule } from '../modules'
 import { aheadOf, setAhead } from './ahead'
 import { decideTasks } from './after'
-import { eventOf, fileTitle, gather, standing, startDoc, upcoming } from './gather'
+import { eventOf, fileTitle, gather, meetingOf, standing, startDoc, upcoming } from './gather'
 import { pagePushed, writePage } from './page'
 import { briefMessage, briefTitle, followMessage, followTitle } from './prompts'
 import { changeInOrder } from './serial'
@@ -17,9 +17,6 @@ import { workspaceSector } from './workspace'
  * workspace’s host. A Work thread writes the brief or outcome with tools.
  * The pillar declares no act kind.
  */
-
-/** This host's own caller, for a read prep makes of another pillar. */
-const HOST: Caller = { kind: 'local', caps: ['read'] }
 
 /** The starter the notes document is made from; his own template saved as "Meeting notes" takes its place (work-templates.md). */
 export const NOTES_TEMPLATE = 'any/meeting-notes'
@@ -43,14 +40,15 @@ async function setPeople(ctx: WorkCtx, workspaceId: string, eventId: string, peo
   return (await gather(ctx, workspaceId, eventId, now)).page
 }
 
-async function setNotes(ctx: WorkCtx, workspaceId: string, eventId: string, text: string): Promise<PrepPage> {
+async function setNotes(ctx: WorkCtx, workspaceId: string, eventId: string, text: string, dropFile = false): Promise<PrepPage> {
   const event = await eventOf(ctx, workspaceSector(ctx, workspaceId), eventId)
   const { row, last } = standing(new PrepStore(ctx.db), workspaceId, event)
   const at = Date.now()
   const doc = row?.doc ?? startDoc(last)
   const words = text.trim()
-  // A file that holds the notes stays when the words beside it change or go.
-  const notes = words || doc.notes?.file || doc.notes?.meetingItemId ? { ...doc.notes, text: words, at } : null
+  // A file that holds the notes stays when the words beside it change or go, unless the window says it never arrived.
+  const { file, meetingItemId } = dropFile ? ({} as { file?: undefined; meetingItemId?: undefined }) : (doc.notes ?? {})
+  const notes = words || file || meetingItemId ? { text: words, at, ...(file ? { file } : {}), ...(meetingItemId ? { meetingItemId } : {}) } : null
   writePage(ctx, workspaceId, event, last, { ...doc, notes }, at)
   return (await gather(ctx, workspaceId, eventId, at)).page
 }
@@ -75,16 +73,10 @@ async function makeNotesDoc(ctx: WorkCtx, by: Caller, workspaceId: string, event
   return { page: (await gather(ctx, workspaceId, eventId, now)).page, source: made.source, title: made.source.at === 'file' ? fileTitle(made.source.path) : made.title }
 }
 
-/** Whether a meeting item holds a file to read: asked of the meetings pillar's own `get`; any doubt is no. */
-async function meetingHasFile(ctx: WorkCtx, itemId: string): Promise<boolean> {
-  try {
-    const meetings = WORK_MODULES.find((m) => m.id === 'meetings')
-    const answer = await meetings?.handle?.({ id: 'prep', method: 'work.meetings.get', params: { itemId } }, ctx, HOST)
-    const meeting = answer?.handled ? (answer.result as { meeting?: { status?: string } | null }).meeting : null
-    return !!meeting && meeting.status !== 'empty'
-  } catch {
-    return false
-  }
+/** Whether a meeting item holds a file to read; any doubt is no. */
+const meetingHasFile = async (ctx: WorkCtx, itemId: string): Promise<boolean> => {
+  const meeting = await meetingOf(ctx, itemId)
+  return !!meeting && meeting.status !== 'empty'
 }
 
 async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, kind: 'brief' | 'follow', opts: { recording?: { name: string }; restart?: boolean } = {}): Promise<{ sessionId: string; itemId?: string }> {
@@ -176,8 +168,8 @@ export const prep: WorkModule = {
       }
       case 'work.prep.notes': {
         mustBePerson(by)
-        const { workspaceId, eventId, text } = req.params
-        return handled({ page: await changeInOrder(ctx, [workspaceId, eventId], () => setNotes(ctx, workspaceId, eventId, text)) })
+        const { workspaceId, eventId, text, dropFile } = req.params
+        return handled({ page: await changeInOrder(ctx, [workspaceId, eventId], () => setNotes(ctx, workspaceId, eventId, text, dropFile === true)) })
       }
       case 'work.prep.decide': {
         mustBePerson(by)

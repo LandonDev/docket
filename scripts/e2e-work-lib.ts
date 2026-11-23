@@ -179,7 +179,20 @@ export class Run {
     this.proc.stdout?.on('data', (c: Buffer) => appendFileSync(log, c))
     this.proc.stderr?.on('data', (c: Buffer) => appendFileSync(log, c))
     this.cdp = await attach(this.port, 120_000)
-    const up = await this.until('window connected', 120_000, () => this.page<boolean>(`window.__monocode?.registry?.statusOf?.(window.__monocode.registry.primaryEnvironmentId)?.transport === 'open'`))
+    // The first connection can be made while the page is still loading, and what it asks is then never answered: an
+    // ask that fails or goes unanswered for a few seconds is asked again on a fresh connection.
+    const connected = `window.__monocode?.registry?.statusOf?.(window.__monocode.registry.primaryEnvironmentId)?.transport === 'open'`
+    const up = await this.until('window connected', 180_000, async () => {
+      const answer = await Promise.race([this.page<boolean>(connected).catch(() => null), sleep(8000).then(() => null)])
+      if (answer !== null) return answer
+      try {
+        this.cdp?.close()
+      } catch {
+        /* gone */
+      }
+      this.cdp = await attach(this.port, 60_000)
+      return false
+    })
     if (!this.check('the instance is up', up)) throw new Error(readFileSync(log, 'utf8').slice(-1500))
     this.serverPort = (await this.page<number | null>('window.api.getServerPort()')) ?? 0
     await this.cdp.send('Page.enable')
@@ -412,6 +425,9 @@ export class Run {
   }
 }
 
+/** How long one evaluate in the page may take; the longest a job asks of the page is a few seconds. */
+const EVAL_TIMEOUT_MS = 60_000
+
 /**
  * The window's page over the debug port (the global WebSocket). The app's own window is the page at
  * `…/index.html`; others come and go while it boots (the capture window, a page that is replaced), and a
@@ -452,7 +468,9 @@ async function attach(port: number, ms: number): Promise<Cdp> {
   return {
     send,
     async eval<T>(expression: string): Promise<T> {
-      const r = (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })) as { result: { value?: T }; exceptionDetails?: { text: string; exception?: { description?: string } } }
+      // Bounded: an evaluate sent while the page is still loading (its context is replaced under it) is never answered.
+      const late = new Promise<never>((_, fail) => setTimeout(() => fail(new Error('the page did not answer')), EVAL_TIMEOUT_MS))
+      const r = (await Promise.race([send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }), late])) as { result: { value?: T }; exceptionDetails?: { text: string; exception?: { description?: string } } }
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text)
       return r.result.value as T
     },

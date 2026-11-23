@@ -36,6 +36,8 @@ const page: PrepPage = {
   state: 'after',
   briefSessionId: 'brief-1',
   followSessionId: 'follow-1',
+  briefUntil: null,
+  followUntil: null,
   drafts: [],
   notesFile: null,
   aheadOn: false,

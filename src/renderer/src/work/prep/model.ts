@@ -78,16 +78,13 @@ export function fileWhere(file: PrepFileRef): string | undefined {
 export const moreWords = (count: number): string | undefined => (count > 0 ? `and ${count} more` : undefined);
 
 // The people are drawn whatever failed (the event names them); what is missing is what LifeOS says of each.
-const PART: Record<PrepProblem, string> = { people: "Their mail and tasks", tasks: "Tasks", last: "Last time", drafts: "The follow-up mail" };
+const PART: Record<PrepProblem, string> = { people: "People’s mail and tasks", tasks: "Tasks", last: "Last time", drafts: "The follow-up mail" };
 
-/** What did not load, as the state line says it: "Tasks did not load", "People and tasks did not load". */
+/** What did not load, as the state line says it: the one part by its own words, more than one as one plain line (Retry reads them all again). */
 export function problemWords(problems: readonly PrepProblem[]): string | null {
-  const names = [...new Set(problems)].map((p) => PART[p]);
-  if (!names.length) return null;
-  // One sentence: only its first word is capitalised.
-  const rest = names.slice(1).map((n) => n.charAt(0).toLowerCase() + n.slice(1));
-  const list = rest.length === 0 ? names[0]! : `${[names[0]!, ...rest.slice(0, -1)].join(", ")} and ${rest.at(-1)!}`;
-  return `${list} did not load`;
+  const parts = [...new Set(problems)];
+  if (!parts.length) return null;
+  return parts.length === 1 ? `${PART[parts[0]!]} did not load` : "Parts of this page did not load";
 }
 
 /** The label over last time's section: "Last time, Nov 16". */
@@ -96,7 +93,8 @@ export const lastLabel = (last: NonNullable<PrepPage["last"]>): string => `Last 
 /** Whether the page has anyone on it at all. */
 export const nobodyOn = (page: Pick<PrepPage, "people" | "morePeople">): boolean => page.people.length === 0 && page.morePeople === 0;
 
-const fold = (s: string): string => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+// Letters and digits of any script, as the host's `foldTitle`: two names in Chinese are two names.
+const fold = (s: string): string => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 /** A person as a page keeps them once: their address, or their folded name when they have none (the host's `personKey`). */
 export const addedKey = (person: Pick<PrepAddedPerson, "address" | "name">): string => (person.address ? person.address.trim().toLowerCase() : `~${fold(person.name)}`);
@@ -138,17 +136,21 @@ export const threadStopped = (sessionId: string | null, status: ThreadStatus): b
  * brief stands. After the end, or once notes stand: Add notes, then Follow
  * up, then Following up while its thread works, then nothing once an outcome
  * stands. The window knows a thread's status from its own row; for a thread
- * it does not hold, the host's bound on time stands in.
+ * it does not hold, the host's bound on time stands in (`briefUntil`,
+ * `followUntil`), read against the window's own clock so it runs out with
+ * no push.
  */
 export type HeadVerb = "brief" | "preparing" | "addNotes" | "followUp" | "following" | null;
 
-export function headVerb(page: Pick<PrepPage, "event" | "doc" | "state" | "briefSessionId" | "followSessionId">, now: number, threads: { brief: ThreadStatus; follow: ThreadStatus }): HeadVerb {
+export function headVerb(page: Pick<PrepPage, "event" | "doc" | "briefSessionId" | "followSessionId" | "briefUntil" | "followUntil">, now: number, threads: { brief: ThreadStatus; follow: ThreadStatus }): HeadVerb {
   const { doc } = page;
-  if (page.followSessionId && threadWorks(threads.follow)) return "following";
+  // A thread this window holds says for itself; one it does not is at work until the host's bound runs out on the window's own clock.
+  const works = (sessionId: string | null, status: ThreadStatus, until: number | null): boolean => sessionId !== null && (status === undefined ? until !== null && until > now : threadWorks(status));
+  if (works(page.followSessionId, threads.follow, page.followUntil)) return "following";
   if (doc.after) return null;
   if (doc.notes) return "followUp";
   if (isOver(page.event, now)) return "addNotes";
-  if (page.briefSessionId && (threads.brief === undefined ? page.state === "working" : threadWorks(threads.brief))) return "preparing";
+  if (works(page.briefSessionId, threads.brief, page.briefUntil)) return "preparing";
   return doc.brief ? null : "brief";
 }
 
@@ -187,12 +189,21 @@ export const NOTES_FILE_ACCEPT = "audio/*,video/*,.vtt,.srt,.txt,.docx";
 /** How far a file's upload is, as a whole per cent; null before the first chunk answers. */
 export const uploadPercent = (progress: { sent: number; total: number } | null): number | null => (!progress || progress.total <= 0 ? null : Math.min(100, Math.round((progress.sent / progress.total) * 100)));
 
-/** What a filing LifeOS did not take says: the task by its name when it is one, a count when it is more. */
-export function failedWords(failed: readonly { id: string }[], tasks: readonly Pick<PrepSuggestion, "id" | "title">[]): string {
-  if (failed.length !== 1) return `${failed.length} tasks were not added`;
+/**
+ * What a filing LifeOS did not take says: a short word that always fits, and beside it the task by its name and
+ * why, which gives way when the window is narrow.
+ */
+export function failedWords(failed: readonly { id: string; error: string }[], tasks: readonly Pick<PrepSuggestion, "id" | "title">[]): { word: string; detail: string } {
+  if (failed.length !== 1) return { word: `${failed.length} tasks were not added`, detail: failed[0]?.error ?? "" };
   const title = tasks.find((t) => t.id === failed[0]!.id)?.title;
-  return title ? `“${title}” was not added` : "A task was not added";
+  return { word: "A task was not added", detail: title ? `“${title}”: ${failed[0]!.error}` : failed[0]!.error };
 }
+
+/**
+ * What Return in Add people's search does: adds the typed name when the list has no one to show for it, ticks the
+ * one person it shows, and does nothing when it shows several. It never saves.
+ */
+export const returnPicks = (typed: string, shown: number, canName: boolean): "name" | "tick" | null => (!typed ? null : shown === 0 ? (canName ? "name" : null) : shown === 1 ? "tick" : null);
 
 /** Whether two lists of added people are the same people: what Save has to change. */
 export function samePeople(a: readonly Pick<PrepAddedPerson, "address" | "name">[], b: readonly Pick<PrepAddedPerson, "address" | "name">[]): boolean {

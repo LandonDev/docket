@@ -120,10 +120,16 @@ export type PrepState = 'none' | 'working' | 'briefed' | 'after'
 export const PREP_WORKING_MS = 20 * 60_000
 
 /**
- * When a meeting is over: its end; when the calendar gave none, an hour after its start, or a day after it for one
- * that lasts the day. The one rule for the page's verb and Agenda's row verb, so the two never disagree.
+ * When a meeting is over: its end; when the calendar gave none, an hour after its start, or the next midnight for
+ * one that lasts the day. The one rule for the page's verb and Agenda's row verb, so the two never disagree.
  */
-export const prepEndOf = (event: { startsAt: number; endsAt?: number | null; allDay?: boolean }): number => event.endsAt ?? event.startsAt + (event.allDay ? 86_400_000 : 3_600_000)
+export function prepEndOf(event: { startsAt: number; endsAt?: number | null; allDay?: boolean }): number {
+  if (event.endsAt !== undefined && event.endsAt !== null) return event.endsAt
+  if (!event.allDay) return event.startsAt + 3_600_000
+  // The next local midnight, as Agenda ends an all-day event: a day is 23 or 25 hours when the clocks change.
+  const d = new Date(event.startsAt)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
+}
 
 export function prepStateOf(page: { doc: PrepDoc; briefSessionId: string | null; briefAt: number | null }, now: number): PrepState {
   if (page.doc.notes || page.doc.after) return 'after'
@@ -190,6 +196,8 @@ export interface PrepNotesFile {
   kind: 'meeting' | 'document'
   title: string
   itemId?: string
+  /** a recording this host could not read (no transcriber, a file it cannot parse): why, in the meeting's own words */
+  error?: string
   /** a document's own file, so the window can open it before any thread holds it */
   source?: CanvasSource
 }
@@ -213,6 +221,12 @@ export interface PrepPage {
   state: PrepState
   briefSessionId: string | null
   followSessionId: string | null
+  /**
+   * Until when the brief thread, and the follow-up thread, still count as at work for a reader that cannot see the
+   * thread itself: started, nothing written since, and `PREP_WORKING_MS` not yet up. Null: not at work.
+   */
+  briefUntil: number | null
+  followUntil: number | null
   drafts: PrepDraft[]
   /**
    * The file that holds the notes, when one does: a recording or transcript (a meeting open beside the
@@ -265,8 +279,11 @@ export const PrepRequestSchemas = [
    * stopped (the host cannot read a thread's status), so a new one starts whatever the clock says. → { sessionId }
    */
   request('work.prep.brief', z.object({ ...page, restart: z.boolean().optional() })),
-  /** Keeps his notes (empty text takes them back). → { page } */
-  request('work.prep.notes', z.object({ ...page, text: z.string().max(PREP_NOTES_MAX) })),
+  /**
+   * Keeps his notes (empty text takes them back). A file that holds the notes stays beside the words, unless
+   * `dropFile`: the window says a recording never arrived or could not be read, so it is no notes. → { page }
+   */
+  request('work.prep.notes', z.object({ ...page, text: z.string().max(PREP_NOTES_MAX), dropFile: z.boolean().optional() })),
   /**
    * Starts the follow-up thread from the notes, or answers the one still working. With `recording`
    * (a recording or a transcript he picked) the host opens an empty meeting beside the new thread and

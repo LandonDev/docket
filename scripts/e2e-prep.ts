@@ -34,8 +34,12 @@ const DROP = `${PREFIX} A task he will not tick`
 const run = new Run('prep')
 /** A real press (pointer down and up) on the element a page expression answers. */
 async function pressOn(what: string, element: string): Promise<boolean> {
-  const at = await run.page<{ x: number; y: number } | null>(`(() => { const el = ${element}; if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`)
-  if (!run.check(`${what} is there to press`, !!at)) return false
+  // Brought into view first, then measured once the page has settled: a press aimed at where the control was lands on nothing.
+  const there = await run.page<boolean>(`(() => { const el = ${element}; if (!el) return false; el.scrollIntoView({ block: 'center', behavior: 'instant' }); return true })()`)
+  if (!run.check(`${what} is there to press`, there)) return false
+  await sleep(300)
+  const at = await run.page<{ x: number; y: number } | null>(`(() => { const el = ${element}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`)
+  if (!at) return false
   await run.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at!.x, y: at!.y })
   for (const type of ['mousePressed', 'mouseReleased']) await run.send('Input.dispatchMouseEvent', { type, x: at!.x, y: at!.y, button: 'left', clickCount: 1 })
   return true
@@ -89,7 +93,7 @@ try {
   // The row with its verb, cut to the row alone: the list around it is his real calendar.
   await pictureOf('00-agenda-row', row(TITLE))
   await pressOn('the row’s Prepare', `${row(TITLE)}?.querySelector('button')`)
-  run.check('Prepare opens the meeting’s page, and starts no thread', await run.until('the page', 30_000, () => run.has('No one is listed on this event')))
+  run.check('Prepare opens the meeting’s page, and starts no thread', await run.until('the page', 30_000, () => run.has('No one is listed on this meeting')))
   const threadsBefore = (await page(eventId)).briefSessionId
   run.check('opening the page started nothing', threadsBefore === null)
   await sleep(800)
@@ -188,6 +192,9 @@ try {
   run.check('the one button counts his tick', await run.until('Add 1 task', 10_000, () => run.page<boolean>(`!!${button('Add 1 task')}`)))
   await pressOn('Add 1 task', button('Add 1 task'))
   const filedOk = await run.until('filed', 60_000, async () => (await page(eventId)).doc.after?.tasks.find((t) => t.title === KEEP)?.state === 'filed')
+  // What the window says of the filing, whichever way it went: a failure is the view's own line, in LifeOS's words.
+  const said = await run.page<string | null>(`document.querySelector('[data-view-state]')?.textContent ?? null`)
+  if (!filedOk) run.note(`the window after Add: ${said ?? 'no state line; the button reads ' + (await run.page<string>(`[...document.querySelectorAll('section[aria-label="To do"] button')].map((b) => b.textContent.trim() + (b.disabled ? ' (off)' : '')).join(', ')`))}`)
   const tasks = (await page(eventId)).doc.after?.tasks ?? []
   const filed = tasks.find((t) => t.title === KEEP)
   if (filed?.lifeosTaskId) run.later('drop the filed task', () => run.addon(followThread, 'drop_tasks', { ids: [filed.lifeosTaskId], reason: 'E2E-49 prep proof: cleanup' }))

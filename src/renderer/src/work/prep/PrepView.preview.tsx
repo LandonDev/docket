@@ -63,6 +63,8 @@ const FACTS: PrepPage = {
   state: "none",
   briefSessionId: null,
   followSessionId: null,
+  briefUntil: null,
+  followUntil: null,
   drafts: [],
   notesFile: null,
   aheadOn: false,
@@ -85,7 +87,7 @@ const BRIEF: NonNullable<PrepPage["doc"]["brief"]> = {
   by: "t-brief",
 };
 const BRIEFED: PrepPage = { ...FACTS, doc: { ...emptyPrepDoc(), brief: BRIEF }, rev: 2, state: "briefed", briefSessionId: "t-brief", aheadOffered: true };
-const PREPARING: PrepPage = { ...FACTS, rev: 1, state: "working", briefSessionId: "t-brief" };
+const PREPARING: PrepPage = { ...FACTS, rev: 1, state: "working", briefSessionId: "t-brief", briefUntil: NOW + 600_000 };
 
 /** The same meeting, an hour after it ended: his notes, what came of them, and the mail that waits. */
 const LATER = at(16);
@@ -198,6 +200,7 @@ function DialogPreview({ state }: { state: string }) {
         upload={upload}
         error={state === "notes-failed" ? "The transcriber is not installed on this host." : null}
         onCancel={none}
+        onClose={none}
         onFollowUp={none}
         onFile={none}
         onDocument={none}

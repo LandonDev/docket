@@ -183,7 +183,7 @@ describe('the people', () => {
 describe('last time', () => {
   it('follows the series: its decisions, its open questions and the tasks it filed that are still open', async () => {
     const { ctx, lifeos, store } = world()
-    lifeos.task({ _id: 'task-open', title: 'Order jerseys' })
+    lifeos.task({ _id: 'task-open', title: 'Order jerseys', askerId: 'p-maya' })
     lifeos.task({ _id: 'task-done', title: 'Book the bus', status: 'done' })
     store.write(
       'ws-purdue',
@@ -208,6 +208,8 @@ describe('last time', () => {
       NOW
     )
     const { page } = await gather(ctx, 'ws-purdue', 'ev1', NOW)
+    // a task last time's page filed is one row, under Last time: Tasks leaves it out though its asker is on the meeting
+    expect(page.tasks.map((t) => t.id)).not.toContain('task-open')
     expect(page.last).toEqual({
       eventId: 'ev0',
       title: 'Staff sync',

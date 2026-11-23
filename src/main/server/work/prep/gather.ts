@@ -1,6 +1,7 @@
 import {
   emptyPrepDoc,
   PREP_PEOPLE_DRAWN,
+  PREP_WORKING_MS,
   prepEndOf,
   prepStateOf,
   type PrepAddedPerson,
@@ -185,6 +186,18 @@ async function draftsOf(client: LifeosClient, sector: SectorKey, threadId: strin
     .map((r) => ({ outboxId: r._id, subject: r.message.subject, to: r.message.to.map((p) => p.name?.trim() || p.address) }))
 }
 
+/** How a meeting item stands, asked of the meetings pillar's own `get`; null when it has no meeting or does not answer. */
+export async function meetingOf(ctx: WorkCtx, itemId: string): Promise<{ status: string; error: string | null } | null> {
+  try {
+    const meetings = WORK_MODULES.find((m) => m.id === 'meetings')
+    const answer = await meetings?.handle?.({ id: 'prep', method: 'work.meetings.get', params: { itemId } }, ctx, HOST)
+    const meeting = answer?.handled ? (answer.result as { meeting?: { status?: string; error?: string | null } | null }).meeting : null
+    return meeting?.status ? { status: meeting.status, error: meeting.error ?? null } : null
+  } catch {
+    return null
+  }
+}
+
 /** The name a file path shows by. */
 export const fileTitle = (path: string): string => path.split(/[\\/]/).pop() || path
 
@@ -193,13 +206,16 @@ export const fileTitle = (path: string): string => path.split(/[\\/]/).pop() || 
  * while its item still exists, or the document made for the notes, with its
  * item beside that thread once the follow-up has opened it there.
  */
-function notesFileOf(ctx: WorkCtx, row: PageRow | null): PrepPage['notesFile'] {
+async function notesFileOf(ctx: WorkCtx, row: PageRow | null): Promise<PrepPage['notesFile']> {
   const notes = row?.doc.notes
   if (!row || !notes) return null
   try {
     if (notes.meetingItemId) {
       const item = ctx.canvas.get(notes.meetingItemId)
-      return item && item.kind === 'meeting' ? { kind: 'meeting', itemId: item.id, title: item.title } : null
+      if (!item || item.kind !== 'meeting') return null
+      // A recording this host could not read says so on the page: its transcription may fail long after the dialog closed.
+      const meeting = await meetingOf(ctx, item.id)
+      return { kind: 'meeting', itemId: item.id, title: item.title, ...(meeting?.status === 'failed' ? { error: meeting.error?.trim() || 'This host could not read it.' } : {}) }
     }
     const file = notes.file
     if (file?.at !== 'file') return null
@@ -233,6 +249,14 @@ async function clashLeave(ctx: WorkCtx, eventId: string): Promise<number | undef
   }
 }
 
+/** Until when a thread still counts as at work for a reader that cannot see it: started, nothing written since, the bound not yet up. */
+function workingUntil(sessionId: string | null | undefined, startedAt: number | null | undefined, writtenAt: number | undefined, now: number): number | null {
+  if (!sessionId || startedAt === null || startedAt === undefined) return null
+  if (writtenAt !== undefined && writtenAt >= startedAt) return null
+  const until = startedAt + PREP_WORKING_MS
+  return until > now ? until : null
+}
+
 export interface Gathered {
   page: PrepPage
   event: LifeEvent
@@ -257,7 +281,7 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
   const problems: PrepProblem[] = []
   const words = subjectWords(event.title)
 
-  const [people, subject, before, drafts, ahead, leaveAt] = await Promise.all([
+  const [people, subject, before, drafts, ahead, leaveAt, notesFile] = await Promise.all([
     Promise.all(
       drawn.map((p) =>
         personFacts(client, sector, p).catch(() => {
@@ -286,11 +310,12 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
         })
       : Promise.resolve([]),
     aheadOf(ctx, workspaceId),
-    clashLeave(ctx, event._id)
+    clashLeave(ctx, event._id),
+    notesFileOf(ctx, row)
   ])
 
-  // A task this page filed shows under To do: never a second row under Tasks.
-  const filedHere = new Set((row?.doc.after?.tasks ?? []).flatMap((t) => (t.lifeosTaskId ? [t.lifeosTaskId] : [])))
+  // A task this page filed shows under To do, and one last time's page filed shows under Last time: never a second row under Tasks.
+  const filedHere = new Set([...(row?.doc.after?.tasks ?? []).flatMap((t) => (t.lifeosTaskId ? [t.lifeosTaskId] : [])), ...(before?.tasks ?? []).map((t) => t.id)])
   const tasks: PrepTask[] = []
   for (const task of people.flatMap((p) => p.tasks)) if (!filedHere.has(task.id) && !tasks.some((t) => t.id === task.id)) tasks.push(task)
   const bySubject = subject.filter((t) => t.sector === sector && OPEN.has(t.status) && !filedHere.has(t._id) && !tasks.some((x) => x.id === t._id)).slice(0, SUBJECT_TASKS)
@@ -320,7 +345,9 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
     briefSessionId: row?.briefSessionId ?? null,
     followSessionId: row?.followSessionId ?? null,
     drafts,
-    notesFile: notesFileOf(ctx, row),
+    notesFile,
+    briefUntil: workingUntil(row?.briefSessionId, row?.briefAt, row?.doc.brief?.at, now),
+    followUntil: workingUntil(row?.followSessionId, row?.followAt, row?.doc.after?.at, now),
     aheadOn: ahead.on,
     aheadOffered: ahead.offered,
     problems

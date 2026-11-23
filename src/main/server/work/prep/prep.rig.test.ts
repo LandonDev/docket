@@ -729,3 +729,77 @@ describe('a task the page filed', () => {
     expect((await decide('accept', 's1')).failed).toEqual([{ id: 's1', error: 'A keyed task carries its key as a quick add’s source' }])
   })
 })
+
+describe('what the window is told of a thread it cannot see', () => {
+  it('says until when a brief and a follow-up still count as at work, and nothing once they wrote or the bound ran out', async () => {
+    fakeStarts()
+    const now = dateNow()
+    expect(await page()).toMatchObject({ briefUntil: null, followUntil: null })
+    const { sessionId } = await brief()
+    expect((await page()).briefUntil).toBe(START + PREP_WORKING_MS)
+    now.mockReturnValue(START + PREP_WORKING_MS + 1)
+    expect(await page()).toMatchObject({ briefUntil: null, state: 'none' })
+    now.mockReturnValue(START + 1000)
+    await call('prep_write', { event: 'ev1', matters: [{ text: 'Maya needs the seat list.' }] }, sessionId)
+    expect((await page()).briefUntil).toBeNull()
+    await note('Dana drives the van.')
+    await follow()
+    expect((await page()).followUntil).toBe(START + 1000 + PREP_WORKING_MS)
+  })
+})
+
+describe('a recording the window says never arrived', () => {
+  it('is dropped from the notes, keeping what he typed; without that word a file stays beside the words', async () => {
+    fakeStarts()
+    await note('Dana drives the van.')
+    const { itemId } = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    expect((await note('Dana drives the van. Tom brings the form.')).page.doc.notes).toMatchObject({ meetingItemId: itemId })
+    const dropped = await rig.rpc<{ page: PrepPage }>('work.prep.notes', { ...params, text: 'Dana drives the van.', dropFile: true })
+    expect(dropped.page.doc.notes).toEqual({ text: 'Dana drives the van.', at: expect.any(Number) })
+    expect(dropped.page.notesFile).toBeNull()
+    // with nothing typed either, there are no notes at all
+    await rig.rpc('work.prep.followUp', { ...params, restart: true, recording: { name: 'again.m4a' } })
+    expect((await rig.rpc<{ page: PrepPage }>('work.prep.notes', { ...params, text: '', dropFile: true })).page.doc.notes).toBeNull()
+  })
+})
+
+describe('a recording the host could not read', () => {
+  const meetings = (status: string, error: string | null): WorkModule => ({
+    id: 'meetings',
+    ensure() {},
+    async handle(req) {
+      return req.method === 'work.meetings.get' ? handled({ meeting: { status, error } }) : NOT_HANDLED
+    }
+  })
+  const withMeetings = async (module: WorkModule, run: () => Promise<void>) => {
+    const before = [...WORK_MODULES]
+    WORK_MODULES.splice(0, WORK_MODULES.length, module)
+    try {
+      await run()
+    } finally {
+      WORK_MODULES.splice(0, WORK_MODULES.length, ...before)
+    }
+  }
+
+  it('says so on the page in the meeting’s own words, whenever the page is read', async () => {
+    fakeStarts()
+    const { itemId } = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    await withMeetings(meetings('transcribing', null), async () => {
+      expect((await page()).notesFile).toEqual({ kind: 'meeting', itemId, title: 'Staff sync.m4a' })
+    })
+    await withMeetings(meetings('failed', 'The transcriber is not installed on env_box.'), async () => {
+      expect((await page()).notesFile).toEqual({ kind: 'meeting', itemId, title: 'Staff sync.m4a', error: 'The transcriber is not installed on env_box.' })
+    })
+  })
+
+  it('still counts as notes for a typed follow-up while it holds a file, and no longer once it never got one', async () => {
+    const starts = fakeStarts()
+    await note('Dana drives the van.')
+    const first = await rig.rpc<{ sessionId: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    // the file arrived and is being read: a second press answers the thread at work
+    await withMeetings(meetings('transcribing', null), async () => {
+      expect((await follow()).sessionId).toBe(first.sessionId)
+    })
+    expect(starts).toHaveBeenCalledTimes(1)
+  })
+})

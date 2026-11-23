@@ -279,7 +279,7 @@ function useFaces(lifeos: LifeosSession): ReadonlyMap<string, string> {
 export function View(props: WorkViewProps) {
   const workspaceId = props.workspace.id;
   const eventId = useEventId(workspaceId);
-  const { page, loaded, error } = usePrep(props.env, workspaceId, eventId);
+  const { page, loaded, error, reading } = usePrep(props.env, workspaceId, eventId);
   const faces = useFaces(props.lifeos);
   const verb = useHeadVerb(page);
   const now = useMinute();
@@ -301,18 +301,21 @@ export function View(props: WorkViewProps) {
   // A Notes dialog whose close could not keep his words opens again on them (PrepDialogs `reopenNotes`).
   useEffect(() => {
     if (!eventId) return;
-    const reopen = () => openDialog("notes", eventId);
+    const reopen = (forWorkspace: string, forEvent: string) => {
+      if (forWorkspace === workspaceId && forEvent === eventId && ui.get().dialog === null) openDialog("notes", eventId);
+    };
     void dialogs.load().then((m) => (m.reopenNotes.current = reopen), () => {});
     return () => {
       const chunk = dialogs.loaded();
       if (chunk?.reopenNotes.current === reopen) chunk.reopenNotes.current = null;
     };
-  }, [eventId]);
+  }, [eventId, workspaceId]);
   // A session that cannot read is the frame's to say (its sign-in or its line), never a second banner here.
   if (!props.lifeos.client) return sessionWaits(props.lifeos) ? <PrepSkeleton /> : null;
   if (!eventId) return <EmptyState title="No meeting is open" action={{ label: "Back to Agenda", onClick: () => openWorkView({ workspaceId, view: "agenda" }) }} />;
   const retry = () => loadPrep(props.env, workspaceId, eventId);
-  if (!page) return loaded && error ? <EmptyState title="This page did not load" line={error} action={{ label: "Retry", onClick: retry }} /> : <PrepSkeleton />;
+  // With no page to show, a read on its way is the bones: a Retry that draws nothing would look deaf.
+  if (!page) return loaded && error && !reading ? <EmptyState title="This page did not load" line={error} action={{ label: "Retry", onClick: retry }} /> : <PrepSkeleton />;
   const close = closeDialog;
   return (
     <>
@@ -425,8 +428,11 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
   const outcome = !!(doc.notes || after);
   const [failed, setFailed] = useState<{ id: string; error: string }[]>(failedAtFirst ?? []);
   // The line about a failed filing stays until the next answer is in: a Retry spins on it, and nothing flickers away.
+  // One filing at a time, whichever control asked: Add and Retry share this, so neither can send while the other waits.
+  const [filing, setFiling] = useState(false);
   const decide = async (ids: string[], decision: "accept" | "reject"): Promise<void> => {
-    if (!onDecide) return;
+    if (!onDecide || filing) return;
+    setFiling(true);
     let now: { id: string; error: string }[];
     try {
       now = await onDecide(ids, decision);
@@ -434,6 +440,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
       now = ids.map((id) => ({ id, error: refusalWords(err) || "The host did not answer" }));
     }
     setFailed((was) => [...was.filter((f) => !ids.includes(f.id)), ...now]);
+    setFiling(false);
   };
   const [turningOn, setTurningOn] = useState(false);
   // One line at a time: a filing that failed is his to try again before a part that did not load.
@@ -445,8 +452,8 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
   return (
     <>
       {stillFailed.length ? (
-        // Retry is the one way to try again: the tasks it names are unticked below, so no second button says the same.
-        <ViewStateLine word={failedWords(stillFailed, after?.tasks ?? [])} detail={stillFailed[0]!.error} onRetry={() => decide(stillFailed.map((f) => f.id), "accept")} />
+        // Retry is the one way to try again: the tasks it names cannot be ticked below, so no second button says the same.
+        <ViewStateLine {...failedWords(stillFailed, after?.tasks ?? [])} onRetry={() => decide(stillFailed.map((f) => f.id), "accept")} />
       ) : refreshError ? (
         <ViewStateLine word="This page did not refresh" detail={refreshError} onRetry={onRetry} />
       ) : problem ? (
@@ -472,7 +479,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
                 <LineRow key={i} text={line.text} onOpen={openLine(line)} />
               ))}
             </Section>
-            <ToDo tasks={shownTasks(after.tasks)} now={now} onDecide={decide} onOpenTask={(id) => go("tasks", { task: id })} tickedAtFirst={tickedAtFirst} />
+            <ToDo tasks={shownTasks(after.tasks)} now={now} filing={filing} retrying={stillFailed.map((f) => f.id)} onDecide={decide} onOpenTask={(id) => go("tasks", { task: id })} tickedAtFirst={tickedAtFirst} />
             <Section label="Open questions" show={after.questions.length > 0}>
               {after.questions.map((line, i) => (
                 <LineRow key={i} text={line.text} onOpen={openLine(line)} />
@@ -494,19 +501,35 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
               // One quiet line: the switch by its one name, then its two answers kept together when the page is narrow.
               <div data-prep-offer className="mt-2 flex min-h-6 flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                 <span>{AHEAD_LABEL}</span>
-                <span className="flex items-center gap-1">
+                {/* Pulled back by the button's own inset, so a wrapped Turn on starts where the words above it start. */}
+                <span className="-ms-2 flex items-center gap-1">
                 <Button
                   variant="ghost"
                   size="xs"
                   disabled={turningOn}
-                  onClick={() => {
+                  onClick={(e) => {
+                    const region = e.currentTarget.closest('[role="region"]');
                     setTurningOn(true);
-                    void Promise.resolve(onAhead?.()).finally(() => setTurningOn(false));
+                    void Promise.resolve(onAhead?.()).finally(() => {
+                      setTurningOn(false);
+                      focusMoreIfLost(region);
+                    });
                   }}
                 >
                   <BusyLabel busy={turningOn} label="Turn on" />
                 </Button>
-                <Button variant="ghost" size="icon-xs" aria-label="Dismiss" className="text-muted-foreground" disabled={turningOn} onClick={onDismissOffer}>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Dismiss"
+                  className="text-muted-foreground"
+                  disabled={turningOn}
+                  onClick={(e) => {
+                    const region = e.currentTarget.closest('[role="region"]');
+                    onDismissOffer?.();
+                    focusMoreIfLost(region);
+                  }}
+                >
                   <X />
                 </Button>
                 </span>
@@ -568,6 +591,15 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
   );
 }
 
+/** The offer went with the press that answered it: the caret goes to More, where the same switch lives, never to nothing. */
+function focusMoreIfLost(region: Element | null): void {
+  // After the press's own render has taken the offer off the page.
+  setTimeout(() => {
+    if (document.activeElement && document.activeElement !== document.body) return;
+    (region ?? document).querySelector<HTMLElement>('button[aria-label="More"]')?.focus();
+  }, 0);
+}
+
 /** What a line's reference opens: its mail, its task, its event's page, its document or its person, each where it lives. */
 function openRef(workspaceId: string, ref: NonNullable<PrepLine["ref"]>): void {
   if (ref.table === "mailThreads") openWorkView({ workspaceId, view: "mail", mail: ref.id });
@@ -622,7 +654,8 @@ function Words({ lines, onOpen, land = false, bare = false }: { lines: readonly 
                 {line.text}
               </ItemButton>
             ) : (
-              <p className="text-pretty select-text">{line.text}</p>
+              // The pressable line's own 1px edge, so the two start at the same place.
+              <p className="border-s border-transparent text-pretty select-text">{line.text}</p>
             )}
           </div>
         );
@@ -670,7 +703,7 @@ function Notes({ text, lines, file, onOpenFile }: { text: string; lines: 2 | 6; 
       <h2 className="mb-1 text-xs font-medium text-muted-foreground">Notes</h2>
       {file ? (
         <div role="list">
-          <LineRow text={file.title} onOpen={onOpenFile} />
+          <LineRow text={file.title} line={file.error} onOpen={onOpenFile} />
         </div>
       ) : null}
       {text ? (
@@ -698,12 +731,18 @@ function Notes({ text, lines, file, onOpenFile }: { text: string; lines: 2 | 6; 
 function ToDo({
   tasks,
   now,
+  filing,
+  retrying,
   onDecide,
   onOpenTask,
   tickedAtFirst,
 }: {
   tasks: readonly PrepSuggestion[];
   now: number;
+  /** a filing is in flight, from Add or from Retry: nothing here changes until it answers */
+  filing: boolean;
+  /** the tasks a failed filing left with Retry: they cannot be ticked while it owns them */
+  retrying: readonly string[];
   onDecide: (ids: string[], decision: "accept" | "reject") => Promise<void>;
   onOpenTask: (lifeosTaskId: string) => void;
   tickedAtFirst?: readonly string[] | undefined;
@@ -713,8 +752,11 @@ function ToDo({
   const [adding, setAdding] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   if (!tasks.length) return null;
-  const picked = proposed.filter((t) => ticked.has(t.id));
-  const allTicked = proposed.length > 0 && picked.length === proposed.length;
+  // What he can tick: every suggestion but the ones Retry holds.
+  const free = proposed.filter((t) => !retrying.includes(t.id));
+  const picked = free.filter((t) => ticked.has(t.id));
+  const allTicked = free.length > 0 && picked.length === free.length;
+  const busy = adding || filing;
   const tick = (id: string, on: boolean) =>
     setTicked((was) => {
       const next = new Set(was);
@@ -762,13 +804,13 @@ function ToDo({
                 </ItemButton>
               ) : (
                 // The tint an addition waits on; the whole row takes the pointer, the box the keyboard.
-                <div className={cn("flex cursor-default items-start gap-2 border border-transparent bg-(--add-bg) px-2", ROW)} onClick={() => tick(task.id, !ticked.has(task.id))}>
+                <div className={cn("flex cursor-default items-start gap-2 border border-transparent bg-(--add-bg) px-2", ROW)} onClick={() => !busy && !retrying.includes(task.id) && tick(task.id, !ticked.has(task.id))}>
                   <Checkbox
                     aria-label={task.title}
                     // On the tint the box's usual hairline is too faint to say "tick me": the muted ink, which reads on it.
                     className="mt-0.5 border-muted-foreground"
-                    checked={ticked.has(task.id)}
-                    disabled={adding}
+                    checked={ticked.has(task.id) && !retrying.includes(task.id)}
+                    disabled={busy || retrying.includes(task.id)}
                     onCheckedChange={(on) => tick(task.id, on === true)}
                     onClick={(e) => e.stopPropagation()}
                   />
@@ -780,13 +822,13 @@ function ToDo({
           );
         })}
       </div>
-      {proposed.length ? (
+      {free.length ? (
         <div className="mt-2 flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="-ms-2" disabled={adding} onClick={() => setTicked(new Set(allTicked ? [] : proposed.map((t) => t.id)))}>
+          <Button variant="ghost" size="sm" className="-ms-2" disabled={busy} onClick={() => setTicked(new Set(allTicked ? [] : free.map((t) => t.id)))}>
             {allTicked ? "Untick all" : "Tick all"}
           </Button>
           {picked.length ? (
-            <Button size="sm" disabled={adding} onClick={add}>
+            <Button size="sm" disabled={busy} onClick={add}>
               <BusyLabel busy={adding} label={addTasksLabel(picked.length)} />
             </Button>
           ) : null}
