@@ -189,6 +189,8 @@ export class SheetSync {
 
   private pushed(push: SheetPushed): void {
     if (push.view) this.view(push.view);
+    // A sheet others can open: the host sends no view, and answers each caller its own.
+    else if (push.stale) this.run(async () => this.view(await this.host.open()));
     if (push.rev > this.rev) this.run(() => this.catchUp());
   }
 

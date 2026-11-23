@@ -179,6 +179,18 @@ describe("the sheet kind", () => {
     expect(within(screen.getByRole("toolbar", { name: "Review changes" })).getByRole("button", { name: "Accept" })).toBeTruthy();
   });
 
+  it("reads the view again when the host says it changed and sends none (a sheet others can open)", async () => {
+    open(sheetView({ shared: true }));
+    await gridUp();
+    expect(screen.queryByRole("toolbar", { name: "Review changes" })).toBeNull();
+    const opens = sheetHost.calls.filter((c) => c[0] === "open").length;
+    sheetHost.view = { ...sheetHost.view, suggestions: [suggestion("a", 1, 3, { base: { v: 412 }, proposed: { v: 438 } })] };
+    act(() => sheetHost.push({ rev: sheetHost.rev, stale: true }));
+    await screen.findByRole("toolbar", { name: "Review changes" });
+    await waitFor(() => expect(cell("D2").textContent).toBe("438"));
+    expect(sheetHost.calls.filter((c) => c[0] === "open").length).toBe(opens + 1);
+  });
+
   it("puts a cell back when its suggestion is rejected, unless something wrote it since", async () => {
     open(sheetView({ suggestions: [suggestion("a", 1, 3, { base: { v: 412 }, proposed: { v: 438 } }), suggestion("b", 3, 4, { base: { v: 1240 }, proposed: { v: 1380 }, changeSet: "cs2" })] }));
     await gridUp();

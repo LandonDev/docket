@@ -13,7 +13,7 @@ import { blankWorkbook } from './host/backends'
 import type { SheetRef } from './host/wire'
 import { writeCsv, writeXlsx, writeXlsxWhole } from './writer'
 import { ensureChangeTables } from './changes'
-import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setChart, setSharedPath, sheetsOf, storeKey, viewOf, type Held, type Sheets } from './held'
+import { afterEdit, ensureCsvSheet, fence, heldOf, host, newId, principalOf, readRange, isSharedCsvSheet, setChart, setSharedPath, sheetsOf, storeKey, viewFor, viewOf, type Held, type Sheets } from './held'
 import { sheetFileMoved } from './moved'
 import { ensurePackageTables, type Moved } from './packages'
 import { dropSharedPreviews, dropSharedPreviewsOf, exportPreview, previewSheet, readSheetPreview, SHEET_PREVIEW_CONVERTERS, sheetFilePreviewer, sweepPreviewScratch } from './preview'
@@ -48,7 +48,10 @@ function itemOf(ctx: WorkCtx, itemId: string): CanvasItem {
 export async function announce(s: Sheets, item: CanvasItem, withView = true): Promise<void> {
   const view = await viewOf(s, item)
   const path = item.source.at === 'file' ? item.source.path : undefined
-  s.ctx.push({ push: 'work.sheets', sessionId: item.sessionId, itemId: item.id, rev: view.rev, ...(withView ? { view } : {}) }, path ? { path } : undefined)
+  // A sheet others can open: what waits on it is his alone to see, and a push goes to every key. It
+  // carries no view; each canvas reads its own (`viewFor`).
+  const sent = !withView ? {} : view.shared ? { stale: true as const } : { view }
+  s.ctx.push({ push: 'work.sheets', sessionId: item.sessionId, itemId: item.id, rev: view.rev, ...sent }, path ? { path } : undefined)
 }
 
 async function edit(s: Sheets, item: CanvasItem, baseRev: number, mutations: SheetMutationJson[], by: Caller): Promise<{ rev: number } | { conflict: true; rev: number }> {
@@ -108,7 +111,7 @@ export const sheets: WorkModule = {
     }
     switch (req.method) {
       case 'work.sheets.open':
-        return handled(await viewOf(s, item!))
+        return handled(viewFor(await viewOf(s, item!), by))
       case 'work.sheets.load': {
         const held = heldOf(item!, ctx.dataDir)
         const { rev, offset, length } = req.params
@@ -139,8 +142,9 @@ export const sheets: WorkModule = {
         if (by.kind === 'model') throw new Error('Only the owner accepts or rejects a suggestion.')
         const held = heldOf(item!, ctx.dataDir)
         const key = storeKey(held)
-        // Taking one writes it: a remote key changes a sheet others can open only with `approve`.
-        if (req.params.verdict === 'accept') await approves(s, item!, by)
+        // Taking one writes it: a remote key changes a sheet others can open only with `approve`. Dropping
+        // one there is his too: a key that may not see what waits (`viewFor`) decides none of it.
+        await approves(s, item!, by)
         // A format or a rule the agent proposed is this host's own row: taken, it is laid as his edit; dropped, it is gone.
         const mine = held.at === 'package' || held.at === 'service' ? await reviewChanges(s, held, key, req.params.which, req.params.verdict, principalOf(ctx, by)) : false
         if (mine === 'only') {
@@ -157,13 +161,13 @@ export const sheets: WorkModule = {
           s.suggestions.prune(key)
           s.changes.prune(key)
         }
-        return handled(after)
+        return handled(viewFor(after, by))
       }
       case 'work.sheets.mode': {
         if (by.kind === 'model') throw new Error('Only the owner sets what an agent may do to a sheet.')
         s.suggestions.setMode(storeKey(heldOf(item!, ctx.dataDir)), req.params.mode)
         await announce(s, item!)
-        return handled(await viewOf(s, item!))
+        return handled(viewFor(await viewOf(s, item!), by))
       }
       case 'work.sheets.undo': {
         const held = heldOf(item!, ctx.dataDir)
@@ -172,7 +176,7 @@ export const sheets: WorkModule = {
         await s.packages.undo(held.path, req.params.writeId)
         s.suggestions.setWritten(storeKey(held), null)
         await announce(s, item!)
-        return handled(await viewOf(s, item!))
+        return handled(viewFor(await viewOf(s, item!), by))
       }
       case 'work.sheets.history': {
         const held = notExcel(heldOf(item!, ctx.dataDir))
@@ -196,14 +200,14 @@ export const sheets: WorkModule = {
           s.changes.orphanAll(storeKey(held))
         }
         await announce(s, item!)
-        return handled(await viewOf(s, item!))
+        return handled(viewFor(await viewOf(s, item!), by))
       }
       case 'work.sheets.create':
         return handled({ itemId: (await createSheet(s, req.params.sessionId, req.params.title)).id })
       case 'work.sheets.chart': {
         setChart(ctx, storeKey(heldOf(item!, ctx.dataDir)), req.params.chart, req.params.remove)
         await announce(s, item!)
-        return handled(await viewOf(s, item!))
+        return handled(viewFor(await viewOf(s, item!), by))
       }
       case 'work.sheets.switch': {
         const held = heldOf(item!, ctx.dataDir)

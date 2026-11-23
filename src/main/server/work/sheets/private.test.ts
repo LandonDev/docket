@@ -200,14 +200,82 @@ describe('an agent\'s suggestion on an Excel file others can open', () => {
     const typed = { id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: sheet, cellValue: { 1: { 0: { v: SECRET } } } } }
     await expect(call('work.sheets.edit', { itemId, baseRev: 0, mutations: [typed] }, operate)).rejects.toThrow('this key may not change it')
     await expect(call('work.sheets.restore', { itemId, rev: 0 }, operate)).rejects.toThrow('this key may not change it')
-    // it may still reject, which writes nothing
+    // nor drop one: what it may not see it does not decide
     await tool('sheet_suggest', { item: itemId, cells: [{ at: 'Data!A9', v: 'dropped' }] })
     const extra = (await call<SheetView>('work.sheets.open', { itemId })).suggestions.find((s) => s.row === 8)!
-    expect((await call<SheetView>('work.sheets.review', { itemId, which: { ids: [extra.id] }, verdict: 'reject' }, operate)).suggestions).toHaveLength(1)
+    await expect(call('work.sheets.review', { itemId, which: { ids: [extra.id] }, verdict: 'reject' }, operate)).rejects.toThrow('this key may not change it')
+    await expect(call('work.sheets.review', { itemId, which: 'all', verdict: 'reject' }, operate)).rejects.toThrow('this key may not change it')
+    expect((await call<SheetView>('work.sheets.open', { itemId })).suggestions).toHaveLength(2)
     expect(folder()).toEqual(before)
     const approve = { kind: 'remote', keyId: 'k2', name: 'Phone', audience: 'client', caps: ['read', 'operate', 'approve'] } as never
     expect((await call<SheetView>('work.sheets.review', { itemId, which: 'all', verdict: 'accept' }, approve)).suggestions).toEqual([])
     expect(cell()).toBe(SECRET)
+  })
+})
+
+describe('what waits on a workbook others can open is his alone to see', () => {
+  let path: string
+  let itemId: string
+  const read = { kind: 'remote', keyId: 'k0', name: 'Watcher', audience: 'client', caps: ['read'] } as never
+  const operate = { kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps: ['read', 'operate'] } as never
+  const approve = { kind: 'remote', keyId: 'k2', name: 'His Mac', audience: 'client', caps: ['read', 'operate', 'approve'] } as never
+  beforeEach(() => {
+    mkdirSync(join(library, 'Budget'), { recursive: true })
+    path = join(library, 'Budget', 'Budget.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+    itemId = open(path, 'Budget.xlsx')
+  })
+
+  it('a key that could not take a suggestion is answered the sheet as it stands and nothing that waits', async () => {
+    await tool('sheet_suggest', { item: itemId, cells: [{ at: 'Data!A2', v: SECRET }] })
+    await tool('sheet_format', { item: itemId, range: 'Data!A2:B3', format: { bold: true }, because: 'own' })
+    for (const by of [undefined, approve]) {
+      const his = await call<SheetView>('work.sheets.open', { itemId }, by)
+      expect(his.suggestions.map((s) => s.proposed?.v)).toEqual([SECRET])
+      expect(his.changes).toHaveLength(1)
+    }
+    for (const by of [read, operate]) {
+      const view = await call<SheetView>('work.sheets.open', { itemId }, by)
+      expect(view).toMatchObject({ shared: true, store: 'package', suggestions: [] })
+      expect(view.changes).toBeUndefined()
+      expect(JSON.stringify(view)).not.toContain(String(SECRET))
+    }
+    // a thread's call on the wire is no more his than a read key's
+    const thread = { kind: 'model' as const, caps: [], sessionId: 't1' }
+    const answer = await sheets.handle!(req('work.sheets.open', { itemId }), work.ctx, thread)
+    expect(JSON.stringify(answer)).not.toContain(String(SECRET))
+  })
+
+  it('a push says the view changed and carries none of it: every key hears a push', async () => {
+    const heard: unknown[] = []
+    const off = work.pushes.onPush((p) => void heard.push(p), read)
+    try {
+      await tool('sheet_suggest', { item: itemId, cells: [{ at: 'Data!A2', v: SECRET }] })
+      await call('work.sheets.mode', { itemId, mode: 'suggests' })
+      const mine = heard.filter((p) => (p as { push: string; itemId?: string }).push === 'work.sheets' && (p as { itemId?: string }).itemId === itemId)
+      expect(mine.length).toBeGreaterThan(0)
+      for (const p of mine) {
+        expect(p).toMatchObject({ stale: true })
+        expect(p).not.toHaveProperty('view')
+      }
+      expect(JSON.stringify(heard)).not.toContain(String(SECRET))
+    } finally {
+      off()
+    }
+  })
+
+  it('his own workbook still sends its view with the push', async () => {
+    const own = join(dir, 'Own.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), own)
+    const id = open(own, 'Own.xlsx')
+    const heard: unknown[] = []
+    const off = work.pushes.onPush((p) => void heard.push(p))
+    try {
+      await call('work.sheets.mode', { itemId: id, mode: 'suggests' })
+      expect(heard.find((p) => (p as { itemId?: string }).itemId === id)).toMatchObject({ view: { shared: false } })
+    } finally {
+      off()
+    }
   })
 })
 

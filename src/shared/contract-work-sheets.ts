@@ -316,8 +316,12 @@ export const SheetsRequestSchemas = [
   request('work.sheets.previewExport', z.object({ itemId, format: z.enum(SHEET_PREVIEW_FORMATS), sheet: z.string().max(200).optional() }))
 ] as const
 
-/** Something landed on a sheet: new ops (another person, an agent) or a changed view. */
-export type SheetsPush = { push: 'work.sheets'; sessionId: string; itemId: string; rev: number; view?: SheetView }
+/**
+ * Something landed on a sheet: new ops (another person, an agent) or a changed view. `stale`: the
+ * view changed and is not sent, because the sheet is one others can open and what waits on it is
+ * answered caller by caller: read it again with `work.sheets.open`.
+ */
+export type SheetsPush = { push: 'work.sheets'; sessionId: string; itemId: string; rev: number; view?: SheetView; stale?: true }
 
 export const SHEETS_CAPS = {
   'work.sheets.open': 'read',

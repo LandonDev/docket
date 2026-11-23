@@ -365,6 +365,20 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   }
 }
 
+/** Whether the caller is he who decides what waits on a sheet: at a screen of this host or of another host of his, or a key that could take it. */
+export const reviews = (by: Caller): boolean => by.kind === 'local' || (by.kind === 'remote' && (!!by.peer || by.caps.includes('approve')))
+
+/**
+ * A view for one caller. On a sheet others can open, what an agent suggested is his alone to see
+ * until he takes it (the owner's ruling): any other key that can see the item, and a thread, gets
+ * the sheet as it stands and nothing that waits.
+ */
+export function viewFor(view: SheetView, by: Caller): SheetView {
+  if (!view.shared || reviews(by)) return view
+  const { changes: _waiting, ...rest } = view
+  return { ...rest, suggestions: [] }
+}
+
 /** The formats and rules an agent proposed on a sheet, for its view: this host's own rows, said in words. */
 function changesOf(s: Sheets, key: string): { changes?: SheetView['changes'] } {
   const changes = s.changes.open(key)

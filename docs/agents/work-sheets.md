@@ -703,15 +703,25 @@ proposes:
 `work.sheets.review` and `work.sheets.mode` are his press: a thread's call
 (`by.kind === 'model'`) is refused. A remote key changes a sheet others can
 open only with `approve`, as Files' door asks of any change in such a
-place: `work.sheets.edit`, `.restore`, `.undo` and an accept in `.review`
-answer "Others can open this sheet: this key may not change it" without it
-(a reject writes nothing and passes). His own window and another host of
-his are not held to it, and his own sheet takes `operate` as before.
+place: `work.sheets.edit`, `.restore`, `.undo` and `.review` (an accept and
+a reject alike) answer "Others can open this sheet: this key may not change
+it" without it. His own window and another host of his are not held to it,
+and his own sheet takes `operate` as before.
 
-Not closed: a read key of his own still reads a waiting suggestion's cells
-and reason through `work.sheets.open` and the push (his own devices); a
-LifeOS sheet's suggestions are LifeOS rows, in his own store, not on this
-host.
+**Who is answered what waits** (`viewFor`, held.ts): on a sheet others can
+open, the suggested cells, their reasons and the proposed formats and rules
+go only to him: his own window, another host of his, or a key with
+`approve`. Any other key that can see the item, and a thread's call on the
+wire, gets the sheet as it stands with no suggestions and no changes, from
+every method that answers a view. A push goes to every key, so for such a
+sheet it carries no view and says `stale`; each canvas reads its own with
+`work.sheets.open` (sync.ts `pushed`). His own sheet sends its view with the
+push as before. Held by private.test.ts ("what waits on a workbook others
+can open is his alone to see").
+
+Not closed: Files' count of what waits in a workbook (`registerFileWaiting`)
+is a number with no cell in it and is Files' to answer; a LifeOS sheet's
+suggestions are LifeOS rows, in his own store, not on this host.
 
 ## The canvas
 

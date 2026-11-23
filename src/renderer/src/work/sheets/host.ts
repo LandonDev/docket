@@ -32,6 +32,8 @@ export type ReviewWhich = { ids: string[] } | { changeSet: string } | "all";
 export interface SheetPushed {
   rev: number;
   view?: SheetView;
+  /** The view changed and was not sent (a sheet others can open): read it again. */
+  stale?: true;
 }
 
 export interface SheetHost {
@@ -73,7 +75,7 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
     },
     onPush: (listener) =>
       link().onPush((push) => {
-        if (push.push === "work.sheets" && push.itemId === itemId) listener({ rev: push.rev, ...(push.view ? { view: push.view } : {}) });
+        if (push.push === "work.sheets" && push.itemId === itemId) listener({ rev: push.rev, ...(push.view ? { view: push.view } : {}), ...(push.stale ? { stale: true as const } : {}) });
       }),
   };
 }
