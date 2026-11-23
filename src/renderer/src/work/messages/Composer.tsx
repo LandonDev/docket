@@ -12,7 +12,7 @@ import { workOpenPort } from "../../lib/workSwitch";
 import { useMessagesData, type ThreadDraft } from "./data";
 import { firstName } from "./model";
 import { fieldOrigin, useWaitingDrafts } from "./drafts";
-import { draftSeen, fieldAsPressed, keepDraftEdit, keepFailedPress, keepLooseWords, useLooseWords, keepPress, seeDraft, keepRefusal, keepTyped, markDraft, pendingPress, stillPressed, typedIn, usePendingPress, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
+import { draftSeen, fieldAsPressed, keepFailedPress, keepPress, seeDraft, keepRefusal, keepTyped, markDraft, pendingPress, stillPressed, typedIn, usePendingPress, useFailedPress, useRefusal, useTyped, useTypedFrom, type PressedField } from "./page";
 import { QUICK_ANSWERS } from "./quick";
 
 /**
@@ -36,8 +36,12 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   const setText = (next: string): void => keepTyped(workspaceId, chatId, next);
   // A Send on its way is kept with the conversation, not this mount: leaving and coming back, a Retry or the 640px
   // crossing find it pending, and nothing more goes until LifeOS answers it.
-  const pending = usePendingPress(workspaceId, chatId) !== undefined;
-  // The drafts still waiting: none pressed and on its way, none sent or discarded here that the list still holds.
+  const press = usePendingPress(workspaceId, chatId);
+  const pending = press !== undefined;
+  // A held draft's press holds the field: its words stay on screen, read only, until the host has taken them.
+  const holding = press?.draft != null;
+  // The drafts still waiting: none sent or discarded here that the list still holds. A draft whose press is on its way
+  // stays listed, so its line names its thread while its words are on screen.
   const drafts = useWaitingDrafts(workspaceId, chatId);
   // Whose words the field holds: the draft's (or his edit of them, started from it), or his own. It is kept beside the
   // words in page.ts, so leaving and coming back, a Retry or the 640px crossing find it as it was; and it is resolved
@@ -64,10 +68,9 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   const field = useRef<HTMLTextAreaElement>(null);
 
   // Send acts on the origin: a held draft's words press the held item, his own go as his own reply and leave the draft
-  // waiting. A draft gone meanwhile (sent or discarded elsewhere) leaves its words as his own.
-  // A draft arriving fills an empty field once; his own words are never written over, and a field emptied by a Send
-  // still on its way waits for its answer (a refusal of his own words puts them back; a refused held press leaves the
-  // field as it is and keeps an unsaved edit with the draft, for Use draft).
+  // waiting. A draft gone meanwhile (sent or discarded elsewhere) leaves its words in the field as his own.
+  // A draft arriving fills an empty field once; his own words are never written over, and nothing fills while a press is
+  // on its way.
   // A draft already waiting when the field held other words (another draft's, or his) is no arrival: it waits behind
   // Use draft, even once the field empties.
   // Met drafts are kept with the conversation (page.ts), so a remount never refills one he pushed aside.
@@ -123,11 +126,15 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     if (stillPressed(workspaceId, chatId, pressed)) keepTyped(workspaceId, chatId, "", null);
   };
   /**
-   * The field empties at the press; the pressed words (and the held draft's id when a draft was pressed) wait aside in
-   * page.ts until LifeOS answers. Sent words never sit in the field, so nothing goes twice. What a refusal does depends
-   * on what was pressed: his own words come back in front of whatever he typed since, a line between, as his own; a
-   * held draft's do not come back into the field at all (the item keeps them, his unsaved revision kept beside it, and
-   * Use draft brings them back), the field left as he has it; a held draft whose item failed shows its failed line.
+   * His own words: the field empties at the press and the pressed words wait aside in page.ts until LifeOS answers, so
+   * nothing goes twice; a refusal puts them back in front of whatever he typed since, a line between, as his own.
+   *
+   * A held draft's words stay in the field until the host has taken them. While the press is on its way the field is
+   * read only (and Send busy, Discard off). Taken (sent), the field empties if it is still the field as pressed. The
+   * item failed (its words saved to it before the send), the same, and the failed line shows. Refused in any other way
+   * (a refused save, too long, a revision conflict, an item already decided, a host that did not answer), the field is
+   * left exactly as it was, words and origin, and the refusal shows above the line: a second Send presses again. Nothing
+   * is kept anywhere else.
    */
   const send = async (): Promise<void> => {
     const pressed = fieldAsPressed(workspaceId, chatId);
@@ -138,33 +145,33 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     if (at.kind === "failed") return;
     const pressing = at.kind === "held" ? at.draft : null;
     keepPress(workspaceId, chatId, { text: sent, draft: pressing?.id ?? null });
-    keepTyped(workspaceId, chatId, "", null);
     setRefused(null);
     field.current?.focus();
-    try {
-      if (pressing) {
-        await data.sendDraft(pressing, sent);
-        // Pressed and gone: never offered again here, whatever the Outbox's list still says for a moment.
-        markDraft(workspaceId, chatId, pressing.id, { settled: true });
-      } else await data.send(chatId, sent);
-    } catch (err) {
-      if (pressing && (err as { failed?: boolean }).failed) {
-        // The item failed and stays in the Outbox with these words, for Send again or Check Sent first there. Its line
-        // says so; the words are its own, so they do not come back into the field.
-        markDraft(workspaceId, chatId, pressing.id, { failed: refusalOf(err), ...((err as { unknown?: boolean }).unknown ? { unknown: true } : {}) });
-        keepFailedPress(workspaceId, chatId, pressing.id);
-      } else if (pressing) {
-        // Refused, the item stays held: the pressed words come back only through Use draft. An edit the Outbox may not
-        // have saved (a refused save, a reply over LifeOS's length) is kept under the draft's id until a save of it goes
-        // through, so Use draft brings back his revision, not the item's old words. Whatever the field holds now (a
-        // reply his Undo put back, words typed since) stays his own, untouched.
-        if (sent !== pressing.text || pressing.unsaved) keepDraftEdit(workspaceId, chatId, pressing.id, sent);
-        keepRefusal(workspaceId, chatId, refusalOf(err));
-      } else {
+    if (!pressing) {
+      keepTyped(workspaceId, chatId, "", null);
+      try {
+        await data.send(chatId, sent);
+      } catch (err) {
         const now = typedIn(workspaceId, chatId);
         keepTyped(workspaceId, chatId, now.trim() ? `${sent}\n${now}` : sent, null);
         keepRefusal(workspaceId, chatId, refusalOf(err));
+      } finally {
+        keepPress(workspaceId, chatId, null);
       }
+      return;
+    }
+    try {
+      await data.sendDraft(pressing, sent);
+      // Taken: the field the press found empties, before the draft leaves (so its words never stand as his own).
+      settle(pressed);
+      markDraft(workspaceId, chatId, pressing.id, { settled: true });
+    } catch (err) {
+      if ((err as { failed?: boolean }).failed) {
+        // The item failed and stays in the Outbox with these words, for Send again or Check whether it went first there.
+        settle(pressed);
+        markDraft(workspaceId, chatId, pressing.id, { failed: refusalOf(err), ...((err as { unknown?: boolean }).unknown ? { unknown: true } : {}) });
+        keepFailedPress(workspaceId, chatId, pressing.id);
+      } else keepRefusal(workspaceId, chatId, refusalOf(err));
     } finally {
       keepPress(workspaceId, chatId, null);
     }
@@ -193,9 +200,8 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
   };
   const discard = (d: ThreadDraft): Promise<void> => {
     // The field empties if and only if its words are that draft's (edited or not) at the press and unchanged since.
+    // Nothing here changes before the host answers: a refused Discard leaves field, origin and draft as they were.
     const pressed = fieldAsPressed(workspaceId, chatId);
-    // His own Discard takes a kept revision with the draft: nothing of it is offered back.
-    keepDraftEdit(workspaceId, chatId, d.id, null);
     return drop(async () => {
       await data.dropDraft(d);
       markDraft(workspaceId, chatId, d.id, { settled: true });
@@ -208,26 +214,12 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
     if (mode === "send" && words && !pending && !dropping) void send();
   };
 
-  // His words from a refused press whose item has since gone: his own now, put back only on his press, before whatever
-  // the field holds, a line between, as Use draft does; from there they go as his own reply.
-  const loose = useLooseWords(workspaceId, chatId);
-  const putBack = (): void => {
-    if (!loose) return;
-    const now = typedIn(workspaceId, chatId);
-    keepTyped(workspaceId, chatId, now.trim() ? `${loose}\n${now}` : loose, null);
-    keepLooseWords(workspaceId, chatId, null);
-    field.current?.focus();
-  };
-  // A refusal says itself above the line, never in its place: a draft he may want back stays offered under it. Words
-  // whose item has gone say what happened on the line itself, so the same edit never takes two lines.
-  const alert =
-    refused && !loose ? (
-      <p role="alert" className="text-xs text-destructive">
-        {refused}
-      </p>
-    ) : null;
-  // The line for his kept words, while they wait: what happened, and the one way to have them back; Discard drops them.
-  const showsLoose = loose !== undefined && !(draft && failed);
+  // A refusal says itself above the line whenever it is set, never in its place; it clears when he types or presses again.
+  const alert = refused ? (
+    <p role="alert" className="text-xs text-destructive">
+      {refused}
+    </p>
+  ) : null;
   const note = draft && failed ? (
     <FailedLine
       draft={draft}
@@ -237,13 +229,6 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
         data.openOutbox(draft);
       }}
     />
-  ) : showsLoose ? (
-    <span data-loose-words className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
-      <span className="min-w-0 text-muted-foreground">The draft is gone; your edit is kept</span>
-      <Button variant="ghost" size="xs" className="-my-1 ms-auto shrink-0" onClick={putBack}>
-        Put back my words
-      </Button>
-    </span>
   ) : draft ? (
     // A draft's line ends with why its button is Copy, while it is; a draft he is not using offers itself.
     <DraftLine draft={draft} why={draft.held && sends ? undefined : why} onUse={drafting ? undefined : () => takeDraft(draft)} />
@@ -269,7 +254,11 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
             aria-label={placeholder}
             placeholder={placeholder}
             value={text}
+            // A held draft's press on its way: its words stay on screen, read only, until the host has taken them.
+            readOnly={holding}
+            aria-busy={holding || undefined}
             onChange={(event) => {
+              if (holding) return;
               const next = event.currentTarget.value;
               // An edit keeps whose words they are; emptied, the field's next words are his own.
               keepTyped(workspaceId, chatId, next.trim() ? next : "", next.trim() ? undefined : null);
@@ -282,18 +271,14 @@ export function Composer({ workspaceId, detail }: { workspaceId: string; detail:
             {QUICK_ANSWERS.length ? (
               <div className="flex min-w-0 items-center gap-1">
                 {QUICK_ANSWERS.map((answer) => (
-                  <Button key={answer.id} variant="ghost" size="xs" className="text-muted-foreground" onClick={() => setText(text ? `${text} ${answer.text}` : answer.text)}>
+                  <Button key={answer.id} variant="ghost" size="xs" className="text-muted-foreground" disabled={holding} onClick={() => setText(text ? `${text} ${answer.text}` : answer.text)}>
                     {answer.label}
                   </Button>
                 ))}
               </div>
             ) : null}
             <span className="flex-1" />
-            {showsLoose ? (
-              <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => keepLooseWords(workspaceId, chatId, null)}>
-                Discard
-              </Button>
-            ) : draft && !failed ? (
+            {draft && !failed ? (
               <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={dropping || pending} onClick={() => void discard(draft)}>
                 <BusyLabel busy={dropping} label="Discard" />
               </Button>

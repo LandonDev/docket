@@ -1950,11 +1950,11 @@ Around the canvas:
   may be cut, its whole shown on hover while it is; no tip repeats the line;
   no Discard, its words never in the field, no amber mark on its row). A refusal in red stands above that line, never in its place. His reply shows as his own message with one 12px line under it:
   "Sending" and Undo (in ink, as Retry), or the red mark, "Not sent.", LifeOS's reason and
-  Retry. Words from a refused press whose held item has since gone take the
-  draft line's place, one line: "The draft is gone; your edit is kept" with
-  one quiet control, "Put back my words", and the foot's Discard; they go
-  as his own reply once put back. The field empties at Send's press, the button turning busy until
-  LifeOS answers. A message that arrives at the foot rises 4px and fades in over
+  Retry. His own words leave the field at Send's press, the button turning
+  busy until LifeOS answers. A held draft's words stay in the field until
+  the host has taken them: while its press goes the field is read only, Send
+  busy, Discard off, the draft's line still naming its thread; refused, the
+  field is as it was, with the refusal in red above the line. A message that arrives at the foot rises 4px and fades in over
   `--dur-fast`; nothing else moves.
 - **People** (the People view, work/people/; docs/agents/work-people.md).
   The list is a 720px column, one 32px row a

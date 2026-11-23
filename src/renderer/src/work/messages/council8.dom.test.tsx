@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 /**
  * What the council's eighth round asked of the Messages view, one behaviour a test, over the
- * fixtures' seam: his words from a refused press outlive an item that leaves Waiting; every failed
+ * fixtures' seam: every failed
  * file offers Try again, which asks anew; Retry's keys at 640px and into empty results; and the
  * file watched by its id while its message is outside a pinned page.
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessagesDataProvider } from "./data";
-import { FILE_FAILED, fixtureData, HELD_DRAFT, JOB, MESSAGES, type FixtureOptions } from "./fixtures";
+import { FILE_FAILED, fixtureData, JOB, MESSAGES, type FixtureOptions } from "./fixtures";
 import { MessagesScreen } from "./MessagesView";
-import { looseWordsOf, patchPage, resetPages, typedFromDraft } from "./page";
+import { patchPage, resetPages } from "./page";
 import { StartThreadProvider } from "./threads";
 
 vi.mock("work-kit/mail/lib/bytes", () => ({ loadBytes: async () => new Blob(["x"], { type: "image/png" }) }));
@@ -52,77 +52,8 @@ function mount(options: FixtureOptions = {}, chatId: string | null = null, narro
   return { data, view };
 }
 const field = (): HTMLTextAreaElement => document.querySelector<HTMLTextAreaElement>("[data-composer] textarea")!;
-const composer = (): HTMLElement => document.querySelector<HTMLElement>("[data-composer]")!;
 const flush = () => act(async () => {});
-const type = (value: string) => fireEvent.change(field(), { target: { value } });
-const enter = () => fireEvent.keyDown(field(), { key: "Enter" });
-const inComposer = (name: string) => within(composer()).queryByRole("button", { name });
 const block = (id: string): HTMLElement | null => document.querySelector<HTMLElement>(`[data-block="${id}"]`);
-const EDIT = `${HELD_DRAFT.text} Also the banner, in both sizes.`;
-
-describe("his words from a refused press whose item left Waiting", () => {
-  it("are offered back, put back before the field's own words with no held origin, and Send goes as his own", async () => {
-    const { data } = mount({ editRefused: "This item was already decided", drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
-    type(EDIT);
-    enter();
-    await flush();
-    expect(data.log.pressed).toEqual([]);
-    // Discarded in another window before this one heard: the item leaves Waiting.
-    act(() => data.dropElsewhere(HELD_DRAFT.id));
-    await flush();
-    expect(inComposer("Use draft")).toBeNull();
-    expect(inComposer("Put back my words")).toBeTruthy();
-    // One line for the edit: what happened and the way back, the refusal not said a second time.
-    expect(document.querySelector("[data-loose-words]")!.textContent).toContain("The draft is gone; your edit is kept");
-    expect(within(composer()).queryByRole("alert")).toBeNull();
-    type("Hello");
-    await act(async () => fireEvent.click(inComposer("Put back my words")!));
-    expect(field().value).toBe(`${EDIT}\nHello`);
-    expect(typedFromDraft(WS, "c_dana")).toBeNull();
-    expect(inComposer("Put back my words")).toBeNull();
-    enter();
-    await flush();
-    expect(data.log.sent).toEqual([{ chatId: "c_dana", text: `${EDIT}\nHello` }]);
-    expect(data.log.pressed).toEqual([]);
-  });
-
-  it("are dropped by Discard, the line going with them", async () => {
-    const { data } = mount({ editRefused: "This item was already decided", drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
-    type(EDIT);
-    enter();
-    await flush();
-    act(() => data.dropElsewhere(HELD_DRAFT.id));
-    await flush();
-    fireEvent.click(inComposer("Discard")!);
-    expect(document.querySelector("[data-loose-words]")).toBeNull();
-    expect(looseWordsOf(WS, "c_dana")).toBeUndefined();
-    expect(field().value).toBe("");
-  });
-
-  it("are let go when he leaves the conversation", async () => {
-    const { data } = mount({ editRefused: "This item was already decided", drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
-    type(EDIT);
-    enter();
-    await flush();
-    act(() => data.dropElsewhere(HELD_DRAFT.id));
-    await flush();
-    expect(looseWordsOf(WS, "c_dana")).toBe(EDIT);
-    act(() => patchPage(WS, { chatId: "c_builds" }));
-    expect(looseWordsOf(WS, "c_dana")).toBeUndefined();
-  });
-
-  it("go with the item when he discarded it here", async () => {
-    const { data } = mount({ editRefused: "This item was already decided", drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
-    type(EDIT);
-    enter();
-    await flush();
-    await act(async () => fireEvent.click(inComposer("Discard")!));
-    await flush();
-    expect(data.log.dropped).toEqual([HELD_DRAFT.id]);
-    expect(inComposer("Put back my words")).toBeNull();
-    expect(looseWordsOf(WS, "c_dana")).toBeUndefined();
-  });
-});
 
 describe("a failed file", () => {
   it("offers Try again, which asks anew: on its way, then stored", async () => {

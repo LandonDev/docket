@@ -145,6 +145,26 @@ describe("the held reply's view", () => {
     expect(answeredOf({}, { chat: lifeos.chat } as never, [])).toBeNull();
   });
 
+  it("skips his replies still on their way or failed: the quote is the newest stored message of his", () => {
+    const at = Date.now();
+    lifeos.chat = { ...CHATS.find((c) => c._id === "c_design")!, lastInId: undefined, lastFromMe: true };
+    lifeos.page = [
+      { _id: "q1", who: { name: "Alex Kim", me: true }, text: "Queued words", sentAt: at, files: [], reply: { outboxId: "ob1", status: "queued" } },
+      { _id: "f1", who: { name: "Alex Kim", me: true }, text: "Failed words", sentAt: at - 1000, files: [], reply: { outboxId: "ob2", status: "failed", error: "Slack refused it" } },
+      { _id: "o2", who: { name: "Alex Kim", me: true }, text: "Ship it Friday?", sentAt: at - 60_000, files: [] },
+    ];
+    render(<View env="box" item={item({ chatId: "c_design", source: "slack", chat: "#design-review", text: "Going with Friday." })} />);
+    expect(document.querySelector("[data-answers]")!.textContent).toBe("You: Ship it Friday?");
+  });
+
+  it("naming nothing with no message from anyone else and a page that failed, says it could not be read, with Retry", () => {
+    lifeos.chat = { ...CHATS.find((c) => c._id === "c_design")!, lastInId: undefined, lastFromMe: true };
+    lifeos.pageFails = true;
+    render(<View env="box" item={item({ chatId: "c_design", source: "slack", chat: "#design-review", text: "Going with Friday." })} />);
+    const line = document.querySelector<HTMLElement>("[data-answers='unreadable']")!;
+    expect(within(line).getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("keeps the keys in the quote's slot when its Retry, holding them, reads afresh", () => {
     lifeos.rawFails = true;
     render(<View env="box" item={item({ chatId: "c_dana", replyTo: "far_4", source: "slack", chat: "Dana Lee", text: "Yes." })} />);

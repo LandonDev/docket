@@ -38,8 +38,10 @@ export function answeredOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Cha
   if (found) return { who: found.who.me ? "You" : found.who.name, text: wordsOf(found.text) };
   if (!reply.replyTo && detail && !detail.chat.lastFromMe && detail.chat.lastText) return { who: detail.chat.lastWho, text: detail.chat.lastText };
   if (!reply.replyTo && detail && !detail.chat.lastInId) {
-    // The page is newest first, as LifeOS's own index for his messages is: the first of his is the one it answers.
-    const mine = page?.find((m) => m.who.me);
+    // The page is newest first, as LifeOS's own index for his messages is: the first STORED message of his is the one it
+    // answers. Rows still carrying `reply` (queued, sending, failed) are his outgoing replies, not stored messages: the
+    // page lists them ahead, and LifeOS's send never answers one.
+    const mine = page?.find((m) => m.who.me && !m.reply);
     if (mine) return { who: "You", text: wordsOf(mine.text) };
   }
   return null;
@@ -71,6 +73,9 @@ export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Lifeo
   const inPage = page.status === "ready" ? answeredOf(reply, ready(detail), page.value.page) : null;
   if (inPage) return inPage;
   const id = reply.replyTo ?? ready(detail)?.chat?.lastInId;
+  // Naming nothing in a conversation of only his own words, the target is on the page: a page that failed is a quote that
+  // could not be read, with Retry, not an empty slot.
+  if (!id && !reply.replyTo && page.status === "failed" && detail.status === "ready" && detail.value && !detail.value.chat.lastInId) return "unreadable";
   if (!id) return detail.status === "loading" ? "loading" : detail.status === "failed" && !reply.replyTo ? "unreadable" : null;
   if (!byId || byId.status === "loading") return "loading";
   if (byId.status === "failed") return "unreadable";

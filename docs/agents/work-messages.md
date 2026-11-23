@@ -175,7 +175,7 @@ files: there a file is the plain line LifeOS stored.
 | `files.ts` | `viewKind` (the canvas kind `kindForFile` names, when the canvas fetches it), `fileVerb`, `chatFileSource` (the mail arm with `from: 'chat'`). |
 | `threads.ts` | `chatChip` ("Dana Lee in Slack", a message's words as `quote`), `threadRows` (Start thread; Mention in a thread only while one is open), `linkRows` (Open in the app, Copy link), `mention`, `StartThreadProvider`. |
 | `fixtures.ts`, `pictures.fixtures.ts` | The seam from a made-up studio, Starboard, kept in memory (a reply lands as his own message, an undo takes it away, a pressed draft goes), with switches: `loading`, `empty`, `noSource`, `stale`, `drafted`, `drafts`, `routes`, `refuse`, and `manyChats`/`manyMessages` for the speed proof; two made-up pictures as `data:` addresses. |
-| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search, what he typed in each conversation (live: Undo writes back into it), a message asked for (`wantMessage`), files asked for before their bytes came (`wantFile`), an unsaved draft revision (`keepDraftEdit`) and the drafts met (`seeDraft`), whose words the field holds (`keepTyped(…, from)`) and its revision (`typedRev`), the pending press (`keepPress`), what became of a draft before the Outbox's list says so (`markDraft`: settled or failed), the visit's "New", its place (`visitPlaceOf`) and his held unread mark (`markUnreadHeld`), the way back to the list (`returnTo`, `peekReturn`, `takeReturn`); outside React, the list's scroll and each conversation's place. |
+| `page.ts` | Per workspace, while the window lives: the open conversation, the filter, the search, what he typed in each conversation (live: Undo writes back into it), a message asked for (`wantMessage`), files asked for before their bytes came (`wantFile`), and the drafts met (`seeDraft`), whose words the field holds (`keepTyped(…, from)`) and its revision (`typedRev`), the pending press (`keepPress`), what became of a draft before the Outbox's list says so (`markDraft`: settled or failed), the visit's "New", its place (`visitPlaceOf`) and his held unread mark (`markUnreadHeld`), the way back to the list (`returnTo`, `peekReturn`, `takeReturn`); outside React, the list's scroll and each conversation's place. |
 | `model.ts` | Pure rules: `rowTime`, `dayWords`, `rowLine`, `chatFact`, `newSince`, `wantsRead`, `blocksOf` (runs inside five minutes, days, "New"), `estimateOf`, `isPicture`, `pictureBox` (360 by 270), `linkParts` and `opensOutside` (http, https, mailto), `markWords`, `aroundMatch`. |
 | `MessagesView.tsx` | The frame (`ListFrame`, Mail's: 296px, 260 to 480, `tc.messages.listWidth`), the narrow rule at 640px (one tree in both layouts: under it the list or the pane is hidden, never remounted), the conversation in a `CanvasSeat` on `messagesPaneOf` (toggle "Messages"), `useOpened` (`OpenWorkView.chat` and `.message`, taken once), `MessagesScreen` for the preview. |
 | `ChatList.tsx`, `Conversation.tsx`, `Message.tsx`, `Composer.tsx` | The list, the conversation, one message (its reply state, pictures and files), the composer. |
@@ -236,32 +236,30 @@ The look is docs/DESIGN.md "The Messages view".
   puts the draft's words before his. Whose words they are is kept beside them
   in page.ts (`keepTyped(…, from)`), so leaving and coming back, a Retry or
   the 640px crossing find a draft still a draft; a draft gone meanwhile
-  leaves its words as his own. Send empties the field at the press; the
-  pressed words (and the held draft's id when a draft was pressed) wait in
-  page.ts as the pending press (`keepPress`) until LifeOS answers, and while
-  it is pending Return and the button do nothing more for that conversation
-  on any mount, so nothing goes twice and sent words never sit in the field.
-  What a refusal does depends on what was pressed. His own words come back
-  before whatever he typed since, a line between, as his own, and the refusal
-  shows. A held draft's do not come back into the field: the item keeps its
-  words, and the words he pressed, when they differ from the item's (an edit
-  the Outbox refused to save: a revision conflict, a host that did not
-  answer, a reply over LifeOS's 4,000 characters, which the host checks
-  before it saves), are kept with the draft in page.ts (`keepDraftEdit`)
-  until a save of them goes through or the draft goes; Use draft brings that
-  revision back, before any words of his own in the field. If the item goes
-  while they are kept (discarded or decided in another window before this one
-  heard), they outlive it as his own words with no held origin
-  (`keepLooseWords`): one line in the draft line's place says so ("The
-  draft is gone; your edit is kept") with one quiet control, "Put back my
-  words", which restores them only on his press, before whatever the field
-  holds, a line between, to go from there as his own reply (`send`, never
-  the gone item); the foot's Discard drops them; the refusal for that edit
-  is not said on a second line. Let go when he puts them back, discards them
-  or leaves the conversation. His own
-  Discard, or a press of his that sends the item, takes them with it. The field stays
-  as he has it, and the refusal shows above the draft's line rather than in
-  its place. A held draft pressed or discarded here is marked settled in
+  leaves its words as his own. His own words: Send empties the field at
+  the press, the pressed words wait in page.ts as the pending press
+  (`keepPress`) until LifeOS answers, and while it is pending Return and the
+  button do nothing more for that conversation on any mount, so nothing goes
+  twice; a refusal puts his words back before whatever he typed since, a
+  line between, as his own, and shows. A held draft's words follow one rule:
+  they stay in the field until the host has taken them. While its press is
+  pending the field is read only (`aria-busy`), Send busy and Discard off,
+  and the draft's line still names its thread. Taken, the field empties if
+  it is still the field as pressed; the item failed (its words saved to it
+  before the send), the same, and the failed line shows. Refused in any
+  other way (a refused save, a reply over LifeOS's 4,000 characters, which
+  the host checks before it saves, a revision conflict, an item already
+  decided, a host that did not answer), the field is left exactly as it
+  was, words and origin, and the refusal shows above the line: a second
+  Send presses again. Nothing is kept anywhere else. If the item leaves the
+  waiting list while the field holds its words (sent or discarded
+  elsewhere), the words stay and are his own now, so Send goes as his own
+  reply. Discard changes nothing before the host answers: the field empties
+  only on success and only if still as pressed, and a refused Discard leaves
+  field, origin and draft as they were. A refusal shows above the line
+  whenever it is set, never hidden by another line, and clears when he types
+  or presses again.
+  A held draft pressed or discarded here is marked settled in
   page.ts (`markDraft`) and left out of the drafts (`useWaitingDrafts`,
   drafts.ts) until the Outbox's own list drops it, so its line, Use draft
   and a fill of an empty field never come back for the round trip, on any
@@ -298,7 +296,9 @@ The look is docs/DESIGN.md "The Messages view".
   types or sends again. His own reply shows from LifeOS's row: `queued` is
   "Sending" with Undo, `sending` "Sending", `failed` "Not sent." with the
   reason and Retry. Undone words are his own and never take a draft's id,
-  judged when the Undo settles: into an empty field, else before his own
+  judged when the Undo settles (the recall goes at once; with a held
+  draft's press pending, the words are placed once it settles, on the field
+  as it then is, `pressSettled`): into an empty field, else before his own
   words, a line between; where the field then holds a held draft's words,
   they are saved to the item first when they differ from its own
   (`saveDraft`, the Outbox's edit), and again if he went on editing them
@@ -359,8 +359,9 @@ The look is docs/DESIGN.md "The Messages view".
   away, so when it held the keys the list's or the conversation's pane holds
   them while the read runs (`data-list-pane`, `data-conversation-pane`), and
   what lands takes them from it: the rows or results, the column, the next
-  failure's Retry, the composer's field (a conversation with no messages yet)
-  or the search field (an empty list with no action). Under 640px the pane
+  failure's Retry, the composer's field (a conversation with no messages yet),
+  Back to Messages (the conversation gone) or the search field (an empty list
+  with no action). Under 640px the pane
   counts as inside the conversation, so Back does not take them first. Sources that did not load make
   an empty list say it did not load. A conversation that fails keeps its
   toolbar, so the way back stays under 640px.
@@ -373,7 +374,11 @@ The look is docs/DESIGN.md "The Messages view".
   asked), so the row draws as coming (the chip's spinner, the picture's
   skeleton) once LifeOS marks it wanted, and a fetch that fails again shows
   its new reason. The automatic ask is for listed files alone; a failed file
-  is asked again only on his press. A stored picture's bytes are read with
+  is asked again only on his press. A re-ask LifeOS refuses says that
+  refusal on the file's own line until a fresh attempt or a change of state.
+  A keyboard Try again keeps the keys: the message's files hold them while
+  the line gives way, and the chip, the picture or the line's own Try again
+  that takes its place gets them. A stored picture's bytes are read with
   `loadBytes` into a blob address, never put in the page as a web address,
   one read an address at a time, at most 120 held (the oldest no drawn
   picture uses released, read again when drawn again); a picture never grows
@@ -399,8 +404,10 @@ The look is docs/DESIGN.md "The Messages view".
   holds its place until LifeOS answers. The message quoted is the one LifeOS's
   `chats:reply` will answer: the one named, else the newest from someone
   else (`lastInId`), else, a conversation of only his own words, his newest
-  there, quoted "You: …" (Slack threads the reply under it); with nothing of
-  his on the newest page it is left unsaid. A reply that names its message is
+  stored message there, quoted "You: …" (Slack threads the reply under it;
+  his replies still queued, sending or failed are skipped, as LifeOS's send
+  never answers one); with nothing of his on the newest page it is left
+  unsaid, and with that page failed it could not be read, with Retry. A reply that names its message is
   read by id also when the page did not load; "The message it answers is no
   longer here" only when LifeOS answers that it is absent, "could not be
   read" with Retry when that read failed, or at once, whatever the page is

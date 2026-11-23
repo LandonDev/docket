@@ -12,7 +12,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { MessagesDataProvider } from "./data";
 import { fixtureData, HELD_DRAFT, JOB, type FixtureOptions } from "./fixtures";
 import { MessagesScreen } from "./MessagesView";
-import { patchPage, resetPages, typedFromDraft } from "./page";
+import { patchPage, resetPages } from "./page";
 import { StartThreadProvider } from "./threads";
 
 vi.mock("work-kit/mail/lib/bytes", () => ({ loadBytes: async () => new Blob(["x"], { type: "image/png" }) }));
@@ -57,47 +57,10 @@ const field = (): HTMLTextAreaElement => document.querySelector<HTMLTextAreaElem
 const composer = (): HTMLElement => document.querySelector<HTMLElement>("[data-composer]")!;
 const flush = () => act(async () => {});
 const type = (value: string) => fireEvent.change(field(), { target: { value } });
-const enter = () => fireEvent.keyDown(field(), { key: "Enter" });
 const inComposer = (name: string) => within(composer()).queryByRole("button", { name });
 const block = (id: string): HTMLElement | null => document.querySelector<HTMLElement>(`[data-block="${id}"]`);
-// Over LifeOS's 4,000 characters: the host refuses the edit before it saves anything.
-const LONG = `${HELD_DRAFT.text} ${"And one more thing about the launcher art. ".repeat(95)}`.slice(0, 4001);
 
 describe("an edit the Outbox refused to save", () => {
-  it("is kept with its draft: Use draft brings back his revision, not the item's old words", async () => {
-    const { data } = mount({ editRefused: "This reply is longer than LifeOS can send", drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
-    expect(LONG).toHaveLength(4001);
-    type(LONG);
-    enter();
-    await flush();
-    expect(field().value).toBe("");
-    expect(within(composer()).getByRole("alert").textContent).toBe("This reply is longer than LifeOS can send");
-    expect(data.log.pressed).toEqual([]);
-    await act(async () => fireEvent.click(inComposer("Use draft")!));
-    expect(field().value).toBe(LONG);
-    expect(typedFromDraft(WS, "c_dana")).toBe(HELD_DRAFT.id);
-  });
-
-  it("keeps his own words restored by Undo in the field, and Use draft puts the revision before them", async () => {
-    const { data } = mount({ slowDraft: true, editRefused: "This reply is longer than LifeOS can send", drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
-    type("");
-    type("My reply");
-    enter();
-    await flush();
-    await act(async () => fireEvent.click(inComposer("Use draft")!));
-    type(LONG);
-    enter();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Undo" })));
-    await flush();
-    expect(field().value).toBe("My reply");
-    await act(async () => data.release());
-    await flush();
-    expect(field().value).toBe("My reply");
-    expect(typedFromDraft(WS, "c_dana")).toBeNull();
-    await act(async () => fireEvent.click(inComposer("Use draft")!));
-    expect(field().value).toBe(`${LONG}\nMy reply`);
-  });
-
   it("never refills a draft he pushed aside when the composer mounts again", () => {
     const { data, view } = mount({ drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
     expect(field().value).toBe(HELD_DRAFT.text);

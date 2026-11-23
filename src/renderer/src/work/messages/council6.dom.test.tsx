@@ -12,7 +12,7 @@ import type { ChatMessage, ChatRow } from "@shared/work/messages";
 import { MessagesDataProvider, type ThreadDraft } from "./data";
 import { CHATS, fixtureData, HELD_DRAFT, JOB, MESSAGES, type FixtureOptions } from "./fixtures";
 import { MessagesScreen } from "./MessagesView";
-import { pageOf, patchPage, peekReturn, resetPages, typedFromDraft } from "./page";
+import { pageOf, patchPage, peekReturn, resetPages } from "./page";
 import { StartThreadProvider } from "./threads";
 
 vi.mock("work-kit/mail/lib/bytes", () => ({ loadBytes: async () => new Blob(["x"], { type: "image/png" }) }));
@@ -57,9 +57,7 @@ const field = (): HTMLTextAreaElement => document.querySelector<HTMLTextAreaElem
 const composer = (): HTMLElement => document.querySelector<HTMLElement>("[data-composer]")!;
 const failedLine = (): HTMLElement | null => document.querySelector<HTMLElement>("[data-draft-failed]");
 const flush = () => act(async () => {});
-const type = (value: string) => fireEvent.change(field(), { target: { value } });
 const enter = () => fireEvent.keyDown(field(), { key: "Enter" });
-const inComposer = (name: string) => within(composer()).queryByRole("button", { name });
 const conversations = () => screen.getByRole("listbox", { name: "Conversations" });
 const block = (id: string): HTMLElement | null => document.querySelector<HTMLElement>(`[data-block="${id}"]`);
 const SECOND: ThreadDraft = { id: "held_2", held: true, text: "Also: the trailer cut is in the shared folder.", threadId: "t_trailer", thread: "Trailer cut" };
@@ -95,29 +93,6 @@ describe("a press of this composer that failed owns the line", () => {
     expect(data.log.outbox).toEqual([`box:host:${HELD_DRAFT.id}`]);
     // Opened there, the other draft's line comes back.
     expect(composer().textContent).toContain(`Drafted in${SECOND.thread}`);
-  });
-});
-
-describe("a refused held press", () => {
-  it("leaves a reply his Undo put back as his own, and the draft's words with the item", async () => {
-    const { data } = mount({ slowDraft: true, refuseDraft: "It changed since it was held; look again", drafts: { c_dana: [HELD_DRAFT] } }, "c_dana");
-    type("");
-    type("My reply");
-    enter();
-    await flush();
-    await act(async () => fireEvent.click(inComposer("Use draft")!));
-    enter();
-    expect(field().value).toBe("");
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Undo" })));
-    await flush();
-    expect(field().value).toBe("My reply");
-    await act(async () => data.release());
-    await flush();
-    expect(field().value).toBe("My reply");
-    expect(typedFromDraft(WS, "c_dana")).toBeNull();
-    expect(within(composer()).getByRole("alert").textContent).toBe("It changed since it was held; look again");
-    expect(inComposer("Use draft")).toBeTruthy();
-    expect(data.log.pressed).toEqual([]);
   });
 });
 

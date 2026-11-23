@@ -37,8 +37,6 @@ export interface ThreadDraft {
   unknown?: boolean;
   /** The Outbox page's own key for the item (`<host>:<ref.at>:<ref.id>`), so Open in Outbox picks that very item. */
   outboxKey?: string;
-  /** `text` is his revision the Outbox refused to save, kept here (page.ts `keepDraftEdit`), not the item's own words. */
-  unsaved?: boolean;
 }
 
 /** What a press on a file does: show it beside the conversation, or save it to Downloads. */

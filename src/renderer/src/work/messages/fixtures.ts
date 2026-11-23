@@ -271,6 +271,14 @@ export interface FixtureOptions {
   slowDraft?: boolean;
   /** A held draft's press is refused with these words and the item stays held (a revision conflict, say). */
   refuseDraft?: string;
+  /** With `refuseDraft`: only the first N presses are refused; later ones go. */
+  refuseDraftTimes?: number;
+  /** His own Send is refused with these words (a held draft's press is not). */
+  refuseSend?: string;
+  /** Discard is refused with these words and the item stays held. */
+  discardRefused?: string;
+  /** Saving an edit to a held draft (Undo's save) is refused with these words. */
+  saveRefused?: string;
   /** A held draft pressed with words other than its own is refused before anything is saved (the host's check of an edit, a
    * reply over LifeOS's length), with these words; the item keeps its old words. */
   editRefused?: string;
@@ -414,6 +422,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
   };
   const chatOfDraft = (id: string): string | undefined => Object.keys(drafts).find((chatId) => drafts[chatId]!.some((d) => d.id === id));
   let letGo: (() => void) | null = null;
+  let refusedPresses = 0;
   const lingering: (() => void)[] = [];
   const lateUnread: string[] = [];
   /** A settled draft leaves the list at once, or at `catchUp` when the list lags. */
@@ -542,6 +551,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     async send(chatId, text) {
       if (options.slow) await new Promise<void>((go) => (letGo = go));
       if (options.refuse) throw new Error(options.refuse);
+      if (options.refuseSend) throw new Error(options.refuseSend);
       log.sent.push({ chatId, text });
       reply(chatId, text);
     },
@@ -567,7 +577,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     async sendDraft(draft, text) {
       if (options.slow || options.slowDraft) await new Promise<void>((go) => (letGo = go));
       if (options.refuse) throw new Error(options.refuse);
-      if (options.refuseDraft) throw new Error(options.refuseDraft);
+      if (options.refuseDraft && (options.refuseDraftTimes === undefined || refusedPresses++ < options.refuseDraftTimes)) throw new Error(options.refuseDraft);
       if (options.editRefused) {
         const chatOf = chatOfDraft(draft.id);
         const stored = chatOf ? drafts[chatOf]!.find((d) => d.id === draft.id)?.text : undefined;
@@ -596,6 +606,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     },
     async saveDraft(draft, text) {
       if (options.slowSave) await new Promise<void>((go) => (letGo = go));
+      if (options.saveRefused) throw new Error(options.saveRefused);
       log.saved.push({ id: draft.id, text });
       const chatId = chatOfDraft(draft.id);
       if (!chatId) return;
@@ -604,6 +615,7 @@ export function fixtureData(options: FixtureOptions = {}): MessagesData & Fixtur
     },
     async dropDraft(draft) {
       if (options.slowDrop) await new Promise<void>((go) => (letGo = go));
+      if (options.discardRefused) throw new Error(options.discardRefused);
       log.dropped.push(draft.id);
       const chatId = chatOfDraft(draft.id);
       if (chatId) settleDraft(chatId, draft.id);

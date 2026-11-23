@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { formatSize } from "work-kit/mail/lib/files";
 import { loadBytes } from "work-kit/mail/lib/bytes";
 import type { CanvasKind } from "@shared/work";
@@ -19,7 +19,7 @@ import { useMessagesData, type FileVerb } from "./data";
 import { isPicture, pictureBox, viewKind } from "./files";
 import { linkParts, opensOutside, type Block } from "./model";
 import { fieldOrigin, useWaitingDrafts } from "./drafts";
-import { fieldAsPressed, keepTyped, stillPressed, typedIn, wantFile } from "./page";
+import { fieldAsPressed, keepTyped, pressSettled, stillPressed, typedIn, wantFile } from "./page";
 
 /**
  * One message in the conversation's column (docs/agents/work-messages.md):
@@ -123,6 +123,32 @@ function Files({ workspaceId, message, chatId, chat }: { workspaceId: string; me
   useEffect(() => {
     if (wants && !asked.has(message._id)) ask();
   }, [wants, message._id, ask]);
+  // A refused ask is said on the line of each file it was for, a failed file's too (not its old worker error), until a
+  // fresh attempt or a change of the files' state.
+  const state = message.files.map((file) => `${file._id}:${file.status}:${file.error ?? ""}`).join("|");
+  useEffect(() => {
+    setRefused(null);
+  }, [state]);
+  // A keyboard Try again takes its own line away when the file comes: the message's files hold the keys meanwhile (a
+  // stable target), and whatever takes the line's place (the chip, the picture, or the line again with its Try again)
+  // takes them from there.
+  const box = useRef<HTMLDivElement>(null);
+  const keysFor = useRef<string | null>(null);
+  const retry = (file: ChatFile): void => {
+    if (box.current?.contains(document.activeElement)) {
+      keysFor.current = file._id;
+      box.current.focus({ preventScroll: true });
+    }
+    ask();
+  };
+  useLayoutEffect(() => {
+    const id = keysFor.current;
+    if (!id || document.activeElement !== box.current) return;
+    const target = box.current?.querySelector<HTMLElement>(`[data-file="${id}"]`);
+    if (!target) return;
+    keysFor.current = null;
+    target.focus({ preventScroll: true });
+  });
   const link = message.permalink ?? chat.link;
   // A file whose bytes have not come is asked for by the conversation, which opens it once they do (or lets the ask go if
   // the file fails), wherever its message has scrolled by then.
@@ -138,7 +164,7 @@ function Files({ workspaceId, message, chatId, chat }: { workspaceId: string; me
   const chips = shown.filter((file) => !isPicture(file));
   const failed = message.files.filter(cannot);
   return (
-    <div data-files className="mt-1.5 mb-0.5 flex flex-col gap-1.5">
+    <div ref={box} tabIndex={-1} data-files className="mt-1.5 mb-0.5 flex flex-col gap-1.5 outline-none">
       {pictures.map((file) => (
         <Picture key={file._id} file={file} source={chat.source} link={link} onOpen={open(file)} />
       ))}
@@ -150,7 +176,7 @@ function Files({ workspaceId, message, chatId, chat }: { workspaceId: string; me
         </div>
       ) : null}
       {failed.map((file) => (
-        <FileFailed key={file._id} file={file} why={file.status === "failed" ? file.error : (refused ?? undefined)} source={chat.source} link={link} onRetry={ask} />
+        <FileFailed key={file._id} file={file} why={refused ?? (file.status === "failed" ? file.error : undefined)} source={chat.source} link={link} onRetry={() => retry(file)} />
       ))}
     </div>
   );
@@ -239,7 +265,7 @@ function Picture({ file, source, link, onOpen }: { file: ChatFile; source: ChatR
   // Its own shape, at most 360 by 270, and never wider than the message: the height follows the width.
   const shape = { width: box.width, aspectRatio: `${box.width} / ${box.height}` };
   return (
-    <Button variant="ghost" aria-label={`View ${file.name}`} aria-busy={url ? undefined : true} onClick={onOpen} style={shape} className="h-auto max-w-full self-start overflow-hidden rounded-lg p-0 hover:bg-transparent active:bg-transparent">
+    <Button variant="ghost" aria-label={`View ${file.name}`} aria-busy={url ? undefined : true} data-file={file._id} onClick={onOpen} style={shape} className="h-auto max-w-full self-start overflow-hidden rounded-lg p-0 hover:bg-transparent active:bg-transparent">
       {src ? (
         <img src={src} alt={file.name} width={box.width} height={box.height} draggable={false} onError={() => setBroken(src)} className="block size-full rounded-lg object-cover outline-1 -outline-offset-1 outline-(--image-outline)" />
       ) : (
@@ -270,6 +296,7 @@ function FileChip({ file, verb, onOpen }: { file: ChatFile; verb: FileVerb; onOp
         aria-label={pending ? `${said}, on its way` : said}
         aria-busy={pending || undefined}
         data-pending={pending || undefined}
+        data-file={file._id}
         onClick={onOpen}
         className="h-10 max-w-72 min-w-0 shrink justify-start gap-2 self-start rounded-lg border border-border ps-1.5 pe-3 font-normal"
       >
@@ -304,7 +331,7 @@ function FileFailed({ file, why, source, link, onRetry }: { file: ChatFile; why:
       <span className="min-w-0 font-medium text-foreground [overflow-wrap:anywhere]">{file.name}</span>
       <span>{why ?? "Couldn't load this file"}</span>
       {onRetry ? (
-        <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
+        <Button variant="ghost" size="xs" className="ms-1" data-file={file._id} onClick={onRetry}>
           Try again
         </Button>
       ) : null}
@@ -340,6 +367,9 @@ function ReplyState({ reply, workspaceId, chatId }: { reply: ChatReplyState; wor
    */
   const undo = async (): Promise<void> => {
     const words = await data.undo(chatId, reply.outboxId);
+    // A held draft's press on its way holds the field (its words stay until the host has taken them): the recalled words
+    // are placed once it settles, by the rule below, on the field as it then is.
+    await pressSettled(workspaceId, chatId);
     // The field as he left it when the recall answered. Each save of a held draft's edit awaits, so the field is taken
     // before it and judged after by its revision (`stillPressed`): words he went on typing under the draft's id meanwhile
     // are saved too, before the recalled words take the field; words that became his own stay behind them.

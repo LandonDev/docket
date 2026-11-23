@@ -113,12 +113,14 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry }: { work
 
   const failed = detail.status === "failed" || messages.status === "failed";
   // A Retry's read landing while the pane holds the keys: the column takes them, or the next failure's Retry does.
-  const settled = failed || (messages.status === "ready" && detail.status === "ready");
+  const settled = failed || (detail.status === "ready" && (messages.status === "ready" || !detail.value));
   useEffect(() => {
     if (!settled || !document.activeElement?.hasAttribute("data-conversation-pane")) return;
     const pane = document.activeElement as HTMLElement;
-    // A failure's Retry; else the column; else, a conversation with no messages yet, the composer's field.
-    const target = failed ? pane.querySelector<HTMLElement>("[data-slot=empty] button") : (pane.querySelector<HTMLElement>("[role=log]") ?? pane.querySelector<HTMLElement>("[data-composer] textarea"));
+    // A failure's Retry; else the column; else, a conversation with no messages yet, the composer's field; else, the
+    // conversation gone, its Back to Messages.
+    const empty = pane.querySelector<HTMLElement>("[data-slot=empty] button");
+    const target = failed ? empty : (pane.querySelector<HTMLElement>("[role=log]") ?? pane.querySelector<HTMLElement>("[data-composer] textarea") ?? empty);
     target?.focus({ preventScroll: true });
   }, [settled, failed]);
   const gone = detail.status === "ready" && !detail.value;

@@ -196,7 +196,6 @@ export function markUnreadHeld(markUnread: (chatId: string, onFailed?: () => voi
 export function endVisit(workspaceId: string, chatId: string): void {
   visits.delete(key(workspaceId, chatId));
   if (fileWants.delete(key(workspaceId, chatId))) tellWants();
-  if (looseWords.delete(key(workspaceId, chatId))) for (const listener of looseListeners) listener();
   visitPlaces.delete(key(workspaceId, chatId));
   unreadHeld.delete(key(workspaceId, chatId));
 }
@@ -217,6 +216,19 @@ export function keepPress(workspaceId: string, chatId: string, press: PendingPre
   if (press) presses.set(key(workspaceId, chatId), press);
   else if (!presses.delete(key(workspaceId, chatId))) return;
   for (const listener of pressListeners) listener();
+}
+/** Resolves when no press is pending for the conversation (at once if none is): Undo places its words only after one. */
+export function pressSettled(workspaceId: string, chatId: string): Promise<void> {
+  const at = key(workspaceId, chatId);
+  if (!presses.has(at)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = (): void => {
+      if (presses.has(at)) return;
+      pressListeners.delete(done);
+      resolve();
+    };
+    pressListeners.add(done);
+  });
 }
 export function usePendingPress(workspaceId: string, chatId: string): PendingPress | undefined {
   return useSyncExternalStore(
@@ -256,61 +268,6 @@ export function useDraftMarks(workspaceId: string, chatId: string): ReadonlyMap<
     },
     () => draftMarksOf(workspaceId, chatId),
     () => draftMarksOf(workspaceId, chatId),
-  );
-}
-
-/**
- * A held draft's revision the Outbox has not taken (his edit, pressed and refused before it was saved: a reply over
- * LifeOS's length, say), kept by the draft's id until a save of it succeeds or the draft goes. Use draft and the line
- * read it in place of the item's words, so a refused save never costs him his edit.
- */
-const draftEdits = new Map<string, ReadonlyMap<string, string>>();
-const NO_EDITS: ReadonlyMap<string, string> = new Map();
-const editListeners = new Set<() => void>();
-export const draftEditsOf = (workspaceId: string, chatId: string): ReadonlyMap<string, string> => draftEdits.get(key(workspaceId, chatId)) ?? NO_EDITS;
-export function keepDraftEdit(workspaceId: string, chatId: string, draftId: string, text: string | null): void {
-  const at = key(workspaceId, chatId);
-  const next = new Map(draftEdits.get(at) ?? NO_EDITS);
-  if (text !== null) next.set(draftId, text);
-  else if (!next.delete(draftId)) return;
-  if (next.size) draftEdits.set(at, next);
-  else draftEdits.delete(at);
-  for (const listener of editListeners) listener();
-}
-export function useDraftEdits(workspaceId: string, chatId: string): ReadonlyMap<string, string> {
-  return useSyncExternalStore(
-    (fn) => {
-      editListeners.add(fn);
-      return () => void editListeners.delete(fn);
-    },
-    () => draftEditsOf(workspaceId, chatId),
-    () => draftEditsOf(workspaceId, chatId),
-  );
-}
-
-/**
- * His words from a refused press whose held item has since gone (discarded or decided in another window before this one
- * heard): they outlive the item, his own now with no held origin. The composer offers them back on his press
- * ("Put back my words"), before whatever the field holds, to send as his own reply. Dropped when he puts them back or
- * leaves the conversation.
- */
-const looseWords = new Map<string, string>();
-const looseListeners = new Set<() => void>();
-export const looseWordsOf = (workspaceId: string, chatId: string): string | undefined => looseWords.get(key(workspaceId, chatId));
-export function keepLooseWords(workspaceId: string, chatId: string, text: string | null): void {
-  const at = key(workspaceId, chatId);
-  if (text) looseWords.set(at, looseWords.has(at) ? `${looseWords.get(at)}\n${text}` : text);
-  else if (!looseWords.delete(at)) return;
-  for (const listener of looseListeners) listener();
-}
-export function useLooseWords(workspaceId: string, chatId: string): string | undefined {
-  return useSyncExternalStore(
-    (fn) => {
-      looseListeners.add(fn);
-      return () => void looseListeners.delete(fn);
-    },
-    () => looseWordsOf(workspaceId, chatId),
-    () => looseWordsOf(workspaceId, chatId),
   );
 }
 
@@ -436,9 +393,7 @@ export function resetPages(): void {
   visits.clear();
   fileWants.clear();
   failedPresses.clear();
-  draftEdits.clear();
   seenDrafts.clear();
-  looseWords.clear();
   visitPlaces.clear();
   unreadHeld.clear();
   presses.clear();
