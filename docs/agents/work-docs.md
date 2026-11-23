@@ -303,6 +303,16 @@ tints on the sheets, the PDF's page count against the sheets' and against
 LibreOffice's drawing of the Word file, and Preview's Margins row setting
 the document's own margins.
 
+**The guest's page** (`src/hosted/guest/DocPage.tsx`, `opening.ts`) holds
+the pane's two widths (`PAGES_FROM` 640, `TRUE_SIZE_FROM` 864; a test holds
+them equal) against the page's own width as it opens. His pick of view and
+zoom lives for the page's life (nothing is stored for a guest). A document
+that was classic at open stays in Flow when styled. Under 640px the view is
+Flow whatever was picked (`useWide(PAGES_FROM)`), and `guest.css` draws no
+switch there. In Pages the column gives up its measure and padding in CSS
+(`has-[.te-pages-stage]`), `main` wears `--stage`, and comments open at
+their words.
+
 ## The canvas
 
 The shared editor in a 672px measure with a 52px gutter for the block
@@ -605,7 +615,24 @@ page lands (the first-copy fault passed every unit test and failed both):
   pillar's three links on one styled document, opened in WebKit and Chromium
   at 390 and 768px, light and dark: the text drawn, the server's bytes
   untouched by an Edit open, a Bold tap reaching the service, the row's fold,
-  44px targets, no sideways scroll, a clean console. 206 checks.
+  44px targets, no sideways scroll, a clean console; and a second,
+  three-sheet Word file for Pages: each link in Flow under 640px with no
+  switch in the row, as sheets from 640px fitted to the screen with a header
+  and footer on each, no sideways scroll, a tap typing on a sheet and
+  reaching the service, Flow and back by the row, an open writing nothing,
+  and as many sheets as the app's own pane draws for the same file. That
+  last number comes from the script's other half, run first on a built tree:
+  `env -u ELECTRON_RUN_AS_NODE heavy bun scripts/proof-doc-guest-phone.ts
+  --desktop --out <folder>` (it leaves the file and the count where
+  `DOC8_DESKTOP` says). `DOC8_ONLY=<pattern>` runs only the pages whose name
+  matches. 405 checks.
+
+- `scripts/proof-doc-gate.ts`: two running instances, a host of this tree
+  and a window of an older build from its own worktree (`GATE_OLD_TREE`),
+  paired as his Mac's window is to the box. It found the fault of v1.0.362
+  ("The first copy"). It was written against the gate before a silent
+  window was refused every document: its head says which steps to turn
+  before it is run against master.
 
 ## LifeOS desktop
 

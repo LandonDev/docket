@@ -2394,7 +2394,7 @@ Around the canvas:
   words, never as disabled controls.
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the
   same tokens under one 44px line: the item's name, whose it is, what the
-  guest can do, until when, and the guest's avatar. What a guest may not
+  guest can do, until when, and the guest's avatar. A styled document is sheets of its paper from 640px ("Work editors: Document pages"). What a guest may not
   do is absent, never disabled. A project's link draws the project
   screens there on the Projects view's own measures, read only: the line
   holds the List or Board switch before the guest's facts, no way back
@@ -3037,6 +3037,13 @@ Flow.
   nothing. A document that was classic when it opened stays in Flow when he
   styles it, so the text never jumps onto sheets under his hands; the next
   time it opens, its width decides.
+- **On the guest's page** the same rule reads the page's own width as it
+  opens: sheets from 640px, fitted to the width under 864px and at true size
+  from it. The page under the 44px line is the stage, edge to edge. An Edit
+  link's row ends with the switch; Comment and View links have none and read
+  what the width gave them. Under 640px a guest's document is always Flow
+  and the row has no switch: a sheet fitted to a phone sets 11 pt text near
+  7px. For a finger the switch's track is 44px tall.
 - **The stage** is the scroller itself, edge to edge on `stage`, padded 16px
   over the first sheet and 24px at the sides and under the last (12px all
   round under 640px of stage). The column's 672px measure, its 52px gutter
