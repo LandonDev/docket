@@ -180,7 +180,7 @@ try {
     }
     if (await menuOf('East report')) {
       await run.press('Remove')
-      if (run.check('Remove of his own asks first', await run.until('the confirm', 5000, () => run.has('Remove East report?')))) {
+      if (run.check('Remove of his own asks first', await run.until('the confirm', 5000, () => run.has('Delete “East report”?')))) {
         await run.shot('05-remove')
         await run.press('Cancel')
         await sleep(600)
@@ -214,8 +214,10 @@ try {
       await run.press('Hide')
       const gone = await run.until('the starter is hidden', 8000, async () => (await list()).hidden === 1)
       run.check('Hide takes a starter off the shelf', gone)
-      await sleep(800)
+      run.check('and says so, with the way back', await run.until('the toast', 5000, () => run.has('Hidden')))
+      await sleep(600)
       await run.shot('09-hidden')
+      if (await run.press('Undo')) run.check('Undo shows that starter again', await run.until('the starter is back', 8000, async () => (await list()).hidden === 0))
       await run.call('work.templates.unhide', { workspaceId: ws.id })
     }
   } else run.note('the Templates row is not in the column (it waits for Files\' new view): the window\'s part was not run')
