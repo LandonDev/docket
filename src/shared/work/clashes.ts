@@ -174,11 +174,17 @@ export function milesOf(metres: number): number {
 const labelOf = (sector: SectorKey, opts: ClashWordsOpts): string => opts.label?.(sector) ?? sector.charAt(0).toUpperCase() + sector.slice(1)
 
 const formats = new Map<string, Intl.DateTimeFormat>()
-function format(kind: 'time' | 'day', timeZone: string | undefined): Intl.DateTimeFormat {
+const SHAPES = {
+  time: { hour: 'numeric', minute: '2-digit' },
+  day: { weekday: 'short' },
+  date: { month: 'short', day: 'numeric' },
+  ymd: { year: 'numeric', month: 'numeric', day: 'numeric' },
+} as const
+function format(kind: keyof typeof SHAPES, timeZone: string | undefined): Intl.DateTimeFormat {
   const key = `${kind}|${timeZone ?? ''}`
   let f = formats.get(key)
   if (!f) {
-    f = new Intl.DateTimeFormat('en-US', kind === 'time' ? { hour: 'numeric', minute: '2-digit', timeZone } : { weekday: 'short', timeZone })
+    f = new Intl.DateTimeFormat('en-US', { ...SHAPES[kind], timeZone })
     formats.set(key, f)
   }
   return f
@@ -186,6 +192,22 @@ function format(kind: 'time' | 'day', timeZone: string | undefined): Intl.DateTi
 /** "6:00 PM", with an ordinary space where ICU puts a narrow no-break one. */
 export const clockOf = (at: number, opts: ClashWordsOpts = {}): string => format('time', opts.timeZone).format(at).replace(/[  ]/g, ' ')
 const dayOf = (at: number, opts: ClashWordsOpts): string => format('day', opts.timeZone).format(at)
+/** The calendar day an instant falls on in the zone, counted in days, so two can be told a week apart. */
+function dayNumber(at: number, opts: ClashWordsOpts): number {
+  const parts = format('ymd', opts.timeZone).formatToParts(at)
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value)
+  return Date.UTC(part('year'), part('month') - 1, part('day')) / 86_400_000
+}
+/**
+ * A time as it is said beside a day (any instant of it): "6:00 PM" on that
+ * day, "Wed 11:00 PM" on another within the week either side, and "Jan 7,
+ * 8:00 AM" further off, where a weekday would read as the nearer one.
+ */
+export function timeNear(at: number, on: number, opts: ClashWordsOpts = {}): string {
+  const apart = Math.abs(dayNumber(at, opts) - dayNumber(on, opts))
+  const lead = apart === 0 ? '' : apart < 7 ? `${dayOf(at, opts)} ` : `${format('date', opts.timeZone).format(at)}, `
+  return `${lead}${clockOf(at, opts)}`
+}
 
 /** "38 min", "1 hr", "1 hr 10 min". */
 function durationOf(minutes: number): string {
@@ -221,11 +243,10 @@ export function clashLine(clash: Clash, eventId: string, opts: ClashWordsOpts = 
   return `${shortWords(clash)} ${earlier ? 'before' : 'after'} ${named}`
 }
 
-/** The other event's start as a line says it: "6:00 PM", with its weekday when it starts on another day than the one the line is read under ("Wed 11:00 PM"). */
+/** The other event's start as a line says it: "6:00 PM", with its weekday when it starts on another day than the one the line is read under ("Wed 11:00 PM"), or its date a week or more off ("Jan 14, 9:00 AM"). */
 export function clashTime(clash: Clash, eventId: string, opts: ClashWordsOpts = {}): string {
   const [own, other] = eventId === clash.a.eventId ? [clash.a, clash.b] : [clash.b, clash.a]
-  const day = dayOf(other.startsAt, opts)
-  return `${day === dayOf(opts.on ?? own.startsAt, opts) ? '' : `${day} `}${clockOf(other.startsAt, opts)}`
+  return timeNear(other.startsAt, opts.on ?? own.startsAt, opts)
 }
 
 /** "38 min drive, 24 mi"; "About 40 min, 25 mi" without the map (to the nearest five minutes); null with no minutes. */

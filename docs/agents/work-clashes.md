@@ -24,7 +24,9 @@ the look of each surface is docs/DESIGN.md "Clashes".
   name is its sector key with a capital unless the caller passes `label`.
   Times read in the zone the caller passes, with ordinary spaces. `clashLine`
   names the other event's job only when it is another job, and prefixes its
-  time with its weekday when it starts on another day than the one the line
+  time with its weekday (its date a week or more off; `timeNear`, which the
+  dialog's time spans and the row menu's `clashTime` use too) when it
+  starts on another day than the one the line
   is read under (the event's own start day, or `opts.on` when a list shows
   the row under another). A shortfall worked out without the map is said to
   five minutes, never under five, as its drive line is. A side carries
@@ -150,8 +152,10 @@ The pillar has no view of its own and no row in the column.
 - `model.ts` holds the pure parts: the marks, the time a move or a proposal
   starts filled with (the earlier event: the latest quarter hour that ends a
   drive before the later one, while that is ahead and on its day; else the
-  first quarter hour after the other event that the drive allows), a To
-  that runs past midnight, how late he is, the words.
+  first quarter hour after the other event that the drive allows; a drive
+  clash's shortfall tells how long before its start the later event asks
+  him there, and the offer leaves that too), a To that runs past midnight,
+  how late he is, the words.
 - `today.ts` is the pillar's `TodaySource`, one line in `TODAY_SOURCES`: no
   row of its own, a mark on each event's `event:<id>` row (the clash in that
   event's words, drawn as a fault, with Resolve), and the leave-by as the

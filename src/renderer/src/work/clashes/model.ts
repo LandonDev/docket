@@ -40,17 +40,22 @@ const sameDay = (x: number, y: number) => new Date(x).toDateString() === new Dat
  * ends a drive before the later one starts, while that is ahead of `now` and
  * on its own day: moving it later than the thing it clashes with is rarely
  * what he wants. Otherwise, and for the later event, it is the first quarter
- * hour after the other event ends that the drive allows.
+ * hour after the other event ends that the drive allows. The later event
+ * may ask him there before it starts (its arrive-by); a drive clash's
+ * shortfall says by how long, and the offer leaves that time too.
  */
 export function freeAfter(clash: Clash, eventId: string, now = Date.now()): { start: number; end: number } {
   const { side, other } = sideOf(clash, eventId);
   const length = Math.max(STEP, side.endsAt - side.startsAt);
   const drive = (clash.minutes ?? 0) * MINUTE;
+  // He is short by the drive less the time from the earlier event's end to the later one's deadline: that gives the deadline, and how long before its start it is.
+  // Whole minutes, down: the shortfall is rounded up, and a part of a minute must not cost him a quarter hour.
+  const early = clash.kind === "drive" && clash.shortBy !== undefined ? Math.max(0, Math.floor((clash.b.startsAt - (clash.a.endsAt + drive - clash.shortBy * MINUTE)) / MINUTE)) * MINUTE : 0;
   if (side === clash.a) {
-    const start = Math.floor((other.startsAt - drive - length) / STEP) * STEP;
+    const start = Math.floor((other.startsAt - early - drive - length) / STEP) * STEP;
     if (start > now && sameDay(start, side.startsAt)) return { start, end: start + length };
   }
-  const start = Math.ceil((other.endsAt + drive) / STEP) * STEP;
+  const start = Math.ceil((other.endsAt + drive + (side === clash.b ? early : 0)) / STEP) * STEP;
   return { start, end: start + length };
 }
 
@@ -143,37 +148,44 @@ const AFTER = "It must end after it starts";
  * which the one Day field cannot say, and its To is read on that day alone.
  */
 export function whenOf(form: TimeForm, offered?: Span): Span | string {
+  return read(form, offered).when;
+}
+
+/** `whenOf`, with the day the To was looked for on last: the day a refused To is about. */
+function read(form: TimeForm, offered?: Span): { when: Span | string; day?: string } {
   const was = offered ? formOf(offered) : null;
   const dayKept = was !== null && form.day === was.day;
   const starts = offered && dayKept && form.from === was?.from ? [offered.start] : clocksOn(form.day, form.from, "from");
-  if (typeof starts === "string") return starts;
+  if (typeof starts === "string") return { when: starts };
   // A From typed into the repeated hour is its first time.
   const start = starts[0]!;
   const long = offered !== undefined && !underDay(offered.start, offered.end);
   const fits = (end: number) => end > start && (long || underDay(start, end));
-  if (offered && dayKept && form.to === was?.to && fits(offered.end)) return { start, end: offered.end };
-  if (!form.to) return UNSET;
-  /** An end on that day (in the repeated hour, the first of the two after the start), the words why that day has no such time, or nothing when its time is no end for the start. */
-  const endOn = (days: number): number | string | undefined => {
-    const ends = clocksOn(dayPlus(form.day, days), form.to, "to");
-    return typeof ends === "string" ? ends : ends.find(fits);
+  if (offered && dayKept && form.to === was?.to && fits(offered.end)) return { when: { start, end: offered.end } };
+  if (!form.to) return { when: UNSET };
+  /** An end that many days past the Day (in the repeated hour, the first of the two after the start), the words why that day has no such time, or the words that its time is no end for the start. */
+  const endOn = (days: number): { when: Span | string; day: string } => {
+    const day = dayPlus(form.day, days);
+    const ends = clocksOn(day, form.to, "to");
+    const end = typeof ends === "string" ? ends : ends.find(fits);
+    return { when: typeof end === "number" ? { start, end } : (end ?? AFTER), day };
   };
-  const answer = (end: number | string | undefined): Span | string => (typeof end === "number" ? { start, end } : (end ?? AFTER));
-  if (offered && long) return answer(endOn(daysApart(dayField(offered.start), dayField(offered.end))));
+  if (offered && long) return endOn(daysApart(dayField(offered.start), dayField(offered.end)));
+  // Typed alike, the two fields are one minute, also in the hour the clocks repeat.
+  if (form.to === form.from) return { when: AFTER };
   const today = endOn(0);
-  if (typeof today === "number") return { start, end: today };
-  if (form.to === form.from) return AFTER;
-  // Later on the clock, it is the Day's own time or none; earlier, the next day's.
-  return answer(form.to > form.from ? today : endOn(1));
+  // Later on the clock, it is the Day's own time or none; earlier, the Day's second time in a repeated hour, else the next day's.
+  return typeof today.when !== "string" || form.to > form.from ? today : endOn(1);
 }
 
 /** The same with nothing offered: every field is read as typed. */
 export const spanOf = (form: TimeForm): Span | string => whenOf(form);
 
 const endDay = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
-/** What To says under it when the end the form will send is not on its Day: "Next day", or the day itself when it is further on. */
+/** What To says under it when the end the form names is not on its Day: "Next day", or the day itself when it is further on. Said of a To the clocks skip too, so its refusal has a day to be about. */
 export function endHint(form: TimeForm, offered?: Span): string | undefined {
-  const when = whenOf(form, offered);
-  if (typeof when === "string" || dayField(when.end) === form.day) return undefined;
-  return dayField(when.end) === dayPlus(form.day, 1) ? "Next day" : endDay.format(when.end);
+  const { when, day: sought } = read(form, offered);
+  const day = typeof when !== "string" ? dayField(when.end) : fieldOf(when) === "to" ? sought : undefined;
+  if (day === undefined || day === form.day) return undefined;
+  return day === dayPlus(form.day, 1) ? "Next day" : endDay.format(noon(day));
 }

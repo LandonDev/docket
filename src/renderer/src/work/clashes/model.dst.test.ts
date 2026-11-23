@@ -79,6 +79,28 @@ describe("a step's times when the clocks change", () => {
     expect(spanOf({ day: "2027-03-13", from: "02:30", to: "02:30" })).toBe("It must end after it starts");
   });
 
+  it("says the same minute is no span in the hour the clocks repeat too, though an offer left alone keeps its two instants", () => {
+    expect(spanOf({ day: "2026-11-01", from: "01:30", to: "01:30" })).toBe("It must end after it starts");
+    const short = { start: new Date(2027, 10, 3, 23, 30).getTime(), end: new Date(2027, 10, 4, 0, 30).getTime() };
+    expect(whenOf({ day: "2027-11-07", from: "01:30", to: "01:30" }, short)).toBe("It must end after it starts");
+    const offered = { start: FIRST_1_30, end: SECOND_1_30 };
+    expect(whenOf(formOf(offered), offered)).toEqual(offered);
+  });
+
+  it("keeps the end's day under To when the clocks skip the To on it, so the refusal has a day to be about", () => {
+    const day = (ms: number) => new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(ms);
+    // Fri 6:00 PM to Sun 1:00 AM, To typed as 2:30: refused, and still said of Sunday.
+    const offered = { start: new Date(2027, 2, 12, 18, 0).getTime(), end: new Date(2027, 2, 14, 1, 0).getTime() };
+    expect(endHint(formOf(offered), offered)).toBe(day(offered.end));
+    expect(endHint({ ...formOf(offered), to: "02:30" }, offered)).toBe(day(offered.end));
+    // The night before, To 2:30 AM is the next day's skipped hour.
+    expect(endHint({ day: "2027-03-13", from: "23:00", to: "02:30" })).toBe("Next day");
+    // On the day itself, a skipped To later on the clock is the Day's own: no hint.
+    expect(endHint({ day: "2027-03-14", from: "00:30", to: "02:30" })).toBeUndefined();
+    // Another refusal has no day to name.
+    expect(endHint({ day: "2027-03-13", from: "02:30", to: "02:30" })).toBeUndefined();
+  });
+
   it("does not call an end in the repeated hour the next day's", () => {
     // From the first 1:45 AM to the second 1:15 AM: half an hour, the same day, though 1:15 is earlier on the clock.
     const offered = { start: FIRST_1_30 + 15 * MINUTE, end: SECOND_1_30 - 15 * MINUTE };

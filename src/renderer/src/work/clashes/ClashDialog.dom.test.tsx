@@ -93,6 +93,17 @@ describe("the Clash dialog", () => {
     expect(within(dialog).getByText("Maple Ridge High School")).toBeTruthy();
   });
 
+  it("says a time a week or more from the dialog's day by its date, since its weekday would read as that day's", async () => {
+    // A block that began a week before the day the dialog names, and one that began the night before.
+    show(overlap(side("ev_a", "Training", -7 * 24, 7 * 24 + 2, { sector: "purdue" }), game([])));
+    await settle();
+    expect(within(screen.getByRole("group", { name: "Training" })).getByText("Nov 19, 1:00 PM – 3:00 PM")).toBeTruthy();
+    cleanup();
+    show(overlap(side("ev_a", "Night shift", -14, 16, { sector: "life" }), game([])));
+    await settle();
+    expect(within(screen.getByRole("group", { name: "Night shift" })).getByText("Tue 11:00 PM – 3:00 PM")).toBeTruthy();
+  });
+
   it("titles a drive clash with the minutes short, and words an unmeasured drive as about", async () => {
     show({ ...overlap(), kind: "drive", shortBy: 15, measured: false, minutes: 41, miles: 25 });
     await settle();

@@ -1856,7 +1856,8 @@ Around the canvas:
   "About 15 min short…" for a drive worked out without the map (to the
   nearest five minutes, as its drive line is). The other event's job is
   named only when it is another job, and its time takes its weekday when
-  it starts on another day ("Wed 11:00 PM"). An event with several
+  it starts on another day ("Wed 11:00 PM"), its date a week or more off
+  ("Jan 14, 9:00 AM"), where a weekday would read as the nearer one. An event with several
   clashes has a line for each, so every one named can be opened. A line
   is a link `Button` at the line's own 16px that takes an underline on
   hover and opens that clash's dialog; the row's menu has
@@ -1871,7 +1872,8 @@ Around the canvas:
   event's day the 12px line under it. The body holds the two events in
   time order, 12px apart: each its title (14/22 medium), then one 12px
   muted line of its time span (tabular; a time on another day than the
-  title's line names takes its weekday, "Wed 11:00 PM") and, 8px after,
+  title's line names takes its weekday, "Wed 11:00 PM", or its date a
+  week or more off, "Jan 7, 8:00 AM") and, 8px after,
   its job (the sector's 8px dot and, 8px on, its name), then where it is (the place as the
   map names it, less the country; his calendar's own words when the point
   is a town's centre or a start standing in), each cut line whole on
@@ -1888,7 +1890,8 @@ Around the canvas:
   time), then Day, From and To (New event's fields) for a proposal
   or a move, and a Note for a decline or a proposal; the foot is Back and
   Send (Move for a move). The times start filled: the earlier event with
-  the latest quarter hour that still ends a drive before the later one,
+  the latest quarter hour that still ends a drive before the later one
+  (before the time that one asks him there, when a drive clash tells it),
   the later with the first after the earlier ends. A field he leaves as
   offered sends the instant offered, each field on its own. A To before
   the start on the clock is the next day's, and says "Next day" under it;
@@ -1896,7 +1899,8 @@ Around the canvas:
   its end is past its Day, and one that ends further on than the next day
   names that day under To ("Sat, Nov 28"). A time the clocks skip on the
   day it falls on is refused in words, its field ringed in `destructive`
-  until he edits; a time already gone is refused too. Send
+  until he edits and the day still named under To; a time already gone is
+  refused too. Send
   holds its width and spins, and the step's fields are locked while it
   is out; a toast answers the press and the dialog closes on the clash it
   showed, though his own press is what ended it; a refusal stays in the

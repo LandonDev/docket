@@ -46,6 +46,17 @@ describe("the time a move starts filled with", () => {
     expect(freeAfter(overlap({ minutes: 38 }), "a", morning)).toEqual({ start: T0 - 105 * MINUTE, end: T0 + 15 * MINUTE });
   });
 
+  it("leaves the time the later event asks him there before its start, which the shortfall tells", () => {
+    // A 6:15 to 7:15 meeting, 40 minutes from an 8:00 game that wants him there at 7:45: 30 minutes for a 40 minute drive, 10 short.
+    const early = drive({ a: side("a", 6.25, 1), b: side("b", 8, 2), minutes: 40, shortBy: 10 });
+    // The meeting must end by 7:05, so 6:00 to 7:00, not the slot it has.
+    expect(freeAfter(early, "a", morning)).toEqual({ start: T0 + 6 * HOUR, end: T0 + 7 * HOUR });
+    // The game can start once the drive and its quarter hour are behind him: 8:10, offered as 8:15.
+    expect(freeAfter(early, "b", morning)).toEqual({ start: T0 + 8 * HOUR + 15 * MINUTE, end: T0 + 10 * HOUR + 15 * MINUTE });
+    // With no arrive-by the shortfall is all drive, and the game's own start is the mark.
+    expect(freeAfter(drive(), "a", morning)).toEqual({ start: T0 - 15 * MINUTE, end: T0 + 45 * MINUTE });
+  });
+
   it("moves the earlier event after the later one when no time before it is left today", () => {
     // It is already noon: nothing before the game is ahead of now.
     expect(freeAfter(overlap({ minutes: 38 }), "a", T0)).toEqual({ start: T0 + 3 * HOUR + 45 * MINUTE, end: T0 + 5 * HOUR + 45 * MINUTE });

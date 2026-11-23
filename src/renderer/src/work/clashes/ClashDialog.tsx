@@ -1,8 +1,8 @@
 import { makeFunctionReference } from "convex/server";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { clashTitle, driveLine, type Clash, type ClashSide, type ClashWay } from "@shared/work/clashes";
+import { clashTitle, driveLine, timeNear, type Clash, type ClashSide, type ClashWay } from "@shared/work/clashes";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
-import { formatDayHeading, formatTime } from "work-kit/views/lib/format";
+import { formatDayHeading } from "work-kit/views/lib/format";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
@@ -112,10 +112,8 @@ export function Empty({ state, error, onClose }: { state: "loading" | "failed" |
   );
 }
 
-const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
-/** A time, with its weekday when it is not on the day the dialog names: a pair across midnight reads in order. */
-const timeOn = (ms: number, day: number) => (startOfDay(ms) === day ? formatTime(ms) : `${weekday.format(ms)} ${formatTime(ms)}`);
-const span = (side: ClashSide, day: number) => `${timeOn(side.startsAt, day)} – ${timeOn(side.endsAt, day)}`;
+/** A time, with its weekday when it is not on the day the dialog names (a pair across midnight reads in order), or its date a week or more off, where a weekday would read as the dialog's own. The words are the row's line's. */
+const span = (side: ClashSide, day: number) => `${timeNear(side.startsAt, day)} – ${timeNear(side.endsAt, day)}`;
 /** His calendar's own words for a place the map only has roughly; else the place as the map names it, less the country every one of them ends in. */
 const placeOf = (side: ClashSide) => ((side.rough ? side.location : side.place) ?? side.location)?.replace(/, United States$/, "");
 
