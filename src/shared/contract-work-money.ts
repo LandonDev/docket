@@ -204,6 +204,8 @@ export type MoneyProblem = { kind: 'columns'; missing: string[] }
 export interface MoneyRead {
   /** false: this job has no ledger yet, and everything below is empty */
   made: boolean
+  /** the job's Money folder on its host: a row's Receipt is a path under it (`receiptSource`) */
+  root: Extract<CanvasSource, { at: 'file' }>
   period: Period
   /** the period's rows, the newest first */
   rows: LedgerRow[]
@@ -285,6 +287,12 @@ export interface MoneyKept {
   receipt?: string
   /** an invoice's row */
   acted?: MoneyActed
+}
+
+/** A row's receipt as a file the window can open: the Receipt cell's path under the job's Money folder, in its host's own spelling. */
+export function receiptSource(root: MoneyRead['root'], receipt: string): Extract<CanvasSource, { at: 'file' }> {
+  const sep = root.path.includes('\\') && !root.path.includes('/') ? '\\' : '/'
+  return { at: 'file', host: root.host, path: [root.path, ...receipt.split(/[\\/]/).filter((part) => part && part !== '.' && part !== '..')].join(sep) }
 }
 
 /** One thing that waits for his accept: a receipt being read or read, or an entry a thread left. */

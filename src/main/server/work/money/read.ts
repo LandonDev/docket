@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { MoneyHits, MoneyOwed, MoneyRate, MoneyRead, MoneySums } from '@shared/contract-work-money'
 import {
   byCategory,
@@ -110,11 +111,12 @@ export const rateOf = (books: Books | null, year: number): MoneyRate => ({ year,
 const EMPTY_SUMS = { in: 0, out: 0, net: 0, owedToHim: 0, heOwes: 0 }
 
 /** Everything the view paints, in one read. */
-export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service'>, ws: Workspace, period: Period): Promise<MoneyRead> {
+export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service' | 'host'>, ws: Workspace, period: Period): Promise<MoneyRead> {
   const year = Number(period.from.slice(0, 4))
+  const root = { at: 'file' as const, host: ctx.host, path: join(ws.path, 'Money') }
   const books = booksHere(ctx, ws.id)
   if (!books) {
-    return { made: false, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(null, year), problems: [] }
+    return { made: false, root, period, rows: [], sums: EMPTY_SUMS, byCategory: [], byMonth: byMonth([], year), owed: [], miles: { miles: 0, value: 0, rate: null }, categories: categoriesFor(ws.sector), sellers: [], toConfirm: [], calendar: [], rate: rateOf(null, year), problems: [] }
   }
   const [ledger, trips] = await Promise.all([ledgerOf(ctx, books), mileageRows(ctx, books)])
   const rows = ledger.rows
@@ -128,6 +130,7 @@ export async function readMoney(ctx: Pick<WorkCtx, 'db' | 'service'>, ws: Worksp
   }
   return {
     made: true,
+    root,
     period,
     rows: rows.filter((r) => inPeriod(r.date, period)).sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.row - a.row),
     sums: sumsOf(rows, period),

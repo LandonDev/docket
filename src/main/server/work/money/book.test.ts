@@ -330,3 +330,14 @@ describe('the tool', () => {
     expect((await run({ from: '2026-11-01', to: '2026-12-01', category: 'travel' })).text).not.toContain('West Side HS')
   })
 })
+
+describe('a receipt as a file', () => {
+  it('joins the Receipt cell under the Money folder in the host’s own spelling, and never leaves the folder', async () => {
+    const { receiptSource } = await import('@shared/contract-work-money')
+    const got = await read()
+    expect(got.root).toEqual({ at: 'file', host: 'env_box', path: join(b.ref, 'Money') })
+    expect(receiptSource(got.root, 'Receipts/2026/a b.png').path).toBe(join(b.ref, 'Money', 'Receipts', '2026', 'a b.png'))
+    expect(receiptSource(got.root, '../../etc/passwd').path).toBe(join(b.ref, 'Money', 'etc', 'passwd'))
+    expect(receiptSource({ at: 'file', host: 'pc', path: 'C:\\Jobs\\Ref\\Money' }, 'Receipts/2026/a.png').path).toBe('C:\\Jobs\\Ref\\Money\\Receipts\\2026\\a.png')
+  })
+})
