@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useReducer, useState, type ReactNode } from "react";
 import type { SheetCellJson, SheetChart, SheetMutationJson, SheetSuggestion, SheetView } from "@shared/contract-work-sheets";
-import type { GridSelection, GridState, SheetCanvasProps, SheetHandle } from "work-kit/sheet";
+import { TEMPCODE_THEME } from "work-kit/format/theme";
+import type { GridSelection, GridState, SheetCanvasProps, SheetFormat, SheetHandle } from "work-kit/sheet";
+import { readFormat, styleOf } from "work-kit/sheet/format";
 import type { SheetGrid } from "./grid";
 import type { ReviewWhich, SheetHost, SheetOp, SheetPushed } from "./host";
 import type { Workbook } from "./sync";
@@ -191,6 +193,12 @@ export interface FakeGrid extends SheetGrid {
   edit(mutation: SheetMutationJson): void;
   /** What came in through `apply`, call by call. */
   applied: SheetMutationJson[][];
+  /** every change the format row asked of the grid */
+  formats: SheetFormat[];
+  /** how many cells a merge of the selection would empty; a test sets it */
+  drops: number;
+  /** whether the canvas was told the grid's own style keys act (`styleKeys`) */
+  styleKeys: boolean | undefined;
   /** formula text the grid holds, by `sheet!row:col`, for a fill's cells */
   formulas: Map<string, string>;
   /** The person selects a range, A1. */
@@ -233,10 +241,27 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
     const range = parseA1(a1);
     const cell = cells.get(at(sheet, range.startRow, range.startColumn));
     const reference = range.startRow === range.endRow && range.startColumn === range.endColumn ? ref(range.startRow, range.startColumn) : `${ref(range.startRow, range.startColumn)}:${ref(range.endRow, range.endColumn)}`;
-    return { sheet, range: range as GridSelection["range"], row: range.startRow, column: range.startColumn, reference, text: cell?.f ?? shown(cell), bold: false, italic: false, underline: false, align: null, pattern: "" };
+    // The cell's own style as the format row reads it (work-kit's `readFormat`).
+    const style = (typeof cell?.s === "object" && cell.s ? cell.s : undefined) as Parameters<typeof readFormat>[0];
+    return {
+      sheet,
+      range: range as GridSelection["range"],
+      row: range.startRow,
+      column: range.startColumn,
+      reference,
+      text: cell?.f ?? shown(cell),
+      bold: false,
+      italic: false,
+      underline: false,
+      align: null,
+      pattern: "",
+      format: readFormat(style, TEMPCODE_THEME),
+      merged: false,
+    };
   };
 
-  function FakeCanvas({ snapshot, marks, was, onReady, onSelection }: SheetCanvasProps) {
+  function FakeCanvas({ snapshot, marks, was, styleKeys, onReady, onSelection }: SheetCanvasProps) {
+    grid.styleKeys = styleKeys;
     const book = snapshot as unknown as Workbook & { sheets: Record<string, { name: string; cellData?: Record<string, Record<string, SheetCellJson>>; columnData?: Record<string, { w?: number }> }> };
     const sheetId = book.sheetOrder?.[0] ?? "sheet";
     const [, redraw] = useReducer((n: number) => n + 1, 0);
@@ -271,9 +296,29 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
         api: null,
         store,
         readOnly: false,
+        theme: TEMPCODE_THEME,
+        defaults: { family: "Calibri", size: 11 },
         undo: () => undefined,
         redo: () => undefined,
-        format: () => undefined,
+        // A press from the format row: kept for a test to read, and laid on the cells as the grid's own style mutation would be.
+        mergeDrops: () => grid.drops,
+        within: () => false,
+        rowKeys: () => undefined,
+        format: (change: SheetFormat) => {
+          grid.formats.push(change);
+          const picked = store.get().selection;
+          const s = styleOf(change, TEMPCODE_THEME, "");
+          if (!picked || !s) return true;
+          const cellValue: Record<string, Record<string, SheetCellJson>> = {};
+          for (let r = picked.range.startRow; r <= picked.range.endRow; r++) for (let c = picked.range.startColumn; c <= picked.range.endColumn; c++) (cellValue[r] ??= {})[c] = { s: { ...((cells.get(at(picked.sheet, r, c))?.s as object) ?? {}), ...s } };
+          const mutation = { id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: picked.sheet, cellValue } };
+          write(cells, mutation);
+          for (const listener of listeners) listener(mutation);
+          setSelection(selectionOf(picked.sheet, picked.reference, cells));
+          redraw();
+          return true;
+        },
+        size: () => undefined,
         reveal: (range: { sheet: string; startRow: number; endRow: number; startColumn: number; endColumn: number }) => setSelection(selectionOf(range.sheet, `${ref(range.startRow, range.startColumn)}:${ref(range.endRow, range.endColumn)}`, cells)),
         snapshot: () => book,
         apply: (mutations: SheetMutationJson[]) => {
@@ -374,6 +419,9 @@ export function fakeGrid(options: { selection?: string; rows?: number; columns?:
   const grid: FakeGrid = {
     handle: null,
     applied: [],
+    formats: [],
+    drops: 0,
+    styleKeys: undefined,
     formulas: new Map(),
     Canvas: FakeCanvas,
     prepare: async () => undefined,

@@ -2,14 +2,19 @@ import type { ICellData, IStyleData, IWorkbookData, IWorksheetData } from '@univ
 import { toFileFormula } from './patch/formula'
 import { readZip, writeZip } from './patch/zip'
 import { colName, esc, escText } from './patch/xml'
+import { excelColour, TEMPCODE_THEME, themeXml, type OfficeTheme } from 'work-kit/format/theme'
+import { colourOfStyle } from 'work-kit/sheet/colour'
 
 /**
  * The model writer (architecture §9.1): a sheet made here (a LifeOS sheet, a
  * `.tcsheet`) written out as a new .xlsx, or one of its sheets as .csv. It
  * covers what our grid makes: values, formulas with their last values,
  * fonts, fills, borders, number formats, alignment and wrap, merges, column
- * widths and row heights, frozen panes, hidden sheets. An opened package is
- * never written by this: it stays its own truth.
+ * widths and row heights, frozen panes, hidden sheets. A colour picked from
+ * the theme is written as that theme colour with its tint, beside the theme
+ * itself (the file's own where the sheet came from one, else TempCode's), so
+ * changing the theme in Excel recolours it. An opened package is never
+ * written by this: it stays its own truth.
  */
 
 const enc = new TextEncoder()
@@ -29,6 +34,8 @@ interface Pools {
   borders: string[]
   numFmts: Map<string, number>
   xfs: string[]
+  /** the workbook's default font: what a cell that names no face or size is written in */
+  font: { family: string; size: number }
 }
 
 const rgb = (c: { rgb?: string | null } | null | undefined | unknown): string | null => {
@@ -41,6 +48,19 @@ const rgb = (c: { rgb?: string | null } | null | undefined | unknown): string | 
       .join('')
       .toUpperCase()}`
   return null
+}
+/**
+ * A `<color>`-like element's attributes: `theme` and `tint` for a colour that carries its theme
+ * slot (work-kit's colour.ts), else `rgb`; null for no colour.
+ */
+const colorAttrs = (c: unknown): string | null => {
+  const colour = colourOfStyle(c as { rgb?: string | null; th?: number } | null | undefined)
+  if (colour && 'theme' in colour) {
+    const x = excelColour(colour) as { theme: number; tint?: number }
+    return `theme="${x.theme}"${x.tint ? ` tint="${x.tint}"` : ''}`
+  }
+  const v = rgb(c)
+  return v ? `rgb="${v}"` : null
 }
 const at = (pool: string[], xml: string): number => {
   const i = pool.indexOf(xml)
@@ -65,14 +85,14 @@ const BORDER_STYLE: Record<number, string> = {
 /** The cellXfs index for a Univer style; 0 for none. */
 function xfOf(style: IStyleData | null | undefined, pools: Pools): number {
   if (!style || !Object.keys(style).length) return 0
-  const font = `<font>${style.bl ? '<b/>' : ''}${style.it ? '<i/>' : ''}${style.st?.s ? '<strike/>' : ''}${style.ul?.s ? '<u/>' : ''}<sz val="${style.fs ?? 11}"/>${rgb(style.cl) ? `<color rgb="${rgb(style.cl)}"/>` : ''}<name val="${esc(style.ff ?? 'Calibri')}"/></font>`
-  const bg = rgb(style.bg)
+  const font = `<font>${style.bl ? '<b/>' : ''}${style.it ? '<i/>' : ''}${style.st?.s ? '<strike/>' : ''}${style.ul?.s ? '<u/>' : ''}<sz val="${style.fs ?? pools.font.size}"/>${colorAttrs(style.cl) ? `<color ${colorAttrs(style.cl)}/>` : ''}<name val="${esc(style.ff ?? pools.font.family)}"/></font>`
+  const bg = colorAttrs(style.bg)
   const fill = bg
-    ? `<fill><patternFill patternType="solid"><fgColor rgb="${bg}"/><bgColor indexed="64"/></patternFill></fill>`
+    ? `<fill><patternFill patternType="solid"><fgColor ${bg}/><bgColor indexed="64"/></patternFill></fill>`
     : null
   const side = (name: string, b?: { s?: number; cl?: { rgb?: string | null } } | null) =>
     b?.s
-      ? `<${name} style="${BORDER_STYLE[b.s] ?? 'thin'}">${rgb(b.cl) ? `<color rgb="${rgb(b.cl)}"/>` : '<color auto="1"/>'}</${name}>`
+      ? `<${name} style="${BORDER_STYLE[b.s] ?? 'thin'}">${colorAttrs(b.cl) ? `<color ${colorAttrs(b.cl)}/>` : '<color auto="1"/>'}</${name}>`
       : `<${name}/>`
   const bd = style.bd as { l?: never; r?: never; t?: never; b?: never } | undefined
   const border = bd
@@ -198,9 +218,24 @@ function excelName(name: string, taken: Set<string>): string {
   return base
 }
 
+/**
+ * The workbook's theme and default font as its snapshot carries them (the importer's `custom`). A sheet made here names
+ * neither: it wears TempCode's theme, and its default is Calibri at the size the grid draws a plain cell in (work-kit's
+ * `SHEET_FONT_SIZE`, 13px), so Excel shows its text at the size the screen did.
+ */
+const MADE_HERE = { family: 'Calibri', size: 9.75 }
+function lookOf(wb: IWorkbookData): { theme: OfficeTheme; font: { family: string; size: number } } {
+  const custom = (wb.custom ?? {}) as { theme?: OfficeTheme; defaults?: { family?: unknown; size?: unknown } }
+  const theme = custom.theme && typeof custom.theme === 'object' && custom.theme.colours && custom.theme.fonts ? custom.theme : TEMPCODE_THEME
+  const d = custom.defaults
+  return { theme, font: { family: typeof d?.family === 'string' && d.family ? d.family : MADE_HERE.family, size: typeof d?.size === 'number' && d.size > 0 ? d.size : MADE_HERE.size } }
+}
+
 export function writeXlsx(wb: IWorkbookData): Uint8Array {
+  const look = lookOf(wb)
   const pools: Pools = {
-    fonts: ['<font><sz val="11"/><name val="Calibri"/></font>'],
+    font: look.font,
+    fonts: [`<font><sz val="${look.font.size}"/><name val="${esc(look.font.family)}"/></font>`],
     fills: [
       '<fill><patternFill patternType="none"/></fill>',
       '<fill><patternFill patternType="gray125"/></fill>'
@@ -245,7 +280,7 @@ export function writeXlsx(wb: IWorkbookData): Uint8Array {
               `<Relationship Id="rId${i + 1}" Type="${R}/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`
           )
           .join('') +
-        `<Relationship Id="rId${sheets.length + 1}" Type="${R}/styles" Target="styles.xml"/></Relationships>`
+        `<Relationship Id="rId${sheets.length + 1}" Type="${R}/styles" Target="styles.xml"/><Relationship Id="rId${sheets.length + 2}" Type="${R}/theme" Target="theme/theme1.xml"/></Relationships>`
     )
   )
   files.set(
@@ -258,7 +293,7 @@ export function writeXlsx(wb: IWorkbookData): Uint8Array {
     '[Content_Types].xml',
     enc.encode(
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>` +
-        `<Override PartName="/xl/workbook.xml" ContentType="${CT}.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="${CT}.styles+xml"/>` +
+        `<Override PartName="/xl/workbook.xml" ContentType="${CT}.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="${CT}.styles+xml"/><Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>` +
         sheets
           .map(
             (_, i) =>
@@ -274,9 +309,11 @@ export function writeXlsx(wb: IWorkbookData): Uint8Array {
     '_rels/.rels',
     'xl/workbook.xml',
     'xl/_rels/workbook.xml.rels',
+    'xl/theme/theme1.xml',
     'xl/styles.xml',
     ...sheets.map((_, i) => `xl/worksheets/sheet${i + 1}.xml`)
   ]
+  files.set('xl/theme/theme1.xml', enc.encode(themeXml(look.theme)))
   return writeZip(
     readZip(EMPTY_ZIP),
     new Map(),

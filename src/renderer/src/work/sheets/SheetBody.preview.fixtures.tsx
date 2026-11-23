@@ -8,6 +8,7 @@ export default [
   { name: "Suggestions in the cells, the first in hand; the switch offered", props: { moment: "suggestions" } },
   { name: "Stepped to the third change", props: { moment: "stepped" } },
   { name: "His own sheet: the agent wrote, with Undo", props: { moment: "own" } },
+  { name: "A sheet TempCode keeps: the format row", props: { moment: "format" } },
   { name: "A chart over the cells", props: { moment: "chart" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "Read only", props: { moment: "readonly" } },

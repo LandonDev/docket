@@ -1861,6 +1861,24 @@ set by hand.
 - **What is absent.** A file he cannot edit draws no row, never a greyed
   one. A control whose change could not be saved where the file lives is
   not drawn there.
+- **In the sheet** the row sits over the formula bar. Its groups: Undo and
+  Redo; the cell style (Normal, the headings, Total, Input, Note, then
+  Good, Bad and Neutral in the app's own inks, then Currency, Percent and
+  Comma, and under the rule "Clear formatting" with its key); the font and
+  the size; Bold, Italic, Underline, the text colour and the fill; then
+  Align (with Wrap text and Merge cells), Borders (a menu of six: All,
+  Outside, Bottom, Top, Top and double bottom, None) and the number format
+  ("123": Automatic, Number, Currency, Accounting, Percent, Date, Time and
+  Plain text, each with its example, then More decimals, Fewer decimals
+  and "Custom format…", which opens a small dialog for a format code).
+  Strikethrough is a key alone. The font and the size show the cell's own;
+  a cell with no family reads "Default" (the sheet's own face, not a font
+  the list offers) at the size the grid draws; a selection of mixed cells
+  shows the active cell's. A named style sets what Excel's sets (a
+  heading the font and the border, Currency the number format alone), and
+  the select names the style a cell wears while that part of its look is
+  the style's. A border preset too large for one press has its row off; a
+  merge that would empty cells asks first, in the app's own confirm.
 
 **The show** (`src/renderer/src/work/slides/show/`; the approved page is
 `.temp-code/prototypes/work-editors/present.html`, "Slide and column"). A

@@ -33,6 +33,29 @@ const MutationSchema = z.object({ id: z.string().min(1).max(200), params: z.unkn
 /** Where a sheet lives: an opened Excel package, a `.tcsheet` file, a LifeOS sheet, or a sheet read from a .csv (saved back with export). */
 export type SheetStoreKind = 'package' | 'tcsheet' | 'lifeos' | 'csv'
 
+/**
+ * A control of the sheet's format row (work-kit's `SheetControl`).
+ */
+export type SheetRowControl = 'undo' | 'style' | 'font' | 'size' | 'bold' | 'italic' | 'underline' | 'colour' | 'fill' | 'align' | 'vertical' | 'wrap' | 'merge' | 'borders' | 'number'
+
+const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size', 'bold', 'italic', 'underline', 'colour', 'fill', 'align', 'vertical', 'wrap', 'merge', 'borders', 'number']
+
+/**
+ * The format row's controls by where a sheet lives, which the host puts in the view (`row`). A
+ * control is listed only where its change survives: the grid emits a mutation, the service's own
+ * engine replays it, a cold load shows it and the Excel export holds it
+ * (`sheets/rowMatrix.test.ts` holds every cell of this table). A store with none draws no row at
+ * all. An opened Excel file and a sheet read from a .csv keep cell contents only, so they have
+ * none yet. The host says it, not the canvas, so a canvas a release ahead of its host draws no
+ * control that host could lose.
+ */
+export const SHEET_ROW: Record<SheetStoreKind, readonly SheetRowControl[]> = {
+  lifeos: KEPT_WHOLE,
+  tcsheet: KEPT_WHOLE,
+  package: [],
+  csv: []
+}
+
 /** `pending`: waits for the owner. `conflict`: the cell no longer holds what the agent saw. `orphaned`: its row, column or sheet is gone. */
 export type SheetSuggestionState = 'pending' | 'conflict' | 'orphaned' | 'accepted' | 'rejected'
 
@@ -126,6 +149,8 @@ export interface SheetView {
   /** the file is not where the item says */
   missing?: boolean
   charts: SheetChart[]
+  /** the format row's controls this sheet keeps (`SHEET_ROW`); absent or empty, the canvas draws no row */
+  row?: SheetRowControl[]
 }
 
 /** One revision in a sheet's history. */

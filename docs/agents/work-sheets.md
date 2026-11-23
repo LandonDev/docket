@@ -103,7 +103,8 @@ renamed, saved into an opened package (architecture §9.1; the sheet report
 writer): a LifeOS sheet, a `.tcsheet` or a sheet read from a .csv as a new
 .xlsx (values, formulas with their last values, fonts, fills, borders,
 number formats, alignment and wrap, merges, column widths and row heights,
-frozen panes, hidden sheets; `fullCalcOnLoad` set), or one sheet as .csv
+frozen panes, hidden sheets, the workbook's theme and default font, a theme
+colour as its slot and tint; `fullCalcOnLoad` set), or one sheet as .csv
 (RFC 4180, a formula's last value). A sheet read from a .csv saves back over
 it and exports beside it; a package gives a .csv of one sheet beside itself
 (it is its own .xlsx); anything else lands in the item's own folder. The
@@ -214,9 +215,67 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   in the browser (`work.sheets.switch` answers `{ opened, url? }`).
 - Our own charts (`work.sheets.chart`, `work_sheets_charts`): plain neutral
   bars over a range, made from a selection through More.
-- No formatting row yet: its parts are built (work-kit `src/format`, pinned
-  at v61; docs/DESIGN.md "Work editors: The format row") and the sheet
-  draws none until its changes are kept on each store.
+- The format row (docs/DESIGN.md "Work editors: The format row"; work-kit's
+  `SheetToolbar` on `src/format`) is the Body's first row, above the formula
+  bar, on a sheet the service holds: a LifeOS sheet and a `.tcsheet`. A
+  control ships only where its change survives, and the host says which:
+  `SheetView.row` is `SHEET_ROW[store]` (contract-work-sheets.ts), every
+  control for `lifeos` and `tcsheet`, none for `package` and `csv`, and the
+  Body draws exactly that list (no row when it is empty or the sheet is
+  read only). The controls: undo and redo, cell style (with Clear
+  formatting), font, size, bold, italic, underline, text colour, fill,
+  align with wrap and merge, borders, and the number format with the
+  decimals steps and a format code of his own.
+  `rowMatrix.test.ts` holds the rule: for everything each control can press
+  (each named style kind, Clear, strikethrough, a theme colour and a plain
+  hex, each border preset, merge and unmerge, the decimals steps, a code of
+  his own) the mutation the grid emits goes through a real `SheetHost`, a
+  cold host loads it back, and `writeXlsx` then `importXlsx` still carries
+  it. The `.tcsheet` leg is the real backend on a real file; the LifeOS leg
+  is a stand-in store that keeps a snapshot and ops as LifeOS does.
+- Every press is one grid command per selected range (`handle.format`,
+  work-kit `sheet/grid/format.ts`): the grid emits
+  `sheet.mutation.set-range-values` with a partial style (a merge, a column
+  width and a row height have their own mutations) and the sync sends it as
+  any other edit. One press on a plain selection is one undo step; a merge
+  over cells already merged parts them first, a step of its own.
+- A merge that would empty cells asks first (the app's confirm: "Merge
+  these cells?"). A border preset that would write more than 200,000 edge
+  cells has its menu row off. "Custom format…" opens a small dialog that
+  takes a format code and refuses one that does not parse as a number
+  format (`patternProblem`: an unclosed quote or bracket, too many
+  sections, over 255 characters), so a code Excel would repair never
+  reaches a file.
+- A named cell style is Excel's built-in and sets what Excel's sets:
+  Currency, Percent and Comma the number format alone, a heading the font
+  and the border, Good, Bad and Neutral the font and the fill. The rest of
+  the cell's look stays. In the file it is that formatting: the model writer
+  writes no `cellStyles` record for it.
+- Colours keep the file's theme: the importer puts the workbook's
+  `OfficeTheme` and default font in the snapshot's `custom`
+  (`custom.theme`, `custom.defaults`), a theme colour is its resolved hex
+  with the slot and tint packed into the colour's `th` (work-kit
+  `sheet/colour.ts`, `themeTag`), and the model writer writes it back as
+  `theme="n" tint="t"` beside `xl/theme/theme1.xml`. Tints are Excel's own
+  integer maths (`tintExcel`).
+- Keys. The Body's root is marked `data-editor-keys`: `sheet` where the
+  row is drawn, `read` where it is not (a locked sheet, and a store that
+  keeps no formatting), so ⌘B is the grid's only where bold is kept
+  (docs/agents/work-editors.md). Bold, italic, underline and strikethrough
+  are Univer's own keys; the canvas is told `styleKeys={false}` where there
+  is no row and they then do nothing. Clear formatting (⌘\) and the size
+  steps (⇧⌘. and ⇧⌘,) are the row's: it hears them on the window, for a
+  press in the grid or the Body, since Univer keeps a key pressed in its
+  grid from any handler on the Body itself; Univer's own binding for the
+  size steps stands down while the row is drawn, so a press is one step. A
+  text field (the formula bar, a dialog) keeps its keys.
+- A cell with no family of its own reads "Default" in the row: it is in the
+  sheet's default face, the app's own on a sheet made here, which is no
+  font a file could name and is not offered in the list. The size it shows
+  is the one the grid draws (9.75 points, 13px). The Excel export gives
+  such cells the workbook's default font: the file's own where the snapshot
+  names one, else Calibri at the same 9.75 points, so the text is the size
+  the screen showed, in Excel's face.
 
 ## The full editor
 
@@ -377,8 +436,8 @@ The harness corpus also keeps the workbooks the editors plan measured with
 
 ## Not built
 
-- Formatting saved into a package, and moving cells (drag a range, move
-  rows or columns) in one.
+- Formatting saved into a package (so an opened Excel file has no format
+  row yet), and moving cells (drag a range, move rows or columns) in one.
 - The model writer leaves out conditional formats, validations, defined
   names, notes and our charts.
 - Presence on the canvas.

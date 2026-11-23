@@ -591,3 +591,121 @@ describe("the sheet kind", () => {
     expect(chartWidth(220)).toBe(200);
   });
 });
+
+describe("the format row", () => {
+  const row = () => screen.queryByRole("toolbar", { name: "Formatting" });
+  /** What a host sends for a sheet whose store keeps formatting. */
+  const ROW: NonNullable<SheetView["row"]> = ["undo", "style", "font", "size", "bold", "italic", "underline", "colour", "fill", "align", "vertical", "wrap", "merge", "borders", "number"];
+
+  it.each(["tcsheet", "lifeos"] as const)("is drawn over a %s, a sheet whose store keeps what it sets", async (store) => {
+    open(sheetView({ store, name: "Budget", row: ROW }), { selection: "B2" });
+    await gridUp();
+    const bar = await screen.findByRole("toolbar", { name: "Formatting" });
+    // jsdom measures nothing, so the row is at its narrowest: Style, Bold, Italic and what waits in More formatting
+    expect(within(bar).getByRole("button", { name: "Bold" })).toBeTruthy();
+    expect(within(bar).getByRole("button", { name: "Cell style" }).textContent).toBe("Normal");
+    expect(within(bar).getByRole("button", { name: "More formatting" })).toBeTruthy();
+    // the row is the body's first row, over the grid
+    const body = document.querySelector("[data-sheet-item]")!;
+    expect(body.firstElementChild).toBe(bar);
+  });
+
+  it.each(["package", "csv"] as const)("is not drawn over a %s, whose host lists no control: it keeps cell contents only, and no key formats it", async (store) => {
+    open(sheetView({ store }), { selection: "B2" });
+    await gridUp();
+    expect(row()).toBeNull();
+    // ⌘B stays the app's, the grid's own style keys are off, and the row's keys do nothing
+    const body = document.querySelector<HTMLElement>("[data-sheet-item]")!;
+    expect(body.getAttribute("data-editor-keys")).toBe("read");
+    expect(grid.styleKeys).toBe(false);
+    const mod = navigator.platform.toLowerCase().includes("mac") ? { metaKey: true } : { ctrlKey: true };
+    expect(fireEvent.keyDown(body, { key: "\\", code: "Backslash", ...mod })).toBe(true);
+    expect(grid.formats).toEqual([]);
+  });
+
+  it("is not drawn on a sheet he can only read, which also leaves the app its own ⌘B", async () => {
+    open(sheetView({ store: "tcsheet", row: ROW, readOnly: "Saved as .xlsb, which opens here only to read" }), { selection: "B2" });
+    await gridUp();
+    expect(row()).toBeNull();
+    expect(document.querySelector("[data-sheet-item]")!.getAttribute("data-editor-keys")).toBe("read");
+  });
+
+  it("draws only the controls the host lists, so a host a release behind loses nothing it could not keep", async () => {
+    open(sheetView({ store: "tcsheet", row: ["italic"] }), { selection: "B2" });
+    await gridUp();
+    const bar = await screen.findByRole("toolbar", { name: "Formatting" });
+    expect(within(bar).getByRole("button", { name: "Italic" })).toBeTruthy();
+    expect(within(bar).queryByRole("button", { name: "Bold" })).toBeNull();
+    expect(within(bar).queryByRole("button", { name: "Cell style" })).toBeNull();
+  });
+
+  it("marks an editable sheet as an editor, so the format keys are its own", async () => {
+    open(sheetView({ store: "tcsheet", row: ROW }), { selection: "B2" });
+    await gridUp();
+    expect(document.querySelector("[data-sheet-item]")!.getAttribute("data-editor-keys")).toBe("sheet");
+    expect(grid.styleKeys).toBe(true);
+  });
+
+  it("a key acts only where the host drew its control, and a text field keeps its keys", async () => {
+    open(sheetView({ store: "tcsheet", row: ["italic"] }), { selection: "B2" });
+    await gridUp();
+    const body = document.querySelector<HTMLElement>("[data-sheet-item]")!;
+    const mod = navigator.platform.toLowerCase().includes("mac") ? { metaKey: true } : { ctrlKey: true };
+    // no Cell style in this host's list: its Clear formatting key is not there either
+    expect(fireEvent.keyDown(body, { key: "\\", code: "Backslash", ...mod })).toBe(true);
+    expect(grid.formats).toEqual([]);
+  });
+
+  it("⌘\\ typed in the formula bar is the bar's, not the cells'", async () => {
+    open(sheetView({ store: "tcsheet", row: ROW }), { selection: "B2" });
+    await gridUp();
+    const field = document.createElement("input");
+    document.querySelector("[data-sheet-item]")!.append(field);
+    const mod = navigator.platform.toLowerCase().includes("mac") ? { metaKey: true } : { ctrlKey: true };
+    expect(fireEvent.keyDown(field, { key: "\\", code: "Backslash", ...mod })).toBe(true);
+    expect(grid.formats).toEqual([]);
+  });
+
+  it("a custom format Excel would refuse cannot be applied, and says why", async () => {
+    open(sheetView({ store: "tcsheet", row: ROW }), { selection: "B2" });
+    await gridUp();
+    fireEvent.click(await screen.findByRole("button", { name: "More formatting" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Number format/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Custom format…" }));
+    const input = await screen.findByLabelText("Format");
+    fireEvent.change(input, { target: { value: '0.0"' } });
+    expect(await screen.findByText("Not a number format")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(input, { target: { value: '0.0 "kg"' } });
+    await waitFor(() => expect((screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(grid.formats).toEqual([{ pattern: '0.0 "kg"' }]));
+  });
+
+  it("a press formats the selection and the change is sent to the host as the grid's own edit", async () => {
+    open(sheetView({ store: "tcsheet", rev: 3, row: ROW }), { selection: "B2:C2" });
+    await gridUp();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fireEvent.click(await screen.findByRole("button", { name: "Bold" }));
+    expect(grid.formats).toEqual([{ bold: true }]);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(EDIT_WAIT + 10)));
+    await waitFor(() => expect(edits()).toHaveLength(1));
+    const sent = edits()[0]!.mutations[0]!.params as { cellValue: Record<string, Record<string, { s?: { bl?: number } }>> };
+    expect(sent.cellValue[1]![1]!.s).toEqual({ bl: 1 });
+    expect(sent.cellValue[1]![2]!.s).toEqual({ bl: 1 });
+    // and the row now says the cell is bold
+    await waitFor(() => expect(screen.getByRole("button", { name: "Bold" }).getAttribute("aria-pressed")).toBe("true"));
+  });
+
+  it("⌘\\ clears the selection's formatting from the keyboard, and a key that is no format key passes", async () => {
+    open(sheetView({ store: "tcsheet", row: ROW }), { selection: "B2" });
+    await gridUp();
+    const body = document.querySelector<HTMLElement>("[data-sheet-item]")!;
+    const mod = navigator.platform.toLowerCase().includes("mac") ? { metaKey: true } : { ctrlKey: true };
+    expect(fireEvent.keyDown(body, { key: "\\", code: "Backslash", ...mod })).toBe(false);
+    expect(grid.formats).toEqual([{ clear: true }]);
+    expect(fireEvent.keyDown(body, { key: "j", code: "KeyJ", ...mod })).toBe(true);
+    expect(grid.formats).toHaveLength(1);
+  });
+});
+

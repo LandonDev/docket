@@ -6,7 +6,7 @@ import { importXlsx } from 'work-kit/sheet/xlsx'
 import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
-import type { SheetView } from '@shared/contract-work-sheets'
+import { SHEET_ROW, type SheetView } from '@shared/contract-work-sheets'
 import type { SessionMeta } from '@shared/events'
 import type { CanvasSource, WorkScope } from '@shared/work'
 import { openDb, Store } from '../../db'
@@ -248,6 +248,21 @@ describe('a .csv in the canvas, and the model writer', () => {
     }
   }
 
+  it('says which format controls a sheet keeps: every one for a .tcsheet, none for an opened Excel file', async () => {
+    await serve()
+    const { TcsheetBackend } = await import('./host/backends')
+    const path = join(dir, 'Plan.tcsheet')
+    TcsheetBackend.create(path, 'Plan')
+    const id = canvasStoreOf(db).open('t1', { kind: 'sheet', source: file(path), title: 'Plan' }).id
+    const view = await call<SheetView>('work.sheets.open', { itemId: id })
+    expect(view.store).toBe('tcsheet')
+    expect(view.row).toEqual([...SHEET_ROW.tcsheet])
+    expect(view.row).toContain('fill')
+    const pkg = await call<SheetView>('work.sheets.open', { itemId })
+    expect(pkg.store).toBe('package')
+    expect(pkg.row).toBeUndefined()
+  })
+
   it('opens a .csv as a sheet of its own, and saves it back as .csv and out as .xlsx', async () => {
     await serve()
     const csv = join(dir, 'People.csv')
@@ -255,6 +270,8 @@ describe('a .csv in the canvas, and the model writer', () => {
     const id = canvasStoreOf(db).open('t1', { kind: 'sheet', source: file(csv), title: 'People.csv' }).id
     const view = await call<SheetView>('work.sheets.open', { itemId: id })
     expect(view).toMatchObject({ store: 'csv', rev: 0, name: 'People.csv' })
+    // a sheet read from a .csv keeps cell contents only: the host lists no format control for it
+    expect(view.row).toBeUndefined()
     await call('work.sheets.edit', { itemId: id, baseRev: 0, mutations: [{ id: SET_RANGE_VALUES, params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 2: { 0: { v: 'Grace' }, 1: { v: 45 } } } } }] })
     const back = await call<{ path: string }>('work.sheets.export', { itemId: id, format: 'csv' })
     expect(back.path).toBe(csv)

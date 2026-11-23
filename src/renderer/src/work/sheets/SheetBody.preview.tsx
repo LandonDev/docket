@@ -2,7 +2,7 @@
 // the sheet kind in the canvas pane beside a thread, as the approved page draws it
 // (.temp-code/prototypes/work-workspaces-2/sheet.html, "In the cells"), on a table in place
 // of Univer's grid, which paints on a canvas the static render does not have.
-import type { SheetView } from "@shared/contract-work-sheets";
+import { SHEET_ROW, type SheetView } from "@shared/contract-work-sheets";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { Composer } from "../../chrome/Composer";
 import { composerFixtureBase } from "../../chrome/Composer.fixtures";
@@ -18,7 +18,7 @@ import { BUDGET, BUDGET_CHANGES, INVOICES, SPEND } from "./SheetBody.preview.fix
 import { resetSheetSyncs, SheetSync, syncOf, type Workbook } from "./sync";
 import { fakeGrid, fakeSheetHost, sheetView, type FakeGrid } from "./testkit";
 
-export type SheetMoment = "suggestions" | "stepped" | "own" | "chart" | "loading" | "readonly";
+export type SheetMoment = "suggestions" | "stepped" | "own" | "format" | "chart" | "loading" | "readonly";
 
 void workCanvasChunk.load();
 
@@ -32,6 +32,14 @@ function setUp(moment: SheetMoment): { view: SheetView; book: Workbook; title: s
       book: INVOICES,
       grid: fakeGrid({ selection: "F4", columns: 7 }),
       view: sheetView({ name: "Invoices 2026", store: "package", mode: "writes", written: { id: "w1", text: "Changed 6 cells", at: AT } }),
+    };
+  // A sheet TempCode keeps: every control of the format row, the selection on a bold heading.
+  if (moment === "format")
+    return {
+      title: "Invoices 2026",
+      book: INVOICES,
+      grid: fakeGrid({ selection: "E1", columns: 7 }),
+      view: sheetView({ name: "Invoices 2026", store: "tcsheet", mode: "writes", row: [...SHEET_ROW.tcsheet] }),
     };
   if (moment === "chart")
     return {

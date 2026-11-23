@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { SheetChart, SheetView } from "@shared/contract-work-sheets";
-import { reviewMarks, useGridState, type GridSelection, type SheetHandle } from "work-kit/sheet";
+import { patternProblem, reviewMarks, SheetToolbar, useGridState, type GridSelection, type SheetHandle } from "work-kit/sheet";
 import { ChartBar, MoreHorizontal, Trash2 } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { RowsMenu } from "../../chrome/menuRows";
@@ -9,6 +9,12 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
+import { confirmAction, DialogFooter } from "../../chrome/ConfirmDialog";
+import { Field } from "../../chrome/DialogField";
+import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
+import { Tip } from "../../components/tip";
+import { Input } from "../../components/ui/input";
+import { IS_MAC } from "../../lib/platform";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import { Export, Share } from "../icons";
@@ -106,6 +112,10 @@ export function Body(props: Props) {
     setBox(node);
   }, []);
 
+  // The format row: only the controls whose changes this sheet's store keeps, as its host says (`view.row`); none on a sheet he cannot edit.
+  const controls = view && !locked ? (view.row ?? []) : [];
+  const [customFormat, setCustomFormat] = useState<string | null>(null);
+
   // The cell in hand, when a suggestion is laid in it: what the value replaces. Read on every render, which each laying causes.
   const was = selection ? sync.was(selection.sheet, selection.row, selection.column) : undefined;
 
@@ -122,16 +132,24 @@ export function Body(props: Props) {
     <div
       ref={frameRef}
       data-sheet-item={item.id}
+      // The editor's keys are the grid's while the caret is in it (work-editors.md "Who hears a key"). A sheet he can only read, and
+      // one whose store keeps no formatting (no row), keep ⌘B the app's: a key never makes what the row there does not offer.
+      data-editor-keys={locked || controls.length === 0 ? "read" : "sheet"}
       className="relative flex min-h-0 flex-1 flex-col"
       onPointerUp={(event) => {
         pointer.current = { x: event.clientX, y: event.clientY };
       }}
     >
+      {handle && controls.length > 0 ? (
+        <SheetToolbar sheet={handle} controls={controls} boundary={box} mac={IS_MAC} editorKeys tip={rowTip} onCustomFormat={(current) => setCustomFormat(current)} confirmMerge={confirmMerge} />
+      ) : null}
+      {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
       <Canvas
         key={book.key}
         snapshot={book.workbook as never}
         worker={grid.worker}
         readOnly={locked}
+        styleKeys={controls.length > 0}
         marks={marks}
         was={was}
         onReady={setHandle}
@@ -145,6 +163,56 @@ export function Body(props: Props) {
 }
 
 const LABELS = { failed: "Couldn't draw this sheet." };
+
+/** Asked before a merge empties cells: the app's own question. Undo brings them back, but the loss is said first. */
+const confirmMerge = (): Promise<boolean> => confirmAction({ title: "Merge these cells?", body: "Only the top-left value is kept.", action: "Merge" });
+
+/** The row's tips are the app's own: the control's name, and its key as a cap. */
+const rowTip = (label: string, child: React.ReactElement, hint?: string) => (
+  <Tip label={label} side="bottom" {...(hint ? { shortcut: hint } : {})}>
+    {child}
+  </Tip>
+);
+
+/** A number format of his own: one field holding Excel's pattern, as Excel's own Custom takes it. */
+function CustomFormat({ current, onClose, onApply }: { current: string; onClose(): void; onApply(pattern: string): void }) {
+  return (
+    <Modal onClose={onClose} title="Custom number format">
+      <CustomFormatBody current={current} onClose={onClose} onApply={onApply} />
+    </Modal>
+  );
+}
+
+function CustomFormatBody({ current, onClose, onApply }: { current: string; onClose(): void; onApply(pattern: string): void }) {
+  const close = useModalClose();
+  const [pattern, setPattern] = useState(current);
+  // A code Excel would refuse is never laid on a cell: the file would open with a repair prompt.
+  const problem = pattern.trim() ? patternProblem(pattern.trim()) : null;
+  const apply = (): void => {
+    if (problem) return;
+    const done = () => onApply(pattern.trim());
+    if (close) close(done);
+    else {
+      done();
+      onClose();
+    }
+  };
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        apply();
+      }}
+    >
+      <ModalBody>
+        <Field label="Format" {...(problem ? { error: problem } : {})}>
+          <Input value={pattern} onChange={(event) => setPattern(event.target.value)} placeholder='#,##0.00 "kg"' spellCheck={false} autoComplete="off" className="font-mono" />
+        </Field>
+      </ModalBody>
+      <DialogFooter onCancel={onClose} confirmLabel="Apply" disabled={!!problem} onConfirm={apply} />
+    </form>
+  );
+}
 
 /** What the body tells the pane: the mode, the one state line, the line after a direct write, the stepper, More's Chart. */
 function useFeeds(

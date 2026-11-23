@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join } from 'node:path'
-import type { SheetChart, SheetMutationJson, SheetView } from '@shared/contract-work-sheets'
+import { SHEET_ROW, type SheetChart, type SheetMutationJson, type SheetStoreKind, type SheetView } from '@shared/contract-work-sheets'
 import { agentPrincipal, canvasSourcePath, type CanvasItem, type Principal } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import { fetchedFile } from '../canvas/fetch'
@@ -170,6 +170,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       ...base,
       name: basename(held.path),
       store: 'package',
+      ...(SHEET_ROW.package.length ? { row: [...SHEET_ROW.package] } : {}),
       rev: st.rev,
       shared,
       suggestions: s.suggestions.open(key),
@@ -211,10 +212,13 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     }
   }
   const st = await host(s.ctx, 'open', { sheet: held.ref })
+  const store: SheetStoreKind = 'lifeos' in held.ref ? 'lifeos' : held.csv ? 'csv' : 'tcsheet'
   return {
     ...base,
     name: st.title,
-    store: 'lifeos' in held.ref ? 'lifeos' : held.csv ? 'csv' : 'tcsheet',
+    store,
+    // The format row's controls: the ones this store keeps (rowMatrix.test.ts).
+    ...(SHEET_ROW[store].length ? { row: [...SHEET_ROW[store]] } : {}),
     rev: st.rev,
     shared: shared || st.shared,
     suggestions: st.suggestions,

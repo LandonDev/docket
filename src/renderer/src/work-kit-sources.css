@@ -57,6 +57,18 @@
 @source "../../../node_modules/work-kit/src/editor/use-mounted.ts";
 @source "../../../node_modules/work-kit/src/editor/viewer.ts";
 @source "../../../node_modules/work-kit/src/fonts/index.ts";
+@source "../../../node_modules/work-kit/src/format/AlignMenu.tsx";
+@source "../../../node_modules/work-kit/src/format/ColourPicker.tsx";
+@source "../../../node_modules/work-kit/src/format/FontSelect.tsx";
+@source "../../../node_modules/work-kit/src/format/FormatButton.tsx";
+@source "../../../node_modules/work-kit/src/format/FormatRow.tsx";
+@source "../../../node_modules/work-kit/src/format/SizeField.tsx";
+@source "../../../node_modules/work-kit/src/format/StyleSelect.tsx";
+@source "../../../node_modules/work-kit/src/format/fold.ts";
+@source "../../../node_modules/work-kit/src/format/items.tsx";
+@source "../../../node_modules/work-kit/src/format/keys.ts";
+@source "../../../node_modules/work-kit/src/format/layer.tsx";
+@source "../../../node_modules/work-kit/src/format/theme.ts";
 @source "../../../node_modules/work-kit/src/formats/clipboard/index.ts";
 @source "../../../node_modules/work-kit/src/formats/diff/index.ts";
 @source "../../../node_modules/work-kit/src/formats/html/index.ts";
@@ -171,6 +183,7 @@
 @source "../../../node_modules/work-kit/src/projects/work-board.tsx";
 @source "../../../node_modules/work-kit/src/projects/work-row.tsx";
 @source "../../../node_modules/work-kit/src/projects/work-tree.tsx";
+@source "../../../node_modules/work-kit/src/sheet/colour.ts";
 @source "../../../node_modules/work-kit/src/sheet/engine/dedup-rtree.ts";
 @source "../../../node_modules/work-kit/src/sheet/engine/dependency-generator.ts";
 @source "../../../node_modules/work-kit/src/sheet/engine/dependency-manager.ts";
@@ -183,7 +196,9 @@
 @source "../../../node_modules/work-kit/src/sheet/grid/adapter.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/create.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/defaults.ts";
+@source "../../../node_modules/work-kit/src/sheet/grid/format.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/handle.ts";
+@source "../../../node_modules/work-kit/src/sheet/grid/keys.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/marks.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/menu.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/selection.ts";
