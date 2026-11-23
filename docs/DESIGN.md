@@ -1775,6 +1775,51 @@ Around the canvas:
   as receipt, after the pane's own rows and before Close: "Filing to
   Money…" at once, settling to "Filed to confirm in Money" with Open
   Money, or to the host's words.
+- **A meeting's page** (work/prep/; docs/agents/work-prep.md). A view
+  inside Agenda with no row in the column. The 40px header is People's
+  way back (the arrow, "Agenda", the event's title muted) and holds one
+  quiet verb for where the meeting stands (Brief me; Add notes once it is
+  over; Follow up once notes stand; nothing once a brief or an outcome
+  stands) beside More. While a thread writes, the verb's place is a
+  spinner and a muted word ("Preparing", "Following up") that opens the
+  thread. The body is People's column (720px, the same insets): the
+  title on the 16px recipe, wrapping rather than cut, and one 12px muted
+  comma line under it ("Today, 2:00 to 2:45 PM, RecWell 204, leave
+  1:40"). What a thread wrote is body text (14/22) at a 65ch measure, a
+  paragraph a line, 8px apart, with no heading while it leads the page:
+  the brief before the meeting, the summary after. A line that names a
+  mail, a task or a document is pressable on the row's hover fill. While
+  the brief is being written its place holds three text bones; when it
+  lands on an open page its lines rise in as steps do (`.step-land`, a
+  step apart), and a page opened with its brief replays nothing. Then
+  each section that has something, 24px apart under People's 12px medium
+  muted heading: rows of People's shape (13px on 20px lines, a 12px muted
+  second line, a 12px tabular fact at the end). A row that opens nothing
+  is the same box with no hover. A person's row leads with the 24px face;
+  its second line is their newest mail's subject and its end that mail's
+  day, or "Declined". "Last time, Nov 16" is a heading that opens that
+  page. A page with no one on it says so in one muted line with a ghost
+  Add people after it. After the meeting the outcome leads: his notes at
+  14/22, six lines then Show all; Decided; To do; Open questions; Mail;
+  then the brief under its own heading and the rest as before. A
+  suggested task waits on `--add-bg` with a 16px checkbox at its first
+  line, rows 2px apart and no wider than the brief's measure (a tint the
+  column's whole width would shout), who and when as its muted line; the section's
+  foot holds a ghost Tick all and, only while one is ticked, the page's
+  one primary button, which counts them ("Add 3 tasks"). A filed task
+  loses the tint, takes LifeOS's mark where the box was, and opens its
+  sheet. The mail is one row, "Follow-up to Maya Chen and Tom Beck" over
+  "Waiting for your press", which opens the Outbox on it. A part that did
+  not load, or a filing LifeOS did not take, is the view's one state line
+  with Retry. The one-time offer of Prepare ahead is a 12px muted line
+  under his first brief with a ghost Turn on and a dismiss. Loading draws
+  bones in the page's shape. The Notes dialog is the 576px form dialog:
+  one field at 14/22 that keeps its height and scrolls, under it two
+  quiet 12px verbs (Use a recording or transcript, Write in a document),
+  then Cancel and Follow up; it keeps what he typed however it closes.
+  Add people is the 448px form dialog: a search, then a list that keeps
+  its height, a 32px row a person with a checkbox, the face, the name and
+  the address muted.
 - **Project screens** (the Projects view; the tracker's projects screens,
   shared with LifeOS, on TempCode's scale). The view's one 40px header
   holds the screens' bar: the view's name on the list, else the way

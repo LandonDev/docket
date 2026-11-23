@@ -119,7 +119,12 @@ Settings → Work.
   (the project screens, [work-projects.md](work-projects.md)), Agenda,
   People ([work-people.md](work-people.md)), Docs and Files (Teams files, [work-teams-files.md](work-teams-files.md)), then
   Templates (the job's shelf, written but held out of the column by `TEMPLATES_ROW` in views/registry.ts until
-  Files' F1b lands; work-templates.md "The row") from `WORK_VIEWS`, then the project cards. Those are LifeOS's,
+  Files' F1b lands; work-templates.md "The row") from `WORK_VIEWS`, then the project cards. A view may stand inside another
+  and have no row of its own: `WorkViewDef.inside` names its parent (a
+  meeting's page stands inside Agenda, [work-prep.md](work-prep.md)); the
+  column draws no row for it (`workViewRows`), its parent's row reads as
+  open while it shows (`rowOfView`), and that row then leads back to the
+  parent rather than closing the view. Those cards are LifeOS's,
   live: the head keeps `projects:list {sector}` (backlog, active, paused)
   in `setLifeosProjects`, and `withLifeosCards` (lib/workspaceSessions.ts)
   adds a `lifeos:<id>` card for each one no project mirrors yet; its first
@@ -370,7 +375,8 @@ Pillar ids, in mount order: `outbox, canvas, lifeos, routines, rules, mail,
 messages, tasks, agenda, docs, history, formats, sheets, office, google, guests, pdf,
 slides, media, frameio, meetings, forms, dashboards, browser, projects,
 winvm, capture, files, prep, money, search, clashes, templates` (the Windows VM's keeper: [work-winvm.md](work-winvm.md); capture from anywhere,
-[work-capture.md](work-capture.md); the Files place, [work-files.md](work-files.md); one search for everything,
+[work-capture.md](work-capture.md); the Files place, [work-files.md](work-files.md); meeting prep and follow-up,
+[work-prep.md](work-prep.md); one search for everything,
 [work-search.md](work-search.md); clashes across jobs,
 [work-clashes.md](work-clashes.md); templates per job,
 [work-templates.md](work-templates.md)).

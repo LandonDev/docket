@@ -140,7 +140,7 @@ export class Run {
   async start(opts: { work?: boolean; env?: Record<string, string> } = {}): Promise<void> {
     this.port = await freePort()
     this.workPort = await freePort()
-    if (await fetch(`http://127.0.0.1:${this.port}/json/version`).then(() => true, () => false)) throw new Error(`debug port ${this.port} is in use`)
+    if (await fetch(`http://127.0.0.1:${this.port}/json/version`, { signal: AbortSignal.timeout(3000) }).then(() => true, () => false)) throw new Error(`debug port ${this.port} is in use`)
     for (const d of [this.data, this.home, this.work, join(this.root, 'tmp'), join(this.home, '.claude'), this.out]) mkdirSync(d, { recursive: true })
     this.linkTools()
     const env: Record<string, string> = {
@@ -421,11 +421,12 @@ async function attach(port: number, ms: number): Promise<Cdp> {
   const end = Date.now() + ms
   let found: WebSocket | null = null
   while (!found && Date.now() < end) {
-    const list = (await fetch(`http://127.0.0.1:${port}/json/list`).then((r) => r.json(), () => [])) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
+    // Bounded: a debug port that takes the connection while the app is still starting may never answer it.
+    const list = (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json(), () => [])) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
     const url = list.find((t) => t.type === 'page' && /\/index\.html(\?|#|$)/.test(t.url))?.webSocketDebuggerUrl
     if (url) {
       const socket = new WebSocket(url)
-      const open = await new Promise<boolean>((ok) => ((socket.onopen = () => ok(true)), (socket.onerror = () => ok(false))))
+      const open = await new Promise<boolean>((ok) => ((socket.onopen = () => ok(true)), (socket.onerror = () => ok(false)), setTimeout(() => ok(false), 30_000)))
       if (open) found = socket
     }
     if (!found) await sleep(500)
