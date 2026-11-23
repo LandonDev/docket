@@ -13,6 +13,7 @@ import { openDb, Store } from '../../db'
 import type { SessionRegistry } from '../../sessions'
 import { canvasStoreOf } from '../canvas/store'
 import { readText, readZip } from './patch/zip'
+import { readTables } from './patch/tables'
 
 /**
  * The owner's ruling (2026-11-23): what an agent proposes on a workbook anyone else can open is
@@ -816,5 +817,119 @@ describe('a .csv and an export in a folder others can open', () => {
     expect((await tool('sheet_read', { item: itemId, range: 'A2' })).text).toContain('newer value')
     // the cache of the file as it stood is gone
     expect(filesUnder(join(scratch(), 'csv'))).toHaveLength(1)
+  })
+})
+
+/**
+ * The agent's side of what a hand does in the grid's Table menu (sheet_table): the same rule as a
+ * format's. On a workbook others can open its own idea waits in words on this host and the file and
+ * its folder stay byte for byte until his press; asked for in so many words, or on his own sheet set
+ * to write, it is written at once; each read back from the file.
+ */
+describe('a table an agent makes or changes', () => {
+  const tablesIn = (path: string) => readTables(new Uint8Array(readFileSync(path))).sheets.Data?.tables ?? []
+  let path: string
+  let itemId: string
+  beforeEach(() => {
+    mkdirSync(join(library, 'Budget'), { recursive: true })
+    path = join(library, 'Budget', 'Budget.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), path)
+    itemId = open(path, 'Budget.xlsx')
+  })
+
+  it('on an Excel file others can open, its own idea waits in words, the file and its folder byte for byte; his accept writes the table part', async () => {
+    const before = folder()
+    const made = await tool('sheet_table', { item: itemId, table: { op: 'make', range: 'Data!A1:C21', name: 'Budget', style: 'Medium 4', total: true }, because: 'own', reason: 'easier to sort' })
+    expect(made.isError, made.text).toBeFalsy()
+    expect(made.text).toMatch(/^Suggested: Table Budget on Data!A1:C22, Medium 4, total row\. Others share this sheet/)
+    expect(folder()).toEqual(before)
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    expect(view.changes!.map((c) => [c.kind, c.state, c.reason])).toEqual([['table', 'pending', 'easier to sort']])
+    expect(JSON.stringify(view.changes)).not.toContain('TableStyleMedium4')
+    // a reject leaves nothing anywhere
+    await tool('sheet_table', { item: itemId, table: { op: 'make', range: 'Data!E1:F4' }, because: 'own' })
+    const [first, second] = (await call<SheetView>('work.sheets.open', { itemId })).changes!
+    await call('work.sheets.review', { itemId, which: { ids: [second!.id] }, verdict: 'reject' })
+    expect(folder()).toEqual(before)
+    const taken = await call<SheetView>('work.sheets.review', { itemId, which: { ids: [first!.id] }, verdict: 'accept' })
+    expect(taken).toMatchObject({ rev: 1 })
+    expect(taken.changes).toBeUndefined()
+    const [table] = tablesIn(path)
+    expect(table).toMatchObject({ name: 'Budget', range: { startRow: 0, startColumn: 0, endColumn: 2 }, options: { tableStyleId: 'TableStyleMedium4' } })
+    expect((table!.options as { hasTotalRow?: boolean }).hasTotalRow).toBe(true)
+    // nothing was written beside the file
+    expect(Object.keys(folder())).toEqual(Object.keys(before))
+  })
+
+  it('asked for in so many words it is written at once; a quote he never said waits', async () => {
+    state.said.push('turn the data into a table please')
+    const asked = await tool('sheet_table', { item: itemId, table: { op: 'make', range: 'Data!A1:C9' }, because: 'asked', quote: 'into a table' })
+    expect(asked.text).toBe('Table Table1 on Data!A1:C9, Medium 2.')
+    expect(tablesIn(path).map((t) => t.name)).toEqual(['Table1'])
+    const before = folder()
+    const unsaid = await tool('sheet_table', { item: itemId, table: { op: 'change', table: 'Table1', style: 'Light 9' }, because: 'asked', quote: 'make it light blue' })
+    expect(unsaid.text).toMatch(/^Suggested: Table Table1: Light 9\. .*counts as your own idea\.$/)
+    expect(folder()).toEqual(before)
+  })
+
+  it('what the sheet has no place for is refused as it is asked, and nothing is kept', async () => {
+    state.said.push('make a table of it')
+    await tool('sheet_table', { item: itemId, table: { op: 'make', range: 'Data!A1:C9', name: 'Budget' }, because: 'asked', quote: 'make a table' })
+    const before = folder()
+    for (const table of [
+      { op: 'make', range: 'Data!B2:D5' },
+      { op: 'make', range: 'Data!E1:F4', name: 'Budget' },
+      { op: 'make', range: 'Data!E1:F4', style: 'Medium 99' },
+      { op: 'change', table: 'Nope', style: 'Light 1' },
+      { op: 'total', table: 'Budget', column: 'Zebra', fn: 'sum' }
+    ]) {
+      const got = await tool('sheet_table', { item: itemId, table, because: 'own' })
+      expect(got.isError, JSON.stringify(table)).toBe(true)
+    }
+    expect(folder()).toEqual(before)
+    expect((await call<SheetView>('work.sheets.open', { itemId })).changes).toBeUndefined()
+  })
+
+  it('on his own Excel file set to write: made, totalled, renamed and converted back, each read back from the file', async () => {
+    const own = join(dir, 'Own.xlsx')
+    copyFileSync(join(CORPUS, 'formulas.xlsx'), own)
+    const id = open(own, 'Own.xlsx')
+    await call('work.sheets.mode', { itemId: id, mode: 'writes' })
+    expect((await tool('sheet_table', { item: id, table: { op: 'make', range: 'Data!A1:C21', name: 'Costs' }, because: 'own' })).text).toBe('Table Costs on Data!A1:C21, Medium 2.')
+    expect((await call<SheetView>('work.sheets.open', { itemId: id })).written).toMatchObject({ text: 'Table Costs on Data!A1:C21, Medium 2', undo: false })
+    const total = await tool('sheet_table', { item: id, table: { op: 'total', table: 'Costs', column: 'C', fn: 'average' }, because: 'own' })
+    expect(total.isError, total.text).toBeFalsy()
+    let [t] = tablesIn(own)
+    expect((t!.options as { hasTotalRow?: boolean }).hasTotalRow).toBe(true)
+    expect((t!.columns[2] as { totalsRowFunction?: string }).totalsRowFunction).toBe('average')
+    expect((await tool('sheet_table', { item: id, table: { op: 'change', table: 'costs', name: 'Spend', bandedRows: false }, because: 'own' })).text).toBe('Table Costs: renamed Spend, no banded rows.')
+    ;[t] = tablesIn(own)
+    expect(t).toMatchObject({ name: 'Spend', options: { showRowStripes: false } })
+    expect((await tool('sheet_table', { item: id, table: { op: 'convert', table: 'Spend' }, because: 'own' })).text).toBe('Table Spend back to a plain range.')
+    expect(tablesIn(own)).toEqual([])
+  })
+
+  it('on a .tcsheet others can open it waits in this host\'s database and lands in the sheet when he takes it', async () => {
+    const plan = join(library, 'Plan.tcsheet')
+    TcsheetBackend.create(plan, 'Plan')
+    const id = open(plan, 'Plan')
+    const cells = { 0: { 0: { v: 'Item' }, 1: { v: 'Cost' } }, 1: { 0: { v: 'Bus' }, 1: { v: 40 } }, 2: { 0: { v: 'Hotel' }, 1: { v: 90 } } }
+    await call('work.sheets.edit', { itemId: id, baseRev: 0, mutations: [{ id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: cells } }] })
+    const before = folder()
+    expect((await tool('sheet_table', { item: id, table: { op: 'make', range: 'A1:B3', name: 'Trip', total: true }, because: 'own' })).text).toMatch(/^Suggested: Table Trip on A1:B4, Medium 2, total row\./)
+    expect(folder()).toEqual(before)
+    const taken = await call<SheetView>('work.sheets.review', { itemId: id, which: 'all', verdict: 'accept' })
+    expect(taken.changes).toBeUndefined()
+    const host = new SheetHost(() => new TcsheetBackend(plan, join(dir, 'sheets', 'suggestions')))
+    try {
+      const wb = JSON.parse((await host.snapshotJson({ tcsheet: plan })).json) as { sheets: Record<string, { cellData?: Record<string, Record<string, { v?: unknown; f?: unknown }>> }>; resources?: { name: string; data: string }[] }
+      const tables = (JSON.parse(wb.resources?.find((r) => r.name === 'SHEET_TABLE_PLUGIN')?.data ?? '{}') as Record<string, { tables?: { name: string; range: unknown }[] }>).sheet1?.tables ?? []
+      expect(tables.map((t) => [t.name, t.range])).toEqual([['Trip', { startRow: 0, endRow: 3, startColumn: 0, endColumn: 1 }]])
+      // the total row's cells, as the kit fills them: a label under the first column, a sum under the last
+      expect(wb.sheets.sheet1!.cellData?.[3]?.[0]?.v).toBe('Total')
+      expect(wb.sheets.sheet1!.cellData?.[3]?.[1]?.f).toBe('=SUBTOTAL(109,B2:B3)')
+    } finally {
+      host.close()
+    }
   })
 })

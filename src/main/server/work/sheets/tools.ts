@@ -9,6 +9,7 @@ import { parseA1 } from './a1'
 import { agentFormat, FORMAT_MAX_CELLS, FormatSchema, formatWords, heldOfPackage, place, ruleClash, ruleListMutation, ruleModel, ruleMutations, RuleSchema, ruleWords, where, type FormatAsk, type Placed, type RuleAsk } from './asks'
 import type { RulesHeld } from './host/wire'
 import type { ChangeAsk } from './changes'
+import { TableAskSchema, type ActAnswer, type ActMade, type TableAsk } from './acts'
 import { ensureImported } from './formatsIn'
 import { ensureCsvSheet, heldOf, heldOfPath, host, sheetsOf, storeKey, type Held, type Sheets } from './held'
 import type { A1Cell } from './host/wire'
@@ -115,16 +116,39 @@ interface Standing {
   sheets: { id: string; name: string }[]
   rev: number
   rules(): Promise<RulesHeld>
+  /** a table's ask run by the grid's own handle on the sheet as it stands (acts.ts, in the sheet worker); throws `Unplaced` with the words where the sheet has no place for it */
+  act(table: TableAsk): Promise<ActMade>
 }
 async function standing(s: Sheets, held: Target['held']): Promise<Standing> {
   if (held.at === 'package') {
     const st = await s.packages.open(held.path)
     if (st.inspected.readOnly) throw new Error(st.inspected.readOnly)
-    return { unit: PACKAGE_UNIT, sheets: st.inspected.sheets, rev: st.rev, rules: async () => heldOfPackage(await s.jobs.rules(held.path)) }
+    return { unit: PACKAGE_UNIT, sheets: st.inspected.sheets, rev: st.rev, rules: async () => heldOfPackage(await s.jobs.rules(held.path)), act: once(async (table) => s.jobs.act({ store: 'package', path: held.path, table })) }
   }
   if (held.csv) throw new Error('A .csv keeps cell contents only: export it as Excel first (Export, then open the .xlsx).')
   const o = await host(s.ctx, 'open', { sheet: held.ref })
-  return { unit: o.unit, sheets: o.sheets, rev: o.rev, rules: async () => o.rules }
+  const act = once(async (table: TableAsk) => {
+    const { workbookOf } = await import('./index')
+    return s.jobs.act({ store: 'service', snapshot: JSON.stringify(await workbookOf(s.ctx, held.ref, o.rev)), table })
+  })
+  return { unit: o.unit, sheets: o.sheets, rev: o.rev, rules: async () => o.rules, act }
+}
+
+/** The worker's answer for one ask, asked once for a standing: the words and the mutations come from one run. */
+function once(ask: (table: TableAsk) => Promise<ActAnswer>): (table: TableAsk) => Promise<ActMade> {
+  const seen = new Map<string, Promise<ActMade>>()
+  return (table) => {
+    const key = JSON.stringify(table)
+    let got = seen.get(key)
+    if (!got) {
+      got = ask(table).then((answer) => {
+        if ('refused' in answer) throw new Unplaced(answer.refused)
+        return answer
+      })
+      seen.set(key, got)
+    }
+    return got
+  }
 }
 
 /**
@@ -148,6 +172,10 @@ const placed = <T>(make: () => T): T => {
  */
 async function read(ask: ChangeAsk, now: Standing): Promise<{ at: Placed | null; words: string }> {
   const { sheets } = now
+  if (ask.kind === 'table') {
+    const got = await now.act(ask.table)
+    return { at: { sheet: got.sheet, name: sheets.find((x) => x.id === got.sheet)?.name ?? '', range: got.range }, words: got.words }
+  }
   if (ask.kind === 'format') {
     const at = placed(() => place(ask.range, sheets))
     const cells = (at.range.endRow - at.range.startRow + 1) * (at.range.endColumn - at.range.startColumn + 1)
@@ -187,6 +215,7 @@ export async function layChange(s: Sheets, held: Target['held'], ask: ChangeAsk,
 }
 
 async function mutationsFor(s: Sheets, held: Target['held'], ask: ChangeAsk, now: Standing): Promise<SheetMutationJson[]> {
+  if (ask.kind === 'table') return (await now.act(ask.table)).mutations
   const { at } = await read(ask, now)
   let mutations: SheetMutationJson[]
   if (ask.kind === 'format') {
@@ -393,6 +422,18 @@ export const sheetTools: WorkTool[] = [
     run: async (args, ctx) => {
       const a = args as { item?: string; file?: string; rule: RuleAsk; because: 'asked' | 'routine' | 'own'; quote?: string; reason?: string }
       return change(ctx, a, { kind: 'rule', rule: a.rule })
+    }
+  },
+  {
+    name: 'sheet_table',
+    description:
+      'Tables: `make` one of a range, `change` its name, style, range or switches, set a column\'s `total`, or `convert` it back to a range. ' +
+      'Say why, as for `sheet_write`: on a sheet others share your own idea waits in words for the owner.',
+    input: z.object({ ...target, table: TableAskSchema, ...because }),
+    readOnly: false,
+    run: async (args, ctx) => {
+      const a = args as { item?: string; file?: string; table: TableAsk; because: 'asked' | 'routine' | 'own'; quote?: string; reason?: string }
+      return change(ctx, a, { kind: 'table', table: a.table })
     }
   },
   {

@@ -1060,7 +1060,7 @@ Our own canvas does not use the socket: it calls the pillar's methods.
 ## Agents: the tools and the rule
 
 `sheet_read`, `sheet_write`, `sheet_suggest`, `sheet_format`, `sheet_rule`,
-`sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
+`sheet_table`, `sheet_create` (tools.ts), cells in A1 (`a1.ts`), at most 10,000 cells a
 read and 1,000 a write. A read of an opened Excel file ends with one line
 when the file holds what only Excel changes ("This workbook also holds 2
 pivot tables: only Excel changes those…", `waitsNote`), so a thread does
@@ -1068,7 +1068,7 @@ not claim a change it could not make. `sheet_read` gives a cell's note's words b
 value (`note`, read from the import's note resource for a package and from
 the engine's resources for a sheet the service holds; a thread's stand-in is
 no note). `sheet_write`, `sheet_format` and `sheet_rule` say
-why (`because`), under one rule (`ruled`):
+why (`because`), and so do `sheet_table` and the tools after it, under one rule (`ruled`):
 
 - `asked` with `quote`, the owner's own words in the thread
   (`ctx.threads.ownerSaid`): written at once;
@@ -1103,6 +1103,23 @@ workbook's, or one tab's) and the `filter` (a range, or null to take it
 off, with `sheet` for the tab). A validation made here refuses a bad value, as Excel's own dialog
 sets a new one (`showErrorMessage`). An agent adds rules; changing or
 removing one is his, in the side sheet.
+
+**A table** (`sheet_table`, `acts.ts`). `make` one of a range (a name, a
+built-in style by its short name, "Medium 2", the header said or guessed,
+the total row and the four style switches), `change` one (rename, restyle,
+a new range on its sheet, the switches), set a column's `total` (sum,
+average, count, min, max, none; a total row is added where there is none),
+or `convert` it back to a range. The sheet worker loads the sheet as it
+stands (an opened Excel file by its path, a sheet the service holds from
+its snapshot at the revision the tool read) into a headless engine and
+runs the kit's own table handle on it (`createTables`, the Table menu's),
+with its own refusals ("A table is already there", "The row below is in
+use", a name Excel would not take); for an Excel file what the grid emitted
+goes through `forPackage`, as a press does, and the store's table writer is
+run once on the file and thrown away, so what it would refuse is said as
+it is asked. A sheet the service holds is sent the grid's own mutations,
+each cell's style laid whole. The words: "Table Budget on Data!A1:C22,
+Medium 4, total row", "Table Costs: renamed Spend, no banded rows".
 
 Each ask becomes the grid's own data: a format, the mutations the row's own
 code makes (`compose.ts` runs work-kit's `applyFormat` in the sheet worker

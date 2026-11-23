@@ -1,6 +1,7 @@
 import type { SheetCellDiff, SheetMutationJson } from '@shared/contract-work-sheets'
 import type { A1Range } from './a1'
 import type { ComposeAsk } from './compose'
+import type { ActAnswer, ActAsk } from './acts'
 import type { Inspected, PackageRules, ReadCell, SaveAnswer } from './jobs'
 import type { EditSpec } from './patch/patch'
 import type { StructuralOp } from './structural'
@@ -19,6 +20,7 @@ export type WorkerAsk = { id: number } & (
   | { op: 'graft'; original: string; written: string; output: string; ops: StructuralOp[] }
   | { op: 'csv'; path: string; sheet?: string }
   | { op: 'compose'; ask: ComposeAsk }
+  | { op: 'act'; ask: ActAsk }
   | { op: 'rules'; path: string }
 )
 export type WorkerAnswer = { id: number; ok: true; value: unknown } | { id: number; ok: false; error: string }
@@ -35,6 +37,8 @@ export interface SheetJobs {
   csv(path: string, sheet?: string): Promise<string>
   /** a format an agent asked for, as the mutations the row's own press would make (compose.ts) */
   compose(ask: ComposeAsk): Promise<SheetMutationJson[]>
+  /** a table an agent asked for, made by the grid's own handle on the sheet as it stands (acts.ts) */
+  act(ask: ActAsk): Promise<ActAnswer>
   /** the rules a package holds now, as the importer reads them: what one more rule is added to */
   rules(path: string): Promise<PackageRules>
   stop(): void
@@ -97,6 +101,7 @@ export function workerJobs(fork: () => Child): SheetJobs {
     graft: (original, written, output, ops) => call({ op: 'graft', original, written, output, ops }),
     csv: (path, sheet) => call({ op: 'csv', path, ...(sheet === undefined ? {} : { sheet }) }),
     compose: (ask) => call({ op: 'compose', ask }),
+    act: (ask) => call({ op: 'act', ask }),
     rules: (path) => call({ op: 'rules', path }),
     stop() {
       child?.kill()
@@ -123,6 +128,7 @@ export async function localJobs(): Promise<SheetJobs> {
     graft: async (original, written, output, ops) => graftPackage(original, written, output, ops),
     csv: async (path, sheet) => packageCsv(path, sheet),
     compose: async (ask) => formatMutations(ask),
+    act: async (ask) => (await import('./acts')).tableAct(ask),
     rules: async (path) => packageRules(path),
     stop() {}
   }

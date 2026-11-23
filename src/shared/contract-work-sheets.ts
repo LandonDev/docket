@@ -126,7 +126,8 @@ export interface SheetChange {
   id: string
   changeSet: string
   by: Principal
-  kind: 'format' | 'rule'
+  /** what the agent's tool asked for: sheet_format, sheet_rule, sheet_table */
+  kind: 'format' | 'rule' | 'table'
   /** Univer's sheet id */
   sheet: string
   /** the cells it is about; null for a workbook's name */

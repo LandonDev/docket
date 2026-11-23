@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs'
 import { formatMutations } from './compose'
+import { tableAct } from './acts'
 import { comparePackages, graftPackage, importPackage, packageCsv, packageRules, inspect, readWorkbookRange, savePackage } from './jobs'
 import { colName, type A1Range } from './a1'
 import type { WorkerAsk, WorkerAnswer } from './workerClient'
@@ -37,6 +38,8 @@ async function run(ask: WorkerAsk): Promise<unknown> {
       return packageCsv(ask.path, ask.sheet)
     case 'compose':
       return formatMutations(ask.ask)
+    case 'act':
+      return tableAct(ask.ask)
     case 'rules':
       return packageRules(ask.path)
   }

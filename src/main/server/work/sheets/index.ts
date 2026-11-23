@@ -403,9 +403,9 @@ function free(path: string): string {
   return out
 }
 
-/** The workbook a service-held sheet stands at now, read in frames. */
-async function workbookOf(ctx: WorkCtx, ref: SheetRef): Promise<IWorkbookData> {
-  const { rev } = await host(ctx, 'open', { sheet: ref })
+/** The workbook a service-held sheet stands at now (or at `at`), read in frames. */
+export async function workbookOf(ctx: WorkCtx, ref: SheetRef, at?: number): Promise<IWorkbookData> {
+  const rev = at ?? (await host(ctx, 'open', { sheet: ref })).rev
   const parts: Buffer[] = []
   for (let offset = 0, size = Infinity; offset < size; ) {
     const got = await host(ctx, 'snapshot', { sheet: ref, rev, offset, length: SHEET_LOAD_MAX })
