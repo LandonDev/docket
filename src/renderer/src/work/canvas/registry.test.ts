@@ -11,6 +11,7 @@ import { mailActs } from "../mail/act";
 import { officeActs } from "../office/act";
 import { outboxActs } from "../outbox/act";
 import { kindOfFile } from "@shared/work/docFind";
+import { extsOfCanvas, kindOfEntry } from "@shared/work/files";
 import { CANVAS, kindFor, kindForFile } from "./registry";
 
 /** The two registries Work's pillars plug into: every kind and every act kind once, each in its pillar's own file. */
@@ -112,6 +113,22 @@ describe("kindForFile", () => {
     for (const kind of CANVAS_KINDS) {
       for (const ext of CANVAS[kind].opens.ext ?? []) expect([ext, kindOfFile(`f.${ext}`)]).toEqual([ext, kind]);
     }
+  });
+
+  it("holds every kind's extensions to the one table of file types, both ways", () => {
+    // A kind that claims an extension the table gives another kind (or none), or a table row no kind claims, fails here.
+    for (const kind of CANVAS_KINDS) expect([kind, [...(CANVAS[kind].opens.ext ?? [])].sort()]).toEqual([kind, extsOfCanvas(kind).sort()]);
+  });
+
+  it("holds every kind's mime types to the table too", () => {
+    for (const kind of CANVAS_KINDS) {
+      for (const mime of CANVAS[kind].opens.mime ?? []) expect([mime, kindOfEntry("", mime.replace("/*", "/x")).canvas]).toEqual([mime, kind]);
+    }
+  });
+
+  it("opens only what this build's registry holds", () => {
+    const { pdf: _pdf, ...rest } = CANVAS;
+    expect(kindForFile("scan.pdf", undefined, rest as never)).toBeNull();
   });
 });
 

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CanvasSourceSchema, type CanvasKind, type CanvasSource } from './work/canvas'
+import { ENTRY_KINDS, extsOfKind, kindOfEntry, placeKey, type EntryKind } from './work/files'
 import { request, type CapsOf, type RelayOf } from './work/wire'
 
 /**
@@ -135,7 +136,7 @@ export interface VmOfficeStatus {
 }
 
 /** One place two machines may both hold: a team or site and a folder or library of it, as either OneDrive layout names it ("RecWell-TeamRecWell" on a Mac is "RecWell" + "Team RecWell" under Windows). */
-export const teamsPlaceKey = (team: string, label = ''): string => `${team}${/^(shared )?documents$/i.test(label) ? '' : label}`.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+export const teamsPlaceKey = placeKey
 
 /** A library the Windows VM should sync, by the ids its own Sync button would send (OneDrive's `odopen://sync` link). */
 export const VmSyncLibrarySchema = z.object({
@@ -160,28 +161,15 @@ export interface TeamsEntry {
   by: string | null
 }
 
-const EXT_KIND: Record<string, TeamsFileKind> = {}
-for (const [kind, exts] of [
-  ['workbook', 'xlsx xlsm xlsb xls csv'],
-  ['document', 'docx docm doc rtf odt'],
-  ['deck', 'pptx pptm ppt odp'],
-  ['pdf', 'pdf'],
-  ['picture', 'png jpg jpeg gif webp avif heic heif tif tiff bmp svg'],
-  ['video', 'mp4 m4v mov webm mkv avi'],
-  ['audio', 'mp3 m4a wav aac flac ogg'],
-  ['text', 'txt md markdown json xml html htm log tsv yaml yml']
-] as const)
-  for (const ext of exts.split(' ')) EXT_KIND[ext] = kind
+/** The Files grammar's kinds (src/shared/work/files.ts, the one table of file types) in the words the Teams tools have always used. */
+const TEAMS_KIND: Record<EntryKind, TeamsFileKind> = { folder: 'folder', document: 'document', sheet: 'workbook', deck: 'deck', pdf: 'pdf', picture: 'picture', video: 'video', audio: 'audio', text: 'text', archive: 'other', other: 'other' }
 
 /** The extensions of a kind, and every extension that has one: the guest's search filters by them. */
-export const teamsExtsOf = (kind: TeamsFileKind): string[] => Object.keys(EXT_KIND).filter((ext) => EXT_KIND[ext] === kind)
-export const teamsKnownExts = (): string[] => Object.keys(EXT_KIND)
+export const teamsExtsOf = (kind: TeamsFileKind): string[] => ENTRY_KINDS.filter((k) => TEAMS_KIND[k] === kind && k !== 'archive').flatMap((k) => extsOfKind(k))
+export const teamsKnownExts = (): string[] => ENTRY_KINDS.filter((k) => TEAMS_KIND[k] !== 'other').flatMap((k) => extsOfKind(k))
 
 /** A file's kind from its name. */
-export function teamsKindOf(name: string): TeamsFileKind {
-  const dot = name.lastIndexOf('.')
-  return (dot > 0 && EXT_KIND[name.slice(dot + 1).toLowerCase()]) || 'other'
-}
+export const teamsKindOf = (name: string): TeamsFileKind => TEAMS_KIND[kindOfEntry(name).kind]
 
 /** The Office app behind a kind, if one is. */
 export const teamsAppOf = (kind: TeamsFileKind, name = ''): 'excel' | 'word' | 'powerpoint' | null =>
@@ -193,14 +181,18 @@ export const teamsAppOf = (kind: TeamsFileKind, name = ''): 'excel' | 'word' | '
  * copy in a thread's attachments, so it opens as the file it is.
  */
 export function teamsCanvasOf(entry: Pick<TeamsEntry, 'name' | 'path' | 'kind'>, host: string, copy = false): { kind: CanvasKind; source: CanvasSource } | null {
-  const file: CanvasSource = { at: 'file', host, path: entry.path }
+  if (entry.kind === 'folder') return null
+  // An Office file in place has its app behind it, whatever its form (an old `.xls` as much as an `.xlsx`).
   const app = teamsAppOf(entry.kind, entry.name)
-  const of = { workbook: 'sheet', document: 'document', deck: 'slides', pdf: 'pdf', picture: 'media', video: 'media' } as const
-  const kind = (of as Record<string, CanvasKind | undefined>)[entry.kind]
-  if (!kind || (entry.kind === 'workbook' && !app)) return null
-  if (app && !copy) return { kind, source: { at: 'microsoft', host, app, name: entry.name, ref: { kind: 'path', path: entry.path } } }
-  return { kind, source: file }
+  if (app && !copy) return { kind: APP_CANVAS[app], source: { at: 'microsoft', host, app, name: entry.name, ref: { kind: 'path', path: entry.path } } }
+  // Else the one table says which canvas kind opens the name (`kindOfEntry`). Two of its answers wait here for a viewer
+  // that fits a library's file: text is edited in place by the `file` kind, not imported as a document, and sound is
+  // played, not transcribed as a meeting; until those land both open in their own app.
+  const { kind: what, canvas } = kindOfEntry(entry.name)
+  if (!canvas || what === 'text' || what === 'audio') return null
+  return { kind: canvas, source: { at: 'file', host, path: entry.path } }
 }
+const APP_CANVAS = { excel: 'sheet', word: 'document', powerpoint: 'slides' } as const
 
 /** A file's address on the web: the library's address (his paste) and the file's place in it. */
 export function teamsWebOf(library: Pick<TeamsLibrary, 'path' | 'web'>, path: string): string | null {

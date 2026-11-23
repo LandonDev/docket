@@ -1,4 +1,5 @@
 import { CANVAS_KINDS, type CanvasKind, type CanvasSource } from "@shared/work";
+import { kindOfEntry } from "@shared/work/files";
 import type { CanvasKindDef } from "./kind";
 import { defineChunk } from "../../lib/lazyChunk";
 import { File } from "../icons";
@@ -111,12 +112,14 @@ export function kindFor(source: CanvasSource, hint: OpenHint = {}, kinds: Record
 /**
  * The kind that shows a file, by its extension, or by its mime type when the
  * name has none; null when no kind does. The one lookup for a file from
- * outside: a drop, Open file…, a mail's attachment. The type a desktop or a
- * mail gives is a guess from the name (a `.ts` script comes as `video/mp2t`,
- * a `.csv` from Windows as `application/vnd.ms-excel`), so it never
- * overrules one.
+ * outside: a drop, Open file…, a mail's attachment, a row in Files. It reads
+ * the one table of file types (`kindOfEntry`, src/shared/work/files.ts), which
+ * every kind's `opens.ext` is held to (registry.test.ts). The type a desktop
+ * or a mail gives is a guess from the name (a `.ts` script comes as
+ * `video/mp2t`, a `.csv` from Windows as `application/vnd.ms-excel`), so it
+ * never overrules one.
  */
 export function kindForFile(name: string, mime?: string, kinds: Record<CanvasKind, CanvasKindDef> = CANVAS): CanvasKind | null {
-  if (extensionOf(name)) return kindFor({ at: "file", host: "", path: name }, {}, kinds);
-  return mime ? kindFor({ at: "thread" }, { mime }, kinds) : null;
+  const kind = kindOfEntry(name, mime).canvas;
+  return kind && knowsKind(kinds, kind) ? kind : null;
 }

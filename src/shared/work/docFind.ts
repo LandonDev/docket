@@ -1,4 +1,5 @@
 import type { CanvasSource } from './canvas'
+import { kindOfEntry } from './files'
 
 /**
  * Finding documents in a Work workspace (docs/agents/work-docs.md "Finding
@@ -33,16 +34,11 @@ export const FIND_BY = ['owner', 'agent', 'guest'] as const
 export type FindBy = (typeof FIND_BY)[number]
 export const FIND_BY_WORDS: Record<FindBy, string> = { owner: 'You', agent: 'An agent', guest: 'A guest' }
 
-/** A file's extension to the kind that opens it, as the canvas kinds claim them (work/<pillar>/canvas.ts). */
-const EXT_KIND: Record<string, FindKind> = {}
-const claim = (kind: FindKind, exts: string) => exts.split(' ').forEach((e) => (EXT_KIND[e] = kind))
-claim('document', 'tcdoc docx doc odt rtf md markdown txt')
-claim('sheet', 'tcsheet xlsx xlsm csv')
-claim('pdf', 'pdf')
-claim('slides', 'pptx')
-claim('media', 'png jpg jpeg gif webp avif heic heif tif tiff bmp psd mp4 m4v mov webm mkv mxf avi mts m2ts ogv')
-claim('meeting', 'wav mp3 m4a aac flac ogg opus wma aiff amr')
-export const kindOfFile = (name: string): FindKind | null => EXT_KIND[name.slice(name.lastIndexOf('.') + 1).toLowerCase()] ?? null
+/** The kind that opens a file, by its name: the one table's answer (`kindOfEntry`, files.ts), where it is a kind the view lists. */
+export function kindOfFile(name: string): FindKind | null {
+  const kind = kindOfEntry(name).canvas
+  return kind && (FIND_KINDS as readonly string[]).includes(kind) ? (kind as FindKind) : null
+}
 
 /** A Google file's kind by its MIME type. */
 export function kindOfMime(mime: string): FindKind | null {

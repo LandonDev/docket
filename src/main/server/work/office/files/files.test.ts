@@ -213,8 +213,21 @@ describe('a file', () => {
     expect(at('shot.png')?.kind).toBe('media')
     expect(at('clip.mov')?.kind).toBe('media')
     expect(at('B.xlsx', true)).toEqual({ kind: 'sheet', source: { at: 'file', host: 'env_mac', path: '/t/B.xlsx' } })
-    expect(at('list.csv')).toBeNull()
+    // The one table of file types (files.ts `kindOfEntry`) decides: a CSV is a sheet read as the file it is, with no Excel behind it.
+    expect(at('list.csv')).toEqual({ kind: 'sheet', source: { at: 'file', host: 'env_mac', path: '/t/list.csv' } })
+    // An old Office form has its app behind it in place; as a copy no canvas reads it.
+    expect(at('old.xls')).toEqual({ kind: 'sheet', source: { at: 'microsoft', host: 'env_mac', app: 'excel', name: 'old.xls', ref: { kind: 'path', path: '/t/old.xls' } } })
+    expect(at('old.xls', true)).toBeNull()
+    // Text and sound wait for the file kind: until then they open in their own app.
     expect(at('notes.txt')).toBeNull()
+    expect(at('README.md')).toBeNull()
+    expect(at('call.m4a')).toBeNull()
+    expect(at('bundle.zip')).toBeNull()
+    expect(teamsCanvasOf({ name: 'Events', path: '/t/Events', kind: 'folder' }, 'env_mac')).toBeNull()
+  })
+
+  it('names kinds from the one table, in the words its tools have always used', () => {
+    expect(['B.xlsx', 'old.xls', 'list.csv', 'P.docx', 'D.pptx', 'R.pdf', 'shot.png', 'clip.mov', 'call.m4a', 'notes.txt', 'bundle.zip', 'thing.xyz'].map(teamsKindOf)).toEqual(['workbook', 'workbook', 'workbook', 'document', 'deck', 'pdf', 'picture', 'video', 'audio', 'text', 'other', 'other'])
   })
 
   it('reads entries out of a zip, stored or packed, and nothing from a damaged one', () => {
