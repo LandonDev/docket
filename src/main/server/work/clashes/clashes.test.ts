@@ -8,7 +8,7 @@ import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { clashes } from '.'
 import { milesBetween } from './api'
 import type { LifeosClash, LifeosRange, LifeosSide } from './read'
-import type { TellNote } from './tell'
+import type { Tell } from '@shared/work/tell'
 import { clashesListTool } from './tool'
 import { SPAN_DAYS, watchClashes } from './watch'
 
@@ -257,12 +257,12 @@ describe('clashes_list', () => {
 })
 
 describe('the tell', () => {
-  let told: TellNote[]
+  let told: Tell[]
   let done: string[]
   const flush = () => new Promise((r) => setTimeout(r, 5))
   const range = (...c: LifeosClash[]): LifeosRange => ({ clashes: c, leaves: [] })
   const giveTell = () => {
-    const tell = Object.assign((t: TellNote) => void told.push(t), { done: (key: string) => void done.push(key), quiet: () => {} })
+    const tell = Object.assign((t: Tell) => void told.push(t), { done: (key: string) => void done.push(key), quiet: () => {} })
     ;(ctx as unknown as { tell: unknown }).tell = tell
   }
   const rows = () => db.prepare('SELECT key FROM work_clashes_told ORDER BY key').all() as { key: string }[]
@@ -336,23 +336,8 @@ describe('the tell', () => {
     stop()
   })
 
-  it('records nothing in a build with no tell, so the digest hears of each clash once it lands', async () => {
-    delete (ctx as unknown as { tell?: unknown }).tell
-    const stop = watchClashes(ctx, () => at(9))
-    await flush()
-    subs.at(-1)!.on(range(driveClash))
-    await flush()
-    expect(pushes).toEqual([{ push: 'work.clashes' }])
-    expect(rows()).toEqual([])
-    giveTell()
-    subs.at(-1)!.on(range(driveClash))
-    await flush()
-    expect(told.map((t) => t.key)).toEqual(['clash:e_staff-e_game'])
-    stop()
-  })
-
   it('declares its kind for the digest', () => {
-    expect((clashes as unknown as { tells: unknown }).tells).toEqual([{ kind: 'clashes.new', group: 'clashes', name: 'Clashes' }])
+    expect(clashes.tells).toEqual([{ kind: 'clashes.new', group: 'clashes', name: 'Clashes' }])
   })
 })
 

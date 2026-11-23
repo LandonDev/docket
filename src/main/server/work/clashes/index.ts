@@ -1,7 +1,6 @@
 import { handled, NOT_HANDLED } from '@shared/work/ids'
 import type { WorkModule } from '../modules'
 import { answer, leaveFor, listClashes, milesFor, waive } from './read'
-import type { TellKind } from './tell'
 import { clashesListTool } from './tool'
 import { ensureClashes, watchClashes } from './watch'
 
@@ -13,8 +12,10 @@ import { ensureClashes, watchClashes } from './watch'
  * answer from the Clash dialog is his press, and an agent's goes through
  * the held tools that exist.
  */
-const module: WorkModule = {
+export const clashes: WorkModule = {
   id: 'clashes',
+  /** The digest's group for news of a clash. */
+  tells: [{ kind: 'clashes.new', group: 'clashes', name: 'Clashes' }],
   ensure: ensureClashes,
   start: (ctx) => watchClashes(ctx),
   tools: () => [clashesListTool],
@@ -34,9 +35,3 @@ const module: WorkModule = {
     return NOT_HANDLED
   }
 }
-
-/** The digest's group for news of a clash. */
-export const CLASHES_TELLS: TellKind[] = [{ kind: 'clashes.new', group: 'clashes', name: 'Clashes' }]
-
-// `tells` rides beside the module until the digest declares it on WorkModule; then it moves into the literal above.
-export const clashes: WorkModule = Object.assign(module, { tells: CLASHES_TELLS })

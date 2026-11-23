@@ -3,7 +3,6 @@ import { tellWords } from '@shared/work/clashes'
 import { errorText } from '@shared/work/ids'
 import type { WorkCtx } from '../modules'
 import { clashOf, homesOf, type LifeosClash, type LifeosRange } from './read'
-import { tellOf } from './tell'
 import { hostZone, sameDay, startOfDay, zoneOf } from './zone'
 
 /**
@@ -27,14 +26,11 @@ export const tellKey = (id: string): string => `clash:${id}`
 export const stampOf = (c: LifeosClash): string => JSON.stringify([c.a.startsAt, c.a.endsAt, c.a.location ?? '', c.b.startsAt, c.b.endsAt, c.b.location ?? ''])
 
 /**
- * Tells each clash not yet told at its stamp, and takes back each told one
- * that is gone (passed, moved apart, or fine by him). With no `tell` in this
- * build nothing is told and nothing recorded, so the digest hears of every
- * clash once it lands.
+ * Tells each clash not yet told at its stamp through the digest's
+ * `ctx.tell`, and takes back each told one that is gone (passed, moved
+ * apart, or fine by him).
  */
 export function tellClashes(ctx: WorkCtx, clashes: readonly LifeosClash[], zone: string, now: number): void {
-  const tell = tellOf(ctx)
-  if (!tell) return
   const homes = homesOf(ctx)
   const told = new Map((ctx.db.prepare('SELECT key, stamp FROM work_clashes_told').all() as { key: string; stamp: string }[]).map((r) => [r.key, r.stamp]))
   const record = ctx.db.prepare('INSERT INTO work_clashes_told (key, stamp, told_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET stamp = excluded.stamp, told_at = excluded.told_at')
@@ -48,7 +44,7 @@ export function tellClashes(ctx: WorkCtx, clashes: readonly LifeosClash[], zone:
     if (!workspaceId || told.get(key) === stamp) continue
     const words = tellWords(clashOf(c, homes), { timeZone: zone })
     try {
-      tell({
+      ctx.tell({
         kind: 'clashes.new',
         workspaceId,
         ...words,
@@ -67,7 +63,7 @@ export function tellClashes(ctx: WorkCtx, clashes: readonly LifeosClash[], zone:
   for (const key of told.keys()) {
     if (seen.has(key)) continue
     try {
-      tell.done?.(key)
+      ctx.tell.done(key)
     } catch (err) {
       ctx.log(`clashes: a gone clash was not taken back: ${errorText(err)}`)
       continue

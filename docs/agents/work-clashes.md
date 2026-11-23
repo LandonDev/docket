@@ -98,9 +98,8 @@ events' starts, ends and place text, so a moved event tells again):
   is taken back with `ctx.tell.done(key)` and its row dropped.
 
 The module lists `tells: [{kind: 'clashes.new', group: 'clashes', name:
-'Clashes'}]`. Until the digest puts `tell` on `WorkCtx`, this build has none:
-the pillar tells nothing and records nothing, so every clash is told once the
-digest lands. `clashes/tell.ts` holds the digest's shapes until then.
+'Clashes'}]`. Clashes raises no toast and no notice of its own, and changes
+no LifeOS alert.
 
 ## On screen (`src/renderer/src/work/clashes/`)
 
@@ -125,6 +124,10 @@ The pillar has no view of its own and no row in the column.
 - `model.ts` holds the pure parts: the marks, the time a move starts filled
   with (the first quarter hour after the other event that the drive allows),
   how late he is, the words.
+- `today.ts` is the pillar's `TodaySource`, one line in `TODAY_SOURCES`: no
+  row of its own, a mark on each event's `event:<id>` row (the clash in that
+  event's words, drawn as a fault, with Resolve), and the leave-by as the
+  row's live line until the drive would have him there.
 - `Clash.preview.tsx` draws the dialog's states and a day of rows for
   `bun run ui:preview`.
 
