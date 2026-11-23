@@ -10,7 +10,7 @@ import { sessionWaits } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
 import { ChatList } from "./ChatList";
 import { Conversation } from "./Conversation";
-import { MessagesDataProvider, WAITING } from "./data";
+import { MessagesDataProvider } from "./data";
 import { liveData } from "./live";
 import { patchPage, usePage, wantMessage } from "./page";
 import { StartThreadProvider } from "./threads";
@@ -49,14 +49,16 @@ function readListWidth(): number {
 export function View(props: WorkViewProps) {
   const { lifeos, sector, startThread } = props;
   const workspaceId = props.workspace.id;
-  const data = useMemo(() => (lifeos.client ? liveData(lifeos, sector, props.env, workspaceId) : null), [lifeos, sector, props.env, workspaceId]);
+  // The live seam from the first render, client or none: a session still opening answers "loading" through the same
+  // hooks it later reads with, so the screens under it never change how many hooks they call when the client lands.
+  const data = useMemo(() => liveData(lifeos, sector, props.env, workspaceId), [lifeos, sector, props.env, workspaceId]);
   const start = useCallback((chip: ContextChip) => startThread(chip), [startThread]);
   const seat = useMemo(() => ({ env: props.env, onAsk: start }), [props.env, start]);
   useOpened(workspaceId);
   // A failed session is the frame's to say (its sign-in or its line), with nothing pulsing under it.
-  if (!data && !sessionWaits(lifeos)) return null;
+  if (!lifeos.client && !sessionWaits(lifeos)) return null;
   return (
-    <MessagesDataProvider value={data ?? WAITING}>
+    <MessagesDataProvider value={data}>
       <StartThreadProvider value={start}>
         <MessagesScreen workspaceId={workspaceId} job={sectorName(sector)} seat={seat} />
       </StartThreadProvider>
