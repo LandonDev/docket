@@ -5,7 +5,8 @@
  * string over 128 KiB).
  *
  * Gates on a clean tree and the gate's `commit` tier (scripts/gate.ts:
- * typecheck, vitest and a real build, run at once), plus the `publish` tier
+ * typecheck and a real build, run at once; vitest only with --full, the
+ * whole suite being the building thread's job before it lands), plus the `publish` tier
  * when a commit since the last release touched a path it guards (ios/**,
  * the Swift contract generator, wireSchemas.ts, the remote server, the hub:
  * TIER_PATHS in gate.ts). Then bumps release.json to N and package.json to

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { STEPS, TIER_PATHS, LANE_AFTER, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS, BUILD_WAIT_MS, proofCap, STORE_MEASURED_MS, STORE_CAP_MS, COMPUTER_MEASURED_MS, COMPUTER_CAP_MS, buildBarrier, gate, screenOnlySkips } from './gate'
+import { STEPS, TIER_PATHS, LANE_AFTER, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS, BUILD_WAIT_MS, proofCap, STORE_MEASURED_MS, STORE_CAP_MS, COMPUTER_MEASURED_MS, COMPUTER_CAP_MS, buildBarrier, gate, screenOnlySkips, whenAskedSkips } from './gate'
 import { BENCH_TIMING } from './lib/computerBench'
 
 describe('the step list', () => {
@@ -651,5 +651,46 @@ describe('the vitest step and its JSON report', () => {
     })
     expect(judgeReport(null, '', null).exitCode).toBe(1)
     expect(judgeReport(2, 'Error: Channel closed', null)).toEqual({ exitCode: 2, tail: 'Error: Channel closed' })
+  })
+})
+
+describe('the whole suite runs only when asked for', () => {
+  beforeEach(() => void vi.spyOn(console, 'log').mockImplementation(() => {}))
+  afterEach(() => vi.restoreAllMocks())
+
+  const note = 'the building thread runs it before it lands (--full or --only vitest to run it here)'
+
+  it('leaves vitest out of a plain tier run, and runs it under --full or an --only that names it', () => {
+    expect(STEPS.find((s) => s.name === 'vitest')).toMatchObject({ tier: 'commit', whenAsked: true })
+    expect(STEPS.filter((s) => s.whenAsked).map((s) => s.name)).toEqual(['vitest'])
+    const commit = selectSteps({ tiers: new Set(['commit']) })
+    expect([...whenAskedSkips(commit, { full: false })]).toEqual([['vitest', note]])
+    expect(whenAskedSkips(commit, { full: true }).size).toBe(0)
+    expect(whenAskedSkips(selectSteps({ tiers: new Set(['commit']), only: ['vitest'] }), { full: false, only: ['vitest'] }).size).toBe(0)
+    expect(whenAskedSkips(commit, { full: false, only: ['typecheck', 'vitest'] }).size).toBe(0)
+  })
+
+  it('the gate reports the step skipped with its note, and runs it under --full', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'tc-gate-asked-'))
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: repo })
+      const ran = join(repo, 'ran.txt')
+      const steps: Step[] = [
+        { name: 'vitest', tier: 'commit', lane: 'vitest', why: '', whenAsked: true, cmd: process.execPath, args: ['-e', `require('fs').writeFileSync(${JSON.stringify(ran)}, 'yes')`] },
+        { name: 'build', tier: 'commit', lane: 'build', why: '', cmd: process.execPath, args: ['-e', ''] }
+      ]
+      const plain = await gate({ repo, tiers: new Set(['commit']), full: false, verbose: false, steps })
+      expect(plain.ok).toBe(true)
+      expect(plain.results.map((r) => [r.name, r.outcome, r.note])).toEqual([
+        ['vitest', 'skipped', note],
+        ['build', 'passed', undefined]
+      ])
+      expect(existsSync(ran)).toBe(false)
+      const full = await gate({ repo, tiers: new Set(['commit']), full: true, verbose: false, steps })
+      expect(full.results[0].outcome).toBe('passed')
+      expect(existsSync(ran)).toBe(true)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
   })
 })

@@ -11,7 +11,7 @@ file. A sibling change that needs a new check (the bundle-size check after
 
 | tier | steps | runs |
 | --- | --- | --- |
-| `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master; vitest holds the prompt budgets too (scripts/claudeMdBudget.test.ts: CLAUDE.md at most 40,000 bytes with every docs/agents file linked once; src/main/server/promptBudget.test.ts: the host-written prompt parts against src/shared/promptBudget.ts) |
+| `commit` | typecheck, build, bundle-size; vitest only under `--full` or `--only vitest` | in the post-commit hook, on every commit on master, and as a batch's gate step. The vitest row is `whenAsked` (scripts/gate.ts `whenAskedSkips`): a plain tier run skips it with a note. The whole suite is the building thread's job, in its own worktree, before it lands; it holds the prompt budgets too (scripts/claudeMdBudget.test.ts: CLAUDE.md at most 40,000 bytes with every docs/agents file linked once; src/main/server/promptBudget.test.ts: the host-written prompt parts against src/shared/promptBudget.ts) |
 | `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, e2e-addons, e2e-addon-grants, e2e-skills-store, e2e-skills-drivers, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview, computer-bench | before signing in `release:publish`; and in the hook when a commit touches a guarded path, all but computer-bench. The four soaks, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview and computer-bench are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships; the four store proofs run on both hosts |
 
 The `computer` lane starts only once the `build` lane has finished
@@ -596,8 +596,8 @@ bun run gate [--tier commit|publish|all] [--since <ref>] [--full]
 ```
 
 - Steps in one lane run in array order, one at a time; lanes run at once.
-  `commit` has three lanes (typecheck, vitest, build), so the three run
-  together; the bundle-size check (scripts/check-bundle-size.ts, which
+  `commit` has two lanes (typecheck, build), so the two run together, and
+  vitest's lane beside them under `--full`; the bundle-size check (scripts/check-bundle-size.ts, which
   reads `out/`) follows the build in its lane. `publish` runs the fence, the hub, the three Swift packages and the
   computer bench in parallel lanes; `ios`, `ios-client` and `computer-swift`
   share the `swift` lane, one after another (the client package depends on
@@ -631,7 +631,7 @@ bun run gate [--tier commit|publish|all] [--since <ref>] [--full]
   blob id for a clean file, the file's own hash for a modified one, the path
   for a deleted one. `--full` runs it regardless, and the hash is stored
   only when typecheck itself passed.
-- **vitest** runs one bounded forks pool (vitest.config.ts: four forks on
+- **vitest**, when asked for, runs one bounded forks pool (vitest.config.ts: four forks on
   Linux, half the cores on the Mac): the box shares one pids budget, counted
   in threads, across every thread's test runs, and the default pool (a fork
   per core, 31 on the box) could not spawn its workers under the cap and
@@ -693,7 +693,21 @@ store rows waited on `build.done` and then took about 3.5 minutes one after
 another (e2e-addon-grants 133 s of it); before them the box's publish tier
 was the fence's 2 s.
 
-With the three commit lanes at once on the box, vitest finished at 42 s
+The commit tier without vitest (2026-11-23, the box). Under `--full` its
+three lanes took typecheck 117 s, vitest 540 s (1,773 files, 20,634 tests)
+and build 180 s then bundle-size, so vitest alone set the gate's length at
+9 minutes; the suite took 33 s at the start of November. The tier now skips
+vitest and its length is the build's, about 3 minutes. Running only the
+tests related to the change (`vitest run --changed <newest release-N>`) was
+measured first and dropped: since release-363 (21 commits, package.json
+among them, which makes vitest run everything) it ran 1,021 files in 444 s;
+for one small commit (cb32d773e, three files under work/files) 162 files in
+108 s. And it never
+picks the 323 test files that read the tree by path, every
+`lib/*Guard.test.ts` and the CLAUDE.md budget among them, so it would miss
+the very change a guard exists for.
+
+Before that, with the three commit lanes at once on the box, vitest finished at 42 s
 and typecheck at 43 s while the build was still running, so the commit
 tier's wall time is the build's: about 2.5 minutes on the box, against
 3.5 minutes for the three in a row. On the Mac the commit tier is bounded

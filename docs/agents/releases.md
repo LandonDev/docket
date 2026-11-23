@@ -7,8 +7,12 @@ Two separate steps, on purpose, over one gate.
   file. `--tier commit|publish|all` picks the tier; `--since <ref>` adds
   the tiers that the paths changed since `<ref>` pull in; `--full` forces
   everything; `--only a,b` / `--skip a,b` / `--verbose` for a hand run.
-  - `commit`: typecheck, vitest, the electron-vite build and, after it in
-    the same lane, the bundle-size check (scripts/check-bundle-size.ts).
+  - `commit`: typecheck, the electron-vite build and, after it in the
+    same lane, the bundle-size check (scripts/check-bundle-size.ts). The
+    vitest row is `whenAsked`: a plain tier run skips it with a note, and
+    only `--full` or `--only vitest` runs the whole suite. The whole suite
+    is the building thread's job, in its own worktree, before it lands;
+    the gate no longer runs it a second time on every landing.
     `publish`: renderer-soak, renderer-soak-chat, renderer-soak-typing and
     renderer-soak-scroll (the build lane, after the build, one after the
     other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client,
@@ -35,7 +39,7 @@ Two separate steps, on purpose, over one gate.
     in out/bundle-map.json, 10 minutes at most. It never builds; the soaks
     alone build a stale tree on a hand run.
   - Steps in one lane run in array order, one at a time; lanes run at
-    once (typecheck, vitest and build + bundle-size together), with a combined status
+    once (typecheck and build + bundle-size together, vitest too under `--full`), with a combined status
     line on a terminal and `✓ step 12s` lines plus a per-step time table
     in a log. The first failure stops the rest; the failed step's log
     tail is printed and every step's full output is in
@@ -47,7 +51,7 @@ Two separate steps, on purpose, over one gate.
     skips them if locked, asleep or unreadable; computer-swift still runs.
     Direct `--gate` runs also skip with exit 0 before work; run the skipped
     proofs by hand when unlocked (scripts/lib/macScreen.ts).
-  - vitest runs one bounded forks pool (vitest.config.ts: four forks on
+  - vitest, when asked for, runs one bounded forks pool (vitest.config.ts: four forks on
     Linux, half the cores on the Mac; the box's pids budget counts threads)
     and the gate's step writes the JSON report beside its log and reads it
     when the exit and the output disagree (`judgeReport` in scripts/gate.ts;

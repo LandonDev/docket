@@ -17,7 +17,9 @@
  * names it as `capMs`: past it the gate kills the step and fails it. A step
  * marked `onlyAtPublish` runs only when its tier was asked for, never when
  * changed paths alone pulled the tier into a commit's gate (the computer
- * bench's model threads). A run that builds holds the proofs beside the
+ * bench's model threads). A step marked `whenAsked` (vitest) runs only under
+ * `--full` or an `--only` that names it: the whole suite is the building
+ * thread's job before it lands, not every landing's. A run that builds holds the proofs beside the
  * build until it is done (buildBarrier: <git-dir>/temp-code-gate/build.done,
  * named to every step as TEMP_CODE_SOAK_BUILD_DONE). Every step's output lands in
  * <git-dir>/temp-code-gate/logs/<step>.log; the last run's times in
@@ -69,6 +71,10 @@ export interface Step {
   /** Runs only when its tier was asked for (`--tier publish|all`), never when
    *  changed paths alone pulled the tier in (atPublishSkips). */
   onlyAtPublish?: boolean
+  /** Runs only under `--full` or an `--only` that names it, never in a plain
+   *  tier run (whenAskedSkips): the whole vitest suite is the building
+   *  thread's job before it lands, not every landing's. */
+  whenAsked?: boolean
 }
 
 /**
@@ -129,6 +135,7 @@ export const STEPS: Step[] = [
     lane: 'vitest',
     env: { NODE_ENV: 'test' },
     json: true,
+    whenAsked: true,
     why: 'the unit tests (src/**/*.test.ts, scripts/**/*.test.ts); vitest.config.ts bounds the pool, and the JSON report decides when the reporter dies'
   },
   {
@@ -558,6 +565,13 @@ export function shouldSkipTypecheck(opts: { full: boolean; hash: string; stored:
   return !opts.full && opts.stored !== undefined && opts.stored === opts.hash
 }
 
+/** The `whenAsked` steps a run leaves out: all of them, unless `--full` or an `--only` names one. */
+export function whenAskedSkips(steps: readonly Step[], opts: { full: boolean; only?: string[] }): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const s of steps) if (s.whenAsked && !opts.full && !opts.only?.includes(s.name)) out.set(s.name, `the building thread runs it before it lands (--full or --only ${s.name} to run it here)`)
+  return out
+}
+
 // ---------------------------------------------------------------- the runner
 
 export type Outcome = 'passed' | 'failed' | 'stopped' | 'not run' | 'skipped'
@@ -904,7 +918,7 @@ export async function gate(opts: GateOptions): Promise<Report> {
   const dir = gateDir(opts.repo)
   const barrier = buildBarrier(steps, dir)
   if (barrier) rmSync(barrier.file, { force: true })
-  const skipped = new Map([...macOnlySkips(steps, opts.platform), ...atPublishSkips(steps, pulled)])
+  const skipped = new Map([...macOnlySkips(steps, opts.platform), ...atPublishSkips(steps, pulled), ...whenAskedSkips(steps, opts)])
   for (const [name, note] of screenOnlySkips(
     steps.filter((s) => !skipped.has(s.name)),
     opts.readScreen ?? (() => readMacScreen(join(dir, 'logs'))),
