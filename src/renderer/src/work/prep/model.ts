@@ -45,7 +45,7 @@ export function whenLine(event: PrepEvent, now: number): string {
 }
 
 /** Whether the meeting is over: what turns Prepare into Follow up. */
-export const isOver = (event: Pick<PrepEvent, "startsAt" | "endsAt">, now: number): boolean => prepEndOf(event) <= now;
+export const isOver = (event: Pick<PrepEvent, "startsAt" | "endsAt" | "allDay">, now: number): boolean => prepEndOf(event) <= now;
 
 /** A person's second line: their newest mail's subject, when there is one. */
 export const personLine = (person: PrepPerson): string | undefined => (person.mail ? person.mail.subject.trim() || "(no subject)" : undefined);
@@ -77,7 +77,8 @@ export function fileWhere(file: PrepFileRef): string | undefined {
 /** "and 3 more", for the people past the ones drawn. */
 export const moreWords = (count: number): string | undefined => (count > 0 ? `and ${count} more` : undefined);
 
-const PART: Record<PrepProblem, string> = { people: "People", tasks: "Tasks", last: "Last time", drafts: "The follow-up mail" };
+// The people are drawn whatever failed (the event names them); what is missing is what LifeOS says of each.
+const PART: Record<PrepProblem, string> = { people: "Their mail and tasks", tasks: "Tasks", last: "Last time", drafts: "The follow-up mail" };
 
 /** What did not load, as the state line says it: "Tasks did not load", "People and tasks did not load". */
 export function problemWords(problems: readonly PrepProblem[]): string | null {
@@ -101,14 +102,15 @@ const fold = (s: string): string => s.normalize("NFKD").replace(/\p{M}/gu, "").t
 export const addedKey = (person: Pick<PrepAddedPerson, "address" | "name">): string => (person.address ? person.address.trim().toLowerCase() : `~${fold(person.name)}`);
 
 /**
- * Everyone Add people can tick: those the page already added (a name he typed
- * among them) first, then the sector's people who are not on the event
- * itself, each once.
+ * Everyone Add people can tick: those the page already added and those he
+ * has picked in this sitting (a name he typed among them) first, then the
+ * sector's people who are not on the event itself, each once.
  */
-export function pickable(page: Pick<PrepPage, "people" | "doc">, directory: readonly { _id: string; name: string; emails: string[] }[]): PrepAddedPerson[] {
+export function pickable(page: Pick<PrepPage, "people" | "doc">, directory: readonly { _id: string; name: string; emails: string[] }[], picked: readonly PrepAddedPerson[] = []): PrepAddedPerson[] {
   const onEvent = new Set(page.people.filter((p) => !p.added && p.address).map((p) => p.address!.toLowerCase()));
   const out = new Map<string, PrepAddedPerson>();
-  for (const p of page.doc.people) out.set(addedKey(p), p);
+  // What the page keeps, then what he has ticked or typed in this sitting: a name he just added stays in the list, ticked.
+  for (const p of [...page.doc.people, ...picked]) if (!out.has(addedKey(p))) out.set(addedKey(p), p);
   for (const p of directory) {
     if (p.emails.some((e) => onEvent.has(e.toLowerCase()))) continue;
     const address = p.emails[0]?.toLowerCase();
@@ -124,8 +126,11 @@ export function pickable(page: Pick<PrepPage, "people" | "doc">, directory: read
 /** A thread's status as the window's own session row has it; undefined: this window does not hold the thread. */
 export type ThreadStatus = string | undefined;
 
-/** Whether a thread is still at work: running, queued to run, or waiting on him inside its turn. */
-export const threadWorks = (status: ThreadStatus): boolean => status === "running" || status === "queued" || status === "waiting";
+/** Whether a thread is still at work: starting, running, queued to run, or waiting on him inside its turn. */
+export const threadWorks = (status: ThreadStatus): boolean => status === "starting" || status === "running" || status === "queued" || status === "waiting";
+
+/** Whether a press should start a new thread whatever the host's clock says: the window holds the page's thread and knows it has stopped. */
+export const threadStopped = (sessionId: string | null, status: ThreadStatus): boolean => sessionId !== null && status !== undefined && !threadWorks(status);
 
 /**
  * The header's one verb (docs/agents/work-prep.md "The header"). Before the
@@ -150,14 +155,14 @@ export function headVerb(page: Pick<PrepPage, "event" | "doc" | "state" | "brief
 /** Whether the brief's place shows its bones: a thread is writing and nothing stands yet. */
 export const briefIsComing = (page: Pick<PrepPage, "doc">, verb: HeadVerb): boolean => verb === "preparing" && !page.doc.brief;
 
+/** Whether the outcome's place shows its bones: the follow-up thread is at work and has written nothing yet. */
+export const outcomeIsComing = (page: Pick<PrepPage, "doc">, verb: HeadVerb): boolean => verb === "following" && !page.doc.after;
+
 /** The thread More's Open thread opens: the follow-up's once there is one, else the brief's. */
 export const pageThread = (page: Pick<PrepPage, "briefSessionId" | "followSessionId">): string | null => page.followSessionId ?? page.briefSessionId;
 
-/** A suggested task's muted line: who it falls to and when it is due, as one comma sentence. */
-export function suggestionLine(task: Pick<PrepSuggestion, "who" | "due">, now: number): string | undefined {
-  const parts = [task.who?.trim(), task.due !== undefined ? `due ${dayWords(task.due, now).replace(/^(Today|Tomorrow|Yesterday)$/, (d) => d.toLowerCase())}` : undefined].filter(Boolean);
-  return parts.length ? parts.join(", ") : undefined;
-}
+/** A suggested task's muted line: who it falls to. When it is due trails the row, as a task's does under Tasks. */
+export const suggestionLine = (task: Pick<PrepSuggestion, "who">): string | undefined => task.who?.trim() || undefined;
 
 /** The suggestions the page still draws: one he rejected is gone. */
 export const shownTasks = (tasks: readonly PrepSuggestion[]): PrepSuggestion[] => tasks.filter((t) => t.state !== "rejected");
@@ -173,21 +178,26 @@ export function draftLine(draft: Pick<PrepDraft, "to" | "subject">): string {
   return `Follow-up to ${names}`;
 }
 
-/** How many lines of his notes the page shows before Show all. */
-export const NOTES_LINES = 6;
-/** Whether notes run past what six lines hold: long by lines or by length. */
-export const notesAreLong = (text: string): boolean => text.split("\n").length > NOTES_LINES || text.length > 480;
+/** How many lines of his notes the page shows before Show all: six while they lead, two once the outcome stands over what they say. */
+export const notesLines = (page: Pick<PrepPage, "doc">): 2 | 6 => (page.doc.after ? 2 : 6);
 
 /** The files Follow up reads as the notes: a recording, or a transcript Teams, Zoom or a recorder wrote. */
 export const NOTES_FILE_ACCEPT = "audio/*,video/*,.vtt,.srt,.txt,.docx";
-const TRANSCRIPT = /\.(vtt|srt|txt|docx)$/i;
-/** What a notes file is, as its row says under its name. */
-export const notesFileKind = (name: string): "Transcript" | "Recording" => (TRANSCRIPT.test(name.trim()) ? "Transcript" : "Recording");
 
-/** "Uploading Staff sync.m4a, 42%": the dialog's line while a file goes up. */
-export function uploadWords(name: string, progress: { sent: number; total: number } | null): string {
-  if (!progress || progress.total <= 0) return `Uploading ${name}`;
-  return `Uploading ${name}, ${Math.min(100, Math.round((progress.sent / progress.total) * 100))}%`;
+/** How far a file's upload is, as a whole per cent; null before the first chunk answers. */
+export const uploadPercent = (progress: { sent: number; total: number } | null): number | null => (!progress || progress.total <= 0 ? null : Math.min(100, Math.round((progress.sent / progress.total) * 100)));
+
+/** What a filing LifeOS did not take says: the task by its name when it is one, a count when it is more. */
+export function failedWords(failed: readonly { id: string }[], tasks: readonly Pick<PrepSuggestion, "id" | "title">[]): string {
+  if (failed.length !== 1) return `${failed.length} tasks were not added`;
+  const title = tasks.find((t) => t.id === failed[0]!.id)?.title;
+  return title ? `“${title}” was not added` : "A task was not added";
+}
+
+/** Whether two lists of added people are the same people: what Save has to change. */
+export function samePeople(a: readonly Pick<PrepAddedPerson, "address" | "name">[], b: readonly Pick<PrepAddedPerson, "address" | "name">[]): boolean {
+  const keys = (list: typeof a) => [...new Set(list.map(addedKey))].sort().join("\n");
+  return keys(a) === keys(b);
 }
 
 /**

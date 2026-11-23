@@ -8,6 +8,14 @@ import { foldTitle } from './series'
 import { PrepStore } from './store'
 import { workspaceSector } from './workspace'
 
+/** A LifeOS refusal in its own words: a ConvexError's data, else the error's message with Convex's wrapping cut. */
+export function lifeosWords(err: unknown): string {
+  const data = (err as { data?: unknown } | null)?.data
+  if (typeof data === 'string' && data) return data
+  const words = errorText(err).replace(/^[\s\S]*?ConvexError:\s*/, '').replace(/^\[CONVEX [^\]]*\]\s*(\[Request ID: [^\]]*\]\s*)?(Server Error\s*)?/, '').trim()
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'LifeOS did not take it'
+}
+
 type Suggested = Omit<PrepSuggestion, 'id' | 'state' | 'lifeosTaskId'>
 
 const titleKey = (title: string) => foldTitle(title) || title.normalize('NFKC').trim().toLowerCase()
@@ -56,7 +64,7 @@ export async function decideTasks(ctx: WorkCtx, workspaceId: string, eventId: st
           // The current calendar facts may differ from the page’s last write.
           lifeosTaskId = await fileTask(ctx, sector, { id: row.id, title: event.title, startsAt: event.startsAt }, task)
         } catch (err) {
-          failed.push({ id: task.id, error: errorText(err) })
+          failed.push({ id: task.id, error: lifeosWords(err) })
           continue
         }
         tasks = tasks.map((item) => item.id === task.id ? { ...item, state: 'filed', lifeosTaskId } : item)

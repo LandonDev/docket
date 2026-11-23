@@ -3,19 +3,20 @@ import type { PrepAddedPerson, PrepPage } from "@shared/contract-work-prep";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Search } from "../../chrome/icons";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { GroupInput, InputGroup } from "../../components/ui/input";
+import { Progress } from "../../components/ui/progress";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
 import { Textarea } from "../../components/ui/textarea";
-import { loadToast } from "../../components/ui/toaster";
 import { modOrCtrl } from "../../lib/keys";
 import { refusalWords } from "../../lib/settingsHome";
 import { Face } from "../mail/face";
 import { findPeople, pictureOf, type DirectoryPerson } from "../people/model";
 import { useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
-import { followUpFromFile, followUpPrep, keepPrepNotes, loadPrep, notesDocPrep, openWorkspaceFile, setPrepPeople } from "./data";
-import { addedKey, NOTES_FILE_ACCEPT, pickable, uploadWords } from "./model";
+import { dropNotes, followUpFromFile, followUpPrep, heldNotes, holdNotes, keepPrepNotes, loadPrep, notesDocPrep, openWorkspaceFile, setPrepPeople } from "./data";
+import { addedKey, NOTES_FILE_ACCEPT, pickable, samePeople, uploadPercent } from "./model";
 
 /**
  * The page's dialogs (docs/agents/work-prep.md "Dialogs"), a chunk of their
@@ -63,7 +64,9 @@ export function PeopleForm({
   const [error, setError] = useState<string | null>(null);
   const rows = directory.status === "ready" ? directory.value : null;
   // Everyone who can be ticked: those already added (a name he typed among them), then the sector's people not on the event itself.
-  const all = useMemo(() => pickable(page, rows ?? []), [page, rows]);
+  // A name he typed and added stays in the list, ticked, though he may untick it again: so the list remembers every pick of this sitting.
+  const [named, setNamed] = useState<PrepAddedPerson[]>([]);
+  const all = useMemo(() => pickable(page, rows ?? [], named), [page, rows, named]);
   const shown = useMemo(() => {
     const kept = new Set(findPeople(all.map((p) => ({ _id: addedKey(p), name: p.name, emails: p.address ? [p.address] : [] })), query).map((p) => p._id));
     return all.filter((p) => kept.has(addedKey(p)));
@@ -71,7 +74,13 @@ export function PeopleForm({
   const ticked = new Set(picked.map(addedKey));
   const toggle = (person: PrepAddedPerson) => setPicked((now) => (now.some((p) => addedKey(p) === addedKey(person)) ? now.filter((p) => addedKey(p) !== addedKey(person)) : [...now, person]));
   const typed = query.trim();
-  const canName = typed.length > 0 && !all.some((p) => p.name.toLowerCase() === typed.toLowerCase()) && !picked.some((p) => p.name.toLowerCase() === typed.toLowerCase());
+  const canName = typed.length > 0 && !all.some((p) => p.name.toLowerCase() === typed.toLowerCase());
+  const addNamed = () => {
+    const person = { name: typed };
+    setNamed((now) => [...now, person]);
+    setPicked((now) => [...now, person]);
+    setQuery("");
+  };
 
   const submit = () => {
     setError(null);
@@ -97,11 +106,24 @@ export function PeopleForm({
     >
       <ModalBody className="gap-3">
         <InputGroup role="search" leading={<Search />}>
-          <GroupInput autoFocus aria-label="Search people" placeholder="Search" value={query} onChange={(e) => setQuery(e.currentTarget.value)} autoComplete="off" spellCheck={false} />
+          <GroupInput
+            autoFocus
+            aria-label="Search people"
+            placeholder="Search"
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            // Return in the search adds the typed name when that is what the list offers; it never saves by itself.
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || !typed) return;
+              e.preventDefault();
+              if (canName) addNamed();
+            }}
+            autoComplete="off"
+            spellCheck={false}
+          />
         </InputGroup>
         {/* A fixed height, so the dialog holds still while the list narrows. */}
         <div role="group" aria-label="People" className="-mx-2 h-64 overflow-x-hidden overflow-y-auto">
-          {directory.status === "loading" && !all.length ? <ListBones /> : null}
           {shown.map((person) => {
             const key = addedKey(person);
             return (
@@ -116,17 +138,12 @@ export function PeopleForm({
               </div>
             );
           })}
+          {/* The directory is still on its way: its bones stand under whoever is already added, so a list half read never looks whole. */}
+          {directory.status === "loading" ? <ListBones /> : null}
           {rows && !shown.length && !canName ? <p className="px-2 py-1.5 text-[13px] text-muted-foreground">{typed ? "No matches" : "No people in this job yet"}</p> : null}
           {canName ? (
             <div className="flex h-8 items-center px-0.5">
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => {
-                  toggle({ name: typed });
-                  setQuery("");
-                }}
-              >
+              <Button variant="ghost" size="xs" onClick={addNamed}>
                 Add “{typed}” by name
               </Button>
             </div>
@@ -134,7 +151,8 @@ export function PeopleForm({
         </div>
         <ErrorLine error={error ?? (directory.status === "failed" ? `People did not load: ${directory.error}` : null)} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} />
+      {/* Save is for a change: with the same people ticked as the page keeps, there is nothing to save. */}
+      <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} disabled={samePeople(picked, page.doc.people)} />
     </form>
   );
 }
@@ -160,54 +178,82 @@ function ListBones() {
  * typed too, so nothing typed is lost and the header's verb becomes Follow up.
  */
 export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPage; onClose: () => void }) {
-  const before = page.doc.notes?.text ?? "";
-  const [text, setText] = useState(before);
-  const [pending, setPending] = useState(false);
-  const [upload, setUpload] = useState<{ name: string; progress: { sent: number; total: number } | null } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // What the host holds, and what he has typed, as the close reads them (it runs after the exit has played).
-  const kept = useRef(before);
-  const typed = useRef(before);
-  typed.current = text;
   const { workspaceId } = page;
   const eventId = page.event.id;
-  const close = () => {
-    if (typed.current.trim() !== kept.current.trim()) {
-      void keepPrepNotes(env, workspaceId, eventId, typed.current).catch((err: unknown) => void loadToast().then((toast) => toast.error("The notes were not kept", { description: refusalWords(err) || "The host did not answer" })));
+  // A sitting whose save did not go through opens again on what he typed, with why.
+  const unsaved = heldNotes(workspaceId, eventId);
+  const before = page.doc.notes?.text ?? "";
+  const [text, setText] = useState(unsaved?.text ?? before);
+  const [pending, setPending] = useState<"follow" | "close" | null>(null);
+  const [upload, setUpload] = useState<{ name: string; progress: { sent: number; total: number } | null } | null>(null);
+  const [error, setError] = useState<string | null>(unsaved?.error ?? null);
+  // What the host holds: a change from it is what a close has to keep.
+  const kept = useRef(before);
+  const changed = () => text.trim() !== kept.current.trim();
+  const keep = async () => {
+    if (!changed()) return;
+    await keepPrepNotes(env, workspaceId, eventId, text);
+    kept.current = text;
+    dropNotes(workspaceId, eventId);
+  };
+  const failed = (err: unknown) => {
+    const why = refusalWords(err) || "The host did not answer";
+    setPending(null);
+    setUpload(null);
+    setError(why);
+    return why;
+  };
+  /** Keeps what he typed, then runs the follow-up; a failure is the dialog's own line. */
+  const run = (work: () => Promise<unknown>, done: () => void) => {
+    setError(null);
+    setPending("follow");
+    keep()
+      .then(work)
+      .then(() => {
+        setPending(null);
+        void loadPrep(env, workspaceId, eventId);
+        done();
+      }, failed);
+  };
+  /**
+   * Cancel and the footer's close: what he typed is kept first, and the dialog leaves only once the host has it. A
+   * save the host refuses keeps the dialog open on his words, with why.
+   */
+  const saveThenClose = (done: () => void) => {
+    if (!changed()) return done();
+    setError(null);
+    setPending("close");
+    keep().then(() => {
+      setPending(null);
+      done();
+    }, failed);
+  };
+  /**
+   * Escape, the backdrop and the corner's close leave at once (the shell plays their exit first). What he typed is
+   * sent then; if the host does not take it, it is held for this meeting and the dialog opens again on it.
+   */
+  const closed = () => {
+    if (changed()) {
+      const typed = text;
+      keepPrepNotes(env, workspaceId, eventId, typed).then(
+        () => dropNotes(workspaceId, eventId),
+        (err: unknown) => {
+          holdNotes(workspaceId, eventId, typed, `The notes were not kept: ${refusalWords(err) || "the host did not answer"}`);
+          reopenNotes.current?.();
+        },
+      );
     }
     onClose();
   };
-  /** Keeps what he typed, then runs the follow-up; its failure is the dialog's own line. */
-  const run = (work: () => Promise<unknown>, done: () => void) => {
-    setError(null);
-    setPending(true);
-    (text.trim() !== kept.current.trim() ? keepPrepNotes(env, workspaceId, eventId, text) : Promise.resolve())
-      .then(() => {
-        kept.current = text;
-        return work();
-      })
-      .then(
-        () => {
-          setPending(false);
-          loadPrep(env, workspaceId, eventId);
-          done();
-        },
-        (err: unknown) => {
-          setPending(false);
-          setUpload(null);
-          setError(refusalWords(err) || "The host did not answer");
-        },
-      );
-  };
   return (
-    <Modal onClose={close} title="Notes" size="md" busy={pending} data-prep-dialog="notes">
+    <Modal onClose={closed} title="Notes" size="md" busy={pending !== null} data-prep-dialog="notes">
       <NotesForm
         text={text}
         setText={setText}
         pending={pending}
         upload={upload}
         error={error}
-        onCancel={close}
+        onCancel={saveThenClose}
         onFollowUp={(done) => run(() => followUpPrep(env, workspaceId, eventId), done)}
         onFile={(file, done) => {
           setUpload({ name: file.name, progress: null });
@@ -219,6 +265,9 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
     </Modal>
   );
 }
+
+/** How the page opens the Notes dialog again, for a close whose save failed after the dialog had gone. */
+export const reopenNotes: { current: (() => void) | null } = { current: null };
 
 /** The Notes dialog's inside, holding no call of its own: the preview draws it as the app does. */
 export function NotesForm({
@@ -234,10 +283,12 @@ export function NotesForm({
 }: {
   text: string;
   setText: (text: string) => void;
-  pending: boolean;
+  /** the work in flight: a follow-up starting (its button spins), or a close that is keeping his words (Cancel spins) */
+  pending: "follow" | "close" | null;
   upload: { name: string; progress: { sent: number; total: number } | null } | null;
   error: string | null;
-  onCancel: () => void;
+  /** Cancel: keep what he typed, then `done` */
+  onCancel: (done: () => void) => void;
   onFollowUp: (done: () => void) => void;
   onFile: (file: File, done: () => void) => void;
   onDocument: (done: () => void) => void;
@@ -245,10 +296,13 @@ export function NotesForm({
   const close = useModalClose();
   const input = useRef<HTMLInputElement>(null);
   const empty = !text.trim();
-  const done = () => (close ? close(onCancel) : onCancel());
+  const busy = pending !== null;
+  // The shell's own exit, then nothing more: the work is done by the time it plays.
+  const done = () => close?.(() => {});
   const submit = () => {
-    if (!empty && !pending) onFollowUp(done);
+    if (!empty && !busy) onFollowUp(done);
   };
+  const percent = upload ? uploadPercent(upload.progress) : null;
   return (
     <form
       onSubmit={(e) => {
@@ -269,7 +323,7 @@ export function NotesForm({
           aria-label="Notes"
           placeholder="What was said, what was decided, what is still open"
           value={text}
-          disabled={pending}
+          disabled={busy}
           onChange={(e) => setText(e.currentTarget.value)}
           // A fixed height that scrolls: the dialog holds still as he types or pastes a page of notes.
           className="field-sizing-fixed h-72 resize-none overflow-x-hidden overflow-y-auto text-sm leading-[22px]"
@@ -277,15 +331,20 @@ export function NotesForm({
         {/* The other ways in: a recording or the transcript Teams or Zoom wrote, read on the workspace's own host; or a document of the job's Meeting notes template. */}
         <div className="flex min-h-6 items-center text-xs text-muted-foreground">
           {upload ? (
-            <span role="status" className="truncate tabular-nums">
-              {uploadWords(upload.name, upload.progress)}
-            </span>
+            // The file's name gives way; how far it is never does. A bar once the size is known, a spinner until then.
+            <Progress value={percent} aria-label={`Uploading ${upload.name}`} className="w-full items-center gap-x-2 gap-y-1">
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                {percent === null ? <Spinner aria-hidden className="size-3 shrink-0" /> : null}
+                <span className="min-w-0 truncate">Uploading {upload.name}</span>
+              </span>
+              {percent !== null ? <span className="shrink-0 tabular-nums">{percent}%</span> : null}
+            </Progress>
           ) : (
-            <span className="-ms-2 flex items-center gap-1">
-              <Button variant="ghost" size="xs" className="font-normal text-muted-foreground" disabled={pending} onClick={() => input.current?.click()}>
+            <span className="-ms-2 flex flex-wrap items-center gap-x-1">
+              <Button variant="ghost" size="xs" className="font-normal text-muted-foreground" disabled={busy} onClick={() => input.current?.click()}>
                 Use a recording or transcript
               </Button>
-              <Button variant="ghost" size="xs" className="font-normal text-muted-foreground" disabled={pending} onClick={() => onDocument(done)}>
+              <Button variant="ghost" size="xs" className="font-normal text-muted-foreground" disabled={busy} onClick={() => onDocument(done)}>
                 Write in a document
               </Button>
             </span>
@@ -305,7 +364,12 @@ export function NotesForm({
         </div>
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onCancel} confirmLabel="Follow up" pending={pending && !upload} busy={!!upload} disabled={empty} />
+      {/* The footer's own shape, with its Cancel a verb of this dialog's: it keeps his words before it closes, and spins while it does. */}
+      <DialogFooter confirmLabel="Follow up" pending={pending === "follow" && !upload} busy={busy} disabled={empty}>
+        <Button data-dialog-cancel variant="secondary" disabled={busy} onClick={() => onCancel(done)}>
+          <BusyLabel busy={pending === "close"} label="Cancel" />
+        </Button>
+      </DialogFooter>
     </form>
   );
 }

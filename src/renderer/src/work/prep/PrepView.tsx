@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { PrepDraft, PrepFileRef, PrepLine, PrepPage, PrepPerson, PrepSuggestion, PrepTask } from "@shared/contract-work-prep";
 import type { ContextChip } from "@shared/work";
 import { formatDue } from "work-kit/views/lib/format";
@@ -14,7 +14,8 @@ import { cn } from "../../lib/cn";
 import { defineChunk } from "../../lib/lazyChunk";
 import { refusalWords } from "../../lib/settingsHome";
 import { useSessionMetaValue } from "../../lib/tcserver/store";
-import { openWorkView, useWorkView, workOpenPort } from "../../lib/workSwitch";
+import { openWorkView, useWorkView, workOpenPort, workViewNow } from "../../lib/workSwitch";
+import { resetAgendaPlace } from "../agenda/place";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { openHeld } from "../canvas/held";
 import { Lifeos } from "../icons";
@@ -36,15 +37,17 @@ import {
   lastLabel,
   moreWords,
   nobodyOn,
-  notesAreLong,
-  notesFileKind,
+  notesLines,
+  outcomeIsComing,
   pageThread,
   personLine,
   personTrail,
   problemWords,
   shownTasks,
   suggestionLine,
+  failedWords,
   taskLine,
+  threadStopped,
   whenLine,
   type HeadVerb,
 } from "./model";
@@ -63,11 +66,16 @@ const dialogs = defineChunk("work-prep-dialogs", () => import("./PrepDialogs"));
 const AddPeopleDialog = dialogs.surface("AddPeopleDialog");
 const NotesDialog = dialogs.surface("NotesDialog");
 
+/** The one name of the Prepare-ahead switch, in More and in the offer. */
+export const AHEAD_LABEL = "Prepare meetings each morning";
+
 /** Suggested tasks start unticked: he ticks, then adds. Flip to start them ticked. */
 export const TICKED_AT_FIRST = false;
 
-/** What the header and the body share: the dialog that is open. */
-const ui = shared<{ dialog: "people" | "notes" | null }>({ dialog: null });
+/** What the header and the body share: the dialog that is open, and the meeting it was opened on (a dialog never follows him to another meeting's page). */
+const ui = shared<{ dialog: "people" | "notes" | null; eventId: string | null }>({ dialog: null, eventId: null });
+const openDialog = (dialog: "people" | "notes", eventId: string): void => ui.set({ dialog, eventId });
+const closeDialog = (): void => ui.set({ dialog: null, eventId: null });
 
 /** The meeting this workspace's page is on: the event the view was opened with. */
 function useEventId(workspaceId: string): string | null {
@@ -148,6 +156,8 @@ export function Head(props: WorkViewProps) {
   const verb = useHeadVerb(page);
   const now = useMinute();
   const [busy, setBusy] = useState<"brief" | "followUp" | null>(null);
+  const briefStatus = useSessionMetaValue(page?.briefSessionId, (meta) => meta.status);
+  const followStatus = useSessionMetaValue(page?.followSessionId, (meta) => meta.status);
   if (!page || !eventId) return null;
   const openThread = (sessionId: string | null) => {
     if (sessionId) workOpenPort.get()?.(sessionId);
@@ -155,7 +165,9 @@ export function Head(props: WorkViewProps) {
   // The page stays: the header says Preparing, and the brief lands on it when the thread writes.
   const start = (kind: "brief" | "followUp") => {
     setBusy(kind);
-    (kind === "brief" ? briefPrep : followUpPrep)(props.env, workspaceId, eventId)
+    // A thread this window holds and knows has stopped is not waited on: the host, which cannot read a thread's status, starts a new one.
+    const restart = kind === "brief" ? threadStopped(page.briefSessionId, briefStatus) : threadStopped(page.followSessionId, followStatus);
+    (kind === "brief" ? briefPrep : followUpPrep)(props.env, workspaceId, eventId, restart)
       .then(() => loadPrep(props.env, workspaceId, eventId), (err: unknown) => said(err, "The thread did not start"))
       .finally(() => setBusy(null));
   };
@@ -172,14 +184,12 @@ export function Head(props: WorkViewProps) {
       onBrief={() => start("brief")}
       onFollowUp={() => start("followUp")}
       onOpenThread={() => openThread(verb === "preparing" ? page.briefSessionId : pageThread(page))}
-      onNotes={() => ui.set({ dialog: "notes" })}
-      onAddPeople={() => ui.set({ dialog: "people" })}
+      onNotes={() => openDialog("notes", eventId)}
+      onAddPeople={() => openDialog("people", eventId)}
       onThread={() => props.startThread(eventChip(page.event))}
       onDismissRest={() => void decidePrepTasks(props.env, workspaceId, eventId, proposed.map((t) => t.id), "reject").catch(said)}
-      onAhead={(on) => {
-        settleOffer(workspaceId);
-        void setPrepAhead(props.env, workspaceId, eventId, on).catch(said);
-      }}
+      // The offer is answered once the host has taken the switch; a refusal leaves it where it was.
+      onAhead={(on) => void setPrepAhead(props.env, workspaceId, eventId, on).then(() => settleOffer(workspaceId), (err: unknown) => said(err))}
     />
   );
 }
@@ -217,7 +227,7 @@ export function PageVerbs(p: PageVerbsProps) {
     ...(p.verb === "addNotes" ? [] : [{ kind: "item" as const, id: "notes", label: p.notes ? "Edit notes…" : "Add notes…" }]),
     ...(p.rest > 0 ? [{ kind: "item" as const, id: "rest", label: "Dismiss the rest" }] : []),
     { kind: "item", id: "thread", label: "New thread about this" },
-    ...(p.ahead === null ? [] : [{ kind: "sep" as const }, { kind: "item" as const, id: "ahead", label: "Prepare each morning", checked: p.ahead }]),
+    ...(p.ahead === null ? [] : [{ kind: "sep" as const }, { kind: "item" as const, id: "ahead", label: AHEAD_LABEL, checked: p.ahead }]),
   ];
   const pick: Record<string, () => void> = { open: p.onOpenThread, again: p.onBrief, people: p.onAddPeople, notes: p.onNotes, rest: p.onDismissRest, thread: p.onThread, ahead: () => p.onAhead(!p.ahead) };
   return (
@@ -274,15 +284,36 @@ export function View(props: WorkViewProps) {
   const verb = useHeadVerb(page);
   const now = useMinute();
   const offered = useOfferSettled(workspaceId);
-  const { dialog } = useShared(ui);
-  // A dialog left open goes with the page: the next meeting's never opens under it.
-  useEffect(() => () => ui.set({ dialog: null }), []);
+  const open = useShared(ui);
+  // A dialog is its own meeting's: one opened on another meeting's page is not drawn here, and it goes with the page.
+  const dialog = open.eventId === eventId ? open.dialog : null;
+  useEffect(() => closeDialog, [eventId]);
+  // Agenda keeps its day and view through a visit here (its own unmount leaves them be); leaving for anywhere but
+  // Agenda or another meeting's page ends that visit, so the next opens on today's list.
+  useEffect(
+    () => () => {
+      const next = workViewNow();
+      if (next?.workspaceId === workspaceId && (next.view === "agenda" || next.view === "prep")) return;
+      resetAgendaPlace();
+    },
+    [workspaceId],
+  );
+  // A Notes dialog whose close could not keep his words opens again on them (PrepDialogs `reopenNotes`).
+  useEffect(() => {
+    if (!eventId) return;
+    const reopen = () => openDialog("notes", eventId);
+    void dialogs.load().then((m) => (m.reopenNotes.current = reopen), () => {});
+    return () => {
+      const chunk = dialogs.loaded();
+      if (chunk?.reopenNotes.current === reopen) chunk.reopenNotes.current = null;
+    };
+  }, [eventId]);
   // A session that cannot read is the frame's to say (its sign-in or its line), never a second banner here.
   if (!props.lifeos.client) return sessionWaits(props.lifeos) ? <PrepSkeleton /> : null;
   if (!eventId) return <EmptyState title="No meeting is open" action={{ label: "Back to Agenda", onClick: () => openWorkView({ workspaceId, view: "agenda" }) }} />;
   const retry = () => loadPrep(props.env, workspaceId, eventId);
   if (!page) return loaded && error ? <EmptyState title="This page did not load" line={error} action={{ label: "Retry", onClick: retry }} /> : <PrepSkeleton />;
-  const close = () => ui.set({ dialog: null });
+  const close = closeDialog;
   return (
     <>
       <PrepPageBody
@@ -294,23 +325,31 @@ export function View(props: WorkViewProps) {
         verb={verb}
         offer={!offered}
         onRetry={retry}
-        onAddPeople={() => ui.set({ dialog: "people" })}
+        onAddPeople={() => openDialog("people", eventId)}
         onDecide={(ids, decision) => decidePrepTasks(props.env, workspaceId, eventId, ids, decision)}
         onOpenDraft={(draft) => openHeld({ at: "lifeos", table: "outbox", id: draft.outboxId }, props.env)}
         onOpenNotesFile={() => {
           const file = page.notesFile;
           // Beside the thread that reads it, once there is one; a document not yet followed up opens beside a new thread.
-          if (file?.itemId && page.followSessionId) workOpenPort.get()?.(page.followSessionId);
-          else if (file?.kind === "document" && file.source?.at === "file") void openWorkspaceFile(props.env, { path: file.source.path, title: file.title }).catch(said);
+          if (file?.itemId && page.followSessionId) {
+            workOpenPort.get()?.(page.followSessionId);
+            // On its own tab, whatever tab that thread's pane last showed.
+            const { followSessionId } = page;
+            const { itemId } = file;
+            void import("../canvas/store").then(({ openItem }) => openItem(props.env, followSessionId, { itemId })).catch(() => undefined);
+          } else if (file?.kind === "document" && file.source?.at === "file") void openWorkspaceFile(props.env, { path: file.source.path, title: file.title }).catch(said);
         }}
-        onAhead={() => {
-          settleOffer(workspaceId);
-          void setPrepAhead(props.env, workspaceId, eventId, true).catch(said);
-        }}
+        onAhead={() =>
+          setPrepAhead(props.env, workspaceId, eventId, true).then(
+            () => settleOffer(workspaceId),
+            (err: unknown) => said(err),
+          )
+        }
         onDismissOffer={() => settleOffer(workspaceId)}
+        refreshError={error}
       />
-      {dialog === "people" ? <AddPeopleDialog env={props.env} lifeos={props.lifeos} page={page} faces={faces} onClose={close} /> : null}
-      {dialog === "notes" ? <NotesDialog env={props.env} page={page} onClose={close} /> : null}
+      {dialog === "people" ? <AddPeopleDialog key={eventId} env={props.env} lifeos={props.lifeos} page={page} faces={faces} onClose={close} /> : null}
+      {dialog === "notes" ? <NotesDialog key={eventId} env={props.env} page={page} onClose={close} /> : null}
     </>
   );
 }
@@ -366,14 +405,18 @@ export interface PrepBodyProps {
   onOpenDraft?: (draft: PrepDraft) => void;
   /** opens the file that holds the notes: beside its thread once one reads it, else (a document) beside a new one */
   onOpenNotesFile?: () => void;
-  onAhead?: () => void;
+  /** Turn on, under his first brief: settles once the host has taken it */
+  onAhead?: () => void | Promise<void>;
   onDismissOffer?: () => void;
-  /** for the preview: a filing that already failed */
+  /** the last read failed, though an older page still shows: said in the state line, with Retry */
+  refreshError?: string | null;
+  /** for the preview: a filing that already failed, and the tasks ticked */
   failedAtFirst?: { id: string; error: string }[];
+  tickedAtFirst?: readonly string[];
 }
 
 /** The page over a `PrepPage`, holding no query: the preview and the tests draw it as the app does. */
-export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer = false, onRetry, onAddPeople, onDecide, onOpenDraft, onOpenNotesFile, onAhead, onDismissOffer, failedAtFirst }: PrepBodyProps) {
+export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer = false, onRetry, onAddPeople, onDecide, onOpenDraft, onOpenNotesFile, onAhead, onDismissOffer, refreshError = null, failedAtFirst, tickedAtFirst }: PrepBodyProps) {
   const { event, workspaceId, doc } = page;
   const go = (view: string, target: Record<string, unknown>) => openWorkView({ workspaceId, view, ...target });
   const openLine = (line: PrepLine) => (line.ref ? () => openRef(workspaceId, line.ref!) : undefined);
@@ -381,15 +424,18 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
   const after = doc.after;
   const outcome = !!(doc.notes || after);
   const [failed, setFailed] = useState<{ id: string; error: string }[]>(failedAtFirst ?? []);
-  const decide = async (ids: string[], decision: "accept" | "reject") => {
+  // The line about a failed filing stays until the next answer is in: a Retry spins on it, and nothing flickers away.
+  const decide = async (ids: string[], decision: "accept" | "reject"): Promise<void> => {
     if (!onDecide) return;
-    setFailed([]);
+    let now: { id: string; error: string }[];
     try {
-      setFailed(await onDecide(ids, decision));
+      now = await onDecide(ids, decision);
     } catch (err) {
-      setFailed(ids.map((id) => ({ id, error: refusalWords(err) || "The host did not answer" })));
+      now = ids.map((id) => ({ id, error: refusalWords(err) || "The host did not answer" }));
     }
+    setFailed((was) => [...was.filter((f) => !ids.includes(f.id)), ...now]);
   };
+  const [turningOn, setTurningOn] = useState(false);
   // One line at a time: a filing that failed is his to try again before a part that did not load.
   const stillFailed = failed.filter((f) => after?.tasks.some((t) => t.id === f.id && t.state === "proposed"));
   const problem = problemWords(page.problems);
@@ -399,7 +445,10 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
   return (
     <>
       {stillFailed.length ? (
-        <ViewStateLine word={stillFailed.length === 1 ? "A task was not added" : `${stillFailed.length} tasks were not added`} detail={stillFailed[0]!.error} onRetry={() => decide(stillFailed.map((f) => f.id), "accept")} />
+        // Retry is the one way to try again: the tasks it names are unticked below, so no second button says the same.
+        <ViewStateLine word={failedWords(stillFailed, after?.tasks ?? [])} detail={stillFailed[0]!.error} onRetry={() => decide(stillFailed.map((f) => f.id), "accept")} />
+      ) : refreshError ? (
+        <ViewStateLine word="This page did not refresh" detail={refreshError} onRetry={onRetry} />
       ) : problem ? (
         <ViewStateLine word={problem} onRetry={onRetry} />
       ) : null}
@@ -409,8 +458,13 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
           <p className="text-xs text-muted-foreground select-text">{whenLine(event, now)}</p>
         </header>
 
-        {after?.summary.length ? <Words lines={after.summary} onOpen={openLine} /> : null}
-        {doc.notes ? <Notes text={doc.notes.text} file={page.notesFile} onOpenFile={onOpenNotesFile} /> : null}
+        {after?.summary.length ? (
+          <Words lines={after.summary} onOpen={openLine} />
+        ) : outcomeIsComing(page, verb) ? (
+          // The follow-up thread is reading his notes: its outcome will lead the page from here.
+          <TextBones label="The outcome is being written" />
+        ) : null}
+        {doc.notes ? <Notes key={notesLines(page)} text={doc.notes.text} lines={notesLines(page)} file={page.notesFile} onOpenFile={onOpenNotesFile} /> : null}
         {after ? (
           <>
             <Section label="Decided" show={after.decisions.length > 0}>
@@ -418,7 +472,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
                 <LineRow key={i} text={line.text} onOpen={openLine(line)} />
               ))}
             </Section>
-            <ToDo tasks={shownTasks(after.tasks)} now={now} onDecide={decide} onOpenTask={(id) => go("tasks", { task: id })} />
+            <ToDo tasks={shownTasks(after.tasks)} now={now} onDecide={decide} onOpenTask={(id) => go("tasks", { task: id })} tickedAtFirst={tickedAtFirst} />
             <Section label="Open questions" show={after.questions.length > 0}>
               {after.questions.map((line, i) => (
                 <LineRow key={i} text={line.text} onOpen={openLine(line)} />
@@ -428,7 +482,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
         ) : null}
         <Section label="Mail" show={page.drafts.length > 0}>
           {page.drafts.map((draft) => (
-            <LineRow key={draft.outboxId} text={draftLine(draft)} line="Waiting for your press" onOpen={onOpenDraft ? () => onOpenDraft(draft) : undefined} />
+            <LineRow key={draft.outboxId} text={draftLine(draft)} line="Waiting in the Outbox" onOpen={onOpenDraft ? () => onOpenDraft(draft) : undefined} />
           ))}
         </Section>
 
@@ -437,23 +491,30 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
           <Brief label={outcome ? "Brief" : undefined}>
             <Words key={doc.brief.at} lines={doc.brief.matters} onOpen={openLine} land={briefLanded} bare={outcome} />
             {offer && !outcome && page.aheadOffered && !page.aheadOn ? (
-              <div data-prep-offer className="mt-2 flex min-h-6 items-center gap-1 text-xs text-muted-foreground">
-                <span className="me-1">Prepare each morning’s meetings ahead</span>
-                <Button variant="ghost" size="xs" onClick={onAhead}>
-                  Turn on
+              // One quiet line: the switch by its one name, then its two answers kept together when the page is narrow.
+              <div data-prep-offer className="mt-2 flex min-h-6 flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                <span>{AHEAD_LABEL}</span>
+                <span className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  disabled={turningOn}
+                  onClick={() => {
+                    setTurningOn(true);
+                    void Promise.resolve(onAhead?.()).finally(() => setTurningOn(false));
+                  }}
+                >
+                  <BusyLabel busy={turningOn} label="Turn on" />
                 </Button>
-                <Button variant="ghost" size="icon-xs" aria-label="Dismiss" className="text-muted-foreground" onClick={onDismissOffer}>
+                <Button variant="ghost" size="icon-xs" aria-label="Dismiss" className="text-muted-foreground" disabled={turningOn} onClick={onDismissOffer}>
                   <X />
                 </Button>
+                </span>
               </div>
             ) : null}
           </Brief>
         ) : briefIsComing(page, verb) ? (
-          <div aria-busy aria-label="The brief is being written" className="mt-5 flex max-w-[65ch] flex-col gap-3">
-            {[92, 78, 58].map((w) => (
-              <Skeleton key={w} className="h-3.5" style={{ width: `${w}%` }} />
-            ))}
-          </div>
+          <TextBones label="The brief is being written" />
         ) : null}
 
         {page.last ? (
@@ -470,19 +531,25 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, offer
           </Section>
         ) : null}
 
-        <Section label="People">
+        <Section
+          label="People"
+          // Under the heading and outside the list: these are not people.
+          foot={
+            nobodyOn(page) ? (
+              <div className="flex min-h-8 items-center gap-2 text-[13px] leading-5 text-muted-foreground">
+                <span>No one is listed on this meeting</span>
+                <Button variant="ghost" size="xs" onClick={onAddPeople} {...dialogs.intent}>
+                  Add people
+                </Button>
+              </div>
+            ) : more ? (
+              <p className="py-1.5 text-xs text-muted-foreground">{more}</p>
+            ) : null
+          }
+        >
           {page.people.map((person) => (
             <PersonRow key={person.address ?? person.name} person={person} picture={person.address ? pictureOf([person.address], faces) : undefined} now={now} onOpen={personOpener(workspaceId, person)} />
           ))}
-          {more ? <p className="py-1.5 text-xs text-muted-foreground">{more}</p> : null}
-          {nobodyOn(page) ? (
-            <div className="flex min-h-8 items-center gap-2 text-[13px] text-muted-foreground">
-              <span>No one is listed on this event</span>
-              <Button variant="ghost" size="xs" onClick={onAddPeople} {...dialogs.intent}>
-                Add people
-              </Button>
-            </div>
-          ) : null}
         </Section>
 
         <Section label="Tasks" show={page.tasks.length > 0}>
@@ -550,9 +617,10 @@ function Words({ lines, onOpen, land = false, bare = false }: { lines: readonly 
           // The landing rides a wrapper, so a pressable line keeps its own press fill.
           <div key={i} className={land ? "step-land" : undefined} style={land ? ({ "--stagger": Math.min(i, 3) } as CSSProperties) : undefined}>
             {open ? (
-              <button type="button" data-page-row="" onClick={open} className={cn("-mx-2 cursor-pointer rounded-md px-2 text-start text-pretty", ROW_PRESS)}>
+              // The app's own row, at the brief's type: its focus ring and press fill, the words free to wrap.
+              <ItemButton data-page-row="" size="xs" onClick={open} className={cn("-mx-2 w-[calc(100%+16px)] rounded-md py-0 text-sm leading-[22px] text-pretty", ROW_PRESS)}>
                 {line.text}
-              </button>
+              </ItemButton>
             ) : (
               <p className="text-pretty select-text">{line.text}</p>
             )}
@@ -563,21 +631,54 @@ function Words({ lines, onOpen, land = false, bare = false }: { lines: readonly 
   );
 }
 
-/** His notes: the recording or transcript that holds them, which opens beside its thread, and what he typed (six lines, then Show all). */
-function Notes({ text, file, onOpenFile }: { text: string; file: PrepPage["notesFile"]; onOpenFile: (() => void) | undefined }) {
+/** Three text bones where what a thread is writing will land, at the reading measure. */
+function TextBones({ label }: { label: string }) {
+  return (
+    <div aria-busy aria-label={label} className="mt-5 flex max-w-[65ch] flex-col gap-3">
+      {[92, 78, 58].map((w) => (
+        <Skeleton key={w} className="h-3.5" style={{ width: `${w}%` }} />
+      ))}
+    </div>
+  );
+}
+
+const CLAMP = { 2: "line-clamp-2", 6: "line-clamp-6" } as const;
+
+/**
+ * His notes: the file that holds them, which opens beside its thread, and what he typed. They show `lines` lines
+ * (six while they lead the page, two once the outcome stands over what they say), then Show all, offered only when
+ * the words run past that at the width they are drawn at.
+ */
+function Notes({ text, lines, file, onOpenFile }: { text: string; lines: 2 | 6; file: PrepPage["notesFile"]; onOpenFile: (() => void) | undefined }) {
   const [all, setAll] = useState(false);
-  const long = notesAreLong(text);
+  const [long, setLong] = useState(false);
+  const words = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const el = words.current;
+    if (!el || all) return;
+    // Measured, not guessed from the text's length: five short lines wrap to eight in a narrow window.
+    const measure = () => setLong(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [text, lines, all]);
   if (!text && !file) return null;
   return (
     <section aria-label="Notes" className="mt-6">
       <h2 className="mb-1 text-xs font-medium text-muted-foreground">Notes</h2>
       {file ? (
         <div role="list">
-          <LineRow text={file.title} line={file.kind === "document" ? "Document" : notesFileKind(file.title)} onOpen={onOpenFile} />
+          <LineRow text={file.title} onOpen={onOpenFile} />
         </div>
       ) : null}
-      {text ? <p className={cn("max-w-[65ch] text-sm leading-[22px] whitespace-pre-line text-foreground select-text", file && "mt-1", long && !all && "line-clamp-6")}>{text}</p> : null}
-      {long ? (
+      {text ? (
+        <p ref={words} className={cn("max-w-[65ch] text-sm leading-[22px] whitespace-pre-line text-foreground select-text", file && "mt-1", !all && CLAMP[lines])}>
+          {text}
+        </p>
+      ) : null}
+      {long || all ? (
         <Button variant="ghost" size="xs" className="-ms-2 mt-1 text-muted-foreground" aria-expanded={all} onClick={() => setAll((v) => !v)}>
           {all ? "Show less" : "Show all"}
         </Button>
@@ -594,10 +695,23 @@ function Notes({ text, file, onOpenFile }: { text: string; file: PrepPage["notes
  * sheet. The section's foot holds Tick all and, while any is ticked, the
  * page's one primary button.
  */
-function ToDo({ tasks, now, onDecide, onOpenTask }: { tasks: readonly PrepSuggestion[]; now: number; onDecide: (ids: string[], decision: "accept" | "reject") => Promise<void>; onOpenTask: (lifeosTaskId: string) => void }) {
+function ToDo({
+  tasks,
+  now,
+  onDecide,
+  onOpenTask,
+  tickedAtFirst,
+}: {
+  tasks: readonly PrepSuggestion[];
+  now: number;
+  onDecide: (ids: string[], decision: "accept" | "reject") => Promise<void>;
+  onOpenTask: (lifeosTaskId: string) => void;
+  tickedAtFirst?: readonly string[] | undefined;
+}) {
   const proposed = tasks.filter((t) => t.state === "proposed");
-  const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set(TICKED_AT_FIRST ? proposed.map((t) => t.id) : []));
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set(tickedAtFirst ?? (TICKED_AT_FIRST ? proposed.map((t) => t.id) : [])));
   const [adding, setAdding] = useState(false);
+  const list = useRef<HTMLDivElement>(null);
   if (!tasks.length) return null;
   const picked = proposed.filter((t) => ticked.has(t.id));
   const allTicked = proposed.length > 0 && picked.length === proposed.length;
@@ -609,37 +723,57 @@ function ToDo({ tasks, now, onDecide, onOpenTask }: { tasks: readonly PrepSugges
       return next;
     });
   const add = () => {
+    const ids = picked.map((t) => t.id);
     setAdding(true);
-    void onDecide(picked.map((t) => t.id), "accept").finally(() => setAdding(false));
+    void onDecide(ids, "accept").finally(() => {
+      setAdding(false);
+      // What was asked is answered: filed, or named in the line above with its Retry. Either way its tick is spent.
+      setTicked((was) => new Set([...was].filter((id) => !ids.includes(id))));
+      // The button he pressed goes with the last tick: the caret lands on the first task it filed, not on nothing.
+      requestAnimationFrame(() => {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        const filed = ids.map((id) => list.current?.querySelector<HTMLElement>(`[data-task="${CSS.escape(id)}"][data-task-state="filed"] [data-page-row]`)).find(Boolean);
+        filed?.focus();
+      });
+    });
   };
   return (
     <section aria-label="To do" className="mt-6">
       <h2 className="mb-1 text-xs font-medium text-muted-foreground">To do</h2>
       {/* At the measure the notes and the brief read at (65ch of 14px): a tint the column's whole width would shout. */}
-      <div role="list" className="flex max-w-[65ch] flex-col gap-0.5 text-sm">
+      <div ref={list} role="list" className="flex max-w-[65ch] flex-col gap-0.5 text-sm">
         {tasks.map((task) => {
-          const line = suggestionLine(task, now);
+          const line = suggestionLine(task);
           const words = (
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="text-pretty text-foreground">{task.title}</span>
               {line ? <span className="truncate text-xs text-muted-foreground">{line}</span> : null}
             </span>
           );
+          // When it is due trails the row, as a task's does under Tasks.
+          const due = task.due !== undefined ? <span className={TRAIL}>{formatDue(task.due, now)}</span> : null;
           return (
-            <div key={task.id} role="listitem" data-task-state={task.state}>
+            <div key={task.id} role="listitem" data-task={task.id} data-task-state={task.state}>
               {task.state === "filed" ? (
                 <ItemButton data-page-row="" size="xs" onClick={() => task.lifeosTaskId && onOpenTask(task.lifeosTaskId)} className={cn(ROW, ROW_PRESS, "items-start gap-2")}>
                   <Lifeos aria-label="In LifeOS" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   {words}
+                  {due}
                 </ItemButton>
               ) : (
                 // The tint an addition waits on; the whole row takes the pointer, the box the keyboard.
-                <div
-                  className={cn("flex cursor-default items-start gap-2 border border-transparent bg-(--add-bg) px-2", ROW)}
-                  onClick={() => tick(task.id, !ticked.has(task.id))}
-                >
-                  <Checkbox aria-label={task.title} className="mt-0.5" checked={ticked.has(task.id)} disabled={adding} onCheckedChange={(on) => tick(task.id, on === true)} onClick={(e) => e.stopPropagation()} />
+                <div className={cn("flex cursor-default items-start gap-2 border border-transparent bg-(--add-bg) px-2", ROW)} onClick={() => tick(task.id, !ticked.has(task.id))}>
+                  <Checkbox
+                    aria-label={task.title}
+                    // On the tint the box's usual hairline is too faint to say "tick me": the muted ink, which reads on it.
+                    className="mt-0.5 border-muted-foreground"
+                    checked={ticked.has(task.id)}
+                    disabled={adding}
+                    onCheckedChange={(on) => tick(task.id, on === true)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
                   {words}
+                  {due}
                 </div>
               )}
             </div>
@@ -664,7 +798,7 @@ function ToDo({ tasks, now, onDecide, onOpenTask }: { tasks: readonly PrepSugges
 
 // People's `Section` and `PageRow` are private to it; these are the page's own, on the same measures.
 
-function Section({ label, show = true, onOpenLabel, children }: { label: string; show?: boolean; onOpenLabel?: () => void; children: ReactNode }) {
+function Section({ label, show = true, onOpenLabel, foot, children }: { label: string; show?: boolean; onOpenLabel?: () => void; foot?: ReactNode; children: ReactNode }) {
   if (!show) return null;
   return (
     <section aria-label={label} className="mt-6">
@@ -678,11 +812,13 @@ function Section({ label, show = true, onOpenLabel, children }: { label: string;
         )}
       </h2>
       <div role="list">{children}</div>
+      {foot}
     </section>
   );
 }
 
-const ROW = "-mx-2 min-h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap rounded-md py-1.5 text-[13px]";
+// 13px on 20px lines (DESIGN.md "Type scale"): a row whose words wrap keeps the row's own leading.
+const ROW = "-mx-2 min-h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap rounded-md py-1.5 text-[13px] leading-5";
 const TRAIL = "mt-0.5 shrink-0 self-start text-xs text-muted-foreground tabular-nums";
 
 /** A row that opens something is a button; one that opens nothing is the same box, still. */

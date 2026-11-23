@@ -118,7 +118,7 @@ describe('the facts', () => {
     ])
     expect(page.files).toEqual([
       { title: 'agenda.pdf', url: 'https://example.com/agenda.pdf' },
-      { title: 'Join', url: 'https://purdue.zoom.us/j/1' }
+      { title: 'Join the call', url: 'https://purdue.zoom.us/j/1' }
     ])
     expect(page.doc).toEqual(emptyPrepDoc())
   })

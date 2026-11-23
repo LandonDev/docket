@@ -289,9 +289,11 @@ export async function gather(ctx: WorkCtx, workspaceId: string, eventId: string,
     clashLeave(ctx, event._id)
   ])
 
+  // A task this page filed shows under To do: never a second row under Tasks.
+  const filedHere = new Set((row?.doc.after?.tasks ?? []).flatMap((t) => (t.lifeosTaskId ? [t.lifeosTaskId] : [])))
   const tasks: PrepTask[] = []
-  for (const task of people.flatMap((p) => p.tasks)) if (!tasks.some((t) => t.id === task.id)) tasks.push(task)
-  const bySubject = subject.filter((t) => t.sector === sector && OPEN.has(t.status) && !tasks.some((x) => x.id === t._id)).slice(0, SUBJECT_TASKS)
+  for (const task of people.flatMap((p) => p.tasks)) if (!filedHere.has(task.id) && !tasks.some((t) => t.id === task.id)) tasks.push(task)
+  const bySubject = subject.filter((t) => t.sector === sector && OPEN.has(t.status) && !filedHere.has(t._id) && !tasks.some((x) => x.id === t._id)).slice(0, SUBJECT_TASKS)
   for (const t of bySubject) tasks.push({ id: t._id, title: t.title, ...(t.dueAt !== undefined ? { dueAt: t.dueAt } : {}) })
 
   const page: PrepPage = {

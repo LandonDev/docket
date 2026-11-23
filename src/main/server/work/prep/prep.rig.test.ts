@@ -427,7 +427,9 @@ describe('suggested tasks', () => {
     const row = new PrepStore(rig.work.ctx.db).get(params.workspaceId, params.eventId)!
     expect(lifeos.called('tasks:create')).toEqual([{
       sector: 'purdue', title: 'Send the roster', description: 'From “Staff sync”, Mon Nov 23.\n“Maya can send the roster.”',
-      dueAt: Date.parse('2026-11-24T15:00:00-05:00'), key: `prep:${row.id}:s1`
+      dueAt: Date.parse('2026-11-24T15:00:00-05:00'), key: `prep:${row.id}:s1`,
+      // LifeOS takes a key only as a quick add's own source
+      source: { kind: 'manual', container: 'quick-add', channel: 'Meeting', messageId: `prep:${row.id}:s1`, sentAt: expect.any(Number) }
     }])
     expect(add).toHaveBeenCalledExactlyOnceWith({
       sessionId, kind: 'prep.task.filed', summary: 'Filed the task “Send the roster”', ref: { at: 'lifeos', table: 'tasks', id: 'task_1' }
@@ -451,7 +453,8 @@ describe('suggested tasks', () => {
     expect(retried.page.doc.after?.tasks[0]).toMatchObject({ state: 'filed', lifeosTaskId: 'task_1' })
     expect(lifeos.tasks.size).toBe(1)
     expect(lifeos.called('tasks:create')).toHaveLength(2)
-    expect(lifeos.called('tasks:create')[0]).toEqual(lifeos.called('tasks:create')[1])
+    const keyOf = (call: Record<string, unknown>) => [call.key, (call.source as { messageId?: string }).messageId, call.title]
+    expect(keyOf(lifeos.called('tasks:create')[0]!)).toEqual(keyOf(lifeos.called('tasks:create')[1]!))
     expect(prepPushes()).toHaveLength(2)
   })
 
@@ -658,5 +661,71 @@ describe('the push', () => {
     expect(states).toEqual(['none', 'working', 'briefed', 'after'])
     // each push names the page and nothing of it
     expect(prepPushes().at(-1)).toEqual({ push: 'work.prep', workspaceId: 'ws-purdue', eventId: 'ev1', rev: expect.any(Number) })
+  })
+})
+
+describe('a thread the window knows has stopped', () => {
+  it('is not waited on: a press with restart starts a new thread inside the twenty minutes, and without it answers the same one', async () => {
+    const starts = fakeStarts()
+    const first = await brief()
+    expect(await brief()).toEqual(first)
+    const again = await rig.rpc<{ sessionId: string }>('work.prep.brief', { ...params, restart: true })
+    expect(again.sessionId).not.toBe(first.sessionId)
+    expect(starts).toHaveBeenCalledTimes(2)
+    expect((await page()).briefSessionId).toBe(again.sessionId)
+    // the same for a follow-up
+    await note('Dana drives the van.')
+    const follow1 = await follow()
+    const follow2 = await rig.rpc<{ sessionId: string }>('work.prep.followUp', { ...params, restart: true })
+    expect(follow2.sessionId).not.toBe(follow1.sessionId)
+  })
+})
+
+describe('a recording that never arrived', () => {
+  it('is no notes: a follow-up from typed words starts a fresh thread and leaves the empty meeting behind', async () => {
+    const starts = fakeStarts()
+    const recorded = await rig.rpc<{ sessionId: string; itemId?: string }>('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    // the upload failed: the meeting has no file. He types his notes instead.
+    await note('Dana drives the van.')
+    const typed = await follow()
+    expect(typed.sessionId).not.toBe(recorded.sessionId)
+    expect(starts).toHaveBeenCalledTimes(2)
+    expect(starts.mock.calls[1]![0].text).toContain('Use his notes.')
+    expect(starts.mock.calls[1]![0].text).not.toContain('meeting_read')
+    const got = await page()
+    expect(got.doc.notes).toEqual({ text: 'Dana drives the van.', at: expect.any(Number) })
+    expect(got.notesFile).toBeNull()
+    expect(got.followSessionId).toBe(typed.sessionId)
+  })
+
+  it('with nothing typed either, asks for notes', async () => {
+    fakeStarts()
+    await rig.rpc('work.prep.followUp', { ...params, recording: { name: 'Staff sync.m4a' } })
+    await expect(rig.rpc('work.prep.followUp', { ...params, restart: true })).rejects.toThrow('Add notes first.')
+  })
+})
+
+describe('a task the page filed', () => {
+  it('is one row, under To do: the facts leave it out of Tasks though its title names the subject', async () => {
+    fakeStarts()
+    await note('Staff rota is wrong.')
+    await follow()
+    await call('prep_follow_up', { event: 'ev1', tasks: [{ title: 'Fix the staff rota' }] })
+    expect((await decide('accept', 's1')).failed).toEqual([])
+    const got = await page()
+    const filed = got.doc.after!.tasks[0]!
+    expect(filed).toMatchObject({ state: 'filed', lifeosTaskId: expect.any(String) })
+    // "Staff sync" searches for "staff", which the new task's title holds
+    expect(lifeos.called('tasks:search')).not.toEqual([])
+    expect(got.tasks.map((t) => t.id)).not.toContain(filed.lifeosTaskId)
+  })
+
+  it('says LifeOS’s refusal in its own words, without the server’s wrapping', async () => {
+    fakeStarts()
+    await note('x')
+    await follow()
+    await call('prep_follow_up', { event: 'ev1', tasks: [{ title: 'Send the roster' }] })
+    lifeos.failing.set('tasks:create', '[CONVEX M(tasks:create)] [Request ID: d3afe015d3d9787f] Server Error\nUncaught ConvexError: a keyed task carries its key as a quick add’s source')
+    expect((await decide('accept', 's1')).failed).toEqual([{ id: 's1', error: 'A keyed task carries its key as a quick add’s source' }])
   })
 })

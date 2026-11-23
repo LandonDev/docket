@@ -1800,23 +1800,30 @@ Around the canvas:
   day, or "Declined". "Last time, Nov 16" is a heading that opens that
   page. A page with no one on it says so in one muted line with a ghost
   Add people after it. After the meeting the outcome leads: his notes at
-  14/22, six lines then Show all; Decided; To do; Open questions; Mail;
+  14/22 (six lines while they lead, two once the outcome stands over them,
+  then Show all only when they run past that as drawn); Decided; To do; Open questions; Mail;
   then the brief under its own heading and the rest as before. A
   suggested task waits on `--add-bg` with a 16px checkbox at its first
   line, rows 2px apart and no wider than the brief's measure (a tint the
-  column's whole width would shout), who and when as its muted line; the section's
+  column's whole width would shout), who it falls to as its muted line and
+  when it is due at the row's end, as under Tasks; on the tint the box's
+  edge is `muted-foreground`, since the usual hairline does not read there; the section's
   foot holds a ghost Tick all and, only while one is ticked, the page's
   one primary button, which counts them ("Add 3 tasks"). A filed task
   loses the tint, takes LifeOS's mark where the box was, and opens its
   sheet. The mail is one row, "Follow-up to Maya Chen and Tom Beck" over
-  "Waiting for your press", which opens the Outbox on it. A part that did
+  "Waiting in the Outbox", which opens the Outbox on it. A part that did
   not load, or a filing LifeOS did not take, is the view's one state line
   with Retry. The one-time offer of Prepare ahead is a 12px muted line
   under his first brief with a ghost Turn on and a dismiss. Loading draws
   bones in the page's shape. The Notes dialog is the 576px form dialog:
   one field at 14/22 that keeps its height and scrolls, under it two
-  quiet 12px verbs (Use a recording or transcript, Write in a document),
-  then Cancel and Follow up; it keeps what he typed however it closes.
+  quiet 12px verbs (Use a recording or transcript, Write in a document)
+  that wrap when the dialog is narrow, then Cancel and Follow up; it keeps
+  what he typed however it closes, and Cancel spins while it does. While a
+  file goes up the two verbs give way to the 4px `Progress` bar under the
+  file's name (which truncates) and the per cent (which never does), with
+  a spinner in the bar's place until the size is known.
   Add people is the 448px form dialog: a search, then a list that keeps
   its height, a 32px row a person with a checkbox, the face, the name and
   the address muted.

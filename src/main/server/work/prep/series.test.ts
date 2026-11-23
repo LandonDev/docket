@@ -74,11 +74,11 @@ describe('the words of a subject', () => {
 })
 
 describe('the links in an event', () => {
-  it('finds http and https links once each, and names the call’s link Join', () => {
+  it('finds http and https links once each, and names the call’s link Join the call', () => {
     const description = 'Agenda: https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUv/edit\nJoin: https://purdue.zoom.us/j/99887766?pwd=abc. Slides at https://example.com/decks/Q3-budget_review.pdf, and again https://example.com/decks/Q3-budget_review.pdf'
     expect(linksIn(description, 'https://teams.microsoft.com/l/meetup-join/xyz')).toEqual([
       { title: 'docs.google.com', url: 'https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUv/edit' },
-      { title: 'Join', url: 'https://purdue.zoom.us/j/99887766?pwd=abc' },
+      { title: 'Join the call', url: 'https://purdue.zoom.us/j/99887766?pwd=abc' },
       { title: 'Q3 budget review.pdf', url: 'https://example.com/decks/Q3-budget_review.pdf' }
     ])
   })

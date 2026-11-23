@@ -99,6 +99,9 @@ export class FakeLifeos implements LifeosClient {
       }
       case 'tasks:create': {
         const key = typeof args.key === 'string' ? args.key : undefined
+        // LifeOS's own rule (convex/tasks.ts `createTask`): a key is taken only as a quick add's source.
+        const source = args.source as { kind?: string; container?: string; messageId?: string } | undefined
+        if (key !== undefined && (source?.kind !== 'manual' || source.container !== 'quick-add' || source.messageId !== key)) throw new Error("a keyed task carries its key as a quick add's source")
         const same = key ? [...this.tasks.values()].find((t) => t.key === key) : undefined
         if (same) return same._id as T
         const id = `task_${++this.n}`

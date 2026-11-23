@@ -14,10 +14,13 @@ import { cn } from "../../lib/cn";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/client";
 import { useMinute } from "../tasks/minute";
-import { shared, useShared } from "../tasks/store";
+import { useShared } from "../tasks/store";
+import { agendaPlace, resetAgendaPlace } from "./place";
+import { rowOfView } from "../views/registry";
+import { prepEndOf } from "@shared/contract-work-prep";
 import { NewEventDialog } from "./NewEventDialog";
 import { playRunner } from "../routines/plays/runOn";
-import { openWorkView, useWorkView } from "../../lib/workSwitch";
+import { openWorkView, useWorkView, workViewNow } from "../../lib/workSwitch";
 import { sessionWaits, useLifeosQuery } from "../shell/lifeos";
 import { knownAttendees, type DirectoryPerson } from "../people/model";
 import type { Clash } from "@shared/work/clashes";
@@ -38,7 +41,6 @@ import type { WorkViewProps } from "../views/registry";
  */
 
 const DAYS = 14;
-type AgendaView = "list" | "week" | "month";
 const VIEWS = [
   { value: "list", label: "List" },
   { value: "week", label: "Week" },
@@ -47,7 +49,7 @@ const VIEWS = [
 const weekStart = localeWeekStart();
 
 /** What the header and the body share: the view, the day it is on, and the New event dialog (null: closed; a slot's start or `now`). */
-const state = shared<{ view: AgendaView; day: number; adding: number | "now" | null }>({ view: "list", day: startOfDay(Date.now()), adding: null });
+const state = agendaPlace;
 const go = (patch: Partial<ReturnType<typeof state.get>>) => state.set({ ...state.get(), ...patch });
 
 /** "Nov 2026": the month a narrow Month view is on. */
@@ -119,7 +121,15 @@ export function View({ env, workspace, sector, lifeos }: WorkViewProps) {
   const directory = useLifeosQuery<DirectoryPerson[]>(lifeos, "people:directory", { sector });
   const people = directory.status === "ready" ? directory.value : NO_PEOPLE;
   // Each visit opens on today's list.
-  useEffect(() => () => state.set({ view: "list", day: startOfDay(Date.now()), adding: null }), []);
+  useEffect(
+    () => () => {
+      // A meeting's page stands inside Agenda: going there and back keeps the day and the view he was on.
+      const next = workViewNow();
+      if (next?.workspaceId === workspace.id && next.view !== "agenda" && rowOfView(next.view) === "agenda") return;
+      resetAgendaPlace();
+    },
+    [workspace.id],
+  );
   // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
   if (!lifeos.client) return sessionWaits(lifeos) ? <AgendaSkeleton /> : null;
   return (
@@ -182,7 +192,7 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
         <section key={day} aria-label={formatDayHeading(day, now)} className="flex flex-col">
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{formatDayHeading(day, now)}</h2>
           {rows.map((event) => (
-            <EventRow key={event._id} event={event} past={endOf(event) < now} leave={leaveOf(event)} clashes={marks.clashes.get(event._id)} day={day} onPrepare={prepare} people={people} workspaceId={workspaceId} environmentId={environmentId} />
+            <EventRow key={event._id} event={event} past={endOf(event) < now} over={prepEndOf(event) <= now} leave={leaveOf(event)} clashes={marks.clashes.get(event._id)} day={day} onPrepare={prepare} people={people} workspaceId={workspaceId} environmentId={environmentId} />
           ))}
         </section>
       ))}
@@ -196,6 +206,7 @@ const eventChip = (event: AgendaEvent): ContextChip => ({ kind: "event", label: 
 export const EventRow = memo(function EventRow({
   event,
   past,
+  over,
   leave,
   clashes,
   day,
@@ -206,6 +217,8 @@ export const EventRow = memo(function EventRow({
 }: {
   event: AgendaEvent;
   past: boolean;
+  /** the meeting is over by its page's own rule (`prepEndOf`): the verb reads Follow up, as the page's header does; absent: as `past` */
+  over?: boolean;
   leave: number | undefined;
   clashes: readonly Clash[] | undefined;
   /** the day this row sits under: an event that runs past midnight is listed under the next day too */
@@ -215,6 +228,7 @@ export const EventRow = memo(function EventRow({
   workspaceId: string | undefined;
   environmentId: string;
 }) {
+  const done = over ?? past;
   // A clash with something that is over is no longer his to settle.
   const clash = past ? undefined : clashes;
   // LifeOS's event carries its attendees; the shared type does not name them.
@@ -236,20 +250,20 @@ export const EventRow = memo(function EventRow({
         </span>
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>
           <Button size="xs" variant="ghost" onClick={() => onPrepare(event)}>
-            {past ? "Follow up" : "Prepare"}
+            {done ? "Follow up" : "Prepare"}
           </Button>
         </span>
       </ContextMenuTrigger>
-      <EventMenu event={event} past={past} onPrepare={onPrepare} clashes={clash} environmentId={environmentId} />
+      <EventMenu event={event} over={done} onPrepare={onPrepare} clashes={clash} environmentId={environmentId} />
     </ContextMenu>
   );
 });
 
-function EventMenu({ event, past, onPrepare, clashes = NO_CLASHES, environmentId }: { event: AgendaEvent; past: boolean; onPrepare: (event: AgendaEvent) => void; clashes: readonly Clash[] | undefined; environmentId: string }) {
+function EventMenu({ event, over, onPrepare, clashes = NO_CLASHES, environmentId }: { event: AgendaEvent; over: boolean; onPrepare: (event: AgendaEvent) => void; clashes: readonly Clash[] | undefined; environmentId: string }) {
   const runPlay = playRunner();
   return (
     <ContextMenuContent>
-      <ContextMenuItem onClick={() => onPrepare(event)}>{past ? "Follow up" : "Prepare"}</ContextMenuItem>
+      <ContextMenuItem onClick={() => onPrepare(event)}>{over ? "Follow up" : "Prepare"}</ContextMenuItem>
       {/* One clash is "Show clash"; several are each named by the other event, so every one can be opened from here. */}
       {clashes.map((clash) => (
         <ContextMenuItem key={clash.id} onClick={() => openClash({ id: clash.id, environmentId, clash })}>

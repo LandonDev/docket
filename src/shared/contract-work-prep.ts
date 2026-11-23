@@ -119,8 +119,11 @@ export type PrepState = 'none' | 'working' | 'briefed' | 'after'
 /** How long after its start a brief thread that has not written still counts as working. */
 export const PREP_WORKING_MS = 20 * 60_000
 
-/** When a meeting is over: its end, or an hour after its start when the calendar gave none. */
-export const prepEndOf = (event: { startsAt: number; endsAt?: number | null }): number => event.endsAt ?? event.startsAt + 3_600_000
+/**
+ * When a meeting is over: its end; when the calendar gave none, an hour after its start, or a day after it for one
+ * that lasts the day. The one rule for the page's verb and Agenda's row verb, so the two never disagree.
+ */
+export const prepEndOf = (event: { startsAt: number; endsAt?: number | null; allDay?: boolean }): number => event.endsAt ?? event.startsAt + (event.allDay ? 86_400_000 : 3_600_000)
 
 export function prepStateOf(page: { doc: PrepDoc; briefSessionId: string | null; briefAt: number | null }, now: number): PrepState {
   if (page.doc.notes || page.doc.after) return 'after'
@@ -257,8 +260,11 @@ export const PrepRequestSchemas = [
   request('work.prep.upcoming', z.object({ from: z.number(), to: z.number() })),
   /** Sets the people added to the page, kept for the series. → { page } */
   request('work.prep.people', z.object({ ...page, people: z.array(PrepAddedPersonSchema).max(PREP_PEOPLE_MAX) })),
-  /** Starts the brief thread, or answers the one still working. → { sessionId } */
-  request('work.prep.brief', z.object(page)),
+  /**
+   * Starts the brief thread, or answers the one still working. `restart`: the window knows that thread has
+   * stopped (the host cannot read a thread's status), so a new one starts whatever the clock says. → { sessionId }
+   */
+  request('work.prep.brief', z.object({ ...page, restart: z.boolean().optional() })),
   /** Keeps his notes (empty text takes them back). → { page } */
   request('work.prep.notes', z.object({ ...page, text: z.string().max(PREP_NOTES_MAX) })),
   /**
@@ -267,7 +273,7 @@ export const PrepRequestSchemas = [
    * answers its item: the window then puts the file there through the meetings pillar's own start, so
    * nothing of it leaves the thread's host. → { sessionId, itemId? }
    */
-  request('work.prep.followUp', z.object({ ...page, recording: z.object({ name: z.string().trim().min(1).max(300) }).optional() })),
+  request('work.prep.followUp', z.object({ ...page, restart: z.boolean().optional(), recording: z.object({ name: z.string().trim().min(1).max(300) }).optional() })),
   /**
    * Write in a document: makes the meeting's notes file from the job's Meeting notes template, in the
    * workspace's own folder, and keeps it as the page's notes; a second ask answers the same file. → { page, source, title }

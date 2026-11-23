@@ -83,12 +83,19 @@ vi.mock("../../lib/connection", async (original) => ({
     }),
   },
 }));
-const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: Record<string, unknown> }[] }));
+const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: Record<string, unknown> }[], loading: false }));
+/** The threads this window holds, by id, with their status. */
+const threads = vi.hoisted(() => ({ status: {} as Record<string, string> }));
+vi.mock("../../lib/tcserver/store", async (original) => ({
+  ...(await original<object>()),
+  useSessionMetaValue: (id: string | null | undefined, read: (meta: { status: string }) => unknown) => (id && threads.status[id] ? read({ status: threads.status[id]! }) : undefined),
+}));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
   useLifeosQuery: (_session: unknown, name: string, args: Record<string, unknown>) => {
     lifeos.asked.push({ name, args });
     if (name === "mail:faces") return { status: "ready", value: [] };
+    if (name === "people:directory" && lifeos.loading) return { status: "loading" };
     if (name === "people:directory")
       return {
         status: "ready",
@@ -174,6 +181,8 @@ beforeEach(() => {
   uploads.maxBytes = 200 * 1024 * 1024;
   held.opened = [];
   lifeos.asked = [];
+  lifeos.loading = false;
+  threads.status = {};
   localStorage.clear();
   resetPrep();
 });
@@ -251,7 +260,9 @@ describe("a page with no one on it", () => {
   it("says so in one line and offers Add people", async () => {
     host.page = facts({ people: [], morePeople: 0, tasks: [], files: [], last: null });
     await mount();
-    expect(section("People").getByText("No one is listed on this event")).toBeTruthy();
+    expect(section("People").getByText("No one is listed on this meeting")).toBeTruthy();
+    // an empty state under the heading, not an item of the list
+    expect(section("People").queryAllByRole("listitem")).toEqual([]);
     await act(async () => fireEvent.click(section("People").getByRole("button", { name: "Add people" })));
     expect(await screen.findByRole("dialog", { name: "Add people" })).toBeTruthy();
   });
@@ -290,6 +301,17 @@ describe("what does not load", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Staff sync");
   });
 
+  it("says a refresh failed while the page it had still shows, and Retry spins until the read is in", async () => {
+    await mount();
+    host.fails = "The host did not answer in time";
+    await push({ push: "work.prep", workspaceId: "ws", eventId: "ev1", rev: 4 });
+    expect(screen.getByRole("status").textContent).toContain("This page did not refresh");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Staff sync");
+    host.fails = null;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("reads the page again when the host says its rev moved, and not for another meeting's push", async () => {
     await mount();
     const push = (p: Record<string, unknown>) => act(async () => host.pushes.forEach((fn) => fn(p)));
@@ -312,6 +334,25 @@ describe("a dialog left open", () => {
     view.unmount();
     await mount();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("Agenda's place", () => {
+  it("is put back to today when he leaves a meeting's page for anywhere but Agenda", async () => {
+    const { agendaPlace } = await import("../agenda/place");
+    const far = agendaPlace.get().day + 7 * 86_400_000;
+    let view = await mount();
+    act(() => agendaPlace.set({ view: "week", day: far, adding: null }));
+    // back to Agenda: where he was
+    act(() => openWorkView({ workspaceId: "ws", view: "agenda" }));
+    view.unmount();
+    expect(agendaPlace.get()).toMatchObject({ view: "week", day: far });
+    // away to Mail: the visit is over
+    view = await mount();
+    act(() => openWorkView({ workspaceId: "ws", view: "mail" }));
+    view.unmount();
+    expect(agendaPlace.get()).toMatchObject({ view: "list" });
+    expect(agendaPlace.get().day).not.toBe(far);
   });
 });
 
@@ -367,8 +408,35 @@ describe("Add people", () => {
     expect(host.asked.at(-1)!.params.people).toEqual([{ name: "Priya Raman" }]);
   });
 
+  it("keeps a name he typed in the list, ticked, and Return in the search adds it and never saves", async () => {
+    const dialog = await open();
+    expect((dialog.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    const search = dialog.getByLabelText("Search people");
+    fireEvent.change(search, { target: { value: "Jordan Ellis" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect((search as HTMLInputElement).value).toBe("");
+    expect(dialog.getByRole("checkbox", { name: "Jordan Ellis" }).getAttribute("aria-checked")).toBe("true");
+    expect(host.asked.some((a) => a.method === "work.prep.people")).toBe(false);
+    // unticked, he is still in the list to tick again; typed again, the list has him and offers no second add
+    fireEvent.click(dialog.getByRole("checkbox", { name: "Jordan Ellis" }));
+    fireEvent.change(search, { target: { value: "jordan ellis" } });
+    expect(dialog.queryByRole("button", { name: /by name/ })).toBeNull();
+    expect(dialog.getByRole("checkbox", { name: "Jordan Ellis" }).getAttribute("aria-checked")).toBe("false");
+    // Save is for a change: nothing differs from what the page keeps
+    expect((dialog.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("draws the directory's bones under whoever is already added while it is read", async () => {
+    lifeos.loading = true;
+    host.page = facts({ doc: { ...emptyPrepDoc(), people: [{ name: "Dana Reyes", address: "dana@x.test", personId: "p3" }] } });
+    const dialog = await open();
+    expect(dialog.getByRole("checkbox", { name: "Dana Reyes" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Add people" }).querySelector("[aria-busy]")).not.toBeNull();
+  });
+
   it("says why when the host refuses, and keeps the dialog open", async () => {
     const dialog = await open();
+    fireEvent.click(dialog.getByRole("checkbox", { name: "Sam Whitaker" }));
     host.fails = "only the owner changes a meeting’s page";
     await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Save" })));
     expect(dialog.getByText("Only the owner changes a meeting’s page")).toBeTruthy();
@@ -441,19 +509,35 @@ describe("Brief me", () => {
     // once briefed the header holds no verb; More holds Prepare again and Open thread
     await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));
     expect(head().getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["More"]);
-    expect(await moreRows()).toEqual(["Open thread", "Prepare again", "Add people…", "Add notes…", "New thread about this", "Prepare each morning"]);
+    expect(await moreRows()).toEqual(["Open thread", "Prepare again", "Add people…", "Add notes…", "New thread about this", "Prepare meetings each morning"]);
     cleanup();
     resetPrep();
     await mount();
     expect(screen.getByText("Tom declined; someone else carries the venue form.").parentElement!.className).toBe("");
   });
 
-  it("offers Brief me again when its thread stopped without writing", async () => {
-    // the host's bound on time has run out: the page is back to facts, with the thread still named
+  it("offers Brief me again when its thread stopped without writing, and that press starts a new thread whatever the host's clock says", async () => {
+    // the host still counts the thread as working (it cannot read a thread's status); this window holds the thread and knows it stopped
+    host.page = facts({ rev: 1, state: "working", briefSessionId: "t-brief" });
+    threads.status = { "t-brief": "error" };
+    await mount();
+    expect(screen.queryByLabelText("The brief is being written")).toBeNull();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Brief me" })));
+    expect(host.asked.find((a) => a.method === "work.prep.brief")!.params).toEqual({ workspaceId: "ws", eventId: "ev1", restart: true });
+  });
+
+  it("counts a thread that is starting as at work, and asks for no restart of one it does not hold", async () => {
+    host.page = facts({ rev: 1, state: "working", briefSessionId: "t-brief" });
+    threads.status = { "t-brief": "starting" };
+    await mount();
+    expect(head().getByRole("button", { name: "Preparing" })).toBeTruthy();
+    cleanup();
+    resetPrep();
+    threads.status = {};
     host.page = facts({ rev: 1, state: "none", briefSessionId: "t-brief" });
     await mount();
-    expect(head().getByRole("button", { name: "Brief me" })).toBeTruthy();
-    await more("Prepare each morning");
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Brief me" })));
+    expect(host.asked.find((a) => a.method === "work.prep.brief")!.params).toEqual({ workspaceId: "ws", eventId: "ev1" });
   });
 
   it("says why when the host does not start the thread", async () => {
@@ -470,8 +554,10 @@ describe("Prepare ahead", () => {
     host.page = briefed();
     await mount();
     const offer = () => document.querySelector("[data-prep-offer]");
-    expect(offer()?.textContent).toContain("Prepare each morning’s meetings ahead");
+    // the switch by the one name More gives it
+    expect(offer()?.textContent).toContain("Prepare meetings each morning");
     await act(async () => fireEvent.click(within(offer() as HTMLElement).getByRole("button", { name: "Turn on" })));
+    await vi.waitFor(() => expect(offer()).toBeNull());
     expect(host.asked.find((a) => a.method === "work.prep.ahead")!.params).toEqual({ workspaceId: "ws", on: true, tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
     expect(offer()).toBeNull();
     // never again in this workspace, whatever the page says next time
@@ -501,13 +587,24 @@ describe("Prepare ahead", () => {
     resetPrep();
     host.page = briefed({ aheadOffered: false });
     await mount();
-    expect(await moreRows()).not.toContain("Prepare each morning");
+    expect(await moreRows()).not.toContain("Prepare meetings each morning");
+  });
+
+  it("keeps the offer when the host does not take the switch", async () => {
+    host.page = briefed();
+    await mount();
+    host.fails = "Routines are not running on this host.";
+    await act(async () => fireEvent.click(within(document.querySelector("[data-prep-offer]") as HTMLElement).getByRole("button", { name: "Turn on" })));
+    await act(async () => {});
+    host.fails = null;
+    expect(document.querySelector("[data-prep-offer]")).not.toBeNull();
+    expect((within(document.querySelector("[data-prep-offer]") as HTMLElement).getByRole("button", { name: "Turn on" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("is a check row in More that turns the routine on and off", async () => {
     host.page = briefed({ aheadOn: true });
     await mount();
-    await more("Prepare each morning");
+    await more("Prepare meetings each morning");
     expect(host.asked.find((a) => a.method === "work.prep.ahead")!.params).toMatchObject({ workspaceId: "ws", on: false });
   });
 });
@@ -546,7 +643,7 @@ describe("after the meeting", () => {
     await mount();
     expect(head().getByRole("button", { name: "Add notes" })).toBeTruthy();
     // the header holds it, so More does not say it twice
-    expect(await moreRows()).toEqual(["Add people…", "New thread about this", "Prepare each morning"]);
+    expect(await moreRows()).toEqual(["Add people…", "New thread about this", "Prepare meetings each morning"]);
     await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
     const dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
     expect((dialog.getByRole("button", { name: "Follow up" }) as HTMLButtonElement).disabled).toBe(true);
@@ -576,8 +673,9 @@ describe("after the meeting", () => {
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Notes", "Decided", "To do", "Open questions", "Mail", "Brief", "Last time, Nov 16", "People", "Tasks", "Files"]);
     expect(screen.getByText("The van is settled.")).toBeTruthy();
     // a rejected suggestion is gone; who and when are one muted line
-    expect(rowsOf("To do")).toEqual(["Send Maya the seat listdue Wed, Nov 25", "Confirm jersey sizesTom Beck"]);
-    expect(rowsOf("Mail")).toEqual(["Follow-up to Maya Chen and Tom BeckWaiting for your press"]);
+    // who a task falls to is its muted line; when it is due trails the row, as under Tasks
+    expect(rowsOf("To do")).toEqual(["Send Maya the seat listWed", "Confirm jersey sizesTom Beck"]);
+    expect(rowsOf("Mail")).toEqual(["Follow-up to Maya Chen and Tom BeckWaiting in the Outbox"]);
     // an outcome stands: the header holds no verb
     expect(head().getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["More"]);
   });
@@ -606,19 +704,67 @@ describe("after the meeting", () => {
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "tasks", task: "task-s2" });
   });
 
-  it("says a filing that failed in one line, keeps it ticked-able, and tries again on Retry", async () => {
+  it("names a filing that failed in one line, leaves Retry as the one way to try it again, and keeps the line until the answer is in", async () => {
     host.page = outcome();
     host.refuses = ["s1"];
     await mount();
     fireEvent.click(section("To do").getByRole("button", { name: "Tick all" }));
     await act(async () => fireEvent.click(section("To do").getByRole("button", { name: "Add 2 tasks" })));
-    expect(screen.getByRole("status").textContent).toContain("A task was not added");
+    expect(screen.getByRole("status").textContent).toContain("“Send Maya the seat list” was not added");
     expect(screen.getByRole("status").textContent).toContain("LifeOS did not answer");
     expect(section("To do").getAllByRole("listitem").map((r) => r.getAttribute("data-task-state"))).toEqual(["proposed", "filed"]);
+    // its tick is spent: no second button beside Retry says the same thing
+    expect(section("To do").getByRole("checkbox", { name: "Send Maya the seat list" }).getAttribute("aria-checked")).toBe("false");
+    expect(section("To do").queryByRole("button", { name: /^Add/ })).toBeNull();
+    // a Retry that fails again keeps the line: it never blinks away while the host is asked
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(screen.getByRole("status").textContent).toContain("“Send Maya the seat list” was not added");
     host.refuses = [];
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     expect(host.asked.at(-1)!.params).toMatchObject({ taskIds: ["s1"], decision: "accept" });
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("puts the caret on the task it filed when the button he pressed goes", async () => {
+    vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => (fn(0), 0));
+    host.page = outcome();
+    await mount();
+    fireEvent.click(section("To do").getByRole("checkbox", { name: "Confirm jersey sizes" }));
+    fireEvent.click(section("To do").getByRole("checkbox", { name: "Send Maya the seat list" }));
+    const add = section("To do").getByRole("button", { name: "Add 2 tasks" });
+    add.focus();
+    await act(async () => fireEvent.click(add));
+    await act(async () => {});
+    expect(document.activeElement?.textContent).toContain("Send Maya the seat list");
+    vi.unstubAllGlobals();
+  });
+
+  it("holds the outcome's place with bones while the follow-up thread works, as a brief's is held", async () => {
+    host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "Dana drives.", at: 1 } } });
+    threads.status = { "t-follow": "running" };
+    await mount();
+    expect(head().getByRole("button", { name: "Following up" })).toBeTruthy();
+    expect(screen.getByLabelText("The outcome is being written")).toBeTruthy();
+    host.page = outcome();
+    await push({ push: "work.prep", workspaceId: "ws", eventId: "ev1", rev: 5 });
+    expect(screen.queryByLabelText("The outcome is being written")).toBeNull();
+  });
+
+  it("reads the page again when the Outbox says something is held: the follow-up's mail comes with no write of the page", async () => {
+    host.page = outcome({ drafts: [] });
+    await mount();
+    expect(screen.queryByRole("region", { name: "Mail" })).toBeNull();
+    host.page = outcome();
+    await push({ push: "work.outbox", waiting: 1, unreviewed: 0 });
+    expect(rowsOf("Mail")).toHaveLength(1);
+    // a page with no follow-up thread has no mail to look for
+    cleanup();
+    resetPrep();
+    host.page = facts();
+    await mount();
+    const asked = host.asked.length;
+    await push({ push: "work.outbox", waiting: 1, unreviewed: 0 });
+    expect(host.asked).toHaveLength(asked);
   });
 
   it("dismisses the rest from More, and the mail row opens the Outbox on its draft and sends nothing", async () => {
@@ -633,13 +779,64 @@ describe("after the meeting", () => {
     expect([...new Set(host.asked.map((a) => a.method))].sort()).toEqual(["work.prep.decide", "work.prep.page"]);
   });
 
-  it("folds long notes to six lines until Show all", async () => {
-    host.page = outcome({ doc: { ...outcome().doc, notes: { text: Array.from({ length: 9 }, (_, i) => `Line ${i + 1}`).join("\n"), at: 9 } } });
+  it("folds his notes by what is drawn, not by a guess: two lines once the outcome stands, six while they lead, Show all only when they run past", async () => {
+    // jsdom lays nothing out: a line is 22px, and a clamp holds its count of them.
+    const lines = (el: HTMLElement) => (el.textContent ?? "").split("\n").length;
+    const clampOf = (el: HTMLElement) => (el.className.includes("line-clamp-2") ? 2 : el.className.includes("line-clamp-6") ? 6 : Infinity);
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return lines(this) * 22;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return Math.min(lines(this), clampOf(this)) * 22;
+    });
+    const nine = Array.from({ length: 9 }, (_, i) => `Line ${i + 1}`).join("\n");
+    host.page = outcome({ doc: { ...outcome().doc, notes: { text: nine, at: 9 } } });
     await mount();
-    const notes = section("Notes");
-    expect(notes.getByText(/Line 1/).className).toContain("line-clamp-6");
-    fireEvent.click(notes.getByRole("button", { name: "Show all" }));
-    expect(notes.getByText(/Line 1/).className).not.toContain("line-clamp-6");
+    expect(section("Notes").getByText(/Line 1/).className).toContain("line-clamp-2");
+    fireEvent.click(section("Notes").getByRole("button", { name: "Show all" }));
+    expect(section("Notes").getByText(/Line 1/).className).not.toContain("line-clamp");
+    expect(section("Notes").getByRole("button", { name: "Show less" })).toBeTruthy();
+    // while they lead the page: six lines, and four short ones need no Show all
+    cleanup();
+    resetPrep();
+    host.page = facts({ rev: 2, state: "after", doc: { ...emptyPrepDoc(), notes: { text: "One\nTwo\nThree\nFour", at: 9 } } });
+    await mount();
+    expect(section("Notes").getByText(/One/).className).toContain("line-clamp-6");
+    expect(section("Notes").queryByRole("button", { name: "Show all" })).toBeNull();
+  });
+
+  it("keeps the Notes dialog open on his words when Cancel's save is refused, and opens it again on them when Escape's is", async () => {
+    await mount();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
+    let dialog = within(await screen.findByRole("dialog", { name: "Notes" }));
+    fireEvent.change(dialog.getByLabelText("Notes"), { target: { value: "Half a thought" } });
+    host.fails = "Work is off on this host";
+    await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Cancel" })));
+    await act(async () => {});
+    // still here, with why, and nothing typed lost
+    dialog = within(screen.getByRole("dialog", { name: "Notes" }));
+    expect(dialog.getByText("Work is off on this host")).toBeTruthy();
+    expect((dialog.getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Half a thought");
+    // Escape leaves at once; the save it sends is refused too, so the dialog comes back on his words
+    await act(async () => fireEvent.keyDown(screen.getByRole("dialog", { name: "Notes" }), { key: "Escape" }));
+    await vi.waitFor(() => expect(within(screen.getByRole("dialog", { name: "Notes" })).getByText(/The notes were not kept: Work is off on this host/)).toBeTruthy());
+    expect((within(screen.getByRole("dialog", { name: "Notes" })).getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Half a thought");
+    // once the host answers, Cancel keeps them and the dialog goes
+    host.fails = null;
+    await act(async () => fireEvent.click(within(screen.getByRole("dialog", { name: "Notes" })).getByRole("button", { name: "Cancel" })));
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(within(screen.getByRole("region", { name: "Notes" })).getByText("Half a thought")).toBeTruthy();
+  });
+
+  it("never carries a dialog to another meeting's page", async () => {
+    await mount();
+    await act(async () => fireEvent.click(head().getByRole("button", { name: "Add notes" })));
+    expect(await screen.findByRole("dialog", { name: "Notes" })).toBeTruthy();
+    host.page = facts({ event: { ...facts().event, id: "ev2", title: "Budget review" } });
+    await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev2" }));
+    await act(async () => {});
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Budget review");
   });
 });
 
@@ -703,7 +900,8 @@ describe("a recording or a transcript as the notes", () => {
     workOpenPort.set((id) => void opened.push(id));
     host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, meetingItemId: "it1" } }, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync.vtt" } });
     await mount();
-    expect(rowsOf("Notes")).toEqual(["Staff sync.vttTranscript"]);
+    // the file by its name alone: the heading says what it is
+    expect(rowsOf("Notes")).toEqual(["Staff sync.vtt"]);
     fireEvent.click(section("Notes").getByRole("button", { name: /Staff sync\.vtt/ }));
     expect(opened).toEqual(["t-follow"]);
     workOpenPort.set(null);
@@ -726,7 +924,7 @@ describe("notes written in a document", () => {
     expect(host.asked.some((a) => a.method === "work.prep.followUp")).toBe(false);
     await act(async () => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));
     await vi.waitFor(() => expect(head().getByRole("button", { name: "Follow up" })).toBeTruthy());
-    expect(rowsOf("Notes")).toEqual(["Staff sync notes.docxDocument"]);
+    expect(rowsOf("Notes")).toEqual(["Staff sync notes.docx"]);
     // the row opens the document again until a follow-up thread holds it
     fireEvent.click(section("Notes").getByRole("button", { name: /Staff sync notes/ }));
     await vi.waitFor(() => expect(outside.opened).toHaveLength(2));

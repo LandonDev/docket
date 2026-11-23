@@ -15,7 +15,8 @@ import { BackTitle, PageVerbs, PrepPageBody, PrepSkeleton } from "./PrepView";
  * (a calendar that lists no attendees), `preparing` (a brief thread at work),
  * `briefed` (the brief, with the one-time offer under it), `after` (his notes
  * and what came of them, the tasks waiting for his ticks, the mail that
- * waits), `filed` (two of them in LifeOS), `failed` (a filing LifeOS did not
+ * waits), `after-ticked` (two ticked, the one button counting them), `filed`
+ * (two of them in LifeOS), `failed` (a filing LifeOS did not
  * take), `recording` (the notes are a recording its thread is still reading),
  * and `loading` and `partial` (the bones; a part that did not load). The two
  * dialogs' insides stand still in a panel drawn as the app's: `notes`,
@@ -46,7 +47,7 @@ const FACTS: PrepPage = {
     { id: "t3", title: "Staff handbook update", dueAt: NOW + 9 * DAY },
   ],
   files: [
-    { title: "Join", url: "https://school.zoom.us/j/99887766" },
+    { title: "Join the call", url: "https://school.zoom.us/j/99887766" },
     { title: "Spring LAN run of show", url: "https://docs.google.com/document/d/1AbCdEf/edit" },
   ],
   last: {
@@ -97,15 +98,15 @@ const AFTER: PrepPage = {
   doc: {
     ...emptyPrepDoc(),
     brief: BRIEF,
-    notes: { text: "Seat list goes to Maya Wed.\nDana drives the van to Illinois, leaves 3:30 Fri.\nJerseys: Tom to confirm sizes with the vendor.\nVenue form still not signed, Tom says Monday.\nNo scrim next week (finals).", at: LATER - HOUR },
+    notes: { text: "Seat list goes to Maya Wed.\nDana drives the van to Illinois, leaves 3:30 Fri.\nJerseys: Tom to confirm sizes with the vendor.\nBallroom for the spring LAN: hold runs out Tuesday, nobody decided.\nNo scrim next week (finals).", at: LATER - HOUR },
     after: {
-      summary: [{ text: "The van and the seat list are settled; the venue form is the one thing still open." }],
+      summary: [{ text: "The van and the seat list are settled. The ballroom for the spring LAN is still to decide." }],
       decisions: [{ text: "Dana drives the van to Illinois on Friday, leaving at 3:30" }, { text: "No scrim next week, for finals" }],
-      questions: [{ text: "When the venue form is signed" }],
+      questions: [{ text: "Whether the spring LAN keeps the ballroom" }],
       tasks: [
-        { id: "s1", title: "Send Maya the final seat list", due: at(9, 0, 2), state: "proposed" },
+        { id: "s1", title: "Book the van for Friday", due: at(9, 0, 2), state: "proposed" },
         { id: "s2", title: "Confirm jersey sizes with the vendor", who: "Tom Beck", state: "proposed" },
-        { id: "s3", title: "Get the venue form signed", who: "Tom Beck", due: at(9, 0, 7), state: "proposed" },
+        { id: "s3", title: "Tell the team there is no scrim next week", who: "Dana Reyes", due: at(9, 0, 7), state: "proposed" },
       ],
       at: LATER - 600_000,
     },
@@ -193,7 +194,7 @@ function DialogPreview({ state }: { state: string }) {
       <NotesForm
         text={state === "notes" ? "" : NOTES_TYPED}
         setText={none}
-        pending={!!upload}
+        pending={upload ? "follow" : null}
         upload={upload}
         error={state === "notes-failed" ? "The transcriber is not installed on this host." : null}
         onCancel={none}
@@ -213,7 +214,7 @@ export function PrepPreview({ state = "facts" }: { state?: string }) {
         <PrepSkeleton />
       </Frame>
     );
-  const after = state === "after" || state === "filed" || state === "failed" || state === "recording";
+  const after = state === "after" || state === "after-ticked" || state === "filed" || state === "failed" || state === "recording";
   const page =
     state === "recording" ? RECORDED : state === "nobody" ? NOBODY : state === "partial" ? { ...FACTS, tasks: [], problems: ["tasks" as const] } : state === "preparing" ? PREPARING : state === "briefed" ? BRIEFED : state === "filed" ? FILED : after ? AFTER : FACTS;
   const now = after ? LATER : NOW;
@@ -232,6 +233,7 @@ export function PrepPreview({ state = "facts" }: { state?: string }) {
         onRetry={none}
         onAddPeople={none}
         {...(state === "failed" ? { failedAtFirst: [{ id: "s3", error: "LifeOS did not answer" }] } : {})}
+        {...(state === "after-ticked" ? { tickedAtFirst: ["s1", "s2"] } : {})}
       />
     </Frame>
   );

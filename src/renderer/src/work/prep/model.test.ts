@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyPrepDoc, type PrepEvent, type PrepPage } from "@shared/contract-work-prep";
-import { addedKey, addTasksLabel, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesAreLong, notesFileKind, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, timeWords, uploadWords, whenLine } from "./model";
+import { addedKey, addTasksLabel, briefIsComing, dayWords, draftLine, fileWhere, headVerb, isOver, lastLabel, meetingMark, moreWords, nobodyOn, notesLines, outcomeIsComing, pageThread, personLine, personTrail, pickable, problemWords, shownTasks, suggestionLine, taskLine, failedWords, samePeople, threadStopped, timeWords, uploadPercent, whenLine } from "./model";
 
 /** A meeting's page in words (docs/agents/work-prep.md "The page"): the comma line, each row's second line and what trails it. */
 
@@ -31,11 +31,14 @@ describe("the line under the title", () => {
 });
 
 describe("when a meeting is over", () => {
-  it("is at its end, or an hour after its start when the calendar gave none", () => {
+  it("is at its end; with none, an hour after its start, or a day after it for one that lasts the day", () => {
     expect(isOver(event(), at(14, 44))).toBe(false);
     expect(isOver(event(), at(14, 45))).toBe(true);
     expect(isOver(event({ endsAt: undefined }), at(14, 59))).toBe(false);
     expect(isOver(event({ endsAt: undefined }), at(15))).toBe(true);
+    // one that lasts the day with no end is over a day after it began
+    expect(isOver(event({ endsAt: undefined, allDay: true, startsAt: at(0) }), at(23))).toBe(false);
+    expect(isOver(event({ endsAt: undefined, allDay: true, startsAt: at(0) }), at(0, 0, 24))).toBe(true);
   });
 });
 
@@ -69,8 +72,10 @@ describe("what did not load", () => {
   it("is one sentence, however many parts failed", () => {
     expect(problemWords([])).toBeNull();
     expect(problemWords(["tasks"])).toBe("Tasks did not load");
-    expect(problemWords(["people", "tasks", "people"])).toBe("People and tasks did not load");
-    expect(problemWords(["people", "tasks", "last"])).toBe("People, tasks and last time did not load");
+    // the people are drawn whatever failed: what is missing is what LifeOS says of each
+    expect(problemWords(["people"])).toBe("Their mail and tasks did not load");
+    expect(problemWords(["tasks", "last", "tasks"])).toBe("Tasks and last time did not load");
+    expect(problemWords(["tasks", "last", "drafts"])).toBe("Tasks, last time and the follow-up mail did not load");
   });
 });
 
@@ -93,6 +98,11 @@ describe("who Add people can tick", () => {
       directory,
     );
     expect(got).toEqual([{ name: "Maya Chen", address: "maya@home.test" }, { name: "Dana Reyes" }, { name: "Sam Whitaker", address: "sam@arena.com", personId: "p4" }]);
+  });
+
+  it("keeps a name he typed in this sitting in the list, once, with what the page already keeps", () => {
+    const got = pickable(page({ doc: { ...emptyPrepDoc(), people: [{ name: "Dana Reyes" }] } }), [], [{ name: "Jordan Ellis" }, { name: "dana  reyes" }]);
+    expect(got).toEqual([{ name: "Dana Reyes" }, { name: "Jordan Ellis" }]);
   });
 
   it("knows a person by address, else by folded name, as the host does", () => {
@@ -150,10 +160,10 @@ describe("the header's verb", () => {
 });
 
 describe("the outcome's words", () => {
-  it("says who a task falls to and when it is due as one muted line", () => {
-    expect(suggestionLine({ who: "Tom Beck", due: at(9, 0, 30) }, NOW)).toBe("Tom Beck, due Mon, Nov 30");
-    expect(suggestionLine({ due: at(9, 0, 24) }, NOW)).toBe("due tomorrow");
-    expect(suggestionLine({ who: " " }, NOW)).toBeUndefined();
+  it("says who a task falls to as its muted line; when it is due trails the row, as under Tasks", () => {
+    expect(suggestionLine({ who: "Tom Beck" })).toBe("Tom Beck");
+    expect(suggestionLine({ who: " " })).toBeUndefined();
+    expect(suggestionLine({})).toBeUndefined();
   });
 
   it("counts the ticks, drops what he rejected, and names the mail by who it goes to", () => {
@@ -165,19 +175,53 @@ describe("the outcome's words", () => {
     expect(draftLine({ to: [], subject: " " })).toBe("Follow-up mail");
   });
 
-  it("calls notes long past six lines or a long paragraph", () => {
-    expect(notesAreLong("a\nb\nc")).toBe(false);
-    expect(notesAreLong("1\n2\n3\n4\n5\n6\n7")).toBe(true);
-    expect(notesAreLong("x".repeat(500))).toBe(true);
+  it("shows six lines of his notes while they lead the page, two once the outcome stands over them", () => {
+    const after = { summary: [], decisions: [], questions: [], tasks: [], at: 1 };
+    expect(notesLines({ doc: { ...emptyPrepDoc(), notes: { text: "n", at: 1 } } })).toBe(6);
+    expect(notesLines({ doc: { ...emptyPrepDoc(), notes: { text: "n", at: 1 }, after } })).toBe(2);
+  });
+
+  it("names the one task a filing failed for, and counts more than one", () => {
+    const tasks = [{ id: "s1", title: "Book the van" }, { id: "s2", title: "Order jerseys" }];
+    expect(failedWords([{ id: "s2" }], tasks)).toBe("“Order jerseys” was not added");
+    expect(failedWords([{ id: "gone" }], tasks)).toBe("A task was not added");
+    expect(failedWords([{ id: "s1" }, { id: "s2" }], tasks)).toBe("2 tasks were not added");
   });
 });
 
-describe("a notes file", () => {
-  it("is a transcript by its ending, else a recording, and says how far its upload is", () => {
-    for (const name of ["sync.vtt", "sync.SRT", "notes.txt", "Teams transcript.docx"]) expect(notesFileKind(name), name).toBe("Transcript");
-    for (const name of ["sync.m4a", "call.mp4", "memo"]) expect(notesFileKind(name), name).toBe("Recording");
-    expect(uploadWords("sync.m4a", null)).toBe("Uploading sync.m4a");
-    expect(uploadWords("sync.m4a", { sent: 21, total: 50 })).toBe("Uploading sync.m4a, 42%");
+describe("a thread the window holds", () => {
+  it("is at work while it starts, runs, queues or waits on him; stopped otherwise; unknown when the window does not hold it", () => {
+    for (const status of ["starting", "running", "queued", "waiting"]) expect(threadStopped("t", status), status).toBe(false);
+    for (const status of ["idle", "error", "stopped", "done", "paused", "watching"]) expect(threadStopped("t", status), status).toBe(true);
+    // a thread this window does not hold is not called stopped: the host's own bound on time stands
+    expect(threadStopped("t", undefined)).toBe(false);
+    expect(threadStopped(null, "idle")).toBe(false);
+  });
+
+  it("shows the outcome's bones only while the follow-up works and has written nothing", () => {
+    const after = { summary: [], decisions: [], questions: [], tasks: [], at: 1 };
+    expect(outcomeIsComing({ doc: emptyPrepDoc() }, "following")).toBe(true);
+    expect(outcomeIsComing({ doc: { ...emptyPrepDoc(), after } }, "following")).toBe(false);
+    expect(outcomeIsComing({ doc: emptyPrepDoc() }, "followUp")).toBe(false);
+  });
+});
+
+describe("a notes file's upload", () => {
+  it("is a whole per cent once the size is known, and nothing before", () => {
+    expect(uploadPercent(null)).toBeNull();
+    expect(uploadPercent({ sent: 0, total: 0 })).toBeNull();
+    expect(uploadPercent({ sent: 21, total: 50 })).toBe(42);
+    expect(uploadPercent({ sent: 60, total: 50 })).toBe(100);
+  });
+});
+
+describe("what Save has to change", () => {
+  it("is nothing when the same people are ticked, in any order", () => {
+    const dana = { name: "Dana Reyes", address: "dana@x.test" };
+    const tom = { name: "Tom Beck" };
+    expect(samePeople([dana, tom], [tom, { ...dana, address: "DANA@x.test" }])).toBe(true);
+    expect(samePeople([dana], [dana, tom])).toBe(false);
+    expect(samePeople([], [])).toBe(true);
   });
 });
 

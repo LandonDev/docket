@@ -90,7 +90,7 @@ export interface FoundLink {
 
 /**
  * The links in an event's description and place, http and https only, each
- * once, in the order written. A meeting's join link is named "Join"; any
+ * once, in the order written. A meeting's join link is named "Join the call"; any
  * other is named by its last path word, or its site when it has none.
  */
 export function linksIn(...texts: (string | null | undefined)[]): FoundLink[] {
@@ -111,7 +111,7 @@ export function linksIn(...texts: (string | null | undefined)[]): FoundLink[] {
         // One way in is enough: a description often repeats the call's link in three forms.
         if (joined) continue
         joined = true
-        found.set(url.href, { title: 'Join', url: url.href })
+        found.set(url.href, { title: 'Join the call', url: url.href })
         continue
       }
       const tail = url.pathname.split('/').filter(Boolean).pop()

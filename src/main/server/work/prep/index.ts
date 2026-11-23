@@ -1,6 +1,6 @@
 import { PREP_UPCOMING_MAX_MS, PREP_WORKING_MS, type PrepAddedPerson, type PrepPage } from '@shared/contract-work-prep'
 import { errorText, handled, NOT_HANDLED, type CanvasSource } from '@shared/work'
-import type { Caller, WorkCtx, WorkModule } from '../modules'
+import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from '../modules'
 import { aheadOf, setAhead } from './ahead'
 import { decideTasks } from './after'
 import { eventOf, fileTitle, gather, standing, startDoc, upcoming } from './gather'
@@ -17,6 +17,9 @@ import { workspaceSector } from './workspace'
  * workspace’s host. A Work thread writes the brief or outcome with tools.
  * The pillar declares no act kind.
  */
+
+/** This host's own caller, for a read prep makes of another pillar. */
+const HOST: Caller = { kind: 'local', caps: ['read'] }
 
 /** The starter the notes document is made from; his own template saved as "Meeting notes" takes its place (work-templates.md). */
 export const NOTES_TEMPLATE = 'any/meeting-notes'
@@ -72,15 +75,37 @@ async function makeNotesDoc(ctx: WorkCtx, by: Caller, workspaceId: string, event
   return { page: (await gather(ctx, workspaceId, eventId, now)).page, source: made.source, title: made.source.at === 'file' ? fileTitle(made.source.path) : made.title }
 }
 
-async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, kind: 'brief' | 'follow', recording?: { name: string }): Promise<{ sessionId: string; itemId?: string }> {
-  const { page, event, row, last } = await gather(ctx, workspaceId, eventId)
+/** Whether a meeting item holds a file to read: asked of the meetings pillar's own `get`; any doubt is no. */
+async function meetingHasFile(ctx: WorkCtx, itemId: string): Promise<boolean> {
+  try {
+    const meetings = WORK_MODULES.find((m) => m.id === 'meetings')
+    const answer = await meetings?.handle?.({ id: 'prep', method: 'work.meetings.get', params: { itemId } }, ctx, HOST)
+    const meeting = answer?.handled ? (answer.result as { meeting?: { status?: string } | null }).meeting : null
+    return !!meeting && meeting.status !== 'empty'
+  } catch {
+    return false
+  }
+}
+
+async function startThread(ctx: WorkCtx, workspaceId: string, eventId: string, kind: 'brief' | 'follow', opts: { recording?: { name: string }; restart?: boolean } = {}): Promise<{ sessionId: string; itemId?: string }> {
+  const gathered = await gather(ctx, workspaceId, eventId)
+  const { event, row, last } = gathered
+  let { page } = gathered
+  const { recording } = opts
   const follow = kind === 'follow'
+  // A recording that never arrived (its upload failed) is no notes: a follow-up from typed words leaves its empty meeting behind.
+  const stale = follow && !recording && page.doc.notes?.meetingItemId && !(await meetingHasFile(ctx, page.doc.notes.meetingItemId)) ? page.doc.notes : null
+  if (stale) {
+    const { meetingItemId: _gone, ...kept } = stale
+    page = { ...page, notesFile: null, doc: { ...page.doc, notes: kept.text || kept.file ? kept : null } }
+  }
   if (follow && !page.doc.notes && !recording) throw new Error('Add notes first.')
   const existing = follow ? row?.followSessionId : row?.briefSessionId
   const startedAt = follow ? row?.followAt : row?.briefAt
   const writtenAt = follow ? page.doc.after?.at : page.doc.brief?.at
   const now = Date.now()
-  if (existing && startedAt != null && now - startedAt < PREP_WORKING_MS && (writtenAt === undefined || writtenAt < startedAt)) {
+  // A thread the window knows has stopped, or one whose recording never arrived, is not waited on.
+  if (!opts.restart && !stale && existing && startedAt != null && now - startedAt < PREP_WORKING_MS && (writtenAt === undefined || writtenAt < startedAt)) {
     // The thread still at work keeps its own meeting; a second recording is not opened beside it.
     return { sessionId: existing, ...(follow && page.doc.notes?.meetingItemId ? { itemId: page.doc.notes.meetingItemId } : {}) }
   }
@@ -141,7 +166,8 @@ export const prep: WorkModule = {
         const { workspaceId, eventId } = req.params
         const kind = req.method === 'work.prep.brief' ? 'brief' : 'follow'
         const recording = req.method === 'work.prep.followUp' ? req.params.recording : undefined
-        return handled(await changeInOrder(ctx, [workspaceId, eventId], () => startThread(ctx, workspaceId, eventId, kind, recording)))
+        const restart = req.params.restart === true
+        return handled(await changeInOrder(ctx, [workspaceId, eventId], () => startThread(ctx, workspaceId, eventId, kind, { ...(recording ? { recording } : {}), restart })))
       }
       case 'work.prep.notesDoc': {
         mustBePerson(by)
