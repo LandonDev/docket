@@ -54,7 +54,8 @@ export const CELL_STYLES = [
   'cellCurrency',
   'cellNumber',
   'cellDate',
-  'inputTerms'
+  'inputTerms',
+  'sectionRight'
 ] as const
 export type CellStyle = (typeof CELL_STYLES)[number]
 
@@ -214,7 +215,8 @@ const XFS: Record<CellStyle, Xf> = {
   cellCurrency: { style: 'Currency', border: 6, fmt: 164 },
   cellNumber: { style: 'Normal', border: 6, fmt: 168 },
   cellDate: { style: 'Normal', border: 6, fmt: 165, align: LEFT },
-  inputTerms: { style: 'Input', fill: 2, border: 4, fmt: 170, align: LEFT }
+  inputTerms: { style: 'Input', fill: 2, border: 4, fmt: 170, align: LEFT },
+  sectionRight: { style: 'Heading 2', font: 2, border: 2, fmt: 169, align: RIGHT }
 }
 const STYLE_INDEX = new Map(CELL_STYLES.map((s, i) => [s, i]))
 
@@ -280,7 +282,7 @@ export function themeXml(): string {
 
 // ── sheets ────────────────────────────────────────────────────────────
 
-const ROW_HEIGHT: Partial<Record<CellStyle, number>> = { title: 30, section: 22, head: 20, headRight: 20, headCenter: 20 }
+const ROW_HEIGHT: Partial<Record<CellStyle, number>> = { title: 30, section: 22, sectionRight: 22, head: 20, headRight: 20, headCenter: 20 }
 
 interface Strings {
   index(text: string): number

@@ -11,7 +11,9 @@ import { partBytes, partText, readZip } from '../zip'
 import { DECKS } from './decks'
 import { DOCS } from './docs'
 import { STARTERS, starterFile, starterKey } from './manifest'
-import { SHEETS } from './sheets'
+import { invoice, SHEETS } from './sheets'
+import { SIGNATURE_HEIGHT } from './docx'
+import { writeXlsx, type CellIn } from './xlsx'
 
 /*
  * Our starter templates as checked in (resources/work-templates, built by
@@ -207,7 +209,7 @@ describe('the starter sheets', () => {
     expect(strings.indexOf('<t>City, state, ZIP</t>')).toBeGreaterThan(-1)
     expect(sheet).toMatch(/<c r="A6" s="\d+" t="s">/)
     // A line's amount waits for both its quantity and its rate.
-    expect(sheet).toContain('<f>IF(AND(ISNUMBER(B15),ISNUMBER(C15)),B15*C15,"")</f>')
+    expect(sheet).toContain('<f>IF(AND(ISNUMBER(B15),ISNUMBER(C15)),ROUND(B15*C15,2),"")</f>')
     expect(sheet).toContain('<f>SUM(D15:D22)</f>')
     // A short row parts the Payment heading's rule from the note, which sits in the middle of its box.
     expect(sheet).toContain('<row r="29" ht="6" customHeight="1"></row>')
@@ -252,5 +254,92 @@ describe('the starters, round two of the council', () => {
     expect(monthly).toContain('<f>IF(COUNT(C5:C6)=0,"",SUM(D5:D6))</f>')
     expect(monthly).toContain('<f>IF(COUNT(C10:C22)=0,"",SUM(D10:D22))</f>')
     expect(monthly).toContain('<f>IF(AND(COUNT(C5:C6)&gt;0,COUNT(C10:C22)&gt;0),C7-C23,"")</f>')
+  })
+})
+
+/** Every word of a document's blocks, table cells too. */
+const wordsOf = (blocks: readonly { content?: unknown; children?: unknown[] }[]): string[] =>
+  blocks.flatMap((b) => {
+    const own = Array.isArray(b.content)
+      ? [(b.content as { text?: string }[]).map((x) => x.text ?? '').join('')]
+      : b.content && typeof b.content === 'object' && 'rows' in b.content
+        ? (b.content as { rows: { cells: { content: { text?: string }[] }[] }[] }).rows.flatMap((r) => r.cells.map((c) => c.content.map((x) => x.text ?? '').join('')))
+        : []
+    return [...own, ...wordsOf((b.children ?? []) as never)]
+  })
+/** Every string in a value: a deck's titles, bullets, cells and names. */
+const stringsOf = (v: unknown): string[] => (typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(stringsOf) : v && typeof v === 'object' ? Object.values(v).flatMap(stringsOf) : [])
+
+describe('the starters, round three of the council', () => {
+  it('the Video brief asks for the publish date once, in its Schedule', () => {
+    const words = wordsOf(DOCS['hypixel/video-brief']!().blocks)
+    expect(words).not.toContain('Publish date')
+    expect(words).toContain('Publish')
+  })
+
+  it.each(['unify/Proposal.docx', 'unify/Statement of work.docx'])('%s: the row to sign on stands 28 pt tall, its table whole, with nothing dropped on read-back', (file) => {
+    const xml = partOf(file, 'word/document.xml')
+    const table = (xml.match(/<w:tbl>[\s\S]*?<\/w:tbl>/g) ?? []).find((t) => t.includes('>Signature:<'))!
+    const rows = table.match(/<w:tr>[\s\S]*?<\/w:tr>/g)!
+    const sign = rows.find((r) => /<w:t[^>]*>Signature:<\/w:t>/.test(r))!
+    expect(sign).toContain(SIGNATURE_HEIGHT)
+    expect(rows.filter((r) => r.includes('w:trHeight'))).toHaveLength(1)
+    expect(readDocx(bytesOf(file)).sidecar.dropped).toEqual({})
+  })
+
+  it('the Invoice rounds each line and its tax to the cent it shows, so the lines add up to the total', () => {
+    const sheet = partOf('unify/Invoice.xlsx', 'xl/worksheets/sheet1.xml')
+    expect(sheet).toContain('<f>IF(AND(ISNUMBER(B15),ISNUMBER(C15)),ROUND(B15*C15,2),"")</f>')
+    expect(sheet).toContain('<f>ROUND(D23*D24,2)</f>')
+    // Three lines at a third of a dollar: each shows $0.33, and the total is $0.99, not $1.00.
+    const fractional = importXlsx(writeXlsx(invoice([['One', 1, 0.3333], ['Two', 1, 0.3333], ['Three', 1, 0.3333]]))).workbook
+    const cells = Object.values(fractional.sheets)[0]!.cellData!
+    const amounts = [14, 15, 16].map((r) => cells[r]![3]!.v as number)
+    expect(amounts).toEqual([0.33, 0.33, 0.33])
+    expect(cells[22]![3]!.v).toBe(0.99)
+  })
+
+  it.each(Object.keys(SHEETS))('%s: the top block keeps one left edge, its labels in column A', (key) => {
+    for (const sheet of SHEETS[key]!()) {
+      const isHead = (c: CellIn): boolean => !!c && typeof c === 'object' && /^head/.test(c.s ?? '')
+      const top = sheet.rows.slice(0, Math.max(0, sheet.rows.findIndex((row) => row.some(isHead))))
+      for (const row of top)
+        row.forEach((cell, i) => {
+          // A grey word beside a value ("per mile") is its unit, not a label.
+          if (cell && typeof cell === 'object' && ['title', 'label', 'section'].includes(cell.s ?? '') && cell.v !== undefined) expect(i, `${key}: ${String(cell.v)}`).toBe(0)
+        })
+    }
+    // The count of what is done has one shape wherever it stands: a Progress label in A, the count beside it.
+    for (const sheet of SHEETS[key]!())
+      for (const row of sheet.rows) {
+        const count = row.findIndex((c) => !!c && typeof c === 'object' && /done"$/.test(c.f ?? ''))
+        if (count >= 0) {
+          expect(count).toBe(1)
+          expect((row[0] as { v?: string }).v).toBe('Progress')
+        }
+      }
+  })
+
+  it('the Monthly budget’s Summary says which figure is planned and which actual', () => {
+    const row = SHEETS['life/monthly-budget']!()[0]!.rows.find((r) => (r[0] as { v?: string } | null)?.v === 'Summary')!
+    expect([row[1], row[2]].map((c) => (c as { v?: string }).v)).toEqual(['Planned', 'Actual'])
+  })
+
+  it('the run of show names roles from its Contacts, Host among them; the meeting’s discussion follows its agenda; the trip asks for the stay’s phone', () => {
+    const show = DOCS['purdue/event-run-of-show']!().blocks.filter((b) => b.type === 'table').map((b) => (b.content as { rows: { cells: { content: { text?: string }[] }[] }[] }).rows.map((r) => r.cells.map((c) => c.content.map((x) => x.text ?? '').join(''))))
+    const contacts = show.find((t) => t[0]![0] === 'Role')!.slice(1).map((r) => r[0])
+    const owners = show.find((t) => t[0]![0] === 'Time')!.slice(1).map((r) => r[3])
+    expect(contacts).toContain('Host')
+    for (const owner of owners) expect(contacts).toContain(owner)
+    const meeting = wordsOf(DOCS['any/meeting-notes']!().blocks)
+    for (const topic of ['Topic one', 'Topic two', 'Topic three']) expect(meeting.filter((w) => w === topic)).toHaveLength(2)
+    const trip = wordsOf(DOCS['life/trip-plan']!().blocks)
+    expect(trip).toContain('The stay’s phone:')
+    expect(trip).not.toContain('Where we are staying:')
+  })
+
+  it.each(Object.keys(DECKS))('%s: every word on the slides wears typographic quotes, and the goals read right at any point in a term', (key) => {
+    for (const text of stringsOf(DECKS[key])) expect(text, key).not.toMatch(/["']/)
+    if (key === 'purdue/program-update') expect(stringsOf(DECKS[key])).toContain('Goals so far')
   })
 })

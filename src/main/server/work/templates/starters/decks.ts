@@ -14,7 +14,7 @@ export const DECKS: Record<string, NewDeck> = {
     title: 'Update briefing',
     slides: [
       { layout: 'title', title: '{{Update}}', subtitle: '{{Job}} · {{Date}}' },
-      { layout: 'bullets', title: "What's in it", bullets: ['Headline feature, in one line', 'Second feature, in one line', 'Balance and quality changes', 'Fixes players asked for'] },
+      { layout: 'bullets', title: 'What’s in it', bullets: ['Headline feature, in one line', 'Second feature, in one line', 'Balance and quality changes', 'Fixes players asked for'] },
       {
         layout: 'table',
         title: 'Timeline',
@@ -81,7 +81,7 @@ export const DECKS: Record<string, NewDeck> = {
       },
       {
         layout: 'table',
-        title: 'Goals at mid-term',
+        title: 'Goals so far',
         table: [
           ['Goal', 'Target', 'Result', 'Status'],
           ['Goal one', '100', '104', 'Done'],

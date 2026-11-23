@@ -172,6 +172,15 @@ function themeBody(xml: string): string {
   )
 }
 
+/**
+ * A row to sign on stands tall enough for a pen: 28 pt at least. The row is
+ * the one whose first cell starts with "Signature:" (the acceptance tables of
+ * the Proposal and the Statement of work). Our reader keeps no row height and
+ * counts none lost, so the editor shows the row at its words' height.
+ */
+export const SIGNATURE_HEIGHT = '<w:trHeight w:val="560" w:hRule="atLeast"/>'
+const isSignatureRow = (row: string): boolean => /^Signature:/.test(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/.exec(row)?.[1] ?? '')
+
 /** A paragraph that stays on the page of the one after it. `w:keepNext` stands right after the paragraph's style, as the schema orders a paragraph's properties. */
 export function keepNext(p: string): string {
   if (p.includes('<w:keepNext/>')) return p
@@ -205,6 +214,7 @@ export function keepTogether(xml: string): string {
       text = text.replace(/<w:tr>[\s\S]*?<\/w:tr>/g, (row) => {
         let kept = row.replace(/^<w:tr>(?!<w:trPr>)/, '<w:tr><w:trPr><w:cantSplit/></w:trPr>').replace(/^<w:tr><w:trPr>(?!<w:cantSplit\/>)/, '<w:tr><w:trPr><w:cantSplit/>')
         if (r++ < rows - 1) kept = kept.replace(/<w:p\/>|<w:p>[\s\S]*?<\/w:p>/g, keepNext)
+        if (isSignatureRow(kept)) kept = kept.replace('<w:trPr><w:cantSplit/>', `<w:trPr><w:cantSplit/>${SIGNATURE_HEIGHT}`)
         return kept
       })
     } else if (!isHeading(text) && ((isList(text) && isList(next)) || (!isList(text) && (next.startsWith('<w:tbl>') || isList(next))))) text = keepNext(text)

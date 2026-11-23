@@ -24,15 +24,19 @@ const span = (first: CellIn, n: number, s: CellStyle): CellIn[] => [first, ...Ar
 const range = (from: number, to: number): number[] => Array.from({ length: to - from + 1 }, (_, i) => from + i)
 const YES_NO = ['Yes', 'No']
 
-function invoice(): SheetIn[] {
+/** The Invoice's sample lines: [what, quantity, rate]. */
+export const INVOICE_LINES: readonly [string, number, number][] = [
+  ['Item one: what was done or supplied', 1, 1200],
+  ['Item two', 4, 150],
+  ['Item three', 2, 75]
+]
+
+/** The Invoice, with its sample lines or the ones a test gives. */
+export function invoice(lines: readonly [string, number, number][] = INVOICE_LINES): SheetIn[] {
   const first = 15
   const last = 22
-  const lines: [string, number, number][] = [
-    ['Item one: what was done or supplied', 1, 1200],
-    ['Item two', 4, 150],
-    ['Item three', 2, 75]
-  ]
-  const subtotal = sum(lines.map(([, qty, rate]) => qty * rate))
+  // Each line's amount is rounded to the cent it shows, so the printed lines add up to the printed total.
+  const subtotal = sum(lines.map(([, qty, rate]) => cents(qty * rate)))
   const rows: CellIn[][] = [
     span(c('Invoice', 'title'), 4, 'title'),
     [],
@@ -52,11 +56,11 @@ function invoice(): SheetIn[] {
     ...range(first, last).map((r, i) => {
       const [what, qty, rate] = lines[i] ?? [null, null, null]
       // A line has an amount once both its quantity and its rate are numbers; an entered zero still counts.
-      return [c(what, 'cell'), c(qty, 'cellNumber'), c(rate, 'cellCurrency'), f(`IF(AND(ISNUMBER(B${r}),ISNUMBER(C${r})),B${r}*C${r},"")`, 'cellCurrency', qty === null || rate === null ? '' : cents(qty * rate))]
+      return [c(what, 'cell'), c(qty, 'cellNumber'), c(rate, 'cellCurrency'), f(`IF(AND(ISNUMBER(B${r}),ISNUMBER(C${r})),ROUND(B${r}*C${r},2),"")`, 'cellCurrency', qty === null || rate === null ? '' : cents(qty * rate))]
     }),
     [null, null, c('Subtotal', 'labelRight'), f(`SUM(D${first}:D${last})`, 'currency', subtotal)],
     [null, null, c('Tax rate', 'labelRight'), c(0, 'inputPercent')],
-    [null, null, c('Tax', 'labelRight'), f(`D${last + 1}*D${last + 2}`, 'currency', 0)],
+    [null, null, c('Tax', 'labelRight'), f(`ROUND(D${last + 1}*D${last + 2},2)`, 'currency', 0)],
     [c(null, 'total'), c(null, 'total'), c('Total due', 'totalLabel'), f(`D${last + 1}+D${last + 3}`, 'totalCurrency', subtotal)],
     [],
     span(c('Payment', 'section'), 4, 'section'),
@@ -92,7 +96,7 @@ function releaseChecklist(): SheetIn[] {
     span(c('Release checklist: {{Version}}', 'title'), 6, 'title'),
     [c('Updated {{Date}} by {{Name}}', 'muted')],
     // A Yes counts only on a row that holds a step: a phase row or a stray Yes below the list adds nothing.
-    [null, f('COUNTIFS(B6:B40,"<>",E6:E40,"Yes")&" of "&COUNTA(B6:B40)&" steps done"', 'label', `0 of ${steps} steps done`)],
+    [c('Progress', 'label'), f('COUNTIFS(B6:B40,"<>",E6:E40,"Yes")&" of "&COUNTA(B6:B40)&" steps done"', 'normal', `0 of ${steps} steps done`)],
     [],
     [c('#', 'headCenter'), c('Step', 'head'), c('Owner', 'head'), c('Due', 'head'), c('Done', 'headCenter'), c('Notes', 'head')]
   ]
@@ -105,7 +109,7 @@ function releaseChecklist(): SheetIn[] {
     done.push(`E${from}:E${rows.length}`)
   }
   // The Done list on the step rows alone, not on a phase's row.
-  return [{ name: 'Checklist', cols: [5, 52, 16, 14, 8, 36], rows, freeze: 5, printTitles: [5, 5], landscape: true, lists: [{ range: done.join(' '), values: YES_NO }], header: '&L{{Job}}&R{{Version}}' }]
+  return [{ name: 'Checklist', cols: [11, 46, 16, 14, 8, 36], rows, freeze: 5, printTitles: [5, 5], landscape: true, lists: [{ range: done.join(' '), values: YES_NO }], header: '&L{{Job}}&R{{Version}}' }]
 }
 
 function shotList(): SheetIn[] {
@@ -123,8 +127,8 @@ function shotList(): SheetIn[] {
   const rows: CellIn[][] = [
     span(c('Shot list: {{Video}}', 'title'), 8, 'title'),
     [c('Prepared by {{Name}} · {{Date}}', 'muted')],
-    [null, c('Shoot date', 'label'), c(null, 'inputDate')],
-    [null, c('Progress', 'label'), f(`COUNTIFS(C${head + 1}:C${head + 20},"<>",H${head + 1}:H${head + 20},"Yes")&" of "&COUNTA(C${head + 1}:C${head + 20})&" shots done"`, 'normal', `0 of ${shots.length} shots done`)],
+    [c('Shoot date', 'label'), c(null, 'inputDate')],
+    [c('Progress', 'label'), f(`COUNTIFS(C${head + 1}:C${head + 20},"<>",H${head + 1}:H${head + 20},"Yes")&" of "&COUNTA(C${head + 1}:C${head + 20})&" shots done"`, 'normal', `0 of ${shots.length} shots done`)],
     [],
     ['#', 'Scene', 'Shot', 'Framing', 'Movement', 'Location', 'Notes', 'Done'].map((h) => c(h, h === '#' || h === 'Done' ? 'headCenter' : 'head')),
     ...range(1, 20).map((i) => {
@@ -136,7 +140,7 @@ function shotList(): SheetIn[] {
   return [
     {
       name: 'Shots',
-      cols: [5, 14, 38, 19, 12, 16, 30, 8],
+      cols: [11, 14, 34, 19, 12, 16, 28, 8],
       rows,
       freeze: head,
       printTitles: [head, head],
@@ -302,7 +306,8 @@ function monthlyBudget(): SheetIn[] {
     ...expenses.map(([name, planned], i) => line(name, planned, eFirst + i, -1)),
     totalRow('Total expenses', eFirst, eLast, expenseTotal),
     [],
-    span(c('Summary', 'section'), 5, 'section'),
+    // The Summary's figures say which side they are, as Income's and Expenses' do.
+    [c('Summary', 'section'), c('Planned', 'sectionRight'), c('Actual', 'sectionRight'), c(null, 'section'), c(null, 'section')],
     [c('Left over', 'label'), f(`B${iTotal}-B${eTotal}`, 'currency', cents(incomeTotal - expenseTotal)), f(`IF(AND(COUNT(C${iFirst}:C${iLast})>0,COUNT(C${eFirst}:C${eLast})>0),C${iTotal}-C${eTotal},"")`, 'currency', ''), null, c('Income less expenses', 'muted')],
     [c('Saved', 'label'), f(`IF(N(B${iTotal})>0,B${savings}/B${iTotal},"")`, 'percent', saved / incomeTotal), f(`IF(AND(N(C${iTotal})>0,ISNUMBER(C${savings})),C${savings}/C${iTotal},"")`, 'percent', ''), null, c('Savings as a share of income', 'muted')]
   ]

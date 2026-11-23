@@ -40,6 +40,8 @@ export const DOCS: Record<string, () => DocFixture> = {
         ...d.bullets(['The main points raised, one per line.', 'Questions left open.']),
         d.h3('Topic two'),
         ...d.bullets(['The main points raised, one per line.']),
+        d.h3('Topic three'),
+        ...d.bullets(['The main points raised, one per line.']),
         d.h2('Decisions'),
         ...d.bullets(['Decision one, and who made it.']),
         d.h2('Action items'),
@@ -142,7 +144,6 @@ export const DOCS: Record<string, () => DocFixture> = {
         d.facts([
           ['Producer', '{{Name}}'],
           ['Brief date', '{{Date}}'],
-          ['Publish date', 'Date'],
           ['Length', 'Target running time'],
           ['Where it runs', 'Channel, platform, and format (16:9, 9:16)']
         ]),
@@ -267,7 +268,8 @@ export const DOCS: Record<string, () => DocFixture> = {
             ['Event lead', '{{Name}}', ''],
             ['Production', 'Person one', ''],
             ['Venue', 'Person two', ''],
-            ['Safety and first aid', 'Person three', '']
+            ['Host', 'Person three', ''],
+            ['Safety and first aid', 'Person four', '']
           ]
         ),
         d.h2('If something goes wrong'),
@@ -278,11 +280,11 @@ export const DOCS: Record<string, () => DocFixture> = {
           [
             ['Time', 'Segment', 'Details and cues', 'Owner'],
             ['00:00', 'Crew call', 'Set up, power, and network checks.', 'Production'],
-            ['00:00', 'Doors open', 'Check-in desk staffed; music on.', 'Person one'],
+            ['00:00', 'Doors open', 'Check-in desk staffed; music on.', 'Venue'],
             ['00:00', 'Welcome', 'Host on stage; slides on screen one.', 'Host'],
-            ['00:00', 'Segment one', 'What happens, and the cue to start it.', 'Person two'],
+            ['00:00', 'Segment one', 'What happens, and the cue to start it.', 'Event lead'],
             ['00:00', 'Break', 'Fifteen minutes; reset the stage.', 'Production'],
-            ['00:00', 'Segment two', 'What happens, and the cue to start it.', 'Person two'],
+            ['00:00', 'Segment two', 'What happens, and the cue to start it.', 'Event lead'],
             ['00:00', 'Close', 'Thanks, next event, photos.', 'Host'],
             ['00:00', 'Load out', 'Strike, pack and return the room.', 'Production']
           ]
@@ -551,7 +553,7 @@ export const DOCS: Record<string, () => DocFixture> = {
         d.h2('Packing'),
         ...d.checks(['Clothes for the weather', 'Chargers and adapters', 'Medicines', 'Documents']),
         d.h2('Contacts'),
-        ...d.bullets(['Emergency contact:', 'Where we are staying:'])
+        ...d.bullets(['Emergency contact:', 'The stay’s phone:'])
       ]
     }
   },
