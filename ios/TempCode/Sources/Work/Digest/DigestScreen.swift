@@ -104,12 +104,11 @@ struct DigestScreen: View {
         .accessibilityIdentifier("digest")
     }
 
+    /// Every host at once: one task each, started before the first is awaited (a task group's main-actor
+    /// child stops Swift 6.4's region checker).
     private func load(_ hosts: [EnvironmentClient]) async {
-        await withTaskGroup(of: Void.self) { group in
-            for client in hosts {
-                group.addTask { @MainActor in await client.work.digest.load() }
-            }
-        }
+        let reads = hosts.map { client in Task { @MainActor in await client.work.digest.load() } }
+        for read in reads { await read.value }
     }
 
     private func markSeen(_ days: [DigestModel.Day]) async {

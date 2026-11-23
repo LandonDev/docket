@@ -77,20 +77,15 @@ public final class WorkDigest {
 
     /// One change written to every host with Work on, at once; answers each host that refused, with why, by environment id.
     public static func setAll(_ hosts: [(environmentId: String, digest: WorkDigest)], at: String? = nil, levels: [String: TellLevel]? = nil) async -> [String: String] {
-        await withTaskGroup(of: (String, String?).self) { group in
-            for host in hosts {
-                group.addTask { @MainActor in
-                    do {
-                        try await host.digest.set(at: at, levels: levels)
-                        return (host.environmentId, nil)
-                    } catch {
-                        return (host.environmentId, ActionError.wrap(error).message)
-                    }
-                }
-            }
-            var refused: [String: String] = [:]
-            for await (id, error) in group { if let error { refused[id] = error } }
-            return refused
+        // One task per host, all started before the first is awaited. A task group's main-actor child here
+        // stops Swift 6.4's region checker ("a pattern it does not understand").
+        let writes = hosts.map { host in
+            (host.environmentId, Task { @MainActor in _ = try await host.digest.set(at: at, levels: levels) })
         }
+        var refused: [String: String] = [:]
+        for (id, write) in writes {
+            do { try await write.value } catch { refused[id] = ActionError.wrap(error).message }
+        }
+        return refused
     }
 }
