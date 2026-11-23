@@ -514,6 +514,32 @@ describe("tabs", () => {
     }
   });
 
+  it("starts Excel for a library's workbook only where the host seated it on Excel: in our own sheet editor no app is started", async () => {
+    const sheet = file("/cloud/Staff/General/Roster.xlsx", "sheet", { key: "lib:esportsstaffgeneral:Roster.xlsx", shared: true });
+    const old = file("/cloud/Staff/General/Old.xls", "sheet", { key: "lib:esportsstaffgeneral:Old.xls", shared: true });
+    const host = newHost();
+    const answer = host.answer.bind(host);
+    host.answer = (method, params) => {
+      if (method === "work.files.list" && (params.at as { path?: string }).path === "/cloud/Staff/General") return { entries: [sheet, old], cursor: null };
+      const got = answer(method, params) as { item?: { source: unknown } };
+      // The host seats a form no editor of ours edits in place on its Office app.
+      if (method === "work.files.open" && params.name === "Old.xls") got.item!.source = { at: "microsoft", host: "env_box", app: "excel", name: "Old.xls", ref: { kind: "path", path: "/cloud/Staff/General/Old.xls" } };
+      return got;
+    };
+    await mount(host);
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Esports Staff" }));
+    fireEvent.doubleClick(await waitFor(() => row("General")));
+    await waitFor(() => expect(rows()).toContain("Roster.xlsx"));
+    fireEvent.doubleClick(row("Roster.xlsx"));
+    await waitFor(() => expect(tabNames()).toContain("Roster.xlsx"));
+    expect(calls(host, "work.office.filesOpen")).toEqual([]);
+    fireEvent.pointerDown(within(screen.getByRole("tablist", { name: "Open tabs" })).getAllByRole("tab")[0]!, { button: 0 });
+    await waitFor(() => expect(rows()).toContain("Old.xls"));
+    fireEvent.doubleClick(row("Old.xls"));
+    await waitFor(() => expect(tabNames()).toContain("Old.xls"));
+    expect(calls(host, "work.office.filesOpen")).toMatchObject([{ params: { source: { at: "file", host: "env_box", path: "/cloud/Staff/General/Old.xls" } } }]);
+  });
+
   it("closes a tab and returns to the tab it was opened from; the last one closed is the workspace's folder again", async () => {
     const { host } = await mount();
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));

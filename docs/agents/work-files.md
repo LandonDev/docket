@@ -185,7 +185,7 @@ the first paint.
 
 | The file | Opens |
 |---|---|
-| on the workspace's host, a kind a canvas shows | in a tab (`work.files.open`); a cloud-only file is fetched first, its row saying "Downloading…"; a library's Office file is opened in its app first, which then stands behind the item |
+| on the workspace's host, a kind a canvas shows | in a tab (`work.files.open`); a cloud-only file is fetched first, its row saying "Downloading…". A library's Office file whose form an editor of ours edits in place (`registerFileMaker`'s `forms`: an .xlsx in the sheet editor, a .pptx in the deck editor) opens as the file it is and saves where it lies by version (`saveFile`); no Office app is started. Any other Office file there is seated on its app (`microsoft`), which the window then starts (`openFileTab`'s `seated`), before the tab is drawn |
 | on another computer of his, or in the Windows VM | in a tab, as a copy the host makes in the pane's own folder (`openCopy`), where Copy Teams files is on. The tab's header says "A copy from MacBook. Changes stay here", with Open on MacBook. The copy goes when its tab closes |
 | the same, with Copy Teams files off | refused in one toast, "Teams files open on MacBook for this workspace.", whose press Open copies here turns the switch on and opens it, and whose other press opens it on that computer |
 | a kind no canvas shows, in a library | in its own app on its computer (`work.office.filesOpen`) |

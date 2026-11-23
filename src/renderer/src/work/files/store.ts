@@ -569,8 +569,16 @@ export async function goTo(link: string, workspaceId: string, tabId: string, pag
 export const historyOf = (link: string, workspaceId: string, tabId: string): PageHistory => tabsOf(link, workspaceId).history.get(tabId) ?? NO_HISTORY;
 
 /** Opens a file in a tab of its own beside the tab it came from; the host answers the tab that holds it, or the thread that does. */
-export async function openFileTab(link: string, workspaceId: string, file: { ref: CanvasSource; name: string; key?: string }, opener?: string, options?: { timeoutMs?: number }): Promise<FilesOpened> {
-  const answer = await ask<FilesOpened>(link, "work.files.open", { workspaceId, ref: file.ref, name: file.name, ...(file.key ? { key: file.key } : {}), ...(opener ? { opener } : {}) }, options);
+/** `seated`: run once the host has said what the file opened as, before the tab is drawn (the file's own app is started there, where one stands behind it). */
+export async function openFileTab(
+  link: string,
+  workspaceId: string,
+  file: { ref: CanvasSource; name: string; key?: string },
+  opener?: string,
+  options?: { timeoutMs?: number; seated?(answer: FilesOpened): Promise<void> },
+): Promise<FilesOpened> {
+  const answer = await ask<FilesOpened>(link, "work.files.open", { workspaceId, ref: file.ref, name: file.name, ...(file.key ? { key: file.key } : {}), ...(opener ? { opener } : {}) }, options?.timeoutMs ? { timeoutMs: options.timeoutMs } : undefined);
+  await options?.seated?.(answer);
   putTabs(link, workspaceId, answer, answer.tabId);
   return answer;
 }

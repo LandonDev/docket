@@ -135,10 +135,16 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
     if (here) {
       await fetched(entry, copy, from);
       from.busy({ key: entry.key, word: "Opening…" });
-      // Excel, Word or PowerPoint stands behind a library's Office file: it opens there too.
-      if ((copy.place.kind === "teams" || copy.place.kind === "onedrive") && isOffice(entry.name)) await registry.linkOf(copy.link).request("work.office.filesOpen", { source: entry.ref });
     } else from.busy({ key: entry.key, word: entry.local === false ? "Downloading…" : "Opening…" });
-    const answer: FilesOpened = await openFileTab(workspaceLink, from.workspace.id, { ref: entry.ref, name: entry.name, key: entry.key }, from.opener, { timeoutMs: here ? undefined : 660_000 });
+    const ref = entry.ref;
+    const answer: FilesOpened = await openFileTab(workspaceLink, from.workspace.id, { ref, name: entry.name, key: entry.key }, from.opener, {
+      ...(here ? {} : { timeoutMs: 660_000 }),
+      // Excel, Word or PowerPoint is started only where the host seated the file on its app (`microsoft`): a form an
+      // editor of ours edits in place (an .xlsx in the sheet editor) opens as the file it is, and no app is started.
+      seated: async (opened) => {
+        if (here && opened.item?.source.at === "microsoft") await registry.linkOf(copy.link).request("work.office.filesOpen", { source: ref });
+      },
+    });
     // A thread already holds it and its kind keeps its marks by item: that thread's item is shown, and no second seat is made.
     if (answer.held) await showInThread(workspaceLink, answer.held.sessionId, { itemId: answer.held.itemId }, true);
     return answer.tabId ?? null;
