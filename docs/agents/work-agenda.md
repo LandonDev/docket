@@ -10,7 +10,7 @@ New event (`agenda/NewEventDialog.tsx`) is a calendar act LifeOS holds (`calenda
 
 A List row names the event's attendees who are the sector's people ("With Maya Chen, Tom Beck, and 2 more"), each name opening their page in People ([work-people.md](work-people.md)); the people come from `people:directory` on the view's session.
 
-A row whose event clashes with another, in any job, says so under its place and offers Show clash in its menu; its Leave is the clash rule's once that has answered ([work-clashes.md](work-clashes.md): `useClashes(env, from, to)` in `work/clashes/mark.tsx`, read on the owner session, since the view's own session reads one job). Until it has, the row keeps LifeOS's own leave-by, so nothing is blank while the read is out.
+A row whose event clashes with another, in any job, says so under its place and offers Show clash in its menu, while both events are still to come or under way; its Leave is the clash rule's once that has answered ([work-clashes.md](work-clashes.md): `useClashes(env, from, to)` in `work/clashes/mark.tsx`, read on the owner session, since the view's own session reads one job). Until it has, the row keeps LifeOS's own leave-by, so nothing is blank while the read is out.
 
 ## `calendar.op` in the Outbox
 

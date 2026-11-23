@@ -240,6 +240,19 @@ describe("Start places", () => {
     await act(async () => {});
     expect(typed()).toBe("12 Oak Ct");
     expect(saveOff()).toBe(true);
+    // A session still connecting is a wait too, never "Not signed in".
+    lifeos.loading = false;
+    lifeos.state = "connecting";
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
+    expect(typed()).toBe("12 Oak Ct");
+    expect(saveOff()).toBe(true);
+    expect(within(screen.getByRole("dialog")).getByRole("status").textContent).toBe("Waiting for LifeOS…");
+    expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");
+    lifeos.state = "connected";
+    lifeos.loading = true;
+    view.rerender(<StartPlacesSection environmentId="box" />);
+    await act(async () => {});
     // A read that is merely out says so as a wait, not as an error.
     expect(within(screen.getByRole("dialog")).getByRole("status").textContent).toBe("Waiting for LifeOS…");
     expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");

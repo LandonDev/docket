@@ -12,7 +12,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import { refusalWords } from "../../lib/settingsHome";
 import { sectorName } from "../shell/actions";
-import { sessionFailure, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
+import { sessionFailure, sessionWaits, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
 import { formChanged, placeWords, rowLabel, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartSettings, type StartTarget } from "./places";
 
 /**
@@ -53,7 +53,8 @@ export function StartPlacesSection({ environmentId }: { environmentId: string })
         lookups={job?.lookups ?? false}
         settings={held.settings}
         // Save writes the maps whole from the last read: it waits for a read that is current.
-        blocked={ready ? null : (failed ?? (connected ? "" : sessionFailure(session.state)))}
+        // A session still connecting is a wait like a read that is out, not a sign-out.
+        blocked={ready ? null : (failed ?? (connected || sessionWaits(session) ? "" : sessionFailure(session.state)))}
         onClose={() => setOpen(null)}
       />
     ) : null;

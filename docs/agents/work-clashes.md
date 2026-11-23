@@ -24,8 +24,8 @@ the look of each surface is docs/DESIGN.md "Clashes".
   name is its sector key with a capital unless the caller passes `label`.
   Times read in the zone the caller passes, with ordinary spaces. `clashLine`
   names the other event's job only when it is another job, and prefixes its
-  time with its weekday (its date a week or more off; `timeNear`, which the
-  dialog's time spans and the row menu's `clashTime` use too) when it
+  time with its weekday (its date more than three days off; `timeNear`,
+  which the dialog's time spans and the row menu's `clashTime` use too) when it
   starts on another day than the one the line
   is read under (the event's own start day, or `opts.on` when a list shows
   the row under another). A shortfall worked out without the map is said to
@@ -208,7 +208,8 @@ while it reads, the read's error in a red line if it fails.
   read fails, the session drops or a read is out; Save waits until the
   reads are current again, since it writes the maps whole. Why LifeOS
   cannot be read now shows in the alert before an earlier Save's refusal,
-  and a read that is merely out says "Waiting for LifeOS…" as a status.
+  and a read that is merely out, or a session still connecting
+  (`sessionWaits`), says "Waiting for LifeOS…" as a status.
 - **LifeOS.** Queries `settings:startPlaces {}` (the rows: `{home, jobs}`,
   each `{address?, label?, state: none | looking | found | failed}`, a job
   with `sector` and its `lookups`) and `settings:get {}` (the maps a Save

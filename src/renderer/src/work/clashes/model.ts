@@ -1,5 +1,5 @@
 import type { MailtoDraft } from "work-kit/mail";
-import type { Clash, ClashList, ClashSide, ClashWay, Leave } from "@shared/work/clashes";
+import { clockOf, type Clash, type ClashList, type ClashSide, type ClashWay, type Leave } from "@shared/work/clashes";
 
 /**
  * What the screens need of a clash list, worked out once: each event's clashes,
@@ -46,7 +46,8 @@ const sameDay = (x: number, y: number) => new Date(x).toDateString() === new Dat
  */
 export function freeAfter(clash: Clash, eventId: string, now = Date.now()): { start: number; end: number } {
   const { side, other } = sideOf(clash, eventId);
-  const length = Math.max(STEP, side.endsAt - side.startsAt);
+  // The start lands on the quarter hour; the event keeps the length it has, a five minute one too.
+  const length = side.endsAt > side.startsAt ? side.endsAt - side.startsAt : STEP;
   const drive = (clash.minutes ?? 0) * MINUTE;
   // He is short by the drive less the time from the earlier event's end to the later one's deadline: that gives the deadline, and how long before its start it is.
   // Whole minutes, down: the shortfall is rounded up, and a part of a minute must not cost him a quarter hour.
@@ -182,9 +183,11 @@ function read(form: TimeForm, offered?: Span): { when: Span | string; day?: stri
 export const spanOf = (form: TimeForm): Span | string => whenOf(form);
 
 const endDay = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
-/** What To says under it when the end the form names is not on its Day: "Next day", or the day itself when it is further on. Said of a To the clocks skip too, so its refusal has a day to be about. */
+/** What To says under it when the fields alone do not say which end goes: "Next day" when the end is not on its Day, or the day itself when it is further on (said of a To the clocks skip too, so its refusal has a day to be about); "Second 1:30 AM" when it is the second time that clock shows on the Day (short enough to sit on one line under the field). */
 export function endHint(form: TimeForm, offered?: Span): string | undefined {
   const { when, day: sought } = read(form, offered);
+  // On the Day, at or before From on the clock: the second time that clock shows, which the two fields alone cannot say.
+  if (typeof when !== "string" && dayField(when.end) === dayField(when.start) && timeField(when.end) <= timeField(when.start)) return `Second ${clockOf(when.end)}`;
   const day = typeof when !== "string" ? dayField(when.end) : fieldOf(when) === "to" ? sought : undefined;
   if (day === undefined || day === form.day) return undefined;
   return day === dayPlus(form.day, 1) ? "Next day" : endDay.format(noon(day));

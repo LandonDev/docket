@@ -57,6 +57,15 @@ describe("the time a move starts filled with", () => {
     expect(freeAfter(drive(), "a", morning)).toEqual({ start: T0 - 15 * MINUTE, end: T0 + 45 * MINUTE });
   });
 
+  it("keeps the length the event has, a five minute one too: only its start lands on the quarter hour", () => {
+    // A 2:30 to 2:35 check-in inside a meeting that ends at 3:00 is offered 3:00 to 3:05.
+    const brief = overlap({ a: side("a", 1, 2), b: side("b", 2.5, 5 / 60) });
+    expect(freeAfter(brief, "b", morning)).toEqual({ start: T0 + 3 * HOUR, end: T0 + 3 * HOUR + 5 * MINUTE });
+    // An event with no length at all is offered a quarter hour.
+    const none = overlap({ a: side("a", 1, 2), b: side("b", 2.5, 0) });
+    expect(freeAfter(none, "b", morning)).toEqual({ start: T0 + 3 * HOUR, end: T0 + 3 * HOUR + 15 * MINUTE });
+  });
+
   it("moves the earlier event after the later one when no time before it is left today", () => {
     // It is already noon: nothing before the game is ahead of now.
     expect(freeAfter(overlap({ minutes: 38 }), "a", T0)).toEqual({ start: T0 + 3 * HOUR + 45 * MINUTE, end: T0 + 5 * HOUR + 45 * MINUTE });

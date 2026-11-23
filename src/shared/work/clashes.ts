@@ -200,12 +200,14 @@ function dayNumber(at: number, opts: ClashWordsOpts): number {
 }
 /**
  * A time as it is said beside a day (any instant of it): "6:00 PM" on that
- * day, "Wed 11:00 PM" on another within the week either side, and "Jan 7,
- * 8:00 AM" further off, where a weekday would read as the nearer one.
+ * day, "Wed 11:00 PM" within three days either side, and "Jan 7, 8:00 AM"
+ * further off. A weekday reads as the nearest day of that name, and within
+ * three days that is always the true one; so any seven days in a row read
+ * as seven different words.
  */
 export function timeNear(at: number, on: number, opts: ClashWordsOpts = {}): string {
   const apart = Math.abs(dayNumber(at, opts) - dayNumber(on, opts))
-  const lead = apart === 0 ? '' : apart < 7 ? `${dayOf(at, opts)} ` : `${format('date', opts.timeZone).format(at)}, `
+  const lead = apart === 0 ? '' : apart <= 3 ? `${dayOf(at, opts)} ` : `${format('date', opts.timeZone).format(at)}, `
   return `${lead}${clockOf(at, opts)}`
 }
 
@@ -243,7 +245,7 @@ export function clashLine(clash: Clash, eventId: string, opts: ClashWordsOpts = 
   return `${shortWords(clash)} ${earlier ? 'before' : 'after'} ${named}`
 }
 
-/** The other event's start as a line says it: "6:00 PM", with its weekday when it starts on another day than the one the line is read under ("Wed 11:00 PM"), or its date a week or more off ("Jan 14, 9:00 AM"). */
+/** The other event's start as a line says it: "6:00 PM", with its weekday when it starts on another day than the one the line is read under ("Wed 11:00 PM"), or its date more than three days off ("Jan 14, 9:00 AM"). */
 export function clashTime(clash: Clash, eventId: string, opts: ClashWordsOpts = {}): string {
   const [own, other] = eventId === clash.a.eventId ? [clash.a, clash.b] : [clash.b, clash.a]
   return timeNear(other.startsAt, opts.on ?? own.startsAt, opts)

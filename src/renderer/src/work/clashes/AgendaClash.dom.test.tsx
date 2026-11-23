@@ -137,6 +137,31 @@ describe("a clash on the Agenda row", () => {
     expect(screen.queryByRole("menuitem", { name: "Show clash" })).toBeNull();
   });
 
+  it("drops a clash once the other event is over, from the row, its menu and the Week's dot, though this event still runs", async () => {
+    const running = { ...meeting, startsAt: now - 5 * HOUR, endsAt: now + 2 * HOUR };
+    events.rows = [running];
+    const done = side("ev_done", "ref", "Stand-up", now - 4 * HOUR, now - 3 * HOUR);
+    lifeos.range = { clashes: [{ ...overlap.clashes[0]!, id: "ev_meeting-ev_done", b: done as never }], leaves: [] };
+    render(<View {...props} />);
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: /^Overlaps/ })).toBeNull();
+    fireEvent.contextMenu(screen.getByRole("listitem"));
+    await act(async () => {});
+    expect(screen.getByRole("menuitem", { name: "Prepare" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /^Show clash/ })).toBeNull();
+    cleanup();
+    render(
+      <>
+        <Head {...props} />
+        <View {...props} />
+      </>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    await act(async () => {});
+    expect(drawn.marked.at(-1)).toEqual([]);
+  });
+
   it("hands the Week and the Month the events that clash, for their dot", async () => {
     events.rows = [meeting];
     lifeos.range = overlap;

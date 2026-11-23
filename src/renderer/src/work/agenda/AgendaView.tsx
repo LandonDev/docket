@@ -163,7 +163,16 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   const marks = useClashes(environmentId, from, to);
   // When to leave is the rule's once it has answered (from the event before, when that is where he will be); LifeOS's own until then.
   // The dot in the Week and the Month is for what is still his to settle, as the list's line is: an event that is over wears none.
-  const marked = useMemo(() => new Set((events ?? []).filter((e) => marks.marked.has(e._id) && endOf(e) >= now).map((e) => e._id)), [events, marks.marked, now]);
+  // A clash is his to settle while both its events are still to come or under way: once either is over, its line, its menu row and its dot go.
+  const clashesOf = useMemo(() => {
+    const live = new Map<string, readonly Clash[]>();
+    for (const [id, list] of marks.clashes) {
+      const kept = list.filter((c) => c.a.endsAt >= now && c.b.endsAt >= now);
+      if (kept.length) live.set(id, kept.length === list.length ? list : kept);
+    }
+    return live;
+  }, [marks.clashes, now]);
+  const marked = useMemo(() => new Set((events ?? []).filter((e) => clashesOf.has(e._id) && endOf(e) >= now).map((e) => e._id)), [events, clashesOf, now]);
   const leaveOf = (event: AgendaEvent) => {
     if (!marks.ready) return leaveAt(event, now);
     return !event.allDay && event.startsAt > now ? marks.leaves.get(event._id)?.leaveAt : undefined;
@@ -193,7 +202,7 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
         <section key={day} aria-label={formatDayHeading(day, now)} className="flex flex-col">
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{formatDayHeading(day, now)}</h2>
           {rows.map((event) => (
-            <EventRow key={event._id} event={event} past={endOf(event) < now} over={prepEndOf(event) <= now} leave={leaveOf(event)} clashes={marks.clashes.get(event._id)} day={day} onPrepare={prepare} people={people} workspaceId={workspaceId} environmentId={environmentId} />
+            <EventRow key={event._id} event={event} past={endOf(event) < now} over={prepEndOf(event) <= now} leave={leaveOf(event)} clashes={clashesOf.get(event._id)} day={day} onPrepare={prepare} people={people} workspaceId={workspaceId} environmentId={environmentId} />
           ))}
         </section>
       ))}

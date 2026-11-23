@@ -93,15 +93,23 @@ describe("the Clash dialog", () => {
     expect(within(dialog).getByText("Maple Ridge High School")).toBeTruthy();
   });
 
-  it("says a time a week or more from the dialog's day by its date, since its weekday would read as that day's", async () => {
-    // A block that began a week before the day the dialog names, and one that began the night before.
+  it("says a start beside the dialog's day and an end beside its start: a weekday within three days, a date further off", async () => {
+    const times = (title: string) => within(screen.getByRole("group", { name: title })).getByText(/ – /).textContent;
+    // A block that began a week before the day the dialog names: both ends dated, never a few hours on the first day.
     show(overlap(side("ev_a", "Training", -7 * 24, 7 * 24 + 2, { sector: "purdue" }), game([])));
     await settle();
-    expect(within(screen.getByRole("group", { name: "Training" })).getByText("Nov 19, 1:00 PM – 3:00 PM")).toBeTruthy();
+    expect(times("Training")).toBe("Nov 19, 1:00 PM – Nov 26, 3:00 PM");
+    expect(times("Varsity Basketball")).toBe("2:00 PM – 4:00 PM");
     cleanup();
+    // One that began the night before and runs into the day.
     show(overlap(side("ev_a", "Night shift", -14, 16, { sector: "life" }), game([])));
     await settle();
-    expect(within(screen.getByRole("group", { name: "Night shift" })).getByText("Tue 11:00 PM – 3:00 PM")).toBeTruthy();
+    expect(times("Night shift")).toBe("Tue 11:00 PM – Wed 3:00 PM");
+    cleanup();
+    // One wholly on the day before says its day once.
+    show({ ...overlap(side("ev_a", "Late call", -16, 2, { sector: "life" }), game([])), kind: "drive", shortBy: 15 });
+    await settle();
+    expect(times("Late call")).toBe("Tue 9:00 PM – 11:00 PM");
   });
 
   it("titles a drive clash with the minutes short, and words an unmeasured drive as about", async () => {

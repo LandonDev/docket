@@ -112,8 +112,8 @@ export function Empty({ state, error, onClose }: { state: "loading" | "failed" |
   );
 }
 
-/** A time, with its weekday when it is not on the day the dialog names (a pair across midnight reads in order), or its date a week or more off, where a weekday would read as the dialog's own. The words are the row's line's. */
-const span = (side: ClashSide, day: number) => `${timeNear(side.startsAt, day)} – ${timeNear(side.endsAt, day)}`;
+/** An event's times: its start said beside the day the dialog names (bare on that day, its weekday within three days, else its date, in the row's line's words), and its end beside its own start, so a day before a range is never read to cover both ends. */
+const span = (side: ClashSide, day: number) => `${timeNear(side.startsAt, day)} – ${timeNear(side.endsAt, side.startsAt)}`;
 /** His calendar's own words for a place the map only has roughly; else the place as the map names it, less the country every one of them ends in. */
 const placeOf = (side: ClashSide) => ((side.rough ? side.location : side.place) ?? side.location)?.replace(/, United States$/, "");
 

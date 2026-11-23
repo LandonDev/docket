@@ -59,7 +59,15 @@ describe("a step's times when the clocks change", () => {
     const form = { day: "2027-11-07", from: "01:45", to: "01:30" };
     const when = whenOf(form, offered) as { start: number; end: number };
     expect(when.end - when.start).toBe(45 * MINUTE);
-    expect(endHint(form, offered)).toBeUndefined();
+    // The fields read backward; the line under To says which 1:30 goes.
+    expect(endHint(form, offered)).toBe("Second 1:30 AM");
+  });
+
+  it("says under To when an end is the second time its clock shows, typed or offered, and nothing in an hour that comes once", () => {
+    const twice = { start: FIRST_1_30, end: SECOND_1_30 };
+    expect(endHint(formOf(twice), twice)).toBe("Second 1:30 AM");
+    expect(endHint({ day: "2026-11-01", from: "01:15", to: "01:30" })).toBeUndefined();
+    expect(endHint({ day: "2026-11-01", from: "00:30", to: "03:00" })).toBeUndefined();
   });
 
   it("refuses a long event's To in the skipped hour of the day it keeps, rather than send it a day short", () => {
@@ -106,7 +114,7 @@ describe("a step's times when the clocks change", () => {
     const offered = { start: FIRST_1_30 + 15 * MINUTE, end: SECOND_1_30 - 15 * MINUTE };
     const form = formOf(offered);
     expect(form).toEqual({ day: "2026-11-01", from: "01:45", to: "01:15" });
-    expect(endHint(form, offered)).toBeUndefined();
+    expect(endHint(form, offered)).toBe("Second 1:15 AM");
     expect(whenOf(form, offered)).toEqual(offered);
   });
 

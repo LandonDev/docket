@@ -60,19 +60,29 @@ describe('clashLine', () => {
     expect(clashLine(clash, 'e_night', ZONE)).toBe('Overlaps Shift (Life), 11:30 PM')
     expect(clashLine(clash, 'e_night', { ...ZONE, on: at(26, 0) })).toBe('Overlaps Shift (Life), Wed 11:30 PM')
   })
-  it("names the other event's date, not its weekday, a week or more off: the weekday would read as the nearer one", () => {
+  it("names the other event's date, not its weekday, more than three days off: a weekday reads as the nearest day of that name", () => {
     // A block of eight days overlaps a stand-up on its first Thursday and the one a week on.
     const block = side({ eventId: 'e_block', sector: 'purdue', title: 'Training', startsAt: at(19, 8), endsAt: at(26, 12) })
-    const first = side({ eventId: 'e_first', sector: 'ref', title: 'Stand-up', startsAt: at(19, 9), endsAt: at(19, 10) })
-    const second = side({ eventId: 'e_second', sector: 'ref', title: 'Stand-up', startsAt: at(26, 9), endsAt: at(26, 10) })
-    expect(clashLine({ id: 'e_block-e_first', kind: 'overlap', a: block, b: first }, 'e_block', ZONE)).toBe('Overlaps Stand-up (Ref), 9:00 AM')
-    expect(clashLine({ id: 'e_block-e_second', kind: 'overlap', a: block, b: second }, 'e_block', ZONE)).toBe('Overlaps Stand-up (Ref), Nov 26, 9:00 AM')
-    expect(clashTime({ id: 'e_block-e_second', kind: 'overlap', a: block, b: second }, 'e_block', { ...ZONE, on: at(21, 12) })).toBe('Thu 9:00 AM')
-    // Beside a day: that day's time bare, six days off by weekday, seven by date, either side.
+    const first: Clash = { id: 'e_block-e_first', kind: 'overlap', a: block, b: side({ eventId: 'e_first', sector: 'ref', title: 'Stand-up', startsAt: at(19, 9), endsAt: at(19, 10) }) }
+    const second: Clash = { id: 'e_block-e_second', kind: 'overlap', a: block, b: side({ eventId: 'e_second', sector: 'ref', title: 'Stand-up', startsAt: at(26, 9), endsAt: at(26, 10) }) }
+    expect(clashLine(first, 'e_block', ZONE)).toBe('Overlaps Stand-up (Ref), 9:00 AM')
+    expect(clashLine(second, 'e_block', ZONE)).toBe('Overlaps Stand-up (Ref), Nov 26, 9:00 AM')
+    // Under every day the block is listed, the two read apart, and neither as the wrong Thursday.
+    const under = (day: number) => [clashTime(first, 'e_block', { ...ZONE, on: at(day, 12) }), clashTime(second, 'e_block', { ...ZONE, on: at(day, 12) })]
+    expect(under(20)).toEqual(['Thu 9:00 AM', 'Nov 26, 9:00 AM'])
+    expect(under(22)).toEqual(['Thu 9:00 AM', 'Nov 26, 9:00 AM'])
+    expect(under(23)).toEqual(['Nov 19, 9:00 AM', 'Thu 9:00 AM'])
+    expect(under(25)).toEqual(['Nov 19, 9:00 AM', 'Thu 9:00 AM'])
+    expect(under(26)).toEqual(['Nov 19, 9:00 AM', '9:00 AM'])
+    // Beside a day: that day's time bare, three days off by weekday, four by date, either side.
     expect(timeNear(at(26, 9), at(26, 23), ZONE)).toBe('9:00 AM')
-    expect(timeNear(at(20, 9), at(26, 9), ZONE)).toBe('Fri 9:00 AM')
-    expect(timeNear(at(19, 8), at(26, 9), ZONE)).toBe('Nov 19, 8:00 AM')
+    expect(timeNear(at(23, 9), at(26, 9), ZONE)).toBe('Mon 9:00 AM')
+    expect(timeNear(at(26, 9), at(23, 9), ZONE)).toBe('Thu 9:00 AM')
+    expect(timeNear(at(22, 9), at(26, 9), ZONE)).toBe('Nov 22, 9:00 AM')
+    expect(timeNear(at(20, 9), at(26, 9), ZONE)).toBe('Nov 20, 9:00 AM')
     expect(timeNear(at(26, 9), at(19, 9), ZONE)).toBe('Nov 26, 9:00 AM')
+    // Any seven days in a row read as seven different words.
+    expect(new Set([20, 21, 22, 23, 24, 25, 26].map((d) => timeNear(at(d, 9), at(23, 9), ZONE))).size).toBe(7)
   })
   it("takes a job's name when given one, and uses ordinary spaces in times", () => {
     const line = clashLine(overlap, 'e_staff', { ...ZONE, label: (s) => (s === 'ref' ? 'Refereeing' : s) })
