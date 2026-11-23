@@ -2368,7 +2368,8 @@ phone does everything the desktop does. What milestone 46 built:
   one meta line at the foot. Settings → Work has its Digest section after the
   group with the Work switch and LifeOS, only while some host has Work on:
   Time, then Held items, Routine results, Messages and mail and Meetings, each
-  a menu of three levels.
+  a menu of three levels. The time's wheel keeps his latest pick: a slow
+  host's answer to an earlier pick is not applied over it (`EditGate`).
 - **A held notice** (the host's `needs_you` with `tc.held`) opens its item
   over the Outbox. Its category is Open alone: nothing sends from the lock
   screen.

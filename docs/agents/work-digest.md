@@ -190,7 +190,7 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 
 | File | Holds |
 |---|---|
-| `store.ts` | each Work host's ledger and settings, asked when its link opens and kept by the `work.digest` push; `mergeRows` (one row a key across hosts, the one told at once winning), `mergeDays` (hosts' days of one date are one, seen once any is); `markSeen`, `setDigest` (written to every Work host); the settings shown are each field's newest across the hosts (`newestSettings`), and after a host is read the fields it missed are written to it, each stamped with when it was set (`staleSettings`, `align`: never under a write of his own, never on a push, and a field no host says when it was set is left alone), so two changes that reached different hosts both stand; `hostsAgree` ends a row's refusal line; `openDigestSheet`; sends `work.digest.here` |
+| `store.ts` | each Work host's ledger and settings, asked when its link opens and kept by the `work.digest` push; `mergeRows` (one row a key across hosts, the one told at once winning), `mergeDays` (hosts' days of one date are one, seen once any is); `markSeen`, `setDigest` (written to every Work host); the settings shown are each field's newest across the hosts (`newestSettings`), and after a host is read the fields it missed are written to it, each stamped with when it was set (`staleSettings`, `align`: never under a write of his own, never on a push, and a field no host says when it was set is left alone), so two changes that reached different hosts both stand, and an older stamp is repaired though the value already matches (going back to an earlier choice is a new edit); `hostsHold` ends a row's refusal line once each host that refused is known to hold what he asked for; `openDigestSheet`; sends `work.digest.here` |
 | `notice.ts` | pure: `digestNotice` (the unseen days and their line: what waited when each day was made on the row's own host, a row whose clock came due later included; a thing done since is gone from it, as from the list), `onlyToday`, `openInterrupts` (told, a day old at most, not closed here), `nowToasts` (one a row, a fold past three), `systemNotices`, `listSections`, `rowWhen`, `emptyLine`, `unansweredLine`, `refusedLine` |
 | `open.ts` | pure: `routeOf` turns a `TellOpen` into a route (`thread`, `view` with `at` in that view's own field, `place`, `outbox` with the page's item key, `settings`), `go` runs it |
 | `DigestHost.tsx` | the two toasts through `useToastSync`, their system notifications, the routes, the sheet's mount |
@@ -220,9 +220,13 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
   title, body, silent?}` and `app:notice-close {key}`; main shows an
   Electron `Notification` only while no app window is focused, once per key
   across windows, and again with no sound when its words change
-  (`noticeStep`: four things became five); the body keeps two lines, a
-  thing's title and its detail, and the fold's names every open one
-  (`nowLine`, newest first). Every window asks for the same keys, so main keeps
+  (`noticeStep`: a count that fell); the body keeps two lines, a thing's
+  title and its detail, and the fold's names every open one (`nowLine`,
+  newest first). The fold's notice is keyed by its newest telling
+  (`work-now@<telling>`, `toastOfNotice`), so a thing that joins the fold
+  is a new notice with its sound. A key is the window's own name for a
+  notice and comes back on the click: main keeps it whole, never cleaned
+  or cut. Every window asks for the same keys, so main keeps
   who asks (`Claims`): a window that lets go or closes takes a notification
   back only once no other window still asks for it. A click brings a
   window that asks forward and sends `app:notice-open {key}`. The renderer reaches it through

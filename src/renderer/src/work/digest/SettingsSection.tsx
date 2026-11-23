@@ -9,7 +9,7 @@ import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/cn";
 import { useEnvironments } from "../../lib/connection";
 import { refusedLine, unansweredLine } from "./notice";
-import { hostsAgree, loadDigest, openDigestSheet, setDigest, useDigest } from "./store";
+import { hostsHold, loadDigest, openDigestSheet, setDigest, useDigest } from "./store";
 
 /**
  * Settings → Work → Digest (docs/DESIGN.md "The digest"): the time of the
@@ -38,41 +38,57 @@ export function SettingsSection() {
   const environments = useEnvironments();
   const nameOf = (environmentId: string): string => environments.find((e) => e.id === environmentId)?.name ?? "A host";
   // A row's red line: who refused its last write, and the value he asked for. It outlives edits to other rows, and
-  // goes once every host holds that value, whoever wrote it there (his next write, or the window bringing a host to it).
-  const [refused, setRefused] = useState<Partial<Record<DigestField, { line: string; want: string }>>>({});
+  // goes once each host that refused is known to hold that value, whoever wrote it there (his next write, or the
+  // window bringing a host to it).
+  const [refused, setRefused] = useState<Partial<Record<DigestField, { line: string; want: string; hosts: string[] }>>>({});
   const refusal = (row: DigestField): string | undefined => {
     const r = refused[row];
-    return r && !hostsAgree(row, r.want) ? r.line : undefined;
+    return r && !hostsHold(r.hosts, row, r.want) ? r.line : undefined;
   };
   const [retrying, setRetrying] = useState(false);
   const settings = view.settings;
   // The field holds what he types; the hosts take it once it is a whole time and he has stopped.
   const [at, setAt] = useState<string | null>(null);
   const rest = useRef<number | null>(null);
+  // The time he typed that waits for him to stop, and the one on its way to the hosts.
+  const waiting = useRef<string | null>(null);
+  const sending = useRef<string | null>(null);
   useEffect(() => {
     void loadDigest();
     return () => {
+      // He left before the rest was over: what he typed is written, not dropped.
       if (rest.current !== null) window.clearTimeout(rest.current);
+      if (waiting.current && AT.test(waiting.current) && waiting.current !== sending.current) void setDigest({ at: waiting.current });
     };
   }, []);
-  useEffect(() => setAt(null), [settings?.at]);
+  // The hosts caught up with what he typed: the field reads them again. Another time arriving (an earlier save's
+  // answer, another window's change) never takes a draft he is still on.
+  useEffect(() => setAt((draft) => (draft === settings?.at ? null : draft)), [settings?.at]);
 
   const write = async (row: DigestField, want: string, patch: Parameters<typeof setDigest>[0]): Promise<void> => {
     const failed = await setDigest(patch);
     setRefused((prev) => {
       const next = { ...prev };
       if (failed.length === 0) delete next[row];
-      else next[row] = { line: refusedLine(failed.map((f) => nameOf(f.environmentId))), want };
+      else next[row] = { line: refusedLine(failed.map((f) => nameOf(f.environmentId))), want, hosts: failed.map((f) => f.environmentId) };
       return next;
     });
   };
-  /** Writes the time when it is a whole one he changed; true when a write went out. */
+  /** Writes the time when it is a whole one he changed; true when it is on its way (now, or already). */
   const writeAt = (next: string): boolean => {
     if (rest.current !== null) window.clearTimeout(rest.current);
     rest.current = null;
+    waiting.current = null;
+    // Already on its way: leaving the field does not send the same time twice.
+    if (sending.current === next) return true;
     if (!AT.test(next) || next === settings?.at) return false;
-    // The field keeps what he typed until the hosts have answered: it never falls back to the old time meanwhile.
-    void write("at", next, { at: next }).finally(() => setAt((now) => (now === next ? null : now)));
+    sending.current = next;
+    // The field keeps what he typed until the hosts have answered: it never falls back to the old time meanwhile,
+    // and only this edit's own answer lets go of it.
+    void write("at", next, { at: next }).finally(() => {
+      if (sending.current === next) sending.current = null;
+      setAt((draft) => (draft === next ? null : draft));
+    });
     return true;
   };
 
@@ -122,6 +138,7 @@ export function SettingsSection() {
           onChange={(e) => {
             const next = e.target.value;
             setAt(next);
+            waiting.current = next;
             if (rest.current !== null) window.clearTimeout(rest.current);
             rest.current = window.setTimeout(() => writeAt(next), AT_REST_MS);
           }}

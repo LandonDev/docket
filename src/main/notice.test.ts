@@ -9,6 +9,11 @@ describe('readAsk', () => {
     expect(readAsk({ key: 'k', title: ' Purdue ', body: 'Budget  review starts at 2:00 PM\n\n With Dana Reyes \nand a third line' })).toEqual({ key: 'k', title: 'Purdue', body: 'Budget review starts at 2:00 PM\nWith Dana Reyes' })
     expect(readAsk({ key: 'k', title: 'Work', body: 'x'.repeat(400), silent: true })).toEqual({ key: 'k', title: 'Work', body: 'x'.repeat(300), silent: true })
   })
+  it('keeps a key whole, however long a real one is: it comes back on a click and must still name its toast', () => {
+    const key = `work-now:k:${'held:'.padEnd(205, 'x')}  two  spaces`
+    expect(readAsk({ key, title: 'Ref', body: 'b' })!.key).toBe(key)
+    expect(readAsk({ key: 'k'.repeat(1_001), title: 'Ref', body: 'b' })).toBeNull()
+  })
   it('refuses anything else', () => {
     expect(readAsk(null)).toBeNull()
     expect(readAsk({ key: 'k', title: 'Work' })).toBeNull()

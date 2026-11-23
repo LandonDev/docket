@@ -267,6 +267,8 @@ private struct DigestSettingsSection: View {
     @State private var pickedAt: Date?
     /// The picked time, written after the wheel rests.
     @State private var timeWrite: Task<Void, Never>?
+    /// Which pick of the time is the latest: a slow host's answer to an earlier one is not applied over it.
+    @State private var timeEdit = EditGate()
 
     /// The first host that answered: the hosts are written alike.
     private var settings: DigestSettings? { hosts.lazy.compactMap(\.work.digest.settings).first }
@@ -329,18 +331,27 @@ private struct DigestSettingsSection: View {
     /// The wheel moves through every minute on its way; the time is written once it rests.
     private func pick(_ date: Date) {
         pickedAt = date
+        let edit = timeEdit.begin()
         timeWrite?.cancel()
         timeWrite = Task {
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
-            await write(.time, at: DigestModel.atString(date))
+            let lines = await refusals(at: DigestModel.atString(date))
+            // He picked again while the hosts answered: the wheel and the row's line are that pick's now.
+            guard timeEdit.isLatest(edit) else { return }
+            refused[.time] = lines
             pickedAt = nil
         }
     }
 
-    private func write(_ row: Row, at: String? = nil, levels: [String: TellLevel]? = nil) async {
+    private func write(_ row: Row, levels: [String: TellLevel]) async {
+        refused[row] = await refusals(levels: levels)
+    }
+
+    /// One change written to every host; each host that refused, by name, with why.
+    private func refusals(at: String? = nil, levels: [String: TellLevel]? = nil) async -> [String: String] {
         let refusedById = await WorkDigest.setAll(hosts.map { ($0.environment.id, $0.work.digest) }, at: at, levels: levels)
         let names = Dictionary(hosts.map { ($0.environment.id, $0.environment.name) }, uniquingKeysWith: { first, _ in first })
-        refused[row] = Dictionary(refusedById.map { (names[$0.key] ?? $0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
+        return Dictionary(refusedById.map { (names[$0.key] ?? $0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
     }
 }

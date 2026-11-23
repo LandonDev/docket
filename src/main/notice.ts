@@ -48,10 +48,14 @@ const lines = (value: unknown, max: number): string =>
         .slice(0, max)
     : ''
 
+/** A key is the window's own name for the notice and comes back to it on a click: kept whole, never cleaned or cut (a cut one would open nothing). One past any real key's length is refused. */
+const KEY_MAX = 1_000
+const keyOf = (value: unknown): string => (typeof value === 'string' && value.length <= KEY_MAX ? value : '')
+
 /** The ask as main takes it: a key, a title and a body, each cut; null for anything else. */
 export function readAsk(value: unknown): NoticeAsk | null {
   const v = (value ?? {}) as Record<string, unknown>
-  const key = text(v.key, 200)
+  const key = keyOf(v.key)
   const title = text(v.title, 120)
   const body = lines(v.body, 300)
   if (!key || !title || !body) return null
@@ -144,7 +148,7 @@ export function registerNotices(): void {
     notification.show()
   })
   ipcMain.handle('app:notice-close', (e, raw: unknown) => {
-    const key = text(raw, 200)
-    if (claims.drop(key, e.sender.id)) withdraw(key)
+    const key = keyOf(raw)
+    if (key && claims.drop(key, e.sender.id)) withdraw(key)
   })
 }

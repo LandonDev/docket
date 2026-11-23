@@ -107,7 +107,8 @@ export function newestSettings(all: readonly DigestSettings[]): DigestSettings |
  * For each host that missed a write: the fields it holds an older setting
  * of, with the time each was set, so the host stamps them as set then and
  * never as set now. A field no host says when it was set is left alone
- * (nothing says which is right). Empty when the hosts agree.
+ * (nothing says which is right). Empty when every host holds every field's
+ * newest setting, stamp and all.
  */
 export function staleSettings(all: readonly HostSettings[]): { environmentId: string; patch: SettingsPatch }[] {
   const newest = newestSettings(all.map((h) => h.settings));
@@ -117,7 +118,9 @@ export function staleSettings(all: readonly HostSettings[]): { environmentId: st
     const patch: SettingsPatch = {};
     for (const field of DIGEST_FIELDS) {
       const at = newest.setAt[field];
-      if (at === undefined || (settings.setAt?.[field] ?? 0) >= at || valueOf(settings, field) === valueOf(newest, field)) continue;
+      // An older stamp is repaired though the value already matches: going back to an earlier choice is a new edit,
+      // and a host that only happens to agree must not lose it later to a peer that holds a choice from in between.
+      if (at === undefined || (settings.setAt?.[field] ?? 0) >= at) continue;
       patch.setAt = { ...patch.setAt, [field]: at };
       if (field === "at") patch.at = newest.at;
       else patch.levels = { ...patch.levels, [field]: valueOf(newest, field) as TellLevel };
@@ -127,10 +130,12 @@ export function staleSettings(all: readonly HostSettings[]): { environmentId: st
   return out;
 }
 
-/** Whether every host that answered holds `value` for a field: a row's refusal is over once they do. */
-export function hostsAgree(field: DigestField, value: string): boolean {
-  const all = [...workSwitch.hosts()].flatMap((id) => hosts.get(id)?.settings ?? []);
-  return all.length > 0 && all.every((s) => valueOf(s, field) === value);
+/** Whether each of these hosts is known to hold `value` for a field: a refusal is over once the hosts that refused do. One whose settings were never read is not known to. */
+export function hostsHold(environmentIds: readonly string[], field: DigestField, value: string): boolean {
+  return environmentIds.every((id) => {
+    const settings = hosts.get(id)?.settings;
+    return !!settings && valueOf(settings, field) === value;
+  });
 }
 
 let aligning = false;

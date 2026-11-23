@@ -187,6 +187,15 @@ import TempCodeContract
         #expect(DigestModel.spoken(row("r", sector: nil, title: "4 captures to sort", at: ms(23, 9)), when: "9:00 AM") == "4 captures to sort, 9:00 AM")
     }
 
+    @Test func `an answer for an earlier edit is not the latest once another began`() {
+        var gate = EditGate()
+        let first = gate.begin()
+        #expect(gate.isLatest(first))
+        let second = gate.begin()
+        #expect(!gate.isLatest(first))
+        #expect(gate.isLatest(second))
+    }
+
     // MARK: - where a press goes
 
     @Test func `a row opens its thread, held item or view on its host, and nothing the phone has no screen for`() {

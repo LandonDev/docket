@@ -11,7 +11,7 @@ import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
-import { DIGEST_TOAST, digestNotice, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
+import { DIGEST_TOAST, digestNotice, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, toastOfNotice, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
 import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
 
@@ -205,7 +205,7 @@ export function DigestHost() {
   useEffect(() => {
     const off = systemNotice.onOpen((key) => {
       if (key.startsWith("digest:")) return live.current.openDigest();
-      const toast = live.current.toasts.find((t) => t.id === key);
+      const toast = live.current.toasts.find((t) => t.id === toastOfNotice(key));
       if (toast) live.current.openToast(toast);
     });
     return () => {

@@ -17,7 +17,7 @@ vi.mock("../../lib/connection", async (original) => {
 // The select's own chunk: the section is tested through its cold trigger's words and the body once it lands.
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { SETTING_GROUPS, SettingsSection } from "./SettingsSection";
-import { newestSettings, resetDigestStore, staleSettings, useDigestSheetOpen } from "./store";
+import { hostsHold, newestSettings, resetDigestStore, staleSettings, useDigestSheetOpen } from "./store";
 import { push, resetWorld, SETTINGS, type World } from "./world.testkit";
 
 const w = (): World => world.current as World;
@@ -128,7 +128,9 @@ describe("Settings → Work → Digest", () => {
 
   it("hosts that agree, or a field no host says when it was set, are left alone", () => {
     const a = { ...SETTINGS, at: "07:00", setAt: { at: 5 } };
-    expect(staleSettings([{ environmentId: "box", settings: a }, { environmentId: "mac", settings: { ...a, setAt: { at: 9 }, nextAt: 44, zone: "UTC" } }])).toEqual([]);
+    expect(staleSettings([{ environmentId: "box", settings: a }, { environmentId: "mac", settings: { ...a, nextAt: 44, zone: "UTC" } }])).toEqual([]);
+    // The same value under an older stamp is still brought to the newer one: going back to an earlier choice is a new edit.
+    expect(staleSettings([{ environmentId: "box", settings: a }, { environmentId: "mac", settings: { ...a, setAt: { at: 9 } } }])).toEqual([{ environmentId: "box", patch: { at: "07:00", setAt: { at: 9 } } }]);
     // Differing, but nothing says which was set last.
     expect(staleSettings([{ environmentId: "box", settings: SETTINGS }, { environmentId: "mac", settings: { ...SETTINGS, at: "09:00" } }])).toEqual([]);
     expect(staleSettings([{ environmentId: "box", settings: a }])).toEqual([]);
@@ -153,6 +155,50 @@ describe("Settings → Work → Digest", () => {
     w().refuses.clear();
     await act(async () => push(w(), "mac", { settings: { ...SETTINGS, at: "09:00", setAt: { at: 9 } } }));
     await waitFor(() => expect(screen.queryByText("The Mac did not take it")).toBeNull());
+  });
+
+  it("a host that refused and whose settings were never read keeps its line though the others agree", async () => {
+    // The Mac answers nothing at first, then refuses the write: nothing is known of what it holds.
+    w().down.add("mac");
+    render(<SettingsSection />);
+    const time = await screen.findByLabelText("Time of the digest");
+    fireEvent.change(time, { target: { value: "09:00" } });
+    fireEvent.blur(time);
+    expect(await screen.findByText("The Mac did not take it")).toBeTruthy();
+    // The box holds 09:00 now; the Mac is not known to.
+    await act(async () => push(w(), "box", { settings: { ...SETTINGS, at: "09:00", setAt: { at: 9 } } }));
+    expect(screen.getByText("The Mac did not take it")).toBeTruthy();
+    expect(hostsHold(["mac"], "at", "09:00")).toBe(false);
+    expect(hostsHold(["box"], "at", "09:00")).toBe(true);
+  });
+
+  it("a time typed while an earlier one is still on its way is not taken back by that one's answer, and is sent once", async () => {
+    let answer: (() => void) | null = null;
+    w().slow = new Promise<void>((resolve) => (answer = resolve));
+    render(<SettingsSection />);
+    const time = (await screen.findByLabelText("Time of the digest")) as HTMLInputElement;
+    fireEvent.change(time, { target: { value: "07:30" } });
+    fireEvent.blur(time);
+    await waitFor(() => expect(sets()).toHaveLength(2));
+    // Leaving the field again does not send 07:30 a second time.
+    fireEvent.blur(time);
+    expect(sets()).toHaveLength(2);
+    // He types another time before the hosts answer; then the first save's push arrives.
+    fireEvent.change(time, { target: { value: "06:30" } });
+    await act(async () => push(w(), "box", { settings: { ...SETTINGS, at: "07:30", setAt: { at: 7 } } }));
+    expect(time.value).toBe("06:30");
+    await act(async () => answer!());
+    expect(time.value).toBe("06:30");
+    w().slow = null;
+    await waitFor(() => expect(sets().map((c) => c.params.at)).toEqual(["07:30", "07:30", "06:30", "06:30"]));
+  });
+
+  it("a time he typed and left the section before the rest was over is still written", async () => {
+    const view = render(<SettingsSection />);
+    fireEvent.change(await screen.findByLabelText("Time of the digest"), { target: { value: "05:15" } });
+    expect(sets()).toHaveLength(0);
+    view.unmount();
+    await waitFor(() => expect(sets().map((c) => [c.env, c.params.at])).toEqual([["box", "05:15"], ["mac", "05:15"]]));
   });
 
   it("the time field keeps what he typed until the hosts have answered", async () => {

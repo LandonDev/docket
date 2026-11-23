@@ -1500,7 +1500,9 @@ Around the canvas:
   line explains a row. The hosts that refused a change are that row's red
   line by name ("The Mac did not take it"), until the row is written
   everywhere; a failure is said in his words, never the link's own error
-  text. The time field keeps what he typed until the hosts answer. The
+  text. The time field keeps what he typed until the hosts answer that
+  edit, whatever arrives meanwhile, and a time typed just before he left
+  is still written. The
   section shows each setting's newest value, and a host that missed a
   write is brought to it, field by field, when the window reads it. The Go menu
   has Digest, greyed while no host has Work on.

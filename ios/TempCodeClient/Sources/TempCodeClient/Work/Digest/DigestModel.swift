@@ -349,3 +349,17 @@ public enum DigestModel {
         return format(date, "EEEMMMd", calendar, locale)
     }
 }
+
+/// Which edit of a field is the latest: an answer that arrives for an earlier one is not applied over it.
+/// The time's wheel uses it, where a slow host may answer the first pick while he is on the second.
+public struct EditGate: Sendable {
+    public private(set) var latest = 0
+    public init() {}
+    /// A new edit begins; its number.
+    public mutating func begin() -> Int {
+        latest += 1
+        return latest
+    }
+    /// Whether no later edit began since this one.
+    public func isLatest(_ edit: Int) -> Bool { edit == latest }
+}

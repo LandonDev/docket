@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, unansweredLine } from "./notice";
+import { digestNotice, emptyLine, FOLD_PAST, listSections, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, toastOfNotice, unansweredLine } from "./notice";
 import type { MergedDay } from "./store";
 
 /** What the desktop shows of the digest, as rules over made-up rows. */
@@ -108,7 +108,13 @@ describe("the system notifications", () => {
     ]);
     const many = Array.from({ length: 4 }, (_, i) => row({ key: `k${i}`, how: "now", toldAt: i + 1 }));
     // folded: every open one by name, newest first, as the phone's banner says it
-    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now", title: "Work", body: "4 things need you: Morning summary; Morning summary; Morning summary; Morning summary" }]);
+    // keyed by its newest telling: a thing that joins the fold is a new notice, with its sound; fewer is the same one
+    expect(systemNotices(null, nowToasts(many))).toEqual([{ key: "work-now@k:k3@4", title: "Work", body: "4 things need you: Morning summary; Morning summary; Morning summary; Morning summary" }]);
+    const five = [...many, row({ key: "k4", how: "now", toldAt: 9 })];
+    expect(systemNotices(null, nowToasts(five))[0]!.key).toBe("work-now@k:k4@9");
+    expect(systemNotices(null, nowToasts(five.slice(1)))[0]!.key).toBe("work-now@k:k4@9");
+    expect(toastOfNotice("work-now@k:k4@9")).toBe("work-now");
+    expect(toastOfNotice("work-now:k:prep:1")).toBe("work-now:k:prep:1");
   });
 });
 

@@ -259,6 +259,24 @@ describe("an interrupt's toast", () => {
     expect(settings).toEqual(["connections"]);
   });
 
+  it("the fold's system notification is one that a click opens the list from, and a new one when a thing joins it", async () => {
+    const rows = Array.from({ length: 4 }, (_, i) => tell({ key: `k${i}`, title: `Thing ${i}`, how: "now", toldAt: at(24, 9, i) }));
+    w().rows.set("box", rows);
+    await mount();
+    const first = `work-now@k:k3@${at(24, 9, 3)}`;
+    expect(bridge.show).toHaveBeenLastCalledWith({ key: first, title: "Work", body: "4 things need you: Thing 3; Thing 2; Thing 1; Thing 0" });
+    // A fifth joins: the old notice is let go and a new one asked, which sounds.
+    await act(async () => push(w(), "box", { row: tell({ key: "k4", title: "Thing 4", how: "now", toldAt: at(24, 9, 40) }) }));
+    await settle();
+    expect(bridge.close).toHaveBeenCalledWith(first);
+    const second = `work-now@k:k4@${at(24, 9, 40)}`;
+    expect((bridge.show.mock.calls.at(-1) as unknown as [{ key: string }])[0].key).toBe(second);
+    // Its click opens the list, as the toast's Open does.
+    const onOpen = (bridge.onOpen.mock.calls.at(-1) as unknown as [(key: string) => void])[0];
+    await act(async () => onOpen(second));
+    expect(await screen.findByRole("heading", { name: "Digest" })).toBeTruthy();
+  });
+
   it("past three at once they are one toast that opens the list", async () => {
     w().rows.set("box", Array.from({ length: 4 }, (_, i) => tell({ key: `k${i}`, title: `Thing ${i}`, how: "now", toldAt: at(24, 9, i) })));
     await mount();
