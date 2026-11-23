@@ -68,7 +68,7 @@ export interface Reach {
   waiting: boolean;
   /** why no Teams place is listed, or one needs him; null: nothing to say */
   note: FilesNote | null;
-  /** the workspace's own host answers the new wire: it keeps tabs and marks */
+  /** the workspace's own host keeps tabs and marks: false only once it is known to be a release behind (the old wire answered) */
   tabs: boolean;
   /** the hosts read through the old wire, by name: each is a release behind */
   behind: string[];
@@ -117,7 +117,9 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
           windowsVm,
           waiting,
           note: teamsNote({ workspaceLink: workspace.environmentId, reads: shown, windowsVm, notAllowed, rows: sidebar.rows }),
-          tabs: mine?.wire === "files" && !!mine.answer,
+          // Its host keeps tabs unless it is known to be a release behind: a host that is slow to say its places, or
+          // has not yet, is still asked for its tabs, and a file there opens in one, never in a thread.
+          tabs: mine?.wire !== "office",
           behind: got.filter((r) => r.wire === "office" && r.answer).map((r) => r.name),
           old,
         });
@@ -399,7 +401,8 @@ function putTabs(link: string, workspaceId: string, answer: FilesTabs, show?: st
   if (answer.rev < entry.rev && !show) return;
   const selected = show && answer.tabs.some((t) => t.id === show) ? show : selectedAfter(entry.tabs, answer.tabs, entry.selected);
   for (const id of entry.history.keys()) if (!answer.tabs.some((t) => t.id === id)) entry.history.delete(id);
-  writeTabs(entry, { tabs: answer.tabs, rev: Math.max(answer.rev, entry.rev), loaded: true, selected });
+  // The host's word takes the place of tabs this window kept alone.
+  writeTabs(entry, { tabs: answer.tabs, rev: Math.max(answer.rev, entry.rev), loaded: true, local: false, selected });
 }
 
 const ask = <T,>(link: string, method: string, params: Record<string, unknown>, options?: { timeoutMs?: number }): Promise<T> => registry.linkOf(link).request<T>(method, params, options);
@@ -424,7 +427,8 @@ let localIds = 0;
 /** A workspace whose host keeps no tabs: this window's own, for as long as it is open. */
 function localTabs(link: string, workspaceId: string, first: FilePage): void {
   const entry = tabsOf(link, workspaceId);
-  if (entry.loaded) return;
+  // Whatever was asked of it while it was taken for a host that keeps tabs came to nothing: the window's own start here.
+  if (entry.local) return;
   const id = `local-${++localIds}`;
   writeTabs(entry, { tabs: [{ id, kind: "page", name: first.name, page: first }], loaded: true, local: true, selected: id, rev: 0 });
 }

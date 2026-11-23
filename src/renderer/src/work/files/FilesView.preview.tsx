@@ -180,28 +180,31 @@ export function FilesColumns() {
 }
 
 // A preview page has no host to draw a file: each kind's picture is drawn here, plain, in the shape its host would answer.
-/** A token's colour, as the theme on screen has it: a stand-in picture is drawn in the page's own colours. */
-const token = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+/**
+ * A stand-in picture is flat grey shapes at a few strengths, so one file reads on either theme: the page is drawn
+ * once, with no stylesheet to ask for a token's value, and a picture cannot read the page's own.
+ */
+const grey = (strength: number): string => `gray" fill-opacity="${strength}`;
 function picture(kind: FileEntry["kind"], width: number): { png: string; width: number; height: number } {
   const wide = kind === "deck" || kind === "video" || kind === "picture";
   // Drawn on a 100-wide grid, as a picture a host would answer at `width`.
   const h = wide ? 56.25 : 129.4;
   const height = Math.round((width * h) / 100);
-  const paper = token("--card");
-  const ink = token("--muted-foreground");
-  const rule = token("--border");
+  const paper = grey(0.1);
+  const ink = grey(0.75);
+  const rule = grey(0.3);
   const rect = (x: number, y: number, w: number, hh: number, fill: string, more = ""): string => `<rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="${fill}" ${more}/>`;
-  const marks: string[] = [rect(0, 0, 100, h, kind === "video" ? token("--foreground") : kind === "picture" ? token("--muted") : paper)];
+  const marks: string[] = [rect(0, 0, 100, h, kind === "video" ? grey(0.85) : kind === "picture" ? grey(0.18) : paper)];
   if (kind === "picture") {
-    marks.push(rect(0, h * 0.62, 100, h * 0.38, token("--kind-image"), 'opacity="0.5"'), `<circle cx="74" cy="${h * 0.3}" r="7" fill="${token("--kind-image")}" opacity="0.5"/>`);
+    marks.push(rect(0, h * 0.62, 100, h * 0.38, grey(0.35)), `<circle cx="74" cy="${h * 0.3}" r="7" fill="${grey(0.35)}"/>`);
   } else if (kind === "video") {
-    marks.push(rect(12, h * 0.3, 76, h * 0.4, ink));
+    marks.push(`<path d="M44 ${h * 0.36} L60 ${h * 0.5} L44 ${h * 0.64} Z" fill="${grey(0.1)}"/>`);
   } else if (kind === "sheet") {
-    marks.push(rect(6, 8, 88, 6, token("--muted")));
-    for (let y = 8; y < h - 8; y += 6) marks.push(rect(6, y, 88, 6, "none", `stroke="${rule}" stroke-width="0.3"`));
-    for (let x = 6; x < 94; x += 22) marks.push(rect(x, 8, 22, Math.floor((h - 14) / 6) * 6, "none", `stroke="${rule}" stroke-width="0.3"`));
+    marks.push(rect(6, 8, 88, 6, grey(0.2)));
+    for (let y = 8; y < h - 8; y += 6) marks.push(rect(6, y, 88, 6, "none", `stroke="gray" stroke-opacity="0.3" stroke-width="0.3"`));
+    for (let x = 6; x < 94; x += 22) marks.push(rect(x, 8, 22, Math.floor((h - 14) / 6) * 6, "none", `stroke="gray" stroke-opacity="0.3" stroke-width="0.3"`));
   } else if (kind === "deck") {
-    marks.push(rect(0, 0, 100, h * 0.3, token("--kind-slides")));
+    marks.push(rect(0, 0, 100, h * 0.3, grey(0.45)));
     for (let i = 0; i < 3; i++) marks.push(rect(8, h * 0.42 + i * 7, 60 - i * 12, 2.4, rule));
   } else {
     marks.push(rect(10, 10, 46, 3.6, ink));

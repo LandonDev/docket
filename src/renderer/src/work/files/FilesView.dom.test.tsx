@@ -456,6 +456,64 @@ describe("tabs", () => {
     expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]);
   });
 
+  it("opens a file in a tab, never a thread, when another computer answers before the workspace's own host", async () => {
+    // His Mac's window on a box workspace: the Mac says its places at once, the box a moment later.
+    const mac = newHost({ places: [] });
+    mac.name = "MacBook";
+    mac.platform = "darwin";
+    hosts.set("mac", mac);
+    settings.mayUseDesktop = ["mac"];
+    const box = newHost();
+    const answer = box.answer.bind(box);
+    let land!: () => void;
+    const slow = new Promise<void>((done) => (land = done));
+    box.answer = async (method, params) => {
+      if (method === "work.files.places") await slow;
+      return answer(method, params);
+    };
+    hosts.set("box", box);
+    render(<View {...props} />);
+    await waitFor(() => expect(calls(mac, "work.files.places")).toHaveLength(1));
+    await waitFor(() => expect(document.querySelector("[data-files-view]:not([data-loading])")).not.toBeNull());
+    land();
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    fireEvent.doubleClick(row("Budget.xlsx"));
+    await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]));
+    expect(calls(box, "work.files.open")).toHaveLength(1);
+    expect(calls(box, "session.create")).toEqual([]);
+    // The tabs are the host's, not this window's own.
+    expect(box.tabs().map((t) => t.name)).toEqual(["Dummy Esports", "Budget.xlsx"]);
+  });
+
+  it("opens a file in a tab once its host answers after first missing its deadline", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const box = newHost();
+      const answer = box.answer.bind(box);
+      let land!: () => void;
+      const slow = new Promise<void>((done) => (land = done));
+      let first = true;
+      box.answer = async (method, params) => {
+        if (method === "work.files.places" && first) {
+          first = false;
+          await slow;
+        }
+        return answer(method, params);
+      };
+      hosts.set("box", box);
+      render(<View {...props} />);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await waitFor(() => expect(document.querySelector("[data-files-view]:not([data-loading])")).not.toBeNull());
+      land();
+      await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+      fireEvent.doubleClick(row("Budget.xlsx"));
+      await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]));
+      expect(calls(box, "session.create")).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("closes a tab and returns to the tab it was opened from; the last one closed is the workspace's folder again", async () => {
     const { host } = await mount();
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
@@ -609,6 +667,28 @@ describe("a host a release behind", () => {
     // Nothing of the new wire was asked again once it was found missing, and no tab went to the host.
     expect(calls(host, "work.files.tabOpen")).toEqual([]);
     expect(calls(host, "work.files.list")).toEqual([]);
+  });
+  it("still keeps its tabs in the window when another computer answered first", async () => {
+    const mac = newHost({ places: [] });
+    mac.name = "MacBook";
+    mac.platform = "darwin";
+    hosts.set("mac", mac);
+    settings.mayUseDesktop = ["mac"];
+    const host = oldHost();
+    const answer = host.answer.bind(host);
+    let land!: () => void;
+    const slow = new Promise<void>((done) => (land = done));
+    host.answer = async (method, params) => {
+      if (method === "work.files.places") await slow;
+      return answer(method, params);
+    };
+    hosts.set("box", host);
+    render(<View {...props} />);
+    await waitFor(() => expect(document.querySelector("[data-files-view]:not([data-loading])")).not.toBeNull());
+    land();
+    await waitFor(() => expect(document.querySelector("[data-files-behind]")?.textContent).toBe("Update The box to keep tabs here"));
+    await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports"]));
+    expect(calls(host, "work.files.tabOpen")).toEqual([]);
   });
 });
 

@@ -377,7 +377,13 @@ builds the same places (`placesFromOld`), lists its folders whole through
 `work.office.filesList` and orders them itself. Where that host is the
 workspace's own, the tabs are this window's alone and one line says
 "Update the box to keep tabs here"; where it is a desktop, "Update MacBook
-to open its files in tabs". The adapter is kept for two releases.
+to open its files in tabs". The adapter is kept for two releases. Only a
+host that answered through the old wire is taken for one (`Reach.tabs`,
+store.ts): a host that has not said its places yet, or missed the 4 s
+deadline, is still asked for its tabs and a file there opens in a tab,
+and tabs the window kept alone give way to the host's when they come.
+Before 2026-11-23 a window whose other computer answered first kept its
+own tabs for good and opened every file in a new thread.
 
 ## One door for every change
 
