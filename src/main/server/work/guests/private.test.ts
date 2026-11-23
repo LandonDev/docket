@@ -124,26 +124,36 @@ const stateText = (c: CollaborationClient) => Buffer.from(Y.encodeStateAsUpdate(
 const post = (url: string, body: unknown, headers: Record<string, string> = {}) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) })
 
 describe('a styled document over a guest link', () => {
-  it("opens for a guest whose page knows the schema, and is refused one whose socket says none; styling a classic one puts the second off it", async () => {
+  it("opens for a guest whose page knows the schema; a page that says none is let onto nothing, a classic document too; styling a classic one puts a page that knows less off it", async () => {
     const r = await rig()
     const socket = `ws://127.0.0.1:${r.service.port}/g/ws/L1`
-    // A classic document: both guests are on it.
+    // A page from before the gate says no schema. v1.0.362 is among those, and its editor empties a document it opens
+    // (work-docs.md "The first copy"): it is refused the classic document before anything of it is sent or taken.
+    const silent = r.connect(socket, r.guestToken, { schema: null })
+    const refusals: string[] = []
+    silent.provider.on('authenticationFailed', ({ reason }: { reason: string }) => refusals.push(reason))
+    await until('the silent page refused', () => refusals.length > 0)
+    // A schema refusal's own words: the editor of v1.0.362 reads those as "Update TempCode to open this document."
+    expect(refusals[0]).toBe('Forbidden: the document is schema 1')
+    expect(silent.provider.isSynced).toBe(false)
+    expect(stateText(silent)).not.toContain('Doors open')
+    // A classic document: a page of today and one that knows styling alone (schema 1) are both on it.
     const knows = r.connect(socket, r.guestToken)
-    const old = r.connect(socket, r.guestToken, { schema: null })
+    const old = r.connect(socket, r.guestToken, { schema: 1 })
     await until('both synced', () => knows.provider.isSynced && old.provider.isSynced)
     let closed = ''
     old.provider.configuration.websocketProvider.on('close', ({ event }: { event: { reason?: string } }) => (closed ||= String(event.reason ?? 'closed')))
-    // He styles it: the service raises it, and the guest that knows less is off it before anything newer is written.
-    expect(await r.service.collab.raiseSchema(DOC, 1)).toBe(true)
+    // It rises past what the older page knows (a table of contents goes in): that page is off it before anything newer is written.
+    expect(await r.service.collab.raiseSchema(DOC, 2)).toBe(true)
     await r.service.collab.edit(DOC, 'owner', (doc) => void doc.getMap('page').set('style:Title', { name: 'Title', fontSize: 30 }))
-    await until('the old guest closed', () => closed !== '')
-    await until('the guest that knows has the style', () => knows.document.getMap('page').has('style:Title'))
+    await until('the older page closed', () => closed !== '')
+    await until('the page that knows has the style', () => knows.document.getMap('page').has('style:Title'))
     expect(old.document.getMap('page').has('style:Title')).toBe(false)
-    // A guest that opens it now, knowing the schema, gets it whole; one that says none gets nothing.
+    // A page that opens it now, knowing the schema, gets it whole; one that knows less gets nothing.
     const late = r.connect(socket, r.guestToken)
-    await until('a new guest synced', () => late.provider.isSynced)
-    expect(late.document.getMap('page').get('schema')).toBe(1)
-    const refused = r.connect(socket, r.guestToken, { schema: null })
+    await until('a new page synced', () => late.provider.isSynced)
+    expect(late.document.getMap('page').get('schema')).toBe(2)
+    const refused = r.connect(socket, r.guestToken, { schema: 1 })
     await new Promise((resolve) => setTimeout(resolve, 600))
     expect(refused.provider.isSynced).toBe(false)
     expect(refused.document.getMap('page').size).toBe(0)

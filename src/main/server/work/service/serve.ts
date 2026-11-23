@@ -144,6 +144,9 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   const collab = createCollabServer({
     // No client is given a document newer than it knows, and a document's schema rises only by this service's hand.
     schemaGate: true,
+    // A window that says no schema is from before the gate, and v1.0.362 among those empties a document it opens
+    // (work-docs.md "The first copy"): none is let onto any document. Every page this service serves says its schema.
+    refuseSilent: true,
     verify: {
       ...verifier,
       async verify(token) {

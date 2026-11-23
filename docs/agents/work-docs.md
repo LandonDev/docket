@@ -85,10 +85,11 @@ collab server (`schemaGate: true`, `service/serve.ts`; work-kit
   thing added to the editor after a release has shipped takes the next
   number: see work-kit `src/collab/document.ts`.
 - **An older window, a newer host.** A client says the highest schema it
-  knows in its socket's address (`?schema=n`; one that says nothing knows
-  0). The service refuses a document whose number is higher, before any of it
-  is sent, and the editor shows its refused line: "Update TempCode to open
-  this document." No editor is mounted on it. When a document's number
+  knows in its socket's address (`?schema=n`; one that says nothing is
+  refused every document: "A window that says no schema", below). The
+  service refuses a document whose number is higher, before any of it is
+  sent, and the editor shows its refused line: "Update TempCode to open this
+  document." No editor is mounted on it. When a document's number
   rises, every client on it that knows less is closed first.
 - **The number rises only by the service's hand**, on an editor's ask
   (`ensureSchema`), before that editor writes the new thing; a host-side
@@ -121,15 +122,40 @@ collab server (`schemaGate: true`, `service/serve.ts`; work-kit
 **The first copy.** The editor is on the page, under the bones, before the
 document's first copy has come over the socket. Until it comes the editor
 writes nothing: its opening paragraph is the schema's own default, which
-y-prosemirror never writes. work-kit v67 to v71 broke this (an unset
-`para` was hidden after the first document was made, so the opening
+y-prosemirror never writes. work-kit v65 to v71 broke this (an unset `para`
+was hidden after the editor's first document was made, so the opening
 paragraph was no longer the default): the editor wrote its empty paragraph
-first, the document's copy arrived as a second root beside it, the pane and a
-guest's page drew empty, and the next write emptied the document. A guest's
-Edit link at a phone's width found it (`scripts/proof-doc-guest-phone.ts`);
-work-kit v72 hides the attribute before the first document is made and holds
-it with `src/editor/first-copy.test.tsx`. Anything new that touches the
-editor's schema after `BlockNoteEditor.create` must pass that test.
+first, the document's copy arrived as a second root beside it, and the editor
+then kept the root that sorts first and deleted the other. Yjs sorts two
+inserts at one place by client id, a fresh random number at every open, so
+about one open in two emptied the document for everyone. **TempCode v1.0.361
+(work-kit v64) is clean; v1.0.362 (v66) shipped the fault**; master carried
+it from DOC3 until 39335bbec (work-kit v72, which hides the attribute before
+the first document is made and holds it with `src/editor/first-copy.test.tsx`).
+A guest's Edit link at a phone's width found it
+(`scripts/proof-doc-guest-phone.ts`); two running instances, one of them
+v1.0.362's build, showed that the release has it and that the gate let it in
+(`scripts/proof-doc-gate.ts`, `.temp-code/plans/landed/DOC-gate/`). Anything
+new that touches the editor's schema after `BlockNoteEditor.create` must pass
+`first-copy.test.tsx`.
+
+**A window that says no schema is let onto nothing.** The gate defends a
+document by its number, and a classic document has none: a window from
+before the gate says no schema, was taken as knowing 0, and was let onto
+every classic document. v1.0.362 is such a window. So the service refuses a
+client that says no schema at all, on every document (`refuseSilent`,
+`service/serve.ts`; work-kit `src/collab-server/README.md`), before anything
+is sent to it or taken from it. The reason is a schema refusal's own words,
+because the editor in v1.0.362 already reads those: it shows "Update TempCode
+to open this document." with no Retry and mounts no editor. A window of
+v1.0.361 or older shows its own refused line. Every page this service itself
+serves (a guest's link, the phone, the owner's hosted editor) is built with
+it and says its schema; a window says it through `work.docs.connect
+{schema}`. **A document emptied by a v1.0.362 window comes back from
+History**: the newest row from before, then Restore (checked on the proof's
+own emptied file: four blocks back, the empty state kept as
+"before-restore"); a document has such a row if it was ever imported, left
+idle after an edit, written by an agent or named.
 
 ## Styling: the format row
 
