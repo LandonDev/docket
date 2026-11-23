@@ -13,8 +13,8 @@ export function sheetStopWords(kind: 'moved' | 'rich' | 'fill' | 'other', google
   return `That change is not saved in ${file} yet. Make it in ${there}`
 }
 
-/** A sheet's rules by kind: its conditional formats, its validations, the workbook's names, its filter. */
-export type SheetRuleKind = 'conditional' | 'validation' | 'names' | 'filter'
+/** A sheet's rules by kind: its conditional formats, its validations, the workbook's names, its filter, its tables. */
+export type SheetRuleKind = 'conditional' | 'validation' | 'names' | 'filter' | 'tables'
 
 /** The grid's mutations that change a rule, and the list each changes. */
 export const RULE_MUTATIONS: Readonly<Record<string, SheetRuleKind>> = {
@@ -30,7 +30,12 @@ export const RULE_MUTATIONS: Readonly<Record<string, SheetRuleKind>> = {
   'sheet.mutation.set-filter-range': 'filter',
   'sheet.mutation.set-filter-criteria': 'filter',
   'sheet.mutation.remove-filter': 'filter',
-  'sheet.mutation.re-calc-filter': 'filter'
+  'sheet.mutation.re-calc-filter': 'filter',
+  'sheet.mutation.add-table': 'tables',
+  'sheet.mutation.delete-table': 'tables',
+  'sheet.mutation.set-sheet-table': 'tables',
+  'sheet.mutation.set-table-filter': 'tables',
+  'sheet.mutation.move-table': 'tables'
 }
 
 /** Sent beside a filter's change, with nothing of its own to keep. */
@@ -38,8 +43,8 @@ export const RULE_NOISE: ReadonlySet<string> = new Set(['sheet.mutation.mark-dir
 
 /**
  * What an opened Excel file is sent in place of a rule's own mutation: the whole list the change
- * left (a sheet's conditional formats or validations, the workbook's names, a sheet's filter or
- * null), since the file is written a list at a time. `subUnitId` is absent for the names.
+ * left (a sheet's conditional formats, validations or tables, the workbook's names, a sheet's filter
+ * or null), since the file is written a list at a time. `subUnitId` is absent for the names.
  */
 export const RULES_SET = 'tempcode.sheet.rules'
 export interface RulesSetParams {
@@ -98,6 +103,8 @@ const FORMAT_SAVED = new Set([
 export function ruleKinds(row: readonly string[] | undefined): Set<SheetRuleKind> {
   const out = new Set<SheetRuleKind>();
   for (const kind of ["conditional", "validation", "names", "filter"] as const) if (row?.includes(kind)) out.add(kind);
+  // (the row's control makes one table; the list is the sheet's tables)
+  if (row?.includes("table")) out.add("tables");
   return out;
 }
 

@@ -9,7 +9,9 @@ import { blankWorkbook } from './host/backends'
 import { SOFFICE } from './testing'
 import { ruleModel, place } from './asks'
 import { readRules } from './patch/rules'
-import { readCsv, rulesOf, writeCsv, writeXlsx, writeXlsxWhole } from './writer'
+import { readTables } from './patch/tables'
+import { readText, readZip } from './patch/zip'
+import { readCsv, rulesOf, tablesOf, writeCsv, writeXlsx, writeXlsxWhole } from './writer'
 
 const scratch = mkdtempSync(join(tmpdir(), 'sheets-writer-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
@@ -203,5 +205,59 @@ describe('the rules of a sheet made here, in its export', () => {
     expect(Object.keys(got.names)).toEqual([])
     expect(got.sheets['Q1 Budget']!.conditional).toHaveLength(2)
     expect(got.sheets['Q1 Budget']!.validation).toHaveLength(1)
+  })
+})
+
+describe('the tables of a sheet made here, in its export', () => {
+  /** A workbook with a header row and data, and a table over it as the grid's table plugin keeps one. */
+  const withTable = (over: Record<string, unknown> = {}): IWorkbookData => {
+    const wb = blankWorkbook('workbook', 'Budget')
+    const id = wb.sheetOrder[0]!
+    wb.sheets[id]!.name = 'Q1 Budget'
+    wb.sheets[id]!.cellData = { 0: { 0: { v: 'Line' }, 1: { v: 'Qty' }, 2: { v: 'Each' } }, 1: { 0: { v: 'Venue' }, 1: { v: 1 }, 2: { v: 4200 } }, 2: { 0: { v: 'Audio' }, 1: { v: 2 }, 2: { v: 475 } } }
+    const table = { id: 't1', name: 'Costs', range: { startRow: 0, endRow: 2, startColumn: 0, endColumn: 2 }, options: {}, columns: [], meta: {}, filters: {}, ...over }
+    wb.resources = [...(wb.resources ?? []), { name: 'SHEET_TABLE_PLUGIN', data: JSON.stringify({ [id]: { tables: [table], tableFilteredOutRows: [] } }) }]
+    return wb
+  }
+
+  it('reads each sheet\'s tables from the snapshot by its tab\'s name in the file', () => {
+    const wb = withTable()
+    expect(tablesOf(wb, () => 'Q1 Budget')).toMatchObject([{ kind: 'tables', sheet: 'Q1 Budget', tables: [{ id: 't1', name: 'Costs' }] }])
+    expect(tablesOf(blankWorkbook('workbook', 'Empty'), () => 'Sheet1')).toEqual([])
+  })
+
+  it('writes them as real table parts: the table reader and the importer find the table again', () => {
+    const { bytes, left } = writeXlsxWhole(withTable())
+    expect(left).toEqual([])
+    const read = readTables(bytes).sheets['Q1 Budget']!.tables
+    expect(read).toHaveLength(1)
+    expect(read[0]).toMatchObject({ name: 'Costs', range: { startRow: 0, endRow: 2, startColumn: 0, endColumn: 2 } })
+    expect(read[0]!.columns.map((c) => c.displayName)).toEqual(['Line', 'Qty', 'Each'])
+    const again = importXlsx(bytes).workbook
+    const tables = JSON.parse(again.resources!.find((r) => r.name === 'SHEET_TABLE_PLUGIN')!.data) as Record<string, { tables: { name: string }[] }>
+    expect(Object.values(tables)[0]!.tables.map((t) => t.name)).toEqual(['Costs'])
+  })
+
+  it('writes a cell\'s formula that names the table in the words Excel keeps in a file', () => {
+    const wb = withTable()
+    const id = wb.sheetOrder[0]!
+    // inside the table: this row; outside it: the whole table by its bare name
+    wb.sheets[id]!.cellData![1]![2] = { f: '=[@Qty]*100' }
+    wb.sheets[id]!.cellData![6] = { 0: { f: '=ROWS(Costs)+SUM(Costs[Qty])' }, 1: { f: '=SUM(A1:A3)' } }
+    const { bytes } = writeXlsxWhole(wb)
+    const zip = readZip(bytes)
+    const xml = readText(zip, [...zip.byName.keys()].find((name) => /worksheets\/sheet1\.xml$/.test(name))!)
+    expect(xml).toContain('<f>Costs[[#This Row],[Qty]]*100</f>')
+    expect(xml).toContain('<f>ROWS(Costs[])+SUM(Costs[Qty])</f>')
+    expect(xml).toContain('<f>SUM(A1:A3)</f>')
+  })
+
+  it('leaves out the tables of a sheet the file cannot hold them on and says so, keeping the cells', () => {
+    // a name Excel would not take for a table
+    const { bytes, left } = writeXlsxWhole(withTable({ name: 'A1' }))
+    expect(left).toMatchObject([{ what: 'tables', sheet: 'Q1 Budget' }])
+    expect(readTables(bytes).sheets['Q1 Budget']?.tables ?? []).toEqual([])
+    const again = importXlsx(bytes).workbook
+    expect(again.sheets[again.sheetOrder[0]!]!.cellData?.[1]?.[0]?.v).toBe('Venue')
   })
 })

@@ -12,7 +12,8 @@ export const RULE_RESOURCES = {
   conditionalFormats: 'SHEET_CONDITIONAL_FORMATTING_PLUGIN',
   validations: 'SHEET_DATA_VALIDATION_PLUGIN',
   filters: 'SHEET_FILTER_PLUGIN',
-  definedNames: 'SHEET_DEFINED_NAME_PLUGIN'
+  definedNames: 'SHEET_DEFINED_NAME_PLUGIN',
+  tables: 'SHEET_TABLE_PLUGIN'
 } as const
 
 /** The defined-name mutations: workbook-level, no `subUnitId`. */
@@ -32,6 +33,18 @@ interface AutoFilter {
 interface DefinedName {
   id: string
 }
+/** A sheet's tables as Univer's table plugin keeps them. */
+interface TableList {
+  tables?: Table[]
+}
+interface Table {
+  id: string
+  name: string
+  range: object
+  options?: object
+  meta?: object
+  columns?: Array<{ displayName?: string }>
+}
 
 function resource<T>(wb: IWorkbookData, name: string): ById<T> {
   const data = wb.resources?.find((r) => r.name === name)?.data
@@ -48,7 +61,10 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 /**
  * The mutations that turn `from`'s rules into `to`'s, for the sheets `from` still has. A sheet whose
  * list differs has its list replaced whole: each rule of `from` removed, each of `to` added, so the
- * order (a conditional format's priority) comes out as `to` has it. Tables are not carried.
+ * order (a conditional format's priority) comes out as `to` has it. A sheet's tables are replaced
+ * the same way: each of `from` deleted, each of `to` added by its own id, name, range, options and
+ * column names (a table's own filter criteria are not carried: the table plugin takes them only
+ * through its filter mutation, which a restore does not replay).
  */
 export function ruleMutations(unitId: string, from: IWorkbookData, to: IWorkbookData): SheetMutationJson[] {
   const out: SheetMutationJson[] = []
@@ -86,6 +102,20 @@ export function ruleMutations(unitId: string, from: IWorkbookData, to: IWorkbook
       out.push({ id: 'sheet.mutation.set-filter-range', params: { unitId, subUnitId, range: b.ref } })
       for (const column of b.filterColumns ?? []) out.push({ id: 'sheet.mutation.set-filter-criteria', params: { unitId, subUnitId, col: column.colId, criteria: column } })
     }
+  }
+
+  const tFrom = resource<TableList>(from, RULE_RESOURCES.tables)
+  const tTo = resource<TableList>(to, RULE_RESOURCES.tables)
+  for (const subUnitId of sheets) {
+    const a = tFrom[subUnitId]?.tables ?? []
+    const b = tTo[subUnitId]?.tables ?? []
+    if (same(a, b)) continue
+    for (const table of a) out.push({ id: 'sheet.mutation.delete-table', params: { unitId, subUnitId, tableId: table.id } })
+    for (const table of b)
+      out.push({
+        id: 'sheet.mutation.add-table',
+        params: { unitId, subUnitId, tableId: table.id, name: table.name, range: table.range, ...(table.options ? { options: table.options } : {}), ...(table.meta ? { meta: table.meta } : {}), ...(table.columns?.length ? { header: table.columns.map((c) => c.displayName ?? '') } : {}) }
+      })
   }
 
   const nFrom = resource<DefinedName>(from, RULE_RESOURCES.definedNames)

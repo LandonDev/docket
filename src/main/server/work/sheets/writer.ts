@@ -1,6 +1,8 @@
 import type { ICellData, IStyleData, IWorkbookData, IWorksheetData } from '@univerjs/core'
 import { toFileFormula } from './patch/formula'
 import { patchRules, RulesRefused, type DefinedName, type RulesEdit, type SheetFilter } from './patch/rules'
+import { patchTables, TablesRefused, type TablesEdit } from './patch/tables'
+import { fileReferences, fold } from './patch/tables-model'
 import { readZip, writeZip } from './patch/zip'
 import { colName, esc, escText } from './patch/xml'
 import { excelColour, TEMPCODE_THEME, themeXml, type OfficeTheme } from 'work-kit/format/theme'
@@ -124,11 +126,11 @@ function xfOf(style: IStyleData | null | undefined, pools: Pools): number {
   return at(pools.xfs, xf)
 }
 
-function cellXml(ref: string, cell: ICellData, s: number): string {
+function cellXml(ref: string, cell: ICellData, s: number, words: (formula: string) => string = (f) => f): string {
   const sAttr = s ? ` s="${s}"` : ''
   const v = cell.v
   if (cell.f) {
-    const f = `<f>${esc(toFileFormula(cell.f))}</f>`
+    const f = `<f>${esc(words(toFileFormula(cell.f)))}</f>`
     if (typeof v === 'number') return `<c r="${ref}"${sAttr}>${f}<v>${v}</v></c>`
     if (typeof v === 'boolean') return `<c r="${ref}"${sAttr} t="b">${f}<v>${v ? 1 : 0}</v></c>`
     if (typeof v === 'string' && v !== '')
@@ -152,8 +154,31 @@ const sorted = (o: object): number[] =>
     .filter((n) => Number.isInteger(n) && n >= 0)
     .sort((a, b) => a - b)
 
+/**
+ * A cell's formula in the words Excel keeps in a file where it names a table (`[@Qty]` by the table the cell sits
+ * in, a bare table name as `Costs[]`: patch/tables-model.ts `fileReferences`; Excel reads the typed words as #REF!
+ * and #NAME?). A workbook with no table gets its formulas as they came.
+ */
+function tableWords(wb: IWorkbookData, sheetId: string): (row: number, col: number, formula: string) => string {
+  let all: Record<string, { tables?: { name: string; range: { startRow: number; endRow: number; startColumn: number; endColumn: number } }[] } | null> = {}
+  try {
+    all = JSON.parse(wb.resources?.find((r) => r.name === 'SHEET_TABLE_PLUGIN')?.data ?? '{}') ?? {}
+  } catch {
+    all = {}
+  }
+  const tables = new Set<string>()
+  for (const held of Object.values(all)) for (const table of held?.tables ?? []) if (typeof table?.name === 'string') tables.add(fold(table.name))
+  if (!tables.size) return (_row, _col, formula) => formula
+  const here = all[sheetId]?.tables ?? []
+  return (row, col, formula) => {
+    const own = here.find((t) => row >= t.range.startRow && row <= t.range.endRow && col >= t.range.startColumn && col <= t.range.endColumn)
+    return fileReferences(formula, { own: own?.name ?? '', tables })
+  }
+}
+
 function sheetXml(wb: IWorkbookData, sh: IWorksheetData, pools: Pools): string {
   const rows: string[] = []
+  const said = tableWords(wb, sh.id)
   let maxR = 0
   let maxC = 0
   const data = sh.cellData ?? {}
@@ -166,7 +191,7 @@ function sheetXml(wb: IWorkbookData, sh: IWorksheetData, pools: Pools): string {
     for (const c of sorted(line)) {
       const cell = line[c]
       if (!cell) continue
-      const xml = cellXml(`${colName(c + 1)}${r + 1}`, cell, xfOf(styleOf(wb, cell.s), pools))
+      const xml = cellXml(`${colName(c + 1)}${r + 1}`, cell, xfOf(styleOf(wb, cell.s), pools), (f) => said(r, c, f))
       if (!xml) continue
       cells.push(xml)
       maxR = Math.max(maxR, r)
@@ -292,10 +317,22 @@ export function writeXlsxWhole(wb: IWorkbookData): { bytes: Uint8Array; left: { 
   const edits = rulesOf(wb, (id) => base.names.get(id))
   const left: { what: string; sheet?: string; why: string }[] = []
   let bytes = base.bytes
-  if (!edits.length) return { bytes, left }
   const opts = { sheetIds: base.ids }
+  if (edits.length) bytes = laidRules(bytes, edits, opts, left)
+  // Each sheet's tables as real table parts (patch/tables.ts): a sheet whose tables the writer refuses keeps its cells and loses the tables, said.
+  for (const edit of tablesOf(wb, (id) => base.names.get(id)))
+    try {
+      bytes = patchTables(bytes, [edit], opts).bytes
+    } catch (err) {
+      if (!(err instanceof TablesRefused)) throw err
+      left.push({ what: 'tables', sheet: edit.sheet, why: err.message })
+    }
+  return { bytes, left }
+}
+
+function laidRules(bytes: Uint8Array, edits: RulesEdit[], opts: { sheetIds: string[] }, left: { what: string; sheet?: string; why: string }[]): Uint8Array {
   try {
-    return { bytes: patchRules(bytes, edits, opts).bytes, left }
+    return patchRules(bytes, edits, opts).bytes
   } catch (err) {
     if (!(err instanceof RulesRefused)) throw err
   }
@@ -307,7 +344,25 @@ export function writeXlsxWhole(wb: IWorkbookData): { bytes: Uint8Array; left: { 
       if (!(err instanceof RulesRefused)) throw err
       left.push({ what: RULE_WORDS[edit.kind], ...('sheet' in edit ? { sheet: edit.sheet } : {}), why: err.message })
     }
-  return { bytes, left }
+  return bytes
+}
+
+/** A workbook's tables (Univer's table plugin's resource), each sheet's list named by its tab, as the table writer takes them. */
+export function tablesOf(wb: IWorkbookData, nameOf: (sheetId: string) => string | undefined): TablesEdit[] {
+  const data = wb.resources?.find((r) => r.name === 'SHEET_TABLE_PLUGIN')?.data
+  if (!data) return []
+  let all: Record<string, { tables?: unknown[] } | null>
+  try {
+    all = (JSON.parse(data) ?? {}) as typeof all
+  } catch {
+    return []
+  }
+  const out: TablesEdit[] = []
+  for (const [id, held] of Object.entries(all)) {
+    const sheet = nameOf(id)
+    if (sheet && Array.isArray(held?.tables) && held.tables.length) out.push({ kind: 'tables', sheet, tables: held.tables as never })
+  }
+  return out
 }
 
 /** The cells, styles and shape of the workbook as a new .xlsx; `names` is each sheet's tab name in it and `ids` the sheets' ids in the file's order. */

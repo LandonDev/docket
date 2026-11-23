@@ -636,7 +636,7 @@ function labelOfOps(ops: readonly StructuralOp[]): string {
 function labelOfRules(rules: readonly SheetMutationJson[]): string {
   const kinds = new Set(rules.map((m) => (m.params as RulesSetParams).kind))
   if (kinds.size !== 1) return 'Rules'
-  return { conditional: 'Conditional formatting', validation: 'Validation', names: 'Names', filter: 'Filter' }[[...kinds][0]!]
+  return { conditional: 'Conditional formatting', validation: 'Validation', names: 'Names', filter: 'Filter', tables: 'Table' }[[...kinds][0]!]
 }
 
 /** "12 cells", "B4"; "Formatting" for an edit that changed no cell's contents */

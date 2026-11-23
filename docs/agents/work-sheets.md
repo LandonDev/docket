@@ -148,6 +148,38 @@ A workbook from a mail (`{at: 'mail'}`: .xlsx, .xlsm or .csv) is held as the fil
   carry all three; it is one revision, labelled "Formatting" when no cell's
   contents changed. A cell that only takes a style keeps what it held, so a
   suggestion waiting on it still stands.
+- **Tables are saved a list at a time too** (`patch/tables.ts`,
+  `patchTables`, `readTables`; proven in real Excel on 26 workbooks, no
+  repair, 2,411 checks: `.temp-code/plans/landed/E-sheets/SHT4-excel-tables-proof.md`).
+  A table's change in the grid (`sheet.mutation.{add-table,delete-table,
+  set-sheet-table,set-table-filter,move-table}`) goes to the host as the
+  sheet's whole table list (`RULES_SET` of kind `tables`), where the host
+  lists the `table` control; `savePackage` hands it to the table writer
+  (`jobs.ts` `tablesEditsOf`): a new part with its relationship and content
+  type, stable ids, a header it had to name, a total row and a calculated
+  column filled, a built-in style name with its four switches, a rename
+  followed through every formula that names the table, a removal that
+  leaves the cells. It refuses, before anything is written, a table over a
+  merge, the sheet's filter, a pivot or another table, a protected sheet, a
+  name Excel would not take, and a removal or a shrink that would leave a
+  reference dangling. **A formula that names a table is written in the
+  words Excel keeps in a file**, never as a person types it: `[@Qty]` as
+  `Sales[[#This Row],[Qty]]`, a bare table name as `Sales[]`, a total as
+  `SUBTOTAL(109,Sales[Units])` (Excel removes a table whose calculated
+  column says `[@Qty]`, and reads the typed words in a cell as `#REF!` and
+  `#NAME?`): the table writer does it for its own formulas
+  (`tables-model.ts` `fileReferences`), the cell writer for a formula he
+  types (`patch.ts` through `tables.ts` `cellReferences`), and the model
+  writer for a held sheet's export (`writer.ts` `tableWords`). On a sheet
+  the service holds, the engine replays the table mutations (the table
+  plugin is mounted with the rules), a cold load has the table, a restore
+  brings it back by its id, name, range and options (`host/rules.ts`; a
+  table's own filter criteria are not carried), and the export writes each
+  sheet's tables as real table parts, saying "tables on <sheet>" in `left`
+  where the file cannot hold them (`writer.ts` `tablesOf`). A guest sends no
+  table mutation. Until the grid's own table chrome lands (work-kit, the
+  slice sheets-tables-ui) no store lists the `table` control, so a table is
+  made here only by a file that already has one.
 - **Rules are saved a list at a time** (`patch/rules.ts`, `patchRules`): a
   sheet's conditional formats with their `dxf` records, its validations, the
   workbook's names, a sheet's filter with the rows it hides. The file is

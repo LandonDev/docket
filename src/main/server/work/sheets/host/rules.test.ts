@@ -255,6 +255,42 @@ describe('what a sheet holds, as a new rule is checked against it', () => {
   })
 })
 
+describe('a table on a sheet the service holds', () => {
+  const tablesOf = (json: string): { id: string; name: string; range: { startRow: number; endRow: number; startColumn: number; endColumn: number } }[] => {
+    const all = resourceOf(json, RULE_RESOURCES.tables) as Record<string, { tables?: { id: string; name: string; range: { startRow: number; endRow: number; startColumn: number; endColumn: number } }[] }>
+    return all[S]?.tables ?? []
+  }
+  const add: SheetMutationJson = { id: 'sheet.mutation.add-table', params: { unitId: U, subUnitId: S, tableId: 't1', name: 'Budget', range: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 2 }, header: ['Line', 'Qty', 'Each'], options: {} } }
+
+  it.each(['tcsheet', 'lifeos'] as const)('%s: made, kept through a cold load, renamed, removed, and brought back by a restore', async (kind) => {
+    const store = await storeOf(kind)
+    const host = hostOf(store.backend)
+    const before = (await host.open(store.ref)).rev
+    expect(await host.apply(store.ref, before, [add], 'owner')).toEqual({ rev: before + 1 })
+    expect(tablesOf((await host.snapshotJson(store.ref)).json)).toMatchObject([{ id: 't1', name: 'Budget', range: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 2 } }])
+    // a cold load from the store has it
+    expect(tablesOf((await hostOf(store.backend).snapshotJson(store.ref)).json)).toMatchObject([{ id: 't1', name: 'Budget' }])
+    // a guest may not send it; the owner's page may
+    expect(refusal([add], 'edit', true)).toBe('a guest cannot add table')
+    expect(refusal([add], 'edit', false)).toBeNull()
+    // removed, then restored to when it was there: it is back, by its own id and name
+    const gone: SheetMutationJson = { id: 'sheet.mutation.delete-table', params: { unitId: U, subUnitId: S, tableId: 't1' } }
+    expect(await host.apply(store.ref, before + 1, [gone], 'owner')).toEqual({ rev: before + 2 })
+    expect(tablesOf((await host.snapshotJson(store.ref)).json)).toEqual([])
+    const back = await host.restore(store.ref, before + 1, 'owner')
+    expect(back.rev).toBe(before + 3)
+    expect(tablesOf((await host.snapshotJson(store.ref)).json)).toMatchObject([{ id: 't1', name: 'Budget', range: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 2 } }])
+    // and to before it was made: gone again, in a cold host too
+    await host.restore(store.ref, before, 'owner')
+    expect(tablesOf((await hostOf(store.backend).snapshotJson(store.ref)).json)).toEqual([])
+  })
+
+  it('a table\'s mutation made on an older revision is not moved through rows inserted meanwhile: the client reloads', () => {
+    const insert: SheetMutationJson = { id: 'sheet.mutation.insert-row', params: { unitId: U, subUnitId: S, range: { startRow: 0, endRow: 0, startColumn: 0, endColumn: 25 } } }
+    expect(moveThrough([add], [insert])).toBeNull()
+  })
+})
+
 describe('a snapshot cut carries the rules', () => {
   it('the 500th op cuts a snapshot that holds the rule, and a cold load from it has it', async () => {
     const store = await storeOf('lifeos')

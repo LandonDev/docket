@@ -14,6 +14,7 @@ import {
 } from './sheet'
 import { sameCached, UNSUPPORTED, type EngineEdit, type EngineResult } from './recalc'
 import { functionsIn, SPILLING, toFileFormula } from './formula'
+import { cellReferences } from './tables'
 import {
   attr,
   esc,
@@ -306,12 +307,19 @@ export async function patchXlsx(
   const bySheet = new Map<string, { part: string; edits: Edit[] }>()
   const engineEdits: { sheet: string; row: number; col: number; write: CellWrite }[] = []
   const seen = new Map<string, number>()
+  // A formula that names a table goes in as Excel keeps it in a file: [@Qty] by the table the cell sits in,
+  // a bare table name as Sales[] (Excel reads the typed words as #REF! and #NAME?: SHT4-excel-tables-proof.md).
+  let said: ReturnType<typeof cellReferences> | undefined
   for (const s of specs) {
     const sh = wb.sheets.find((x) => x.name === s.sheet)
     if (!sh) throw new Error(`no sheet named ${s.sheet}`)
     if (sh.kind !== 'worksheet') throw new Error(`${s.sheet} is a ${sh.kind}, not a worksheet`)
     const { row, col } = parseRef(s.cell)
-    const write = toWrite(s)
+    const typed = toWrite(s)
+    const write =
+      typed.kind === 'formula'
+        ? { ...typed, file: (said ??= cellReferences(bytes))(s.sheet, row, col, typed.file) }
+        : typed
     const key = `${s.sheet}\u0000${row},${col}`
     const g = bySheet.get(s.sheet) ?? { part: sh.part, edits: [] }
     if (seen.has(key))

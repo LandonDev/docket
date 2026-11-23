@@ -38,7 +38,7 @@ export type SheetStoreKind = 'package' | 'tcsheet' | 'lifeos' | 'csv'
  */
 export type SheetFormatControl = 'undo' | 'style' | 'font' | 'size' | 'bold' | 'italic' | 'underline' | 'colour' | 'fill' | 'align' | 'vertical' | 'wrap' | 'merge' | 'borders' | 'number'
 /** The Data menu's rows: a sort, the filter, and the rules its side sheet lists. */
-export type SheetDataControl = 'sort' | 'filter' | 'validation' | 'conditional' | 'names'
+export type SheetDataControl = 'sort' | 'filter' | 'validation' | 'conditional' | 'names' | 'table'
 export type SheetRowControl = SheetFormatControl | SheetDataControl
 
 const KEPT_WHOLE: readonly SheetRowControl[] = ['undo', 'style', 'font', 'size', 'bold', 'italic', 'underline', 'colour', 'fill', 'align', 'vertical', 'wrap', 'merge', 'borders', 'number']

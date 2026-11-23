@@ -10,6 +10,7 @@ import { patchFormat, type FormatReport } from './patch/format'
 import { dependsInput } from './patch/package'
 import { patchXlsx, workbookMap, type EditSpec, type Report } from './patch/patch'
 import { patchRules, readRules, type DefinedNames, type RulesEdit, type SheetFilter } from './patch/rules'
+import { patchTables, readTables, type TablesEdit } from './patch/tables'
 import { formatEditsOf } from './formats'
 import { diffWorkbooks } from './diff'
 import { graft } from './graft'
@@ -168,10 +169,24 @@ export function rulesEditsOf(formats: readonly SheetMutationJson[]): RulesEdit[]
   for (const m of formats) {
     if (m.id !== RULES_SET) continue
     const p = m.params as RulesSetParams
+    if (p.kind === 'tables') continue
     if (p.kind === 'names') out.push({ kind: 'names', names: (p.list ?? []) as DefinedNames })
     else if (!p.subUnitId) throw new Error('A rule names its sheet.')
     else if (p.kind === 'filter') out.push({ kind: 'filter', sheet: p.subUnitId, filter: (p.list ?? null) as SheetFilter | null })
     else out.push({ kind: p.kind, sheet: p.subUnitId, rules: (Array.isArray(p.list) ? p.list : []) as never })
+  }
+  return out
+}
+
+/** The table lists among a save's formatting mutations (`RULES_SET` of kind `tables`, each named by its tab), as the table writer takes them. */
+export function tablesEditsOf(formats: readonly SheetMutationJson[]): TablesEdit[] {
+  const out: TablesEdit[] = []
+  for (const m of formats) {
+    if (m.id !== RULES_SET) continue
+    const p = m.params as RulesSetParams
+    if (p.kind !== 'tables') continue
+    if (!p.subUnitId) throw new Error('A table names its sheet.')
+    out.push({ kind: 'tables', sheet: p.subUnitId, tables: (Array.isArray(p.list) ? p.list : []) as never })
   }
   return out
 }
@@ -236,6 +251,14 @@ export async function savePackage(input: string, edits: EditSpec[], ironcalcDir:
       report.recalc.fullCalcOnLoad = again.report.recalc.fullCalcOnLoad
     }
   }
+  const tables = tablesEditsOf(formats)
+  if (tables.length) {
+    // A table is a part of its own with its relationship and content type; the writer fills a header it had to
+    // name, a total row and a calculated column, and asks Excel to calculate again where it wrote a formula.
+    const done = patchTables(bytes, tables)
+    bytes = done.bytes
+    report.partsChanged = [...new Set([...report.partsChanged, ...done.report.partsChanged, ...done.report.partsAdded, ...done.report.partsRemoved])]
+  }
   if (formats.length) {
     const made = formatEditsOf(formats.filter((m) => m.id !== RULES_SET), (tab) => tab, themeOf(zip))
     if (made.length) {
@@ -285,12 +308,14 @@ export interface PackageRules {
   validation: Record<string, unknown[]>
   names: unknown[]
   filter: Record<string, unknown>
+  tables: Record<string, unknown[]>
 }
 
 /** Read from the rule parts alone (patch/rules-reader.ts): no cell is parsed, so a large workbook answers in a fraction of an import. */
 export function packageRules(path: string): PackageRules {
   const got = readRules(new Uint8Array(readFileSync(path)))
-  const out: PackageRules = { conditional: {}, validation: {}, names: Object.values(got.names), filter: {} }
+  const out: PackageRules = { conditional: {}, validation: {}, names: Object.values(got.names), filter: {}, tables: {} }
+  for (const tab of Object.values(readTables(new Uint8Array(readFileSync(path))).sheets)) if (tab.tables.length) out.tables[tab.id] = tab.tables
   for (const tab of Object.values(got.sheets)) {
     if (tab.conditional.length) out.conditional[tab.id] = tab.conditional
     if (tab.validation.length) out.validation[tab.id] = tab.validation

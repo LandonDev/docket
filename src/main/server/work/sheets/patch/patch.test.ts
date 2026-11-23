@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, test } from 'vitest'
@@ -6,7 +6,7 @@ import { readEntry, readText, readZip, writeZip } from './zip'
 import { ironcalc } from './recalc'
 import { refs, toFileFormula, toUserFormula, translate } from './formula'
 import { patchSheet, patchValues, scanCached } from './sheet'
-import { patchXlsx, type Options } from './patch'
+import { patchXlsx, workbookMap, type Options } from './patch'
 
 const enc = new TextEncoder()
 const EMPTY_ZIP = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)])
@@ -325,5 +325,43 @@ describe('package', () => {
     expect(x).toContain('<x:c r="B1"/></x:row>')
     expect(x).not.toContain('C9')
     expect(report.recalc.calcChainRemoved).toBe(true)
+  })
+})
+
+/**
+ * A formula he types into a cell that names a table goes into the file in the words Excel keeps
+ * there (the table proof, E-sheets/SHT4-excel-tables-proof.md: Excel reads the typed words as
+ * #REF! and #NAME?). The cases are the four the proof ran in real Excel.
+ */
+describe('a typed formula that names a table', () => {
+  const corpus = new Uint8Array(readFileSync(join(import.meta.dirname, '..', 'harness/corpus/tables.xlsx')))
+  const formulaAt = (bytes: Uint8Array, sheet: string, cell: string): string | undefined => {
+    const zip = readZip(bytes)
+    const part = workbookMap(zip).sheets.find((s) => s.name === sheet)!.part
+    return new RegExp(`<c r="${cell}"[^>]*>\\s*<f[^>]*>([^<]*)</f>`).exec(readText(zip, part))?.[1]
+  }
+
+  test('this row, a whole table and a table on another sheet are written as Excel keeps them; a formula that names no table is as typed', async () => {
+    const { bytes } = await patchXlsx(
+      corpus,
+      [
+        { sheet: 'Sales', cell: 'F5', value: '=[@Units]*[@Price]*1' },
+        { sheet: 'Sales', cell: 'L9', value: '=ROWS(Sales)+SUM(Targets[Target])' },
+        { sheet: 'Report', cell: 'D3', value: '=COUNTA(targets)' },
+        { sheet: 'Report', cell: 'D4', value: '=SUM(A1:A3)*2' }
+      ],
+      {}
+    )
+    expect(formulaAt(bytes, 'Sales', 'F5')).toBe('Sales[[#This Row],[Units]]*Sales[[#This Row],[Price]]*1')
+    expect(formulaAt(bytes, 'Sales', 'L9')).toBe('ROWS(Sales[])+SUM(Targets[Target])')
+    expect(formulaAt(bytes, 'Report', 'D3')).toBe('COUNTA(targets[])')
+    expect(formulaAt(bytes, 'Report', 'D4')).toBe('SUM(A1:A3)*2')
+  })
+
+  test('a workbook with no table gets its formulas as they came', async () => {
+    const { bytes } = await patchXlsx(excelLike(), [{ sheet: 'S & P', cell: 'D9', value: '=SUM(A1:A3)' }], {})
+    const zip = readZip(bytes)
+    const part = workbookMap(zip).sheets.find((s) => s.name === 'S & P')!.part
+    expect(readText(zip, part)).toMatch(/<x:f>SUM\(A1:A3\)<\/x:f>/)
   })
 })

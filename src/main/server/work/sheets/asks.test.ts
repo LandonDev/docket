@@ -247,7 +247,7 @@ describe('a rule against what the sheet already holds', () => {
 })
 
 describe('a rule for an opened Excel file: the whole list it leaves', () => {
-  const held = { conditional: { s1: [{ cfId: 'old' }] }, validation: { s1: [{ uid: 'old' }] }, names: [{ id: 'name1', name: 'Budgeted', formulaOrRefString: 'Budget!$B$2' }, { id: 'name2', name: 'budgeted', formulaOrRefString: 'x', localSheetId: 's2' }], filter: {} }
+  const held = { conditional: { s1: [{ cfId: 'old' }] }, validation: { s1: [{ uid: 'old' }] }, names: [{ id: 'name1', name: 'Budgeted', formulaOrRefString: 'Budget!$B$2' }, { id: 'name2', name: 'budgeted', formulaOrRefString: 'x', localSheetId: 's2' }], filter: {}, tables: {} }
   it('a new conditional format wins first; a validation goes last; the other sheets\' lists are not sent', () => {
     const cf = ruleListMutation(model({ kind: 'bar', range: B, colour: '#638EC6' }), held)
     expect(cf.id).toBe(RULES_SET)
