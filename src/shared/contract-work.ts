@@ -30,6 +30,7 @@ import { PROJECTS_CAPS, PROJECTS_RELAY, ProjectsRequestSchemas, type ProjectsPus
 import { WINVM_CAPS, WINVM_RELAY, WinvmRequestSchemas, type WinvmPush } from './contract-work-winvm'
 import { CAPTURE_CAPS, CAPTURE_RELAY, CaptureRequestSchemas, type CapturePush } from './contract-work-capture'
 import { FILES_CAPS, FILES_RELAY, FilesRequestSchemas, type FilesPush } from './contract-work-files'
+import { PREP_CAPS, PREP_RELAY, PrepRequestSchemas, type PrepPush } from './contract-work-prep'
 
 /**
  * Work over the wire (docs/agents/work.md): the core's own methods, then
@@ -117,7 +118,8 @@ export const WorkRequestSchemas = [
   ...ProjectsRequestSchemas,
   ...WinvmRequestSchemas,
   ...CaptureRequestSchemas,
-  ...FilesRequestSchemas
+  ...FilesRequestSchemas,
+  ...PrepRequestSchemas
 ] as const
 
 export type WorkPush =
@@ -149,6 +151,7 @@ export type WorkPush =
   | WinvmPush
   | CapturePush
   | FilesPush
+  | PrepPush
 
 export const WORK_CAPS = {
   ...WORK_CORE_CAPS,
@@ -178,7 +181,8 @@ export const WORK_CAPS = {
   ...PROJECTS_CAPS,
   ...WINVM_CAPS,
   ...CAPTURE_CAPS,
-  ...FILES_CAPS
+  ...FILES_CAPS,
+  ...PREP_CAPS
 }
 
 /** Each pillar's own requests, capability rows and relay rows, for the guards (contract-work.test.ts) and the router. */
@@ -209,7 +213,8 @@ export const WORK_PILLAR_CONTRACTS: Record<PillarId, { requests: readonly z.ZodT
   projects: { requests: ProjectsRequestSchemas, caps: PROJECTS_CAPS, relay: PROJECTS_RELAY },
   winvm: { requests: WinvmRequestSchemas, caps: WINVM_CAPS, relay: WINVM_RELAY },
   capture: { requests: CaptureRequestSchemas, caps: CAPTURE_CAPS, relay: CAPTURE_RELAY },
-  files: { requests: FilesRequestSchemas, caps: FILES_CAPS, relay: FILES_RELAY }
+  files: { requests: FilesRequestSchemas, caps: FILES_CAPS, relay: FILES_RELAY },
+  prep: { requests: PrepRequestSchemas, caps: PREP_CAPS, relay: PREP_RELAY }
 }
 
 /**

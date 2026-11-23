@@ -1,0 +1,251 @@
+import { z } from 'zod'
+import { CanvasSourceSchema, ContextChipSchema, type CanvasSource, type ContextChip } from './work/canvas'
+import type { SectorKey } from './work/ids'
+import { request, type CapsOf, type RelayOf } from './work/wire'
+
+/**
+ * The prep pillar's wire (docs/agents/work-prep.md): a page for one meeting.
+ * Before it, who is coming, the last mail with each, the open tasks that
+ * touch them or the subject, the files in play and what was agreed last
+ * time; after it, his notes turned into tasks he ticks and a follow-up mail
+ * that waits for his press.
+ *
+ * A page belongs to one LifeOS event in one Work workspace, on the
+ * workspace's host. Its facts are read from LifeOS with no model; a Work
+ * thread writes the part that needs judgement through the pillar's tools.
+ * Nothing here sends: the follow-up mail is LifeOS's own held draft.
+ */
+
+export const PREP_LINE_MAX = 200
+export const PREP_MATTERS_MAX = 5
+export const PREP_LINES_MAX = 12
+export const PREP_PEOPLE_MAX = 40
+/** How many people a page draws; the rest are counted. */
+export const PREP_PEOPLE_DRAWN = 12
+export const PREP_NOTES_MAX = 60_000
+export const PREP_TASKS_MAX = 20
+/** The longest span `work.prep.upcoming` reads in one call. */
+export const PREP_UPCOMING_MAX_MS = 31 * 86_400_000
+
+/** One thing said on a page, and the LifeOS row it is about when there is one: a press opens it. */
+export const PrepLineSchema = z.object({
+  text: z.string().trim().min(1).max(PREP_LINE_MAX),
+  ref: z.object({ table: z.enum(['mailThreads', 'tasks', 'events', 'docs', 'people']), id: z.string().min(1).max(200) }).optional()
+})
+export type PrepLine = z.infer<typeof PrepLineSchema>
+
+/** A file in play: a chip opens where a sent chip opens, a url opens outside. */
+export const PrepFileRefSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  chip: ContextChipSchema.optional(),
+  url: z.string().url().max(2000).optional()
+})
+export interface PrepFileRef {
+  title: string
+  chip?: ContextChip
+  url?: string
+}
+
+/** Someone he or the thread added beside the event's own attendees; kept for the series. */
+export const PrepAddedPersonSchema = z.object({
+  address: z.string().trim().toLowerCase().email().max(320).optional(),
+  name: z.string().trim().min(1).max(200),
+  /** the LifeOS person, when they are one of the sector's people */
+  personId: z.string().min(1).max(200).optional()
+})
+export type PrepAddedPerson = z.infer<typeof PrepAddedPersonSchema>
+
+/** A task the follow-up yielded: a suggestion until he ticks it, then a LifeOS task. */
+export const PrepSuggestionSchema = z.object({
+  id: z.string().min(1).max(32),
+  title: z.string().trim().min(1).max(300),
+  /** who it falls to, as the notes said */
+  who: z.string().trim().max(120).optional(),
+  due: z.number().optional(),
+  quote: z.string().trim().max(400).optional(),
+  state: z.enum(['proposed', 'filed', 'rejected']),
+  lifeosTaskId: z.string().optional()
+})
+export type PrepSuggestion = z.infer<typeof PrepSuggestionSchema>
+
+/** What a page keeps: the people added, the brief a thread wrote, his notes and what came of them. */
+export const PrepDocSchema = z.object({
+  people: z.array(PrepAddedPersonSchema).max(PREP_PEOPLE_MAX),
+  brief: z
+    .object({
+      matters: z.array(PrepLineSchema).max(PREP_MATTERS_MAX),
+      agreed: z.array(PrepLineSchema).max(PREP_LINES_MAX),
+      files: z.array(PrepFileRefSchema).max(PREP_LINES_MAX),
+      at: z.number(),
+      /** the thread that wrote it */
+      by: z.string()
+    })
+    .nullable(),
+  notes: z
+    .object({
+      text: z.string().max(PREP_NOTES_MAX),
+      at: z.number(),
+      /** a recording, a transcript or a document that holds the notes */
+      file: CanvasSourceSchema.optional(),
+      meetingItemId: z.string().optional()
+    })
+    .nullable(),
+  after: z
+    .object({
+      summary: z.array(PrepLineSchema).max(PREP_LINES_MAX),
+      decisions: z.array(PrepLineSchema).max(PREP_LINES_MAX),
+      questions: z.array(PrepLineSchema).max(PREP_LINES_MAX),
+      tasks: z.array(PrepSuggestionSchema).max(PREP_TASKS_MAX),
+      at: z.number()
+    })
+    .nullable()
+})
+export interface PrepDoc {
+  people: PrepAddedPerson[]
+  brief: { matters: PrepLine[]; agreed: PrepLine[]; files: PrepFileRef[]; at: number; by: string } | null
+  notes: { text: string; at: number; file?: CanvasSource; meetingItemId?: string } | null
+  after: { summary: PrepLine[]; decisions: PrepLine[]; questions: PrepLine[]; tasks: PrepSuggestion[]; at: number } | null
+}
+export const emptyPrepDoc = (): PrepDoc => ({ people: [], brief: null, notes: null, after: null })
+
+/**
+ * How ready a page is. `after`: notes or an outcome stand. `briefed`: a
+ * brief stands. `working`: a brief thread was started a short while ago and
+ * has not written yet (the host bounds it by time; the window knows the
+ * thread's own status). `none`: facts only.
+ */
+export type PrepState = 'none' | 'working' | 'briefed' | 'after'
+
+/** How long after its start a brief thread that has not written still counts as working. */
+export const PREP_WORKING_MS = 20 * 60_000
+
+/** When a meeting is over: its end, or an hour after its start when the calendar gave none. */
+export const prepEndOf = (event: { startsAt: number; endsAt?: number | null }): number => event.endsAt ?? event.startsAt + 3_600_000
+
+export function prepStateOf(page: { doc: PrepDoc; briefSessionId: string | null; briefAt: number | null }, now: number): PrepState {
+  if (page.doc.notes || page.doc.after) return 'after'
+  if (page.doc.brief) return 'briefed'
+  if (page.briefSessionId && page.briefAt !== null && now - page.briefAt < PREP_WORKING_MS) return 'working'
+  return 'none'
+}
+
+export interface PrepEvent {
+  id: string
+  title: string
+  startsAt: number
+  endsAt?: number
+  allDay: boolean
+  location?: string
+  /** when to leave for it, as LifeOS (or, once it is built, the clashes pillar) worked out */
+  leaveAt?: number
+}
+
+/** Someone on the meeting: an attendee of the event or a person added to the page. */
+export interface PrepPerson {
+  name: string
+  address?: string
+  /** the LifeOS person, only when they are one of this sector's people */
+  personId?: string
+  /** added to the page, not on the event itself */
+  added?: boolean
+  /** true only for an attendee who declined the invite */
+  declined?: boolean
+  /** their newest mail thread in this sector */
+  mail?: { id: string; subject: string; at: number; unread: boolean }
+}
+
+/** An open task that touches the meeting: one a person on it asked for or is waited on for, or one that names its subject. */
+export interface PrepTask {
+  id: string
+  title: string
+  dueAt?: number
+  /** why it is here; absent: its title matches the meeting's subject */
+  why?: 'asked' | 'waiting'
+  /** the person `why` is about */
+  who?: string
+}
+
+/** The page before this one: the same series, or the same title with a shared person. */
+export interface PrepLast {
+  eventId: string
+  title: string
+  startsAt: number
+  decided: PrepLine[]
+  open: PrepLine[]
+  /** tasks it filed that are still open */
+  tasks: PrepTask[]
+}
+
+/** The follow-up mail a page's thread drafted and LifeOS holds: shown, never sent, from here. */
+export interface PrepDraft {
+  outboxId: string
+  subject: string
+  to: string[]
+}
+
+/** A part of the page that did not load; the rest still shows. */
+export type PrepProblem = 'people' | 'tasks' | 'last' | 'drafts'
+
+export interface PrepPage {
+  workspaceId: string
+  sector: SectorKey
+  event: PrepEvent
+  people: PrepPerson[]
+  /** people past the ones drawn */
+  morePeople: number
+  tasks: PrepTask[]
+  files: PrepFileRef[]
+  last: PrepLast | null
+  doc: PrepDoc
+  /** 0 until something is kept */
+  rev: number
+  state: PrepState
+  briefSessionId: string | null
+  followSessionId: string | null
+  drafts: PrepDraft[]
+  /** Prepare ahead is on for this workspace */
+  aheadOn: boolean
+  /** false for a sector Prepare ahead is withheld from */
+  aheadOffered: boolean
+  problems: PrepProblem[]
+}
+
+/** A meeting that is coming, and how ready its page is: Today's mark and the digest's notice read this. */
+export interface PrepUpcoming {
+  workspaceId: string
+  sector: SectorKey
+  eventId: string
+  title: string
+  startsAt: number
+  endsAt: number
+  /** up to three names of the others on it */
+  with: string[]
+  state: PrepState
+}
+
+const workspaceId = z.string().min(1).max(64)
+const eventId = z.string().min(1).max(200)
+const page = { workspaceId, eventId }
+
+export const PrepRequestSchemas = [
+  /** → { page: PrepPage }: the meeting's facts, read from LifeOS now, and what the page keeps. Writes nothing. */
+  request('work.prep.page', z.object(page)),
+  /**
+   * → { meetings: PrepUpcoming[] }: the timed events with someone else on them in this host's
+   * linked Work workspaces, soonest first; at most 31 days a call.
+   */
+  request('work.prep.upcoming', z.object({ from: z.number(), to: z.number() })),
+  /** Sets the people added to the page, kept for the series. → { page } */
+  request('work.prep.people', z.object({ ...page, people: z.array(PrepAddedPersonSchema).max(PREP_PEOPLE_MAX) }))
+] as const
+
+/** A page changed: a screen reads it again when `rev` is past what it holds. */
+export type PrepPush = { push: 'work.prep'; workspaceId: string; eventId: string; rev: number }
+
+export const PREP_CAPS = {
+  'work.prep.page': 'read',
+  'work.prep.upcoming': 'read',
+  'work.prep.people': 'operate'
+} satisfies CapsOf<typeof PrepRequestSchemas>
+/** Every method is carried to the workspace's host, so the phone and a Mac window reach a page on the box. */
+export const PREP_RELAY = {} satisfies RelayOf<typeof PrepRequestSchemas>
