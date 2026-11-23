@@ -346,22 +346,3 @@ export const workPlayPort = {
     playPort = next;
   },
 };
-
-/**
- * What the templates pillar answers (docs/agents/work-templates.md), filled by
- * Work's shell while Work is on (work/templates/TemplatesHost.tsx): New from a
- * template in a workspace (a folder to keep the file in, or one template to ask
- * the fields of), and Save as template on a file. Typed loosely so the first
- * paint takes nothing of the pillar's; callers go through work/templates/open.ts.
- */
-export interface WorkTemplatePort {
-  open(ask: { workspaceId: string; into?: unknown; intoName?: string; template?: unknown }): void;
-  save(ask: { workspaceId: string; source: unknown; name?: string; fields?: readonly string[] }): void;
-}
-let templatePort: WorkTemplatePort | null = null;
-export const workTemplatePort = {
-  get: (): WorkTemplatePort | null => templatePort,
-  set(next: WorkTemplatePort | null): void {
-    templatePort = next;
-  },
-};

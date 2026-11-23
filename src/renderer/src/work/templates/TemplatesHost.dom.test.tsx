@@ -35,7 +35,7 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
 const { openTemplates, saveAsTemplate } = await import("./open");
 const { TemplatesHost } = await import("./TemplatesHost");
 const { useTemplates } = await import("./data");
-const { workTemplatePort } = await import("../../lib/workSwitch");
+const { workTemplatePort } = await import("./open");
 
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
 

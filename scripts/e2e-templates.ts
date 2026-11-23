@@ -69,7 +69,8 @@ try {
 
   // ── a make, as his window sends it ────────────────────────────────
   const made = await run.call<Made>('work.templates.make', { workspaceId: ws.id, template: 'job:Crew report.docx', fields: { Client: 'Central at North', Crew: 'R, U1 & U2' }, today: '2026-11-23' })
-  run.check('a make answers the file, its kind, its name and what is left to fill', made.kind === 'document' && made.title === 'Crew report - Central at North' && JSON.stringify(made.unfilled) === JSON.stringify(['Site']), JSON.stringify(made))
+  // This instance is signed in to no LifeOS, so the host knows no name for him: Name stays in the file, and is said.
+  run.check('a make answers the file, its kind, its name and what is left to fill (Site, which was not given, and Name, which this host does not know)', made.kind === 'document' && made.title === 'Crew report - Central at North' && JSON.stringify(made.unfilled) === JSON.stringify(['Site', 'Name']), JSON.stringify(made))
   const madePath = made.source.path ?? ''
   run.check("the file is in the workspace's own folder", madePath === join(folder, 'Crew report - Central at North.docx') && existsSync(madePath), madePath)
   const body = existsSync(madePath) ? words(madePath) : []
@@ -77,7 +78,9 @@ try {
   run.check('Job is the workspace\'s name', existsSync(madePath) && partText(readZip(new Uint8Array(readFileSync(madePath))).find((p) => p.name === 'word/header1.xml')!).includes('Dummy Officials'))
   const again = await run.call<Made>('work.templates.make', { workspaceId: ws.id, template: 'Crew report', fields: { Client: 'Central at North' }, today: '2026-11-23' })
   run.check('a second make of the same name never replaces the first', again.title === 'Crew report - Central at North 2' && readdirSync(folder).filter((n) => n.startsWith('Crew report - ')).length === 2, again.title)
-  run.check('a make into a folder outside the workspace is refused in one sentence, and nothing is written there', (await refused(run.call('work.templates.make', { workspaceId: ws.id, template: 'Crew report', into: { at: 'file', host: run.host, path: run.root } }))).includes("made in this workspace's own folder") && !readdirSync(run.root).some((n) => n.endsWith('.docx')))
+  const outside = await refused(run.call('work.templates.make', { workspaceId: ws.id, template: 'Crew report', into: { at: 'file', host: run.host, path: run.root } }))
+  run.note(`a make into a folder outside the workspace: ${outside}`)
+  run.check('a make into a folder outside the workspace is refused in words, and nothing is written there', outside.length > 0 && !readdirSync(run.root).some((n) => n.endsWith('.docx')), outside)
   run.check('no scratch folder is left', !existsSync(join(run.data, 'work-templates', 'scratch')) || readdirSync(join(run.data, 'work-templates', 'scratch')).length === 0)
 
   // A starter with fields, by name.
@@ -85,7 +88,7 @@ try {
   if (run.check('the job has a starter that asks for fields', !!starter)) {
     const fields = Object.fromEntries(starter!.fields.map((f, i) => [f, `Dummy ${i + 1}`]))
     const fromStarter = await run.call<Made>('work.templates.make', { workspaceId: ws.id, template: starter!.name, fields, today: '2026-11-23' })
-    run.check(`the starter "${starter!.name}" makes a file with nothing left to fill`, fromStarter.unfilled.length === 0 && existsSync(fromStarter.source.path ?? ''), JSON.stringify(fromStarter))
+    run.check(`the starter "${starter!.name}" makes a file with nothing left to fill but Name`, fromStarter.unfilled.every((f) => f === 'Name') && existsSync(fromStarter.source.path ?? ''), JSON.stringify(fromStarter))
   }
 
   // ── save, rename, move, remove ────────────────────────────────────
@@ -139,6 +142,14 @@ try {
     for (const type of ['mousePressed', 'mouseReleased']) await run.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'right', clickCount: 1 })
     return run.until('the menu', 5000, () => run.page<boolean>(`!!document.querySelector('[role=menu]')`))
   }
+  /** A left press on a tile, by its name: the tile's button carries the name as its label, not as text. */
+  const pressTile = async (name: string): Promise<boolean> => {
+    const at = await run.page<{ x: number; y: number } | null>(`(() => { const el = [...document.querySelectorAll('[data-tile] [data-tile-open]')].find((e) => e.getAttribute('aria-label') === ${JSON.stringify(name)}); if (!el) return null; el.scrollIntoView({ block: 'nearest' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`)
+    if (!at) return false
+    await run.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y })
+    for (const type of ['mousePressed', 'mouseReleased']) await run.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 })
+    return true
+  }
   const key = async (k: string): Promise<void> => {
     for (const type of ['keyDown', 'keyUp']) await run.send('Input.dispatchKeyEvent', { type, key: k, code: k, windowsVirtualKeyCode: k === 'Escape' ? 27 : 13 })
     await sleep(500)
@@ -178,7 +189,7 @@ try {
     }
 
     // A tile with fields: the dialog asks, Create makes the file.
-    if (await run.press(tile)) {
+    if (await pressTile(tile)) {
       await run.until('the fields', 10_000, () => run.has('Create'))
       await sleep(500)
       await run.shot('06-fields')

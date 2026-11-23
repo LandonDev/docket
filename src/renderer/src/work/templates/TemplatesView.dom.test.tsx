@@ -43,7 +43,7 @@ vi.mock("../../components/ui/toaster", async (original) => {
 });
 
 const { View, Head } = await import("./TemplatesView");
-const { workTemplatePort } = await import("../../lib/workSwitch");
+const { workTemplatePort } = await import("./open");
 
 const tpl = (id: string, name: string, fields: string[] = []): Template => ({ id, name, kind: "document", form: "docx", where: id.startsWith("job:") ? "job" : id.startsWith("all:") ? "all" : "starter", fields, source: { at: "file", host: "box", path: `/w/Templates/${name}.docx` } });
 const MEMO = tpl("job:Crew memo.docx", "Crew memo");

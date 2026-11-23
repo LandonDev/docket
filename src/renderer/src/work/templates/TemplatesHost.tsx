@@ -4,7 +4,7 @@ import type { FolderRef } from "@shared/work/files";
 import type { Template } from "@shared/work/templates";
 import { defineChunk } from "../../lib/lazyChunk";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
-import { workTemplatePort } from "../../lib/workSwitch";
+import { workTemplatePort } from "./open";
 
 const dialogs = defineChunk("work-templates", () => import("./TemplatesDialogs"));
 const TemplateDialog = dialogs.surface("TemplateDialog");

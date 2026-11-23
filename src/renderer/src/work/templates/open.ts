@@ -4,15 +4,34 @@ import type { Template } from "@shared/work/templates";
 import { registry } from "../../lib/connection";
 import { refusalWords } from "../../lib/settingsHome";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
-import { openWorkView, workTemplatePort } from "../../lib/workSwitch";
+import { openWorkView } from "../../lib/workSwitch";
 
 /**
  * The templates pillar's ways in for every other screen (docs/agents/work-templates.md
  * "The screens"; SEAMS.md "templates"): the one file besides the host's api.ts that
  * another pillar may import. It loads no chunk: the dialogs come through
- * `workTemplatePort`, which TemplatesHost fills while Work is on, so a screen that
- * imports this takes nothing of the pillar into its own chunk.
+ * `workTemplatePort` below, which TemplatesHost fills while Work is on, so a screen
+ * that imports this takes nothing else of the pillar into its own chunk.
  */
+
+/**
+ * What the dialogs answer, filled by Work's shell while Work is on
+ * (TemplatesHost.tsx): New from a template in a workspace (a folder to keep
+ * the file in, or one template to ask the fields of), and Save as template on
+ * a file. It lives here, in a file only lazy chunks import, so the first paint
+ * carries nothing of this pillar.
+ */
+export interface WorkTemplatePort {
+  open(ask: { workspaceId: string; into?: FolderRef; intoName?: string; template?: Template }): void;
+  save(ask: { workspaceId: string; source: CanvasSource; name?: string; fields?: readonly string[] }): void;
+}
+let templatePort: WorkTemplatePort | null = null;
+export const workTemplatePort = {
+  get: (): WorkTemplatePort | null => templatePort,
+  set(next: WorkTemplatePort | null): void {
+    templatePort = next;
+  },
+};
 
 /** "New from a template" for a workspace; the file is kept in `into` (named `intoName` in the footer), else the workspace's folder. False while Work's shell is not up. */
 export function openTemplates(ask: { workspaceId: string; into?: FolderRef; intoName?: string }): boolean {
