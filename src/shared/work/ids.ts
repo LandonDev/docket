@@ -47,7 +47,8 @@ export const PILLAR_IDS = [
   'winvm',
   'capture',
   'files',
-  'prep'
+  'prep',
+  'money'
 ] as const
 export type PillarId = (typeof PILLAR_IDS)[number]
 export const PillarIdSchema = z.enum(PILLAR_IDS)
@@ -87,7 +88,9 @@ export const PILLAR_MILESTONE: Record<PillarId, number> = {
   /** the Files place (plan-jjspQsZklEYR), numbered past capture */
   files: 54,
   /** meeting prep and follow-up (plan-B6-Yq2vVy3SZ), numbered past the Files place */
-  prep: 55
+  prep: 55,
+  /** money, receipts to a ledger by job (plan-VWTDbboLt6UA), round 3's row 6 */
+  money: 60
 }
 
 /**

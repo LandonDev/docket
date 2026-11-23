@@ -298,7 +298,8 @@ export const PILLAR_LOADERS: PillarLoaders = {
   winvm: () => import('./winvm').then((m) => m.winvm),
   capture: () => import('./capture').then((m) => m.capture),
   files: () => import('./files').then((m) => m.files),
-  prep: () => import('./prep').then((m) => m.prep)
+  prep: () => import('./prep').then((m) => m.prep),
+  money: () => import('./money').then((m) => m.money)
 }
 
 let loaded: Promise<Map<PillarId, string>> | null = null
