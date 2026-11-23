@@ -52,6 +52,14 @@ describe('clashLine', () => {
     expect(clashLine(clash, 'e_early', ZONE)).toBe('Overlaps Late game (Ref), Wed 11:00 PM')
     expect(clashLine(clash, 'e_late', ZONE)).toBe('Overlaps Airport run (Life), Thu 1:00 AM')
   })
+  it('names the weekday against the day the row sits under, when a list shows it under another day than its start', () => {
+    // Both start Wednesday night and run past midnight: under Thursday, a bare "11:30 PM" would read as Thursday's.
+    const shift = side({ eventId: 'e_shift', sector: 'life', title: 'Shift', startsAt: at(25, 23, 30), endsAt: at(26, 3) })
+    const game2 = side({ eventId: 'e_night', sector: 'ref', title: 'Night game', startsAt: at(25, 22), endsAt: at(26, 0, 30) })
+    const clash: Clash = { id: 'e_night-e_shift', kind: 'overlap', a: game2, b: shift }
+    expect(clashLine(clash, 'e_night', ZONE)).toBe('Overlaps Shift (Life), 11:30 PM')
+    expect(clashLine(clash, 'e_night', { ...ZONE, on: at(26, 0) })).toBe('Overlaps Shift (Life), Wed 11:30 PM')
+  })
   it("takes a job's name when given one, and uses ordinary spaces in times", () => {
     const line = clashLine(overlap, 'e_staff', { ...ZONE, label: (s) => (s === 'ref' ? 'Refereeing' : s) })
     expect(line).toBe('Overlaps Varsity Basketball (Refereeing), 6:00 PM')

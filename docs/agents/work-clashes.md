@@ -22,7 +22,13 @@ the look of each surface is docs/DESIGN.md "Clashes".
   without the map), `driveLine` ("38 min drive, 24 mi", "About 40 min, 25
   mi"), `clashTitle`, `tellWords`, `leaveLine` ("Leave 4:35 PM"). A job's
   name is its sector key with a capital unless the caller passes `label`.
-  Times read in the zone the caller passes, with ordinary spaces.
+  Times read in the zone the caller passes, with ordinary spaces. `clashLine`
+  names the other event's job only when it is another job, and prefixes its
+  time with its weekday when it starts on another day than the one the line
+  is read under (the event's own start day, or `opts.on` when a list shows
+  the row under another). A shortfall worked out without the map is said to
+  five minutes, never under five, as its drive line is. A side carries
+  `guests` when someone else on the event has an address.
 
 ## The wire (`src/shared/contract-work-clashes.ts`)
 
@@ -122,8 +128,13 @@ The pillar has no view of its own and no row in the column.
   Undo on its toast. Running late reads the event's people (`events:get`)
   and opens Mail's composer in that job's workspace (`mail/mailto.ts`), so it
   is offered only where this host has that workspace. The dialog reads the
-  clash's own day or two; a clash that is gone says so in its title, and a
-  read that failed with nothing handed over says why.
+  clash's own day or two (whole local days); a clash that is gone says so in
+  its title, and a read that failed with nothing handed over says why. It
+  keeps the clash it showed while his own press is out and while it closes,
+  and keeps an open step with what he typed when the calendar settles the
+  clash meanwhile: the step says so and sends nothing. A step's time fields
+  left as offered send the instant offered; a move of an event with guests
+  says they are told.
 - `model.ts` holds the pure parts: the marks, the time a move or a proposal
   starts filled with (the earlier event: the latest quarter hour that ends a
   drive before the later one, while that is ahead and on its day; else the

@@ -1600,7 +1600,7 @@ Around the canvas:
   time order, 12px apart: each its title (14/22 medium), then one 12px
   muted line of its time span (tabular; a time on another day than the
   title's line names takes its weekday, "Wed 11:00 PM") and, 8px after,
-  its job (the sector dot and name), then where it is (the place as the
+  its job (the sector's 8px dot and, 8px on, its name), then where it is (the place as the
   map names it, less the country; his calendar's own words when the point
   is a town's centre or a start standing in), each cut line whole on
   hover. Each event is a group named for it, so a verb under it says
@@ -1624,7 +1624,10 @@ Around the canvas:
   showed, though his own press is what ended it; a refusal stays in the
   step in LifeOS's words, in `destructive`, as an alert. Back puts focus on the way it came from. While the dialog
   reads a clash it was not handed, it draws the two events' bones with the
-  hairline between them; a read that failed says why in the body; two
+  hairline between them (and says "Reading the clash…" to a screen
+  reader); a step he is typing in stays when the calendar settles the
+  clash meanwhile, says "These two no longer clash. Nothing was sent." in
+  12px muted, and its Send is off; a read that failed says why in the body; two
   events that no longer clash are the title "No longer a clash" over the
   foot, with nothing between. Running late… opens Mail's composer in
   that job's workspace with the people on the event and one line; "This

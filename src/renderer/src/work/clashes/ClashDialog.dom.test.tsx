@@ -279,6 +279,29 @@ describe("the Clash dialog", () => {
     expect(toasts.said[0]?.words).toBe("Marked as fine");
   });
 
+  it("keeps a step he is typing in when the calendar settles the clash meanwhile: it says so, sends nothing, and Back shows the clash is gone", async () => {
+    const view = (live: ClashMarks) => {
+      marks.now = live;
+      return <ClashDialog ask={{ id: "ev_a-ev_b", environmentId: "box", clash: overlap() }} onClose={() => {}} />;
+    };
+    const { rerender } = render(view(marksOf({ clashes: [overlap()], leaves: [] })));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    fireEvent.change(screen.getByLabelText("Note"), { target: { value: "At a game then, sorry" } });
+    rerender(view(marksOf({ clashes: [], leaves: [] })));
+    await settle();
+    // What he typed is still there to read or copy.
+    expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe("At a game then, sorry");
+    expect(screen.getByRole("status").textContent).toBe("These two no longer clash. Nothing was sent.");
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(document.querySelector("[data-clash-step]")!);
+    await settle();
+    expect(wire.calls).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "No longer a clash" })).toBeTruthy();
+  });
+
   it("locks a step's fields while Send is out, so what goes is what shows", async () => {
     wire.hold = () => {};
     show(overlap());
@@ -312,6 +335,8 @@ describe("the Clash dialog", () => {
     show(null);
     await settle();
     expect(screen.getByRole("dialog", { name: "Clash" }).querySelector("[data-slot=skeleton]")).not.toBeNull();
+    // The bones are for the eye; a screen reader hears the wait in words.
+    expect(screen.getByRole("status").textContent).toBe("Reading the clash…");
     cleanup();
     show(null, marksOf({ clashes: [overlap()], leaves: [] }));
     await settle();

@@ -116,7 +116,7 @@ export function ClashRowsPreview() {
       <section aria-label="Today" className="flex flex-col">
         <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">Today</h2>
         {rows.map(({ event, clashes, leave }) => (
-          <EventRow key={event._id} event={event} past={false} leave={leave} clashes={clashes} onPrepare={noop} people={[]} workspaceId="ws" environmentId="box" />
+          <EventRow key={event._id} event={event} past={false} leave={leave} clashes={clashes} day={T0} onPrepare={noop} people={[]} workspaceId="ws" environmentId="box" />
         ))}
       </section>
     </div>

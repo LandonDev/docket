@@ -35,11 +35,11 @@ export function useClashes(environmentId: string, from: number, to: number): Cla
  * needed, in the words of that event's side. A line is a button; it opens that
  * clash's dialog, so each one named can be reached from the row.
  */
-export function ClashLines({ clashes, eventId, environmentId }: { clashes: readonly Clash[]; eventId: string; environmentId: string }) {
+export function ClashLines({ clashes, eventId, environmentId, day }: { clashes: readonly Clash[]; eventId: string; environmentId: string; /** the day the row sits under in its list */ day?: number }) {
   return (
     <>
       {clashes.map((clash) => {
-        const words = clashLine(clash, eventId);
+        const words = clashLine(clash, eventId, day === undefined ? {} : { on: day });
         return (
           <TruncateTip key={clash.id} text={words}>
             <Button

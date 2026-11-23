@@ -157,6 +157,8 @@ export function listFrom(range: LifeosRange | null | undefined, home?: HomeOf): 
 export interface ClashWordsOpts {
   /** IANA zone the times are read in; absent: this machine's */
   timeZone?: string
+  /** the day the line is read under (any instant of it), when that may not be the event's own start day: a list shows an event that runs past midnight under the next day too */
+  on?: number
   /** a job's name; absent: the sector key with a capital (`ref` → Ref) */
   label?: (sector: SectorKey) => string
 }
@@ -207,8 +209,9 @@ function shortWords(clash: Clash): string {
  * Basketball (Ref), 6:00 PM"; "15 min short after Staff meeting (Purdue)"
  * on the later event, "… before …" on the earlier. The other event's job is
  * named only when it is another job than this one's, and its time takes its
- * weekday when it starts on another day ("Wed 11:00 PM"), since the row sits
- * under its own day.
+ * weekday when it starts on another day than the one the line is read under
+ * ("Wed 11:00 PM"): the row's own start day, or `opts.on` when the list
+ * shows the row under another.
  */
 export function clashLine(clash: Clash, eventId: string, opts: ClashWordsOpts = {}): string {
   const earlier = eventId === clash.a.eventId
@@ -216,7 +219,7 @@ export function clashLine(clash: Clash, eventId: string, opts: ClashWordsOpts = 
   const named = other.sector === own.sector ? other.title : `${other.title} (${labelOf(other.sector, opts)})`
   if (clash.kind === 'overlap') {
     const day = dayOf(other.startsAt, opts)
-    return `Overlaps ${named}, ${day === dayOf(own.startsAt, opts) ? '' : `${day} `}${clockOf(other.startsAt, opts)}`
+    return `Overlaps ${named}, ${day === dayOf(opts.on ?? own.startsAt, opts) ? '' : `${day} `}${clockOf(other.startsAt, opts)}`
   }
   return `${shortWords(clash)} ${earlier ? 'before' : 'after'} ${named}`
 }

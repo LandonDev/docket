@@ -182,7 +182,7 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
         <section key={day} aria-label={formatDayHeading(day, now)} className="flex flex-col">
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{formatDayHeading(day, now)}</h2>
           {rows.map((event) => (
-            <EventRow key={event._id} event={event} past={endOf(event) < now} leave={leaveOf(event)} clashes={marks.clashes.get(event._id)} onPrepare={prepare} people={people} workspaceId={workspaceId} environmentId={environmentId} />
+            <EventRow key={event._id} event={event} past={endOf(event) < now} leave={leaveOf(event)} clashes={marks.clashes.get(event._id)} day={day} onPrepare={prepare} people={people} workspaceId={workspaceId} environmentId={environmentId} />
           ))}
         </section>
       ))}
@@ -198,6 +198,7 @@ export const EventRow = memo(function EventRow({
   past,
   leave,
   clashes,
+  day,
   onPrepare,
   people,
   workspaceId,
@@ -207,6 +208,8 @@ export const EventRow = memo(function EventRow({
   past: boolean;
   leave: number | undefined;
   clashes: readonly Clash[] | undefined;
+  /** the day this row sits under: an event that runs past midnight is listed under the next day too */
+  day: number;
   onPrepare: (event: AgendaEvent) => void;
   people: readonly DirectoryPerson[];
   workspaceId: string | undefined;
@@ -228,7 +231,7 @@ export const EventRow = memo(function EventRow({
         <span className="flex min-w-0 flex-col pr-24">
           <span className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
           {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
-          {clash?.length ? <ClashLines clashes={clash} eventId={event._id} environmentId={environmentId} /> : null}
+          {clash?.length ? <ClashLines clashes={clash} eventId={event._id} environmentId={environmentId} day={day} /> : null}
           {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}
         </span>
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>

@@ -45,15 +45,18 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   const [pending, setPending] = useState(false);
   // His own press may be what ends the clash ("This is fine", a decline): the dialog keeps the clash it showed while that press is out and while it closes, and never turns to "No longer a clash" under his hand.
   const [settled, setSettled] = useState(false);
+  // A way out's step he has open stays too, with what he typed: a calendar that settles the clash meanwhile is said in the step, never by taking the step away.
+  const [stepping, setStepping] = useState(false);
   const shown = useRef<Clash | undefined>(undefined);
   const read = live ?? (marks.ready ? undefined : ask.clash);
   if (read) shown.current = read;
-  const clash = read ?? (pending || settled ? shown.current : undefined);
+  const clash = read ?? (pending || settled || stepping ? shown.current : undefined);
+  const cleared = !read && marks.ready && !pending && !settled;
   const day = clash ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
   const state = marks.ready ? "gone" : marks.failed !== undefined ? "failed" : "loading";
   return (
     <Modal onClose={onClose} title={clash ? clashTitle(clash) : state === "gone" ? "No longer a clash" : "Clash"} description={day} size="sm" busy={pending} data-clash-dialog={ask.id}>
-      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} onSettled={() => setSettled(true)} /> : <Empty state={state} error={marks.failed} onClose={onClose} />}
+      {clash ? <Body clash={clash} environmentId={ask.environmentId} onClose={onClose} pending={pending} setPending={setPending} onSettled={() => setSettled(true)} onStep={setStepping} cleared={cleared} /> : <Empty state={state} error={marks.failed} onClose={onClose} />}
     </Modal>
   );
 }
@@ -78,10 +81,16 @@ export function Empty({ state, error, onClose }: { state: "loading" | "failed" |
   return (
     <>
       {state === "loading" ? (
-        <ModalBody aria-hidden className="gap-3">
-          <EventBones />
-          <span className="h-px bg-border" />
-          <EventBones />
+        <ModalBody className="gap-3">
+          {/* The bones are for the eye; the wait is said once, in words, for a screen reader. */}
+          <span role="status" className="sr-only">
+            Reading the clash…
+          </span>
+          <div aria-hidden className="flex flex-col gap-3">
+            <EventBones />
+            <span className="h-px bg-border" />
+            <EventBones />
+          </div>
         </ModalBody>
       ) : null}
       {state === "failed" ? (
@@ -113,8 +122,9 @@ function EventBlock({ side, day, children }: { side: ClashSide; day: number; chi
       </TruncateTip>
       <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs leading-5 text-muted-foreground">
         <span className="shrink-0 tabular-nums">{span(side, day)}</span>
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <SectorDot sector={side.sector} className="size-3" />
+        {/* The dot's box is the dot, so it sits 8px from the time and 8px from its job's name. */}
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <SectorDot sector={side.sector} className="size-2" />
           <span className="truncate">{sectorName(side.sector)}</span>
         </span>
       </span>
@@ -146,6 +156,8 @@ function Body({
   pending,
   setPending,
   onSettled,
+  onStep,
+  cleared,
 }: {
   clash: Clash;
   environmentId: string;
@@ -154,10 +166,18 @@ function Body({
   setPending: (p: boolean) => void;
   /** a press of his went through: the dialog is closing on what it shows */
   onSettled: () => void;
+  /** a way out's step opened or closed */
+  onStep: (open: boolean) => void;
+  /** the two no longer clash, by something other than his press here */
+  cleared: boolean;
 }) {
   const close = useModalClose();
   const session = useLifeosSession(environmentId, null);
-  const [step, setStep] = useState<Step | null>(null);
+  const [step, setStepState] = useState<Step | null>(null);
+  const setStep = (next: Step | null) => {
+    setStepState(next);
+    onStep(next !== null);
+  };
   // What LifeOS said of the last Send, shown in the step until he sends again or goes back.
   const [refused, setRefused] = useState<string | null>(null);
   const [busy, setBusy] = useState<"fine" | "late" | null>(null);
@@ -223,6 +243,7 @@ function Body({
         step={step}
         pending={pending}
         refused={refused}
+        cleared={cleared}
         onBack={() => {
           from.current = `${step.side}:${step.way}`;
           setRefused(null);
@@ -323,6 +344,7 @@ export function StepForm({
   step,
   pending,
   refused = null,
+  cleared = false,
   onBack,
   onSend,
 }: {
@@ -331,11 +353,15 @@ export function StepForm({
   pending: boolean;
   /** what LifeOS said of the last Send, in its own words */
   refused?: string | null;
+  /** the two no longer clash: what he typed stays to read or copy, and nothing more can be sent */
+  cleared?: boolean;
   onBack: () => void;
   onSend: (params: { comment?: string; start?: number; end?: number }) => void;
 }) {
   const event = clash[step.side];
-  const [form, setForm] = useState<TimeForm>(() => formOf(freeAfter(clash, event.eventId)));
+  // The time offered is kept as the instant it is: fields he leaves alone send that instant, whatever a clock change makes of its clock time.
+  const [offered] = useState(() => freeAfter(clash, event.eventId));
+  const [form, setForm] = useState<TimeForm>(() => formOf(offered));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const patch = (p: Partial<TimeForm>) => setForm((f) => ({ ...f, ...p }));
@@ -343,7 +369,9 @@ export function StepForm({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (pending) return;
-    const when = timed ? spanOf(form) : null;
+    if (cleared) return;
+    const untouched = JSON.stringify(form) === JSON.stringify(formOf(offered));
+    const when = timed ? (untouched ? offered : spanOf(form)) : null;
     if (typeof when === "string") return setError(when);
     setError(null);
     onSend({ ...(note.trim() && step.way !== "move" ? { comment: note.trim() } : {}), ...(when ?? {}) });
@@ -371,11 +399,16 @@ export function StepForm({
             <Textarea autoFocus={!timed} disabled={pending} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
           </Field>
         ) : null}
+        {cleared ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            These two no longer clash. Nothing was sent.
+          </p>
+        ) : null}
         <div role="alert" className="empty:hidden">
           <ErrorLine error={error ?? refused} />
         </div>
       </ModalBody>
-      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending}>
+      <DialogFooter confirmLabel={step.way === "move" ? "Move" : "Send"} pending={pending} disabled={cleared}>
         <Button data-clash-back variant="secondary" disabled={pending} onClick={onBack}>
           Back
         </Button>
